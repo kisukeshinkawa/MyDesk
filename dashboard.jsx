@@ -905,9 +905,9 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
           </div>
         )}
         {/* メモタブ */}
-        {taskTab==="memo"&&<TMemoSection entityKey="tasks" entityId={activeTask.id} memos={activeTask.memos||[]}/>}
+        {taskTab==="memo"&&TMemoSection({entityKey:"tasks",entityId:activeTask.id,memos:activeTask.memos||[]})}
         {/* チャットタブ */}
-        {taskTab==="chat"&&<TChatSection entityKey="tasks" entityId={activeTask.id} chat={activeTask.chat||[]}/>}
+        {taskTab==="chat"&&TChatSection({entityKey:"tasks",entityId:activeTask.id,chat:activeTask.chat||[]})}
         {sheet==="editTask"&&<Sheet title="タスクを編集" onClose={()=>setSheet(null)}>
           <TaskForm initial={activeTask} users={users} currentUserId={uid} onClose={()=>setSheet(null)}
             onSave={f=>{updateTask(activeTask.id,f);setSheet(null);}}/>
@@ -981,9 +981,9 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
           </div>
         )}
         {/* メモタブ */}
-        {pjTab==="memo"&&<TMemoSection entityKey="projects" entityId={activePj.id} memos={activePj.memos||[]}/>}
+        {pjTab==="memo"&&TMemoSection({entityKey:"projects",entityId:activePj.id,memos:activePj.memos||[]})}
         {/* チャットタブ */}
-        {pjTab==="chat"&&<TChatSection entityKey="projects" entityId={activePj.id} chat={activePj.chat||[]}/>}
+        {pjTab==="chat"&&TChatSection({entityKey:"projects",entityId:activePj.id,chat:activePj.chat||[]})}
         {sheet==="addPjTask"&&<Sheet title="タスクを追加" onClose={()=>setSheet(null)}>
           <TaskForm initial={{status:"未着手"}} users={users} currentUserId={uid} onClose={()=>setSheet(null)}
             onSave={f=>{addTask(f,activePjId);setSheet(null);}}/>
@@ -3313,6 +3313,154 @@ function MapTab({prefs,munis,vendors,companies,prefCoords,onSelectPref}) {
   );
 }
 
+// ─── SALES TASK PANEL (top-level component to satisfy React hooks rules) ────────
+function SalesTaskPanel({ entityType, entityId, entityName, data, onSave, currentUser, users=[] }) {
+  const uid = currentUser?.id;
+  const allTasks    = data.tasks    || [];
+  const allProjects = data.projects || [];
+  const linked    = allTasks.filter(t=>t.salesRef?.id===entityId);
+  const linkedPjs = allProjects.filter(p=>p.salesRef?.id===entityId);
+  const [addMode,setAddMode] = useState(null);
+  const [tf,setTf] = useState({title:entityName,dueDate:"",notes:"",assignees:uid?[uid]:[]});
+  const [pf,setPf] = useState({name:entityName,notes:"",members:uid?[uid]:[]});
+  const STATUS_META_MINI={
+    "未着手":{color:"#6b7280",bg:"#f3f4f6"},
+    "進行中":{color:"#2563eb",bg:"#dbeafe"},
+    "先方待ち":{color:"#1d4ed8",bg:"#fef3c7"},
+    "完了":{color:"#059669",bg:"#d1fae5"},
+    "保留":{color:"#9333ea",bg:"#f3e8ff"},
+  };
+
+  const doAddTask = () => {
+    if(!tf.title.trim()) return;
+    const task = {
+      id: Date.now()+Math.random(), title: tf.title, status:"未着手",
+      dueDate: tf.dueDate||"", notes: tf.notes||"",
+      assignees: tf.assignees, isPrivate:false, projectId:null,
+      createdBy: uid, salesRef:{type:entityType,id:entityId,name:entityName},
+      comments:[], memos:[], chat:[], createdAt:new Date().toISOString(),
+    };
+    onSave({...data, tasks:[...allTasks, task]});
+    setAddMode(null);
+    setTf({title:entityName,dueDate:"",notes:"",assignees:uid?[uid]:[]});
+  };
+
+  const doAddProject = () => {
+    if(!pf.name.trim()) return;
+    const pj = {
+      id: Date.now()+Math.random(), name: pf.name, notes: pf.notes||"",
+      members: pf.members, isPrivate:false, createdBy:uid,
+      salesRef:{type:entityType,id:entityId,name:entityName},
+      memos:[], chat:[], createdAt:new Date().toISOString(),
+    };
+    onSave({...data, projects:[...(data.projects||[]), pj]});
+    setAddMode(null);
+    setPf({name:entityName,notes:"",members:uid?[uid]:[]});
+  };
+
+  return (
+    <div>
+      {/* プロジェクト一覧 */}
+      {linkedPjs.length>0&&(
+        <div style={{marginBottom:"0.875rem"}}>
+          <div style={{fontSize:"0.68rem",fontWeight:700,color:C.textSub,marginBottom:"0.4rem",textTransform:"uppercase",letterSpacing:"0.04em"}}>🗂 プロジェクト</div>
+          {linkedPjs.map(pj=>{
+            const pjTasks=allTasks.filter(t=>t.projectId===pj.id);
+            const done=pjTasks.filter(t=>t.status==="完了").length;
+            return (
+              <div key={pj.id} style={{background:C.bg,borderRadius:"0.75rem",padding:"0.625rem 0.875rem",marginBottom:"0.4rem",border:`1px solid ${C.border}`}}>
+                <div style={{fontWeight:700,fontSize:"0.85rem",color:C.text,marginBottom:"0.2rem"}}>{pj.name}</div>
+                <div style={{display:"flex",alignItems:"center",gap:"0.5rem"}}>
+                  <div style={{flex:1,height:4,background:C.borderLight,borderRadius:999,overflow:"hidden"}}>
+                    <div style={{width:pjTasks.length?`${(done/pjTasks.length)*100}%`:"0%",height:"100%",background:"#059669",borderRadius:999,transition:"width 0.3s"}}/>
+                  </div>
+                  <span style={{fontSize:"0.68rem",color:C.textMuted}}>{done}/{pjTasks.length}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {/* タスク一覧 */}
+      {linked.length>0&&(
+        <div style={{marginBottom:"0.875rem"}}>
+          <div style={{fontSize:"0.68rem",fontWeight:700,color:C.textSub,marginBottom:"0.4rem",textTransform:"uppercase",letterSpacing:"0.04em"}}>✅ タスク</div>
+          {linked.map(t=>{
+            const m=STATUS_META_MINI[t.status]||STATUS_META_MINI["未着手"];
+            const today=new Date(); today.setHours(0,0,0,0);
+            const due=t.dueDate?new Date(t.dueDate):null;
+            const overdue=due&&due<today&&t.status!=="完了";
+            return (
+              <div key={t.id} style={{background:"white",borderRadius:"0.75rem",padding:"0.625rem 0.875rem",marginBottom:"0.4rem",border:`1px solid ${overdue?"#fca5a5":C.border}`,display:"flex",alignItems:"center",gap:"0.625rem"}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontWeight:600,fontSize:"0.85rem",color:t.status==="完了"?C.textMuted:C.text,textDecoration:t.status==="完了"?"line-through":"none",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div>
+                  {t.dueDate&&<div style={{fontSize:"0.65rem",color:overdue?"#dc2626":C.textMuted,marginTop:"0.1rem"}}>{overdue?"⚠️ ":""}期限：{t.dueDate}</div>}
+                </div>
+                <span style={{fontSize:"0.68rem",fontWeight:700,background:m.bg,color:m.color,borderRadius:999,padding:"0.1rem 0.45rem",flexShrink:0}}>{t.status}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {linked.length===0&&linkedPjs.length===0&&(
+        <div style={{textAlign:"center",padding:"1.5rem 0",color:C.textMuted,fontSize:"0.82rem"}}>タスク・プロジェクトはまだありません</div>
+      )}
+      {/* 追加ボタン */}
+      {addMode===null&&(
+        <div style={{display:"flex",gap:"0.5rem"}}>
+          <Btn size="sm" style={{flex:1}} onClick={()=>{setTf({title:entityName,dueDate:"",notes:"",assignees:uid?[uid]:[]});setAddMode("task");}}>＋ タスク</Btn>
+          <Btn size="sm" variant="secondary" style={{flex:1}} onClick={()=>{setPf({name:entityName,notes:"",members:uid?[uid]:[]});setAddMode("project");}}>＋ プロジェクト</Btn>
+        </div>
+      )}
+      {/* タスク追加フォーム */}
+      {addMode==="task"&&(
+        <div style={{background:C.bg,borderRadius:"0.875rem",padding:"0.875rem",border:`1px solid ${C.border}`}}>
+          <div style={{fontWeight:700,fontSize:"0.82rem",color:C.text,marginBottom:"0.75rem"}}>✅ タスクを追加</div>
+          <FieldLbl label="タイトル"><Input value={tf.title} onChange={e=>setTf({...tf,title:e.target.value})} autoFocus/></FieldLbl>
+          <FieldLbl label="期限"><Input type="date" value={tf.dueDate} onChange={e=>setTf({...tf,dueDate:e.target.value})}/></FieldLbl>
+          <FieldLbl label="担当者">
+            <div style={{display:"flex",flexWrap:"wrap",gap:"0.4rem"}}>
+              {users.map(u=>{const on=tf.assignees.includes(u.id);return(
+                <button key={u.id} onClick={()=>setTf({...tf,assignees:on?tf.assignees.filter(i=>i!==u.id):[...tf.assignees,u.id]})}
+                  style={{padding:"0.3rem 0.75rem",borderRadius:999,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",border:`1.5px solid ${on?C.accent:C.border}`,background:on?C.accentBg:"white",color:on?C.accentDark:C.textSub}}>
+                  {on?"✓ ":""}{u.name}
+                </button>
+              );})}
+            </div>
+          </FieldLbl>
+          <FieldLbl label="メモ（任意）"><Textarea value={tf.notes} onChange={e=>setTf({...tf,notes:e.target.value})} style={{height:56}}/></FieldLbl>
+          <div style={{display:"flex",gap:"0.5rem"}}>
+            <Btn variant="secondary" style={{flex:1}} onClick={()=>setAddMode(null)}>キャンセル</Btn>
+            <Btn style={{flex:2}} onClick={doAddTask} disabled={!tf.title.trim()}>作成する</Btn>
+          </div>
+        </div>
+      )}
+      {/* プロジェクト追加フォーム */}
+      {addMode==="project"&&(
+        <div style={{background:C.bg,borderRadius:"0.875rem",padding:"0.875rem",border:`1px solid ${C.border}`}}>
+          <div style={{fontWeight:700,fontSize:"0.82rem",color:C.text,marginBottom:"0.75rem"}}>🗂 プロジェクトを追加</div>
+          <FieldLbl label="プロジェクト名"><Input value={pf.name} onChange={e=>setPf({...pf,name:e.target.value})} autoFocus/></FieldLbl>
+          <FieldLbl label="メンバー">
+            <div style={{display:"flex",flexWrap:"wrap",gap:"0.4rem"}}>
+              {users.map(u=>{const on=pf.members.includes(u.id);return(
+                <button key={u.id} onClick={()=>setPf({...pf,members:on?pf.members.filter(i=>i!==u.id):[...pf.members,u.id]})}
+                  style={{padding:"0.3rem 0.75rem",borderRadius:999,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",border:`1.5px solid ${on?C.accent:C.border}`,background:on?C.accentBg:"white",color:on?C.accentDark:C.textSub}}>
+                  {on?"✓ ":""}{u.name}
+                </button>
+              );})}
+            </div>
+          </FieldLbl>
+          <FieldLbl label="メモ（任意）"><Textarea value={pf.notes} onChange={e=>setPf({...pf,notes:e.target.value})} style={{height:56}}/></FieldLbl>
+          <div style={{display:"flex",gap:"0.5rem"}}>
+            <Btn variant="secondary" style={{flex:1}} onClick={()=>setAddMode(null)}>キャンセル</Btn>
+            <Btn style={{flex:2}} onClick={doAddProject} disabled={!pf.name.trim()}>作成する</Btn>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── SALES VIEW ───────────────────────────────────────────────────────────────
 function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab }) {
   // salesTab managed by App for persistence
@@ -3348,6 +3496,11 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   const [bulkTarget,   setBulkTarget]   = useState(""); // "company"|"vendor"|"muni"
   // vendor linking from muni
   const [linkVendorSearch,setLinkVendorSearch]=useState("");
+  // dashboard period filter (must be top-level, not inside conditional)
+  const [dashPeriod,setDashPeriod]=useState("month"); // today|week|month|all
+  // CSV import preview/error state (must be top-level, not inside IIFE)
+  const [importPreview,setImportPreview]=useState(null);
+  const [importErr,setImportErr]=useState("");
 
   const prefs     = data.prefectures    || [];
   const munis     = data.municipalities || [];
@@ -3430,107 +3583,6 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     return pj;
   };
 
-  // ── 営業エンティティに紐づくタスク/プロジェクト一覧 ─────────────────────
-  const SalesTaskPanel = ({ entityType, entityId, entityName }) => {
-    const uid = currentUser?.id;
-    const allTasks    = data.tasks    || [];
-    const allProjects = data.projects || [];
-    const linked = allTasks.filter(t=>t.salesRef?.id===entityId);
-    const linkedPjs = allProjects.filter(p=>p.salesRef?.id===entityId);
-    const [addMode,setAddMode]=React.useState(null); // null|"task"|"project"
-    const [tf,setTf]=React.useState({title:entityName,dueDate:"",notes:"",assignees:uid?[uid]:[]});
-    const [pf,setPf]=React.useState({name:entityName,notes:"",members:uid?[uid]:[]});
-    const STATUS_META_MINI={
-      "未着手":{color:"#6b7280",bg:"#f3f4f6"},
-      "進行中":{color:"#2563eb",bg:"#dbeafe"},
-      "レビュー":{color:"#d97706",bg:"#fef3c7"},
-      "完了":{color:"#059669",bg:"#d1fae5"},
-      "保留":{color:"#9333ea",bg:"#f3e8ff"},
-    };
-    return (
-      <div>
-        {/* プロジェクト一覧 */}
-        {linkedPjs.length>0&&(
-          <div style={{marginBottom:"0.875rem"}}>
-            <div style={{fontSize:"0.68rem",fontWeight:700,color:C.textSub,marginBottom:"0.4rem",textTransform:"uppercase",letterSpacing:"0.04em"}}>🗂 プロジェクト</div>
-            {linkedPjs.map(pj=>{
-              const pjTasks=allTasks.filter(t=>t.projectId===pj.id);
-              const done=pjTasks.filter(t=>t.status==="完了").length;
-              return (
-                <div key={pj.id} style={{background:C.bg,borderRadius:"0.75rem",padding:"0.625rem 0.875rem",marginBottom:"0.4rem",border:`1px solid ${C.border}`}}>
-                  <div style={{fontWeight:700,fontSize:"0.85rem",color:C.text,marginBottom:"0.2rem"}}>{pj.name}</div>
-                  <div style={{display:"flex",alignItems:"center",gap:"0.5rem"}}>
-                    <div style={{flex:1,height:4,background:C.borderLight,borderRadius:999,overflow:"hidden"}}>
-                      <div style={{width:pjTasks.length?`${(done/pjTasks.length)*100}%`:"0%",height:"100%",background:"#059669",borderRadius:999,transition:"width 0.3s"}}/>
-                    </div>
-                    <span style={{fontSize:"0.68rem",color:C.textMuted}}>{done}/{pjTasks.length}</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-        {/* タスク一覧 */}
-        {linked.length>0&&(
-          <div style={{marginBottom:"0.875rem"}}>
-            <div style={{fontSize:"0.68rem",fontWeight:700,color:C.textSub,marginBottom:"0.4rem",textTransform:"uppercase",letterSpacing:"0.04em"}}>✅ タスク</div>
-            {linked.map(t=>{
-              const m=STATUS_META_MINI[t.status]||STATUS_META_MINI["未着手"];
-              const today=new Date(); today.setHours(0,0,0,0);
-              const due=t.dueDate?new Date(t.dueDate):null;
-              const overdue=due&&due<today&&t.status!=="完了";
-              return (
-                <div key={t.id} style={{background:"white",borderRadius:"0.75rem",padding:"0.625rem 0.875rem",marginBottom:"0.4rem",border:`1px solid ${overdue?"#fca5a5":C.border}`,display:"flex",alignItems:"center",gap:"0.625rem"}}>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontWeight:600,fontSize:"0.85rem",color:t.status==="完了"?C.textMuted:C.text,textDecoration:t.status==="完了"?"line-through":"none",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div>
-                    {t.dueDate&&<div style={{fontSize:"0.65rem",color:overdue?"#dc2626":C.textMuted,marginTop:"0.1rem"}}>{overdue?"⚠️ ":""}期限：{t.dueDate}</div>}
-                  </div>
-                  <span style={{fontSize:"0.68rem",fontWeight:700,background:m.bg,color:m.color,borderRadius:999,padding:"0.1rem 0.45rem",flexShrink:0}}>{t.status}</span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-        {linked.length===0&&linkedPjs.length===0&&(
-          <div style={{textAlign:"center",padding:"1.5rem 0",color:C.textMuted,fontSize:"0.82rem"}}>タスク・プロジェクトはまだありません</div>
-        )}
-        {/* 追加ボタン */}
-        {addMode===null&&(
-          <div style={{display:"flex",gap:"0.5rem"}}>
-            <Btn size="sm" style={{flex:1}} onClick={()=>{setTf({title:entityName,dueDate:"",notes:"",assignees:uid?[uid]:[]});setAddMode("task");}}>＋ タスク</Btn>
-            <Btn size="sm" variant="secondary" style={{flex:1}} onClick={()=>{setPf({name:entityName,notes:"",members:uid?[uid]:[]});setAddMode("project");}}>＋ プロジェクト</Btn>
-          </div>
-        )}
-        {/* タスク追加フォーム */}
-        {addMode==="task"&&(
-          <div style={{background:C.bg,borderRadius:"0.875rem",padding:"0.875rem",border:`1px solid ${C.border}`}}>
-            <div style={{fontWeight:700,fontSize:"0.82rem",color:C.text,marginBottom:"0.75rem"}}>✅ タスクを追加</div>
-            <FieldLbl label="タイトル"><Input value={tf.title} onChange={e=>setTf({...tf,title:e.target.value})} autoFocus/></FieldLbl>
-            <FieldLbl label="期限"><Input type="date" value={tf.dueDate} onChange={e=>setTf({...tf,dueDate:e.target.value})}/></FieldLbl>
-            <FieldLbl label="担当者"><AssigneePicker ids={tf.assignees} onChange={ids=>setTf({...tf,assignees:ids})}/></FieldLbl>
-            <FieldLbl label="メモ（任意）"><Textarea value={tf.notes} onChange={e=>setTf({...tf,notes:e.target.value})} style={{height:56}}/></FieldLbl>
-            <div style={{display:"flex",gap:"0.5rem"}}>
-              <Btn variant="secondary" style={{flex:1}} onClick={()=>setAddMode(null)}>キャンセル</Btn>
-              <Btn style={{flex:2}} onClick={()=>{if(!tf.title.trim())return;addTaskFromSales(entityType,entityId,entityName,tf);setAddMode(null);}} disabled={!tf.title.trim()}>作成する</Btn>
-            </div>
-          </div>
-        )}
-        {/* プロジェクト追加フォーム */}
-        {addMode==="project"&&(
-          <div style={{background:C.bg,borderRadius:"0.875rem",padding:"0.875rem",border:`1px solid ${C.border}`}}>
-            <div style={{fontWeight:700,fontSize:"0.82rem",color:C.text,marginBottom:"0.75rem"}}>🗂 プロジェクトを追加</div>
-            <FieldLbl label="プロジェクト名"><Input value={pf.name} onChange={e=>setPf({...pf,name:e.target.value})} autoFocus/></FieldLbl>
-            <FieldLbl label="メンバー"><AssigneePicker ids={pf.members} onChange={ids=>setPf({...pf,members:ids})}/></FieldLbl>
-            <FieldLbl label="メモ（任意）"><Textarea value={pf.notes} onChange={e=>setPf({...pf,notes:e.target.value})} style={{height:56}}/></FieldLbl>
-            <div style={{display:"flex",gap:"0.5rem"}}>
-              <Btn variant="secondary" style={{flex:1}} onClick={()=>setAddMode(null)}>キャンセル</Btn>
-              <Btn style={{flex:2}} onClick={()=>{if(!pf.name.trim())return;addProjectFromSales(entityType,entityId,entityName,pf);setAddMode(null);}} disabled={!pf.name.trim()}>作成する</Btn>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
   // ── CSV ダウンロード / アップロード ユーティリティ ──────────────────────────
   const downloadCSV = (filename, headers, rows) => {
     const bom = "\uFEFF";
@@ -4074,7 +4126,6 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
 
   if(salesTab==="dash"){
     // ── 日付フィルター ────────────────────────────────────────────────────
-    const [dashPeriod,setDashPeriod]=React.useState("month"); // today|week|month|all
     const now=new Date();
     const periodStart=dashPeriod==="today"?new Date(now.getFullYear(),now.getMonth(),now.getDate())
       :dashPeriod==="week"?new Date(now-6*24*60*60*1000)
@@ -4369,14 +4420,14 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
               </button>
             ))}
           </div>
-          {activeDetail==="memo"&&<MemoSection memos={comp.memos} entityKey="companies" entityId={comp.id}/>}
-          {activeDetail==="chat"&&<ChatSection chat={comp.chat} entityKey="companies" entityId={comp.id}/>}
-          {activeDetail==="tasks"&&<SalesTaskPanel entityType="企業" entityId={comp.id} entityName={comp.name}/>}
+          {activeDetail==="memo"&&MemoSection({memos:comp.memos,entityKey:"companies",entityId:comp.id})}
+          {activeDetail==="chat"&&ChatSection({chat:comp.chat,entityKey:"companies",entityId:comp.id})}
+          {activeDetail==="tasks"&&<SalesTaskPanel entityType="企業" entityId={comp.id} entityName={comp.name} data={data} onSave={save} currentUser={currentUser} users={users}/>}
           {sheet==="editCompany"&&(
             <Sheet title="企業を編集" onClose={()=>setSheet(null)}>
               <FieldLbl label="企業名 *"><Input value={form.name||""} onChange={e=>setForm({...form,name:e.target.value})} autoFocus/></FieldLbl>
               <FieldLbl label="ステータス"><StatusPicker map={COMPANY_STATUS} value={form.status||"未接触"} onChange={s=>setForm({...form,status:s})}/></FieldLbl>
-              <FieldLbl label="担当者"><AssigneePicker ids={form.assigneeIds||[]} onChange={ids=>setForm({...form,assigneeIds:ids})}/></FieldLbl>
+              <FieldLbl label="担当者">{AssigneePicker({ids:form.assigneeIds||[],onChange:ids=>setForm({...form,assigneeIds:ids})})}</FieldLbl>
               <FieldLbl label="電話番号（任意）"><Input value={form.phone||""} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="000-0000-0000"/></FieldLbl>
               <FieldLbl label="メールアドレス（任意）"><Input value={form.email||""} onChange={e=>setForm({...form,email:e.target.value})} placeholder="example@mail.com"/></FieldLbl>
               <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
@@ -4492,7 +4543,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           <Sheet title="企業を追加" onClose={()=>setSheet(null)}>
             <FieldLbl label="企業名 *"><Input value={form.name||""} onChange={e=>setForm({...form,name:e.target.value})} autoFocus/></FieldLbl>
             <FieldLbl label="ステータス"><StatusPicker map={COMPANY_STATUS} value={form.status||"未接触"} onChange={s=>setForm({...form,status:s})}/></FieldLbl>
-            <FieldLbl label="担当者"><AssigneePicker ids={form.assigneeIds||[]} onChange={ids=>setForm({...form,assigneeIds:ids})}/></FieldLbl>
+            <FieldLbl label="担当者">{AssigneePicker({ids:form.assigneeIds||[],onChange:ids=>setForm({...form,assigneeIds:ids})})}</FieldLbl>
             <FieldLbl label="電話番号（任意）"><Input value={form.phone||""} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="000-0000-0000"/></FieldLbl>
             <FieldLbl label="メールアドレス（任意）"><Input value={form.email||""} onChange={e=>setForm({...form,email:e.target.value})} placeholder="example@mail.com"/></FieldLbl>
             <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
@@ -4503,8 +4554,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           </Sheet>
         )}
         {sheet==="importCompany"&&(()=>{
-          const [preview,setPreview]=React.useState(null);
-          const [err,setErr]=React.useState("");
+          const preview=importPreview; const setPreview=setImportPreview;
+          const err=importErr; const setErr=setImportErr;
           const handleFile=async(e)=>{
             const file=e.target.files?.[0]; if(!file)return;
             try{
@@ -4540,7 +4591,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             setSheet("importDone");
           };
           return (
-            <Sheet title="企業をインポート" onClose={()=>setSheet(null)}>
+            <Sheet title="企業をインポート" onClose={()=>{setSheet(null);setImportPreview(null);setImportErr("");}}>
               {/* Download template */}
               <div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:"0.875rem",padding:"0.875rem",marginBottom:"1rem"}}>
                 <div style={{fontWeight:700,fontSize:"0.82rem",color:"#1d4ed8",marginBottom:"0.5rem"}}>📥 テンプレートをダウンロード</div>
@@ -4668,9 +4719,9 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
               </button>
             ))}
           </div>
-          {activeDetail==="memo"&&<MemoSection memos={v.memos} entityKey="vendors" entityId={v.id}/>}
-          {activeDetail==="chat"&&<ChatSection chat={v.chat} entityKey="vendors" entityId={v.id}/>}
-          {activeDetail==="tasks"&&<SalesTaskPanel entityType="業者" entityId={v.id} entityName={v.name}/>}
+          {activeDetail==="memo"&&MemoSection({memos:v.memos,entityKey:"vendors",entityId:v.id})}
+          {activeDetail==="chat"&&ChatSection({chat:v.chat,entityKey:"vendors",entityId:v.id})}
+          {activeDetail==="tasks"&&<SalesTaskPanel entityType="業者" entityId={v.id} entityName={v.name} data={data} onSave={save} currentUser={currentUser} users={users}/>}
           {sheet==="editVendor"&&(
             <Sheet title="業者を編集" onClose={()=>setSheet(null)}>
               <FieldLbl label="業者名 *"><Input value={form.name||""} onChange={e=>setForm({...form,name:e.target.value})} autoFocus/></FieldLbl>
@@ -4678,7 +4729,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
               <FieldLbl label="許可エリア（自治体）">
                 <MuniPicker ids={form.municipalityIds||[]} onChange={ids=>setForm({...form,municipalityIds:ids})}/>
               </FieldLbl>
-              <FieldLbl label="担当者"><AssigneePicker ids={form.assigneeIds||[]} onChange={ids=>setForm({...form,assigneeIds:ids})}/></FieldLbl>
+              <FieldLbl label="担当者">{AssigneePicker({ids:form.assigneeIds||[],onChange:ids=>setForm({...form,assigneeIds:ids})})}</FieldLbl>
               <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
               <FieldLbl label="備考"><Textarea value={form.notes||""} onChange={e=>setForm({...form,notes:e.target.value})} style={{height:70}}/></FieldLbl>
               <div style={{display:"flex",gap:"0.625rem"}}>
@@ -4790,7 +4841,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             <FieldLbl label="許可エリア（自治体）">
               <MuniPicker ids={form.municipalityIds||[]} onChange={ids=>setForm({...form,municipalityIds:ids})}/>
             </FieldLbl>
-            <FieldLbl label="担当者"><AssigneePicker ids={form.assigneeIds||[]} onChange={ids=>setForm({...form,assigneeIds:ids})}/></FieldLbl>
+            <FieldLbl label="担当者">{AssigneePicker({ids:form.assigneeIds||[],onChange:ids=>setForm({...form,assigneeIds:ids})})}</FieldLbl>
             <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
             <FieldLbl label="備考"><Textarea value={form.notes||""} onChange={e=>setForm({...form,notes:e.target.value})} style={{height:60}}/></FieldLbl>
             <div style={{display:"flex",gap:"0.625rem"}}>
@@ -4800,8 +4851,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           </Sheet>
         )}
         {sheet==="importVendor"&&(()=>{
-          const [preview,setPreview]=React.useState(null);
-          const [err,setErr]=React.useState("");
+          const preview=importPreview; const setPreview=setImportPreview;
+          const err=importErr; const setErr=setImportErr;
           const handleFile=async(e)=>{
             const file=e.target.files?.[0]; if(!file)return;
             try{
@@ -4840,7 +4891,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             setSheet("importDone");
           };
           return (
-            <Sheet title="業者をインポート" onClose={()=>setSheet(null)}>
+            <Sheet title="業者をインポート" onClose={()=>{setSheet(null);setImportPreview(null);setImportErr("");}}>
               <div style={{background:"#f5f3ff",border:"1px solid #ddd6fe",borderRadius:"0.875rem",padding:"0.875rem",marginBottom:"1rem"}}>
                 <div style={{fontWeight:700,fontSize:"0.82rem",color:"#5b21b6",marginBottom:"0.5rem"}}>📥 テンプレートをダウンロード</div>
                 <div style={{fontSize:"0.75rem",color:"#6d28d9",marginBottom:"0.625rem"}}>テンプレートに入力してCSV形式で保存後、アップロードしてください</div>
@@ -4988,9 +5039,9 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             </button>
           ))}
         </div>
-        {activeDetail==="memo"&&<MemoSection memos={muni.memos} entityKey="municipalities" entityId={muni.id}/>}
-        {activeDetail==="chat"&&<ChatSection chat={muni.chat} entityKey="municipalities" entityId={muni.id}/>}
-        {activeDetail==="tasks"&&<SalesTaskPanel entityType="自治体" entityId={muni.id} entityName={muni.name}/>}
+        {activeDetail==="memo"&&MemoSection({memos:muni.memos,entityKey:"municipalities",entityId:muni.id})}
+        {activeDetail==="chat"&&ChatSection({chat:muni.chat,entityKey:"municipalities",entityId:muni.id})}
+        {activeDetail==="tasks"&&<SalesTaskPanel entityType="自治体" entityId={muni.id} entityName={muni.name} data={data} onSave={save} currentUser={currentUser} users={users}/>}
         <div style={{marginTop:"1rem"}}>
           <Btn variant="danger" size="sm" onClick={()=>{if(window.confirm(`${muni.name}を削除しますか？`))deleteMuni(muni.id);}}>🗑 自治体を削除</Btn>
         </div>
@@ -4998,7 +5049,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           <Sheet title="自治体を編集" onClose={()=>setSheet(null)}>
             <FieldLbl label="自治体名 *"><Input value={form.name||""} onChange={e=>setForm({...form,name:e.target.value})} autoFocus/></FieldLbl>
             <FieldLbl label="ステータス"><StatusPicker map={MUNI_STATUS} value={form.status||"未接触"} onChange={s=>setForm({...form,status:s})}/></FieldLbl>
-            <FieldLbl label="担当者"><AssigneePicker ids={form.assigneeIds||[]} onChange={ids=>setForm({...form,assigneeIds:ids})}/></FieldLbl>
+            <FieldLbl label="担当者">{AssigneePicker({ids:form.assigneeIds||[],onChange:ids=>setForm({...form,assigneeIds:ids})})}</FieldLbl>
             <FieldLbl label="展開ステータス（ダストーク）"><DustalkPicker value={form.dustalk||"未展開"} onChange={s=>setForm({...form,dustalk:s})}/></FieldLbl>
             <FieldLbl label="アート引越センター 管轄支店"><Input value={form.artBranch||""} onChange={e=>setForm({...form,artBranch:e.target.value})} placeholder="例：福岡支店"/></FieldLbl>
             <FieldLbl label="連携協定ステータス"><TreatyPicker value={form.treatyStatus||"未接触"} onChange={s=>setForm({...form,treatyStatus:s})}/></FieldLbl>
@@ -5013,7 +5064,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           <Sheet title="業者を追加" onClose={()=>{setSheet(null);setSalesTab("muni");}}>
             <FieldLbl label="業者名 *"><Input value={form.name||""} onChange={e=>setForm({...form,name:e.target.value})} autoFocus/></FieldLbl>
             <FieldLbl label="ステータス"><StatusPicker map={VENDOR_STATUS} value={form.status||"未接触"} onChange={s=>setForm({...form,status:s})}/></FieldLbl>
-            <FieldLbl label="担当者"><AssigneePicker ids={form.assigneeIds||[]} onChange={ids=>setForm({...form,assigneeIds:ids})}/></FieldLbl>
+            <FieldLbl label="担当者">{AssigneePicker({ids:form.assigneeIds||[],onChange:ids=>setForm({...form,assigneeIds:ids})})}</FieldLbl>
             <div style={{display:"flex",gap:"0.625rem"}}>
               <Btn variant="secondary" style={{flex:1}} onClick={()=>{setSheet(null);setSalesTab("muni");}}>キャンセル</Btn>
               <Btn style={{flex:2}} onClick={()=>{saveVendor();setSalesTab("muni");}} disabled={!form.name?.trim()}>追加する</Btn>
@@ -5211,7 +5262,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                                 {form._dup&&<div style={{marginTop:"0.35rem",padding:"0.4rem 0.625rem",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:"0.5rem",fontSize:"0.75rem",color:"#1d4ed8"}}>⚠️「{form._dup.name}」はすでに登録されています</div>}
                               </FieldLbl>
                               <FieldLbl label="ステータス"><StatusPicker map={MUNI_STATUS} value={form.status||"未接触"} onChange={s=>setForm({...form,status:s})}/></FieldLbl>
-                              <FieldLbl label="担当者"><AssigneePicker ids={form.assigneeIds||[]} onChange={ids=>setForm({...form,assigneeIds:ids})}/></FieldLbl>
+                              <FieldLbl label="担当者">{AssigneePicker({ids:form.assigneeIds||[],onChange:ids=>setForm({...form,assigneeIds:ids})})}</FieldLbl>
                               <FieldLbl label="展開ステータス（ダストーク）"><DustalkPicker value={form.dustalk||"未展開"} onChange={s=>setForm({...form,dustalk:s})}/></FieldLbl>
                               <FieldLbl label="アート引越センター 管轄支店"><Input value={form.artBranch||""} onChange={e=>setForm({...form,artBranch:e.target.value})} placeholder="例：福岡支店"/></FieldLbl>
                               <FieldLbl label="連携協定ステータス"><TreatyPicker value={form.treatyStatus||"未接触"} onChange={s=>setForm({...form,treatyStatus:s})}/></FieldLbl>
@@ -5258,8 +5309,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
         })}
       </div>}
       {sheet==="importMuni"&&(()=>{
-        const [preview,setPreview]=React.useState(null);
-        const [err,setErr]=React.useState("");
+        const preview=importPreview; const setPreview=setImportPreview;
+        const err=importErr; const setErr=setImportErr;
         const handleFile=async(e)=>{
           const file=e.target.files?.[0]; if(!file)return;
           try{
@@ -5303,7 +5354,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           setSheet("importMuniDone");
         };
         return (
-          <Sheet title="自治体をインポート" onClose={()=>setSheet(null)}>
+          <Sheet title="自治体をインポート" onClose={()=>{setSheet(null);setImportPreview(null);setImportErr("");}}>
             {/* Download template */}
             <div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:"0.875rem",padding:"0.875rem",marginBottom:"1rem"}}>
               <div style={{fontWeight:700,fontSize:"0.82rem",color:"#1d4ed8",marginBottom:"0.35rem"}}>📥 CSVテンプレートをダウンロード</div>
