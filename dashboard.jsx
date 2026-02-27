@@ -123,6 +123,14 @@ async function saveUsers(u) { sbSet("users", u); }
 function getSession() { try { return JSON.parse(localStorage.getItem(SESSION_KEY)||"null"); } catch{ return null; } }
 function setSession(u) { u ? localStorage.setItem(SESSION_KEY,JSON.stringify(u)) : localStorage.removeItem(SESSION_KEY); }
 
+// Base64URL → Uint8Array（VAPID公開鍵変換用）
+function urlBase64ToUint8(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = window.atob(base64);
+  return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+}
+
 function hashPass(s) { let h=5381; for(let i=0;i<s.length;i++){h=((h<<5)+h)+s.charCodeAt(i);h|=0;} return h.toString(36); }
 
 function canSee(item, uid) {
@@ -536,6 +544,7 @@ function TaskRow({task,onToggle,onStatusChange,onClick,users=[]}) {
   const near = isNearDue(task) && task.status!=="完了";
   const done = task.status==="完了";
   const assignedNames = (task.assignees||[]).map(id=>users.find(u=>u.id===id)?.name).filter(Boolean);
+  const salesBadgeColor = {"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"}[task.salesRef?.type]||C.accent;
   return (
     <div onClick={onClick}
       style={{display:"flex",alignItems:"center",gap:"0.875rem",padding:"0.875rem 1rem",borderBottom:`1px solid ${C.borderLight}`,background:near&&!done?"#eff6ff":"white",cursor:"pointer",position:"relative"}}>
@@ -547,6 +556,7 @@ function TaskRow({task,onToggle,onStatusChange,onClick,users=[]}) {
       <div style={{flex:1,minWidth:0}}>
         <div style={{fontSize:"0.9rem",fontWeight:done?400:600,color:done?C.textMuted:C.text,textDecoration:done?"line-through":"none",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{task.title}</div>
         <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginTop:"0.2rem",flexWrap:"wrap"}}>
+          {task.salesRef&&<span style={{fontSize:"0.65rem",fontWeight:700,color:"white",background:salesBadgeColor,borderRadius:999,padding:"0.05rem 0.4rem",flexShrink:0}}>{task.salesRef.type} · {task.salesRef.name}</span>}
           {task.dueDate&&<span style={{fontSize:"0.7rem",color:near&&!done?"#2563eb":C.textMuted,fontWeight:near&&!done?700:400}}>📅{task.dueDate}</span>}
           {assignedNames.length>0&&<span style={{fontSize:"0.68rem",color:C.textSub}}>👤{assignedNames.join("・")}</span>}
         </div>
@@ -562,6 +572,7 @@ function TaskRow({task,onToggle,onStatusChange,onClick,users=[]}) {
 function ProjectRow({project,tasks,onClick}) {
   const done = tasks.filter(t=>t.status==="完了").length;
   const pct  = tasks.length>0?(done/tasks.length)*100:0;
+  const salesBadgeColor = {"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"}[project.salesRef?.type]||C.accent;
   return (
     <div onClick={onClick}
       style={{display:"flex",alignItems:"center",gap:"0.875rem",padding:"0.875rem 1rem",borderBottom:`1px solid ${C.borderLight}`,background:"white",cursor:"pointer",position:"relative"}}>
@@ -569,6 +580,7 @@ function ProjectRow({project,tasks,onClick}) {
       <span style={{fontSize:"1.3rem",flexShrink:0}}>🗂</span>
       <div style={{flex:1,minWidth:0}}>
         <div style={{fontSize:"0.9rem",fontWeight:700,color:C.text}}>{project.name}</div>
+        {project.salesRef&&<span style={{fontSize:"0.65rem",fontWeight:700,color:"white",background:salesBadgeColor,borderRadius:999,padding:"0.05rem 0.4rem",display:"inline-block",marginTop:"0.15rem"}}>{project.salesRef.type} · {project.salesRef.name}</span>}
         {tasks.length>0?(
           <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginTop:"0.35rem"}}>
             <div style={{flex:1,maxWidth:120,height:4,background:C.borderLight,borderRadius:999,overflow:"hidden"}}>
@@ -870,6 +882,13 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
         {taskTab==="info"&&(
           <div>
             {parentPj&&<div style={{background:C.bg,borderRadius:"0.625rem",padding:"0.5rem 0.75rem",marginBottom:"0.75rem",fontSize:"0.8rem",color:C.textSub}}>🗂 {parentPj.name}</div>}
+            {activeTask.salesRef&&(()=>{
+              const col={"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"}[activeTask.salesRef.type]||C.accent;
+              return <div style={{background:col+"15",border:`1px solid ${col}44`,borderRadius:"0.625rem",padding:"0.5rem 0.75rem",marginBottom:"0.75rem",display:"flex",alignItems:"center",gap:"0.5rem"}}>
+                <span style={{fontSize:"0.7rem",fontWeight:700,color:"white",background:col,borderRadius:999,padding:"0.1rem 0.5rem"}}>{activeTask.salesRef.type}</span>
+                <span style={{fontSize:"0.82rem",fontWeight:700,color:col}}>{activeTask.salesRef.name}</span>
+              </div>;
+            })()}
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.5rem",marginBottom:"0.875rem"}}>
               {[["📅 期限",activeTask.dueDate||"未設定"],["👤 担当",assignedNames.length>0?assignedNames.join("・"):"未設定"]].map(([k,v])=>(
                 <div key={k} style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"0.625rem",padding:"0.5rem 0.75rem",boxShadow:C.shadow}}>
@@ -3372,6 +3391,146 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   },[]);
 
   const save       = d=>{setData(d);saveData(d);};
+
+  // ── 営業エンティティからタスク/プロジェクトを生成 ─────────────────────────
+  const addTaskFromSales = (entityType, entityId, entityName, extraFields={}) => {
+    const uid = currentUser?.id;
+    const task = {
+      id: Date.now()+Math.random(),
+      title: extraFields.title || entityName,
+      status: "未着手",
+      dueDate: extraFields.dueDate || "",
+      notes: extraFields.notes || "",
+      assignees: extraFields.assignees || (uid?[uid]:[]),
+      isPrivate: false,
+      projectId: null,
+      createdBy: uid,
+      salesRef: { type: entityType, id: entityId, name: entityName },
+      comments:[], memos:[], chat:[],
+      createdAt: new Date().toISOString(),
+    };
+    save({...data, tasks:[...(data.tasks||[]), task]});
+    return task;
+  };
+
+  const addProjectFromSales = (entityType, entityId, entityName, extraFields={}) => {
+    const uid = currentUser?.id;
+    const pj = {
+      id: Date.now()+Math.random(),
+      name: extraFields.name || entityName,
+      notes: extraFields.notes || "",
+      members: extraFields.members || (uid?[uid]:[]),
+      isPrivate: false,
+      createdBy: uid,
+      salesRef: { type: entityType, id: entityId, name: entityName },
+      memos:[], chat:[],
+      createdAt: new Date().toISOString(),
+    };
+    save({...data, projects:[...(data.projects||[]), pj]});
+    return pj;
+  };
+
+  // ── 営業エンティティに紐づくタスク/プロジェクト一覧 ─────────────────────
+  const SalesTaskPanel = ({ entityType, entityId, entityName }) => {
+    const uid = currentUser?.id;
+    const allTasks    = data.tasks    || [];
+    const allProjects = data.projects || [];
+    const linked = allTasks.filter(t=>t.salesRef?.id===entityId);
+    const linkedPjs = allProjects.filter(p=>p.salesRef?.id===entityId);
+    const [addMode,setAddMode]=React.useState(null); // null|"task"|"project"
+    const [tf,setTf]=React.useState({title:entityName,dueDate:"",notes:"",assignees:uid?[uid]:[]});
+    const [pf,setPf]=React.useState({name:entityName,notes:"",members:uid?[uid]:[]});
+    const STATUS_META_MINI={
+      "未着手":{color:"#6b7280",bg:"#f3f4f6"},
+      "進行中":{color:"#2563eb",bg:"#dbeafe"},
+      "レビュー":{color:"#d97706",bg:"#fef3c7"},
+      "完了":{color:"#059669",bg:"#d1fae5"},
+      "保留":{color:"#9333ea",bg:"#f3e8ff"},
+    };
+    return (
+      <div>
+        {/* プロジェクト一覧 */}
+        {linkedPjs.length>0&&(
+          <div style={{marginBottom:"0.875rem"}}>
+            <div style={{fontSize:"0.68rem",fontWeight:700,color:C.textSub,marginBottom:"0.4rem",textTransform:"uppercase",letterSpacing:"0.04em"}}>🗂 プロジェクト</div>
+            {linkedPjs.map(pj=>{
+              const pjTasks=allTasks.filter(t=>t.projectId===pj.id);
+              const done=pjTasks.filter(t=>t.status==="完了").length;
+              return (
+                <div key={pj.id} style={{background:C.bg,borderRadius:"0.75rem",padding:"0.625rem 0.875rem",marginBottom:"0.4rem",border:`1px solid ${C.border}`}}>
+                  <div style={{fontWeight:700,fontSize:"0.85rem",color:C.text,marginBottom:"0.2rem"}}>{pj.name}</div>
+                  <div style={{display:"flex",alignItems:"center",gap:"0.5rem"}}>
+                    <div style={{flex:1,height:4,background:C.borderLight,borderRadius:999,overflow:"hidden"}}>
+                      <div style={{width:pjTasks.length?`${(done/pjTasks.length)*100}%`:"0%",height:"100%",background:"#059669",borderRadius:999,transition:"width 0.3s"}}/>
+                    </div>
+                    <span style={{fontSize:"0.68rem",color:C.textMuted}}>{done}/{pjTasks.length}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {/* タスク一覧 */}
+        {linked.length>0&&(
+          <div style={{marginBottom:"0.875rem"}}>
+            <div style={{fontSize:"0.68rem",fontWeight:700,color:C.textSub,marginBottom:"0.4rem",textTransform:"uppercase",letterSpacing:"0.04em"}}>✅ タスク</div>
+            {linked.map(t=>{
+              const m=STATUS_META_MINI[t.status]||STATUS_META_MINI["未着手"];
+              const today=new Date(); today.setHours(0,0,0,0);
+              const due=t.dueDate?new Date(t.dueDate):null;
+              const overdue=due&&due<today&&t.status!=="完了";
+              return (
+                <div key={t.id} style={{background:"white",borderRadius:"0.75rem",padding:"0.625rem 0.875rem",marginBottom:"0.4rem",border:`1px solid ${overdue?"#fca5a5":C.border}`,display:"flex",alignItems:"center",gap:"0.625rem"}}>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontWeight:600,fontSize:"0.85rem",color:t.status==="完了"?C.textMuted:C.text,textDecoration:t.status==="完了"?"line-through":"none",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div>
+                    {t.dueDate&&<div style={{fontSize:"0.65rem",color:overdue?"#dc2626":C.textMuted,marginTop:"0.1rem"}}>{overdue?"⚠️ ":""}期限：{t.dueDate}</div>}
+                  </div>
+                  <span style={{fontSize:"0.68rem",fontWeight:700,background:m.bg,color:m.color,borderRadius:999,padding:"0.1rem 0.45rem",flexShrink:0}}>{t.status}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {linked.length===0&&linkedPjs.length===0&&(
+          <div style={{textAlign:"center",padding:"1.5rem 0",color:C.textMuted,fontSize:"0.82rem"}}>タスク・プロジェクトはまだありません</div>
+        )}
+        {/* 追加ボタン */}
+        {addMode===null&&(
+          <div style={{display:"flex",gap:"0.5rem"}}>
+            <Btn size="sm" style={{flex:1}} onClick={()=>{setTf({title:entityName,dueDate:"",notes:"",assignees:uid?[uid]:[]});setAddMode("task");}}>＋ タスク</Btn>
+            <Btn size="sm" variant="secondary" style={{flex:1}} onClick={()=>{setPf({name:entityName,notes:"",members:uid?[uid]:[]});setAddMode("project");}}>＋ プロジェクト</Btn>
+          </div>
+        )}
+        {/* タスク追加フォーム */}
+        {addMode==="task"&&(
+          <div style={{background:C.bg,borderRadius:"0.875rem",padding:"0.875rem",border:`1px solid ${C.border}`}}>
+            <div style={{fontWeight:700,fontSize:"0.82rem",color:C.text,marginBottom:"0.75rem"}}>✅ タスクを追加</div>
+            <FieldLbl label="タイトル"><Input value={tf.title} onChange={e=>setTf({...tf,title:e.target.value})} autoFocus/></FieldLbl>
+            <FieldLbl label="期限"><Input type="date" value={tf.dueDate} onChange={e=>setTf({...tf,dueDate:e.target.value})}/></FieldLbl>
+            <FieldLbl label="担当者"><AssigneePicker ids={tf.assignees} onChange={ids=>setTf({...tf,assignees:ids})}/></FieldLbl>
+            <FieldLbl label="メモ（任意）"><Textarea value={tf.notes} onChange={e=>setTf({...tf,notes:e.target.value})} style={{height:56}}/></FieldLbl>
+            <div style={{display:"flex",gap:"0.5rem"}}>
+              <Btn variant="secondary" style={{flex:1}} onClick={()=>setAddMode(null)}>キャンセル</Btn>
+              <Btn style={{flex:2}} onClick={()=>{if(!tf.title.trim())return;addTaskFromSales(entityType,entityId,entityName,tf);setAddMode(null);}} disabled={!tf.title.trim()}>作成する</Btn>
+            </div>
+          </div>
+        )}
+        {/* プロジェクト追加フォーム */}
+        {addMode==="project"&&(
+          <div style={{background:C.bg,borderRadius:"0.875rem",padding:"0.875rem",border:`1px solid ${C.border}`}}>
+            <div style={{fontWeight:700,fontSize:"0.82rem",color:C.text,marginBottom:"0.75rem"}}>🗂 プロジェクトを追加</div>
+            <FieldLbl label="プロジェクト名"><Input value={pf.name} onChange={e=>setPf({...pf,name:e.target.value})} autoFocus/></FieldLbl>
+            <FieldLbl label="メンバー"><AssigneePicker ids={pf.members} onChange={ids=>setPf({...pf,members:ids})}/></FieldLbl>
+            <FieldLbl label="メモ（任意）"><Textarea value={pf.notes} onChange={e=>setPf({...pf,notes:e.target.value})} style={{height:56}}/></FieldLbl>
+            <div style={{display:"flex",gap:"0.5rem"}}>
+              <Btn variant="secondary" style={{flex:1}} onClick={()=>setAddMode(null)}>キャンセル</Btn>
+              <Btn style={{flex:2}} onClick={()=>{if(!pf.name.trim())return;addProjectFromSales(entityType,entityId,entityName,pf);setAddMode(null);}} disabled={!pf.name.trim()}>作成する</Btn>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
   // ── CSV ダウンロード / アップロード ユーティリティ ──────────────────────────
   const downloadCSV = (filename, headers, rows) => {
     const bom = "\uFEFF";
@@ -3640,7 +3799,13 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   const TopTabs=()=>(
     <div style={{display:"flex",background:"white",borderRadius:"0.875rem",padding:"0.25rem",marginBottom:"1rem",border:`1px solid ${C.border}`,boxShadow:C.shadow,position:"relative"}}>
       {[["dash","📊","概況"],["map","🗺️","地図"],["company","🏢","企業"],["muni","🏛️","自治体"],["vendor","🔧","業者"]].map(([id,icon,lbl])=>(
-        <button key={id} onClick={()=>{setSalesTab(id);setActiveCompany(null);setActiveVendor(null);setActiveMuni(null);setMuniScreen("top");resetBulk();}}
+        <button key={id} onClick={()=>{
+          setSalesTab(id);
+          setActiveCompany(null);setActiveVendor(null);
+          setActiveMuni(null);setMuniScreen("top");
+          setPrevTab(null);resetBulk();
+          localStorage.setItem("md_salesTab",id);
+        }}
           style={{flex:1,padding:"0.55rem 0.15rem",borderRadius:"0.625rem",border:"none",cursor:"pointer",fontFamily:"inherit",
             fontWeight:700,fontSize:"0.75rem",transition:"all 0.15s",position:"relative",
             background:salesTab===id?C.accent:"transparent",color:salesTab===id?"white":C.textSub,
@@ -4181,6 +4346,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.5rem",fontSize:"0.78rem"}}>
               {comp.phone&&<div><span style={{color:C.textMuted}}>📞 </span>{comp.phone}</div>}
               {comp.email&&<div><span style={{color:C.textMuted}}>✉️ </span>{comp.email}</div>}
+              {comp.address&&<div style={{gridColumn:"1/-1"}}><span style={{color:C.textMuted}}>📍 </span>{comp.address}</div>}
             </div>
             {(comp.assigneeIds||[]).length>0&&<div style={{marginTop:"0.5rem"}}><AssigneeRow ids={comp.assigneeIds}/></div>}
           </Card>
@@ -4193,17 +4359,19 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
               save(nd);
             }}/>
           </div>
-          {/* Sub-tabs: メモ・チャットのみ */}
+          {/* Sub-tabs: メモ・チャット・タスク */}
           <div style={{display:"flex",background:"white",borderRadius:"0.75rem",padding:"0.2rem",marginBottom:"1rem",border:`1px solid ${C.border}`}}>
-            {[["memo","📝","メモ"],["chat","💬","チャット"]].map(([id,icon,lbl])=>(
+            {[["memo","📝","メモ"],["chat","💬","チャット"],["tasks","✅","タスク"]].map(([id,icon,lbl])=>(
               <button key={id} onClick={()=>setActiveDetail(id)} style={{flex:1,padding:"0.5rem",borderRadius:"0.5rem",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.78rem",position:"relative",background:activeDetail===id?C.accent:"transparent",color:activeDetail===id?"white":C.textSub}}>
                 {icon} {lbl}
                 {id==="chat"&&compChatUnread>0&&<span style={{position:"absolute",top:3,right:6,background:"#dc2626",color:"white",borderRadius:999,fontSize:"0.5rem",fontWeight:800,padding:"0.05rem 0.25rem",lineHeight:1.4}}>{compChatUnread}</span>}
+                {id==="tasks"&&(()=>{const n=(data.tasks||[]).filter(t=>t.salesRef?.id===comp.id&&t.status!=="完了").length;return n>0?<span style={{position:"absolute",top:3,right:6,background:C.accent,color:"white",borderRadius:999,fontSize:"0.5rem",fontWeight:800,padding:"0.05rem 0.25rem",lineHeight:1.4}}>{n}</span>:null;})()}
               </button>
             ))}
           </div>
           {activeDetail==="memo"&&<MemoSection memos={comp.memos} entityKey="companies" entityId={comp.id}/>}
           {activeDetail==="chat"&&<ChatSection chat={comp.chat} entityKey="companies" entityId={comp.id}/>}
+          {activeDetail==="tasks"&&<SalesTaskPanel entityType="企業" entityId={comp.id} entityName={comp.name}/>}
           {sheet==="editCompany"&&(
             <Sheet title="企業を編集" onClose={()=>setSheet(null)}>
               <FieldLbl label="企業名 *"><Input value={form.name||""} onChange={e=>setForm({...form,name:e.target.value})} autoFocus/></FieldLbl>
@@ -4211,6 +4379,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
               <FieldLbl label="担当者"><AssigneePicker ids={form.assigneeIds||[]} onChange={ids=>setForm({...form,assigneeIds:ids})}/></FieldLbl>
               <FieldLbl label="電話番号（任意）"><Input value={form.phone||""} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="000-0000-0000"/></FieldLbl>
               <FieldLbl label="メールアドレス（任意）"><Input value={form.email||""} onChange={e=>setForm({...form,email:e.target.value})} placeholder="example@mail.com"/></FieldLbl>
+              <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
               <FieldLbl label="備考"><Textarea value={form.notes||""} onChange={e=>setForm({...form,notes:e.target.value})} style={{height:70}}/></FieldLbl>
               <div style={{display:"flex",gap:"0.625rem"}}>
                 <button onClick={()=>{if(window.confirm("削除しますか？")){deleteCompany(comp.id);setSheet(null);}}} style={{padding:"0.75rem",borderRadius:"0.875rem",border:`1.5px solid #fee2e2`,background:"#fee2e2",color:"#dc2626",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🗑</button>
@@ -4326,6 +4495,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             <FieldLbl label="担当者"><AssigneePicker ids={form.assigneeIds||[]} onChange={ids=>setForm({...form,assigneeIds:ids})}/></FieldLbl>
             <FieldLbl label="電話番号（任意）"><Input value={form.phone||""} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="000-0000-0000"/></FieldLbl>
             <FieldLbl label="メールアドレス（任意）"><Input value={form.email||""} onChange={e=>setForm({...form,email:e.target.value})} placeholder="example@mail.com"/></FieldLbl>
+            <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
             <div style={{display:"flex",gap:"0.625rem"}}>
               <Btn variant="secondary" style={{flex:1}} onClick={()=>setSheet(null)}>キャンセル</Btn>
               <Btn style={{flex:2}} onClick={saveCompany} disabled={!form.name?.trim()}>追加する</Btn>
@@ -4350,6 +4520,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                 notes:r[3]?.trim()||"",
                 phone:r[4]?.trim()||"",
                 email:r[5]?.trim()||"",
+                address:r[6]?.trim()||"",
               })).filter(r=>r.name);
               setPreview(mapped); setErr("");
             }catch(e){setErr("ファイルの読み込みに失敗しました。CSVファイルを確認してください。");}
@@ -4360,7 +4531,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             const toAdd=preview.filter(r=>!existNames.has(r.name)).map(r=>({
               id:Date.now()+Math.random(),
               name:r.name, status:r.status||"未接触",
-              phone:r.phone, email:r.email,
+              phone:r.phone, email:r.email, address:r.address||"",
               assigneeIds:[], memos:r.notes?[{id:Date.now()+Math.random(),text:r.notes,userId:currentUser?.id,date:new Date().toISOString()}]:[],
               chat:[], createdAt:new Date().toISOString()
             }));
@@ -4375,10 +4546,10 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                 <div style={{fontWeight:700,fontSize:"0.82rem",color:"#1d4ed8",marginBottom:"0.5rem"}}>📥 テンプレートをダウンロード</div>
                 <div style={{fontSize:"0.75rem",color:"#3730a3",marginBottom:"0.625rem"}}>テンプレートに入力してCSV形式で保存後、アップロードしてください</div>
                 <button onClick={()=>downloadCSV("企業インポートテンプレート.csv",
-                  ["企業名 *","ステータス","担当者名","メモ","電話番号","メールアドレス"],
-                  [["株式会社サンプルA","商談中","田中太郎","来週再アポ予定","03-1234-5678","tanaka@sample.co.jp"],
-                   ["サンプル商事B","電話済","鈴木花子","","06-9876-5432",""],
-                   ["","","","","",""]])}
+                  ["企業名 *","ステータス","担当者名","メモ","電話番号","メールアドレス","住所"],
+                  [["株式会社サンプルA","商談中","田中太郎","来週再アポ予定","03-1234-5678","tanaka@sample.co.jp","東京都千代田区〇〇1-2-3"],
+                   ["サンプル商事B","電話済","鈴木花子","","06-9876-5432","","大阪府大阪市〇〇2-3-4"],
+                   ["","","","","","",""]])}
                   style={{background:"#2563eb",border:"none",borderRadius:"0.625rem",color:"white",fontWeight:700,fontSize:"0.78rem",padding:"0.45rem 0.875rem",cursor:"pointer",fontFamily:"inherit"}}>
                   ⬇️ CSVテンプレートをダウンロード
                 </button>
@@ -4473,6 +4644,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
               </div>
             )}
             <AssigneeRow ids={v.assigneeIds}/>
+            {v.address&&<div style={{fontSize:"0.78rem",color:C.textSub,marginTop:"0.4rem"}}>📍 {v.address}</div>}
           </Card>
           <div style={{marginBottom:"1rem"}}>
             <div style={{fontSize:"0.72rem",fontWeight:700,color:C.textSub,marginBottom:"0.4rem"}}>ステータス変更</div>
@@ -4486,17 +4658,19 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           <div style={{marginBottom:"0.75rem",display:"flex",justifyContent:"flex-end"}}>
             <Btn variant="danger" size="sm" onClick={()=>{if(window.confirm(`${v.name}を削除しますか？`))deleteVendor(v.id);}}>🗑 削除</Btn>
           </div>
-          {/* Sub-tabs: メモ・チャットのみ */}
+          {/* Sub-tabs: メモ・チャット・タスク */}
           <div style={{display:"flex",background:"white",borderRadius:"0.75rem",padding:"0.2rem",marginBottom:"1rem",border:`1px solid ${C.border}`}}>
-            {[["memo","📝","メモ"],["chat","💬","チャット"]].map(([id,icon,lbl])=>(
+            {[["memo","📝","メモ"],["chat","💬","チャット"],["tasks","✅","タスク"]].map(([id,icon,lbl])=>(
               <button key={id} onClick={()=>setActiveDetail(id)} style={{flex:1,padding:"0.5rem",borderRadius:"0.5rem",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.78rem",position:"relative",background:activeDetail===id?C.accent:"transparent",color:activeDetail===id?"white":C.textSub}}>
                 {icon} {lbl}
                 {id==="chat"&&vendChatUnread>0&&<span style={{position:"absolute",top:3,right:6,background:"#dc2626",color:"white",borderRadius:999,fontSize:"0.5rem",fontWeight:800,padding:"0.05rem 0.25rem",lineHeight:1.4}}>{vendChatUnread}</span>}
+                {id==="tasks"&&(()=>{const n=(data.tasks||[]).filter(t=>t.salesRef?.id===v.id&&t.status!=="完了").length;return n>0?<span style={{position:"absolute",top:3,right:6,background:C.accent,color:"white",borderRadius:999,fontSize:"0.5rem",fontWeight:800,padding:"0.05rem 0.25rem",lineHeight:1.4}}>{n}</span>:null;})()}
               </button>
             ))}
           </div>
           {activeDetail==="memo"&&<MemoSection memos={v.memos} entityKey="vendors" entityId={v.id}/>}
           {activeDetail==="chat"&&<ChatSection chat={v.chat} entityKey="vendors" entityId={v.id}/>}
+          {activeDetail==="tasks"&&<SalesTaskPanel entityType="業者" entityId={v.id} entityName={v.name}/>}
           {sheet==="editVendor"&&(
             <Sheet title="業者を編集" onClose={()=>setSheet(null)}>
               <FieldLbl label="業者名 *"><Input value={form.name||""} onChange={e=>setForm({...form,name:e.target.value})} autoFocus/></FieldLbl>
@@ -4505,6 +4679,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                 <MuniPicker ids={form.municipalityIds||[]} onChange={ids=>setForm({...form,municipalityIds:ids})}/>
               </FieldLbl>
               <FieldLbl label="担当者"><AssigneePicker ids={form.assigneeIds||[]} onChange={ids=>setForm({...form,assigneeIds:ids})}/></FieldLbl>
+              <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
               <FieldLbl label="備考"><Textarea value={form.notes||""} onChange={e=>setForm({...form,notes:e.target.value})} style={{height:70}}/></FieldLbl>
               <div style={{display:"flex",gap:"0.625rem"}}>
                 <Btn variant="secondary" style={{flex:1}} onClick={()=>setSheet(null)}>キャンセル</Btn>
@@ -4616,6 +4791,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
               <MuniPicker ids={form.municipalityIds||[]} onChange={ids=>setForm({...form,municipalityIds:ids})}/>
             </FieldLbl>
             <FieldLbl label="担当者"><AssigneePicker ids={form.assigneeIds||[]} onChange={ids=>setForm({...form,assigneeIds:ids})}/></FieldLbl>
+            <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
             <FieldLbl label="備考"><Textarea value={form.notes||""} onChange={e=>setForm({...form,notes:e.target.value})} style={{height:60}}/></FieldLbl>
             <div style={{display:"flex",gap:"0.625rem"}}>
               <Btn variant="secondary" style={{flex:1}} onClick={()=>setSheet(null)}>キャンセル</Btn>
@@ -4639,6 +4815,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                 prefName:r[2]?.trim()||"",
                 muniNames:(r[3]?.trim()||"").split(",").map(s=>s.trim()).filter(Boolean),
                 notes:r[6]?.trim()||"",
+                address:r[7]?.trim()||"",
               })).filter(r=>r.name);
               setPreview(mapped); setErr("");
             }catch(e){setErr("ファイルの読み込みに失敗しました。");}
@@ -4653,6 +4830,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                 id:Date.now()+Math.random(),
                 name:r.name, status:r.status||"未接触",
                 municipalityIds:mids, assigneeIds:[],
+                address:r.address||"",
                 memos:r.notes?[{id:Date.now()+Math.random(),text:r.notes,userId:currentUser?.id,date:new Date().toISOString()}]:[],
                 chat:[], createdAt:new Date().toISOString()
               };
@@ -4667,10 +4845,10 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                 <div style={{fontWeight:700,fontSize:"0.82rem",color:"#5b21b6",marginBottom:"0.5rem"}}>📥 テンプレートをダウンロード</div>
                 <div style={{fontSize:"0.75rem",color:"#6d28d9",marginBottom:"0.625rem"}}>テンプレートに入力してCSV形式で保存後、アップロードしてください</div>
                 <button onClick={()=>downloadCSV("業者インポートテンプレート.csv",
-                  ["業者名 *","ステータス","都道府県","自治体名（複数はカンマ区切り）","担当者名","電話番号","メモ"],
-                  [["株式会社クリーンA","加入済","福岡県","福岡市,北九州市","山田一郎","092-111-2222",""],
-                   ["環境サービスB","商談中","東京都","新宿区","","","来月契約予定"],
-                   ["","","","","","",""]])}
+                  ["業者名 *","ステータス","都道府県","自治体名（複数はカンマ区切り）","担当者名","電話番号","メモ","住所"],
+                  [["株式会社クリーンA","加入済","福岡県","福岡市,北九州市","山田一郎","092-111-2222","","福岡県福岡市〇〇1-2-3"],
+                   ["環境サービスB","商談中","東京都","新宿区","","","来月契約予定",""],
+                   ["","","","","","","",""]])}
                   style={{background:"#7c3aed",border:"none",borderRadius:"0.625rem",color:"white",fontWeight:700,fontSize:"0.78rem",padding:"0.45rem 0.875rem",cursor:"pointer",fontFamily:"inherit"}}>
                   ⬇️ CSVテンプレートをダウンロード
                 </button>
@@ -4757,6 +4935,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             <SChip s={muni.status||"未接触"} map={MUNI_STATUS}/>
           </div>
           {muni.artBranch&&<div style={{marginTop:"0.5rem",fontSize:"0.75rem",color:C.textSub}}>🏢 アート引越センター 管轄支店：{muni.artBranch}</div>}
+          {muni.address&&<div style={{marginTop:"0.35rem",fontSize:"0.75rem",color:C.textSub}}>📍 {muni.address}</div>}
           {(muni.assigneeIds||[]).length>0&&<div style={{marginTop:"0.5rem"}}><AssigneeRow ids={muni.assigneeIds}/></div>}
         </Card>
         {/* Quick change dustalk + treaty */}
@@ -4799,17 +4978,19 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             ))}
           </div>
         </div>
-        {/* Sub-tabs: メモ・チャットのみ */}
+        {/* Sub-tabs: メモ・チャット・タスク */}
         <div style={{display:"flex",background:"white",borderRadius:"0.75rem",padding:"0.2rem",marginBottom:"1rem",border:`1px solid ${C.border}`}}>
-          {[["memo","📝","メモ"],["chat","💬","チャット"]].map(([id,icon,lbl])=>(
+          {[["memo","📝","メモ"],["chat","💬","チャット"],["tasks","✅","タスク"]].map(([id,icon,lbl])=>(
             <button key={id} onClick={()=>setActiveDetail(id)} style={{flex:1,padding:"0.5rem",borderRadius:"0.5rem",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.78rem",position:"relative",background:activeDetail===id?C.accent:"transparent",color:activeDetail===id?"white":C.textSub}}>
               {icon} {lbl}
               {id==="chat"&&muniChatUnread>0&&<span style={{position:"absolute",top:3,right:6,background:"#dc2626",color:"white",borderRadius:999,fontSize:"0.5rem",fontWeight:800,padding:"0.05rem 0.25rem",lineHeight:1.4}}>{muniChatUnread}</span>}
+              {id==="tasks"&&(()=>{const n=(data.tasks||[]).filter(t=>t.salesRef?.id===muni.id&&t.status!=="完了").length;return n>0?<span style={{position:"absolute",top:3,right:6,background:C.accent,color:"white",borderRadius:999,fontSize:"0.5rem",fontWeight:800,padding:"0.05rem 0.25rem",lineHeight:1.4}}>{n}</span>:null;})()}
             </button>
           ))}
         </div>
         {activeDetail==="memo"&&<MemoSection memos={muni.memos} entityKey="municipalities" entityId={muni.id}/>}
         {activeDetail==="chat"&&<ChatSection chat={muni.chat} entityKey="municipalities" entityId={muni.id}/>}
+        {activeDetail==="tasks"&&<SalesTaskPanel entityType="自治体" entityId={muni.id} entityName={muni.name}/>}
         <div style={{marginTop:"1rem"}}>
           <Btn variant="danger" size="sm" onClick={()=>{if(window.confirm(`${muni.name}を削除しますか？`))deleteMuni(muni.id);}}>🗑 自治体を削除</Btn>
         </div>
@@ -4821,6 +5002,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             <FieldLbl label="展開ステータス（ダストーク）"><DustalkPicker value={form.dustalk||"未展開"} onChange={s=>setForm({...form,dustalk:s})}/></FieldLbl>
             <FieldLbl label="アート引越センター 管轄支店"><Input value={form.artBranch||""} onChange={e=>setForm({...form,artBranch:e.target.value})} placeholder="例：福岡支店"/></FieldLbl>
             <FieldLbl label="連携協定ステータス"><TreatyPicker value={form.treatyStatus||"未接触"} onChange={s=>setForm({...form,treatyStatus:s})}/></FieldLbl>
+            <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
             <div style={{display:"flex",gap:"0.625rem"}}>
               <Btn variant="secondary" style={{flex:1}} onClick={()=>setSheet(null)}>キャンセル</Btn>
               <Btn style={{flex:2}} onClick={saveMuni} disabled={!form.name?.trim()}>保存</Btn>
@@ -5033,6 +5215,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                               <FieldLbl label="展開ステータス（ダストーク）"><DustalkPicker value={form.dustalk||"未展開"} onChange={s=>setForm({...form,dustalk:s})}/></FieldLbl>
                               <FieldLbl label="アート引越センター 管轄支店"><Input value={form.artBranch||""} onChange={e=>setForm({...form,artBranch:e.target.value})} placeholder="例：福岡支店"/></FieldLbl>
                               <FieldLbl label="連携協定ステータス"><TreatyPicker value={form.treatyStatus||"未接触"} onChange={s=>setForm({...form,treatyStatus:s})}/></FieldLbl>
+                              <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
                               <div style={{display:"flex",gap:"0.625rem"}}>
                                 <Btn variant="secondary" style={{flex:1}} onClick={()=>setSheet(null)}>キャンセル</Btn>
                                 <Btn style={{flex:2}} onClick={saveMuni} disabled={!form.name?.trim()}>追加する</Btn>
@@ -5092,6 +5275,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
               status:Object.keys(MUNI_STATUS).includes(r[4]?.trim())?r[4].trim():"未接触",
               artBranch:r[5]?.trim()||"",
               notes:r[7]?.trim()||"",
+              address:r[8]?.trim()||"",
             })).filter(r=>r.name&&r.prefName);
             setPreview(mapped); setErr("");
           }catch(e){setErr("ファイルの読み込みに失敗しました。CSVファイルを確認してください。");}
@@ -5109,7 +5293,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
               prefectureId:pref.id,
               name:r.name, dustalk:r.dustalk,
               treatyStatus:r.treatyStatus, status:r.status,
-              artBranch:r.artBranch, assigneeIds:[],
+              artBranch:r.artBranch, address:r.address||"", assigneeIds:[],
               memos:r.notes?[{id:Date.now()+Math.random(),text:r.notes,userId:currentUser?.id,date:new Date().toISOString()}]:[],
               chat:[], createdAt:new Date().toISOString()
             });
@@ -5136,13 +5320,14 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                 <div>F列: <b>管轄支店</b>（例: 福岡支店）</div>
                 <div>G列: <b>担当者名</b>（任意）</div>
                 <div>H列: <b>メモ</b>（任意）</div>
+                <div>I列: <b>住所</b>（任意）</div>
               </div>
               <button onClick={()=>downloadCSV("自治体インポートテンプレート.csv",
-                ["都道府県 *","自治体名 *","ダストーク展開","連携協定ステータス","アプローチステータス","管轄支店","担当者名","メモ"],
-                [["福岡県","福岡市","展開","協定済","協定済","福岡支店","田中",""],
-                 ["福岡県","北九州市","未展開","商談中","電話済","北九州支店","",""],
-                 ["東京都","新宿区","展開","未接触","資料送付","東京支店","山田","来週面談"],
-                 ["","","","","","","",""]])}
+                ["都道府県 *","自治体名 *","ダストーク展開","連携協定ステータス","アプローチステータス","管轄支店","担当者名","メモ","住所"],
+                [["福岡県","福岡市","展開","協定済","協定済","福岡支店","田中","","福岡県福岡市〇〇1-2-3"],
+                 ["福岡県","北九州市","未展開","商談中","電話済","北九州支店","","",""],
+                 ["東京都","新宿区","展開","未接触","資料送付","東京支店","山田","来週面談","東京都新宿区〇〇2-3-4"],
+                 ["","","","","","","","",""]])}
                 style={{background:"#2563eb",border:"none",borderRadius:"0.625rem",color:"white",fontWeight:700,fontSize:"0.78rem",padding:"0.45rem 0.875rem",cursor:"pointer",fontFamily:"inherit",width:"100%"}}>
                 ⬇️ CSVテンプレートをダウンロード
               </button>
@@ -5823,8 +6008,87 @@ export default function App() {
     if(nd!==data){setData(nd);saveData(nd);}
   },[currentUser]);
 
-  const handleLogin = (user) => { setCurrentUser(user); };
-  const handleLogout = () => { setSession(null); setCurrentUser(null); setShowUserMenu(false); };
+  // ── プッシュ通知送信ラッパー（addNotifと連動）─────────────────────────────
+  const VAPID_PUBLIC_KEY = 'BOlCwpwWlsbXAd_aw4puzgjrshGrRHbsq-fTQYiGnDmsS-4oFknxdZMRoF_Y8p5ObJ7HgVLxW6j5Tl2XLpy5Agg';
+  const saveWithPush = (nd, notifsBefore) => {
+    setData(nd); saveData(nd);
+    // 新しく追加された通知を検出してプッシュ送信
+    const newNotifs = (nd.notifications||[]).filter(n=>
+      !(notifsBefore||[]).some(o=>o.id===n.id)
+    );
+    if(!newNotifs.length) return;
+    // ユーザー別にグループ化して送信
+    const byUser = {};
+    newNotifs.forEach(n=>{
+      if(!byUser[n.toUserId]) byUser[n.toUserId]={title:n.title,body:n.body,tag:n.type};
+      // 複数あれば最初の1件だけ
+    });
+    Object.entries(byUser).forEach(([uid,{title,body,tag}])=>{
+      if(uid!==currentUser?.id) sendPushToUsers([uid],title,body,tag);
+    });
+  };
+
+  // ── プッシュ通知購読 ───────────────────────────────────────────────────────
+  const subscribePush = async (userId) => {
+    if (!('Notification' in window) || !('serviceWorker' in navigator)) return;
+    try {
+      const perm = await Notification.requestPermission();
+      if (perm !== 'granted') return;
+      const reg = await navigator.serviceWorker.ready;
+      const existing = await reg.pushManager.getSubscription();
+      const sub = existing || await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8(VAPID_PUBLIC_KEY),
+      });
+      // Supabaseに購読情報を保存
+      const subs = (await sbGet('push_subs')) || {};
+      subs[userId] = sub.toJSON();
+      await sbSet('push_subs', subs);
+      return true;
+    } catch(e) { console.warn('Push subscribe failed:', e); return false; }
+  };
+
+  const unsubscribePush = async (userId) => {
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) await sub.unsubscribe();
+      const subs = (await sbGet('push_subs')) || {};
+      delete subs[userId];
+      await sbSet('push_subs', subs);
+    } catch {}
+  };
+
+  // Vercel APIを通じてプッシュ通知を送信
+  const sendPushToUsers = async (toUserIds, title, body, tag='mydesk') => {
+    if (!toUserIds?.length) return;
+    try {
+      await fetch('/api/send-push', {
+        method:'POST',
+        headers:{'Content-Type':'application/json','x-mydesk-secret':'mydesk2026'},
+        body: JSON.stringify({ toUserIds, title, body, tag }),
+      });
+    } catch {}
+  };
+
+  const [pushEnabled, setPushEnabled] = useState(false);
+
+  useEffect(()=>{
+    if(!currentUser) return;
+    // プッシュ通知が有効かチェック
+    if('Notification' in window) setPushEnabled(Notification.permission==='granted');
+  },[currentUser?.id]);
+
+  const handleLogin = (user) => {
+    setCurrentUser(user);
+    setSession(user);
+    // ログイン後にプッシュ通知を自動リクエスト（少し遅延）
+    setTimeout(()=>subscribePush(user.id).then(ok=>{ if(ok) setPushEnabled(true); }), 2000);
+  };
+  const handleLogout = () => {
+    if(currentUser) unsubscribePush(currentUser.id);
+    setSession(null); setCurrentUser(null); setShowUserMenu(false);
+  };
 
   const TABS=[
     {id:"tasks",    emoji:"✅", label:"タスク"},
@@ -5886,6 +6150,19 @@ export default function App() {
                       <div style={{fontWeight:700,fontSize:"0.9rem",color:C.text}}>{currentUser.name}</div>
                       <div style={{fontSize:"0.75rem",color:C.textMuted,marginTop:"0.15rem"}}>{currentUser.email}</div>
                       {currentUser.phone&&<div style={{fontSize:"0.75rem",color:C.textMuted}}>{currentUser.phone}</div>}
+                    </div>
+                    {/* プッシュ通知トグル */}
+                    <div style={{padding:"0.75rem 1rem",borderBottom:`1px solid ${C.borderLight}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                      <div>
+                        <div style={{fontSize:"0.82rem",fontWeight:700,color:C.text}}>🔔 プッシュ通知</div>
+                        <div style={{fontSize:"0.68rem",color:C.textMuted,marginTop:"0.1rem"}}>{pushEnabled?"有効（端末に通知が届きます）":"無効"}</div>
+                      </div>
+                      <button onClick={async()=>{
+                        if(pushEnabled){await unsubscribePush(currentUser.id);setPushEnabled(false);}
+                        else{const ok=await subscribePush(currentUser.id);if(ok)setPushEnabled(true);}
+                      }} style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:pushEnabled?"#d1fae5":"#f3f4f6",color:pushEnabled?"#065f46":"#374151",transition:"all 0.15s"}}>
+                        {pushEnabled?"ON":"OFF"}
+                      </button>
                     </div>
                     <button onClick={handleLogout}
                       style={{width:"100%",padding:"0.875rem 1rem",border:"none",background:"white",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.85rem",color:"#dc2626",textAlign:"left",display:"flex",alignItems:"center",gap:"0.5rem"}}>
