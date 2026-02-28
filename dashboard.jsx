@@ -1,4 +1,27 @@
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
+
+// ─── ERROR BOUNDARY ───────────────────────────────────────────────────────────
+class ErrorBoundary extends React.Component {
+  constructor(props){super(props);this.state={hasError:false,error:""};}
+  static getDerivedStateFromError(e){return{hasError:true,error:e?.message||String(e)};}
+  componentDidCatch(e,info){console.error("ErrorBoundary caught:",e,info);}
+  render(){
+    if(this.state.hasError){
+      return(
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:300,padding:"2rem",textAlign:"center"}}>
+          <div style={{fontSize:"2.5rem",marginBottom:"1rem"}}>⚠️</div>
+          <div style={{fontWeight:800,fontSize:"1rem",color:"#dc2626",marginBottom:"0.5rem"}}>表示エラーが発生しました</div>
+          <div style={{fontSize:"0.78rem",color:"#6b7280",marginBottom:"1.5rem",maxWidth:300}}>{this.state.error}</div>
+          <button onClick={()=>this.setState({hasError:false,error:""})}
+            style={{padding:"0.625rem 1.5rem",borderRadius:"0.75rem",border:"none",background:"#2563eb",color:"white",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+            ← 戻る / 再試行
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 const STATUS_OPTIONS = ["未着手","進行中","先方待ち","保留","完了"];
@@ -389,7 +412,13 @@ function AuthScreen({onLogin}) {
       if (f.password!==f.confirm) { setLoading(false); return; }
       if (users.find(u=>u.email===f.email.trim())) { setError("このメールはすでに登録されています"); setLoading(false); return; }
       const nu={id:Date.now(),name:f.name.trim(),email:f.email.trim(),phone:f.phone.trim(),passwordHash:hashPass(f.password),createdAt:new Date().toISOString()};
-      await saveUsers([...users,nu]);
+      const newUsers=[...users,nu];
+      await saveUsers(newUsers);
+      // 全ユーザーに新規登録通知を送信（データ上）
+      const existingData = await loadData();
+      const notif={id:Date.now()+Math.random(),type:"new_user",title:`👋 新規ユーザーが登録されました：${nu.name}`,body:nu.email,toUserId:"__all__",read:false,date:new Date().toISOString()};
+      const ndWithNotif={...existingData,notifications:[...(existingData.notifications||[]),notif]};
+      saveData(ndWithNotif);
       await sendEmail({
         toEmail: f.email.trim(), toName: f.name.trim(),
         subject: "【MyDesk】登録が完了しました",
@@ -3074,17 +3103,18 @@ const JAPAN_REGIONS = [
 ];
 const JAPAN_PREFS_SEED = JAPAN_REGIONS.flatMap(r=>r.prefs.map(name=>({name,region:r.region})));
 
+
 // ─── MAP TAB ──────────────────────────────────────────────────────────────────
 function MapTab({prefs,munis,vendors,companies,prefCoords,onSelectPref}) {
-  const mapRef = React.useRef(null);
-  const leafletRef = React.useRef(null);
-  const markersRef = React.useRef([]);
-  const [view, setView] = React.useState("dustalk"); // dustalk | treaty | vendor | company
-  const [loaded, setLoaded] = React.useState(false);
-  const [tooltip, setTooltip] = React.useState(null); // {name, stats, x, y}
+  const mapRef = useRef(null);
+  const leafletRef = useRef(null);
+  const markersRef = useRef([]);
+  const [view, setView] = useState("dustalk"); // dustalk | treaty | vendor | company
+  const [loaded, setLoaded] = useState(false);
+  const [tooltip, setTooltip] = useState(null); // {name, stats, x, y}
 
   // Load Leaflet CSS + JS
-  React.useEffect(()=>{
+  useEffect(()=>{
     if(document.getElementById("leaflet-css")) { setLoaded(true); return; }
     const css=document.createElement("link");
     css.rel="stylesheet"; css.id="leaflet-css";
@@ -3097,7 +3127,7 @@ function MapTab({prefs,munis,vendors,companies,prefCoords,onSelectPref}) {
   },[]);
 
   // Build / refresh map
-  React.useEffect(()=>{
+  useEffect(()=>{
     if(!loaded||!mapRef.current) return;
     const L=window.L;
     if(!L) return;
@@ -3199,7 +3229,7 @@ function MapTab({prefs,munis,vendors,companies,prefCoords,onSelectPref}) {
   },[loaded,view,prefs,munis,vendors,prefCoords]);
 
   // cleanup on unmount
-  React.useEffect(()=>()=>{
+  useEffect(()=>()=>{
     if(leafletRef.current){leafletRef.current.remove();leafletRef.current=null;}
   },[]);
 
@@ -3501,6 +3531,18 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   // CSV import preview/error state (must be top-level, not inside IIFE)
   const [importPreview,setImportPreview]=useState(null);
   const [importErr,setImportErr]=useState("");
+  // scroll position tracking for back navigation
+  const savedScrollPos = useRef({});
+  const saveSalesScroll = (key) => {
+    const el = document.querySelector('[data-sales-scroll]');
+    if(el) savedScrollPos.current[key] = el.scrollTop;
+  };
+  const restoreSalesScroll = (key) => {
+    requestAnimationFrame(()=>{
+      const el = document.querySelector('[data-sales-scroll]');
+      if(el) el.scrollTop = savedScrollPos.current[key]||0;
+    });
+  };
 
   const prefs     = data.prefectures    || [];
   const munis     = data.municipalities || [];
@@ -4115,11 +4157,13 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     return (
       <div>
         <TopTabs/>
-        <MapTab
-          prefs={prefs} munis={munis} vendors={vendors} companies={companies}
-          prefCoords={PREF_COORDS}
-          onSelectPref={(prefId)=>{setActivePref(prefId);setSalesTab("muni");setMuniScreen("top");}}
-        />
+        <ErrorBoundary key="map-tab">
+          <MapTab
+            prefs={prefs} munis={munis} vendors={vendors} companies={companies}
+            prefCoords={PREF_COORDS}
+            onSelectPref={(prefId)=>{setActivePref(prefId);setSalesTab("muni");setMuniScreen("top");}}
+          />
+        </ErrorBoundary>
       </div>
     );
   }
@@ -4381,7 +4425,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       return (
         <div>
           <div style={{display:"flex",alignItems:"center",marginBottom:"1rem",gap:"0.5rem"}}>
-            <button onClick={()=>setActiveCompany(null)} style={{background:"none",border:"none",color:C.textSub,fontWeight:700,fontSize:"0.85rem",cursor:"pointer",padding:0}}>‹ 一覧</button>
+            <button onClick={()=>{setActiveCompany(null);restoreSalesScroll("company");}} style={{background:"none",border:"none",color:C.textSub,fontWeight:700,fontSize:"0.85rem",cursor:"pointer",padding:0}}>‹ 一覧</button>
             <span style={{flex:1}}/>
     
           </div>
@@ -4477,7 +4521,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             {(searchedComps||[]).map(c=>{
               const lastMemo=(c.memos||[]).slice(-1)[0];
               return (
-                <div key={c.id} onClick={()=>{setActiveCompany(c.id);setActiveDetail("memo");}}
+                <div key={c.id} onClick={()=>{saveSalesScroll("company");setActiveCompany(c.id);setActiveDetail("memo");}}
                   style={{background:"white",border:`1.5px solid ${C.border}`,borderRadius:"0.875rem",padding:"0.875rem 1rem",cursor:"pointer",boxShadow:C.shadow}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"0.3rem"}}>
                     <span style={{fontWeight:700,fontSize:"0.93rem",color:C.text,flex:1}}>{c.name}</span>
@@ -4513,7 +4557,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                       {items.map((c,i)=>{
                         const lastMemo=(c.memos||[]).slice(-1)[0];
                         return (
-                          <div key={c.id} onClick={()=>{if(bulkMode){setBulkSelected(prev=>{const n=new Set(prev);n.has(c.id)?n.delete(c.id):n.add(c.id);return n;});return;}setActiveCompany(c.id);setActiveDetail("memo");}}
+                          <div key={c.id} onClick={()=>{if(bulkMode){setBulkSelected(prev=>{const n=new Set(prev);n.has(c.id)?n.delete(c.id):n.add(c.id);return n;});return;}saveSalesScroll("company");setActiveCompany(c.id);setActiveDetail("memo");}}
                             style={{padding:"0.75rem 1rem",cursor:"pointer",borderTop:i>0?`1px solid ${C.borderLight}`:"none",background:bulkSelected.has(c.id)?"#eff6ff":"white",display:"flex",alignItems:"flex-start",gap:"0.5rem",transition:"background 0.1s"}}
                             onMouseEnter={e=>{if(!bulkSelected.has(c.id))e.currentTarget.style.background=C.bg;}}
                             onMouseLeave={e=>{if(!bulkSelected.has(c.id))e.currentTarget.style.background="white";}}>
@@ -4674,7 +4718,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           <div style={{display:"flex",alignItems:"center",marginBottom:"1rem",gap:"0.5rem"}}>
             <button onClick={()=>{
               if(prevTab?.tab==="muni"){setSalesTab("muni");setActiveMuni(prevTab.muniId);setActivePref(prevTab.prefId);setMuniScreen("muniDetail");setPrevTab(null);}
-              else setActiveVendor(null);
+              else {setActiveVendor(null);restoreSalesScroll("vendor");}
             }} style={{background:"none",border:"none",color:C.textSub,fontWeight:700,fontSize:"0.85rem",cursor:"pointer",padding:0}}>
               ‹ {prevTab?.tab==="muni"?(muniOf(prevTab.muniId)?.name||"自治体"):"一覧"}
             </button>
@@ -4773,7 +4817,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
               const vmunis2=vendorMunis(v);
               const lastMemo=(v.memos||[]).slice(-1)[0];
               return (
-                <div key={v.id} onClick={()=>{setActiveVendor(v.id);setActiveDetail("memo");}}
+                <div key={v.id} onClick={()=>{saveSalesScroll("vendor");setActiveVendor(v.id);setActiveDetail("memo");}}
                   style={{background:"white",border:`1.5px solid ${C.border}`,borderRadius:"0.875rem",padding:"0.875rem 1rem",cursor:"pointer",boxShadow:C.shadow}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"0.3rem"}}>
                     <span style={{fontWeight:700,fontSize:"0.93rem",color:C.text,flex:1}}>{v.name}</span>
@@ -4808,7 +4852,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                         const vmunis2=vendorMunis(v);
                         const lastMemo=(v.memos||[]).slice(-1)[0];
                         return (
-                          <div key={v.id} onClick={()=>{if(bulkMode){setBulkSelected(prev=>{const n=new Set(prev);n.has(v.id)?n.delete(v.id):n.add(v.id);return n;});return;}setActiveVendor(v.id);setActiveDetail("memo");}}
+                          <div key={v.id} onClick={()=>{if(bulkMode){setBulkSelected(prev=>{const n=new Set(prev);n.has(v.id)?n.delete(v.id):n.add(v.id);return n;});return;}saveSalesScroll("vendor");setActiveVendor(v.id);setActiveDetail("memo");}}
                             style={{padding:"0.75rem 1rem",cursor:"pointer",borderTop:i>0?`1px solid ${C.borderLight}`:"none",background:bulkSelected.has(v.id)?"#eff6ff":"white",display:"flex",alignItems:"flex-start",gap:"0.5rem",transition:"background 0.1s"}}
                             onMouseEnter={e=>{if(!bulkSelected.has(v.id))e.currentTarget.style.background=C.bg;}}
                             onMouseLeave={e=>{if(!bulkSelected.has(v.id))e.currentTarget.style.background="white";}}>
@@ -4959,7 +5003,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     return (
       <div>
         <div style={{display:"flex",alignItems:"center",marginBottom:"1rem",gap:"0.5rem"}}>
-          <button onClick={()=>{setMuniScreen("top");setActiveMuni(null);}} style={{background:"none",border:"none",color:C.textSub,fontWeight:700,fontSize:"0.85rem",cursor:"pointer",padding:0}}>‹ {pref?.name||"一覧"}</button>
+          <button onClick={()=>{setMuniScreen("top");setActiveMuni(null);restoreSalesScroll("muni");}} style={{background:"none",border:"none",color:C.textSub,fontWeight:700,fontSize:"0.85rem",cursor:"pointer",padding:0}}>‹ {pref?.name||"一覧"}</button>
           <span style={{flex:1}}/>
         </div>
         <Card style={{padding:"1.25rem",marginBottom:"1rem"}}>
@@ -5468,10 +5512,11 @@ const DUSTALK_EXIT_STEPS = [
 ];
 const PAY_KEYS = [["cc","クレジットカード"],["paypay","ペイペイ"],["merpay","メルペイ"],["cash","現金"]];
 
-const DUSTALK_DEF = {hp:0,serviceLog:0,requests:0,contracts:0,revenue:0,
+const DUSTALK_DEF = {hp:0,serviceLog:0,requests:0,contracts:0,revenue:0,lineFriends:0,
   pay:{cc:0,paypay:0,merpay:0,cash:0},
-  exits:{top:0,location:0,requestContent:0,date:0,info:0,confirm:0,complete:0,estimateSubmit:0,estimateConfirm:0,contract:0}};
-const REBIT_DEF  = {cumulative:0,monthly:0};
+  exits:{top:0,location:0,requestContent:0,date:0,info:0,confirm:0,complete:0,estimateSubmit:0,estimateConfirm:0,contract:0},
+  partnerStores:[]};
+const REBIT_DEF  = {cumulative:0,monthly:0,hp:0};
 const BIZCON_DEF = {hpByMonth:{},applicants:0,fullApplicants:0};
 
 function getMonthKey(d=new Date()){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;}
@@ -5485,22 +5530,72 @@ function shiftYear(k,delta){return String(+k+delta);}
 function mergeDustalk(raw){
   return {...DUSTALK_DEF,...raw,
     pay:{...DUSTALK_DEF.pay,...(raw.pay||{})},
-    exits:{...DUSTALK_DEF.exits,...(raw.exits||{})}};
+    exits:{...DUSTALK_DEF.exits,...(raw.exits||{})},
+    partnerStores:raw.partnerStores||[]};
+}
+
+// ─── ANALYTICS HELPERS (top-level to prevent remount on state change) ─────────
+function InputNum({value,onChange}) {
+  const [local,setLocal] = useState(String(value??0));
+  const prevVal = useRef(value);
+  useEffect(()=>{
+    // Only sync from parent if we're not currently focused on this input
+    setLocal(v => {
+      const parent = String(value??0);
+      // If local is a valid intermediate state (e.g. 1. or ), keep it
+      if(parseFloat(v)===value) return v;
+      return parent;
+    });
+    prevVal.current = value;
+  },[value]);
+  return (
+    <input type="text" inputMode="decimal" value={local}
+      onChange={e=>{
+        const v=e.target.value;
+        if(v===''||v==='-'||/^-?\d*\.?\d*$/.test(v)){
+          setLocal(v);
+          const n=parseFloat(v);
+          if(!isNaN(n)) onChange(n);
+          else onChange(0);
+        }
+      }}
+      onBlur={()=>{
+        const n=parseFloat(local);
+        const final=isNaN(n)?0:n;
+        setLocal(String(final));
+        onChange(final);
+      }}
+      style={{width:86,padding:"0.3rem 0.5rem",borderRadius:"0.5rem",
+        border:`1.5px solid ${C.accent}`,fontSize:"1rem",textAlign:"right",
+        fontFamily:"inherit",outline:"none"}}/>
+  );
+}
+function DiffBadge({cur,prv}) {
+  if (prv==null||prv===0&&cur===0) return null;
+  const diff=cur-prv, pct=prv!==0?((diff/prv)*100).toFixed(1):null, up=diff>=0;
+  return (
+    <span style={{fontSize:"0.65rem",fontWeight:700,marginLeft:"0.4rem",
+      color:up?"#059669":"#dc2626",background:up?"#d1fae5":"#fee2e2",
+      padding:"0.1rem 0.4rem",borderRadius:999}}>
+      {up?"▲":"▼"}{Math.abs(diff).toLocaleString()}{pct!=null?` (${pct}%)` :""}
+    </span>
+  );
 }
 
 function AnalyticsView({data,setData}) {
-  const [sys,     setSys]     = useState("dustalk");
-  const [mk,      setMk]      = useState(getMonthKey());
-  const [yk,      setYk]      = useState(getYearKey());
-  const [editing, setEditing] = useState(false);
-  const [draft,   setDraft]   = useState(null);
-  const [chart,   setChart]   = useState(null); // {section, metricIdx}
+  const [sys,      setSys]      = useState("dustalk");
+  const [mk,       setMk]       = useState(getMonthKey());
+  const [yk,       setYk]       = useState(getYearKey());
+  const [editing,  setEditing]  = useState(false);
+  const [draft,    setDraft]    = useState(null);
+  const [chart,    setChart]    = useState(null);
+  // expanded sections for collapsible partner stores
+  const [openSects,setOpenSects]= useState({serviceLog:false,requests:false,contracts:false});
 
   const ana     = data.analytics || {};
   const sysData = ana[sys] || {};
-
-  const key = sys==="bizcon" ? yk : mk;
-  const raw = sysData[key] || {};
+  const key     = sys==="bizcon" ? yk : mk;
+  const raw     = sysData[key] || {};
 
   const getCurrent = () => {
     if (sys==="dustalk") return mergeDustalk(raw);
@@ -5525,8 +5620,21 @@ function AnalyticsView({data,setData}) {
       const diff = (draft.monthly||0) - (raw.monthly||0);
       saved.cumulative = Math.max(0, (draft.cumulative||0) + diff);
     }
-    const u = {...data, analytics:{...ana,[sys]:{...sysData,[key]:saved}}};
-    setData(u); saveData(u); setEditing(false); setDraft(null);
+    const nd = {...data, analytics:{...ana,[sys]:{...sysData,[key]:saved}}};
+    // 分析更新通知
+    const allUsers = (data.users||[]).map(u=>u.id).filter(Boolean);
+    const withNotif = allUsers.length>0
+      ? {...nd, notifications:[...(nd.notifications||[]),{
+          id:Date.now()+Math.random(),
+          type:"analytics_update",
+          title:`📊 分析データが更新されました（${ANALYTICS_SYSTEMS.find(s=>s.id===sys)?.label} · ${sys==="bizcon"?yearLabel(yk):monthLabel(mk)}）`,
+          body:"",
+          toUserId:"__all__",
+          read:false,
+          date:new Date().toISOString(),
+        }]}
+      : nd;
+    setData(withNotif); saveData(withNotif); setEditing(false); setDraft(null);
   };
 
   const switchSys = (id) => { setSys(id); setEditing(false); setDraft(null); setChart(null); };
@@ -5535,16 +5643,19 @@ function AnalyticsView({data,setData}) {
   const prev = getPrev();
   const setD = (patch) => setDraft(p => ({...p,...patch}));
 
-  // ── chart definitions per section ────────────────────────────────────────
+  const rowStyle = {display:"flex",alignItems:"center",padding:"0.625rem 0",borderBottom:`1px solid ${C.borderLight}`,gap:"0.5rem"};
+
+  // ── CHART DEFS ────────────────────────────────────────────────────────────
   const CHART_DEFS = {
     dustalk: {
       "基本指標": [
-        {label:"HP閲覧数",   unit:"PV",  get:(m)=>m?.hp||0},
-        {label:"サービスログ",unit:"件",  get:(m)=>m?.serviceLog||0},
-        {label:"依頼数",     unit:"件",  get:(m)=>m?.requests||0},
-        {label:"成約数",     unit:"件",  get:(m)=>m?.contracts||0},
-        {label:"売上",       unit:"円",  get:(m)=>m?.revenue||0},
-        {label:"成約率",     unit:"%",   get:(m)=>m?.requests>0?+((m.contracts/m.requests)*100).toFixed(1):0},
+        {label:"HP閲覧数",       unit:"PV",  get:(m)=>m?.hp||0},
+        {label:"LINE友達追加",   unit:"人",  get:(m)=>m?.lineFriends||0},
+        {label:"サービスログ",   unit:"件",  get:(m)=>m?.serviceLog||0},
+        {label:"依頼数",         unit:"件",  get:(m)=>m?.requests||0},
+        {label:"成約数",         unit:"件",  get:(m)=>m?.contracts||0},
+        {label:"売上",           unit:"円",  get:(m)=>m?.revenue||0},
+        {label:"成約率",         unit:"%",   get:(m)=>m?.requests>0?+((m.contracts/m.requests)*100).toFixed(1):0},
       ],
       "支払方法内訳": PAY_KEYS.map(([k,lbl])=>({label:lbl, unit:"件", get:(m)=>m?.pay?.[k]||0})),
       "離脱率管理": DUSTALK_EXIT_STEPS.map(s=>({label:s.label, unit:"人", get:(m)=>m?.exits?.[s.key]||0})),
@@ -5554,212 +5665,144 @@ function AnalyticsView({data,setData}) {
         {label:"月間ユーザー数", unit:"人", get:(m)=>m?.monthly||0},
         {label:"累積ユーザー数", unit:"人", get:(m)=>m?.cumulative||0},
       ],
+      "HP閲覧数": [
+        {label:"HP閲覧数", unit:"PV", get:(m)=>m?.hp||0},
+      ],
     },
     bizcon: {},
   };
 
-  // Build last-12-months data points for dustalk/rebit
-  const buildMonthSeries = (metricFn) => {
-    const months = Array.from({length:12},(_,i)=>{
+  // ── Build 12-month series ─────────────────────────────────────────────────
+  const buildMonthSeries = (metricFn) =>
+    Array.from({length:12},(_,i)=>{
       const k = shiftMonth(mk, i-11);
-      const raw2 = sysData[k] || {};
-      const merged = sys==="dustalk" ? mergeDustalk(raw2) : {...REBIT_DEF,...raw2};
-      return {label: monthLabel(k).replace(/\d+年/,""), value: metricFn(merged)};
+      const r = sysData[k] || {};
+      const m = sys==="dustalk" ? mergeDustalk(r) : {...REBIT_DEF,...r};
+      return {label: monthLabel(k).replace(/\d+年/,""), value: metricFn(m)};
     });
-    return months;
-  };
 
-  // ── SVG bar chart ─────────────────────────────────────────────────────────
+  // ── SVG BarChart ──────────────────────────────────────────────────────────
   const BarChart = ({points, unit, color=C.accent}) => {
-    const W=320, H=160, PL=0, PR=0, PT=20, PB=32;
-    const innerW=W-PL-PR, innerH=H-PT-PB;
+    const W=320, H=160, PT=20, PB=32, innerW=W, innerH=H-PT-PB;
     const maxV = Math.max(...points.map(p=>p.value), 1);
     const barW  = innerW / points.length;
-    const fmt = v => v>=10000 ? (v/10000).toFixed(1)+"万" : v>=1000 ? (v/1000).toFixed(1)+"k" : String(v);
-
+    const fmt = v => v>=10000?(v/10000).toFixed(1)+"万":v>=1000?(v/1000).toFixed(1)+"k":String(v);
     return (
       <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{overflow:"visible"}}>
-        {/* grid lines */}
         {[0,0.5,1].map(r=>{
-          const y = PT + innerH*(1-r);
-          return <line key={r} x1={PL} y1={y} x2={PL+innerW} y2={y} stroke={C.borderLight} strokeWidth={1}/>;
+          const y=PT+innerH*(1-r);
+          return <line key={r} x1={0} y1={y} x2={innerW} y2={y} stroke={C.borderLight} strokeWidth={1}/>;
         })}
-        {/* bars */}
         {points.map((p,i)=>{
-          const bh   = Math.max(2, (p.value/maxV)*innerH);
-          const x    = PL + i*barW + barW*0.15;
-          const bw   = barW*0.7;
-          const y    = PT + innerH - bh;
-          const isNow= i===points.length-1;
+          const bh=Math.max(2,(p.value/maxV)*innerH);
+          const x=i*barW+barW*0.15, bw=barW*0.7, y=PT+innerH-bh;
+          const isNow=i===points.length-1;
           return (
             <g key={i}>
-              <rect x={x} y={y} width={bw} height={bh}
-                fill={isNow?C.accentDark:color} rx={3}
-                opacity={isNow?1:0.65}/>
-              {p.value>0&&bh>18&&(
-                <text x={x+bw/2} y={y-4} textAnchor="middle"
-                  fontSize={9} fill={C.textSub} fontWeight={isNow?700:400}>
-                  {fmt(p.value)}
-                </text>
-              )}
-              {p.value>0&&bh<=18&&(
-                <text x={x+bw/2} y={y-3} textAnchor="middle"
-                  fontSize={9} fill={C.textSub} fontWeight={isNow?700:400}>
-                  {fmt(p.value)}
-                </text>
-              )}
-              <text x={x+bw/2} y={H-2} textAnchor="middle"
-                fontSize={8.5} fill={isNow?C.accentDark:C.textMuted}
-                fontWeight={isNow?800:400}>
-                {p.label}
-              </text>
+              <rect x={x} y={y} width={bw} height={bh} fill={isNow?C.accentDark:color} rx={3} opacity={isNow?1:0.65}/>
+              {p.value>0&&bh>18&&<text x={x+bw/2} y={y-4} textAnchor="middle" fontSize={9} fill={C.textMuted}>{fmt(p.value)}</text>}
+              <text x={x+bw/2} y={H-12} textAnchor="middle" fontSize={8} fill={C.textMuted}>{p.label}</text>
             </g>
           );
         })}
-        {/* Y-axis label */}
-        <text x={PL} y={PT-6} fontSize={8} fill={C.textMuted}>{fmt(maxV)}{unit}</text>
       </svg>
     );
   };
 
-  // ── chart modal ───────────────────────────────────────────────────────────
-  const ChartModal = () => {
+  // ── ChartModal ────────────────────────────────────────────────────────────
+  const renderChartModal = () => {
     if (!chart) return null;
     const defs   = CHART_DEFS[sys]?.[chart.section] || [];
     const midx   = chart.metricIdx || 0;
     const metric = defs[midx];
     if (!metric) return null;
     const points = buildMonthSeries(metric.get);
-
     return (
-      <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:400,
-        display:"flex",alignItems:"flex-end",justifyContent:"center"}}
-        onClick={()=>setChart(null)}>
-        <div onClick={e=>e.stopPropagation()}
-          style={{background:"white",borderRadius:"1.25rem 1.25rem 0 0",
-            width:"100%",maxWidth:680,padding:"1.5rem 1.25rem 2rem",boxSizing:"border-box",
-            maxHeight:"80vh",overflowY:"auto"}}>
-          {/* handle */}
+      <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:400,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={()=>setChart(null)}>
+        <div onClick={e=>e.stopPropagation()} style={{background:"white",borderRadius:"1.25rem 1.25rem 0 0",width:"100%",maxWidth:680,padding:"1.5rem 1.25rem 2rem",boxSizing:"border-box",maxHeight:"80vh",overflowY:"auto"}}>
           <div style={{width:36,height:4,background:C.border,borderRadius:999,margin:"0 auto 1.25rem"}}/>
-          {/* header */}
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1rem"}}>
             <div>
               <div style={{fontWeight:800,fontSize:"0.95rem",color:C.text}}>{chart.section}</div>
               <div style={{fontSize:"0.72rem",color:C.textMuted,marginTop:"0.15rem"}}>直近12ヶ月</div>
             </div>
-            <button onClick={()=>setChart(null)}
-              style={{background:"none",border:"none",fontSize:"1.4rem",cursor:"pointer",color:C.textSub,lineHeight:1}}>✕</button>
+            <button onClick={()=>setChart(null)} style={{background:"none",border:"none",fontSize:"1.4rem",cursor:"pointer",color:C.textSub,lineHeight:1}}>✕</button>
           </div>
-          {/* metric tabs */}
           <div style={{display:"flex",flexWrap:"wrap",gap:"0.35rem",marginBottom:"1.25rem"}}>
             {defs.map((m,i)=>(
               <button key={i} onClick={()=>setChart({...chart,metricIdx:i})}
                 style={{padding:"0.3rem 0.75rem",borderRadius:999,fontSize:"0.75rem",fontWeight:700,cursor:"pointer",
-                  border:`1.5px solid ${i===midx?C.accent:C.border}`,
-                  background:i===midx?C.accentBg:"white",
-                  color:i===midx?C.accentDark:C.textSub}}>
+                  border:`1.5px solid ${i===midx?C.accent:C.border}`,background:i===midx?C.accentBg:"white",color:i===midx?C.accentDark:C.textSub}}>
                 {m.label}
               </button>
             ))}
           </div>
-          {/* chart */}
-          <div style={{padding:"0.5rem 0"}}>
-            <BarChart points={points} unit={metric.unit}/>
-          </div>
-          {/* current value callout */}
-          <div style={{marginTop:"0.75rem",background:C.accentBg,borderRadius:"0.875rem",
-            padding:"0.75rem 1rem",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-            <span style={{fontSize:"0.82rem",color:C.accentDark,fontWeight:700}}>
-              {monthLabel(mk)} ({metric.label})
-            </span>
-            <span style={{fontSize:"1.15rem",fontWeight:800,color:C.accentDark}}>
-              {points[11]?.value?.toLocaleString()}{metric.unit}
-            </span>
+          <div style={{padding:"0.5rem 0"}}>{BarChart({points, unit:metric.unit})}</div>
+          <div style={{marginTop:"0.75rem",background:C.accentBg,borderRadius:"0.875rem",padding:"0.75rem 1rem",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <span style={{fontSize:"0.82rem",color:C.accentDark,fontWeight:700}}>{monthLabel(mk)} ({metric.label})</span>
+            <span style={{fontSize:"1.15rem",fontWeight:800,color:C.accentDark}}>{points[11]?.value?.toLocaleString()}{metric.unit}</span>
           </div>
         </div>
       </div>
     );
   };
 
-  const rowStyle = {display:"flex",alignItems:"center",padding:"0.7rem 0",borderBottom:`1px solid ${C.borderLight}`};
 
-  const Diff = ({cur,prv}) => {
-    if (prv==null||prv===0&&cur===0) return null;
-    const diff=cur-prv, pct=prv!==0?((diff/prv)*100).toFixed(1):null, up=diff>=0;
+
+  // ── Collapsible partner store sub-section ────────────────────────────────
+  const renderPartnerStores = (fieldKey) => {
+    const open = openSects[fieldKey];
+    const stores = (editing ? draft : d).partnerStores?.filter(s=>s.field===fieldKey)||[];
     return (
-      <span style={{fontSize:"0.65rem",fontWeight:700,marginLeft:"0.4rem",
-        color:up?"#059669":"#dc2626",background:up?"#d1fae5":"#fee2e2",
-        padding:"0.1rem 0.4rem",borderRadius:999}}>
-        {up?"▲":"▼"}{Math.abs(diff).toLocaleString()}{pct!=null?` (${pct}%)` :""}
-      </span>
-    );
-  };
-
-  // Sect now accepts optional chartKey to show 📊 button
-  const Sect = ({label,children,chartKey}) => {
-    const hasDefs = chartKey && (CHART_DEFS[sys]?.[chartKey]||[]).length>0;
-    return (
-      <div style={{marginBottom:"1.25rem"}}>
-        <div style={{display:"flex",alignItems:"center",borderBottom:`2px solid ${C.accent}`,marginBottom:"0.1rem"}}>
-          <div style={{flex:1,fontSize:"0.7rem",fontWeight:800,color:C.textSub,
-            textTransform:"uppercase",letterSpacing:"0.05em",padding:"0.35rem 0"}}>
-            {label}
+      <div style={{marginLeft:"0.5rem",marginBottom:"0.25rem"}}>
+        <button onClick={()=>setOpenSects(p=>({...p,[fieldKey]:!open}))}
+          style={{background:"none",border:`1px solid ${C.border}`,borderRadius:"0.5rem",padding:"0.2rem 0.6rem",fontSize:"0.7rem",fontWeight:700,color:C.textSub,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"0.3rem"}}>
+          {open?"▲":"▼"} 提携店舗 {stores.length>0?`(${stores.length}店)`:""}</button>
+        {open&&(
+          <div style={{marginTop:"0.4rem",paddingLeft:"0.75rem",borderLeft:`2px solid ${C.borderLight}`}}>
+            {stores.map((s,i)=>(
+              <div key={i} style={{display:"flex",alignItems:"center",gap:"0.4rem",padding:"0.35rem 0",borderBottom:`1px solid ${C.borderLight}`}}>
+                <span style={{flex:1,fontSize:"0.82rem",color:C.text,fontWeight:600}}>{s.name||"（名前未入力）"}</span>
+                {editing?(
+                  <InputNum value={s.value??0} onChange={v=>{
+                    setDraft(p=>{
+                      const ps=[...(p.partnerStores||[])];
+                      ps[ps.findIndex(x=>x._id===s._id)]={...s,value:v};
+                      return {...p,partnerStores:ps};
+                    });
+                  }}/>
+                ):(
+                  <span style={{fontSize:"0.88rem",fontWeight:700,color:C.text}}>{(+s.value||0).toLocaleString()}件</span>
+                )}
+                {editing&&(
+                  <button onClick={()=>setDraft(p=>({...p,partnerStores:(p.partnerStores||[]).filter(x=>x._id!==s._id)}))}
+                    style={{background:"none",border:"none",color:"#dc2626",cursor:"pointer",fontSize:"0.85rem",padding:"0.1rem 0.3rem",lineHeight:1}}>✕</button>
+                )}
+              </div>
+            ))}
+            {editing&&(
+              <button onClick={()=>setDraft(p=>({...p,partnerStores:[...(p.partnerStores||[]),{_id:Date.now()+Math.random(),field:fieldKey,name:"",value:0}]}))}
+                style={{marginTop:"0.5rem",padding:"0.3rem 0.75rem",borderRadius:"0.5rem",border:`1px dashed ${C.accent}`,background:C.accentBg,color:C.accentDark,fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",width:"100%"}}>
+                ＋ 提携店舗を追加
+              </button>
+            )}
+            {editing&&stores.map((s,i)=>(
+              <div key={"name-"+i} style={{marginTop:"0.3rem",display:"flex",alignItems:"center",gap:"0.4rem"}}>
+                <span style={{fontSize:"0.72rem",color:C.textMuted,flexShrink:0}}>店舗名:</span>
+                <input value={s.name||""} onChange={e=>{const n=e.target.value;setDraft(p=>{const ps=[...(p.partnerStores||[])];const idx=ps.findIndex(x=>x._id===s._id);if(idx>=0)ps[idx]={...ps[idx],name:n};return {...p,partnerStores:ps};});}}
+                  style={{flex:1,padding:"0.25rem 0.5rem",borderRadius:"0.45rem",border:`1.5px solid ${C.border}`,fontSize:"0.8rem",fontFamily:"inherit",outline:"none"}}
+                  placeholder="例：○○店"/>
+              </div>
+            ))}
           </div>
-          {hasDefs&&!editing&&(
-            <button onClick={()=>setChart({section:chartKey,metricIdx:0})}
-              style={{background:C.accentBg,border:`1px solid ${C.accent}40`,borderRadius:"0.4rem",
-                padding:"0.2rem 0.5rem",fontSize:"0.68rem",fontWeight:700,
-                color:C.accentDark,cursor:"pointer",display:"flex",alignItems:"center",gap:"0.25rem",
-                fontFamily:"inherit",marginBottom:"0.2rem"}}>
-              📊 グラフ
-            </button>
-          )}
-        </div>
-        {children}
+        )}
       </div>
     );
   };
-
-  const InputNum = ({value,onChange}) => (
-    <input type="number" inputMode="decimal" value={value??0}
-      onChange={e=>onChange(isNaN(+e.target.value)?0:+e.target.value)}
-      style={{width:86,padding:"0.3rem 0.5rem",borderRadius:"0.5rem",
-        border:`1.5px solid ${C.accent}`,fontSize:"0.9rem",textAlign:"right",
-        fontFamily:"inherit",outline:"none"}}/>
-  );
-
-  const Row = ({label,val,onChange,unit="",prefix="",prevVal}) => (
-    <div style={{...rowStyle,gap:"0.5rem"}}>
-      <span style={{fontSize:"0.87rem",color:C.text,flex:1}}>{label}</span>
-      {editing ? (
-        <div style={{display:"flex",alignItems:"center",gap:"0.35rem",flexShrink:0}}>
-          {prefix&&<span style={{fontSize:"0.82rem",color:C.textSub}}>{prefix}</span>}
-          <InputNum value={val} onChange={onChange}/>
-          {unit&&<span style={{fontSize:"0.75rem",color:C.textSub}}>{unit}</span>}
-        </div>
-      ) : (
-        <span style={{fontSize:"1rem",fontWeight:700,color:C.text,flexShrink:0,display:"flex",alignItems:"center"}}>
-          {prefix}{(+val||0).toLocaleString()}{unit}
-          {prevVal!=null&&<Diff cur={+val||0} prv={+prevVal||0}/>}
-        </span>
-      )}
-    </div>
-  );
-
-  const CalcRow = ({label,val,color=C.blue,sub}) => (
-    <div style={{...rowStyle,gap:"0.5rem"}}>
-      <div style={{flex:1}}>
-        <span style={{fontSize:"0.87rem",color:C.text}}>{label}</span>
-        {sub&&<div style={{fontSize:"0.68rem",color:C.textMuted}}>{sub}</div>}
-      </div>
-      <span style={{fontSize:"1rem",fontWeight:700,color,flexShrink:0}}>{val}</span>
-    </div>
-  );
 
   const convRate = d.requests>0 ? ((d.contracts/d.requests)*100).toFixed(1) : "－";
   const avgPrice = d.contracts>0 ? Math.round(d.revenue/d.contracts).toLocaleString() : "－";
   const payTotal = PAY_KEYS.reduce((s,[k])=>s+(+d.pay?.[k]||0),0);
-
   const allMonthKeys = Object.keys(sysData);
   const cumPay = PAY_KEYS.reduce((acc,[k])=>{
     acc[k]=allMonthKeys.reduce((s,mk2)=>s+(sysData[mk2]?.pay?.[k]||0),0);
@@ -5783,28 +5826,27 @@ function AnalyticsView({data,setData}) {
         ))}
       </div>
 
-      {/* Period selector — month for most, year for bizcon */}
+      {/* Period selector */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"1rem",
         background:"white",borderRadius:"0.875rem",padding:"0.625rem 1rem",border:`1px solid ${C.border}`}}>
         {sys==="bizcon" ? (
           <>
-            <button onClick={()=>setYk(shiftYear(yk,-1))} style={{background:"none",border:"none",fontSize:"1.2rem",cursor:"pointer",color:C.textSub,padding:"0.2rem 0.4rem",borderRadius:"0.4rem"}}>‹</button>
+            <button onClick={()=>setYk(shiftYear(yk,-1))} style={{background:"none",border:"none",fontSize:"1.2rem",cursor:"pointer",color:C.textSub,padding:"0.2rem 0.4rem"}}>‹</button>
             <span style={{fontWeight:800,fontSize:"0.95rem",color:C.text}}>{yearLabel(yk)}</span>
-            <button onClick={()=>setYk(shiftYear(yk,+1))} style={{background:"none",border:"none",fontSize:"1.2rem",cursor:"pointer",color:C.textSub,padding:"0.2rem 0.4rem",borderRadius:"0.4rem"}}>›</button>
+            <button onClick={()=>setYk(shiftYear(yk,+1))} style={{background:"none",border:"none",fontSize:"1.2rem",cursor:"pointer",color:C.textSub,padding:"0.2rem 0.4rem"}}>›</button>
           </>
         ) : (
           <>
-            <button onClick={()=>setMk(shiftMonth(mk,-1))} style={{background:"none",border:"none",fontSize:"1.2rem",cursor:"pointer",color:C.textSub,padding:"0.2rem 0.4rem",borderRadius:"0.4rem"}}>‹</button>
+            <button onClick={()=>setMk(shiftMonth(mk,-1))} style={{background:"none",border:"none",fontSize:"1.2rem",cursor:"pointer",color:C.textSub,padding:"0.2rem 0.4rem"}}>‹</button>
             <span style={{fontWeight:800,fontSize:"0.95rem",color:C.text}}>{monthLabel(mk)}</span>
-            <button onClick={()=>setMk(shiftMonth(mk,+1))} style={{background:"none",border:"none",fontSize:"1.2rem",cursor:"pointer",color:C.textSub,padding:"0.2rem 0.4rem",borderRadius:"0.4rem"}}>›</button>
+            <button onClick={()=>setMk(shiftMonth(mk,+1))} style={{background:"none",border:"none",fontSize:"1.2rem",cursor:"pointer",color:C.textSub,padding:"0.2rem 0.4rem"}}>›</button>
           </>
         )}
       </div>
 
       {/* bee-net placeholder */}
       {sys==="beenet" && (
-        <div style={{textAlign:"center",padding:"4rem 1rem",color:C.textMuted,
-          background:"white",borderRadius:"0.875rem",border:`1.5px dashed ${C.border}`}}>
+        <div style={{textAlign:"center",padding:"4rem 1rem",color:C.textMuted,background:"white",borderRadius:"0.875rem",border:`1.5px dashed ${C.border}`}}>
           <div style={{fontSize:"2.5rem",marginBottom:"0.75rem"}}>🚧</div>
           <div style={{fontWeight:700,marginBottom:"0.35rem"}}>bee-net</div>
           <div style={{fontSize:"0.82rem"}}>準備中</div>
@@ -5813,7 +5855,7 @@ function AnalyticsView({data,setData}) {
 
       {/* Data panel */}
       {sys!=="beenet" && (
-        <Card style={{padding:"1.25rem"}}>
+        <div style={{background:"white",borderRadius:"1rem",padding:"1.25rem",border:`1px solid ${C.border}`,boxShadow:C.shadow}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1.25rem"}}>
             <span style={{fontWeight:800,fontSize:"0.88rem",color:C.textSub}}>
               {ANALYTICS_SYSTEMS.find(s=>s.id===sys)?.label} · {sys==="bizcon"?yearLabel(yk):monthLabel(mk)}
@@ -5828,140 +5870,209 @@ function AnalyticsView({data,setData}) {
           </div>
 
           {/* ── DUSTALK ── */}
-          {sys==="dustalk" && <>
-            <Sect label="基本指標" chartKey="基本指標">
-              <Row label="HP閲覧数"     val={d.hp}         onChange={v=>setD({hp:v})}         unit="PV"  prevVal={prev.hp}/>
-              <Row label="サービスログ" val={d.serviceLog} onChange={v=>setD({serviceLog:v})} unit="件"  prevVal={prev.serviceLog}/>
-              <Row label="依頼数"       val={d.requests}   onChange={v=>setD({requests:v})}   unit="件"  prevVal={prev.requests}/>
-              <Row label="成約数"       val={d.contracts}  onChange={v=>setD({contracts:v})}  unit="件"  prevVal={prev.contracts}/>
-              <CalcRow label="成約率" val={convRate==="－"?"－":convRate+"%"} sub="成約数 ÷ 依頼数 × 100"/>
-              <Row label="売上"         val={d.revenue}    onChange={v=>setD({revenue:v})}    prefix="¥" prevVal={prev.revenue}/>
-              <CalcRow label="成約平均単価" val={avgPrice==="－"?"－":avgPrice+"円"} sub="売上 ÷ 成約数"/>
-            </Sect>
-
-            <Sect label="支払方法内訳" chartKey="支払方法内訳">
-              {/* header */}
-              <div style={{display:"flex",padding:"0.3rem 0",borderBottom:`1px solid ${C.border}`}}>
-                <span style={{flex:1,fontSize:"0.68rem",fontWeight:700,color:C.textMuted}}>決済方法</span>
-                <span style={{width:52,textAlign:"right",fontSize:"0.68rem",fontWeight:700,color:C.textMuted}}>今月</span>
-                <span style={{width:52,textAlign:"right",fontSize:"0.68rem",fontWeight:700,color:C.textMuted}}>月%</span>
-                <span style={{width:52,textAlign:"right",fontSize:"0.68rem",fontWeight:700,color:C.textMuted}}>累計</span>
-                <span style={{width:52,textAlign:"right",fontSize:"0.68rem",fontWeight:700,color:C.textMuted}}>累計%</span>
+          {sys==="dustalk" && (
+            <div>
+              {/* 基本指標 */}
+              <div style={{marginBottom:"1.25rem"}}>
+                <div style={{display:"flex",alignItems:"center",borderBottom:`2px solid ${C.accent}`,marginBottom:"0.1rem"}}>
+                  <div style={{flex:1,fontSize:"0.7rem",fontWeight:800,color:C.textSub,textTransform:"uppercase",letterSpacing:"0.05em",padding:"0.35rem 0"}}>基本指標</div>
+                  {!editing&&<button onClick={()=>setChart({section:"基本指標",metricIdx:0})} style={{background:C.accentBg,border:`1px solid ${C.accent}40`,borderRadius:"0.4rem",padding:"0.2rem 0.5rem",fontSize:"0.68rem",fontWeight:700,color:C.accentDark,cursor:"pointer",fontFamily:"inherit",marginBottom:"0.2rem"}}>📊 グラフ</button>}
+                </div>
+                {/* HP閲覧数 */}
+                <div style={{...rowStyle}}>
+                  <span style={{fontSize:"0.87rem",color:C.text,flex:1}}>HP閲覧数</span>
+                  {editing?<InputNum value={d.hp??0} onChange={v=>setD({hp:v})}/>:<span style={{fontSize:"1rem",fontWeight:700,color:C.text,display:"flex",alignItems:"center"}}>{(+d.hp||0).toLocaleString()}PV<DiffBadge cur={+d.hp||0} prv={+prev.hp||0}/></span>}
+                </div>
+                {/* LINE友達追加 */}
+                <div style={{...rowStyle}}>
+                  <span style={{fontSize:"0.87rem",color:C.text,flex:1}}>LINE友達追加</span>
+                  {editing?<InputNum value={d.lineFriends??0} onChange={v=>setD({lineFriends:v})}/>:<span style={{fontSize:"1rem",fontWeight:700,color:C.text,display:"flex",alignItems:"center"}}>{(+d.lineFriends||0).toLocaleString()}人<DiffBadge cur={+d.lineFriends||0} prv={+prev.lineFriends||0}/></span>}
+                </div>
+                {/* サービスログ（展開式）*/}
+                <div style={{...rowStyle,flexWrap:"wrap"}}>
+                  <span style={{fontSize:"0.87rem",color:C.text,flex:1}}>サービスログ</span>
+                  {editing?<InputNum value={d.serviceLog??0} onChange={v=>setD({serviceLog:v})}/>:<span style={{fontSize:"1rem",fontWeight:700,color:C.text,display:"flex",alignItems:"center"}}>{(+d.serviceLog||0).toLocaleString()}件<DiffBadge cur={+d.serviceLog||0} prv={+prev.serviceLog||0}/></span>}
+                  <div style={{width:"100%",paddingTop:"0.25rem"}}>{renderPartnerStores("serviceLog")}</div>
+                </div>
+                {/* 依頼数（展開式）*/}
+                <div style={{...rowStyle,flexWrap:"wrap"}}>
+                  <span style={{fontSize:"0.87rem",color:C.text,flex:1}}>依頼数</span>
+                  {editing?<InputNum value={d.requests??0} onChange={v=>setD({requests:v})}/>:<span style={{fontSize:"1rem",fontWeight:700,color:C.text,display:"flex",alignItems:"center"}}>{(+d.requests||0).toLocaleString()}件<DiffBadge cur={+d.requests||0} prv={+prev.requests||0}/></span>}
+                  <div style={{width:"100%",paddingTop:"0.25rem"}}>{renderPartnerStores("requests")}</div>
+                </div>
+                {/* 成約数（展開式）*/}
+                <div style={{...rowStyle,flexWrap:"wrap"}}>
+                  <span style={{fontSize:"0.87rem",color:C.text,flex:1}}>成約数</span>
+                  {editing?<InputNum value={d.contracts??0} onChange={v=>setD({contracts:v})}/>:<span style={{fontSize:"1rem",fontWeight:700,color:C.text,display:"flex",alignItems:"center"}}>{(+d.contracts||0).toLocaleString()}件<DiffBadge cur={+d.contracts||0} prv={+prev.contracts||0}/></span>}
+                  <div style={{width:"100%",paddingTop:"0.25rem"}}>{renderPartnerStores("contracts")}</div>
+                </div>
+                {/* 成約率（計算） */}
+                <div style={{...rowStyle}}>
+                  <div style={{flex:1}}><span style={{fontSize:"0.87rem",color:C.text}}>成約率</span><div style={{fontSize:"0.68rem",color:C.textMuted}}>成約数 ÷ 依頼数 × 100</div></div>
+                  <span style={{fontSize:"1rem",fontWeight:700,color:C.blue}}>{convRate==="－"?"－":convRate+"%"}</span>
+                </div>
+                {/* 売上 */}
+                <div style={{...rowStyle}}>
+                  <span style={{fontSize:"0.87rem",color:C.text,flex:1}}>売上</span>
+                  {editing?<InputNum value={d.revenue??0} onChange={v=>setD({revenue:v})}/>:<span style={{fontSize:"1rem",fontWeight:700,color:C.text,display:"flex",alignItems:"center"}}>¥{(+d.revenue||0).toLocaleString()}<DiffBadge cur={+d.revenue||0} prv={+prev.revenue||0}/></span>}
+                </div>
+                {/* 成約平均単価（計算） */}
+                <div style={{...rowStyle}}>
+                  <div style={{flex:1}}><span style={{fontSize:"0.87rem",color:C.text}}>成約平均単価</span><div style={{fontSize:"0.68rem",color:C.textMuted}}>売上 ÷ 成約数</div></div>
+                  <span style={{fontSize:"1rem",fontWeight:700,color:C.blue}}>{avgPrice==="－"?"－":avgPrice+"円"}</span>
+                </div>
               </div>
-              {PAY_KEYS.map(([k,lbl])=>{
-                const monthVal = +d.pay?.[k]||0;
-                const monthPct = payTotal>0 ? ((monthVal/payTotal)*100).toFixed(0) : 0;
-                const cumVal   = cumPay[k]||0;
-                const cumPct   = cumPayTotal>0 ? ((cumVal/cumPayTotal)*100).toFixed(0) : 0;
-                return (
-                  <div key={k} style={{...rowStyle,gap:"0.25rem"}}>
-                    <span style={{flex:1,fontSize:"0.85rem",color:C.text}}>{lbl}</span>
-                    {editing ? (
-                      <InputNum value={d.pay?.[k]??0}
-                        onChange={v=>setDraft(p=>({...p,pay:{...p.pay,[k]:v}}))}/>
-                    ) : (
-                      <>
-                        <span style={{width:52,textAlign:"right",fontSize:"0.9rem",fontWeight:700,color:C.text}}>{monthVal}件</span>
-                        <span style={{width:52,textAlign:"right",fontSize:"0.82rem",color:C.blue,fontWeight:600}}>{monthPct}%</span>
-                        <span style={{width:52,textAlign:"right",fontSize:"0.82rem",color:C.textSub}}>{cumVal}件</span>
-                        <span style={{width:52,textAlign:"right",fontSize:"0.82rem",color:C.textSub}}>{cumPct}%</span>
-                      </>
-                    )}
-                  </div>
-                );
-              })}
-              {!editing&&<div style={{padding:"0.4rem 0",textAlign:"right"}}>
-                <span style={{fontSize:"0.72rem",color:C.textSub}}>今月合計: {payTotal}件　累計: {cumPayTotal}件</span>
-              </div>}
-            </Sect>
 
-            <Sect label="離脱率管理" chartKey="離脱率管理">
-              {/* header */}
-              <div style={{display:"flex",padding:"0.3rem 0",borderBottom:`1px solid ${C.border}`}}>
-                <span style={{flex:1,fontSize:"0.68rem",fontWeight:700,color:C.textMuted}}>ステップ</span>
-                <span style={{width:52,textAlign:"right",fontSize:"0.68rem",fontWeight:700,color:C.textMuted}}>離脱数</span>
-                <span style={{width:56,textAlign:"right",fontSize:"0.68rem",fontWeight:700,color:C.textMuted}}>到達率</span>
-                <span style={{width:56,textAlign:"right",fontSize:"0.68rem",fontWeight:700,color:C.textMuted}}>離脱率</span>
+              {/* 支払方法内訳 */}
+              <div style={{marginBottom:"1.25rem"}}>
+                <div style={{display:"flex",alignItems:"center",borderBottom:`2px solid ${C.accent}`,marginBottom:"0.1rem"}}>
+                  <div style={{flex:1,fontSize:"0.7rem",fontWeight:800,color:C.textSub,textTransform:"uppercase",letterSpacing:"0.05em",padding:"0.35rem 0"}}>支払方法内訳</div>
+                  {!editing&&<button onClick={()=>setChart({section:"支払方法内訳",metricIdx:0})} style={{background:C.accentBg,border:`1px solid ${C.accent}40`,borderRadius:"0.4rem",padding:"0.2rem 0.5rem",fontSize:"0.68rem",fontWeight:700,color:C.accentDark,cursor:"pointer",fontFamily:"inherit",marginBottom:"0.2rem"}}>📊 グラフ</button>}
+                </div>
+                <div style={{display:"flex",padding:"0.3rem 0",borderBottom:`1px solid ${C.border}`}}>
+                  <span style={{flex:1,fontSize:"0.68rem",fontWeight:700,color:C.textMuted}}>決済方法</span>
+                  <span style={{width:52,textAlign:"right",fontSize:"0.68rem",fontWeight:700,color:C.textMuted}}>今月</span>
+                  <span style={{width:44,textAlign:"right",fontSize:"0.68rem",fontWeight:700,color:C.textMuted}}>月%</span>
+                  <span style={{width:52,textAlign:"right",fontSize:"0.68rem",fontWeight:700,color:C.textMuted}}>累計</span>
+                  <span style={{width:44,textAlign:"right",fontSize:"0.68rem",fontWeight:700,color:C.textMuted}}>累%</span>
+                </div>
+                {PAY_KEYS.map(([k,lbl])=>{
+                  const mv=+d.pay?.[k]||0, mp=payTotal>0?((mv/payTotal)*100).toFixed(0):0;
+                  const cv=cumPay[k]||0, cp=cumPayTotal>0?((cv/cumPayTotal)*100).toFixed(0):0;
+                  return (
+                    <div key={k} style={{...rowStyle,gap:"0.25rem"}}>
+                      <span style={{flex:1,fontSize:"0.85rem",color:C.text}}>{lbl}</span>
+                      {editing?<InputNum value={d.pay?.[k]??0} onChange={v=>setDraft(p=>({...p,pay:{...p.pay,[k]:v}}))}/>:(
+                        <>
+                          <span style={{width:52,textAlign:"right",fontSize:"0.88rem",fontWeight:700,color:C.text}}>{mv}件</span>
+                          <span style={{width:44,textAlign:"right",fontSize:"0.78rem",color:C.blue,fontWeight:600}}>{mp}%</span>
+                          <span style={{width:52,textAlign:"right",fontSize:"0.78rem",color:C.textSub}}>{cv}件</span>
+                          <span style={{width:44,textAlign:"right",fontSize:"0.78rem",color:C.textSub}}>{cp}%</span>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+                {!editing&&<div style={{padding:"0.4rem 0",textAlign:"right",fontSize:"0.72rem",color:C.textSub}}>今月合計: {payTotal}件　累計: {cumPayTotal}件</div>}
               </div>
-              {DUSTALK_EXIT_STEPS.map((step,i)=>{
-                const val     = +d.exits?.[step.key]||0;
-                const topVal  = exitBase||0;
-                const reachPct= topVal>0 ? ((val/topVal)*100).toFixed(1) : "－";
-                const nextStep= DUSTALK_EXIT_STEPS[i+1];
-                const nextVal = nextStep ? (+d.exits?.[nextStep.key]||0) : null;
-                const exitPct = val>0&&nextVal!=null ? (((val-nextVal)/val)*100).toFixed(1)+"%" : (i===DUSTALK_EXIT_STEPS.length-1&&val>0?"0.0%":"－");
-                const isLow   = parseFloat(exitPct)>50;
-                return (
-                  <div key={step.key} style={{...rowStyle,gap:"0.25rem"}}>
-                    <span style={{flex:1,fontSize:"0.83rem",color:C.text}}>{step.label}</span>
-                    {editing ? (
-                      <InputNum value={d.exits?.[step.key]??0}
-                        onChange={v=>setDraft(p=>({...p,exits:{...p.exits,[step.key]:v}}))}/>
-                    ) : (
-                      <>
-                        <span style={{width:52,textAlign:"right",fontSize:"0.88rem",fontWeight:700,color:C.text}}>{val.toLocaleString()}</span>
-                        <span style={{width:56,textAlign:"right",fontSize:"0.82rem",color:C.blue,fontWeight:600}}>{reachPct==="－"?"－":reachPct+"%"}</span>
-                        <span style={{width:56,textAlign:"right",fontSize:"0.82rem",fontWeight:700,color:isLow?"#dc2626":C.textSub}}>{exitPct}</span>
-                      </>
-                    )}
-                  </div>
-                );
-              })}
-              {!editing&&exitBase>0&&<div style={{padding:"0.4rem 0",fontSize:"0.68rem",color:C.textMuted,textAlign:"right"}}>
-                ※到達率はトップ画面({exitBase.toLocaleString()}人)を基準
-              </div>}
-            </Sect>
-          </>}
+
+              {/* 離脱率管理 */}
+              <div style={{marginBottom:"1.25rem"}}>
+                <div style={{display:"flex",alignItems:"center",borderBottom:`2px solid ${C.accent}`,marginBottom:"0.1rem"}}>
+                  <div style={{flex:1,fontSize:"0.7rem",fontWeight:800,color:C.textSub,textTransform:"uppercase",letterSpacing:"0.05em",padding:"0.35rem 0"}}>離脱率管理</div>
+                  {!editing&&<button onClick={()=>setChart({section:"離脱率管理",metricIdx:0})} style={{background:C.accentBg,border:`1px solid ${C.accent}40`,borderRadius:"0.4rem",padding:"0.2rem 0.5rem",fontSize:"0.68rem",fontWeight:700,color:C.accentDark,cursor:"pointer",fontFamily:"inherit",marginBottom:"0.2rem"}}>📊 グラフ</button>}
+                </div>
+                <div style={{display:"flex",padding:"0.3rem 0",borderBottom:`1px solid ${C.border}`}}>
+                  <span style={{flex:1,fontSize:"0.68rem",fontWeight:700,color:C.textMuted}}>ステップ</span>
+                  <span style={{width:52,textAlign:"right",fontSize:"0.68rem",fontWeight:700,color:C.textMuted}}>到達数</span>
+                  <span style={{width:56,textAlign:"right",fontSize:"0.68rem",fontWeight:700,color:C.textMuted}}>到達率</span>
+                  <span style={{width:56,textAlign:"right",fontSize:"0.68rem",fontWeight:700,color:C.textMuted}}>離脱率</span>
+                </div>
+                {DUSTALK_EXIT_STEPS.map((step,i)=>{
+                  const val=+d.exits?.[step.key]||0;
+                  const topVal=exitBase||0;
+                  const reachPct=topVal>0?((val/topVal)*100).toFixed(1):"－";
+                  const nextStep=DUSTALK_EXIT_STEPS[i+1];
+                  const nextVal=nextStep?(+d.exits?.[nextStep.key]||0):null;
+                  const exitPct=val>0&&nextVal!=null?(((val-nextVal)/val)*100).toFixed(1)+"%":(i===DUSTALK_EXIT_STEPS.length-1&&val>0?"0.0%":"－");
+                  const isLow=parseFloat(exitPct)>50;
+                  return (
+                    <div key={step.key} style={{...rowStyle,gap:"0.25rem"}}>
+                      <span style={{flex:1,fontSize:"0.83rem",color:C.text}}>{step.label}</span>
+                      {editing?<InputNum value={d.exits?.[step.key]??0} onChange={v=>setDraft(p=>({...p,exits:{...p.exits,[step.key]:v}}))}/>:(
+                        <>
+                          <span style={{width:52,textAlign:"right",fontSize:"0.88rem",fontWeight:700,color:C.text}}>{val.toLocaleString()}</span>
+                          <span style={{width:56,textAlign:"right",fontSize:"0.82rem",color:C.blue,fontWeight:600}}>{reachPct==="－"?"－":reachPct+"%"}</span>
+                          <span style={{width:56,textAlign:"right",fontSize:"0.82rem",fontWeight:700,color:isLow?"#dc2626":C.textSub}}>{exitPct}</span>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+                {!editing&&exitBase>0&&<div style={{padding:"0.4rem 0",fontSize:"0.68rem",color:C.textMuted,textAlign:"right"}}>※到達率はトップ画面({exitBase.toLocaleString()}人)を基準</div>}
+              </div>
+            </div>
+          )}
 
           {/* ── REBIT ── */}
-          {sys==="rebit" && <>
-            <Sect label="ユーザー数" chartKey="ユーザー数">
-              <CalcRow label="累積ユーザー数" val={(+d.cumulative||0).toLocaleString()+"人"} sub="月間の合計から自動計算"/>
-              <Row label="月間ユーザー数" val={d.monthly} onChange={v=>setD({monthly:v})} unit="人"/>
-            </Sect>
-            {editing&&<div style={{background:C.accentBg,border:`1px solid ${C.accent}30`,borderRadius:"0.75rem",padding:"0.75rem",fontSize:"0.8rem",color:C.accentDark}}>
-              💡 月間ユーザー数を変更すると、差分が累積に自動加算されます
-            </div>}
-          </>}
+          {sys==="rebit" && (
+            <div>
+              <div style={{marginBottom:"1.25rem"}}>
+                <div style={{display:"flex",alignItems:"center",borderBottom:`2px solid ${C.accent}`,marginBottom:"0.1rem"}}>
+                  <div style={{flex:1,fontSize:"0.7rem",fontWeight:800,color:C.textSub,textTransform:"uppercase",letterSpacing:"0.05em",padding:"0.35rem 0"}}>ユーザー数</div>
+                  {!editing&&<button onClick={()=>setChart({section:"ユーザー数",metricIdx:0})} style={{background:C.accentBg,border:`1px solid ${C.accent}40`,borderRadius:"0.4rem",padding:"0.2rem 0.5rem",fontSize:"0.68rem",fontWeight:700,color:C.accentDark,cursor:"pointer",fontFamily:"inherit",marginBottom:"0.2rem"}}>📊 グラフ</button>}
+                </div>
+                <div style={{...rowStyle}}>
+                  <div style={{flex:1}}><span style={{fontSize:"0.87rem",color:C.text}}>累積ユーザー数</span><div style={{fontSize:"0.68rem",color:C.textMuted}}>月間の合計から自動計算</div></div>
+                  <span style={{fontSize:"1rem",fontWeight:700,color:C.blue}}>{(+d.cumulative||0).toLocaleString()}人</span>
+                </div>
+                <div style={{...rowStyle}}>
+                  <span style={{fontSize:"0.87rem",color:C.text,flex:1}}>月間ユーザー数</span>
+                  {editing?<InputNum value={d.monthly??0} onChange={v=>setD({monthly:v})}/>:<span style={{fontSize:"1rem",fontWeight:700,color:C.text}}>{(+d.monthly||0).toLocaleString()}人</span>}
+                </div>
+              </div>
+              <div style={{marginBottom:"1.25rem"}}>
+                <div style={{display:"flex",alignItems:"center",borderBottom:`2px solid ${C.accent}`,marginBottom:"0.1rem"}}>
+                  <div style={{flex:1,fontSize:"0.7rem",fontWeight:800,color:C.textSub,textTransform:"uppercase",letterSpacing:"0.05em",padding:"0.35rem 0"}}>HP閲覧数</div>
+                  {!editing&&<button onClick={()=>setChart({section:"HP閲覧数",metricIdx:0})} style={{background:C.accentBg,border:`1px solid ${C.accent}40`,borderRadius:"0.4rem",padding:"0.2rem 0.5rem",fontSize:"0.68rem",fontWeight:700,color:C.accentDark,cursor:"pointer",fontFamily:"inherit",marginBottom:"0.2rem"}}>📊 グラフ</button>}
+                </div>
+                <div style={{...rowStyle}}>
+                  <span style={{fontSize:"0.87rem",color:C.text,flex:1}}>HP閲覧数</span>
+                  {editing?<InputNum value={d.hp??0} onChange={v=>setD({hp:v})}/>:<span style={{fontSize:"1rem",fontWeight:700,color:C.text}}>{(+d.hp||0).toLocaleString()}PV</span>}
+                </div>
+              </div>
+              {editing&&<div style={{background:C.accentBg,border:`1px solid ${C.accent}30`,borderRadius:"0.75rem",padding:"0.75rem",fontSize:"0.8rem",color:C.accentDark}}>
+                💡 月間ユーザー数を変更すると、差分が累積に自動加算されます
+              </div>}
+            </div>
+          )}
 
           {/* ── BIZCON ── */}
-          {sys==="bizcon" && <>
-            <Sect label="申込">
-              <Row label="申込者数"   val={d.applicants}     onChange={v=>setD({applicants:v})}     unit="人"/>
-              <Row label="本申込者数" val={d.fullApplicants} onChange={v=>setD({fullApplicants:v})} unit="人"/>
-              <CalcRow label="本申込転換率" val={d.applicants>0?((d.fullApplicants/d.applicants)*100).toFixed(1)+"%":"－"}/>
-            </Sect>
-            <Sect label="HP閲覧数">
-              {/* 年間合計（自動計算・読み取り専用） */}
-              <CalcRow
-                label="年間合計"
-                val={Object.values(d.hpByMonth||{}).reduce((s,v)=>s+(+v||0),0).toLocaleString()+"PV"}
-                sub="月間の合計から自動計算"
-                color={C.blue}
-              />
-              {/* 月ごとの入力 */}
-              {Array.from({length:12},(_,i)=>i+1).map(m=>{
-                const val = d.hpByMonth?.[m]??0;
-                return (
-                  <div key={m} style={{...rowStyle,gap:"0.5rem"}}>
-                    <span style={{fontSize:"0.85rem",color:C.text,flex:1}}>{m}月</span>
-                    {editing ? (
-                      <div style={{display:"flex",alignItems:"center",gap:"0.35rem"}}>
-                        <InputNum value={val}
-                          onChange={v=>setDraft(p=>({...p,hpByMonth:{...(p.hpByMonth||{}),[m]:v}}))}/>
-                        <span style={{fontSize:"0.75rem",color:C.textSub}}>PV</span>
-                      </div>
-                    ) : (
-                      <span style={{fontSize:"0.9rem",fontWeight:700,color:C.text}}>{(+val||0).toLocaleString()}PV</span>
-                    )}
-                  </div>
-                );
-              })}
-            </Sect>
-          </>}
-        </Card>
+          {sys==="bizcon" && (
+            <div>
+              <div style={{marginBottom:"1.25rem"}}>
+                <div style={{fontSize:"0.7rem",fontWeight:800,color:C.textSub,textTransform:"uppercase",letterSpacing:"0.05em",padding:"0.35rem 0",borderBottom:`2px solid ${C.accent}`,marginBottom:"0.1rem"}}>申込</div>
+                <div style={{...rowStyle}}>
+                  <span style={{fontSize:"0.87rem",color:C.text,flex:1}}>申込者数</span>
+                  {editing?<InputNum value={d.applicants??0} onChange={v=>setD({applicants:v})}/>:<span style={{fontSize:"1rem",fontWeight:700,color:C.text}}>{(+d.applicants||0).toLocaleString()}人</span>}
+                </div>
+                <div style={{...rowStyle}}>
+                  <span style={{fontSize:"0.87rem",color:C.text,flex:1}}>本申込者数</span>
+                  {editing?<InputNum value={d.fullApplicants??0} onChange={v=>setD({fullApplicants:v})}/>:<span style={{fontSize:"1rem",fontWeight:700,color:C.text}}>{(+d.fullApplicants||0).toLocaleString()}人</span>}
+                </div>
+                <div style={{...rowStyle}}>
+                  <div style={{flex:1}}><span style={{fontSize:"0.87rem",color:C.text}}>本申込転換率</span></div>
+                  <span style={{fontSize:"1rem",fontWeight:700,color:C.blue}}>{d.applicants>0?((d.fullApplicants/d.applicants)*100).toFixed(1)+"%":"－"}</span>
+                </div>
+              </div>
+              <div style={{marginBottom:"1.25rem"}}>
+                <div style={{fontSize:"0.7rem",fontWeight:800,color:C.textSub,textTransform:"uppercase",letterSpacing:"0.05em",padding:"0.35rem 0",borderBottom:`2px solid ${C.accent}`,marginBottom:"0.1rem"}}>HP閲覧数</div>
+                <div style={{...rowStyle}}>
+                  <div style={{flex:1}}><span style={{fontSize:"0.87rem",color:C.text}}>年間合計</span><div style={{fontSize:"0.68rem",color:C.textMuted}}>月間の合計から自動計算</div></div>
+                  <span style={{fontSize:"1rem",fontWeight:700,color:C.blue}}>{Object.values(d.hpByMonth||{}).reduce((s,v)=>s+(+v||0),0).toLocaleString()}PV</span>
+                </div>
+                {Array.from({length:12},(_,i)=>i+1).map(m=>{
+                  const val=d.hpByMonth?.[m]??0;
+                  return (
+                    <div key={m} style={{...rowStyle}}>
+                      <span style={{fontSize:"0.85rem",color:C.text,flex:1}}>{m}月</span>
+                      {editing?(
+                        <div style={{display:"flex",alignItems:"center",gap:"0.35rem"}}>
+                          <InputNum value={val} onChange={v=>setDraft(p=>({...p,hpByMonth:{...(p.hpByMonth||{}),[m]:v}}))}/>
+                          <span style={{fontSize:"0.75rem",color:C.textSub}}>PV</span>
+                        </div>
+                      ):(
+                        <span style={{fontSize:"0.9rem",fontWeight:700,color:C.text}}>{(+val||0).toLocaleString()}PV</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
       )}
-      <ChartModal/>
+      {renderChartModal()}
     </div>
   );
 }
@@ -5977,20 +6088,33 @@ export default function App() {
   const [loaded,setLoaded]   = useState(false);
   const [showUserMenu,setShowUserMenu] = useState(false);
   const [showNotifPanel,setShowNotifPanel] = useState(false);
-  const [notifFilter,setNotifFilter] = useState("all"); // all|unread|memo|chat|task
-  const persistTab = (key,val,setter) => { localStorage.setItem(key,val); setter(val); };
+  const [notifFilter,setNotifFilter] = useState("all");
+  const contentRef = useRef(null);
+  const scrollPos  = useRef({});   // tab → scrollY
 
-  const appNotifs = (data.notifications||[]).filter(n=>n.toUserId===currentUser?.id);
+  const persistTab = (newKey, val, setter) => {
+    // save current scroll position before switching
+    if (contentRef.current) scrollPos.current[tab] = contentRef.current.scrollTop;
+    localStorage.setItem(newKey, val); setter(val);
+    // restore after render
+    requestAnimationFrame(()=>{
+      if (contentRef.current) contentRef.current.scrollTop = scrollPos.current[val]||0;
+    });
+  };
+
+  // __all__ notifications are shown to every logged-in user
+  const appNotifs = (data.notifications||[]).filter(n=>n.toUserId===currentUser?.id||n.toUserId==="__all__");
   const appUnread = appNotifs.filter(n=>!n.read);
   const markAllRead = () => {
-    const nd={...data,notifications:(data.notifications||[]).map(n=>n.toUserId===currentUser?.id?{...n,read:true}:n)};
+    const uid=currentUser?.id;
+    const nd={...data,notifications:(data.notifications||[]).map(n=>(n.toUserId===uid||n.toUserId==="__all__")?{...n,read:true}:n)};
     setData(nd); saveData(nd);
   };
   const markOneRead = (id) => {
     const nd={...data,notifications:(data.notifications||[]).map(n=>n.id===id?{...n,read:true}:n)};
     setData(nd); saveData(nd);
   };
-  const NOTIF_ICON = {task_assign:"👤",task_status:"🔄",task_comment:"💬",mention:"💬",memo:"📝",deadline:"⏰",sales_assign:"🏛️"};
+  const NOTIF_ICON = {task_assign:"👤",task_status:"🔄",task_comment:"💬",mention:"💬",memo:"📝",deadline:"⏰",sales_assign:"🏛️",new_user:"👋",analytics_update:"📊"};
 
   useEffect(()=>{
     const session = getSession();
@@ -6151,7 +6275,6 @@ export default function App() {
 
   if (!loaded) return (
     <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:"1rem"}}>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
       <div style={{width:44,height:44,borderRadius:"50%",border:`3px solid ${C.accent}`,borderTopColor:"transparent",animation:"spin 0.8s linear infinite"}}/>
       <div style={{color:C.textSub,fontSize:"0.9rem",fontWeight:600}}>読み込み中...</div>
     </div>
@@ -6160,11 +6283,34 @@ export default function App() {
   if (!currentUser) return <AuthScreen onLogin={handleLogin}/>;
 
   return (
-    <div style={{minHeight:"100vh",background:C.bg,fontFamily:"-apple-system,'Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif",display:"flex",flexDirection:"column"}}>
+    <div style={{
+      height:"100dvh", /* dynamic viewport height - handles mobile browser bars */
+      background:C.bg,
+      fontFamily:"-apple-system,'Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif",
+      display:"flex",flexDirection:"column",
+      maxWidth:"100vw",overflowX:"hidden",
+      /* PC: center the app, give side gutters */
+      boxSizing:"border-box",
+    }}>
+      {/* PC-centered wrapper */}
+      <style>{`
+        html,body,#root{height:100%;margin:0;padding:0;}
+        input,textarea,select{font-size:16px !important;} /* prevent iOS auto-zoom */
+        @media(min-width:700px){
+          .mydesk-sidebar{display:block !important;}
+          .mydesk-bottomnav{display:none !important;}
+          .mydesk-content{margin-left:200px !important;}
+          .mydesk-header{padding-left:200px !important;}
+        }
+        * { box-sizing: border-box; }
+        ::-webkit-scrollbar{width:4px;height:4px;}
+        ::-webkit-scrollbar-thumb{background:rgba(0,0,0,0.15);border-radius:2px;}
+        @keyframes spin{to{transform:rotate(360deg)}}
+      `}</style>
       {/* Header */}
-      <div style={{background:"white",borderBottom:`1px solid ${C.border}`,position:"sticky",top:0,zIndex:100,boxShadow:"0 1px 0 rgba(0,0,0,0.04)"}}>
-        <div style={{maxWidth:680,margin:"0 auto",padding:"0 1rem"}}>
-          <div style={{display:"flex",alignItems:"center",height:56,gap:"0.75rem"}}>
+      <div className="mydesk-header" style={{background:"white",borderBottom:`1px solid ${C.border}`,position:"sticky",top:0,zIndex:100,boxShadow:"0 1px 0 rgba(0,0,0,0.04)",flexShrink:0}}>
+        <div style={{maxWidth:680,margin:"0 auto",padding:"0 clamp(0.75rem,3vw,1rem)"}}>
+          <div style={{display:"flex",alignItems:"center",height:52,gap:"0.625rem"}}>
             <div style={{width:34,height:34,borderRadius:"0.75rem",background:`linear-gradient(135deg,${C.accent},${C.accentDark})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"1.15rem",boxShadow:`0 2px 8px ${C.accent}44`}}>⚡</div>
             <div>
               <div style={{fontWeight:800,fontSize:"0.95rem",color:C.text,letterSpacing:"-0.02em",lineHeight:1.1}}>MyDesk</div>
@@ -6246,7 +6392,7 @@ export default function App() {
               </div>
               {/* Filter tabs */}
               <div style={{display:"flex",gap:"0.25rem",overflowX:"auto",paddingBottom:"0.1rem"}}>
-                {[["all","すべて",null],["unread","未読",null],["deadline","⏰ 期限","deadline"],["memo","📝 メモ","memo"],["mention","💬 メンション","mention"],["task_assign","👤 タスク","task_assign"],["task_status","🔄 ステータス","task_status"]].map(([id,lbl,type])=>{
+                {[["all","すべて",null],["unread","未読",null],["deadline","⏰ 期限","deadline"],["memo","📝 メモ","memo"],["mention","💬 メンション","mention"],["task_assign","👤 タスク","task_assign"],["task_status","🔄 状態","task_status"],["new_user","👋 新規登録","new_user"],["analytics_update","📊 分析","analytics_update"]].map(([id,lbl,type])=>{
                   const cnt=id==="all"?appNotifs.length:id==="unread"?appUnread.length:appNotifs.filter(n=>n.type===type&&!n.read).length;
                   const active=notifFilter===id;
                   return (
@@ -6268,6 +6414,8 @@ export default function App() {
                 else if(notifFilter==="mention") filtered=filtered.filter(n=>n.type==="mention");
                 else if(notifFilter==="task_assign") filtered=filtered.filter(n=>n.type==="task_assign"||n.type==="task_comment");
                 else if(notifFilter==="task_status") filtered=filtered.filter(n=>n.type==="task_status");
+                else if(notifFilter==="new_user") filtered=filtered.filter(n=>n.type==="new_user");
+                else if(notifFilter==="analytics_update") filtered=filtered.filter(n=>n.type==="analytics_update");
                 filtered=filtered.slice(0,60);
                 if(!filtered.length) return <div style={{padding:"2.5rem",textAlign:"center",color:C.textMuted,fontSize:"0.85rem"}}>{notifFilter==="unread"?"未読通知はありません":"通知はありません"}</div>;
                 return filtered.map(n=>(
@@ -6292,20 +6440,39 @@ export default function App() {
         </>
       )}
 
-      {/* Content */}
-      <div style={{flex:1,maxWidth:680,margin:"0 auto",width:"100%",padding:"1.25rem 1rem 6rem",boxSizing:"border-box"}}>
-        {tab==="tasks"     && <TaskView      data={data} setData={setData} users={users} currentUser={currentUser}
-          taskTab={taskTab} setTaskTab={(v)=>persistTab('md_taskTab',v,setTaskTab)}
-          pjTab={pjTab} setPjTab={(v)=>persistTab('md_pjTab',v,setPjTab)}/>}
-        {tab==="schedule"  && <ScheduleView/>}
-        {tab==="email"     && <EmailView     data={data} setData={setData} currentUser={currentUser}/>}
-        {tab==="sales"     && <SalesView     data={data} setData={setData} currentUser={currentUser} users={users}
-          salesTab={salesTab} setSalesTab={(v)=>persistTab("md_salesTab",v,setSalesTab)}/>}
-        {tab==="analytics" && <AnalyticsView data={data} setData={setData}/>}
+      {/* PC Sidebar Nav */}
+      <div className="mydesk-sidebar" style={{display:"none",position:"fixed",top:52,left:0,bottom:0,width:200,background:"white",borderRight:`1px solid ${C.border}`,zIndex:99,overflowY:"auto",padding:"1rem 0.75rem"}}>
+        <div style={{fontSize:"0.65rem",fontWeight:800,color:C.textMuted,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:"0.5rem",paddingLeft:"0.5rem"}}>ナビゲーション</div>
+        {TABS.map(t=>(
+          <button key={t.id} onClick={()=>persistTab("md_tab",t.id,setTab)}
+            style={{width:"100%",display:"flex",alignItems:"center",gap:"0.75rem",padding:"0.625rem 0.75rem",borderRadius:"0.75rem",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:tab===t.id?800:500,fontSize:"0.87rem",background:tab===t.id?C.accentBg:"transparent",color:tab===t.id?C.accentDark:C.textSub,marginBottom:"0.15rem",textAlign:"left"}}>
+            <span style={{fontSize:"1.2rem",lineHeight:1,flexShrink:0}}>{t.emoji}</span>
+            <span>{t.label}</span>
+          </button>
+        ))}
       </div>
 
-      {/* Bottom Nav */}
-      <div style={{position:"fixed",bottom:0,left:0,right:0,background:"white",borderTop:`1px solid ${C.border}`,boxShadow:"0 -2px 16px rgba(0,0,0,0.06)",zIndex:100}}>
+      {/* Content + BottomNav wrapper */}
+      <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+      {/* Content */}
+      <div ref={contentRef} className="mydesk-content" data-sales-scroll style={{flex:1,overflowY:"auto",WebkitOverflowScrolling:"touch",
+        paddingBottom:"calc(5rem + env(safe-area-inset-bottom,0px))"}}>
+        <div style={{maxWidth:680,margin:"0 auto",width:"100%",padding:"1.25rem 1rem 0.5rem",boxSizing:"border-box"}}>
+          <ErrorBoundary>
+            {tab==="tasks"     && <TaskView      data={data} setData={setData} users={users} currentUser={currentUser}
+              taskTab={taskTab} setTaskTab={(v)=>persistTab('md_taskTab',v,setTaskTab)}
+              pjTab={pjTab} setPjTab={(v)=>persistTab('md_pjTab',v,setPjTab)}/>}
+            {tab==="schedule"  && <ScheduleView/>}
+            {tab==="email"     && <EmailView     data={data} setData={setData} currentUser={currentUser}/>}
+            {tab==="sales"     && <SalesView     data={data} setData={setData} currentUser={currentUser} users={users}
+              salesTab={salesTab} setSalesTab={(v)=>persistTab("md_salesTab",v,setSalesTab)}/>}
+            {tab==="analytics" && <AnalyticsView data={data} setData={setData} currentUser={currentUser} users={users}/>}
+          </ErrorBoundary>
+        </div>
+      </div>
+
+      {/* Bottom Nav (mobile) */}
+      <div className="mydesk-bottomnav" style={{flexShrink:0,background:"white",borderTop:`1px solid ${C.border}`,boxShadow:"0 -2px 16px rgba(0,0,0,0.06)",zIndex:100,paddingBottom:"env(safe-area-inset-bottom,0px)"}}>
         <div style={{maxWidth:680,margin:"0 auto",display:"flex"}}>
           {TABS.map(t=>(
             <button key={t.id} onClick={()=>persistTab("md_tab",t.id,setTab)}
@@ -6317,6 +6484,7 @@ export default function App() {
           ))}
         </div>
       </div>
+      </div>{/* end content+bottomNav wrapper */}
     </div>
   );
 }
