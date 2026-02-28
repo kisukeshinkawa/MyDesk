@@ -728,10 +728,17 @@ function TaskCommentInput({taskId, data, setData, users=[], uid}) {
     const comment = {id:Date.now(), userId:uid, text, date:new Date().toISOString()};
     const tasks = (data.tasks||[]).map(t=>t.id===taskId?{...t,comments:[...(t.comments||[]),comment]}:t);
     let nd = {...data, tasks};
-    // Notify other assignees + task creator (excluding self)
+    // 担当者+作成者に通知（自分以外）
     const toIds = [...new Set([...(task.assignees||[]), task.createdBy].filter(i=>i&&i!==uid))];
     if(toIds.length) nd = addNotif(nd,{type:"task_comment",title:`「${task.title}」にコメントが追加されました`,body:text.slice(0,60),toUserIds:toIds,fromUserId:uid});
-    saveWithPush(nd, data.notifications); setText("");
+    // 自己完結保存+プッシュ
+    setData(nd); saveData(nd);
+    if(toIds.length) {
+      fetch('/api/send-push',{method:'POST',headers:{'Content-Type':'application/json','x-mydesk-secret':'mydesk2026'},
+        body:JSON.stringify({toUserIds:toIds,title:`「${task.title}」にコメントが追加されました`,body:text.slice(0,60),tag:'task_comment'})
+      }).catch(()=>{});
+    }
+    setText("");
   };
   return (
     <div style={{display:"flex",gap:"0.4rem"}}>
@@ -748,8 +755,35 @@ function TaskCommentInput({taskId, data, setData, users=[], uid}) {
 }
 
 // ─── TASK VIEW ────────────────────────────────────────────────────────────────
-function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjTab,setPjTab,saveWithPush}) {
+function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjTab,setPjTab}) {
   const uid = currentUser?.id;
+
+  // ── ローカル保存＋プッシュ（App に依存しない自己完結版）────────────────
+  const saveWithPush = React.useCallback((nd, notifsBefore) => {
+    setData(nd);
+    saveData(nd); // グローバル関数
+    // 新着通知を検出してWeb Push送信
+    const newNotifs = (nd.notifications||[]).filter(n=>
+      !(notifsBefore||[]).some(o=>o.id===n.id)
+    );
+    if(!newNotifs.length) return;
+    const byUser = {};
+    newNotifs.forEach(n=>{
+      if(!n.toUserId) return;
+      if(!byUser[n.toUserId]) byUser[n.toUserId]={title:n.title,body:n.body||'',tag:n.type||'mydesk'};
+    });
+    Object.entries(byUser).forEach(([toId,{title,body,tag}])=>{
+      const targets = toId==='__all__'
+        ? users.filter(u=>u.id!==uid).map(u=>u.id)
+        : (toId!==uid ? [toId] : []);
+      if(!targets.length) return;
+      fetch('/api/send-push',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','x-mydesk-secret':'mydesk2026'},
+        body:JSON.stringify({toUserIds:targets,title,body,tag}),
+      }).catch(()=>{});
+    });
+  }, [setData, users, uid]);
   const [screen,setScreen] = useState("list");
   const [activePjId,setActivePjId] = useState(null);
   const [activeTaskId,setActiveTaskId] = useState(null);
@@ -5029,8 +5063,7 @@ export default function App() {
           <ErrorBoundary>
             {tab==="tasks"     && <TaskView      data={data} setData={setData} users={users} currentUser={currentUser}
               taskTab={taskTab} setTaskTab={(v)=>persistTab('md_taskTab',v,setTaskTab)}
-              pjTab={pjTab} setPjTab={(v)=>persistTab('md_pjTab',v,setPjTab)}
-              saveWithPush={saveWithPush}/>}
+              pjTab={pjTab} setPjTab={(v)=>persistTab('md_pjTab',v,setPjTab)}/>}
             {tab==="schedule"  && <ScheduleView/>}
             {tab==="email"     && <EmailView     data={data} setData={setData} currentUser={currentUser}/>}
             {tab==="sales"     && <SalesView     data={data} setData={setData} currentUser={currentUser} users={users}
