@@ -135,7 +135,7 @@ async function loadData() {
   try { const d = await sbGet("main"); if(d) return {...INIT, ...d}; } catch{}
   return INIT;
 }
-async function saveData(d) { sbSet("main", d); }
+async function saveData(d) { await sbSet("main", d); }
 
 async function loadUsers() {
   try { const d = await sbGet("users"); if(Array.isArray(d)) return d; } catch{}
@@ -208,7 +208,7 @@ function Sheet({title,onClose,children}) {
   return (
     <div style={{position:"fixed",inset:0,zIndex:300,display:"flex",flexDirection:"column",justifyContent:"flex-end"}}>
       <div onClick={onClose} style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.45)"}}/>
-      <div style={{position:"relative",background:"white",borderRadius:"1.5rem 1.5rem 0 0",padding:"1.5rem 1.25rem 2.5rem",maxHeight:"90vh",overflowY:"auto",boxShadow:"0 -8px 40px rgba(0,0,0,0.18)"}}>
+      <div style={{position:"relative",background:"white",borderRadius:"1.5rem 1.5rem 0 0",padding:"1.5rem 1.25rem calc(5rem + env(safe-area-inset-bottom,16px))",maxHeight:"90vh",overflowY:"auto",boxShadow:"0 -8px 40px rgba(0,0,0,0.18)"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1.5rem"}}>
           <h3 style={{margin:0,fontSize:"1.05rem",fontWeight:800,color:C.text}}>{title}</h3>
           <button onClick={onClose} style={{background:"none",border:"none",fontSize:"1.4rem",color:C.textMuted,cursor:"pointer",lineHeight:1}}>×</button>
@@ -247,6 +247,38 @@ function StatusPill({status,onChange}) {
   );
 }
 
+
+// ─── DUPLICATE DETECT MODAL ─────────────────────────────────────────────
+function DupModal({existing, incoming, onKeepBoth, onUseExisting, onCancel}) {
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.55)"}}>
+      <div style={{background:"white",borderRadius:"1.25rem",padding:"1.5rem 1.25rem",maxWidth:360,width:"calc(100vw - 2rem)",boxShadow:"0 8px 40px rgba(0,0,0,0.2)"}}>
+        <div style={{textAlign:"center",marginBottom:"1rem"}}>
+          <div style={{fontSize:"2rem",marginBottom:"0.5rem"}}>⚠️</div>
+          <div style={{fontWeight:800,fontSize:"1rem",color:C.text}}>同じ名前が既に存在します</div>
+          <div style={{fontSize:"0.8rem",color:C.textMuted,marginTop:"0.25rem"}}>「{incoming}」</div>
+        </div>
+        <div style={{background:C.bg,borderRadius:"0.75rem",padding:"0.75rem 1rem",marginBottom:"1.25rem",fontSize:"0.82rem",color:C.textSub}}>
+          <div style={{fontWeight:700,color:C.text,marginBottom:"0.3rem"}}>既存データ</div>
+          <div>名前: {existing.name}</div>
+          {existing.status&&<div>ステータス: {existing.status}</div>}
+          {existing.phone&&<div>電話: {existing.phone}</div>}
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
+          <button onClick={onUseExisting} style={{padding:"0.75rem",borderRadius:"0.75rem",border:"none",background:C.accent,color:"white",fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.9rem"}}>
+            既存のものを使用（入力内容を破棄）
+          </button>
+          <button onClick={onKeepBoth} style={{padding:"0.75rem",borderRadius:"0.75rem",border:"1.5px solid "+C.accent,background:"white",color:C.accent,fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.9rem"}}>
+            別々として保存（両方残す）
+          </button>
+          <button onClick={onCancel} style={{padding:"0.625rem",borderRadius:"0.75rem",border:"1.5px solid "+C.border,background:"white",color:C.textSub,fontWeight:600,cursor:"pointer",fontFamily:"inherit",fontSize:"0.85rem"}}>
+            キャンセル（入力に戻る）
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 function UserPicker({users=[],selected=[],onChange,label="担当者"}) {
   return (
     <div style={{marginBottom:"1rem"}}>
@@ -699,7 +731,7 @@ function TaskCommentInput({taskId, data, setData, users=[], uid}) {
     // Notify other assignees + task creator (excluding self)
     const toIds = [...new Set([...(task.assignees||[]), task.createdBy].filter(i=>i&&i!==uid))];
     if(toIds.length) nd = addNotif(nd,{type:"task_comment",title:`「${task.title}」にコメントが追加されました`,body:text.slice(0,60),toUserIds:toIds,fromUserId:uid});
-    setData(nd); saveData(nd); setText("");
+    saveWithPush(nd, data.notifications); setText("");
   };
   return (
     <div style={{display:"flex",gap:"0.4rem"}}>
@@ -752,10 +784,23 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
   const addTask    = (f,pjId=null) => {
     const item={id:Date.now(),...f,projectId:pjId,createdBy:uid,comments:[],memos:[],chat:[],createdAt:new Date().toISOString()};
     let nd={...data,tasks:[...allTasks,item]};
-    // Notify assignees on creation
+    // Auto-add task assignees to project members
+    if(pjId){
+      const pj=allProjects.find(p=>p.id===pjId);
+      if(pj){
+        const newMembers=[...new Set([...(pj.members||[]),...(f.assignees||[])])];
+        if(newMembers.length!==(pj.members||[]).length){
+          nd={...nd,projects:nd.projects.map(p=>p.id===pjId?{...p,members:newMembers}:p)};
+          // プロジェクトに新規追加されたメンバーに通知
+          const addedToProject=(f.assignees||[]).filter(i=>!(pj.members||[]).includes(i)&&i!==uid);
+          if(addedToProject.length) nd=addNotif(nd,{type:"task_assign",title:`「${pj.name}」のプロジェクトメンバーに追加されました`,body:`タスク「${item.title}」への追加によりメンバーになりました`,toUserIds:addedToProject,fromUserId:uid});
+        }
+      }
+    }
+    // Notify assignees on task creation
     const toIds=(f.assignees||[]).filter(i=>i!==uid);
     if(toIds.length) nd=addNotif(nd,{type:"task_assign",title:`「${item.title}」に担当者として追加されました`,body:"",toUserIds:toIds,fromUserId:uid});
-    setData(nd); saveData(nd);
+    saveWithPush(nd, data.notifications);
   };
   const deleteTask = id => { const u={...data,tasks:allTasks.filter(t=>t.id!==id)}; setData(u); saveData(u); };
   const addProject = (f) => {
@@ -778,7 +823,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     // 全員に通知（自分以外）
     const toAll = users.filter(u=>u.id!==uid).map(u=>u.id);
     if(toAll.length) nd = addNotif(nd,{type:"memo",title:`「${entity?.title||entity?.name||""}」にメモが追加されました`,body:text.slice(0,60),toUserIds:toAll,fromUserId:uid});
-    setData(nd); saveData(nd);
+    saveWithPush(nd, data.notifications);
     setTMemoIn(p=>({...p,[entityId]:""}));
   };
   const addTChat = (entityKey, entityId, text) => {
@@ -790,7 +835,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     // @メンション通知
     const mentioned = users.filter(u=>u.id!==uid&&text.includes(`@${u.name}`));
     if(mentioned.length) nd = addNotif(nd,{type:"mention",title:`「${entity?.title||entity?.name||""}」でメンションされました`,body:text.slice(0,60),toUserIds:mentioned.map(u=>u.id),fromUserId:uid});
-    setData(nd); saveData(nd);
+    saveWithPush(nd, data.notifications);
     setTChatIn(p=>({...p,[entityId]:""}));
   };
 
@@ -1787,6 +1832,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   // CSV import preview/error state (must be top-level, not inside IIFE)
   const [importPreview,setImportPreview]=useState(null);
   const [importErr,setImportErr]=useState("");
+  // duplicate detection modal
+  const [dupModal,setDupModal]=useState(null); // {existing, incoming, onKeepBoth, onSave}
   // scroll position tracking for back navigation
   const savedScrollPos = useRef({});
   const saveSalesScroll = (key) => {
@@ -1818,7 +1865,28 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     }
   },[]);
 
-  const save       = d=>{setData(d);saveData(d);};
+  const save = (d) => {
+    // 新しく追加された通知を検出してWeb Push送信
+    const notifsBefore = data.notifications || [];
+    const newNotifs = (d.notifications||[]).filter(n=>!notifsBefore.some(o=>o.id===n.id));
+    setData(d); saveData(d);
+    // 他ユーザーへWeb Push（バックグラウンド通知）
+    if(newNotifs.length) {
+      const byUser = {};
+      newNotifs.forEach(n=>{ if(n.toUserId && !byUser[n.toUserId]) byUser[n.toUserId]={title:n.title,body:n.body,tag:n.type}; });
+      Object.entries(byUser).forEach(([uid,{title,body,tag}])=>{
+        const targets = uid==='__all__'
+          ? users.filter(u=>u.id!==currentUser?.id).map(u=>u.id)
+          : (uid!==currentUser?.id ? [uid] : []);
+        if(targets.length) {
+          fetch('/api/send-push', {
+            method:'POST', headers:{'Content-Type':'application/json','x-mydesk-secret':'mydesk2026'},
+            body: JSON.stringify({toUserIds:targets, title, body:body||'', tag:tag||'mydesk'}),
+          }).catch(()=>{});
+        }
+      });
+    }
+  };
 
   // ── 営業エンティティからタスク/プロジェクトを生成 ─────────────────────────
   const addTaskFromSales = (entityType, entityId, entityName, extraFields={}) => {
@@ -1943,8 +2011,13 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   };
 
   // ── CRUD ──────────────────────────────────────────────────────────────────
-  const saveCompany=()=>{
+  const saveCompany=(skipDupCheck=false)=>{
     if(!form.name?.trim())return;
+    // 新規追加時の重複チェック
+    if(!form.id && !skipDupCheck){
+      const dup=companies.find(c=>c.id!==form.id&&c.name.trim()===form.name.trim());
+      if(dup){setDupModal({existing:dup,incoming:form.name.trim(),onKeepBoth:()=>{setDupModal(null);saveCompany(true);},onUseExisting:()=>{setActiveCompany(dup.id);setDupModal(null);setSheet(null);}});return;}
+    }
     let nd={...data};
     if(form.id){
       const old=companies.find(c=>c.id===form.id);
@@ -1966,8 +2039,12 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     save(nd); setSheet(null);
   };
   const deleteCompany=id=>{save({...data,companies:companies.filter(c=>c.id!==id)});setActiveCompany(null);};
-  const saveMuni=()=>{
+  const saveMuni=(skipDupCheck=false)=>{
     if(!form.name?.trim())return;
+    if(!form.id && !skipDupCheck){
+      const dup=munis.find(m=>m.prefectureId===activePref&&m.name.trim()===form.name.trim());
+      if(dup){setDupModal({existing:dup,incoming:form.name.trim(),onKeepBoth:()=>{setDupModal(null);saveMuni(true);},onUseExisting:()=>{setActiveMuni(dup.id);setMuniScreen("detail");setDupModal(null);setSheet(null);}});return;}
+    }
     let nd={...data};
     if(form.id){
       const old=munis.find(m=>m.id===form.id);
@@ -1990,8 +2067,12 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     save({...data,municipalities:munis.filter(m=>m.id!==id),vendors:vendors.map(v=>({...v,municipalityIds:(v.municipalityIds||[]).filter(mid=>mid!==id)}))});
     setMuniScreen("top");setActiveMuni(null);
   };
-  const saveVendor=()=>{
+  const saveVendor=(skipDupCheck=false)=>{
     if(!form.name?.trim())return;
+    if(!form.id && !skipDupCheck){
+      const dup=vendors.find(v=>v.name.trim()===form.name.trim());
+      if(dup){setDupModal({existing:dup,incoming:form.name.trim(),onKeepBoth:()=>{setDupModal(null);saveVendor(true);},onUseExisting:()=>{setActiveVendor(dup.id);setDupModal(null);setSheet(null);}});return;}
+    }
     let nd={...data};
     if(form.id){
       const old=vendors.find(v=>v.id===form.id);
@@ -3090,6 +3171,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                 status:Object.keys(VENDOR_STATUS).includes(r[1]?.trim())?r[1].trim():"未接触",
                 prefName:r[2]?.trim()||"",
                 muniNames:(r[3]?.trim()||"").split(",").map(s=>s.trim()).filter(Boolean),
+                assigneeName:r[4]?.trim()||"",
+                phone:r[5]?.trim()||"",
                 notes:r[6]?.trim()||"",
                 address:r[7]?.trim()||"",
               })).filter(r=>r.name);
@@ -3105,6 +3188,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
               return {
                 id:Date.now()+Math.random(),
                 name:r.name, status:r.status||"未接触",
+                phone:r.phone||"",
                 municipalityIds:mids, assigneeIds:[],
                 address:r.address||"",
                 memos:r.notes?[{id:Date.now()+Math.random(),text:r.notes,userId:currentUser?.id,date:new Date().toISOString()}]:[],
@@ -3666,6 +3750,185 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           </div>
           <Btn style={{width:"100%"}} onClick={()=>setSheet(null)}>閉じる</Btn>
         </Sheet>
+      )}
+        {/* 重複検出モーダル */}
+        {dupModal&&<DupModal existing={dupModal.existing} incoming={dupModal.incoming} onKeepBoth={dupModal.onKeepBoth} onUseExisting={dupModal.onUseExisting} onCancel={()=>setDupModal(null)}/>}
+    </div>
+  );
+}
+
+
+// ─── MYPAGE VIEW ─────────────────────────────────────────────────────────────
+function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pushEnabled, setPushEnabled, subscribePush, unsubscribePush}) {
+  const [profileForm, setProfileForm] = useState({name:currentUser?.name||"",email:currentUser?.email||"",phone:currentUser?.phone||""});
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileMsg, setProfileMsg] = useState("");
+  const [pwForm, setPwForm] = useState({cur:"",next:"",next2:""});
+  const [pwMsg, setPwMsg] = useState("");
+  const [section, setSection] = useState("profile"); // profile | links | account
+
+  const saveProfile = async () => {
+    if(!profileForm.name.trim()) return;
+    setProfileSaving(true);
+    const updated = {...currentUser, name:profileForm.name.trim(), email:profileForm.email.trim(), phone:profileForm.phone.trim()};
+    const newUsers = users.map(u=>u.id===currentUser.id?updated:u);
+    await saveUsers(newUsers);
+    setCurrentUser(updated);
+    setUsers(newUsers);
+    setSession(updated);
+    setProfileMsg("✅ 保存しました");
+    setProfileSaving(false);
+    setTimeout(()=>setProfileMsg(""),3000);
+  };
+
+  const changePassword = async () => {
+    if(!pwForm.cur||!pwForm.next||!pwForm.next2) {setPwMsg("❌ 全項目を入力してください"); return;}
+    if(pwForm.next!==pwForm.next2) {setPwMsg("❌ 新しいパスワードが一致しません"); return;}
+    if(pwForm.next.length < 6) {setPwMsg("❌ 6文字以上で設定してください"); return;}
+    const me = users.find(u=>u.id===currentUser.id);
+    if(me?.passwordHash!==hashPass(pwForm.cur)) {setPwMsg("❌ 現在のパスワードが違います"); return;}
+    const newUsers = users.map(u=>u.id===currentUser.id?{...u,passwordHash:hashPass(pwForm.next)}:u);
+    await saveUsers(newUsers);
+    setUsers(newUsers);
+    setPwMsg("✅ パスワードを変更しました");
+    setPwForm({cur:"",next:"",next2:""});
+    setTimeout(()=>setPwMsg(""),3000);
+  };
+
+  const menuItems = [
+    {id:"profile", icon:"👤", label:"プロフィール設定"},
+    {id:"links",   icon:"🔗", label:"外部サービス連携"},
+    {id:"account", icon:"🔑", label:"パスワード変更"},
+  ];
+
+  return (
+    <div style={{paddingBottom:"1rem"}}>
+      <div style={{fontWeight:800,fontSize:"1.1rem",color:C.text,marginBottom:"1.25rem"}}>⚙️ 設定</div>
+
+      {/* Section Tabs */}
+      <div style={{display:"flex",gap:"0.375rem",marginBottom:"1.25rem",background:"white",borderRadius:"0.875rem",padding:"0.25rem",border:"1px solid "+C.border}}>
+        {menuItems.map(m=>(
+          <button key={m.id} onClick={()=>setSection(m.id)}
+            style={{flex:1,padding:"0.5rem 0.25rem",borderRadius:"0.625rem",border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:"0.72rem",fontWeight:section===m.id?800:500,background:section===m.id?C.accent:"transparent",color:section===m.id?"white":C.textSub,display:"flex",flexDirection:"column",alignItems:"center",gap:"0.2rem"}}>
+            <span style={{fontSize:"1.1rem",lineHeight:1}}>{m.icon}</span>
+            <span>{m.label}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* ── プロフィール設定 ── */}
+      {section==="profile"&&(
+        <div style={{background:"white",borderRadius:"1rem",padding:"1.25rem",border:"1px solid "+C.border,boxShadow:C.shadow}}>
+          <div style={{fontWeight:800,fontSize:"0.9rem",color:C.text,marginBottom:"1rem"}}>👤 自分の情報</div>
+          <div style={{display:"flex",alignItems:"center",gap:"1rem",marginBottom:"1.25rem"}}>
+            <div style={{width:56,height:56,borderRadius:"50%",background:"linear-gradient(135deg,"+C.accent+","+C.accentDark+")",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"1.5rem",fontWeight:800,color:"white",flexShrink:0}}>
+              {(profileForm.name||currentUser?.name||"?").charAt(0)}
+            </div>
+            <div>
+              <div style={{fontWeight:700,fontSize:"0.95rem",color:C.text}}>{currentUser?.name}</div>
+              <div style={{fontSize:"0.75rem",color:C.textMuted}}>{currentUser?.email}</div>
+            </div>
+          </div>
+          {[["氏名 *","name","田中太郎","text"],["メールアドレス","email","example@mail.com","email"],["電話番号","phone","090-0000-0000","tel"]].map(([label,field,ph,type])=>(
+            <div key={field} style={{marginBottom:"0.875rem"}}>
+              <div style={{fontSize:"0.78rem",fontWeight:700,color:C.textSub,marginBottom:"0.3rem"}}>{label}</div>
+              <input type={type} value={profileForm[field]||""} onChange={e=>setProfileForm(p=>({...p,[field]:e.target.value}))} placeholder={ph}
+                style={{width:"100%",padding:"0.625rem 0.75rem",borderRadius:"0.625rem",border:"1.5px solid "+C.border,fontSize:"0.9rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
+            </div>
+          ))}
+          {profileMsg&&<div style={{marginBottom:"0.75rem",fontSize:"0.82rem",color:profileMsg.startsWith("✅")?"#059669":"#dc2626"}}>{profileMsg}</div>}
+          <button onClick={saveProfile} disabled={profileSaving||!profileForm.name.trim()}
+            style={{width:"100%",padding:"0.75rem",borderRadius:"0.75rem",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.9rem",cursor:"pointer",fontFamily:"inherit",opacity:profileSaving?0.6:1}}>
+            {profileSaving?"保存中...":"保存する"}
+          </button>
+
+          {/* プッシュ通知 */}
+          <div style={{marginTop:"1.25rem",paddingTop:"1.25rem",borderTop:"1px solid "+C.borderLight}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <div>
+                <div style={{fontSize:"0.87rem",fontWeight:700,color:C.text}}>🔔 プッシュ通知</div>
+                <div style={{fontSize:"0.72rem",color:C.textMuted,marginTop:"0.15rem"}}>{pushEnabled?"有効 — 端末に通知が届きます":"無効"}</div>
+              </div>
+              <button onClick={async()=>{
+                if(pushEnabled){await unsubscribePush(currentUser.id);setPushEnabled(false);}
+                else{const ok=await subscribePush(currentUser.id);if(ok)setPushEnabled(true);}
+              }} style={{padding:"0.4rem 1rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.82rem",background:pushEnabled?"#d1fae5":"#2563eb",color:pushEnabled?"#065f46":"white"}}>
+                {pushEnabled?"ON ✓":"ONにする"}
+              </button>
+            </div>
+          </div>
+
+          {/* ログアウト */}
+          <button onClick={onLogout}
+            style={{width:"100%",marginTop:"1rem",padding:"0.75rem",borderRadius:"0.75rem",border:"1.5px solid #fee2e2",background:"white",color:"#dc2626",fontWeight:700,fontSize:"0.87rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
+            🚪 ログアウト
+          </button>
+        </div>
+      )}
+
+      {/* ── 外部サービス連携 ── */}
+      {section==="links"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:"0.75rem"}}>
+          {/* iOS通知案内 */}
+          {/iphone|ipad|ipod/i.test(navigator.userAgent)&&!window.matchMedia('(display-mode: standalone)').matches&&(
+            <div style={{background:"#fffbeb",border:"1.5px solid #f59e0b",borderRadius:"1rem",padding:"1rem 1.125rem"}}>
+              <div style={{fontWeight:800,fontSize:"0.87rem",color:"#92400e",marginBottom:"0.5rem"}}>📱 iPhoneで通知を受け取るには</div>
+              <div style={{fontSize:"0.8rem",color:"#78350f",lineHeight:1.6}}>
+                SafariのMyDeskページで<br/>
+                <b>①</b> 下の共有ボタン（□↑）をタップ<br/>
+                <b>②</b>「ホーム画面に追加」を選択<br/>
+                <b>③</b> ホーム画面のアイコンから起動<br/>
+                <b>④</b> 通知をONにする
+              </div>
+            </div>
+          )}
+          <div style={{background:"white",borderRadius:"1rem",border:"1px solid "+C.border,boxShadow:C.shadow,overflow:"hidden"}}>
+            <div style={{padding:"0.875rem 1rem",background:"linear-gradient(135deg,#1e40af,#2563eb)",color:"white"}}>
+              <div style={{fontWeight:800,fontSize:"0.9rem"}}>📋 Jobcan 勤怠管理</div>
+              <div style={{fontSize:"0.72rem",opacity:0.85,marginTop:"0.2rem"}}>出退勤・休暇申請はこちらから</div>
+            </div>
+            <div style={{padding:"1rem"}}>
+              <a href="https://ssl.jobcan.jp/login/mb-employee?client_id=nhd&lang_code=ja" target="_blank" rel="noopener noreferrer"
+                style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0.75rem 1rem",borderRadius:"0.75rem",background:C.accentBg,border:"1.5px solid "+C.accent+"40",color:C.accentDark,fontWeight:700,fontSize:"0.9rem",textDecoration:"none"}}>
+                <span>🕐 勤怠打刻・申請を開く</span>
+                <span style={{fontSize:"0.9rem"}}>↗</span>
+              </a>
+            </div>
+          </div>
+
+          <div style={{background:"white",borderRadius:"1rem",border:"1px solid "+C.border,boxShadow:C.shadow,overflow:"hidden"}}>
+            <div style={{padding:"0.875rem 1rem",background:"linear-gradient(135deg,#5b21b6,#7c3aed)",color:"white"}}>
+              <div style={{fontWeight:800,fontSize:"0.9rem"}}>📝 Jobcan ワークフロー（稟議）</div>
+              <div style={{fontSize:"0.72rem",opacity:0.85,marginTop:"0.2rem"}}>各種申請・承認はこちらから</div>
+            </div>
+            <div style={{padding:"1rem"}}>
+              <a href="https://id.jobcan.jp/users/sign_in?app_key=wf" target="_blank" rel="noopener noreferrer"
+                style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0.75rem 1rem",borderRadius:"0.75rem",background:"#f5f3ff",border:"1.5px solid #ddd6fe",color:"#5b21b6",fontWeight:700,fontSize:"0.9rem",textDecoration:"none"}}>
+                <span>📄 稟議・申請を開く</span>
+                <span style={{fontSize:"0.9rem"}}>↗</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── パスワード変更 ── */}
+      {section==="account"&&(
+        <div style={{background:"white",borderRadius:"1rem",padding:"1.25rem",border:"1px solid "+C.border,boxShadow:C.shadow}}>
+          <div style={{fontWeight:800,fontSize:"0.9rem",color:C.text,marginBottom:"1rem"}}>🔑 パスワード変更</div>
+          {[["現在のパスワード","cur"],["新しいパスワード（6文字以上）","next"],["新しいパスワード（確認）","next2"]].map(([label,field])=>(
+            <div key={field} style={{marginBottom:"0.875rem"}}>
+              <div style={{fontSize:"0.78rem",fontWeight:700,color:C.textSub,marginBottom:"0.3rem"}}>{label}</div>
+              <input type="password" value={pwForm[field]||""} onChange={e=>setPwForm(p=>({...p,[field]:e.target.value}))} placeholder="••••••••"
+                style={{width:"100%",padding:"0.625rem 0.75rem",borderRadius:"0.625rem",border:"1.5px solid "+C.border,fontSize:"0.9rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
+            </div>
+          ))}
+          {pwMsg&&<div style={{marginBottom:"0.75rem",fontSize:"0.82rem",color:pwMsg.startsWith("✅")?"#059669":"#dc2626"}}>{pwMsg}</div>}
+          <button onClick={changePassword}
+            style={{width:"100%",padding:"0.75rem",borderRadius:"0.75rem",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.9rem",cursor:"pointer",fontFamily:"inherit"}}>
+            変更する
+          </button>
+        </div>
       )}
     </div>
   );
@@ -4354,7 +4617,10 @@ export default function App() {
     });
   },[]);
 
-  // ── Supabase リアルタイム同期（30秒ポーリング）────────────────────────────
+  // ── Supabase リアルタイム同期 + ブラウザ通知 ────────────────────────────
+  // 最後に確認した通知IDを追跡（ポーリングで新着検出用）
+  const lastNotifIdsRef = useRef(null);
+
   useEffect(()=>{
     if(!currentUser) return;
     const poll = async () => {
@@ -4364,9 +4630,45 @@ export default function App() {
         // セッションユーザーの最新情報を反映
         const fresh = u.find(x=>x.id===currentUser.id);
         if(fresh) setCurrentUser(cu=>(cu.name===fresh.name&&cu.email===fresh.email)?cu:fresh);
+
+        // ── 新着通知をブラウザ通知で表示 ──────────────────────────────────
+        const myNotifs = (d.notifications||[]).filter(n=>
+          n.toUserId===currentUser.id || n.toUserId==='__all__'
+        );
+        if(lastNotifIdsRef.current !== null) {
+          const prevIds = lastNotifIdsRef.current;
+          const brandNew = myNotifs.filter(n => !prevIds.has(n.id) && !n.read);
+          if(brandNew.length > 0 && Notification.permission === 'granted') {
+            brandNew.slice(0, 3).forEach(n => {
+              try {
+                // Service Worker経由で通知（バックグラウンド対応）
+                navigator.serviceWorker?.ready.then(reg => {
+                  reg.showNotification(n.title || 'MyDesk', {
+                    body: n.body || '',
+                    icon: '/icon-192.png',
+                    badge: '/icon-192.png',
+                    tag: n.id?.toString() || 'mydesk',
+                    renotify: false,
+                    data: { url: '/' },
+                  });
+                }).catch(() => {
+                  // Service Worker未対応ならフォールバック
+                  new Notification(n.title || 'MyDesk', {
+                    body: n.body || '',
+                    icon: '/icon-192.png',
+                    tag: n.id?.toString() || 'mydesk',
+                  });
+                });
+              } catch {}
+            });
+          }
+        }
+        lastNotifIdsRef.current = new Set(myNotifs.map(n => n.id));
       } catch {}
     };
-    const id = setInterval(poll, 30000);
+    // 初回実行
+    poll();
+    const id = setInterval(poll, 8000);
     return () => clearInterval(id);
   }, [currentUser?.id]);
   useEffect(()=>{
@@ -4412,29 +4714,49 @@ export default function App() {
   const VAPID_PUBLIC_KEY = 'BOlCwpwWlsbXAd_aw4puzgjrshGrRHbsq-fTQYiGnDmsS-4oFknxdZMRoF_Y8p5ObJ7HgVLxW6j5Tl2XLpy5Agg';
   const saveWithPush = (nd, notifsBefore) => {
     setData(nd); saveData(nd);
-    // 新しく追加された通知を検出してプッシュ送信
+    // 新しく追加された通知を検出
     const newNotifs = (nd.notifications||[]).filter(n=>
       !(notifsBefore||[]).some(o=>o.id===n.id)
     );
     if(!newNotifs.length) return;
-    // ユーザー別にグループ化して送信
+    // ユーザー別にグループ化
     const byUser = {};
     newNotifs.forEach(n=>{
-      if(!byUser[n.toUserId]) byUser[n.toUserId]={title:n.title,body:n.body,tag:n.type};
-      // 複数あれば最初の1件だけ
+      const uid = n.toUserId;
+      if(!uid) return;
+      if(!byUser[uid]) byUser[uid]={title:n.title,body:n.body,tag:n.type};
     });
     Object.entries(byUser).forEach(([uid,{title,body,tag}])=>{
-      if(uid!==currentUser?.id) sendPushToUsers([uid],title,body,tag);
+      // 他ユーザー → Vercel API経由でWeb Push
+      if(uid !== currentUser?.id && uid !== '__all__') {
+        sendPushToUsers([uid], title, body, tag);
+      }
+      // __all__ → 自分以外全員にWeb Push
+      if(uid === '__all__') {
+        const others = users.filter(u=>u.id!==currentUser?.id).map(u=>u.id);
+        if(others.length) sendPushToUsers(others, title, body, tag);
+      }
     });
   };
 
   // ── プッシュ通知購読 ───────────────────────────────────────────────────────
   const subscribePush = async (userId) => {
-    if (!('Notification' in window) || !('serviceWorker' in navigator)) return;
+    // iOSチェック：ホーム画面追加済みPWAのみ対応
+    const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+      || window.navigator.standalone === true;
+    if (isIos && !isStandalone) {
+      // iOSブラウザ → ホーム画面追加を促す（Notificationは使えないがfalseを返さない）
+      alert('iPhoneで通知を受け取るには、Safariのメニューから「ホーム画面に追加」してアプリとして起動してください。');
+      return false;
+    }
+    if (!('Notification' in window)) return false;
     try {
       const perm = await Notification.requestPermission();
-      if (perm !== 'granted') return;
+      if (perm !== 'granted') return false;
+      if (!('serviceWorker' in navigator)) return true; // permission onlyでOK
       const reg = await navigator.serviceWorker.ready;
+      if (!reg.pushManager) return true; // SW ready but no push (e.g. some iOS)
       const existing = await reg.pushManager.getSubscription();
       const sub = existing || await reg.pushManager.subscribe({
         userVisibleOnly: true,
@@ -4445,7 +4767,12 @@ export default function App() {
       subs[userId] = sub.toJSON();
       await sbSet('push_subs', subs);
       return true;
-    } catch(e) { console.warn('Push subscribe failed:', e); return false; }
+    } catch(e) {
+      console.warn('Push subscribe failed:', e);
+      // 通知許可は取れたがWeb Push登録失敗の場合でもtrueを返す（ポーリング通知は動く）
+      if(Notification.permission === 'granted') return true;
+      return false;
+    }
   };
 
   const unsubscribePush = async (userId) => {
@@ -4496,6 +4823,7 @@ export default function App() {
     {id:"email",    emoji:"✉️", label:"メール"},
     {id:"sales",    emoji:"💼", label:"営業"},
     {id:"analytics",emoji:"📊", label:"分析"},
+    {id:"mypage",   emoji:"⚙️", label:"設定"},
   ];
 
   if (!loaded) return (
@@ -4692,6 +5020,7 @@ export default function App() {
             {tab==="sales"     && <SalesView     data={data} setData={setData} currentUser={currentUser} users={users}
               salesTab={salesTab} setSalesTab={(v)=>persistTab("md_salesTab",v,setSalesTab)}/>}
             {tab==="analytics" && <AnalyticsView data={data} setData={setData} currentUser={currentUser} users={users}/>}
+            {tab==="mypage"    && <MyPageView currentUser={currentUser} setCurrentUser={setCurrentUser} users={users} setUsers={setUsers} onLogout={handleLogout} pushEnabled={pushEnabled} setPushEnabled={setPushEnabled} subscribePush={subscribePush} unsubscribePush={unsubscribePush}/>}
           </ErrorBoundary>
         </div>
       </div>
