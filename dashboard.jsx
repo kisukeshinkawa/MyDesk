@@ -748,7 +748,7 @@ function TaskCommentInput({taskId, data, setData, users=[], uid}) {
 }
 
 // ─── TASK VIEW ────────────────────────────────────────────────────────────────
-function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjTab,setPjTab}) {
+function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjTab,setPjTab,saveWithPush}) {
   const uid = currentUser?.id;
   const [screen,setScreen] = useState("list");
   const [activePjId,setActivePjId] = useState(null);
@@ -779,7 +779,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
       const newlyAdded=(ch.assignees||[]).filter(i=>i!==uid&&!prev_a.includes(i));
       if(newlyAdded.length) nd=addNotif(nd,{type:"task_assign",title:`「${updated.title}」に担当者として追加されました`,body:"",toUserIds:newlyAdded,fromUserId:uid});
     }
-    setData(nd); saveData(nd);
+    saveWithPush(nd, data.notifications);
   };
   const addTask    = (f,pjId=null) => {
     const item={id:Date.now(),...f,projectId:pjId,createdBy:uid,comments:[],memos:[],chat:[],createdAt:new Date().toISOString()};
@@ -805,7 +805,11 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
   const deleteTask = id => { const u={...data,tasks:allTasks.filter(t=>t.id!==id)}; setData(u); saveData(u); };
   const addProject = (f) => {
     const item={id:Date.now(),...f,createdBy:uid,memos:[],chat:[],createdAt:new Date().toISOString()};
-    const u={...data,projects:[...allProjects,item]}; setData(u); saveData(u);
+    let nd={...data,projects:[...allProjects,item]};
+    // メンバーに通知
+    const toIds=(f.members||[]).filter(i=>i!==uid);
+    if(toIds.length) nd=addNotif(nd,{type:"task_assign",title:`「${item.name}」プロジェクトのメンバーに追加されました`,body:"",toUserIds:toIds,fromUserId:uid});
+    saveWithPush(nd, data.notifications);
   };
   const updateProject = (id,ch) => { const u={...data,projects:allProjects.map(p=>p.id===id?{...p,...ch}:p)}; setData(u); saveData(u); };
   const deleteProject = id => {
@@ -1030,26 +1034,29 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
               <Btn size="sm" onClick={()=>setSheet("addPjTask")}>＋ タスク追加</Btn>
             </div>
             <Card style={{overflow:"hidden",marginBottom:"1rem"}}>
-              {activePjTasks.length===0&&donePjTasks.length===0&&(
+              {pjTasks.length===0&&(
                 <div style={{padding:"2rem",textAlign:"center",color:C.textMuted,fontSize:"0.85rem"}}>タスクなし</div>
               )}
-              {activePjTasks.map(t=>(
-                <TaskRow key={t.id} task={t} users={users}
-                  onToggle={()=>updateTask(t.id,{status:"完了"})}
-                  onStatusChange={s=>updateTask(t.id,{status:s})}
-                  onClick={()=>{setActiveTaskId(t.id);setFromProject(activePjId);setScreen("taskDetail");setTaskTab("info");}}/>
-              ))}
-              {donePjTasks.length>0&&<>
-                <div style={{padding:"0.45rem 1rem",background:C.bg,borderTop:`1px solid ${C.border}`}}>
-                  <span style={{fontSize:"0.7rem",fontWeight:700,color:C.textMuted,textTransform:"uppercase"}}>完了 · {donePjTasks.length}件</span>
-                </div>
-                {donePjTasks.map(t=>(
-                  <TaskRow key={t.id} task={t} users={users}
-                    onToggle={()=>updateTask(t.id,{status:"未着手"})}
-                    onStatusChange={s=>updateTask(t.id,{status:s})}
-                    onClick={()=>{setActiveTaskId(t.id);setFromProject(activePjId);setScreen("taskDetail");setTaskTab("info");}}/>
-                ))}
-              </>}
+              {STATUS_OPTIONS.map(status=>{
+                const group=pjTasks.filter(t=>t.status===status);
+                if(!group.length) return null;
+                const m=STATUS_META[status];
+                return (
+                  <React.Fragment key={status}>
+                    <div style={{padding:"0.35rem 1rem",background:m.bg,borderTop:`1px solid ${C.borderLight}`,display:"flex",alignItems:"center",gap:"0.4rem"}}>
+                      <span style={{width:7,height:7,borderRadius:"50%",background:m.dot,display:"inline-block",flexShrink:0}}/>
+                      <span style={{fontSize:"0.7rem",fontWeight:700,color:m.color,letterSpacing:"0.04em"}}>{status}</span>
+                      <span style={{fontSize:"0.7rem",color:m.color,opacity:0.7,marginLeft:"auto"}}>{group.length}件</span>
+                    </div>
+                    {group.map(t=>(
+                      <TaskRow key={t.id} task={t} users={users}
+                        onToggle={()=>updateTask(t.id,{status:t.status==="完了"?"未着手":"完了"})}
+                        onStatusChange={s=>updateTask(t.id,{status:s})}
+                        onClick={()=>{setActiveTaskId(t.id);setFromProject(activePjId);setScreen("taskDetail");setTaskTab("info");}}/>
+                    ))}
+                  </React.Fragment>
+                );
+              })}
             </Card>
             <Btn variant="danger" size="sm" onClick={()=>{if(window.confirm("プロジェクトとタスクをすべて削除しますか？")){deleteProject(activePj.id);setScreen("list");}}}>🗑 プロジェクトを削除</Btn>
           </div>
@@ -1124,28 +1131,31 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
             tasks={visibleTasks.filter(t=>t.projectId===pj.id)}
             onClick={()=>{setActivePjId(pj.id);setScreen("projectDetail");}}/>
         ))}
-        {visibleProjects.length>0&&activeStandalone.length>0&&(
+        {visibleProjects.length>0&&standaloneTasks.length>0&&(
           <div style={{padding:"0.4rem 1rem",background:C.bg,borderBottom:`1px solid ${C.borderLight}`}}>
             <span style={{fontSize:"0.7rem",fontWeight:700,color:C.textMuted,textTransform:"uppercase",letterSpacing:"0.05em"}}>タスク</span>
           </div>
         )}
-        {activeStandalone.map(t=>(
-          <TaskRow key={t.id} task={t} users={users}
-            onToggle={()=>updateTask(t.id,{status:"完了"})}
-            onStatusChange={s=>updateTask(t.id,{status:s})}
-            onClick={()=>{setActiveTaskId(t.id);setFromProject(null);setScreen("taskDetail");}}/>
-        ))}
-        {doneStandalone.length>0&&<>
-          <div style={{padding:"0.45rem 1rem",background:C.bg,borderTop:`1px solid ${C.border}`}}>
-            <span style={{fontSize:"0.7rem",fontWeight:700,color:C.textMuted,textTransform:"uppercase"}}>完了 · {doneStandalone.length}件</span>
-          </div>
-          {doneStandalone.map(t=>(
-            <TaskRow key={t.id} task={t} users={users}
-              onToggle={()=>updateTask(t.id,{status:"未着手"})}
-              onStatusChange={s=>updateTask(t.id,{status:s})}
-              onClick={()=>{setActiveTaskId(t.id);setFromProject(null);setScreen("taskDetail");}}/>
-          ))}
-        </>}
+        {STATUS_OPTIONS.map(status=>{
+          const group=standaloneTasks.filter(t=>t.status===status);
+          if(!group.length) return null;
+          const m=STATUS_META[status];
+          return (
+            <React.Fragment key={status}>
+              <div style={{padding:"0.35rem 1rem",background:m.bg,borderTop:`1px solid ${C.borderLight}`,display:"flex",alignItems:"center",gap:"0.4rem"}}>
+                <span style={{width:7,height:7,borderRadius:"50%",background:m.dot,display:"inline-block",flexShrink:0}}/>
+                <span style={{fontSize:"0.7rem",fontWeight:700,color:m.color,letterSpacing:"0.04em"}}>{status}</span>
+                <span style={{fontSize:"0.7rem",color:m.color,opacity:0.7,marginLeft:"auto"}}>{group.length}件</span>
+              </div>
+              {group.map(t=>(
+                <TaskRow key={t.id} task={t} users={users}
+                  onToggle={()=>updateTask(t.id,{status:t.status==="完了"?"未着手":"完了"})}
+                  onStatusChange={s=>updateTask(t.id,{status:s})}
+                  onClick={()=>{setActiveTaskId(t.id);setFromProject(null);setScreen("taskDetail");}}/>
+              ))}
+            </React.Fragment>
+          );
+        })}
       </Card>
       {sheet==="addTask"&&<Sheet title="タスクを追加" onClose={()=>setSheet(null)}>
         <TaskForm initial={{status:"未着手"}} users={users} currentUserId={uid} onClose={()=>setSheet(null)}
@@ -3902,6 +3912,10 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
               <div style={{fontSize:"0.72rem",opacity:0.85,marginTop:"0.2rem"}}>各種申請・承認はこちらから</div>
             </div>
             <div style={{padding:"1rem"}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.75rem",padding:"0.5rem 0.75rem",background:"#f5f3ff",borderRadius:"0.625rem",border:"1px solid #ddd6fe"}}>
+                <span style={{fontSize:"0.75rem",color:"#6d28d9",fontWeight:600}}>🪪 社員ID</span>
+                <span style={{fontSize:"0.88rem",color:"#5b21b6",fontWeight:800,letterSpacing:"0.05em"}}>C15348-28852-43733</span>
+              </div>
               <a href="https://id.jobcan.jp/users/sign_in?app_key=wf" target="_blank" rel="noopener noreferrer"
                 style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0.75rem 1rem",borderRadius:"0.75rem",background:"#f5f3ff",border:"1.5px solid #ddd6fe",color:"#5b21b6",fontWeight:700,fontSize:"0.9rem",textDecoration:"none"}}>
                 <span>📄 稟議・申請を開く</span>
@@ -4026,7 +4040,8 @@ function DiffBadge({cur,prv}) {
   );
 }
 
-function AnalyticsView({data,setData}) {
+function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
+  if(!saveWithPush) saveWithPush=(nd)=>{setData(nd);};
   const [sys,      setSys]      = useState("dustalk");
   const [mk,       setMk]       = useState(getMonthKey());
   const [yk,       setYk]       = useState(getYearKey());
@@ -4078,7 +4093,7 @@ function AnalyticsView({data,setData}) {
           date:new Date().toISOString(),
         }]}
       : nd;
-    setData(withNotif); saveData(withNotif); setEditing(false); setDraft(null);
+    saveWithPush(withNotif, data.notifications); setEditing(false); setDraft(null);
   };
 
   const switchSys = (id) => { setSys(id); setEditing(false); setDraft(null); setChart(null); };
@@ -5014,12 +5029,13 @@ export default function App() {
           <ErrorBoundary>
             {tab==="tasks"     && <TaskView      data={data} setData={setData} users={users} currentUser={currentUser}
               taskTab={taskTab} setTaskTab={(v)=>persistTab('md_taskTab',v,setTaskTab)}
-              pjTab={pjTab} setPjTab={(v)=>persistTab('md_pjTab',v,setPjTab)}/>}
+              pjTab={pjTab} setPjTab={(v)=>persistTab('md_pjTab',v,setPjTab)}
+              saveWithPush={saveWithPush}/>}
             {tab==="schedule"  && <ScheduleView/>}
             {tab==="email"     && <EmailView     data={data} setData={setData} currentUser={currentUser}/>}
             {tab==="sales"     && <SalesView     data={data} setData={setData} currentUser={currentUser} users={users}
               salesTab={salesTab} setSalesTab={(v)=>persistTab("md_salesTab",v,setSalesTab)}/>}
-            {tab==="analytics" && <AnalyticsView data={data} setData={setData} currentUser={currentUser} users={users}/>}
+            {tab==="analytics" && <AnalyticsView data={data} setData={setData} currentUser={currentUser} users={users} saveWithPush={saveWithPush}/>}
             {tab==="mypage"    && <MyPageView currentUser={currentUser} setCurrentUser={setCurrentUser} users={users} setUsers={setUsers} onLogout={handleLogout} pushEnabled={pushEnabled} setPushEnabled={setPushEnabled} subscribePush={subscribePush} unsubscribePush={unsubscribePush}/>}
           </ErrorBoundary>
         </div>
