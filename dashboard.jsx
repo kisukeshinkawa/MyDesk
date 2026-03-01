@@ -1414,6 +1414,18 @@ function TaskCommentInput({taskId, data, setData, users=[], uid}) {
 function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjTab,setPjTab,navTarget,clearNavTarget}) {
   const uid = currentUser?.id;
 
+  // ── State（全て先頭にまとめる）─────────────────────────────────────────
+  const [screen,setScreen] = useState("list");
+  const [activePjId,setActivePjId] = useState(null);
+  const [activeTaskId,setActiveTaskId] = useState(null);
+  const [fromProject,setFromProject] = useState(null);
+  const [sheet,setSheet] = useState(null);
+  const [tMemoIn,setTMemoIn]= useState({});
+  const [tChatIn,setTChatIn]= useState({});
+  const [doneOpenList,setDoneOpenList]= useState(false);  // タスクリスト完了折り畳み
+  const [doneOpenPj,setDoneOpenPj]  = useState(false);   // プロジェクト内完了折り畳み
+  const [taskDupModal,setTaskDupModal] = useState(null);  // 重複確認モーダル
+
   // ── ローカル保存＋プッシュ（App に依存しない自己完結版）────────────────
   const saveWithPush = React.useCallback((nd, notifsBefore) => {
     if (!nd || typeof nd !== "object") { console.warn("MyDesk: saveWithPush called with invalid data"); return; }
@@ -1442,9 +1454,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
       }).catch(()=>{});
     });
   }, [setData, users, uid]);
-  const [screen,setScreen] = useState("list");
-  const [activePjId,setActivePjId] = useState(null);
-  const [activeTaskId,setActiveTaskId] = useState(null);
+
   // 営業など外部からのナビゲーション
   React.useEffect(()=>{
     if(!navTarget) return;
@@ -1459,13 +1469,6 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     }
     clearNavTarget?.();
   },[navTarget]);
-  const [fromProject,setFromProject] = useState(null);
-  const [sheet,setSheet] = useState(null);
-  const [tMemoIn,setTMemoIn]= useState({});
-  const [tChatIn,setTChatIn]= useState({});
-  const [doneOpenList,setDoneOpenList]= useState(false);  // タスクリスト完了折り畳み
-  const [doneOpenPj,setDoneOpenPj]  = useState(false);   // プロジェクト内完了折り畳み
-  const [taskDupModal,setTaskDupModal] = useState(null);  // 重複確認モーダル
 
   const allTasks    = data.tasks    || [];
   const allProjects = data.projects || [];
