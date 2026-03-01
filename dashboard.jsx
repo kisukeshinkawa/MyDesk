@@ -4818,6 +4818,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
   const [pwForm, setPwForm] = useState({cur:"",next:"",next2:""});
   const [pwMsg, setPwMsg] = useState("");
   const [section, setSection] = useState("profile"); // profile | links | account
+  const [contractModal, setContractModal] = useState(null); // null | 'upload' | 'generate'
 
   const saveProfile = async () => {
     if(!profileForm.name.trim()) return;
@@ -4847,7 +4848,6 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
     setTimeout(()=>setPwMsg(""),3000);
   };
 
-  const [contractModal, setContractModal] = useState(null); // null | 'upload' | 'generate'
 
   const menuItems = [
     {id:"profile",  icon:"👤", label:"プロフィール設定"},
