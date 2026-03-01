@@ -3792,7 +3792,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     const compsByStatus = Object.keys(COMPANY_STATUS).map(s=>({
       status:s, meta:COMPANY_STATUS[s],
       items:companies.filter(c=>(c.status||"未接触")===s&&(!compSearch||normSearch(c.name).includes(normSearch(compSearch))))
-    })).filter(g=>g.items.length>0||(compSearch&&companies.some(c=>(c.status||"未接触")===s)));
+    })).filter(g=>g.items.length>0||(compSearch&&companies.some(c=>(c.status||"未接触")===g.status)));
     const searchedComps = compSearch ? companies.filter(c=>normSearch(c.name).includes(normSearch(compSearch))) : null;
     return (
       <div>
@@ -4110,6 +4110,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             style={{padding:"0.45rem 0.625rem",borderRadius:"0.75rem",border:`1.5px solid ${bulkMode?"#2563eb":C.border}`,background:bulkMode?"#eff6ff":"white",color:bulkMode?"#1d4ed8":C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>☑️</button>
           <button onClick={()=>setSheet("importVendor")}
             style={{padding:"0.45rem 0.625rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📥</button>
+          <button onClick={()=>{if(window.confirm(`業者データを全件（${vendors.length}件）削除します。この操作は元に戻せません。よろしいですか？`)){const nd={...data,vendors:[]};save(nd);}}}
+            style={{padding:"0.45rem 0.625rem",borderRadius:"0.75rem",border:"1.5px solid #fca5a5",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🗑️全削除</button>
           <Btn size="sm" onClick={()=>{setForm({status:"未接触",municipalityIds:[],assigneeIds:[]});setSheet("addVendor");}}>＋</Btn>
         </div>
         {vendors.length===0&&(
