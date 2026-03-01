@@ -256,8 +256,10 @@ function StatusPill({status,onChange}) {
 const STORAGE_BUCKET = "mydesk-files";
 
 async function uploadFileToSupabase(file, entityType, entityId) {
-  const safeName = file.name.replace(/[^a-zA-Z0-9._\-\u3000-\u9fff\u30A0-\u30FF\u3040-\u309F]/g, "_");
-  const path = `${entityType}/${entityId}/${Date.now()}_${safeName}`;
+  // Supabase Storage は日本語・特殊文字を受け付けないため英数字のみに変換
+  const ext = file.name.includes(".") ? "." + file.name.split(".").pop().replace(/[^a-zA-Z0-9]/g, "") : "";
+  const safeName = Date.now() + ext;
+  const path = `${entityType}/${entityId}/${safeName}`;
   const res = await fetch(`${SB_URL}/storage/v1/object/${STORAGE_BUCKET}/${path}`, {
     method: "POST",
     headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": file.type || "application/octet-stream" },
