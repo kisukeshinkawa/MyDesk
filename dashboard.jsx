@@ -1630,14 +1630,15 @@ function EmailView({data,setData,currentUser=null}) {
         ? `${styleRef}${pastRef}以下の受信メールへの返信文を作成してください。\n\n【返信の指示・方向性】\n${instruction}\n\n【受信メール】\n${inputText}\n\n返信本文のみ出力してください。宛名・署名・件名は不要です。`
         : `${styleRef}${pastRef}以下の目的・内容でメール文書を作成してください。\n\n【メールの指示・方向性】\n${instruction}\n\n【目的・内容・補足】\n${inputText}\n\nメール本文のみ出力してください。宛名・署名は含めてください。件名は不要です。`;
 
-      const res = await fetch("https://api.anthropic.com/v1/messages",{
+      const res = await fetch("/api/generate-email",{
         method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1500,messages:[{role:"user",content:prompt}]})
+        body:JSON.stringify({prompt})
       });
       const json = await res.json();
-      setGenerated((json.content?.map(c=>c.text||"").join("")||"生成に失敗しました。").trim());
+      if(!res.ok) throw new Error(json.error||"生成に失敗しました");
+      setGenerated((json.text||"生成に失敗しました。").trim());
       setPhase("edit");
-    } catch { setGenerated("生成に失敗しました。再試行してください。"); setPhase("edit"); }
+    } catch(e) { setGenerated("生成に失敗しました。\n\n原因: "+(e.message||"不明")); setPhase("edit"); }
     setLoading(false);
   };
 
