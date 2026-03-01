@@ -2169,7 +2169,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     if(!form.name?.trim())return;
     // 新規追加時の重複チェック
     if(!form.id && !skipDupCheck){
-      const dup=companies.find(c=>c.id!==form.id&&c.name.trim()===form.name.trim());
+      const normName = s => (s||"").replace(/[\s　]/g,"").toLowerCase();
+      const dup=companies.find(c=>normName(c.name)===normName(form.name));
       if(dup){setDupModal({existing:dup,incoming:form.name.trim(),
         onKeepBoth:()=>{setDupModal(null);saveCompany(true);},
         onUseExisting:()=>{setActiveCompany(dup.id);setDupModal(null);setSheet(null);}
@@ -2199,7 +2200,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   const saveMuni=(skipDupCheck=false)=>{
     if(!form.name?.trim())return;
     if(!form.id && !skipDupCheck){
-      const dup=munis.find(m=>m.prefectureId===activePref&&m.name.trim()===form.name.trim());
+      const normName = s => (s||"").replace(/[\s　]/g,"").toLowerCase();
+      const dup=munis.find(m=>m.prefectureId===activePref&&normName(m.name)===normName(form.name));
       if(dup){setDupModal({existing:dup,incoming:form.name.trim(),
         onKeepBoth:()=>{setDupModal(null);saveMuni(true);},
         onUseExisting:()=>{setActiveMuni(dup.id);setMuniScreen("detail");setDupModal(null);setSheet(null);}
@@ -2230,7 +2232,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   const saveVendor=(skipDupCheck=false)=>{
     if(!form.name?.trim())return;
     if(!form.id && !skipDupCheck){
-      const dup=vendors.find(v=>v.name.trim()===form.name.trim());
+      const normName = s => (s||"").replace(/[\s　]/g,"").toLowerCase();
+      const dup=vendors.find(v=>normName(v.name)===normName(form.name));
       if(dup){setDupModal({existing:dup,incoming:form.name.trim(),
         onKeepBoth:()=>{setDupModal(null);saveVendor(true);},
         onUseExisting:()=>{setActiveVendor(dup.id);setDupModal(null);setSheet(null);}
@@ -2341,7 +2344,12 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     </button>
   );
 
-  const SChip=({s,map})=>{const m=(map||VENDOR_STATUS)[s]||Object.values(map||VENDOR_STATUS)[0];return <span style={{padding:"0.15rem 0.5rem",borderRadius:999,fontSize:"0.7rem",fontWeight:700,background:m.bg,color:m.color,whiteSpace:"nowrap"}}>{s}</span>;};
+  const SChip=({s,map})=>{
+    const safeMap=map||VENDOR_STATUS;
+    const label=s||"未接触";
+    const m=safeMap[label]||Object.values(safeMap)[0]||{color:"#6b7280",bg:"#f3f4f6"};
+    return <span style={{padding:"0.15rem 0.5rem",borderRadius:999,fontSize:"0.7rem",fontWeight:700,background:m.bg,color:m.color,whiteSpace:"nowrap"}}>{label}</span>;
+  };
 
   const AssigneeRow=({ids=[]})=>(
     <div style={{display:"flex",flexWrap:"wrap",gap:"0.25rem"}}>
@@ -2938,9 +2946,9 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     // List view - grouped by status
     const compsByStatus = Object.keys(COMPANY_STATUS).map(s=>({
       status:s, meta:COMPANY_STATUS[s],
-      items:companies.filter(c=>c.status===s&&(!compSearch||c.name.includes(compSearch)))
-    })).filter(g=>g.items.length>0||(compSearch&&companies.some(c=>c.status===s)));
-    const searchedComps = compSearch ? companies.filter(c=>c.name.includes(compSearch)) : null;
+      items:companies.filter(c=>(c.status||"未接触")===s&&(!compSearch||c.name.includes(compSearch)))
+    })).filter(g=>g.items.length>0||(compSearch&&companies.some(c=>(c.status||"未接触")===s)));
+    const searchedComps = compSearch ? companies.filter(c=>c.name.toLowerCase().includes(compSearch.toLowerCase())) : null;
     return (
       <div>
         <TopTabs/>
@@ -2988,7 +2996,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
         {!compSearch&&(
           <div style={{display:"flex",flexDirection:"column",gap:"0.625rem"}}>
             {Object.entries(COMPANY_STATUS).map(([s,meta])=>{
-              const items=companies.filter(c=>c.status===s);
+              const items=companies.filter(c=>(c.status||"未接触")===s);
               const isOpen=openCompGrp.has(s);
               return (
                 <div key={s} style={{background:"white",borderRadius:"0.875rem",border:`1.5px solid ${C.border}`,overflow:"hidden",boxShadow:C.shadow}}>
@@ -3236,7 +3244,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       );
     }
     // Vendor list - grouped by status
-    const searchedVendors = vendSearch ? vendors.filter(v=>v.name.includes(vendSearch)) : null;
+    const searchedVendors = vendSearch ? vendors.filter(v=>v.name.toLowerCase().includes(vendSearch.toLowerCase())) : null;
     return (
       <div>
         <TopTabs/>
