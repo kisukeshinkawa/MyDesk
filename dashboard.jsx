@@ -47,7 +47,7 @@ const SESSION_KEY = "mydesk_session_v2";
 
 // ─── SUPABASE 設定 ────────────────────────────────────────────────────────────
 const SB_URL = "https://lnzczkwnvkjacrmkhyft.supabase.co";
-const SB_KEY = "sb_publishable_7mnHP6lGylXBN3GZPqyrsQ_K5ytV1SW";
+const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxuemN6a3dudmtqYWNybWtoeWZ0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIxNDQwOTUsImV4cCI6MjA4NzcyMDA5NX0.Jx89KsMXlDQCNvuxeRyfLsfAkmkVB5-MeabMq9g1j4Y";
 const SB_HEADERS = {
   "apikey": SB_KEY,
   "Authorization": `Bearer ${SB_KEY}`,
@@ -513,6 +513,375 @@ function ReviewRequestSection({ task, users=[], uid, allTasks=[], onRequestRevie
   );
 }
 
+
+// ─── GSHEET IMPORT ────────────────────────────────────────────────────────────
+// Googleスプレッドシートから自治体・業者を一括インポート
+// ファイル名=都道府県名、シート名=自治体名、中身=業者名+メモ
+function GSheetImportWizard({ data, onSave, onClose, prefs, munis, vendors }) {
+  const STEPS = ["入力", "取得中", "確認", "完了"];
+  const [step, setStep] = React.useState(0);
+  const [sheetId, setSheetId] = React.useState("1q8cRuQWVevMrBq1qQsl-z2ByYIoV1xp_KhPsjrjsXXU");
+  const [prefName, setPrefName] = React.useState("");
+  const [sheetList, setSheetList] = React.useState([]); // [{name, gid}]
+  const [sheetData, setSheetData] = React.useState([]); // [{muniName, vendors:[{name,memo,...}]}]
+  const [err, setErr] = React.useState("");
+  const [progress, setProgress] = React.useState("");
+  const [importResult, setImportResult] = React.useState(null);
+
+  // URLからシートIDを抽出
+  const extractId = (s) => {
+    const m = s.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+    return m ? m[1] : s.trim();
+  };
+
+  // Googleスプレッドシートのシート一覧を取得（gviz API）
+  const fetchSheetList = async (id) => {
+    const url = `https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=out:json`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("スプレッドシートを取得できません。公開設定を確認してください。");
+    const text = await res.text();
+    // gvizレスポンスからJSONを抽出（google.visualization.Query.setResponse({...})形式）
+    const jsonStr = text.slice(text.indexOf("(") + 1, text.lastIndexOf(")"));
+    const json = JSON.parse(jsonStr);
+    // シート一覧: json.table の cols/rows でなく、response自体にsheetが入らないため
+    // HTML取得で代替
+    return json;
+  };
+
+  // シート名一覧をHTML parsingで取得
+  const fetchSheetNames = async (id) => {
+    const url = `https://docs.google.com/spreadsheets/d/${id}/htmlview`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`スプレッドシートへのアクセスに失敗しました (HTTP ${res.status})。\nシートが「リンクを知っている全員」に公開されているか確認してください。`);
+    const html = await res.text();
+    // シートタブ名を抽出 data-sheet-id と名前
+    const matches = [...html.matchAll(/id="sheet-button-([^"]+)"[^>]*>([^<]+)</g)];
+    if (matches.length > 0) {
+      return matches.map(m => ({ gid: m[1], name: m[2].trim() }));
+    }
+    // 別パターン: class="docs-sheet-tab-name"
+    const matches2 = [...html.matchAll(/class="[^"]*docs-sheet-tab-name[^"]*"[^>]*>([^<]+)</g)];
+    if (matches2.length > 0) {
+      return matches2.map((m, i) => ({ gid: String(i), name: m[1].trim() }));
+    }
+    throw new Error("シート名の取得に失敗しました。スプレッドシートの公開設定を確認してください。");
+  };
+
+  // 各シートのCSVデータを取得
+  const fetchSheetCsv = async (id, sheetName) => {
+    const enc = encodeURIComponent(sheetName);
+    const url = `https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=out:csv&sheet=${enc}`;
+    const res = await fetch(url);
+    if (!res.ok) return [];
+    const text = await res.text();
+    return text;
+  };
+
+  // CSVパース（BOM除去・クォート対応）
+  const parseCsv = (text) => {
+    const clean = text.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    const lines = clean.split("\n").filter(l => l.trim());
+    const parseRow = line => {
+      const cols = []; let cur = "", inQ = false;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (inQ) {
+          if (ch === '"' && line[i+1] === '"') { cur += '"'; i++; }
+          else if (ch === '"') inQ = false;
+          else cur += ch;
+        } else if (ch === '"') { inQ = true; }
+        else if (ch === ',') { cols.push(cur.trim()); cur = ""; }
+        else cur += ch;
+      }
+      cols.push(cur.trim());
+      return cols;
+    };
+    return lines.map(parseRow);
+  };
+
+  // メイン取得処理
+  const fetchAll = async () => {
+    setStep(1); setErr(""); setProgress("シート一覧を取得中...");
+    try {
+      const id = extractId(sheetId);
+      let sheets = [];
+
+      // シート名取得を試みる
+      try {
+        setProgress("シートタブ名を取得中...");
+        sheets = await fetchSheetNames(id);
+      } catch (e) {
+        // HTMLパース失敗の場合、gviz JSONから1シート目のみ取得
+        setProgress("シート名取得に失敗。gvizAPIで再試行...");
+        await fetchSheetList(id);
+        sheets = [{ gid: "0", name: "シート1" }];
+      }
+
+      if (sheets.length === 0) throw new Error("シートが見つかりませんでした");
+      setSheetList(sheets);
+      setProgress(`${sheets.length}シートを検出。データを取得中...`);
+
+      // 各シートのデータを取得
+      const results = [];
+      for (let i = 0; i < sheets.length; i++) {
+        const s = sheets[i];
+        setProgress(`シートを取得中... ${i+1}/${sheets.length}: ${s.name}`);
+        try {
+          const csvText = await fetchSheetCsv(id, s.name);
+          const rows = parseCsv(csvText);
+          // ヘッダー行をスキップ（1行目が「業者名」「メモ」などの場合）
+          const headerKeywords = ["業者名","vendor","name","メモ","備考","note","会社","担当"];
+          const dataRows = rows.filter((r, idx) => {
+            if (idx === 0 && r[0] && headerKeywords.some(k => r[0].toLowerCase().includes(k.toLowerCase()))) return false;
+            return r[0] && r[0].trim();
+          });
+          const vList = dataRows.map(r => ({
+            name: (r[0] || "").trim(),
+            memo: (r[1] || "").trim(),
+            status: (r[2] || "").trim(),
+            phone: (r[3] || "").trim(),
+            email: (r[4] || "").trim(),
+          })).filter(v => v.name);
+          results.push({ muniName: s.name, vendors: vList, rawCount: rows.length });
+        } catch(e) {
+          results.push({ muniName: s.name, vendors: [], error: e.message });
+        }
+        // レートリミット回避
+        await new Promise(r => setTimeout(r, 150));
+      }
+      setSheetData(results);
+      setStep(2);
+    } catch(e) {
+      setErr(e.message || "取得に失敗しました");
+      setStep(0);
+    }
+  };
+
+  // インポート実行
+  const doImport = () => {
+    const id = extractId(sheetId);
+    let nd = { ...data };
+    let newMuniCount = 0, newVendorCount = 0, skipMuni = 0, skipVendor = 0;
+
+    // 都道府県を探す or 作成
+    let pref = (nd.prefectures || []).find(p => p.name === prefName || p.name === prefName + "県" || p.name === prefName + "府" || p.name === prefName + "都" || p.name === prefName + "道");
+    if (!pref) {
+      // 名前で部分一致
+      pref = (nd.prefectures || []).find(p => p.name.includes(prefName) || prefName.includes(p.name.replace(/[都道府県]$/, "")));
+    }
+    if (!pref) {
+      setErr(`都道府県「${prefName}」がMyDeskに見つかりません。設定から都道府県を先に追加してください。`);
+      return;
+    }
+
+    const normStr = s => (s || "").replace(/[\s\u3000]/g, "").toLowerCase();
+
+    sheetData.forEach(sheet => {
+      if (!sheet.muniName || sheet.error) return;
+      // 自治体を探す or 作成
+      let muni = (nd.municipalities || []).find(m =>
+        m.prefectureId === pref.id && normStr(m.name) === normStr(sheet.muniName)
+      );
+      if (!muni) {
+        muni = {
+          id: Date.now() + Math.random(),
+          prefectureId: pref.id,
+          name: sheet.muniName,
+          dustalk: "未展開",
+          status: "未接触",
+          treatyStatus: "未接触",
+          artBranch: "",
+          assigneeIds: [],
+          memos: [],
+          chat: [],
+          files: [],
+          createdAt: new Date().toISOString(),
+        };
+        nd = { ...nd, municipalities: [...(nd.municipalities || []), muni] };
+        newMuniCount++;
+      } else {
+        skipMuni++;
+      }
+
+      // 業者を追加
+      sheet.vendors.forEach(v => {
+        const existVendor = (nd.vendors || []).find(ev => normStr(ev.name) === normStr(v.name));
+        if (!existVendor) {
+          const newVendor = {
+            id: Date.now() + Math.random(),
+            name: v.name,
+            status: v.status || "未接触",
+            phone: v.phone || "",
+            email: v.email || "",
+            municipalityIds: [muni.id],
+            memos: v.memo ? [{ id: Date.now() + Math.random(), text: v.memo, userId: null, date: new Date().toISOString() }] : [],
+            chat: [],
+            files: [],
+            createdAt: new Date().toISOString(),
+          };
+          nd = { ...nd, vendors: [...(nd.vendors || []), newVendor] };
+          newVendorCount++;
+        } else {
+          // 既存業者に自治体IDを追加（紐付け）
+          if (!(existVendor.municipalityIds || []).includes(muni.id)) {
+            nd = { ...nd, vendors: (nd.vendors || []).map(ev =>
+              ev.id === existVendor.id
+                ? { ...ev, municipalityIds: [...(ev.municipalityIds || []), muni.id] }
+                : ev
+            )};
+          }
+          skipVendor++;
+        }
+      });
+    });
+
+    onSave(nd);
+    setImportResult({ newMuniCount, newVendorCount, skipMuni, skipVendor });
+    setStep(3);
+  };
+
+  const totalVendors = sheetData.reduce((s, d) => s + d.vendors.length, 0);
+  const PREF_LIST_ALL = ["北海道","青森県","岩手県","宮城県","秋田県","山形県","福島県","茨城県","栃木県","群馬県","埼玉県","千葉県","東京都","神奈川県","新潟県","富山県","石川県","福井県","山梨県","長野県","岐阜県","静岡県","愛知県","三重県","滋賀県","京都府","大阪府","兵庫県","奈良県","和歌山県","鳥取県","島根県","岡山県","広島県","山口県","徳島県","香川県","愛媛県","高知県","福岡県","佐賀県","長崎県","熊本県","大分県","宮崎県","鹿児島県","沖縄県"];
+
+  return (
+    <Sheet title="📊 スプレッドシート一括取込" onClose={onClose}>
+      {/* ステッパー */}
+      <div style={{display:"flex",gap:"0.25rem",marginBottom:"1.25rem"}}>
+        {STEPS.map((s,i)=>(
+          <div key={s} style={{flex:1,textAlign:"center"}}>
+            <div style={{width:24,height:24,borderRadius:"50%",margin:"0 auto 0.2rem",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:"0.72rem",
+              background:i<=step?"#2563eb":"#e2e8f0",color:i<=step?"white":"#94a3b8"}}>
+              {i<step?"✓":i+1}
+            </div>
+            <div style={{fontSize:"0.6rem",color:i===step?"#2563eb":"#94a3b8",fontWeight:i===step?700:400}}>{s}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── STEP 0: 入力 ── */}
+      {step===0&&(
+        <div>
+          <div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:"0.875rem",padding:"0.875rem",marginBottom:"1rem",fontSize:"0.78rem",color:"#1e40af",lineHeight:1.7}}>
+            📋 <strong>スプレッドシートの構成：</strong><br/>
+            ・シート名 = 自治体名<br/>
+            ・A列 = 業者名　B列 = メモ　C列 = ステータス（任意）<br/>
+            ・シートは「リンクを知っている全員が閲覧可」に設定してください
+          </div>
+
+          <div style={{marginBottom:"0.875rem"}}>
+            <div style={{fontSize:"0.78rem",fontWeight:700,color:"#374151",marginBottom:"0.35rem"}}>スプレッドシートID または URL</div>
+            <input value={sheetId} onChange={e=>setSheetId(e.target.value)}
+              placeholder="1q8cRuQ...またはhttps://docs.google.com/..."
+              style={{width:"100%",padding:"0.625rem 0.75rem",borderRadius:"0.625rem",border:"1.5px solid #e2e8f0",fontSize:"0.82rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
+          </div>
+
+          <div style={{marginBottom:"1rem"}}>
+            <div style={{fontSize:"0.78rem",fontWeight:700,color:"#374151",marginBottom:"0.35rem"}}>都道府県名（このスプレッドシートの都道府県）</div>
+            <select value={prefName} onChange={e=>setPrefName(e.target.value)}
+              style={{width:"100%",padding:"0.625rem 0.75rem",borderRadius:"0.625rem",border:"1.5px solid #e2e8f0",fontSize:"0.82rem",fontFamily:"inherit",outline:"none",background:"white"}}>
+              <option value="">-- 選択してください --</option>
+              {PREF_LIST_ALL.map(p=><option key={p} value={p}>{p}</option>)}
+            </select>
+          </div>
+
+          {err&&<div style={{background:"#fee2e2",border:"1px solid #fca5a5",borderRadius:"0.625rem",padding:"0.625rem 0.875rem",fontSize:"0.78rem",color:"#991b1b",marginBottom:"0.875rem",whiteSpace:"pre-wrap"}}>{err}</div>}
+
+          <button onClick={fetchAll} disabled={!sheetId.trim()||!prefName}
+            style={{width:"100%",padding:"0.875rem",borderRadius:"0.875rem",border:"none",
+              background:sheetId.trim()&&prefName?"#2563eb":"#e2e8f0",
+              color:sheetId.trim()&&prefName?"white":"#94a3b8",
+              fontWeight:800,fontSize:"0.9rem",cursor:sheetId.trim()&&prefName?"pointer":"not-allowed",fontFamily:"inherit"}}>
+            📥 データを取得する
+          </button>
+        </div>
+      )}
+
+      {/* ── STEP 1: 取得中 ── */}
+      {step===1&&(
+        <div style={{textAlign:"center",padding:"2rem 1rem"}}>
+          <div style={{fontSize:"2.5rem",marginBottom:"0.75rem",animation:"spin 1s linear infinite"}}>⏳</div>
+          <div style={{fontWeight:700,fontSize:"0.9rem",color:"#1e3a5f",marginBottom:"0.5rem"}}>取得中...</div>
+          <div style={{fontSize:"0.78rem",color:"#64748b",lineHeight:1.6}}>{progress}</div>
+          {err&&<div style={{marginTop:"1rem",background:"#fee2e2",borderRadius:"0.625rem",padding:"0.625rem",fontSize:"0.78rem",color:"#991b1b"}}>{err}</div>}
+        </div>
+      )}
+
+      {/* ── STEP 2: 確認 ── */}
+      {step===2&&(
+        <div>
+          <div style={{background:"#d1fae5",border:"1px solid #6ee7b7",borderRadius:"0.875rem",padding:"0.875rem",marginBottom:"1rem"}}>
+            <div style={{fontWeight:800,color:"#065f46",fontSize:"0.88rem",marginBottom:"0.25rem"}}>✅ {sheetData.length}自治体 / {totalVendors}業者 を検出</div>
+            <div style={{fontSize:"0.75rem",color:"#047857"}}>都道府県：{prefName}　インポート先を確認してください</div>
+          </div>
+
+          <div style={{maxHeight:320,overflowY:"auto",border:"1px solid #e2e8f0",borderRadius:"0.875rem",marginBottom:"1rem"}}>
+            {sheetData.map((d,i)=>(
+              <div key={i} style={{borderBottom:"1px solid #f1f5f9",padding:"0.625rem 0.875rem"}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:d.vendors.length?0:"0"}}>
+                  <span style={{fontWeight:700,fontSize:"0.85rem",color:"#1e3a5f"}}>🏛 {d.muniName}</span>
+                  <div style={{display:"flex",gap:"0.35rem",alignItems:"center"}}>
+                    {d.error&&<span style={{fontSize:"0.65rem",color:"#dc2626",background:"#fee2e2",borderRadius:999,padding:"0.1rem 0.4rem"}}>取得失敗</span>}
+                    <span style={{fontSize:"0.72rem",fontWeight:700,color:"#2563eb",background:"#dbeafe",borderRadius:999,padding:"0.1rem 0.5rem"}}>{d.vendors.length}業者</span>
+                  </div>
+                </div>
+                {d.vendors.length>0&&(
+                  <div style={{marginTop:"0.35rem",paddingLeft:"0.5rem"}}>
+                    {d.vendors.slice(0,5).map((v,j)=>(
+                      <div key={j} style={{fontSize:"0.72rem",color:"#374151",padding:"0.1rem 0",display:"flex",gap:"0.5rem"}}>
+                        <span>🏢 {v.name}</span>
+                        {v.memo&&<span style={{color:"#94a3b8",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{v.memo.slice(0,30)}</span>}
+                      </div>
+                    ))}
+                    {d.vendors.length>5&&<div style={{fontSize:"0.68rem",color:"#94a3b8"}}>...他{d.vendors.length-5}件</div>}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {err&&<div style={{background:"#fee2e2",borderRadius:"0.625rem",padding:"0.625rem",fontSize:"0.78rem",color:"#991b1b",marginBottom:"0.875rem"}}>{err}</div>}
+
+          <div style={{display:"flex",gap:"0.625rem"}}>
+            <button onClick={()=>setStep(0)}
+              style={{flex:1,padding:"0.75rem",borderRadius:"0.875rem",border:"1.5px solid #e2e8f0",background:"white",color:"#64748b",fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.85rem"}}>
+              戻る
+            </button>
+            <button onClick={doImport}
+              style={{flex:2,padding:"0.75rem",borderRadius:"0.875rem",border:"none",background:"#2563eb",color:"white",fontWeight:800,cursor:"pointer",fontFamily:"inherit",fontSize:"0.85rem"}}>
+              📥 {prefName}にインポート
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── STEP 3: 完了 ── */}
+      {step===3&&importResult&&(
+        <div style={{textAlign:"center",padding:"1.5rem 0"}}>
+          <div style={{fontSize:"3rem",marginBottom:"0.75rem"}}>🎉</div>
+          <div style={{fontWeight:800,fontSize:"1rem",color:"#1e3a5f",marginBottom:"1rem"}}>インポート完了！</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.5rem",marginBottom:"1.25rem"}}>
+            {[
+              ["🏛 新規自治体", importResult.newMuniCount+"件追加"],
+              ["🏢 新規業者", importResult.newVendorCount+"件追加"],
+              ["⏭ 既存自治体", importResult.skipMuni+"件スキップ"],
+              ["⏭ 既存業者", importResult.skipVendor+"件（自治体紐付け）"],
+            ].map(([k,v])=>(
+              <div key={k} style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:"0.75rem",padding:"0.625rem 0.5rem",textAlign:"center"}}>
+                <div style={{fontSize:"0.72rem",color:"#64748b",marginBottom:"0.15rem"}}>{k}</div>
+                <div style={{fontWeight:800,fontSize:"0.9rem",color:"#1e3a5f"}}>{v}</div>
+              </div>
+            ))}
+          </div>
+          <button onClick={onClose}
+            style={{width:"100%",padding:"0.875rem",borderRadius:"0.875rem",border:"none",background:"#2563eb",color:"white",fontWeight:800,cursor:"pointer",fontFamily:"inherit",fontSize:"0.9rem"}}>
+            閉じる
+          </button>
+        </div>
+      )}
+    </Sheet>
+  );
+}
+
 function DupModal({existing, incoming, onKeepBoth, onUseExisting, onCancel}) {
   // existing は {name, status?, phone?, email?, address?, notes?, title?, dueDate?, assignees?} 等
   const rows = [
@@ -904,7 +1273,7 @@ function TaskRow({task,onToggle,onStatusChange,onClick,users=[]}) {
         <div style={{fontSize:"0.9rem",fontWeight:done?400:600,color:done?C.textMuted:C.text,textDecoration:done?"line-through":"none",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{task.title}</div>
         <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginTop:"0.2rem",flexWrap:"wrap"}}>
           {task.salesRef&&<span style={{fontSize:"0.65rem",fontWeight:700,color:"white",background:salesBadgeColor,borderRadius:999,padding:"0.05rem 0.4rem",flexShrink:0}}>{task.salesRef.type} · {task.salesRef.name}</span>}
-          {task.dueDate&&<span style={{fontSize:"0.7rem",color:near&&!done?"#2563eb":C.textMuted,fontWeight:near&&!done?700:400}}>📅{task.dueDate}</span>}
+          {task.dueDate&&(()=>{const today=new Date().toISOString().slice(0,10);const isOD=!done&&task.dueDate<today;return <span style={{fontSize:"0.7rem",color:isOD?"#dc2626":near&&!done?"#2563eb":C.textMuted,fontWeight:isOD||near&&!done?700:400}}>{isOD?"⚠️":"📅"}{task.dueDate}{isOD?" 期限切れ":""}</span>;})()}
           {assignedNames.length>0&&<span style={{fontSize:"0.68rem",color:C.textSub}}>👤{assignedNames.join("・")}</span>}
         </div>
       </div>
@@ -928,6 +1297,7 @@ function ProjectRow({project,tasks,onClick}) {
       <div style={{flex:1,minWidth:0}}>
         <div style={{fontSize:"0.9rem",fontWeight:700,color:C.text}}>{project.name}</div>
         {project.salesRef&&<span style={{fontSize:"0.65rem",fontWeight:700,color:"white",background:salesBadgeColor,borderRadius:999,padding:"0.05rem 0.4rem",display:"inline-block",marginTop:"0.15rem"}}>{project.salesRef.type} · {project.salesRef.name}</span>}
+        {(()=>{const ts=(project.tasks||[]);if(!ts.length)return null;const done=ts.filter(t=>t.status==="完了").length;const pct=Math.round(done/ts.length*100);return <div style={{marginTop:"0.35rem"}}><div style={{display:"flex",justifyContent:"space-between",fontSize:"0.65rem",color:C.textMuted,marginBottom:"0.15rem"}}><span>進捗</span><span>{done}/{ts.length}完了 ({pct}%)</span></div><div style={{height:4,borderRadius:999,background:C.borderLight,overflow:"hidden"}}><div style={{height:"100%",width:pct+"%",background:pct===100?"#059669":C.accent,borderRadius:999}}/></div></div>;})()}
         {tasks.length>0?(
           <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginTop:"0.35rem"}}>
             <div style={{flex:1,maxWidth:120,height:4,background:C.borderLight,borderRadius:999,overflow:"hidden"}}>
@@ -1046,6 +1416,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
 
   // ── ローカル保存＋プッシュ（App に依存しない自己完結版）────────────────
   const saveWithPush = React.useCallback((nd, notifsBefore) => {
+    if (!nd || typeof nd !== "object") { console.warn("MyDesk: saveWithPush called with invalid data"); return; }
     setData(nd);
     window.__myDeskLastSave = Date.now(); // 競合防止タグ
     saveData(nd); // グローバル関数
@@ -1100,7 +1471,8 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
   const allProjects = data.projects || [];
 
   const visibleTasks    = allTasks.filter(t=>canSee(t,uid));
-  const visibleProjects = allProjects.filter(p=>canSee(p,uid));
+  const allVisibleProjects = allProjects.filter(p=>canSee(p,uid));
+  const visibleProjects = showMineOnly ? allVisibleProjects.filter(p=>(p.members||[]).includes(uid)||p.createdBy===uid) : allVisibleProjects;
 
   const requestReview = (taskId, toUserId, note) => {
     const task = allTasks.find(t => t.id === taskId);
@@ -1397,7 +1769,9 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
   const activePj   = allProjects.find(p=>p.id===activePjId);
   const activeTask = allTasks.find(t=>t.id===activeTaskId);
 
-  const standaloneTasks = visibleTasks.filter(t=>!t.projectId);
+  const [showMineOnly, setShowMineOnly] = React.useState(false);
+    const myVisibleTasks = showMineOnly ? visibleTasks.filter(t=>(t.assignees||[]).includes(uid)||t.createdBy===uid) : visibleTasks;
+    const standaloneTasks = myVisibleTasks.filter(t=>!t.projectId);
   const activeStandalone = standaloneTasks.filter(t=>t.status!=="完了");
   const doneStandalone   = standaloneTasks.filter(t=>t.status==="完了");
   const pjTasks    = activePj ? visibleTasks.filter(t=>t.projectId===activePjId) : [];
@@ -1624,6 +1998,12 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
         </div>
       )}
       <StatusCountBar tasks={standaloneTasks}/>
+      <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.75rem",flexWrap:"wrap"}}>
+        <button onClick={()=>setShowMineOnly(p=>!p)}
+          style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"1.5px solid "+(showMineOnly?"#2563eb":"#e2e8f0"),background:showMineOnly?"#dbeafe":"white",color:showMineOnly?"#1d4ed8":"#64748b",fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit"}}>
+          👤 自分のみ{showMineOnly?" ✓":""}
+        </button>
+      </div>
       <div style={{display:"flex",gap:"0.5rem",marginBottom:"1rem"}}>
         <Btn size="sm" onClick={()=>setSheet("addTask")}>＋ タスク</Btn>
         <Btn size="sm" variant="secondary" onClick={()=>setSheet("addProject")}>＋ プロジェクト</Btn>
@@ -1760,7 +2140,15 @@ function EmailView({data,setData,currentUser=null}) {
       if(!res.ok) throw new Error(json.error||"生成に失敗しました");
       setGenerated((json.text||"生成に失敗しました。").trim());
       setPhase("edit");
-    } catch(e) { setGenerated("生成に失敗しました。\n\n原因: "+(e.message||"不明")); setPhase("edit"); }
+    } catch(e) {
+      const msg = e.message || "不明なエラー";
+      let hint = "";
+      if (msg.includes("Failed to fetch") || msg.includes("NetworkError")) hint = "\n\n※ネットワークエラーです。接続を確認してください。";
+      else if (msg.includes("404")) hint = "\n\n※api/generate-email.js がVercelに未デプロイです。GitHubにファイルを追加してください。";
+      else if (msg.includes("500")) hint = "\n\n※サーバーエラーです。VercelにANTHROPIC_API_KEYが設定されているか確認してください。";
+      setGenerated("⚠️ 生成に失敗しました。\n\n原因: " + msg + hint);
+      setPhase("edit");
+    }
     setLoading(false);
   };
 
@@ -2342,6 +2730,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   const [activeVendor, setActiveVendor] = useState(null);
   const [activeCompany,setActiveCompany]= useState(null);
   const [sheet,        setSheet]        = useState(null);
+  const [showGSheetImport, setShowGSheetImport] = useState(false);
   const [form,         setForm]         = useState({});
   const [bulkText,     setBulkText]     = useState("");
   const [dupQueue,     setDupQueue]     = useState([]);
@@ -2489,27 +2878,59 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   };
 
   const parseCSV = (text) => {
-    const lines = text.replace(/\r/g,"").split("\n").filter(l=>l.trim());
-    if(!lines.length) return [];
+    // BOM除去・改行正規化
+    const clean = text.replace(/^\uFEFF/, "").replace(/\r\n/g,"\n").replace(/\r/g,"\n");
+    const lines = clean.split("\n").filter(l => l.trim());
+    if (!lines.length) return [];
     const parseRow = line => {
-      const cols=[]; let cur="", inQ=false;
-      for(let i=0;i<line.length;i++){
-        const ch=line[i];
-        if(inQ){ if(ch==='"'&&line[i+1]==='"'){cur+='"';i++;}else if(ch==='"')inQ=false;else cur+=ch; }
-        else if(ch==='"') inQ=true;
-        else if(ch===","){ cols.push(cur.trim()); cur=""; }
-        else cur+=ch;
+      const cols = []; let cur = "", inQ = false;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (inQ) {
+          if (ch === '"' && line[i+1] === '"') { cur += '"'; i++; }
+          else if (ch === '"') inQ = false;
+          else cur += ch;
+        } else if (ch === '"') {
+          inQ = true;
+        } else if (ch === ',') {
+          cols.push(cur.trim()); cur = "";
+        } else {
+          cur += ch;
+        }
       }
-      cols.push(cur.trim()); return cols;
+      cols.push(cur.trim());
+      return cols;
     };
     return lines.map(parseRow);
-  };
+  };;
 
-  const readFileAsText = (file) => new Promise((res,rej)=>{
-    const r=new FileReader();
-    r.onload=e=>res(e.target.result);
-    r.onerror=rej;
-    r.readAsText(file,"UTF-8");
+  // CSV文字コード自動判定（UTF-8/Shift-JIS両対応）
+  const readFileAsText = (file) => new Promise((res, rej) => {
+    const reader = new FileReader();
+    reader.onerror = rej;
+    reader.onload = (e) => {
+      const buf = e.target.result;
+      const bytes = new Uint8Array(buf);
+      // BOM チェック (UTF-8 BOM: EF BB BF)
+      if (bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) {
+        res(new TextDecoder("utf-8").decode(buf)); return;
+      }
+      // Shift-JIS 判定
+      let maySjis = false;
+      for (let i = 0; i < Math.min(bytes.length - 1, 4096); i++) {
+        const b = bytes[i];
+        if ((b >= 0x81 && b <= 0x9F) || (b >= 0xE0 && b <= 0xFC)) { maySjis = true; break; }
+      }
+      if (maySjis) {
+        try {
+          const sjisText = new TextDecoder("shift-jis").decode(buf);
+          const badCount = (sjisText.match(/\uFFFD/g) || []).length;
+          if (badCount < 10) { res(sjisText); return; }
+        } catch(e) {}
+      }
+      res(new TextDecoder("utf-8").decode(buf));
+    };
+    reader.readAsArrayBuffer(file);
   });
 
 
@@ -2663,7 +3084,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     const queue=[],toAdd=[];
     const targetList=munis.filter(m=>m.prefectureId===activePref);
     lines.forEach(name=>{const ex=checkDup(name,targetList);if(ex)queue.push({name,existing:ex});else toAdd.push(name);});
-    let nd={...data,municipalities:[...data.municipalities,...toAdd.map(n=>({id:Date.now()+Math.random(),prefectureId:activePref,name:n,dustalk:"未展開",status:"未接触",assigneeIds:[],treatyStatus:'未接触',artBranch:"",memos:[],chat:[],createdAt:new Date().toISOString()}))]};
+    let nd={...data,municipalities:[...(data.municipalities||[]),...toAdd.map(n=>({id:Date.now()+Math.random(),prefectureId:activePref,name:n,dustalk:"未展開",status:"未接触",assigneeIds:[],treatyStatus:'未接触',artBranch:"",memos:[],chat:[],createdAt:new Date().toISOString()}))]};
     save(nd);setBulkDone({added:toAdd.length,dupes:queue.length});
     if(queue.length>0){setDupQueue(queue);setDupIdx(0);}else{setBulkText("");setSheet("bulkDone");}
   };
@@ -3348,9 +3769,10 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     // List view - grouped by status
     const compsByStatus = Object.keys(COMPANY_STATUS).map(s=>({
       status:s, meta:COMPANY_STATUS[s],
-      items:companies.filter(c=>(c.status||"未接触")===s&&(!compSearch||(c.name||"").includes(compSearch)))
+      items:companies.filter(c=>(c.status||"未接触")===s&&(!compSearch||normSearch(c.name).includes(normSearch(compSearch))))
     })).filter(g=>g.items.length>0||(compSearch&&companies.some(c=>(c.status||"未接触")===s)));
-    const searchedComps = compSearch ? companies.filter(c=>(c.name||"").toLowerCase().includes(compSearch.toLowerCase())) : null;
+    const normSearch = s => (s||"").replace(/[\s\u3000]/g,"").toLowerCase();
+    const searchedComps = compSearch ? companies.filter(c=>normSearch(c.name).includes(normSearch(compSearch))) : null;
     return (
       <div>
         <TopTabs/>
@@ -3482,10 +3904,10 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           };
           const doImport=()=>{
             if(!preview?.length)return;
-            const existNames=new Set(companies.map(c=>c.name));
-            const toAdd=preview.filter(r=>!existNames.has(r.name)).map(r=>({
+            const existNames=new Set(companies.map(c=>(c.name||"").trim()));
+            const toAdd=preview.filter(r=>r.name&&!existNames.has((r.name||"").trim())).map(r=>({
               id:Date.now()+Math.random(),
-              name:r.name, status:r.status||"未接触",
+              name:(r.name||"").trim(), status:r.status||"未接触",
               phone:r.phone, email:r.email, address:r.address||"",
               assigneeIds:[], memos:r.notes?[{id:Date.now()+Math.random(),text:r.notes,userId:currentUser?.id,date:new Date().toISOString()}]:[],
               chat:[], createdAt:new Date().toISOString()
@@ -3515,7 +3937,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                 <label style={{display:"block",border:`2px dashed ${C.border}`,borderRadius:"0.875rem",padding:"1.25rem",textAlign:"center",cursor:"pointer",background:C.bg}}>
                   <div style={{fontSize:"1.5rem",marginBottom:"0.35rem"}}>📂</div>
                   <div style={{fontSize:"0.8rem",fontWeight:600,color:C.textSub}}>クリックしてCSVを選択</div>
-                  <div style={{fontSize:"0.7rem",color:C.textMuted,marginTop:"0.2rem"}}>UTF-8 CSV形式</div>
+                  <div style={{fontSize:"0.7rem",color:C.textMuted,marginTop:"0.2rem"}}>UTF-8 / Shift-JIS 両対応 (.csv)</div>
                   <input type="file" accept=".csv,.txt" onChange={handleFile} style={{display:"none"}}/>
                 </label>
                 {err&&<div style={{marginTop:"0.5rem",fontSize:"0.78rem",color:"#dc2626",background:"#fff1f2",borderRadius:"0.5rem",padding:"0.5rem 0.75rem"}}>{err}</div>}
@@ -3649,7 +4071,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       );
     }
     // Vendor list - grouped by status
-    const searchedVendors = vendSearch ? vendors.filter(v=>v.name.toLowerCase().includes(vendSearch.toLowerCase())) : null;
+    const normVSearch = s => (s||"").replace(/[\s\u3000]/g,"").toLowerCase();
+    const searchedVendors = vendSearch ? vendors.filter(v=>normVSearch(v.name).includes(normVSearch(vendSearch))) : null;
     return (
       <div>
         <TopTabs/>
@@ -3782,7 +4205,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           };
           const doImport=()=>{
             if(!preview?.length)return;
-            const existNames=new Set(vendors.map(v=>v.name));
+            const existNames=new Set(vendors.map(v=>(v.name||"").trim()));
             const toAdd=preview.filter(r=>!existNames.has(r.name)).map(r=>{
               // Resolve municipality IDs from names
               const mids=r.muniNames.map(mn=>munis.find(m=>m.name===mn)?.id).filter(Boolean);
@@ -4005,7 +4428,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
         )}
         {sheet==="linkVendor"&&(()=>{
           const already=mvend.map(v=>v.id);
-          const linkable=vendors.filter(v=>!already.includes(v.id)&&(v.name.includes(linkVendorSearch)||!linkVendorSearch));
+          const linkable=vendors.filter(v=>!already.includes(v.id)&&((v.name||"").includes(linkVendorSearch)||!linkVendorSearch));
           const doLink=(vid)=>{
             save({...data,vendors:vendors.map(v=>v.id===vid?{...v,municipalityIds:[...(v.municipalityIds||[]),activeMuni]}:v)});
             setSheet(null);
@@ -4055,6 +4478,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
         </button>
         <button onClick={()=>setSheet("importMuni")}
           style={{padding:"0.5rem 0.625rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📥</button>
+        <button onClick={()=>setShowGSheetImport(true)}
+          style={{padding:"0.5rem 0.625rem",borderRadius:"0.75rem",border:"1.5px solid #bfdbfe",background:"#eff6ff",color:"#2563eb",fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>📊 GSheet</button>
       </div>
       <BulkBar statusMap={MUNI_STATUS} applyFn={applyBulkMuni}
         extraFields={[["dustalk","ダストーク展開",DUSTALK_STATUS],["treatyStatus","連携協定",TREATY_STATUS],["status","アプローチ",MUNI_STATUS]]}/>
@@ -4364,6 +4789,10 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           </Sheet>
         );
       })()}
+      {showGSheetImport&&<GSheetImportWizard
+        data={data} prefs={prefs} munis={munis} vendors={vendors}
+        onSave={(nd)=>{save(nd);}}
+        onClose={()=>setShowGSheetImport(false)}/>}
       {sheet==="importMuniDone"&&(
         <Sheet title="インポート完了" onClose={()=>setSheet(null)}>
           <div style={{textAlign:"center",padding:"1.5rem 0"}}>
