@@ -1425,6 +1425,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
   const [doneOpenList,setDoneOpenList]= useState(false);  // タスクリスト完了折り畳み
   const [doneOpenPj,setDoneOpenPj]  = useState(false);   // プロジェクト内完了折り畳み
   const [taskDupModal,setTaskDupModal] = useState(null);  // 重複確認モーダル
+  const [showMineOnly, setShowMineOnly] = React.useState(false);
 
   // ── ローカル保存＋プッシュ（App に依存しない自己完結版）────────────────
   const saveWithPush = React.useCallback((nd, notifsBefore) => {
@@ -1772,8 +1773,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
   const activePj   = allProjects.find(p=>p.id===activePjId);
   const activeTask = allTasks.find(t=>t.id===activeTaskId);
 
-  const [showMineOnly, setShowMineOnly] = React.useState(false);
-    const myVisibleTasks = showMineOnly ? visibleTasks.filter(t=>(t.assignees||[]).includes(uid)||t.createdBy===uid) : visibleTasks;
+  const myVisibleTasks = showMineOnly ? visibleTasks.filter(t=>(t.assignees||[]).includes(uid)||t.createdBy===uid) : visibleTasks;
     const standaloneTasks = myVisibleTasks.filter(t=>!t.projectId);
   const activeStandalone = standaloneTasks.filter(t=>t.status!=="完了");
   const doneStandalone   = standaloneTasks.filter(t=>t.status==="完了");
