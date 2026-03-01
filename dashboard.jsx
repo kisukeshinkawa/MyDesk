@@ -249,6 +249,186 @@ function StatusPill({status,onChange}) {
 
 
 // ─── DUPLICATE DETECT MODAL ─────────────────────────────────────────────
+
+// ─── FILE SECTION ─────────────────────────────────────────────────────────────
+// Supabase Storage を使ったファイルアップロード
+// 事前準備: Supabaseダッシュボード → Storage → New bucket → "mydesk-files" (Public)
+const STORAGE_BUCKET = "mydesk-files";
+
+async function uploadFileToSupabase(file, entityType, entityId) {
+  const safeName = file.name.replace(/[^a-zA-Z0-9._\-\u3000-\u9fff\u30A0-\u30FF\u3040-\u309F]/g, "_");
+  const path = `${entityType}/${entityId}/${Date.now()}_${safeName}`;
+  const res = await fetch(`${SB_URL}/storage/v1/object/${STORAGE_BUCKET}/${path}`, {
+    method: "POST",
+    headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": file.type || "application/octet-stream" },
+    body: file,
+  });
+  if (!res.ok) { const e = await res.text(); throw new Error(e); }
+  return {
+    id: Date.now() + Math.random(),
+    name: file.name,
+    url: `${SB_URL}/storage/v1/object/public/${STORAGE_BUCKET}/${path}`,
+    path,
+    size: file.size,
+    type: file.type,
+    uploadedAt: new Date().toISOString(),
+  };
+}
+
+async function deleteFileFromSupabase(path) {
+  await fetch(`${SB_URL}/storage/v1/object/${STORAGE_BUCKET}/${path}`, {
+    method: "DELETE",
+    headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` },
+  });
+}
+
+function FileSection({ files=[], onAdd, onDelete, currentUserId, readOnly=false }) {
+  const [uploading, setUploading] = React.useState(false);
+  const [error, setError] = React.useState("");
+  const fileInputRef = React.useRef();
+
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 20 * 1024 * 1024) { setError("20MB以下のファイルを選択してください"); return; }
+    setUploading(true); setError("");
+    try {
+      const result = await uploadFileToSupabase(file, "tasks", currentUserId || "shared");
+      onAdd({ ...result, uploadedBy: currentUserId });
+    } catch (err) {
+      setError("アップロード失敗。Supabase Storageのバケット「mydesk-files」が作成されているか確認してください。");
+    } finally { setUploading(false); if(fileInputRef.current) fileInputRef.current.value = ""; }
+  };
+
+  const fmt = (bytes) => bytes > 1024*1024 ? `${(bytes/1024/1024).toFixed(1)}MB` : `${(bytes/1024).toFixed(0)}KB`;
+  const icon = (type="") => type.startsWith("image/") ? "🖼" : type.includes("pdf") ? "📄" : type.includes("spreadsheet") || type.includes("excel") ? "📊" : type.includes("word") || type.includes("document") ? "📝" : "📎";
+
+  return (
+    <div>
+      {files.length === 0 && <div style={{textAlign:"center",padding:"1.25rem",color:C.textMuted,background:C.bg,borderRadius:"0.875rem",fontSize:"0.82rem",marginBottom:"0.75rem"}}>ファイルがありません</div>}
+      <div style={{display:"flex",flexDirection:"column",gap:"0.4rem",marginBottom:"0.75rem"}}>
+        {files.map(f => (
+          <div key={f.id||f.url} style={{display:"flex",alignItems:"center",gap:"0.625rem",background:"white",border:`1px solid ${C.border}`,borderRadius:"0.75rem",padding:"0.5rem 0.75rem",boxShadow:C.shadow}}>
+            <span style={{fontSize:"1.2rem",flexShrink:0}}>{icon(f.type)}</span>
+            <div style={{flex:1,minWidth:0}}>
+              <a href={f.url} target="_blank" rel="noopener noreferrer" style={{fontWeight:600,fontSize:"0.85rem",color:C.accent,textDecoration:"none",display:"block",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</a>
+              <div style={{fontSize:"0.65rem",color:C.textMuted}}>{f.size?fmt(f.size)+""  :""}{f.uploadedAt?" · "+new Date(f.uploadedAt).toLocaleDateString("ja-JP"):""}</div>
+            </div>
+            {!readOnly && (
+              <button onClick={async()=>{if(!window.confirm("削除しますか？"))return; if(f.path){try{await deleteFileFromSupabase(f.path);}catch(e){}} onDelete(f.id||f.url);}}
+                style={{background:"none",border:"none",color:"#dc2626",cursor:"pointer",fontSize:"0.85rem",padding:"0.2rem",flexShrink:0}}>✕</button>
+            )}
+          </div>
+        ))}
+      </div>
+      {error && <div style={{color:"#dc2626",fontSize:"0.75rem",marginBottom:"0.5rem",padding:"0.5rem",background:"#fee2e2",borderRadius:"0.5rem"}}>{error}</div>}
+      {!readOnly && (
+        <label style={{display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem",border:`2px dashed ${uploading?C.accent:C.border}`,borderRadius:"0.875rem",padding:"0.875rem",cursor:"pointer",background:uploading?C.accentBg:C.bg,color:uploading?C.accentDark:C.textSub,fontWeight:700,fontSize:"0.82rem"}}>
+          {uploading ? "⏳ アップロード中..." : "📎 ファイルを追加（最大20MB）"}
+          <input ref={fileInputRef} type="file" onChange={handleFile} disabled={uploading} style={{display:"none"}}/>
+        </label>
+      )}
+    </div>
+  );
+}
+
+
+// ─── REVIEW REQUEST ───────────────────────────────────────────────────────────
+function ReviewRequestSection({ task, users=[], uid, allTasks=[], onRequestReview }) {
+  const [showPicker, setShowPicker] = React.useState(false);
+  const [selectedUser, setSelectedUser] = React.useState(null);
+  const [note, setNote] = React.useState("");
+
+  // このタスクへの確認依頼タスク
+  const reviewTasks = allTasks.filter(t => t.reviewOf?.taskId === task.id);
+  // このタスク自体が確認依頼タスクの場合、元タスクを取得
+  const originalTask = task.reviewOf ? allTasks.find(t => t.id === task.reviewOf.taskId) : null;
+  const originalUser = task.reviewOf ? users.find(u => u.id === task.reviewOf.fromUserId) : null;
+
+  const candidates = users.filter(u => u.id !== uid);
+
+  return (
+    <div style={{marginTop:"1rem"}}>
+      {/* このタスクが確認依頼として作られた場合 */}
+      {task.reviewOf && (
+        <div style={{background:"#fef3c7",border:"1px solid #fbbf24",borderRadius:"0.875rem",padding:"0.75rem 1rem",marginBottom:"0.75rem"}}>
+          <div style={{fontSize:"0.68rem",fontWeight:700,color:"#92400e",marginBottom:"0.3rem"}}>📋 確認依頼タスク</div>
+          <div style={{fontSize:"0.82rem",color:"#78350f",marginBottom:"0.25rem"}}>
+            依頼元：<strong>{originalUser?.name || "不明"}</strong>
+          </div>
+          <div style={{fontSize:"0.78rem",color:"#92400e"}}>
+            元タスク：{originalTask?.title || task.reviewOf.taskTitle || "（削除済み）"}
+          </div>
+          {task.reviewOf.note && <div style={{fontSize:"0.75rem",color:"#92400e",marginTop:"0.25rem",whiteSpace:"pre-wrap"}}>💬 {task.reviewOf.note}</div>}
+        </div>
+      )}
+      {/* 送信済み確認依頼一覧 */}
+      {reviewTasks.length > 0 && (
+        <div style={{marginBottom:"0.75rem"}}>
+          <div style={{fontSize:"0.68rem",fontWeight:700,color:C.textSub,marginBottom:"0.35rem",textTransform:"uppercase",letterSpacing:"0.04em"}}>📨 確認依頼済み</div>
+          {reviewTasks.map(rt => {
+            const assignee = users.find(u => (rt.assignees||[]).includes(u.id));
+            const statusColor = rt.status === "完了" ? "#059669" : rt.status === "進行中" ? "#2563eb" : "#6b7280";
+            const statusBg = rt.status === "完了" ? "#d1fae5" : rt.status === "進行中" ? "#dbeafe" : "#f3f4f6";
+            return (
+              <div key={rt.id} style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"0.75rem",padding:"0.5rem 0.875rem",marginBottom:"0.35rem",display:"flex",alignItems:"center",gap:"0.625rem"}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:"0.82rem",fontWeight:600,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{rt.title}</div>
+                  <div style={{fontSize:"0.68rem",color:C.textMuted}}>担当：{assignee?.name || "未設定"}</div>
+                </div>
+                <span style={{fontSize:"0.68rem",fontWeight:700,background:statusBg,color:statusColor,borderRadius:999,padding:"0.1rem 0.45rem",flexShrink:0}}>{rt.status}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {/* 確認依頼ボタン（完了タスクのみ） */}
+      {task.status === "完了" && !task.reviewOf && (
+        <div>
+          {!showPicker ? (
+            <button onClick={() => setShowPicker(true)}
+              style={{width:"100%",padding:"0.625rem",borderRadius:"0.75rem",border:"1.5px solid #f59e0b",background:"#fef3c7",color:"#92400e",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
+              📨 確認依頼を送る
+            </button>
+          ) : (
+            <div style={{background:"#fffbeb",border:"1.5px solid #fbbf24",borderRadius:"0.875rem",padding:"0.875rem"}}>
+              <div style={{fontWeight:700,fontSize:"0.82rem",color:"#92400e",marginBottom:"0.625rem"}}>確認依頼を送る</div>
+              <div style={{fontSize:"0.75rem",fontWeight:700,color:C.textSub,marginBottom:"0.35rem"}}>依頼先</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:"0.35rem",marginBottom:"0.75rem"}}>
+                {candidates.map(u => (
+                  <button key={u.id} onClick={() => setSelectedUser(u.id === selectedUser ? null : u.id)}
+                    style={{padding:"0.3rem 0.75rem",borderRadius:999,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",
+                      border:`1.5px solid ${selectedUser===u.id?"#f59e0b":C.border}`,
+                      background:selectedUser===u.id?"#fef3c7":"white",
+                      color:selectedUser===u.id?"#92400e":C.textSub}}>
+                    {selectedUser===u.id?"✓ ":""}{u.name}
+                  </button>
+                ))}
+                {candidates.length===0&&<span style={{fontSize:"0.78rem",color:C.textMuted}}>他のユーザーがいません</span>}
+              </div>
+              <div style={{fontSize:"0.75rem",fontWeight:700,color:C.textSub,marginBottom:"0.35rem"}}>メッセージ（任意）</div>
+              <textarea value={note} onChange={e=>setNote(e.target.value)}
+                placeholder="確認をお願いします..." rows={2}
+                style={{width:"100%",padding:"0.5rem",borderRadius:"0.625rem",border:`1.5px solid ${C.border}`,fontSize:"0.82rem",fontFamily:"inherit",resize:"none",outline:"none",boxSizing:"border-box",marginBottom:"0.75rem"}}/>
+              <div style={{display:"flex",gap:"0.5rem"}}>
+                <button onClick={()=>{setShowPicker(false);setSelectedUser(null);setNote("");}}
+                  style={{flex:1,padding:"0.5rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.82rem"}}>
+                  キャンセル
+                </button>
+                <button onClick={()=>{if(!selectedUser)return; onRequestReview(selectedUser,note); setShowPicker(false);setSelectedUser(null);setNote("");}}
+                  disabled={!selectedUser}
+                  style={{flex:2,padding:"0.5rem",borderRadius:"0.75rem",border:"none",background:selectedUser?"#f59e0b":"#e5e7eb",color:selectedUser?"white":"#9ca3af",fontWeight:700,cursor:selectedUser?"pointer":"not-allowed",fontFamily:"inherit",fontSize:"0.82rem"}}>
+                  依頼を送る
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DupModal({existing, incoming, onKeepBoth, onUseExisting, onCancel}) {
   // existing は {name, status?, phone?, email?, address?, notes?, title?, dueDate?, assignees?} 等
   const rows = [
@@ -777,7 +957,7 @@ function TaskCommentInput({taskId, data, setData, users=[], uid}) {
 }
 
 // ─── TASK VIEW ────────────────────────────────────────────────────────────────
-function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjTab,setPjTab}) {
+function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjTab,setPjTab,navTarget,clearNavTarget}) {
   const uid = currentUser?.id;
 
   // ── ローカル保存＋プッシュ（App に依存しない自己完結版）────────────────
@@ -810,6 +990,20 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
   const [screen,setScreen] = useState("list");
   const [activePjId,setActivePjId] = useState(null);
   const [activeTaskId,setActiveTaskId] = useState(null);
+  // 営業など外部からのナビゲーション
+  React.useEffect(()=>{
+    if(!navTarget) return;
+    if(navTarget.type==="task"){
+      setActiveTaskId(navTarget.id);
+      setFromProject(null);
+      setScreen("taskDetail");
+      setTaskTab("info");
+    } else if(navTarget.type==="project"){
+      setActivePjId(navTarget.id);
+      setScreen("projectDetail");
+    }
+    clearNavTarget?.();
+  },[navTarget]);
   const [fromProject,setFromProject] = useState(null);
   const [sheet,setSheet] = useState(null);
   const [tMemoIn,setTMemoIn]= useState({});
@@ -823,6 +1017,52 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
 
   const visibleTasks    = allTasks.filter(t=>canSee(t,uid));
   const visibleProjects = allProjects.filter(p=>canSee(p,uid));
+
+  const requestReview = (taskId, toUserId, note) => {
+    const task = allTasks.find(t => t.id === taskId);
+    if (!task) return;
+    const toUser = users.find(u => u.id === toUserId);
+    const reviewTask = {
+      id: Date.now() + Math.random(),
+      title: `【確認依頼】${task.title}`,
+      status: "未着手",
+      dueDate: task.dueDate || "",
+      notes: note || "",
+      assignees: [toUserId],
+      isPrivate: task.isPrivate || false,
+      projectId: task.projectId || null,
+      createdBy: uid,
+      reviewOf: { taskId: task.id, taskTitle: task.title, fromUserId: uid, note: note || "" },
+      comments: [], memos: [], chat: [], files: [],
+      createdAt: new Date().toISOString(),
+    };
+    let nd = { ...data, tasks: [...allTasks, reviewTask] };
+    nd = addNotif(nd, {
+      type: "task_assign",
+      title: `「${task.title}」の確認依頼が届きました`,
+      body: `依頼者：${users.find(u=>u.id===uid)?.name||""}  ${note?"メッセージ："+note:""}`,
+      toUserIds: [toUserId],
+      fromUserId: uid,
+    });
+    saveWithPush(nd, data.notifications);
+  };
+
+  const addFileToTask = (taskId, file) => {
+    const nd = { ...data, tasks: allTasks.map(t => t.id === taskId ? { ...t, files: [...(t.files||[]), file] } : t) };
+    setData(nd); saveData(nd);
+  };
+  const removeFileFromTask = (taskId, fileIdOrUrl) => {
+    const nd = { ...data, tasks: allTasks.map(t => t.id === taskId ? { ...t, files: (t.files||[]).filter(f=>(f.id||f.url)!==fileIdOrUrl) } : t) };
+    setData(nd); saveData(nd);
+  };
+  const addFileToPj = (pjId, file) => {
+    const nd = { ...data, projects: allProjects.map(p => p.id === pjId ? { ...p, files: [...(p.files||[]), file] } : p) };
+    setData(nd); saveData(nd);
+  };
+  const removeFileFromPj = (pjId, fileIdOrUrl) => {
+    const nd = { ...data, projects: allProjects.map(p => p.id === pjId ? { ...p, files: (p.files||[]).filter(f=>(f.id||f.url)!==fileIdOrUrl) } : p) };
+    setData(nd); saveData(nd);
+  };
 
   const updateTask = (id,ch) => {
     const prev = allTasks.find(t=>t.id===id);
@@ -861,6 +1101,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     const toIds=(f.assignees||[]).filter(i=>i!==uid);
     if(toIds.length) nd=addNotif(nd,{type:"task_assign",title:`「${item.title}」に担当者として追加されました`,body:"",toUserIds:toIds,fromUserId:uid});
     saveWithPush(nd, data.notifications);
+    setSheet(null); // 保存後にシートを閉じる
   };
   const addTask = (f, pjId=null, skipDup=false) => {
     if(!skipDup && f.title?.trim()) {
@@ -887,6 +1128,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     const toIds=(f.members||[]).filter(i=>i!==uid);
     if(toIds.length) nd=addNotif(nd,{type:"task_assign",title:`「${item.name}」プロジェクトのメンバーに追加されました`,body:"",toUserIds:toIds,fromUserId:uid});
     saveWithPush(nd, data.notifications);
+    setSheet(null); // 保存後にシートを閉じる
   };
   const addProject = (f, skipDup=false) => {
     if(!skipDup && f.name?.trim()) {
@@ -1047,7 +1289,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     const parentPj = activeTask.projectId ? allProjects.find(p=>p.id===activeTask.projectId) : null;
     const assignedNames = (activeTask.assignees||[]).map(id=>users.find(u=>u.id===id)?.name).filter(Boolean);
     const taskChatUnread=(data.notifications||[]).filter(n=>n.toUserId===uid&&!n.read&&n.type==="mention"&&n.entityId===activeTask.id).length;
-    const TASK_TABS=[["info","📋","情報"],["memo","📝","メモ"],["chat","💬","チャット"]];
+    const TASK_TABS=[["info","📋","情報"],["memo","📝","メモ"],["chat","💬","チャット"],["review","📨","確認依頼"],["files","📎","ファイル"]];
     return (
       <div>
         <button onClick={()=>{setScreen(fromProject?"projectDetail":"list");setTaskTab("info");}}
@@ -1109,6 +1351,15 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
         {taskTab==="memo"&&TMemoSection({entityKey:"tasks",entityId:activeTask.id,memos:activeTask.memos||[]})}
         {/* チャットタブ */}
         {taskTab==="chat"&&TChatSection({entityKey:"tasks",entityId:activeTask.id,chat:activeTask.chat||[]})}
+        {/* 確認依頼タブ */}
+        {taskTab==="review"&&<ReviewRequestSection
+          task={activeTask} users={users} uid={uid} allTasks={allTasks}
+          onRequestReview={(toUserId,note)=>requestReview(activeTask.id,toUserId,note)}/>}
+        {/* ファイルタブ */}
+        {taskTab==="files"&&<FileSection
+          files={activeTask.files||[]} currentUserId={uid}
+          onAdd={f=>addFileToTask(activeTask.id,f)}
+          onDelete={fid=>removeFileFromTask(activeTask.id,fid)}/>}
         {sheet==="editTask"&&<Sheet title="タスクを編集" onClose={()=>setSheet(null)}>
           <TaskForm initial={activeTask} users={users} currentUserId={uid} onClose={()=>setSheet(null)}
             onSave={f=>{updateTask(activeTask.id,f);setSheet(null);}}/>
@@ -1121,7 +1372,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
   if (screen==="projectDetail" && activePj) {
     const memberNames = (activePj.members||[]).map(id=>users.find(u=>u.id===id)?.name).filter(Boolean);
     const pjChatUnread=(data.notifications||[]).filter(n=>n.toUserId===uid&&!n.read&&n.type==="mention"&&n.entityId===activePj.id).length;
-    const PJ_TABS=[["tasks","📋","タスク"],["memo","📝","メモ"],["chat","💬","チャット"]];
+    const PJ_TABS=[["tasks","📋","タスク"],["memo","📝","メモ"],["chat","💬","チャット"],["files","📎","ファイル"]];
     return (
       <div>
         <button onClick={()=>{setScreen("list");setPjTab("tasks");}}
@@ -1191,6 +1442,10 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
         {pjTab==="memo"&&TMemoSection({entityKey:"projects",entityId:activePj.id,memos:activePj.memos||[]})}
         {/* チャットタブ */}
         {pjTab==="chat"&&TChatSection({entityKey:"projects",entityId:activePj.id,chat:activePj.chat||[]})}
+        {pjTab==="files"&&<FileSection
+          files={activePj.files||[]} currentUserId={uid}
+          onAdd={f=>addFileToPj(activePj.id,f)}
+          onDelete={fid=>removeFileFromPj(activePj.id,fid)}/>}
         {sheet==="addPjTask"&&<Sheet title="タスクを追加" onClose={()=>setSheet(null)}>
           <TaskForm initial={{status:"未着手"}} users={users} currentUserId={uid} onClose={()=>setSheet(null)}
             onSave={f=>{addTask(f,activePjId);}}/>
@@ -1798,7 +2053,7 @@ function MapTab({prefs,munis,vendors,companies,prefCoords,onSelectPref}) {
 }
 
 // ─── SALES TASK PANEL (top-level component to satisfy React hooks rules) ────────
-function SalesTaskPanel({ entityType, entityId, entityName, data, onSave, currentUser, users=[] }) {
+function SalesTaskPanel({ entityType, entityId, entityName, data, onSave, currentUser, users=[], onNavigateToTask, onNavigateToProject }) {
   const uid = currentUser?.id;
   const allTasks    = data.tasks    || [];
   const allProjects = data.projects || [];
@@ -1852,8 +2107,12 @@ function SalesTaskPanel({ entityType, entityId, entityName, data, onSave, curren
             const pjTasks=allTasks.filter(t=>t.projectId===pj.id);
             const done=pjTasks.filter(t=>t.status==="完了").length;
             return (
-              <div key={pj.id} style={{background:C.bg,borderRadius:"0.75rem",padding:"0.625rem 0.875rem",marginBottom:"0.4rem",border:`1px solid ${C.border}`}}>
-                <div style={{fontWeight:700,fontSize:"0.85rem",color:C.text,marginBottom:"0.2rem"}}>{pj.name}</div>
+              <div key={pj.id} onClick={()=>onNavigateToProject?.(pj.id)}
+                style={{background:C.bg,borderRadius:"0.75rem",padding:"0.625rem 0.875rem",marginBottom:"0.4rem",border:`1px solid ${C.border}`,cursor:onNavigateToProject?"pointer":"default"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.2rem"}}>
+                  <div style={{fontWeight:700,fontSize:"0.85rem",color:C.text}}>{pj.name}</div>
+                  {onNavigateToProject&&<span style={{fontSize:"0.68rem",color:C.textMuted}}>›</span>}
+                </div>
                 <div style={{display:"flex",alignItems:"center",gap:"0.5rem"}}>
                   <div style={{flex:1,height:4,background:C.borderLight,borderRadius:999,overflow:"hidden"}}>
                     <div style={{width:pjTasks.length?`${(done/pjTasks.length)*100}%`:"0%",height:"100%",background:"#059669",borderRadius:999,transition:"width 0.3s"}}/>
@@ -1875,12 +2134,16 @@ function SalesTaskPanel({ entityType, entityId, entityName, data, onSave, curren
             const due=t.dueDate?new Date(t.dueDate):null;
             const overdue=due&&due<today&&t.status!=="完了";
             return (
-              <div key={t.id} style={{background:"white",borderRadius:"0.75rem",padding:"0.625rem 0.875rem",marginBottom:"0.4rem",border:`1px solid ${overdue?"#fca5a5":C.border}`,display:"flex",alignItems:"center",gap:"0.625rem"}}>
+              <div key={t.id} onClick={()=>onNavigateToTask?.(t.id)}
+                style={{background:"white",borderRadius:"0.75rem",padding:"0.625rem 0.875rem",marginBottom:"0.4rem",border:`1px solid ${overdue?"#fca5a5":C.border}`,display:"flex",alignItems:"center",gap:"0.625rem",cursor:onNavigateToTask?"pointer":"default"}}>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontWeight:600,fontSize:"0.85rem",color:t.status==="完了"?C.textMuted:C.text,textDecoration:t.status==="完了"?"line-through":"none",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div>
                   {t.dueDate&&<div style={{fontSize:"0.65rem",color:overdue?"#dc2626":C.textMuted,marginTop:"0.1rem"}}>{overdue?"⚠️ ":""}期限：{t.dueDate}</div>}
                 </div>
-                <span style={{fontSize:"0.68rem",fontWeight:700,background:m.bg,color:m.color,borderRadius:999,padding:"0.1rem 0.45rem",flexShrink:0}}>{t.status}</span>
+                <div style={{display:"flex",alignItems:"center",gap:"0.35rem",flexShrink:0}}>
+                  <span style={{fontSize:"0.68rem",fontWeight:700,background:m.bg,color:m.color,borderRadius:999,padding:"0.1rem 0.45rem"}}>{t.status}</span>
+                  {onNavigateToTask&&<span style={{fontSize:"0.7rem",color:C.textMuted}}>›</span>}
+                </div>
               </div>
             );
           })}
@@ -1946,7 +2209,7 @@ function SalesTaskPanel({ entityType, entityId, entityName, data, onSave, curren
 }
 
 // ─── SALES VIEW ───────────────────────────────────────────────────────────────
-function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab }) {
+function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab, onNavigateToTask, onNavigateToProject }) {
   // salesTab managed by App for persistence
   const [muniScreen,   setMuniScreen]   = useState("top"); // top|muniDetail
   const [prevTab,      setPrevTab]      = useState(null);   // for back navigation
@@ -2017,6 +2280,15 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       if(JSON.stringify(ndPrefs)!==JSON.stringify(prefs)){const u={...data,prefectures:ndPrefs};setData(u);saveData(u);}
     }
   },[]);
+
+  const addFileToEntity = (entityKey, entityId, file) => {
+    const nd = { ...data, [entityKey]: (data[entityKey]||[]).map(e => e.id===entityId ? {...e, files:[...(e.files||[]),file]} : e) };
+    save(nd);
+  };
+  const removeFileFromEntity = (entityKey, entityId, fileIdOrUrl) => {
+    const nd = { ...data, [entityKey]: (data[entityKey]||[]).map(e => e.id===entityId ? {...e, files:(e.files||[]).filter(f=>(f.id||f.url)!==fileIdOrUrl)} : e) };
+    save(nd);
+  };
 
   const save = (d) => {
     window.__myDeskLastSave = Date.now(); // 競合防止タグ
@@ -2210,7 +2482,11 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     let nd={...data};
     if(form.id){
       const old=munis.find(m=>m.id===form.id);
-      nd={...nd,municipalities:munis.map(m=>m.id===form.id?{...m,...form}:m)};
+      // dustalk が「展開」に変わった or 手動更新日設定
+      const updAt = (form.dustalk==="展開" && old?.dustalk!=="展開")
+        ? new Date().toISOString().slice(0,10)
+        : (form.updatedAt||old?.updatedAt||"");
+      nd={...nd,municipalities:munis.map(m=>m.id===form.id?{...m,...form,updatedAt:updAt}:m)};
       const fields=[["status","アプローチ"],["dustalk","ダストーク"],["treatyStatus","連携協定"],["artBranch","管轄支店"]];
       fields.forEach(([f,label])=>{
         if(old&&old[f]!==form[f]) nd=addChangeLog(nd,{entityType:"自治体",entityId:form.id,entityName:form.name,field:label,oldVal:old[f],newVal:form[f]});
@@ -2913,8 +3189,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           </div>
           {/* Sub-tabs: メモ・チャット・タスク */}
           <div style={{display:"flex",background:"white",borderRadius:"0.75rem",padding:"0.2rem",marginBottom:"1rem",border:`1px solid ${C.border}`}}>
-            {[["memo","📝","メモ"],["chat","💬","チャット"],["tasks","✅","タスク"]].map(([id,icon,lbl])=>(
-              <button key={id} onClick={()=>setActiveDetail(id)} style={{flex:1,padding:"0.5rem",borderRadius:"0.5rem",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.78rem",position:"relative",background:activeDetail===id?C.accent:"transparent",color:activeDetail===id?"white":C.textSub}}>
+            {[["memo","📝","メモ"],["chat","💬","チャット"],["tasks","✅","タスク"],["files","📎","ファイル"]].map(([id,icon,lbl])=>(
+              <button key={id} onClick={()=>setActiveDetail(id)} style={{flex:1,padding:"0.5rem",borderRadius:"0.5rem",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.72rem",position:"relative",background:activeDetail===id?C.accent:"transparent",color:activeDetail===id?"white":C.textSub}}>
                 {icon} {lbl}
                 {id==="chat"&&compChatUnread>0&&<span style={{position:"absolute",top:3,right:6,background:"#dc2626",color:"white",borderRadius:999,fontSize:"0.5rem",fontWeight:800,padding:"0.05rem 0.25rem",lineHeight:1.4}}>{compChatUnread}</span>}
                 {id==="tasks"&&(()=>{const n=(data.tasks||[]).filter(t=>t.salesRef?.id===comp.id&&t.status!=="完了").length;return n>0?<span style={{position:"absolute",top:3,right:6,background:C.accent,color:"white",borderRadius:999,fontSize:"0.5rem",fontWeight:800,padding:"0.05rem 0.25rem",lineHeight:1.4}}>{n}</span>:null;})()}
@@ -2923,7 +3199,10 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           </div>
           {activeDetail==="memo"&&MemoSection({memos:comp.memos,entityKey:"companies",entityId:comp.id})}
           {activeDetail==="chat"&&ChatSection({chat:comp.chat,entityKey:"companies",entityId:comp.id})}
-          {activeDetail==="tasks"&&<SalesTaskPanel entityType="企業" entityId={comp.id} entityName={comp.name} data={data} onSave={save} currentUser={currentUser} users={users}/>}
+          {activeDetail==="tasks"&&<SalesTaskPanel entityType="企業" entityId={comp.id} entityName={comp.name} data={data} onSave={save} currentUser={currentUser} users={users} onNavigateToTask={onNavigateToTask} onNavigateToProject={onNavigateToProject}/>}
+          {activeDetail==="files"&&<FileSection files={comp.files||[]} currentUserId={currentUser?.id}
+            onAdd={f=>addFileToEntity("companies",comp.id,f)}
+            onDelete={fid=>removeFileFromEntity("companies",comp.id,fid)}/>}
           {sheet==="editCompany"&&(
             <Sheet title="企業を編集" onClose={()=>setSheet(null)}>
               <FieldLbl label="企業名 *"><Input value={form.name||""} onChange={e=>setForm({...form,name:e.target.value})} autoFocus/></FieldLbl>
@@ -2946,9 +3225,9 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     // List view - grouped by status
     const compsByStatus = Object.keys(COMPANY_STATUS).map(s=>({
       status:s, meta:COMPANY_STATUS[s],
-      items:companies.filter(c=>(c.status||"未接触")===s&&(!compSearch||c.name.includes(compSearch)))
+      items:companies.filter(c=>(c.status||"未接触")===s&&(!compSearch||(c.name||"").includes(compSearch)))
     })).filter(g=>g.items.length>0||(compSearch&&companies.some(c=>(c.status||"未接触")===s)));
-    const searchedComps = compSearch ? companies.filter(c=>c.name.toLowerCase().includes(compSearch.toLowerCase())) : null;
+    const searchedComps = compSearch ? companies.filter(c=>(c.name||"").toLowerCase().includes(compSearch.toLowerCase())) : null;
     return (
       <div>
         <TopTabs/>
@@ -3213,8 +3492,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           </div>
           {/* Sub-tabs: メモ・チャット・タスク */}
           <div style={{display:"flex",background:"white",borderRadius:"0.75rem",padding:"0.2rem",marginBottom:"1rem",border:`1px solid ${C.border}`}}>
-            {[["memo","📝","メモ"],["chat","💬","チャット"],["tasks","✅","タスク"]].map(([id,icon,lbl])=>(
-              <button key={id} onClick={()=>setActiveDetail(id)} style={{flex:1,padding:"0.5rem",borderRadius:"0.5rem",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.78rem",position:"relative",background:activeDetail===id?C.accent:"transparent",color:activeDetail===id?"white":C.textSub}}>
+            {[["memo","📝","メモ"],["chat","💬","チャット"],["tasks","✅","タスク"],["files","📎","ファイル"]].map(([id,icon,lbl])=>(
+              <button key={id} onClick={()=>setActiveDetail(id)} style={{flex:1,padding:"0.5rem",borderRadius:"0.5rem",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.72rem",position:"relative",background:activeDetail===id?C.accent:"transparent",color:activeDetail===id?"white":C.textSub}}>
                 {icon} {lbl}
                 {id==="chat"&&vendChatUnread>0&&<span style={{position:"absolute",top:3,right:6,background:"#dc2626",color:"white",borderRadius:999,fontSize:"0.5rem",fontWeight:800,padding:"0.05rem 0.25rem",lineHeight:1.4}}>{vendChatUnread}</span>}
                 {id==="tasks"&&(()=>{const n=(data.tasks||[]).filter(t=>t.salesRef?.id===v.id&&t.status!=="完了").length;return n>0?<span style={{position:"absolute",top:3,right:6,background:C.accent,color:"white",borderRadius:999,fontSize:"0.5rem",fontWeight:800,padding:"0.05rem 0.25rem",lineHeight:1.4}}>{n}</span>:null;})()}
@@ -3223,7 +3502,10 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           </div>
           {activeDetail==="memo"&&MemoSection({memos:v.memos,entityKey:"vendors",entityId:v.id})}
           {activeDetail==="chat"&&ChatSection({chat:v.chat,entityKey:"vendors",entityId:v.id})}
-          {activeDetail==="tasks"&&<SalesTaskPanel entityType="業者" entityId={v.id} entityName={v.name} data={data} onSave={save} currentUser={currentUser} users={users}/>}
+          {activeDetail==="tasks"&&<SalesTaskPanel entityType="業者" entityId={v.id} entityName={v.name} data={data} onSave={save} currentUser={currentUser} users={users} onNavigateToTask={onNavigateToTask} onNavigateToProject={onNavigateToProject}/>}
+          {activeDetail==="files"&&<FileSection files={v.files||[]} currentUserId={currentUser?.id}
+            onAdd={f=>addFileToEntity("vendors",v.id,f)}
+            onDelete={fid=>removeFileFromEntity("vendors",v.id,fid)}/>}
           {sheet==="editVendor"&&(
             <Sheet title="業者を編集" onClose={()=>setSheet(null)}>
               <FieldLbl label="業者名 *"><Input value={form.name||""} onChange={e=>setForm({...form,name:e.target.value})} autoFocus/></FieldLbl>
@@ -3489,6 +3771,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             <div style={{padding:"0.2rem 0.5rem",borderRadius:999,fontSize:"0.7rem",fontWeight:700,background:ds.bg,color:ds.color}}>{ds.icon} {muni.dustalk||"未展開"}</div>
             {(()=>{const ts=TREATY_STATUS[muni.treatyStatus];return ts?<span style={{padding:"0.2rem 0.5rem",borderRadius:999,fontSize:"0.7rem",fontWeight:700,background:ts.bg,color:ts.color}}>🤝 {muni.treatyStatus}</span>:null;})()}
             <SChip s={muni.status||"未接触"} map={MUNI_STATUS}/>
+            {muni.updatedAt&&<span style={{fontSize:"0.7rem",color:C.textMuted,marginLeft:"0.4rem"}}>更新：{muni.updatedAt}</span>}
           </div>
           {muni.artBranch&&<div style={{marginTop:"0.5rem",fontSize:"0.75rem",color:C.textSub}}>🏢 アート引越センター 管轄支店：{muni.artBranch}</div>}
           {muni.address&&<div style={{marginTop:"0.35rem",fontSize:"0.75rem",color:C.textSub}}>📍 {muni.address}</div>}
@@ -3546,10 +3829,27 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
         </div>
         {activeDetail==="memo"&&MemoSection({memos:muni.memos,entityKey:"municipalities",entityId:muni.id})}
         {activeDetail==="chat"&&ChatSection({chat:muni.chat,entityKey:"municipalities",entityId:muni.id})}
-        {activeDetail==="tasks"&&<SalesTaskPanel entityType="自治体" entityId={muni.id} entityName={muni.name} data={data} onSave={save} currentUser={currentUser} users={users}/>}
+        {activeDetail==="tasks"&&<SalesTaskPanel entityType="自治体" entityId={muni.id} entityName={muni.name} data={data} onSave={save} currentUser={currentUser} users={users} onNavigateToTask={onNavigateToTask} onNavigateToProject={onNavigateToProject}/>}
+        {activeDetail==="files"&&<FileSection files={muni.files||[]} currentUserId={currentUser?.id}
+          onAdd={f=>addFileToEntity("municipalities",muni.id,f)}
+          onDelete={fid=>removeFileFromEntity("municipalities",muni.id,fid)}/>}
         <div style={{marginTop:"1rem"}}>
           <Btn variant="danger" size="sm" onClick={()=>{if(window.confirm(`${muni.name}を削除しますか？`))deleteMuni(muni.id);}}>🗑 自治体を削除</Btn>
         </div>
+        {/* 展開済み自治体 CSV出力 */}
+        {sheet===null&&salesTab==="muni"&&munis.filter(m=>m.dustalk==="展開").length>0&&(
+          <div style={{marginBottom:"0.5rem",textAlign:"right"}}>
+            <button onClick={()=>{
+              const rows=munis.filter(m=>m.dustalk==="展開").map(m=>{
+                const pref=PREFECTURES.find(p=>p.id===m.prefectureId);
+                return [pref?.name||"",m.name,m.status||"",m.dustalk||"",m.treatyStatus||"",m.updatedAt||"",m.notes||""];
+              });
+              downloadCSV("展開済み自治体.csv",["都道府県","自治体名","ステータス","ダストーク展開","連携協定","更新日","備考"],rows);
+            }} style={{padding:"0.35rem 0.75rem",borderRadius:"0.625rem",border:"1.5px solid #059669",background:"#d1fae5",color:"#059669",fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit"}}>
+              📥 展開済みCSV出力 ({munis.filter(m=>m.dustalk==="展開").length}件)
+            </button>
+          </div>
+        )}
         {sheet==="editMuni"&&(
           <Sheet title="自治体を編集" onClose={()=>setSheet(null)}>
             <FieldLbl label="自治体名 *"><Input value={form.name||""} onChange={e=>setForm({...form,name:e.target.value})} autoFocus/></FieldLbl>
@@ -3560,6 +3860,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             <FieldLbl label="連携協定ステータス"><TreatyPicker value={form.treatyStatus||"未接触"} onChange={s=>setForm({...form,treatyStatus:s})}/></FieldLbl>
             <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
             <FieldLbl label="備考"><Textarea value={form.notes||""} onChange={e=>setForm({...form,notes:e.target.value})} style={{height:70}} placeholder="メモ、特記事項など"/></FieldLbl>
+            <FieldLbl label="更新日（任意）"><Input type="date" value={form.updatedAt||""} onChange={e=>setForm({...form,updatedAt:e.target.value})}/></FieldLbl>
             <div style={{display:"flex",gap:"0.625rem"}}>
               <Btn variant="secondary" style={{flex:1}} onClick={()=>setSheet(null)}>キャンセル</Btn>
               <Btn style={{flex:2}} onClick={saveMuni} disabled={!form.name?.trim()}>保存</Btn>
@@ -3994,10 +4295,13 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
     setTimeout(()=>setPwMsg(""),3000);
   };
 
+  const [contractModal, setContractModal] = useState(null); // null | 'upload' | 'generate'
+
   const menuItems = [
-    {id:"profile", icon:"👤", label:"プロフィール設定"},
-    {id:"links",   icon:"🔗", label:"外部サービス連携"},
-    {id:"account", icon:"🔑", label:"パスワード変更"},
+    {id:"profile",  icon:"👤", label:"プロフィール設定"},
+    {id:"links",    icon:"🔗", label:"外部サービス連携"},
+    {id:"contract", icon:"📜", label:"契約書確認"},
+    {id:"account",  icon:"🔑", label:"パスワード変更"},
   ];
 
   return (
@@ -4111,6 +4415,110 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
                 <span style={{fontSize:"0.9rem"}}>↗</span>
               </a>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 契約書確認 ── */}
+      {section==="contract"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:"0.875rem"}}>
+          {/* ヘッダー */}
+          <div style={{background:"linear-gradient(135deg,#1e3a5f,#2563eb)",borderRadius:"1rem",padding:"1.25rem 1.25rem 1rem",color:"white",position:"relative",overflow:"hidden"}}>
+            <div style={{position:"absolute",right:-20,top:-20,fontSize:"5rem",opacity:0.08}}>📜</div>
+            <div style={{fontSize:"1.1rem",fontWeight:800,marginBottom:"0.25rem"}}>📜 契約書確認</div>
+            <div style={{fontSize:"0.78rem",opacity:0.85,lineHeight:1.5}}>契約書のアップロード・生成・管理ができます</div>
+          </div>
+
+          {/* アクションカード：契約書をアップロード */}
+          <div style={{background:"white",borderRadius:"1rem",border:"1px solid "+C.border,boxShadow:C.shadow,overflow:"hidden"}}>
+            <div style={{padding:"0.75rem 1rem",background:"linear-gradient(135deg,#065f46,#059669)",color:"white",display:"flex",alignItems:"center",gap:"0.5rem"}}>
+              <span style={{fontSize:"1.2rem"}}>📁</span>
+              <div>
+                <div style={{fontWeight:800,fontSize:"0.88rem"}}>契約書をアップロード</div>
+                <div style={{fontSize:"0.7rem",opacity:0.85}}>既存の契約書PDFを保存・管理</div>
+              </div>
+            </div>
+            <div style={{padding:"1rem"}}>
+              <div style={{fontSize:"0.8rem",color:C.textSub,marginBottom:"0.875rem",lineHeight:1.6}}>
+                PDFや画像形式の契約書をアップロードして、チーム内で共有・確認できます。
+                署名済み契約書の保管にも使用できます。
+              </div>
+              <button onClick={()=>setContractModal("upload")}
+                style={{width:"100%",padding:"0.75rem",borderRadius:"0.75rem",border:"none",background:"#059669",color:"white",fontWeight:700,fontSize:"0.9rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
+                📤 契約書をアップロード
+              </button>
+            </div>
+          </div>
+
+          {/* アクションカード：契約書を生成 */}
+          <div style={{background:"white",borderRadius:"1rem",border:"1px solid "+C.border,boxShadow:C.shadow,overflow:"hidden"}}>
+            <div style={{padding:"0.75rem 1rem",background:"linear-gradient(135deg,#4c1d95,#7c3aed)",color:"white",display:"flex",alignItems:"center",gap:"0.5rem"}}>
+              <span style={{fontSize:"1.2rem"}}>✨</span>
+              <div>
+                <div style={{fontWeight:800,fontSize:"0.88rem"}}>契約書を自動生成</div>
+                <div style={{fontSize:"0.7rem",opacity:0.85}}>必要情報を入力して契約書を作成</div>
+              </div>
+            </div>
+            <div style={{padding:"1rem"}}>
+              <div style={{display:"flex",flexDirection:"column",gap:"0.5rem",marginBottom:"0.875rem"}}>
+                {[
+                  {icon:"🏢", label:"取引先情報（会社名・担当者）"},
+                  {icon:"📋", label:"契約種別・契約内容の概要"},
+                  {icon:"📅", label:"契約期間・支払条件"},
+                  {icon:"💰", label:"金額・振込先情報"},
+                ].map(item=>(
+                  <div key={item.label} style={{display:"flex",alignItems:"center",gap:"0.625rem",padding:"0.5rem 0.625rem",background:C.bg,borderRadius:"0.625rem",border:"1px solid "+C.borderLight}}>
+                    <span style={{fontSize:"1rem",flexShrink:0}}>{item.icon}</span>
+                    <span style={{fontSize:"0.78rem",color:C.textSub,fontWeight:500}}>{item.label}</span>
+                  </div>
+                ))}
+              </div>
+              <button onClick={()=>setContractModal("generate")}
+                style={{width:"100%",padding:"0.75rem",borderRadius:"0.75rem",border:"none",background:"linear-gradient(135deg,#6d28d9,#7c3aed)",color:"white",fontWeight:700,fontSize:"0.9rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
+                ✨ 情報を入力して契約書を生成
+              </button>
+            </div>
+          </div>
+
+          {/* アクションカード：契約書一覧 */}
+          <div style={{background:"white",borderRadius:"1rem",border:"1px solid "+C.border,boxShadow:C.shadow,overflow:"hidden"}}>
+            <div style={{padding:"0.75rem 1rem",background:"linear-gradient(135deg,#92400e,#d97706)",color:"white",display:"flex",alignItems:"center",gap:"0.5rem"}}>
+              <span style={{fontSize:"1.2rem"}}>📋</span>
+              <div>
+                <div style={{fontWeight:800,fontSize:"0.88rem"}}>契約書一覧・管理</div>
+                <div style={{fontSize:"0.7rem",opacity:0.85}}>過去の契約書を検索・確認</div>
+              </div>
+            </div>
+            <div style={{padding:"1rem"}}>
+              <div style={{fontSize:"0.8rem",color:C.textSub,marginBottom:"0.875rem",lineHeight:1.6}}>
+                企業別・期間別に契約書を一覧表示。ステータス管理（締結前・締結済・期限切れ）や更新リマインダーも設定できます。
+              </div>
+              <button onClick={()=>setContractModal("list")}
+                style={{width:"100%",padding:"0.75rem",borderRadius:"0.75rem",border:"1.5px solid #d97706",background:"#fffbeb",color:"#92400e",fontWeight:700,fontSize:"0.9rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
+                📋 契約書一覧を見る
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 準備中モーダル ── */}
+      {contractModal&&(
+        <div style={{position:"fixed",inset:0,zIndex:600,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.6)",padding:"1rem"}}
+          onClick={()=>setContractModal(null)}>
+          <div style={{background:"white",borderRadius:"1.25rem",padding:"2rem 1.5rem",maxWidth:340,width:"100%",textAlign:"center",boxShadow:"0 16px 60px rgba(0,0,0,0.25)"}}
+            onClick={e=>e.stopPropagation()}>
+            <div style={{fontSize:"3rem",marginBottom:"0.75rem"}}>🚧</div>
+            <div style={{fontWeight:800,fontSize:"1.05rem",color:C.text,marginBottom:"0.5rem"}}>準備中</div>
+            <div style={{fontSize:"0.85rem",color:C.textSub,lineHeight:1.6,marginBottom:"1.5rem"}}>
+              {contractModal==="upload"&&"契約書アップロード機能は現在開発中です。もうしばらくお待ちください。"}
+              {contractModal==="generate"&&"契約書自動生成機能は現在開発中です。必要情報の入力フォームと生成エンジンを準備しています。"}
+              {contractModal==="list"&&"契約書一覧機能は現在開発中です。もうしばらくお待ちください。"}
+            </div>
+            <button onClick={()=>setContractModal(null)}
+              style={{padding:"0.75rem 2rem",borderRadius:"0.75rem",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.9rem",cursor:"pointer",fontFamily:"inherit"}}>
+              閉じる
+            </button>
           </div>
         </div>
       )}
@@ -4772,6 +5180,7 @@ export default function App() {
   const [tab,setTab]         = useState(()=>localStorage.getItem("md_tab")||"tasks");
   const [salesTab,setSalesTab]=useState(()=>localStorage.getItem("md_salesTab")||"muni");
   const [taskTab,setTaskTab]  =useState(()=>localStorage.getItem("md_taskTab")||"info");
+  const [navTarget,setNavTarget]=useState(null); // {type:'task'|'project', id}
   const [pjTab,setPjTab]      =useState(()=>localStorage.getItem("md_pjTab")||"tasks");
   const [loaded,setLoaded]   = useState(false);
   const [showUserMenu,setShowUserMenu] = useState(false);
@@ -5221,11 +5630,14 @@ export default function App() {
           <ErrorBoundary>
             {tab==="tasks"     && <TaskView      data={data} setData={setData} users={users} currentUser={currentUser}
               taskTab={taskTab} setTaskTab={(v)=>persistTab('md_taskTab',v,setTaskTab)}
-              pjTab={pjTab} setPjTab={(v)=>persistTab('md_pjTab',v,setPjTab)}/>}
+              pjTab={pjTab} setPjTab={(v)=>persistTab('md_pjTab',v,setPjTab)}
+              navTarget={navTarget} clearNavTarget={()=>setNavTarget(null)}/>}
             {tab==="schedule"  && <ScheduleView/>}
             {tab==="email"     && <EmailView     data={data} setData={setData} currentUser={currentUser}/>}
             {tab==="sales"     && <SalesView     data={data} setData={setData} currentUser={currentUser} users={users}
-              salesTab={salesTab} setSalesTab={(v)=>persistTab("md_salesTab",v,setSalesTab)}/>}
+              salesTab={salesTab} setSalesTab={(v)=>persistTab("md_salesTab",v,setSalesTab)}
+              onNavigateToTask={(id)=>{setNavTarget({type:"task",id});persistTab("md_tab","tasks",setTab);}}
+              onNavigateToProject={(id)=>{setNavTarget({type:"project",id});persistTab("md_tab","tasks",setTab);}}/>}
             {tab==="analytics" && <AnalyticsView data={data} setData={setData} currentUser={currentUser} users={users} saveWithPush={saveWithPush}/>}
             {tab==="mypage"    && <MyPageView currentUser={currentUser} setCurrentUser={setCurrentUser} users={users} setUsers={setUsers} onLogout={handleLogout} pushEnabled={pushEnabled} setPushEnabled={setPushEnabled} subscribePush={subscribePush} unsubscribePush={unsubscribePush}/>}
           </ErrorBoundary>
