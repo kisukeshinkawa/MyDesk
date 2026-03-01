@@ -250,28 +250,50 @@ function StatusPill({status,onChange}) {
 
 // ─── DUPLICATE DETECT MODAL ─────────────────────────────────────────────
 function DupModal({existing, incoming, onKeepBoth, onUseExisting, onCancel}) {
+  // existing は {name, status?, phone?, email?, address?, notes?, title?, dueDate?, assignees?} 等
+  const rows = [
+    existing.title   && ["タイトル",   existing.title],
+    existing.name    && ["名前",       existing.name],
+    existing.status  && ["ステータス", existing.status],
+    existing.phone   && ["電話",       existing.phone],
+    existing.email   && ["メール",     existing.email],
+    existing.address && ["住所",       existing.address],
+    existing.notes   && ["備考",       existing.notes.slice(0,40)+(existing.notes.length>40?"…":"")],
+    existing.dueDate && ["期限",       existing.dueDate],
+    existing.assigneesText && ["担当者", existing.assigneesText],
+    existing.membersText   && ["メンバー", existing.membersText],
+  ].filter(Boolean);
   return (
-    <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.55)"}}>
-      <div style={{background:"white",borderRadius:"1.25rem",padding:"1.5rem 1.25rem",maxWidth:360,width:"calc(100vw - 2rem)",boxShadow:"0 8px 40px rgba(0,0,0,0.2)"}}>
+    <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.6)",padding:"1rem"}}>
+      <div style={{background:"white",borderRadius:"1.25rem",padding:"1.5rem 1.25rem",maxWidth:380,width:"100%",boxShadow:"0 12px 50px rgba(0,0,0,0.25)",maxHeight:"85vh",overflowY:"auto"}}>
         <div style={{textAlign:"center",marginBottom:"1rem"}}>
-          <div style={{fontSize:"2rem",marginBottom:"0.5rem"}}>⚠️</div>
+          <div style={{fontSize:"1.8rem",marginBottom:"0.4rem"}}>⚠️</div>
           <div style={{fontWeight:800,fontSize:"1rem",color:C.text}}>同じ名前が既に存在します</div>
-          <div style={{fontSize:"0.8rem",color:C.textMuted,marginTop:"0.25rem"}}>「{incoming}」</div>
+          <div style={{fontSize:"0.78rem",color:C.textMuted,marginTop:"0.2rem"}}>登録しようとした名前</div>
+          <div style={{fontWeight:700,fontSize:"0.95rem",color:"#dc2626",background:"#fee2e2",borderRadius:"0.625rem",padding:"0.5rem 0.875rem",marginTop:"0.4rem"}}>「{incoming}」</div>
         </div>
-        <div style={{background:C.bg,borderRadius:"0.75rem",padding:"0.75rem 1rem",marginBottom:"1.25rem",fontSize:"0.82rem",color:C.textSub}}>
-          <div style={{fontWeight:700,color:C.text,marginBottom:"0.3rem"}}>既存データ</div>
-          <div>名前: {existing.name}</div>
-          {existing.status&&<div>ステータス: {existing.status}</div>}
-          {existing.phone&&<div>電話: {existing.phone}</div>}
+        <div style={{background:C.bg,borderRadius:"0.875rem",padding:"0.875rem 1rem",marginBottom:"1.25rem"}}>
+          <div style={{fontSize:"0.7rem",fontWeight:700,color:C.textMuted,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:"0.5rem"}}>📋 既に登録されているデータ</div>
+          {rows.length===0
+            ? <div style={{fontSize:"0.82rem",color:C.textMuted}}>（詳細情報なし）</div>
+            : rows.map(([label,val])=>(
+              <div key={label} style={{display:"flex",gap:"0.5rem",padding:"0.3rem 0",borderBottom:`1px solid ${C.borderLight}`}}>
+                <span style={{fontSize:"0.75rem",fontWeight:700,color:C.textSub,flexShrink:0,minWidth:60}}>{label}</span>
+                <span style={{fontSize:"0.82rem",color:C.text,wordBreak:"break-all"}}>{val}</span>
+              </div>
+            ))
+          }
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
-          <button onClick={onUseExisting} style={{padding:"0.75rem",borderRadius:"0.75rem",border:"none",background:C.accent,color:"white",fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.9rem"}}>
-            既存のものを使用（入力内容を破棄）
+          {onUseExisting&&(
+            <button onClick={onUseExisting} style={{padding:"0.75rem",borderRadius:"0.75rem",border:"none",background:C.accent,color:"white",fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.9rem"}}>
+              既存のものを開く
+            </button>
+          )}
+          <button onClick={onKeepBoth} style={{padding:"0.75rem",borderRadius:"0.75rem",border:`1.5px solid ${C.accent}`,background:"white",color:C.accent,fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.9rem"}}>
+            それでも新規追加する
           </button>
-          <button onClick={onKeepBoth} style={{padding:"0.75rem",borderRadius:"0.75rem",border:"1.5px solid "+C.accent,background:"white",color:C.accent,fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.9rem"}}>
-            別々として保存（両方残す）
-          </button>
-          <button onClick={onCancel} style={{padding:"0.625rem",borderRadius:"0.75rem",border:"1.5px solid "+C.border,background:"white",color:C.textSub,fontWeight:600,cursor:"pointer",fontFamily:"inherit",fontSize:"0.85rem"}}>
+          <button onClick={onCancel} style={{padding:"0.625rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:600,cursor:"pointer",fontFamily:"inherit",fontSize:"0.85rem"}}>
             キャンセル（入力に戻る）
           </button>
         </div>
@@ -761,6 +783,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
   // ── ローカル保存＋プッシュ（App に依存しない自己完結版）────────────────
   const saveWithPush = React.useCallback((nd, notifsBefore) => {
     setData(nd);
+    window.__myDeskLastSave = Date.now(); // 競合防止タグ
     saveData(nd); // グローバル関数
     // 新着通知を検出してWeb Push送信
     const newNotifs = (nd.notifications||[]).filter(n=>
@@ -791,6 +814,9 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
   const [sheet,setSheet] = useState(null);
   const [tMemoIn,setTMemoIn]= useState({});
   const [tChatIn,setTChatIn]= useState({});
+  const [doneOpenList,setDoneOpenList]= useState(false);  // タスクリスト完了折り畳み
+  const [doneOpenPj,setDoneOpenPj]  = useState(false);   // プロジェクト内完了折り畳み
+  const [taskDupModal,setTaskDupModal] = useState(null);  // 重複確認モーダル
 
   const allTasks    = data.tasks    || [];
   const allProjects = data.projects || [];
@@ -815,7 +841,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     }
     saveWithPush(nd, data.notifications);
   };
-  const addTask    = (f,pjId=null) => {
+  const _doAddTask = (f,pjId=null) => {
     const item={id:Date.now(),...f,projectId:pjId,createdBy:uid,comments:[],memos:[],chat:[],createdAt:new Date().toISOString()};
     let nd={...data,tasks:[...allTasks,item]};
     // Auto-add task assignees to project members
@@ -836,14 +862,49 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     if(toIds.length) nd=addNotif(nd,{type:"task_assign",title:`「${item.title}」に担当者として追加されました`,body:"",toUserIds:toIds,fromUserId:uid});
     saveWithPush(nd, data.notifications);
   };
+  const addTask = (f, pjId=null, skipDup=false) => {
+    if(!skipDup && f.title?.trim()) {
+      const norm = s => s.replace(/[\s　]/g,'').toLowerCase();
+      const scope = pjId ? allTasks.filter(t=>t.projectId===pjId) : allTasks.filter(t=>!t.projectId);
+      const dup = scope.find(t => norm(t.title)===norm(f.title));
+      if(dup) {
+        setTaskDupModal({
+          existing: {...dup, title: dup.title, status: dup.status, dueDate: dup.dueDate||"",
+            assigneesText: (dup.assignees||[]).map(id=>users.find(u=>u.id===id)?.name).filter(Boolean).join("、")},
+          incoming: f.title,
+          onKeepBoth: ()=>{ setTaskDupModal(null); _doAddTask(f,pjId); setSheet(null); },
+          onCancel: ()=>setTaskDupModal(null),
+        });
+        return;
+      }
+    }
+    _doAddTask(f, pjId);
+  };
   const deleteTask = id => { const u={...data,tasks:allTasks.filter(t=>t.id!==id)}; setData(u); saveData(u); };
-  const addProject = (f) => {
+  const _doAddProject = (f) => {
     const item={id:Date.now(),...f,createdBy:uid,memos:[],chat:[],createdAt:new Date().toISOString()};
     let nd={...data,projects:[...allProjects,item]};
-    // メンバーに通知
     const toIds=(f.members||[]).filter(i=>i!==uid);
     if(toIds.length) nd=addNotif(nd,{type:"task_assign",title:`「${item.name}」プロジェクトのメンバーに追加されました`,body:"",toUserIds:toIds,fromUserId:uid});
     saveWithPush(nd, data.notifications);
+  };
+  const addProject = (f, skipDup=false) => {
+    if(!skipDup && f.name?.trim()) {
+      const norm = s => s.replace(/[\s　]/g,'').toLowerCase();
+      const dup = allProjects.find(p => norm(p.name)===norm(f.name));
+      if(dup) {
+        setTaskDupModal({
+          existing: {...dup, name: dup.name, status: dup.status||"",
+            notes: dup.notes||"",
+            membersText: (dup.members||[]).map(id=>users.find(u=>u.id===id)?.name).filter(Boolean).join("、")},
+          incoming: f.name,
+          onKeepBoth: ()=>{ setTaskDupModal(null); _doAddProject(f); setSheet(null); },
+          onCancel: ()=>setTaskDupModal(null),
+        });
+        return;
+      }
+    }
+    _doAddProject(f);
   };
   const updateProject = (id,ch) => { const u={...data,projects:allProjects.map(p=>p.id===id?{...p,...ch}:p)}; setData(u); saveData(u); };
   const deleteProject = id => {
@@ -906,7 +967,19 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
       </div>
     </div>
   );
-  const TChatSection = ({entityKey,entityId,chat=[]}) => (
+  const TChatSection = ({entityKey,entityId,chat=[]}) => {
+    const val = tChatIn[entityId]||"";
+    // @以降の入力でメンション候補を絞り込む
+    const atMatch = val.match(/@([^\s　]*)$/);
+    const mentionQuery = atMatch ? atMatch[1].toLowerCase() : null;
+    const mentionCandidates = mentionQuery !== null
+      ? users.filter(u=>u.id!==uid && u.name.toLowerCase().includes(mentionQuery)).slice(0,5)
+      : [];
+    const insertMention = (name) => {
+      const newVal = val.replace(/@([^\s　]*)$/, `@${name} `);
+      setTChatIn(p=>({...p,[entityId]:newVal}));
+    };
+    return (
     <div>
       <div style={{display:"flex",flexDirection:"column",gap:"0.4rem",marginBottom:"0.625rem"}}>
         {chat.length===0&&<div style={{textAlign:"center",padding:"1.5rem",color:C.textMuted,background:C.bg,borderRadius:"0.75rem",fontSize:"0.82rem"}}>まだコメントがありません</div>}
@@ -929,18 +1002,34 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
           );
         })}
       </div>
-      <div style={{display:"flex",gap:"0.4rem"}}>
-        <input value={tChatIn[entityId]||""} onChange={e=>setTChatIn(p=>({...p,[entityId]:e.target.value}))}
-          onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();addTChat(entityKey,entityId,tChatIn[entityId]||"");}}}
-          placeholder="コメントを追加... (@名前 でメンション)"
-          style={{flex:1,padding:"0.5rem 0.75rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none"}}/>
-        <button onClick={()=>addTChat(entityKey,entityId,tChatIn[entityId]||"")} disabled={!(tChatIn[entityId]||"").trim()}
-          style={{padding:"0.5rem 0.875rem",borderRadius:"0.75rem",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",opacity:(tChatIn[entityId]||"").trim()?1:0.4}}>
-          送信
-        </button>
+      <div style={{position:"relative"}}>
+        {mentionCandidates.length>0&&(
+          <div style={{position:"absolute",bottom:"100%",left:0,right:0,background:"white",border:`1px solid ${C.border}`,borderRadius:"0.75rem",boxShadow:C.shadowMd,zIndex:50,overflow:"hidden",marginBottom:4}}>
+            {mentionCandidates.map(u=>(
+              <button key={u.id} onMouseDown={e=>{e.preventDefault();insertMention(u.name);}}
+                style={{display:"flex",alignItems:"center",gap:"0.5rem",width:"100%",padding:"0.5rem 0.875rem",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",borderBottom:`1px solid ${C.borderLight}`}}>
+                <div style={{width:22,height:22,borderRadius:"50%",background:`linear-gradient(135deg,${C.accent},${C.accentDark})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.6rem",fontWeight:800,color:"white",flexShrink:0}}>
+                  {u.name.charAt(0)}
+                </div>
+                <span style={{fontSize:"0.85rem",fontWeight:600,color:C.text}}>@{u.name}</span>
+              </button>
+            ))}
+          </div>
+        )}
+        <div style={{display:"flex",gap:"0.4rem"}}>
+          <input value={val} onChange={e=>setTChatIn(p=>({...p,[entityId]:e.target.value}))}
+            onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();addTChat(entityKey,entityId,val);}}}
+            placeholder="コメント... (@ でメンション)"
+            style={{flex:1,padding:"0.5rem 0.75rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none"}}/>
+          <button onClick={()=>addTChat(entityKey,entityId,val)} disabled={!val.trim()}
+            style={{padding:"0.5rem 0.875rem",borderRadius:"0.75rem",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",opacity:val.trim()?1:0.4}}>
+            送信
+          </button>
+        </div>
       </div>
     </div>
-  );
+    );
+  };
 
   const activePj   = allProjects.find(p=>p.id===activePjId);
   const activeTask = allTasks.find(t=>t.id===activeTaskId);
@@ -1075,14 +1164,17 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
                 const group=pjTasks.filter(t=>t.status===status);
                 if(!group.length) return null;
                 const m=STATUS_META[status];
+                const isDone = status==="完了";
                 return (
                   <React.Fragment key={status}>
-                    <div style={{padding:"0.35rem 1rem",background:m.bg,borderTop:`1px solid ${C.borderLight}`,display:"flex",alignItems:"center",gap:"0.4rem"}}>
+                    <div onClick={isDone?()=>setDoneOpenPj(v=>!v):undefined}
+                      style={{padding:"0.35rem 1rem",background:m.bg,borderTop:`1px solid ${C.borderLight}`,display:"flex",alignItems:"center",gap:"0.4rem",cursor:isDone?"pointer":undefined}}>
                       <span style={{width:7,height:7,borderRadius:"50%",background:m.dot,display:"inline-block",flexShrink:0}}/>
                       <span style={{fontSize:"0.7rem",fontWeight:700,color:m.color,letterSpacing:"0.04em"}}>{status}</span>
                       <span style={{fontSize:"0.7rem",color:m.color,opacity:0.7,marginLeft:"auto"}}>{group.length}件</span>
+                      {isDone&&<span style={{fontSize:"0.7rem",color:m.color,marginLeft:"0.25rem"}}>{doneOpenPj?"▲":"▼"}</span>}
                     </div>
-                    {group.map(t=>(
+                    {(!isDone||doneOpenPj)&&group.map(t=>(
                       <TaskRow key={t.id} task={t} users={users}
                         onToggle={()=>updateTask(t.id,{status:t.status==="完了"?"未着手":"完了"})}
                         onStatusChange={s=>updateTask(t.id,{status:s})}
@@ -1101,12 +1193,19 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
         {pjTab==="chat"&&TChatSection({entityKey:"projects",entityId:activePj.id,chat:activePj.chat||[]})}
         {sheet==="addPjTask"&&<Sheet title="タスクを追加" onClose={()=>setSheet(null)}>
           <TaskForm initial={{status:"未着手"}} users={users} currentUserId={uid} onClose={()=>setSheet(null)}
-            onSave={f=>{addTask(f,activePjId);setSheet(null);}}/>
+            onSave={f=>{addTask(f,activePjId);}}/>
         </Sheet>}
         {sheet==="editProject"&&<Sheet title="プロジェクトを編集" onClose={()=>setSheet(null)}>
           <ProjectForm initial={activePj} users={users} currentUserId={uid} onClose={()=>setSheet(null)}
             onSave={f=>{updateProject(activePj.id,f);setSheet(null);}}/>
         </Sheet>}
+        {taskDupModal&&<DupModal
+          existing={taskDupModal.existing}
+          incoming={taskDupModal.incoming}
+          onKeepBoth={taskDupModal.onKeepBoth}
+          onUseExisting={null}
+          onCancel={taskDupModal.onCancel}
+        />}
       </div>
     );
   }
@@ -1174,14 +1273,17 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
           const group=standaloneTasks.filter(t=>t.status===status);
           if(!group.length) return null;
           const m=STATUS_META[status];
+          const isDone = status==="完了";
           return (
             <React.Fragment key={status}>
-              <div style={{padding:"0.35rem 1rem",background:m.bg,borderTop:`1px solid ${C.borderLight}`,display:"flex",alignItems:"center",gap:"0.4rem"}}>
+              <div onClick={isDone?()=>setDoneOpenList(v=>!v):undefined}
+                style={{padding:"0.35rem 1rem",background:m.bg,borderTop:`1px solid ${C.borderLight}`,display:"flex",alignItems:"center",gap:"0.4rem",cursor:isDone?"pointer":undefined}}>
                 <span style={{width:7,height:7,borderRadius:"50%",background:m.dot,display:"inline-block",flexShrink:0}}/>
                 <span style={{fontSize:"0.7rem",fontWeight:700,color:m.color,letterSpacing:"0.04em"}}>{status}</span>
                 <span style={{fontSize:"0.7rem",color:m.color,opacity:0.7,marginLeft:"auto"}}>{group.length}件</span>
+                {isDone&&<span style={{fontSize:"0.7rem",color:m.color,marginLeft:"0.25rem"}}>{doneOpenList?"▲":"▼"}</span>}
               </div>
-              {group.map(t=>(
+              {(!isDone||doneOpenList)&&group.map(t=>(
                 <TaskRow key={t.id} task={t} users={users}
                   onToggle={()=>updateTask(t.id,{status:t.status==="完了"?"未着手":"完了"})}
                   onStatusChange={s=>updateTask(t.id,{status:s})}
@@ -1193,12 +1295,19 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
       </Card>
       {sheet==="addTask"&&<Sheet title="タスクを追加" onClose={()=>setSheet(null)}>
         <TaskForm initial={{status:"未着手"}} users={users} currentUserId={uid} onClose={()=>setSheet(null)}
-          onSave={f=>{addTask(f,null);setSheet(null);}}/>
+          onSave={f=>{addTask(f,null);}}/>
       </Sheet>}
       {sheet==="addProject"&&<Sheet title="プロジェクトを追加" onClose={()=>setSheet(null)}>
         <ProjectForm users={users} currentUserId={uid} onClose={()=>setSheet(null)}
-          onSave={f=>{addProject(f);setSheet(null);}}/>
+          onSave={f=>{addProject(f);}}/>
       </Sheet>}
+      {taskDupModal&&<DupModal
+        existing={taskDupModal.existing}
+        incoming={taskDupModal.incoming}
+        onKeepBoth={taskDupModal.onKeepBoth}
+        onUseExisting={null}
+        onCancel={taskDupModal.onCancel}
+      />}
     </div>
   );
 }
@@ -1910,6 +2019,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   },[]);
 
   const save = (d) => {
+    window.__myDeskLastSave = Date.now(); // 競合防止タグ
     // 新しく追加された通知を検出してWeb Push送信
     const notifsBefore = data.notifications || [];
     const newNotifs = (d.notifications||[]).filter(n=>!notifsBefore.some(o=>o.id===n.id));
@@ -2060,7 +2170,10 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     // 新規追加時の重複チェック
     if(!form.id && !skipDupCheck){
       const dup=companies.find(c=>c.id!==form.id&&c.name.trim()===form.name.trim());
-      if(dup){setDupModal({existing:dup,incoming:form.name.trim(),onKeepBoth:()=>{setDupModal(null);saveCompany(true);},onUseExisting:()=>{setActiveCompany(dup.id);setDupModal(null);setSheet(null);}});return;}
+      if(dup){setDupModal({existing:dup,incoming:form.name.trim(),
+        onKeepBoth:()=>{setDupModal(null);saveCompany(true);},
+        onUseExisting:()=>{setActiveCompany(dup.id);setDupModal(null);setSheet(null);}
+      });return;}
     }
     let nd={...data};
     if(form.id){
@@ -2087,7 +2200,10 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     if(!form.name?.trim())return;
     if(!form.id && !skipDupCheck){
       const dup=munis.find(m=>m.prefectureId===activePref&&m.name.trim()===form.name.trim());
-      if(dup){setDupModal({existing:dup,incoming:form.name.trim(),onKeepBoth:()=>{setDupModal(null);saveMuni(true);},onUseExisting:()=>{setActiveMuni(dup.id);setMuniScreen("detail");setDupModal(null);setSheet(null);}});return;}
+      if(dup){setDupModal({existing:dup,incoming:form.name.trim(),
+        onKeepBoth:()=>{setDupModal(null);saveMuni(true);},
+        onUseExisting:()=>{setActiveMuni(dup.id);setMuniScreen("detail");setDupModal(null);setSheet(null);}
+      });return;}
     }
     let nd={...data};
     if(form.id){
@@ -2115,7 +2231,10 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     if(!form.name?.trim())return;
     if(!form.id && !skipDupCheck){
       const dup=vendors.find(v=>v.name.trim()===form.name.trim());
-      if(dup){setDupModal({existing:dup,incoming:form.name.trim(),onKeepBoth:()=>{setDupModal(null);saveVendor(true);},onUseExisting:()=>{setActiveVendor(dup.id);setDupModal(null);setSheet(null);}});return;}
+      if(dup){setDupModal({existing:dup,incoming:form.name.trim(),
+        onKeepBoth:()=>{setDupModal(null);saveVendor(true);},
+        onUseExisting:()=>{setActiveVendor(dup.id);setDupModal(null);setSheet(null);}
+      });return;}
     }
     let nd={...data};
     if(form.id){
@@ -2373,6 +2492,16 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
 
   // ── Chat section ──────────────────────────────────────────────────────────
   const ChatSection=({chat=[],entityKey,entityId})=>{
+    const val = chatInputs[entityId]||"";
+    const atMatch = val.match(/@([^\s　]*)$/);
+    const mentionQuery = atMatch ? atMatch[1].toLowerCase() : null;
+    const mentionCandidates = mentionQuery !== null
+      ? users.filter(u=>u.id!==currentUser?.id && u.name.toLowerCase().includes(mentionQuery)).slice(0,5)
+      : [];
+    const insertMention = (name) => {
+      const newVal = val.replace(/@([^\s　]*)$/, `@${name} `);
+      setChatInputs(p=>({...p,[entityId]:newVal}));
+    };
     const renderMsg=text=>text.split(/(@[^\s　]+)/g).map((p,i)=>
       p.startsWith("@")?<span key={i} style={{background:C.accentBg,color:C.accentDark,borderRadius:4,padding:"0 3px",fontWeight:700}}>{p}</span>:p
     );
@@ -2399,16 +2528,30 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           {!(chat||[]).length&&<div style={{textAlign:"center",padding:"1.5rem",color:C.textMuted,background:C.bg,borderRadius:"0.875rem",fontSize:"0.82rem"}}>まだメッセージがありません</div>}
         </div>
         <div style={{background:C.bg,borderRadius:"0.875rem",padding:"0.5rem"}}>
-          <div style={{fontSize:"0.62rem",color:C.textMuted,marginBottom:"0.2rem"}}>💡 @名前 でメンション通知</div>
-          <div style={{display:"flex",gap:"0.4rem"}}>
-            <input value={chatInputs[entityId]||""} onChange={e=>setChatInputs(p=>({...p,[entityId]:e.target.value}))}
-              onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();addChat(entityKey,entityId,chatInputs[entityId]||"");}}}
-              placeholder="メッセージを入力..."
-              style={{flex:1,padding:"0.5rem 0.75rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none"}}/>
-            <button onClick={()=>addChat(entityKey,entityId,chatInputs[entityId]||"")} disabled={!(chatInputs[entityId]||"").trim()}
-              style={{padding:"0.5rem 0.875rem",borderRadius:"0.75rem",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",opacity:(chatInputs[entityId]||"").trim()?1:0.4}}>
-              送信
-            </button>
+          <div style={{position:"relative"}}>
+            {mentionCandidates.length>0&&(
+              <div style={{position:"absolute",bottom:"100%",left:0,right:0,background:"white",border:`1px solid ${C.border}`,borderRadius:"0.75rem",boxShadow:C.shadowMd,zIndex:50,overflow:"hidden",marginBottom:4}}>
+                {mentionCandidates.map(u=>(
+                  <button key={u.id} onMouseDown={e=>{e.preventDefault();insertMention(u.name);}}
+                    style={{display:"flex",alignItems:"center",gap:"0.5rem",width:"100%",padding:"0.5rem 0.875rem",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",borderBottom:`1px solid ${C.borderLight}`}}>
+                    <div style={{width:22,height:22,borderRadius:"50%",background:`linear-gradient(135deg,${C.accent},${C.accentDark})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.6rem",fontWeight:800,color:"white",flexShrink:0}}>
+                      {u.name.charAt(0)}
+                    </div>
+                    <span style={{fontSize:"0.85rem",fontWeight:600,color:C.text}}>@{u.name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            <div style={{display:"flex",gap:"0.4rem"}}>
+              <input value={val} onChange={e=>setChatInputs(p=>({...p,[entityId]:e.target.value}))}
+                onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();addChat(entityKey,entityId,val);}}}
+                placeholder="メッセージ... (@ でメンション)"
+                style={{flex:1,padding:"0.5rem 0.75rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none"}}/>
+              <button onClick={()=>addChat(entityKey,entityId,val)} disabled={!val.trim()}
+                style={{padding:"0.5rem 0.875rem",borderRadius:"0.75rem",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",opacity:val.trim()?1:0.4}}>
+                送信
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -2897,6 +3040,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             <FieldLbl label="電話番号（任意）"><Input value={form.phone||""} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="000-0000-0000"/></FieldLbl>
             <FieldLbl label="メールアドレス（任意）"><Input value={form.email||""} onChange={e=>setForm({...form,email:e.target.value})} placeholder="example@mail.com"/></FieldLbl>
             <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
+            <FieldLbl label="備考"><Textarea value={form.notes||""} onChange={e=>setForm({...form,notes:e.target.value})} style={{height:70}} placeholder="メモ、特記事項など"/></FieldLbl>
             <div style={{display:"flex",gap:"0.625rem"}}>
               <Btn variant="secondary" style={{flex:1}} onClick={()=>setSheet(null)}>キャンセル</Btn>
               <Btn style={{flex:2}} onClick={saveCompany} disabled={!form.name?.trim()}>追加する</Btn>
@@ -3407,6 +3551,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             <FieldLbl label="アート引越センター 管轄支店"><Input value={form.artBranch||""} onChange={e=>setForm({...form,artBranch:e.target.value})} placeholder="例：福岡支店"/></FieldLbl>
             <FieldLbl label="連携協定ステータス"><TreatyPicker value={form.treatyStatus||"未接触"} onChange={s=>setForm({...form,treatyStatus:s})}/></FieldLbl>
             <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
+            <FieldLbl label="備考"><Textarea value={form.notes||""} onChange={e=>setForm({...form,notes:e.target.value})} style={{height:70}} placeholder="メモ、特記事項など"/></FieldLbl>
             <div style={{display:"flex",gap:"0.625rem"}}>
               <Btn variant="secondary" style={{flex:1}} onClick={()=>setSheet(null)}>キャンセル</Btn>
               <Btn style={{flex:2}} onClick={saveMuni} disabled={!form.name?.trim()}>保存</Btn>
@@ -3418,6 +3563,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             <FieldLbl label="業者名 *"><Input value={form.name||""} onChange={e=>setForm({...form,name:e.target.value})} autoFocus/></FieldLbl>
             <FieldLbl label="ステータス"><StatusPicker map={VENDOR_STATUS} value={form.status||"未接触"} onChange={s=>setForm({...form,status:s})}/></FieldLbl>
             <FieldLbl label="担当者">{AssigneePicker({ids:form.assigneeIds||[],onChange:ids=>setForm({...form,assigneeIds:ids})})}</FieldLbl>
+            <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
+            <FieldLbl label="備考"><Textarea value={form.notes||""} onChange={e=>setForm({...form,notes:e.target.value})} style={{height:70}} placeholder="メモ、特記事項など"/></FieldLbl>
             <div style={{display:"flex",gap:"0.625rem"}}>
               <Btn variant="secondary" style={{flex:1}} onClick={()=>{setSheet(null);setSalesTab("muni");}}>キャンセル</Btn>
               <Btn style={{flex:2}} onClick={()=>{saveVendor();setSalesTab("muni");}} disabled={!form.name?.trim()}>追加する</Btn>
@@ -4029,29 +4176,25 @@ function mergeDustalk(raw){
 // ─── ANALYTICS HELPERS (top-level to prevent remount on state change) ─────────
 function InputNum({value,onChange}) {
   const [local,setLocal] = useState(String(value??0));
-  const prevVal = useRef(value);
+  const focused = useRef(false); // フォーカス中は親からの同期をブロック
   useEffect(()=>{
-    // Only sync from parent if we're not currently focused on this input
-    setLocal(v => {
-      const parent = String(value??0);
-      // If local is a valid intermediate state (e.g. 1. or ), keep it
-      if(parseFloat(v)===value) return v;
-      return parent;
-    });
-    prevVal.current = value;
+    // フォーカス中（入力中）は外部からのリセットをしない
+    if(focused.current) return;
+    setLocal(String(value??0));
   },[value]);
   return (
     <input type="text" inputMode="decimal" value={local}
+      onFocus={()=>{ focused.current=true; }}
       onChange={e=>{
         const v=e.target.value;
         if(v===''||v==='-'||/^-?\d*\.?\d*$/.test(v)){
           setLocal(v);
           const n=parseFloat(v);
           if(!isNaN(n)) onChange(n);
-          else onChange(0);
         }
       }}
       onBlur={()=>{
+        focused.current=false;
         const n=parseFloat(local);
         const final=isNaN(n)?0:n;
         setLocal(String(final));
@@ -4669,13 +4812,20 @@ export default function App() {
   // ── Supabase リアルタイム同期 + ブラウザ通知 ────────────────────────────
   // 最後に確認した通知IDを追跡（ポーリングで新着検出用）
   const lastNotifIdsRef = useRef(null);
+  // 最後に自分でsaveした時刻（競合防止用）
+  const lastSaveTimeRef = useRef(0);
 
   useEffect(()=>{
     if(!currentUser) return;
     const poll = async () => {
       try {
         const [d, u] = await Promise.all([loadData(), loadUsers()]);
-        setData(d); setUsers(u);
+        // 直近3秒以内に自分がsaveした場合はポーリングによる上書きをスキップ（競合防止）
+        const timeSinceSave = Date.now() - (window.__myDeskLastSave || 0);
+        if(timeSinceSave > 3000) {
+          setData(d);
+        }
+        setUsers(u);
         // セッションユーザーの最新情報を反映
         const fresh = u.find(x=>x.id===currentUser.id);
         if(fresh) setCurrentUser(cu=>(cu.name===fresh.name&&cu.email===fresh.email)?cu:fresh);
