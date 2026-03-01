@@ -334,55 +334,139 @@ function FileSection({ files=[], onAdd, onDelete, currentUserId, readOnly=false 
 
 
 // ─── REVIEW REQUEST ───────────────────────────────────────────────────────────
-function ReviewRequestSection({ task, users=[], uid, allTasks=[], onRequestReview }) {
+function ReviewRequestSection({ task, users=[], uid, allTasks=[], onRequestReview, onRejectReview }) {
   const [showPicker, setShowPicker] = React.useState(false);
   const [selectedUser, setSelectedUser] = React.useState(null);
   const [note, setNote] = React.useState("");
+  const [showRejectForm, setShowRejectForm] = React.useState(false);
+  const [rejectNote, setRejectNote] = React.useState("");
 
-  // このタスクへの確認依頼タスク
+  // このタスクへの確認依頼タスク一覧
   const reviewTasks = allTasks.filter(t => t.reviewOf?.taskId === task.id);
   // このタスク自体が確認依頼タスクの場合、元タスクを取得
   const originalTask = task.reviewOf ? allTasks.find(t => t.id === task.reviewOf.taskId) : null;
   const originalUser = task.reviewOf ? users.find(u => u.id === task.reviewOf.fromUserId) : null;
-
+  const isRejected = task.reviewOf?.rejected;
   const candidates = users.filter(u => u.id !== uid);
+
+  // 元タスクの差し戻し状況（依頼者が見る）
+  const rejectedReview = reviewTasks.find(rt => rt.reviewOf?.rejected);
 
   return (
     <div style={{marginTop:"1rem"}}>
-      {/* このタスクが確認依頼として作られた場合 */}
+
+      {/* ── 確認依頼タスク側（確認者が見る）── */}
       {task.reviewOf && (
-        <div style={{background:"#fef3c7",border:"1px solid #fbbf24",borderRadius:"0.875rem",padding:"0.75rem 1rem",marginBottom:"0.75rem"}}>
-          <div style={{fontSize:"0.68rem",fontWeight:700,color:"#92400e",marginBottom:"0.3rem"}}>📋 確認依頼タスク</div>
-          <div style={{fontSize:"0.82rem",color:"#78350f",marginBottom:"0.25rem"}}>
-            依頼元：<strong>{originalUser?.name || "不明"}</strong>
-          </div>
-          <div style={{fontSize:"0.78rem",color:"#92400e"}}>
-            元タスク：{originalTask?.title || task.reviewOf.taskTitle || "（削除済み）"}
-          </div>
-          {task.reviewOf.note && <div style={{fontSize:"0.75rem",color:"#92400e",marginTop:"0.25rem",whiteSpace:"pre-wrap"}}>💬 {task.reviewOf.note}</div>}
+        <div>
+          {/* 差し戻し済みバナー */}
+          {isRejected ? (
+            <div style={{background:"#fee2e2",border:"1.5px solid #fca5a5",borderRadius:"0.875rem",padding:"0.875rem 1rem",marginBottom:"0.75rem"}}>
+              <div style={{fontSize:"0.72rem",fontWeight:800,color:"#991b1b",marginBottom:"0.35rem"}}>↩️ 差し戻し済み</div>
+              <div style={{fontSize:"0.82rem",color:"#7f1d1d",marginBottom:"0.25rem"}}>
+                依頼元：<strong>{originalUser?.name || "不明"}</strong>
+              </div>
+              <div style={{fontSize:"0.78rem",color:"#991b1b",marginBottom:"0.25rem"}}>
+                元タスク：{originalTask?.title || task.reviewOf.taskTitle || "（削除済み）"}
+              </div>
+              {task.reviewOf.rejectNote && (
+                <div style={{fontSize:"0.78rem",color:"#7f1d1d",background:"#fecaca",borderRadius:"0.5rem",padding:"0.4rem 0.625rem",marginTop:"0.35rem"}}>
+                  💬 差し戻し理由：{task.reviewOf.rejectNote}
+                </div>
+              )}
+              <div style={{fontSize:"0.68rem",color:"#b91c1c",marginTop:"0.5rem"}}>このタスクは差し戻しとして処理されました</div>
+            </div>
+          ) : (
+            /* 通常の確認依頼バナー */
+            <div style={{background:"#fef3c7",border:"1px solid #fbbf24",borderRadius:"0.875rem",padding:"0.75rem 1rem",marginBottom:"0.75rem"}}>
+              <div style={{fontSize:"0.68rem",fontWeight:700,color:"#92400e",marginBottom:"0.3rem"}}>📋 確認依頼タスク</div>
+              <div style={{fontSize:"0.82rem",color:"#78350f",marginBottom:"0.25rem"}}>
+                依頼元：<strong>{originalUser?.name || "不明"}</strong>
+              </div>
+              <div style={{fontSize:"0.78rem",color:"#92400e"}}>
+                元タスク：{originalTask?.title || task.reviewOf.taskTitle || "（削除済み）"}
+              </div>
+              {task.reviewOf.note && (
+                <div style={{fontSize:"0.75rem",color:"#92400e",marginTop:"0.25rem",whiteSpace:"pre-wrap"}}>💬 {task.reviewOf.note}</div>
+              )}
+            </div>
+          )}
+
+          {/* 差し戻しボタン（未差し戻し・未完了のときのみ表示） */}
+          {!isRejected && task.status !== "完了" && (
+            <div style={{marginBottom:"0.75rem"}}>
+              {!showRejectForm ? (
+                <button onClick={() => setShowRejectForm(true)}
+                  style={{width:"100%",padding:"0.625rem",borderRadius:"0.75rem",border:"1.5px solid #fca5a5",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
+                  ↩️ 差し戻す
+                </button>
+              ) : (
+                <div style={{background:"#fff1f2",border:"1.5px solid #fca5a5",borderRadius:"0.875rem",padding:"0.875rem"}}>
+                  <div style={{fontWeight:700,fontSize:"0.82rem",color:"#dc2626",marginBottom:"0.625rem"}}>↩️ 差し戻し</div>
+                  <div style={{fontSize:"0.75rem",fontWeight:700,color:C.textSub,marginBottom:"0.35rem"}}>差し戻し理由（任意）</div>
+                  <textarea value={rejectNote} onChange={e=>setRejectNote(e.target.value)}
+                    placeholder="修正してほしい点を記入してください..." rows={3}
+                    style={{width:"100%",padding:"0.5rem",borderRadius:"0.625rem",border:`1.5px solid #fca5a5`,fontSize:"0.82rem",fontFamily:"inherit",resize:"none",outline:"none",boxSizing:"border-box",marginBottom:"0.75rem"}}/>
+                  <div style={{display:"flex",gap:"0.5rem"}}>
+                    <button onClick={()=>{setShowRejectForm(false);setRejectNote("");}}
+                      style={{flex:1,padding:"0.5rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.82rem"}}>
+                      キャンセル
+                    </button>
+                    <button onClick={()=>{onRejectReview(task.id, rejectNote); setShowRejectForm(false); setRejectNote("");}}
+                      style={{flex:2,padding:"0.5rem",borderRadius:"0.75rem",border:"none",background:"#dc2626",color:"white",fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.82rem"}}>
+                      差し戻しを確定する
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
+
+      {/* ── 元タスク側（依頼者が見る）── */}
+      {/* 差し戻しされた通知 */}
+      {rejectedReview && (
+        <div style={{background:"#fee2e2",border:"1.5px solid #fca5a5",borderRadius:"0.875rem",padding:"0.875rem 1rem",marginBottom:"0.75rem"}}>
+          <div style={{fontSize:"0.72rem",fontWeight:800,color:"#991b1b",marginBottom:"0.35rem"}}>↩️ 確認依頼が差し戻されました</div>
+          <div style={{fontSize:"0.82rem",color:"#7f1d1d",marginBottom:"0.25rem"}}>
+            差し戻し者：<strong>{users.find(u=>(rejectedReview.assignees||[]).includes(u.id))?.name || "不明"}</strong>
+          </div>
+          {rejectedReview.reviewOf?.rejectNote && (
+            <div style={{fontSize:"0.78rem",color:"#7f1d1d",background:"#fecaca",borderRadius:"0.5rem",padding:"0.4rem 0.625rem",marginTop:"0.35rem"}}>
+              💬 理由：{rejectedReview.reviewOf.rejectNote}
+            </div>
+          )}
+          <div style={{fontSize:"0.68rem",color:"#b91c1c",marginTop:"0.5rem"}}>タスクのステータスが「進行中」に戻されました。修正後、再度確認依頼を送ってください。</div>
+        </div>
+      )}
+
       {/* 送信済み確認依頼一覧 */}
       {reviewTasks.length > 0 && (
         <div style={{marginBottom:"0.75rem"}}>
           <div style={{fontSize:"0.68rem",fontWeight:700,color:C.textSub,marginBottom:"0.35rem",textTransform:"uppercase",letterSpacing:"0.04em"}}>📨 確認依頼済み</div>
           {reviewTasks.map(rt => {
             const assignee = users.find(u => (rt.assignees||[]).includes(u.id));
-            const statusColor = rt.status === "完了" ? "#059669" : rt.status === "進行中" ? "#2563eb" : "#6b7280";
-            const statusBg = rt.status === "完了" ? "#d1fae5" : rt.status === "進行中" ? "#dbeafe" : "#f3f4f6";
+            const isRej = rt.reviewOf?.rejected;
+            const statusColor = isRej ? "#dc2626" : rt.status === "完了" ? "#059669" : rt.status === "進行中" ? "#2563eb" : "#6b7280";
+            const statusBg = isRej ? "#fee2e2" : rt.status === "完了" ? "#d1fae5" : rt.status === "進行中" ? "#dbeafe" : "#f3f4f6";
+            const label = isRej ? "差し戻し" : rt.status;
             return (
-              <div key={rt.id} style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"0.75rem",padding:"0.5rem 0.875rem",marginBottom:"0.35rem",display:"flex",alignItems:"center",gap:"0.625rem"}}>
+              <div key={rt.id} style={{background:"white",border:`1px solid ${isRej?"#fca5a5":C.border}`,borderRadius:"0.75rem",padding:"0.5rem 0.875rem",marginBottom:"0.35rem",display:"flex",alignItems:"center",gap:"0.625rem"}}>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:"0.82rem",fontWeight:600,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{rt.title}</div>
                   <div style={{fontSize:"0.68rem",color:C.textMuted}}>担当：{assignee?.name || "未設定"}</div>
+                  {isRej && rt.reviewOf?.rejectNote && (
+                    <div style={{fontSize:"0.68rem",color:"#dc2626",marginTop:"0.15rem"}}>💬 {rt.reviewOf.rejectNote}</div>
+                  )}
                 </div>
-                <span style={{fontSize:"0.68rem",fontWeight:700,background:statusBg,color:statusColor,borderRadius:999,padding:"0.1rem 0.45rem",flexShrink:0}}>{rt.status}</span>
+                <span style={{fontSize:"0.68rem",fontWeight:700,background:statusBg,color:statusColor,borderRadius:999,padding:"0.1rem 0.45rem",flexShrink:0,whiteSpace:"nowrap"}}>{label}</span>
               </div>
             );
           })}
         </div>
       )}
-      {/* 確認依頼ボタン（完了タスクのみ） */}
+
+      {/* 確認依頼ボタン（完了タスクのみ・差し戻しがない場合 or 差し戻し後に再送可） */}
       {task.status === "完了" && !task.reviewOf && (
         <div>
           {!showPicker ? (
@@ -1047,6 +1131,43 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     saveWithPush(nd, data.notifications);
   };
 
+  // 差し戻し処理
+  // reviewTaskId: 確認依頼タスクのID（確認者が持つタスク）
+  const rejectReview = (reviewTaskId, rejectNote) => {
+    const reviewTask = allTasks.find(t => t.id === reviewTaskId);
+    if (!reviewTask?.reviewOf) return;
+    const originalTaskId = reviewTask.reviewOf.taskId;
+    const originalTask = allTasks.find(t => t.id === originalTaskId);
+    const fromUserId = reviewTask.reviewOf.fromUserId;
+
+    // 確認依頼タスクに差し戻しフラグをセット
+    let nd = {
+      ...data,
+      tasks: allTasks.map(t => {
+        if (t.id === reviewTaskId) {
+          return { ...t, reviewOf: { ...t.reviewOf, rejected: true, rejectNote: rejectNote || "" } };
+        }
+        // 元タスクのステータスを「進行中」に戻す
+        if (t.id === originalTaskId) {
+          return { ...t, status: "進行中" };
+        }
+        return t;
+      })
+    };
+
+    // 依頼者への通知
+    if (fromUserId) {
+      nd = addNotif(nd, {
+        type: "task_assign",
+        title: `「${reviewTask.reviewOf.taskTitle}」が差し戻されました`,
+        body: `差し戻し者：${users.find(u=>u.id===uid)?.name||""}  ${rejectNote?"理由："+rejectNote:""}`,
+        toUserIds: [fromUserId],
+        fromUserId: uid,
+      });
+    }
+    saveWithPush(nd, data.notifications);
+  };
+
   const addFileToTask = (taskId, file) => {
     const nd = { ...data, tasks: allTasks.map(t => t.id === taskId ? { ...t, files: [...(t.files||[]), file] } : t) };
     setData(nd); saveData(nd);
@@ -1354,7 +1475,8 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
         {/* 確認依頼タブ */}
         {taskTab==="review"&&<ReviewRequestSection
           task={activeTask} users={users} uid={uid} allTasks={allTasks}
-          onRequestReview={(toUserId,note)=>requestReview(activeTask.id,toUserId,note)}/>}
+          onRequestReview={(toUserId,note)=>requestReview(activeTask.id,toUserId,note)}
+          onRejectReview={(reviewTaskId,note)=>rejectReview(reviewTaskId,note)}/>}
         {/* ファイルタブ */}
         {taskTab==="files"&&<FileSection
           files={activeTask.files||[]} currentUserId={uid}
