@@ -3792,6 +3792,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             style={{padding:"0.45rem 0.625rem",borderRadius:"0.75rem",border:`1.5px solid ${bulkMode?"#2563eb":C.border}`,background:bulkMode?"#eff6ff":"white",color:bulkMode?"#1d4ed8":C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>☑️</button>
           <button onClick={()=>setSheet("importCompany")}
             style={{padding:"0.45rem 0.625rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📥</button>
+          <button onClick={()=>{if(window.confirm(`企業データを全件（${companies.length}件）削除します。この操作は元に戻せません。よろしいですか？`)){const nd={...data,companies:[]};save(nd);}}}
+            style={{padding:"0.45rem 0.625rem",borderRadius:"0.75rem",border:"1.5px solid #fca5a5",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🗑️全削除</button>
           <Btn size="sm" onClick={()=>{setForm({status:"未接触",assigneeIds:[]});setSheet("addCompany");}}>＋</Btn>
         </div>
         {companies.length===0&&(
