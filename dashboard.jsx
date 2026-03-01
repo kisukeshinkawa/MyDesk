@@ -260,16 +260,31 @@ async function uploadFileToSupabase(file, entityType, entityId) {
   const ext = file.name.includes(".") ? "." + file.name.split(".").pop().replace(/[^a-zA-Z0-9]/g, "") : "";
   const safeName = Date.now() + ext;
   const path = `${entityType}/${entityId}/${safeName}`;
+  const publicUrl = `${SB_URL}/storage/v1/object/public/${STORAGE_BUCKET}/${path}`;
+
+  // アップロード
   const res = await fetch(`${SB_URL}/storage/v1/object/${STORAGE_BUCKET}/${path}`, {
     method: "POST",
     headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": file.type || "application/octet-stream" },
     body: file,
   });
   if (!res.ok) { const e = await res.text(); throw new Error("HTTP " + res.status + ": " + e); }
+
+  // アップロード後に公開URLへのアクセス確認
+  try {
+    const check = await fetch(publicUrl, { method: "HEAD" });
+    if (!check.ok) {
+      throw new Error("ファイルのアップロードは成功しましたが、他のユーザーが閲覧できない状態です。\nSupabase Storage → Policies で「SELECT」ポリシーを追加してください。\n（anon ロール、条件: true）");
+    }
+  } catch(e) {
+    if (e.message.includes("Policies")) throw e;
+    // HEADチェック自体が失敗（CORSなど）は無視して続行
+  }
+
   return {
     id: Date.now() + Math.random(),
     name: file.name,
-    url: `${SB_URL}/storage/v1/object/public/${STORAGE_BUCKET}/${path}`,
+    url: publicUrl,
     path,
     size: file.size,
     type: file.type,
@@ -2748,7 +2763,6 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   const [vendSearch,   setVendSearch]   = useState("");
   const [openCompGrp,  setOpenCompGrp]  = useState(new Set(Object.keys(COMPANY_STATUS)));
   const [openVendGrp,  setOpenVendGrp]  = useState(new Set(Object.keys(VENDOR_STATUS)));
-  const toggleGrp=(setter,key)=>setter(prev=>{const n=new Set(prev);n.has(key)?n.delete(key):n.add(key);return n;});
   const [muniTopSearch,setMuniTopSearch]= useState("");
   const [chatInputs,   setChatInputs]   = useState({});
   const [memoInputs,   setMemoInputs]   = useState({});
@@ -2769,6 +2783,15 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   const [dupModal,setDupModal]=useState(null); // {existing, incoming, onKeepBoth, onSave}
   // scroll position tracking for back navigation
   const savedScrollPos = useRef({});
+
+  // ── データ参照（hook後、コンポーネント内計算）──
+  const prefs     = data.prefectures    || [];
+  const munis     = data.municipalities || [];
+  const vendors   = data.vendors        || [];
+  const companies = data.companies      || [];
+
+  const toggleGrp=(setter,key)=>setter(prev=>{const n=new Set(prev);n.has(key)?n.delete(key):n.add(key);return n;});
+  const normSearch = s => (s||"").replace(/[\s\u3000]/g,"").toLowerCase();
   const saveSalesScroll = (key) => {
     const el = document.querySelector('[data-sales-scroll]');
     if(el) savedScrollPos.current[key] = el.scrollTop;
@@ -2779,12 +2802,6 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       if(el) el.scrollTop = savedScrollPos.current[key]||0;
     });
   };
-
-  const prefs     = data.prefectures    || [];
-  const munis     = data.municipalities || [];
-  const vendors   = data.vendors        || [];
-  const companies = data.companies      || [];
-
 
   // ── Seed 47 prefectures on first load (municipalities are managed externally) ──
   useEffect(()=>{
@@ -3776,7 +3793,6 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       status:s, meta:COMPANY_STATUS[s],
       items:companies.filter(c=>(c.status||"未接触")===s&&(!compSearch||normSearch(c.name).includes(normSearch(compSearch))))
     })).filter(g=>g.items.length>0||(compSearch&&companies.some(c=>(c.status||"未接触")===s)));
-    const normSearch = s => (s||"").replace(/[\s\u3000]/g,"").toLowerCase();
     const searchedComps = compSearch ? companies.filter(c=>normSearch(c.name).includes(normSearch(compSearch))) : null;
     return (
       <div>
