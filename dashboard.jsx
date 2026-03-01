@@ -299,7 +299,7 @@ async function deleteFileFromSupabase(path) {
   });
 }
 
-function FileSection({ files=[], onAdd, onDelete, currentUserId, readOnly=false }) {
+function FileSection({ files=[], onAdd, onDelete, currentUserId, entityType, entityId, readOnly=false }) {
   const [uploading, setUploading] = React.useState(false);
   const [error, setError] = React.useState("");
   const fileInputRef = React.useRef();
@@ -310,7 +310,7 @@ function FileSection({ files=[], onAdd, onDelete, currentUserId, readOnly=false 
     if (file.size > 20 * 1024 * 1024) { setError("20MB以下のファイルを選択してください"); return; }
     setUploading(true); setError("");
     try {
-      const result = await uploadFileToSupabase(file, "tasks", currentUserId || "shared");
+      const result = await uploadFileToSupabase(file, entityType || "tasks", entityId || currentUserId || "shared");
       onAdd({ ...result, uploadedBy: currentUserId });
     } catch (err) {
       setError("アップロード失敗: " + (err?.message || String(err)));
@@ -1563,18 +1563,22 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
 
   const addFileToTask = (taskId, file) => {
     const nd = { ...data, tasks: allTasks.map(t => t.id === taskId ? { ...t, files: [...(t.files||[]), file] } : t) };
+    window.__myDeskLastSave = Date.now();
     setData(nd); saveData(nd);
   };
   const removeFileFromTask = (taskId, fileIdOrUrl) => {
     const nd = { ...data, tasks: allTasks.map(t => t.id === taskId ? { ...t, files: (t.files||[]).filter(f=>(f.id||f.url)!==fileIdOrUrl) } : t) };
+    window.__myDeskLastSave = Date.now();
     setData(nd); saveData(nd);
   };
   const addFileToPj = (pjId, file) => {
     const nd = { ...data, projects: allProjects.map(p => p.id === pjId ? { ...p, files: [...(p.files||[]), file] } : p) };
+    window.__myDeskLastSave = Date.now();
     setData(nd); saveData(nd);
   };
   const removeFileFromPj = (pjId, fileIdOrUrl) => {
     const nd = { ...data, projects: allProjects.map(p => p.id === pjId ? { ...p, files: (p.files||[]).filter(f=>(f.id||f.url)!==fileIdOrUrl) } : p) };
+    window.__myDeskLastSave = Date.now();
     setData(nd); saveData(nd);
   };
 
@@ -1874,6 +1878,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
         {/* ファイルタブ */}
         {taskTab==="files"&&<FileSection
           files={activeTask.files||[]} currentUserId={uid}
+          entityType="tasks" entityId={activeTask.id}
           onAdd={f=>addFileToTask(activeTask.id,f)}
           onDelete={fid=>removeFileFromTask(activeTask.id,fid)}/>}
         {sheet==="editTask"&&<Sheet title="タスクを編集" onClose={()=>setSheet(null)}>
@@ -1960,6 +1965,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
         {pjTab==="chat"&&TChatSection({entityKey:"projects",entityId:activePj.id,chat:activePj.chat||[]})}
         {pjTab==="files"&&<FileSection
           files={activePj.files||[]} currentUserId={uid}
+          entityType="projects" entityId={activePj.id}
           onAdd={f=>addFileToPj(activePj.id,f)}
           onDelete={fid=>removeFileFromPj(activePj.id,fid)}/>}
         {sheet==="addPjTask"&&<Sheet title="タスクを追加" onClose={()=>setSheet(null)}>
@@ -2817,6 +2823,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
 
   const addFileToEntity = (entityKey, entityId, file) => {
     const nd = { ...data, [entityKey]: (data[entityKey]||[]).map(e => e.id===entityId ? {...e, files:[...(e.files||[]),file]} : e) };
+    window.__myDeskLastSave = Date.now();
     save(nd);
   };
   const removeFileFromEntity = (entityKey, entityId, fileIdOrUrl) => {
@@ -3767,7 +3774,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           {activeDetail==="chat"&&ChatSection({chat:comp.chat,entityKey:"companies",entityId:comp.id})}
           {activeDetail==="tasks"&&<SalesTaskPanel entityType="企業" entityId={comp.id} entityName={comp.name} data={data} onSave={save} currentUser={currentUser} users={users} onNavigateToTask={onNavigateToTask} onNavigateToProject={onNavigateToProject}/>}
           {activeDetail==="files"&&<FileSection files={comp.files||[]} currentUserId={currentUser?.id}
-            onAdd={f=>addFileToEntity("companies",comp.id,f)}
+            entityType="companies" entityId={comp.id}
+          onAdd={f=>addFileToEntity("companies",comp.id,f)}
             onDelete={fid=>removeFileFromEntity("companies",comp.id,fid)}/>}
           {sheet==="editCompany"&&(
             <Sheet title="企業を編集" onClose={()=>setSheet(null)}>
@@ -4072,7 +4080,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           {activeDetail==="chat"&&ChatSection({chat:v.chat,entityKey:"vendors",entityId:v.id})}
           {activeDetail==="tasks"&&<SalesTaskPanel entityType="業者" entityId={v.id} entityName={v.name} data={data} onSave={save} currentUser={currentUser} users={users} onNavigateToTask={onNavigateToTask} onNavigateToProject={onNavigateToProject}/>}
           {activeDetail==="files"&&<FileSection files={v.files||[]} currentUserId={currentUser?.id}
-            onAdd={f=>addFileToEntity("vendors",v.id,f)}
+            entityType="vendors" entityId={v.id}
+          onAdd={f=>addFileToEntity("vendors",v.id,f)}
             onDelete={fid=>removeFileFromEntity("vendors",v.id,fid)}/>}
           {sheet==="editVendor"&&(
             <Sheet title="業者を編集" onClose={()=>setSheet(null)}>
@@ -4402,6 +4411,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
         {activeDetail==="chat"&&ChatSection({chat:muni.chat,entityKey:"municipalities",entityId:muni.id})}
         {activeDetail==="tasks"&&<SalesTaskPanel entityType="自治体" entityId={muni.id} entityName={muni.name} data={data} onSave={save} currentUser={currentUser} users={users} onNavigateToTask={onNavigateToTask} onNavigateToProject={onNavigateToProject}/>}
         {activeDetail==="files"&&<FileSection files={muni.files||[]} currentUserId={currentUser?.id}
+          entityType="municipalities" entityId={muni.id}
           onAdd={f=>addFileToEntity("municipalities",muni.id,f)}
           onDelete={fid=>removeFileFromEntity("municipalities",muni.id,fid)}/>}
         <div style={{marginTop:"1rem"}}>
