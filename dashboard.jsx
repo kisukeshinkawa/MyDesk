@@ -263,7 +263,7 @@ async function uploadFileToSupabase(file, entityType, entityId) {
     headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": file.type || "application/octet-stream" },
     body: file,
   });
-  if (!res.ok) { const e = await res.text(); throw new Error(e); }
+  if (!res.ok) { const e = await res.text(); throw new Error("HTTP " + res.status + ": " + e); }
   return {
     id: Date.now() + Math.random(),
     name: file.name,
@@ -296,7 +296,7 @@ function FileSection({ files=[], onAdd, onDelete, currentUserId, readOnly=false 
       const result = await uploadFileToSupabase(file, "tasks", currentUserId || "shared");
       onAdd({ ...result, uploadedBy: currentUserId });
     } catch (err) {
-      setError("アップロード失敗。Supabase Storageのバケット「mydesk-files」が作成されているか確認してください。");
+      setError("アップロード失敗: " + (err?.message || String(err)));
     } finally { setUploading(false); if(fileInputRef.current) fileInputRef.current.value = ""; }
   };
 
