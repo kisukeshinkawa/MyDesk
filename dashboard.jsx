@@ -351,7 +351,7 @@ function FileSection({ files=[], onAdd, onDelete, currentUserId, entityType, ent
 
 
 // ─── REVIEW REQUEST ───────────────────────────────────────────────────────────
-function ReviewRequestSection({ task, users=[], uid, allTasks=[], onRequestReview, onRejectReview }) {
+function ReviewRequestSection({ task, users=[], uid, allTasks=[], onRequestReview, onRejectReview, onApproveReview }) {
   const [showPicker, setShowPicker] = React.useState(false);
   const [selectedUser, setSelectedUser] = React.useState(null);
   const [note, setNote] = React.useState("");
@@ -375,6 +375,13 @@ function ReviewRequestSection({ task, users=[], uid, allTasks=[], onRequestRevie
       {/* ── 確認依頼タスク側（確認者が見る）── */}
       {task.reviewOf && (
         <div>
+          {/* 確認完了済みバナー */}
+          {task.reviewOf && task.reviewOf.approved && (
+            <div style={{background:"#d1fae5",border:"1.5px solid #6ee7b7",borderRadius:"0.875rem",padding:"0.875rem 1rem",marginBottom:"0.75rem"}}>
+              <div style={{fontSize:"0.8rem",fontWeight:800,color:"#065f46"}}>✅ 確認完了済み</div>
+              <div style={{fontSize:"0.78rem",color:"#047857",marginTop:"0.25rem"}}>元タスク：{originalTask ? originalTask.title : task.reviewOf.taskTitle}</div>
+            </div>
+          )}
           {/* 差し戻し済みバナー */}
           {isRejected ? (
             <div style={{background:"#fee2e2",border:"1.5px solid #fca5a5",borderRadius:"0.875rem",padding:"0.875rem 1rem",marginBottom:"0.75rem"}}>
@@ -411,6 +418,10 @@ function ReviewRequestSection({ task, users=[], uid, allTasks=[], onRequestRevie
           {/* 差し戻しボタン（未差し戻し・未完了のときのみ表示） */}
           {!isRejected && task.status !== "完了" && (
             <div style={{marginBottom:"0.75rem"}}>
+              <button onClick={()=>{if(window.confirm("確認完了としてよろしいですか?\n元のタスクも「完了」に変更されます。"))onApproveReview(task.id);}}
+                style={{width:"100%",padding:"0.875rem",borderRadius:"0.875rem",border:"none",background:"linear-gradient(135deg,#059669,#047857)",color:"white",fontWeight:800,fontSize:"1rem",cursor:"pointer",fontFamily:"inherit",marginBottom:"0.5rem",boxShadow:"0 2px 8px rgba(5,150,105,0.35)",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
+                <span style={{fontSize:"1.25rem"}}>✅</span> 確認完了
+              </button>
               {!showRejectForm ? (
                 <button onClick={() => setShowRejectForm(true)}
                   style={{width:"100%",padding:"0.625rem",borderRadius:"0.75rem",border:"1.5px solid #fca5a5",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
@@ -457,6 +468,15 @@ function ReviewRequestSection({ task, users=[], uid, allTasks=[], onRequestRevie
         </div>
       )}
 
+      {/* 確認完了済み（依頼者側） */}
+      {reviewTasks.some(rt => rt.reviewOf && rt.reviewOf.approved) && (
+        <div style={{background:"#d1fae5",border:"1.5px solid #6ee7b7",borderRadius:"0.875rem",padding:"0.875rem 1rem",marginBottom:"0.75rem"}}>
+          <div style={{fontSize:"0.8rem",fontWeight:800,color:"#065f46",marginBottom:"0.25rem"}}>✅ 確認完了</div>
+          <div style={{fontSize:"0.78rem",color:"#047857"}}>
+            {(()=>{const rt=reviewTasks.find(r=>r.reviewOf&&r.reviewOf.approved);const u=users.find(x=>(rt.assignees||[]).includes(x.id));return "確認者: "+(u?u.name:"不明");})()}
+          </div>
+        </div>
+      )}
       {/* 送信済み確認依頼一覧 */}
       {reviewTasks.length > 0 && (
         <div style={{marginBottom:"0.75rem"}}>
@@ -1561,6 +1581,33 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     saveWithPush(nd, data.notifications);
   };
 
+  // 確認完了処理
+  const approveReview = (reviewTaskId) => {
+    const reviewTask = allTasks.find(t => t.id === reviewTaskId);
+    if (!reviewTask || !reviewTask.reviewOf) return;
+    const originalTaskId = reviewTask.reviewOf.taskId;
+    const fromUserId = reviewTask.reviewOf.fromUserId;
+    const myName = users.find(u => u.id === uid) ? users.find(u => u.id === uid).name : "";
+    let nd = {
+      ...data,
+      tasks: allTasks.map(t => {
+        if (t.id === reviewTaskId) return { ...t, status: "完了", reviewOf: { ...t.reviewOf, approved: true, approvedAt: new Date().toISOString() } };
+        if (t.id === originalTaskId) return { ...t, status: "完了" };
+        return t;
+      })
+    };
+    if (fromUserId) {
+      nd = addNotif(nd, {
+        type: "task_status",
+        title: "確認完了: " + reviewTask.reviewOf.taskTitle,
+        body: "確認者: " + myName + " が確認完了しました",
+        toUserIds: [fromUserId],
+        fromUserId: uid,
+      });
+    }
+    saveWithPush(nd, data.notifications);
+  };
+
   const addFileToTask = (taskId, file) => {
     const nd = { ...data, tasks: allTasks.map(t => t.id === taskId ? { ...t, files: [...(t.files||[]), file] } : t) };
     window.__myDeskLastSave = Date.now();
@@ -1874,7 +1921,8 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
         {taskTab==="review"&&<ReviewRequestSection
           task={activeTask} users={users} uid={uid} allTasks={allTasks}
           onRequestReview={(toUserId,note)=>requestReview(activeTask.id,toUserId,note)}
-          onRejectReview={(reviewTaskId,note)=>rejectReview(reviewTaskId,note)}/>}
+          onRejectReview={(reviewTaskId,note)=>rejectReview(reviewTaskId,note)}
+          onApproveReview={(reviewTaskId)=>approveReview(reviewTaskId)}/>}
         {/* ファイルタブ */}
         {taskTab==="files"&&<FileSection
           files={activeTask.files||[]} currentUserId={uid}
