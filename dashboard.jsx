@@ -2804,8 +2804,7 @@ function SalesTaskPanel({ entityType, entityId, entityName, data, onSave, curren
 
 // ─── SALES VIEW ───────────────────────────────────────────────────────────────
 function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab, onNavigateToTask, onNavigateToProject, onNavigateToCompany, onNavigateToVendor, onNavigateToMuni, salesNavTarget, clearSalesNavTarget }) {
-  // navTarget for company/vendor/muni navigation from notifications
-  const [salesNavTarget, setSalesNavTarget] = React.useState(null);
+  // salesNavTarget は App から prop として渡される（内部stateは不要）
   // salesTab managed by App for persistence
   const [muniScreen,   setMuniScreen]   = useState("top"); // top|muniDetail
   const [prevTab,      setPrevTab]      = useState(null);   // for back navigation
