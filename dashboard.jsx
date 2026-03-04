@@ -75,6 +75,11 @@ async function sbSet(id, data) {
 const INIT = { tasks:[], projects:[], emails:[], emailStyles:[], prefectures:[], municipalities:[], vendors:[], companies:[], notifications:[], changeLogs:[], analytics:{} };
 
 // ─── SALES CONSTANTS ──────────────────────────────────────────────────────────
+
+const PERMIT_TYPES = [
+  "家庭収運","事業収運","一廃収運","産廃収運","産廃処分","産廃収運処分"
+];
+
 const DUSTALK_STATUS = {
   "展開":   { color:"#059669", bg:"#d1fae5", icon:"✅" },
   "未展開": { color:"#6b7280", bg:"#f3f4f6", icon:"⬜" },
@@ -328,9 +333,14 @@ function FileSection({ files=[], onAdd, onDelete, currentUserId, entityType, ent
           <div key={f.id||f.url} style={{display:"flex",alignItems:"center",gap:"0.625rem",background:"white",border:`1px solid ${C.border}`,borderRadius:"0.75rem",padding:"0.5rem 0.75rem",boxShadow:C.shadow}}>
             <span style={{fontSize:"1.2rem",flexShrink:0}}>{icon(f.type)}</span>
             <div style={{flex:1,minWidth:0}}>
-              <a href={f.url||(f.path?`${SB_URL}/storage/v1/object/public/${STORAGE_BUCKET}/${f.path}`:null)||f.path}
+              <a href={f.url||(f.path?`${SB_URL}/storage/v1/object/public/${STORAGE_BUCKET}/${f.path}`:null)||f.path||"#"}
                 target="_blank" rel="noopener noreferrer"
-                onClick={e=>{if(!f.url&&!f.path){e.preventDefault();alert("ファイルURLが取得できません。再アップロードをお試しください");}}}
+                onClick={e=>{
+                  const url=f.url||(f.path?`${SB_URL}/storage/v1/object/public/${STORAGE_BUCKET}/${f.path}`:null)||f.path;
+                  if(!url){e.preventDefault();alert("ファイルURLが取得できません。再アップロードをお試しください");return;}
+                  // iOSでtarget=_blankが効かない場合のフォールバック
+                  if(/iPhone|iPad|iPod/i.test(navigator.userAgent)){e.preventDefault();window.location.href=url;}
+                }}
                 style={{fontWeight:600,fontSize:"0.85rem",color:C.accent,textDecoration:"none",display:"block",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name||"ファイル"}</a>
               <div style={{fontSize:"0.65rem",color:C.textMuted}}>
                 {f.size?fmt(f.size):""}
@@ -2826,7 +2836,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       const targetMuni = (data.municipalities||[]).find(m=>String(m.id)===String(salesNavTarget.id));
       if(targetMuni) setActivePref(targetMuni.prefectureId);
       else if(salesNavTarget.prefId) setActivePref(salesNavTarget.prefId);
-      setActiveMuni(salesNavTarget.id); setMuniScreen("muniDetail"); setActiveDetail("memo");
+      setActiveMuni(String(salesNavTarget.id)); setMuniScreen("muniDetail"); setActiveDetail("memo");
     }
     clearSalesNavTarget?.();
   },[salesNavTarget]);
@@ -3180,7 +3190,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       const added=newIds.filter(id=>!prevIds.includes(id));
       if(added.length) nd=addNotif(nd,{type:"sales_assign",title:`「${form.name}」の担当者に追加されました`,body:"自治体",toUserIds:added,fromUserId:currentUser?.id});
     } else {
-      const newMuni={id:"m_"+Date.now()+"_"+Math.random().toString(36).substr(2,6),prefectureId:activePref,...form,dustalk:form.dustalk||"未展開",status:form.status||"未接触",assigneeIds:[],treatyStatus:'未接触',artBranch:"",memos:[],chat:[],createdAt:new Date().toISOString()};
+      const newMuni={id:"m_"+Date.now()+"_"+Math.random().toString(36).substr(2,9),prefectureId:activePref,...form,dustalk:form.dustalk||"未展開",status:form.status||"未接触",assigneeIds:[],treatyStatus:'未接触',artBranch:"",memos:[],chat:[],createdAt:new Date().toISOString()};
       nd={...nd,municipalities:[...munis,newMuni]};
       nd=addChangeLog(nd,{entityType:"自治体",entityId:newMuni.id,entityName:newMuni.name,field:"登録",oldVal:"",newVal:"新規登録"});
     }
@@ -3225,14 +3235,14 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     const queue=[],toAdd=[];
     const targetList=munis.filter(m=>m.prefectureId===activePref);
     lines.forEach(name=>{const ex=checkDup(name,targetList);if(ex)queue.push({name,existing:ex});else toAdd.push(name);});
-    let nd={...data,municipalities:[...(data.municipalities||[]),...toAdd.map(n=>({id:"m_"+Date.now()+"_"+Math.random().toString(36).substr(2,6),prefectureId:activePref,name:n,dustalk:"未展開",status:"未接触",assigneeIds:[],treatyStatus:'未接触',artBranch:"",memos:[],chat:[],createdAt:new Date().toISOString()}))]};
+    let nd={...data,municipalities:[...(data.municipalities||[]),...toAdd.map(n=>({id:"m_"+Date.now()+"_"+Math.random().toString(36).substr(2,9)+Math.floor(Math.random()*10000),prefectureId:activePref,name:n,dustalk:"未展開",status:"未接触",assigneeIds:[],treatyStatus:'未接触',artBranch:"",memos:[],chat:[],createdAt:new Date().toISOString()}))]};
     save(nd);setBulkDone({added:toAdd.length,dupes:queue.length});
     if(queue.length>0){setDupQueue(queue);setDupIdx(0);}else{setBulkText("");setSheet("bulkDone");}
   };
   const handleDupChoice=choice=>{
     const item=dupQueue[dupIdx];
     if(choice==="edit"){setForm({...item.existing});setSheet("editMuni");setDupQueue([]);return;}
-    save({...data,municipalities:[...munis,{id:"m_"+Date.now()+"_"+Math.random().toString(36).substr(2,6),prefectureId:activePref,name:item.name,dustalk:"未展開",status:"未接触",assigneeIds:[],treatyStatus:'未接触',artBranch:"",memos:[],chat:[],createdAt:new Date().toISOString()}]});
+    save({...data,municipalities:[...munis,{id:"m_"+Date.now()+"_"+Math.random().toString(36).substr(2,9)+Math.floor(Math.random()*10000),prefectureId:activePref,name:item.name,dustalk:"未展開",status:"未接触",assigneeIds:[],treatyStatus:'未接触',artBranch:"",memos:[],chat:[],createdAt:new Date().toISOString()}]});
     const n=dupIdx+1;
     if(n>=dupQueue.length){setDupQueue([]);setSheet("bulkDone");}else setDupIdx(n);
   };
@@ -4498,7 +4508,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           {/* 許可業者調査チェック */}
           <div style={{marginTop:"0.75rem",display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.5rem 0.75rem",background:muni.surveyDone?"#d1fae5":"#f8fafc",borderRadius:"0.75rem",border:`1.5px solid ${muni.surveyDone?"#6ee7b7":"#e2e8f0"}`}}>
             <input type="checkbox" checked={!!muni.surveyDone} onChange={e=>{
-              const nd={...data,municipalities:munis.map(m=>m.id===activeMuni?{...m,surveyDone:e.target.checked,surveyDoneAt:e.target.checked?new Date().toISOString():null}:m)};
+              const nd={...data,municipalities:munis.map(m=>String(m.id)===String(activeMuni)?{...m,surveyDone:e.target.checked,surveyDoneAt:e.target.checked?new Date().toISOString():null}:m)};
               save(nd);
             }} style={{width:18,height:18,accentColor:"#059669",cursor:"pointer",flexShrink:0}}/>
             <div style={{flex:1}}>
@@ -4507,13 +4517,22 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             </div>
             <span style={{fontSize:"1.2rem"}}>{muni.surveyDone?"✅":"🔲"}</span>
           </div>
+          {/* 許可種別バッジ */}
+          {(muni.permitTypes||[]).length>0&&(
+            <div style={{marginTop:"0.6rem",display:"flex",flexWrap:"wrap",gap:"0.3rem"}}>
+              <span style={{fontSize:"0.62rem",color:"#5b21b6",fontWeight:700,marginRight:"0.2rem"}}>許可：</span>
+              {(muni.permitTypes||[]).map(p=>(
+                <span key={p} style={{fontSize:"0.62rem",fontWeight:700,padding:"0.15rem 0.45rem",borderRadius:999,background:"#ede9fe",color:"#5b21b6",border:"1px solid #c4b5fd"}}>{p}</span>
+              ))}
+            </div>
+          )}
         </Card>
         {/* Quick change dustalk + treaty */}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.75rem",marginBottom:"1rem"}}>
           <div>
             <div style={{fontSize:"0.68rem",fontWeight:700,color:C.textSub,marginBottom:"0.4rem"}}>ダストーク展開</div>
             <DustalkPicker value={muni.dustalk||"未展開"} onChange={s=>{
-              let nd={...data,municipalities:munis.map(m=>m.id===activeMuni?{...m,dustalk:s}:m)};
+              let nd={...data,municipalities:munis.map(m=>String(m.id)===String(activeMuni)?{...m,dustalk:s}:m)};
               nd=addChangeLog(nd,{entityType:"自治体",entityId:muni.id,entityName:muni.name,field:"ダストーク",oldVal:muni.dustalk,newVal:s});
               save(nd);
             }}/>
@@ -4522,7 +4541,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           <div>
             <div style={{fontSize:"0.68rem",fontWeight:700,color:C.textSub,marginBottom:"0.4rem"}}>連携協定</div>
             <TreatyPicker value={muni.treatyStatus||"未接触"} onChange={s=>{
-              let nd={...data,municipalities:munis.map(m=>m.id===activeMuni?{...m,treatyStatus:s}:m)};
+              let nd={...data,municipalities:munis.map(m=>String(m.id)===String(activeMuni)?{...m,treatyStatus:s}:m)};
               nd=addChangeLog(nd,{entityType:"自治体",entityId:muni.id,entityName:muni.name,field:"連携協定",oldVal:muni.treatyStatus,newVal:s});
               save(nd);
             }}/>
@@ -4568,26 +4587,28 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
         <div style={{marginTop:"1rem"}}>
           <Btn variant="danger" size="sm" onClick={()=>{if(window.confirm(`${muni.name}を削除しますか？`))deleteMuni(muni.id);}}>🗑 自治体を削除</Btn>
         </div>
-        {/* 展開済み自治体 CSV出力 */}
-        {sheet===null&&salesTab==="muni"&&munis.filter(m=>m.dustalk==="展開").length>0&&(
-          <div style={{marginBottom:"0.5rem",textAlign:"right"}}>
-            <button onClick={()=>{
-              const rows=munis.filter(m=>m.dustalk==="展開").map(m=>{
-                const pref=PREFECTURES.find(p=>p.id===m.prefectureId);
-                return [pref?.name||"",m.name,m.status||"",m.dustalk||"",m.treatyStatus||"",m.updatedAt||"",m.notes||""];
-              });
-              downloadCSV("展開済み自治体.csv",["都道府県","自治体名","ステータス","ダストーク展開","連携協定","更新日","備考"],rows);
-            }} style={{padding:"0.35rem 0.75rem",borderRadius:"0.625rem",border:"1.5px solid #059669",background:"#d1fae5",color:"#059669",fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit"}}>
-              📥 展開済みCSV出力 ({munis.filter(m=>m.dustalk==="展開").length}件)
-            </button>
-          </div>
-        )}
         {sheet==="editMuni"&&(
           <Sheet title="自治体を編集" onClose={()=>setSheet(null)}>
             <FieldLbl label="自治体名 *"><Input value={form.name||""} onChange={e=>setForm({...form,name:e.target.value})} autoFocus/></FieldLbl>
             <FieldLbl label="ステータス"><StatusPicker map={MUNI_STATUS} value={form.status||"未接触"} onChange={s=>setForm({...form,status:s})}/></FieldLbl>
             <FieldLbl label="担当者">{AssigneePicker({ids:form.assigneeIds||[],onChange:ids=>setForm({...form,assigneeIds:ids})})}</FieldLbl>
             <FieldLbl label="展開ステータス（ダストーク）"><DustalkPicker value={form.dustalk||"未展開"} onChange={s=>setForm({...form,dustalk:s})}/></FieldLbl>
+            <FieldLbl label="許可種別（複数選択可）">
+              <div style={{display:"flex",flexWrap:"wrap",gap:"0.4rem",padding:"0.5rem",background:"#f8fafc",borderRadius:"0.75rem",border:"1px solid #e2e8f0"}}>
+                {PERMIT_TYPES.map(p=>{
+                  const checked=(form.permitTypes||[]).includes(p);
+                  return (
+                    <label key={p} style={{display:"flex",alignItems:"center",gap:"0.3rem",cursor:"pointer",padding:"0.25rem 0.5rem",borderRadius:"0.5rem",background:checked?"#ede9fe":"white",border:`1px solid ${checked?"#7c3aed":"#e2e8f0"}`,transition:"all 0.15s"}}>
+                      <input type="checkbox" checked={checked} onChange={()=>{
+                        const cur=form.permitTypes||[];
+                        setForm({...form,permitTypes:checked?cur.filter(x=>x!==p):[...cur,p]});
+                      }} style={{accentColor:"#7c3aed",width:14,height:14}}/>
+                      <span style={{fontSize:"0.75rem",fontWeight:checked?700:400,color:checked?"#5b21b6":"#374151"}}>{p}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </FieldLbl>
             <FieldLbl label="アート引越センター 管轄支店"><Input value={form.artBranch||""} onChange={e=>setForm({...form,artBranch:e.target.value})} placeholder="例：福岡支店"/></FieldLbl>
             <FieldLbl label="連携協定ステータス"><TreatyPicker value={form.treatyStatus||"未接触"} onChange={s=>setForm({...form,treatyStatus:s})}/></FieldLbl>
             <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
@@ -4701,7 +4722,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
               const ds=DUSTALK_STATUS[m.dustalk]||DUSTALK_STATUS["未展開"];
               const mv=muniVendors(m.id);
               return (
-                <div key={m.id} onClick={()=>{setActivePref(m.prefectureId);setActiveMuni(m.id);setMuniScreen("muniDetail");setActiveDetail("memo");}}
+                <div key={m.id} onClick={()=>{setActivePref(m.prefectureId);setActiveMuni(String(m.id));setMuniScreen("muniDetail");setActiveDetail("memo");}}
                   style={{background:"white",border:`1.5px solid ${C.border}`,borderRadius:"0.875rem",padding:"0.875rem 1rem",cursor:"pointer",boxShadow:C.shadow}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.25rem"}}>
                     <div>
@@ -4777,7 +4798,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                               const mv=muniVendors(m.id);
                               return (
                                 <div key={m.id}
-                                  onClick={()=>{if(bulkMode){setBulkSelected(prev=>{const n=new Set(prev);n.has(m.id)?n.delete(m.id):n.add(m.id);return n;});return;}setActivePref(pref.id);setActiveMuni(m.id);setMuniScreen("muniDetail");setActiveDetail("memo"); /* muniClick */}}
+                                  onClick={()=>{if(bulkMode){setBulkSelected(prev=>{const n=new Set(prev);n.has(m.id)?n.delete(m.id):n.add(m.id);return n;});return;}setActivePref(pref.id);setActiveMuni(String(m.id));setMuniScreen("muniDetail");setActiveDetail("memo"); /* muniClick */}}
                                   style={{display:"flex",alignItems:"center",padding:"0.5rem 1rem 0.5rem 2.5rem",borderTop:`1px solid ${C.borderLight}`,cursor:"pointer",gap:"0.4rem",background:bulkSelected.has(m.id)?"#eff6ff":"transparent"}}>
                                   {bulkMode&&<input type="checkbox" checked={bulkSelected.has(m.id)} readOnly style={{width:15,height:15,accentColor:C.accent,flexShrink:0,cursor:"pointer"}}/>}
                                   <div style={{flex:1,minWidth:0}}>
@@ -4788,6 +4809,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                                     <span style={{padding:"0.1rem 0.4rem",borderRadius:999,fontSize:"0.6rem",fontWeight:700,background:ds2.bg,color:ds2.color,whiteSpace:"nowrap"}}>{ds2.icon}{m.dustalk||"未展開"}</span>
                                     {(()=>{const ts=TREATY_STATUS[m.treatyStatus||"未接触"];return ts?<span style={{fontSize:"0.58rem",padding:"0.1rem 0.35rem",borderRadius:999,fontWeight:700,background:ts.bg,color:ts.color,whiteSpace:"nowrap"}}>🤝{m.treatyStatus||"未接触"}</span>:null;})()}
                                     {m.surveyDone&&<span style={{fontSize:"0.55rem",padding:"0.1rem 0.3rem",borderRadius:999,fontWeight:700,background:"#d1fae5",color:"#065f46",whiteSpace:"nowrap"}}>✅調査完了</span>}
+                                    {(m.permitTypes||[]).length>0&&<span style={{fontSize:"0.52rem",padding:"0.1rem 0.3rem",borderRadius:999,fontWeight:700,background:"#ede9fe",color:"#5b21b6",whiteSpace:"nowrap"}}>許可{(m.permitTypes||[]).length}種</span>}
                                   </div>
                                   <span style={{color:C.textMuted,fontSize:"0.78rem",flexShrink:0}}>›</span>
                                 </div>
@@ -5583,161 +5605,226 @@ async function exportPPTX(sys, mk, yk, d, prev, allAnalytics) {
   await pres.writeFile({fileName});
 }
 
-// ── 月次比較レポート: 各月1枚スライド ──────────────────────────────────────
+// ── 月次比較レポート: 各月1枚スライド（改良版）──────────────────────────────
 async function exportMultiMonthPPTX(sys, currentMk, allAnalytics) {
   const sysLabelMap = {dustalk:"DUSTALK",rebit:"Rebit",bizcon:"BizCon",beenet:"BeeNet"};
   const sysLabel = sysLabelMap[sys] || sys;
-  const NAVY="#1E2A3A", BLUE="#2563EB", GREEN="#059669", AMBER="#D97706", RED="#DC2626";
-  const WHITE="FFFFFF", LGRAY="F8FAFC", DGRAY="64748B";
+  const NAVY="1E2A3A", BLUE="2563EB", GREEN="059669", AMBER="D97706", RED="DC2626", PURPLE="7C3AED";
+  const WHITE="FFFFFF", LGRAY="F8FAFC", DGRAY="64748B", LBLUE="EFF6FF";
 
-  if(!window.PptxGenJS){ const s=document.createElement("script"); s.src="https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.bundle.js"; document.head.appendChild(s); await new Promise(r=>{s.onload=r;}); }
+  if(!window.PptxGenJS){
+    const s=document.createElement("script");
+    s.src="https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.bundle.js";
+    document.head.appendChild(s);
+    await new Promise(r=>{s.onload=r;});
+  }
   const pres=new window.PptxGenJS();
-  pres.layout="LAYOUT_WIDE";
+  pres.layout="LAYOUT_WIDE"; // 10x5.63inch
 
   const sysData=allAnalytics?.[sys]||{};
-  // 直近12ヶ月を取得
   const months=[];
   for(let i=11;i>=0;i--) months.push(shiftMonth(currentMk,-i));
   const availMonths=months.filter(k=>sysData[k]);
   if(!availMonths.length){alert("データが登録されている月がありません。");return;}
 
-  const fmt=(v,unit="")=>{if(v===undefined||v===null||v==="")return "—"; const n=Number(v); if(isNaN(n)||n===0)return "0"+unit; if(unit==="円"&&n>=10000)return (n/10000).toFixed(1)+"万円"; return n.toLocaleString()+unit;};
+  const fmt=(v,unit="")=>{if(v===undefined||v===null||v==="")return "—";const n=Number(v);if(isNaN(n))return String(v);if(unit==="円"&&n>=10000)return (n/10000).toFixed(1)+"万円";return n.toLocaleString()+unit;};
+  const diffTxt=(cur,prv)=>{if(!prv)return "";const d=cur-prv;return (d>=0?"+":"")+d.toLocaleString();};
+  const diffColor=(cur,prv)=>cur>=prv?GREEN:RED;
 
-  // ── 表紙スライド ──
+  // ── 表紙 ──
   {
     const s=pres.addSlide();
     s.background={color:NAVY};
-    s.addText(sysLabel+" 月次レポート",{x:0.5,y:1.5,w:9,h:1,fontSize:36,fontFace:"Arial",bold:true,color:WHITE,align:"center"});
-    s.addText(`${availMonths[0].replace("-","年")}月 〜 ${availMonths[availMonths.length-1].replace("-","年")}月`,{x:0.5,y:2.7,w:9,h:0.5,fontSize:18,fontFace:"Arial",color:"93C5FD",align:"center"});
-    s.addText(`${availMonths.length}ヶ月分のデータ`,{x:0.5,y:3.4,w:9,h:0.4,fontSize:14,fontFace:"Arial",color:DGRAY,align:"center"});
-    s.addText("各月1枚 ｜ 月次比較レポート",{x:0.5,y:4.8,w:9,h:0.3,fontSize:11,fontFace:"Arial",color:"475569",align:"center"});
+    s.addShape(pres.shapes.RECTANGLE,{x:0,y:2.2,w:10,h:0.08,fill:{color:BLUE},line:{color:BLUE}});
+    s.addText(sysLabel,{x:0.6,y:0.7,w:8.8,h:0.8,fontSize:13,fontFace:"Arial",color:"93C5FD",bold:false});
+    s.addText("月次レポート",{x:0.6,y:1.3,w:8.8,h:1.1,fontSize:42,fontFace:"Arial",bold:true,color:WHITE});
+    s.addText(`${availMonths[0].replace("-","年")}月 〜 ${availMonths[availMonths.length-1].replace("-","年")}月　計${availMonths.length}ヶ月`,
+      {x:0.6,y:2.5,w:8.8,h:0.5,fontSize:16,fontFace:"Arial",color:"93C5FD"});
+    s.addText("各月1枚 ｜ 月次トレンド比較",{x:0.6,y:4.8,w:8.8,h:0.4,fontSize:11,fontFace:"Arial",color:"475569"});
   }
 
-  // ── 月別サマリー比較スライド（一覧表） ──
-  if(sys==="dustalk"&&availMonths.length>1){
-    const s=pres.addSlide();
-    s.background={color:"FFFFFF"};
-    s.addShape(pres.shapes.RECTANGLE,{x:0,y:0,w:10,h:0.8,fill:{color:NAVY},line:{color:NAVY}});
-    s.addText("月次推移サマリー",{x:0.4,y:0,w:9,h:0.8,fontSize:16,fontFace:"Arial",bold:true,color:WHITE,valign:"middle"});
-    const tblData=[];
-    const hdrs=["月","HP閲覧","LINE友達","依頼数","成約数","売上"];
-    tblData.push(hdrs.map(h=>({text:h,options:{fill:{color:NAVY},color:WHITE,bold:true,fontSize:11,fontFace:"Arial",align:"center"}})));
-    availMonths.forEach(k=>{
-      const d=sysData[k]||{};
-      const prev=sysData[shiftMonth(k,-1)]||{};
-      const diff=(cur,p)=>{const delta=+cur-+p;if(!p||delta===0)return "";return delta>0?`+${delta.toLocaleString()}`:`${delta.toLocaleString()}`;};
-      tblData.push([
-        {text:k.replace("20","").replace("-","/"),options:{bold:true,fontSize:11,fontFace:"Arial"}},
-        {text:fmt(d.hp,"PV")+(prev.hp?` (${diff(d.hp,prev.hp)})`:``),options:{fontSize:10,fontFace:"Arial",align:"right"}},
-        {text:fmt(d.lineFriends,"人"),options:{fontSize:10,fontFace:"Arial",align:"right"}},
-        {text:fmt(d.requests,"件"),options:{fontSize:10,fontFace:"Arial",align:"right"}},
-        {text:fmt(d.contracts,"件"),options:{fontSize:10,fontFace:"Arial",align:"right"}},
-        {text:fmt(d.revenue,"円"),options:{fontSize:10,fontFace:"Arial",align:"right"}},
-      ]);
-    });
-    s.addTable(tblData,{x:0.3,y:0.9,w:9.4,colW:[1.2,1.7,1.7,1.5,1.5,1.8],border:{pt:0.5,color:"D1D5DB"},rowH:0.38});
-  }
-
-  // ── 月別グラフ比較（件数推移） ──
-  if(sys==="dustalk"&&availMonths.length>1){
-    const s=pres.addSlide();
-    s.background={color:LGRAY};
-    s.addShape(pres.shapes.RECTANGLE,{x:0,y:0,w:10,h:0.8,fill:{color:NAVY},line:{color:NAVY}});
-    s.addText("依頼数・成約数 月次推移",{x:0.4,y:0,w:9,h:0.8,fontSize:16,fontFace:"Arial",bold:true,color:WHITE,valign:"middle"});
-    const labels=availMonths.map(k=>k.replace("20","").replace("-","/"));
-    const reqs=availMonths.map(k=>+(sysData[k]?.requests||0));
-    const cnts=availMonths.map(k=>+(sysData[k]?.contracts||0));
-    s.addChart(pres.charts.BAR,[
-      {name:"依頼数",labels,values:reqs},
-      {name:"成約数",labels,values:cnts},
-    ],{x:0.4,y:0.9,w:9.2,h:4.6,barDir:"col",barGapWidthPct:30,
-      chartColors:[BLUE,GREEN],
-      catAxisLabelColor:DGRAY,valAxisLabelColor:DGRAY,
-      valGridLine:{color:"E2E8F0",size:0.5},
-      showValue:true,dataLabelFontSize:9,showLegend:true,legendPos:"t",legendFontSize:10,
-    });
-  }
-
-  // ── 各月1枚スライド ──
-  availMonths.forEach((mk2,i)=>{
-    const d=sysData[mk2]||{};
-    const prev=sysData[shiftMonth(mk2,-1)]||{};
-    const label=mk2.replace("-","年")+"月";
-
-    if(sys==="dustalk"){
+  // ── DUSTALK ──
+  if(sys==="dustalk"){
+    // 月次サマリー比較表
+    if(availMonths.length>1){
       const s=pres.addSlide();
-      s.background={color:"FFFFFF"};
-      // ヘッダー
+      s.background={color:WHITE};
       s.addShape(pres.shapes.RECTANGLE,{x:0,y:0,w:10,h:0.75,fill:{color:NAVY},line:{color:NAVY}});
-      s.addText(`${sysLabel} — ${label}`,{x:0.4,y:0,w:7,h:0.75,fontSize:15,fontFace:"Arial",bold:true,color:WHITE,valign:"middle"});
-      s.addText(`${i+1} / ${availMonths.length}`,{x:8.5,y:0,w:1.3,h:0.75,fontSize:11,fontFace:"Arial",color:"93C5FD",align:"right",valign:"middle"});
+      s.addText("📊 月次推移サマリー",{x:0.35,y:0,w:9.3,h:0.75,fontSize:17,fontFace:"Arial",bold:true,color:WHITE,valign:"middle"});
+      const cols=["月","HP閲覧(PV)","LINE友達","依頼数","成約数","売上","CV率"];
+      const hdrRow=cols.map(c=>({text:c,options:{fill:{color:NAVY},color:WHITE,bold:true,fontSize:10,fontFace:"Arial",align:"center",valign:"middle"}}));
+      const tblData=[hdrRow];
+      availMonths.forEach((k,i)=>{
+        const d=sysData[k]||{};
+        const prev=sysData[availMonths[i-1]]||{};
+        const cvRate=d.requests>0?((+d.contracts/+d.requests)*100).toFixed(1)+"%":"—";
+        const mk=(v,pv,unit)=>{
+          const cur=+v||0; const prv=+pv||0;
+          const delta=i>0&&prv>0?` (${cur>=prv?"+":""}${(cur-prv).toLocaleString()})`:""
+          return {text:fmt(v,unit)+delta,options:{fontSize:9,fontFace:"Arial",align:"right",color:i>0&&prv>0?(cur>=prv?"1E3A2F":"7F1D1D"):"1E293B"}};
+        };
+        tblData.push([
+          {text:k.replace("20","").replace("-","/"),options:{bold:true,fontSize:10,fontFace:"Arial",fill:{color:i%2===0?"F8FAFC":WHITE}}},
+          mk(d.hp,prev.hp,"PV"),mk(d.lineFriends,prev.lineFriends,"人"),
+          mk(d.requests,prev.requests,"件"),mk(d.contracts,prev.contracts,"件"),
+          mk(d.revenue,prev.revenue,"円"),{text:cvRate,options:{fontSize:9,fontFace:"Arial",align:"center"}},
+        ]);
+      });
+      s.addTable(tblData,{x:0.2,y:0.85,w:9.6,colW:[1.1,1.6,1.4,1.3,1.3,1.8,1.1],border:{pt:0.4,color:"E2E8F0"},rowH:0.38});
+    }
 
-      // KPIカード (4つ)
+    // 依頼数・成約数グラフスライド
+    if(availMonths.length>1){
+      const s=pres.addSlide();
+      s.background={color:LGRAY};
+      s.addShape(pres.shapes.RECTANGLE,{x:0,y:0,w:10,h:0.75,fill:{color:NAVY},line:{color:NAVY}});
+      s.addText("📈 依頼数・成約数 月次推移",{x:0.35,y:0,w:9.3,h:0.75,fontSize:17,fontFace:"Arial",bold:true,color:WHITE,valign:"middle"});
+      const labels=availMonths.map(k=>k.replace("20","").replace("-","/"));
+      const reqs=availMonths.map(k=>+(sysData[k]?.requests||0));
+      const cnts=availMonths.map(k=>+(sysData[k]?.contracts||0));
+      const hps=availMonths.map(k=>+(sysData[k]?.hp||0));
+      s.addChart(pres.charts.BAR,[
+        {name:"依頼数",labels,values:reqs},
+        {name:"成約数",labels,values:cnts},
+      ],{x:0.3,y:0.85,w:6.0,h:4.5,barDir:"col",barGapWidthPct:25,
+        chartColors:[BLUE,GREEN],chartArea:{fill:{color:WHITE}},
+        catAxisLabelColor:DGRAY,valAxisLabelColor:DGRAY,
+        valGridLine:{color:"E2E8F0",size:0.5},catGridLine:{style:"none"},
+        showValue:true,dataLabelFontSize:9,showLegend:true,legendPos:"t",legendFontSize:10,
+      });
+      s.addChart(pres.charts.LINE,[{name:"HP閲覧(PV)",labels,values:hps}],{
+        x:6.5,y:0.85,w:3.2,h:4.5,lineSize:2.5,lineSmooth:true,
+        chartColors:[AMBER],chartArea:{fill:{color:WHITE}},
+        catAxisLabelColor:DGRAY,valAxisLabelColor:DGRAY,
+        showValue:true,dataLabelFontSize:8,showLegend:true,legendPos:"t",legendFontSize:10,
+      });
+    }
+
+    // 各月1枚スライド
+    availMonths.forEach((mk2,i)=>{
+      const d=sysData[mk2]||{};
+      const prev=i>0?sysData[availMonths[i-1]]||{}:{};
+      const label=mk2.replace("-","年")+"月";
+      const s=pres.addSlide();
+      s.background={color:WHITE};
+
+      // ヘッダー
+      s.addShape(pres.shapes.RECTANGLE,{x:0,y:0,w:10,h:0.72,fill:{color:NAVY},line:{color:NAVY}});
+      s.addShape(pres.shapes.RECTANGLE,{x:0,y:0.72,w:10,h:0.06,fill:{color:BLUE},line:{color:BLUE}});
+      s.addText(`${sysLabel}  ${label}`,{x:0.35,y:0,w:7,h:0.72,fontSize:18,fontFace:"Arial",bold:true,color:WHITE,valign:"middle"});
+      s.addText(`${i+1} / ${availMonths.length}`,{x:8.8,y:0,w:1,h:0.72,fontSize:11,fontFace:"Arial",color:"93C5FD",align:"right",valign:"middle"});
+
+      // KPIカード4枚
       const kpis=[
-        {label:"HP閲覧数",val:fmt(d.hp,"PV"),prev:prev.hp,color:BLUE},
-        {label:"依頼数",val:fmt(d.requests,"件"),prev:prev.requests,color:GREEN},
-        {label:"成約数",val:fmt(d.contracts,"件"),prev:prev.contracts,color:AMBER},
-        {label:"売上",val:fmt(d.revenue,"円"),prev:prev.revenue,color:RED},
+        {label:"HP閲覧数",val:fmt(d.hp,"PV"),cur:+d.hp||0,prv:+prev.hp||0,color:BLUE,icon:"🌐"},
+        {label:"依頼数",val:fmt(d.requests,"件"),cur:+d.requests||0,prv:+prev.requests||0,color:GREEN,icon:"📋"},
+        {label:"成約数",val:fmt(d.contracts,"件"),cur:+d.contracts||0,prv:+prev.contracts||0,color:AMBER,icon:"✅"},
+        {label:"売上",val:fmt(d.revenue,"円"),cur:+d.revenue||0,prv:+prev.revenue||0,color:PURPLE,icon:"💴"},
       ];
       kpis.forEach((kpi,ki)=>{
-        const x=0.3+ki*2.4, y=0.85, w=2.3, h=1.2;
-        s.addShape(pres.shapes.RECTANGLE,{x,y,w,h,fill:{color:"F8FAFC"},shadow:{type:"outer",blur:3,offset:1,angle:135,color:"000000",opacity:0.08}});
-        s.addText(kpi.label,{x:x+0.1,y:y+0.1,w:w-0.2,h:0.3,fontSize:9,fontFace:"Arial",color:DGRAY});
-        s.addText(kpi.val,{x:x+0.1,y:y+0.38,w:w-0.2,h:0.55,fontSize:20,fontFace:"Arial",bold:true,color:kpi.color,valign:"middle"});
-        // 前月比
-        const delta=Number(d[[null,"hp","requests","contracts","revenue","lineFriends"][ki+1]||0])-Number(prev[[null,"hp","requests","contracts","revenue","lineFriends"][ki+1]||0]);
-        if(kpi.prev!==undefined&&Number(kpi.prev)>0){
+        const x=0.25+ki*2.4; const y=0.88; const w=2.25; const h=1.15;
+        s.addShape(pres.shapes.ROUNDED_RECTANGLE,{x,y,w,h,fill:{color:LGRAY},line:{color:"E2E8F0",pt:0.8},rectRadius:0.08});
+        s.addText(kpi.icon+" "+kpi.label,{x:x+0.1,y:y+0.08,w:w-0.2,h:0.28,fontSize:9,fontFace:"Arial",color:DGRAY});
+        s.addText(kpi.val,{x:x+0.1,y:y+0.3,w:w-0.2,h:0.55,fontSize:21,fontFace:"Arial",bold:true,color:kpi.color,valign:"middle"});
+        if(i>0&&kpi.prv>0){
+          const delta=kpi.cur-kpi.prv;
           const sign=delta>=0?"+":"";
-          s.addText(`前月比 ${sign}${delta.toLocaleString()}`,{x:x+0.1,y:y+0.88,w:w-0.2,h:0.25,fontSize:8.5,fontFace:"Arial",color:delta>=0?GREEN:RED});
+          s.addText(`前月比 ${sign}${delta.toLocaleString()}`,{x:x+0.1,y:y+0.84,w:w-0.2,h:0.24,fontSize:8.5,fontFace:"Arial",color:delta>=0?GREEN:RED});
         }
       });
 
-      // 離脱率ファネル（小型）
-      s.addShape(pres.shapes.RECTANGLE,{x:0.3,y:2.2,w:4.6,h:0.35,fill:{color:"334155"},line:{color:"334155"}});
-      s.addText("🚪 依頼フロー（人数ベース）",{x:0.35,y:2.2,w:4.5,h:0.35,fontSize:10,fontFace:"Arial",bold:true,color:WHITE,valign:"middle"});
-      const exitSteps=[{k:"top",l:"トップ"},{k:"location",l:"場所入力"},{k:"requestContent",l:"依頼内容"},{k:"date",l:"希望日"},{k:"complete",l:"依頼完了"},{k:"estimateConfirm",l:"見積確認"},{k:"contract",l:"成約"}];
-      const exitVals=exitSteps.map(s2=>+(d.exits?.[s2.k]||0));
+      // CV率
+      const cvRate=+d.requests>0?((+d.contracts/+d.requests)*100).toFixed(1)+"%":"—";
+      s.addShape(pres.shapes.ROUNDED_RECTANGLE,{x:9.5,y:0.88,w:0.4,h:1.15,fill:{color:LBLUE},line:{color:"BFDBFE",pt:0.8},rectRadius:0.04});
+      s.addText("CV
+"+cvRate,{x:9.5,y:0.9,w:0.4,h:1.1,fontSize:7,fontFace:"Arial",bold:true,color:BLUE,align:"center",valign:"middle"});
+
+      // 離脱率ファネル（左半分）
+      s.addShape(pres.shapes.RECTANGLE,{x:0.25,y:2.18,w:5.0,h:0.32,fill:{color:"334155"},line:{color:"334155"}});
+      s.addText("🚪 依頼フロー 離脱率（人数ベース）",{x:0.3,y:2.18,w:4.9,h:0.32,fontSize:9.5,fontFace:"Arial",bold:true,color:WHITE,valign:"middle"});
+      s.addText("※件数ベースの依頼数と異なり、1人=1カウント",{x:0.3,y:2.52,w:4.9,h:0.22,fontSize:7.5,fontFace:"Arial",color:PURPLE});
+      const exitSteps=[
+        {k:"top",l:"トップ画面"},{k:"location",l:"場所入力"},{k:"requestContent",l:"依頼内容"},
+        {k:"date",l:"希望日入力"},{k:"complete",l:"依頼完了"},{k:"estimateConfirm",l:"見積確認"},{k:"contract",l:"成約"}
+      ];
+      const exitVals=exitSteps.map(es=>+(d.exits?.[es.k]||0));
       const topV=exitVals[0]||1;
       exitSteps.forEach((step,si)=>{
-        const v=exitVals[si];
+        const v=exitVals[si]; const nextV=exitVals[si+1];
         const pct=topV>0?(v/topV*100).toFixed(0):0;
-        const barW=4.4*(v/topV);
-        const y2=2.65+si*0.42;
-        s.addShape(pres.shapes.RECTANGLE,{x:0.3,y:y2,w:Math.max(barW,0.1),h:0.3,fill:{color:si===0?BLUE:si>=5?GREEN:"3B82F6"},line:{color:"none"}});
-        s.addText(`${step.l}  ${v.toLocaleString()}人 (${pct}%)`,{x:0.35,y:y2+0.02,w:4.4,h:0.28,fontSize:9,fontFace:"Arial",color:"1E293B",bold:si===0});
+        const exitRate=v>0&&nextV!=null?((v-nextV)/v*100).toFixed(0):null;
+        const barW=4.7*(v/Math.max(topV,1));
+        const y2=2.78+si*0.38;
+        const barColor=si===0?BLUE:si===exitSteps.length-1?GREEN:pct<40?"EF4444":"3B82F6";
+        s.addShape(pres.shapes.RECTANGLE,{x:0.25,y:y2,w:Math.max(barW,0.08),h:0.28,fill:{color:barColor},line:{color:"none"}});
+        s.addShape(pres.shapes.RECTANGLE,{x:0.25,y:y2,w:4.7,h:0.28,fill:{color:"none"},line:{color:"E2E8F0",pt:0.5}});
+        s.addText(`${step.l}  ${v.toLocaleString()}人 (${pct}%)${exitRate&&si<exitSteps.length-1?`  ↓離脱${exitRate}%`:""}`,
+          {x:0.28,y:y2+0.03,w:4.65,h:0.24,fontSize:8,fontFace:"Arial",color:"1E293B",bold:si===0});
       });
-      s.addText("※件数ベースの上記依頼数と異なり、ここは人数ベースで集計（1人=1カウント）",{x:0.3,y:5.45,w:4.6,h:0.25,fontSize:7.5,fontFace:"Arial",color:"7C3AED"});
 
       // 支払い内訳（右半分）
       const payLabels=["クレカ","ペイペイ","メルペイ","現金"];
       const payKeys=["cc","paypay","merpay","cash"];
       const payVals=payKeys.map(k=>+(d.pay?.[k]||0));
       const payTotal=payVals.reduce((a,b)=>a+b,0);
+      s.addShape(pres.shapes.RECTANGLE,{x:5.5,y:2.18,w:4.25,h:0.32,fill:{color:"334155"},line:{color:"334155"}});
+      s.addText("💳 支払い内訳",{x:5.55,y:2.18,w:4.15,h:0.32,fontSize:9.5,fontFace:"Arial",bold:true,color:WHITE,valign:"middle"});
       if(payTotal>0){
-        s.addShape(pres.shapes.RECTANGLE,{x:5.2,y:2.2,w:4.5,h:0.35,fill:{color:"334155"},line:{color:"334155"}});
-        s.addText("💳 支払い方法",{x:5.25,y:2.2,w:4.4,h:0.35,fontSize:10,fontFace:"Arial",bold:true,color:WHITE,valign:"middle"});
         s.addChart(pres.charts.DOUGHNUT,[{name:"支払",labels:payLabels,values:payVals}],{
-          x:5.2,y:2.6,w:4.5,h:2.9,
-          chartColors:[BLUE,"#06B6D4",GREEN,AMBER],
-          showLabel:true,showValue:false,showPercent:true,dataLabelFontSize:11,
-          showLegend:true,legendPos:"r",legendFontSize:10,
+          x:5.4,y:2.5,w:4.35,h:2.9,
+          chartColors:[BLUE,"06B6D4",GREEN,AMBER],
+          showLabel:true,showPercent:true,dataLabelFontSize:10,dataLabelColor:"1E293B",
+          showLegend:true,legendPos:"r",legendFontSize:9,
+          chartArea:{fill:{color:WHITE}},
         });
+      } else {
+        s.addText("データなし",{x:5.5,y:3.5,w:4.2,h:0.5,fontSize:12,fontFace:"Arial",color:DGRAY,align:"center"});
       }
-    } else if(sys==="rebit"){
+
+      // フッター
+      s.addShape(pres.shapes.RECTANGLE,{x:0,y:5.4,w:10,h:0.23,fill:{color:"F1F5F9"},line:{color:"E2E8F0"}});
+      s.addText(`${sysLabel} 月次レポート  ｜  ${label}  ｜  自動生成`,{x:0.3,y:5.42,w:9.4,h:0.19,fontSize:7.5,fontFace:"Arial",color:DGRAY});
+    });
+  }
+
+  // ── REBIT ──
+  else if(sys==="rebit"){
+    if(availMonths.length>1){
       const s=pres.addSlide();
       s.background={color:LGRAY};
       s.addShape(pres.shapes.RECTANGLE,{x:0,y:0,w:10,h:0.75,fill:{color:NAVY},line:{color:NAVY}});
-      s.addText(`Rebit — ${label}`,{x:0.4,y:0,w:9,h:0.75,fontSize:15,fontFace:"Arial",bold:true,color:WHITE,valign:"middle"});
-      s.addShape(pres.shapes.RECTANGLE,{x:0.5,y:1.0,w:4.2,h:1.5,fill:{color:WHITE},shadow:{type:"outer",blur:4,offset:2,angle:135,color:"000000",opacity:0.1}});
-      s.addText("累積ユーザー数",{x:0.6,y:1.1,w:4,h:0.4,fontSize:11,fontFace:"Arial",color:DGRAY});
-      s.addText(fmt(d.cumulative,"人"),{x:0.6,y:1.5,w:4,h:0.8,fontSize:32,fontFace:"Arial",bold:true,color:BLUE,valign:"middle"});
-      s.addShape(pres.shapes.RECTANGLE,{x:5.3,y:1.0,w:4.2,h:1.5,fill:{color:WHITE},shadow:{type:"outer",blur:4,offset:2,angle:135,color:"000000",opacity:0.1}});
-      s.addText("月間ユーザー数",{x:5.4,y:1.1,w:4,h:0.4,fontSize:11,fontFace:"Arial",color:DGRAY});
-      s.addText(fmt(d.monthly,"人"),{x:5.4,y:1.5,w:4,h:0.8,fontSize:32,fontFace:"Arial",bold:true,color:GREEN,valign:"middle"});
+      s.addText("Rebit 月次推移",{x:0.35,y:0,w:9.3,h:0.75,fontSize:17,fontFace:"Arial",bold:true,color:WHITE,valign:"middle"});
+      const labels=availMonths.map(k=>k.replace("20","").replace("-","/"));
+      const monthly=availMonths.map(k=>+(sysData[k]?.monthly||0));
+      const cumulative=availMonths.map(k=>+(sysData[k]?.cumulative||0));
+      s.addChart(pres.charts.BAR,[{name:"月間UU",labels,values:monthly}],{
+        x:0.3,y:0.9,w:5.8,h:4.4,barDir:"col",barGapWidthPct:30,chartColors:[GREEN],
+        catAxisLabelColor:DGRAY,valAxisLabelColor:DGRAY,showValue:true,showLegend:true,legendPos:"t",
+        chartArea:{fill:{color:WHITE}},
+      });
+      s.addChart(pres.charts.LINE,[{name:"累積UU",labels,values:cumulative}],{
+        x:6.2,y:0.9,w:3.5,h:4.4,lineSize:3,lineSmooth:true,chartColors:[BLUE],
+        catAxisLabelColor:DGRAY,valAxisLabelColor:DGRAY,showValue:true,showLegend:true,legendPos:"t",
+        chartArea:{fill:{color:WHITE}},
+      });
     }
-  });
+    availMonths.forEach((mk2,i)=>{
+      const d=sysData[mk2]||{};
+      const prev=i>0?sysData[availMonths[i-1]]||{}:{};
+      const s=pres.addSlide();
+      s.background={color:LGRAY};
+      s.addShape(pres.shapes.RECTANGLE,{x:0,y:0,w:10,h:0.75,fill:{color:NAVY},line:{color:NAVY}});
+      s.addText(`Rebit — ${mk2.replace("-","年")}月`,{x:0.35,y:0,w:9,h:0.75,fontSize:17,fontFace:"Arial",bold:true,color:WHITE,valign:"middle"});
+      [[0.4,"累積ユーザー数",d.cumulative,prev.cumulative,BLUE],[5.3,"月間ユーザー数",d.monthly,prev.monthly,GREEN]].forEach(([x,lbl,val,pval,col])=>{
+        s.addShape(pres.shapes.ROUNDED_RECTANGLE,{x,y:1.0,w:4.2,h:2.0,fill:{color:WHITE},line:{color:"E2E8F0",pt:0.8},rectRadius:0.1});
+        s.addText(lbl,{x:x+0.2,y:1.15,w:3.8,h:0.35,fontSize:11,fontFace:"Arial",color:DGRAY});
+        s.addText(fmt(val,"人"),{x:x+0.2,y:1.5,w:3.8,h:0.85,fontSize:36,fontFace:"Arial",bold:true,color:col,valign:"middle"});
+        if(i>0&&+pval>0){const delta=+val-+pval;s.addText(`前月比 ${delta>=0?"+":""}${delta.toLocaleString()}人`,{x:x+0.2,y:2.6,w:3.8,h:0.28,fontSize:9.5,fontFace:"Arial",color:delta>=0?GREEN:RED});}
+      });
+    });
+  }
 
-  const fileName=`${sysLabel}_月次比較レポート.pptx`;
+  const fileName=`${sysLabel}_月次比較レポート_${currentMk}.pptx`;
   await pres.writeFile({fileName});
 }
 
@@ -6398,23 +6485,31 @@ export default function App() {
             brandNew.slice(0, 3).forEach(n => {
               try {
                 // Service Worker経由で通知（バックグラウンド対応）
-                navigator.serviceWorker?.ready.then(reg => {
-                  reg.showNotification(n.title || 'MyDesk', {
-                    body: n.body || '',
-                    icon: '/icon-192.png',
-                    badge: '/icon-192.png',
-                    tag: n.id?.toString() || 'mydesk',
-                    renotify: false,
-                    data: { url: '/' },
-                  });
-                }).catch(() => {
-                  // Service Worker未対応ならフォールバック
-                  new Notification(n.title || 'MyDesk', {
-                    body: n.body || '',
-                    icon: '/icon-192.png',
-                    tag: n.id?.toString() || 'mydesk',
-                  });
-                });
+                // iOS/PC両対応: ServiceWorker優先、失敗時はフォールバック
+                const showBrowserNotif = () => {
+                  try {
+                    new Notification(n.title || 'MyDesk', {
+                      body: n.body || '',
+                      icon: '/icon-192.png',
+                      tag: n.id?.toString() || 'mydesk-' + Date.now(),
+                    });
+                  } catch(e2) { console.warn('Notification fallback failed', e2); }
+                };
+                if('serviceWorker' in navigator) {
+                  navigator.serviceWorker.ready.then(reg => {
+                    return reg.showNotification(n.title || 'MyDesk', {
+                      body: n.body || '',
+                      icon: '/icon-192.png',
+                      badge: '/icon-192.png',
+                      tag: n.id?.toString() || 'mydesk',
+                      renotify: true,
+                      vibrate: [200, 100, 200],
+                      data: { url: window.location.href },
+                    });
+                  }).catch(showBrowserNotif);
+                } else {
+                  showBrowserNotif();
+                }
               } catch {}
             });
           }
@@ -6526,6 +6621,13 @@ export default function App() {
     } catch(e) {
       console.warn('Push subscribe failed:', e);
       // 通知許可は取れたがWeb Push登録失敗の場合でもtrueを返す（ポーリング通知は動く）
+      // iOS 16.4以降のPWA通知サポートチェック
+      const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+      const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+      if(isIOS && !isStandalone) {
+        alert('iPhoneでプッシュ通知を受け取るには、まず「ホーム画面に追加」してアプリとして開いてください。');
+        return false;
+      }
       if(Notification.permission === 'granted') return true;
       return false;
     }
@@ -6732,14 +6834,25 @@ export default function App() {
                   const handleNotifClick = () => {
                     // 既読にする
                     if(!n.read){const nd={...data,notifications:(data.notifications||[]).map(x=>x.id===n.id?{...x,read:true}:x)};setData(nd);saveData(nd);}
-                    if(!n.read) markOneRead(n.id);
                     if(!hasNav) return;
                     setShowNotifPanel(false);
-                    if(n.entityType==="task") { setNavTarget({type:"task",id:n.entityId}); persistTab("md_tab","tasks",setTab); }
-                    else if(n.entityType==="project") { setNavTarget({type:"project",id:n.entityId}); persistTab("md_tab","tasks",setTab); }
-                    else if(n.entityType==="company") { setNavTarget({type:"company",id:n.entityId}); persistTab("md_tab","sales",setTab); }
-                    else if(n.entityType==="vendor") { setNavTarget({type:"vendor",id:n.entityId}); persistTab("md_tab","sales",setTab); }
-                    else if(n.entityType==="muni") { setNavTarget({type:"muni",id:n.entityId}); persistTab("md_tab","sales",setTab); }
+                    // タブ切替後に確実に詳細を開くため80ms遅延
+                    if(n.entityType==="task") {
+                      persistTab("md_tab","tasks",setTab);
+                      setTimeout(()=>setNavTarget({type:"task",id:n.entityId}),80);
+                    } else if(n.entityType==="project") {
+                      persistTab("md_tab","tasks",setTab);
+                      setTimeout(()=>setNavTarget({type:"project",id:n.entityId}),80);
+                    } else if(n.entityType==="company") {
+                      persistTab("md_tab","sales",setTab);
+                      setTimeout(()=>{persistTab("md_salesTab","company",setSalesTab);setSalesNavTarget({type:"company",id:n.entityId});},80);
+                    } else if(n.entityType==="vendor") {
+                      persistTab("md_tab","sales",setTab);
+                      setTimeout(()=>{persistTab("md_salesTab","vendor",setSalesTab);setSalesNavTarget({type:"vendor",id:n.entityId});},80);
+                    } else if(n.entityType==="muni") {
+                      persistTab("md_tab","sales",setTab);
+                      setTimeout(()=>{persistTab("md_salesTab","muni",setSalesTab);setSalesNavTarget({type:"muni",id:n.entityId});},80);
+                    }
                   };
                   return (
                   <div key={n.id} onClick={handleNotifClick}
@@ -6820,3 +6933,4 @@ export default function App() {
     </div>
   );
 }
+                  
