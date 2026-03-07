@@ -3002,6 +3002,12 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       return s.includes(",") || s.includes("\n") || s.includes('"') ? `"${s.replace(/"/g,'""')}"` : s;
     };
 
+    const csv = [headers, ...rows].map(r=>r.map(escape).join(",")).join("\n");
+    const blob = new Blob([bom+csv],{type:"text/csv;charset=utf-8;"});
+    const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
+    a.download=filename; a.click();
+  };
+
   // ── 全自治体展開状況 一括出力 ──────────────────────────────────────────
   const exportMuniStatusReport = () => {
     const today = new Date();
@@ -3081,13 +3087,6 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     a.download = `全自治体展開状況_${todayISO}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-  };
-
-
-    const csv = [headers, ...rows].map(r=>r.map(escape).join(",")).join("\n");
-    const blob = new Blob([bom+csv],{type:"text/csv;charset=utf-8;"});
-    const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
-    a.download=filename; a.click();
   };
 
   // 全角変換 & スペース除去 (インポート正規化)
