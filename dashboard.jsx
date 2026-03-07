@@ -339,7 +339,8 @@ function FileSection({ files=[], onAdd, onDelete, currentUserId, entityType, ent
                   const url=f.url||(f.path?`${SB_URL}/storage/v1/object/public/${STORAGE_BUCKET}/${f.path}`:null)||f.path;
                   if(!url){e.preventDefault();alert("ファイルURLが取得できません。再アップロードをお試しください");return;}
                   // iOSでtarget=_blankが効かない場合のフォールバック
-                  if(/iPhone|iPad|iPod/i.test(navigator.userAgent)){e.preventDefault();window.location.href=url;}
+                  const isIosUA = typeof navigator!=='undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent);
+                  if(isIosUA){e.preventDefault();window.location.href=url;}
                 }}
                 style={{fontWeight:600,fontSize:"0.85rem",color:C.accent,textDecoration:"none",display:"block",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name||"ファイル"}</a>
               <div style={{fontSize:"0.65rem",color:C.textMuted}}>
@@ -5065,6 +5066,8 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
     {id:"account",  icon:"🔑", label:"パスワード変更"},
   ];
 
+  const isIosMobile = typeof navigator !== "undefined" && /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const showIosGuide = isIosMobile && !window.matchMedia("(display-mode: standalone)").matches;
   return (
     <div style={{paddingBottom:"1rem"}}>
       <div style={{fontWeight:800,fontSize:"1.1rem",color:C.text,marginBottom:"1.25rem"}}>⚙️ 設定</div>
@@ -5134,7 +5137,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
       {section==="links"&&(
         <div style={{display:"flex",flexDirection:"column",gap:"0.75rem"}}>
           {/* iOS通知案内 */}
-          {/iphone|ipad|ipod/i.test(navigator.userAgent)&&!window.matchMedia('(display-mode: standalone)').matches&&(
+          {showIosGuide&&(
             <div style={{background:"#fffbeb",border:"1.5px solid #f59e0b",borderRadius:"1rem",padding:"1rem 1.125rem"}}>
               <div style={{fontWeight:800,fontSize:"0.87rem",color:"#92400e",marginBottom:"0.5rem"}}>📱 iPhoneで通知を受け取るには</div>
               <div style={{fontSize:"0.8rem",color:"#78350f",lineHeight:1.6}}>
@@ -5736,8 +5739,7 @@ async function exportMultiMonthPPTX(sys, currentMk, allAnalytics) {
       // CV率
       const cvRate=+d.requests>0?((+d.contracts/+d.requests)*100).toFixed(1)+"%":"—";
       s.addShape(pres.shapes.ROUNDED_RECTANGLE,{x:9.5,y:0.88,w:0.4,h:1.15,fill:{color:LBLUE},line:{color:"BFDBFE",pt:0.8},rectRadius:0.04});
-      s.addText("CV
-"+cvRate,{x:9.5,y:0.9,w:0.4,h:1.1,fontSize:7,fontFace:"Arial",bold:true,color:BLUE,align:"center",valign:"middle"});
+      s.addText("CV\n"+cvRate,{x:9.5,y:0.9,w:0.4,h:1.1,fontSize:7,fontFace:"Arial",bold:true,color:BLUE,align:"center",valign:"middle"});
 
       // 離脱率ファネル（左半分）
       s.addShape(pres.shapes.RECTANGLE,{x:0.25,y:2.18,w:5.0,h:0.32,fill:{color:"334155"},line:{color:"334155"}});
@@ -6620,14 +6622,7 @@ export default function App() {
       return true;
     } catch(e) {
       console.warn('Push subscribe failed:', e);
-      // 通知許可は取れたがWeb Push登録失敗の場合でもtrueを返す（ポーリング通知は動く）
-      // iOS 16.4以降のPWA通知サポートチェック
-      const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-      const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
-      if(isIOS && !isStandalone) {
-        alert('iPhoneでプッシュ通知を受け取るには、まず「ホーム画面に追加」してアプリとして開いてください。');
-        return false;
-      }
+      // Web Push登録失敗でも通知許可があればポーリング通知は動く
       if(Notification.permission === 'granted') return true;
       return false;
     }
