@@ -3001,6 +3001,89 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       const s = String(v==null?"":v);
       return s.includes(",") || s.includes("\n") || s.includes('"') ? `"${s.replace(/"/g,'""')}"` : s;
     };
+
+  // ── 全自治体展開状況 一括出力 ──────────────────────────────────────────
+  const exportMuniStatusReport = () => {
+    const today = new Date();
+    const todayStr = today.toLocaleDateString('ja-JP', {year:'numeric',month:'long',day:'numeric'});
+    const todayISO = today.toISOString().slice(0,10);
+    
+    // BOM付きCSV（Excel対応）
+    const bom = '﻿';
+    const rows = [];
+    
+    // タイトル行
+    rows.push([`全自治体 展開状況レポート`, '', '', '', '', '', '', '']);
+    rows.push([`出力日：${todayStr}`, '', '', '', '', '', '', '']);
+    rows.push(['', '', '', '', '', '', '', '']);
+    rows.push(['地方', '都道府県', '自治体名', 'アプローチ', 'DUSTALK展開', '連携協定', '許可業者調査', '最新更新日']);
+    
+    JAPAN_REGIONS.forEach(rg => {
+      const regionPrefs = (data.prefectures || []).filter(p => rg.prefs.includes(p.name));
+      if (regionPrefs.length === 0) {
+        // データなし都道府県も一応表示
+        rg.prefs.forEach(prefName => {
+          const prefMusis = (data.municipalities || []).filter(m => {
+            const p = (data.prefectures||[]).find(pp=>pp.id===m.prefectureId);
+            return p?.name === prefName;
+          });
+          if (prefMusis.length === 0) {
+            rows.push([rg.region, prefName, '（未登録）', '', '', '', '', '']);
+          } else {
+            prefMusis.forEach((m, mi) => {
+              const updAt = m.updatedAt ? new Date(m.updatedAt).toLocaleDateString('ja-JP') : '';
+              rows.push([
+                mi === 0 ? rg.region : '',
+                mi === 0 ? prefName : '',
+                m.name || '',
+                m.status || '未接触',
+                m.dustalk || '未展開',
+                m.treatyStatus || '未接触',
+                m.surveyDone ? '完了' : '未完了',
+                updAt,
+              ]);
+            });
+          }
+        });
+        return;
+      }
+      regionPrefs.forEach((pref, pi) => {
+        const prefMusis = (data.municipalities || []).filter(m => String(m.prefectureId) === String(pref.id));
+        if (prefMusis.length === 0) {
+          rows.push([pi === 0 ? rg.region : '', pref.name, '（未登録）', '', '', '', '', '']);
+          return;
+        }
+        prefMusis.forEach((m, mi) => {
+          const updAt = m.updatedAt ? new Date(m.updatedAt).toLocaleDateString('ja-JP') : '';
+          rows.push([
+            pi === 0 && mi === 0 ? rg.region : '',
+            mi === 0 ? pref.name : '',
+            m.name || '',
+            m.status || '未接触',
+            m.dustalk || '未展開',
+            m.treatyStatus || '未接触',
+            m.surveyDone ? '完了' : '未完了',
+            updAt,
+          ]);
+        });
+      });
+    });
+    
+    const escape = v => {
+      const s = String(v == null ? '' : v);
+      return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g,'""')}"` : s;
+    };
+    const csv = rows.map(r => r.map(escape).join(',')).join('\n');
+    const blob = new Blob([bom + csv], {type: 'text/csv;charset=utf-8;'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `全自治体展開状況_${todayISO}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+
     const csv = [headers, ...rows].map(r=>r.map(escape).join(",")).join("\n");
     const blob = new Blob([bom+csv],{type:"text/csv;charset=utf-8;"});
     const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
@@ -4688,6 +4771,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           style={{padding:"0.5rem 0.625rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📥</button>
         <button onClick={()=>setShowGSheetImport(true)}
           style={{padding:"0.5rem 0.625rem",borderRadius:"0.75rem",border:"1.5px solid #bfdbfe",background:"#eff6ff",color:"#2563eb",fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>📊 GSheet</button>
+        <button onClick={exportMuniStatusReport}
+          style={{padding:"0.5rem 0.75rem",borderRadius:"0.75rem",border:"1.5px solid #7c3aed",background:"#ede9fe",color:"#5b21b6",fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>📋 全国出力</button>
       </div>
       <BulkBar statusMap={MUNI_STATUS} applyFn={applyBulkMuni}
         extraFields={[["dustalk","ダストーク展開",DUSTALK_STATUS],["treatyStatus","連携協定",TREATY_STATUS],["status","アプローチ",MUNI_STATUS]]}/>
@@ -4723,7 +4808,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
               const ds=DUSTALK_STATUS[m.dustalk]||DUSTALK_STATUS["未展開"];
               const mv=muniVendors(m.id);
               return (
-                <div key={m.id} onClick={()=>{setActivePref(m.prefectureId);setActiveMuni(String(m.id));setMuniScreen("muniDetail");setActiveDetail("memo");}}
+                <div key={m.id} onClick={()=>{setSheet(null);setActivePref(String(m.prefectureId));setActiveMuni(String(m.id));setMuniScreen("muniDetail");setActiveDetail("memo");}}
                   style={{background:"white",border:`1.5px solid ${C.border}`,borderRadius:"0.875rem",padding:"0.875rem 1rem",cursor:"pointer",boxShadow:C.shadow}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.25rem"}}>
                     <div>
@@ -4799,7 +4884,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                               const mv=muniVendors(m.id);
                               return (
                                 <div key={m.id}
-                                  onClick={()=>{if(bulkMode){setBulkSelected(prev=>{const n=new Set(prev);n.has(m.id)?n.delete(m.id):n.add(m.id);return n;});return;}setActivePref(pref.id);setActiveMuni(String(m.id));setMuniScreen("muniDetail");setActiveDetail("memo"); /* muniClick */}}
+                                  onClick={()=>{if(bulkMode){setBulkSelected(prev=>{const n=new Set(prev);n.has(m.id)?n.delete(m.id):n.add(m.id);return n;});return;}setSheet(null);setActivePref(String(m.prefectureId));setActiveMuni(String(m.id));setMuniScreen("muniDetail");setActiveDetail("memo"); /* muniClick */}}
                                   style={{display:"flex",alignItems:"center",padding:"0.5rem 1rem 0.5rem 2.5rem",borderTop:`1px solid ${C.borderLight}`,cursor:"pointer",gap:"0.4rem",background:bulkSelected.has(m.id)?"#eff6ff":"transparent"}}>
                                   {bulkMode&&<input type="checkbox" checked={bulkSelected.has(m.id)} readOnly style={{width:15,height:15,accentColor:C.accent,flexShrink:0,cursor:"pointer"}}/>}
                                   <div style={{flex:1,minWidth:0}}>
