@@ -4285,6 +4285,12 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             )}
             <AssigneeRow ids={v.assigneeIds}/>
             {v.address&&<div style={{fontSize:"0.78rem",color:C.textSub,marginTop:"0.4rem"}}>📍 {v.address}</div>}
+            {(v.permitTypes||[]).length>0&&(
+              <div style={{marginTop:"0.6rem"}}>
+                <div style={{fontSize:"0.62rem",fontWeight:700,color:"#5b21b6",marginBottom:"0.25rem"}}>許可種別</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:"0.25rem"}}>{(v.permitTypes||[]).map(p=><span key={p} style={{fontSize:"0.65rem",fontWeight:700,padding:"0.15rem 0.45rem",borderRadius:999,background:"#ede9fe",color:"#5b21b6",border:"1px solid #c4b5fd"}}>{p}</span>)}</div>
+              </div>
+            )}
           </Card>
           <div style={{marginBottom:"1rem"}}>
             <div style={{fontSize:"0.72rem",fontWeight:700,color:C.textSub,marginBottom:"0.4rem"}}>ステータス変更</div>
@@ -4324,6 +4330,19 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
               </FieldLbl>
               <FieldLbl label="担当者">{AssigneePicker({ids:form.assigneeIds||[],onChange:ids=>setForm({...form,assigneeIds:ids})})}</FieldLbl>
               <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
+              <FieldLbl label="許可種別（複数選択可）">
+                <div style={{display:"flex",flexWrap:"wrap",gap:"0.4rem",padding:"0.5rem",background:"#f8fafc",borderRadius:"0.75rem",border:"1px solid #e2e8f0"}}>
+                  {PERMIT_TYPES.map(p=>{
+                    const checked=(form.permitTypes||[]).includes(p);
+                    return (
+                      <label key={p} style={{display:"flex",alignItems:"center",gap:"0.3rem",cursor:"pointer",padding:"0.25rem 0.5rem",borderRadius:"0.5rem",background:checked?"#ede9fe":"white",border:`1px solid ${checked?"#7c3aed":"#e2e8f0"}`,transition:"all 0.15s"}}>
+                        <input type="checkbox" checked={checked} onChange={()=>{const cur=form.permitTypes||[];setForm({...form,permitTypes:checked?cur.filter(x=>x!==p):[...cur,p]});}} style={{accentColor:"#7c3aed",width:14,height:14}}/>
+                        <span style={{fontSize:"0.75rem",fontWeight:checked?700:400,color:checked?"#5b21b6":"#374151"}}>{p}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </FieldLbl>
               <FieldLbl label="備考"><Textarea value={form.notes||""} onChange={e=>setForm({...form,notes:e.target.value})} style={{height:70}}/></FieldLbl>
               <div style={{display:"flex",gap:"0.625rem"}}>
                 <Btn variant="secondary" style={{flex:1}} onClick={()=>setSheet(null)}>キャンセル</Btn>
@@ -4439,6 +4458,19 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             </FieldLbl>
             <FieldLbl label="担当者">{AssigneePicker({ids:form.assigneeIds||[],onChange:ids=>setForm({...form,assigneeIds:ids})})}</FieldLbl>
             <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
+            <FieldLbl label="許可種別（複数選択可）">
+                <div style={{display:"flex",flexWrap:"wrap",gap:"0.4rem",padding:"0.5rem",background:"#f8fafc",borderRadius:"0.75rem",border:"1px solid #e2e8f0"}}>
+                  {PERMIT_TYPES.map(p=>{
+                    const checked=(form.permitTypes||[]).includes(p);
+                    return (
+                      <label key={p} style={{display:"flex",alignItems:"center",gap:"0.3rem",cursor:"pointer",padding:"0.25rem 0.5rem",borderRadius:"0.5rem",background:checked?"#ede9fe":"white",border:`1px solid ${checked?"#7c3aed":"#e2e8f0"}`,transition:"all 0.15s"}}>
+                        <input type="checkbox" checked={checked} onChange={()=>{const cur=form.permitTypes||[];setForm({...form,permitTypes:checked?cur.filter(x=>x!==p):[...cur,p]});}} style={{accentColor:"#7c3aed",width:14,height:14}}/>
+                        <span style={{fontSize:"0.75rem",fontWeight:checked?700:400,color:checked?"#5b21b6":"#374151"}}>{p}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+            </FieldLbl>
             <FieldLbl label="備考"><Textarea value={form.notes||""} onChange={e=>setForm({...form,notes:e.target.value})} style={{height:60}}/></FieldLbl>
             <div style={{display:"flex",gap:"0.625rem"}}>
               <Btn variant="secondary" style={{flex:1}} onClick={()=>setSheet(null)}>キャンセル</Btn>
@@ -4600,15 +4632,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             </div>
             <span style={{fontSize:"1.2rem"}}>{muni.surveyDone?"✅":"🔲"}</span>
           </div>
-          {/* 許可種別バッジ */}
-          {(muni.permitTypes||[]).length>0&&(
-            <div style={{marginTop:"0.6rem",display:"flex",flexWrap:"wrap",gap:"0.3rem"}}>
-              <span style={{fontSize:"0.62rem",color:"#5b21b6",fontWeight:700,marginRight:"0.2rem"}}>許可：</span>
-              {(muni.permitTypes||[]).map(p=>(
-                <span key={p} style={{fontSize:"0.62rem",fontWeight:700,padding:"0.15rem 0.45rem",borderRadius:999,background:"#ede9fe",color:"#5b21b6",border:"1px solid #c4b5fd"}}>{p}</span>
-              ))}
-            </div>
-          )}
+
         </Card>
         {/* Quick change dustalk + treaty */}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.75rem",marginBottom:"1rem"}}>
@@ -4676,22 +4700,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             <FieldLbl label="ステータス"><StatusPicker map={MUNI_STATUS} value={form.status||"未接触"} onChange={s=>setForm({...form,status:s})}/></FieldLbl>
             <FieldLbl label="担当者">{AssigneePicker({ids:form.assigneeIds||[],onChange:ids=>setForm({...form,assigneeIds:ids})})}</FieldLbl>
             <FieldLbl label="展開ステータス（ダストーク）"><DustalkPicker value={form.dustalk||"未展開"} onChange={s=>setForm({...form,dustalk:s})}/></FieldLbl>
-            <FieldLbl label="許可種別（複数選択可）">
-              <div style={{display:"flex",flexWrap:"wrap",gap:"0.4rem",padding:"0.5rem",background:"#f8fafc",borderRadius:"0.75rem",border:"1px solid #e2e8f0"}}>
-                {PERMIT_TYPES.map(p=>{
-                  const checked=(form.permitTypes||[]).includes(p);
-                  return (
-                    <label key={p} style={{display:"flex",alignItems:"center",gap:"0.3rem",cursor:"pointer",padding:"0.25rem 0.5rem",borderRadius:"0.5rem",background:checked?"#ede9fe":"white",border:`1px solid ${checked?"#7c3aed":"#e2e8f0"}`,transition:"all 0.15s"}}>
-                      <input type="checkbox" checked={checked} onChange={()=>{
-                        const cur=form.permitTypes||[];
-                        setForm({...form,permitTypes:checked?cur.filter(x=>x!==p):[...cur,p]});
-                      }} style={{accentColor:"#7c3aed",width:14,height:14}}/>
-                      <span style={{fontSize:"0.75rem",fontWeight:checked?700:400,color:checked?"#5b21b6":"#374151"}}>{p}</span>
-                    </label>
-                  );
-                })}
-              </div>
-            </FieldLbl>
+
             <FieldLbl label="アート引越センター 管轄支店"><Input value={form.artBranch||""} onChange={e=>setForm({...form,artBranch:e.target.value})} placeholder="例：福岡支店"/></FieldLbl>
             <FieldLbl label="連携協定ステータス"><TreatyPicker value={form.treatyStatus||"未接触"} onChange={s=>setForm({...form,treatyStatus:s})}/></FieldLbl>
             <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
@@ -4854,7 +4863,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                 <div style={{borderTop:`1px solid ${C.borderLight}`}}>
                   {rPrefs.map(pref=>{
                     const pOpen=openPrefs[pref.id]!==false;
-                    const pMunis=munis.filter(m=>m.prefectureId===pref.id);
+                    const pMunis=munis.filter(m=>String(m.prefectureId)===String(pref.id));
                     const pTreaty=pMunis.filter(m=>m.treatyStatus==="協定済").length;
                     const pDeploy=pMunis.filter(m=>m.dustalk==="展開").length;
                     return (
@@ -4894,7 +4903,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                                     <span style={{padding:"0.1rem 0.4rem",borderRadius:999,fontSize:"0.6rem",fontWeight:700,background:ds2.bg,color:ds2.color,whiteSpace:"nowrap"}}>{ds2.icon}{m.dustalk||"未展開"}</span>
                                     {(()=>{const ts=TREATY_STATUS[m.treatyStatus||"未接触"];return ts?<span style={{fontSize:"0.58rem",padding:"0.1rem 0.35rem",borderRadius:999,fontWeight:700,background:ts.bg,color:ts.color,whiteSpace:"nowrap"}}>🤝{m.treatyStatus||"未接触"}</span>:null;})()}
                                     {m.surveyDone&&<span style={{fontSize:"0.55rem",padding:"0.1rem 0.3rem",borderRadius:999,fontWeight:700,background:"#d1fae5",color:"#065f46",whiteSpace:"nowrap"}}>✅調査完了</span>}
-                                    {(m.permitTypes||[]).length>0&&<span style={{fontSize:"0.52rem",padding:"0.1rem 0.3rem",borderRadius:999,fontWeight:700,background:"#ede9fe",color:"#5b21b6",whiteSpace:"nowrap"}}>許可{(m.permitTypes||[]).length}種</span>}
+                                    
                                   </div>
                                   <span style={{color:C.textMuted,fontSize:"0.78rem",flexShrink:0}}>›</span>
                                 </div>
@@ -4904,7 +4913,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                         )}
                         {/* Add muni sheet per pref */}
                         {sheet===`am_${pref.id}`&&(()=>{
-                          const pm=munis.filter(m=>m.prefectureId===pref.id);
+                          const pm=munis.filter(m=>String(m.prefectureId)===String(pref.id));
                           return (
                             <Sheet title={`自治体を追加（${pref.name}）`} onClose={()=>setSheet(null)}>
                               <FieldLbl label="自治体名 *">
@@ -4988,7 +4997,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           preview.forEach(r=>{
             const pref=prefs.find(p=>p.name===r.prefName);
             if(!pref){skipped.push(r);return;}
-            const dup=munis.some(m=>m.prefectureId===pref.id&&m.name===r.name);
+            const dup=munis.some(m=>String(m.prefectureId)===String(pref.id)&&m.name===r.name);
             if(dup){skipped.push(r);return;}
             toAdd.push({
               id:Date.now()+Math.random(),
@@ -5056,7 +5065,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                 <div style={{maxHeight:240,overflowY:"auto",border:`1px solid ${C.border}`,borderRadius:"0.75rem",overflow:"hidden"}}>
                   {preview.slice(0,30).map((r,i)=>{
                     const pref=prefs.find(p=>p.name===r.prefName);
-                    const dup=pref&&munis.some(m=>m.prefectureId===pref.id&&m.name===r.name);
+                    const dup=pref&&munis.some(m=>String(m.prefectureId)===String(pref.id)&&m.name===r.name);
                     const noPref=!pref;
                     const ds=DUSTALK_STATUS[r.dustalk]||DUSTALK_STATUS["未展開"];
                     return (
@@ -5488,10 +5497,13 @@ async function exportPPTX(sys, mk, yk, d, prev, allAnalytics) {
     await new Promise((res,rej)=>{
       const s=document.createElement("script");
       s.src="https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.bundle.js";
-      s.onload=res; s.onerror=rej;
+      s.onload=res;
+      s.onerror=()=>rej(new Error("読み込み失敗"));
       document.head.appendChild(s);
-    });
+      setTimeout(()=>rej(new Error("タイムアウト")),15000);
+    }).catch(e=>{alert("PPTXライブラリの読み込みに失敗しました。\n"+e.message);throw e;});
   }
+  if(!window.PptxGenJS){alert("PPTXライブラリが見つかりません。");return;}
   const pres = new window.PptxGenJS();
   pres.layout = "LAYOUT_16x9"; // 10" x 5.625"
   pres.title = "分析レポート";
@@ -5700,11 +5712,16 @@ async function exportMultiMonthPPTX(sys, currentMk, allAnalytics) {
   const WHITE="FFFFFF", LGRAY="F8FAFC", DGRAY="64748B", LBLUE="EFF6FF";
 
   if(!window.PptxGenJS){
-    const s=document.createElement("script");
-    s.src="https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.bundle.js";
-    document.head.appendChild(s);
-    await new Promise(r=>{s.onload=r;});
+    await new Promise((resolve,reject)=>{
+      const s=document.createElement("script");
+      s.src="https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.bundle.js";
+      s.onload=resolve;
+      s.onerror=()=>reject(new Error("pptxgenJS読み込み失敗"));
+      document.head.appendChild(s);
+      setTimeout(()=>reject(new Error("タイムアウト")),15000);
+    }).catch(e=>{alert("PPTXライブラリの読み込みに失敗しました。ネット接続を確認してください。\n"+e.message);throw e;});
   }
+  if(!window.PptxGenJS){alert("PPTXライブラリが見つかりません。ページを再読み込みしてください。");return;}
   const pres=new window.PptxGenJS();
   pres.layout="LAYOUT_WIDE"; // 10x5.63inch
 
