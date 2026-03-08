@@ -119,7 +119,7 @@ const VENDOR_LOG_ICON  = {"電話":"📞","訪問":"🚗","資料送付":"📄",
 
 
 // ─── NOTIFICATION HELPER ─────────────────────────────────────────────────────
-function addNotif(data, {type, title, body, toUserIds=[], fromUserId=null, entityId=null}) {
+function addNotif(data, {type, title, body, toUserIds=[], fromUserId=null, entityId=null, entityType=null}) {
   // type: "task_assign" | "task_status" | "task_comment" | "mention" | "deadline" | "sales_assign"
   if(!toUserIds.length) return data;
   const newN = toUserIds.map(uid=>({
@@ -132,6 +132,7 @@ function addNotif(data, {type, title, body, toUserIds=[], fromUserId=null, entit
     date: new Date().toISOString(),
     read: false,
     entityId: entityId||null,
+    entityType: entityType||null,
   }));
   return {...data, notifications:[...(data.notifications||[]), ...newN]};
 }
@@ -1656,7 +1657,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     // Notify on status change
     if(ch.status && prev?.status !== ch.status) {
       const toIds=(updated.assignees||[]).filter(i=>i!==uid);
-      if(toIds.length) nd=addNotif(nd,{type:"task_status",title:`「${updated.title}」のステータスが変更されました`,body:`${ch.status}`,toUserIds:toIds,fromUserId:uid,entityId:updated.id,entityType:"task"});
+      if(toIds.length) nd=addNotif(nd,{type:"task_status",entityType:"task",title:`「${updated.title}」のステータスが変更されました`,body:`${ch.status}`,toUserIds:toIds,fromUserId:uid,entityId:updated.id,entityType:"task"});
     }
     // Notify on new assignees
     if(ch.assignees) {
@@ -1684,7 +1685,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     }
     // Notify assignees on task creation
     const toIds=(f.assignees||[]).filter(i=>i!==uid);
-    if(toIds.length) nd=addNotif(nd,{type:"task_assign",title:`「${item.title}」に担当者として追加されました`,body:"",toUserIds:toIds,fromUserId:uid,entityId:item.id,entityType:"task"});
+    if(toIds.length) nd=addNotif(nd,{type:"task_assign",entityType:"task",title:`「${item.title}」に担当者として追加されました`,body:"",toUserIds:toIds,fromUserId:uid,entityId:item.id,entityType:"task"});
     saveWithPush(nd, data.notifications);
     setSheet(null); // 保存後にシートを閉じる
   };
@@ -1711,7 +1712,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     const item={id:Date.now(),...f,createdBy:uid,memos:[],chat:[],createdAt:new Date().toISOString()};
     let nd={...data,projects:[...allProjects,item]};
     const toIds=(f.members||[]).filter(i=>i!==uid);
-    if(toIds.length) nd=addNotif(nd,{type:"task_assign",title:`「${item.name}」プロジェクトのメンバーに追加されました`,body:"",toUserIds:toIds,fromUserId:uid,entityId:item.id,entityType:"project"});
+    if(toIds.length) nd=addNotif(nd,{type:"task_assign",entityType:"project",title:`「${item.name}」プロジェクトのメンバーに追加されました`,body:"",toUserIds:toIds,fromUserId:uid,entityId:item.id,entityType:"project"});
     saveWithPush(nd, data.notifications);
     setSheet(null); // 保存後にシートを閉じる
   };
@@ -2465,7 +2466,7 @@ function MapTab({prefs,munis,vendors,companies,prefCoords,onSelectPref}) {
 
     // color helpers
     const dustalkCol=(p)=>{
-      const pm=munis.filter(m=>m.prefectureId===p.id);
+      const pm=munis.filter(m=>String(m.prefectureId)===String(p.id));
       if(!pm.length) return {bg:"#e5e7eb",border:"#d1d5db",text:"#9ca3af"};
       const n=pm.filter(m=>m.dustalk==="展開").length;
       const pct=n/pm.length;
@@ -2475,7 +2476,7 @@ function MapTab({prefs,munis,vendors,companies,prefCoords,onSelectPref}) {
       return {bg:"#d1fae5",border:"#34d399",text:"#065f46"};
     };
     const treatyCol=(p)=>{
-      const pm=munis.filter(m=>m.prefectureId===p.id);
+      const pm=munis.filter(m=>String(m.prefectureId)===String(p.id));
       if(!pm.length) return {bg:"#f3f4f6",border:"#d1d5db",text:"#9ca3af"};
       const n=pm.filter(m=>m.treatyStatus==="協定済").length;
       const pct=n/pm.length;
@@ -2485,7 +2486,7 @@ function MapTab({prefs,munis,vendors,companies,prefCoords,onSelectPref}) {
       return {bg:"#c4b5fd",border:"#6d28d9",text:"#3b0764"};
     };
     const vendorCol=(p)=>{
-      const pm=munis.filter(m=>m.prefectureId===p.id);
+      const pm=munis.filter(m=>String(m.prefectureId)===String(p.id));
       const joinedCount=pm.reduce((s,m)=>{
         return s+vendors.filter(v=>(v.municipalityIds||[]).includes(m.id)&&v.status==="加入済").length;
       },0);
@@ -2500,7 +2501,7 @@ function MapTab({prefs,munis,vendors,companies,prefCoords,onSelectPref}) {
       if(!coords) return;
       const [lat,lng]=coords;
 
-      const pm=munis.filter(m=>m.prefectureId===p.id);
+      const pm=munis.filter(m=>String(m.prefectureId)===String(p.id));
       const deployed=pm.filter(m=>m.dustalk==="展開").length;
       const treaty=pm.filter(m=>m.treatyStatus==="協定済").length;
       const vendCount=pm.reduce((s,m)=>s+vendors.filter(v=>(v.municipalityIds||[]).includes(m.id)&&v.status==="加入済").length,0);
@@ -3168,7 +3169,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   });
 
 
-  const prefOf     = id=>prefs.find(p=>p.id===id);
+  const prefOf     = id=>prefs.find(p=>String(p.id)===String(id));
 
   // ── Excel seed import ─────────────────────────────────────────────────────
   const muniOf     = id=>munis.find(m=>String(m.id)===String(id));
@@ -3707,7 +3708,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     const muniByTreaty=Object.keys(TREATY_STATUS).map(s=>({s,n:munis.filter(m=>(m.treatyStatus||"未接触")===s).length}));
     const vendByStatus=Object.keys(VENDOR_STATUS).map(s=>({s,n:vendors.filter(v=>v.status===s).length}));
     const compByStatus=Object.keys(COMPANY_STATUS).map(s=>({s,n:companies.filter(c=>c.status===s).length}));
-    const prefDeploy=prefs.map(p=>({name:p.name,n:munis.filter(m=>m.prefectureId===p.id&&m.dustalk==="展開").length})).filter(x=>x.n>0).sort((a,b)=>b.n-a.n).slice(0,6);
+    const prefDeploy=prefs.map(p=>({name:p.name,n:munis.filter(m=>String(m.prefectureId)===String(p.id)&&m.dustalk==="展開").length})).filter(x=>x.n>0).sort((a,b)=>b.n-a.n).slice(0,6);
 
     const assigneeStats=users.map(u=>({
       u,
@@ -4639,7 +4640,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           <div>
             <div style={{fontSize:"0.68rem",fontWeight:700,color:C.textSub,marginBottom:"0.4rem"}}>ダストーク展開</div>
             <DustalkPicker value={muni.dustalk||"未展開"} onChange={s=>{
-              let nd={...data,municipalities:munis.map(m=>String(m.id)===String(activeMuni)?{...m,dustalk:s}:m)};
+              let nd={...data,municipalities:munis.map(m=>String(m.id)===String(activeMuni)?{...m,dustalk:s,updatedAt:new Date().toISOString()}:m)};
               nd=addChangeLog(nd,{entityType:"自治体",entityId:muni.id,entityName:muni.name,field:"ダストーク",oldVal:muni.dustalk,newVal:s});
               save(nd);
             }}/>
@@ -4842,7 +4843,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
         {JAPAN_REGIONS.map(rg=>{
           const rOpen=openRegions[rg.region]!==false;
           const rPrefs=prefs.filter(p=>p.region===rg.region||(!p.region&&rg.prefs.includes(p.name)));
-          const rMunis=rPrefs.flatMap(p=>munis.filter(m=>m.prefectureId===p.id));
+          const rMunis=rPrefs.flatMap(p=>munis.filter(m=>String(m.prefectureId)===String(p.id)));
           const rTreaty=rMunis.filter(m=>m.treatyStatus==="協定済").length;
           const rDeploy=rMunis.filter(m=>m.dustalk==="展開").length;
           return (
@@ -5083,8 +5084,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                 <div style={{display:"flex",gap:"0.625rem",marginTop:"0.75rem"}}>
                   <Btn variant="secondary" style={{flex:1}} onClick={()=>{setPreview(null);setErr("");}}>クリア</Btn>
                   <Btn style={{flex:2}} onClick={doImport}
-                    disabled={!preview.filter(r=>{const p=prefs.find(x=>x.name===r.prefName);return p&&!munis.some(m=>m.prefectureId===p.id&&m.name===r.name);}).length}>
-                    {preview.filter(r=>{const p=prefs.find(x=>x.name===r.prefName);return p&&!munis.some(m=>m.prefectureId===p.id&&m.name===r.name);}).length}件をインポート
+                    disabled={!preview.filter(r=>{const p=prefs.find(x=>x.name===r.prefName);return p&&!munis.some(m=>m.String(m.prefectureId)===String(p.id)&&m.name===r.name);}).length}>
+                    {preview.filter(r=>{const p=prefs.find(x=>x.name===r.prefName);return p&&!munis.some(m=>m.String(m.prefectureId)===String(p.id)&&m.name===r.name);}).length}件をインポート
                   </Btn>
                 </div>
               </div>
@@ -5207,7 +5208,10 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
               <div>
                 <div style={{fontSize:"0.87rem",fontWeight:700,color:C.text}}>🔔 プッシュ通知</div>
-                <div style={{fontSize:"0.72rem",color:C.textMuted,marginTop:"0.15rem"}}>{pushEnabled?"有効 — 端末に通知が届きます":"無効"}</div>
+                <div style={{fontSize:"0.72rem",color:C.textMuted,marginTop:"0.15rem"}}>
+                  {pushEnabled?"✅ 有効 — 端末に通知が届きます":"❌ 無効 — ONにすると着信・割り当て通知が届きます"}
+                </div>
+                {(()=>{if(pushEnabled)return null;const ua=typeof navigator!=='undefined'?navigator.userAgent:'';const isIosDev=ua.match('iPhone')||ua.match('iPad')||ua.match('iPod');const isSA=window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone===true;return (isIosDev&&!isSA)?<div style={{fontSize:"0.7rem",background:"#fffbeb",border:"1px solid #f59e0b",borderRadius:"0.5rem",padding:"0.4rem 0.5rem",marginTop:"0.4rem",color:"#92400e"}}>📱 iPhoneはSafariの「ホーム画面に追加」後、アプリとして起動してONにしてください</div>:null;})()}
               </div>
               <button onClick={async()=>{
                 if(pushEnabled){await unsubscribePush(currentUser.id);setPushEnabled(false);}
@@ -6926,28 +6930,34 @@ export default function App() {
                 filtered=filtered.slice(0,60);
                 if(!filtered.length) return <div style={{padding:"2.5rem",textAlign:"center",color:C.textMuted,fontSize:"0.85rem"}}>{notifFilter==="unread"?"未読通知はありません":"通知はありません"}</div>;
                 return filtered.map(n=>{
-                  const hasNav = n.entityId && n.entityType;
+                  // entityTypeがなくてもtypeから推測してナビゲーション
+                  const resolvedEntityType = n.entityType || (
+                    (n.type==="task_assign"||n.type==="task_status"||n.type==="task_comment"||n.type==="deadline") ? "task" :
+                    n.type==="mention" ? null : null
+                  );
+                  const hasNav = !!(n.entityId && (resolvedEntityType || n.entityType));
                   const handleNotifClick = () => {
                     // 既読にする
                     if(!n.read){const nd={...data,notifications:(data.notifications||[]).map(x=>x.id===n.id?{...x,read:true}:x)};setData(nd);saveData(nd);}
-                    if(!hasNav) return;
+                    const eType = resolvedEntityType;
+                    if(!n.entityId || !eType) return;
                     setShowNotifPanel(false);
-                    // タブ切替後に確実に詳細を開くため80ms遅延
-                    if(n.entityType==="task") {
+                    // タブ切替後に確実に詳細を開くため100ms遅延
+                    if(eType==="task") {
                       persistTab("md_tab","tasks",setTab);
-                      setTimeout(()=>setNavTarget({type:"task",id:n.entityId}),80);
-                    } else if(n.entityType==="project") {
+                      setTimeout(()=>setNavTarget({type:"task",id:n.entityId}),100);
+                    } else if(eType==="project") {
                       persistTab("md_tab","tasks",setTab);
-                      setTimeout(()=>setNavTarget({type:"project",id:n.entityId}),80);
-                    } else if(n.entityType==="company") {
+                      setTimeout(()=>setNavTarget({type:"project",id:n.entityId}),100);
+                    } else if(eType==="company") {
                       persistTab("md_tab","sales",setTab);
-                      setTimeout(()=>{persistTab("md_salesTab","company",setSalesTab);setSalesNavTarget({type:"company",id:n.entityId});},80);
-                    } else if(n.entityType==="vendor") {
+                      setTimeout(()=>{persistTab("md_salesTab","company",setSalesTab);setSalesNavTarget({type:"company",id:n.entityId});},100);
+                    } else if(eType==="vendor") {
                       persistTab("md_tab","sales",setTab);
-                      setTimeout(()=>{persistTab("md_salesTab","vendor",setSalesTab);setSalesNavTarget({type:"vendor",id:n.entityId});},80);
-                    } else if(n.entityType==="muni") {
+                      setTimeout(()=>{persistTab("md_salesTab","vendor",setSalesTab);setSalesNavTarget({type:"vendor",id:n.entityId});},100);
+                    } else if(eType==="muni") {
                       persistTab("md_tab","sales",setTab);
-                      setTimeout(()=>{persistTab("md_salesTab","muni",setSalesTab);setSalesNavTarget({type:"muni",id:n.entityId});},80);
+                      setTimeout(()=>{persistTab("md_salesTab","muni",setSalesTab);setSalesNavTarget({type:"muni",id:n.entityId});},100);
                     }
                   };
                   return (
