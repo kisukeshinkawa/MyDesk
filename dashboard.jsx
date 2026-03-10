@@ -6751,39 +6751,61 @@ export default function App() {
 
   // ── プッシュ通知購読 ───────────────────────────────────────────────────────
   const subscribePush = async (userId) => {
-    // iOSチェック：ホーム画面追加済みPWAのみ対応
+    // ── ① 通知許可を取得 ──────────────────────────────────────────────────
+    if (!('Notification' in window)) {
+      console.warn('[MyDesk] Notification API 非対応');
+      return false;
+    }
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') {
+      console.warn('[MyDesk] 通知許可が拒否されました');
+      return false;
+    }
+
+    // ── ② iPhoneはPWA(ホーム画面追加)必須 ───────────────────────────────
     const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches
       || window.navigator.standalone === true;
     if (isIos && !isStandalone) {
-      // iOSブラウザ → ホーム画面追加を促す（Notificationは使えないがfalseを返さない）
-      alert('iPhoneで通知を受け取るには、Safariのメニューから「ホーム画面に追加」してアプリとして起動してください。');
+      alert('iPhoneで通知を受け取るには\nSafari → 共有 →「ホーム画面に追加」してから\nアプリとして起動してください。');
       return false;
     }
-    if (!('Notification' in window)) return false;
+
+    // ── ③ Service Worker 登録 & Push購読 ────────────────────────────────
+    if (!('serviceWorker' in navigator)) {
+      console.warn('[MyDesk] ServiceWorker 非対応');
+      return true; // 許可だけでポーリング通知は動く
+    }
     try {
-      const perm = await Notification.requestPermission();
-      if (perm !== 'granted') return false;
-      if (!('serviceWorker' in navigator)) return true;
-      // SW未登録の場合は登録してから待つ
-      const swReg = await navigator.serviceWorker.register('/sw.js').catch(()=>null);
-      const reg = await navigator.serviceWorker.ready.catch(()=>null);
-      if (!reg) return true;
-      if (!reg.pushManager) return true; // SW ready but no push (e.g. some iOS)
-      const existing = await reg.pushManager.getSubscription();
-      const sub = existing || await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8(VAPID_PUBLIC_KEY),
-      });
-      // Supabaseに購読情報を保存
+      // SWを確実に登録・更新
+      const swReg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+      await swReg.update(); // 最新のsw.jsを必ず使う
+      const reg = await navigator.serviceWorker.ready;
+
+      if (!reg.pushManager) {
+        console.warn('[MyDesk] pushManager 非対応（このブラウザはWeb Push未対応）');
+        return true;
+      }
+
+      // 既存の購読があっても必ずSupabaseに保存し直す（デプロイ後のリセット対策）
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) {
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8(VAPID_PUBLIC_KEY),
+        });
+      }
+
+      // ── ④ Supabaseに購読情報を保存 ──────────────────────────────────
       const subs = (await sbGet('push_subs')) || {};
       subs[userId] = sub.toJSON();
       await sbSet('push_subs', subs);
-      console.log('[MyDesk] Push subscription saved for user:', userId);
+      console.log('[MyDesk] ✅ Push購読を保存しました userId:', userId, 'endpoint:', sub.endpoint.slice(-20));
       return true;
     } catch(e) {
-      console.error('[MyDesk] Push subscribe failed:', e);
-      return false;
+      console.error('[MyDesk] Push購読に失敗:', e.name, e.message);
+      // 購読失敗でも許可があればポーリング通知は動く
+      return Notification.permission === 'granted';
     }
   };
 
