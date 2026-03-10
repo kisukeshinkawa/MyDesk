@@ -1,76 +1,48 @@
-// MyDesk Service Worker v3 - バックグラウンドプッシュ通知対応
+// MyDesk Service Worker v4
 const APP_URL = '/';
 
-// インストール時: 即座にアクティブ化
-self.addEventListener('install', (e) => {
-  self.skipWaiting();
-});
+self.addEventListener('install', (e) => { self.skipWaiting(); });
+self.addEventListener('activate', (e) => { e.waitUntil(clients.claim()); });
 
-// アクティベート時: 既存クライアントを即時制御
-self.addEventListener('activate', (e) => {
-  e.waitUntil(clients.claim());
-});
-
-// ── プッシュ通知受信（バックグラウンド・フォアグラウンド両対応）──────────
 self.addEventListener('push', (e) => {
   if (!e.data) return;
-
   let data = {};
-  try { data = e.data.json(); }
-  catch { data = { title: 'MyDesk', body: e.data.text() }; }
+  try { data = e.data.json(); } catch { data = { title: 'MyDesk', body: e.data.text() }; }
 
-  const title = data.title || 'MyDesk';
   const options = {
     body: data.body || '',
-    icon: data.icon || '/icon-192.png',
-    badge: data.badge || '/icon-192.png',
-    tag: data.tag || 'mydesk-notif',
+    tag: data.tag || 'mydesk',
     renotify: true,
     requireInteraction: false,
-    silent: false,
     vibrate: [200, 100, 200],
     data: { url: data.url || APP_URL },
-    actions: [
-      { action: 'open', title: '開く' }
-    ],
   };
+  // icon-192.pngが存在する場合だけ追加（404だとChromeが通知を止める）
+  if (data.icon && !data.icon.includes('icon-192')) options.icon = data.icon;
 
-  e.waitUntil(
-    self.registration.showNotification(title, options)
-  );
+  e.waitUntil(self.registration.showNotification(data.title || 'MyDesk', options));
 });
 
-// ── 通知クリック ───────────────────────────────────────────────────────────
 self.addEventListener('notificationclick', (e) => {
   e.notification.close();
   const url = e.notification.data?.url || APP_URL;
-
   e.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-      // 既にMyDeskが開いていればフォーカス
-      for (const client of clientList) {
-        if (client.url.startsWith(self.location.origin) && 'focus' in client) {
-          client.navigate(url);
-          return client.focus();
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+      for (const c of list) {
+        if (c.url.startsWith(self.location.origin) && 'focus' in c) {
+          c.navigate(url); return c.focus();
         }
       }
-      // 開いていなければ新しいウィンドウで開く
       if (clients.openWindow) return clients.openWindow(url);
     })
   );
 });
 
-// ── 購読更新（ブラウザが自動で呼ぶ）────────────────────────────────────────
 self.addEventListener('pushsubscriptionchange', (e) => {
-  console.log('[SW] Push subscription changed - re-subscribing');
-  // 購読が期限切れになった時の自動再購読
   e.waitUntil(
     self.registration.pushManager.subscribe(e.oldSubscription.options)
-      .then(sub => {
-        // 再購読情報をアプリに送信
-        return self.clients.matchAll().then(clients => {
-          clients.forEach(c => c.postMessage({ type: 'PUSH_RESUBSCRIBED', subscription: sub.toJSON() }));
-        });
-      }).catch(err => console.warn('[SW] Re-subscribe failed:', err))
+      .then(sub => self.clients.matchAll().then(cs =>
+        cs.forEach(c => c.postMessage({ type: 'PUSH_RESUBSCRIBED', subscription: sub.toJSON() }))
+      )).catch(err => console.warn('[SW] Re-subscribe failed:', err))
   );
 });
