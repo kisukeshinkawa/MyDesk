@@ -1,7 +1,4 @@
-// MyDesk Service Worker v2 - Push Notifications
-// iOSおよびPC(Chrome/Edge)対応
-
-const CACHE_NAME = 'mydesk-v2';
+// MyDesk Service Worker v3 - バックグラウンドプッシュ通知対応
 const APP_URL = '/';
 
 // インストール時: 即座にアクティブ化
@@ -14,12 +11,12 @@ self.addEventListener('activate', (e) => {
   e.waitUntil(clients.claim());
 });
 
-// ── プッシュ通知受信 ───────────────────────────────────────────────────────
+// ── プッシュ通知受信（バックグラウンド・フォアグラウンド両対応）──────────
 self.addEventListener('push', (e) => {
   if (!e.data) return;
 
   let data = {};
-  try { data = e.data.json(); } 
+  try { data = e.data.json(); }
   catch { data = { title: 'MyDesk', body: e.data.text() }; }
 
   const title = data.title || 'MyDesk';
@@ -33,7 +30,6 @@ self.addEventListener('push', (e) => {
     silent: false,
     vibrate: [200, 100, 200],
     data: { url: data.url || APP_URL },
-    // iOS Safari対応: actions は iOS 16.4以上で対応
     actions: [
       { action: 'open', title: '開く' }
     ],
@@ -64,8 +60,17 @@ self.addEventListener('notificationclick', (e) => {
   );
 });
 
-// ── プッシュ通知のキャンセル ───────────────────────────────────────────────
+// ── 購読更新（ブラウザが自動で呼ぶ）────────────────────────────────────────
 self.addEventListener('pushsubscriptionchange', (e) => {
-  // 購読が更新された場合の処理（ブラウザが自動で呼ぶ）
-  console.log('[SW] Push subscription changed');
+  console.log('[SW] Push subscription changed - re-subscribing');
+  // 購読が期限切れになった時の自動再購読
+  e.waitUntil(
+    self.registration.pushManager.subscribe(e.oldSubscription.options)
+      .then(sub => {
+        // 再購読情報をアプリに送信
+        return self.clients.matchAll().then(clients => {
+          clients.forEach(c => c.postMessage({ type: 'PUSH_RESUBSCRIBED', subscription: sub.toJSON() }));
+        });
+      }).catch(err => console.warn('[SW] Re-subscribe failed:', err))
+  );
 });
