@@ -1,4 +1,4 @@
-// MyDesk Service Worker v4
+// MyDesk Service Worker v5
 const APP_URL = '/';
 
 self.addEventListener('install', (e) => { self.skipWaiting(); });
@@ -9,18 +9,15 @@ self.addEventListener('push', (e) => {
   let data = {};
   try { data = e.data.json(); } catch { data = { title: 'MyDesk', body: e.data.text() }; }
 
-  const options = {
-    body: data.body || '',
-    tag: data.tag || 'mydesk',
-    renotify: true,
-    requireInteraction: false,
-    vibrate: [200, 100, 200],
-    data: { url: data.url || APP_URL },
-  };
-  // icon-192.pngが存在する場合だけ追加（404だとChromeが通知を止める）
-  if (data.icon && !data.icon.includes('icon-192')) options.icon = data.icon;
-
-  e.waitUntil(self.registration.showNotification(data.title || 'MyDesk', options));
+  e.waitUntil(
+    self.registration.showNotification(data.title || 'MyDesk', {
+      body: data.body || '',
+      tag: data.tag || 'mydesk',
+      renotify: true,
+      vibrate: [200, 100, 200],
+      data: { url: data.url || APP_URL },
+    })
+  );
 });
 
 self.addEventListener('notificationclick', (e) => {
@@ -38,7 +35,9 @@ self.addEventListener('notificationclick', (e) => {
   );
 });
 
+// pushsubscriptionchange: oldSubscriptionがnullの場合を考慮
 self.addEventListener('pushsubscriptionchange', (e) => {
+  if (!e.oldSubscription) return; // nullの場合は何もしない
   e.waitUntil(
     self.registration.pushManager.subscribe(e.oldSubscription.options)
       .then(sub => self.clients.matchAll().then(cs =>
