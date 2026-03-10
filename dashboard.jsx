@@ -1504,11 +1504,35 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
         ? users.filter(u=>u.id!==uid).map(u=>u.id)
         : (toId!==uid ? [toId] : []);
       if(!targets.length) return;
-      fetch('/api/send-push',{
-        method:'POST',
-        headers:{'Content-Type':'application/json','x-mydesk-secret':'mydesk2026'},
-        body:JSON.stringify({toUserIds:targets,title,body,tag}),
-      }).catch(()=>{});
+
+      // プッシュ通知（notifyMode が "push" or "both" or 未設定のユーザー）
+      const pushTargets = targets.filter(id=>{
+        const u = users.find(x=>x.id===id);
+        return !u?.notifyMode || u.notifyMode==='push' || u.notifyMode==='both';
+      });
+      if(pushTargets.length){
+        fetch('/api/send-push',{
+          method:'POST',
+          headers:{'Content-Type':'application/json','x-mydesk-secret':'mydesk2026'},
+          body:JSON.stringify({toUserIds:pushTargets,title,body,tag}),
+        }).catch(()=>{});
+      }
+
+      // メール通知（notifyMode が "email" or "both" のユーザー）
+      const emailTargets = targets.filter(id=>{
+        const u = users.find(x=>x.id===id);
+        return u?.notifyMode==='email' || u?.notifyMode==='both';
+      });
+      emailTargets.forEach(id=>{
+        const u = users.find(x=>x.id===id);
+        const toAddr = 'bm-dx@beetle-ems.com';
+        const emailBody = `【${u?.name||'メンバー'}宛】\n${body}\n\n──\nMyDesk チーム業務管理`;
+        fetch('/api/send-email',{
+          method:'POST',
+          headers:{'Content-Type':'application/json','x-mydesk-secret':'mydesk2026'},
+          body:JSON.stringify({to:toAddr,toName:u?.name||'',subject:title,body:emailBody}),
+        }).catch(()=>{});
+      });
     });
   }, [setData, users, uid]);
 
@@ -5338,23 +5362,53 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
             {profileSaving?"保存中...":"保存する"}
           </button>
 
-          {/* プッシュ通知 */}
+          {/* 通知方法 */}
           <div style={{marginTop:"1.25rem",paddingTop:"1.25rem",borderTop:"1px solid "+C.borderLight}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <div>
-                <div style={{fontSize:"0.87rem",fontWeight:700,color:C.text}}>🔔 プッシュ通知</div>
-                <div style={{fontSize:"0.72rem",color:C.textMuted,marginTop:"0.15rem"}}>
-                  {pushEnabled?"✅ 有効 — 端末に通知が届きます":"❌ 無効 — ONにすると着信・割り当て通知が届きます"}
+            <div style={{fontSize:"0.87rem",fontWeight:700,color:C.text,marginBottom:"0.625rem"}}>🔔 通知方法</div>
+            {(()=>{
+              const mode = currentUser?.notifyMode || 'push';
+              const saveMode = async (m) => {
+                const updated = {...currentUser, notifyMode: m};
+                const newUsers = users.map(u=>u.id===currentUser.id?updated:u);
+                await saveUsers(newUsers);
+                setCurrentUser(updated); setUsers(newUsers); setSession(updated);
+              };
+              return (
+                <div style={{display:"flex",gap:"0.5rem",marginBottom:"0.875rem"}}>
+                  {[
+                    {id:'push',  label:'📱 プッシュのみ'},
+                    {id:'email', label:'📧 メールのみ'},
+                    {id:'both',  label:'🔔 両方'},
+                  ].map(opt=>(
+                    <button key={opt.id} onClick={()=>saveMode(opt.id)}
+                      style={{flex:1,padding:"0.45rem 0.25rem",borderRadius:"0.625rem",border:`1.5px solid ${mode===opt.id?C.accent:C.border}`,cursor:"pointer",fontFamily:"inherit",fontWeight:mode===opt.id?700:500,fontSize:"0.72rem",background:mode===opt.id?"#eff6ff":"white",color:mode===opt.id?C.accent:C.textSub}}>
+                      {opt.label}
+                    </button>
+                  ))}
                 </div>
-                {(()=>{if(pushEnabled)return null;const ua=typeof navigator!=='undefined'?navigator.userAgent:'';const isIosDev=ua.match('iPhone')||ua.match('iPad')||ua.match('iPod');const isSA=window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone===true;return (isIosDev&&!isSA)?<div style={{fontSize:"0.7rem",background:"#fffbeb",border:"1px solid #f59e0b",borderRadius:"0.5rem",padding:"0.4rem 0.5rem",marginTop:"0.4rem",color:"#92400e"}}>📱 iPhoneはSafariの「ホーム画面に追加」後、アプリとして起動してONにしてください</div>:null;})()}
+              );
+            })()}
+            {(currentUser?.notifyMode==='email'||currentUser?.notifyMode==='both')&&(
+              <div style={{fontSize:"0.72rem",color:C.textMuted,background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:"0.5rem",padding:"0.4rem 0.625rem",marginBottom:"0.625rem"}}>
+                📧 送信先: bm-dx@beetle-ems.com
               </div>
-              <button onClick={async()=>{
-                if(pushEnabled){await unsubscribePush(currentUser.id);setPushEnabled(false);}
-                else{const ok=await subscribePush(currentUser.id);if(ok)setPushEnabled(true);}
-              }} style={{padding:"0.4rem 1rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.82rem",background:pushEnabled?"#d1fae5":"#2563eb",color:pushEnabled?"#065f46":"white"}}>
-                {pushEnabled?"ON ✓":"ONにする"}
-              </button>
-            </div>
+            )}
+            {(currentUser?.notifyMode!=='email')&&(
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <div>
+                  <div style={{fontSize:"0.8rem",color:C.textMuted}}>
+                    {pushEnabled?"✅ プッシュ通知 有効":"❌ プッシュ通知 無効"}
+                  </div>
+                  {(()=>{if(pushEnabled)return null;const ua=typeof navigator!=='undefined'?navigator.userAgent:'';const isIosDev=ua.match('iPhone')||ua.match('iPad')||ua.match('iPod');const isSA=window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone===true;return (isIosDev&&!isSA)?<div style={{fontSize:"0.7rem",background:"#fffbeb",border:"1px solid #f59e0b",borderRadius:"0.5rem",padding:"0.4rem 0.5rem",marginTop:"0.4rem",color:"#92400e"}}>📱 iPhoneはSafariの「ホーム画面に追加」後、アプリとして起動してONにしてください</div>:null;})()}
+                </div>
+                <button onClick={async()=>{
+                  if(pushEnabled){await unsubscribePush(currentUser.id);setPushEnabled(false);}
+                  else{const ok=await subscribePush(currentUser.id);if(ok)setPushEnabled(true);}
+                }} style={{padding:"0.4rem 1rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.82rem",background:pushEnabled?"#d1fae5":"#2563eb",color:pushEnabled?"#065f46":"white"}}>
+                  {pushEnabled?"ON ✓":"ONにする"}
+                </button>
+              </div>
+            )}
           </div>
 
           {/* 新川希亮のみ: プッシュ通知テストパネル */}
