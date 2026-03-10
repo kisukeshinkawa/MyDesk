@@ -2,6 +2,7 @@
   "name": "mydesk-api",
   "version": "1.0.0",
   "dependencies": {
-    "web-push": "^3.6.7"
+    "web-push": "^3.6.7",
+    "nodemailer": "^6.9.7"
   }
 }
