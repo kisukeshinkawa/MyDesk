@@ -1448,7 +1448,7 @@ function TaskCommentInput({taskId, data, setData, users=[], uid}) {
     if(toIds.length) {
       fetch('/api/send-push',{method:'POST',headers:{'Content-Type':'application/json','x-mydesk-secret':'mydesk2026'},
         body:JSON.stringify({toUserIds:toIds,title:`「${task.title}」にコメントが追加されました`,body:text.slice(0,60),tag:'task_comment'})
-      }).catch(()=>{});
+      }).then(r=>r.json()).then(d=>console.log('[MyDesk] push sent:',d)).catch(e=>console.warn('[MyDesk] push failed:',e));
     }
     setText("");
   };
@@ -6779,11 +6779,10 @@ export default function App() {
       const subs = (await sbGet('push_subs')) || {};
       subs[userId] = sub.toJSON();
       await sbSet('push_subs', subs);
+      console.log('[MyDesk] Push subscription saved for user:', userId);
       return true;
     } catch(e) {
-      console.warn('Push subscribe failed:', e);
-      // Web Push登録失敗でも通知許可があればポーリング通知は動く
-      if(Notification.permission === 'granted') return true;
+      console.error('[MyDesk] Push subscribe failed:', e);
       return false;
     }
   };
@@ -6815,8 +6814,26 @@ export default function App() {
 
   useEffect(()=>{
     if(!currentUser) return;
-    // プッシュ通知が有効かチェック
-    if('Notification' in window) setPushEnabled(Notification.permission==='granted');
+    // プッシュ購読状態を正確に確認（pushManager.getSubscription()で実際の登録を確認）
+    const checkPushStatus = async () => {
+      if (!('Notification' in window) || Notification.permission !== 'granted') {
+        setPushEnabled(false); return;
+      }
+      if (!('serviceWorker' in navigator)) { setPushEnabled(true); return; }
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager?.getSubscription();
+        // 購読オブジェクトがあればON、なければ再登録が必要
+        if (sub) {
+          setPushEnabled(true);
+        } else {
+          // 許可はあるが購読なし → 自動で再購読
+          const ok = await subscribePush(currentUser.id);
+          setPushEnabled(!!ok);
+        }
+      } catch { setPushEnabled(Notification.permission === 'granted'); }
+    };
+    checkPushStatus();
   },[currentUser?.id]);
 
   const handleLogin = (user) => {
