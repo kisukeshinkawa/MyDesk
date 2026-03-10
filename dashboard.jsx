@@ -740,7 +740,7 @@ function GSheetImportWizard({ data, onSave, onClose, prefs, munis, vendors }) {
       );
       if (!muni) {
         muni = {
-          id: Date.now() + Math.random(),
+          id: "m_"+Date.now()+"_"+Math.random().toString(36).substr(2,9),
           prefectureId: pref.id,
           name: sheet.muniName,
           dustalk: "未展開",
@@ -764,7 +764,7 @@ function GSheetImportWizard({ data, onSave, onClose, prefs, munis, vendors }) {
         const existVendor = (nd.vendors || []).find(ev => normStr(ev.name) === normStr(v.name));
         if (!existVendor) {
           const newVendor = {
-            id: Date.now() + Math.random(),
+            id: "v_"+Date.now()+"_"+Math.random().toString(36).substr(2,9),
             name: v.name,
             status: v.status || "未接触",
             phone: v.phone || "",
@@ -2846,10 +2846,12 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       setSalesTab("vendor"); setActiveVendor(salesNavTarget.id); setActiveDetail("memo");
     } else if(salesNavTarget.type==="muni"){
       setSalesTab("muni");
+      setActiveMuni(null); // いったんリセットして再レンダリング確実化
       const targetMuni = (data.municipalities||[]).find(m=>String(m.id)===String(salesNavTarget.id));
-      if(targetMuni) setActivePref(String(targetMuni.prefectureId));
-      else if(salesNavTarget.prefId) setActivePref(salesNavTarget.prefId);
-      setActiveMuni(String(salesNavTarget.id)); setMuniScreen("muniDetail"); setActiveDetail("memo");
+      const prefId = targetMuni?String(targetMuni.prefectureId):(salesNavTarget.prefId?String(salesNavTarget.prefId):null);
+      if(prefId) setActivePref(prefId);
+      setMuniScreen("top"); // 先にtopにして
+      setTimeout(()=>{ setActiveMuni(String(salesNavTarget.id)); setMuniScreen("muniDetail"); setActiveDetail("memo"); }, 50);
     }
     clearSalesNavTarget?.();
   },[salesNavTarget]);
@@ -5519,28 +5521,32 @@ function DiffBadge({cur,prv}) {
 
 // ── PPTX レポートエクスポート ──────────────────────────────────────────────────
 async function exportPPTX(sys, mk, yk, d, prev, allAnalytics) {
-  // PptxGenJS CDN動的ロード
+  // PptxGenJS ロード（fetch+blob方式でCSP問題を回避）
   if(!window.PptxGenJS){
-    await new Promise((res,rej)=>{
-      const existing=document.querySelector('script[data-pptxgen]');
-      if(existing){setTimeout(()=>window.PptxGenJS?res():rej(new Error("PptxGenJS未定義")),500);return;}
-      const s=document.createElement("script");
-      s.setAttribute('data-pptxgen','1');
-      s.src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js";
-      s.onload=()=>setTimeout(res,100);
-      s.onerror=()=>{
-        const s2=document.createElement("script");
-        s2.setAttribute('data-pptxgen','1');
-        s2.src="https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.bundle.js";
-        s2.onload=()=>setTimeout(res,100);
-        s2.onerror=()=>rej(new Error("CDNから読み込めませんでした"));
-        document.head.appendChild(s2);
-      };
-      document.head.appendChild(s);
-      setTimeout(()=>rej(new Error("タイムアウト（20秒）")),20000);
-    }).catch(e=>{alert("PPTXライブラリの読み込みに失敗しました。\nネット接続を確認してください。\n"+e.message);throw e;});
+    const loadPptxGen = async () => {
+      const URLS = [
+        "https://unpkg.com/pptxgenjs@3.12.0/dist/pptxgen.bundle.js",
+        "https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js",
+        "https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.bundle.js",
+      ];
+      for(const url of URLS){
+        try{
+          const r = await fetch(url);
+          if(!r.ok) continue;
+          const js = await r.text();
+          // Function コンストラクタで実行（グローバルスコープに展開）
+          const fn = new Function(js + "\nreturn typeof PptxGenJS !== 'undefined' ? PptxGenJS : (typeof window.PptxGenJS !== 'undefined' ? window.PptxGenJS : null);");
+          const Cls = fn();
+          if(Cls){ window.PptxGenJS = Cls; return; }
+          // 念のためwindow確認
+          if(window.PptxGenJS) return;
+        }catch(e){ console.warn('pptxgen load failed:', url, e); }
+      }
+      throw new Error("全CDNからの読み込みに失敗しました。ネット接続を確認してください。");
+    };
+    await loadPptxGen();
   }
-  if(!window.PptxGenJS){alert("PPTXライブラリが見つかりません。");return;}
+  if(!window.PptxGenJS){ alert("PPTXライブラリが見つかりません。ページを再読み込みしてください。"); return; }
   const pres = new window.PptxGenJS();
   pres.layout = "LAYOUT_16x9"; // 10" x 5.625"
   pres.title = "分析レポート";
@@ -5748,29 +5754,32 @@ async function exportMultiMonthPPTX(sys, currentMk, allAnalytics) {
   const NAVY="1E2A3A", BLUE="2563EB", GREEN="059669", AMBER="D97706", RED="DC2626", PURPLE="7C3AED";
   const WHITE="FFFFFF", LGRAY="F8FAFC", DGRAY="64748B", LBLUE="EFF6FF";
 
+  // PptxGenJS ロード（fetch+blob方式でCSP問題を回避）
   if(!window.PptxGenJS){
-    await new Promise((resolve,reject)=>{
-      // 既存のscriptタグがあれば再利用
-      const existing=document.querySelector('script[data-pptxgen]');
-      if(existing){setTimeout(()=>window.PptxGenJS?resolve():reject(new Error("PptxGenJS未定義")),500);return;}
-      const s=document.createElement("script");
-      s.setAttribute('data-pptxgen','1');
-      s.src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js";
-      s.onload=()=>setTimeout(resolve,100);
-      s.onerror=()=>{
-        // fallback CDN
-        const s2=document.createElement("script");
-        s2.setAttribute('data-pptxgen','1');
-        s2.src="https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.bundle.js";
-        s2.onload=()=>setTimeout(resolve,100);
-        s2.onerror=()=>reject(new Error("CDNから読み込めませんでした"));
-        document.head.appendChild(s2);
-      };
-      document.head.appendChild(s);
-      setTimeout(()=>reject(new Error("タイムアウト（20秒）")),20000);
-    }).catch(e=>{alert("PPTXライブラリの読み込みに失敗しました。\nネット接続を確認してください。\n"+e.message);throw e;});
+    const loadPptxGen = async () => {
+      const URLS = [
+        "https://unpkg.com/pptxgenjs@3.12.0/dist/pptxgen.bundle.js",
+        "https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js",
+        "https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.bundle.js",
+      ];
+      for(const url of URLS){
+        try{
+          const r = await fetch(url);
+          if(!r.ok) continue;
+          const js = await r.text();
+          // Function コンストラクタで実行（グローバルスコープに展開）
+          const fn = new Function(js + "\nreturn typeof PptxGenJS !== 'undefined' ? PptxGenJS : (typeof window.PptxGenJS !== 'undefined' ? window.PptxGenJS : null);");
+          const Cls = fn();
+          if(Cls){ window.PptxGenJS = Cls; return; }
+          // 念のためwindow確認
+          if(window.PptxGenJS) return;
+        }catch(e){ console.warn('pptxgen load failed:', url, e); }
+      }
+      throw new Error("全CDNからの読み込みに失敗しました。ネット接続を確認してください。");
+    };
+    await loadPptxGen();
   }
-  if(!window.PptxGenJS){alert("PPTXライブラリが見つかりません。ページを再読み込みしてください。");return;}
+  if(!window.PptxGenJS){ alert("PPTXライブラリが見つかりません。ページを再読み込みしてください。"); return; }
   const pres=new window.PptxGenJS();
   pres.layout="LAYOUT_WIDE"; // 10x5.63inch
 
@@ -6979,40 +6988,52 @@ export default function App() {
                 if(!filtered.length) return <div style={{padding:"2.5rem",textAlign:"center",color:C.textMuted,fontSize:"0.85rem"}}>{notifFilter==="unread"?"未読通知はありません":"通知はありません"}</div>;
                 return filtered.map(n=>{
                   // entityTypeがなくてもtypeから推測してナビゲーション
-                  const resolvedEntityType = n.entityType || (
+                  // entityType を決定（既存通知への後方互換フォールバック）
+                  const resolvedEType = n.entityType || (
                     (n.type==="task_assign"||n.type==="task_status"||n.type==="task_comment"||n.type==="deadline") ? "task" :
-                    n.type==="mention" ? null :
+                    n.type==="memo" ? null :
                     n.type==="sales_assign" ? (n.body==="企業"?"company":n.body==="業者"?"vendor":n.body==="自治体"?"muni":null) :
                     null
                   );
-                  const hasNav = !!(n.entityId && (resolvedEntityType || n.entityType));
+                  // entityId がない場合 title から entity を逆引き
+                  const resolvedEntityId = n.entityId || (()=>{
+                    if(!resolvedEType) return null;
+                    const titleMatch = n.title?.match(/「(.+?)」/);
+                    const nm = titleMatch?.[1];
+                    if(!nm) return null;
+                    if(resolvedEType==="company") return (data.companies||[]).find(c=>c.name===nm)?.id||null;
+                    if(resolvedEType==="vendor")  return (data.vendors||[]).find(v=>v.name===nm)?.id||null;
+                    if(resolvedEType==="muni")    return (data.municipalities||[]).find(m=>m.name===nm)?.id||null;
+                    if(resolvedEType==="task")    return (data.tasks||[]).find(t=>t.title===nm)?.id||null;
+                    return null;
+                  })();
+                  const hasNav = !!(resolvedEntityId && resolvedEType);
                   const handleNotifClick = () => {
                     // 既読にする
                     if(!n.read){const nd={...data,notifications:(data.notifications||[]).map(x=>x.id===n.id?{...x,read:true}:x)};setData(nd);saveData(nd);}
-                    const eType = resolvedEntityType;
-                    if(!n.entityId || !eType) return;
+                    if(!resolvedEntityId || !resolvedEType) return;
                     setShowNotifPanel(false);
-                    const ts = Date.now(); // 毎回新オブジェクトでuseEffectを確実に再発火
-                    if(eType==="task") {
+                    const ts = Date.now();
+                    if(resolvedEType==="task") {
                       setTab("tasks"); localStorage.setItem("md_tab","tasks");
-                      setTimeout(()=>setNavTarget({type:"task",id:n.entityId,ts}),120);
-                    } else if(eType==="project") {
+                      setTimeout(()=>setNavTarget({type:"task",id:resolvedEntityId,ts}),300);
+                    } else if(resolvedEType==="project") {
                       setTab("tasks"); localStorage.setItem("md_tab","tasks");
-                      setTimeout(()=>setNavTarget({type:"project",id:n.entityId,ts}),120);
-                    } else if(eType==="company") {
+                      setTimeout(()=>setNavTarget({type:"project",id:resolvedEntityId,ts}),300);
+                    } else if(resolvedEType==="company") {
                       setTab("sales"); localStorage.setItem("md_tab","sales");
-                      setTimeout(()=>setSalesNavTarget({type:"company",id:n.entityId,ts}),120);
-                    } else if(eType==="vendor") {
+                      setTimeout(()=>setSalesNavTarget({type:"company",id:resolvedEntityId,ts}),300);
+                    } else if(resolvedEType==="vendor") {
                       setTab("sales"); localStorage.setItem("md_tab","sales");
-                      setTimeout(()=>setSalesNavTarget({type:"vendor",id:n.entityId,ts}),120);
-                    } else if(eType==="muni") {
+                      setTimeout(()=>setSalesNavTarget({type:"vendor",id:resolvedEntityId,ts}),300);
+                    } else if(resolvedEType==="muni") {
                       setTab("sales"); localStorage.setItem("md_tab","sales");
-                      setTimeout(()=>setSalesNavTarget({type:"muni",id:n.entityId,ts}),120);
+                      setTimeout(()=>setSalesNavTarget({type:"muni",id:resolvedEntityId,ts}),300);
                     }
                   };
                   return (
                   <div key={n.id} onClick={handleNotifClick}
-                    style={{padding:"0.75rem 1rem",borderBottom:`1px solid ${C.borderLight}`,background:n.read?"white":"#eff6ff",display:"flex",gap:"0.625rem",alignItems:"flex-start",cursor:hasNav?"pointer":(n.read?"default":"pointer")}}>
+                    style={{padding:"0.75rem 1rem",borderBottom:`1px solid ${C.borderLight}`,background:n.read?"white":"#eff6ff",display:"flex",gap:"0.625rem",alignItems:"flex-start",cursor:"pointer"}}>
                     <span style={{fontSize:"1.1rem",flexShrink:0,marginTop:"0.05rem"}}>{NOTIF_ICON[n.type]||"🔔"}</span>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{fontSize:"0.8rem",fontWeight:n.read?500:700,color:n.read?C.textSub:C.text,lineHeight:1.4,marginBottom:"0.15rem"}}>{n.title}</div>
