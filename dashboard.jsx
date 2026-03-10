@@ -5139,6 +5139,116 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
 }
 
 
+// ─── PUSH TEST PANEL（新川希亮専用）─────────────────────────────────────────
+function PushTestPanel({ currentUser, users }) {
+  const [log,      setLog]     = React.useState([]);
+  const [subInfo,  setSubInfo] = React.useState(null);
+  const [sending,  setSending] = React.useState(false);
+  const SECRET = 'mydesk2026';
+
+  const addLog = (msg, type='info') => setLog(p => [{msg, type, t: new Date().toLocaleTimeString('ja-JP')}, ...p].slice(0, 20));
+
+  // 購読状態をサーバーから確認
+  const checkSubs = async () => {
+    addLog('購読状態を確認中...', 'info');
+    try {
+      const r = await fetch('/api/push-test', { headers: { 'x-mydesk-secret': SECRET } });
+      if (!r.ok) { addLog('APIエラー: ' + r.status, 'error'); return; }
+      const d = await r.json();
+      const nameMap = {};
+      (d.userIds || []).forEach(uid => {
+        const u = users.find(x => String(x.id) === String(uid));
+        nameMap[uid] = u ? u.name : '不明(' + uid + ')';
+      });
+      setSubInfo({ count: d.subscribedUsers, nameMap, nodeVer: d.nodeVersion, wpVer: d.webpushVersion });
+      addLog(`✅ 購読中 ${d.subscribedUsers}人: ${Object.values(nameMap).join(', ') || 'なし'}`, 'ok');
+    } catch(e) { addLog('❌ ' + e.message, 'error'); }
+  };
+
+  // テストアカウントにプッシュ送信
+  const sendTestPush = async () => {
+    setSending(true);
+    addLog('テストアカウントへ送信中...', 'info');
+    // テストアカウントのユーザーIDを探す
+    const testUser = users.find(u => u.email === 'push-test@mydesk.app');
+    if (!testUser) {
+      addLog('❌ テストアカウントが未登録です（push-test@mydesk.app でアカウント作成が必要）', 'error');
+      setSending(false); return;
+    }
+    try {
+      const r = await fetch('/api/push-test?send=' + testUser.id, { headers: { 'x-mydesk-secret': SECRET } });
+      const d = await r.json();
+      if (d.testSend?.ok) {
+        addLog('✅ 送信成功！テスト端末に通知が届くはずです', 'ok');
+      } else if (d.testSend?.skipped) {
+        addLog('⚠️ テストアカウントが通知ONになっていません（別端末でログイン後、設定→通知ONにしてください）', 'warn');
+      } else {
+        addLog('❌ 送信失敗: ' + (d.testSend?.msg || JSON.stringify(d.testSend)), 'error');
+      }
+    } catch(e) { addLog('❌ ' + e.message, 'error'); }
+    setSending(false);
+  };
+
+  const logColor = { ok:'#065f46', error:'#dc2626', warn:'#92400e', info:'#475569' };
+  const logBg    = { ok:'#f0fdf4', error:'#fef2f2', warn:'#fffbeb', info:'#f8fafc' };
+
+  return (
+    <div style={{marginTop:'1.25rem', padding:'1rem', background:'#fffbeb', border:'2px dashed #f59e0b', borderRadius:'0.875rem'}}>
+      <div style={{display:'flex', alignItems:'center', gap:'0.5rem', marginBottom:'0.875rem'}}>
+        <span style={{fontSize:'1.1rem'}}>🛠️</span>
+        <div>
+          <div style={{fontWeight:800, fontSize:'0.87rem', color:'#92400e'}}>プッシュ通知テスト <span style={{fontSize:'0.68rem', background:'#fef3c7', color:'#92400e', border:'1px solid #fcd34d', borderRadius:999, padding:'1px 7px', marginLeft:4}}>新川希亮専用</span></div>
+          <div style={{fontSize:'0.7rem', color:'#a16207', marginTop:1}}>バックグラウンド通知の動作確認パネル</div>
+        </div>
+      </div>
+
+      {/* テストアカウント情報 */}
+      <div style={{background:'white', border:'1px solid #fde68a', borderRadius:'0.625rem', padding:'0.75rem', marginBottom:'0.75rem'}}>
+        <div style={{fontSize:'0.72rem', fontWeight:700, color:'#92400e', marginBottom:'0.5rem'}}>📱 テストアカウント情報（別端末でログイン用）</div>
+        {[
+          ['メールアドレス', 'push-test@mydesk.app'],
+          ['パスワード',     'PushTest2026!'],
+          ['名前',           'テスト通知ユーザー'],
+        ].map(([k,v]) => (
+          <div key={k} style={{display:'flex', gap:'0.5rem', alignItems:'center', marginBottom:'0.3rem'}}>
+            <span style={{fontSize:'0.68rem', color:'#a16207', width:80, flexShrink:0}}>{k}</span>
+            <code style={{fontSize:'0.78rem', fontWeight:700, color:'#1e293b', background:'#f8fafc', border:'1px solid #e2e8f0', borderRadius:4, padding:'1px 7px', letterSpacing:'0.02em'}}>{v}</code>
+          </div>
+        ))}
+        <div style={{marginTop:'0.5rem', fontSize:'0.68rem', color:'#a16207', lineHeight:1.5}}>
+          ① 別端末でMyDeskを開き上記でログイン<br/>
+          ② 設定 → 通知 → ONにする<br/>
+          ③ このパネルで「テスト送信」→ 別端末に通知が届けばOK
+        </div>
+      </div>
+
+      {/* ボタン */}
+      <div style={{display:'flex', gap:'0.5rem', marginBottom:'0.75rem', flexWrap:'wrap'}}>
+        <button onClick={checkSubs}
+          style={{flex:1, minWidth:120, padding:'0.5rem 0.75rem', borderRadius:8, border:'1.5px solid #e2e8f0', background:'white', cursor:'pointer', fontSize:'0.78rem', fontWeight:700, color:'#1e293b', fontFamily:'inherit'}}>
+          📡 購読状態を確認
+        </button>
+        <button onClick={sendTestPush} disabled={sending}
+          style={{flex:1, minWidth:120, padding:'0.5rem 0.75rem', borderRadius:8, border:'none', background: sending ? '#94a3b8' : '#2563eb', color:'white', cursor: sending ? 'default':'pointer', fontSize:'0.78rem', fontWeight:700, fontFamily:'inherit'}}>
+          {sending ? '送信中...' : '🔔 テスト送信'}
+        </button>
+      </div>
+
+      {/* ログ */}
+      {log.length > 0 && (
+        <div style={{maxHeight:160, overflowY:'auto', display:'flex', flexDirection:'column', gap:3}}>
+          {log.map((l, i) => (
+            <div key={i} style={{display:'flex', gap:'0.4rem', alignItems:'flex-start', background:logBg[l.type]||logBg.info, borderRadius:6, padding:'4px 8px'}}>
+              <span style={{fontSize:'0.65rem', color:'#94a3b8', flexShrink:0, marginTop:1}}>{l.t}</span>
+              <span style={{fontSize:'0.75rem', color:logColor[l.type]||logColor.info, fontWeight:600, lineHeight:1.4}}>{l.msg}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── MYPAGE VIEW ─────────────────────────────────────────────────────────────
 function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pushEnabled, setPushEnabled, subscribePush, unsubscribePush}) {
   const [profileForm, setProfileForm] = useState({name:currentUser?.name||"",email:currentUser?.email||"",phone:currentUser?.phone||""});
@@ -5246,6 +5356,11 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
               </button>
             </div>
           </div>
+
+          {/* 新川希亮のみ: プッシュ通知テストパネル */}
+          {currentUser?.name==='新川希亮' && (
+            <PushTestPanel currentUser={currentUser} users={users}/>
+          )}
 
           {/* ログアウト */}
           <button onClick={onLogout}
