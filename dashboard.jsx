@@ -4534,12 +4534,12 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
               // Resolve municipality IDs from names
               const mids=r.muniNames.map(mn=>munis.find(m=>m.name===mn)?.id).filter(Boolean);
               return {
-                id:Date.now()+Math.random(),
+                id:"v_"+Date.now()+"_"+Math.random().toString(36).substr(2,9),
                 name:r.name, status:r.status||"未接触",
                 phone:r.phone||"",
                 municipalityIds:mids, assigneeIds:[],
                 address:r.address||"",
-                memos:r.notes?[{id:Date.now()+Math.random(),text:r.notes,userId:currentUser?.id,date:new Date().toISOString()}]:[],
+                memos:r.notes?[{id:"mn_"+Date.now()+"_"+Math.random().toString(36).substr(2,9),text:r.notes,userId:currentUser?.id,date:new Date().toISOString()}]:[],
                 chat:[], createdAt:new Date().toISOString()
               };
             });
@@ -5026,12 +5026,12 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             const dup=munis.some(m=>String(m.prefectureId)===String(pref.id)&&m.name===r.name);
             if(dup){skipped.push(r);return;}
             toAdd.push({
-              id:Date.now()+Math.random(),
+              id:"m_"+Date.now()+"_"+Math.random().toString(36).substr(2,9),
               prefectureId:pref.id,
               name:r.name, dustalk:r.dustalk,
               treatyStatus:r.treatyStatus, status:r.status,
               artBranch:r.artBranch, address:r.address||"", assigneeIds:[],
-              memos:r.notes?[{id:Date.now()+Math.random(),text:r.notes,userId:currentUser?.id,date:new Date().toISOString()}]:[],
+              memos:r.notes?[{id:"mn_"+Date.now()+"_"+Math.random().toString(36).substr(2,9),text:r.notes,userId:currentUser?.id,date:new Date().toISOString()}]:[],
               chat:[], createdAt:new Date().toISOString()
             });
           });
@@ -6729,7 +6729,20 @@ export default function App() {
 
     const session = getSession();
     Promise.all([loadData(), loadUsers()]).then(([d,u])=>{
-      setData(d); setUsers(u);
+      // 重複IDを起動時に修復（CSVインポートの不具合で発生した場合）
+      const seenM = new Set(); let mChanged = false;
+      const fixedM = (d.municipalities||[]).map(m=>{
+        if(seenM.has(String(m.id))){mChanged=true;return{...m,id:"m_"+Date.now()+"_"+Math.random().toString(36).substr(2,9)};}
+        seenM.add(String(m.id)); return m;
+      });
+      const seenV = new Set(); let vChanged = false;
+      const fixedV = (d.vendors||[]).map(v=>{
+        if(seenV.has(String(v.id))){vChanged=true;return{...v,id:"v_"+Date.now()+"_"+Math.random().toString(36).substr(2,9)};}
+        seenV.add(String(v.id)); return v;
+      });
+      const fixed = (mChanged||vChanged) ? {...d,municipalities:fixedM,vendors:fixedV} : d;
+      if(mChanged||vChanged) saveData(fixed);
+      setData(fixed); setUsers(u);
       if (session) {
         const fresh = u.find(x=>x.id===session.id);
         if (fresh) { setCurrentUser(fresh); setSession(fresh); }
