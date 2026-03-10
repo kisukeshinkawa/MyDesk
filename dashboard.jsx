@@ -736,7 +736,7 @@ function GSheetImportWizard({ data, onSave, onClose, prefs, munis, vendors }) {
       if (!sheet.muniName || sheet.error) return;
       // 自治体を探す or 作成
       let muni = (nd.municipalities || []).find(m =>
-        m.prefectureId === pref.id && normStr(m.name) === normStr(sheet.muniName)
+        String(m.prefectureId) === String(pref.id) && normStr(m.name) === normStr(sheet.muniName)
       );
       if (!muni) {
         muni = {
@@ -1442,7 +1442,7 @@ function TaskCommentInput({taskId, data, setData, users=[], uid}) {
     let nd = {...data, tasks};
     // 担当者+作成者に通知（自分以外）
     const toIds = [...new Set([...(task.assignees||[]), task.createdBy].filter(i=>i&&i!==uid))];
-    if(toIds.length) nd = addNotif(nd,{type:"task_comment",title:`「${task.title}」にコメントが追加されました`,body:text.slice(0,60),toUserIds:toIds,fromUserId:uid});
+    if(toIds.length) nd = addNotif(nd,{type:"task_comment",entityId:task.id,entityType:"task",title:`「${task.title}」にコメントが追加されました`,body:text.slice(0,60),toUserIds:toIds,fromUserId:uid});
     // 自己完結保存+プッシュ
     setData(nd); saveData(nd);
     if(toIds.length) {
@@ -1620,6 +1620,8 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     if (fromUserId) {
       nd = addNotif(nd, {
         type: "task_status",
+        entityId: originalTaskId,
+        entityType: "task",
         title: "確認完了: " + reviewTask.reviewOf.taskTitle,
         body: "確認者: " + myName + " が確認完了しました",
         toUserIds: [fromUserId],
@@ -1749,7 +1751,11 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     let nd = {...data,[entityKey]:arr};
     // 全員に通知（自分以外）
     const toAll = users.filter(u=>u.id!==uid).map(u=>u.id);
-    if(toAll.length) nd = addNotif(nd,{type:"memo",title:`「${entity?.title||entity?.name||""}」にメモが追加されました`,body:text.slice(0,60),toUserIds:toAll,fromUserId:uid});
+    const eTypeMemo = entityKey==="tasks"?"task":entityKey==="projects"?"project":entityKey;
+    const targetMemoIds=[...(entity?.assignees||[]),entity?.createdBy,(entity?.members||[])].flat().filter(Boolean);
+    const toMemoTask=[...new Set(targetMemoIds)].filter(i=>i!==uid);
+    const toMemoFinal=toMemoTask.length?toMemoTask:toAll;
+    if(toMemoFinal.length) nd = addNotif(nd,{type:"memo",entityId,entityType:eTypeMemo,title:`「${entity?.title||entity?.name||""}」にメモが追加されました`,body:text.slice(0,60),toUserIds:toMemoFinal,fromUserId:uid});
     saveWithPush(nd, data.notifications);
     setTMemoIn(p=>({...p,[entityId]:""}));
   };
@@ -1758,10 +1764,15 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     const msg = {id:Date.now(), userId:uid, text, date:new Date().toISOString()};
     const arr = (data[entityKey]||[]).map(x=>x.id===entityId?{...x,chat:[...(x.chat||[]),msg]}:x);
     const entity = (data[entityKey]||[]).find(x=>x.id===entityId);
+    const eType = entityKey==="tasks"?"task":entityKey==="projects"?"project":entityKey;
     let nd = {...data,[entityKey]:arr};
-    // @メンション通知
-    const mentioned = users.filter(u=>u.id!==uid&&text.includes(`@${u.name}`));
-    if(mentioned.length) nd = addNotif(nd,{type:"mention",title:`「${entity?.title||entity?.name||""}」でメンションされました`,body:text.slice(0,60),toUserIds:mentioned.map(u=>u.id),fromUserId:uid});
+    // 担当者+作成者に通知（自分以外）
+    const targetIds=[...(entity?.assignees||[]),entity?.createdBy,(entity?.members||[])].flat().filter(Boolean);
+    const assignees=[...new Set(targetIds)].filter(i=>i!==uid);
+    if(assignees.length) nd = addNotif(nd,{type:"task_comment",entityId,entityType:eType,title:`「${entity?.title||entity?.name||""}」にチャットが投稿されました`,body:(users.find(u=>u.id===uid)?.name||"")+": "+text.slice(0,50),toUserIds:assignees,fromUserId:uid});
+    // @メンション通知（担当者以外へも）
+    const mentioned = users.filter(u=>u.id!==uid&&!assignees.includes(u.id)&&text.includes(`@${u.name}`));
+    if(mentioned.length) nd = addNotif(nd,{type:"mention",entityId,entityType:eType,title:`「${entity?.title||entity?.name||""}」でメンションされました`,body:text.slice(0,60),toUserIds:mentioned.map(u=>u.id),fromUserId:uid});
     saveWithPush(nd, data.notifications);
     setTChatIn(p=>({...p,[entityId]:""}));
   };
@@ -2836,7 +2847,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     } else if(salesNavTarget.type==="muni"){
       setSalesTab("muni");
       const targetMuni = (data.municipalities||[]).find(m=>String(m.id)===String(salesNavTarget.id));
-      if(targetMuni) setActivePref(targetMuni.prefectureId);
+      if(targetMuni) setActivePref(String(targetMuni.prefectureId));
       else if(salesNavTarget.prefId) setActivePref(salesNavTarget.prefId);
       setActiveMuni(String(salesNavTarget.id)); setMuniScreen("muniDetail"); setActiveDetail("memo");
     }
@@ -2916,7 +2927,12 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   },[]);
 
   const addFileToEntity = (entityKey, entityId, file) => {
-    const nd = { ...data, [entityKey]: (data[entityKey]||[]).map(e => e.id===entityId ? {...e, files:[...(e.files||[]),file]} : e) };
+    const entity = (data[entityKey]||[]).find(e=>e.id===entityId);
+    const eType = entityKey==="companies"?"company":entityKey==="vendors"?"vendor":entityKey==="municipalities"?"muni":entityKey;
+    let nd = { ...data, [entityKey]: (data[entityKey]||[]).map(e => e.id===entityId ? {...e, files:[...(e.files||[]),file]} : e) };
+    // 担当者全員に通知
+    const assignees=(entity?.assigneeIds||[]).filter(id=>id!==currentUser?.id);
+    if(assignees.length) nd=addNotif(nd,{type:"task_assign",entityId,entityType:eType,title:`「${entity?.name||""}」にファイルが追加されました`,body:file.name||"ファイル",toUserIds:assignees,fromUserId:currentUser?.id});
     window.__myDeskLastSave = Date.now();
     save(nd);
   };
@@ -3031,7 +3047,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
         // データなし都道府県も一応表示
         rg.prefs.forEach(prefName => {
           const prefMusis = (data.municipalities || []).filter(m => {
-            const p = (data.prefectures||[]).find(pp=>pp.id===m.prefectureId);
+            const p = (data.prefectures||[]).find(pp=>String(pp.id)===String(m.prefectureId));
             return p?.name === prefName;
           });
           if (prefMusis.length === 0) {
@@ -3192,7 +3208,10 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     let nd={...data,[entityKey]:arr};
     // メモ投稿は全員に通知（自分以外）
     const toAll=users.filter(u=>u.id!==currentUser?.id).map(u=>u.id);
-    if(toAll.length) nd=addNotif(nd,{type:"memo",title:`「${entity?.name||""}」にメモが追加されました`,body:text.slice(0,60),toUserIds:toAll,fromUserId:currentUser?.id});
+    const eType2=entityKey==="companies"?"company":entityKey==="vendors"?"vendor":entityKey==="municipalities"?"muni":entityKey;
+    const assigneesM=(entity?.assigneeIds||[]).filter(id=>id!==currentUser?.id);
+    const toMemo=assigneesM.length?assigneesM:toAll;
+    if(toMemo.length) nd=addNotif(nd,{type:"memo",entityId,entityType:eType2,title:`「${entity?.name||""}」にメモが追加されました`,body:text.slice(0,60),toUserIds:toMemo,fromUserId:currentUser?.id});
     save(nd);
     setMemoInputs(p=>({...p,[entityId]:""}));
   };
@@ -3201,10 +3220,14 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     const msg={id:Date.now(),userId:currentUser?.id,text,date:new Date().toISOString()};
     const arr=(data[entityKey]||[]).map(x=>x.id===entityId?{...x,chat:[...(x.chat||[]),msg]}:x);
     const entity=(data[entityKey]||[]).find(x=>x.id===entityId);
+    const eType=entityKey==="companies"?"company":entityKey==="vendors"?"vendor":entityKey==="municipalities"?"muni":entityKey;
     let nd={...data,[entityKey]:arr};
-    // Notify @mentioned users
-    const mentioned=users.filter(u=>u.id!==currentUser?.id&&text.includes(`@${u.name}`));
-    if(mentioned.length) nd=addNotif(nd,{type:"mention",title:`「${entity?.name||""}」でメンションされました`,body:text.slice(0,60),toUserIds:mentioned.map(u=>u.id),fromUserId:currentUser?.id});
+    // 担当者全員に通知（自分以外）
+    const assignees=(entity?.assigneeIds||[]).filter(id=>id!==currentUser?.id);
+    if(assignees.length) nd=addNotif(nd,{type:"task_comment",entityId,entityType:eType,title:`「${entity?.name||""}」にチャットが投稿されました`,body:(currentUser?.name||"")+": "+text.slice(0,50),toUserIds:assignees,fromUserId:currentUser?.id});
+    // @メンション通知（担当者以外へも）
+    const mentioned=users.filter(u=>u.id!==currentUser?.id&&!assignees.includes(u.id)&&text.includes(`@${u.name}`));
+    if(mentioned.length) nd=addNotif(nd,{type:"mention",entityId,entityType:eType,title:`「${entity?.name||""}」でメンションされました`,body:text.slice(0,60),toUserIds:mentioned.map(u=>u.id),fromUserId:currentUser?.id});
     save(nd);
     setChatInputs(p=>({...p,[entityId]:""}));
   };
@@ -3239,7 +3262,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       // 担当者追加通知
       const prevIds=(old?.assigneeIds||[]); const newIds=(form.assigneeIds||[]);
       const added=newIds.filter(id=>!prevIds.includes(id));
-      if(added.length) nd=addNotif(nd,{type:"sales_assign",title:`「${form.name}」の担当者に追加されました`,body:"企業",toUserIds:added,fromUserId:currentUser?.id});
+      if(added.length) nd=addNotif(nd,{type:"sales_assign",entityType:"company",entityId:form.id,title:`「${form.name}」の担当者に追加されました`,body:"企業",toUserIds:added,fromUserId:currentUser?.id});
     } else {
       const newComp={id:Date.now(),...form,status:form.status||"未接触",assigneeIds:form.assigneeIds||[],memos:[],chat:[],createdAt:new Date().toISOString()};
       nd={...nd,companies:[...companies,newComp]};
@@ -3252,7 +3275,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     if(!form.name?.trim())return;
     if(!form.id && !skipDupCheck){
       const normName = s => (s||"").replace(/[\s　]/g,"").toLowerCase();
-      const dup=munis.find(m=>m.prefectureId===activePref&&normName(m.name)===normName(form.name));
+      const dup=munis.find(m=>String(m.prefectureId)===String(activePref)&&normName(m.name)===normName(form.name));
       if(dup){setDupModal({existing:dup,incoming:form.name.trim(),
         onKeepBoth:()=>{setDupModal(null);saveMuni(true);},
         onUseExisting:()=>{setActiveMuni(dup.id);setMuniScreen("detail");setDupModal(null);setSheet(null);}
@@ -3272,7 +3295,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       });
       const prevIds=(old?.assigneeIds||[]); const newIds=(form.assigneeIds||[]);
       const added=newIds.filter(id=>!prevIds.includes(id));
-      if(added.length) nd=addNotif(nd,{type:"sales_assign",title:`「${form.name}」の担当者に追加されました`,body:"自治体",toUserIds:added,fromUserId:currentUser?.id});
+      if(added.length) nd=addNotif(nd,{type:"sales_assign",entityType:"muni",entityId:form.id,title:`「${form.name}」の担当者に追加されました`,body:"自治体",toUserIds:added,fromUserId:currentUser?.id});
     } else {
       const newMuni={id:"m_"+Date.now()+"_"+Math.random().toString(36).substr(2,9),prefectureId:activePref,...form,dustalk:form.dustalk||"未展開",status:form.status||"未接触",assigneeIds:[],treatyStatus:'未接触',artBranch:"",memos:[],chat:[],createdAt:new Date().toISOString()};
       nd={...nd,municipalities:[...munis,newMuni]};
@@ -3304,7 +3327,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       });
       const prevIds=(old?.assigneeIds||[]); const newIds=(form.assigneeIds||[]);
       const added=newIds.filter(id=>!prevIds.includes(id));
-      if(added.length) nd=addNotif(nd,{type:"sales_assign",title:`「${form.name}」の担当者に追加されました`,body:"業者",toUserIds:added,fromUserId:currentUser?.id});
+      if(added.length) nd=addNotif(nd,{type:"sales_assign",entityType:"vendor",entityId:form.id,title:`「${form.name}」の担当者に追加されました`,body:"業者",toUserIds:added,fromUserId:currentUser?.id});
     } else {
       const newVend={id:Date.now(),...form,status:form.status||"未接触",municipalityIds:form.municipalityIds||[],assigneeIds:form.assigneeIds||[],memos:[],chat:[],createdAt:new Date().toISOString()};
       nd={...nd,vendors:[...vendors,newVend]};
@@ -3317,7 +3340,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     const lines=bulkText.split("\n").map(l=>l.trim()).filter(Boolean);
     if(!lines.length)return;
     const queue=[],toAdd=[];
-    const targetList=munis.filter(m=>m.prefectureId===activePref);
+    const targetList=munis.filter(m=>String(m.prefectureId)===String(activePref));
     lines.forEach(name=>{const ex=checkDup(name,targetList);if(ex)queue.push({name,existing:ex});else toAdd.push(name);});
     let nd={...data,municipalities:[...(data.municipalities||[]),...toAdd.map(n=>({id:"m_"+Date.now()+"_"+Math.random().toString(36).substr(2,9)+Math.floor(Math.random()*10000),prefectureId:activePref,name:n,dustalk:"未展開",status:"未接触",assigneeIds:[],treatyStatus:'未接触',artBranch:"",memos:[],chat:[],createdAt:new Date().toISOString()}))]};
     save(nd);setBulkDone({added:toAdd.length,dupes:queue.length});
@@ -3460,7 +3483,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   // MuniPicker - 都道府県→自治体チェックボックス複数選択
   // selPref は親stateを使用（コンポーネント再定義でリセットされない）
   const MuniPicker=({ids=[],onChange})=>{
-    const prefMunis=muniPickerPref?munis.filter(m=>m.prefectureId===Number(muniPickerPref)):[]; 
+    const prefMunis=muniPickerPref?munis.filter(m=>String(m.prefectureId)===String(muniPickerPref)):[]; 
     const selectedMunis=(ids||[]).map(muniOf).filter(Boolean);
     const toggleMuni=(mid)=>{
       if((ids||[]).includes(mid)) onChange((ids||[]).filter(i=>i!==mid));
@@ -3510,7 +3533,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
         {selectedMunis.length>0&&(
           <div style={{display:"flex",flexWrap:"wrap",gap:"0.3rem"}}>
             {selectedMunis.map(m=>{
-              const pn=prefs.find(p=>p.id===m.prefectureId)?.name||"";
+              const pn=prefs.find(p=>String(p.id)===String(m.prefectureId))?.name||"";
               return (
                 <span key={m.id} style={{display:"flex",alignItems:"center",gap:"0.2rem",background:C.accentBg,color:C.accentDark,borderRadius:999,padding:"0.2rem 0.5rem 0.2rem 0.625rem",fontSize:"0.78rem",fontWeight:700}}>
                   <span style={{fontSize:"0.62rem",opacity:0.7}}>{pn}</span> {m.name}
@@ -4580,7 +4603,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   }
 
   // ── 自治体タブ ────────────────────────────────────────────────────────────
-  if(activeMuni&&muniScreen==="muniDetail"){
+  if(salesTab==="muni"&&activeMuni&&muniScreen==="muniDetail"){
     const muni=muniOf(activeMuni);
     if(!muni){setActiveMuni(null);setMuniScreen("top");return null;}
     const pref=prefOf(muni.prefectureId);
@@ -5084,8 +5107,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                 <div style={{display:"flex",gap:"0.625rem",marginTop:"0.75rem"}}>
                   <Btn variant="secondary" style={{flex:1}} onClick={()=>{setPreview(null);setErr("");}}>クリア</Btn>
                   <Btn style={{flex:2}} onClick={doImport}
-                    disabled={!preview.filter(r=>{const p=prefs.find(x=>x.name===r.prefName);return p&&!munis.some(m=>m.String(m.prefectureId)===String(p.id)&&m.name===r.name);}).length}>
-                    {preview.filter(r=>{const p=prefs.find(x=>x.name===r.prefName);return p&&!munis.some(m=>m.String(m.prefectureId)===String(p.id)&&m.name===r.name);}).length}件をインポート
+                    disabled={!preview.filter(r=>{const p=prefs.find(x=>x.name===r.prefName);return p&&!munis.some(m=>String(m.prefectureId)===String(p.id)&&m.name===r.name);}).length}>
+                    {preview.filter(r=>{const p=prefs.find(x=>x.name===r.prefName);return p&&!munis.some(m=>String(m.prefectureId)===String(p.id)&&m.name===r.name);}).length}件をインポート
                   </Btn>
                 </div>
               </div>
@@ -5499,13 +5522,23 @@ async function exportPPTX(sys, mk, yk, d, prev, allAnalytics) {
   // PptxGenJS CDN動的ロード
   if(!window.PptxGenJS){
     await new Promise((res,rej)=>{
+      const existing=document.querySelector('script[data-pptxgen]');
+      if(existing){setTimeout(()=>window.PptxGenJS?res():rej(new Error("PptxGenJS未定義")),500);return;}
       const s=document.createElement("script");
-      s.src="https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.bundle.js";
-      s.onload=res;
-      s.onerror=()=>rej(new Error("読み込み失敗"));
+      s.setAttribute('data-pptxgen','1');
+      s.src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js";
+      s.onload=()=>setTimeout(res,100);
+      s.onerror=()=>{
+        const s2=document.createElement("script");
+        s2.setAttribute('data-pptxgen','1');
+        s2.src="https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.bundle.js";
+        s2.onload=()=>setTimeout(res,100);
+        s2.onerror=()=>rej(new Error("CDNから読み込めませんでした"));
+        document.head.appendChild(s2);
+      };
       document.head.appendChild(s);
-      setTimeout(()=>rej(new Error("タイムアウト")),15000);
-    }).catch(e=>{alert("PPTXライブラリの読み込みに失敗しました。\n"+e.message);throw e;});
+      setTimeout(()=>rej(new Error("タイムアウト（20秒）")),20000);
+    }).catch(e=>{alert("PPTXライブラリの読み込みに失敗しました。\nネット接続を確認してください。\n"+e.message);throw e;});
   }
   if(!window.PptxGenJS){alert("PPTXライブラリが見つかりません。");return;}
   const pres = new window.PptxGenJS();
@@ -5717,13 +5750,25 @@ async function exportMultiMonthPPTX(sys, currentMk, allAnalytics) {
 
   if(!window.PptxGenJS){
     await new Promise((resolve,reject)=>{
+      // 既存のscriptタグがあれば再利用
+      const existing=document.querySelector('script[data-pptxgen]');
+      if(existing){setTimeout(()=>window.PptxGenJS?resolve():reject(new Error("PptxGenJS未定義")),500);return;}
       const s=document.createElement("script");
-      s.src="https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.bundle.js";
-      s.onload=resolve;
-      s.onerror=()=>reject(new Error("pptxgenJS読み込み失敗"));
+      s.setAttribute('data-pptxgen','1');
+      s.src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js";
+      s.onload=()=>setTimeout(resolve,100);
+      s.onerror=()=>{
+        // fallback CDN
+        const s2=document.createElement("script");
+        s2.setAttribute('data-pptxgen','1');
+        s2.src="https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.bundle.js";
+        s2.onload=()=>setTimeout(resolve,100);
+        s2.onerror=()=>reject(new Error("CDNから読み込めませんでした"));
+        document.head.appendChild(s2);
+      };
       document.head.appendChild(s);
-      setTimeout(()=>reject(new Error("タイムアウト")),15000);
-    }).catch(e=>{alert("PPTXライブラリの読み込みに失敗しました。ネット接続を確認してください。\n"+e.message);throw e;});
+      setTimeout(()=>reject(new Error("タイムアウト（20秒）")),20000);
+    }).catch(e=>{alert("PPTXライブラリの読み込みに失敗しました。\nネット接続を確認してください。\n"+e.message);throw e;});
   }
   if(!window.PptxGenJS){alert("PPTXライブラリが見つかりません。ページを再読み込みしてください。");return;}
   const pres=new window.PptxGenJS();
@@ -5733,7 +5778,10 @@ async function exportMultiMonthPPTX(sys, currentMk, allAnalytics) {
   const months=[];
   for(let i=11;i>=0;i--) months.push(shiftMonth(currentMk,-i));
   const availMonths=months.filter(k=>sysData[k]);
-  if(!availMonths.length){alert("データが登録されている月がありません。");return;}
+  if(!availMonths.length){
+    alert(`月次比較レポートを出力するには、分析タブで${sysLabel}のデータを1ヶ月以上入力して「保存」してください。\n現在選択中: ${monthLabel(currentMk)}`);
+    return;
+  }
 
   const fmt=(v,unit="")=>{if(v===undefined||v===null||v==="")return "—";const n=Number(v);if(isNaN(n))return String(v);if(unit==="円"&&n>=10000)return (n/10000).toFixed(1)+"万円";return n.toLocaleString()+unit;};
   const diffTxt=(cur,prv)=>{if(!prv)return "";const d=cur-prv;return (d>=0?"+":"")+d.toLocaleString();};
@@ -6247,11 +6295,11 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
               {!editing
                 ? <>
                     <Btn size="sm" onClick={startEdit}>✏️ 編集</Btn>
-                    <button onClick={()=>exportPPTX(sys,mk,yk,d,prev,data.analytics||{})}
+                    <button onClick={async()=>{try{await exportPPTX(sys,mk,yk,d,prev,data.analytics||{});}catch(e){alert("レポート出力に失敗しました:\n"+e.message);}}}
                       style={{padding:"0.3rem 0.625rem",borderRadius:"0.5rem",border:"1px solid #7c3aed30",background:"#f5f3ff",color:"#7c3aed",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"0.25rem"}}>
                       📊 PPTXレポート
                     </button>
-                    <button onClick={()=>exportMultiMonthPPTX(sys,mk,data.analytics||{})}
+                    <button onClick={async()=>{try{await exportMultiMonthPPTX(sys,mk,data.analytics||{});}catch(e){alert("月次レポート出力に失敗しました:\n"+e.message);}}}
                       style={{padding:"0.3rem 0.625rem",borderRadius:"0.5rem",border:"1px solid #059669",background:"#d1fae5",color:"#065f46",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"0.25rem"}}>
                       📅 月次比較レポート
                     </button>
@@ -6867,9 +6915,9 @@ export default function App() {
                       </div>
                       <button onClick={async()=>{
                         if(pushEnabled){await unsubscribePush(currentUser.id);setPushEnabled(false);}
-                        else{const ok=await subscribePush(currentUser.id);if(ok)setPushEnabled(true);}
-                      }} style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:pushEnabled?"#d1fae5":"#f3f4f6",color:pushEnabled?"#065f46":"#374151",transition:"all 0.15s"}}>
-                        {pushEnabled?"ON":"OFF"}
+                        else{const ok=await subscribePush(currentUser.id);if(ok)setPushEnabled(true);else alert('通知の許可が必要です。ブラウザの設定から通知を許可してください。\niPhone: ホーム画面に追加してからアプリとして起動してONにしてください。');}
+                      }} style={{padding:"0.3rem 0.875rem",borderRadius:999,border:`2px solid ${pushEnabled?"#059669":"#dc2626"}`,cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:pushEnabled?"#d1fae5":"#fff1f2",color:pushEnabled?"#065f46":"#dc2626",transition:"all 0.15s"}}>
+                        {pushEnabled?"✅ ON":"❌ OFF"}
                       </button>
                     </div>
                     <button onClick={handleLogout}
@@ -6933,7 +6981,9 @@ export default function App() {
                   // entityTypeがなくてもtypeから推測してナビゲーション
                   const resolvedEntityType = n.entityType || (
                     (n.type==="task_assign"||n.type==="task_status"||n.type==="task_comment"||n.type==="deadline") ? "task" :
-                    n.type==="mention" ? null : null
+                    n.type==="mention" ? null :
+                    n.type==="sales_assign" ? (n.body==="企業"?"company":n.body==="業者"?"vendor":n.body==="自治体"?"muni":null) :
+                    null
                   );
                   const hasNav = !!(n.entityId && (resolvedEntityType || n.entityType));
                   const handleNotifClick = () => {
@@ -6942,22 +6992,22 @@ export default function App() {
                     const eType = resolvedEntityType;
                     if(!n.entityId || !eType) return;
                     setShowNotifPanel(false);
-                    // タブ切替後に確実に詳細を開くため100ms遅延
+                    const ts = Date.now(); // 毎回新オブジェクトでuseEffectを確実に再発火
                     if(eType==="task") {
-                      persistTab("md_tab","tasks",setTab);
-                      setTimeout(()=>setNavTarget({type:"task",id:n.entityId}),100);
+                      setTab("tasks"); localStorage.setItem("md_tab","tasks");
+                      setTimeout(()=>setNavTarget({type:"task",id:n.entityId,ts}),120);
                     } else if(eType==="project") {
-                      persistTab("md_tab","tasks",setTab);
-                      setTimeout(()=>setNavTarget({type:"project",id:n.entityId}),100);
+                      setTab("tasks"); localStorage.setItem("md_tab","tasks");
+                      setTimeout(()=>setNavTarget({type:"project",id:n.entityId,ts}),120);
                     } else if(eType==="company") {
-                      persistTab("md_tab","sales",setTab);
-                      setTimeout(()=>{persistTab("md_salesTab","company",setSalesTab);setSalesNavTarget({type:"company",id:n.entityId});},100);
+                      setTab("sales"); localStorage.setItem("md_tab","sales");
+                      setTimeout(()=>setSalesNavTarget({type:"company",id:n.entityId,ts}),120);
                     } else if(eType==="vendor") {
-                      persistTab("md_tab","sales",setTab);
-                      setTimeout(()=>{persistTab("md_salesTab","vendor",setSalesTab);setSalesNavTarget({type:"vendor",id:n.entityId});},100);
+                      setTab("sales"); localStorage.setItem("md_tab","sales");
+                      setTimeout(()=>setSalesNavTarget({type:"vendor",id:n.entityId,ts}),120);
                     } else if(eType==="muni") {
-                      persistTab("md_tab","sales",setTab);
-                      setTimeout(()=>{persistTab("md_salesTab","muni",setSalesTab);setSalesNavTarget({type:"muni",id:n.entityId});},100);
+                      setTab("sales"); localStorage.setItem("md_tab","sales");
+                      setTimeout(()=>setSalesNavTarget({type:"muni",id:n.entityId,ts}),120);
                     }
                   };
                   return (
