@@ -1,4 +1,4 @@
-// MyDesk Service Worker v5
+// MyDesk Service Worker v6
 const APP_URL = '/';
 
 self.addEventListener('install', (e) => { self.skipWaiting(); });
@@ -12,6 +12,8 @@ self.addEventListener('push', (e) => {
   e.waitUntil(
     self.registration.showNotification(data.title || 'MyDesk', {
       body: data.body || '',
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
       tag: data.tag || 'mydesk',
       renotify: true,
       vibrate: [200, 100, 200],
@@ -35,9 +37,8 @@ self.addEventListener('notificationclick', (e) => {
   );
 });
 
-// pushsubscriptionchange: oldSubscriptionがnullの場合を考慮
 self.addEventListener('pushsubscriptionchange', (e) => {
-  if (!e.oldSubscription) return; // nullの場合は何もしない
+  if (!e.oldSubscription) return;
   e.waitUntil(
     self.registration.pushManager.subscribe(e.oldSubscription.options)
       .then(sub => self.clients.matchAll().then(cs =>
