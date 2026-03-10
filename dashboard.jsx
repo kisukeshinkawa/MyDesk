@@ -6605,6 +6605,13 @@ export default function App() {
   const NOTIF_ICON = {task_assign:"👤",task_status:"🔄",task_comment:"💬",mention:"💬",memo:"📝",deadline:"⏰",sales_assign:"🏛️",new_user:"👋",analytics_update:"📊"};
 
   useEffect(()=>{
+    // ── Service Worker 登録（バックグラウンドプッシュ通知に必須）──
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js')
+        .then(reg => console.log('[MyDesk] SW registered:', reg.scope))
+        .catch(err => console.warn('[MyDesk] SW registration failed:', err));
+    }
+
     const session = getSession();
     Promise.all([loadData(), loadUsers()]).then(([d,u])=>{
       setData(d); setUsers(u);
@@ -6769,8 +6776,11 @@ export default function App() {
     try {
       const perm = await Notification.requestPermission();
       if (perm !== 'granted') return false;
-      if (!('serviceWorker' in navigator)) return true; // permission onlyでOK
-      const reg = await navigator.serviceWorker.ready;
+      if (!('serviceWorker' in navigator)) return true;
+      // SW未登録の場合は登録してから待つ
+      const swReg = await navigator.serviceWorker.register('/sw.js').catch(()=>null);
+      const reg = await navigator.serviceWorker.ready.catch(()=>null);
+      if (!reg) return true;
       if (!reg.pushManager) return true; // SW ready but no push (e.g. some iOS)
       const existing = await reg.pushManager.getSubscription();
       const sub = existing || await reg.pushManager.subscribe({
