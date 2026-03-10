@@ -1659,13 +1659,13 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     // Notify on status change
     if(ch.status && prev?.status !== ch.status) {
       const toIds=(updated.assignees||[]).filter(i=>i!==uid);
-      if(toIds.length) nd=addNotif(nd,{type:"task_status",entityType:"task",title:`「${updated.title}」のステータスが変更されました`,body:`${ch.status}`,toUserIds:toIds,fromUserId:uid,entityId:updated.id,entityType:"task"});
+      if(toIds.length) nd=addNotif(nd,{type:"task_status",entityId:updated.id,entityType:"task",title:`「${updated.title}」のステータスが変更されました`,body:`${ch.status}`,toUserIds:toIds,fromUserId:uid});
     }
     // Notify on new assignees
     if(ch.assignees) {
       const prev_a=prev?.assignees||[];
       const newlyAdded=(ch.assignees||[]).filter(i=>i!==uid&&!prev_a.includes(i));
-      if(newlyAdded.length) nd=addNotif(nd,{type:"task_assign",title:`「${updated.title}」に担当者として追加されました`,body:"",toUserIds:newlyAdded,fromUserId:uid});
+      if(newlyAdded.length) nd=addNotif(nd,{type:"task_assign",entityId:updated.id,entityType:"task",title:`「${updated.title}」に担当者として追加されました`,body:"",toUserIds:newlyAdded,fromUserId:uid});
     }
     saveWithPush(nd, data.notifications);
   };
@@ -1681,7 +1681,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
           nd={...nd,projects:nd.projects.map(p=>p.id===pjId?{...p,members:newMembers}:p)};
           // プロジェクトに新規追加されたメンバーに通知
           const addedToProject=(f.assignees||[]).filter(i=>!(pj.members||[]).includes(i)&&i!==uid);
-          if(addedToProject.length) nd=addNotif(nd,{type:"task_assign",title:`「${pj.name}」のプロジェクトメンバーに追加されました`,body:`タスク「${item.title}」への追加によりメンバーになりました`,toUserIds:addedToProject,fromUserId:uid});
+          if(addedToProject.length) nd=addNotif(nd,{type:"task_assign",entityId:pj.id,entityType:"project",title:`「${pj.name}」のプロジェクトメンバーに追加されました`,body:`タスク「${item.title}」への追加によりメンバーになりました`,toUserIds:addedToProject,fromUserId:uid});
         }
       }
     }
@@ -6645,45 +6645,33 @@ export default function App() {
         const fresh = u.find(x=>x.id===currentUser.id);
         if(fresh) setCurrentUser(cu=>(cu.name===fresh.name&&cu.email===fresh.email)?cu:fresh);
 
+        // ── ブラウザ通知表示ヘルパー ─────────────────────────────────────
+        const showNotif = (n) => {
+          if (Notification.permission !== 'granted') return;
+          try {
+            new Notification(n.title || 'MyDesk', {
+              body: n.body || '',
+              icon: '/icon-192.png',
+              tag: String(n.id || Date.now()),
+              renotify: true,
+            });
+          } catch(e) { console.warn('[MyDesk] Notification error:', e); }
+        };
+
         // ── 新着通知をブラウザ通知で表示 ──────────────────────────────────
         const myNotifs = (d.notifications||[]).filter(n=>
           n.toUserId===currentUser.id || n.toUserId==='__all__'
         );
-        if(lastNotifIdsRef.current !== null) {
+
+        if(lastNotifIdsRef.current === null) {
+          // 初回: ページロード時点の未読通知を最大3件表示
+          const unread = myNotifs.filter(n => !n.read).slice(0, 3);
+          unread.forEach(showNotif);
+        } else {
+          // 2回目以降: 前回から新しく追加された未読通知を表示
           const prevIds = lastNotifIdsRef.current;
           const brandNew = myNotifs.filter(n => !prevIds.has(n.id) && !n.read);
-          if(brandNew.length > 0 && Notification.permission === 'granted') {
-            brandNew.slice(0, 3).forEach(n => {
-              try {
-                // Service Worker経由で通知（バックグラウンド対応）
-                // iOS/PC両対応: ServiceWorker優先、失敗時はフォールバック
-                const showBrowserNotif = () => {
-                  try {
-                    new Notification(n.title || 'MyDesk', {
-                      body: n.body || '',
-                      icon: '/icon-192.png',
-                      tag: n.id?.toString() || 'mydesk-' + Date.now(),
-                    });
-                  } catch(e2) { console.warn('Notification fallback failed', e2); }
-                };
-                if('serviceWorker' in navigator) {
-                  navigator.serviceWorker.ready.then(reg => {
-                    return reg.showNotification(n.title || 'MyDesk', {
-                      body: n.body || '',
-                      icon: '/icon-192.png',
-                      badge: '/icon-192.png',
-                      tag: n.id?.toString() || 'mydesk',
-                      renotify: true,
-                      vibrate: [200, 100, 200],
-                      data: { url: window.location.href },
-                    });
-                  }).catch(showBrowserNotif);
-                } else {
-                  showBrowserNotif();
-                }
-              } catch {}
-            });
-          }
+          brandNew.slice(0, 3).forEach(showNotif);
         }
         lastNotifIdsRef.current = new Set(myNotifs.map(n => n.id));
       } catch {}
