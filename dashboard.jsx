@@ -2892,8 +2892,11 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   const [compFilter,   setCompFilter]   = useState({status:"",assignee:""});
   const [vendSearch,   setVendSearch]   = useState("");
   const [vendFilterPref, setVendFilterPref] = useState(""); // 都道府県フィルタ
+  const [vendFilterMuni, setVendFilterMuni] = useState(""); // 自治体フィルタ
+  const [vendFilterStatus, setVendFilterStatus] = useState(""); // ステータスフィルタ
   const [vendFilterPermit, setVendFilterPermit] = useState(""); // 許可種別フィルタ
-  const [openCompGrp,  setOpenCompGrp]  = useState(new Set(Object.keys(COMPANY_STATUS)));
+  const [vendFilterAssignee, setVendFilterAssignee] = useState(""); // 担当フィルタ
+  const [openCompGrp,  setOpenCompGrp]  = useState(new Set());
   const [openVendGrp,  setOpenVendGrp]  = useState(new Set());
   const [muniTopSearch,setMuniTopSearch]= useState("");
   const [muniFilterAssignee, setMuniFilterAssignee] = useState(""); // 担当者フィルタ
@@ -4066,11 +4069,44 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       status:s, meta:COMPANY_STATUS[s],
       items:companies.filter(c=>(c.status||"未接触")===s&&(!compSearch||normSearch(c.name).includes(normSearch(compSearch))))
     })).filter(g=>g.items.length>0||(compSearch&&companies.some(c=>(c.status||"未接触")===g.status)));
-    const searchedComps = compSearch ? companies.filter(c=>normSearch(c.name).includes(normSearch(compSearch))) : null;
+    const compFilteredBase = companies.filter(c=>{
+      if(compFilter.assignee==="__me__") return (c.assigneeIds||[]).some(id=>id===currentUser?.id);
+      if(compFilter.assignee) return (c.assigneeIds||[]).some(id=>String(id)===compFilter.assignee);
+      return true;
+    });
+    const searchedComps = compSearch ? compFilteredBase.filter(c=>normSearch(c.name).includes(normSearch(compSearch))) : null;
     return (
       <div>
         <TopTabs/>
         <BulkBar statusMap={COMPANY_STATUS} applyFn={applyBulkComp}/>
+        {/* 担当者フィルタ */}
+        {(()=>{
+          const hasF=!!compFilter.assignee;
+          const fCount=compFilteredBase.length;
+          const statusCounts=hasF?Object.keys(COMPANY_STATUS).map(s=>{const n=compFilteredBase.filter(c=>(c.status||"未接触")===s).length;return n>0?{s,n}:null;}).filter(Boolean):[];
+          return (
+            <div style={{background:"#f8fafc",border:`1px solid ${hasF?C.accent:C.border}`,borderRadius:"0.875rem",padding:"0.625rem 0.75rem",marginBottom:"0.75rem"}}>
+              <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:hasF?"0.4rem":0}}>
+                <select value={compFilter.assignee} onChange={e=>setCompFilter(p=>({...p,assignee:e.target.value}))}
+                  style={{flex:1,padding:"0.3rem 0.5rem",borderRadius:"0.5rem",border:`1.5px solid ${hasF?C.accent:C.border}`,fontSize:"0.78rem",background:hasF?"#eff6ff":"white",color:hasF?C.accent:C.text,fontFamily:"inherit",fontWeight:hasF?700:400}}>
+                  <option value="">👤 担当者で絞り込み</option>
+                  <option value="__me__">自分</option>
+                  {users.map(u=><option key={u.id} value={String(u.id)}>{u.name}</option>)}
+                </select>
+                {hasF&&<span style={{fontSize:"0.8rem",fontWeight:800,color:"#7c3aed",flexShrink:0}}>{fCount}件</span>}
+                {hasF&&<button onClick={()=>setCompFilter(p=>({...p,assignee:""}))}
+                  style={{fontSize:"0.65rem",background:"#fef2f2",color:"#dc2626",border:"1px solid #fca5a5",borderRadius:999,padding:"0.1rem 0.45rem",cursor:"pointer",fontWeight:700,fontFamily:"inherit",flexShrink:0}}>解除</button>}
+              </div>
+              {hasF&&statusCounts.length>0&&(
+                <div style={{display:"flex",gap:"0.25rem",flexWrap:"wrap"}}>
+                  {statusCounts.map(({s,n})=>(
+                    <span key={s} style={{fontSize:"0.62rem",padding:"0.1rem 0.35rem",borderRadius:999,fontWeight:700,background:COMPANY_STATUS[s]?.bg,color:COMPANY_STATUS[s]?.color}}>{s}: {n}件</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
         {/* フォロー中企業 */}
         {(()=>{
           const followComps = companies.filter(c=>c.needFollow);
@@ -4137,7 +4173,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
         {!compSearch&&(
           <div style={{display:"flex",flexDirection:"column",gap:"0.625rem"}}>
             {Object.entries(COMPANY_STATUS).map(([s,meta])=>{
-              const items=companies.filter(c=>(c.status||"未接触")===s);
+              const items=compFilteredBase.filter(c=>(c.status||"未接触")===s);
               const isOpen=openCompGrp.has(s);
               return (
                 <div key={s} style={{background:"white",borderRadius:"0.875rem",border:`1.5px solid ${C.border}`,overflow:"hidden",boxShadow:C.shadow}}>
@@ -4364,12 +4400,32 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             )}
             <AssigneeRow ids={v.assigneeIds}/>
             {v.address&&<div style={{fontSize:"0.78rem",color:C.textSub,marginTop:"0.4rem"}}>📍 {v.address}</div>}
-            {(v.permitTypes||[]).length>0&&(
-              <div style={{marginTop:"0.6rem"}}>
-                <div style={{fontSize:"0.62rem",fontWeight:700,color:"#5b21b6",marginBottom:"0.25rem"}}>許可種別</div>
-                <div style={{display:"flex",flexWrap:"wrap",gap:"0.25rem"}}>{(v.permitTypes||[]).map(p=><span key={p} style={{fontSize:"0.65rem",fontWeight:700,padding:"0.15rem 0.45rem",borderRadius:999,background:"#ede9fe",color:"#5b21b6",border:"1px solid #c4b5fd"}}>{p}</span>)}</div>
+            <div style={{marginTop:"0.6rem"}}>
+                <div style={{fontSize:"0.62rem",fontWeight:700,color:"#5b21b6",marginBottom:"0.3rem"}}>📋 許可別営業状況</div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.2rem"}}>
+                  {PERMIT_TYPES.map(pt=>{
+                    const has=(v.permitTypes||[]).includes(pt);
+                    const salesStatus=(v.permitSales||{})[pt]||"未営業";
+                    const salesColors={"営業済":"#d1fae5","資料送付":"#dbeafe","商談中":"#fef3c7","加入済":"#d1fae5","未営業":"#f3f4f6"};
+                    const salesTextColors={"営業済":"#065f46","資料送付":"#1d4ed8","商談中":"#92400e","加入済":"#065f46","未営業":"#9ca3af"};
+                    return (
+                      <div key={pt} style={{background:has?salesColors[salesStatus]:"#fef2f2",border:`1px solid ${has?salesTextColors[salesStatus]+"40":"#fca5a5"}`,borderRadius:"0.4rem",padding:"0.3rem 0.4rem"}}>
+                        <div style={{fontSize:"0.6rem",fontWeight:700,color:has?"#374151":"#dc2626"}}>{has?"✓":"-"} {pt}</div>
+                        {has&&(
+                          <select value={salesStatus} onClick={e=>e.stopPropagation()} onChange={e=>{
+                            const nd={...data,vendors:vendors.map(x=>x.id===v.id?{...x,permitSales:{...(x.permitSales||{}),[pt]:e.target.value}}:x)};
+                            save(nd);
+                          }} style={{fontSize:"0.58rem",border:"none",background:"transparent",color:salesTextColors[salesStatus],fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0,width:"100%",marginTop:"0.1rem"}}>
+                            {["未営業","営業済","資料送付","商談中","加入済"].map(s=><option key={s} value={s}>{s}</option>)}
+                          </select>
+                        )}
+                        {!has&&<div style={{fontSize:"0.58rem",color:"#dc2626",marginTop:"0.1rem"}}>未保有</div>}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-            )}
+            }
           </Card>
           {/* フォローボタン */}
           <div style={{marginBottom:"0.75rem",display:"flex",alignItems:"center",gap:"0.5rem"}}>
@@ -4447,7 +4503,11 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
         const vmuniPrefs=(v.municipalityIds||[]).map(id=>muniOf(id)).filter(Boolean).map(m=>String(m.prefectureId));
         if(!vmuniPrefs.includes(vendFilterPref)) return false;
       }
+      if(vendFilterMuni && !(v.municipalityIds||[]).map(String).includes(vendFilterMuni)) return false;
+      if(vendFilterStatus && (v.status||"未接触")!==vendFilterStatus) return false;
       if(vendFilterPermit && !(v.permitTypes||[]).includes(vendFilterPermit)) return false;
+      if(vendFilterAssignee==="__me__" && !(v.assigneeIds||[]).some(id=>id===currentUser?.id)) return false;
+      if(vendFilterAssignee && vendFilterAssignee!=="__me__" && !(v.assigneeIds||[]).some(id=>String(id)===vendFilterAssignee)) return false;
       return true;
     });
     const searchedVendors = vendSearch ? filteredVendors.filter(v=>normVSearch(v.name).includes(normVSearch(vendSearch))) : null;
@@ -4479,28 +4539,65 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           );
         })()}
         {/* 絞り込みフィルタ */}
-        {(vendFilterPref||vendFilterPermit)&&(
-          <div style={{display:"flex",gap:"0.35rem",marginBottom:"0.5rem",flexWrap:"wrap"}}>
-            {vendFilterPref&&<span style={{fontSize:"0.72rem",background:"#dbeafe",color:"#1d4ed8",padding:"0.2rem 0.5rem",borderRadius:999,fontWeight:700}}>
-              🗾 {prefs.find(p=>String(p.id)===vendFilterPref)?.name} <button onClick={()=>setVendFilterPref("")} style={{background:"none",border:"none",cursor:"pointer",color:"#1d4ed8",fontWeight:700,padding:0,marginLeft:"0.2rem"}}>×</button>
-            </span>}
-            {vendFilterPermit&&<span style={{fontSize:"0.72rem",background:"#ede9fe",color:"#5b21b6",padding:"0.2rem 0.5rem",borderRadius:999,fontWeight:700}}>
-              📋 {vendFilterPermit} <button onClick={()=>setVendFilterPermit("")} style={{background:"none",border:"none",cursor:"pointer",color:"#5b21b6",fontWeight:700,padding:0,marginLeft:"0.2rem"}}>×</button>
-            </span>}
-          </div>
-        )}
-        <div style={{display:"flex",gap:"0.35rem",marginBottom:"0.5rem",flexWrap:"wrap"}}>
-          <select value={vendFilterPref} onChange={e=>setVendFilterPref(e.target.value)}
-            style={{padding:"0.35rem 0.5rem",borderRadius:"0.625rem",border:`1.5px solid ${C.border}`,fontSize:"0.75rem",background:"white",color:C.text,fontFamily:"inherit"}}>
-            <option value="">都道府県で絞り込み</option>
-            {prefs.map(p=><option key={p.id} value={String(p.id)}>{p.name}</option>)}
-          </select>
-          <select value={vendFilterPermit} onChange={e=>setVendFilterPermit(e.target.value)}
-            style={{padding:"0.35rem 0.5rem",borderRadius:"0.625rem",border:`1.5px solid ${C.border}`,fontSize:"0.75rem",background:"white",color:C.text,fontFamily:"inherit"}}>
-            <option value="">許可種別で絞り込み</option>
-            {PERMIT_TYPES.map(p=><option key={p} value={p}>{p}</option>)}
-          </select>
-        </div>
+        {(()=>{
+          const hasFilter=vendFilterPref||vendFilterMuni||vendFilterStatus||vendFilterPermit||vendFilterAssignee;
+          // 絞り込み結果の集計
+          const fvCount=filteredVendors.length;
+          // 都道府県ごとの件数
+          const prefCounts=hasFilter?prefs.map(p=>{
+            const n=filteredVendors.filter(v=>(v.municipalityIds||[]).some(id=>{const m=muniOf(id);return m&&String(m.prefectureId)===String(p.id);})).length;
+            return n>0?{name:p.name,n}:null;
+          }).filter(Boolean):[];
+          // 自治体選択肢（都道府県が選択されている場合に絞る）
+          const muniOptions=vendFilterPref?munis.filter(m=>String(m.prefectureId)===vendFilterPref):[];
+          const clearAll=()=>{setVendFilterPref("");setVendFilterMuni("");setVendFilterStatus("");setVendFilterPermit("");setVendFilterAssignee("");};
+          return (
+            <div style={{background:"#f8fafc",border:`1px solid ${hasFilter?"#7c3aed":C.border}`,borderRadius:"0.875rem",padding:"0.625rem 0.75rem",marginBottom:"0.75rem"}}>
+              <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem"}}>
+                <span style={{fontSize:"0.72rem",fontWeight:800,color:C.textSub}}>🔍 絞り込み</span>
+                {hasFilter&&<button onClick={clearAll} style={{fontSize:"0.65rem",background:"#fef2f2",color:"#dc2626",border:"1px solid #fca5a5",borderRadius:999,padding:"0.1rem 0.45rem",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>全解除</button>}
+                {hasFilter&&<span style={{fontSize:"0.72rem",fontWeight:800,color:"#7c3aed",marginLeft:"auto"}}>{fvCount}件</span>}
+              </div>
+              <div style={{display:"flex",gap:"0.35rem",flexWrap:"wrap",marginBottom:"0.4rem"}}>
+                <select value={vendFilterPref} onChange={e=>{setVendFilterPref(e.target.value);setVendFilterMuni("");}}
+                  style={{padding:"0.3rem 0.4rem",borderRadius:"0.5rem",border:`1.5px solid ${vendFilterPref?C.accent:C.border}`,fontSize:"0.72rem",background:vendFilterPref?"#eff6ff":"white",color:vendFilterPref?C.accent:C.text,fontFamily:"inherit"}}>
+                  <option value="">🗾 都道府県</option>
+                  {prefs.map(p=><option key={p.id} value={String(p.id)}>{p.name}</option>)}
+                </select>
+                {vendFilterPref&&muniOptions.length>0&&(
+                  <select value={vendFilterMuni} onChange={e=>setVendFilterMuni(e.target.value)}
+                    style={{padding:"0.3rem 0.4rem",borderRadius:"0.5rem",border:`1.5px solid ${vendFilterMuni?C.accent:C.border}`,fontSize:"0.72rem",background:vendFilterMuni?"#eff6ff":"white",color:vendFilterMuni?C.accent:C.text,fontFamily:"inherit"}}>
+                    <option value="">🏛 自治体</option>
+                    {muniOptions.map(m=><option key={m.id} value={String(m.id)}>{m.name}</option>)}
+                  </select>
+                )}
+                <select value={vendFilterStatus} onChange={e=>setVendFilterStatus(e.target.value)}
+                  style={{padding:"0.3rem 0.4rem",borderRadius:"0.5rem",border:`1.5px solid ${vendFilterStatus?C.accent:C.border}`,fontSize:"0.72rem",background:vendFilterStatus?"#eff6ff":"white",color:vendFilterStatus?C.accent:C.text,fontFamily:"inherit"}}>
+                  <option value="">📌 ステータス</option>
+                  {Object.keys(VENDOR_STATUS).map(s=><option key={s} value={s}>{s}</option>)}
+                </select>
+                <select value={vendFilterPermit} onChange={e=>setVendFilterPermit(e.target.value)}
+                  style={{padding:"0.3rem 0.4rem",borderRadius:"0.5rem",border:`1.5px solid ${vendFilterPermit?C.accent:C.border}`,fontSize:"0.72rem",background:vendFilterPermit?"#eff6ff":"white",color:vendFilterPermit?C.accent:C.text,fontFamily:"inherit"}}>
+                  <option value="">📋 許可種別</option>
+                  {PERMIT_TYPES.map(p=><option key={p} value={p}>{p}</option>)}
+                </select>
+                <select value={vendFilterAssignee} onChange={e=>setVendFilterAssignee(e.target.value)}
+                  style={{padding:"0.3rem 0.4rem",borderRadius:"0.5rem",border:`1.5px solid ${vendFilterAssignee?C.accent:C.border}`,fontSize:"0.72rem",background:vendFilterAssignee?"#eff6ff":"white",color:vendFilterAssignee?C.accent:C.text,fontFamily:"inherit"}}>
+                  <option value="">👤 担当者</option>
+                  <option value="__me__">自分</option>
+                  {users.map(u=><option key={u.id} value={String(u.id)}>{u.name}</option>)}
+                </select>
+              </div>
+              {hasFilter&&prefCounts.length>0&&(
+                <div style={{display:"flex",gap:"0.25rem",flexWrap:"wrap"}}>
+                  {prefCounts.map(({name,n})=>(
+                    <span key={name} style={{fontSize:"0.62rem",background:"#ede9fe",color:"#5b21b6",padding:"0.1rem 0.35rem",borderRadius:999,fontWeight:700}}>{name}: {n}社</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
         <div style={{display:"flex",gap:"0.5rem",marginBottom:"0.75rem",alignItems:"center"}}>
           <div style={{position:"relative",flex:1}}>
             <span style={{position:"absolute",left:"0.625rem",top:"50%",transform:"translateY(-50%)",color:C.textMuted,fontSize:"0.85rem",pointerEvents:"none"}}>🔍</span>
@@ -5018,18 +5115,52 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           style={{padding:"0.5rem 0.75rem",borderRadius:"0.75rem",border:"1.5px solid #7c3aed",background:"#ede9fe",color:"#5b21b6",fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>📋 全国出力</button>
       </div>
       {/* 担当者フィルタ */}
-      <div style={{display:"flex",gap:"0.5rem",marginBottom:"0.5rem",alignItems:"center",flexWrap:"wrap"}}>
-        <select value={muniFilterAssignee} onChange={e=>setMuniFilterAssignee(e.target.value)}
-          style={{padding:"0.35rem 0.5rem",borderRadius:"0.625rem",border:`1.5px solid ${muniFilterAssignee?C.accent:C.border}`,fontSize:"0.78rem",background:muniFilterAssignee?"#eff6ff":"white",color:muniFilterAssignee?C.accent:C.text,fontFamily:"inherit",fontWeight:muniFilterAssignee?700:400}}>
-          <option value="">👤 担当者で絞り込み</option>
-          <option value="__me__">自分の担当のみ</option>
-          {users.map(u=><option key={u.id} value={String(u.id)}>{u.name}</option>)}
-        </select>
-        {muniFilterAssignee&&<button onClick={()=>setMuniFilterAssignee("")}
-          style={{fontSize:"0.72rem",background:"#eff6ff",color:C.accent,border:`1px solid ${C.accent}`,borderRadius:999,padding:"0.2rem 0.5rem",cursor:"pointer",fontWeight:700,fontFamily:"inherit"}}>
-          ✕ フィルタ解除
-        </button>}
-      </div>
+      {(()=>{
+        const filteredMunis = muniFilterAssignee ? munis.filter(m=>{
+          if(muniFilterAssignee==="__me__") return (m.assigneeIds||[]).some(id=>id===currentUser?.id);
+          return (m.assigneeIds||[]).some(id=>String(id)===muniFilterAssignee);
+        }) : null;
+        const fCount = filteredMunis?.length;
+        // 地方・都道府県ごとの件数
+        const regionCounts = muniFilterAssignee ? JAPAN_REGIONS.map(rg=>{
+          const rPrefs2=prefs.filter(p=>p.region===rg.region||(!p.region&&rg.prefs.includes(p.name)));
+          const rMuniIds=rPrefs2.flatMap(p=>munis.filter(m=>String(m.prefectureId)===String(p.id)).map(m=>m.id));
+          const n=(filteredMunis||[]).filter(m=>rMuniIds.includes(m.id)).length;
+          if(!n) return null;
+          const prefDetails=rPrefs2.map(p=>{
+            const pn=(filteredMunis||[]).filter(m=>String(m.prefectureId)===String(p.id)).length;
+            return pn>0?{name:p.name,n:pn}:null;
+          }).filter(Boolean);
+          return {region:rg.region,n,prefDetails};
+        }).filter(Boolean) : [];
+        return (
+          <div style={{background:"#f8fafc",border:`1px solid ${muniFilterAssignee?C.accent:C.border}`,borderRadius:"0.875rem",padding:"0.625rem 0.75rem",marginBottom:"0.5rem"}}>
+            <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.4rem"}}>
+              <select value={muniFilterAssignee} onChange={e=>setMuniFilterAssignee(e.target.value)}
+                style={{flex:1,padding:"0.3rem 0.5rem",borderRadius:"0.5rem",border:`1.5px solid ${muniFilterAssignee?C.accent:C.border}`,fontSize:"0.78rem",background:muniFilterAssignee?"#eff6ff":"white",color:muniFilterAssignee?C.accent:C.text,fontFamily:"inherit",fontWeight:muniFilterAssignee?700:400}}>
+                <option value="">👤 担当者で絞り込み</option>
+                <option value="__me__">自分の担当のみ</option>
+                {users.map(u=><option key={u.id} value={String(u.id)}>{u.name}</option>)}
+              </select>
+              {muniFilterAssignee&&<span style={{fontSize:"0.8rem",fontWeight:800,color:"#7c3aed",flexShrink:0}}>{fCount}件</span>}
+              {muniFilterAssignee&&<button onClick={()=>setMuniFilterAssignee("")}
+                style={{fontSize:"0.65rem",background:"#fef2f2",color:"#dc2626",border:"1px solid #fca5a5",borderRadius:999,padding:"0.1rem 0.45rem",cursor:"pointer",fontWeight:700,fontFamily:"inherit",flexShrink:0}}>解除</button>}
+            </div>
+            {muniFilterAssignee&&regionCounts.length>0&&(
+              <div style={{display:"flex",flexDirection:"column",gap:"0.25rem"}}>
+                {regionCounts.map(({region,n,prefDetails})=>(
+                  <div key={region} style={{display:"flex",gap:"0.25rem",flexWrap:"wrap",alignItems:"center"}}>
+                    <span style={{fontSize:"0.65rem",fontWeight:800,color:C.textSub,width:"4rem",flexShrink:0}}>{region}</span>
+                    {prefDetails.map(({name,n:pn})=>(
+                      <span key={name} style={{fontSize:"0.62rem",background:"#ede9fe",color:"#5b21b6",padding:"0.1rem 0.35rem",borderRadius:999,fontWeight:700}}>{name}: {pn}</span>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
       <BulkBar statusMap={MUNI_STATUS} applyFn={applyBulkMuni}
         extraFields={[["dustalk","ダストーク展開",DUSTALK_STATUS],["treatyStatus","連携協定",TREATY_STATUS],["status","アプローチ",MUNI_STATUS]]}/>
       {/* Global dustalk summary */}
@@ -5851,7 +5982,9 @@ function mergeDustalk(raw){
     exits:{...DUSTALK_DEF.exits,...(raw.exits||{})},
     partnerStores:raw.partnerStores||[],
     requestsKatei:raw.requestsKatei??0,requestsJigyo:raw.requestsJigyo??0,
-    contractsKatei:raw.contractsKatei??0,contractsJigyo:raw.contractsJigyo??0};
+    contractsKatei:raw.contractsKatei??0,contractsJigyo:raw.contractsJigyo??0,
+    revenueKatei:raw.revenueKatei??0,revenueJigyo:raw.revenueJigyo??0,
+    serviceLogKatei:raw.serviceLogKatei??0,serviceLogJigyo:raw.serviceLogJigyo??0};
 }
 
 // ─── ANALYTICS HELPERS (top-level to prevent remount on state change) ─────────
@@ -6622,6 +6755,10 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
 
   const convRate = d.requests>0 ? ((d.contracts/d.requests)*100).toFixed(1) : "－";
   const avgPrice = d.contracts>0 ? Math.round(d.revenue/d.contracts).toLocaleString() : "－";
+  const convRateK = d.requestsKatei>0 ? ((d.contractsKatei/d.requestsKatei)*100).toFixed(1) : "－";
+  const convRateJ = d.requestsJigyo>0 ? ((d.contractsJigyo/d.requestsJigyo)*100).toFixed(1) : "－";
+  const avgPriceK = d.contractsKatei>0 ? Math.round(d.revenueKatei/d.contractsKatei).toLocaleString() : "－";
+  const avgPriceJ = d.contractsJigyo>0 ? Math.round(d.revenueJigyo/d.contractsJigyo).toLocaleString() : "－";
   const payTotal = PAY_KEYS.reduce((s,[k])=>s+(+d.pay?.[k]||0),0);
   const allMonthKeys = Object.keys(sysData);
   const cumPay = PAY_KEYS.reduce((acc,[k])=>{
@@ -6720,12 +6857,24 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
                   <span style={{fontSize:"0.87rem",color:C.text,flex:1}}>LINE友達追加</span>
                   {editing?<InputNum value={d.lineFriends??0} onChange={v=>setD({lineFriends:v})}/>:<span style={{fontSize:"1rem",fontWeight:700,color:C.text,display:"flex",alignItems:"center"}}>{(+d.lineFriends||0).toLocaleString()}人<DiffBadge cur={+d.lineFriends||0} prv={+prev.lineFriends||0}/></span>}
                 </div>
-                {/* サービスログ（展開式）*/}
+                {/* サービスログ合計（展開式）*/}
                 <div style={{...rowStyle,flexWrap:"wrap"}}>
-                  <span style={{fontSize:"0.87rem",color:C.text,flex:1}}>サービスログ</span>
+                  <span style={{fontSize:"0.87rem",color:C.text,flex:1}}>サービスログ（合計）</span>
                   {editing?<InputNum value={d.serviceLog??0} onChange={v=>setD({serviceLog:v})}/>:<span style={{fontSize:"1rem",fontWeight:700,color:C.text,display:"flex",alignItems:"center"}}>{(+d.serviceLog||0).toLocaleString()}件<DiffBadge cur={+d.serviceLog||0} prv={+prev.serviceLog||0}/></span>}
                   <div style={{width:"100%",paddingTop:"0.25rem"}}>{renderPartnerStores("serviceLog")}</div>
                 </div>
+                {/* サービスログ 家庭/事業内訳 */}
+                {editing&&(<div style={{background:"#f0f9ff",borderRadius:"0.5rem",padding:"0.5rem 0.75rem",marginBottom:"0.35rem"}}>
+                  <div style={{fontSize:"0.65rem",fontWeight:700,color:"#0369a1",marginBottom:"0.25rem"}}>サービスログ内訳</div>
+                  <div style={{display:"flex",gap:"1rem"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:"0.4rem"}}><span style={{fontSize:"0.78rem",color:C.text}}>家庭系</span><InputNum value={d.serviceLogKatei??0} onChange={v=>setD({serviceLogKatei:v})}/></div>
+                    <div style={{display:"flex",alignItems:"center",gap:"0.4rem"}}><span style={{fontSize:"0.78rem",color:C.text}}>事業系</span><InputNum value={d.serviceLogJigyo??0} onChange={v=>setD({serviceLogJigyo:v})}/></div>
+                  </div>
+                </div>)}
+                {!editing&&(d.serviceLogKatei||d.serviceLogJigyo)?(<div style={{display:"flex",gap:"0.5rem",marginBottom:"0.35rem",paddingLeft:"0.5rem"}}>
+                  <span style={{fontSize:"0.72rem",background:"#dbeafe",color:"#1d4ed8",padding:"0.1rem 0.4rem",borderRadius:999}}>家庭系: {+d.serviceLogKatei||0}件</span>
+                  <span style={{fontSize:"0.72rem",background:"#d1fae5",color:"#065f46",padding:"0.1rem 0.4rem",borderRadius:999}}>事業系: {+d.serviceLogJigyo||0}件</span>
+                </div>):null}
                 {/* 依頼数（展開式）*/}
                 <div style={{...rowStyle,flexWrap:"wrap"}}>
                   <span style={{fontSize:"0.87rem",color:C.text,flex:1}}>依頼数（合計）</span>
@@ -6784,19 +6933,41 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
                 ):null}
                 {/* 成約率（計算） */}
                 <div style={{...rowStyle}}>
-                  <div style={{flex:1}}><span style={{fontSize:"0.87rem",color:C.text}}>成約率</span><div style={{fontSize:"0.68rem",color:C.textMuted}}>成約数 ÷ 依頼数 × 100</div></div>
+                  <div style={{flex:1}}><span style={{fontSize:"0.87rem",color:C.text}}>成約率（合計）</span><div style={{fontSize:"0.68rem",color:C.textMuted}}>成約数 ÷ 依頼数 × 100</div></div>
                   <span style={{fontSize:"1rem",fontWeight:700,color:C.blue}}>{convRate==="－"?"－":convRate+"%"}</span>
                 </div>
-                {/* 売上 */}
+                {/* 成約率 家庭/事業 */}
+                <div style={{display:"flex",gap:"0.5rem",marginBottom:"0.35rem",paddingLeft:"0.25rem"}}>
+                  <span style={{fontSize:"0.72rem",background:"#dbeafe",color:"#1d4ed8",padding:"0.15rem 0.5rem",borderRadius:999,fontWeight:700}}>家庭系: {convRateK==="－"?"－":convRateK+"%"}</span>
+                  <span style={{fontSize:"0.72rem",background:"#d1fae5",color:"#065f46",padding:"0.15rem 0.5rem",borderRadius:999,fontWeight:700}}>事業系: {convRateJ==="－"?"－":convRateJ+"%"}</span>
+                </div>
+                {/* 売上合計 */}
                 <div style={{...rowStyle,flexWrap:"wrap"}}>
-                  <span style={{fontSize:"0.87rem",color:C.text,flex:1}}>売上</span>
+                  <span style={{fontSize:"0.87rem",color:C.text,flex:1}}>売上（合計）</span>
                   {editing?<InputNum value={d.revenue??0} onChange={v=>setD({revenue:v})}/>:<span style={{fontSize:"1rem",fontWeight:700,color:C.text,display:"flex",alignItems:"center"}}>¥{(+d.revenue||0).toLocaleString()}<DiffBadge cur={+d.revenue||0} prv={+prev.revenue||0}/></span>}
                   <div style={{width:"100%",paddingTop:"0.25rem"}}>{renderPartnerStores("revenue")}</div>
                 </div>
+                {/* 売上 家庭/事業内訳 */}
+                {editing&&(<div style={{background:"#f0fdf4",borderRadius:"0.5rem",padding:"0.5rem 0.75rem",marginBottom:"0.35rem"}}>
+                  <div style={{fontSize:"0.65rem",fontWeight:700,color:"#065f46",marginBottom:"0.25rem"}}>売上内訳</div>
+                  <div style={{display:"flex",gap:"1rem"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:"0.4rem"}}><span style={{fontSize:"0.78rem",color:C.text}}>家庭系 ¥</span><InputNum value={d.revenueKatei??0} onChange={v=>setD({revenueKatei:v})}/></div>
+                    <div style={{display:"flex",alignItems:"center",gap:"0.4rem"}}><span style={{fontSize:"0.78rem",color:C.text}}>事業系 ¥</span><InputNum value={d.revenueJigyo??0} onChange={v=>setD({revenueJigyo:v})}/></div>
+                  </div>
+                </div>)}
+                {!editing&&(d.revenueKatei||d.revenueJigyo)?(<div style={{display:"flex",gap:"0.5rem",marginBottom:"0.35rem",paddingLeft:"0.5rem"}}>
+                  <span style={{fontSize:"0.72rem",background:"#dbeafe",color:"#1d4ed8",padding:"0.1rem 0.4rem",borderRadius:999}}>家庭系: ¥{(+d.revenueKatei||0).toLocaleString()}</span>
+                  <span style={{fontSize:"0.72rem",background:"#d1fae5",color:"#065f46",padding:"0.1rem 0.4rem",borderRadius:999}}>事業系: ¥{(+d.revenueJigyo||0).toLocaleString()}</span>
+                </div>):null}
                 {/* 成約平均単価（計算） */}
                 <div style={{...rowStyle}}>
-                  <div style={{flex:1}}><span style={{fontSize:"0.87rem",color:C.text}}>成約平均単価</span><div style={{fontSize:"0.68rem",color:C.textMuted}}>売上 ÷ 成約数</div></div>
+                  <div style={{flex:1}}><span style={{fontSize:"0.87rem",color:C.text}}>成約平均単価（合計）</span><div style={{fontSize:"0.68rem",color:C.textMuted}}>売上 ÷ 成約数</div></div>
                   <span style={{fontSize:"1rem",fontWeight:700,color:C.blue}}>{avgPrice==="－"?"－":avgPrice+"円"}</span>
+                </div>
+                {/* 成約平均単価 家庭/事業 */}
+                <div style={{display:"flex",gap:"0.5rem",marginBottom:"0.35rem",paddingLeft:"0.25rem"}}>
+                  <span style={{fontSize:"0.72rem",background:"#dbeafe",color:"#1d4ed8",padding:"0.15rem 0.5rem",borderRadius:999,fontWeight:700}}>家庭系: {avgPriceK==="－"?"－":avgPriceK+"円"}</span>
+                  <span style={{fontSize:"0.72rem",background:"#d1fae5",color:"#065f46",padding:"0.15rem 0.5rem",borderRadius:999,fontWeight:700}}>事業系: {avgPriceJ==="－"?"－":avgPriceJ+"円"}</span>
                 </div>
               </div>
 
