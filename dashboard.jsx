@@ -2208,7 +2208,7 @@ function ScheduleView() {
         <div style={{fontSize:"1.1rem",fontWeight:800,color:C.text,marginBottom:"0.5rem"}}>スケジュール管理</div>
         <div style={{fontSize:"0.85rem",color:C.textSub}}>TeamOn でスケジュールを管理しています</div>
       </div>
-      <a href="https://teamoncloud.com" target="_blank" rel="noopener noreferrer"
+      <a href="https://app.teamoncloud.com/login" target="_blank" rel="noopener noreferrer"
         style={{display:"flex",alignItems:"center",gap:"0.875rem",padding:"1.25rem 2rem",background:`linear-gradient(135deg,${C.blue},#1d4ed8)`,borderRadius:"1rem",textDecoration:"none",boxShadow:"0 4px 20px rgba(37,99,235,0.35)"}}>
         <span style={{fontSize:"1.75rem"}}>📆</span>
         <div>
@@ -2891,8 +2891,10 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   const [compSearch,   setCompSearch]   = useState("");
   const [compFilter,   setCompFilter]   = useState({status:"",assignee:""});
   const [vendSearch,   setVendSearch]   = useState("");
+  const [vendFilterPref, setVendFilterPref] = useState(""); // 都道府県フィルタ
+  const [vendFilterPermit, setVendFilterPermit] = useState(""); // 許可種別フィルタ
   const [openCompGrp,  setOpenCompGrp]  = useState(new Set(Object.keys(COMPANY_STATUS)));
-  const [openVendGrp,  setOpenVendGrp]  = useState(new Set(Object.keys(VENDOR_STATUS)));
+  const [openVendGrp,  setOpenVendGrp]  = useState(new Set());
   const [muniTopSearch,setMuniTopSearch]= useState("");
   const [chatInputs,   setChatInputs]   = useState({});
   const [memoInputs,   setMemoInputs]   = useState({});
@@ -4006,6 +4008,13 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             </div>
             {(comp.assigneeIds||[]).length>0&&<div style={{marginTop:"0.5rem"}}><AssigneeRow ids={comp.assigneeIds}/></div>}
           </Card>
+          {/* フォローボタン */}
+          <div style={{marginBottom:"0.75rem",display:"flex",alignItems:"center",gap:"0.5rem"}}>
+            <button onClick={()=>{const nd={...data,companies:companies.map(c=>c.id===comp.id?{...c,needFollow:!comp.needFollow}:c)};save(nd);}}
+              style={{padding:"0.3rem 0.875rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.78rem",background:comp.needFollow?"#fef9c3":"#f3f4f6",color:comp.needFollow?"#854d0e":"#6b7280"}}>
+              {comp.needFollow?"⭐ フォロー中":"☆ フォローする"}
+            </button>
+          </div>
           {/* Status quick-change */}
           <div style={{marginBottom:"1rem"}}>
             <div style={{fontSize:"0.72rem",fontWeight:700,color:C.textSub,marginBottom:"0.4rem"}}>ステータス変更</div>
@@ -4061,6 +4070,25 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       <div>
         <TopTabs/>
         <BulkBar statusMap={COMPANY_STATUS} applyFn={applyBulkComp}/>
+        {/* フォロー中企業 */}
+        {(()=>{
+          const followComps = companies.filter(c=>c.needFollow);
+          if(!followComps.length) return null;
+          return (
+            <div style={{background:"#fefce8",border:"1.5px solid #fde047",borderRadius:"0.875rem",padding:"0.75rem 1rem",marginBottom:"0.75rem"}}>
+              <div style={{fontSize:"0.75rem",fontWeight:800,color:"#854d0e",marginBottom:"0.4rem"}}>⭐ フォロー中 ({followComps.length}件)</div>
+              <div style={{display:"flex",flexDirection:"column",gap:"0.3rem"}}>
+                {followComps.map(c=>(
+                  <div key={c.id} onClick={()=>{setSalesTab("company");saveSalesScroll("company");setActiveCompany(c.id);setActiveDetail("memo");}}
+                    style={{display:"flex",alignItems:"center",gap:"0.5rem",cursor:"pointer",padding:"0.35rem 0.5rem",background:"white",borderRadius:"0.5rem",border:"1px solid #fde047"}}>
+                    <span style={{fontSize:"0.8rem",fontWeight:700,color:C.text,flex:1}}>{c.name}</span>
+                    <SChip s={c.status} map={COMPANY_STATUS}/>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.75rem",gap:"0.5rem"}}>
           <div style={{position:"relative",flex:1}}>
             <span style={{position:"absolute",left:"0.625rem",top:"50%",transform:"translateY(-50%)",color:C.textMuted,fontSize:"0.85rem",pointerEvents:"none"}}>🔍</span>
@@ -4342,6 +4370,13 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
               </div>
             )}
           </Card>
+          {/* フォローボタン */}
+          <div style={{marginBottom:"0.75rem",display:"flex",alignItems:"center",gap:"0.5rem"}}>
+            <button onClick={()=>{const nd={...data,vendors:vendors.map(x=>x.id===v.id?{...x,needFollow:!v.needFollow}:x)};save(nd);}}
+              style={{padding:"0.3rem 0.875rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.78rem",background:v.needFollow?"#fef9c3":"#f3f4f6",color:v.needFollow?"#854d0e":"#6b7280"}}>
+              {v.needFollow?"⭐ フォロー中":"☆ フォローする"}
+            </button>
+          </div>
           <div style={{marginBottom:"1rem"}}>
             <div style={{fontSize:"0.72rem",fontWeight:700,color:C.textSub,marginBottom:"0.4rem"}}>ステータス変更</div>
             <StatusPicker map={VENDOR_STATUS} value={v.status} onChange={s=>{
@@ -4405,11 +4440,66 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     }
     // Vendor list - grouped by status
     const normVSearch = s => (s||"").replace(/[\s\u3000]/g,"").toLowerCase();
-    const searchedVendors = vendSearch ? vendors.filter(v=>normVSearch(v.name).includes(normVSearch(vendSearch))) : null;
+    // フィルタ適用
+    const filteredVendors = vendors.filter(v=>{
+      if(vendFilterPref){
+        const vmuniPrefs=(v.municipalityIds||[]).map(id=>muniOf(id)).filter(Boolean).map(m=>String(m.prefectureId));
+        if(!vmuniPrefs.includes(vendFilterPref)) return false;
+      }
+      if(vendFilterPermit && !(v.permitTypes||[]).includes(vendFilterPermit)) return false;
+      return true;
+    });
+    const searchedVendors = vendSearch ? filteredVendors.filter(v=>normVSearch(v.name).includes(normVSearch(vendSearch))) : null;
     return (
       <div>
         <TopTabs/>
         <BulkBar statusMap={VENDOR_STATUS} applyFn={applyBulkVend}/>
+        {/* フォロー中業者 */}
+        {(()=>{
+          const followVends = vendors.filter(v=>v.needFollow);
+          if(!followVends.length) return null;
+          return (
+            <div style={{background:"#fefce8",border:"1.5px solid #fde047",borderRadius:"0.875rem",padding:"0.75rem 1rem",marginBottom:"0.75rem"}}>
+              <div style={{fontSize:"0.75rem",fontWeight:800,color:"#854d0e",marginBottom:"0.4rem"}}>⭐ フォロー中 ({followVends.length}件)</div>
+              <div style={{display:"flex",flexDirection:"column",gap:"0.3rem"}}>
+                {followVends.map(v=>{
+                  const vmunis2=vendorMunis(v);
+                  return (
+                    <div key={v.id} onClick={()=>{saveSalesScroll("vendor");setActiveVendor(v.id);setActiveDetail("memo");}}
+                      style={{display:"flex",alignItems:"center",gap:"0.5rem",cursor:"pointer",padding:"0.35rem 0.5rem",background:"white",borderRadius:"0.5rem",border:"1px solid #fde047"}}>
+                      <span style={{fontSize:"0.8rem",fontWeight:700,color:C.text,flex:1}}>{v.name}</span>
+                      <SChip s={v.status} map={VENDOR_STATUS}/>
+                      {vmunis2.length>0&&<span style={{fontSize:"0.62rem",color:C.textMuted}}>{vmunis2[0].name}{vmunis2.length>1?`他${vmunis2.length-1}`:""}</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+        {/* 絞り込みフィルタ */}
+        {(vendFilterPref||vendFilterPermit)&&(
+          <div style={{display:"flex",gap:"0.35rem",marginBottom:"0.5rem",flexWrap:"wrap"}}>
+            {vendFilterPref&&<span style={{fontSize:"0.72rem",background:"#dbeafe",color:"#1d4ed8",padding:"0.2rem 0.5rem",borderRadius:999,fontWeight:700}}>
+              🗾 {prefs.find(p=>String(p.id)===vendFilterPref)?.name} <button onClick={()=>setVendFilterPref("")} style={{background:"none",border:"none",cursor:"pointer",color:"#1d4ed8",fontWeight:700,padding:0,marginLeft:"0.2rem"}}>×</button>
+            </span>}
+            {vendFilterPermit&&<span style={{fontSize:"0.72rem",background:"#ede9fe",color:"#5b21b6",padding:"0.2rem 0.5rem",borderRadius:999,fontWeight:700}}>
+              📋 {vendFilterPermit} <button onClick={()=>setVendFilterPermit("")} style={{background:"none",border:"none",cursor:"pointer",color:"#5b21b6",fontWeight:700,padding:0,marginLeft:"0.2rem"}}>×</button>
+            </span>}
+          </div>
+        )}
+        <div style={{display:"flex",gap:"0.35rem",marginBottom:"0.5rem",flexWrap:"wrap"}}>
+          <select value={vendFilterPref} onChange={e=>setVendFilterPref(e.target.value)}
+            style={{padding:"0.35rem 0.5rem",borderRadius:"0.625rem",border:`1.5px solid ${C.border}`,fontSize:"0.75rem",background:"white",color:C.text,fontFamily:"inherit"}}>
+            <option value="">都道府県で絞り込み</option>
+            {prefs.map(p=><option key={p.id} value={String(p.id)}>{p.name}</option>)}
+          </select>
+          <select value={vendFilterPermit} onChange={e=>setVendFilterPermit(e.target.value)}
+            style={{padding:"0.35rem 0.5rem",borderRadius:"0.625rem",border:`1.5px solid ${C.border}`,fontSize:"0.75rem",background:"white",color:C.text,fontFamily:"inherit"}}>
+            <option value="">許可種別で絞り込み</option>
+            {PERMIT_TYPES.map(p=><option key={p} value={p}>{p}</option>)}
+          </select>
+        </div>
         <div style={{display:"flex",gap:"0.5rem",marginBottom:"0.75rem",alignItems:"center"}}>
           <div style={{position:"relative",flex:1}}>
             <span style={{position:"absolute",left:"0.625rem",top:"50%",transform:"translateY(-50%)",color:C.textMuted,fontSize:"0.85rem",pointerEvents:"none"}}>🔍</span>
@@ -4456,7 +4546,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
         {!vendSearch&&(
           <div style={{display:"flex",flexDirection:"column",gap:"0.625rem"}}>
             {Object.entries(VENDOR_STATUS).map(([s,meta])=>{
-              const items=vendors.filter(v=>v.status===s);
+              const items=filteredVendors.filter(v=>v.status===s);
               const isOpen=openVendGrp.has(s);
               return (
                 <div key={s} style={{background:"white",borderRadius:"0.875rem",border:`1.5px solid ${C.border}`,overflow:"hidden",boxShadow:C.shadow}}>
@@ -4483,6 +4573,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                               <span style={{fontWeight:700,fontSize:"0.9rem",color:C.text,flex:1}}>{v.name}</span>
                               <AssigneeRow ids={v.assigneeIds}/>
                             </div>
+                            {(v.permitTypes||[]).length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:"0.2rem",marginBottom:"0.2rem"}}>{(v.permitTypes||[]).map(p=><span key={p} style={{fontSize:"0.6rem",background:"#ede9fe",color:"#5b21b6",padding:"0.1rem 0.3rem",borderRadius:999,fontWeight:600}}>{p}</span>)}</div>}
                             {vmunis2.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:"0.2rem",marginBottom:"0.2rem"}}>{vmunis2.slice(0,3).map(m=><span key={m.id} style={{fontSize:"0.62rem",background:C.accentBg,color:C.accentDark,padding:"0.05rem 0.35rem",borderRadius:999}}>{m.name}</span>)}{vmunis2.length>3&&<span style={{fontSize:"0.62rem",color:C.textMuted}}>+{vmunis2.length-3}</span>}</div>}
                             {lastMemo&&<div style={{fontSize:"0.7rem",color:C.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📝 {lastMemo.text}</div>}
                             </div>
@@ -4669,7 +4760,37 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           </div>
           {muni.artBranch&&<div style={{marginTop:"0.5rem",fontSize:"0.75rem",color:C.textSub}}>🏢 アート引越センター 管轄支店：{muni.artBranch}</div>}
           {muni.address&&<div style={{marginTop:"0.35rem",fontSize:"0.75rem",color:C.textSub}}>📍 {muni.address}</div>}
+          {(muni.contactName||muni.contactEmail||muni.contactPhone)&&(
+            <div style={{marginTop:"0.5rem",background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:"0.5rem",padding:"0.4rem 0.625rem",fontSize:"0.72rem",color:"#0369a1"}}>
+              <span style={{fontWeight:700}}>👤 {muni.contactName||"担当者"}</span>
+              {muni.contactPhone&&<a href={`tel:${muni.contactPhone}`} style={{marginLeft:"0.5rem",color:"#0369a1"}}>📞 {muni.contactPhone}</a>}
+              {muni.contactEmail&&<a href={`mailto:${muni.contactEmail}`} style={{marginLeft:"0.5rem",color:"#0369a1"}}>✉️ {muni.contactEmail}</a>}
+            </div>
+          )}
+          {/* フォローフラグ */}
+          <div style={{marginTop:"0.5rem",display:"flex",alignItems:"center",gap:"0.5rem"}}>
+            <button onClick={()=>{const nd={...data,municipalities:munis.map(m=>String(m.id)===String(activeMuni)?{...m,needFollow:!muni.needFollow}:m)};save(nd);}}
+              style={{padding:"0.2rem 0.625rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.72rem",background:muni.needFollow?"#fef9c3":"#f3f4f6",color:muni.needFollow?"#854d0e":"#6b7280"}}>
+              {muni.needFollow?"⭐ フォロー中":"☆ フォロー"}
+            </button>
+          </div>
           {(muni.assigneeIds||[]).length>0&&<div style={{marginTop:"0.5rem"}}><AssigneeRow ids={muni.assigneeIds}/></div>}
+          {/* 許可種別ごと業者数 */}
+          {mvend.length>0&&(
+            <div style={{marginTop:"0.75rem",background:"#fafafa",border:"1px solid #e5e7eb",borderRadius:"0.5rem",padding:"0.5rem 0.625rem"}}>
+              <div style={{fontSize:"0.65rem",fontWeight:700,color:C.textSub,marginBottom:"0.35rem"}}>📋 許可種別ごとの業者数</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:"0.25rem"}}>
+                {PERMIT_TYPES.map(pt=>{
+                  const cnt=mvend.filter(v=>(v.permitTypes||[]).includes(pt)).length;
+                  return (
+                    <span key={pt} style={{fontSize:"0.65rem",padding:"0.15rem 0.4rem",borderRadius:999,background:cnt>0?"#ede9fe":"#f3f4f6",color:cnt>0?"#5b21b6":"#9ca3af",fontWeight:cnt>0?700:400}}>
+                      {pt}: {cnt}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           {/* 許可業者調査チェック */}
           <div style={{marginTop:"0.75rem",display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.5rem 0.75rem",background:muni.surveyDone?"#d1fae5":"#f8fafc",borderRadius:"0.75rem",border:`1.5px solid ${muni.surveyDone?"#6ee7b7":"#e2e8f0"}`}}>
             <input type="checkbox" checked={!!muni.surveyDone} onChange={e=>{
@@ -4754,6 +4875,12 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             <FieldLbl label="アート引越センター 管轄支店"><Input value={form.artBranch||""} onChange={e=>setForm({...form,artBranch:e.target.value})} placeholder="例：福岡支店"/></FieldLbl>
             <FieldLbl label="連携協定ステータス"><TreatyPicker value={form.treatyStatus||"未接触"} onChange={s=>setForm({...form,treatyStatus:s})}/></FieldLbl>
             <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
+            <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:"0.625rem",padding:"0.625rem 0.75rem",marginBottom:"0.5rem"}}>
+              <div style={{fontSize:"0.75rem",fontWeight:700,color:"#0369a1",marginBottom:"0.4rem"}}>👤 行政担当者</div>
+              <FieldLbl label="担当者名"><Input value={form.contactName||""} onChange={e=>setForm({...form,contactName:e.target.value})} placeholder="例：田中 太郎"/></FieldLbl>
+              <FieldLbl label="メールアドレス"><Input value={form.contactEmail||""} onChange={e=>setForm({...form,contactEmail:e.target.value})} placeholder="tanaka@city.example.lg.jp"/></FieldLbl>
+              <FieldLbl label="電話番号"><Input value={form.contactPhone||""} onChange={e=>setForm({...form,contactPhone:e.target.value})} placeholder="099-123-4567"/></FieldLbl>
+            </div>
             <FieldLbl label="備考"><Textarea value={form.notes||""} onChange={e=>setForm({...form,notes:e.target.value})} style={{height:70}} placeholder="メモ、特記事項など"/></FieldLbl>
             <FieldLbl label="更新日（任意）"><Input type="date" value={form.updatedAt||""} onChange={e=>setForm({...form,updatedAt:e.target.value})}/></FieldLbl>
             <div style={{display:"flex",gap:"0.625rem"}}>
@@ -4814,6 +4941,30 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   return (
     <div>
       <TopTabs/>
+      {/* フォロー中の自治体 */}
+      {(()=>{
+        const followMunis = munis.filter(m=>m.needFollow);
+        if(!followMunis.length) return null;
+        return (
+          <div style={{background:"#fefce8",border:"1.5px solid #fde047",borderRadius:"0.875rem",padding:"0.75rem 1rem",marginBottom:"0.75rem"}}>
+            <div style={{fontSize:"0.75rem",fontWeight:800,color:"#854d0e",marginBottom:"0.4rem"}}>⭐ フォロー中 ({followMunis.length}件)</div>
+            <div style={{display:"flex",flexDirection:"column",gap:"0.3rem"}}>
+              {followMunis.map(m=>{
+                const pref=prefOf(m.prefectureId);
+                const ts=TREATY_STATUS[m.treatyStatus||"未接触"];
+                return (
+                  <div key={m.id} onClick={()=>{setActivePref(String(m.prefectureId));setActiveMuni(String(m.id));setMuniScreen("muniDetail");setActiveDetail("memo");}}
+                    style={{display:"flex",alignItems:"center",gap:"0.5rem",cursor:"pointer",padding:"0.35rem 0.5rem",background:"white",borderRadius:"0.5rem",border:"1px solid #fde047"}}>
+                    <span style={{fontSize:"0.8rem",fontWeight:700,color:C.text,flex:1}}>{m.name}</span>
+                    <span style={{fontSize:"0.65rem",color:C.textMuted}}>{pref?.name}</span>
+                    {ts&&<span style={{fontSize:"0.62rem",padding:"0.1rem 0.35rem",borderRadius:999,background:ts.bg,color:ts.color,fontWeight:700}}>{m.treatyStatus}</span>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
       {/* Search row */}
       <div style={{display:"flex",gap:"0.5rem",marginBottom:"0.625rem",alignItems:"center"}}>
         <div style={{position:"relative",flex:1}}>
@@ -4890,7 +5041,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       {/* Hierarchy view */}
       {!muniTopSearch&&<div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
         {JAPAN_REGIONS.map(rg=>{
-          const rOpen=openRegions[rg.region]!==false;
+          const rOpen=openRegions[rg.region]===true;
           const rPrefs=prefs.filter(p=>p.region===rg.region||(!p.region&&rg.prefs.includes(p.name)));
           const rMunis=rPrefs.flatMap(p=>munis.filter(m=>String(m.prefectureId)===String(p.id)));
           const rTreaty=rMunis.filter(m=>m.treatyStatus==="協定済").length;
@@ -4912,7 +5063,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
               {rOpen&&rPrefs.length>0&&(
                 <div style={{borderTop:`1px solid ${C.borderLight}`}}>
                   {rPrefs.map(pref=>{
-                    const pOpen=openPrefs[pref.id]!==false;
+                    const pOpen=openPrefs[pref.id]===true;
                     const pMunis=munis.filter(m=>String(m.prefectureId)===String(pref.id));
                     const pTreaty=pMunis.filter(m=>m.treatyStatus==="協定済").length;
                     const pDeploy=pMunis.filter(m=>m.dustalk==="展開").length;
@@ -5622,6 +5773,7 @@ const DUSTALK_EXIT_STEPS = [
 const PAY_KEYS = [["cc","クレジットカード"],["paypay","ペイペイ"],["merpay","メルペイ"],["cash","現金"]];
 
 const DUSTALK_DEF = {hp:0,serviceLog:0,requests:0,contracts:0,revenue:0,lineFriends:0,
+  requestsKatei:0,requestsJigyo:0,contractsKatei:0,contractsJigyo:0,
   pay:{cc:0,paypay:0,merpay:0,cash:0},
   exits:{top:0,location:0,requestContent:0,date:0,info:0,confirm:0,complete:0,estimateConfirm:0,contract:0},
   partnerStores:[]};
@@ -5640,7 +5792,9 @@ function mergeDustalk(raw){
   return {...DUSTALK_DEF,...raw,
     pay:{...DUSTALK_DEF.pay,...(raw.pay||{})},
     exits:{...DUSTALK_DEF.exits,...(raw.exits||{})},
-    partnerStores:raw.partnerStores||[]};
+    partnerStores:raw.partnerStores||[],
+    requestsKatei:raw.requestsKatei??0,requestsJigyo:raw.requestsJigyo??0,
+    contractsKatei:raw.contractsKatei??0,contractsJigyo:raw.contractsJigyo??0};
 }
 
 // ─── ANALYTICS HELPERS (top-level to prevent remount on state change) ─────────
@@ -6517,16 +6671,60 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
                 </div>
                 {/* 依頼数（展開式）*/}
                 <div style={{...rowStyle,flexWrap:"wrap"}}>
-                  <span style={{fontSize:"0.87rem",color:C.text,flex:1}}>依頼数</span>
+                  <span style={{fontSize:"0.87rem",color:C.text,flex:1}}>依頼数（合計）</span>
                   {editing?<InputNum value={d.requests??0} onChange={v=>setD({requests:v})}/>:<span style={{fontSize:"1rem",fontWeight:700,color:C.text,display:"flex",alignItems:"center"}}>{(+d.requests||0).toLocaleString()}件<DiffBadge cur={+d.requests||0} prv={+prev.requests||0}/></span>}
                   <div style={{width:"100%",paddingTop:"0.25rem"}}>{renderPartnerStores("requests")}</div>
                 </div>
+                {/* 依頼数内訳（家庭系/事業系）*/}
+                {editing&&(
+                  <div style={{background:"#f0f9ff",borderRadius:"0.5rem",padding:"0.5rem 0.75rem",marginBottom:"0.35rem"}}>
+                    <div style={{fontSize:"0.65rem",fontWeight:700,color:"#0369a1",marginBottom:"0.25rem"}}>📊 依頼数内訳</div>
+                    <div style={{display:"flex",gap:"1rem"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:"0.4rem"}}>
+                        <span style={{fontSize:"0.78rem",color:C.text}}>家庭系</span>
+                        <InputNum value={d.requestsKatei??0} onChange={v=>setD({requestsKatei:v})}/>
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",gap:"0.4rem"}}>
+                        <span style={{fontSize:"0.78rem",color:C.text}}>事業系</span>
+                        <InputNum value={d.requestsJigyo??0} onChange={v=>setD({requestsJigyo:v})}/>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {!editing&&(d.requestsKatei||d.requestsJigyo)?(
+                  <div style={{display:"flex",gap:"0.5rem",marginBottom:"0.35rem",paddingLeft:"0.5rem"}}>
+                    <span style={{fontSize:"0.72rem",background:"#dbeafe",color:"#1d4ed8",padding:"0.1rem 0.4rem",borderRadius:999}}>家庭系: {+d.requestsKatei||0}件</span>
+                    <span style={{fontSize:"0.72rem",background:"#d1fae5",color:"#065f46",padding:"0.1rem 0.4rem",borderRadius:999}}>事業系: {+d.requestsJigyo||0}件</span>
+                  </div>
+                ):null}
                 {/* 成約数（展開式）*/}
                 <div style={{...rowStyle,flexWrap:"wrap"}}>
-                  <span style={{fontSize:"0.87rem",color:C.text,flex:1}}>成約数</span>
+                  <span style={{fontSize:"0.87rem",color:C.text,flex:1}}>成約数（合計）</span>
                   {editing?<InputNum value={d.contracts??0} onChange={v=>setD({contracts:v})}/>:<span style={{fontSize:"1rem",fontWeight:700,color:C.text,display:"flex",alignItems:"center"}}>{(+d.contracts||0).toLocaleString()}件<DiffBadge cur={+d.contracts||0} prv={+prev.contracts||0}/></span>}
                   <div style={{width:"100%",paddingTop:"0.25rem"}}>{renderPartnerStores("contracts")}</div>
                 </div>
+                {/* 成約数内訳（家庭系/事業系）*/}
+                {editing&&(
+                  <div style={{background:"#f0fdf4",borderRadius:"0.5rem",padding:"0.5rem 0.75rem",marginBottom:"0.35rem"}}>
+                    <div style={{fontSize:"0.65rem",fontWeight:700,color:"#065f46",marginBottom:"0.25rem"}}>📊 成約数内訳</div>
+                    <div style={{display:"flex",gap:"1rem"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:"0.4rem"}}>
+                        <span style={{fontSize:"0.78rem",color:C.text}}>家庭系</span>
+                        <InputNum value={d.contractsKatei??0} onChange={v=>setD({contractsKatei:v})}/>
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",gap:"0.4rem"}}>
+                        <span style={{fontSize:"0.78rem",color:C.text}}>事業系</span>
+                        <InputNum value={d.contractsJigyo??0} onChange={v=>setD({contractsJigyo:v})}/>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {!editing&&(d.contractsKatei||d.contractsJigyo)?(
+                  <div style={{display:"flex",gap:"0.5rem",marginBottom:"0.35rem",paddingLeft:"0.5rem"}}>
+                    <span style={{fontSize:"0.72rem",background:"#dbeafe",color:"#1d4ed8",padding:"0.1rem 0.4rem",borderRadius:999}}>家庭系: {+d.contractsKatei||0}件</span>
+                    <span style={{fontSize:"0.72rem",background:"#d1fae5",color:"#065f46",padding:"0.1rem 0.4rem",borderRadius:999}}>事業系: {+d.contractsJigyo||0}件</span>
+                  </div>
+                ):null}
                 {/* 成約率（計算） */}
                 <div style={{...rowStyle}}>
                   <div style={{flex:1}}><span style={{fontSize:"0.87rem",color:C.text}}>成約率</span><div style={{fontSize:"0.68rem",color:C.textMuted}}>成約数 ÷ 依頼数 × 100</div></div>
