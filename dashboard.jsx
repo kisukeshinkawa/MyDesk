@@ -2208,7 +2208,7 @@ function ScheduleView() {
         <div style={{fontSize:"1.1rem",fontWeight:800,color:C.text,marginBottom:"0.5rem"}}>スケジュール管理</div>
         <div style={{fontSize:"0.85rem",color:C.textSub}}>TeamOn でスケジュールを管理しています</div>
       </div>
-      <a href="https://app.teamoncloud.com/login" target="_blank" rel="noopener noreferrer"
+      <a href="https://www.teamoncloud.com/login/" target="_blank" rel="noopener noreferrer"
         style={{display:"flex",alignItems:"center",gap:"0.875rem",padding:"1.25rem 2rem",background:`linear-gradient(135deg,${C.blue},#1d4ed8)`,borderRadius:"1rem",textDecoration:"none",boxShadow:"0 4px 20px rgba(37,99,235,0.35)"}}>
         <span style={{fontSize:"1.75rem"}}>📆</span>
         <div>
@@ -2896,6 +2896,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   const [openCompGrp,  setOpenCompGrp]  = useState(new Set(Object.keys(COMPANY_STATUS)));
   const [openVendGrp,  setOpenVendGrp]  = useState(new Set());
   const [muniTopSearch,setMuniTopSearch]= useState("");
+  const [muniFilterAssignee, setMuniFilterAssignee] = useState(""); // 担当者フィルタ
   const [chatInputs,   setChatInputs]   = useState({});
   const [memoInputs,   setMemoInputs]   = useState({});
   const [activeDetail, setActiveDetail] = useState("memo"); // memo|chat
@@ -4776,21 +4777,26 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           </div>
           {(muni.assigneeIds||[]).length>0&&<div style={{marginTop:"0.5rem"}}><AssigneeRow ids={muni.assigneeIds}/></div>}
           {/* 許可種別ごと業者数 */}
-          {mvend.length>0&&(
-            <div style={{marginTop:"0.75rem",background:"#fafafa",border:"1px solid #e5e7eb",borderRadius:"0.5rem",padding:"0.5rem 0.625rem"}}>
-              <div style={{fontSize:"0.65rem",fontWeight:700,color:C.textSub,marginBottom:"0.35rem"}}>📋 許可種別ごとの業者数</div>
-              <div style={{display:"flex",flexWrap:"wrap",gap:"0.25rem"}}>
-                {PERMIT_TYPES.map(pt=>{
-                  const cnt=mvend.filter(v=>(v.permitTypes||[]).includes(pt)).length;
-                  return (
-                    <span key={pt} style={{fontSize:"0.65rem",padding:"0.15rem 0.4rem",borderRadius:999,background:cnt>0?"#ede9fe":"#f3f4f6",color:cnt>0?"#5b21b6":"#9ca3af",fontWeight:cnt>0?700:400}}>
-                      {pt}: {cnt}
-                    </span>
-                  );
-                })}
-              </div>
+          <div style={{marginTop:"0.75rem",background:"#fafafa",border:"1px solid #e5e7eb",borderRadius:"0.625rem",padding:"0.625rem 0.75rem"}}>
+            <div style={{fontSize:"0.65rem",fontWeight:700,color:C.textSub,marginBottom:"0.5rem"}}>📋 許可種別ごとの業者数</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.3rem"}}>
+              {PERMIT_TYPES.map(pt=>{
+                const total=mvend.filter(v=>(v.permitTypes||[]).includes(pt)).length;
+                const joined=mvend.filter(v=>(v.permitTypes||[]).includes(pt)&&v.status==="加入済").length;
+                const isEmpty=total===0;
+                return (
+                  <div key={pt} style={{background:isEmpty?"#fef2f2":joined>0?"#f0fdf4":"#fafafa",border:`1px solid ${isEmpty?"#fca5a5":joined>0?"#86efac":"#e5e7eb"}`,borderRadius:"0.5rem",padding:"0.35rem 0.5rem"}}>
+                    <div style={{fontSize:"0.62rem",fontWeight:700,color:isEmpty?"#dc2626":joined>0?"#065f46":"#374151",marginBottom:"0.1rem"}}>{pt}</div>
+                    <div style={{display:"flex",gap:"0.35rem",alignItems:"center"}}>
+                      <span style={{fontSize:"0.75rem",fontWeight:800,color:isEmpty?"#dc2626":"#374151"}}>{total}社</span>
+                      {total>0&&<span style={{fontSize:"0.6rem",color:"#059669",fontWeight:600}}>加入{joined}</span>}
+                      {isEmpty&&<span style={{fontSize:"0.58rem",color:"#dc2626",fontWeight:700}}>⚠️不足</span>}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-          )}
+          </div>
           {/* 許可業者調査チェック */}
           <div style={{marginTop:"0.75rem",display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.5rem 0.75rem",background:muni.surveyDone?"#d1fae5":"#f8fafc",borderRadius:"0.75rem",border:`1.5px solid ${muni.surveyDone?"#6ee7b7":"#e2e8f0"}`}}>
             <input type="checkbox" checked={!!muni.surveyDone} onChange={e=>{
@@ -4904,7 +4910,29 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
         )}
         {sheet==="linkVendor"&&(()=>{
           const already=mvend.map(v=>v.id);
-          const linkable=vendors.filter(v=>!already.includes(v.id)&&((v.name||"").includes(linkVendorSearch)||!linkVendorSearch));
+          const muniPrefId=String(muniOf(activeMuni)?.prefectureId||"");
+          // 優先順: ①この自治体の業者 ②自治体未設定 ③同じ都道府県の業者 ④それ以外
+          const linkable=vendors.filter(v=>{
+            if(already.includes(v.id)) return false;
+            if(linkVendorSearch && !(v.name||"").includes(linkVendorSearch)) return false;
+            return true;
+          }).sort((a,b)=>{
+            const aHas=(a.municipalityIds||[]).some(id=>String(id)===String(activeMuni));
+            const bHas=(b.municipalityIds||[]).some(id=>String(id)===String(activeMuni));
+            const aNoMuni=!(a.municipalityIds||[]).length;
+            const bNoMuni=!(b.municipalityIds||[]).length;
+            const aSamePref=(a.municipalityIds||[]).some(id=>{const m=muniOf(id);return m&&String(m.prefectureId)===muniPrefId;});
+            const bSamePref=(b.municipalityIds||[]).some(id=>{const m=muniOf(id);return m&&String(m.prefectureId)===muniPrefId;});
+            const aScore=aHas?4:aNoMuni?3:aSamePref?2:1;
+            const bScore=bHas?4:bNoMuni?3:bSamePref?2:1;
+            return bScore-aScore;
+          });
+          const groupLabel=(v)=>{
+            if((v.municipalityIds||[]).some(id=>String(id)===String(activeMuni))) return {label:"この自治体の業者",color:"#d1fae5",tc:"#065f46"};
+            if(!(v.municipalityIds||[]).length) return {label:"自治体未設定",color:"#dbeafe",tc:"#1d4ed8"};
+            if((v.municipalityIds||[]).some(id=>{const m=muniOf(id);return m&&String(m.prefectureId)===muniPrefId;})) return {label:"同都道府県",color:"#ede9fe",tc:"#5b21b6"};
+            return null;
+          };
           const doLink=(vid)=>{
             save({...data,vendors:vendors.map(v=>v.id===vid?{...v,municipalityIds:[...(v.municipalityIds||[]),activeMuni]}:v)});
             setSheet(null);
@@ -4914,17 +4942,23 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
               <Input value={linkVendorSearch} onChange={e=>setLinkVendorSearch(e.target.value)} placeholder="業者名で絞り込み" style={{marginBottom:"0.75rem"}}/>
               <div style={{display:"flex",flexDirection:"column",gap:"0.35rem",maxHeight:300,overflowY:"auto"}}>
                 {linkable.length===0&&<div style={{textAlign:"center",padding:"1.5rem",color:C.textMuted,fontSize:"0.82rem"}}>紐付け可能な業者がありません</div>}
-                {linkable.map(v=>(
-                  <div key={v.id} style={{display:"flex",alignItems:"center",padding:"0.625rem 0.75rem",border:`1.5px solid ${C.border}`,borderRadius:"0.75rem",background:"white",gap:"0.5rem"}}>
-                    <div style={{flex:1}}>
-                      <div style={{fontWeight:600,fontSize:"0.88rem",color:C.text}}>{v.name}</div>
-                      <div style={{fontSize:"0.65rem",color:C.textMuted}}>{(v.municipalityIds||[]).map(id=>muniOf(id)?.name).filter(Boolean).join("・")||"未紐付け"}</div>
+                {linkable.map(v=>{
+                  const gl=groupLabel(v);
+                  return (
+                    <div key={v.id} style={{display:"flex",alignItems:"center",padding:"0.625rem 0.75rem",border:`1.5px solid ${gl?gl.color:C.border}`,borderRadius:"0.75rem",background:gl?gl.color.replace("1fae5","f0fdf4").replace("beafe","eff6ff").replace("e9fe","f5f3ff"):"white",gap:"0.5rem"}}>
+                      <div style={{flex:1}}>
+                        <div style={{display:"flex",alignItems:"center",gap:"0.4rem"}}>
+                          <span style={{fontWeight:600,fontSize:"0.88rem",color:C.text}}>{v.name}</span>
+                          {gl&&<span style={{fontSize:"0.6rem",padding:"0.1rem 0.35rem",borderRadius:999,background:gl.color,color:gl.tc,fontWeight:700,flexShrink:0}}>{gl.label}</span>}
+                        </div>
+                        <div style={{fontSize:"0.65rem",color:C.textMuted}}>{(v.municipalityIds||[]).map(id=>muniOf(id)?.name).filter(Boolean).join("・")||"自治体未設定"}</div>
+                      </div>
+                      <SChip s={v.status} map={VENDOR_STATUS}/>
+                      <button onClick={()=>doLink(v.id)}
+                        style={{background:C.accent,border:"none",borderRadius:"0.5rem",color:"white",fontSize:"0.75rem",fontWeight:700,padding:"0.3rem 0.625rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>紐付け</button>
                     </div>
-                    <SChip s={v.status} map={VENDOR_STATUS}/>
-                    <button onClick={()=>doLink(v.id)}
-                      style={{background:C.accent,border:"none",borderRadius:"0.5rem",color:"white",fontSize:"0.75rem",fontWeight:700,padding:"0.3rem 0.625rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>紐付け</button>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
               <div style={{marginTop:"0.75rem"}}>
                 <Btn variant="secondary" style={{width:"100%"}} onClick={()=>setSheet(null)}>閉じる</Btn>
@@ -4983,6 +5017,19 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
         <button onClick={exportMuniStatusReport}
           style={{padding:"0.5rem 0.75rem",borderRadius:"0.75rem",border:"1.5px solid #7c3aed",background:"#ede9fe",color:"#5b21b6",fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>📋 全国出力</button>
       </div>
+      {/* 担当者フィルタ */}
+      <div style={{display:"flex",gap:"0.5rem",marginBottom:"0.5rem",alignItems:"center",flexWrap:"wrap"}}>
+        <select value={muniFilterAssignee} onChange={e=>setMuniFilterAssignee(e.target.value)}
+          style={{padding:"0.35rem 0.5rem",borderRadius:"0.625rem",border:`1.5px solid ${muniFilterAssignee?C.accent:C.border}`,fontSize:"0.78rem",background:muniFilterAssignee?"#eff6ff":"white",color:muniFilterAssignee?C.accent:C.text,fontFamily:"inherit",fontWeight:muniFilterAssignee?700:400}}>
+          <option value="">👤 担当者で絞り込み</option>
+          <option value="__me__">自分の担当のみ</option>
+          {users.map(u=><option key={u.id} value={String(u.id)}>{u.name}</option>)}
+        </select>
+        {muniFilterAssignee&&<button onClick={()=>setMuniFilterAssignee("")}
+          style={{fontSize:"0.72rem",background:"#eff6ff",color:C.accent,border:`1px solid ${C.accent}`,borderRadius:999,padding:"0.2rem 0.5rem",cursor:"pointer",fontWeight:700,fontFamily:"inherit"}}>
+          ✕ フィルタ解除
+        </button>}
+      </div>
       <BulkBar statusMap={MUNI_STATUS} applyFn={applyBulkMuni}
         extraFields={[["dustalk","ダストーク展開",DUSTALK_STATUS],["treatyStatus","連携協定",TREATY_STATUS],["status","アプローチ",MUNI_STATUS]]}/>
       {/* Global dustalk summary */}
@@ -5008,7 +5055,12 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
 
       {/* Flat search results */}
       {muniTopSearch&&(()=>{
-        const hits=munis.filter(m=>m.name.includes(muniTopSearch));
+        const hits=munis.filter(m=>{
+          if(!m.name.includes(muniTopSearch)) return false;
+          if(muniFilterAssignee==="__me__") return (m.assigneeIds||[]).some(id=>id===currentUser?.id);
+          if(muniFilterAssignee) return (m.assigneeIds||[]).some(id=>String(id)===muniFilterAssignee);
+          return true;
+        });
         return (
           <div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
             {hits.length===0&&<div style={{textAlign:"center",padding:"2rem",color:C.textMuted,background:"white",borderRadius:"0.875rem",fontSize:"0.85rem",border:`1.5px dashed ${C.border}`}}>「{muniTopSearch}」に一致する自治体はありません</div>}
@@ -5064,7 +5116,12 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                 <div style={{borderTop:`1px solid ${C.borderLight}`}}>
                   {rPrefs.map(pref=>{
                     const pOpen=openPrefs[pref.id]===true;
-                    const pMunis=munis.filter(m=>String(m.prefectureId)===String(pref.id));
+                    const pMunis=munis.filter(m=>{
+                    if(String(m.prefectureId)!==String(pref.id)) return false;
+                    if(muniFilterAssignee==="__me__") return (m.assigneeIds||[]).some(id=>id===currentUser?.id);
+                    if(muniFilterAssignee) return (m.assigneeIds||[]).some(id=>String(id)===muniFilterAssignee);
+                    return true;
+                  });
                     const pTreaty=pMunis.filter(m=>m.treatyStatus==="協定済").length;
                     const pDeploy=pMunis.filter(m=>m.dustalk==="展開").length;
                     return (
