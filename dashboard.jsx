@@ -56,19 +56,37 @@ const SB_HEADERS = {
 
 async function sbGet(id) {
   try {
-    const r = await fetch(`${SB_URL}/rest/v1/app_data?id=eq.${encodeURIComponent(id)}&select=data`, { headers: SB_HEADERS });
-    const rows = await r.json();
-    return rows?.[0]?.data ?? null;
+    // まず updated_at 付きで取得を試みる
+    const r = await fetch(`${SB_URL}/rest/v1/app_data?id=eq.${encodeURIComponent(id)}&select=data,updated_at`, { headers: SB_HEADERS });
+    if(r.ok) {
+      const rows = await r.json();
+      if(rows?.[0]?.data !== undefined) {
+        return { _rawData: rows[0].data, _updatedAt: rows[0].updated_at ?? null };
+      }
+    }
+    // フォールバック: data のみで取得
+    const r2 = await fetch(`${SB_URL}/rest/v1/app_data?id=eq.${encodeURIComponent(id)}&select=data`, { headers: SB_HEADERS });
+    if(r2.ok) {
+      const rows2 = await r2.json();
+      if(rows2?.[0]?.data !== undefined) {
+        return { _rawData: rows2[0].data, _updatedAt: null };
+      }
+    }
+    return null;
   } catch { return null; }
 }
 
 async function sbSet(id, data) {
+  const now = new Date().toISOString();
   try {
     await fetch(`${SB_URL}/rest/v1/app_data`, {
       method: "POST",
       headers: { ...SB_HEADERS, "Prefer": "resolution=merge-duplicates" },
-      body: JSON.stringify({ id, data, updated_at: new Date().toISOString() }),
+      body: JSON.stringify({ id, data, updated_at: now }),
     });
+    // 書き込み完了後にタイムスタンプを更新（競合防止を書き込み完了時刻から計算）
+    window.__myDeskLastSave = Date.now();
+    window.__myDeskLastSaveAt = now;
   } catch {}
 }
 
@@ -138,13 +156,27 @@ function addNotif(data, {type, title, body, toUserIds=[], fromUserId=null, entit
 }
 
 async function loadData() {
-  try { const d = await sbGet("main"); if(d) return {...INIT, ...d}; } catch{}
-  return INIT;
+  try {
+    const result = await sbGet("main");
+    if(result && result._rawData !== undefined) {
+      const raw = result._rawData;
+      // raw がオブジェクトで、INIT のキーを持つ本物のデータか確認
+      if(raw && typeof raw === "object" && !Array.isArray(raw)) {
+        return { data: {...INIT, ...raw}, updated_at: result._updatedAt };
+      }
+    }
+  } catch{}
+  return { data: INIT, updated_at: null };
 }
 async function saveData(d) { await sbSet("main", d); }
 
 async function loadUsers() {
-  try { const d = await sbGet("users"); if(Array.isArray(d)) return d; } catch{}
+  try {
+    const result = await sbGet("users");
+    if(result && result._rawData !== undefined) {
+      if(Array.isArray(result._rawData)) return result._rawData;
+    }
+  } catch{}
   return [];
 }
 async function saveUsers(u) { sbSet("users", u); }
@@ -4439,30 +4471,30 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             <AssigneeRow ids={v.assigneeIds}/>
             {v.address&&<div style={{fontSize:"0.78rem",color:C.textSub,marginTop:"0.4rem"}}>📍 {v.address}</div>}
             <div style={{marginTop:"0.6rem"}}>
-                <div style={{fontSize:"0.62rem",fontWeight:700,color:"#5b21b6",marginBottom:"0.3rem"}}>📋 許可別営業状況</div>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.2rem"}}>
-                  {PERMIT_TYPES.map(pt=>{
-                    const has=(v.permitTypes||[]).includes(pt);
-                    const salesStatus=(v.permitSales||{})[pt]||"未営業";
-                    const salesColors={"営業済":"#d1fae5","資料送付":"#dbeafe","商談中":"#fef3c7","加入済":"#d1fae5","未営業":"#f3f4f6"};
-                    const salesTextColors={"営業済":"#065f46","資料送付":"#1d4ed8","商談中":"#92400e","加入済":"#065f46","未営業":"#9ca3af"};
-                    return (
-                      <div key={pt} style={{background:has?salesColors[salesStatus]:"#fef2f2",border:`1px solid ${has?salesTextColors[salesStatus]+"40":"#fca5a5"}`,borderRadius:"0.4rem",padding:"0.3rem 0.4rem"}}>
-                        <div style={{fontSize:"0.6rem",fontWeight:700,color:has?"#374151":"#dc2626"}}>{has?"✓":"-"} {pt}</div>
-                        {has&&(
-                          <select value={salesStatus} onClick={e=>e.stopPropagation()} onChange={e=>{
-                            const nd={...data,vendors:vendors.map(x=>x.id===v.id?{...x,permitSales:{...(x.permitSales||{}),[pt]:e.target.value}}:x)};
-                            save(nd);
-                          }} style={{fontSize:"0.58rem",border:"none",background:"transparent",color:salesTextColors[salesStatus],fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0,width:"100%",marginTop:"0.1rem"}}>
-                            {["未営業","営業済","資料送付","商談中","加入済"].map(s=><option key={s} value={s}>{s}</option>)}
-                          </select>
-                        )}
-                        {!has&&<div style={{fontSize:"0.58rem",color:"#dc2626",marginTop:"0.1rem"}}>未保有</div>}
-                      </div>
-                    );
-                  })}
-                </div>
+              <div style={{fontSize:"0.62rem",fontWeight:700,color:"#5b21b6",marginBottom:"0.3rem"}}>📋 許可別営業状況</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.2rem"}}>
+                {PERMIT_TYPES.map(pt=>{
+                  const has=(v.permitTypes||[]).includes(pt);
+                  const salesStatus=(v.permitSales||{})[pt]||"未営業";
+                  const salesColors={"営業済":"#d1fae5","資料送付":"#dbeafe","商談中":"#fef3c7","加入済":"#d1fae5","未営業":"#f3f4f6"};
+                  const salesTextColors={"営業済":"#065f46","資料送付":"#1d4ed8","商談中":"#92400e","加入済":"#065f46","未営業":"#9ca3af"};
+                  return (
+                    <div key={pt} style={{background:has?salesColors[salesStatus]:"#fef2f2",border:`1px solid ${has?salesTextColors[salesStatus]+"40":"#fca5a5"}`,borderRadius:"0.4rem",padding:"0.3rem 0.4rem"}}>
+                      <div style={{fontSize:"0.6rem",fontWeight:700,color:has?"#374151":"#dc2626"}}>{has?"✓":"-"} {pt}</div>
+                      {has&&(
+                        <select value={salesStatus} onClick={e=>e.stopPropagation()} onChange={e=>{
+                          const nd={...data,vendors:vendors.map(x=>x.id===v.id?{...x,permitSales:{...(x.permitSales||{}),[pt]:e.target.value}}:x)};
+                          save(nd);
+                        }} style={{fontSize:"0.58rem",border:"none",background:"transparent",color:salesTextColors[salesStatus],fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0,width:"100%",marginTop:"0.1rem"}}>
+                          {["未営業","営業済","資料送付","商談中","加入済"].map(s=><option key={s} value={s}>{s}</option>)}
+                        </select>
+                      )}
+                      {!has&&<div style={{fontSize:"0.58rem",color:"#dc2626",marginTop:"0.1rem"}}>未保有</div>}
+                    </div>
+                  );
+                })}
               </div>
+            </div>
           </Card>
           {/* フォローボタン */}
           <div style={{marginBottom:"0.75rem",display:"flex",alignItems:"center",gap:"0.5rem"}}>
@@ -7031,8 +7063,8 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
                 {editing&&(<div style={{background:"#f0f9ff",borderRadius:"0.5rem",padding:"0.5rem 0.75rem",marginBottom:"0.35rem"}}>
                   <div style={{fontSize:"0.65rem",fontWeight:700,color:"#0369a1",marginBottom:"0.25rem"}}>サービスログ内訳</div>
                   <div style={{display:"flex",gap:"1rem"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:"0.4rem"}}><span style={{fontSize:"0.78rem",color:C.text}}>家庭系</span><InputNum value={d.serviceLogKatei??0} onChange={v=>setD({serviceLogKatei:v})}/></div>
-                    <div style={{display:"flex",alignItems:"center",gap:"0.4rem"}}><span style={{fontSize:"0.78rem",color:C.text}}>事業系</span><InputNum value={d.serviceLogJigyo??0} onChange={v=>setD({serviceLogJigyo:v})}/></div>
+                    <div style={{display:"flex",alignItems:"center",gap:"0.4rem"}}><span style={{fontSize:"0.78rem",color:C.text}}>家庭系</span><InputNum value={d.serviceLogKatei??0} onChange={v=>{const j=+(d.serviceLogJigyo||0);setD({serviceLogKatei:v,serviceLog:v+j});}}/></div>
+                    <div style={{display:"flex",alignItems:"center",gap:"0.4rem"}}><span style={{fontSize:"0.78rem",color:C.text}}>事業系</span><InputNum value={d.serviceLogJigyo??0} onChange={v=>{const k=+(d.serviceLogKatei||0);setD({serviceLogJigyo:v,serviceLog:k+v});}}/></div>
                   </div>
                 </div>)}
                 {!editing&&(d.serviceLogKatei||d.serviceLogJigyo)?(<div style={{display:"flex",gap:"0.5rem",marginBottom:"0.35rem",paddingLeft:"0.5rem"}}>
@@ -7048,15 +7080,15 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
                 {/* 依頼数内訳（家庭系/事業系）*/}
                 {editing&&(
                   <div style={{background:"#f0f9ff",borderRadius:"0.5rem",padding:"0.5rem 0.75rem",marginBottom:"0.35rem"}}>
-                    <div style={{fontSize:"0.65rem",fontWeight:700,color:"#0369a1",marginBottom:"0.25rem"}}>📊 依頼数内訳</div>
+                    <div style={{fontSize:"0.65rem",fontWeight:700,color:"#0369a1",marginBottom:"0.25rem"}}>📊 依頼数内訳（入力すると合計に自動反映）</div>
                     <div style={{display:"flex",gap:"1rem"}}>
                       <div style={{display:"flex",alignItems:"center",gap:"0.4rem"}}>
                         <span style={{fontSize:"0.78rem",color:C.text}}>家庭系</span>
-                        <InputNum value={d.requestsKatei??0} onChange={v=>setD({requestsKatei:v})}/>
+                        <InputNum value={d.requestsKatei??0} onChange={v=>{const j=+(d.requestsJigyo||0);setD({requestsKatei:v,requests:v+j});}}/>
                       </div>
                       <div style={{display:"flex",alignItems:"center",gap:"0.4rem"}}>
                         <span style={{fontSize:"0.78rem",color:C.text}}>事業系</span>
-                        <InputNum value={d.requestsJigyo??0} onChange={v=>setD({requestsJigyo:v})}/>
+                        <InputNum value={d.requestsJigyo??0} onChange={v=>{const k=+(d.requestsKatei||0);setD({requestsJigyo:v,requests:k+v});}}/>
                       </div>
                     </div>
                   </div>
@@ -7080,11 +7112,11 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
                     <div style={{display:"flex",gap:"1rem"}}>
                       <div style={{display:"flex",alignItems:"center",gap:"0.4rem"}}>
                         <span style={{fontSize:"0.78rem",color:C.text}}>家庭系</span>
-                        <InputNum value={d.contractsKatei??0} onChange={v=>setD({contractsKatei:v})}/>
+                        <InputNum value={d.contractsKatei??0} onChange={v=>{const j=+(d.contractsJigyo||0);setD({contractsKatei:v,contracts:v+j});}}/>
                       </div>
                       <div style={{display:"flex",alignItems:"center",gap:"0.4rem"}}>
                         <span style={{fontSize:"0.78rem",color:C.text}}>事業系</span>
-                        <InputNum value={d.contractsJigyo??0} onChange={v=>setD({contractsJigyo:v})}/>
+                        <InputNum value={d.contractsJigyo??0} onChange={v=>{const k=+(d.contractsKatei||0);setD({contractsJigyo:v,contracts:k+v});}}/>
                       </div>
                     </div>
                   </div>
@@ -7113,10 +7145,10 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
                 </div>
                 {/* 売上 家庭/事業内訳 */}
                 {editing&&(<div style={{background:"#f0fdf4",borderRadius:"0.5rem",padding:"0.5rem 0.75rem",marginBottom:"0.35rem"}}>
-                  <div style={{fontSize:"0.65rem",fontWeight:700,color:"#065f46",marginBottom:"0.25rem"}}>売上内訳</div>
+                  <div style={{fontSize:"0.65rem",fontWeight:700,color:"#065f46",marginBottom:"0.25rem"}}>売上内訳（入力すると合計に自動反映）</div>
                   <div style={{display:"flex",gap:"1rem"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:"0.4rem"}}><span style={{fontSize:"0.78rem",color:C.text}}>家庭系 ¥</span><InputNum value={d.revenueKatei??0} onChange={v=>setD({revenueKatei:v})}/></div>
-                    <div style={{display:"flex",alignItems:"center",gap:"0.4rem"}}><span style={{fontSize:"0.78rem",color:C.text}}>事業系 ¥</span><InputNum value={d.revenueJigyo??0} onChange={v=>setD({revenueJigyo:v})}/></div>
+                    <div style={{display:"flex",alignItems:"center",gap:"0.4rem"}}><span style={{fontSize:"0.78rem",color:C.text}}>家庭系 ¥</span><InputNum value={d.revenueKatei??0} onChange={v=>{const j=+(d.revenueJigyo||0);setD({revenueKatei:v,revenue:v+j});}}/></div>
+                    <div style={{display:"flex",alignItems:"center",gap:"0.4rem"}}><span style={{fontSize:"0.78rem",color:C.text}}>事業系 ¥</span><InputNum value={d.revenueJigyo??0} onChange={v=>{const k=+(d.revenueKatei||0);setD({revenueJigyo:v,revenue:k+v});}}/></div>
                   </div>
                 </div>)}
                 {!editing&&(d.revenueKatei||d.revenueJigyo)?(<div style={{display:"flex",gap:"0.5rem",marginBottom:"0.35rem",paddingLeft:"0.5rem"}}>
@@ -7372,7 +7404,9 @@ export default function App() {
     }
 
     const session = getSession();
-    Promise.all([loadData(), loadUsers()]).then(([d,u])=>{
+    Promise.all([loadData(), loadUsers()]).then(([result,u])=>{
+      const d = (result && result.data) ? result.data : INIT;
+      if(result?.updated_at) window.__myDeskLastSaveAt = result.updated_at;
       // 重複IDを起動時に修復（CSVインポートの不具合で発生した場合）
       const seenM = new Set(); let mChanged = false;
       const fixedM = (d.municipalities||[]).map(m=>{
@@ -7406,11 +7440,26 @@ export default function App() {
     if(!currentUser) return;
     const poll = async () => {
       try {
-        const [d, u] = await Promise.all([loadData(), loadUsers()]);
-        // 直近3秒以内に自分がsaveした場合はポーリングによる上書きをスキップ（競合防止）
+        const [result, u] = await Promise.all([loadData(), loadUsers()]);
+        const d = (result && result.data) ? result.data : null;
+        const serverUpdatedAt = result?.updated_at;
+        if(!d) { setUsers(u); return; } // データ取得失敗時はスキップ
+        // 自分が最後にsaveした時刻との比較で上書き判定
         const timeSinceSave = Date.now() - (window.__myDeskLastSave || 0);
-        if(timeSinceSave > 3000) {
+        // サーバーのupdated_atが自分の最終保存より新しい（他ユーザーの更新）場合のみ反映
+        // または自分の保存から十分時間が経過している場合は反映
+        const serverIsNewer = (() => {
+          // updated_at が両方揃っている場合：サーバーが新しい場合のみ更新
+          if(serverUpdatedAt && window.__myDeskLastSaveAt) {
+            return serverUpdatedAt > window.__myDeskLastSaveAt;
+          }
+          // 自分がsaveしてから5秒以上経過、またはまだ一度もsaveしていない
+          if(!window.__myDeskLastSave) return true; // 初回
+          return timeSinceSave > 5000;
+        })();
+        if(serverIsNewer) {
           setData(d);
+          if(serverUpdatedAt) window.__myDeskLastSaveAt = serverUpdatedAt;
         }
         setUsers(u);
         // セッションユーザーの最新情報を反映
