@@ -2910,6 +2910,9 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   const [bulkTarget,   setBulkTarget]   = useState(""); // "company"|"vendor"|"muni"
   // vendor linking from muni
   const [linkVendorSearch,setLinkVendorSearch]=useState("");
+  const [linkVendorFilterPref,setLinkVendorFilterPref]=useState("");
+  const [linkVendorFilterMuni,setLinkVendorFilterMuni]=useState("");
+  const [linkVendorFilterPermit,setLinkVendorFilterPermit]=useState("");
   // dashboard period filter (must be top-level, not inside conditional)
   const [dashPeriod,setDashPeriod]=useState("month"); // today|week|month|all
   // CSV import preview/error state (must be top-level, not inside IIFE)
@@ -4950,7 +4953,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.5rem"}}>
             <span style={{fontSize:"0.72rem",fontWeight:800,color:C.textSub,textTransform:"uppercase",letterSpacing:"0.05em"}}>業者一覧</span>
             <div style={{display:"flex",gap:"0.35rem"}}>
-              <Btn size="sm" variant="secondary" onClick={()=>{setLinkVendorSearch("");setSheet("linkVendor");}}>🔗 紐付け</Btn>
+              <Btn size="sm" variant="secondary" onClick={()=>{setLinkVendorSearch("");setLinkVendorFilterPref("");setLinkVendorFilterMuni("");setLinkVendorFilterPermit("");setSheet("linkVendor");}}>🔗 紐付け</Btn>
               <Btn size="sm" onClick={()=>{setForm({municipalityIds:[activeMuni],status:"未接触",assigneeIds:[]});setSalesTab("vendor");setActiveVendor(null);setSheet("addVendorFromMuni");}}>＋ 新規</Btn>
             </div>
           </div>
@@ -5034,12 +5037,52 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             save({...data,vendors:vendors.map(v=>v.id===vid?{...v,municipalityIds:[...(v.municipalityIds||[]),activeMuni]}:v)});
             setSheet(null);
           };
+          // フィルタ適用
+          const lvFiltered = linkable.filter(v=>{
+            if(linkVendorFilterPref){
+              const vPrefs=(v.municipalityIds||[]).map(id=>muniOf(id)).filter(Boolean).map(m=>String(m.prefectureId));
+              if(!vPrefs.includes(linkVendorFilterPref)) return false;
+            }
+            if(linkVendorFilterMuni && !(v.municipalityIds||[]).map(String).includes(linkVendorFilterMuni)) return false;
+            if(linkVendorFilterPermit && !(v.permitTypes||[]).includes(linkVendorFilterPermit)) return false;
+            return true;
+          });
+          const lvMuniOpts = linkVendorFilterPref ? munis.filter(m=>String(m.prefectureId)===linkVendorFilterPref) : [];
+          const hasLvFilter = linkVendorFilterPref||linkVendorFilterMuni||linkVendorFilterPermit;
           return (
             <Sheet title="既存業者を紐付け" onClose={()=>setSheet(null)}>
-              <Input value={linkVendorSearch} onChange={e=>setLinkVendorSearch(e.target.value)} placeholder="業者名で絞り込み" style={{marginBottom:"0.75rem"}}/>
+              <Input value={linkVendorSearch} onChange={e=>setLinkVendorSearch(e.target.value)} placeholder="業者名で検索" style={{marginBottom:"0.5rem"}}/>
+              {/* フィルタ行 */}
+              <div style={{background:"#f8fafc",border:`1px solid ${hasLvFilter?C.accent:C.border}`,borderRadius:"0.625rem",padding:"0.5rem 0.625rem",marginBottom:"0.625rem"}}>
+                <div style={{display:"flex",alignItems:"center",gap:"0.35rem",marginBottom:"0.35rem"}}>
+                  <span style={{fontSize:"0.68rem",fontWeight:700,color:C.textSub}}>🔍 絞り込み</span>
+                  {hasLvFilter&&<span style={{fontSize:"0.7rem",fontWeight:800,color:"#7c3aed",marginLeft:"auto"}}>{lvFiltered.length}件</span>}
+                  {hasLvFilter&&<button onClick={()=>{setLinkVendorFilterPref("");setLinkVendorFilterMuni("");setLinkVendorFilterPermit("");}}
+                    style={{fontSize:"0.62rem",background:"#fef2f2",color:"#dc2626",border:"1px solid #fca5a5",borderRadius:999,padding:"0.1rem 0.4rem",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>全解除</button>}
+                </div>
+                <div style={{display:"flex",gap:"0.3rem",flexWrap:"wrap"}}>
+                  <select value={linkVendorFilterPref} onChange={e=>{setLinkVendorFilterPref(e.target.value);setLinkVendorFilterMuni("");}}
+                    style={{padding:"0.25rem 0.35rem",borderRadius:"0.4rem",border:`1.5px solid ${linkVendorFilterPref?C.accent:C.border}`,fontSize:"0.7rem",background:linkVendorFilterPref?"#eff6ff":"white",color:linkVendorFilterPref?C.accent:C.text,fontFamily:"inherit"}}>
+                    <option value="">🗾 都道府県</option>
+                    {prefs.map(p=><option key={p.id} value={String(p.id)}>{p.name}</option>)}
+                  </select>
+                  {linkVendorFilterPref&&lvMuniOpts.length>0&&(
+                    <select value={linkVendorFilterMuni} onChange={e=>setLinkVendorFilterMuni(e.target.value)}
+                      style={{padding:"0.25rem 0.35rem",borderRadius:"0.4rem",border:`1.5px solid ${linkVendorFilterMuni?C.accent:C.border}`,fontSize:"0.7rem",background:linkVendorFilterMuni?"#eff6ff":"white",color:linkVendorFilterMuni?C.accent:C.text,fontFamily:"inherit"}}>
+                      <option value="">🏛 自治体</option>
+                      {lvMuniOpts.map(m=><option key={m.id} value={String(m.id)}>{m.name}</option>)}
+                    </select>
+                  )}
+                  <select value={linkVendorFilterPermit} onChange={e=>setLinkVendorFilterPermit(e.target.value)}
+                    style={{padding:"0.25rem 0.35rem",borderRadius:"0.4rem",border:`1.5px solid ${linkVendorFilterPermit?C.accent:C.border}`,fontSize:"0.7rem",background:linkVendorFilterPermit?"#eff6ff":"white",color:linkVendorFilterPermit?C.accent:C.text,fontFamily:"inherit"}}>
+                    <option value="">📋 許可種別</option>
+                    {PERMIT_TYPES.map(p=><option key={p} value={p}>{p}</option>)}
+                  </select>
+                </div>
+              </div>
               <div style={{display:"flex",flexDirection:"column",gap:"0.35rem",maxHeight:300,overflowY:"auto"}}>
-                {linkable.length===0&&<div style={{textAlign:"center",padding:"1.5rem",color:C.textMuted,fontSize:"0.82rem"}}>紐付け可能な業者がありません</div>}
-                {linkable.map(v=>{
+                {lvFiltered.length===0&&<div style={{textAlign:"center",padding:"1.5rem",color:C.textMuted,fontSize:"0.82rem"}}>紐付け可能な業者がありません</div>}
+                {lvFiltered.map(v=>{
                   const gl=groupLabel(v);
                   return (
                     <div key={v.id} style={{display:"flex",alignItems:"center",padding:"0.625rem 0.75rem",border:`1.5px solid ${gl?gl.color:C.border}`,borderRadius:"0.75rem",background:gl?gl.color.replace("1fae5","f0fdf4").replace("beafe","eff6ff").replace("e9fe","f5f3ff"):"white",gap:"0.5rem"}}>
@@ -5159,6 +5202,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
               </div>
             )}
           </div>
+
         );
       })()}
       <BulkBar statusMap={MUNI_STATUS} applyFn={applyBulkMuni}
@@ -5221,8 +5265,55 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           </div>
         );
       })()}
+
+      {/* 担当者フィルタ結果リスト（上部集約） */}
+      {muniFilterAssignee&&(()=>{
+        const fMunis = munis.filter(m=>{
+          if(muniFilterAssignee==="__me__") return (m.assigneeIds||[]).some(id=>id===currentUser?.id);
+          return (m.assigneeIds||[]).some(id=>String(id)===muniFilterAssignee);
+        });
+        if(!fMunis.length) return <div style={{textAlign:"center",padding:"1.5rem",color:C.textMuted,background:"white",borderRadius:"0.875rem",border:`1.5px dashed ${C.border}`,fontSize:"0.82rem"}}>該当する自治体がありません</div>;
+        return (
+          <div style={{marginBottom:"0.75rem"}}>
+            <div style={{fontSize:"0.7rem",fontWeight:800,color:C.textSub,marginBottom:"0.4rem",textTransform:"uppercase",letterSpacing:"0.04em"}}>
+              担当案件 {fMunis.length}件
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:"0.3rem"}}>
+              {fMunis.map(m=>{
+                const pref=prefOf(m.prefectureId);
+                const rg=JAPAN_REGIONS.find(r=>prefs.filter(p=>p.region===r.region||(!p.region&&r.prefs.includes(p.name))).some(p=>String(p.id)===String(m.prefectureId)));
+                const ds=DUSTALK_STATUS[m.dustalk]||DUSTALK_STATUS["未展開"];
+                const ts=TREATY_STATUS[m.treatyStatus||"未接触"];
+                const ms=MUNI_STATUS[m.status||"未接触"];
+                const mvs=muniVendors(m.id);
+                return (
+                  <div key={m.id} onClick={()=>{setActivePref(String(m.prefectureId));setActiveMuni(String(m.id));setMuniScreen("muniDetail");setActiveDetail("memo");}}
+                    style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.625rem 0.75rem",background:"white",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,cursor:"pointer",boxShadow:C.shadow}}
+                    onMouseEnter={e=>e.currentTarget.style.borderColor=C.accent}
+                    onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{display:"flex",alignItems:"center",gap:"0.35rem",marginBottom:"0.2rem"}}>
+                        <span style={{fontSize:"0.85rem",fontWeight:700,color:C.text}}>{m.name}</span>
+                        <span style={{fontSize:"0.6rem",color:C.textMuted,flexShrink:0}}>{rg?.region} › {pref?.name}</span>
+                        {m.needFollow&&<span style={{fontSize:"0.58rem",background:"#fef9c3",color:"#854d0e",padding:"0.05rem 0.3rem",borderRadius:999,fontWeight:700,flexShrink:0}}>⭐</span>}
+                      </div>
+                      <div style={{display:"flex",gap:"0.2rem",flexWrap:"wrap"}}>
+                        <span style={{fontSize:"0.6rem",padding:"0.05rem 0.3rem",borderRadius:999,background:ds.bg,color:ds.color,fontWeight:700}}>{ds.icon}{m.dustalk||"未展開"}</span>
+                        {ts&&<span style={{fontSize:"0.6rem",padding:"0.05rem 0.3rem",borderRadius:999,background:ts.bg,color:ts.color,fontWeight:700}}>🤝{m.treatyStatus}</span>}
+                        {ms&&<span style={{fontSize:"0.6rem",padding:"0.05rem 0.3rem",borderRadius:999,background:ms.bg,color:ms.color,fontWeight:700}}>{m.status||"未接触"}</span>}
+                        {mvs.length>0&&<span style={{fontSize:"0.6rem",color:C.textMuted,padding:"0.05rem 0.3rem",background:C.bg,borderRadius:999}}>業者{mvs.length}</span>}
+                      </div>
+                    </div>
+                    <span style={{fontSize:"0.8rem",color:C.textSub,flexShrink:0}}>›</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
       {/* Hierarchy view */}
-      {!muniTopSearch&&<div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
+      {!muniTopSearch&&!muniFilterAssignee&&<div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
         {JAPAN_REGIONS.map(rg=>{
           const rOpen=openRegions[rg.region]===true;
           const rPrefs=prefs.filter(p=>p.region===rg.region||(!p.region&&rg.prefs.includes(p.name)));
