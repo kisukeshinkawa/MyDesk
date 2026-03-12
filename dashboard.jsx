@@ -170,6 +170,41 @@ async function loadData() {
 }
 async function saveData(d) { await sbSet("main", d); }
 
+// ─── SNAPSHOT (BACKUP/RESTORE) ───────────────────────────────────────────────
+async function saveSnapshot(d, label) {
+  try {
+    const ts = new Date().toISOString();
+    const snapKey = "snap_" + ts.replace(/[:.]/g,"-");
+    await sbSet(snapKey, { savedAt: ts, label: label||ts, data: d });
+    const idxRes = await sbGet("snap_index");
+    const idx = Array.isArray(idxRes?._rawData) ? idxRes._rawData : [];
+    const newIdx = [...idx, { key: snapKey, savedAt: ts, label: label||ts }].slice(-20);
+    await sbSet("snap_index", newIdx);
+    localStorage.setItem("mydesk_last_snapshot", Date.now().toString());
+    return snapKey;
+  } catch(e) { console.error("snapshot save failed", e); return null; }
+}
+async function loadSnapshotIndex() {
+  try {
+    const r = await sbGet("snap_index");
+    if(Array.isArray(r?._rawData)) return r._rawData;
+  } catch {}
+  return [];
+}
+async function loadSnapshot(key) {
+  try {
+    const r = await sbGet(key);
+    if(r?._rawData) return r._rawData;
+  } catch {}
+  return null;
+}
+
+// ─── GLOBAL CHANGE LOG HELPER ─────────────────────────────────────────────────
+function globalAddChangeLog(nd, {entityType,entityId,entityName,field,oldVal,newVal,userId}) {
+  const log = {id:Date.now()+Math.random(),entityType,entityId,entityName,field,oldVal:oldVal||"",newVal:newVal||"",userId:userId||null,date:new Date().toISOString()};
+  return {...nd,changeLogs:[...(nd.changeLogs||[]),log]};
+}
+
 async function loadUsers() {
   try {
     const result = await sbGet("users");
@@ -1712,6 +1747,17 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     const prev = allTasks.find(t=>t.id===id);
     let nd = {...data,tasks:allTasks.map(t=>t.id===id?{...t,...ch}:t)};
     const updated = nd.tasks.find(t=>t.id===id);
+    // ── ChangeLog ──
+    const logFields = [["status","ステータス"],["title","タイトル"],["dueDate","期限"],["priority","優先度"]];
+    logFields.forEach(([f,label])=>{
+      if(ch[f]!==undefined && prev?.[f]!==ch[f])
+        nd=globalAddChangeLog(nd,{entityType:"タスク",entityId:id,entityName:updated?.title||prev?.title||"",field:label,oldVal:String(prev?.[f]||""),newVal:String(ch[f]||""),userId:uid});
+    });
+    if(ch.assignees && JSON.stringify(prev?.assignees||[])!==JSON.stringify(ch.assignees||[])) {
+      const oldNames=(prev?.assignees||[]).map(i=>users.find(u=>u.id===i)?.name||i).join(",");
+      const newNames=(ch.assignees||[]).map(i=>users.find(u=>u.id===i)?.name||i).join(",");
+      nd=globalAddChangeLog(nd,{entityType:"タスク",entityId:id,entityName:updated?.title||prev?.title||"",field:"担当者",oldVal:oldNames,newVal:newNames,userId:uid});
+    }
     // Notify on status change
     if(ch.status && prev?.status !== ch.status) {
       const toIds=(updated.assignees||[]).filter(i=>i!==uid);
@@ -1728,6 +1774,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
   const _doAddTask = (f,pjId=null) => {
     const item={id:Date.now(),...f,projectId:pjId,createdBy:uid,comments:[],memos:[],chat:[],createdAt:new Date().toISOString()};
     let nd={...data,tasks:[...allTasks,item]};
+    nd=globalAddChangeLog(nd,{entityType:"タスク",entityId:item.id,entityName:item.title||"",field:"登録",oldVal:"",newVal:"新規作成",userId:uid});
     // Auto-add task assignees to project members
     if(pjId){
       const pj=allProjects.find(p=>p.id===pjId);
@@ -1765,10 +1812,16 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     }
     _doAddTask(f, pjId);
   };
-  const deleteTask = id => { const u={...data,tasks:allTasks.filter(t=>t.id!==id)}; setData(u); saveData(u); };
+  const deleteTask = id => {
+    const t=allTasks.find(x=>x.id===id);
+    let u={...data,tasks:allTasks.filter(t=>t.id!==id)};
+    u=globalAddChangeLog(u,{entityType:"タスク",entityId:id,entityName:t?.title||"",field:"削除",oldVal:t?.title||"",newVal:"",userId:uid});
+    setData(u); saveData(u);
+  };
   const _doAddProject = (f) => {
     const item={id:Date.now(),...f,createdBy:uid,memos:[],chat:[],createdAt:new Date().toISOString()};
     let nd={...data,projects:[...allProjects,item]};
+    nd=globalAddChangeLog(nd,{entityType:"プロジェクト",entityId:item.id,entityName:item.name||"",field:"登録",oldVal:"",newVal:"新規作成",userId:uid});
     const toIds=(f.members||[]).filter(i=>i!==uid);
     if(toIds.length) nd=addNotif(nd,{type:"task_assign",entityType:"project",title:`「${item.name}」プロジェクトのメンバーに追加されました`,body:"",toUserIds:toIds,fromUserId:uid,entityId:item.id,entityType:"project"});
     saveWithPush(nd, data.notifications);
@@ -1792,9 +1845,20 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     }
     _doAddProject(f);
   };
-  const updateProject = (id,ch) => { const u={...data,projects:allProjects.map(p=>p.id===id?{...p,...ch}:p)}; setData(u); saveData(u); };
+  const updateProject = (id,ch) => {
+    const prev=allProjects.find(p=>p.id===id);
+    let u={...data,projects:allProjects.map(p=>p.id===id?{...p,...ch}:p)};
+    const logFields=[["status","ステータス"],["name","プロジェクト名"],["dueDate","期限"]];
+    logFields.forEach(([f,label])=>{
+      if(ch[f]!==undefined && prev?.[f]!==ch[f])
+        u=globalAddChangeLog(u,{entityType:"プロジェクト",entityId:id,entityName:ch.name||prev?.name||"",field:label,oldVal:String(prev?.[f]||""),newVal:String(ch[f]||""),userId:uid});
+    });
+    setData(u); saveData(u);
+  };
   const deleteProject = id => {
-    const u={...data,projects:allProjects.filter(p=>p.id!==id),tasks:allTasks.filter(t=>t.projectId!==id)};
+    const pj=allProjects.find(p=>p.id===id);
+    let u={...data,projects:allProjects.filter(p=>p.id!==id),tasks:allTasks.filter(t=>t.projectId!==id)};
+    u=globalAddChangeLog(u,{entityType:"プロジェクト",entityId:id,entityName:pj?.name||"",field:"削除",oldVal:pj?.name||"",newVal:"",userId:uid});
     setData(u); saveData(u);
   };
 
@@ -2950,6 +3014,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   // CSV import preview/error state (must be top-level, not inside IIFE)
   const [importPreview,setImportPreview]=useState(null);
   const [importErr,setImportErr]=useState("");
+  const [impMode,setImpMode]=useState("csv");
+  const [textInput,setTextInput]=useState("");
   // duplicate detection modal
   const [dupModal,setDupModal]=useState(null); // {existing, incoming, onKeepBoth, onSave}
   // scroll position tracking for back navigation
@@ -4340,11 +4406,9 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             setSheet("importDone");
           };
           return (
-            <Sheet title="企業をインポート" onClose={()=>{setSheet(null);setImportPreview(null);setImportErr("");setImportMode?.("csv");}}>
+            <Sheet title="企業をインポート" onClose={()=>{setSheet(null);setImportPreview(null);setImportErr("");setImpMode("csv");setTextInput("");}}>
               {/* Mode toggle: CSV / テキスト */}
               {(()=>{
-                const [impMode,setImpMode]=React.useState("csv");
-                const [textInput,setTextInput]=React.useState("");
                 const handleTextParse=()=>{
                   const lines=textInput.split(/[\n,、，]+/).map(l=>normalizeImport(l)).filter(Boolean);
                   const mapped=lines.map(name=>({name,status:"未接触",assigneeName:"",notes:"",phone:"",email:"",address:""}));
@@ -5809,14 +5873,55 @@ function PushTestPanel({ currentUser, users }) {
 }
 
 // ─── MYPAGE VIEW ─────────────────────────────────────────────────────────────
-function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pushEnabled, setPushEnabled, subscribePush, unsubscribePush}) {
+function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pushEnabled, setPushEnabled, subscribePush, unsubscribePush, data, setData}) {
   const [profileForm, setProfileForm] = useState({name:currentUser?.name||"",email:currentUser?.email||"",phone:currentUser?.phone||""});
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileMsg, setProfileMsg] = useState("");
   const [pwForm, setPwForm] = useState({cur:"",next:"",next2:""});
   const [pwMsg, setPwMsg] = useState("");
-  const [section, setSection] = useState("profile"); // profile | links | account
+  const [section, setSection] = useState("profile"); // profile | links | contract | account | backup | actlog
   const [contractModal, setContractModal] = useState(null); // null | 'upload' | 'generate'
+  // backup/restore state
+  const [snapshots, setSnapshots] = useState([]);
+  const [snapLoading, setSnapLoading] = useState(false);
+  const [snapMsg, setSnapMsg] = useState("");
+  const [restoreConfirm, setRestoreConfirm] = useState(null); // snapshot object to restore
+  // activity log state
+  const [logFilter, setLogFilter] = useState("all"); // all | タスク | プロジェクト | 企業 | 業者 | 自治体
+
+  const loadSnaps = async () => {
+    setSnapLoading(true);
+    const idx = await loadSnapshotIndex();
+    setSnapshots([...idx].reverse()); // newest first
+    setSnapLoading(false);
+  };
+
+  const doBackup = async () => {
+    setSnapMsg("保存中...");
+    const label = new Date().toLocaleString("ja-JP");
+    const key = await saveSnapshot(data, label);
+    if(key) {
+      setSnapMsg("✅ バックアップを保存しました");
+      loadSnaps();
+    } else {
+      setSnapMsg("❌ 保存に失敗しました");
+    }
+    setTimeout(()=>setSnapMsg(""),4000);
+  };
+
+  const doRestore = async (snap) => {
+    setSnapMsg("復元中...");
+    const s = await loadSnapshot(snap.key);
+    if(s?.data) {
+      setData({...s.data});
+      saveData(s.data);
+      setSnapMsg("✅ データを復元しました（"+snap.label+"）");
+      setRestoreConfirm(null);
+    } else {
+      setSnapMsg("❌ 復元に失敗しました");
+    }
+    setTimeout(()=>setSnapMsg(""),5000);
+  };
 
   const saveProfile = async () => {
     if(!profileForm.name.trim()) return;
@@ -5848,10 +5953,12 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
 
 
   const menuItems = [
-    {id:"profile",  icon:"👤", label:"プロフィール設定"},
-    {id:"links",    icon:"🔗", label:"外部サービス連携"},
-    {id:"contract", icon:"📜", label:"契約書確認"},
-    {id:"account",  icon:"🔑", label:"パスワード変更"},
+    {id:"profile",  icon:"👤", label:"プロフィール"},
+    {id:"links",    icon:"🔗", label:"外部連携"},
+    {id:"contract", icon:"📜", label:"契約書"},
+    {id:"account",  icon:"🔑", label:"パスワード"},
+    {id:"backup",   icon:"💾", label:"バックアップ"},
+    {id:"actlog",   icon:"📋", label:"活動ログ"},
   ];
 
   const isIosMobile = typeof navigator !== "undefined" && /iphone|ipad|ipod/i.test(navigator.userAgent);
@@ -6131,6 +6238,104 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
           </button>
         </div>
       )}
+
+      {/* ── バックアップ・復元 ── */}
+      {section==="backup"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:"0.75rem"}}>
+          <div style={{background:"white",borderRadius:"1rem",padding:"1.25rem",border:"1px solid "+C.border,boxShadow:C.shadow}}>
+            <div style={{fontWeight:800,fontSize:"0.9rem",color:C.text,marginBottom:"0.5rem"}}>💾 バックアップ</div>
+            <div style={{fontSize:"0.75rem",color:C.textMuted,marginBottom:"0.875rem"}}>現在のデータをスナップショットとして保存します。最大20件保持されます。</div>
+            {snapMsg&&<div style={{marginBottom:"0.75rem",fontSize:"0.82rem",color:snapMsg.startsWith("✅")?"#059669":snapMsg.startsWith("❌")?"#dc2626":"#1d4ed8",background:snapMsg.startsWith("✅")?"#d1fae5":snapMsg.startsWith("❌")?"#fee2e2":"#dbeafe",borderRadius:"0.5rem",padding:"0.5rem 0.75rem"}}>{snapMsg}</div>}
+            <button onClick={doBackup}
+              style={{width:"100%",padding:"0.75rem",borderRadius:"0.75rem",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.88rem",cursor:"pointer",fontFamily:"inherit",marginBottom:"1rem"}}>
+              💾 今すぐバックアップ
+            </button>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.5rem"}}>
+              <div style={{fontWeight:700,fontSize:"0.82rem",color:C.text}}>📂 保存済みバックアップ</div>
+              <button onClick={loadSnaps} style={{background:"none",border:"1px solid "+C.border,borderRadius:"0.5rem",padding:"0.25rem 0.625rem",fontSize:"0.72rem",color:C.textSub,cursor:"pointer",fontFamily:"inherit"}}>
+                {snapLoading?"読込中...":"更新"}
+              </button>
+            </div>
+            {!snapshots.length&&!snapLoading&&(
+              <div style={{textAlign:"center",padding:"1.5rem 0",color:C.textMuted,fontSize:"0.8rem"}}>バックアップがありません。上のボタンから保存してください。</div>
+            )}
+            {snapshots.map((s,i)=>(
+              <div key={s.key||i} style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.625rem 0.75rem",borderRadius:"0.625rem",border:"1px solid "+C.borderLight,marginBottom:"0.375rem",background:C.bg}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:"0.8rem",fontWeight:700,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.label||s.savedAt}</div>
+                  <div style={{fontSize:"0.68rem",color:C.textMuted}}>{s.savedAt?new Date(s.savedAt).toLocaleString("ja-JP"):""}</div>
+                </div>
+                <button onClick={()=>setRestoreConfirm(s)}
+                  style={{flexShrink:0,padding:"0.35rem 0.75rem",borderRadius:"0.5rem",border:"1px solid #d97706",background:"#fef3c7",color:"#92400e",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                  復元
+                </button>
+              </div>
+            ))}
+          </div>
+          {/* 復元確認モーダル */}
+          {restoreConfirm&&(
+            <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
+              <div style={{background:"white",borderRadius:"1.25rem",padding:"1.5rem",maxWidth:340,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
+                <div style={{fontSize:"2rem",textAlign:"center",marginBottom:"0.75rem"}}>⚠️</div>
+                <div style={{fontWeight:800,fontSize:"0.95rem",color:C.text,marginBottom:"0.5rem",textAlign:"center"}}>このバックアップを復元しますか？</div>
+                <div style={{fontSize:"0.8rem",color:C.textMuted,marginBottom:"0.5rem",textAlign:"center"}}>{restoreConfirm.label}</div>
+                <div style={{fontSize:"0.75rem",color:"#dc2626",marginBottom:"1.25rem",textAlign:"center",background:"#fee2e2",borderRadius:"0.5rem",padding:"0.5rem"}}>現在のデータは上書きされます。先にバックアップを取ることをお勧めします。</div>
+                <div style={{display:"flex",gap:"0.625rem"}}>
+                  <button onClick={()=>setRestoreConfirm(null)} style={{flex:1,padding:"0.7rem",borderRadius:"0.75rem",border:"1px solid "+C.border,background:"white",color:C.text,fontWeight:700,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>キャンセル</button>
+                  <button onClick={()=>doRestore(restoreConfirm)} style={{flex:2,padding:"0.7rem",borderRadius:"0.75rem",border:"none",background:"#dc2626",color:"white",fontWeight:700,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>復元する</button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── 活動ログ ── */}
+      {section==="actlog"&&(()=>{
+        const logs = [...(data?.changeLogs||[])].sort((a,b)=>new Date(b.date)-new Date(a.date));
+        const types = ["all","タスク","プロジェクト","企業","業者","自治体"];
+        const filtered = logFilter==="all" ? logs : logs.filter(l=>l.entityType===logFilter);
+        const typeColor = {
+          "タスク":{bg:"#dbeafe",color:"#1d4ed8"},
+          "プロジェクト":{bg:"#ede9fe",color:"#7c3aed"},
+          "企業":{bg:"#d1fae5",color:"#059669"},
+          "業者":{bg:"#fef3c7",color:"#d97706"},
+          "自治体":{bg:"#fce7f3",color:"#db2777"},
+        };
+        return (
+          <div style={{display:"flex",flexDirection:"column",gap:"0.75rem"}}>
+            <div style={{display:"flex",gap:"0.375rem",flexWrap:"wrap"}}>
+              {types.map(t=>(
+                <button key={t} onClick={()=>setLogFilter(t)}
+                  style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:"0.73rem",fontWeight:logFilter===t?800:500,background:logFilter===t?C.accent:"white",color:logFilter===t?"white":C.textSub,boxShadow:C.shadow}}>
+                  {t==="all"?"すべて":t}
+                </button>
+              ))}
+            </div>
+            <div style={{fontSize:"0.72rem",color:C.textMuted}}>{filtered.length}件のログ</div>
+            {!filtered.length&&<div style={{textAlign:"center",padding:"2rem",color:C.textMuted,fontSize:"0.82rem"}}>ログがありません</div>}
+            {filtered.slice(0,200).map((log,i)=>{
+              const user = users.find(u=>u.id===log.userId);
+              const tc = typeColor[log.entityType]||{bg:"#f1f5f9",color:"#475569"};
+              return (
+                <div key={log.id||i} style={{background:"white",borderRadius:"0.875rem",padding:"0.75rem 1rem",border:"1px solid "+C.borderLight,boxShadow:C.shadow}}>
+                  <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.3rem",flexWrap:"wrap"}}>
+                    <span style={{fontSize:"0.68rem",background:tc.bg,color:tc.color,borderRadius:999,padding:"0.1rem 0.5rem",fontWeight:700,flexShrink:0}}>{log.entityType}</span>
+                    <span style={{fontSize:"0.8rem",fontWeight:700,color:C.text,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{log.entityName||"—"}</span>
+                    <span style={{fontSize:"0.65rem",color:C.textMuted,flexShrink:0}}>{log.date?new Date(log.date).toLocaleString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"}):""}</span>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:"0.375rem",flexWrap:"wrap"}}>
+                    <span style={{fontSize:"0.72rem",color:C.textMuted,background:C.bg,borderRadius:"0.375rem",padding:"0.15rem 0.5rem"}}>{log.field}</span>
+                    {log.oldVal&&<><span style={{fontSize:"0.72rem",color:"#dc2626",textDecoration:"line-through",maxWidth:100,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{log.oldVal}</span><span style={{fontSize:"0.72rem",color:C.textMuted}}>→</span></>}
+                    <span style={{fontSize:"0.72rem",color:"#059669",fontWeight:600,maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{log.newVal||"—"}</span>
+                    {user&&<span style={{fontSize:"0.65rem",color:C.textMuted,marginLeft:"auto"}}>👤 {user.name}</span>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -7946,7 +8151,7 @@ export default function App() {
               onNavigateToMuni={(id,prefId)=>{setNavTarget({type:"muni",id,prefId});persistTab("md_tab","sales",setTab);}}
               salesNavTarget={salesNavTarget} clearSalesNavTarget={()=>setSalesNavTarget(null)}/>}
             {tab==="analytics" && <AnalyticsView data={data} setData={setData} currentUser={currentUser} users={users} saveWithPush={saveWithPush}/>}
-            {tab==="mypage"    && <MyPageView currentUser={currentUser} setCurrentUser={setCurrentUser} users={users} setUsers={setUsers} onLogout={handleLogout} pushEnabled={pushEnabled} setPushEnabled={setPushEnabled} subscribePush={subscribePush} unsubscribePush={unsubscribePush}/>}
+            {tab==="mypage"    && <MyPageView currentUser={currentUser} setCurrentUser={setCurrentUser} users={users} setUsers={setUsers} onLogout={handleLogout} pushEnabled={pushEnabled} setPushEnabled={setPushEnabled} subscribePush={subscribePush} unsubscribePush={unsubscribePush} data={data} setData={setData}/>}
           </ErrorBoundary>
         </div>
       </div>
