@@ -169,6 +169,16 @@ async function loadData() {
   return { data: INIT, updated_at: null };
 }
 async function saveData(d) {
+  // ── データ保護ガード ──────────────────────────────────────────────
+  if (!d || typeof d !== "object" || Array.isArray(d)) {
+    console.error("MyDesk: saveData rejected invalid data", d); return;
+  }
+  // INIT のキーを一つも持たない場合は書き込まない（構造破壊を防ぐ）
+  const initKeys = Object.keys(INIT);
+  const hasAnyKey = initKeys.some(k => k in d);
+  if (!hasAnyKey) {
+    console.error("MyDesk: saveData rejected — no INIT keys found", d); return;
+  }
   await sbSet("main", d);
   // 自動スナップショット（3分に1回スロットリング、非同期・非ブロッキング）
   const now = Date.now();
@@ -1721,14 +1731,33 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
   const [tChatIn,setTChatIn]= useState({});
   const [tMemoEdit,setTMemoEdit]= useState(null); // {entityId,memoId,text}
   const [tChatEdit,setTChatEdit]= useState(null); // {entityId,chatId,text}
-  const [doneOpenList,setDoneOpenList]= useState(false);  // タスクリスト完了折り畳み
-  const [doneOpenPj,setDoneOpenPj]  = useState(false);   // プロジェクト内完了折り畳み
+
   const [taskDupModal,setTaskDupModal] = useState(null);  // 重複確認モーダル
   const [showMineOnly, setShowMineOnly] = React.useState(false);
 
+  // ── 折りたたみ状態（localStorage永続化）────────────────────────────────
+  const [pjSectionOpen,  setPjSectionOpen]  = useState(()=>{ try{ return JSON.parse(localStorage.getItem("md_pjSectionOpen") ??"true"); }catch{ return true; }});
+  const [taskSectionOpen,setTaskSectionOpen]= useState(()=>{ try{ return JSON.parse(localStorage.getItem("md_taskSectionOpen")??"true"); }catch{ return true; }});
+  const [collapsedPjs,   setCollapsedPjs]   = useState(()=>{ try{ return new Set(JSON.parse(localStorage.getItem("md_collapsedPjs")||"[]")); }catch{ return new Set(); }});
+  const [collapsedStats, setCollapsedStats] = useState(()=>{ try{ return new Set(JSON.parse(localStorage.getItem("md_collapsedStats")||"[]")); }catch{ return new Set(); }});
+
+  const togglePjSection  = () => setPjSectionOpen(v=>{ const n=!v; localStorage.setItem("md_pjSectionOpen", JSON.stringify(n)); return n; });
+  const toggleTaskSection= () => setTaskSectionOpen(v=>{ const n=!v; localStorage.setItem("md_taskSectionOpen", JSON.stringify(n)); return n; });
+  const togglePj = (id) => setCollapsedPjs(prev=>{ const n=new Set(prev); n.has(id)?n.delete(id):n.add(id); localStorage.setItem("md_collapsedPjs",JSON.stringify([...n])); return n; });
+  const toggleStat = (s) => setCollapsedStats(prev=>{ const n=new Set(prev); n.has(s)?n.delete(s):n.add(s); localStorage.setItem("md_collapsedStats",JSON.stringify([...n])); return n; });
+
   // ── ローカル保存＋プッシュ（App に依存しない自己完結版）────────────────
   const saveWithPush = React.useCallback((nd, notifsBefore) => {
-    if (!nd || typeof nd !== "object") { console.warn("MyDesk: saveWithPush called with invalid data"); return; }
+    // ── データ保護ガード ──────────────────────────────────────────────────
+    if (!nd || typeof nd !== "object" || Array.isArray(nd)) {
+      console.error("MyDesk: saveWithPush rejected invalid data", nd); return;
+    }
+    // 主要キーが全て消えているような空データは保存しない
+    const hasContent = ["tasks","projects","companies","vendors","municipalities"].some(k=>Array.isArray(nd[k])&&nd[k].length>0);
+    const currentHasContent = ["tasks","projects","companies","vendors","municipalities"].some(k=>Array.isArray(data[k])&&data[k].length>0);
+    if(currentHasContent && !hasContent) {
+      console.error("MyDesk: saveWithPush rejected — would wipe existing data", nd); return;
+    }
     setData(nd);
     window.__myDeskLastSave = Date.now(); // 競合防止タグ
     saveData(nd); // グローバル関数
@@ -2229,14 +2258,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
 
   const activePj   = allProjects.find(p=>p.id===activePjId);
   const activeTask = allTasks.find(t=>t.id===activeTaskId);
-
-  const myVisibleTasks = showMineOnly ? visibleTasks.filter(t=>(t.assignees||[]).includes(uid)||t.createdBy===uid) : visibleTasks;
-    const standaloneTasks = myVisibleTasks.filter(t=>!t.projectId);
-  const activeStandalone = standaloneTasks.filter(t=>t.status!=="完了");
-  const doneStandalone   = standaloneTasks.filter(t=>t.status==="完了");
   const pjTasks    = activePj ? visibleTasks.filter(t=>t.projectId===activePjId) : [];
-  const activePjTasks = pjTasks.filter(t=>t.status!=="完了");
-  const donePjTasks   = pjTasks.filter(t=>t.status==="完了");
 
   // ── TASK DETAIL ────────────────────────────────────────────────────────────
   if (screen==="taskDetail" && activeTask) {
@@ -2402,17 +2424,18 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
                 const group=pjTasks.filter(t=>t.status===status);
                 if(!group.length) return null;
                 const m=STATUS_META[status];
-                const isDone = status==="完了";
+                const statKey=`pjDetail_${activePjId}_${status}`;
+                const statCollapsed=collapsedStats.has(statKey);
                 return (
                   <React.Fragment key={status}>
-                    <div onClick={isDone?()=>setDoneOpenPj(v=>!v):undefined}
-                      style={{padding:"0.35rem 1rem",background:m.bg,borderTop:`1px solid ${C.borderLight}`,display:"flex",alignItems:"center",gap:"0.4rem",cursor:isDone?"pointer":undefined}}>
+                    <div onClick={()=>toggleStat(statKey)}
+                      style={{padding:"0.35rem 1rem",background:m.bg,borderTop:`1px solid ${C.borderLight}`,display:"flex",alignItems:"center",gap:"0.4rem",cursor:"pointer"}}>
                       <span style={{width:7,height:7,borderRadius:"50%",background:m.dot,display:"inline-block",flexShrink:0}}/>
                       <span style={{fontSize:"0.7rem",fontWeight:700,color:m.color,letterSpacing:"0.04em"}}>{status}</span>
                       <span style={{fontSize:"0.7rem",color:m.color,opacity:0.7,marginLeft:"auto"}}>{group.length}件</span>
-                      {isDone&&<span style={{fontSize:"0.7rem",color:m.color,marginLeft:"0.25rem"}}>{doneOpenPj?"▲":"▼"}</span>}
+                      <span style={{fontSize:"0.7rem",color:m.color,marginLeft:"0.25rem"}}>{statCollapsed?"▶":"▼"}</span>
                     </div>
-                    {(!isDone||doneOpenPj)&&group.map(t=>(
+                    {!statCollapsed&&group.map(t=>(
                       <TaskRow key={t.id} task={t} users={users}
                         onToggle={()=>updateTask(t.id,{status:t.status==="完了"?"未着手":"完了"})}
                         onStatusChange={s=>updateTask(t.id,{status:s})}
@@ -2460,8 +2483,21 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     const d=new Date(t.dueDate); d.setHours(0,0,0,0);
     return (d-today)/(1000*60*60*24)<=2;
   }).sort((a,b)=>new Date(a.dueDate)-new Date(b.dueDate));
+
+  // セクションヘッダー共通スタイル
+  const SectionHeader = ({label,count,open,onToggle,color="#374151",bg="#f8fafc",extra=null})=>(
+    <div onClick={onToggle}
+      style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.55rem 1rem",background:bg,borderBottom:`1px solid ${C.borderLight}`,cursor:"pointer",userSelect:"none"}}>
+      <span style={{fontSize:"0.72rem",fontWeight:800,color,textTransform:"uppercase",letterSpacing:"0.05em",flex:1}}>{label}</span>
+      {extra}
+      {count!=null&&<span style={{fontSize:"0.68rem",background:C.borderLight,color:C.textMuted,borderRadius:999,padding:"0.05rem 0.45rem",fontWeight:700}}>{count}</span>}
+      <span style={{fontSize:"0.72rem",color:C.textMuted,marginLeft:"0.25rem"}}>{open?"▲":"▼"}</span>
+    </div>
+  );
+
   return (
     <div>
+      {/* 期限アラート */}
       {urgentTasks.length>0&&(
         <div style={{marginBottom:"1rem",background:"#fff7ed",border:"1.5px solid #fed7aa",borderRadius:"0.875rem",overflow:"hidden"}}>
           <div style={{padding:"0.6rem 1rem",display:"flex",alignItems:"center",gap:"0.5rem",borderBottom:"1px solid #fed7aa"}}>
@@ -2489,7 +2525,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
           })}
         </div>
       )}
-      <StatusCountBar tasks={standaloneTasks}/>
+
       <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.75rem",flexWrap:"wrap"}}>
         <button onClick={()=>setShowMineOnly(p=>!p)}
           style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"1.5px solid "+(showMineOnly?"#2563eb":"#e2e8f0"),background:showMineOnly?"#dbeafe":"white",color:showMineOnly?"#1d4ed8":"#64748b",fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit"}}>
@@ -2500,48 +2536,144 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
         <Btn size="sm" onClick={()=>setSheet("addTask")}>＋ タスク</Btn>
         <Btn size="sm" variant="secondary" onClick={()=>setSheet("addProject")}>＋ プロジェクト</Btn>
       </div>
-      <Card style={{overflow:"hidden",marginBottom:"1.5rem"}}>
-        {visibleProjects.length===0&&activeStandalone.length===0&&doneStandalone.length===0&&(
-          <div style={{padding:"3rem 1rem",textAlign:"center",color:C.textMuted}}>
-            <div style={{fontSize:"2.5rem",marginBottom:"0.75rem"}}>📋</div>
-            <div style={{fontSize:"0.9rem",fontWeight:600,marginBottom:"0.4rem"}}>まだタスクがありません</div>
-            <div style={{fontSize:"0.8rem"}}>「＋ タスク」または「🗂 プロジェクト」から追加</div>
-          </div>
-        )}
-        {visibleProjects.map(pj=>(
-          <ProjectRow key={pj.id} project={pj}
-            tasks={visibleTasks.filter(t=>t.projectId===pj.id)}
-            onClick={()=>{setActivePjId(pj.id);setScreen("projectDetail");}}/>
-        ))}
-        {visibleProjects.length>0&&standaloneTasks.length>0&&(
-          <div style={{padding:"0.4rem 1rem",background:C.bg,borderBottom:`1px solid ${C.borderLight}`}}>
-            <span style={{fontSize:"0.7rem",fontWeight:700,color:C.textMuted,textTransform:"uppercase",letterSpacing:"0.05em"}}>タスク</span>
-          </div>
-        )}
-        {STATUS_OPTIONS.map(status=>{
-          const group=standaloneTasks.filter(t=>t.status===status);
-          if(!group.length) return null;
-          const m=STATUS_META[status];
-          const isDone = status==="完了";
-          return (
-            <React.Fragment key={status}>
-              <div onClick={isDone?()=>setDoneOpenList(v=>!v):undefined}
-                style={{padding:"0.35rem 1rem",background:m.bg,borderTop:`1px solid ${C.borderLight}`,display:"flex",alignItems:"center",gap:"0.4rem",cursor:isDone?"pointer":undefined}}>
-                <span style={{width:7,height:7,borderRadius:"50%",background:m.dot,display:"inline-block",flexShrink:0}}/>
-                <span style={{fontSize:"0.7rem",fontWeight:700,color:m.color,letterSpacing:"0.04em"}}>{status}</span>
-                <span style={{fontSize:"0.7rem",color:m.color,opacity:0.7,marginLeft:"auto"}}>{group.length}件</span>
-                {isDone&&<span style={{fontSize:"0.7rem",color:m.color,marginLeft:"0.25rem"}}>{doneOpenList?"▲":"▼"}</span>}
+
+      {/* ── プロジェクトセクション ── */}
+      {visibleProjects.length>0&&(
+        <Card style={{overflow:"hidden",marginBottom:"0.75rem"}}>
+          <SectionHeader
+            label={`🗂 プロジェクト`}
+            count={visibleProjects.length}
+            open={pjSectionOpen}
+            onToggle={togglePjSection}
+            color={C.accent}
+            bg={C.accentBg}
+          />
+          {pjSectionOpen&&visibleProjects.map(pj=>{
+            const pjCollapsed = collapsedPjs.has(pj.id);
+            const pjTasks = visibleTasks.filter(t=>t.projectId===pj.id);
+            const done = pjTasks.filter(t=>t.status==="完了").length;
+            const pct  = pjTasks.length>0?Math.round((done/pjTasks.length)*100):0;
+            return (
+              <React.Fragment key={pj.id}>
+                {/* プロジェクト行（折りたたみトグル + 詳細へのリンク） */}
+                <div style={{display:"flex",alignItems:"center",gap:"0",borderBottom:`1px solid ${C.borderLight}`,background:"white"}}>
+                  {/* 折りたたみトグル */}
+                  <button onClick={e=>{e.stopPropagation();togglePj(pj.id);}}
+                    style={{flexShrink:0,width:36,alignSelf:"stretch",display:"flex",alignItems:"center",justifyContent:"center",background:"none",border:"none",borderRight:`1px solid ${C.borderLight}`,cursor:"pointer",color:C.textMuted,fontSize:"0.75rem"}}>
+                    {pjCollapsed?"▶":"▼"}
+                  </button>
+                  {/* プロジェクト情報（クリックで詳細へ） */}
+                  <div onClick={()=>{setActivePjId(pj.id);setScreen("projectDetail");}}
+                    style={{flex:1,display:"flex",alignItems:"center",gap:"0.75rem",padding:"0.75rem 1rem",cursor:"pointer",minWidth:0}}>
+                    {pj.isPrivate&&<span style={{fontSize:"0.65rem",color:"#dc2626",flexShrink:0}}>🔒</span>}
+                    <span style={{fontSize:"1.1rem",flexShrink:0}}>🗂</span>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:"0.88rem",fontWeight:700,color:C.text,display:"flex",alignItems:"center",gap:"0.4rem"}}>
+                        {pj.name}
+                        {pj.status==="完了"&&<span style={{fontSize:"0.65rem",background:"#d1fae5",color:"#059669",borderRadius:999,padding:"0.05rem 0.4rem",fontWeight:700}}>完了</span>}
+                      </div>
+                      {pjTasks.length>0&&(
+                        <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginTop:"0.25rem"}}>
+                          <div style={{flex:1,maxWidth:100,height:3,background:C.borderLight,borderRadius:999,overflow:"hidden"}}>
+                            <div style={{height:"100%",width:`${pct}%`,background:pct===100?"#059669":C.accent,borderRadius:999}}/>
+                          </div>
+                          <span style={{fontSize:"0.68rem",color:C.textMuted}}>{done}/{pjTasks.length}</span>
+                        </div>
+                      )}
+                    </div>
+                    <span style={{color:C.textMuted,fontSize:"0.9rem",flexShrink:0}}>›</span>
+                  </div>
+                </div>
+                {/* プロジェクト内タスク（折りたたみ時は非表示） */}
+                {!pjCollapsed&&pjTasks.length>0&&STATUS_OPTIONS.map(status=>{
+                  const group=pjTasks.filter(t=>t.status===status);
+                  if(!group.length) return null;
+                  const m=STATUS_META[status];
+                  const statKey=`pj_${pj.id}_${status}`;
+                  const statCollapsed=collapsedStats.has(statKey);
+                  return (
+                    <React.Fragment key={status}>
+                      <div onClick={()=>toggleStat(statKey)}
+                        style={{padding:"0.3rem 1rem 0.3rem 2.5rem",background:m.bg,borderTop:`1px solid ${C.borderLight}`,display:"flex",alignItems:"center",gap:"0.4rem",cursor:"pointer"}}>
+                        <span style={{width:6,height:6,borderRadius:"50%",background:m.dot,display:"inline-block",flexShrink:0}}/>
+                        <span style={{fontSize:"0.68rem",fontWeight:700,color:m.color,letterSpacing:"0.04em"}}>{status}</span>
+                        <span style={{fontSize:"0.68rem",color:m.color,opacity:0.7,marginLeft:"auto"}}>{group.length}件</span>
+                        <span style={{fontSize:"0.65rem",color:m.color}}>{statCollapsed?"▶":"▼"}</span>
+                      </div>
+                      {!statCollapsed&&group.map(t=>(
+                        <div key={t.id} style={{paddingLeft:36}}>
+                          <TaskRow task={t} users={users}
+                            onToggle={()=>updateTask(t.id,{status:t.status==="完了"?"未着手":"完了"})}
+                            onStatusChange={s=>updateTask(t.id,{status:s})}
+                            onClick={()=>{setActiveTaskId(t.id);setFromProject(pj.id);setScreen("taskDetail");setTaskTab("info");}}/>
+                        </div>
+                      ))}
+                    </React.Fragment>
+                  );
+                })}
+                {!pjCollapsed&&pjTasks.length===0&&(
+                  <div style={{padding:"0.6rem 1rem 0.6rem 2.5rem",fontSize:"0.78rem",color:C.textMuted,borderTop:`1px solid ${C.borderLight}`,background:"#fafafa"}}>タスクなし</div>
+                )}
+              </React.Fragment>
+            );
+          })}
+        </Card>
+      )}
+
+      {/* ── スタンドアローンタスクセクション ── */}
+      {(()=>{
+        const myVisibleTasks = showMineOnly ? visibleTasks.filter(t=>(t.assignees||[]).includes(uid)||t.createdBy===uid) : visibleTasks;
+        const standaloneTasks = myVisibleTasks.filter(t=>!t.projectId);
+        if(!standaloneTasks.length&&visibleProjects.length>0) return null;
+        return (
+          <Card style={{overflow:"hidden",marginBottom:"1.5rem"}}>
+            {standaloneTasks.length===0&&visibleProjects.length===0&&(
+              <div style={{padding:"3rem 1rem",textAlign:"center",color:C.textMuted}}>
+                <div style={{fontSize:"2.5rem",marginBottom:"0.75rem"}}>📋</div>
+                <div style={{fontSize:"0.9rem",fontWeight:600,marginBottom:"0.4rem"}}>まだタスクがありません</div>
+                <div style={{fontSize:"0.8rem"}}>「＋ タスク」または「＋ プロジェクト」から追加</div>
               </div>
-              {(!isDone||doneOpenList)&&group.map(t=>(
-                <TaskRow key={t.id} task={t} users={users}
-                  onToggle={()=>updateTask(t.id,{status:t.status==="完了"?"未着手":"完了"})}
-                  onStatusChange={s=>updateTask(t.id,{status:s})}
-                  onClick={()=>{setActiveTaskId(t.id);setFromProject(null);setScreen("taskDetail");}}/>
-              ))}
-            </React.Fragment>
-          );
-        })}
-      </Card>
+            )}
+            {standaloneTasks.length>0&&(
+              <>
+                <SectionHeader
+                  label="📋 タスク"
+                  count={standaloneTasks.length}
+                  open={taskSectionOpen}
+                  onToggle={toggleTaskSection}
+                  color="#374151"
+                  bg={C.bg}
+                />
+                {taskSectionOpen&&STATUS_OPTIONS.map(status=>{
+                  const group=standaloneTasks.filter(t=>t.status===status);
+                  if(!group.length) return null;
+                  const m=STATUS_META[status];
+                  const statKey=`standalone_${status}`;
+                  const statCollapsed=collapsedStats.has(statKey);
+                  return (
+                    <React.Fragment key={status}>
+                      <div onClick={()=>toggleStat(statKey)}
+                        style={{padding:"0.35rem 1rem",background:m.bg,borderTop:`1px solid ${C.borderLight}`,display:"flex",alignItems:"center",gap:"0.4rem",cursor:"pointer"}}>
+                        <span style={{width:7,height:7,borderRadius:"50%",background:m.dot,display:"inline-block",flexShrink:0}}/>
+                        <span style={{fontSize:"0.7rem",fontWeight:700,color:m.color,letterSpacing:"0.04em"}}>{status}</span>
+                        <span style={{fontSize:"0.7rem",color:m.color,opacity:0.7,marginLeft:"auto"}}>{group.length}件</span>
+                        <span style={{fontSize:"0.7rem",color:m.color,marginLeft:"0.25rem"}}>{statCollapsed?"▶":"▼"}</span>
+                      </div>
+                      {!statCollapsed&&group.map(t=>(
+                        <TaskRow key={t.id} task={t} users={users}
+                          onToggle={()=>updateTask(t.id,{status:t.status==="完了"?"未着手":"完了"})}
+                          onStatusChange={s=>updateTask(t.id,{status:s})}
+                          onClick={()=>{setActiveTaskId(t.id);setFromProject(null);setScreen("taskDetail");}}/>
+                      ))}
+                    </React.Fragment>
+                  );
+                })}
+              </>
+            )}
+          </Card>
+        );
+      })()}
+
       {/* ── 活動ログ ── */}
       <ActivityLog data={data} users={users} filterTypes={["タスク","プロジェクト"]} />
       {sheet==="addTask"&&<Sheet title="タスクを追加" onClose={()=>setSheet(null)}>
@@ -8152,6 +8284,9 @@ export default function App() {
   // ── プッシュ通知送信ラッパー（addNotifと連動）─────────────────────────────
   const VAPID_PUBLIC_KEY = 'BOlCwpwWlsbXAd_aw4puzgjrshGrRHbsq-fTQYiGnDmsS-4oFknxdZMRoF_Y8p5ObJ7HgVLxW6j5Tl2XLpy5Agg';
   const saveWithPush = (nd, notifsBefore) => {
+    if (!nd || typeof nd !== "object" || Array.isArray(nd)) {
+      console.error("MyDesk: SalesView saveWithPush rejected invalid data"); return;
+    }
     setData(nd); saveData(nd);
     // 新しく追加された通知を検出
     const newNotifs = (nd.notifications||[]).filter(n=>
