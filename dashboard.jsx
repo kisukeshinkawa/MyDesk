@@ -181,7 +181,7 @@ async function saveData(d) {
 
 // ─── AUTO SNAPSHOT ────────────────────────────────────────────────────────────
 // saveData 呼び出しごとに自動実行。最大 SNAP_MAX 件をローリング保持。
-const SNAP_MAX = 100;
+const SNAP_MAX = 500;
 
 async function autoSnapshot(d) {
   try {
@@ -2347,6 +2347,35 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
             <Btn variant="ghost" size="sm" onClick={()=>setSheet("editProject")}>✏️</Btn>
           </div>
           {activePj.notes&&<div style={{fontSize:"0.82rem",color:C.textSub,marginTop:"0.5rem"}}>{activePj.notes}</div>}
+          {/* 完了ボタン */}
+          <div style={{marginTop:"0.875rem",paddingTop:"0.875rem",borderTop:`1px solid ${C.borderLight}`}}>
+            {activePj.status==="完了" ? (
+              <div style={{display:"flex",alignItems:"center",gap:"0.75rem"}}>
+                <div style={{display:"flex",alignItems:"center",gap:"0.4rem",background:"#d1fae5",borderRadius:"0.625rem",padding:"0.4rem 0.875rem"}}>
+                  <span style={{fontSize:"1rem"}}>✅</span>
+                  <span style={{fontSize:"0.82rem",fontWeight:800,color:"#059669"}}>完了済み</span>
+                </div>
+                <button onClick={()=>updateProject(activePj.id,{status:"進行中"})}
+                  style={{fontSize:"0.75rem",color:C.textMuted,background:"none",border:"none",cursor:"pointer",textDecoration:"underline",fontFamily:"inherit"}}>
+                  完了を解除する
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={()=>{
+                  // プロジェクトを完了に + 全タスクを完了に一括更新
+                  let u = {...data,
+                    projects: allProjects.map(p=>p.id===activePj.id?{...p,status:"完了"}:p),
+                    tasks: allTasks.map(t=>t.projectId===activePj.id?{...t,status:"完了"}:t)
+                  };
+                  u = globalAddChangeLog(u,{entityType:"プロジェクト",entityId:activePj.id,entityName:activePj.name,field:"ステータス",oldVal:activePj.status||"",newVal:"完了",userId:uid});
+                  setData(u); saveData(u);
+                }}
+                style={{width:"100%",padding:"0.7rem",borderRadius:"0.75rem",border:"none",background:"#059669",color:"white",fontWeight:800,fontSize:"0.88rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
+                ✅ プロジェクトを完了にする
+              </button>
+            )}
+          </div>
         </Card>
         {/* Tabs */}
         <div style={{display:"flex",background:"white",borderRadius:"0.75rem",padding:"0.2rem",marginBottom:"1rem",border:`1px solid ${C.border}`}}>
