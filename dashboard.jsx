@@ -1259,7 +1259,8 @@ function AuthScreen({onLogin}) {
       const newUsers=[...users,nu];
       await saveUsers(newUsers);
       // 全ユーザーに新規登録通知を送信（データ上）
-      const existingData = await loadData();
+      const existingResult = await loadData();
+      const existingData = existingResult?.data || INIT; // ← .data を正しく取り出す
       const notif={id:Date.now()+Math.random(),type:"new_user",title:`👋 新規ユーザーが登録されました：${nu.name}`,body:nu.email,toUserId:"__all__",read:false,date:new Date().toISOString()};
       const ndWithNotif={...existingData,notifications:[...(existingData.notifications||[]),notif]};
       saveData(ndWithNotif);
