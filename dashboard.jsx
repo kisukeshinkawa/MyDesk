@@ -168,33 +168,67 @@ async function loadData() {
   } catch{}
   return { data: INIT, updated_at: null };
 }
-async function saveData(d) { await sbSet("main", d); }
+async function saveData(d) {
+  await sbSet("main", d);
+  // 自動スナップショット（3分に1回スロットリング、非同期・非ブロッキング）
+  const now = Date.now();
+  const last = window.__lastAutoSnap || 0;
+  if (now - last > 3 * 60 * 1000) {
+    window.__lastAutoSnap = now;
+    autoSnapshot(d).catch(() => {});
+  }
+}
 
-// ─── SNAPSHOT (BACKUP/RESTORE) ───────────────────────────────────────────────
-async function saveSnapshot(d, label) {
+// ─── AUTO SNAPSHOT ────────────────────────────────────────────────────────────
+// saveData 呼び出しごとに自動実行。最大 SNAP_MAX 件をローリング保持。
+const SNAP_MAX = 100;
+
+async function autoSnapshot(d) {
   try {
-    const ts = new Date().toISOString();
-    const snapKey = "snap_" + ts.replace(/[:.]/g,"-");
-    await sbSet(snapKey, { savedAt: ts, label: label||ts, data: d });
+    const ts  = new Date().toISOString();
+    // キーに使えない文字を除去
+    const key = "snap_" + ts.replace(/[:.]/g, "-");
+    // スナップショット本体を保存
+    await sbSet(key, { savedAt: ts, auto: true, data: d });
+    // インデックスを読んで末尾に追記、古いものを削除
     const idxRes = await sbGet("snap_index");
     const idx = Array.isArray(idxRes?._rawData) ? idxRes._rawData : [];
-    const newIdx = [...idx, { key: snapKey, savedAt: ts, label: label||ts }].slice(-20);
+    // 古い自動スナップを SNAP_MAX 件に丸める（手動バックアップは保持）
+    const manual = idx.filter(s => !s.auto);
+    const autos  = idx.filter(s =>  s.auto);
+    const keep   = [...manual, ...autos.slice(-(SNAP_MAX - manual.length))];
+    const newIdx = [...keep, { key, savedAt: ts, auto: true }].slice(-SNAP_MAX);
     await sbSet("snap_index", newIdx);
-    localStorage.setItem("mydesk_last_snapshot", Date.now().toString());
-    return snapKey;
+    localStorage.setItem("mydesk_last_snapshot", now => String(Date.now()));
+  } catch (e) { console.warn("autoSnapshot failed", e); }
+}
+
+// 手動バックアップ（任意ラベル付き）
+async function saveSnapshot(d, label) {
+  try {
+    const ts  = new Date().toISOString();
+    const key = "snap_" + ts.replace(/[:.]/g, "-");
+    await sbSet(key, { savedAt: ts, auto: false, label, data: d });
+    const idxRes = await sbGet("snap_index");
+    const idx = Array.isArray(idxRes?._rawData) ? idxRes._rawData : [];
+    const newIdx = [...idx, { key, savedAt: ts, auto: false, label }].slice(-SNAP_MAX);
+    await sbSet("snap_index", newIdx);
+    return key;
   } catch(e) { console.error("snapshot save failed", e); return null; }
 }
+
 async function loadSnapshotIndex() {
   try {
     const r = await sbGet("snap_index");
-    if(Array.isArray(r?._rawData)) return r._rawData;
+    if (Array.isArray(r?._rawData)) return r._rawData;
   } catch {}
   return [];
 }
+
 async function loadSnapshot(key) {
   try {
     const r = await sbGet(key);
-    if(r?._rawData) return r._rawData;
+    if (r?._rawData) return r._rawData;
   } catch {}
   return null;
 }
@@ -1533,6 +1567,145 @@ function TaskCommentInput({taskId, data, setData, users=[], uid}) {
   );
 }
 
+// ─── ACTIVITY LOG COMPONENT ──────────────────────────────────────────────────
+// タスク・プロジェクト・営業など全エンティティのログを最下部に表示
+function ActivityLog({ data, users=[], filterTypes=null }) {
+  const [open,    setOpen]    = useState(false);
+  const [filter,  setFilter]  = useState("all");
+  const [search,  setSearch]  = useState("");
+  const [page,    setPage]    = useState(0);
+  const PAGE = 30;
+
+  const TYPE_META = {
+    "タスク":      { bg:"#dbeafe", color:"#1d4ed8", icon:"✅" },
+    "プロジェクト":{ bg:"#ede9fe", color:"#7c3aed", icon:"📁" },
+    "企業":        { bg:"#d1fae5", color:"#059669", icon:"🏢" },
+    "業者":        { bg:"#fef3c7", color:"#d97706", icon:"🔧" },
+    "自治体":      { bg:"#fce7f3", color:"#db2777", icon:"🏛️" },
+  };
+
+  const FIELD_ICON = {
+    "登録":"➕", "削除":"🗑️", "ステータス":"🔄", "担当者":"👤",
+    "タイトル":"✏️", "期限":"📅", "優先度":"⚡", "ダストーク":"♻️",
+    "連携協定":"🤝", "アプローチ":"📞", "プロジェクト名":"✏️",
+  };
+
+  const allLogs = [...(data?.changeLogs || [])].sort((a,b) => new Date(b.date) - new Date(a.date));
+
+  // filterTypes で絞り込み（タブごとに渡す）
+  const scopedLogs = filterTypes ? allLogs.filter(l => filterTypes.includes(l.entityType)) : allLogs;
+
+  const types = ["all", ...new Set(scopedLogs.map(l=>l.entityType).filter(Boolean))];
+
+  const filtered = scopedLogs.filter(l => {
+    if (filter !== "all" && l.entityType !== filter) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      return (l.entityName||"").toLowerCase().includes(q)
+          || (l.field||"").toLowerCase().includes(q)
+          || (l.newVal||"").toLowerCase().includes(q)
+          || (users.find(u=>u.id===l.userId)?.name||"").toLowerCase().includes(q);
+    }
+    return true;
+  });
+
+  const paged = filtered.slice(0, (page+1)*PAGE);
+  const hasMore = filtered.length > paged.length;
+
+  const fmtDate = iso => {
+    if(!iso) return "";
+    const d = new Date(iso);
+    const now = new Date();
+    const diff = now - d;
+    if(diff < 60000)  return "たった今";
+    if(diff < 3600000) return `${Math.floor(diff/60000)}分前`;
+    if(diff < 86400000) return `${Math.floor(diff/3600000)}時間前`;
+    return d.toLocaleDateString("ja-JP",{month:"numeric",day:"numeric"}) + " " + d.toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"});
+  };
+
+  return (
+    <div style={{marginTop:"1.5rem", borderTop:`2px solid ${C.borderLight}`}}>
+      {/* ヘッダー（クリックで開閉） */}
+      <button onClick={()=>{setOpen(v=>!v); if(!open) setPage(0);}}
+        style={{width:"100%",display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.875rem 0",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit"}}>
+        <span style={{fontSize:"1rem"}}>📋</span>
+        <span style={{fontWeight:800,fontSize:"0.88rem",color:C.text}}>活動ログ</span>
+        {scopedLogs.length>0 && <span style={{fontSize:"0.7rem",background:C.accentBg,color:C.accent,borderRadius:999,padding:"0.1rem 0.5rem",fontWeight:700}}>{scopedLogs.length}件</span>}
+        <span style={{marginLeft:"auto",fontSize:"0.75rem",color:C.textMuted}}>{open?"▲":"▼"}</span>
+      </button>
+
+      {open && (
+        <div style={{paddingBottom:"2rem"}}>
+          {/* フィルター＋検索 */}
+          <div style={{display:"flex",flexDirection:"column",gap:"0.5rem",marginBottom:"0.75rem"}}>
+            <input value={search} onChange={e=>{setSearch(e.target.value);setPage(0);}} placeholder="🔍 名前・操作で検索..."
+              style={{width:"100%",padding:"0.5rem 0.75rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,fontSize:"0.82rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
+            <div style={{display:"flex",gap:"0.375rem",flexWrap:"wrap"}}>
+              {types.map(t=>(
+                <button key={t} onClick={()=>{setFilter(t);setPage(0);}}
+                  style={{padding:"0.25rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",
+                    fontSize:"0.72rem",fontWeight:filter===t?800:500,
+                    background:filter===t?(TYPE_META[t]?.bg||C.accent):"white",
+                    color:filter===t?(TYPE_META[t]?.color||"white"):C.textSub,
+                    boxShadow:C.shadow}}>
+                  {t==="all"?"すべて":(TYPE_META[t]?.icon+" "+t)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* ログ一覧 */}
+          {!filtered.length && (
+            <div style={{textAlign:"center",padding:"2rem",color:C.textMuted,fontSize:"0.82rem"}}>ログがありません</div>
+          )}
+          <div style={{display:"flex",flexDirection:"column",gap:"0.375rem"}}>
+            {paged.map((log,i)=>{
+              const user = users.find(u=>u.id===log.userId);
+              const tm = TYPE_META[log.entityType] || {bg:"#f1f5f9",color:"#475569",icon:"📝"};
+              const fi = FIELD_ICON[log.field] || "📝";
+              return (
+                <div key={log.id||i} style={{background:"white",borderRadius:"0.75rem",padding:"0.625rem 0.875rem",border:`1px solid ${C.borderLight}`,display:"flex",gap:"0.625rem",alignItems:"flex-start"}}>
+                  {/* 種別アイコン */}
+                  <div style={{flexShrink:0,width:28,height:28,borderRadius:"50%",background:tm.bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.8rem",marginTop:"0.05rem"}}>
+                    {tm.icon}
+                  </div>
+                  <div style={{flex:1,minWidth:0}}>
+                    {/* 1行目: エンティティ名 + 操作 */}
+                    <div style={{display:"flex",alignItems:"center",gap:"0.375rem",flexWrap:"wrap",marginBottom:"0.2rem"}}>
+                      <span style={{fontSize:"0.8rem",fontWeight:700,color:C.text,maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{log.entityName||"—"}</span>
+                      <span style={{fontSize:"0.7rem",background:tm.bg,color:tm.color,borderRadius:999,padding:"0.05rem 0.4rem",fontWeight:700,flexShrink:0}}>{log.entityType}</span>
+                    </div>
+                    {/* 2行目: 操作内容 */}
+                    <div style={{display:"flex",alignItems:"center",gap:"0.3rem",flexWrap:"wrap"}}>
+                      <span style={{fontSize:"0.72rem",color:C.textMuted,flexShrink:0}}>{fi}</span>
+                      <span style={{fontSize:"0.72rem",color:C.textSub,fontWeight:600,flexShrink:0}}>{log.field}</span>
+                      {log.oldVal&&<><span style={{fontSize:"0.7rem",color:"#dc2626",background:"#fff1f2",borderRadius:"0.25rem",padding:"0 0.3rem",maxWidth:80,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",textDecoration:"line-through"}}>{log.oldVal}</span><span style={{fontSize:"0.68rem",color:C.textMuted}}>→</span></>}
+                      {log.newVal&&<span style={{fontSize:"0.7rem",color:"#059669",background:"#f0fdf4",borderRadius:"0.25rem",padding:"0 0.3rem",fontWeight:600,maxWidth:100,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{log.newVal}</span>}
+                    </div>
+                    {/* 3行目: 誰が・いつ */}
+                    <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginTop:"0.2rem"}}>
+                      {user && <span style={{fontSize:"0.65rem",color:C.textMuted,fontWeight:600}}>👤 {user.name}</span>}
+                      <span style={{fontSize:"0.65rem",color:C.textMuted,marginLeft:user?"0":"auto"}}>{fmtDate(log.date)}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* もっと見る */}
+          {hasMore && (
+            <button onClick={()=>setPage(p=>p+1)}
+              style={{width:"100%",marginTop:"0.625rem",padding:"0.625rem",borderRadius:"0.75rem",border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.8rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+              さらに表示（残り{filtered.length-paged.length}件）
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── TASK VIEW ────────────────────────────────────────────────────────────────
 function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjTab,setPjTab,navTarget,clearNavTarget}) {
   const uid = currentUser?.id;
@@ -1545,6 +1718,8 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
   const [sheet,setSheet] = useState(null);
   const [tMemoIn,setTMemoIn]= useState({});
   const [tChatIn,setTChatIn]= useState({});
+  const [tMemoEdit,setTMemoEdit]= useState(null); // {entityId,memoId,text}
+  const [tChatEdit,setTChatEdit]= useState(null); // {entityId,chatId,text}
   const [doneOpenList,setDoneOpenList]= useState(false);  // タスクリスト完了折り畳み
   const [doneOpenPj,setDoneOpenPj]  = useState(false);   // プロジェクト内完了折り畳み
   const [taskDupModal,setTaskDupModal] = useState(null);  // 重複確認モーダル
@@ -1869,7 +2044,6 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     const arr = (data[entityKey]||[]).map(x=>x.id===entityId?{...x,memos:[...(x.memos||[]),memo]}:x);
     const entity = (data[entityKey]||[]).find(x=>x.id===entityId);
     let nd = {...data,[entityKey]:arr};
-    // 全員に通知（自分以外）
     const toAll = users.filter(u=>u.id!==uid).map(u=>u.id);
     const eTypeMemo = entityKey==="tasks"?"task":entityKey==="projects"?"project":entityKey;
     const targetMemoIds=[...(entity?.assignees||[]),entity?.createdBy,(entity?.members||[])].flat().filter(Boolean);
@@ -1878,6 +2052,26 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     if(toMemoFinal.length) nd = addNotif(nd,{type:"memo",entityId,entityType:eTypeMemo,title:`「${entity?.title||entity?.name||""}」にメモが追加されました`,body:text.slice(0,60),toUserIds:toMemoFinal,fromUserId:uid});
     saveWithPush(nd, data.notifications);
     setTMemoIn(p=>({...p,[entityId]:""}));
+  };
+  const updateTMemo = (entityKey, entityId, memoId, newText) => {
+    if(!newText?.trim()) return;
+    const nd = {...data,[entityKey]:(data[entityKey]||[]).map(x=>x.id===entityId?{...x,memos:(x.memos||[]).map(m=>m.id===memoId?{...m,text:newText,editedAt:new Date().toISOString()}:m)}:x)};
+    saveWithPush(nd, data.notifications);
+    setTMemoEdit(null);
+  };
+  const deleteTMemo = (entityKey, entityId, memoId) => {
+    const nd = {...data,[entityKey]:(data[entityKey]||[]).map(x=>x.id===entityId?{...x,memos:(x.memos||[]).filter(m=>m.id!==memoId)}:x)};
+    saveWithPush(nd, data.notifications);
+  };
+  const updateTChat = (entityKey, entityId, chatId, newText) => {
+    if(!newText?.trim()) return;
+    const nd = {...data,[entityKey]:(data[entityKey]||[]).map(x=>x.id===entityId?{...x,chat:(x.chat||[]).map(m=>m.id===chatId?{...m,text:newText,editedAt:new Date().toISOString()}:m)}:x)};
+    saveWithPush(nd, data.notifications);
+    setTChatEdit(null);
+  };
+  const deleteTChat = (entityKey, entityId, chatId) => {
+    const nd = {...data,[entityKey]:(data[entityKey]||[]).map(x=>x.id===entityId?{...x,chat:(x.chat||[]).filter(m=>m.id!==chatId)}:x)};
+    saveWithPush(nd, data.notifications);
   };
   const addTChat = (entityKey, entityId, text) => {
     if(!text?.trim()) return;
@@ -1904,21 +2098,43 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
         {memos.length===0&&<div style={{textAlign:"center",padding:"1.5rem",color:C.textMuted,background:C.bg,borderRadius:"0.75rem",fontSize:"0.82rem"}}>メモなし</div>}
         {[...memos].reverse().map(m=>{
           const mu=users.find(u=>u.id===m.userId);
+          const isMe=m.userId===uid;
+          const isEditing=tMemoEdit?.entityId===entityId&&tMemoEdit?.memoId===m.id;
           return (
             <div key={m.id} style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"0.875rem",padding:"0.75rem 1rem",boxShadow:C.shadow}}>
-              <div style={{display:"flex",justifyContent:"space-between",marginBottom:"0.3rem"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.3rem"}}>
                 <span style={{fontSize:"0.72rem",fontWeight:700,color:C.accentDark}}>{mu?.name||"不明"}</span>
-                <span style={{fontSize:"0.65rem",color:C.textMuted}}>{new Date(m.date).toLocaleDateString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}</span>
+                <div style={{display:"flex",alignItems:"center",gap:"0.25rem"}}>
+                  <span style={{fontSize:"0.65rem",color:C.textMuted}}>{new Date(m.date).toLocaleDateString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}</span>
+                  {m.editedAt&&<span style={{fontSize:"0.58rem",color:C.textMuted}}>(編集済)</span>}
+                  {isMe&&!isEditing&&<>
+                    <button onClick={()=>setTMemoEdit({entityId,memoId:m.id,text:m.text})}
+                      style={{background:"none",border:"none",cursor:"pointer",padding:"0 0.2rem",fontSize:"0.75rem",color:C.textMuted,lineHeight:1}}>✏️</button>
+                    <button onClick={()=>{if(window.confirm("このメモを削除しますか？"))deleteTMemo(entityKey,entityId,m.id);}}
+                      style={{background:"none",border:"none",cursor:"pointer",padding:"0 0.2rem",fontSize:"0.75rem",color:"#dc2626",lineHeight:1}}>🗑</button>
+                  </>}
+                </div>
               </div>
-              <div style={{fontSize:"0.85rem",color:C.text,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{m.text}</div>
+              {isEditing?(
+                <div style={{display:"flex",flexDirection:"column",gap:"0.4rem"}}>
+                  <textarea value={tMemoEdit.text} onChange={e=>setTMemoEdit(p=>({...p,text:e.target.value}))}
+                    style={{width:"100%",padding:"0.5rem",borderRadius:"0.5rem",border:`1.5px solid ${C.accent}`,fontSize:"0.85rem",fontFamily:"inherit",resize:"vertical",minHeight:60,outline:"none",boxSizing:"border-box",lineHeight:1.5}}/>
+                  <div style={{display:"flex",gap:"0.4rem",justifyContent:"flex-end"}}>
+                    <button onClick={()=>setTMemoEdit(null)} style={{padding:"0.3rem 0.75rem",borderRadius:"0.5rem",border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>キャンセル</button>
+                    <button onClick={()=>updateTMemo(entityKey,entityId,m.id,tMemoEdit.text)} disabled={!tMemoEdit.text?.trim()} style={{padding:"0.3rem 0.75rem",borderRadius:"0.5rem",border:"none",background:C.accent,color:"white",fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit",opacity:tMemoEdit.text?.trim()?1:0.4}}>保存</button>
+                  </div>
+                </div>
+              ):(
+                <div style={{fontSize:"0.85rem",color:C.text,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{m.text}</div>
+              )}
             </div>
           );
         })}
       </div>
       <div style={{display:"flex",gap:"0.4rem"}}>
-        <textarea value={tMemoIn[entityId]||""} onChange={e=>setTMemoIn(p=>({...p,[entityId]:e.target.value}))}
-          placeholder="メモを追加..."
-          style={{flex:1,padding:"0.5rem 0.75rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none",resize:"none",minHeight:60,lineHeight:1.5}}/>
+        <textarea value={tMemoIn[entityId]||""} onChange={e=>{setTMemoIn(p=>({...p,[entityId]:e.target.value}));e.target.style.height="auto";e.target.style.height=e.target.scrollHeight+"px";}}
+          placeholder="メモを追加... (Shift+Enterで改行)"
+          style={{flex:1,padding:"0.5rem 0.75rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none",resize:"none",minHeight:60,lineHeight:1.5,overflow:"hidden"}}/>
         <button onClick={()=>addTMemo(entityKey,entityId,tMemoIn[entityId]||"")} disabled={!(tMemoIn[entityId]||"").trim()}
           style={{padding:"0.5rem 0.875rem",borderRadius:"0.75rem",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",alignSelf:"flex-end",opacity:(tMemoIn[entityId]||"").trim()?1:0.4}}>
           追加
@@ -1928,7 +2144,6 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
   );
   const TChatSection = ({entityKey,entityId,chat=[]}) => {
     const val = tChatIn[entityId]||"";
-    // @以降の入力でメンション候補を絞り込む
     const atMatch = val.match(/@([^\s　]*)$/);
     const mentionQuery = atMatch ? atMatch[1].toLowerCase() : null;
     const mentionCandidates = mentionQuery !== null
@@ -1945,6 +2160,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
         {chat.map(m=>{
           const cu=users.find(u=>u.id===m.userId);
           const isMe=m.userId===uid;
+          const isEditing=tChatEdit?.entityId===entityId&&tChatEdit?.chatId===m.id;
           return (
             <div key={m.id} style={{display:"flex",flexDirection:isMe?"row-reverse":"row",gap:"0.4rem",alignItems:"flex-end"}}>
               <div style={{width:24,height:24,borderRadius:"50%",background:`linear-gradient(135deg,${C.accent},${C.accentDark})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.62rem",fontWeight:800,color:"white",flexShrink:0}}>
@@ -1952,10 +2168,30 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
               </div>
               <div style={{maxWidth:"75%"}}>
                 {!isMe&&<div style={{fontSize:"0.6rem",color:C.textMuted,marginBottom:"0.1rem",fontWeight:600}}>{cu?.name}</div>}
-                <div style={{background:isMe?C.accent:"white",color:isMe?"white":C.text,borderRadius:isMe?"0.875rem 0.875rem 0.25rem 0.875rem":"0.875rem 0.875rem 0.875rem 0.25rem",padding:"0.4rem 0.7rem",fontSize:"0.85rem",lineHeight:1.5,border:isMe?"none":`1px solid ${C.border}`,boxShadow:C.shadow}}>
-                  {m.text.split(/(@\S+)/g).map((p,i)=>p.startsWith("@")?<span key={i} style={{background:"rgba(255,255,255,0.25)",borderRadius:3,padding:"0 2px",fontWeight:700}}>{p}</span>:p)}
+                {isEditing?(
+                  <div style={{display:"flex",flexDirection:"column",gap:"0.3rem",minWidth:200}}>
+                    <textarea value={tChatEdit.text} onChange={e=>{setTChatEdit(p=>({...p,text:e.target.value}));e.target.style.height="auto";e.target.style.height=e.target.scrollHeight+"px";}}
+                      style={{padding:"0.4rem 0.6rem",borderRadius:"0.5rem",border:`1.5px solid ${C.accent}`,fontSize:"0.85rem",fontFamily:"inherit",resize:"none",minHeight:40,outline:"none",lineHeight:1.5,overflow:"hidden",boxSizing:"border-box"}}/>
+                    <div style={{display:"flex",gap:"0.3rem",justifyContent:isMe?"flex-end":"flex-start"}}>
+                      <button onClick={()=>setTChatEdit(null)} style={{padding:"0.2rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✕</button>
+                      <button onClick={()=>updateTChat(entityKey,entityId,m.id,tChatEdit.text)} disabled={!tChatEdit.text?.trim()} style={{padding:"0.2rem 0.6rem",borderRadius:"0.4rem",border:"none",background:C.accent,color:"white",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>保存</button>
+                    </div>
+                  </div>
+                ):(
+                  <div style={{position:"relative"}}>
+                    <div style={{background:isMe?C.accent:"white",color:isMe?"white":C.text,borderRadius:isMe?"0.875rem 0.875rem 0.25rem 0.875rem":"0.875rem 0.875rem 0.875rem 0.25rem",padding:"0.4rem 0.7rem",fontSize:"0.85rem",lineHeight:1.5,border:isMe?"none":`1px solid ${C.border}`,boxShadow:C.shadow}}>
+                      {m.text.split(/(@\S+)/g).map((p,i)=>p.startsWith("@")?<span key={i} style={{background:"rgba(255,255,255,0.25)",borderRadius:3,padding:"0 2px",fontWeight:700}}>{p}</span>:p)}
+                    </div>
+                    {isMe&&<div style={{display:"flex",gap:"0.2rem",justifyContent:"flex-end",marginTop:"0.15rem"}}>
+                      <button onClick={()=>{setTChatEdit({entityId,chatId:m.id,text:m.text});}} style={{background:"none",border:"none",cursor:"pointer",padding:0,fontSize:"0.68rem",color:C.textMuted}}>✏️</button>
+                      <button onClick={()=>{if(window.confirm("このメッセージを削除しますか？"))deleteTChat(entityKey,entityId,m.id);}} style={{background:"none",border:"none",cursor:"pointer",padding:0,fontSize:"0.68rem",color:"#dc2626"}}>🗑</button>
+                    </div>}
+                  </div>
+                )}
+                <div style={{fontSize:"0.58rem",color:C.textMuted,marginTop:"0.1rem",textAlign:isMe?"right":"left"}}>
+                  {new Date(m.date).toLocaleTimeString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}
+                  {m.editedAt&&<span style={{marginLeft:"0.3rem"}}>(編集済)</span>}
                 </div>
-                <div style={{fontSize:"0.58rem",color:C.textMuted,marginTop:"0.1rem",textAlign:isMe?"right":"left"}}>{new Date(m.date).toLocaleTimeString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}</div>
               </div>
             </div>
           );
@@ -1975,13 +2211,13 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
             ))}
           </div>
         )}
-        <div style={{display:"flex",gap:"0.4rem"}}>
-          <input value={val} onChange={e=>setTChatIn(p=>({...p,[entityId]:e.target.value}))}
+        <div style={{display:"flex",gap:"0.4rem",alignItems:"flex-end"}}>
+          <textarea value={val} onChange={e=>{setTChatIn(p=>({...p,[entityId]:e.target.value}));e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,160)+"px";}}
             onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();addTChat(entityKey,entityId,val);}}}
-            placeholder="コメント... (@ でメンション)"
-            style={{flex:1,padding:"0.5rem 0.75rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none"}}/>
+            placeholder="コメント... (@ でメンション、Enterで送信)"
+            style={{flex:1,padding:"0.5rem 0.75rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none",resize:"none",minHeight:40,maxHeight:160,lineHeight:1.5,overflow:"auto"}}/>
           <button onClick={()=>addTChat(entityKey,entityId,val)} disabled={!val.trim()}
-            style={{padding:"0.5rem 0.875rem",borderRadius:"0.75rem",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",opacity:val.trim()?1:0.4}}>
+            style={{padding:"0.5rem 0.875rem",borderRadius:"0.75rem",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",opacity:val.trim()?1:0.4,flexShrink:0}}>
             送信
           </button>
         </div>
@@ -2276,6 +2512,8 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
           );
         })}
       </Card>
+      {/* ── 活動ログ ── */}
+      <ActivityLog data={data} users={users} filterTypes={["タスク","プロジェクト"]} />
       {sheet==="addTask"&&<Sheet title="タスクを追加" onClose={()=>setSheet(null)}>
         <TaskForm initial={{status:"未着手"}} users={users} currentUserId={uid} onClose={()=>setSheet(null)}
           onSave={f=>{addTask(f,null);}}/>
@@ -2998,6 +3236,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   const [muniFilterAssignee, setMuniFilterAssignee] = useState(""); // 担当者フィルタ
   const [chatInputs,   setChatInputs]   = useState({});
   const [memoInputs,   setMemoInputs]   = useState({});
+  const [memoEdit,     setMemoEdit]     = useState(null); // {entityId, memoId, text}
+  const [chatEdit,     setChatEdit]     = useState(null); // {entityId, chatId, text}
   const [activeDetail, setActiveDetail] = useState("memo"); // memo|chat
   // bulk select
   const [bulkMode,     setBulkMode]     = useState(false);
@@ -3364,8 +3604,24 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     save(nd);
     setChatInputs(p=>({...p,[entityId]:""}));
   };
-
-  // ── 活動ログ追加ヘルパー ─────────────────────────────────────────────────
+  const updateMemo=(entityKey,entityId,memoId,newText)=>{
+    if(!newText?.trim()) return;
+    const nd={...data,[entityKey]:(data[entityKey]||[]).map(x=>x.id===entityId?{...x,memos:(x.memos||[]).map(m=>m.id===memoId?{...m,text:newText,editedAt:new Date().toISOString()}:m)}:x)};
+    save(nd); setMemoEdit(null);
+  };
+  const deleteMemo=(entityKey,entityId,memoId)=>{
+    const nd={...data,[entityKey]:(data[entityKey]||[]).map(x=>x.id===entityId?{...x,memos:(x.memos||[]).filter(m=>m.id!==memoId)}:x)};
+    save(nd);
+  };
+  const updateChat=(entityKey,entityId,chatId,newText)=>{
+    if(!newText?.trim()) return;
+    const nd={...data,[entityKey]:(data[entityKey]||[]).map(x=>x.id===entityId?{...x,chat:(x.chat||[]).map(m=>m.id===chatId?{...m,text:newText,editedAt:new Date().toISOString()}:m)}:x)};
+    save(nd); setChatEdit(null);
+  };
+  const deleteChat=(entityKey,entityId,chatId)=>{
+    const nd={...data,[entityKey]:(data[entityKey]||[]).map(x=>x.id===entityId?{...x,chat:(x.chat||[]).filter(m=>m.id!==chatId)}:x)};
+    save(nd);
+  };
   const addChangeLog=(nd,{entityType,entityId,entityName,field,oldVal,newVal,userId})=>{
     const log={id:Date.now()+Math.random(),entityType,entityId,entityName,field,oldVal:oldVal||"",newVal:newVal||"",userId:userId||currentUser?.id,date:new Date().toISOString()};
     return {...nd,changeLogs:[...(nd.changeLogs||[]),log]};
@@ -3686,21 +3942,47 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   const MemoSection=({memos=[],entityKey,entityId})=>(
     <div>
       <div style={{display:"flex",flexDirection:"column",gap:"0.5rem",marginBottom:"0.75rem"}}>
-        {[...(memos||[])].reverse().map(m=>(
-          <div key={m.id} style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"0.875rem",padding:"0.75rem 1rem",boxShadow:C.shadow}}>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:"0.35rem"}}>
-              <span style={{fontSize:"0.72rem",fontWeight:700,color:C.accentDark}}>{uName(m.userId)}</span>
-              <span style={{fontSize:"0.65rem",color:C.textMuted}}>{new Date(m.date).toLocaleDateString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}</span>
+        {[...(memos||[])].reverse().map(m=>{
+          const isMe=m.userId===currentUser?.id;
+          const isEditing=memoEdit?.entityId===entityId&&memoEdit?.memoId===m.id;
+          return (
+            <div key={m.id} style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"0.875rem",padding:"0.75rem 1rem",boxShadow:C.shadow}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.35rem"}}>
+                <span style={{fontSize:"0.72rem",fontWeight:700,color:C.accentDark}}>{uName(m.userId)}</span>
+                <div style={{display:"flex",alignItems:"center",gap:"0.25rem"}}>
+                  <span style={{fontSize:"0.65rem",color:C.textMuted}}>{new Date(m.date).toLocaleDateString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}</span>
+                  {m.editedAt&&<span style={{fontSize:"0.58rem",color:C.textMuted}}>(編集済)</span>}
+                  {isMe&&!isEditing&&<>
+                    <button onClick={()=>setMemoEdit({entityId,memoId:m.id,text:m.text})}
+                      style={{background:"none",border:"none",cursor:"pointer",padding:"0 0.2rem",fontSize:"0.75rem",color:C.textMuted,lineHeight:1}}>✏️</button>
+                    <button onClick={()=>{if(window.confirm("このメモを削除しますか？"))deleteMemo(entityKey,entityId,m.id);}}
+                      style={{background:"none",border:"none",cursor:"pointer",padding:"0 0.2rem",fontSize:"0.75rem",color:"#dc2626",lineHeight:1}}>🗑</button>
+                  </>}
+                </div>
+              </div>
+              {isEditing?(
+                <div style={{display:"flex",flexDirection:"column",gap:"0.4rem"}}>
+                  <textarea value={memoEdit.text}
+                    onChange={e=>{setMemoEdit(p=>({...p,text:e.target.value}));e.target.style.height="auto";e.target.style.height=e.target.scrollHeight+"px";}}
+                    style={{width:"100%",padding:"0.5rem",borderRadius:"0.5rem",border:`1.5px solid ${C.accent}`,fontSize:"0.85rem",fontFamily:"inherit",resize:"none",minHeight:60,outline:"none",boxSizing:"border-box",lineHeight:1.5,overflow:"hidden"}}/>
+                  <div style={{display:"flex",gap:"0.4rem",justifyContent:"flex-end"}}>
+                    <button onClick={()=>setMemoEdit(null)} style={{padding:"0.3rem 0.75rem",borderRadius:"0.5rem",border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>キャンセル</button>
+                    <button onClick={()=>updateMemo(entityKey,entityId,m.id,memoEdit.text)} disabled={!memoEdit.text?.trim()}
+                      style={{padding:"0.3rem 0.75rem",borderRadius:"0.5rem",border:"none",background:C.accent,color:"white",fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit",opacity:memoEdit.text?.trim()?1:0.4}}>保存</button>
+                  </div>
+                </div>
+              ):(
+                <div style={{fontSize:"0.87rem",color:C.text,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{m.text}</div>
+              )}
             </div>
-            <div style={{fontSize:"0.87rem",color:C.text,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{m.text}</div>
-          </div>
-        ))}
+          );
+        })}
         {!(memos||[]).length&&<div style={{textAlign:"center",padding:"1.25rem",color:C.textMuted,background:C.bg,borderRadius:"0.875rem",fontSize:"0.82rem"}}>メモがありません</div>}
       </div>
       <div style={{display:"flex",gap:"0.5rem"}}>
-        <textarea value={memoInputs[entityId]||""} onChange={e=>setMemoInputs(p=>({...p,[entityId]:e.target.value}))}
-          placeholder="メモを追加..." rows={2}
-          style={{flex:1,padding:"0.625rem 0.75rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",resize:"vertical",outline:"none",lineHeight:1.5}}/>
+        <textarea value={memoInputs[entityId]||""} onChange={e=>{setMemoInputs(p=>({...p,[entityId]:e.target.value}));e.target.style.height="auto";e.target.style.height=e.target.scrollHeight+"px";}}
+          placeholder="メモを追加... (Shift+Enterで改行)"
+          style={{flex:1,padding:"0.625rem 0.75rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",resize:"none",minHeight:60,outline:"none",lineHeight:1.5,overflow:"hidden"}}/>
         <button onClick={()=>addMemo(entityKey,entityId,memoInputs[entityId]||"")} disabled={!(memoInputs[entityId]||"").trim()}
           style={{alignSelf:"flex-end",padding:"0.5rem 0.875rem",borderRadius:"0.75rem",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",opacity:(memoInputs[entityId]||"").trim()?1:0.4}}>
           追加
@@ -3729,6 +4011,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
         <div style={{display:"flex",flexDirection:"column",gap:"0.5rem",marginBottom:"0.75rem",maxHeight:400,overflowY:"auto",padding:"0.25rem 0"}}>
           {[...(chat||[])].map(m=>{
             const isMe=m.userId===currentUser?.id;
+            const isEditing=chatEdit?.entityId===entityId&&chatEdit?.chatId===m.id;
             return (
               <div key={m.id} style={{display:"flex",flexDirection:isMe?"row-reverse":"row",gap:"0.4rem",alignItems:"flex-end"}}>
                 <div style={{width:26,height:26,borderRadius:"50%",background:`linear-gradient(135deg,${C.accent},${C.accentDark})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.68rem",fontWeight:800,color:"white",flexShrink:0}}>
@@ -3736,10 +4019,34 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                 </div>
                 <div style={{maxWidth:"72%"}}>
                   {!isMe&&<div style={{fontSize:"0.62rem",color:C.textMuted,marginBottom:"0.1rem",fontWeight:600}}>{uName(m.userId)}</div>}
-                  <div style={{background:isMe?C.accent:"white",color:isMe?"white":C.text,borderRadius:isMe?"0.875rem 0.875rem 0.25rem 0.875rem":"0.875rem 0.875rem 0.875rem 0.25rem",padding:"0.45rem 0.7rem",fontSize:"0.87rem",lineHeight:1.5,border:isMe?"none":`1px solid ${C.border}`,boxShadow:C.shadow}}>
-                    {renderMsg(m.text)}
+                  {isEditing?(
+                    <div style={{display:"flex",flexDirection:"column",gap:"0.3rem",minWidth:200}}>
+                      <textarea value={chatEdit.text}
+                        onChange={e=>{setChatEdit(p=>({...p,text:e.target.value}));e.target.style.height="auto";e.target.style.height=e.target.scrollHeight+"px";}}
+                        style={{padding:"0.4rem 0.6rem",borderRadius:"0.5rem",border:`1.5px solid ${C.accent}`,fontSize:"0.85rem",fontFamily:"inherit",resize:"none",minHeight:40,outline:"none",lineHeight:1.5,overflow:"hidden",boxSizing:"border-box"}}/>
+                      <div style={{display:"flex",gap:"0.3rem",justifyContent:isMe?"flex-end":"flex-start"}}>
+                        <button onClick={()=>setChatEdit(null)} style={{padding:"0.2rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✕</button>
+                        <button onClick={()=>updateChat(entityKey,entityId,m.id,chatEdit.text)} disabled={!chatEdit.text?.trim()}
+                          style={{padding:"0.2rem 0.6rem",borderRadius:"0.4rem",border:"none",background:C.accent,color:"white",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>保存</button>
+                      </div>
+                    </div>
+                  ):(
+                    <div>
+                      <div style={{background:isMe?C.accent:"white",color:isMe?"white":C.text,borderRadius:isMe?"0.875rem 0.875rem 0.25rem 0.875rem":"0.875rem 0.875rem 0.875rem 0.25rem",padding:"0.45rem 0.7rem",fontSize:"0.87rem",lineHeight:1.5,border:isMe?"none":`1px solid ${C.border}`,boxShadow:C.shadow}}>
+                        {renderMsg(m.text)}
+                      </div>
+                      {isMe&&<div style={{display:"flex",gap:"0.2rem",justifyContent:"flex-end",marginTop:"0.15rem"}}>
+                        <button onClick={()=>setChatEdit({entityId,chatId:m.id,text:m.text})}
+                          style={{background:"none",border:"none",cursor:"pointer",padding:0,fontSize:"0.68rem",color:C.textMuted}}>✏️</button>
+                        <button onClick={()=>{if(window.confirm("このメッセージを削除しますか？"))deleteChat(entityKey,entityId,m.id);}}
+                          style={{background:"none",border:"none",cursor:"pointer",padding:0,fontSize:"0.68rem",color:"#dc2626"}}>🗑</button>
+                      </div>}
+                    </div>
+                  )}
+                  <div style={{fontSize:"0.58rem",color:C.textMuted,marginTop:"0.1rem",textAlign:isMe?"right":"left"}}>
+                    {new Date(m.date).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"})}
+                    {m.editedAt&&<span style={{marginLeft:"0.3rem"}}>(編集済)</span>}
                   </div>
-                  <div style={{fontSize:"0.58rem",color:C.textMuted,marginTop:"0.1rem",textAlign:isMe?"right":"left"}}>{new Date(m.date).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"})}</div>
                 </div>
               </div>
             );
@@ -3761,13 +4068,14 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                 ))}
               </div>
             )}
-            <div style={{display:"flex",gap:"0.4rem"}}>
-              <input value={val} onChange={e=>setChatInputs(p=>({...p,[entityId]:e.target.value}))}
+            <div style={{display:"flex",gap:"0.4rem",alignItems:"flex-end"}}>
+              <textarea value={val}
+                onChange={e=>{setChatInputs(p=>({...p,[entityId]:e.target.value}));e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,160)+"px";}}
                 onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();addChat(entityKey,entityId,val);}}}
-                placeholder="メッセージ... (@ でメンション)"
-                style={{flex:1,padding:"0.5rem 0.75rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none"}}/>
+                placeholder="メッセージ... (@ でメンション、Enterで送信)"
+                style={{flex:1,padding:"0.5rem 0.75rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none",resize:"none",minHeight:40,maxHeight:160,lineHeight:1.5,overflow:"auto"}}/>
               <button onClick={()=>addChat(entityKey,entityId,val)} disabled={!val.trim()}
-                style={{padding:"0.5rem 0.875rem",borderRadius:"0.75rem",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",opacity:val.trim()?1:0.4}}>
+                style={{padding:"0.5rem 0.875rem",borderRadius:"0.75rem",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",opacity:val.trim()?1:0.4,flexShrink:0}}>
                 送信
               </button>
             </div>
@@ -5757,6 +6065,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       )}
         {/* 重複検出モーダル */}
         {dupModal&&<DupModal existing={dupModal.existing} incoming={dupModal.incoming} onKeepBoth={dupModal.onKeepBoth} onUseExisting={dupModal.onUseExisting} onCancel={()=>setDupModal(null)}/>}
+      {/* ── 活動ログ ── */}
+      <ActivityLog data={data} users={users} filterTypes={["企業","業者","自治体"]} />
     </div>
   );
 }
@@ -5892,16 +6202,16 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
   const loadSnaps = async () => {
     setSnapLoading(true);
     const idx = await loadSnapshotIndex();
-    setSnapshots([...idx].reverse()); // newest first
+    setSnapshots([...idx].reverse()); // 新しい順
     setSnapLoading(false);
   };
 
   const doBackup = async () => {
     setSnapMsg("保存中...");
-    const label = new Date().toLocaleString("ja-JP");
+    const label = "📌 手動 " + new Date().toLocaleString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"});
     const key = await saveSnapshot(data, label);
     if(key) {
-      setSnapMsg("✅ バックアップを保存しました");
+      setSnapMsg("✅ 手動バックアップを保存しました");
       loadSnaps();
     } else {
       setSnapMsg("❌ 保存に失敗しました");
@@ -5913,14 +6223,19 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
     setSnapMsg("復元中...");
     const s = await loadSnapshot(snap.key);
     if(s?.data) {
+      // 復元前に現時点のデータをバックアップ
+      const beforeLabel = "⏪ 復元前の自動退避 " + new Date().toLocaleString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"});
+      await saveSnapshot(data, beforeLabel);
       setData({...s.data});
-      saveData(s.data);
-      setSnapMsg("✅ データを復元しました（"+snap.label+"）");
+      await saveData(s.data);
+      const dt = snap.savedAt ? new Date(snap.savedAt).toLocaleString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"}) : "";
+      setSnapMsg("✅ " + dt + " のデータを復元しました");
       setRestoreConfirm(null);
+      loadSnaps();
     } else {
       setSnapMsg("❌ 復元に失敗しました");
     }
-    setTimeout(()=>setSnapMsg(""),5000);
+    setTimeout(()=>setSnapMsg(""),6000);
   };
 
   const saveProfile = async () => {
@@ -6240,55 +6555,113 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
       )}
 
       {/* ── バックアップ・復元 ── */}
-      {section==="backup"&&(
-        <div style={{display:"flex",flexDirection:"column",gap:"0.75rem"}}>
-          <div style={{background:"white",borderRadius:"1rem",padding:"1.25rem",border:"1px solid "+C.border,boxShadow:C.shadow}}>
-            <div style={{fontWeight:800,fontSize:"0.9rem",color:C.text,marginBottom:"0.5rem"}}>💾 バックアップ</div>
-            <div style={{fontSize:"0.75rem",color:C.textMuted,marginBottom:"0.875rem"}}>現在のデータをスナップショットとして保存します。最大20件保持されます。</div>
-            {snapMsg&&<div style={{marginBottom:"0.75rem",fontSize:"0.82rem",color:snapMsg.startsWith("✅")?"#059669":snapMsg.startsWith("❌")?"#dc2626":"#1d4ed8",background:snapMsg.startsWith("✅")?"#d1fae5":snapMsg.startsWith("❌")?"#fee2e2":"#dbeafe",borderRadius:"0.5rem",padding:"0.5rem 0.75rem"}}>{snapMsg}</div>}
-            <button onClick={doBackup}
-              style={{width:"100%",padding:"0.75rem",borderRadius:"0.75rem",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.88rem",cursor:"pointer",fontFamily:"inherit",marginBottom:"1rem"}}>
-              💾 今すぐバックアップ
-            </button>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.5rem"}}>
-              <div style={{fontWeight:700,fontSize:"0.82rem",color:C.text}}>📂 保存済みバックアップ</div>
-              <button onClick={loadSnaps} style={{background:"none",border:"1px solid "+C.border,borderRadius:"0.5rem",padding:"0.25rem 0.625rem",fontSize:"0.72rem",color:C.textSub,cursor:"pointer",fontFamily:"inherit"}}>
-                {snapLoading?"読込中...":"更新"}
+      {section==="backup"&&(()=>{
+        // 日付ごとにグループ化
+        const grouped = {};
+        snapshots.forEach(s=>{
+          const d = s.savedAt ? new Date(s.savedAt).toLocaleDateString("ja-JP",{year:"numeric",month:"long",day:"numeric"}) : "不明";
+          if(!grouped[d]) grouped[d]=[];
+          grouped[d].push(s);
+        });
+        const days = Object.keys(grouped); // すでに新しい順（reverseされた配列から）
+
+        return (
+          <div style={{display:"flex",flexDirection:"column",gap:"0.75rem"}}>
+            {/* ヘッダー説明 */}
+            <div style={{background:"linear-gradient(135deg,#1d4ed8,#2563eb)",borderRadius:"1rem",padding:"1.25rem",color:"white"}}>
+              <div style={{fontWeight:800,fontSize:"0.95rem",marginBottom:"0.35rem"}}>🕐 自動バックアップ</div>
+              <div style={{fontSize:"0.75rem",opacity:0.9,lineHeight:1.6}}>
+                データを保存するたびに<strong>自動で記録</strong>しています（最小3分間隔）。<br/>
+                最大100件を保持。任意の時刻のデータに復元できます。
+              </div>
+            </div>
+
+            {/* メッセージ */}
+            {snapMsg&&<div style={{fontSize:"0.82rem",color:snapMsg.startsWith("✅")?"#059669":snapMsg.startsWith("❌")?"#dc2626":"#1d4ed8",background:snapMsg.startsWith("✅")?"#d1fae5":snapMsg.startsWith("❌")?"#fee2e2":"#dbeafe",borderRadius:"0.75rem",padding:"0.625rem 0.875rem"}}>{snapMsg}</div>}
+
+            {/* アクションボタン */}
+            <div style={{display:"flex",gap:"0.5rem"}}>
+              <button onClick={doBackup} style={{flex:2,padding:"0.7rem",borderRadius:"0.75rem",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
+                📌 今すぐ手動保存
+              </button>
+              <button onClick={loadSnaps} style={{flex:1,padding:"0.7rem",borderRadius:"0.75rem",border:"1px solid "+C.border,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
+                {snapLoading?"読込中...":"🔄 更新"}
               </button>
             </div>
+
+            {/* スナップショット一覧（日付グループ） */}
             {!snapshots.length&&!snapLoading&&(
-              <div style={{textAlign:"center",padding:"1.5rem 0",color:C.textMuted,fontSize:"0.8rem"}}>バックアップがありません。上のボタンから保存してください。</div>
+              <div style={{textAlign:"center",padding:"2rem",color:C.textMuted,fontSize:"0.82rem",background:"white",borderRadius:"1rem",border:"1px solid "+C.border}}>
+                まだ記録がありません。<br/>データを操作すると自動で記録が始まります。
+              </div>
             )}
-            {snapshots.map((s,i)=>(
-              <div key={s.key||i} style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.625rem 0.75rem",borderRadius:"0.625rem",border:"1px solid "+C.borderLight,marginBottom:"0.375rem",background:C.bg}}>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:"0.8rem",fontWeight:700,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.label||s.savedAt}</div>
-                  <div style={{fontSize:"0.68rem",color:C.textMuted}}>{s.savedAt?new Date(s.savedAt).toLocaleString("ja-JP"):""}</div>
+            {snapLoading&&<div style={{textAlign:"center",padding:"1.5rem",color:C.textMuted,fontSize:"0.82rem"}}>読み込み中...</div>}
+
+            {days.map(day=>(
+              <div key={day}>
+                {/* 日付ヘッダー */}
+                <div style={{fontSize:"0.72rem",fontWeight:800,color:C.textMuted,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:"0.375rem",padding:"0 0.25rem"}}>{day}</div>
+                <div style={{background:"white",borderRadius:"0.875rem",border:"1px solid "+C.border,overflow:"hidden",boxShadow:C.shadow}}>
+                  {grouped[day].map((s,i)=>{
+                    const dt = s.savedAt ? new Date(s.savedAt) : null;
+                    const timeStr = dt ? dt.toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit",second:"2-digit"}) : "";
+                    const isManual = !s.auto;
+                    return (
+                      <div key={s.key||i} style={{display:"flex",alignItems:"center",gap:"0.625rem",padding:"0.625rem 0.875rem",borderBottom:i<grouped[day].length-1?"1px solid "+C.borderLight:"none"}}>
+                        {/* 時刻 */}
+                        <div style={{flexShrink:0,textAlign:"right",minWidth:52}}>
+                          <div style={{fontSize:"0.85rem",fontWeight:800,color:C.text,fontVariantNumeric:"tabular-nums"}}>{timeStr.slice(0,5)}</div>
+                          <div style={{fontSize:"0.6rem",color:C.textMuted}}>{timeStr.slice(6)||""}</div>
+                        </div>
+                        {/* ラベル */}
+                        <div style={{flex:1,minWidth:0}}>
+                          {isManual
+                            ? <span style={{fontSize:"0.72rem",background:"#dbeafe",color:"#1d4ed8",borderRadius:999,padding:"0.1rem 0.5rem",fontWeight:700}}>📌 手動</span>
+                            : <span style={{fontSize:"0.72rem",background:"#f1f5f9",color:"#64748b",borderRadius:999,padding:"0.1rem 0.5rem",fontWeight:600}}>🔄 自動</span>
+                          }
+                          {s.label&&isManual&&<div style={{fontSize:"0.72rem",color:C.textSub,marginTop:"0.1rem",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.label}</div>}
+                        </div>
+                        {/* 復元ボタン */}
+                        <button onClick={()=>setRestoreConfirm(s)}
+                          style={{flexShrink:0,padding:"0.3rem 0.75rem",borderRadius:"0.5rem",border:"1px solid #d97706",background:"#fef3c7",color:"#92400e",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                          復元
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
-                <button onClick={()=>setRestoreConfirm(s)}
-                  style={{flexShrink:0,padding:"0.35rem 0.75rem",borderRadius:"0.5rem",border:"1px solid #d97706",background:"#fef3c7",color:"#92400e",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                  復元
-                </button>
               </div>
             ))}
-          </div>
-          {/* 復元確認モーダル */}
-          {restoreConfirm&&(
-            <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
-              <div style={{background:"white",borderRadius:"1.25rem",padding:"1.5rem",maxWidth:340,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
-                <div style={{fontSize:"2rem",textAlign:"center",marginBottom:"0.75rem"}}>⚠️</div>
-                <div style={{fontWeight:800,fontSize:"0.95rem",color:C.text,marginBottom:"0.5rem",textAlign:"center"}}>このバックアップを復元しますか？</div>
-                <div style={{fontSize:"0.8rem",color:C.textMuted,marginBottom:"0.5rem",textAlign:"center"}}>{restoreConfirm.label}</div>
-                <div style={{fontSize:"0.75rem",color:"#dc2626",marginBottom:"1.25rem",textAlign:"center",background:"#fee2e2",borderRadius:"0.5rem",padding:"0.5rem"}}>現在のデータは上書きされます。先にバックアップを取ることをお勧めします。</div>
-                <div style={{display:"flex",gap:"0.625rem"}}>
-                  <button onClick={()=>setRestoreConfirm(null)} style={{flex:1,padding:"0.7rem",borderRadius:"0.75rem",border:"1px solid "+C.border,background:"white",color:C.text,fontWeight:700,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>キャンセル</button>
-                  <button onClick={()=>doRestore(restoreConfirm)} style={{flex:2,padding:"0.7rem",borderRadius:"0.75rem",border:"none",background:"#dc2626",color:"white",fontWeight:700,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>復元する</button>
+
+            {/* 復元確認モーダル */}
+            {restoreConfirm&&(
+              <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
+                <div style={{background:"white",borderRadius:"1.25rem",padding:"1.5rem",maxWidth:340,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
+                  <div style={{fontSize:"2rem",textAlign:"center",marginBottom:"0.75rem"}}>⏪</div>
+                  <div style={{fontWeight:800,fontSize:"0.95rem",color:C.text,marginBottom:"0.5rem",textAlign:"center"}}>このデータを復元しますか？</div>
+                  <div style={{textAlign:"center",marginBottom:"0.5rem"}}>
+                    <span style={{fontSize:"1.1rem",fontWeight:800,color:C.accent}}>
+                      {restoreConfirm.savedAt ? new Date(restoreConfirm.savedAt).toLocaleString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit",second:"2-digit"}) : ""}
+                    </span>
+                  </div>
+                  <div style={{fontSize:"0.75rem",color:"#92400e",marginBottom:"1.25rem",textAlign:"center",background:"#fef3c7",borderRadius:"0.625rem",padding:"0.625rem",lineHeight:1.6}}>
+                    ⚠️ 現在のデータは復元で上書きされます。<br/>
+                    ただし<strong>復元前のデータは自動退避</strong>されるため、やり直しも可能です。
+                  </div>
+                  <div style={{display:"flex",gap:"0.625rem"}}>
+                    <button onClick={()=>setRestoreConfirm(null)} style={{flex:1,padding:"0.75rem",borderRadius:"0.75rem",border:"1px solid "+C.border,background:"white",color:C.text,fontWeight:700,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>
+                      キャンセル
+                    </button>
+                    <button onClick={()=>doRestore(restoreConfirm)} style={{flex:2,padding:"0.75rem",borderRadius:"0.75rem",border:"none",background:"#dc2626",color:"white",fontWeight:700,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>
+                      この時刻に戻す
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
-        </div>
-      )}
+            )}
+          </div>
+        );
+      })()}
 
       {/* ── 活動ログ ── */}
       {section==="actlog"&&(()=>{
