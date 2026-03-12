@@ -4152,6 +4152,41 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             <div style={{fontSize:"0.8rem"}}>「＋」から追加してください</div>
           </div>
         )}
+        {/* 担当者フィルタ結果フラットリスト */}
+        {!compSearch&&compFilter.assignee&&(()=>{
+          if(!compFilteredBase.length) return (
+            <div style={{textAlign:"center",padding:"1.5rem",color:C.textMuted,background:"white",borderRadius:"0.875rem",border:`1.5px dashed ${C.border}`,fontSize:"0.82rem"}}>該当する企業がありません</div>
+          );
+          return (
+            <div style={{marginBottom:"0.75rem"}}>
+              <div style={{fontSize:"0.7rem",fontWeight:800,color:C.textSub,marginBottom:"0.4rem",textTransform:"uppercase",letterSpacing:"0.04em"}}>
+                担当案件 {compFilteredBase.length}件
+              </div>
+              <div style={{display:"flex",flexDirection:"column",gap:"0.3rem"}}>
+                {compFilteredBase.map(c=>{
+                  const lastMemo=(c.memos||[]).slice(-1)[0];
+                  return (
+                    <div key={c.id} onClick={()=>{setSalesTab("company");saveSalesScroll("company");setActiveCompany(c.id);setActiveDetail("memo");}}
+                      style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.625rem 0.75rem",background:"white",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,cursor:"pointer",boxShadow:C.shadow}}
+                      onMouseEnter={e=>e.currentTarget.style.borderColor=C.accent}
+                      onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{display:"flex",alignItems:"center",gap:"0.35rem",marginBottom:"0.2rem"}}>
+                          <span style={{fontSize:"0.85rem",fontWeight:700,color:C.text,flex:1}}>{c.name}</span>
+                          <SChip s={c.status} map={COMPANY_STATUS}/>
+                          {c.needFollow&&<span style={{fontSize:"0.58rem",background:"#fef9c3",color:"#854d0e",padding:"0.05rem 0.3rem",borderRadius:999,fontWeight:700,flexShrink:0}}>⭐</span>}
+                        </div>
+                        <AssigneeRow ids={c.assigneeIds}/>
+                        {lastMemo&&<div style={{fontSize:"0.68rem",color:C.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginTop:"0.15rem"}}>{lastMemo.text}</div>}
+                      </div>
+                      <span style={{fontSize:"0.8rem",color:C.textSub,flexShrink:0}}>›</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
         {/* Search results: flat list */}
         {compSearch&&(
           <div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
@@ -4173,7 +4208,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           </div>
         )}
         {/* Grouped view */}
-        {!compSearch&&(
+        {!compSearch&&!compFilter.assignee&&(
           <div style={{display:"flex",flexDirection:"column",gap:"0.625rem"}}>
             {Object.entries(COMPANY_STATUS).map(([s,meta])=>{
               const items=compFilteredBase.filter(c=>(c.status||"未接触")===s);
@@ -4428,7 +4463,6 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                   })}
                 </div>
               </div>
-            }
           </Card>
           {/* フォローボタン */}
           <div style={{marginBottom:"0.75rem",display:"flex",alignItems:"center",gap:"0.5rem"}}>
@@ -4622,6 +4656,45 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             <div style={{fontSize:"0.78rem"}}>「＋」から追加してください</div>
           </div>
         )}
+        {/* 担当者フィルタ結果フラットリスト */}
+        {!vendSearch&&vendFilterAssignee&&(()=>{
+          if(!filteredVendors.length) return (
+            <div style={{textAlign:"center",padding:"1.5rem",color:C.textMuted,background:"white",borderRadius:"0.875rem",border:`1.5px dashed ${C.border}`,fontSize:"0.82rem"}}>該当する業者がありません</div>
+          );
+          return (
+            <div style={{marginBottom:"0.75rem"}}>
+              <div style={{fontSize:"0.7rem",fontWeight:800,color:C.textSub,marginBottom:"0.4rem",textTransform:"uppercase",letterSpacing:"0.04em"}}>
+                担当案件 {filteredVendors.length}件
+              </div>
+              <div style={{display:"flex",flexDirection:"column",gap:"0.3rem"}}>
+                {filteredVendors.map(v=>{
+                  const vmunis2=vendorMunis(v);
+                  const lastMemo=(v.memos||[]).slice(-1)[0];
+                  return (
+                    <div key={v.id} onClick={()=>{saveSalesScroll("vendor");setActiveVendor(v.id);setActiveDetail("memo");}}
+                      style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.625rem 0.75rem",background:"white",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,cursor:"pointer",boxShadow:C.shadow}}
+                      onMouseEnter={e=>e.currentTarget.style.borderColor=C.accent}
+                      onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{display:"flex",alignItems:"center",gap:"0.35rem",marginBottom:"0.2rem"}}>
+                          <span style={{fontSize:"0.85rem",fontWeight:700,color:C.text,flex:1}}>{v.name}</span>
+                          <SChip s={v.status} map={VENDOR_STATUS}/>
+                          {v.needFollow&&<span style={{fontSize:"0.58rem",background:"#fef9c3",color:"#854d0e",padding:"0.05rem 0.3rem",borderRadius:999,fontWeight:700,flexShrink:0}}>⭐</span>}
+                        </div>
+                        <div style={{display:"flex",gap:"0.2rem",flexWrap:"wrap"}}>
+                          {(v.permitTypes||[]).map(p=><span key={p} style={{fontSize:"0.6rem",background:"#ede9fe",color:"#5b21b6",padding:"0.05rem 0.3rem",borderRadius:999,fontWeight:600}}>{p}</span>)}
+                          {vmunis2.length>0&&<span style={{fontSize:"0.6rem",color:C.textMuted,background:C.bg,padding:"0.05rem 0.3rem",borderRadius:999}}>{vmunis2[0].name}{vmunis2.length>1?` 他${vmunis2.length-1}`:""}</span>}
+                        </div>
+                        {lastMemo&&<div style={{fontSize:"0.68rem",color:C.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginTop:"0.15rem"}}>{lastMemo.text}</div>}
+                      </div>
+                      <span style={{fontSize:"0.8rem",color:C.textSub,flexShrink:0}}>›</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
         {/* Search results: flat */}
         {vendSearch&&(
           <div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
@@ -4644,7 +4717,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           </div>
         )}
         {/* Grouped view */}
-        {!vendSearch&&(
+        {!vendSearch&&!vendFilterAssignee&&(
           <div style={{display:"flex",flexDirection:"column",gap:"0.625rem"}}>
             {Object.entries(VENDOR_STATUS).map(([s,meta])=>{
               const items=filteredVendors.filter(v=>v.status===s);
