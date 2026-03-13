@@ -1752,13 +1752,17 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
   const [showMineOnly, setShowMineOnly] = React.useState(false);
   const [winWidth, setWinWidth] = React.useState(window.innerWidth);
   React.useEffect(()=>{ const h=()=>setWinWidth(window.innerWidth); window.addEventListener("resize",h); return()=>window.removeEventListener("resize",h); },[]);
-  const isWide = winWidth >= 900;
+  const isWide = winWidth >= 780;
 
   // ── 折りたたみ状態（localStorage永続化）────────────────────────────────
   const [pjSectionOpen,  setPjSectionOpen]  = useState(()=>{ try{ return JSON.parse(localStorage.getItem("md_pjSectionOpen") ??"true"); }catch{ return true; }});
   const [taskSectionOpen,setTaskSectionOpen]= useState(()=>{ try{ return JSON.parse(localStorage.getItem("md_taskSectionOpen")??"true"); }catch{ return true; }});
+  const [pjArchiveOpen,  setPjArchiveOpen]  = useState(false); // 完了プロジェクトは初期非表示
   const [collapsedPjs,   setCollapsedPjs]   = useState(()=>{ try{ return new Set(JSON.parse(localStorage.getItem("md_collapsedPjs")||"[]")); }catch{ return new Set(); }});
-  const [collapsedStats, setCollapsedStats] = useState(()=>{ try{ return new Set(JSON.parse(localStorage.getItem("md_collapsedStats")||"[]")); }catch{ return new Set(); }});
+  const [collapsedStats, setCollapsedStats] = useState(()=>{ try{ const saved=JSON.parse(localStorage.getItem("md_collapsedStats")||"null"); if(saved) return new Set(saved); }catch{} // デフォルト：「完了」は常に折りたたみ
+    return new Set(["standalone_完了"]); });
+  // 完了ステータスは常に折りたたみ（ユーザー操作に関わらず）
+  const isStatCollapsed = (key) => collapsedStats.has(key) || key.endsWith("_完了");
 
   const togglePjSection  = () => setPjSectionOpen(v=>{ const n=!v; localStorage.setItem("md_pjSectionOpen", JSON.stringify(n)); return n; });
   const toggleTaskSection= () => setTaskSectionOpen(v=>{ const n=!v; localStorage.setItem("md_taskSectionOpen", JSON.stringify(n)); return n; });
@@ -1847,7 +1851,9 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
 
   const visibleTasks    = allTasks.filter(t=>canSee(t,uid));
   const allVisibleProjects = allProjects.filter(p=>canSee(p,uid));
-  const visibleProjects = showMineOnly ? allVisibleProjects.filter(p=>(p.members||[]).includes(uid)||p.createdBy===uid) : allVisibleProjects;
+  const allFilteredProjects = showMineOnly ? allVisibleProjects.filter(p=>(p.members||[]).includes(uid)||p.createdBy===uid) : allVisibleProjects;
+  const visibleProjects  = allFilteredProjects.filter(p=>p.status!=="完了");
+  const archivedProjects = allFilteredProjects.filter(p=>p.status==="完了");
 
   const requestReview = (taskId, toUserId, note) => {
     const task = allTasks.find(t => t.id === taskId);
@@ -2444,7 +2450,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
                 if(!group.length) return null;
                 const m=STATUS_META[status];
                 const statKey=`pjDetail_${activePjId}_${status}`;
-                const statCollapsed=collapsedStats.has(statKey);
+                const statCollapsed=isStatCollapsed(statKey);
                 return (
                   <React.Fragment key={status}>
                     <div onClick={()=>toggleStat(statKey)}
@@ -2557,11 +2563,11 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
       </div>
 
       {/* ── プロジェクト＆タスク（PC: 横並び） ── */}
-      <div style={isWide?{display:"flex",gap:"1.25rem",alignItems:"flex-start",marginBottom:"1.5rem"}:{marginBottom:"1.5rem"}}>
+      <div style={isWide?{display:"flex",gap:"1rem",alignItems:"flex-start",marginBottom:"1.5rem"}:{marginBottom:"1.5rem"}}>
 
-        {/* 左カラム: プロジェクト */}
+        {/* 左カラム: プロジェクト（幅は内容に応じて flex で可変） */}
         {visibleProjects.length>0&&(
-          <div style={isWide?{flex:"0 0 340px",minWidth:0}:{marginBottom:"0.75rem"}}>
+          <div style={isWide?{flex:"1 1 400px",minWidth:320,maxWidth:"48%"}:{marginBottom:"0.75rem"}}>
             <Card style={{overflow:"hidden"}}>
               <SectionHeader
                 label={`🗂 プロジェクト`}
@@ -2584,8 +2590,8 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
                     {pj.isPrivate&&<span style={{fontSize:"0.65rem",color:"#dc2626",flexShrink:0}}>🔒</span>}
                     <span style={{fontSize:"1rem",flexShrink:0}}>🗂</span>
                     <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:"0.88rem",fontWeight:700,color:C.text,display:"flex",alignItems:"center",gap:"0.4rem",flexWrap:"wrap"}}>
-                        <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{pj.name}</span>
+                      <div style={{display:"flex",alignItems:"center",gap:"0.4rem",minWidth:0}}>
+                        <span style={{fontSize:"0.88rem",fontWeight:700,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,minWidth:0}}>{pj.name}</span>
                         {pj.status==="完了"&&<span style={{fontSize:"0.62rem",background:"#d1fae5",color:"#059669",borderRadius:999,padding:"0.05rem 0.4rem",fontWeight:700,flexShrink:0}}>完了</span>}
                       </div>
                       <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginTop:"0.3rem"}}>
@@ -2600,6 +2606,36 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
                 );
               })}
             </Card>
+
+            {/* 完了プロジェクト アーカイブ */}
+            {archivedProjects.length>0&&(
+              <Card style={{overflow:"hidden",marginTop:"0.75rem"}}>
+                <div onClick={()=>setPjArchiveOpen(v=>!v)}
+                  style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.55rem 1rem",background:"#f1f5f9",borderBottom:pjArchiveOpen?`1px solid ${C.borderLight}`:"none",cursor:"pointer",userSelect:"none"}}>
+                  <span style={{fontSize:"0.72rem",fontWeight:800,color:"#6b7280",textTransform:"uppercase",letterSpacing:"0.05em",flex:1}}>✅ 完了プロジェクト</span>
+                  <span style={{fontSize:"0.68rem",background:C.borderLight,color:C.textMuted,borderRadius:999,padding:"0.05rem 0.45rem",fontWeight:700}}>{archivedProjects.length}</span>
+                  <span style={{fontSize:"0.72rem",color:C.textMuted,marginLeft:"0.25rem"}}>{pjArchiveOpen?"▲":"▼"}</span>
+                </div>
+                {pjArchiveOpen&&archivedProjects.map(pj=>{
+                  const pjTasks=visibleTasks.filter(t=>t.projectId===pj.id);
+                  const done=pjTasks.filter(t=>t.status==="完了").length;
+                  return (
+                    <div key={pj.id}
+                      onClick={()=>{setActivePjId(pj.id);setScreen("projectDetail");}}
+                      style={{display:"flex",alignItems:"center",gap:"0.75rem",padding:"0.65rem 1rem",borderBottom:`1px solid ${C.borderLight}`,background:"white",cursor:"pointer",opacity:0.75}}
+                      onMouseEnter={e=>e.currentTarget.style.opacity="1"}
+                      onMouseLeave={e=>e.currentTarget.style.opacity="0.75"}>
+                      <span style={{fontSize:"0.95rem",flexShrink:0}}>✅</span>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:"0.85rem",fontWeight:600,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{pj.name}</div>
+                        <div style={{fontSize:"0.65rem",color:C.textMuted,marginTop:"0.15rem"}}>{done}/{pjTasks.length}件完了</div>
+                      </div>
+                      <span style={{color:C.textMuted,fontSize:"0.9rem",flexShrink:0}}>›</span>
+                    </div>
+                  );
+                })}
+              </Card>
+            )}
           </div>
         )}
 
@@ -2609,7 +2645,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
           const standaloneTasks = myVisibleTasks.filter(t=>!t.projectId);
           if(!standaloneTasks.length&&visibleProjects.length>0) return null;
           return (
-            <div style={{flex:1,minWidth:0}}>
+            <div style={{flex:"1 1 320px",minWidth:0}}>
               <Card style={{overflow:"hidden"}}>
                 {standaloneTasks.length===0&&visibleProjects.length===0&&(
                   <div style={{padding:"3rem 1rem",textAlign:"center",color:C.textMuted}}>
@@ -2633,7 +2669,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
                       if(!group.length) return null;
                       const m=STATUS_META[status];
                       const statKey=`standalone_${status}`;
-                      const statCollapsed=collapsedStats.has(statKey);
+                      const statCollapsed=isStatCollapsed(statKey);
                       return (
                         <React.Fragment key={status}>
                           <div onClick={()=>toggleStat(statKey)}
@@ -3424,6 +3460,11 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   const [bcImportSummary,setBcImportSummary]= useState(null);   // {added,skipped}
   const BC_ADD_INIT = {company:"",department:"",title:"",lastName:"",firstName:"",email:"",zip:"",address:"",telCompany:"",telDept:"",telDirect:"",fax:"",mobile:"",url:"",exchangedAt:""};
   const [bcAddForm,    setBcAddForm]    = useState(BC_ADD_INIT); // 名刺手動追加フォーム
+  // ── 削除モーダル内 state（IIFEでuseStateを使えないため親stateで管理）──
+  const [dmSearch,   setDmSearch]   = useState("");
+  const [dmFilter,   setDmFilter]   = useState("");
+  const [dmSelected, setDmSelected] = useState(new Set());
+  const [bcMemoIn,   setBcMemoIn]   = useState(""); // 名刺詳細メモ入力
 
   // ── データ参照（hook後、コンポーネント内計算）──
   const prefs     = data.prefectures    || [];
@@ -3436,13 +3477,13 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   const _commitBizCard = (card) => {
     // 実際にDBへ書き込む（重複確認済みの前提）
     const nd={...data,businessCards:[...bizCards,{...card,id:Date.now()+Math.random(),createdAt:new Date().toISOString(),createdBy:currentUser?.id||""}]};
-    saveWithPush(nd,data.notifications);
+    save(nd);
   };
   const _commitBizCards = (cards) => {
     // 複数カードを一括書き込み
     const newEntries=cards.map(c=>({...c,id:Date.now()+Math.random(),createdAt:new Date().toISOString(),createdBy:currentUser?.id||""}));
     const nd={...data,businessCards:[...bizCards,...newEntries]};
-    saveWithPush(nd,data.notifications);
+    save(nd);
   };
 
   // 手動追加：重複チェックありモーダル表示
@@ -3463,11 +3504,11 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   };
   const updateBizCard = (id,ch) => {
     const nd={...data,businessCards:bizCards.map(c=>c.id===id?{...c,...ch}:c)};
-    saveWithPush(nd,data.notifications);
+    save(nd);
   };
   const deleteBizCard = (id) => {
     const nd={...data,businessCards:bizCards.filter(c=>c.id!==id)};
-    saveWithPush(nd,data.notifications);
+    save(nd);
   };
 
   // CSV重複キュー処理：1件ずつモーダル表示
@@ -4080,7 +4121,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   const deleteBulkComp=(ids)=>{save({...data,companies:companies.filter(c=>!ids.includes(c.id))});resetBulk();};
   const deleteBulkVend=(ids)=>{save({...data,vendors:vendors.filter(v=>!ids.includes(v.id))});resetBulk();};
   const deleteBulkMuni=(ids)=>{save({...data,municipalities:munis.filter(m=>!ids.includes(m.id))});resetBulk();};
-  const deleteBulkBizCard=(ids)=>{const nd={...data,businessCards:(data.businessCards||[]).filter(c=>!ids.includes(c.id))};saveWithPush(nd,data.notifications);resetBulk();};
+  const deleteBulkBizCard=(ids)=>{const nd={...data,businessCards:(data.businessCards||[]).filter(c=>!ids.includes(c.id))};save(nd);resetBulk();};
   const BulkBar=({statusMap,applyFn,field,extraFields,visibleIds=[],onDelete})=>(
     bulkMode?(
       <div style={{background:"#eff6ff",border:"1.5px solid #93c5fd",borderRadius:"0.875rem",padding:"0.75rem",marginBottom:"0.875rem"}}>
@@ -4157,15 +4198,12 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
         filterKey:"company", filterMap:null, filterLabel:"会社名",
         nameOf:c=>(`${c.lastName||""}${c.firstName||""}`).trim()||"（名前なし）",
         subOf:c=>[c.company,c.title].filter(Boolean).join(" / "),
-        onDelete:ids=>{const nd={...data,businessCards:(data.businessCards||[]).filter(c=>!ids.includes(c.id))};saveWithPush(nd,data.notifications);},
+        onDelete:ids=>{const nd={...data,businessCards:(data.businessCards||[]).filter(c=>!ids.includes(c.id))};save(nd);},
       },
     }[type];
     if(!cfg) return null;
 
-    // モーダル内 state は key で制御（Reactの制限を回避するためrefで管理）
-    const [dmSearch,   setDmSearch]   = useState("");
-    const [dmFilter,   setDmFilter]   = useState("");
-    const [dmSelected, setDmSelected] = useState(new Set());
+    // dmSearch / dmFilter / dmSelected は SalesView のトップstateを使用（hooks規則準拠）
 
     const items=cfg.all.filter(item=>{
       if(dmFilter){
@@ -5037,7 +5075,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             style={{padding:"0.45rem 0.625rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📥</button>
           <button onClick={()=>{const rows=companies.map(c=>[c.name||"",c.status||"",c.industry||"",c.contactName||"",c.phone||"",c.email||"",c.address||"",(c.memos||[]).map(m=>m.text||"").join(" / ")]);downloadCSV("企業一覧.csv",["企業名","ステータス","業種","担当者名","電話番号","メールアドレス","住所","メモ"],rows);}}
             style={{padding:"0.45rem 0.625rem",borderRadius:"0.75rem",border:"1.5px solid #059669",background:"#d1fae5",color:"#065f46",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📤CSV</button>
-          <button onClick={()=>setDeleteModal({type:"company"})}
+          <button onClick={()=>setDeleteModal({type:"company"});setDmSearch("");setDmFilter("");setDmSelected(new Set())}
             style={{padding:"0.45rem 0.75rem",borderRadius:"0.75rem",border:"1.5px solid #fca5a5",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🗑 削除</button>
           <Btn size="sm" onClick={()=>{setForm({status:"未接触",assigneeIds:[]});setSheet("addCompany");}}>＋</Btn>
         </div>
@@ -5540,7 +5578,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             style={{padding:"0.45rem 0.625rem",borderRadius:"0.75rem",border:`1.5px solid ${bulkMode?"#2563eb":C.border}`,background:bulkMode?"#eff6ff":"white",color:bulkMode?"#1d4ed8":C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>☑️</button>
           <button onClick={()=>setSheet("importVendor")}
             style={{padding:"0.45rem 0.625rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📥</button>
-          <button onClick={()=>setDeleteModal({type:"vendor"})}
+          <button onClick={()=>setDeleteModal({type:"vendor"});setDmSearch("");setDmFilter("");setDmSelected(new Set())}
             style={{padding:"0.45rem 0.75rem",borderRadius:"0.75rem",border:"1.5px solid #fca5a5",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🗑 削除</button>
           <Btn size="sm" onClick={()=>{setForm({status:"未接触",municipalityIds:[],assigneeIds:[]});setSheet("addVendor");}}>＋</Btn>
         </div>
@@ -6120,7 +6158,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           style={{padding:"0.5rem 0.75rem",borderRadius:"0.75rem",border:`1.5px solid ${bulkMode?"#2563eb":C.border}`,background:bulkMode?"#eff6ff":"white",color:bulkMode?"#1d4ed8":C.textSub,fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>
           ☑️ 一括
         </button>
-        <button onClick={()=>setDeleteModal({type:"muni"})}
+        <button onClick={()=>setDeleteModal({type:"muni"});setDmSearch("");setDmFilter("");setDmSelected(new Set())}
           style={{padding:"0.5rem 0.75rem",borderRadius:"0.75rem",border:"1.5px solid #fca5a5",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>🗑 削除</button>
         <button onClick={()=>setSheet("importMuni")}
           style={{padding:"0.5rem 0.625rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📥</button>
@@ -6644,7 +6682,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
               </div>
             </div>
           );
-          const [memoIn,setMemoIn]=useState("");
+          const [memoIn,setMemoIn]=[bcMemoIn,setBcMemoIn];
           return (
             <div>
               <BcDupModal/><BcSummaryModal/>
@@ -6734,7 +6772,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                 <div style={{fontSize:"0.72rem",color:C.textMuted}}>{bizCards.length}件 · {companyNames.length}社</div>
               </div>
               <div style={{display:"flex",gap:"0.5rem"}}>
-                <button onClick={()=>setDeleteModal({type:"bizcard"})}
+                <button onClick={()=>setDeleteModal({type:"bizcard"});setDmSearch("");setDmFilter("");setDmSelected(new Set())}
                   style={{padding:"0.45rem 0.75rem",borderRadius:"0.75rem",border:"1.5px solid #fca5a5",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🗑 削除</button>
                 <Btn size="sm" variant="secondary" onClick={()=>setSheet("bcImport")}>📥 CSV取込</Btn>
                 <Btn size="sm" onClick={()=>setSheet("bcAdd")}>＋ 追加</Btn>
