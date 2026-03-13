@@ -4077,26 +4077,52 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     save({...data,companies:companies.map(c=>bulkSelected.has(c.id)?{...c,status:bulkStatus}:c)});
     resetBulk();
   };
-  const BulkBar=({statusMap,applyFn,field,extraFields})=>(
+  const deleteBulkComp=(ids)=>{save({...data,companies:companies.filter(c=>!ids.includes(c.id))});resetBulk();};
+  const deleteBulkVend=(ids)=>{save({...data,vendors:vendors.filter(v=>!ids.includes(v.id))});resetBulk();};
+  const deleteBulkMuni=(ids)=>{save({...data,municipalities:munis.filter(m=>!ids.includes(m.id))});resetBulk();};
+  const deleteBulkBizCard=(ids)=>{const nd={...data,businessCards:(data.businessCards||[]).filter(c=>!ids.includes(c.id))};saveWithPush(nd,data.notifications);resetBulk();};
+  const BulkBar=({statusMap,applyFn,field,extraFields,visibleIds=[],onDelete})=>(
     bulkMode?(
-      <div style={{background:"#eff6ff",border:"1.5px solid #93c5fd",borderRadius:"0.875rem",padding:"0.75rem",marginBottom:"0.875rem",display:"flex",flexWrap:"wrap",gap:"0.5rem",alignItems:"center"}}>
-        <span style={{fontSize:"0.78rem",fontWeight:700,color:"#1d4ed8"}}>{bulkSelected.size}件選択中</span>
-        {extraFields&&extraFields.map(([fld,lbl,map])=>(
-          <select key={fld} value={bulkTarget===fld?bulkStatus:""} onChange={e=>{setBulkTarget(fld);setBulkStatus(e.target.value);}}
-            style={{padding:"0.3rem 0.5rem",borderRadius:"0.5rem",border:"1px solid #93c5fd",fontSize:"0.75rem",fontFamily:"inherit",background:"white"}}>
-            <option value="">── {lbl} ──</option>
-            {Object.keys(map).map(s=><option key={s} value={s}>{s}</option>)}
-          </select>
-        ))}
-        {!extraFields&&(
-          <select value={bulkStatus} onChange={e=>{setBulkTarget(field||"status");setBulkStatus(e.target.value);}}
-            style={{padding:"0.3rem 0.5rem",borderRadius:"0.5rem",border:"1px solid #93c5fd",fontSize:"0.75rem",fontFamily:"inherit",background:"white"}}>
-            <option value="">── ステータス選択 ──</option>
-            {Object.keys(statusMap).map(s=><option key={s} value={s}>{s}</option>)}
-          </select>
-        )}
-        <Btn size="sm" onClick={applyFn} disabled={!bulkStatus||bulkSelected.size===0}>✅ 一括変更</Btn>
-        <Btn size="sm" variant="secondary" onClick={resetBulk}>キャンセル</Btn>
+      <div style={{background:"#eff6ff",border:"1.5px solid #93c5fd",borderRadius:"0.875rem",padding:"0.75rem",marginBottom:"0.875rem"}}>
+        {/* 上段：選択情報 ＋ 全選択/解除 */}
+        <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem",flexWrap:"wrap"}}>
+          <span style={{fontSize:"0.82rem",fontWeight:800,color:"#1d4ed8",minWidth:"5rem"}}>{bulkSelected.size}件選択中</span>
+          <button onClick={()=>{
+            const visSet=new Set(visibleIds);
+            const allSelected=visibleIds.length>0&&visibleIds.every(id=>bulkSelected.has(id));
+            if(allSelected){setBulkSelected(prev=>{const n=new Set(prev);visibleIds.forEach(id=>n.delete(id));return n;});}
+            else{setBulkSelected(prev=>{const n=new Set(prev);visibleIds.forEach(id=>n.add(id));return n;});}
+          }} style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"1.5px solid #3b82f6",background:visibleIds.every(id=>bulkSelected.has(id))&&visibleIds.length>0?"#3b82f6":"white",color:visibleIds.every(id=>bulkSelected.has(id))&&visibleIds.length>0?"white":"#3b82f6",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}}>
+            {visibleIds.every(id=>bulkSelected.has(id))&&visibleIds.length>0?"✓ 全解除":`☑ 全選択（${visibleIds.length}件）`}
+          </button>
+          <button onClick={resetBulk} style={{padding:"0.3rem 0.625rem",borderRadius:999,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:600,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}}>✕ キャンセル</button>
+        </div>
+        {/* 下段：ステータス変更 ＋ 削除 */}
+        <div style={{display:"flex",gap:"0.5rem",alignItems:"center",flexWrap:"wrap"}}>
+          {extraFields&&extraFields.map(([fld,lbl,map])=>(
+            <select key={fld} value={bulkTarget===fld?bulkStatus:""} onChange={e=>{setBulkTarget(fld);setBulkStatus(e.target.value);}}
+              style={{padding:"0.3rem 0.5rem",borderRadius:"0.5rem",border:"1px solid #93c5fd",fontSize:"0.75rem",fontFamily:"inherit",background:"white"}}>
+              <option value="">── {lbl} ──</option>
+              {Object.keys(map).map(s=><option key={s} value={s}>{s}</option>)}
+            </select>
+          ))}
+          {!extraFields&&statusMap&&(
+            <select value={bulkStatus} onChange={e=>{setBulkTarget(field||"status");setBulkStatus(e.target.value);}}
+              style={{padding:"0.3rem 0.5rem",borderRadius:"0.5rem",border:"1px solid #93c5fd",fontSize:"0.75rem",fontFamily:"inherit",background:"white",flex:1,minWidth:0}}>
+              <option value="">── ステータス選択 ──</option>
+              {Object.keys(statusMap).map(s=><option key={s} value={s}>{s}</option>)}
+            </select>
+          )}
+          {(applyFn&&statusMap)&&<Btn size="sm" onClick={applyFn} disabled={!bulkStatus||bulkSelected.size===0}>✅ 一括変更</Btn>}
+          {onDelete&&(
+            <button onClick={()=>{
+              if(bulkSelected.size===0){window.alert("削除する項目を選択してください。");return;}
+              if(window.confirm(`選択した${bulkSelected.size}件を削除します。この操作は元に戻せません。`)){onDelete([...bulkSelected]);}
+            }} style={{padding:"0.4rem 0.875rem",borderRadius:"0.625rem",border:"1.5px solid #fca5a5",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0,opacity:bulkSelected.size===0?0.5:1}}>
+              🗑 {bulkSelected.size>0?`${bulkSelected.size}件を削除`:"削除"}
+            </button>
+          )}
+        </div>
       </div>
     ):null
   );
@@ -4799,10 +4825,11 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       return true;
     });
     const searchedComps = compSearch ? compFilteredBase.filter(c=>normSearch(c.name).includes(normSearch(compSearch))) : null;
+    const compVisibleIds=(searchedComps||compFilteredBase).map(c=>c.id);
     return (
       <div>
         <TopTabs/>
-        <BulkBar statusMap={COMPANY_STATUS} applyFn={applyBulkComp}/>
+        <BulkBar statusMap={COMPANY_STATUS} applyFn={applyBulkComp} visibleIds={compVisibleIds} onDelete={deleteBulkComp}/>
         {/* 担当者フィルタ */}
         {(()=>{
           const hasF=!!compFilter.assignee;
@@ -5267,10 +5294,11 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       return true;
     });
     const searchedVendors = vendSearch ? filteredVendors.filter(v=>normVSearch(v.name).includes(normVSearch(vendSearch))) : null;
+    const vendVisibleIds=(searchedVendors||filteredVendors).map(v=>v.id);
     return (
       <div>
         <TopTabs/>
-        <BulkBar statusMap={VENDOR_STATUS} applyFn={applyBulkVend}/>
+        <BulkBar statusMap={VENDOR_STATUS} applyFn={applyBulkVend} visibleIds={vendVisibleIds} onDelete={deleteBulkVend}/>
         {/* フォロー中業者 */}
         {(()=>{
           const followVends = vendors.filter(v=>v.needFollow);
@@ -6000,7 +6028,9 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
         );
       })()}
       <BulkBar statusMap={MUNI_STATUS} applyFn={applyBulkMuni}
-        extraFields={[["dustalk","ダストーク展開",DUSTALK_STATUS],["treatyStatus","連携協定",TREATY_STATUS],["status","アプローチ",MUNI_STATUS]]}/>
+        extraFields={[["dustalk","ダストーク展開",DUSTALK_STATUS],["treatyStatus","連携協定",TREATY_STATUS],["status","アプローチ",MUNI_STATUS]]}
+        visibleIds={(muniTopSearch?munis.filter(m=>(m.name||"").includes(muniTopSearch)):muniFilterAssignee?(munis.filter(m=>muniFilterAssignee==="__me__"?(m.assigneeIds||[]).some(id=>id===currentUser?.id):(m.assigneeIds||[]).some(id=>String(id)===muniFilterAssignee))):munis).map(m=>m.id)}
+        onDelete={deleteBulkMuni}/>
       {/* Global dustalk summary */}
       {munis.length>0&&!muniTopSearch&&(
         <Card style={{padding:"0.875rem",marginBottom:"1rem"}}>
@@ -6531,6 +6561,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           if(cmp!==0)return cmp;
           return (a.lastName||"").localeCompare(b.lastName||"","ja");
         });
+        const bcVisibleIds=filtered.map(c=>c.id);
 
         // 会社別グループ
         const groups={};
@@ -6541,6 +6572,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           <div>
             <BcDupModal/>
             <BcSummaryModal/>
+            <BulkBar statusMap={null} visibleIds={bcVisibleIds} onDelete={deleteBulkBizCard}/>
 
             {/* ヘッダー */}
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.75rem"}}>
@@ -6549,6 +6581,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                 <div style={{fontSize:"0.72rem",color:C.textMuted}}>{bizCards.length}件 · {companyNames.length}社</div>
               </div>
               <div style={{display:"flex",gap:"0.5rem"}}>
+                <button onClick={()=>setBulkMode(v=>{if(v){resetBulk();return false;}setBulkSelected(new Set());return true;})}
+                  style={{padding:"0.45rem 0.625rem",borderRadius:"0.75rem",border:`1.5px solid ${bulkMode?"#2563eb":C.border}`,background:bulkMode?"#eff6ff":"white",color:bulkMode?"#1d4ed8":C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>☑️</button>
                 <Btn size="sm" variant="secondary" onClick={()=>setSheet("bcImport")}>📥 CSV取込</Btn>
                 <Btn size="sm" onClick={()=>setSheet("bcAdd")}>＋ 追加</Btn>
               </div>
@@ -6605,9 +6639,14 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                     {groups[company].map(card=>{
                       const name=`${card.lastName||""} ${card.firstName||""}`.trim()||"（名前なし）";
                       const phone=card.telDirect||card.mobile||card.telCompany||"";
+                      const isSelected=bulkSelected.has(card.id);
                       return (
-                        <div key={card.id} onClick={()=>{setBcActiveId(card.id);setBcScreen("detail");}}
-                          style={{display:"flex",alignItems:"center",gap:"0.75rem",padding:"0.75rem 1rem",borderBottom:`1px solid ${C.borderLight}`,cursor:"pointer",background:"white"}}>
+                        <div key={card.id} onClick={()=>{
+                          if(bulkMode){setBulkSelected(prev=>{const n=new Set(prev);n.has(card.id)?n.delete(card.id):n.add(card.id);return n;});return;}
+                          setBcActiveId(card.id);setBcScreen("detail");
+                        }}
+                          style={{display:"flex",alignItems:"center",gap:"0.75rem",padding:"0.75rem 1rem",borderBottom:`1px solid ${C.borderLight}`,cursor:"pointer",background:isSelected?"#eff6ff":"white",transition:"background 0.1s"}}>
+                          {bulkMode&&<input type="checkbox" checked={isSelected} readOnly style={{width:15,height:15,accentColor:C.accent,flexShrink:0}}/>}
                           <div style={{width:38,height:38,borderRadius:"50%",background:`linear-gradient(135deg,${C.accent},${C.accentDark})`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                             <span style={{fontSize:"1rem",fontWeight:800,color:"white"}}>{(card.lastName||card.company||"?")[0]}</span>
                           </div>
@@ -6616,7 +6655,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                             <div style={{fontSize:"0.72rem",color:C.textSub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{[card.title,card.department].filter(Boolean).join("　")}</div>
                             {phone&&<div style={{fontSize:"0.7rem",color:C.textMuted}}>📞 {phone}</div>}
                           </div>
-                          <span style={{color:C.textMuted,fontSize:"0.85rem",flexShrink:0}}>›</span>
+                          {!bulkMode&&<span style={{color:C.textMuted,fontSize:"0.85rem",flexShrink:0}}>›</span>}
                         </div>
                       );
                     })}
