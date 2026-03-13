@@ -90,7 +90,7 @@ async function sbSet(id, data) {
   } catch {}
 }
 
-const INIT = { tasks:[], projects:[], emails:[], emailStyles:[], prefectures:[], municipalities:[], vendors:[], companies:[], notifications:[], changeLogs:[], analytics:{} };
+const INIT = { tasks:[], projects:[], emails:[], emailStyles:[], prefectures:[], municipalities:[], vendors:[], companies:[], businessCards:[], notifications:[], changeLogs:[], analytics:{} };
 
 // ─── SALES CONSTANTS ──────────────────────────────────────────────────────────
 
@@ -1753,8 +1753,8 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
       console.error("MyDesk: saveWithPush rejected invalid data", nd); return;
     }
     // 主要キーが全て消えているような空データは保存しない
-    const hasContent = ["tasks","projects","companies","vendors","municipalities"].some(k=>Array.isArray(nd[k])&&nd[k].length>0);
-    const currentHasContent = ["tasks","projects","companies","vendors","municipalities"].some(k=>Array.isArray(data[k])&&data[k].length>0);
+    const hasContent = ["tasks","projects","companies","vendors","municipalities","businessCards"].some(k=>Array.isArray(nd[k])&&nd[k].length>0);
+    const currentHasContent = ["tasks","projects","companies","vendors","municipalities","businessCards"].some(k=>Array.isArray(data[k])&&data[k].length>0);
     if(currentHasContent && !hasContent) {
       console.error("MyDesk: saveWithPush rejected — would wipe existing data", nd); return;
     }
@@ -3423,11 +3423,164 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   // scroll position tracking for back navigation
   const savedScrollPos = useRef({});
 
+  // ── 名刺 state ──────────────────────────────────────────────────────────
+  const [bcSearch,       setBcSearch]       = useState("");
+  const [bcActiveId,     setBcActiveId]     = useState(null);
+  const [bcScreen,       setBcScreen]       = useState("list"); // list|detail
+  const [bcImportErr,    setBcImportErr]    = useState("");
+  const [bcImportPrev,   setBcImportPrev]   = useState(null);   // preview rows
+  const [bcCompanyFilter,setBcCompanyFilter]= useState("");      // 企業フィルター（""=全て）
+  const [bcDupModal,     setBcDupModal]     = useState(null);   // 重複モーダル {existing,incoming,onAdd,onSkip,onCancel}
+  const [bcDupQueue,     setBcDupQueue]     = useState([]);     // CSV重複キュー
+  const [bcDupBuffer,    setBcDupBuffer]    = useState([]);     // 追加確定済みカード
+  const [bcImportSummary,setBcImportSummary]= useState(null);   // {added,skipped}
+
   // ── データ参照（hook後、コンポーネント内計算）──
   const prefs     = data.prefectures    || [];
   const munis     = data.municipalities || [];
   const vendors   = data.vendors        || [];
   const companies = data.companies      || [];
+  const bizCards  = data.businessCards  || [];
+
+  // ── 名刺 CRUD ──────────────────────────────────────────────────────────
+  const _commitBizCard = (card) => {
+    // 実際にDBへ書き込む（重複確認済みの前提）
+    const nd={...data,businessCards:[...bizCards,{...card,id:Date.now()+Math.random(),createdAt:new Date().toISOString(),createdBy:currentUser?.id||""}]};
+    saveWithPush(nd,data.notifications);
+  };
+  const _commitBizCards = (cards) => {
+    // 複数カードを一括書き込み
+    const newEntries=cards.map(c=>({...c,id:Date.now()+Math.random(),createdAt:new Date().toISOString(),createdBy:currentUser?.id||""}));
+    const nd={...data,businessCards:[...bizCards,...newEntries]};
+    saveWithPush(nd,data.notifications);
+  };
+
+  // 手動追加：重複チェックありモーダル表示
+  const addBizCard = (card) => {
+    const dup=bizCards.find(c=>c.company===card.company&&c.lastName===card.lastName&&c.firstName===card.firstName);
+    if(dup){
+      setBcDupModal({
+        existing:dup,
+        incoming:`${card.lastName} ${card.firstName}（${card.company}）`,
+        onAdd:()=>{ _commitBizCard(card); setBcDupModal(null); setSheet(null); },
+        onSkip:()=>{ setBcDupModal(null); setBcActiveId(dup.id); setBcScreen("detail"); setSheet(null); },
+        onCancel:()=>setBcDupModal(null),
+      });
+      return;
+    }
+    _commitBizCard(card);
+    setSheet(null);
+  };
+  const updateBizCard = (id,ch) => {
+    const nd={...data,businessCards:bizCards.map(c=>c.id===id?{...c,...ch}:c)};
+    saveWithPush(nd,data.notifications);
+  };
+  const deleteBizCard = (id) => {
+    const nd={...data,businessCards:bizCards.filter(c=>c.id!==id)};
+    saveWithPush(nd,data.notifications);
+  };
+
+  // CSV重複キュー処理：1件ずつモーダル表示
+  const _processBcDupQueue = (queue, buffer, summary) => {
+    if(queue.length===0){
+      // 全件処理完了→保存
+      if(buffer.length>0) _commitBizCards(buffer);
+      setBcImportSummary(summary);
+      setBcDupQueue([]); setBcDupBuffer([]); setBcImportPrev(null); setBcImportErr("");
+      setBcDupModal(null);
+      return;
+    }
+    const [head,...rest]=queue;
+    setBcDupModal({
+      existing:head.existing,
+      incoming:`${head.incoming.lastName} ${head.incoming.firstName}（${head.incoming.company}）`,
+      onAdd:()=>{
+        const newBuf=[...buffer,head.incoming];
+        const newSummary={added:summary.added+1,skipped:summary.skipped};
+        setBcDupBuffer(newBuf); setBcDupQueue(rest);
+        _processBcDupQueue(rest,newBuf,newSummary);
+      },
+      onSkip:()=>{
+        const newSummary={added:summary.added,skipped:summary.skipped+1};
+        setBcDupQueue(rest);
+        _processBcDupQueue(rest,buffer,newSummary);
+      },
+      onCancel:()=>{
+        // キャンセル = 残り全スキップ
+        const newSummary={added:summary.added,skipped:summary.skipped+queue.length};
+        if(buffer.length>0) _commitBizCards(buffer);
+        setBcImportSummary(newSummary);
+        setBcDupQueue([]); setBcDupBuffer([]); setBcImportPrev(null);
+        setBcDupModal(null);
+      },
+    });
+  };
+
+  // CSVインポート開始：重複と非重複を仕分け
+  const importBizCards = (rows) => {
+    const clean=[],dups=[];
+    rows.forEach(row=>{
+      const dup=bizCards.find(c=>c.company===row.company&&c.lastName===row.lastName&&c.firstName===row.firstName);
+      if(dup) dups.push({existing:dup,incoming:row});
+      else clean.push(row);
+    });
+    const initialSummary={added:clean.length,skipped:0};
+    if(dups.length===0){
+      _commitBizCards(clean);
+      setBcImportPrev(null); setBcImportErr("");
+      setBcImportSummary(initialSummary);
+      setSheet(null);
+      return;
+    }
+    // 非重複を一旦バッファに
+    setBcDupBuffer(clean);
+    setBcDupQueue(dups);
+    setSheet(null);
+    _processBcDupQueue(dups,clean,initialSummary);
+  };
+
+  // ── Eight CSV パーサー ────────────────────────────────────────────────
+  const parseEightCsv = (text) => {
+    const parseRow = (line) => {
+      const cols=[];let cur="",inQ=false;
+      for(let i=0;i<line.length;i++){
+        const c=line[i],n=line[i+1];
+        if(inQ){if(c==='"'&&n==='"'){cur+='"';i++;}else if(c==='"'){inQ=false;}else cur+=c;}
+        else{if(c==='"'){inQ=true;}else if(c===','){cols.push(cur);cur="";}else cur+=c;}
+      }
+      cols.push(cur);
+      return cols;
+    };
+    const cleaned=text.replace(/^\uFEFF/,"").replace(/\r\n/g,"\n").replace(/\r/g,"\n");
+    const lines=cleaned.split("\n").filter(l=>l.trim());
+    if(lines.length<2) return {error:"データが空です"};
+    const headers=parseRow(lines[0]);
+    if(!headers[0]||!headers[0].includes("会社")) return {error:"Eightのフォーマット（A列=会社名）ではありません"};
+    const rows=[];
+    for(let i=1;i<lines.length;i++){
+      const cols=parseRow(lines[i]);
+      if(cols.every(c=>!c.trim())) continue;
+      rows.push({
+        company:    cols[0]||"",
+        department: cols[1]||"",
+        title:      cols[2]||"",
+        lastName:   cols[3]||"",
+        firstName:  cols[4]||"",
+        email:      cols[5]||"",
+        zip:        cols[6]||"",
+        address:    cols[7]||"",
+        telCompany: cols[8]||"",
+        telDept:    cols[9]||"",
+        telDirect:  cols[10]||"",
+        fax:        cols[11]||"",
+        mobile:     cols[12]||"",
+        url:        cols[13]||"",
+        exchangedAt:cols[14]||"",
+        memos:[],
+      });
+    }
+    return {rows};
+  };
 
   const toggleGrp=(setter,key)=>setter(prev=>{const n=new Set(prev);n.has(key)?n.delete(key):n.add(key);return n;});
   const normSearch = s => {
@@ -3949,7 +4102,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   );
   const TopTabs=()=>(
     <div style={{display:"flex",background:"white",borderRadius:"0.875rem",padding:"0.25rem",marginBottom:"1rem",border:`1px solid ${C.border}`,boxShadow:C.shadow,position:"relative"}}>
-      {[["dash","📊","概況"],["map","🗺️","地図"],["company","🏢","企業"],["muni","🏛️","自治体"],["vendor","🔧","業者"]].map(([id,icon,lbl])=>(
+      {[["dash","📊","概況"],["map","🗺️","地図"],["company","🏢","企業"],["muni","🏛️","自治体"],["vendor","🔧","業者"],["bizcard","🪪","名刺"]].map(([id,icon,lbl])=>(
         <button key={id} onClick={()=>{
           setSalesTab(id);
           setActiveCompany(null);setActiveVendor(null);
@@ -6227,6 +6380,333 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       )}
         {/* 重複検出モーダル */}
         {dupModal&&<DupModal existing={dupModal.existing} incoming={dupModal.incoming} onKeepBoth={dupModal.onKeepBoth} onUseExisting={dupModal.onUseExisting} onCancel={()=>setDupModal(null)}/>}
+
+      {/* ── 名刺タブ ── */}
+      {salesTab==="bizcard"&&(()=>{
+        const uid=currentUser?.id;
+        const norm=s=>(s||"").replace(/[\s\u3000]/g,"").toLowerCase();
+
+        // ── 重複モーダル（手動追加・CSVインポート共通）──
+        const BcDupModal=()=>{
+          if(!bcDupModal) return null;
+          const ex=bcDupModal.existing;
+          const exName=(`${ex.lastName||""} ${ex.firstName||""}`).trim()||"（名前なし）";
+          return (
+            <div style={{position:"fixed",inset:0,zIndex:600,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.65)",padding:"1rem"}}>
+              <div style={{background:"white",borderRadius:"1.25rem",padding:"1.5rem 1.25rem",maxWidth:360,width:"100%",boxShadow:"0 12px 50px rgba(0,0,0,0.3)",maxHeight:"85vh",overflowY:"auto"}}>
+                <div style={{textAlign:"center",marginBottom:"1rem"}}>
+                  <div style={{fontSize:"2rem",marginBottom:"0.4rem"}}>⚠️</div>
+                  <div style={{fontWeight:800,fontSize:"1rem",color:C.text}}>同じ名刺が既に存在します</div>
+                  <div style={{fontSize:"0.78rem",color:C.textMuted,marginTop:"0.25rem"}}>登録しようとした名刺</div>
+                  <div style={{fontWeight:700,fontSize:"0.9rem",color:"#dc2626",background:"#fee2e2",borderRadius:"0.625rem",padding:"0.45rem 0.875rem",marginTop:"0.4rem"}}>「{bcDupModal.incoming}」</div>
+                </div>
+                <div style={{background:C.bg,borderRadius:"0.875rem",padding:"0.875rem",marginBottom:"1.25rem"}}>
+                  <div style={{fontSize:"0.7rem",fontWeight:700,color:C.textMuted,marginBottom:"0.5rem"}}>📋 既に登録されているデータ</div>
+                  {[["氏名",exName],["会社",ex.company],["役職",ex.title],["メール",ex.email],["携帯",ex.mobile||ex.telDirect]].filter(([,v])=>v).map(([l,v])=>(
+                    <div key={l} style={{display:"flex",gap:"0.5rem",padding:"0.28rem 0",borderBottom:`1px solid ${C.borderLight}`}}>
+                      <span style={{fontSize:"0.72rem",fontWeight:700,color:C.textSub,flexShrink:0,minWidth:48}}>{l}</span>
+                      <span style={{fontSize:"0.8rem",color:C.text,wordBreak:"break-all"}}>{v}</span>
+                    </div>
+                  ))}
+                </div>
+                {bcDupQueue.length>1&&<div style={{fontSize:"0.72rem",color:C.textMuted,textAlign:"center",marginBottom:"0.75rem"}}>残り {bcDupQueue.length} 件の重複を確認中</div>}
+                <div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
+                  <button onClick={bcDupModal.onSkip} style={{padding:"0.75rem",borderRadius:"0.75rem",border:"none",background:C.accent,color:"white",fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.9rem"}}>
+                    既存のデータを使う（スキップ）
+                  </button>
+                  <button onClick={bcDupModal.onAdd} style={{padding:"0.75rem",borderRadius:"0.75rem",border:`1.5px solid ${C.accent}`,background:"white",color:C.accent,fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.9rem"}}>
+                    それでも新規追加する
+                  </button>
+                  <button onClick={bcDupModal.onCancel} style={{padding:"0.6rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:600,cursor:"pointer",fontFamily:"inherit",fontSize:"0.85rem"}}>
+                    {bcDupQueue.length>1?"残りをすべてスキップ":"キャンセル（入力に戻る）"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        };
+
+        // ── 取込完了サマリーモーダル ──
+        const BcSummaryModal=()=>{
+          if(!bcImportSummary) return null;
+          return (
+            <div style={{position:"fixed",inset:0,zIndex:600,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.6)",padding:"1rem"}}>
+              <div style={{background:"white",borderRadius:"1.25rem",padding:"2rem 1.5rem",maxWidth:320,width:"100%",textAlign:"center",boxShadow:"0 12px 50px rgba(0,0,0,0.25)"}}>
+                <div style={{fontSize:"2.5rem",marginBottom:"0.5rem"}}>✅</div>
+                <div style={{fontWeight:800,fontSize:"1.05rem",color:C.text,marginBottom:"0.5rem"}}>取込み完了</div>
+                <div style={{fontSize:"0.88rem",color:C.textSub,marginBottom:"0.25rem"}}>追加：<b style={{color:"#059669"}}>{bcImportSummary.added}件</b></div>
+                {bcImportSummary.skipped>0&&<div style={{fontSize:"0.82rem",color:C.textMuted}}>スキップ：{bcImportSummary.skipped}件（重複）</div>}
+                <Btn style={{width:"100%",marginTop:"1.25rem"}} onClick={()=>setBcImportSummary(null)}>閉じる</Btn>
+              </div>
+            </div>
+          );
+        };
+
+        // ── 詳細画面 ──
+        if(bcScreen==="detail"){
+          const card=bizCards.find(c=>c.id===bcActiveId);
+          if(!card) return (<div><BcDupModal/><BcSummaryModal/><button onClick={()=>setBcScreen("list")} style={{background:"none",border:"none",color:C.textSub,fontWeight:700,fontSize:"0.85rem",cursor:"pointer",padding:0,marginBottom:"1rem"}}>‹ 名刺一覧</button><div style={{textAlign:"center",color:C.textMuted,padding:"3rem"}}>名刺が見つかりません</div></div>);
+          const name=`${card.lastName||""} ${card.firstName||""}`.trim();
+          const phone=card.telDirect||card.mobile||card.telCompany||card.telDept||"";
+          const Field=({icon,label,value,href})=>!value?null:(
+            <div style={{display:"flex",gap:"0.75rem",padding:"0.625rem 0",borderBottom:`1px solid ${C.borderLight}`}}>
+              <span style={{fontSize:"0.95rem",flexShrink:0,width:20,textAlign:"center"}}>{icon}</span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:"0.65rem",color:C.textMuted,marginBottom:"0.1rem"}}>{label}</div>
+                {href?<a href={href} style={{fontSize:"0.85rem",color:C.accent,textDecoration:"none",wordBreak:"break-all"}}>{value}</a>
+                  :<div style={{fontSize:"0.85rem",color:C.text,wordBreak:"break-all"}}>{value}</div>}
+              </div>
+            </div>
+          );
+          const [memoIn,setMemoIn]=useState("");
+          return (
+            <div>
+              <BcDupModal/><BcSummaryModal/>
+              <button onClick={()=>setBcScreen("list")} style={{display:"flex",alignItems:"center",gap:"0.4rem",background:"none",border:"none",color:C.textSub,fontWeight:700,fontSize:"0.85rem",cursor:"pointer",marginBottom:"1rem",padding:0}}>‹ 名刺一覧</button>
+              <Card style={{padding:"1.25rem",marginBottom:"1rem"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:"0.5rem"}}>
+                  <div>
+                    <div style={{fontSize:"1.2rem",fontWeight:800,color:C.text}}>{name||"（名前なし）"}</div>
+                    {card.title&&<div style={{fontSize:"0.78rem",color:C.textSub,marginTop:"0.15rem"}}>{card.title}</div>}
+                    <div style={{fontSize:"0.88rem",fontWeight:700,color:C.accent,marginTop:"0.35rem"}}>🏢 {card.company}</div>
+                    {card.department&&<div style={{fontSize:"0.75rem",color:C.textMuted}}>{card.department}</div>}
+                  </div>
+                  <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap"}}>
+                    {phone&&<a href={`tel:${phone.replace(/[^0-9+]/g,"")}`} style={{padding:"0.45rem 0.75rem",borderRadius:"0.625rem",background:C.accentBg,color:C.accent,fontSize:"0.78rem",fontWeight:700,textDecoration:"none"}}>📞 電話</a>}
+                    {card.email&&<a href={`mailto:${card.email}`} style={{padding:"0.45rem 0.75rem",borderRadius:"0.625rem",background:"#f0fdf4",color:"#059669",fontSize:"0.78rem",fontWeight:700,textDecoration:"none"}}>✉️ メール</a>}
+                  </div>
+                </div>
+                {card.exchangedAt&&<div style={{marginTop:"0.75rem",fontSize:"0.72rem",color:C.textMuted}}>🤝 名刺交換日：{card.exchangedAt}</div>}
+              </Card>
+              <Card style={{padding:"1rem",marginBottom:"1rem"}}>
+                <Field icon="📧" label="メールアドレス" value={card.email} href={`mailto:${card.email}`}/>
+                <Field icon="📞" label="TEL（直通）" value={card.telDirect}/>
+                <Field icon="📱" label="携帯電話" value={card.mobile}/>
+                <Field icon="☎️" label="TEL（会社）" value={card.telCompany}/>
+                <Field icon="🏢" label="TEL（部門）" value={card.telDept}/>
+                <Field icon="📠" label="FAX" value={card.fax}/>
+                <Field icon="📮" label="郵便番号" value={card.zip}/>
+                <Field icon="🗺️" label="住所" value={card.address}/>
+                <Field icon="🌐" label="URL" value={card.url} href={card.url}/>
+              </Card>
+              <Card style={{padding:"1rem",marginBottom:"1rem"}}>
+                <div style={{fontWeight:700,fontSize:"0.82rem",color:C.text,marginBottom:"0.5rem"}}>📝 メモ</div>
+                {(card.memos||[]).map(m=>(
+                  <div key={m.id} style={{padding:"0.5rem",background:C.bg,borderRadius:"0.5rem",marginBottom:"0.4rem",fontSize:"0.82rem",color:C.text,whiteSpace:"pre-wrap"}}>
+                    {m.text}
+                    <div style={{fontSize:"0.65rem",color:C.textMuted,marginTop:"0.2rem"}}>{users.find(u=>u.id===m.userId)?.name||""} · {m.date?new Date(m.date).toLocaleDateString("ja-JP"):""}</div>
+                  </div>
+                ))}
+                <div style={{display:"flex",gap:"0.5rem",marginTop:"0.5rem"}}>
+                  <input value={memoIn} onChange={e=>setMemoIn(e.target.value)} placeholder="メモを追加..."
+                    style={{flex:1,padding:"0.5rem 0.75rem",borderRadius:"0.625rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.82rem"}}/>
+                  <Btn size="sm" disabled={!memoIn.trim()} onClick={()=>{
+                    if(!memoIn.trim())return;
+                    const m={id:Date.now(),userId:uid,text:memoIn.trim(),date:new Date().toISOString()};
+                    updateBizCard(card.id,{memos:[...(card.memos||[]),m]});
+                    setMemoIn("");
+                  }}>追加</Btn>
+                </div>
+              </Card>
+              <Btn variant="danger" size="sm" onClick={()=>{if(window.confirm("この名刺を削除しますか？")){deleteBizCard(card.id);setBcScreen("list");}}}>🗑 削除</Btn>
+            </div>
+          );
+        }
+
+        // ── 一覧画面 ──
+        // 企業一覧（登録件数つき）
+        const companyNames=[...new Set(bizCards.map(c=>c.company||"（会社名なし）"))].sort((a,b)=>a.localeCompare(b,"ja"));
+
+        // フィルター適用
+        const q=norm(bcSearch);
+        const filtered=bizCards.filter(c=>{
+          if(bcCompanyFilter&&c.company!==bcCompanyFilter) return false;
+          if(!q) return true;
+          return [c.company,c.lastName,c.firstName,c.title,c.department,c.email,c.mobile,c.telDirect,c.address].some(v=>norm(v).includes(q));
+        }).sort((a,b)=>{
+          const cmp=(a.company||"").localeCompare(b.company||"","ja");
+          if(cmp!==0)return cmp;
+          return (a.lastName||"").localeCompare(b.lastName||"","ja");
+        });
+
+        // 会社別グループ
+        const groups={};
+        filtered.forEach(c=>{const k=c.company||"（会社名なし）";if(!groups[k])groups[k]=[];groups[k].push(c);});
+        const groupKeys=Object.keys(groups).sort((a,b)=>a.localeCompare(b,"ja"));
+
+        return (
+          <div>
+            <BcDupModal/>
+            <BcSummaryModal/>
+
+            {/* ヘッダー */}
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.75rem"}}>
+              <div>
+                <div style={{fontWeight:800,fontSize:"1rem",color:C.text}}>🪪 名刺管理</div>
+                <div style={{fontSize:"0.72rem",color:C.textMuted}}>{bizCards.length}件 · {companyNames.length}社</div>
+              </div>
+              <div style={{display:"flex",gap:"0.5rem"}}>
+                <Btn size="sm" variant="secondary" onClick={()=>setSheet("bcImport")}>📥 CSV取込</Btn>
+                <Btn size="sm" onClick={()=>setSheet("bcAdd")}>＋ 追加</Btn>
+              </div>
+            </div>
+
+            {/* 企業フィルターチップ */}
+            {companyNames.length>0&&(
+              <div style={{display:"flex",gap:"0.4rem",overflowX:"auto",paddingBottom:"0.4rem",marginBottom:"0.75rem",WebkitOverflowScrolling:"touch"}}>
+                <button onClick={()=>setBcCompanyFilter("")}
+                  style={{flexShrink:0,padding:"0.3rem 0.75rem",borderRadius:999,border:`1.5px solid ${!bcCompanyFilter?C.accent:C.border}`,background:!bcCompanyFilter?C.accentBg:"white",color:!bcCompanyFilter?C.accent:C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>
+                  すべて（{bizCards.length}）
+                </button>
+                {companyNames.map(name=>{
+                  const cnt=bizCards.filter(c=>c.company===name).length;
+                  const active=bcCompanyFilter===name;
+                  return (
+                    <button key={name} onClick={()=>setBcCompanyFilter(active?"":name)}
+                      style={{flexShrink:0,padding:"0.3rem 0.75rem",borderRadius:999,border:`1.5px solid ${active?C.accent:C.border}`,background:active?C.accentBg:"white",color:active?C.accent:C.textSub,fontWeight:active?700:500,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap",maxWidth:160,overflow:"hidden",textOverflow:"ellipsis"}}>
+                      🏢 {name}（{cnt}）
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* 検索 */}
+            <div style={{marginBottom:"0.75rem",position:"relative"}}>
+              <span style={{position:"absolute",left:"0.75rem",top:"50%",transform:"translateY(-50%)",fontSize:"0.85rem",color:C.textMuted,pointerEvents:"none"}}>🔍</span>
+              <input value={bcSearch} onChange={e=>setBcSearch(e.target.value)} placeholder="氏名・役職・メール・電話番号で検索..."
+                style={{width:"100%",padding:"0.6rem 0.75rem 0.6rem 2.2rem",borderRadius:"0.75rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.85rem",boxSizing:"border-box"}}/>
+            </div>
+
+            {/* 一覧 */}
+            {bizCards.length===0?(
+              <Card style={{padding:"3rem 1rem",textAlign:"center",color:C.textMuted}}>
+                <div style={{fontSize:"3rem",marginBottom:"0.75rem"}}>🪪</div>
+                <div style={{fontWeight:700,fontSize:"0.9rem",marginBottom:"0.4rem"}}>名刺がまだありません</div>
+                <div style={{fontSize:"0.8rem"}}>「＋ 追加」または「📥 CSV取込」で登録してください</div>
+              </Card>
+            ):filtered.length===0?(
+              <div style={{textAlign:"center",color:C.textMuted,padding:"2rem",fontSize:"0.85rem"}}>該当する名刺がありません</div>
+            ):(
+              <div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
+                {groupKeys.map(company=>(
+                  <Card key={company} style={{overflow:"hidden"}}>
+                    {/* 企業ヘッダー（タップで企業フィルター） */}
+                    <div onClick={()=>setBcCompanyFilter(bcCompanyFilter===company?"":company)}
+                      style={{padding:"0.5rem 1rem",background:bcCompanyFilter===company?C.accentBg:C.bg,borderBottom:`1px solid ${C.borderLight}`,display:"flex",alignItems:"center",gap:"0.5rem",cursor:"pointer"}}>
+                      <span style={{fontSize:"0.75rem",fontWeight:800,color:bcCompanyFilter===company?C.accent:C.text,flex:1}}>🏢 {company}</span>
+                      <span style={{fontSize:"0.68rem",color:C.textMuted,background:"white",borderRadius:999,padding:"0.05rem 0.45rem",border:`1px solid ${C.borderLight}`}}>{groups[company].length}名</span>
+                      <span style={{fontSize:"0.7rem",color:C.textMuted}}>{bcCompanyFilter===company?"✕ 解除":"絞込"}</span>
+                    </div>
+                    {/* 所属メンバー */}
+                    {groups[company].map(card=>{
+                      const name=`${card.lastName||""} ${card.firstName||""}`.trim()||"（名前なし）";
+                      const phone=card.telDirect||card.mobile||card.telCompany||"";
+                      return (
+                        <div key={card.id} onClick={()=>{setBcActiveId(card.id);setBcScreen("detail");}}
+                          style={{display:"flex",alignItems:"center",gap:"0.75rem",padding:"0.75rem 1rem",borderBottom:`1px solid ${C.borderLight}`,cursor:"pointer",background:"white"}}>
+                          <div style={{width:38,height:38,borderRadius:"50%",background:`linear-gradient(135deg,${C.accent},${C.accentDark})`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                            <span style={{fontSize:"1rem",fontWeight:800,color:"white"}}>{(card.lastName||card.company||"?")[0]}</span>
+                          </div>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontSize:"0.88rem",fontWeight:700,color:C.text}}>{name}</div>
+                            <div style={{fontSize:"0.72rem",color:C.textSub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{[card.title,card.department].filter(Boolean).join("　")}</div>
+                            {phone&&<div style={{fontSize:"0.7rem",color:C.textMuted}}>📞 {phone}</div>}
+                          </div>
+                          <span style={{color:C.textMuted,fontSize:"0.85rem",flexShrink:0}}>›</span>
+                        </div>
+                      );
+                    })}
+                  </Card>
+                ))}
+              </div>
+            )}
+
+            {/* 手動追加シート */}
+            {sheet==="bcAdd"&&(()=>{
+              const [f,setF]=useState({company:"",department:"",title:"",lastName:"",firstName:"",email:"",zip:"",address:"",telCompany:"",telDept:"",telDirect:"",fax:"",mobile:"",url:"",exchangedAt:""});
+              const FL=({label,k,type="text",placeholder=""})=>(
+                <div style={{marginBottom:"0.625rem"}}>
+                  <div style={{fontSize:"0.7rem",fontWeight:700,color:C.textSub,marginBottom:"0.2rem"}}>{label}</div>
+                  <input type={type} value={f[k]||""} onChange={e=>setF(p=>({...p,[k]:e.target.value}))} placeholder={placeholder}
+                    style={{width:"100%",padding:"0.5rem 0.75rem",borderRadius:"0.625rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.82rem",boxSizing:"border-box"}}/>
+                </div>
+              );
+              return (
+                <Sheet title="名刺を追加" onClose={()=>setSheet(null)}>
+                  <FL label="会社名 *" k="company" placeholder="株式会社○○"/>
+                  <div style={{display:"flex",gap:"0.5rem"}}>
+                    <div style={{flex:1}}><FL label="姓" k="lastName" placeholder="山田"/></div>
+                    <div style={{flex:1}}><FL label="名" k="firstName" placeholder="太郎"/></div>
+                  </div>
+                  <FL label="部署名" k="department" placeholder="営業部"/>
+                  <FL label="役職" k="title" placeholder="部長"/>
+                  <FL label="メールアドレス" k="email" type="email" placeholder="xxx@example.com"/>
+                  <FL label="携帯電話" k="mobile" placeholder="090-xxxx-xxxx"/>
+                  <FL label="TEL（直通）" k="telDirect" placeholder="03-xxxx-xxxx"/>
+                  <FL label="TEL（会社）" k="telCompany" placeholder="03-xxxx-xxxx"/>
+                  <FL label="TEL（部門）" k="telDept"/>
+                  <FL label="FAX" k="fax"/>
+                  <FL label="郵便番号" k="zip" placeholder="100-0001"/>
+                  <FL label="住所" k="address" placeholder="東京都千代田区…"/>
+                  <FL label="URL" k="url" placeholder="https://"/>
+                  <FL label="名刺交換日" k="exchangedAt" type="date"/>
+                  <div style={{display:"flex",gap:"0.75rem",marginTop:"1rem"}}>
+                    <Btn variant="secondary" style={{flex:1}} onClick={()=>setSheet(null)}>キャンセル</Btn>
+                    <Btn style={{flex:2}} size="lg" disabled={!f.company.trim()} onClick={()=>addBizCard(f)}>保存する</Btn>
+                  </div>
+                </Sheet>
+              );
+            })()}
+
+            {/* CSVインポートシート */}
+            {sheet==="bcImport"&&(
+              <Sheet title="Eight CSV 取込" onClose={()=>{setSheet(null);setBcImportPrev(null);setBcImportErr("");}}>
+                <div style={{fontSize:"0.82rem",color:C.textSub,marginBottom:"1rem",background:C.bg,padding:"0.75rem",borderRadius:"0.625rem",lineHeight:1.7}}>
+                  EightアプリからエクスポートしたCSV（UTF-8）を選択してください。<br/>
+                  A列（会社名）〜 N列（URL）を自動で取込みます。<br/>
+                  <span style={{color:"#059669",fontWeight:700}}>重複が見つかった場合は1件ずつ確認できます。</span>
+                </div>
+                {!bcImportPrev?(
+                  <>
+                    <input type="file" accept=".csv" onChange={e=>{
+                      const file=e.target.files[0];if(!file)return;
+                      const reader=new FileReader();
+                      reader.onload=ev=>{
+                        const result=parseEightCsv(ev.target.result);
+                        if(result.error){setBcImportErr(result.error);setBcImportPrev(null);}
+                        else{setBcImportPrev(result.rows);setBcImportErr("");}
+                      };
+                      reader.readAsText(file,"UTF-8");
+                    }} style={{width:"100%",marginBottom:"0.75rem"}}/>
+                    {bcImportErr&&<div style={{color:"#dc2626",fontSize:"0.82rem",background:"#fee2e2",padding:"0.5rem 0.75rem",borderRadius:"0.5rem"}}>⚠️ {bcImportErr}</div>}
+                  </>
+                ):(
+                  <>
+                    <div style={{background:"#d1fae5",borderRadius:"0.625rem",padding:"0.75rem",marginBottom:"0.75rem",fontSize:"0.82rem",color:"#065f46"}}>
+                      ✅ {bcImportPrev.length}件を読み込みました。重複が見つかった場合は順番に確認できます。
+                    </div>
+                    <div style={{maxHeight:260,overflowY:"auto",border:`1px solid ${C.border}`,borderRadius:"0.625rem",marginBottom:"1rem"}}>
+                      {bcImportPrev.slice(0,50).map((row,i)=>(
+                        <div key={i} style={{padding:"0.5rem 0.75rem",borderBottom:`1px solid ${C.borderLight}`,fontSize:"0.78rem"}}>
+                          <div style={{fontWeight:700,color:C.text}}>{row.lastName} {row.firstName} <span style={{color:C.textSub,fontWeight:400}}>/ {row.company}</span></div>
+                          <div style={{color:C.textMuted}}>{[row.title,row.email&&"✉ "+row.email,row.mobile&&"📱 "+row.mobile].filter(Boolean).join("　")}</div>
+                        </div>
+                      ))}
+                      {bcImportPrev.length>50&&<div style={{padding:"0.5rem",textAlign:"center",fontSize:"0.75rem",color:C.textMuted}}>… 他{bcImportPrev.length-50}件</div>}
+                    </div>
+                    <div style={{display:"flex",gap:"0.75rem"}}>
+                      <Btn variant="secondary" style={{flex:1}} onClick={()=>setBcImportPrev(null)}>戻る</Btn>
+                      <Btn style={{flex:2}} size="lg" onClick={()=>importBizCards(bcImportPrev)}>📥 {bcImportPrev.length}件を取込む</Btn>
+                    </div>
+                  </>
+                )}
+              </Sheet>
+            )}
+          </div>
+        );
+      })()}
+
       {/* ── 活動ログ ── */}
       <ActivityLog data={data} users={users} filterTypes={["企業","業者","自治体"]} />
     </div>
