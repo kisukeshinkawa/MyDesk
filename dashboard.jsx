@@ -1496,13 +1496,86 @@ function ProjectRow({project,tasks,onClick}) {
   );
 }
 
+// ─── SALES REF PICKER ────────────────────────────────────────────────────────
+function SalesRefPicker({value, onChange, salesData={}}) {
+  const [open, setOpen] = useState(false);
+  const [tab,  setTab]  = useState("企業");
+  const [q,    setQ]    = useState("");
+  const [pos,  setPos]  = useState({top:0,left:0,width:280});
+  const btnRef = useRef(null);
+  const TABS = [["企業","🏢","companies"],["業者","🔧","vendors"],["自治体","🏛️","municipalities"]];
+  const COLOR = {"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"};
+  const items = (salesData[TABS.find(t=>t[0]===tab)?.[2]] || [])
+    .filter(x=>!q||(x.name||"").includes(q));
+
+  const handleOpen = () => {
+    if(!btnRef.current) return;
+    const r = btnRef.current.getBoundingClientRect();
+    setPos({top: r.bottom + 4, left: r.left, width: Math.max(r.width, 280)});
+    setOpen(true);
+    setQ("");
+  };
+
+  return (
+    <div style={{marginBottom:"0.75rem"}}>
+      <div style={{fontSize:"0.72rem",fontWeight:700,color:"#6b7280",marginBottom:"0.35rem"}}>営業紐付け（任意）</div>
+      {value ? (
+        <div style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.45rem 0.75rem",background:"#f0f9ff",border:"1.5px solid #bae6fd",borderRadius:"0.625rem"}}>
+          <span style={{fontSize:"0.68rem",fontWeight:800,color:"white",background:COLOR[value.type]||"#64748b",borderRadius:999,padding:"0.1rem 0.45rem"}}>{value.type}</span>
+          <span style={{fontSize:"0.85rem",fontWeight:700,color:"#0369a1",flex:1}}>{value.name}</span>
+          <button onClick={()=>onChange(null)} style={{background:"none",border:"none",cursor:"pointer",color:"#94a3b8",fontSize:"1rem",lineHeight:1,padding:"0 0.1rem"}}>✕</button>
+        </div>
+      ) : (
+        <button ref={btnRef} onClick={handleOpen}
+          style={{width:"100%",padding:"0.45rem 0.75rem",borderRadius:"0.625rem",border:"1.5px dashed #cbd5e1",background:"white",color:"#94a3b8",fontSize:"0.82rem",cursor:"pointer",textAlign:"left",fontFamily:"inherit"}}>
+          🔗 営業先を紐付ける
+        </button>
+      )}
+      {open && <>
+        <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:490}}/>
+        <div style={{position:"fixed",top:pos.top,left:pos.left,width:pos.width,zIndex:491,border:"1.5px solid #e2e8f0",borderRadius:"0.75rem",background:"white",overflow:"hidden",boxShadow:"0 8px 32px rgba(0,0,0,0.18)"}}>
+          {/* タブ */}
+          <div style={{display:"flex",borderBottom:"1px solid #e2e8f0"}}>
+            {TABS.map(([lbl,icon])=>(
+              <button key={lbl} onClick={()=>{setTab(lbl);setQ("");}}
+                style={{flex:1,padding:"0.45rem 0",border:"none",background:tab===lbl?"#eff6ff":"white",color:tab===lbl?COLOR[lbl]:"#6b7280",fontWeight:tab===lbl?800:500,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit"}}>
+                {icon} {lbl}
+              </button>
+            ))}
+          </div>
+          {/* 検索 */}
+          <div style={{padding:"0.4rem 0.6rem",borderBottom:"1px solid #f1f5f9"}}>
+            <input value={q} onChange={e=>setQ(e.target.value)} placeholder="検索..." autoFocus
+              style={{width:"100%",padding:"0.3rem 0.5rem",border:"1px solid #e2e8f0",borderRadius:"0.5rem",fontSize:"0.82rem",fontFamily:"inherit",boxSizing:"border-box",outline:"none"}}/>
+          </div>
+          {/* リスト */}
+          <div style={{maxHeight:200,overflowY:"auto"}}>
+            {items.length===0
+              ? <div style={{padding:"1rem",textAlign:"center",color:"#94a3b8",fontSize:"0.8rem"}}>データなし</div>
+              : items.map(x=>(
+                <div key={x.id} onClick={()=>{onChange({type:tab,id:x.id,name:x.name});setOpen(false);}}
+                  style={{padding:"0.5rem 0.75rem",cursor:"pointer",fontSize:"0.85rem",color:"#1e293b",borderBottom:"1px solid #f8fafc"}}
+                  onMouseEnter={e=>e.currentTarget.style.background="#f0f9ff"}
+                  onMouseLeave={e=>e.currentTarget.style.background="white"}>
+                  {x.name}
+                </div>
+              ))
+            }
+          </div>
+        </div>
+      </>}
+    </div>
+  );
+}
+
 // ─── TASK FORM ────────────────────────────────────────────────────────────────
-function TaskForm({initial={},onSave,onClose,users=[],currentUserId=null}) {
+function TaskForm({initial={},onSave,onClose,users=[],currentUserId=null,salesData={}}) {
   const [f,setF]=useState({
     title:initial.title||"",status:initial.status||"未着手",
     dueDate:initial.dueDate||"",notes:initial.notes||"",
     assignees:initial.assignees||(currentUserId?[currentUserId]:[]),
     isPrivate:initial.isPrivate||false,
+    salesRef:initial.salesRef||null,
   });
   return (
     <div>
@@ -1510,6 +1583,7 @@ function TaskForm({initial={},onSave,onClose,users=[],currentUserId=null}) {
       <FieldLbl label="ステータス"><SelectEl value={f.status} onChange={e=>setF({...f,status:e.target.value})}>{STATUS_OPTIONS.map(s=><option key={s}>{s}</option>)}</SelectEl></FieldLbl>
       <FieldLbl label="期限"><Input type="date" value={f.dueDate} onChange={e=>setF({...f,dueDate:e.target.value})}/></FieldLbl>
       <UserPicker users={users} selected={f.assignees} onChange={v=>setF({...f,assignees:v})} label="担当者"/>
+      <SalesRefPicker value={f.salesRef} onChange={v=>setF({...f,salesRef:v})} salesData={salesData}/>
       <PrivateToggle value={f.isPrivate} onChange={v=>setF({...f,isPrivate:v})}/>
       <FieldLbl label="メモ"><Textarea value={f.notes} onChange={e=>setF({...f,notes:e.target.value})} style={{height:80}} placeholder="補足..."/></FieldLbl>
       <div style={{display:"flex",gap:"0.75rem"}}>
@@ -1521,16 +1595,18 @@ function TaskForm({initial={},onSave,onClose,users=[],currentUserId=null}) {
 }
 
 // ─── PROJECT FORM ─────────────────────────────────────────────────────────────
-function ProjectForm({initial={},onSave,onClose,users=[],currentUserId=null}) {
+function ProjectForm({initial={},onSave,onClose,users=[],currentUserId=null,salesData={}}) {
   const [f,setF]=useState({
     name:initial.name||"",notes:initial.notes||"",
     members:initial.members||(currentUserId?[currentUserId]:[]),
     isPrivate:initial.isPrivate||false,
+    salesRef:initial.salesRef||null,
   });
   return (
     <div>
       <FieldLbl label="プロジェクト名 *"><Input value={f.name} onChange={e=>setF({...f,name:e.target.value})} placeholder="例：DX推進プロジェクト" autoFocus/></FieldLbl>
       <UserPicker users={users} selected={f.members} onChange={v=>setF({...f,members:v})} label="メンバー"/>
+      <SalesRefPicker value={f.salesRef} onChange={v=>setF({...f,salesRef:v})} salesData={salesData}/>
       <PrivateToggle value={f.isPrivate} onChange={v=>setF({...f,isPrivate:v})}/>
       <FieldLbl label="メモ"><Textarea value={f.notes} onChange={e=>setF({...f,notes:e.target.value})} style={{height:80}} placeholder="概要..."/></FieldLbl>
       <div style={{display:"flex",gap:"0.75rem"}}>
@@ -1614,7 +1690,7 @@ function ActivityLog({ data, users=[], filterTypes=null }) {
   const FIELD_ICON = {
     "登録":"➕", "削除":"🗑️", "ステータス":"🔄", "担当者":"👤",
     "タイトル":"✏️", "期限":"📅", "優先度":"⚡", "ダストーク":"♻️",
-    "連携協定":"🤝", "アプローチ":"📞", "プロジェクト名":"✏️",
+    "連携協定":"🤝", "アプローチ":"📞", "プロジェクト名":"✏️", "営業紐付け":"🔗",
   };
 
   const allLogs = [...(data?.changeLogs || [])].sort((a,b) => new Date(b.date) - new Date(a.date));
@@ -1988,6 +2064,9 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
       const newNames=(ch.assignees||[]).map(i=>users.find(u=>u.id===i)?.name||i).join(",");
       nd=globalAddChangeLog(nd,{entityType:"タスク",entityId:id,entityName:updated?.title||prev?.title||"",field:"担当者",oldVal:oldNames,newVal:newNames,userId:uid});
     }
+    if(ch.salesRef!==undefined && JSON.stringify(prev?.salesRef||null)!==JSON.stringify(ch.salesRef||null)) {
+      nd=globalAddChangeLog(nd,{entityType:"タスク",entityId:id,entityName:updated?.title||prev?.title||"",field:"営業紐付け",oldVal:prev?.salesRef?.name||"なし",newVal:ch.salesRef?.name||"なし",userId:uid});
+    }
     // Notify on status change
     if(ch.status && prev?.status !== ch.status) {
       const toIds=(updated.assignees||[]).filter(i=>i!==uid);
@@ -2083,6 +2162,9 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
       if(ch[f]!==undefined && prev?.[f]!==ch[f])
         u=globalAddChangeLog(u,{entityType:"プロジェクト",entityId:id,entityName:ch.name||prev?.name||"",field:label,oldVal:String(prev?.[f]||""),newVal:String(ch[f]||""),userId:uid});
     });
+    if(ch.salesRef!==undefined && JSON.stringify(prev?.salesRef||null)!==JSON.stringify(ch.salesRef||null)) {
+      u=globalAddChangeLog(u,{entityType:"プロジェクト",entityId:id,entityName:ch.name||prev?.name||"",field:"営業紐付け",oldVal:prev?.salesRef?.name||"なし",newVal:ch.salesRef?.name||"なし",userId:uid});
+    }
     setData(u); saveData(u);
   };
   const deleteProject = id => {
@@ -2327,12 +2409,21 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
         {taskTab==="info"&&(
           <div>
             {parentPj&&<div style={{background:C.bg,borderRadius:"0.625rem",padding:"0.5rem 0.75rem",marginBottom:"0.75rem",fontSize:"0.8rem",color:C.textSub}}>🗂 {parentPj.name}</div>}
-            {activeTask.salesRef&&(()=>{
-              const col={"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"}[activeTask.salesRef.type]||C.accent;
-              return <div style={{background:col+"15",border:`1px solid ${col}44`,borderRadius:"0.625rem",padding:"0.5rem 0.75rem",marginBottom:"0.75rem",display:"flex",alignItems:"center",gap:"0.5rem"}}>
-                <span style={{fontSize:"0.7rem",fontWeight:700,color:"white",background:col,borderRadius:999,padding:"0.1rem 0.5rem"}}>{activeTask.salesRef.type}</span>
-                <span style={{fontSize:"0.82rem",fontWeight:700,color:col}}>{activeTask.salesRef.name}</span>
-              </div>;
+            {/* salesRef 表示 + 変更 */}
+            {(()=>{
+              const col={"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"}[activeTask.salesRef?.type]||C.accent;
+              return (
+                <div style={{marginBottom:"0.75rem"}}>
+                  {activeTask.salesRef
+                    ? <div style={{background:col+"15",border:`1px solid ${col}44`,borderRadius:"0.625rem",padding:"0.5rem 0.75rem",display:"flex",alignItems:"center",gap:"0.5rem"}}>
+                        <span style={{fontSize:"0.7rem",fontWeight:700,color:"white",background:col,borderRadius:999,padding:"0.1rem 0.5rem"}}>{activeTask.salesRef.type}</span>
+                        <span style={{fontSize:"0.82rem",fontWeight:700,color:col,flex:1}}>{activeTask.salesRef.name}</span>
+                        <button onClick={()=>updateTask(activeTask.id,{salesRef:null})} style={{background:"none",border:"none",cursor:"pointer",color:"#94a3b8",fontSize:"0.85rem",padding:"0 0.2rem"}}>✕</button>
+                      </div>
+                    : <SalesRefPicker value={null} onChange={v=>updateTask(activeTask.id,{salesRef:v})} salesData={data}/>
+                  }
+                </div>
+              );
             })()}
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.5rem",marginBottom:"0.875rem"}}>
               {[["📅 期限",activeTask.dueDate||"未設定"],["👤 担当",assignedNames.length>0?assignedNames.join("・"):"未設定"]].map(([k,v])=>(
@@ -2366,7 +2457,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
           onAdd={f=>addFileToTask(activeTask.id,f)}
           onDelete={fid=>removeFileFromTask(activeTask.id,fid)}/>}
         {sheet==="editTask"&&<Sheet title="タスクを編集" onClose={()=>setSheet(null)}>
-          <TaskForm initial={activeTask} users={users} currentUserId={uid} onClose={()=>setSheet(null)}
+          <TaskForm initial={activeTask} salesData={data} users={users} currentUserId={uid} onClose={()=>setSheet(null)}
             onSave={f=>{updateTask(activeTask.id,f);setSheet(null);}}/>
         </Sheet>}
       </div>
@@ -2390,6 +2481,19 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
               <div style={{fontSize:"1.15rem",fontWeight:800,color:C.text}}>{activePj.name}</div>
               {memberNames.length>0&&<div style={{fontSize:"0.78rem",color:C.textSub,marginTop:"0.25rem"}}>👥 {memberNames.join("・")}</div>}
               {activePj.isPrivate&&<div style={{fontSize:"0.72rem",color:"#dc2626",fontWeight:700,marginTop:"0.2rem"}}>🔒 プライベート</div>}
+              {/* salesRef インライン編集 */}
+              {(()=>{
+                const col={"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"}[activePj.salesRef?.type]||"#64748b";
+                return activePj.salesRef
+                  ? <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginTop:"0.35rem",background:col+"15",border:`1px solid ${col}44`,borderRadius:"0.625rem",padding:"0.3rem 0.6rem"}}>
+                      <span style={{fontSize:"0.68rem",fontWeight:800,color:"white",background:col,borderRadius:999,padding:"0.08rem 0.4rem",flexShrink:0}}>{activePj.salesRef.type}</span>
+                      <span style={{fontSize:"0.82rem",fontWeight:700,color:col,flex:1}}>{activePj.salesRef.name}</span>
+                      <button onClick={()=>updateProject(activePj.id,{salesRef:null})} style={{background:"none",border:"none",cursor:"pointer",color:"#94a3b8",fontSize:"0.85rem",padding:"0 0.1rem",flexShrink:0}}>✕</button>
+                    </div>
+                  : <div style={{marginTop:"0.35rem"}}>
+                      <SalesRefPicker value={null} onChange={v=>updateProject(activePj.id,{salesRef:v})} salesData={data}/>
+                    </div>;
+              })()}
             </div>
             <Btn variant="ghost" size="sm" onClick={()=>setSheet("editProject")}>✏️</Btn>
           </div>
@@ -2483,11 +2587,11 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
           onAdd={f=>addFileToPj(activePj.id,f)}
           onDelete={fid=>removeFileFromPj(activePj.id,fid)}/>}
         {sheet==="addPjTask"&&<Sheet title="タスクを追加" onClose={()=>setSheet(null)}>
-          <TaskForm initial={{status:"未着手"}} users={users} currentUserId={uid} onClose={()=>setSheet(null)}
+          <TaskForm initial={{status:"未着手"}} salesData={data} users={users} currentUserId={uid} onClose={()=>setSheet(null)}
             onSave={f=>{addTask(f,activePjId);}}/>
         </Sheet>}
         {sheet==="editProject"&&<Sheet title="プロジェクトを編集" onClose={()=>setSheet(null)}>
-          <ProjectForm initial={activePj} users={users} currentUserId={uid} onClose={()=>setSheet(null)}
+          <ProjectForm initial={activePj} salesData={data} users={users} currentUserId={uid} onClose={()=>setSheet(null)}
             onSave={f=>{updateProject(activePj.id,f);setSheet(null);}}/>
         </Sheet>}
         {taskDupModal&&<DupModal
@@ -2563,11 +2667,13 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
       </div>
 
       {/* ── プロジェクト＆タスク（PC: 横並び） ── */}
-      <div style={isWide?{display:"flex",gap:"1rem",alignItems:"flex-start",marginBottom:"1.5rem"}:{marginBottom:"1.5rem"}}>
+      <div style={isWide && visibleProjects.length>0
+        ? {display:"grid",gridTemplateColumns:"minmax(0,1fr) minmax(0,1fr)",gap:"1rem",alignItems:"flex-start",marginBottom:"1.5rem"}
+        : {marginBottom:"1.5rem"}}>
 
-        {/* 左カラム: プロジェクト（幅は内容に応じて flex で可変） */}
+        {/* 左カラム: プロジェクト */}
         {visibleProjects.length>0&&(
-          <div style={isWide?{flex:"1 1 400px",minWidth:320,maxWidth:"48%"}:{marginBottom:"0.75rem"}}>
+          <div style={isWide?{}:{marginBottom:"0.75rem"}}>
             <Card style={{overflow:"hidden"}}>
               <SectionHeader
                 label={`🗂 プロジェクト`}
@@ -2594,7 +2700,8 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
                         <span style={{fontSize:"0.88rem",fontWeight:700,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,minWidth:0}}>{pj.name}</span>
                         {pj.status==="完了"&&<span style={{fontSize:"0.62rem",background:"#d1fae5",color:"#059669",borderRadius:999,padding:"0.05rem 0.4rem",fontWeight:700,flexShrink:0}}>完了</span>}
                       </div>
-                      <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginTop:"0.3rem"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginTop:"0.3rem",flexWrap:"wrap"}}>
+                        {pj.salesRef&&(()=>{const col={"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"}[pj.salesRef.type]||"#64748b";return <span style={{fontSize:"0.62rem",fontWeight:700,color:"white",background:col,borderRadius:999,padding:"0.05rem 0.4rem",flexShrink:0}}>{pj.salesRef.type} · {pj.salesRef.name}</span>;})()}
                         <div style={{flex:1,maxWidth:120,height:3,background:C.borderLight,borderRadius:999,overflow:"hidden"}}>
                           <div style={{height:"100%",width:`${pct}%`,background:pct===100?"#059669":C.accent,borderRadius:999,transition:"width 0.3s"}}/>
                         </div>
@@ -2645,7 +2752,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
           const standaloneTasks = myVisibleTasks.filter(t=>!t.projectId);
           if(!standaloneTasks.length&&visibleProjects.length>0) return null;
           return (
-            <div style={{flex:"1 1 320px",minWidth:0}}>
+            <div style={{minWidth:0}}>
               <Card style={{overflow:"hidden"}}>
                 {standaloneTasks.length===0&&visibleProjects.length===0&&(
                   <div style={{padding:"3rem 1rem",textAlign:"center",color:C.textMuted}}>
@@ -2699,11 +2806,11 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
       {/* ── 活動ログ ── */}
       <ActivityLog data={data} users={users} filterTypes={["タスク","プロジェクト"]} />
       {sheet==="addTask"&&<Sheet title="タスクを追加" onClose={()=>setSheet(null)}>
-        <TaskForm initial={{status:"未着手"}} users={users} currentUserId={uid} onClose={()=>setSheet(null)}
+        <TaskForm initial={{status:"未着手"}} salesData={data} users={users} currentUserId={uid} onClose={()=>setSheet(null)}
           onSave={f=>{addTask(f,null);}}/>
       </Sheet>}
       {sheet==="addProject"&&<Sheet title="プロジェクトを追加" onClose={()=>setSheet(null)}>
-        <ProjectForm users={users} currentUserId={uid} onClose={()=>setSheet(null)}
+        <ProjectForm salesData={data} users={users} currentUserId={uid} onClose={()=>setSheet(null)}
           onSave={f=>{addProject(f);}}/>
       </Sheet>}
       {taskDupModal&&<DupModal
