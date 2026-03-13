@@ -5907,6 +5907,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   return (
     <div>
       <TopTabs/>
+      {/* ── 自治体タブ（トップビュー） ── */}
+      {salesTab==="muni"&&<>
       {/* フォロー中の自治体 */}
       {(()=>{
         const followMunis = munis.filter(m=>m.needFollow);
@@ -6380,6 +6382,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       )}
         {/* 重複検出モーダル */}
         {dupModal&&<DupModal existing={dupModal.existing} incoming={dupModal.incoming} onKeepBoth={dupModal.onKeepBoth} onUseExisting={dupModal.onUseExisting} onCancel={()=>setDupModal(null)}/>}
+      </>}{/* end salesTab==="muni" */}
 
       {/* ── 名刺タブ ── */}
       {salesTab==="bizcard"&&(()=>{
