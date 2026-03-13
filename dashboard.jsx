@@ -3406,6 +3406,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   const [bulkSelected, setBulkSelected] = useState(new Set());
   const [bulkStatus,   setBulkStatus]   = useState("");
   const [bulkTarget,   setBulkTarget]   = useState(""); // "company"|"vendor"|"muni"
+  // 削除モーダル
+  const [deleteModal,  setDeleteModal]  = useState(null); // {type:"company"|"vendor"|"muni"|"bizcard"}
   // vendor linking from muni
   const [linkVendorSearch,setLinkVendorSearch]=useState("");
   const [linkVendorFilterPref,setLinkVendorFilterPref]=useState("");
@@ -4126,6 +4128,154 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       </div>
     ):null
   );
+
+  // ── 共通削除モーダル ────────────────────────────────────────────────────────
+  const DeleteModal=(()=>{
+    if(!deleteModal) return null;
+    const {type}=deleteModal;
+    const NS=s=>(s||"").replace(/[\s\u3000]/g,"").toLowerCase();
+
+    // タイプ別設定
+    const cfg={
+      company:{ label:"企業", icon:"🏢", all:companies,
+        filterKey:"status", filterMap:COMPANY_STATUS, filterLabel:"ステータス",
+        nameOf:c=>c.name||"",
+        subOf:c=>[c.status,c.industry].filter(Boolean).join(" / "),
+        onDelete:ids=>{save({...data,companies:companies.filter(c=>!ids.includes(c.id))});},
+      },
+      vendor:{ label:"業者", icon:"🔧", all:vendors,
+        filterKey:"status", filterMap:VENDOR_STATUS, filterLabel:"ステータス",
+        nameOf:v=>v.name||"",
+        subOf:v=>[v.status,(v.municipalityIds||[]).map(id=>(munis.find(m=>m.id===id)||{}).name||"").filter(Boolean).slice(0,2).join("・")].filter(Boolean).join(" / "),
+        onDelete:ids=>{save({...data,vendors:vendors.filter(v=>!ids.includes(v.id))});},
+      },
+      muni:{ label:"自治体", icon:"🏛️", all:munis,
+        filterKey:"status", filterMap:MUNI_STATUS, filterLabel:"ステータス",
+        nameOf:m=>{const p=prefs.find(x=>x.id===m.prefectureId);return [p?.name,m.name].filter(Boolean).join(" ");},
+        subOf:m=>m.status||"未接触",
+        onDelete:ids=>{save({...data,municipalities:munis.filter(m=>!ids.includes(m.id))});},
+      },
+      bizcard:{ label:"名刺", icon:"🪪", all:data.businessCards||[],
+        filterKey:"company", filterMap:null, filterLabel:"会社名",
+        nameOf:c=>(`${c.lastName||""}${c.firstName||""}`).trim()||"（名前なし）",
+        subOf:c=>[c.company,c.title].filter(Boolean).join(" / "),
+        onDelete:ids=>{const nd={...data,businessCards:(data.businessCards||[]).filter(c=>!ids.includes(c.id))};saveWithPush(nd,data.notifications);},
+      },
+    }[type];
+    if(!cfg) return null;
+
+    // モーダル内 state は key で制御（Reactの制限を回避するためrefで管理）
+    const [dmSearch,   setDmSearch]   = useState("");
+    const [dmFilter,   setDmFilter]   = useState("");
+    const [dmSelected, setDmSelected] = useState(new Set());
+
+    const items=cfg.all.filter(item=>{
+      if(dmFilter){
+        if(type==="bizcard"){if((item.company||"")!==dmFilter) return false;}
+        else{if((item[cfg.filterKey]||"")!==dmFilter) return false;}
+      }
+      if(dmSearch){
+        const q=NS(dmSearch);
+        const hay=[cfg.nameOf(item),cfg.subOf(item)].join(" ");
+        if(!NS(hay).includes(q)) return false;
+      }
+      return true;
+    });
+
+    const allSelected=items.length>0&&items.every(it=>dmSelected.has(it.id));
+    const toggleAll=()=>{
+      if(allSelected) setDmSelected(prev=>{const n=new Set(prev);items.forEach(it=>n.delete(it.id));return n;});
+      else setDmSelected(prev=>{const n=new Set(prev);items.forEach(it=>n.add(it.id));return n;});
+    };
+
+    // 会社フィルター選択肢（名刺のみ）
+    const bcCompanies=type==="bizcard"?[...new Set((data.businessCards||[]).map(c=>c.company||"（未設定）"))].sort((a,b)=>a.localeCompare(b,"ja")):[];
+
+    return (
+      <div style={{position:"fixed",inset:0,zIndex:700,display:"flex",alignItems:"flex-end",justifyContent:"center",background:"rgba(0,0,0,0.6)"}}>
+        <div style={{background:"white",borderRadius:"1.25rem 1.25rem 0 0",width:"100%",maxWidth:520,maxHeight:"90dvh",display:"flex",flexDirection:"column",overflow:"hidden",boxShadow:"0 -8px 40px rgba(0,0,0,0.2)"}}>
+          {/* ヘッダー */}
+          <div style={{padding:"1rem 1.25rem 0.75rem",borderBottom:`1px solid ${C.borderLight}`,flexShrink:0}}>
+            <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.625rem"}}>
+              <span style={{fontSize:"1.2rem"}}>{cfg.icon}</span>
+              <span style={{fontWeight:800,fontSize:"1rem",color:C.text}}>{cfg.label}を削除</span>
+              <span style={{fontSize:"0.72rem",color:C.textMuted,background:C.bg,borderRadius:999,padding:"0.15rem 0.5rem",border:`1px solid ${C.borderLight}`}}>全{cfg.all.length}件</span>
+              <button onClick={()=>setDeleteModal(null)} style={{marginLeft:"auto",background:"none",border:"none",fontSize:"1.2rem",color:C.textMuted,cursor:"pointer",padding:"0.25rem",lineHeight:1}}>✕</button>
+            </div>
+            {/* 検索 */}
+            <div style={{position:"relative",marginBottom:"0.5rem"}}>
+              <span style={{position:"absolute",left:"0.625rem",top:"50%",transform:"translateY(-50%)",fontSize:"0.85rem",color:C.textMuted,pointerEvents:"none"}}>🔍</span>
+              <input value={dmSearch} onChange={e=>setDmSearch(e.target.value)} placeholder="名前で検索..."
+                style={{width:"100%",padding:"0.5rem 0.5rem 0.5rem 2rem",borderRadius:"0.625rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.82rem",boxSizing:"border-box"}}/>
+            </div>
+            {/* フィルター */}
+            {type==="bizcard"?(
+              <select value={dmFilter} onChange={e=>setDmFilter(e.target.value)}
+                style={{width:"100%",padding:"0.4rem 0.5rem",borderRadius:"0.625rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",background:"white",marginBottom:"0.5rem"}}>
+                <option value="">── 会社名で絞込 ──</option>
+                {bcCompanies.map(n=><option key={n} value={n}>{n}（{(data.businessCards||[]).filter(c=>c.company===n).length}件）</option>)}
+              </select>
+            ):(
+              <select value={dmFilter} onChange={e=>setDmFilter(e.target.value)}
+                style={{width:"100%",padding:"0.4rem 0.5rem",borderRadius:"0.625rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",background:"white",marginBottom:"0.5rem"}}>
+                <option value="">── {cfg.filterLabel}で絞込 ──</option>
+                {Object.keys(cfg.filterMap).map(s=><option key={s} value={s}>{s}（{cfg.all.filter(it=>(it[cfg.filterKey]||"未接触")===s).length}件）</option>)}
+              </select>
+            )}
+            {/* 全選択バー */}
+            <div style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.35rem 0"}}>
+              <button onClick={toggleAll}
+                style={{padding:"0.3rem 0.75rem",borderRadius:999,border:`1.5px solid ${allSelected?"#dc2626":"#3b82f6"}`,background:allSelected?"#fee2e2":"white",color:allSelected?"#dc2626":"#3b82f6",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}}>
+                {allSelected?`✓ 全解除（${items.length}件）`:`☑ 全選択（${items.length}件）`}
+              </button>
+              <span style={{fontSize:"0.75rem",color:dmSelected.size>0?"#dc2626":C.textMuted,fontWeight:dmSelected.size>0?700:400}}>
+                {dmSelected.size>0?`${dmSelected.size}件選択中`:"選択してください"}
+              </span>
+            </div>
+          </div>
+
+          {/* リスト */}
+          <div style={{flex:1,overflowY:"auto",padding:"0.375rem 0"}}>
+            {items.length===0?(
+              <div style={{textAlign:"center",padding:"2rem",color:C.textMuted,fontSize:"0.85rem"}}>
+                {dmSearch||dmFilter?"条件に一致する項目がありません":"データがありません"}
+              </div>
+            ):items.map(item=>{
+              const sel=dmSelected.has(item.id);
+              return (
+                <div key={item.id} onClick={()=>setDmSelected(prev=>{const n=new Set(prev);n.has(item.id)?n.delete(item.id):n.add(item.id);return n;})}
+                  style={{display:"flex",alignItems:"center",gap:"0.75rem",padding:"0.625rem 1.25rem",cursor:"pointer",background:sel?"#fff1f2":"white",borderBottom:`1px solid ${C.borderLight}`,transition:"background 0.1s"}}>
+                  <input type="checkbox" checked={sel} readOnly style={{width:16,height:16,accentColor:"#dc2626",flexShrink:0}}/>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:"0.88rem",fontWeight:sel?700:500,color:sel?"#dc2626":C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{cfg.nameOf(item)}</div>
+                    <div style={{fontSize:"0.7rem",color:C.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{cfg.subOf(item)}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* フッター */}
+          <div style={{padding:"0.875rem 1.25rem",borderTop:`1px solid ${C.borderLight}`,flexShrink:0,display:"flex",gap:"0.625rem"}}>
+            <button onClick={()=>setDeleteModal(null)}
+              style={{flex:1,padding:"0.75rem",borderRadius:"0.875rem",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontFamily:"inherit",fontSize:"0.9rem",cursor:"pointer"}}>
+              キャンセル
+            </button>
+            <button onClick={()=>{
+              if(dmSelected.size===0){window.alert("削除する項目を選択してください。");return;}
+              if(!window.confirm(`選択した${dmSelected.size}件を削除します。\nこの操作は元に戻せません。よろしいですか？`))return;
+              cfg.onDelete([...dmSelected]);
+              setDeleteModal(null);
+            }}
+              style={{flex:2,padding:"0.75rem",borderRadius:"0.875rem",border:"none",background:dmSelected.size===0?"#f3f4f6":"#dc2626",color:dmSelected.size===0?C.textMuted:"white",fontWeight:800,fontFamily:"inherit",fontSize:"0.9rem",cursor:dmSelected.size===0?"not-allowed":"pointer",transition:"background 0.15s"}}>
+              🗑 {dmSelected.size>0?`${dmSelected.size}件を削除`:"削除する項目を選択"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  })();
+
   const TopTabs=()=>(
     <div style={{display:"flex",background:"white",borderRadius:"0.875rem",padding:"0.25rem",marginBottom:"1rem",border:`1px solid ${C.border}`,boxShadow:C.shadow,position:"relative"}}>
       {[["dash","📊","概況"],["map","🗺️","地図"],["company","🏢","企業"],["muni","🏛️","自治体"],["vendor","🔧","業者"],["bizcard","🪪","名刺"]].map(([id,icon,lbl])=>(
@@ -4889,8 +5039,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             style={{padding:"0.45rem 0.625rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📥</button>
           <button onClick={()=>{const rows=companies.map(c=>[c.name||"",c.status||"",c.industry||"",c.contactName||"",c.phone||"",c.email||"",c.address||"",(c.memos||[]).map(m=>m.text||"").join(" / ")]);downloadCSV("企業一覧.csv",["企業名","ステータス","業種","担当者名","電話番号","メールアドレス","住所","メモ"],rows);}}
             style={{padding:"0.45rem 0.625rem",borderRadius:"0.75rem",border:"1.5px solid #059669",background:"#d1fae5",color:"#065f46",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📤CSV</button>
-          <button onClick={()=>{if(window.confirm(`企業データを全件（${companies.length}件）削除します。この操作は元に戻せません。よろしいですか？`)){const nd={...data,companies:[]};save(nd);}}}
-            style={{padding:"0.45rem 0.625rem",borderRadius:"0.75rem",border:"1.5px solid #fca5a5",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🗑️全削除</button>
+          <button onClick={()=>setDeleteModal({type:"company"})}
+            style={{padding:"0.45rem 0.75rem",borderRadius:"0.75rem",border:"1.5px solid #fca5a5",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🗑 削除</button>
           <Btn size="sm" onClick={()=>{setForm({status:"未接触",assigneeIds:[]});setSheet("addCompany");}}>＋</Btn>
         </div>
         {companies.length===0&&(
@@ -5392,8 +5542,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             style={{padding:"0.45rem 0.625rem",borderRadius:"0.75rem",border:`1.5px solid ${bulkMode?"#2563eb":C.border}`,background:bulkMode?"#eff6ff":"white",color:bulkMode?"#1d4ed8":C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>☑️</button>
           <button onClick={()=>setSheet("importVendor")}
             style={{padding:"0.45rem 0.625rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📥</button>
-          <button onClick={()=>{if(window.confirm(`業者データを全件（${vendors.length}件）削除します。この操作は元に戻せません。よろしいですか？`)){const nd={...data,vendors:[]};save(nd);}}}
-            style={{padding:"0.45rem 0.625rem",borderRadius:"0.75rem",border:"1.5px solid #fca5a5",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🗑️全削除</button>
+          <button onClick={()=>setDeleteModal({type:"vendor"})}
+            style={{padding:"0.45rem 0.75rem",borderRadius:"0.75rem",border:"1.5px solid #fca5a5",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🗑 削除</button>
           <Btn size="sm" onClick={()=>{setForm({status:"未接触",municipalityIds:[],assigneeIds:[]});setSheet("addVendor");}}>＋</Btn>
         </div>
         {vendors.length===0&&(
@@ -5972,6 +6122,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           style={{padding:"0.5rem 0.75rem",borderRadius:"0.75rem",border:`1.5px solid ${bulkMode?"#2563eb":C.border}`,background:bulkMode?"#eff6ff":"white",color:bulkMode?"#1d4ed8":C.textSub,fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>
           ☑️ 一括
         </button>
+        <button onClick={()=>setDeleteModal({type:"muni"})}
+          style={{padding:"0.5rem 0.75rem",borderRadius:"0.75rem",border:"1.5px solid #fca5a5",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>🗑 削除</button>
         <button onClick={()=>setSheet("importMuni")}
           style={{padding:"0.5rem 0.625rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📥</button>
         <button onClick={()=>setShowGSheetImport(true)}
@@ -6414,6 +6566,9 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
         {dupModal&&<DupModal existing={dupModal.existing} incoming={dupModal.incoming} onKeepBoth={dupModal.onKeepBoth} onUseExisting={dupModal.onUseExisting} onCancel={()=>setDupModal(null)}/>}
       </>}{/* end salesTab==="muni" */}
 
+      {/* ── 削除モーダル（全タブ共通） ── */}
+      {DeleteModal}
+
       {/* ── 名刺タブ ── */}
       {salesTab==="bizcard"&&(()=>{
         const uid=currentUser?.id;
@@ -6581,8 +6736,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                 <div style={{fontSize:"0.72rem",color:C.textMuted}}>{bizCards.length}件 · {companyNames.length}社</div>
               </div>
               <div style={{display:"flex",gap:"0.5rem"}}>
-                <button onClick={()=>setBulkMode(v=>{if(v){resetBulk();return false;}setBulkSelected(new Set());return true;})}
-                  style={{padding:"0.45rem 0.625rem",borderRadius:"0.75rem",border:`1.5px solid ${bulkMode?"#2563eb":C.border}`,background:bulkMode?"#eff6ff":"white",color:bulkMode?"#1d4ed8":C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>☑️</button>
+                <button onClick={()=>setDeleteModal({type:"bizcard"})}
+                  style={{padding:"0.45rem 0.75rem",borderRadius:"0.75rem",border:"1.5px solid #fca5a5",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🗑 削除</button>
                 <Btn size="sm" variant="secondary" onClick={()=>setSheet("bcImport")}>📥 CSV取込</Btn>
                 <Btn size="sm" onClick={()=>setSheet("bcAdd")}>＋ 追加</Btn>
               </div>
