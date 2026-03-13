@@ -2099,7 +2099,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     }
     // Notify assignees on task creation
     const toIds=(f.assignees||[]).filter(i=>i!==uid);
-    if(toIds.length) nd=addNotif(nd,{type:"task_assign",entityType:"task",title:`「${item.title}」に担当者として追加されました`,body:"",toUserIds:toIds,fromUserId:uid,entityId:item.id,entityType:"task"});
+    if(toIds.length) nd=addNotif(nd,{type:"task_assign",entityType:"task",title:`「${item.title}」に担当者として追加されました`,body:"",toUserIds:toIds,fromUserId:uid,entityId:item.id});
     saveWithPush(nd, data.notifications);
     setSheet(null); // 保存後にシートを閉じる
   };
@@ -2132,7 +2132,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     let nd={...data,projects:[...allProjects,item]};
     nd=globalAddChangeLog(nd,{entityType:"プロジェクト",entityId:item.id,entityName:item.name||"",field:"登録",oldVal:"",newVal:"新規作成",userId:uid});
     const toIds=(f.members||[]).filter(i=>i!==uid);
-    if(toIds.length) nd=addNotif(nd,{type:"task_assign",entityType:"project",title:`「${item.name}」プロジェクトのメンバーに追加されました`,body:"",toUserIds:toIds,fromUserId:uid,entityId:item.id,entityType:"project"});
+    if(toIds.length) nd=addNotif(nd,{type:"task_assign",entityType:"project",title:`「${item.name}」プロジェクトのメンバーに追加されました`,body:"",toUserIds:toIds,fromUserId:uid,entityId:item.id});
     saveWithPush(nd, data.notifications);
     setSheet(null); // 保存後にシートを閉じる
   };
