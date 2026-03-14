@@ -90,7 +90,7 @@ async function sbSet(id, data) {
   } catch {}
 }
 
-const INIT = { tasks:[], projects:[], emails:[], emailStyles:[], prefectures:[], municipalities:[], vendors:[], companies:[], businessCards:[], notifications:[], changeLogs:[], analytics:{} };
+const INIT = { tasks:[], projects:[], emails:[], emailStyles:[], prefectures:[], municipalities:[], vendors:[], companies:[], businessCards:[], notifications:[], changeLogs:[], analytics:{}, emailTemplates:[] };
 
 // ─── SALES CONSTANTS ──────────────────────────────────────────────────────────
 
@@ -116,6 +116,7 @@ const VENDOR_STATUS = {
   "商談中":  { color:"#d97706", bg:"#fef3c7" },
   "加入済":  { color:"#059669", bg:"#d1fae5" },
   "断り":    { color:"#dc2626", bg:"#fee2e2" },
+  "見送り":  { color:"#9ca3af", bg:"#f3f4f6" },
 };
 const COMPANY_STATUS = {
   "未接触":  { color:"#6b7280", bg:"#f3f4f6" },
@@ -123,7 +124,8 @@ const COMPANY_STATUS = {
   "資料送付":{ color:"#7c3aed", bg:"#ede9fe" },
   "商談中":  { color:"#d97706", bg:"#fef3c7" },
   "成約":    { color:"#059669", bg:"#d1fae5" },
-  "断り":    { color:"#dc2626", bg:"#fee2e2" },
+  "失注":    { color:"#dc2626", bg:"#fee2e2" },
+  "見送り":  { color:"#9ca3af", bg:"#f3f4f6" },
 };
 const MUNI_STATUS = {
   "未接触": { color:"#6b7280", bg:"#f3f4f6" },
@@ -131,9 +133,28 @@ const MUNI_STATUS = {
   "資料送付":{ color:"#7c3aed", bg:"#ede9fe" },
   "商談中": { color:"#d97706", bg:"#fef3c7" },
   "協定済": { color:"#059669", bg:"#d1fae5" },
+  "失注":   { color:"#dc2626", bg:"#fee2e2" },
+  "見送り": { color:"#9ca3af", bg:"#f3f4f6" },
 };
 const VENDOR_LOG_TYPES = ["電話","訪問","資料送付","メール","WEB会議","その他"];
 const VENDOR_LOG_ICON  = {"電話":"📞","訪問":"🚗","資料送付":"📄","メール":"✉️","WEB会議":"💻","その他":"📝"};
+
+// アプローチ履歴タイプ（全エンティティ共通）
+const APPROACH_TYPES = ["電話","訪問","メール","WEB会議","資料送付","その他"];
+const APPROACH_ICON  = {"電話":"📞","訪問":"🚗","メール":"✉️","WEB会議":"💻","資料送付":"📄","その他":"📝"};
+
+// 失注・見送り理由プリセット
+const LOSS_REASONS = ["予算不足","競合他社に決定","担当者交代・凍結","時期尚早","ニーズ不一致","連絡取れず","その他"];
+
+// 次回アクション種別
+const NEXT_ACTION_TYPES = ["電話","訪問","メール","提案書送付","見積提出","その他"];
+
+// 全営業エンティティの失注・見送りステータス
+const CLOSED_STATUSES = new Set(["失注","見送り","断り"]);
+
+// メールテンプレート変数
+const EMAIL_TEMPLATE_VARS = ["{{会社名}}","{{担当者名}}","{{自分の名前}}","{{日付}}","{{来週の日付}}"];
+
 
 
 // ─── NOTIFICATION HELPER ─────────────────────────────────────────────────────
@@ -2607,11 +2628,22 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
 
   // ── LIST ────────────────────────────────────────────────────────────────────
   const today = new Date(); today.setHours(0,0,0,0);
+  const todayStr = today.toISOString().slice(0,10);
   const urgentTasks = visibleTasks.filter(t=>{
     if(t.status==="完了"||!t.dueDate) return false;
     const d=new Date(t.dueDate); d.setHours(0,0,0,0);
     return (d-today)/(1000*60*60*24)<=2;
   }).sort((a,b)=>new Date(a.dueDate)-new Date(b.dueDate));
+  // 次回アクション期限が近いエンティティ
+  const urgentNextActions = [
+    ...(data.companies||[]).map(e=>({...e,_type:"企業"})),
+    ...(data.vendors||[]).map(e=>({...e,_type:"業者"})),
+    ...(data.municipalities||[]).map(e=>({...e,_type:"自治体"})),
+  ].filter(e=>{
+    if(!e.nextActionDate) return false;
+    const diff=(new Date(e.nextActionDate)-today)/(1000*60*60*24);
+    return diff<=2 && diff>=-1;
+  }).sort((a,b)=>new Date(a.nextActionDate)-new Date(b.nextActionDate));
 
   // セクションヘッダー共通スタイル
   const SectionHeader = ({label,count,open,onToggle,color="#374151",bg="#f8fafc",extra=null})=>(
@@ -2649,6 +2681,31 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
                 </div>
                 <span style={{fontSize:"0.72rem",fontWeight:800,color:col,background:diff<0?"#fee2e2":diff===0?"#fff7ed":"#fef3c7",borderRadius:999,padding:"0.15rem 0.5rem",flexShrink:0,border:`1px solid ${col}33`}}>{label}</span>
                 <span style={{color:C.textMuted,fontSize:"0.75rem"}}>›</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* 次回アクションアラート */}
+      {urgentNextActions.length>0&&(
+        <div style={{marginBottom:"1rem",background:"#f0f9ff",border:"1.5px solid #bae6fd",borderRadius:"0.875rem",overflow:"hidden"}}>
+          <div style={{padding:"0.6rem 1rem",display:"flex",alignItems:"center",gap:"0.5rem",borderBottom:"1px solid #bae6fd"}}>
+            <span style={{fontSize:"1rem"}}>📅</span>
+            <span style={{fontWeight:800,fontSize:"0.85rem",color:"#0369a1"}}>フォロー予定</span>
+            <span style={{marginLeft:"auto",fontSize:"0.72rem",background:"#0369a1",color:"white",borderRadius:999,padding:"0.1rem 0.45rem",fontWeight:700}}>{urgentNextActions.length}</span>
+          </div>
+          {urgentNextActions.map(e=>{
+            const col={"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"}[e._type]||C.accent;
+            const isToday=e.nextActionDate===todayStr;
+            const isPast=e.nextActionDate<todayStr;
+            const label=isPast?"期限切れ":isToday?"今日":"明日";
+            return (
+              <div key={e.id} style={{display:"flex",alignItems:"center",gap:"0.75rem",padding:"0.65rem 1rem",borderBottom:`1px solid #e0f2fe`}}>
+                <span style={{fontSize:"0.68rem",fontWeight:800,color:"white",background:col,borderRadius:999,padding:"0.1rem 0.4rem",flexShrink:0}}>{e._type}</span>
+                <span style={{fontSize:"0.85rem",fontWeight:600,color:C.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.name}</span>
+                <span style={{fontSize:"0.7rem",color:C.textSub,flexShrink:0}}>{APPROACH_ICON[e.nextActionType]||"📞"} {e.nextActionType}</span>
+                <span style={{fontSize:"0.72rem",fontWeight:800,color:isPast?"#dc2626":isToday?"#d97706":"#0369a1",background:isPast?"#fee2e2":isToday?"#fff7ed":"#dbeafe",borderRadius:999,padding:"0.15rem 0.5rem",flexShrink:0,border:`1px solid ${isPast?"#fca5a5":isToday?"#fed7aa":"#bae6fd"}`}}>{label}</span>
               </div>
             );
           })}
@@ -3318,6 +3375,91 @@ function MapTab({prefs,munis,vendors,companies,prefCoords,onSelectPref}) {
   );
 }
 
+// ─── APPROACH TIMELINE ────────────────────────────────────────────────────────
+function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach, onSave, data }) {
+  const logs = [...(entity?.approachLogs||[])].sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+  const memos = [...(entity?.memos||[])].sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+  // changeLogs for this entity
+  const changeLogs = [...(data?.changeLogs||[])].filter(l=>String(l.entityId)===String(entityId)).sort((a,b)=>new Date(b.date)-new Date(a.date));
+  // Merge all into single timeline
+  const items = [
+    ...logs.map(l=>({...l, _kind:"approach", _ts:l.createdAt})),
+    ...memos.map(m=>({...m, _kind:"memo", _ts:m.createdAt})),
+    ...changeLogs.map(c=>({...c, _kind:"change", _ts:c.date})),
+  ].sort((a,b)=>new Date(b._ts)-new Date(a._ts));
+
+  return (
+    <div>
+      <button onClick={onAddApproach}
+        style={{width:"100%",marginBottom:"0.75rem",padding:"0.55rem",borderRadius:"0.75rem",border:`1.5px dashed ${C.accent}`,background:C.accentBg,color:C.accent,fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
+        ＋ アプローチを記録
+      </button>
+      {items.length===0&&(
+        <div style={{textAlign:"center",padding:"2rem",color:C.textMuted,fontSize:"0.82rem"}}>記録がありません</div>
+      )}
+      {items.map((item,i)=>{
+        const u = users.find(x=>x.id===(item.userId||item.createdBy));
+        const dateStr = (item._ts||"").slice(0,10);
+        if(item._kind==="approach") {
+          const icon = APPROACH_ICON[item.type]||"📝";
+          const isLoss = item.isLoss;
+          return (
+            <div key={item.id||i} style={{display:"flex",gap:"0.6rem",marginBottom:"0.75rem"}}>
+              <div style={{display:"flex",flexDirection:"column",alignItems:"center"}}>
+                <div style={{width:30,height:30,borderRadius:"50%",background:isLoss?"#fee2e2":"#dbeafe",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.85rem",flexShrink:0}}>{icon}</div>
+                {i<items.length-1&&<div style={{width:2,flex:1,background:C.borderLight,margin:"4px 0"}}/>}
+              </div>
+              <div style={{flex:1,paddingBottom:"0.5rem"}}>
+                <div style={{display:"flex",gap:"0.5rem",alignItems:"center",marginBottom:"0.2rem"}}>
+                  <span style={{fontSize:"0.72rem",fontWeight:700,color:isLoss?"#dc2626":C.accent}}>{item.type}</span>
+                  <span style={{fontSize:"0.68rem",color:C.textMuted}}>{dateStr}</span>
+                  {u&&<span style={{fontSize:"0.68rem",color:C.textSub}}>👤 {u.name}</span>}
+                </div>
+                {item.note&&<div style={{fontSize:"0.82rem",color:C.text,background:isLoss?"#fff1f2":"#f8fafc",borderRadius:"0.5rem",padding:"0.4rem 0.6rem",border:`1px solid ${isLoss?"#fca5a5":C.borderLight}`}}>{item.note}</div>}
+              </div>
+            </div>
+          );
+        }
+        if(item._kind==="memo") {
+          return (
+            <div key={item.id||i} style={{display:"flex",gap:"0.6rem",marginBottom:"0.75rem"}}>
+              <div style={{display:"flex",flexDirection:"column",alignItems:"center"}}>
+                <div style={{width:30,height:30,borderRadius:"50%",background:"#f3f4f6",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.85rem",flexShrink:0}}>📝</div>
+                {i<items.length-1&&<div style={{width:2,flex:1,background:C.borderLight,margin:"4px 0"}}/>}
+              </div>
+              <div style={{flex:1,paddingBottom:"0.5rem"}}>
+                <div style={{display:"flex",gap:"0.5rem",alignItems:"center",marginBottom:"0.2rem"}}>
+                  <span style={{fontSize:"0.72rem",fontWeight:700,color:C.textSub}}>メモ</span>
+                  <span style={{fontSize:"0.68rem",color:C.textMuted}}>{dateStr}</span>
+                  {u&&<span style={{fontSize:"0.68rem",color:C.textSub}}>👤 {u.name}</span>}
+                </div>
+                <div style={{fontSize:"0.82rem",color:C.text,background:"#f8fafc",borderRadius:"0.5rem",padding:"0.4rem 0.6rem",border:`1px solid ${C.borderLight}`}}>{item.text}</div>
+              </div>
+            </div>
+          );
+        }
+        // change log
+        return (
+          <div key={item.id||i} style={{display:"flex",gap:"0.6rem",marginBottom:"0.75rem"}}>
+            <div style={{display:"flex",flexDirection:"column",alignItems:"center"}}>
+              <div style={{width:30,height:30,borderRadius:"50%",background:"#ede9fe",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.75rem",flexShrink:0}}>🔄</div>
+              {i<items.length-1&&<div style={{width:2,flex:1,background:C.borderLight,margin:"4px 0"}}/>}
+            </div>
+            <div style={{flex:1,paddingBottom:"0.5rem"}}>
+              <div style={{display:"flex",gap:"0.5rem",alignItems:"center",flexWrap:"wrap"}}>
+                <span style={{fontSize:"0.7rem",fontWeight:700,color:"#7c3aed"}}>{item.field}</span>
+                {item.oldVal&&<><span style={{fontSize:"0.68rem",color:"#dc2626",textDecoration:"line-through"}}>{item.oldVal}</span><span style={{fontSize:"0.65rem",color:C.textMuted}}>→</span></>}
+                {item.newVal&&<span style={{fontSize:"0.68rem",color:"#059669",fontWeight:700}}>{item.newVal}</span>}
+                <span style={{fontSize:"0.65rem",color:C.textMuted,marginLeft:"auto"}}>{dateStr}</span>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── SALES TASK PANEL (top-level component to satisfy React hooks rules) ────────
 function SalesTaskPanel({ entityType, entityId, entityName, data, onSave, currentUser, users=[], onNavigateToTask, onNavigateToProject }) {
   const uid = currentUser?.id;
@@ -3572,6 +3714,21 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   const [dmFilter,   setDmFilter]   = useState("");
   const [dmSelected, setDmSelected] = useState(new Set());
   const [bcMemoIn,   setBcMemoIn]   = useState(""); // 名刺詳細メモ入力
+  const [matchModal, setMatchModal] = useState(null);
+  const [lossModal,  setLossModal]  = useState(null);
+  const [nextActionModal, setNextActionModal] = useState(null);
+  const [approachModal, setApproachModal] = useState(null);
+  // モーダルフォーム用state（IIFEでhooks不可のため最上位で管理）
+  const [lossReason,   setLossReason]   = useState("");
+  const [lossNote,     setLossNote]     = useState("");
+  const [lossNextCons, setLossNextCons] = useState("");
+  const [aType,  setAType]  = useState("電話");
+  const [aNote,  setANote]  = useState("");
+  const [aDate,  setADate]  = useState("");
+  const [naType, setNaType] = useState("電話");
+  const [naDate, setNaDate] = useState("");
+  const [naNote, setNaNote] = useState("");
+  const [matchChecked, setMatchChecked] = useState({}); // {cardId: bool}
 
   // ── データ参照（hook後、コンポーネント内計算）──
   const prefs     = data.prefectures    || [];
@@ -3582,15 +3739,18 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
 
   // ── 名刺 CRUD ──────────────────────────────────────────────────────────
   const _commitBizCard = (card) => {
-    // 実際にDBへ書き込む（重複確認済みの前提）
-    const nd={...data,businessCards:[...bizCards,{...card,id:Date.now()+Math.random(),createdAt:new Date().toISOString(),createdBy:currentUser?.id||""}]};
+    const newCard = {...card, id:Date.now()+Math.random(), createdAt:new Date().toISOString(), createdBy:currentUser?.id||""};
+    const nd = {...data, businessCards:[...bizCards, newCard]};
     save(nd);
+    // マッチング確認
+    setTimeout(()=>{setMatchChecked({});checkMatchAfterBizCard(newCard, nd);}, 100);
   };
   const _commitBizCards = (cards) => {
-    // 複数カードを一括書き込み
-    const newEntries=cards.map(c=>({...c,id:Date.now()+Math.random(),createdAt:new Date().toISOString(),createdBy:currentUser?.id||""}));
-    const nd={...data,businessCards:[...bizCards,...newEntries]};
+    const newEntries = cards.map(c=>({...c, id:Date.now()+Math.random(), createdAt:new Date().toISOString(), createdBy:currentUser?.id||""}));
+    const nd = {...data, businessCards:[...bizCards, ...newEntries]};
     save(nd);
+    // マッチング確認（インポート完了後）
+    setTimeout(()=>{setMatchChecked({});checkMatchAfterImport(newEntries, nd);}, 150);
   };
 
   // 手動追加：重複チェックありモーダル表示
@@ -3847,7 +4007,198 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     return pj;
   };
 
-  // ── CSV ダウンロード / アップロード ユーティリティ ──────────────────────────
+  // ── 名刺↔営業エンティティ マッチング ──────────────────────────────────
+
+  // 法人格を除去してコア名を抽出
+  const normBizName = (s) => (s||"")
+    .replace(/^(株式会社|有限会社|合同会社|一般社団法人|一般財団法人|公益社団法人|公益財団法人|特定非営利活動法人|NPO法人|社会福祉法人)\s*/g,"")
+    .replace(/\s*(株式会社|有限会社|合同会社)$/g,"")
+    .replace(/[\s\u3000]/g,"")
+    .toLowerCase();
+
+  // 名刺のcompanyに対してマッチする営業エンティティを探す
+  const findMatchingEntities = (cardCompany) => {
+    const norm = normBizName(cardCompany);
+    if(!norm) return [];
+    const results = [];
+    (data.companies||[]).forEach(e=>{ if(normBizName(e.name)===norm) results.push({type:"企業",id:e.id,name:e.name}); });
+    (data.municipalities||[]).forEach(e=>{ if(normBizName(e.name)===norm) results.push({type:"自治体",id:e.id,name:e.name}); });
+    (data.vendors||[]).forEach(e=>{ if(normBizName(e.name)===norm) results.push({type:"業者",id:e.id,name:e.name}); });
+    return results;
+  };
+
+  // 営業エンティティ名に対してマッチする名刺を探す
+  const findMatchingCards = (entityName) => {
+    const norm = normBizName(entityName);
+    if(!norm) return [];
+    return (data.businessCards||[]).filter(c=>normBizName(c.company)===norm);
+  };
+
+  // 名刺1枚登録後のマッチチェック → モーダル表示
+  const checkMatchAfterBizCard = (newCard, savedData) => {
+    const matches = findMatchingEntities(newCard.company);
+    if(!matches.length) return;
+    setMatchModal({
+      mode: "card_to_entity",
+      cards: [newCard],
+      entities: matches,
+      savedData,
+    });
+  };
+
+  // 名刺CSVインポート後のマッチチェック → グループモーダル表示
+  const checkMatchAfterImport = (newCards, savedData) => {
+    // 会社名ごとにグルーピング
+    const groups = {};
+    newCards.forEach(card=>{
+      const matches = findMatchingEntities(card.company);
+      matches.forEach(entity=>{
+        const key = `${entity.type}_${entity.id}`;
+        if(!groups[key]) groups[key] = {entity, cards:[]};
+        groups[key].cards.push(card);
+      });
+    });
+    const groupList = Object.values(groups);
+    if(!groupList.length) return;
+    setMatchModal({
+      mode: "import_to_entity",
+      groups: groupList,
+      savedData,
+    });
+  };
+
+  // 営業エンティティ新規登録後のマッチチェック
+  const checkMatchAfterEntity = (entityType, entityId, entityName, savedData) => {
+    const matches = findMatchingCards(entityName);
+    if(!matches.length) return;
+    setMatchModal({
+      mode: "entity_to_cards",
+      entity: {type:entityType, id:entityId, name:entityName},
+      cards: matches,
+      savedData,
+    });
+  };
+
+  // 実際に紐付けを実行（selectedIds: 紐づける名刺idの配列）
+  const applyBizCardLinks = (selectedIds, entityType, entityId, entityName, baseData) => {
+    const uid = currentUser?.id;
+    let nd = {...baseData};
+    selectedIds.forEach(cardId=>{
+      nd = {...nd, businessCards:(nd.businessCards||[]).map(c=>
+        c.id===cardId ? {...c, salesRef:{type:entityType,id:entityId,name:entityName}} : c
+      )};
+    });
+    // 通知：紐付け実行者以外の登録者に通知
+    const linkedCards = (nd.businessCards||[]).filter(c=>selectedIds.includes(c.id));
+    const notifyIds = [...new Set(linkedCards.map(c=>c.createdBy).filter(id=>id&&id!==uid))];
+    if(notifyIds.length) {
+      nd = addNotif(nd,{
+        type:"sales_assign", entityType, entityId,
+        title:`名刺が「${entityName}」に紐づけられました`,
+        body:`${linkedCards.length}件の名刺が紐づけられました`,
+        toUserIds:notifyIds, fromUserId:uid,
+      });
+    }
+    save(nd);
+    setMatchModal(null);
+  };
+
+  // モーダルオープナー（stateリセット込み）
+  const openLossModal = (entityKey, entityId, entityName, newStatus) => {
+    setLossReason(""); setLossNote(""); setLossNextCons("");
+    setLossModal({entityKey, entityId, entityName, newStatus});
+  };
+  const openApproachModal = (entityKey, entityId, entityName) => {
+    setAType("電話"); setANote(""); setADate(new Date().toISOString().slice(0,10));
+    setApproachModal({entityKey, entityId, entityName});
+  };
+  const openNextActionModal = (entityKey, entityId, entityName, current={}) => {
+    setNaType(current.nextActionType||"電話");
+    setNaDate(current.nextActionDate||"");
+    setNaNote(current.nextActionNote||"");
+    setNextActionModal({entityKey, entityId, entityName});
+  };
+
+  // ── アプローチ履歴を追加 ────────────────────────────────────────────────
+  const addApproachLog = (entityKey, entityId, entry) => {
+    const uid = currentUser?.id;
+    const log = {
+      id: Date.now()+Math.random(),
+      type: entry.type || "その他",
+      note: entry.note || "",
+      date: entry.date || new Date().toISOString().slice(0,10),
+      userId: uid,
+      createdAt: new Date().toISOString(),
+    };
+    const entities = data[entityKey] || [];
+    const nd = {...data, [entityKey]: entities.map(e =>
+      e.id===entityId ? {...e, approachLogs:[...(e.approachLogs||[]), log]} : e
+    )};
+    save(nd);
+    setApproachModal(null);
+  };
+
+  // ── 次回アクション日を設定 ─────────────────────────────────────────────
+  const setNextAction = (entityKey, entityId, nextAction) => {
+    const entities = data[entityKey] || [];
+    const nd = {...data, [entityKey]: entities.map(e =>
+      e.id===entityId ? {...e, nextActionDate: nextAction.date, nextActionType: nextAction.type, nextActionNote: nextAction.note||""} : e
+    )};
+    save(nd);
+    setNextActionModal(null);
+  };
+
+  // ── 失注・見送り理由を記録してステータス変更 ───────────────────────────
+  const applyLossStatus = (entityKey, entityId, entityName, newStatus, lossData) => {
+    const uid = currentUser?.id;
+    const entities = data[entityKey] || [];
+    const old = entities.find(e=>e.id===entityId);
+    const entityTypeLabel = entityKey==="companies"?"企業":entityKey==="vendors"?"業者":"自治体";
+    // ① エンティティのステータスと失注情報を更新
+    let nd = {...data, [entityKey]: entities.map(e =>
+      e.id===entityId ? {...e,
+        status: newStatus,
+        lossReason: lossData.reason || "",
+        lossNote: lossData.note || "",
+        nextConsideration: lossData.nextConsideration || "",
+        lossAt: new Date().toISOString(),
+      } : e
+    )};
+    // ② changeLog
+    nd = addChangeLog(nd,{entityType:entityTypeLabel,entityId,entityName,field:"ステータス",oldVal:old?.status||"",newVal:newStatus,userId:uid});
+    // ③ アプローチ履歴にも自動記録
+    const lossLog = {
+      id: Date.now()+Math.random(),
+      type: "失注・見送り",
+      note: `【${lossData.reason||""}】${lossData.note||""}`,
+      date: new Date().toISOString().slice(0,10),
+      userId: uid,
+      isLoss: true,
+      createdAt: new Date().toISOString(),
+    };
+    nd = {...nd, [entityKey]: (nd[entityKey]||[]).map(e=>
+      e.id===entityId ? {...e, approachLogs:[...(e.approachLogs||[]), lossLog]} : e
+    )};
+    save(nd);
+    setLossModal(null);
+  };
+
+  // ── メールテンプレート適用（変数を実際の値に置換して mailto を開く）──
+  const applyEmailTemplate = (tpl, entity, contactName="") => {
+    const today = new Date().toLocaleDateString("ja-JP",{year:"numeric",month:"long",day:"numeric"});
+    const nextWeek = new Date(Date.now()+7*86400000).toLocaleDateString("ja-JP",{year:"numeric",month:"long",day:"numeric"});
+    const replace = (s) => (s||"")
+      .replace(/\{\{会社名\}\}/g, entity?.name||"")
+      .replace(/\{\{担当者名\}\}/g, contactName||"ご担当者")
+      .replace(/\{\{自分の名前\}\}/g, currentUser?.name||"")
+      .replace(/\{\{日付\}\}/g, today)
+      .replace(/\{\{来週の日付\}\}/g, nextWeek);
+    const subject = encodeURIComponent(replace(tpl.subject));
+    const body    = encodeURIComponent(replace(tpl.body));
+    const email   = entity?.email||"";
+    window.open(`mailto:${email}?subject=${subject}&body=${body}`,"_blank");
+  };
+
   const downloadCSV = (filename, headers, rows) => {
     const bom = "\uFEFF";
     const escape = v => {
@@ -4119,6 +4470,9 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       const newComp={id:Date.now(),...form,status:form.status||"未接触",assigneeIds:form.assigneeIds||[],memos:[],chat:[],createdAt:new Date().toISOString()};
       nd={...nd,companies:[...companies,newComp]};
       nd=addChangeLog(nd,{entityType:"企業",entityId:newComp.id,entityName:newComp.name,field:"登録",oldVal:"",newVal:"新規登録"});
+      save(nd); setSheet(null);
+      setTimeout(()=>{setMatchChecked({});checkMatchAfterEntity("企業",newComp.id,newComp.name,nd);},100);
+      return;
     }
     save(nd); setSheet(null);
   };
@@ -4149,9 +4503,12 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       const added=newIds.filter(id=>!prevIds.includes(id));
       if(added.length) nd=addNotif(nd,{type:"sales_assign",entityType:"muni",entityId:form.id,title:`「${form.name}」の担当者に追加されました`,body:"自治体",toUserIds:added,fromUserId:currentUser?.id});
     } else {
-      const newMuni={id:"m_"+Date.now()+"_"+Math.random().toString(36).substr(2,9),prefectureId:activePref,...form,dustalk:form.dustalk||"未展開",status:form.status||"未接触",assigneeIds:[],treatyStatus:'未接触',artBranch:"",memos:[],chat:[],createdAt:new Date().toISOString()};
+      const newMuni={id:"m_"+Date.now()+"_"+Math.random().toString(36).substr(2,9),prefectureId:activePref,...form,dustalk:form.dustalk||"未展開",status:form.status||"未接触",assigneeIds:[],treatyStatus:'未接触',artBranch:"",memos:[],chat:[],approachLogs:[],createdAt:new Date().toISOString()};
       nd={...nd,municipalities:[...munis,newMuni]};
       nd=addChangeLog(nd,{entityType:"自治体",entityId:newMuni.id,entityName:newMuni.name,field:"登録",oldVal:"",newVal:"新規登録"});
+      save(nd); setSheet(null);
+      setTimeout(()=>{setMatchChecked({});checkMatchAfterEntity("自治体",newMuni.id,newMuni.name,nd);},100);
+      return;
     }
     save(nd); setSheet(null);
   };
@@ -4181,9 +4538,12 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       const added=newIds.filter(id=>!prevIds.includes(id));
       if(added.length) nd=addNotif(nd,{type:"sales_assign",entityType:"vendor",entityId:form.id,title:`「${form.name}」の担当者に追加されました`,body:"業者",toUserIds:added,fromUserId:currentUser?.id});
     } else {
-      const newVend={id:Date.now(),...form,status:form.status||"未接触",municipalityIds:form.municipalityIds||[],assigneeIds:form.assigneeIds||[],memos:[],chat:[],createdAt:new Date().toISOString()};
+      const newVend={id:Date.now(),...form,status:form.status||"未接触",municipalityIds:form.municipalityIds||[],assigneeIds:form.assigneeIds||[],memos:[],chat:[],approachLogs:[],createdAt:new Date().toISOString()};
       nd={...nd,vendors:[...vendors,newVend]};
       nd=addChangeLog(nd,{entityType:"業者",entityId:newVend.id,entityName:newVend.name,field:"登録",oldVal:"",newVal:"新規登録"});
+      save(nd); setSheet(null);
+      setTimeout(()=>{setMatchChecked({});checkMatchAfterEntity("業者",newVend.id,newVend.name,nd);},100);
+      return;
     }
     save(nd); setSheet(null);
   };
@@ -5054,26 +5414,54 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
               {comp.address&&<div style={{gridColumn:"1/-1"}}><span style={{color:C.textMuted}}>📍 </span>{comp.address}</div>}
             </div>
             {(comp.assigneeIds||[]).length>0&&<div style={{marginTop:"0.5rem"}}><AssigneeRow ids={comp.assigneeIds}/></div>}
+            {/* 次回アクション表示 */}
+            {comp.nextActionDate&&(
+              <div style={{marginTop:"0.5rem",display:"flex",alignItems:"center",gap:"0.4rem",padding:"0.3rem 0.6rem",background:"#f0f9ff",borderRadius:"0.5rem",border:"1px solid #bae6fd"}}>
+                <span style={{fontSize:"0.7rem"}}>{APPROACH_ICON[comp.nextActionType]||"📅"}</span>
+                <span style={{fontSize:"0.75rem",fontWeight:700,color:"#0369a1"}}>{comp.nextActionDate}</span>
+                <span style={{fontSize:"0.72rem",color:"#0369a1"}}>{comp.nextActionType}</span>
+                {comp.nextActionNote&&<span style={{fontSize:"0.7rem",color:"#64748b",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{comp.nextActionNote}</span>}
+                <button onClick={()=>openNextActionModal("companies",comp.id,comp.name,comp)} style={{background:"none",border:"none",cursor:"pointer",fontSize:"0.7rem",color:"#94a3b8",flexShrink:0}}>✏️</button>
+              </div>
+            )}
           </Card>
-          {/* フォローボタン */}
-          <div style={{marginBottom:"0.75rem",display:"flex",alignItems:"center",gap:"0.5rem"}}>
+          {/* アクションボタン行 */}
+          <div style={{marginBottom:"0.75rem",display:"flex",alignItems:"center",gap:"0.4rem",flexWrap:"wrap"}}>
             <button onClick={()=>{const nd={...data,companies:companies.map(c=>c.id===comp.id?{...c,needFollow:!comp.needFollow}:c)};save(nd);}}
-              style={{padding:"0.3rem 0.875rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.78rem",background:comp.needFollow?"#fef9c3":"#f3f4f6",color:comp.needFollow?"#854d0e":"#6b7280"}}>
-              {comp.needFollow?"⭐ フォロー中":"☆ フォローする"}
+              style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:comp.needFollow?"#fef9c3":"#f3f4f6",color:comp.needFollow?"#854d0e":"#6b7280"}}>
+              {comp.needFollow?"⭐ フォロー中":"☆ フォロー"}
+            </button>
+            <button onClick={()=>openApproachModal("companies",comp.id,comp.name)}
+              style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#dbeafe",color:"#1d4ed8"}}>
+              📞 アプローチ記録
+            </button>
+            <button onClick={()=>openNextActionModal("companies",comp.id,comp.name,comp)}
+              style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#d1fae5",color:"#065f46"}}>
+              📅 {comp.nextActionDate?"次回変更":"次回設定"}
             </button>
           </div>
           {/* Status quick-change */}
           <div style={{marginBottom:"1rem"}}>
             <div style={{fontSize:"0.72rem",fontWeight:700,color:C.textSub,marginBottom:"0.4rem"}}>ステータス変更</div>
             <StatusPicker map={COMPANY_STATUS} value={comp.status} onChange={s=>{
-              let nd={...data,companies:companies.map(c=>c.id===comp.id?{...c,status:s}:c)};
-              nd=addChangeLog(nd,{entityType:"企業",entityId:comp.id,entityName:comp.name,field:"ステータス",oldVal:comp.status,newVal:s});
-              save(nd);
+              if(CLOSED_STATUSES.has(s)){
+                openLossModal("companies",comp.id,comp.name,s);
+              } else {
+                let nd={...data,companies:companies.map(c=>c.id===comp.id?{...c,status:s}:c)};
+                nd=addChangeLog(nd,{entityType:"企業",entityId:comp.id,entityName:comp.name,field:"ステータス",oldVal:comp.status,newVal:s});
+                save(nd);
+              }
             }}/>
+            {/* 失注情報表示 */}
+            {CLOSED_STATUSES.has(comp.status)&&comp.lossReason&&(
+              <div style={{marginTop:"0.4rem",padding:"0.4rem 0.6rem",background:"#fee2e2",borderRadius:"0.5rem",fontSize:"0.75rem",color:"#dc2626"}}>
+                📋 {comp.lossReason}{comp.lossNote&&`：${comp.lossNote}`}{comp.nextConsideration&&` （次回検討: ${comp.nextConsideration}）`}
+              </div>
+            )}
           </div>
-          {/* Sub-tabs: メモ・チャット・タスク */}
+          {/* Sub-tabs: タイムライン・チャット・タスク・ファイル */}
           <div style={{display:"flex",background:"white",borderRadius:"0.75rem",padding:"0.2rem",marginBottom:"1rem",border:`1px solid ${C.border}`}}>
-            {[["memo","📝","メモ"],["chat","💬","チャット"],["tasks","✅","タスク"],["files","📎","ファイル"]].map(([id,icon,lbl])=>(
+            {[["timeline","📋","履歴"],["chat","💬","チャット"],["tasks","✅","タスク"],["files","📎","ファイル"]].map(([id,icon,lbl])=>(
               <button key={id} onClick={()=>setActiveDetail(id)} style={{flex:1,padding:"0.5rem",borderRadius:"0.5rem",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.72rem",position:"relative",background:activeDetail===id?C.accent:"transparent",color:activeDetail===id?"white":C.textSub}}>
                 {icon} {lbl}
                 {id==="chat"&&compChatUnread>0&&<span style={{position:"absolute",top:3,right:6,background:"#dc2626",color:"white",borderRadius:999,fontSize:"0.5rem",fontWeight:800,padding:"0.05rem 0.25rem",lineHeight:1.4}}>{compChatUnread}</span>}
@@ -5081,7 +5469,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
               </button>
             ))}
           </div>
-          {activeDetail==="memo"&&MemoSection({memos:comp.memos,entityKey:"companies",entityId:comp.id})}
+
+          {activeDetail==="timeline"&&<ApproachTimeline entity={comp} entityKey="companies" entityId={comp.id} users={users} onAddApproach={()=>openApproachModal("companies",comp.id,comp.name)} onSave={nd=>save(nd)} data={data}/>}
           {activeDetail==="chat"&&ChatSection({chat:comp.chat,entityKey:"companies",entityId:comp.id})}
           {activeDetail==="tasks"&&<SalesTaskPanel entityType="企業" entityId={comp.id} entityName={comp.name} data={data} onSave={save} currentUser={currentUser} users={users} onNavigateToTask={onNavigateToTask} onNavigateToProject={onNavigateToProject}/>}
           {activeDetail==="files"&&<FileSection files={comp.files||[]} currentUserId={currentUser?.id}
@@ -5503,28 +5892,45 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
               </div>
             </div>
           </Card>
-          {/* フォローボタン */}
-          <div style={{marginBottom:"0.75rem",display:"flex",alignItems:"center",gap:"0.5rem"}}>
+          {/* アクションボタン行 */}
+          <div style={{marginBottom:"0.75rem",display:"flex",alignItems:"center",gap:"0.4rem",flexWrap:"wrap"}}>
             <button onClick={()=>{const nd={...data,vendors:vendors.map(x=>x.id===v.id?{...x,needFollow:!v.needFollow}:x)};save(nd);}}
-              style={{padding:"0.3rem 0.875rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.78rem",background:v.needFollow?"#fef9c3":"#f3f4f6",color:v.needFollow?"#854d0e":"#6b7280"}}>
-              {v.needFollow?"⭐ フォロー中":"☆ フォローする"}
+              style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:v.needFollow?"#fef9c3":"#f3f4f6",color:v.needFollow?"#854d0e":"#6b7280"}}>
+              {v.needFollow?"⭐ フォロー中":"☆ フォロー"}
+            </button>
+            <button onClick={()=>openApproachModal("vendors",v.id,v.name)}
+              style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#dbeafe",color:"#1d4ed8"}}>
+              📞 アプローチ記録
+            </button>
+            <button onClick={()=>openNextActionModal("vendors",v.id,v.name,v)}
+              style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#d1fae5",color:"#065f46"}}>
+              📅 {v.nextActionDate?"次回変更":"次回設定"}
             </button>
           </div>
           <div style={{marginBottom:"1rem"}}>
             <div style={{fontSize:"0.72rem",fontWeight:700,color:C.textSub,marginBottom:"0.4rem"}}>ステータス変更</div>
             <StatusPicker map={VENDOR_STATUS} value={v.status} onChange={s=>{
-              let nd={...data,vendors:vendors.map(x=>x.id===v.id?{...x,status:s}:x)};
-              nd=addChangeLog(nd,{entityType:"業者",entityId:v.id,entityName:v.name,field:"ステータス",oldVal:v.status,newVal:s});
-              save(nd);
+              if(CLOSED_STATUSES.has(s)){
+                openLossModal("vendors",v.id,v.name,s);
+              } else {
+                let nd={...data,vendors:vendors.map(x=>x.id===v.id?{...x,status:s}:x)};
+                nd=addChangeLog(nd,{entityType:"業者",entityId:v.id,entityName:v.name,field:"ステータス",oldVal:v.status,newVal:s});
+                save(nd);
+              }
             }}/>
+            {CLOSED_STATUSES.has(v.status)&&v.lossReason&&(
+              <div style={{marginTop:"0.4rem",padding:"0.4rem 0.6rem",background:"#fee2e2",borderRadius:"0.5rem",fontSize:"0.75rem",color:"#dc2626"}}>
+                📋 {v.lossReason}{v.lossNote&&`：${v.lossNote}`}
+              </div>
+            )}
           </div>
           {/* 削除ボタン */}
           <div style={{marginBottom:"0.75rem",display:"flex",justifyContent:"flex-end"}}>
             <Btn variant="danger" size="sm" onClick={()=>{if(window.confirm(`${v.name}を削除しますか？`))deleteVendor(v.id);}}>🗑 削除</Btn>
           </div>
-          {/* Sub-tabs: メモ・チャット・タスク */}
+          {/* Sub-tabs: 履歴・チャット・タスク・ファイル */}
           <div style={{display:"flex",background:"white",borderRadius:"0.75rem",padding:"0.2rem",marginBottom:"1rem",border:`1px solid ${C.border}`}}>
-            {[["memo","📝","メモ"],["chat","💬","チャット"],["tasks","✅","タスク"],["files","📎","ファイル"]].map(([id,icon,lbl])=>(
+            {[["timeline","📋","履歴"],["chat","💬","チャット"],["tasks","✅","タスク"],["files","📎","ファイル"]].map(([id,icon,lbl])=>(
               <button key={id} onClick={()=>setActiveDetail(id)} style={{flex:1,padding:"0.5rem",borderRadius:"0.5rem",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.72rem",position:"relative",background:activeDetail===id?C.accent:"transparent",color:activeDetail===id?"white":C.textSub}}>
                 {icon} {lbl}
                 {id==="chat"&&vendChatUnread>0&&<span style={{position:"absolute",top:3,right:6,background:"#dc2626",color:"white",borderRadius:999,fontSize:"0.5rem",fontWeight:800,padding:"0.05rem 0.25rem",lineHeight:1.4}}>{vendChatUnread}</span>}
@@ -5532,7 +5938,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
               </button>
             ))}
           </div>
-          {activeDetail==="memo"&&MemoSection({memos:v.memos,entityKey:"vendors",entityId:v.id})}
+          {activeDetail==="timeline"&&<ApproachTimeline entity={v} entityKey="vendors" entityId={v.id} users={users} onAddApproach={()=>openApproachModal("vendors",v.id,v.name)} onSave={nd=>save(nd)} data={data}/>}
           {activeDetail==="chat"&&ChatSection({chat:v.chat,entityKey:"vendors",entityId:v.id})}
           {activeDetail==="tasks"&&<SalesTaskPanel entityType="業者" entityId={v.id} entityName={v.name} data={data} onSave={save} currentUser={currentUser} users={users} onNavigateToTask={onNavigateToTask} onNavigateToProject={onNavigateToProject}/>}
           {activeDetail==="files"&&<FileSection files={v.files||[]} currentUserId={currentUser?.id}
@@ -6044,9 +6450,23 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             }}/>
           </div>
         </div>
-        {/* Sub-tabs: メモ・チャット・タスク・ファイル ─ 業者一覧の上 */}
+        {/* アクションボタン行 */}
+        <div style={{marginBottom:"0.75rem",display:"flex",alignItems:"center",gap:"0.4rem",flexWrap:"wrap"}}>
+          <button onClick={()=>openApproachModal("municipalities",muni.id,muni.name)}
+            style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#dbeafe",color:"#1d4ed8"}}>
+            📞 アプローチ記録
+          </button>
+          <button onClick={()=>openNextActionModal("municipalities",muni.id,muni.name,muni)}
+            style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#d1fae5",color:"#065f46"}}>
+            📅 {muni.nextActionDate?"次回変更":"次回設定"}
+          </button>
+          {muni.nextActionDate&&(
+            <span style={{fontSize:"0.72rem",color:"#0369a1",fontWeight:700}}>→ {muni.nextActionDate} {muni.nextActionType}</span>
+          )}
+        </div>
+        {/* Sub-tabs: 履歴・チャット・タスク・ファイル */}
         <div style={{display:"flex",background:"white",borderRadius:"0.75rem",padding:"0.2rem",marginBottom:"0.75rem",border:`1px solid ${C.border}`}}>
-          {[["memo","📝","メモ"],["chat","💬","チャット"],["tasks","✅","タスク"],["files","📎","ファイル"]].map(([id,icon,lbl])=>(
+          {[["timeline","📋","履歴"],["chat","💬","チャット"],["tasks","✅","タスク"],["files","📎","ファイル"]].map(([id,icon,lbl])=>(
             <button key={id} onClick={()=>setActiveDetail(id)} style={{flex:1,padding:"0.5rem",borderRadius:"0.5rem",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.72rem",position:"relative",background:activeDetail===id?C.accent:"transparent",color:activeDetail===id?"white":C.textSub}}>
               {icon} {lbl}
               {id==="chat"&&muniChatUnread>0&&<span style={{position:"absolute",top:3,right:6,background:"#dc2626",color:"white",borderRadius:999,fontSize:"0.5rem",fontWeight:800,padding:"0.05rem 0.25rem",lineHeight:1.4}}>{muniChatUnread}</span>}
@@ -6054,7 +6474,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             </button>
           ))}
         </div>
-        {activeDetail==="memo"&&<div style={{marginBottom:"1rem"}}>{MemoSection({memos:muni.memos,entityKey:"municipalities",entityId:muni.id})}</div>}
+        {activeDetail==="timeline"&&<div style={{marginBottom:"1rem"}}><ApproachTimeline entity={muni} entityKey="municipalities" entityId={muni.id} users={users} onAddApproach={()=>openApproachModal("municipalities",muni.id,muni.name)} onSave={nd=>save(nd)} data={data}/></div>}
         {activeDetail==="chat"&&<div style={{marginBottom:"1rem"}}>{ChatSection({chat:muni.chat,entityKey:"municipalities",entityId:muni.id})}</div>}
         {activeDetail==="tasks"&&<div style={{marginBottom:"1rem"}}><SalesTaskPanel entityType="自治体" entityId={muni.id} entityName={muni.name} data={data} onSave={save} currentUser={currentUser} users={users} onNavigateToTask={onNavigateToTask} onNavigateToProject={onNavigateToProject}/></div>}
         {activeDetail==="files"&&<div style={{marginBottom:"1rem"}}><FileSection files={muni.files||[]} currentUserId={currentUser?.id}
@@ -7049,6 +7469,197 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
 
       {/* ── 活動ログ ── */}
       <ActivityLog data={data} users={users} filterTypes={["企業","業者","自治体"]} />
+
+      {/* ════ 失注・見送りモーダル ════ */}
+      {lossModal&&(
+        <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.5)",padding:"1rem"}} onClick={e=>{if(e.target===e.currentTarget)setLossModal(null);}}>
+          <div style={{background:"white",borderRadius:"1.25rem",padding:"1.5rem",maxWidth:400,width:"100%",boxShadow:"0 12px 50px rgba(0,0,0,0.25)"}}>
+            <div style={{fontSize:"1rem",fontWeight:800,color:C.text,marginBottom:"0.2rem"}}>📋 {lossModal.newStatus}の理由を記録</div>
+            <div style={{fontSize:"0.82rem",color:C.textSub,marginBottom:"1rem"}}>「{lossModal.entityName}」</div>
+            <div style={{marginBottom:"0.75rem"}}>
+              <div style={{fontSize:"0.72rem",fontWeight:700,color:C.textSub,marginBottom:"0.35rem"}}>理由</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:"0.35rem"}}>
+                {LOSS_REASONS.map(r=>(
+                  <button key={r} onClick={()=>setLossReason(r)}
+                    style={{padding:"0.3rem 0.65rem",borderRadius:999,border:`1.5px solid ${lossReason===r?C.accent:C.border}`,background:lossReason===r?C.accentBg:"white",color:lossReason===r?C.accent:C.textSub,fontSize:"0.75rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                    {r}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <FieldLbl label="補足（任意）"><Textarea value={lossNote} onChange={e=>setLossNote(e.target.value)} style={{height:64}} placeholder="詳細を入力..."/></FieldLbl>
+            <FieldLbl label="次回検討時期（任意）"><Input type="month" value={lossNextCons} onChange={e=>setLossNextCons(e.target.value)}/></FieldLbl>
+            <div style={{display:"flex",gap:"0.75rem",marginTop:"1rem"}}>
+              <Btn variant="secondary" style={{flex:1}} onClick={()=>setLossModal(null)}>キャンセル</Btn>
+              <Btn style={{flex:2}} onClick={()=>applyLossStatus(lossModal.entityKey,lossModal.entityId,lossModal.entityName,lossModal.newStatus,{reason:lossReason,note:lossNote,nextConsideration:lossNextCons})}>
+                記録して変更
+              </Btn>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ════ アプローチ記録モーダル ════ */}
+      {approachModal&&(
+        <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.5)",padding:"1rem"}} onClick={e=>{if(e.target===e.currentTarget)setApproachModal(null);}}>
+          <div style={{background:"white",borderRadius:"1.25rem",padding:"1.5rem",maxWidth:380,width:"100%",boxShadow:"0 12px 50px rgba(0,0,0,0.25)"}}>
+            <div style={{fontSize:"1rem",fontWeight:800,color:C.text,marginBottom:"0.2rem"}}>📞 アプローチを記録</div>
+            <div style={{fontSize:"0.82rem",color:C.textSub,marginBottom:"1rem"}}>「{approachModal.entityName}」</div>
+            <div style={{marginBottom:"0.75rem"}}>
+              <div style={{fontSize:"0.72rem",fontWeight:700,color:C.textSub,marginBottom:"0.35rem"}}>種別</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:"0.35rem"}}>
+                {APPROACH_TYPES.map(t=>(
+                  <button key={t} onClick={()=>setAType(t)}
+                    style={{padding:"0.3rem 0.65rem",borderRadius:999,border:`1.5px solid ${aType===t?C.accent:C.border}`,background:aType===t?C.accentBg:"white",color:aType===t?C.accent:C.textSub,fontSize:"0.75rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                    {APPROACH_ICON[t]} {t}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <FieldLbl label="日付"><Input type="date" value={aDate} onChange={e=>setADate(e.target.value)}/></FieldLbl>
+            <FieldLbl label="内容・メモ"><Textarea value={aNote} onChange={e=>setANote(e.target.value)} style={{height:80}} placeholder="アプローチの内容を入力..."/></FieldLbl>
+            <div style={{display:"flex",gap:"0.75rem",marginTop:"0.5rem"}}>
+              <Btn variant="secondary" style={{flex:1}} onClick={()=>setApproachModal(null)}>キャンセル</Btn>
+              <Btn style={{flex:2}} onClick={()=>addApproachLog(approachModal.entityKey,approachModal.entityId,{type:aType,note:aNote,date:aDate})} disabled={!aNote.trim()&&!aDate}>記録する</Btn>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ════ 次回アクション設定モーダル ════ */}
+      {nextActionModal&&(
+        <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.5)",padding:"1rem"}} onClick={e=>{if(e.target===e.currentTarget)setNextActionModal(null);}}>
+          <div style={{background:"white",borderRadius:"1.25rem",padding:"1.5rem",maxWidth:360,width:"100%",boxShadow:"0 12px 50px rgba(0,0,0,0.25)"}}>
+            <div style={{fontSize:"1rem",fontWeight:800,color:C.text,marginBottom:"0.2rem"}}>📅 次回アクション</div>
+            <div style={{fontSize:"0.82rem",color:C.textSub,marginBottom:"1rem"}}>「{nextActionModal.entityName}」</div>
+            <div style={{marginBottom:"0.75rem"}}>
+              <div style={{fontSize:"0.72rem",fontWeight:700,color:C.textSub,marginBottom:"0.35rem"}}>種別</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:"0.35rem"}}>
+                {NEXT_ACTION_TYPES.map(t=>(
+                  <button key={t} onClick={()=>setNaType(t)}
+                    style={{padding:"0.3rem 0.65rem",borderRadius:999,border:`1.5px solid ${naType===t?C.accent:C.border}`,background:naType===t?C.accentBg:"white",color:naType===t?C.accent:C.textSub,fontSize:"0.75rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <FieldLbl label="日付 *"><Input type="date" value={naDate} onChange={e=>setNaDate(e.target.value)}/></FieldLbl>
+            <FieldLbl label="メモ（任意）"><Input value={naNote} onChange={e=>setNaNote(e.target.value)} placeholder="例：提案書を持参する"/></FieldLbl>
+            <div style={{display:"flex",gap:"0.75rem",marginTop:"0.5rem"}}>
+              <Btn variant="secondary" style={{flex:1}} onClick={()=>setNextActionModal(null)}>キャンセル</Btn>
+              <Btn style={{flex:2}} onClick={()=>setNextAction(nextActionModal.entityKey,nextActionModal.entityId,{type:naType,date:naDate,note:naNote})} disabled={!naDate}>設定する</Btn>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ════ 名刺マッチングモーダル ════ */}
+      {matchModal&&(()=>{
+        const COLOR = {"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"};
+        if(matchModal.mode==="card_to_entity") {
+          const card = matchModal.cards[0];
+          return (
+            <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.5)",padding:"1rem"}} onClick={e=>{if(e.target===e.currentTarget)setMatchModal(null);}}>
+              <div style={{background:"white",borderRadius:"1.25rem",padding:"1.5rem",maxWidth:380,width:"100%",boxShadow:"0 12px 50px rgba(0,0,0,0.25)"}}>
+                <div style={{fontSize:"1rem",fontWeight:800,color:C.text,marginBottom:"0.5rem"}}>🔗 営業先と一致しました</div>
+                <div style={{fontSize:"0.82rem",color:C.textSub,marginBottom:"1rem"}}>
+                  「{card.lastName}{card.firstName}」({card.company}) を以下に紐づけますか？
+                </div>
+                {matchModal.entities.map(ent=>(
+                  <div key={ent.id} style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.6rem 0.75rem",marginBottom:"0.5rem",background:`${COLOR[ent.type]}15`,border:`1.5px solid ${COLOR[ent.type]}44`,borderRadius:"0.75rem"}}>
+                    <span style={{fontSize:"0.7rem",fontWeight:800,color:"white",background:COLOR[ent.type],borderRadius:999,padding:"0.1rem 0.5rem",flexShrink:0}}>{ent.type}</span>
+                    <span style={{fontSize:"0.88rem",fontWeight:700,color:COLOR[ent.type],flex:1}}>{ent.name}</span>
+                    {card.salesRef ? (
+                      <Btn size="sm" onClick={()=>applyBizCardLinks([card.id],ent.type,ent.id,ent.name,matchModal.savedData)}>上書き</Btn>
+                    ) : (
+                      <Btn size="sm" onClick={()=>applyBizCardLinks([card.id],ent.type,ent.id,ent.name,matchModal.savedData)}>紐づける</Btn>
+                    )}
+                  </div>
+                ))}
+                <Btn variant="secondary" style={{width:"100%",marginTop:"0.5rem"}} onClick={()=>setMatchModal(null)}>スキップ</Btn>
+              </div>
+            </div>
+          );
+        }
+        if(matchModal.mode==="import_to_entity") {
+          const allCardIds = matchModal.groups.flatMap(g=>g.cards.map(c=>c.id));
+          const checked = matchChecked;
+          const initChecked = Object.fromEntries(allCardIds.map(id=>[id, checked[id]!==false]));
+          return (
+            <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"flex-end",justifyContent:"center",background:"rgba(0,0,0,0.5)",padding:"0"}} onClick={e=>{if(e.target===e.currentTarget)setMatchModal(null);}}>
+              <div style={{background:"white",borderRadius:"1.25rem 1.25rem 0 0",padding:"1.5rem",maxWidth:480,width:"100%",maxHeight:"80vh",overflowY:"auto",boxShadow:"0 -8px 40px rgba(0,0,0,0.2)"}}>
+                <div style={{fontSize:"1rem",fontWeight:800,color:C.text,marginBottom:"0.5rem"}}>🔗 営業先との一致が見つかりました</div>
+                <div style={{fontSize:"0.82rem",color:C.textSub,marginBottom:"1rem"}}>紐づける名刺を選択してください</div>
+                {matchModal.groups.map(({entity, cards})=>(
+                  <div key={entity.id} style={{marginBottom:"1rem",background:"#f8fafc",borderRadius:"0.75rem",padding:"0.75rem"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginBottom:"0.5rem"}}>
+                      <span style={{fontSize:"0.7rem",fontWeight:800,color:"white",background:COLOR[entity.type],borderRadius:999,padding:"0.1rem 0.45rem"}}>{entity.type}</span>
+                      <span style={{fontSize:"0.88rem",fontWeight:700}}>{entity.name}</span>
+                      <span style={{fontSize:"0.72rem",color:C.textMuted,marginLeft:"auto"}}>{cards.length}件一致</span>
+                    </div>
+                    {cards.map(card=>{
+                      const isChecked = initChecked[card.id]!==false;
+                      const hasExisting = !!card.salesRef;
+                      return (
+                        <div key={card.id} onClick={()=>setMatchChecked(p=>({...p,[card.id]:!isChecked}))}
+                          style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.4rem 0.5rem",background:"white",borderRadius:"0.5rem",marginBottom:"0.25rem",cursor:"pointer",border:`1px solid ${isChecked?C.accent:C.borderLight}`}}>
+                          <span style={{fontSize:"1rem"}}>{isChecked?"☑":"☐"}</span>
+                          <span style={{fontSize:"0.82rem",fontWeight:600,flex:1}}>{card.lastName}{card.firstName}</span>
+                          {card.title&&<span style={{fontSize:"0.7rem",color:C.textSub}}>{card.title}</span>}
+                          {hasExisting&&<span style={{fontSize:"0.65rem",background:"#fef3c7",color:"#d97706",borderRadius:999,padding:"0.05rem 0.35rem",flexShrink:0}}>紐付済</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+                <div style={{display:"flex",gap:"0.75rem",paddingTop:"0.5rem"}}>
+                  <Btn variant="secondary" style={{flex:1}} onClick={()=>setMatchModal(null)}>スキップ</Btn>
+                  <Btn style={{flex:2}} onClick={()=>{
+                    matchModal.groups.forEach(({entity,cards})=>{
+                      const sel = cards.filter(c=>initChecked[c.id]!==false).map(c=>c.id);
+                      if(sel.length) applyBizCardLinks(sel,entity.type,entity.id,entity.name,matchModal.savedData);
+                    });
+                  }}>選択した名刺を紐づける</Btn>
+                </div>
+              </div>
+            </div>
+          );
+        }
+        // entity_to_cards
+        return (
+          <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.5)",padding:"1rem"}} onClick={e=>{if(e.target===e.currentTarget)setMatchModal(null);}}>
+            <div style={{background:"white",borderRadius:"1.25rem",padding:"1.5rem",maxWidth:400,width:"100%",maxHeight:"80vh",overflowY:"auto",boxShadow:"0 12px 50px rgba(0,0,0,0.25)"}}>
+              <div style={{fontSize:"1rem",fontWeight:800,color:C.text,marginBottom:"0.5rem"}}>🔗 一致する名刺が見つかりました</div>
+              <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginBottom:"1rem"}}>
+                <span style={{fontSize:"0.7rem",fontWeight:800,color:"white",background:COLOR[matchModal.entity.type]||C.accent,borderRadius:999,padding:"0.1rem 0.45rem"}}>{matchModal.entity.type}</span>
+                <span style={{fontSize:"0.88rem",fontWeight:700}}>{matchModal.entity.name}</span>
+              </div>
+              {matchModal.cards.map(card=>{
+                const isChecked = matchChecked[card.id]!==false;
+                return (
+                  <div key={card.id} onClick={()=>setMatchChecked(p=>({...p,[card.id]:!isChecked}))}
+                    style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.5rem 0.75rem",background:"#f8fafc",borderRadius:"0.625rem",marginBottom:"0.4rem",cursor:"pointer",border:`1.5px solid ${isChecked?C.accent:C.borderLight}`}}>
+                    <span style={{fontSize:"1rem"}}>{isChecked?"☑":"☐"}</span>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:"0.85rem",fontWeight:600}}>{card.lastName}{card.firstName}</div>
+                      {card.title&&<div style={{fontSize:"0.7rem",color:C.textSub}}>{card.title}</div>}
+                    </div>
+                    {card.salesRef&&<span style={{fontSize:"0.65rem",background:"#fef3c7",color:"#d97706",borderRadius:999,padding:"0.05rem 0.35rem"}}>紐付済</span>}
+                  </div>
+                );
+              })}
+              <div style={{display:"flex",gap:"0.75rem",marginTop:"1rem"}}>
+                <Btn variant="secondary" style={{flex:1}} onClick={()=>setMatchModal(null)}>スキップ</Btn>
+                <Btn style={{flex:2}} onClick={()=>{
+                  const sel=matchModal.cards.filter(c=>matchChecked[c.id]!==false).map(c=>c.id);
+                  if(sel.length) applyBizCardLinks(sel,matchModal.entity.type,matchModal.entity.id,matchModal.entity.name,matchModal.savedData);
+                  else setMatchModal(null);
+                }}>紐づける</Btn>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -7171,8 +7782,12 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
   const [profileMsg, setProfileMsg] = useState("");
   const [pwForm, setPwForm] = useState({cur:"",next:"",next2:""});
   const [pwMsg, setPwMsg] = useState("");
-  const [section, setSection] = useState("profile"); // profile | links | contract | account | backup | actlog
-  const [contractModal, setContractModal] = useState(null); // null | 'upload' | 'generate'
+  const [section, setSection] = useState("profile");
+  const [contractModal, setContractModal] = useState(null);
+  // template states (top-level to avoid hooks-in-IIFE)
+  const [tplForm,    setTplForm]    = useState({name:"",targetType:"共通",subject:"",body:""});
+  const [tplEditId,  setTplEditId]  = useState(null);
+  const [showTplForm,setShowTplForm]= useState(false);
   // backup/restore state
   const [snapshots, setSnapshots] = useState([]);
   const [snapLoading, setSnapLoading] = useState(false);
@@ -7254,6 +7869,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
     {id:"links",    icon:"🔗", label:"外部連携"},
     {id:"contract", icon:"📜", label:"契約書"},
     {id:"account",  icon:"🔑", label:"パスワード"},
+    {id:"template", icon:"✉️", label:"テンプレート"},
     {id:"backup",   icon:"💾", label:"バックアップ"},
     {id:"actlog",   icon:"📋", label:"活動ログ"},
   ];
@@ -7535,6 +8151,101 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
           </button>
         </div>
       )}
+
+      )}
+
+      {/* ── メールテンプレート ── */}
+      {section==="template"&&(()=>{
+        const templates = data.emailTemplates||[];
+        const editId = tplEditId;
+        const showForm = showTplForm;
+
+        const saveTpl = () => {
+          if(!tplForm.name.trim()||!tplForm.subject.trim()) return;
+          let nd;
+          if(editId) {
+            nd = {...data, emailTemplates: templates.map(t=>t.id===editId?{...t,...tplForm}:t)};
+          } else {
+            nd = {...data, emailTemplates: [...templates, {...tplForm, id:Date.now()+Math.random(), createdAt:new Date().toISOString()}]};
+          }
+          setData(nd); saveData(nd);
+          setTplForm({name:"",targetType:"共通",subject:"",body:""}); setTplEditId(null); setShowTplForm(false);
+        };
+        const deleteTpl = (id) => {
+          if(!window.confirm("削除しますか？")) return;
+          const nd = {...data, emailTemplates: templates.filter(t=>t.id!==id)};
+          setData(nd); saveData(nd);
+        };
+        const startEdit = (t) => {
+          setTplForm({name:t.name,targetType:t.targetType||"共通",subject:t.subject||"",body:t.body||""});
+          setTplEditId(t.id); setShowTplForm(true);
+        };
+
+        return (
+          <div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1rem"}}>
+              <div style={{fontWeight:800,fontSize:"0.9rem",color:C.text}}>✉️ メールテンプレート</div>
+              <Btn size="sm" onClick={()=>{setShowTplForm(v=>!v);setTplEditId(null);setTplForm({name:"",targetType:"共通",subject:"",body:""});}}>
+                {showForm?"閉じる":"＋ 新規"}
+              </Btn>
+            </div>
+
+            {/* 変数一覧 */}
+            <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:"0.75rem",padding:"0.75rem",marginBottom:"1rem",fontSize:"0.75rem",color:"#166534"}}>
+              <div style={{fontWeight:700,marginBottom:"0.35rem"}}>使える変数</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:"0.35rem"}}>
+                {EMAIL_TEMPLATE_VARS.map(v=>(
+                  <code key={v} style={{background:"#dcfce7",borderRadius:"0.3rem",padding:"0.1rem 0.4rem",fontSize:"0.72rem",fontFamily:"monospace"}}>{v}</code>
+                ))}
+              </div>
+            </div>
+
+            {/* 入力フォーム */}
+            {showForm&&(
+              <div style={{background:"white",border:`1.5px solid ${C.accent}`,borderRadius:"0.875rem",padding:"1rem",marginBottom:"1rem"}}>
+                <div style={{fontWeight:700,fontSize:"0.85rem",color:C.accent,marginBottom:"0.75rem"}}>{editId?"テンプレートを編集":"新規テンプレート"}</div>
+                <FieldLbl label="テンプレート名 *"><Input value={tplForm.name} onChange={e=>setTplForm(p=>({...p,name:e.target.value}))} placeholder="例：初回アプローチ（企業向け）"/></FieldLbl>
+                <FieldLbl label="対象種別">
+                  <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap"}}>
+                    {["共通","企業","自治体","業者"].map(t=>(
+                      <button key={t} onClick={()=>setTplForm(p=>({...p,targetType:t}))}
+                        style={{padding:"0.3rem 0.75rem",borderRadius:999,border:`1.5px solid ${tplForm.targetType===t?C.accent:C.border}`,background:tplForm.targetType===t?C.accentBg:"white",color:tplForm.targetType===t?C.accent:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                </FieldLbl>
+                <FieldLbl label="件名 *"><Input value={tplForm.subject} onChange={e=>setTplForm(p=>({...p,subject:e.target.value}))} placeholder="例：【ご挨拶】{{会社名}} ご担当者様"/></FieldLbl>
+                <FieldLbl label="本文"><Textarea value={tplForm.body} onChange={e=>setTplForm(p=>({...p,body:e.target.value}))} style={{height:160}} placeholder={"{{会社名}} {{担当者名}} 様\n\nお世話になっております。\n{{自分の名前}}と申します。\n..."}/></FieldLbl>
+                <div style={{display:"flex",gap:"0.5rem"}}>
+                  <Btn variant="secondary" style={{flex:1}} onClick={()=>{setShowTplForm(false);setTplEditId(null);}}>キャンセル</Btn>
+                  <Btn style={{flex:2}} onClick={saveTpl} disabled={!tplForm.name.trim()||!tplForm.subject.trim()}>保存</Btn>
+                </div>
+              </div>
+            )}
+
+            {/* テンプレート一覧 */}
+            {templates.length===0&&!showForm&&(
+              <div style={{textAlign:"center",padding:"2rem",color:C.textMuted,fontSize:"0.85rem"}}>テンプレートがありません</div>
+            )}
+            {templates.map(t=>{
+              const typeColor={"企業":"#2563eb","自治体":"#059669","業者":"#7c3aed","共通":"#6b7280"}[t.targetType]||"#6b7280";
+              return (
+                <div key={t.id} style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"0.875rem",padding:"1rem",marginBottom:"0.75rem",boxShadow:C.shadow}}>
+                  <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.4rem"}}>
+                    <span style={{fontSize:"0.68rem",fontWeight:800,color:"white",background:typeColor,borderRadius:999,padding:"0.1rem 0.45rem"}}>{t.targetType||"共通"}</span>
+                    <span style={{fontWeight:700,fontSize:"0.88rem",color:C.text,flex:1}}>{t.name}</span>
+                    <button onClick={()=>startEdit(t)} style={{background:"none",border:"none",cursor:"pointer",fontSize:"0.8rem",color:C.textMuted}}>✏️</button>
+                    <button onClick={()=>deleteTpl(t.id)} style={{background:"none",border:"none",cursor:"pointer",fontSize:"0.8rem",color:"#dc2626"}}>🗑</button>
+                  </div>
+                  <div style={{fontSize:"0.75rem",color:C.textSub,marginBottom:"0.25rem"}}>件名: {t.subject}</div>
+                  <div style={{fontSize:"0.73rem",color:C.textMuted,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{t.body}</div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {/* ── バックアップ・復元 ── */}
       {section==="backup"&&(()=>{
