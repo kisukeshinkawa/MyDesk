@@ -3017,19 +3017,27 @@ function EmailView({data,setData,currentUser=null}) {
           </div>
 
           <FieldLbl label={mode==="reply"?"受信メールを貼り付け *":"目的・補足情報 *"}>
-            <Textarea value={inputText} onChange={e=>setInputText(e.target.value)}
-              placeholder={mode==="reply"
-                ?"返信したいメールの本文をここに貼り付けてください..."
-                :"例：A社の田中部長への初回アポイント依頼。来月の新製品説明会の案内として送りたい。先方とは先月の展示会で名刺交換済み。"}
-              style={{height:160}}/>
+            <div style={{position:"relative"}}>
+              <Textarea value={inputText} onChange={e=>setInputText(e.target.value)}
+                placeholder={mode==="reply"
+                  ?"返信したいメールの本文をここに貼り付けてください..."
+                  :"例：A社の田中部長への初回アポイント依頼。来月の新製品説明会の案内として送りたい。先方とは先月の展示会で名刺交換済み。"}
+                style={{height:160}}/>
+              {inputText&&<button onClick={()=>setInputText("")}
+                style={{position:"absolute",top:"0.5rem",right:"0.5rem",background:"#f1f5f9",border:"none",borderRadius:"0.4rem",padding:"0.2rem 0.5rem",cursor:"pointer",fontSize:"0.72rem",color:"#64748b",fontWeight:700,lineHeight:1}}>✕ リセット</button>}
+            </div>
           </FieldLbl>
 
           <FieldLbl label={mode==="reply"?"返信の指示・方向性 *":"メールの指示・方向性 *"}>
-            <Textarea value={instruction} onChange={e=>setInstruction(e.target.value)}
-              placeholder={mode==="reply"
-                ?"例：丁重にお断りする / 前向きに検討する旨を伝えて来週返答する"
-                :"例：丁寧かつ簡潔に。押しつけがましくなく、相手の都合を優先する姿勢で。"}
-              style={{height:100}}/>
+            <div style={{position:"relative"}}>
+              <Textarea value={instruction} onChange={e=>setInstruction(e.target.value)}
+                placeholder={mode==="reply"
+                  ?"例：丁重にお断りする / 前向きに検討する旨を伝えて来週返答する"
+                  :"例：丁寧かつ簡潔に。押しつけがましくなく、相手の都合を優先する姿勢で。"}
+                style={{height:100}}/>
+              {instruction&&<button onClick={()=>setInstruction("")}
+                style={{position:"absolute",top:"0.5rem",right:"0.5rem",background:"#f1f5f9",border:"none",borderRadius:"0.4rem",padding:"0.2rem 0.5rem",cursor:"pointer",fontSize:"0.72rem",color:"#64748b",fontWeight:700,lineHeight:1}}>✕ リセット</button>}
+            </div>
             {!instruction.trim()&&inputText.trim()&&(
               <div style={{fontSize:"0.72rem",color:"#dc2626",marginTop:"0.35rem",fontWeight:600}}>⚠️ 指示は必須です</div>
             )}
@@ -3074,7 +3082,11 @@ function EmailView({data,setData,currentUser=null}) {
           <div style={{background:C.accentBg,border:`1px solid ${C.accent}40`,borderRadius:"0.625rem",padding:"0.625rem 0.875rem",marginBottom:"1rem",fontSize:"0.8rem",color:C.accentDark}}>
             📋 指示：{instruction}
           </div>
-          <Textarea value={generated} onChange={e=>setGenerated(e.target.value)} style={{height:320,marginBottom:"1rem"}}/>
+          <div style={{position:"relative"}}>
+            <Textarea value={generated} onChange={e=>setGenerated(e.target.value)} style={{height:320,marginBottom:"1rem"}}/>
+            {generated&&<button onClick={()=>setGenerated("")}
+              style={{position:"absolute",top:"0.5rem",right:"0.5rem",background:"#f1f5f9",border:"none",borderRadius:"0.4rem",padding:"0.2rem 0.5rem",cursor:"pointer",fontSize:"0.72rem",color:"#64748b",fontWeight:700,lineHeight:1}}>✕ リセット</button>}
+          </div>
           <div style={{display:"flex",gap:"0.75rem"}}>
             <Btn variant="secondary" style={{flex:1}} onClick={save}>💾 保存</Btn>
             <Btn style={{flex:2}} size="lg"
@@ -3375,6 +3387,40 @@ function MapTab({prefs,munis,vendors,companies,prefCoords,onSelectPref}) {
   );
 }
 
+// ─── LINKED BIZCARD LIST ─────────────────────────────────────────────────────
+function LinkedBizcardList({ cards=[], users=[], onUnlink }) {
+  if(cards.length===0) return (
+    <div style={{textAlign:"center",padding:"2rem",color:C.textMuted,fontSize:"0.82rem"}}>
+      <div style={{fontSize:"1.5rem",marginBottom:"0.5rem"}}>🪪</div>
+      紐づいた名刺がありません<br/>
+      <span style={{fontSize:"0.72rem"}}>名刺タブから紐付けできます</span>
+    </div>
+  );
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
+      {cards.map(card=>{
+        const name = `${card.lastName||""}${card.firstName||""}`.trim()||"（名前なし）";
+        const ownerUser = users.find(u=>u.name===card.owner);
+        return (
+          <div key={card.id} style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"0.875rem",padding:"0.75rem 1rem",boxShadow:C.shadow,display:"flex",alignItems:"center",gap:"0.75rem"}}>
+            <div style={{width:36,height:36,borderRadius:"50%",background:"linear-gradient(135deg,#dbeafe,#ede9fe)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"1rem",flexShrink:0}}>🪪</div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontWeight:700,fontSize:"0.88rem",color:C.text}}>{name}</div>
+              {card.title&&<div style={{fontSize:"0.72rem",color:C.textSub}}>{card.title}</div>}
+              <div style={{fontSize:"0.72rem",color:C.textMuted,marginTop:"0.1rem"}}>
+                {card.email&&<span style={{marginRight:"0.5rem"}}>✉️ {card.email}</span>}
+                {(card.mobile||card.telDirect)&&<span>📞 {card.mobile||card.telDirect}</span>}
+              </div>
+              {card.owner&&<div style={{fontSize:"0.68rem",color:C.textSub,marginTop:"0.1rem"}}>👤 所有者：{card.owner}</div>}
+            </div>
+            {onUnlink&&<button onClick={()=>onUnlink(card.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#94a3b8",fontSize:"0.78rem",flexShrink:0,padding:"0.25rem"}}>紐解除</button>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── APPROACH TIMELINE ────────────────────────────────────────────────────────
 function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach, onSave, data }) {
   const logs = [...(entity?.approachLogs||[])].sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
@@ -3632,9 +3678,9 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   React.useEffect(()=>{
     if(!salesNavTarget) return;
     if(salesNavTarget.type==="company"){
-      setSalesTab("company"); setActiveCompany(salesNavTarget.id); setActiveDetail("memo");
+      setSalesTab("company"); setActiveCompany(salesNavTarget.id); setActiveDetail("timeline");
     } else if(salesNavTarget.type==="vendor"){
-      setSalesTab("vendor"); setActiveVendor(salesNavTarget.id); setActiveDetail("memo");
+      setSalesTab("vendor"); setActiveVendor(salesNavTarget.id); setActiveDetail("timeline");
     } else if(salesNavTarget.type==="muni"){
       setSalesTab("muni");
       setActiveMuni(null); // いったんリセットして再レンダリング確実化
@@ -3642,7 +3688,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       const prefId = targetMuni?String(targetMuni.prefectureId):(salesNavTarget.prefId?String(salesNavTarget.prefId):null);
       if(prefId) setActivePref(prefId);
       setMuniScreen("top"); // 先にtopにして
-      setTimeout(()=>{ setActiveMuni(String(salesNavTarget.id)); setMuniScreen("muniDetail"); setActiveDetail("memo"); }, 50);
+      setTimeout(()=>{ setActiveMuni(String(salesNavTarget.id)); setMuniScreen("muniDetail"); setActiveDetail("timeline"); }, 50);
     }
     clearSalesNavTarget?.();
   },[salesNavTarget]);
@@ -3671,7 +3717,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   const [memoInputs,   setMemoInputs]   = useState({});
   const [memoEdit,     setMemoEdit]     = useState(null); // {entityId, memoId, text}
   const [chatEdit,     setChatEdit]     = useState(null); // {entityId, chatId, text}
-  const [activeDetail, setActiveDetail] = useState("memo"); // memo|chat
+  const [activeDetail, setActiveDetail] = useState("timeline"); // memo|chat
   // bulk select
   const [bulkMode,     setBulkMode]     = useState(false);
   const [bulkSelected, setBulkSelected] = useState(new Set());
@@ -3707,7 +3753,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   const [bcDupQueue,     setBcDupQueue]     = useState([]);     // CSV重複キュー
   const [bcDupBuffer,    setBcDupBuffer]    = useState([]);     // 追加確定済みカード
   const [bcImportSummary,setBcImportSummary]= useState(null);   // {added,skipped}
-  const BC_ADD_INIT = {company:"",department:"",title:"",lastName:"",firstName:"",email:"",zip:"",address:"",telCompany:"",telDept:"",telDirect:"",fax:"",mobile:"",url:"",exchangedAt:""};
+  const BC_ADD_INIT = {owner:"",company:"",department:"",title:"",lastName:"",firstName:"",email:"",zip:"",address:"",telCompany:"",telDept:"",telDirect:"",fax:"",mobile:"",url:"",exchangedAt:""};
   const [bcAddForm,    setBcAddForm]    = useState(BC_ADD_INIT); // 名刺手動追加フォーム
   // ── 削除モーダル内 state（IIFEでuseStateを使えないため親stateで管理）──
   const [dmSearch,   setDmSearch]   = useState("");
@@ -3853,32 +3899,58 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     const lines=cleaned.split("\n").filter(l=>l.trim());
     if(lines.length<2) return {error:"データが空です"};
     const headers=parseRow(lines[0]);
-    if(!headers[0]||!headers[0].includes("会社")) return {error:"Eightのフォーマット（A列=会社名）ではありません"};
+    // 新フォーマット: №,所有者,会社名,... / 旧フォーマット: 会社名,...
+    const isNewFmt = (headers[0]||"").includes("№") || headers[1]==="所有者" || headers[2]==="会社名";
+    const isOldFmt = (headers[0]||"").includes("会社");
+    if(!isNewFmt && !isOldFmt) return {error:"Eightのフォーマット（会社名列が必要）ではありません"};
     const rows=[];
     for(let i=1;i<lines.length;i++){
       const cols=parseRow(lines[i]);
       if(cols.every(c=>!c.trim())) continue;
-      rows.push({
-        company:    cols[0]||"",
-        department: cols[1]||"",
-        title:      cols[2]||"",
-        lastName:   cols[3]||"",
-        firstName:  cols[4]||"",
-        email:      cols[5]||"",
-        zip:        cols[6]||"",
-        address:    cols[7]||"",
-        telCompany: cols[8]||"",
-        telDept:    cols[9]||"",
-        telDirect:  cols[10]||"",
-        fax:        cols[11]||"",
-        mobile:     cols[12]||"",
-        url:        cols[13]||"",
-        exchangedAt:cols[14]||"",
-        memos:[],
-      });
+      if(isNewFmt){
+        rows.push({
+          owner:      cols[1]||"",
+          company:    cols[2]||"",
+          department: cols[3]||"",
+          title:      cols[4]||"",
+          lastName:   cols[5]||"",
+          firstName:  cols[6]||"",
+          email:      cols[7]||"",
+          zip:        cols[8]||"",
+          address:    cols[9]||"",
+          telCompany: cols[10]||"",
+          telDept:    cols[11]||"",
+          telDirect:  cols[12]||"",
+          fax:        cols[13]||"",
+          mobile:     cols[14]||"",
+          url:        cols[15]||"",
+          exchangedAt:cols[16]||"",
+          memos:[],
+        });
+      } else {
+        rows.push({
+          owner:      "",
+          company:    cols[0]||"",
+          department: cols[1]||"",
+          title:      cols[2]||"",
+          lastName:   cols[3]||"",
+          firstName:  cols[4]||"",
+          email:      cols[5]||"",
+          zip:        cols[6]||"",
+          address:    cols[7]||"",
+          telCompany: cols[8]||"",
+          telDept:    cols[9]||"",
+          telDirect:  cols[10]||"",
+          fax:        cols[11]||"",
+          mobile:     cols[12]||"",
+          url:        cols[13]||"",
+          exchangedAt:cols[14]||"",
+          memos:[],
+        });
+      }
     }
     return {rows};
-  };
+  }
 
   const toggleGrp=(setter,key)=>setter(prev=>{const n=new Set(prev);n.has(key)?n.delete(key):n.add(key);return n;});
   const normSearch = s => {
@@ -5385,6 +5457,202 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       </div>
     );
   }
+  // ── モーダル一括レンダラー（早期returnでも表示できるよう関数化）────────────
+  const renderModals = () => (
+    <>
+      {/* ════ 失注・見送りモーダル ════ */}
+{lossModal&&(
+  <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.5)",padding:"1rem"}} onClick={e=>{if(e.target===e.currentTarget)setLossModal(null);}}>
+    <div style={{background:"white",borderRadius:"1.25rem",padding:"1.5rem",maxWidth:400,width:"100%",boxShadow:"0 12px 50px rgba(0,0,0,0.25)"}}>
+      <div style={{fontSize:"1rem",fontWeight:800,color:C.text,marginBottom:"0.2rem"}}>📋 {lossModal.newStatus}の理由を記録</div>
+      <div style={{fontSize:"0.82rem",color:C.textSub,marginBottom:"1rem"}}>「{lossModal.entityName}」</div>
+      <div style={{marginBottom:"0.75rem"}}>
+        <div style={{fontSize:"0.72rem",fontWeight:700,color:C.textSub,marginBottom:"0.35rem"}}>理由</div>
+        <div style={{display:"flex",flexWrap:"wrap",gap:"0.35rem"}}>
+          {LOSS_REASONS.map(r=>(
+            <button key={r} onClick={()=>setLossReason(r)}
+              style={{padding:"0.3rem 0.65rem",borderRadius:999,border:`1.5px solid ${lossReason===r?C.accent:C.border}`,background:lossReason===r?C.accentBg:"white",color:lossReason===r?C.accent:C.textSub,fontSize:"0.75rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+              {r}
+            </button>
+          ))}
+        </div>
+      </div>
+      <FieldLbl label="補足（任意）"><Textarea value={lossNote} onChange={e=>setLossNote(e.target.value)} style={{height:64}} placeholder="詳細を入力..."/></FieldLbl>
+      <FieldLbl label="次回検討時期（任意）"><Input type="month" value={lossNextCons} onChange={e=>setLossNextCons(e.target.value)}/></FieldLbl>
+      <div style={{display:"flex",gap:"0.75rem",marginTop:"1rem"}}>
+        <Btn variant="secondary" style={{flex:1}} onClick={()=>setLossModal(null)}>キャンセル</Btn>
+        <Btn style={{flex:2}} onClick={()=>applyLossStatus(lossModal.entityKey,lossModal.entityId,lossModal.entityName,lossModal.newStatus,{reason:lossReason,note:lossNote,nextConsideration:lossNextCons})}>
+          記録して変更
+        </Btn>
+      </div>
+    </div>
+  </div>
+)}
+
+{/* ════ アプローチ記録モーダル ════ */}
+{approachModal&&(
+  <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.5)",padding:"1rem"}} onClick={e=>{if(e.target===e.currentTarget)setApproachModal(null);}}>
+    <div style={{background:"white",borderRadius:"1.25rem",padding:"1.5rem",maxWidth:380,width:"100%",boxShadow:"0 12px 50px rgba(0,0,0,0.25)"}}>
+      <div style={{fontSize:"1rem",fontWeight:800,color:C.text,marginBottom:"0.2rem"}}>📞 アプローチを記録</div>
+      <div style={{fontSize:"0.82rem",color:C.textSub,marginBottom:"1rem"}}>「{approachModal.entityName}」</div>
+      <div style={{marginBottom:"0.75rem"}}>
+        <div style={{fontSize:"0.72rem",fontWeight:700,color:C.textSub,marginBottom:"0.35rem"}}>種別</div>
+        <div style={{display:"flex",flexWrap:"wrap",gap:"0.35rem"}}>
+          {APPROACH_TYPES.map(t=>(
+            <button key={t} onClick={()=>setAType(t)}
+              style={{padding:"0.3rem 0.65rem",borderRadius:999,border:`1.5px solid ${aType===t?C.accent:C.border}`,background:aType===t?C.accentBg:"white",color:aType===t?C.accent:C.textSub,fontSize:"0.75rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+              {APPROACH_ICON[t]} {t}
+            </button>
+          ))}
+        </div>
+      </div>
+      <FieldLbl label="日付"><Input type="date" value={aDate} onChange={e=>setADate(e.target.value)}/></FieldLbl>
+      <FieldLbl label="内容・メモ"><Textarea value={aNote} onChange={e=>setANote(e.target.value)} style={{height:80}} placeholder="アプローチの内容を入力..."/></FieldLbl>
+      <div style={{display:"flex",gap:"0.75rem",marginTop:"0.5rem"}}>
+        <Btn variant="secondary" style={{flex:1}} onClick={()=>setApproachModal(null)}>キャンセル</Btn>
+        <Btn style={{flex:2}} onClick={()=>addApproachLog(approachModal.entityKey,approachModal.entityId,{type:aType,note:aNote,date:aDate})} disabled={!aNote.trim()&&!aDate}>記録する</Btn>
+      </div>
+    </div>
+  </div>
+)}
+
+{/* ════ 次回アクション設定モーダル ════ */}
+{nextActionModal&&(
+  <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.5)",padding:"1rem"}} onClick={e=>{if(e.target===e.currentTarget)setNextActionModal(null);}}>
+    <div style={{background:"white",borderRadius:"1.25rem",padding:"1.5rem",maxWidth:360,width:"100%",boxShadow:"0 12px 50px rgba(0,0,0,0.25)"}}>
+      <div style={{fontSize:"1rem",fontWeight:800,color:C.text,marginBottom:"0.2rem"}}>📅 次回アクション</div>
+      <div style={{fontSize:"0.82rem",color:C.textSub,marginBottom:"1rem"}}>「{nextActionModal.entityName}」</div>
+      <div style={{marginBottom:"0.75rem"}}>
+        <div style={{fontSize:"0.72rem",fontWeight:700,color:C.textSub,marginBottom:"0.35rem"}}>種別</div>
+        <div style={{display:"flex",flexWrap:"wrap",gap:"0.35rem"}}>
+          {NEXT_ACTION_TYPES.map(t=>(
+            <button key={t} onClick={()=>setNaType(t)}
+              style={{padding:"0.3rem 0.65rem",borderRadius:999,border:`1.5px solid ${naType===t?C.accent:C.border}`,background:naType===t?C.accentBg:"white",color:naType===t?C.accent:C.textSub,fontSize:"0.75rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+              {t}
+            </button>
+          ))}
+        </div>
+      </div>
+      <FieldLbl label="日付 *"><Input type="date" value={naDate} onChange={e=>setNaDate(e.target.value)}/></FieldLbl>
+      <FieldLbl label="メモ（任意）"><Input value={naNote} onChange={e=>setNaNote(e.target.value)} placeholder="例：提案書を持参する"/></FieldLbl>
+      <div style={{display:"flex",gap:"0.75rem",marginTop:"0.5rem"}}>
+        <Btn variant="secondary" style={{flex:1}} onClick={()=>setNextActionModal(null)}>キャンセル</Btn>
+        <Btn style={{flex:2}} onClick={()=>setNextAction(nextActionModal.entityKey,nextActionModal.entityId,{type:naType,date:naDate,note:naNote})} disabled={!naDate}>設定する</Btn>
+      </div>
+    </div>
+  </div>
+)}
+
+{/* ════ 名刺マッチングモーダル ════ */}
+{matchModal&&(()=>{
+  const COLOR = {"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"};
+  if(matchModal.mode==="card_to_entity") {
+    const card = matchModal.cards[0];
+    return (
+      <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.5)",padding:"1rem"}} onClick={e=>{if(e.target===e.currentTarget)setMatchModal(null);}}>
+        <div style={{background:"white",borderRadius:"1.25rem",padding:"1.5rem",maxWidth:380,width:"100%",boxShadow:"0 12px 50px rgba(0,0,0,0.25)"}}>
+          <div style={{fontSize:"1rem",fontWeight:800,color:C.text,marginBottom:"0.5rem"}}>🔗 営業先と一致しました</div>
+          <div style={{fontSize:"0.82rem",color:C.textSub,marginBottom:"1rem"}}>
+            「{card.lastName}{card.firstName}」({card.company}) を以下に紐づけますか？
+          </div>
+          {matchModal.entities.map(ent=>(
+            <div key={ent.id} style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.6rem 0.75rem",marginBottom:"0.5rem",background:`${COLOR[ent.type]}15`,border:`1.5px solid ${COLOR[ent.type]}44`,borderRadius:"0.75rem"}}>
+              <span style={{fontSize:"0.7rem",fontWeight:800,color:"white",background:COLOR[ent.type],borderRadius:999,padding:"0.1rem 0.5rem",flexShrink:0}}>{ent.type}</span>
+              <span style={{fontSize:"0.88rem",fontWeight:700,color:COLOR[ent.type],flex:1}}>{ent.name}</span>
+              {card.salesRef ? (
+                <Btn size="sm" onClick={()=>applyBizCardLinks([card.id],ent.type,ent.id,ent.name,matchModal.savedData)}>上書き</Btn>
+              ) : (
+                <Btn size="sm" onClick={()=>applyBizCardLinks([card.id],ent.type,ent.id,ent.name,matchModal.savedData)}>紐づける</Btn>
+              )}
+            </div>
+          ))}
+          <Btn variant="secondary" style={{width:"100%",marginTop:"0.5rem"}} onClick={()=>setMatchModal(null)}>スキップ</Btn>
+        </div>
+      </div>
+    );
+  }
+  if(matchModal.mode==="import_to_entity") {
+    const allCardIds = matchModal.groups.flatMap(g=>g.cards.map(c=>c.id));
+    const checked = matchChecked;
+    const initChecked = Object.fromEntries(allCardIds.map(id=>[id, checked[id]!==false]));
+    return (
+      <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"flex-end",justifyContent:"center",background:"rgba(0,0,0,0.5)",padding:"0"}} onClick={e=>{if(e.target===e.currentTarget)setMatchModal(null);}}>
+        <div style={{background:"white",borderRadius:"1.25rem 1.25rem 0 0",padding:"1.5rem",maxWidth:480,width:"100%",maxHeight:"80vh",overflowY:"auto",boxShadow:"0 -8px 40px rgba(0,0,0,0.2)"}}>
+          <div style={{fontSize:"1rem",fontWeight:800,color:C.text,marginBottom:"0.5rem"}}>🔗 営業先との一致が見つかりました</div>
+          <div style={{fontSize:"0.82rem",color:C.textSub,marginBottom:"1rem"}}>紐づける名刺を選択してください</div>
+          {matchModal.groups.map(({entity, cards})=>(
+            <div key={entity.id} style={{marginBottom:"1rem",background:"#f8fafc",borderRadius:"0.75rem",padding:"0.75rem"}}>
+              <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginBottom:"0.5rem"}}>
+                <span style={{fontSize:"0.7rem",fontWeight:800,color:"white",background:COLOR[entity.type],borderRadius:999,padding:"0.1rem 0.45rem"}}>{entity.type}</span>
+                <span style={{fontSize:"0.88rem",fontWeight:700}}>{entity.name}</span>
+                <span style={{fontSize:"0.72rem",color:C.textMuted,marginLeft:"auto"}}>{cards.length}件一致</span>
+              </div>
+              {cards.map(card=>{
+                const isChecked = initChecked[card.id]!==false;
+                const hasExisting = !!card.salesRef;
+                return (
+                  <div key={card.id} onClick={()=>setMatchChecked(p=>({...p,[card.id]:!isChecked}))}
+                    style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.4rem 0.5rem",background:"white",borderRadius:"0.5rem",marginBottom:"0.25rem",cursor:"pointer",border:`1px solid ${isChecked?C.accent:C.borderLight}`}}>
+                    <span style={{fontSize:"1rem"}}>{isChecked?"☑":"☐"}</span>
+                    <span style={{fontSize:"0.82rem",fontWeight:600,flex:1}}>{card.lastName}{card.firstName}</span>
+                    {card.title&&<span style={{fontSize:"0.7rem",color:C.textSub}}>{card.title}</span>}
+                    {hasExisting&&<span style={{fontSize:"0.65rem",background:"#fef3c7",color:"#d97706",borderRadius:999,padding:"0.05rem 0.35rem",flexShrink:0}}>紐付済</span>}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+          <div style={{display:"flex",gap:"0.75rem",paddingTop:"0.5rem"}}>
+            <Btn variant="secondary" style={{flex:1}} onClick={()=>setMatchModal(null)}>スキップ</Btn>
+            <Btn style={{flex:2}} onClick={()=>{
+              matchModal.groups.forEach(({entity,cards})=>{
+                const sel = cards.filter(c=>initChecked[c.id]!==false).map(c=>c.id);
+                if(sel.length) applyBizCardLinks(sel,entity.type,entity.id,entity.name,matchModal.savedData);
+              });
+            }}>選択した名刺を紐づける</Btn>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  // entity_to_cards
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.5)",padding:"1rem"}} onClick={e=>{if(e.target===e.currentTarget)setMatchModal(null);}}>
+      <div style={{background:"white",borderRadius:"1.25rem",padding:"1.5rem",maxWidth:400,width:"100%",maxHeight:"80vh",overflowY:"auto",boxShadow:"0 12px 50px rgba(0,0,0,0.25)"}}>
+        <div style={{fontSize:"1rem",fontWeight:800,color:C.text,marginBottom:"0.5rem"}}>🔗 一致する名刺が見つかりました</div>
+        <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginBottom:"1rem"}}>
+          <span style={{fontSize:"0.7rem",fontWeight:800,color:"white",background:COLOR[matchModal.entity.type]||C.accent,borderRadius:999,padding:"0.1rem 0.45rem"}}>{matchModal.entity.type}</span>
+          <span style={{fontSize:"0.88rem",fontWeight:700}}>{matchModal.entity.name}</span>
+        </div>
+        {matchModal.cards.map(card=>{
+          const isChecked = matchChecked[card.id]!==false;
+          return (
+            <div key={card.id} onClick={()=>setMatchChecked(p=>({...p,[card.id]:!isChecked}))}
+              style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.5rem 0.75rem",background:"#f8fafc",borderRadius:"0.625rem",marginBottom:"0.4rem",cursor:"pointer",border:`1.5px solid ${isChecked?C.accent:C.borderLight}`}}>
+              <span style={{fontSize:"1rem"}}>{isChecked?"☑":"☐"}</span>
+              <div style={{flex:1}}>
+                <div style={{fontSize:"0.85rem",fontWeight:600}}>{card.lastName}{card.firstName}</div>
+                {card.title&&<div style={{fontSize:"0.7rem",color:C.textSub}}>{card.title}</div>}
+              </div>
+              {card.salesRef&&<span style={{fontSize:"0.65rem",background:"#fef3c7",color:"#d97706",borderRadius:999,padding:"0.05rem 0.35rem"}}>紐付済</span>}
+            </div>
+          );
+        })}
+        <div style={{display:"flex",gap:"0.75rem",marginTop:"1rem"}}>
+          <Btn variant="secondary" style={{flex:1}} onClick={()=>setMatchModal(null)}>スキップ</Btn>
+          <Btn style={{flex:2}} onClick={()=>{
+            const sel=matchModal.cards.filter(c=>matchChecked[c.id]!==false).map(c=>c.id);
+            if(sel.length) applyBizCardLinks(sel,matchModal.entity.type,matchModal.entity.id,matchModal.entity.name,matchModal.savedData);
+            else setMatchModal(null);
+          }}>紐づける</Btn>
+        </div>
+      </div>
+    </div>
+  );
+})()}
+    </>
+  );
+
   // ── 企業タブ ──────────────────────────────────────────────────────────────
   if(salesTab==="company"){
     // Detail view
@@ -5461,7 +5729,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           </div>
           {/* Sub-tabs: タイムライン・チャット・タスク・ファイル */}
           <div style={{display:"flex",background:"white",borderRadius:"0.75rem",padding:"0.2rem",marginBottom:"1rem",border:`1px solid ${C.border}`}}>
-            {[["timeline","📋","履歴"],["chat","💬","チャット"],["tasks","✅","タスク"],["files","📎","ファイル"]].map(([id,icon,lbl])=>(
+            {[["timeline","📋","履歴"],["chat","💬","チャット"],["tasks","✅","タスク"],["bizcard","🪪","名刺"],["files","📎","ファイル"]].map(([id,icon,lbl])=>(
               <button key={id} onClick={()=>setActiveDetail(id)} style={{flex:1,padding:"0.5rem",borderRadius:"0.5rem",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.72rem",position:"relative",background:activeDetail===id?C.accent:"transparent",color:activeDetail===id?"white":C.textSub}}>
                 {icon} {lbl}
                 {id==="chat"&&compChatUnread>0&&<span style={{position:"absolute",top:3,right:6,background:"#dc2626",color:"white",borderRadius:999,fontSize:"0.5rem",fontWeight:800,padding:"0.05rem 0.25rem",lineHeight:1.4}}>{compChatUnread}</span>}
@@ -5473,6 +5741,10 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           {activeDetail==="timeline"&&<ApproachTimeline entity={comp} entityKey="companies" entityId={comp.id} users={users} onAddApproach={()=>openApproachModal("companies",comp.id,comp.name)} onSave={nd=>save(nd)} data={data}/>}
           {activeDetail==="chat"&&ChatSection({chat:comp.chat,entityKey:"companies",entityId:comp.id})}
           {activeDetail==="tasks"&&<SalesTaskPanel entityType="企業" entityId={comp.id} entityName={comp.name} data={data} onSave={save} currentUser={currentUser} users={users} onNavigateToTask={onNavigateToTask} onNavigateToProject={onNavigateToProject}/>}
+          {activeDetail==="bizcard"&&(()=>{
+            const linked=(data.businessCards||[]).filter(c=>c.salesRef?.id===comp.id&&c.salesRef?.type==="企業");
+            return <LinkedBizcardList cards={linked} users={users} onUnlink={id=>{const nd={...data,businessCards:(data.businessCards||[]).map(c=>c.id===id?{...c,salesRef:null}:c)};save(nd);}}/>;
+          })()}
           {activeDetail==="files"&&<FileSection files={comp.files||[]} currentUserId={currentUser?.id}
             entityType="companies" entityId={comp.id}
           onAdd={f=>addFileToEntity("companies",comp.id,f)}
@@ -5549,7 +5821,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
               <div style={{fontSize:"0.75rem",fontWeight:800,color:"#854d0e",marginBottom:"0.4rem"}}>⭐ フォロー中 ({followComps.length}件)</div>
               <div style={{display:"flex",flexDirection:"column",gap:"0.3rem"}}>
                 {followComps.map(c=>(
-                  <div key={c.id} onClick={()=>{setSalesTab("company");saveSalesScroll("company");setActiveCompany(c.id);setActiveDetail("memo");}}
+                  <div key={c.id} onClick={()=>{setSalesTab("company");saveSalesScroll("company");setActiveCompany(c.id);setActiveDetail("timeline");}}
                     style={{display:"flex",alignItems:"center",gap:"0.5rem",cursor:"pointer",padding:"0.35rem 0.5rem",background:"white",borderRadius:"0.5rem",border:"1px solid #fde047"}}>
                     <span style={{fontSize:"0.8rem",fontWeight:700,color:C.text,flex:1}}>{c.name}</span>
                     <SChip s={c.status} map={COMPANY_STATUS}/>
@@ -5596,7 +5868,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                 {compFilteredBase.map(c=>{
                   const lastMemo=(c.memos||[]).slice(-1)[0];
                   return (
-                    <div key={c.id} onClick={()=>{setSalesTab("company");saveSalesScroll("company");setActiveCompany(c.id);setActiveDetail("memo");}}
+                    <div key={c.id} onClick={()=>{setSalesTab("company");saveSalesScroll("company");setActiveCompany(c.id);setActiveDetail("timeline");}}
                       style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.625rem 0.75rem",background:"white",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,cursor:"pointer",boxShadow:C.shadow}}
                       onMouseEnter={e=>e.currentTarget.style.borderColor=C.accent}
                       onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}>
@@ -5623,7 +5895,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             {(searchedComps||[]).map(c=>{
               const lastMemo=(c.memos||[]).slice(-1)[0];
               return (
-                <div key={c.id} onClick={()=>{setSalesTab("company");saveSalesScroll("company");setActiveCompany(c.id);setActiveDetail("memo");setCompSearch("");}}
+                <div key={c.id} onClick={()=>{setSalesTab("company");saveSalesScroll("company");setActiveCompany(c.id);setActiveDetail("timeline");setCompSearch("");}}
                   style={{background:"white",border:`1.5px solid ${C.border}`,borderRadius:"0.875rem",padding:"0.875rem 1rem",cursor:"pointer",boxShadow:C.shadow}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"0.3rem"}}>
                     <span style={{fontWeight:700,fontSize:"0.93rem",color:C.text,flex:1}}>{c.name}</span>
@@ -5659,7 +5931,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                       {items.map((c,i)=>{
                         const lastMemo=(c.memos||[]).slice(-1)[0];
                         return (
-                          <div key={c.id} onClick={()=>{if(bulkMode){setBulkSelected(prev=>{const n=new Set(prev);n.has(c.id)?n.delete(c.id):n.add(c.id);return n;});return;}saveSalesScroll("company");setActiveCompany(c.id);setActiveDetail("memo");setCompSearch("");}}
+                          <div key={c.id} onClick={()=>{if(bulkMode){setBulkSelected(prev=>{const n=new Set(prev);n.has(c.id)?n.delete(c.id):n.add(c.id);return n;});return;}saveSalesScroll("company");setActiveCompany(c.id);setActiveDetail("timeline");setCompSearch("");}}
                             style={{padding:"0.75rem 1rem",cursor:"pointer",borderTop:i>0?`1px solid ${C.borderLight}`:"none",background:bulkSelected.has(c.id)?"#eff6ff":"white",display:"flex",alignItems:"flex-start",gap:"0.5rem",transition:"background 0.1s"}}
                             onMouseEnter={e=>{if(!bulkSelected.has(c.id))e.currentTarget.style.background=C.bg;}}
                             onMouseLeave={e=>{if(!bulkSelected.has(c.id))e.currentTarget.style.background="white";}}>
@@ -5828,7 +6100,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             <Btn style={{width:"100%"}} onClick={()=>setSheet(null)}>閉じる</Btn>
           </Sheet>
         )}
-      </div>
+      {renderModals()}
+    </div>
     );
   }
 
@@ -5930,7 +6203,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           </div>
           {/* Sub-tabs: 履歴・チャット・タスク・ファイル */}
           <div style={{display:"flex",background:"white",borderRadius:"0.75rem",padding:"0.2rem",marginBottom:"1rem",border:`1px solid ${C.border}`}}>
-            {[["timeline","📋","履歴"],["chat","💬","チャット"],["tasks","✅","タスク"],["files","📎","ファイル"]].map(([id,icon,lbl])=>(
+            {[["timeline","📋","履歴"],["chat","💬","チャット"],["tasks","✅","タスク"],["bizcard","🪪","名刺"],["files","📎","ファイル"]].map(([id,icon,lbl])=>(
               <button key={id} onClick={()=>setActiveDetail(id)} style={{flex:1,padding:"0.5rem",borderRadius:"0.5rem",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.72rem",position:"relative",background:activeDetail===id?C.accent:"transparent",color:activeDetail===id?"white":C.textSub}}>
                 {icon} {lbl}
                 {id==="chat"&&vendChatUnread>0&&<span style={{position:"absolute",top:3,right:6,background:"#dc2626",color:"white",borderRadius:999,fontSize:"0.5rem",fontWeight:800,padding:"0.05rem 0.25rem",lineHeight:1.4}}>{vendChatUnread}</span>}
@@ -5941,6 +6214,10 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           {activeDetail==="timeline"&&<ApproachTimeline entity={v} entityKey="vendors" entityId={v.id} users={users} onAddApproach={()=>openApproachModal("vendors",v.id,v.name)} onSave={nd=>save(nd)} data={data}/>}
           {activeDetail==="chat"&&ChatSection({chat:v.chat,entityKey:"vendors",entityId:v.id})}
           {activeDetail==="tasks"&&<SalesTaskPanel entityType="業者" entityId={v.id} entityName={v.name} data={data} onSave={save} currentUser={currentUser} users={users} onNavigateToTask={onNavigateToTask} onNavigateToProject={onNavigateToProject}/>}
+          {activeDetail==="bizcard"&&(()=>{
+            const linked=(data.businessCards||[]).filter(c=>c.salesRef?.id===v.id&&c.salesRef?.type==="業者");
+            return <LinkedBizcardList cards={linked} users={users} onUnlink={id=>{const nd={...data,businessCards:(data.businessCards||[]).map(c=>c.id===id?{...c,salesRef:null}:c)};save(nd);}}/>;
+          })()}
           {activeDetail==="files"&&<FileSection files={v.files||[]} currentUserId={currentUser?.id}
             entityType="vendors" entityId={v.id}
           onAdd={f=>addFileToEntity("vendors",v.id,f)}
@@ -6009,7 +6286,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                 {followVends.map(v=>{
                   const vmunis2=vendorMunis(v);
                   return (
-                    <div key={v.id} onClick={()=>{saveSalesScroll("vendor");setActiveVendor(v.id);setActiveDetail("memo");}}
+                    <div key={v.id} onClick={()=>{saveSalesScroll("vendor");setActiveVendor(v.id);setActiveDetail("timeline");}}
                       style={{display:"flex",alignItems:"center",gap:"0.5rem",cursor:"pointer",padding:"0.35rem 0.5rem",background:"white",borderRadius:"0.5rem",border:"1px solid #fde047"}}>
                       <span style={{fontSize:"0.8rem",fontWeight:700,color:C.text,flex:1}}>{v.name}</span>
                       <SChip s={v.status} map={VENDOR_STATUS}/>
@@ -6117,7 +6394,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                   const vmunis2=vendorMunis(v);
                   const lastMemo=(v.memos||[]).slice(-1)[0];
                   return (
-                    <div key={v.id} onClick={()=>{saveSalesScroll("vendor");setActiveVendor(v.id);setActiveDetail("memo");}}
+                    <div key={v.id} onClick={()=>{saveSalesScroll("vendor");setActiveVendor(v.id);setActiveDetail("timeline");}}
                       style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.625rem 0.75rem",background:"white",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,cursor:"pointer",boxShadow:C.shadow}}
                       onMouseEnter={e=>e.currentTarget.style.borderColor=C.accent}
                       onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}>
@@ -6148,7 +6425,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
               const vmunis2=vendorMunis(v);
               const lastMemo=(v.memos||[]).slice(-1)[0];
               return (
-                <div key={v.id} onClick={()=>{saveSalesScroll("vendor");setActiveVendor(v.id);setActiveDetail("memo");}}
+                <div key={v.id} onClick={()=>{saveSalesScroll("vendor");setActiveVendor(v.id);setActiveDetail("timeline");}}
                   style={{background:"white",border:`1.5px solid ${C.border}`,borderRadius:"0.875rem",padding:"0.875rem 1rem",cursor:"pointer",boxShadow:C.shadow}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"0.3rem"}}>
                     <span style={{fontWeight:700,fontSize:"0.93rem",color:C.text,flex:1}}>{v.name}</span>
@@ -6183,7 +6460,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                         const vmunis2=vendorMunis(v);
                         const lastMemo=(v.memos||[]).slice(-1)[0];
                         return (
-                          <div key={v.id} onClick={()=>{if(bulkMode){setBulkSelected(prev=>{const n=new Set(prev);n.has(v.id)?n.delete(v.id):n.add(v.id);return n;});return;}saveSalesScroll("vendor");setActiveVendor(v.id);setActiveDetail("memo");}}
+                          <div key={v.id} onClick={()=>{if(bulkMode){setBulkSelected(prev=>{const n=new Set(prev);n.has(v.id)?n.delete(v.id):n.add(v.id);return n;});return;}saveSalesScroll("vendor");setActiveVendor(v.id);setActiveDetail("timeline");}}
                             style={{padding:"0.75rem 1rem",cursor:"pointer",borderTop:i>0?`1px solid ${C.borderLight}`:"none",background:bulkSelected.has(v.id)?"#eff6ff":"white",display:"flex",alignItems:"flex-start",gap:"0.5rem",transition:"background 0.1s"}}
                             onMouseEnter={e=>{if(!bulkSelected.has(v.id))e.currentTarget.style.background=C.bg;}}
                             onMouseLeave={e=>{if(!bulkSelected.has(v.id))e.currentTarget.style.background="white";}}>
@@ -6335,7 +6612,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             </Sheet>
           );
         })()}
-      </div>
+      {renderModals()}
+    </div>
     );
   }
 
@@ -6466,7 +6744,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
         </div>
         {/* Sub-tabs: 履歴・チャット・タスク・ファイル */}
         <div style={{display:"flex",background:"white",borderRadius:"0.75rem",padding:"0.2rem",marginBottom:"0.75rem",border:`1px solid ${C.border}`}}>
-          {[["timeline","📋","履歴"],["chat","💬","チャット"],["tasks","✅","タスク"],["files","📎","ファイル"]].map(([id,icon,lbl])=>(
+          {[["timeline","📋","履歴"],["chat","💬","チャット"],["tasks","✅","タスク"],["bizcard","🪪","名刺"],["files","📎","ファイル"]].map(([id,icon,lbl])=>(
             <button key={id} onClick={()=>setActiveDetail(id)} style={{flex:1,padding:"0.5rem",borderRadius:"0.5rem",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.72rem",position:"relative",background:activeDetail===id?C.accent:"transparent",color:activeDetail===id?"white":C.textSub}}>
               {icon} {lbl}
               {id==="chat"&&muniChatUnread>0&&<span style={{position:"absolute",top:3,right:6,background:"#dc2626",color:"white",borderRadius:999,fontSize:"0.5rem",fontWeight:800,padding:"0.05rem 0.25rem",lineHeight:1.4}}>{muniChatUnread}</span>}
@@ -6477,6 +6755,11 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
         {activeDetail==="timeline"&&<div style={{marginBottom:"1rem"}}><ApproachTimeline entity={muni} entityKey="municipalities" entityId={muni.id} users={users} onAddApproach={()=>openApproachModal("municipalities",muni.id,muni.name)} onSave={nd=>save(nd)} data={data}/></div>}
         {activeDetail==="chat"&&<div style={{marginBottom:"1rem"}}>{ChatSection({chat:muni.chat,entityKey:"municipalities",entityId:muni.id})}</div>}
         {activeDetail==="tasks"&&<div style={{marginBottom:"1rem"}}><SalesTaskPanel entityType="自治体" entityId={muni.id} entityName={muni.name} data={data} onSave={save} currentUser={currentUser} users={users} onNavigateToTask={onNavigateToTask} onNavigateToProject={onNavigateToProject}/></div>}
+        {activeDetail==="bizcard"&&<div style={{marginBottom:"1rem"}}>{(()=>{
+          const linked=(data.businessCards||[]).filter(c=>c.salesRef?.id===muni.id&&c.salesRef?.type==="自治体");
+          return <LinkedBizcardList cards={linked} users={users} onUnlink={id=>{const nd={...data,businessCards:(data.businessCards||[]).map(c=>c.id===id?{...c,salesRef:null}:c)};save(nd);}}/>;
+        })()}</div>}
+
         {activeDetail==="files"&&<div style={{marginBottom:"1rem"}}><FileSection files={muni.files||[]} currentUserId={currentUser?.id}
           entityType="municipalities" entityId={muni.id}
           onAdd={f=>addFileToEntity("municipalities",muni.id,f)}
@@ -6493,7 +6776,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           {mvend.length===0&&<div style={{textAlign:"center",padding:"1rem",color:C.textMuted,background:C.bg,borderRadius:"0.875rem",fontSize:"0.82rem"}}>業者が登録されていません</div>}
           <div style={{display:"flex",flexDirection:"column",gap:"0.35rem"}}>
             {mvend.map(v=>(
-              <div key={v.id} onClick={()=>{setPrevTab({tab:"muni",muniId:activeMuni,prefId:activePref});setSalesTab("vendor");setActiveVendor(v.id);setActiveDetail("memo");}}
+              <div key={v.id} onClick={()=>{setPrevTab({tab:"muni",muniId:activeMuni,prefId:activePref});setSalesTab("vendor");setActiveVendor(v.id);setActiveDetail("timeline");}}
                 style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"0.625rem 0.875rem",background:"white",border:`1.5px solid ${C.border}`,borderRadius:"0.75rem",cursor:"pointer",gap:"0.5rem"}}>
                 <span style={{fontWeight:600,fontSize:"0.88rem",color:C.text,flex:1}}>{v.name}</span>
                 <SChip s={v.status} map={VENDOR_STATUS}/>
@@ -6639,7 +6922,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             </Sheet>
           );
         })()}
-      </div>
+      {renderModals()}
+    </div>
     );
   }
 
@@ -6662,7 +6946,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                 const pref=prefOf(m.prefectureId);
                 const ts=TREATY_STATUS[m.treatyStatus||"未接触"];
                 return (
-                  <div key={m.id} onClick={()=>{setActivePref(String(m.prefectureId));setActiveMuni(String(m.id));setMuniScreen("muniDetail");setActiveDetail("memo");}}
+                  <div key={m.id} onClick={()=>{setActivePref(String(m.prefectureId));setActiveMuni(String(m.id));setMuniScreen("muniDetail");setActiveDetail("timeline");}}
                     style={{display:"flex",alignItems:"center",gap:"0.5rem",cursor:"pointer",padding:"0.35rem 0.5rem",background:"white",borderRadius:"0.5rem",border:"1px solid #fde047"}}>
                     <span style={{fontSize:"0.8rem",fontWeight:700,color:C.text,flex:1}}>{m.name}</span>
                     <span style={{fontSize:"0.65rem",color:C.textMuted}}>{pref?.name}</span>
@@ -6783,7 +7067,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
               const ds=DUSTALK_STATUS[m.dustalk]||DUSTALK_STATUS["未展開"];
               const mv=muniVendors(m.id);
               return (
-                <div key={m.id} onClick={()=>{setSheet(null);setActivePref(String(m.prefectureId));setActiveMuni(String(m.id));setMuniScreen("muniDetail");setActiveDetail("memo");}}
+                <div key={m.id} onClick={()=>{setSheet(null);setActivePref(String(m.prefectureId));setActiveMuni(String(m.id));setMuniScreen("muniDetail");setActiveDetail("timeline");}}
                   style={{background:"white",border:`1.5px solid ${C.border}`,borderRadius:"0.875rem",padding:"0.875rem 1rem",cursor:"pointer",boxShadow:C.shadow}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.25rem"}}>
                     <div>
@@ -6826,7 +7110,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                 const ms=MUNI_STATUS[m.status||"未接触"];
                 const mvs=muniVendors(m.id);
                 return (
-                  <div key={m.id} onClick={()=>{setActivePref(String(m.prefectureId));setActiveMuni(String(m.id));setMuniScreen("muniDetail");setActiveDetail("memo");}}
+                  <div key={m.id} onClick={()=>{setActivePref(String(m.prefectureId));setActiveMuni(String(m.id));setMuniScreen("muniDetail");setActiveDetail("timeline");}}
                     style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.625rem 0.75rem",background:"white",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,cursor:"pointer",boxShadow:C.shadow}}
                     onMouseEnter={e=>e.currentTarget.style.borderColor=C.accent}
                     onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}>
@@ -6911,7 +7195,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                               const mv=muniVendors(m.id);
                               return (
                                 <div key={m.id}
-                                  onClick={()=>{if(bulkMode){setBulkSelected(prev=>{const n=new Set(prev);n.has(m.id)?n.delete(m.id):n.add(m.id);return n;});return;}setSheet(null);setActivePref(String(m.prefectureId));setActiveMuni(String(m.id));setMuniScreen("muniDetail");setActiveDetail("memo"); /* muniClick */}}
+                                  onClick={()=>{if(bulkMode){setBulkSelected(prev=>{const n=new Set(prev);n.has(m.id)?n.delete(m.id):n.add(m.id);return n;});return;}setSheet(null);setActivePref(String(m.prefectureId));setActiveMuni(String(m.id));setMuniScreen("muniDetail");setActiveDetail("timeline"); /* muniClick */}}
                                   style={{display:"flex",alignItems:"center",padding:"0.5rem 1rem 0.5rem 2.5rem",borderTop:`1px solid ${C.borderLight}`,cursor:"pointer",gap:"0.4rem",background:bulkSelected.has(m.id)?"#eff6ff":"transparent"}}>
                                   {bulkMode&&<input type="checkbox" checked={bulkSelected.has(m.id)} readOnly style={{width:15,height:15,accentColor:C.accent,flexShrink:0,cursor:"pointer"}}/>}
                                   <div style={{flex:1,minWidth:0}}>
@@ -7227,7 +7511,9 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                     {card.email&&<a href={`mailto:${card.email}`} style={{padding:"0.45rem 0.75rem",borderRadius:"0.625rem",background:"#f0fdf4",color:"#059669",fontSize:"0.78rem",fontWeight:700,textDecoration:"none"}}>✉️ メール</a>}
                   </div>
                 </div>
-                {card.exchangedAt&&<div style={{marginTop:"0.75rem",fontSize:"0.72rem",color:C.textMuted}}>🤝 名刺交換日：{card.exchangedAt}</div>}
+                {card.owner&&<div style={{marginTop:"0.4rem",fontSize:"0.75rem",fontWeight:700,color:"#7c3aed",background:"#ede9fe",borderRadius:"0.4rem",padding:"0.2rem 0.5rem",display:"inline-block"}}>👤 所有者：{card.owner}</div>}
+                {card.owner&&<div style={{marginTop:"0.4rem",fontSize:"0.75rem",fontWeight:700,color:"#7c3aed",background:"#ede9fe",borderRadius:"0.4rem",padding:"0.2rem 0.5rem",display:"inline-block"}}>👤 所有者：{card.owner}</div>}
+                {card.exchangedAt&&<div style={{marginTop:"0.5rem",fontSize:"0.72rem",color:C.textMuted}}>🤝 名刺交換日：{card.exchangedAt}</div>}
               </Card>
               <Card style={{padding:"1rem",marginBottom:"1rem"}}>
                 <Field icon="📧" label="メールアドレス" value={card.email} href={`mailto:${card.email}`}/>
@@ -7369,9 +7655,15 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                             <span style={{fontSize:"1rem",fontWeight:800,color:"white"}}>{(card.lastName||card.company||"?")[0]}</span>
                           </div>
                           <div style={{flex:1,minWidth:0}}>
-                            <div style={{fontSize:"0.88rem",fontWeight:700,color:C.text}}>{name}</div>
+                            <div style={{display:"flex",alignItems:"center",gap:"0.35rem",flexWrap:"wrap"}}>
+                              <span style={{fontSize:"0.88rem",fontWeight:700,color:C.text}}>{name}</span>
+                              {card.salesRef&&<span style={{fontSize:"0.62rem",fontWeight:700,color:"white",background:{"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"}[card.salesRef.type]||"#64748b",borderRadius:999,padding:"0.05rem 0.35rem"}}>{card.salesRef.type}</span>}
+                            </div>
                             <div style={{fontSize:"0.72rem",color:C.textSub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{[card.title,card.department].filter(Boolean).join("　")}</div>
-                            {phone&&<div style={{fontSize:"0.7rem",color:C.textMuted}}>📞 {phone}</div>}
+                            <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap"}}>
+                              {phone&&<span style={{fontSize:"0.7rem",color:C.textMuted}}>📞 {phone}</span>}
+                              {card.owner&&<span style={{fontSize:"0.68rem",color:"#7c3aed",fontWeight:600}}>👤 {card.owner}</span>}
+                            </div>
                           </div>
                           {!bulkMode&&<span style={{color:C.textMuted,fontSize:"0.85rem",flexShrink:0}}>›</span>}
                         </div>
@@ -7394,6 +7686,14 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
               );
               return (
                 <Sheet title="名刺を追加" onClose={()=>{setSheet(null);setBcAddForm(BC_ADD_INIT);}}>
+                  <div style={{marginBottom:"0.625rem"}}>
+                    <div style={{fontSize:"0.7rem",fontWeight:700,color:C.textSub,marginBottom:"0.2rem"}}>所有者（誰が交換した名刺か）</div>
+                    <select value={f.owner||""} onChange={e=>setBcAddForm(p=>({...p,owner:e.target.value}))}
+                      style={{width:"100%",padding:"0.5rem 0.75rem",borderRadius:"0.625rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.82rem",boxSizing:"border-box",background:"white"}}>
+                      <option value="">選択してください</option>
+                      {users.map(u=><option key={u.id} value={u.name}>{u.name}</option>)}
+                    </select>
+                  </div>
                   <FL label="会社名 *" k="company" placeholder="株式会社○○"/>
                   <div style={{display:"flex",gap:"0.5rem"}}>
                     <div style={{flex:1}}><FL label="姓" k="lastName" placeholder="山田"/></div>
@@ -7470,196 +7770,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       {/* ── 活動ログ ── */}
       <ActivityLog data={data} users={users} filterTypes={["企業","業者","自治体"]} />
 
-      {/* ════ 失注・見送りモーダル ════ */}
-      {lossModal&&(
-        <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.5)",padding:"1rem"}} onClick={e=>{if(e.target===e.currentTarget)setLossModal(null);}}>
-          <div style={{background:"white",borderRadius:"1.25rem",padding:"1.5rem",maxWidth:400,width:"100%",boxShadow:"0 12px 50px rgba(0,0,0,0.25)"}}>
-            <div style={{fontSize:"1rem",fontWeight:800,color:C.text,marginBottom:"0.2rem"}}>📋 {lossModal.newStatus}の理由を記録</div>
-            <div style={{fontSize:"0.82rem",color:C.textSub,marginBottom:"1rem"}}>「{lossModal.entityName}」</div>
-            <div style={{marginBottom:"0.75rem"}}>
-              <div style={{fontSize:"0.72rem",fontWeight:700,color:C.textSub,marginBottom:"0.35rem"}}>理由</div>
-              <div style={{display:"flex",flexWrap:"wrap",gap:"0.35rem"}}>
-                {LOSS_REASONS.map(r=>(
-                  <button key={r} onClick={()=>setLossReason(r)}
-                    style={{padding:"0.3rem 0.65rem",borderRadius:999,border:`1.5px solid ${lossReason===r?C.accent:C.border}`,background:lossReason===r?C.accentBg:"white",color:lossReason===r?C.accent:C.textSub,fontSize:"0.75rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                    {r}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <FieldLbl label="補足（任意）"><Textarea value={lossNote} onChange={e=>setLossNote(e.target.value)} style={{height:64}} placeholder="詳細を入力..."/></FieldLbl>
-            <FieldLbl label="次回検討時期（任意）"><Input type="month" value={lossNextCons} onChange={e=>setLossNextCons(e.target.value)}/></FieldLbl>
-            <div style={{display:"flex",gap:"0.75rem",marginTop:"1rem"}}>
-              <Btn variant="secondary" style={{flex:1}} onClick={()=>setLossModal(null)}>キャンセル</Btn>
-              <Btn style={{flex:2}} onClick={()=>applyLossStatus(lossModal.entityKey,lossModal.entityId,lossModal.entityName,lossModal.newStatus,{reason:lossReason,note:lossNote,nextConsideration:lossNextCons})}>
-                記録して変更
-              </Btn>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ════ アプローチ記録モーダル ════ */}
-      {approachModal&&(
-        <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.5)",padding:"1rem"}} onClick={e=>{if(e.target===e.currentTarget)setApproachModal(null);}}>
-          <div style={{background:"white",borderRadius:"1.25rem",padding:"1.5rem",maxWidth:380,width:"100%",boxShadow:"0 12px 50px rgba(0,0,0,0.25)"}}>
-            <div style={{fontSize:"1rem",fontWeight:800,color:C.text,marginBottom:"0.2rem"}}>📞 アプローチを記録</div>
-            <div style={{fontSize:"0.82rem",color:C.textSub,marginBottom:"1rem"}}>「{approachModal.entityName}」</div>
-            <div style={{marginBottom:"0.75rem"}}>
-              <div style={{fontSize:"0.72rem",fontWeight:700,color:C.textSub,marginBottom:"0.35rem"}}>種別</div>
-              <div style={{display:"flex",flexWrap:"wrap",gap:"0.35rem"}}>
-                {APPROACH_TYPES.map(t=>(
-                  <button key={t} onClick={()=>setAType(t)}
-                    style={{padding:"0.3rem 0.65rem",borderRadius:999,border:`1.5px solid ${aType===t?C.accent:C.border}`,background:aType===t?C.accentBg:"white",color:aType===t?C.accent:C.textSub,fontSize:"0.75rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                    {APPROACH_ICON[t]} {t}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <FieldLbl label="日付"><Input type="date" value={aDate} onChange={e=>setADate(e.target.value)}/></FieldLbl>
-            <FieldLbl label="内容・メモ"><Textarea value={aNote} onChange={e=>setANote(e.target.value)} style={{height:80}} placeholder="アプローチの内容を入力..."/></FieldLbl>
-            <div style={{display:"flex",gap:"0.75rem",marginTop:"0.5rem"}}>
-              <Btn variant="secondary" style={{flex:1}} onClick={()=>setApproachModal(null)}>キャンセル</Btn>
-              <Btn style={{flex:2}} onClick={()=>addApproachLog(approachModal.entityKey,approachModal.entityId,{type:aType,note:aNote,date:aDate})} disabled={!aNote.trim()&&!aDate}>記録する</Btn>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ════ 次回アクション設定モーダル ════ */}
-      {nextActionModal&&(
-        <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.5)",padding:"1rem"}} onClick={e=>{if(e.target===e.currentTarget)setNextActionModal(null);}}>
-          <div style={{background:"white",borderRadius:"1.25rem",padding:"1.5rem",maxWidth:360,width:"100%",boxShadow:"0 12px 50px rgba(0,0,0,0.25)"}}>
-            <div style={{fontSize:"1rem",fontWeight:800,color:C.text,marginBottom:"0.2rem"}}>📅 次回アクション</div>
-            <div style={{fontSize:"0.82rem",color:C.textSub,marginBottom:"1rem"}}>「{nextActionModal.entityName}」</div>
-            <div style={{marginBottom:"0.75rem"}}>
-              <div style={{fontSize:"0.72rem",fontWeight:700,color:C.textSub,marginBottom:"0.35rem"}}>種別</div>
-              <div style={{display:"flex",flexWrap:"wrap",gap:"0.35rem"}}>
-                {NEXT_ACTION_TYPES.map(t=>(
-                  <button key={t} onClick={()=>setNaType(t)}
-                    style={{padding:"0.3rem 0.65rem",borderRadius:999,border:`1.5px solid ${naType===t?C.accent:C.border}`,background:naType===t?C.accentBg:"white",color:naType===t?C.accent:C.textSub,fontSize:"0.75rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                    {t}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <FieldLbl label="日付 *"><Input type="date" value={naDate} onChange={e=>setNaDate(e.target.value)}/></FieldLbl>
-            <FieldLbl label="メモ（任意）"><Input value={naNote} onChange={e=>setNaNote(e.target.value)} placeholder="例：提案書を持参する"/></FieldLbl>
-            <div style={{display:"flex",gap:"0.75rem",marginTop:"0.5rem"}}>
-              <Btn variant="secondary" style={{flex:1}} onClick={()=>setNextActionModal(null)}>キャンセル</Btn>
-              <Btn style={{flex:2}} onClick={()=>setNextAction(nextActionModal.entityKey,nextActionModal.entityId,{type:naType,date:naDate,note:naNote})} disabled={!naDate}>設定する</Btn>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ════ 名刺マッチングモーダル ════ */}
-      {matchModal&&(()=>{
-        const COLOR = {"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"};
-        if(matchModal.mode==="card_to_entity") {
-          const card = matchModal.cards[0];
-          return (
-            <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.5)",padding:"1rem"}} onClick={e=>{if(e.target===e.currentTarget)setMatchModal(null);}}>
-              <div style={{background:"white",borderRadius:"1.25rem",padding:"1.5rem",maxWidth:380,width:"100%",boxShadow:"0 12px 50px rgba(0,0,0,0.25)"}}>
-                <div style={{fontSize:"1rem",fontWeight:800,color:C.text,marginBottom:"0.5rem"}}>🔗 営業先と一致しました</div>
-                <div style={{fontSize:"0.82rem",color:C.textSub,marginBottom:"1rem"}}>
-                  「{card.lastName}{card.firstName}」({card.company}) を以下に紐づけますか？
-                </div>
-                {matchModal.entities.map(ent=>(
-                  <div key={ent.id} style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.6rem 0.75rem",marginBottom:"0.5rem",background:`${COLOR[ent.type]}15`,border:`1.5px solid ${COLOR[ent.type]}44`,borderRadius:"0.75rem"}}>
-                    <span style={{fontSize:"0.7rem",fontWeight:800,color:"white",background:COLOR[ent.type],borderRadius:999,padding:"0.1rem 0.5rem",flexShrink:0}}>{ent.type}</span>
-                    <span style={{fontSize:"0.88rem",fontWeight:700,color:COLOR[ent.type],flex:1}}>{ent.name}</span>
-                    {card.salesRef ? (
-                      <Btn size="sm" onClick={()=>applyBizCardLinks([card.id],ent.type,ent.id,ent.name,matchModal.savedData)}>上書き</Btn>
-                    ) : (
-                      <Btn size="sm" onClick={()=>applyBizCardLinks([card.id],ent.type,ent.id,ent.name,matchModal.savedData)}>紐づける</Btn>
-                    )}
-                  </div>
-                ))}
-                <Btn variant="secondary" style={{width:"100%",marginTop:"0.5rem"}} onClick={()=>setMatchModal(null)}>スキップ</Btn>
-              </div>
-            </div>
-          );
-        }
-        if(matchModal.mode==="import_to_entity") {
-          const allCardIds = matchModal.groups.flatMap(g=>g.cards.map(c=>c.id));
-          const checked = matchChecked;
-          const initChecked = Object.fromEntries(allCardIds.map(id=>[id, checked[id]!==false]));
-          return (
-            <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"flex-end",justifyContent:"center",background:"rgba(0,0,0,0.5)",padding:"0"}} onClick={e=>{if(e.target===e.currentTarget)setMatchModal(null);}}>
-              <div style={{background:"white",borderRadius:"1.25rem 1.25rem 0 0",padding:"1.5rem",maxWidth:480,width:"100%",maxHeight:"80vh",overflowY:"auto",boxShadow:"0 -8px 40px rgba(0,0,0,0.2)"}}>
-                <div style={{fontSize:"1rem",fontWeight:800,color:C.text,marginBottom:"0.5rem"}}>🔗 営業先との一致が見つかりました</div>
-                <div style={{fontSize:"0.82rem",color:C.textSub,marginBottom:"1rem"}}>紐づける名刺を選択してください</div>
-                {matchModal.groups.map(({entity, cards})=>(
-                  <div key={entity.id} style={{marginBottom:"1rem",background:"#f8fafc",borderRadius:"0.75rem",padding:"0.75rem"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginBottom:"0.5rem"}}>
-                      <span style={{fontSize:"0.7rem",fontWeight:800,color:"white",background:COLOR[entity.type],borderRadius:999,padding:"0.1rem 0.45rem"}}>{entity.type}</span>
-                      <span style={{fontSize:"0.88rem",fontWeight:700}}>{entity.name}</span>
-                      <span style={{fontSize:"0.72rem",color:C.textMuted,marginLeft:"auto"}}>{cards.length}件一致</span>
-                    </div>
-                    {cards.map(card=>{
-                      const isChecked = initChecked[card.id]!==false;
-                      const hasExisting = !!card.salesRef;
-                      return (
-                        <div key={card.id} onClick={()=>setMatchChecked(p=>({...p,[card.id]:!isChecked}))}
-                          style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.4rem 0.5rem",background:"white",borderRadius:"0.5rem",marginBottom:"0.25rem",cursor:"pointer",border:`1px solid ${isChecked?C.accent:C.borderLight}`}}>
-                          <span style={{fontSize:"1rem"}}>{isChecked?"☑":"☐"}</span>
-                          <span style={{fontSize:"0.82rem",fontWeight:600,flex:1}}>{card.lastName}{card.firstName}</span>
-                          {card.title&&<span style={{fontSize:"0.7rem",color:C.textSub}}>{card.title}</span>}
-                          {hasExisting&&<span style={{fontSize:"0.65rem",background:"#fef3c7",color:"#d97706",borderRadius:999,padding:"0.05rem 0.35rem",flexShrink:0}}>紐付済</span>}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ))}
-                <div style={{display:"flex",gap:"0.75rem",paddingTop:"0.5rem"}}>
-                  <Btn variant="secondary" style={{flex:1}} onClick={()=>setMatchModal(null)}>スキップ</Btn>
-                  <Btn style={{flex:2}} onClick={()=>{
-                    matchModal.groups.forEach(({entity,cards})=>{
-                      const sel = cards.filter(c=>initChecked[c.id]!==false).map(c=>c.id);
-                      if(sel.length) applyBizCardLinks(sel,entity.type,entity.id,entity.name,matchModal.savedData);
-                    });
-                  }}>選択した名刺を紐づける</Btn>
-                </div>
-              </div>
-            </div>
-          );
-        }
-        // entity_to_cards
-        return (
-          <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.5)",padding:"1rem"}} onClick={e=>{if(e.target===e.currentTarget)setMatchModal(null);}}>
-            <div style={{background:"white",borderRadius:"1.25rem",padding:"1.5rem",maxWidth:400,width:"100%",maxHeight:"80vh",overflowY:"auto",boxShadow:"0 12px 50px rgba(0,0,0,0.25)"}}>
-              <div style={{fontSize:"1rem",fontWeight:800,color:C.text,marginBottom:"0.5rem"}}>🔗 一致する名刺が見つかりました</div>
-              <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginBottom:"1rem"}}>
-                <span style={{fontSize:"0.7rem",fontWeight:800,color:"white",background:COLOR[matchModal.entity.type]||C.accent,borderRadius:999,padding:"0.1rem 0.45rem"}}>{matchModal.entity.type}</span>
-                <span style={{fontSize:"0.88rem",fontWeight:700}}>{matchModal.entity.name}</span>
-              </div>
-              {matchModal.cards.map(card=>{
-                const isChecked = matchChecked[card.id]!==false;
-                return (
-                  <div key={card.id} onClick={()=>setMatchChecked(p=>({...p,[card.id]:!isChecked}))}
-                    style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.5rem 0.75rem",background:"#f8fafc",borderRadius:"0.625rem",marginBottom:"0.4rem",cursor:"pointer",border:`1.5px solid ${isChecked?C.accent:C.borderLight}`}}>
-                    <span style={{fontSize:"1rem"}}>{isChecked?"☑":"☐"}</span>
-                    <div style={{flex:1}}>
-                      <div style={{fontSize:"0.85rem",fontWeight:600}}>{card.lastName}{card.firstName}</div>
-                      {card.title&&<div style={{fontSize:"0.7rem",color:C.textSub}}>{card.title}</div>}
-                    </div>
-                    {card.salesRef&&<span style={{fontSize:"0.65rem",background:"#fef3c7",color:"#d97706",borderRadius:999,padding:"0.05rem 0.35rem"}}>紐付済</span>}
-                  </div>
-                );
-              })}
-              <div style={{display:"flex",gap:"0.75rem",marginTop:"1rem"}}>
-                <Btn variant="secondary" style={{flex:1}} onClick={()=>setMatchModal(null)}>スキップ</Btn>
-                <Btn style={{flex:2}} onClick={()=>{
-                  const sel=matchModal.cards.filter(c=>matchChecked[c.id]!==false).map(c=>c.id);
-                  if(sel.length) applyBizCardLinks(sel,matchModal.entity.type,matchModal.entity.id,matchModal.entity.name,matchModal.savedData);
-                  else setMatchModal(null);
-                }}>紐づける</Btn>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      {renderModals()}
     </div>
   );
 }
