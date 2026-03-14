@@ -1574,7 +1574,7 @@ function SalesRefPicker({value, onChange, salesData={}}) {
             {items.length===0
               ? <div style={{padding:"1rem",textAlign:"center",color:"#94a3b8",fontSize:"0.8rem"}}>データなし</div>
               : items.map(x=>(
-                <div key={x.id} onClick={()=>{onChange({type:tab,id:x.id,name:x.name});setOpen(false);}}
+                <div key={x.id} onClick={()=>{onChange({type:tab,id:String(x.id),name:x.name});setOpen(false);}}
                   style={{padding:"0.5rem 0.75rem",cursor:"pointer",fontSize:"0.85rem",color:"#1e293b",borderBottom:"1px solid #f8fafc"}}
                   onMouseEnter={e=>e.currentTarget.style.background="#f0f9ff"}
                   onMouseLeave={e=>e.currentTarget.style.background="white"}>
@@ -3388,12 +3388,20 @@ function MapTab({prefs,munis,vendors,companies,prefCoords,onSelectPref}) {
 }
 
 // ─── LINKED BIZCARD LIST ─────────────────────────────────────────────────────
-function LinkedBizcardList({ cards=[], users=[], onUnlink }) {
+function LinkedBizcardList({ cards=[], users=[], onUnlink, onNavigateToBizcard }) {
   if(cards.length===0) return (
     <div style={{textAlign:"center",padding:"2rem",color:C.textMuted,fontSize:"0.82rem"}}>
       <div style={{fontSize:"1.5rem",marginBottom:"0.5rem"}}>🪪</div>
       紐づいた名刺がありません<br/>
-      <span style={{fontSize:"0.72rem"}}>名刺タブから紐付けできます</span>
+      <span style={{fontSize:"0.72rem"}}>名刺の詳細画面から紐付けできます</span>
+      {onNavigateToBizcard&&(
+        <div style={{marginTop:"0.75rem"}}>
+          <button onClick={onNavigateToBizcard}
+            style={{padding:"0.4rem 0.875rem",borderRadius:999,border:"1.5px solid #2563eb",background:"#dbeafe",color:"#1d4ed8",fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+            🪪 名刺一覧へ
+          </button>
+        </div>
+      )}
     </div>
   );
   return (
@@ -4157,7 +4165,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     let nd = {...baseData};
     selectedIds.forEach(cardId=>{
       nd = {...nd, businessCards:(nd.businessCards||[]).map(c=>
-        c.id===cardId ? {...c, salesRef:{type:entityType,id:entityId,name:entityName}} : c
+        c.id===cardId ? {...c, salesRef:{type:entityType,id:String(entityId),name:entityName}} : c
       )};
     });
     // 通知：紐付け実行者以外の登録者に通知
@@ -5742,8 +5750,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           {activeDetail==="chat"&&ChatSection({chat:comp.chat,entityKey:"companies",entityId:comp.id})}
           {activeDetail==="tasks"&&<SalesTaskPanel entityType="企業" entityId={comp.id} entityName={comp.name} data={data} onSave={save} currentUser={currentUser} users={users} onNavigateToTask={onNavigateToTask} onNavigateToProject={onNavigateToProject}/>}
           {activeDetail==="bizcard"&&(()=>{
-            const linked=(data.businessCards||[]).filter(c=>c.salesRef?.id===comp.id&&c.salesRef?.type==="企業");
-            return <LinkedBizcardList cards={linked} users={users} onUnlink={id=>{const nd={...data,businessCards:(data.businessCards||[]).map(c=>c.id===id?{...c,salesRef:null}:c)};save(nd);}}/>;
+            const linked=(data.businessCards||[]).filter(c=>String(c.salesRef?.id)===String(comp.id)&&c.salesRef?.type==="企業");
+            return <LinkedBizcardList cards={linked} users={users} onUnlink={id=>{const nd={...data,businessCards:(data.businessCards||[]).map(c=>c.id===id?{...c,salesRef:null}:c)};save(nd);}} onNavigateToBizcard={()=>{setActiveCompany(null);setSalesTab("bizcard");}}/>;
           })()}
           {activeDetail==="files"&&<FileSection files={comp.files||[]} currentUserId={currentUser?.id}
             entityType="companies" entityId={comp.id}
@@ -6215,8 +6223,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           {activeDetail==="chat"&&ChatSection({chat:v.chat,entityKey:"vendors",entityId:v.id})}
           {activeDetail==="tasks"&&<SalesTaskPanel entityType="業者" entityId={v.id} entityName={v.name} data={data} onSave={save} currentUser={currentUser} users={users} onNavigateToTask={onNavigateToTask} onNavigateToProject={onNavigateToProject}/>}
           {activeDetail==="bizcard"&&(()=>{
-            const linked=(data.businessCards||[]).filter(c=>c.salesRef?.id===v.id&&c.salesRef?.type==="業者");
-            return <LinkedBizcardList cards={linked} users={users} onUnlink={id=>{const nd={...data,businessCards:(data.businessCards||[]).map(c=>c.id===id?{...c,salesRef:null}:c)};save(nd);}}/>;
+            const linked=(data.businessCards||[]).filter(c=>String(c.salesRef?.id)===String(v.id)&&c.salesRef?.type==="業者");
+            return <LinkedBizcardList cards={linked} users={users} onUnlink={id=>{const nd={...data,businessCards:(data.businessCards||[]).map(c=>c.id===id?{...c,salesRef:null}:c)};save(nd);}} onNavigateToBizcard={()=>{setActiveVendor(null);setSalesTab("bizcard");}}/>;
           })()}
           {activeDetail==="files"&&<FileSection files={v.files||[]} currentUserId={currentUser?.id}
             entityType="vendors" entityId={v.id}
@@ -6756,8 +6764,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
         {activeDetail==="chat"&&<div style={{marginBottom:"1rem"}}>{ChatSection({chat:muni.chat,entityKey:"municipalities",entityId:muni.id})}</div>}
         {activeDetail==="tasks"&&<div style={{marginBottom:"1rem"}}><SalesTaskPanel entityType="自治体" entityId={muni.id} entityName={muni.name} data={data} onSave={save} currentUser={currentUser} users={users} onNavigateToTask={onNavigateToTask} onNavigateToProject={onNavigateToProject}/></div>}
         {activeDetail==="bizcard"&&<div style={{marginBottom:"1rem"}}>{(()=>{
-          const linked=(data.businessCards||[]).filter(c=>c.salesRef?.id===muni.id&&c.salesRef?.type==="自治体");
-          return <LinkedBizcardList cards={linked} users={users} onUnlink={id=>{const nd={...data,businessCards:(data.businessCards||[]).map(c=>c.id===id?{...c,salesRef:null}:c)};save(nd);}}/>;
+          const linked=(data.businessCards||[]).filter(c=>String(c.salesRef?.id)===String(muni.id)&&c.salesRef?.type==="自治体");
+          return <LinkedBizcardList cards={linked} users={users} onUnlink={id=>{const nd={...data,businessCards:(data.businessCards||[]).map(c=>c.id===id?{...c,salesRef:null}:c)};save(nd);}} onNavigateToBizcard={()=>{setActiveMuni(null);setMuniScreen("top");setSalesTab("bizcard");}}/>;
         })()}</div>}
 
         {activeDetail==="files"&&<div style={{marginBottom:"1rem"}}><FileSection files={muni.files||[]} currentUserId={currentUser?.id}
@@ -7544,6 +7552,22 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                     setMemoIn("");
                   }}>追加</Btn>
                 </div>
+              </Card>
+              <Card style={{padding:"1rem",marginBottom:"1rem"}}>
+                <div style={{fontWeight:700,fontSize:"0.82rem",color:C.text,marginBottom:"0.5rem"}}>🔗 営業先への紐づけ</div>
+                {card.salesRef ? (
+                  <div style={{display:"flex",alignItems:"center",gap:"0.5rem",background:C.bg,borderRadius:"0.75rem",padding:"0.6rem 0.75rem"}}>
+                    <span style={{fontSize:"0.72rem",fontWeight:800,color:"white",background:{"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"}[card.salesRef.type]||C.accent,borderRadius:999,padding:"0.1rem 0.45rem"}}>{card.salesRef.type}</span>
+                    <span style={{flex:1,fontSize:"0.88rem",fontWeight:600,color:C.text}}>{card.salesRef.name}</span>
+                    <button onClick={()=>updateBizCard(card.id,{salesRef:null})}
+                      style={{background:"none",border:"none",cursor:"pointer",color:"#94a3b8",fontSize:"0.78rem",padding:"0.2rem"}}>紐解除</button>
+                  </div>
+                ) : (
+                  <div>
+                    <div style={{fontSize:"0.75rem",color:C.textMuted,marginBottom:"0.5rem"}}>紐づけ先の営業先を選択してください</div>
+                    <SalesRefPicker value={null} onChange={v=>updateBizCard(card.id,{salesRef:v})} salesData={data}/>
+                  </div>
+                )}
               </Card>
               <Btn variant="danger" size="sm" onClick={()=>{if(window.confirm("この名刺を削除しますか？")){deleteBizCard(card.id);setBcScreen("list");}}}>🗑 削除</Btn>
             </div>
