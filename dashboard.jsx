@@ -4313,7 +4313,12 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   // 実際に紐付けを実行（selectedIds: 紐づける名刺idの配列）
   const applyBizCardLinks = (selectedIds, entityType, entityId, entityName, baseData) => {
     const uid = currentUser?.id;
-    let nd = {...baseData};
+    // 最新のdataを使い、baseDataのbusinessCardsをマージ（新規追加カードを含む）
+    const mergedCards = [
+      ...(data.businessCards||[]),
+      ...(baseData.businessCards||[]).filter(bc=>!(data.businessCards||[]).some(x=>x.id===bc.id)),
+    ];
+    let nd = {...data, businessCards: mergedCards};
     selectedIds.forEach(cardId=>{
       nd = {...nd, businessCards:(nd.businessCards||[]).map(c=>
         c.id===cardId ? {...c, salesRef:{type:entityType,id:String(entityId),name:entityName}} : c
