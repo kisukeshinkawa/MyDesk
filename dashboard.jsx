@@ -3393,71 +3393,60 @@ function LinkBizcardModal({ allCards=[], entityType, entityId, entityName, users
   const [selected, setSelected] = React.useState(new Set());
   const [filterOwner, setFilterOwner] = React.useState("");
 
-  // ひらがな/カタカナ/スペース正規化して小文字化
+  // スペース除去・小文字化（ひらがな/カタカナ区別なし）
   const norm = s => {
     if(!s) return "";
-    return String(s)
-      .replace(/[ 	　 ]/g, "")
-      .replace(/[ァ-ン]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0x60))
-      .toLowerCase();
+    return String(s).replace(/[ 　	]/g,"").toLowerCase();
   };
   const q = norm(search);
 
+  // 候補リスト：既紐付け済みを除外し、検索ワードでフィルタ＋名前マッチ優先ソート
   const candidates = React.useMemo(() => {
-    const filtered = allCards.filter(card => {
-      // すでに同エンティティに紐づき済みは除外
+    const list = allCards.filter(card => {
       if(card.salesRef && String(card.salesRef.id)===String(entityId) && card.salesRef.type===entityType) return false;
-      // 所有者フィルター
       if(filterOwner){
         const owns = card.owners || (card.owner ? [card.owner] : []);
         if(!owns.includes(filterOwner)) return false;
       }
-      // 検索
       if(!q) return true;
       const fullName = norm(`${card.lastName||""}${card.firstName||""}`);
-      return fullName.includes(q) ||
-             norm(card.company).includes(q) ||
-             norm(card.title).includes(q) ||
-             norm(card.department).includes(q) ||
-             norm(card.email).includes(q);
+      return fullName.includes(q)
+        || norm(card.company||"").includes(q)
+        || norm(card.title||"").includes(q)
+        || norm(card.department||"").includes(q)
+        || norm(card.email||"").includes(q);
     });
-    // 検索時は名前マッチを最優先で上位に並べる
-    if(!q) return filtered;
-    return filtered.sort((a, b) => {
-      const nameA = norm(`${a.lastName||""}${a.firstName||""}`);
-      const nameB = norm(`${b.lastName||""}${b.firstName||""}`);
-      const aNameMatch = nameA.includes(q) ? 0 : 1;
-      const bNameMatch = nameB.includes(q) ? 0 : 1;
-      if(aNameMatch !== bNameMatch) return aNameMatch - bNameMatch;
-      // 名前が一致する場合は氏名の読みで昇順
-      return nameA.localeCompare(nameB, "ja");
+    if(!q) return list;
+    // 名前マッチを最上位に
+    return [...list].sort((a,b) => {
+      const na = norm(`${a.lastName||""}${a.firstName||""}`);
+      const nb = norm(`${b.lastName||""}${b.firstName||""}`);
+      return (na.includes(q)?0:1) - (nb.includes(q)?0:1);
     });
   }, [allCards, entityId, entityType, filterOwner, q]);
 
   const allOwners = React.useMemo(() =>
-    [...new Set(allCards.flatMap(c => c.owners||(c.owner?[c.owner]:[])).filter(Boolean))],
+    [...new Set(allCards.flatMap(c=>c.owners||(c.owner?[c.owner]:[])).filter(Boolean))],
   [allCards]);
 
   const toggleCard = id => setSelected(prev => {
-    const n = new Set(prev);
-    n.has(id) ? n.delete(id) : n.add(id);
-    return n;
+    const n = new Set(prev); n.has(id)?n.delete(id):n.add(id); return n;
   });
-  const toggleAll = () => {
-    setSelected(prev => prev.size === candidates.length ? new Set() : new Set(candidates.map(c=>c.id)));
-  };
+  const toggleAll = () => setSelected(prev =>
+    prev.size===candidates.length ? new Set() : new Set(candidates.map(c=>c.id))
+  );
 
-  const typeColor = {"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"}[entityType]||C.accent;
+  const typeColor = {"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"}[entityType]||"#2563eb";
 
   return (
-    <div style={{position:"fixed",inset:0,zIndex:600,display:"flex",alignItems:"flex-end",justifyContent:"center",background:"rgba(0,0,0,0.55)"}}
-      onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
-      <div style={{background:"white",borderRadius:"1.25rem 1.25rem 0 0",width:"100%",maxWidth:520,maxHeight:"88dvh",display:"flex",flexDirection:"column",boxShadow:"0 -8px 40px rgba(0,0,0,0.2)"}}>
+    <div style={{position:"fixed",inset:0,zIndex:600,display:"flex",alignItems:"flex-end",justifyContent:"center",background:"rgba(0,0,0,0.55)"}}>
+      <div onClick={e=>e.stopPropagation()}
+        style={{background:"white",borderRadius:"1.25rem 1.25rem 0 0",width:"100%",maxWidth:520,maxHeight:"88dvh",display:"flex",flexDirection:"column",boxShadow:"0 -8px 40px rgba(0,0,0,0.2)"}}>
         {/* ヘッダー */}
         <div style={{padding:"1rem 1.25rem 0.75rem",borderBottom:`1px solid ${C.borderLight}`,flexShrink:0}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.25rem"}}>
             <div style={{fontWeight:800,fontSize:"0.95rem",color:C.text}}>🔗 名刺を紐づける</div>
-            <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",fontSize:"1.2rem",color:C.textMuted,lineHeight:1}}>✕</button>
+            <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",fontSize:"1.3rem",color:C.textMuted,lineHeight:1,padding:"0.2rem"}}>✕</button>
           </div>
           <div style={{display:"flex",alignItems:"center",gap:"0.35rem",marginBottom:"0.6rem"}}>
             <span style={{fontSize:"0.7rem",fontWeight:800,color:"white",background:typeColor,borderRadius:999,padding:"0.1rem 0.45rem"}}>{entityType}</span>
@@ -3466,22 +3455,21 @@ function LinkBizcardModal({ allCards=[], entityType, entityId, entityName, users
           <input value={search} onChange={e=>setSearch(e.target.value)}
             placeholder="名前・会社名・役職で検索..."
             autoFocus
-            style={{width:"100%",padding:"0.5rem 0.75rem",borderRadius:"0.625rem",border:`1.5px solid ${C.accent}`,fontFamily:"inherit",fontSize:"0.85rem",boxSizing:"border-box",outline:"none"}}/>
+            style={{width:"100%",padding:"0.5rem 0.75rem",borderRadius:"0.625rem",border:`1.5px solid ${typeColor}`,fontFamily:"inherit",fontSize:"0.85rem",boxSizing:"border-box",outline:"none"}}/>
           {allOwners.length>0&&(
             <div style={{display:"flex",gap:"0.3rem",flexWrap:"wrap",marginTop:"0.5rem"}}>
               {["", ...allOwners].map(o=>(
                 <button key={o||"all"} onClick={()=>setFilterOwner(o)}
                   style={{padding:"0.2rem 0.6rem",borderRadius:999,border:`1.5px solid ${filterOwner===o?typeColor:C.border}`,background:filterOwner===o?`${typeColor}22`:"white",color:filterOwner===o?typeColor:C.textSub,fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                  {o||"全員"}
+                  {o?"👤 "+o:"全員"}
                 </button>
               ))}
             </div>
           )}
         </div>
-
         {/* リスト */}
-        <div style={{overflowY:"auto",flex:1,padding:"0.5rem 0.75rem"}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0.25rem 0.25rem 0.5rem"}}>
+        <div style={{overflowY:"auto",flex:1,padding:"0.4rem 0.75rem"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0.3rem 0.25rem 0.4rem"}}>
             <span style={{fontSize:"0.72rem",color:C.textMuted}}>{candidates.length}件</span>
             {candidates.length>0&&(
               <button onClick={toggleAll} style={{fontSize:"0.75rem",fontWeight:700,color:typeColor,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit"}}>
@@ -3495,35 +3483,34 @@ function LinkBizcardModal({ allCards=[], entityType, entityId, entityName, users
             </div>
           )}
           {candidates.map(card=>{
-            const name = `${card.lastName||""}${card.firstName||""}`.trim()||"（名前なし）";
-            const owners = card.owners || (card.owner ? [card.owner] : []);
-            const isSel = selected.has(card.id);
-            const hasOtherLink = !!(card.salesRef && !(String(card.salesRef.id)===String(entityId)&&card.salesRef.type===entityType));
+            const name=`${card.lastName||""}${card.firstName||""}`.trim()||"（名前なし）";
+            const owners=card.owners||(card.owner?[card.owner]:[]);
+            const isSel=selected.has(card.id);
+            const hasOtherLink=!!(card.salesRef&&!(String(card.salesRef.id)===String(entityId)&&card.salesRef.type===entityType));
             return (
               <div key={card.id} onClick={()=>toggleCard(card.id)}
-                style={{display:"flex",alignItems:"center",gap:"0.6rem",padding:"0.55rem 0.75rem",background:isSel?`${typeColor}11`:"white",borderRadius:"0.75rem",marginBottom:"0.3rem",cursor:"pointer",border:`1.5px solid ${isSel?typeColor:C.borderLight}`,transition:"background 0.1s,border-color 0.1s"}}>
-                <div style={{width:20,height:20,borderRadius:"0.3rem",border:`2px solid ${isSel?typeColor:C.borderLight}`,background:isSel?typeColor:"white",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,color:"white",fontSize:"0.8rem",transition:"all 0.1s"}}>
+                style={{display:"flex",alignItems:"center",gap:"0.6rem",padding:"0.55rem 0.75rem",background:isSel?`${typeColor}11`:"white",borderRadius:"0.75rem",marginBottom:"0.3rem",cursor:"pointer",border:`1.5px solid ${isSel?typeColor:C.borderLight}`,transition:"all 0.1s"}}>
+                <div style={{width:20,height:20,borderRadius:"0.3rem",border:`2px solid ${isSel?typeColor:"#cbd5e1"}`,background:isSel?typeColor:"white",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,color:"white",fontSize:"0.8rem",transition:"all 0.1s"}}>
                   {isSel&&"✓"}
                 </div>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:"flex",alignItems:"center",gap:"0.4rem",flexWrap:"wrap"}}>
                     <span style={{fontWeight:700,fontSize:"0.88rem",color:C.text}}>{name}</span>
                     {card.title&&<span style={{fontSize:"0.72rem",color:C.textSub}}>{card.title}</span>}
-                    {hasOtherLink&&<span style={{fontSize:"0.62rem",background:"#fef3c7",color:"#d97706",borderRadius:999,padding:"0.05rem 0.35rem",flexShrink:0}}>他へ紐付済</span>}
+                    {hasOtherLink&&<span style={{fontSize:"0.62rem",background:"#fef3c7",color:"#d97706",borderRadius:999,padding:"0.05rem 0.35rem"}}>他へ紐付済</span>}
                   </div>
                   <div style={{fontSize:"0.72rem",color:C.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                     🏢 {card.company||"（会社名なし）"}
-                    {owners.length>0&&<span style={{marginLeft:"0.5rem",color:"#7c3aed"}}>👤{owners.join("・")}</span>}
+                    {owners.length>0&&<span style={{marginLeft:"0.4rem",color:"#7c3aed",fontWeight:600}}>👤{owners.join("・")}</span>}
                   </div>
                 </div>
               </div>
             );
           })}
         </div>
-
         {/* フッター */}
-        <div style={{padding:"0.875rem 1.25rem",borderTop:`1px solid ${C.borderLight}`,flexShrink:0,background:"white",borderRadius:"0 0 1.25rem 1.25rem"}}>
-          {selected.size>0&&<div style={{fontSize:"0.75rem",color:typeColor,fontWeight:700,marginBottom:"0.5rem",textAlign:"center"}}>{selected.size}件を選択中</div>}
+        <div style={{padding:"0.875rem 1.25rem",borderTop:`1px solid ${C.borderLight}`,flexShrink:0}}>
+          {selected.size>0&&<div style={{fontSize:"0.75rem",fontWeight:700,marginBottom:"0.4rem",textAlign:"center",color:typeColor}}>{selected.size}件を選択中</div>}
           <div style={{display:"flex",gap:"0.75rem"}}>
             <button onClick={onClose}
               style={{flex:1,padding:"0.65rem",borderRadius:"0.875rem",border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>
