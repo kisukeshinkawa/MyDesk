@@ -3393,41 +3393,56 @@ function LinkBizcardModal({ allCards=[], entityType, entityId, entityName, users
   const [selected, setSelected] = React.useState(new Set());
   const [filterOwner, setFilterOwner] = React.useState("");
 
-  // スペース除去・小文字化（ひらがな/カタカナ区別なし）
-  const norm = s => {
-    if(!s) return "";
-    return String(s).replace(/[ 　	]/g,"").toLowerCase();
-  };
-  const q = norm(search);
+  const typeColor = {"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"}[entityType]||"#2563eb";
 
-  // 候補リスト：既紐付け済みを除外し、検索ワードでフィルタ＋名前マッチ優先ソート
-  const candidates = React.useMemo(() => {
-    const list = allCards.filter(card => {
+  // 検索ワードを正規化（スペース除去・小文字化）
+  const searchQ = search.replace(/[ 　	]/g,"").toLowerCase();
+
+  // 所有者一覧（メモ化）
+  const allOwners = React.useMemo(() =>
+    [...new Set(allCards.flatMap(c=>c.owners||(c.owner?[c.owner]:[])).filter(Boolean))]
+  , [allCards]);
+
+  // 候補リスト：毎レンダーで直接計算（検索の即時反映を保証）
+  const candidates = (() => {
+    // Step1: 既紐付け・所有者フィルタで絞り込み
+    let list = allCards.filter(card => {
       if(card.salesRef && String(card.salesRef.id)===String(entityId) && card.salesRef.type===entityType) return false;
       if(filterOwner){
-        const owns = card.owners || (card.owner ? [card.owner] : []);
+        const owns = card.owners||(card.owner?[card.owner]:[]);
         if(!owns.includes(filterOwner)) return false;
       }
-      if(!q) return true;
-      const fullName = norm(`${card.lastName||""}${card.firstName||""}`);
-      return fullName.includes(q)
-        || norm(card.company||"").includes(q)
-        || norm(card.title||"").includes(q)
-        || norm(card.department||"").includes(q)
-        || norm(card.email||"").includes(q);
+      return true;
     });
-    if(!q) return list;
-    // 名前マッチを最上位に
-    return [...list].sort((a,b) => {
-      const na = norm(`${a.lastName||""}${a.firstName||""}`);
-      const nb = norm(`${b.lastName||""}${b.firstName||""}`);
-      return (na.includes(q)?0:1) - (nb.includes(q)?0:1);
-    });
-  }, [allCards, entityId, entityType, filterOwner, q]);
 
-  const allOwners = React.useMemo(() =>
-    [...new Set(allCards.flatMap(c=>c.owners||(c.owner?[c.owner]:[])).filter(Boolean))],
-  [allCards]);
+    // Step2: 検索ワードがあればスコアリングしてソート
+    if(searchQ) {
+      const norm = s => (s||"").replace(/[ 　	]/g,"").toLowerCase();
+      const scored = list.map(card => {
+        const fullName = norm(`${card.lastName||""}${card.firstName||""}`);
+        const company  = norm(card.company||"");
+        const title    = norm(card.title||"");
+        const dept     = norm(card.department||"");
+        const email    = norm(card.email||"");
+        // スコア: 低いほど上位 (0=名前完全一致, 1=名前部分一致, 2=会社一致, 3=役職/部署, 99=ヒットなし)
+        let score = 99;
+        if(fullName === searchQ)             score = 0;
+        else if(fullName.includes(searchQ))  score = 1;
+        else if(company.includes(searchQ))   score = 2;
+        else if(title.includes(searchQ) || dept.includes(searchQ)) score = 3;
+        else if(email.includes(searchQ))     score = 4;
+        return { card, score };
+      });
+      // スコア99（ヒットなし）を除外
+      return scored.filter(x=>x.score<99).sort((a,b)=>a.score-b.score).map(x=>x.card);
+    }
+
+    // 検索なし：会社名→姓の五十音順
+    return list.sort((a,b)=>
+      (a.company||"").localeCompare(b.company||"","ja")||
+      (`${a.lastName||""}${a.firstName||""}`).localeCompare(`${b.lastName||""}${b.firstName||""}`,"ja")
+    );
+  })();
 
   const toggleCard = id => setSelected(prev => {
     const n = new Set(prev); n.has(id)?n.delete(id):n.add(id); return n;
@@ -3436,8 +3451,6 @@ function LinkBizcardModal({ allCards=[], entityType, entityId, entityName, users
     prev.size===candidates.length ? new Set() : new Set(candidates.map(c=>c.id))
   );
 
-  const typeColor = {"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"}[entityType]||"#2563eb";
-
   return (
     <div style={{position:"fixed",inset:0,zIndex:600,display:"flex",alignItems:"flex-end",justifyContent:"center",background:"rgba(0,0,0,0.55)"}}>
       <div onClick={e=>e.stopPropagation()}
@@ -3445,8 +3458,8 @@ function LinkBizcardModal({ allCards=[], entityType, entityId, entityName, users
         {/* ヘッダー */}
         <div style={{padding:"1rem 1.25rem 0.75rem",borderBottom:`1px solid ${C.borderLight}`,flexShrink:0}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.25rem"}}>
-            <div style={{fontWeight:800,fontSize:"0.95rem",color:C.text}}>🔗 名刺を紐づける</div>
-            <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",fontSize:"1.3rem",color:C.textMuted,lineHeight:1,padding:"0.2rem"}}>✕</button>
+            <span style={{fontWeight:800,fontSize:"0.95rem",color:C.text}}>🔗 名刺を紐づける</span>
+            <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",fontSize:"1.3rem",color:C.textMuted,lineHeight:1,padding:"0.2rem 0.4rem"}}>✕</button>
           </div>
           <div style={{display:"flex",alignItems:"center",gap:"0.35rem",marginBottom:"0.6rem"}}>
             <span style={{fontSize:"0.7rem",fontWeight:800,color:"white",background:typeColor,borderRadius:999,padding:"0.1rem 0.45rem"}}>{entityType}</span>
@@ -3459,7 +3472,7 @@ function LinkBizcardModal({ allCards=[], entityType, entityId, entityName, users
           {allOwners.length>0&&(
             <div style={{display:"flex",gap:"0.3rem",flexWrap:"wrap",marginTop:"0.5rem"}}>
               {["", ...allOwners].map(o=>(
-                <button key={o||"all"} onClick={()=>setFilterOwner(o)}
+                <button key={o||"__all"} onClick={()=>setFilterOwner(o)}
                   style={{padding:"0.2rem 0.6rem",borderRadius:999,border:`1.5px solid ${filterOwner===o?typeColor:C.border}`,background:filterOwner===o?`${typeColor}22`:"white",color:filterOwner===o?typeColor:C.textSub,fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                   {o?"👤 "+o:"全員"}
                 </button>
@@ -3470,16 +3483,12 @@ function LinkBizcardModal({ allCards=[], entityType, entityId, entityName, users
         {/* リスト */}
         <div style={{overflowY:"auto",flex:1,padding:"0.4rem 0.75rem"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0.3rem 0.25rem 0.4rem"}}>
-            <span style={{fontSize:"0.72rem",color:C.textMuted}}>{candidates.length}件</span>
-            {candidates.length>0&&(
-              <button onClick={toggleAll} style={{fontSize:"0.75rem",fontWeight:700,color:typeColor,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit"}}>
-                {selected.size===candidates.length?"全解除":"全選択"}
-              </button>
-            )}
+            <span style={{fontSize:"0.72rem",color:C.textMuted}}>{candidates.length}件{searchQ&&` (「${search}」で絞り込み中)`}</span>
+            {candidates.length>0&&<button onClick={toggleAll} style={{fontSize:"0.75rem",fontWeight:700,color:typeColor,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit"}}>{selected.size===candidates.length?"全解除":"全選択"}</button>}
           </div>
           {candidates.length===0&&(
             <div style={{textAlign:"center",padding:"2rem",color:C.textMuted,fontSize:"0.82rem"}}>
-              {search||filterOwner?"条件に一致する名刺がありません":"紐づけ可能な名刺がありません"}
+              {searchQ||filterOwner?"条件に一致する名刺がありません":"紐づけ可能な名刺がありません"}
             </div>
           )}
           {candidates.map(card=>{
@@ -3490,7 +3499,7 @@ function LinkBizcardModal({ allCards=[], entityType, entityId, entityName, users
             return (
               <div key={card.id} onClick={()=>toggleCard(card.id)}
                 style={{display:"flex",alignItems:"center",gap:"0.6rem",padding:"0.55rem 0.75rem",background:isSel?`${typeColor}11`:"white",borderRadius:"0.75rem",marginBottom:"0.3rem",cursor:"pointer",border:`1.5px solid ${isSel?typeColor:C.borderLight}`,transition:"all 0.1s"}}>
-                <div style={{width:20,height:20,borderRadius:"0.3rem",border:`2px solid ${isSel?typeColor:"#cbd5e1"}`,background:isSel?typeColor:"white",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,color:"white",fontSize:"0.8rem",transition:"all 0.1s"}}>
+                <div style={{width:20,height:20,borderRadius:"0.3rem",border:`2px solid ${isSel?typeColor:"#cbd5e1"}`,background:isSel?typeColor:"white",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,color:"white",fontSize:"0.8rem"}}>
                   {isSel&&"✓"}
                 </div>
                 <div style={{flex:1,minWidth:0}}>
