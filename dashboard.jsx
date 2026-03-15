@@ -5726,26 +5726,27 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     );
   }
   if(matchModal.mode==="import_to_entity") {
-    const allCardIds = matchModal.groups.flatMap(g=>g.cards.map(c=>c.id));
-    const checked = matchChecked;
-    const initChecked = Object.fromEntries(allCardIds.map(id=>[id, checked[id]!==false]));
+    // キーを "entityType_entityId_cardId" にして グループ間の連動を防ぐ
+    const groupKey = (entity, cardId) => `${entity.type}_${entity.id}_${cardId}`;
+    const isCheckedFor = (entity, cardId) => matchChecked[groupKey(entity,cardId)] !== false;
     return (
       <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"flex-end",justifyContent:"center",background:"rgba(0,0,0,0.5)",padding:"0"}} onClick={e=>{if(e.target===e.currentTarget)setMatchModal(null);}}>
         <div style={{background:"white",borderRadius:"1.25rem 1.25rem 0 0",padding:"1.5rem",maxWidth:480,width:"100%",maxHeight:"80vh",overflowY:"auto",boxShadow:"0 -8px 40px rgba(0,0,0,0.2)"}}>
           <div style={{fontSize:"1rem",fontWeight:800,color:C.text,marginBottom:"0.5rem"}}>🔗 営業先との一致が見つかりました</div>
           <div style={{fontSize:"0.82rem",color:C.textSub,marginBottom:"1rem"}}>紐づける名刺を選択してください</div>
           {matchModal.groups.map(({entity, cards})=>(
-            <div key={entity.id} style={{marginBottom:"1rem",background:"#f8fafc",borderRadius:"0.75rem",padding:"0.75rem"}}>
+            <div key={`${entity.type}_${entity.id}`} style={{marginBottom:"1rem",background:"#f8fafc",borderRadius:"0.75rem",padding:"0.75rem"}}>
               <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginBottom:"0.5rem"}}>
                 <span style={{fontSize:"0.7rem",fontWeight:800,color:"white",background:COLOR[entity.type],borderRadius:999,padding:"0.1rem 0.45rem"}}>{entity.type}</span>
                 <span style={{fontSize:"0.88rem",fontWeight:700}}>{entity.name}</span>
                 <span style={{fontSize:"0.72rem",color:C.textMuted,marginLeft:"auto"}}>{cards.length}件一致</span>
               </div>
               {cards.map(card=>{
-                const isChecked = initChecked[card.id]!==false;
+                const ck = groupKey(entity, card.id);
+                const isChecked = isCheckedFor(entity, card.id);
                 const hasExisting = !!card.salesRef;
                 return (
-                  <div key={card.id} onClick={()=>setMatchChecked(p=>({...p,[card.id]:!isChecked}))}
+                  <div key={card.id} onClick={()=>setMatchChecked(p=>({...p,[ck]:!isChecked}))}
                     style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.4rem 0.5rem",background:"white",borderRadius:"0.5rem",marginBottom:"0.25rem",cursor:"pointer",border:`1px solid ${isChecked?C.accent:C.borderLight}`}}>
                     <span style={{fontSize:"1rem"}}>{isChecked?"☑":"☐"}</span>
                     <span style={{fontSize:"0.82rem",fontWeight:600,flex:1}}>{card.lastName}{card.firstName}</span>
@@ -5760,7 +5761,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             <Btn variant="secondary" style={{flex:1}} onClick={()=>setMatchModal(null)}>スキップ</Btn>
             <Btn style={{flex:2}} onClick={()=>{
               matchModal.groups.forEach(({entity,cards})=>{
-                const sel = cards.filter(c=>initChecked[c.id]!==false).map(c=>c.id);
+                const sel = cards.filter(c=>isCheckedFor(entity,c.id)).map(c=>c.id);
                 if(sel.length) applyBizCardLinks(sel,entity.type,entity.id,entity.name,matchModal.savedData);
               });
             }}>選択した名刺を紐づける</Btn>
