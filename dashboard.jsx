@@ -3387,23 +3387,163 @@ function MapTab({prefs,munis,vendors,companies,prefCoords,onSelectPref}) {
   );
 }
 
+// ─── LINK BIZCARD MODAL ─────────────────────────────────────────────────────
+function LinkBizcardModal({ allCards=[], linkedIds=new Set(), entityType, entityId, entityName, users=[], onLink, onClose }) {
+  const [search, setSearch] = React.useState("");
+  const [selected, setSelected] = React.useState(new Set());
+  const [filterOwner, setFilterOwner] = React.useState("");
+
+  const norm = s => (s||"").toLowerCase().replace(/[\s\u3000]/g,"");
+  const q = norm(search);
+
+  // 未紐付け or 他エンティティ紐付け済みのカードのみ表示
+  // (同エンティティ紐付け済みは除外)
+  const candidates = allCards.filter(card => {
+    const alreadyLinked = card.salesRef &&
+      String(card.salesRef.id) === String(entityId) &&
+      card.salesRef.type === entityType;
+    if(alreadyLinked) return false;
+    if(filterOwner) {
+      const owners = card.owners || (card.owner ? [card.owner] : []);
+      if(!owners.includes(filterOwner)) return false;
+    }
+    if(!q) return true;
+    const name = `${card.lastName||""}${card.firstName||""}`;
+    return norm(name).includes(q) || norm(card.company||"").includes(q) ||
+           norm(card.title||"").includes(q) || norm(card.department||"").includes(q);
+  });
+
+  const allOwners = [...new Set(allCards.flatMap(c=>c.owners||(c.owner?[c.owner]:[])).filter(Boolean))];
+  const toggleCard = id => setSelected(prev => {
+    const n = new Set(prev);
+    n.has(id) ? n.delete(id) : n.add(id);
+    return n;
+  });
+  const toggleAll = () => {
+    if(selected.size === candidates.length) setSelected(new Set());
+    else setSelected(new Set(candidates.map(c=>c.id)));
+  };
+
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:600,display:"flex",alignItems:"flex-end",justifyContent:"center",background:"rgba(0,0,0,0.55)"}}
+      onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+      <div style={{background:"white",borderRadius:"1.25rem 1.25rem 0 0",width:"100%",maxWidth:520,maxHeight:"88dvh",display:"flex",flexDirection:"column",boxShadow:"0 -8px 40px rgba(0,0,0,0.2)"}}>
+        {/* ヘッダー */}
+        <div style={{padding:"1rem 1.25rem 0.75rem",borderBottom:`1px solid ${C.borderLight}`,flexShrink:0}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.25rem"}}>
+            <div style={{fontWeight:800,fontSize:"0.95rem",color:C.text}}>🔗 名刺を紐づける</div>
+            <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",fontSize:"1.2rem",color:C.textMuted,lineHeight:1}}>✕</button>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:"0.35rem",marginBottom:"0.5rem"}}>
+            <span style={{fontSize:"0.7rem",fontWeight:800,color:"white",background:{"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"}[entityType]||C.accent,borderRadius:999,padding:"0.1rem 0.45rem"}}>{entityType}</span>
+            <span style={{fontSize:"0.88rem",fontWeight:700,color:C.text}}>{entityName}</span>
+          </div>
+          {/* 検索 */}
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="名前・会社名・役職で検索..."
+            autoFocus
+            style={{width:"100%",padding:"0.5rem 0.75rem",borderRadius:"0.625rem",border:`1.5px solid ${C.accent}`,fontFamily:"inherit",fontSize:"0.85rem",boxSizing:"border-box",outline:"none"}}/>
+          {/* 所有者フィルター */}
+          {allOwners.length>0&&(
+            <div style={{display:"flex",gap:"0.3rem",flexWrap:"wrap",marginTop:"0.5rem"}}>
+              <button onClick={()=>setFilterOwner("")}
+                style={{padding:"0.2rem 0.6rem",borderRadius:999,border:`1.5px solid ${!filterOwner?C.accent:C.border}`,background:!filterOwner?C.accentBg:"white",color:!filterOwner?C.accent:C.textSub,fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                全員
+              </button>
+              {allOwners.map(o=>(
+                <button key={o} onClick={()=>setFilterOwner(p=>p===o?"":o)}
+                  style={{padding:"0.2rem 0.6rem",borderRadius:999,border:`1.5px solid ${filterOwner===o?C.accent:C.border}`,background:filterOwner===o?C.accentBg:"white",color:filterOwner===o?C.accent:C.textSub,fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                  👤 {o}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* リスト */}
+        <div style={{overflowY:"auto",flex:1,padding:"0.5rem 1.25rem"}}>
+          {candidates.length>0&&(
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0.4rem 0",marginBottom:"0.25rem"}}>
+              <span style={{fontSize:"0.72rem",color:C.textMuted}}>{candidates.length}件</span>
+              <button onClick={toggleAll} style={{fontSize:"0.72rem",fontWeight:700,color:C.accent,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit"}}>
+                {selected.size===candidates.length?"全解除":"全選択"}
+              </button>
+            </div>
+          )}
+          {candidates.length===0&&(
+            <div style={{textAlign:"center",padding:"2rem",color:C.textMuted,fontSize:"0.82rem"}}>
+              {search||filterOwner?"条件に一致する名刺がありません":"紐づけ可能な名刺がありません"}
+            </div>
+          )}
+          {candidates.map(card=>{
+            const name = `${card.lastName||""}${card.firstName||""}`.trim()||"（名前なし）";
+            const owners = card.owners || (card.owner?[card.owner]:[]);
+            const isSel = selected.has(card.id);
+            const hasOtherLink = !!card.salesRef;
+            return (
+              <div key={card.id} onClick={()=>toggleCard(card.id)}
+                style={{display:"flex",alignItems:"center",gap:"0.6rem",padding:"0.6rem 0.75rem",background:isSel?"#eff6ff":"white",borderRadius:"0.75rem",marginBottom:"0.35rem",cursor:"pointer",border:`1.5px solid ${isSel?C.accent:C.borderLight}`,transition:"all 0.1s"}}>
+                <div style={{width:20,height:20,borderRadius:"0.3rem",border:`2px solid ${isSel?C.accent:C.borderLight}`,background:isSel?C.accent:"white",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:"0.75rem",color:"white",transition:"all 0.1s"}}>
+                  {isSel?"✓":""}
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{display:"flex",alignItems:"center",gap:"0.4rem",flexWrap:"wrap"}}>
+                    <span style={{fontWeight:700,fontSize:"0.88rem",color:C.text}}>{name}</span>
+                    {card.title&&<span style={{fontSize:"0.72rem",color:C.textSub}}>{card.title}</span>}
+                    {hasOtherLink&&<span style={{fontSize:"0.62rem",background:"#fef3c7",color:"#d97706",borderRadius:999,padding:"0.05rem 0.35rem",flexShrink:0}}>他へ紐付済</span>}
+                  </div>
+                  <div style={{fontSize:"0.72rem",color:C.textMuted,marginTop:"0.1rem",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                    🏢 {card.company}
+                    {owners.length>0&&<span style={{marginLeft:"0.5rem",color:"#7c3aed"}}>👤 {owners.join("・")}</span>}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* フッター */}
+        <div style={{padding:"0.875rem 1.25rem",borderTop:`1px solid ${C.borderLight}`,flexShrink:0}}>
+          {selected.size>0&&<div style={{fontSize:"0.75rem",color:C.accent,fontWeight:700,marginBottom:"0.5rem",textAlign:"center"}}>{selected.size}件を選択中</div>}
+          <div style={{display:"flex",gap:"0.75rem"}}>
+            <button onClick={onClose}
+              style={{flex:1,padding:"0.65rem",borderRadius:"0.875rem",border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>
+              キャンセル
+            </button>
+            <button onClick={()=>{ if(selected.size>0) onLink([...selected]); }}
+              disabled={selected.size===0}
+              style={{flex:2,padding:"0.65rem",borderRadius:"0.875rem",border:"none",background:selected.size>0?C.accent:"#e2e8f0",color:selected.size>0?"white":"#94a3b8",fontWeight:800,fontSize:"0.88rem",cursor:selected.size>0?"pointer":"not-allowed",fontFamily:"inherit"}}>
+              {selected.size>0?`${selected.size}件を紐づける`:"名刺を選択してください"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── LINKED BIZCARD LIST ─────────────────────────────────────────────────────
-function LinkedBizcardList({ cards=[], users=[], onUnlink, onNavigateToBizcard }) {
+function LinkedBizcardList({ cards=[], users=[], onUnlink, onNavigateToBizcard, onLink }) {
   const [popup, setPopup] = React.useState(null); // card object for detail popup
 
   if(cards.length===0) return (
     <div style={{textAlign:"center",padding:"2rem",color:C.textMuted,fontSize:"0.82rem"}}>
       <div style={{fontSize:"1.5rem",marginBottom:"0.5rem"}}>🪪</div>
       紐づいた名刺がありません<br/>
-      <span style={{fontSize:"0.72rem"}}>名刺の詳細画面から紐付けできます</span>
-      {onNavigateToBizcard&&(
-        <div style={{marginTop:"0.75rem"}}>
+      <span style={{fontSize:"0.72rem"}}>「名刺を紐づける」から追加できます</span>
+      <div style={{display:"flex",gap:"0.5rem",justifyContent:"center",marginTop:"0.75rem",flexWrap:"wrap"}}>
+        {onLink&&(
+          <button onClick={onLink}
+            style={{padding:"0.4rem 0.875rem",borderRadius:999,border:`1.5px solid ${C.accent}`,background:C.accentBg,color:C.accent,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+            ＋ 名刺を紐づける
+          </button>
+        )}
+        {onNavigateToBizcard&&(
           <button onClick={onNavigateToBizcard}
             style={{padding:"0.4rem 0.875rem",borderRadius:999,border:"1.5px solid #2563eb",background:"#dbeafe",color:"#1d4ed8",fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
             🪪 名刺一覧へ
           </button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 
@@ -3411,6 +3551,12 @@ function LinkedBizcardList({ cards=[], users=[], onUnlink, onNavigateToBizcard }
 
   return (
     <div>
+      {onLink&&(
+        <button onClick={onLink}
+          style={{width:"100%",marginBottom:"0.75rem",padding:"0.55rem",borderRadius:"0.75rem",border:`1.5px dashed ${C.accent}`,background:C.accentBg,color:C.accent,fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
+          ＋ 名刺を紐づける
+        </button>
+      )}
       <div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
         {cards.map(card=>{
           const name = `${card.lastName||""}${card.firstName||""}`.trim()||"（名前なし）";
@@ -3855,6 +4001,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   const [dmSelected, setDmSelected] = useState(new Set());
   const [bcMemoIn,   setBcMemoIn]   = useState(""); // 名刺詳細メモ入力
   const [matchModal, setMatchModal] = useState(null);
+  const [linkBizcardModal, setLinkBizcardModal] = useState(null); // {entityType, entityId, entityName}
   const [lossModal,  setLossModal]  = useState(null);
   const [nextActionModal, setNextActionModal] = useState(null);
   const [approachModal, setApproachModal] = useState(null);
@@ -5903,7 +6050,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           {activeDetail==="tasks"&&<SalesTaskPanel entityType="企業" entityId={comp.id} entityName={comp.name} data={data} onSave={save} currentUser={currentUser} users={users} onNavigateToTask={onNavigateToTask} onNavigateToProject={onNavigateToProject}/>}
           {activeDetail==="bizcard"&&(()=>{
             const linked=(data.businessCards||[]).filter(c=>String(c.salesRef?.id)===String(comp.id)&&c.salesRef?.type==="企業");
-            return <LinkedBizcardList cards={linked} users={users} onUnlink={id=>{const nd={...data,businessCards:(data.businessCards||[]).map(c=>c.id===id?{...c,salesRef:null}:c)};save(nd);}} onNavigateToBizcard={()=>{setActiveCompany(null);setSalesTab("bizcard");}}/>;
+            return <LinkedBizcardList cards={linked} users={users} onUnlink={id=>{const nd={...data,businessCards:(data.businessCards||[]).map(c=>c.id===id?{...c,salesRef:null}:c)};save(nd);}} onNavigateToBizcard={()=>{setActiveCompany(null);setSalesTab("bizcard");}} onLink={()=>setLinkBizcardModal({entityType:"企業",entityId:comp.id,entityName:comp.name})}/>;
           })()}
           {activeDetail==="files"&&<FileSection files={comp.files||[]} currentUserId={currentUser?.id}
             entityType="companies" entityId={comp.id}
@@ -6376,7 +6523,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           {activeDetail==="tasks"&&<SalesTaskPanel entityType="業者" entityId={v.id} entityName={v.name} data={data} onSave={save} currentUser={currentUser} users={users} onNavigateToTask={onNavigateToTask} onNavigateToProject={onNavigateToProject}/>}
           {activeDetail==="bizcard"&&(()=>{
             const linked=(data.businessCards||[]).filter(c=>String(c.salesRef?.id)===String(v.id)&&c.salesRef?.type==="業者");
-            return <LinkedBizcardList cards={linked} users={users} onUnlink={id=>{const nd={...data,businessCards:(data.businessCards||[]).map(c=>c.id===id?{...c,salesRef:null}:c)};save(nd);}} onNavigateToBizcard={()=>{setActiveVendor(null);setSalesTab("bizcard");}}/>;
+            return <LinkedBizcardList cards={linked} users={users} onUnlink={id=>{const nd={...data,businessCards:(data.businessCards||[]).map(c=>c.id===id?{...c,salesRef:null}:c)};save(nd);}} onNavigateToBizcard={()=>{setActiveVendor(null);setSalesTab("bizcard");}} onLink={()=>setLinkBizcardModal({entityType:"業者",entityId:v.id,entityName:v.name})}/>;
           })()}
           {activeDetail==="files"&&<FileSection files={v.files||[]} currentUserId={currentUser?.id}
             entityType="vendors" entityId={v.id}
@@ -6917,7 +7064,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
         {activeDetail==="tasks"&&<div style={{marginBottom:"1rem"}}><SalesTaskPanel entityType="自治体" entityId={muni.id} entityName={muni.name} data={data} onSave={save} currentUser={currentUser} users={users} onNavigateToTask={onNavigateToTask} onNavigateToProject={onNavigateToProject}/></div>}
         {activeDetail==="bizcard"&&<div style={{marginBottom:"1rem"}}>{(()=>{
           const linked=(data.businessCards||[]).filter(c=>String(c.salesRef?.id)===String(muni.id)&&c.salesRef?.type==="自治体");
-          return <LinkedBizcardList cards={linked} users={users} onUnlink={id=>{const nd={...data,businessCards:(data.businessCards||[]).map(c=>c.id===id?{...c,salesRef:null}:c)};save(nd);}} onNavigateToBizcard={()=>{setActiveMuni(null);setMuniScreen("top");setSalesTab("bizcard");}}/>;
+          return <LinkedBizcardList cards={linked} users={users} onUnlink={id=>{const nd={...data,businessCards:(data.businessCards||[]).map(c=>c.id===id?{...c,salesRef:null}:c)};save(nd);}} onNavigateToBizcard={()=>{setActiveMuni(null);setMuniScreen("top");setSalesTab("bizcard");}} onLink={()=>setLinkBizcardModal({entityType:"自治体",entityId:muni.id,entityName:muni.name})}/>;
         })()}</div>}
 
         {activeDetail==="files"&&<div style={{marginBottom:"1rem"}}><FileSection files={muni.files||[]} currentUserId={currentUser?.id}
@@ -7988,6 +8135,25 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       <ActivityLog data={data} users={users} filterTypes={["企業","業者","自治体"]} />
 
       {renderModals()}
+      {linkBizcardModal&&(
+        <LinkBizcardModal
+          allCards={data.businessCards||[]}
+          linkedIds={new Set((data.businessCards||[]).filter(c=>c.salesRef&&String(c.salesRef.id)===String(linkBizcardModal.entityId)&&c.salesRef.type===linkBizcardModal.entityType).map(c=>c.id))}
+          entityType={linkBizcardModal.entityType}
+          entityId={linkBizcardModal.entityId}
+          entityName={linkBizcardModal.entityName}
+          users={users}
+          onLink={selectedIds=>{
+            const mergedCards=[...(data.businessCards||[])];
+            let nd={...data,businessCards:mergedCards.map(bc=>
+              selectedIds.includes(bc.id)?{...bc,salesRef:{type:linkBizcardModal.entityType,id:String(linkBizcardModal.entityId),name:linkBizcardModal.entityName}}:bc
+            )};
+            save(nd);
+            setLinkBizcardModal(null);
+          }}
+          onClose={()=>setLinkBizcardModal(null)}
+        />
+      )}
     </div>
   );
 }
