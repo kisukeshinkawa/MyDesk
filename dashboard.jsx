@@ -3389,6 +3389,8 @@ function MapTab({prefs,munis,vendors,companies,prefCoords,onSelectPref}) {
 
 // ─── LINKED BIZCARD LIST ─────────────────────────────────────────────────────
 function LinkedBizcardList({ cards=[], users=[], onUnlink, onNavigateToBizcard }) {
+  const [popup, setPopup] = React.useState(null); // card object for detail popup
+
   if(cards.length===0) return (
     <div style={{textAlign:"center",padding:"2rem",color:C.textMuted,fontSize:"0.82rem"}}>
       <div style={{fontSize:"1.5rem",marginBottom:"0.5rem"}}>🪪</div>
@@ -3404,27 +3406,111 @@ function LinkedBizcardList({ cards=[], users=[], onUnlink, onNavigateToBizcard }
       )}
     </div>
   );
+
+  const phone = popup ? (popup.telDirect||popup.mobile||popup.telCompany||"") : "";
+
   return (
-    <div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
-      {cards.map(card=>{
-        const name = `${card.lastName||""}${card.firstName||""}`.trim()||"（名前なし）";
-        const ownerUser = users.find(u=>u.name===card.owner);
-        return (
-          <div key={card.id} style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"0.875rem",padding:"0.75rem 1rem",boxShadow:C.shadow,display:"flex",alignItems:"center",gap:"0.75rem"}}>
-            <div style={{width:36,height:36,borderRadius:"50%",background:"linear-gradient(135deg,#dbeafe,#ede9fe)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"1rem",flexShrink:0}}>🪪</div>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{fontWeight:700,fontSize:"0.88rem",color:C.text}}>{name}</div>
-              {card.title&&<div style={{fontSize:"0.72rem",color:C.textSub}}>{card.title}</div>}
-              <div style={{fontSize:"0.72rem",color:C.textMuted,marginTop:"0.1rem"}}>
-                {card.email&&<span style={{marginRight:"0.5rem"}}>✉️ {card.email}</span>}
-                {(card.mobile||card.telDirect)&&<span>📞 {card.mobile||card.telDirect}</span>}
+    <div>
+      <div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
+        {cards.map(card=>{
+          const name = `${card.lastName||""}${card.firstName||""}`.trim()||"（名前なし）";
+          return (
+            <div key={card.id} onClick={()=>setPopup(card)}
+              style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"0.875rem",padding:"0.75rem 1rem",boxShadow:C.shadow,display:"flex",alignItems:"center",gap:"0.75rem",cursor:"pointer",transition:"box-shadow 0.1s"}}
+              onMouseEnter={e=>e.currentTarget.style.boxShadow="0 4px 16px rgba(0,0,0,0.12)"}
+              onMouseLeave={e=>e.currentTarget.style.boxShadow=C.shadow}>
+              <div style={{width:38,height:38,borderRadius:"50%",background:"linear-gradient(135deg,#2563eb22,#7c3aed22)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"1rem",flexShrink:0}}>🪪</div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontWeight:700,fontSize:"0.88rem",color:C.text}}>{name}</div>
+                {card.title&&<div style={{fontSize:"0.72rem",color:C.textSub}}>{card.title}</div>}
+                <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap",marginTop:"0.1rem"}}>
+                  {card.email&&<span style={{fontSize:"0.68rem",color:C.textMuted}}>✉️ {card.email}</span>}
+                  {(card.mobile||card.telDirect)&&<span style={{fontSize:"0.68rem",color:C.textMuted}}>📞 {card.mobile||card.telDirect}</span>}
+                  {(card.owners||[card.owner]).filter(Boolean).length>0&&<span style={{fontSize:"0.68rem",color:"#7c3aed",fontWeight:600}}>👤 {(card.owners||[card.owner]).filter(Boolean).join("・")}</span>}
+                </div>
               </div>
-              {card.owner&&<div style={{fontSize:"0.68rem",color:C.textSub,marginTop:"0.1rem"}}>👤 所有者：{card.owner}</div>}
+              <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:"0.3rem",flexShrink:0}}>
+                <span style={{fontSize:"0.7rem",color:C.accent,fontWeight:600}}>詳細 ›</span>
+                {onUnlink&&<button onClick={e=>{e.stopPropagation();onUnlink(card.id);}}
+                  style={{background:"none",border:"none",cursor:"pointer",color:"#94a3b8",fontSize:"0.7rem",padding:"0.1rem"}}>紐解除</button>}
+              </div>
             </div>
-            {onUnlink&&<button onClick={()=>onUnlink(card.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#94a3b8",fontSize:"0.78rem",flexShrink:0,padding:"0.25rem"}}>紐解除</button>}
+          );
+        })}
+      </div>
+
+      {/* 名刺詳細ポップアップ */}
+      {popup&&(
+        <div style={{position:"fixed",inset:0,zIndex:600,display:"flex",alignItems:"flex-end",justifyContent:"center",background:"rgba(0,0,0,0.5)",padding:"0"}}
+          onClick={e=>{if(e.target===e.currentTarget)setPopup(null);}}>
+          <div style={{background:"white",borderRadius:"1.25rem 1.25rem 0 0",width:"100%",maxWidth:520,maxHeight:"85dvh",overflowY:"auto",boxShadow:"0 -8px 40px rgba(0,0,0,0.2)"}}>
+            <div style={{position:"sticky",top:0,background:"white",borderRadius:"1.25rem 1.25rem 0 0",padding:"1rem 1.25rem 0.75rem",borderBottom:`1px solid ${C.borderLight}`,zIndex:1}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <div style={{fontWeight:800,fontSize:"1rem",color:C.text}}>🪪 名刺詳細</div>
+                <button onClick={()=>setPopup(null)} style={{background:"none",border:"none",cursor:"pointer",fontSize:"1.2rem",color:C.textMuted,lineHeight:1}}>✕</button>
+              </div>
+            </div>
+            <div style={{padding:"1rem 1.25rem 2rem"}}>
+              {/* ヘッダー */}
+              <div style={{background:"linear-gradient(135deg,#f0f9ff,#ede9fe)",borderRadius:"0.875rem",padding:"1rem",marginBottom:"1rem"}}>
+                <div style={{fontSize:"1.3rem",fontWeight:800,color:C.text}}>{`${popup.lastName||""}${popup.firstName||""}`.trim()||"（名前なし）"}</div>
+                {popup.title&&<div style={{fontSize:"0.82rem",color:C.textSub,marginTop:"0.15rem"}}>{popup.title}</div>}
+                <div style={{fontSize:"0.92rem",fontWeight:700,color:"#2563eb",marginTop:"0.35rem"}}>🏢 {popup.company}</div>
+                {popup.department&&<div style={{fontSize:"0.75rem",color:C.textMuted}}>{popup.department}</div>}
+                {(popup.owners||[popup.owner]).filter(Boolean).length>0&&(
+                  <div style={{display:"flex",flexWrap:"wrap",gap:"0.3rem",marginTop:"0.5rem"}}>
+                    {(popup.owners||[popup.owner]).filter(Boolean).map(o=>(
+                      <span key={o} style={{fontSize:"0.75rem",fontWeight:700,color:"#7c3aed",background:"#ede9fe",borderRadius:"0.4rem",padding:"0.15rem 0.5rem"}}>👤 {o}</span>
+                    ))}
+                  </div>
+                )}
+                {popup.exchangedAt&&<div style={{fontSize:"0.72rem",color:C.textMuted,marginTop:"0.35rem"}}>🤝 交換日：{popup.exchangedAt}</div>}
+              </div>
+              {/* 連絡先 */}
+              {(popup.email||popup.mobile||popup.telDirect||popup.telCompany||popup.address)&&(
+                <div style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"0.875rem",padding:"0.875rem 1rem",marginBottom:"1rem"}}>
+                  {popup.email&&(
+                    <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem"}}>
+                      <span style={{fontSize:"0.82rem",color:C.textSub,width:20,textAlign:"center"}}>✉️</span>
+                      <a href={`mailto:${popup.email}`} style={{fontSize:"0.85rem",color:"#2563eb",textDecoration:"none",fontWeight:600}}>{popup.email}</a>
+                    </div>
+                  )}
+                  {(popup.mobile||popup.telDirect)&&(
+                    <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem"}}>
+                      <span style={{fontSize:"0.82rem",color:C.textSub,width:20,textAlign:"center"}}>📱</span>
+                      <a href={`tel:${(popup.mobile||popup.telDirect).replace(/[^0-9+]/g,"")}`} style={{fontSize:"0.85rem",color:"#2563eb",textDecoration:"none"}}>{popup.mobile||popup.telDirect}</a>
+                    </div>
+                  )}
+                  {popup.telCompany&&(
+                    <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem"}}>
+                      <span style={{fontSize:"0.82rem",color:C.textSub,width:20,textAlign:"center"}}>☎️</span>
+                      <a href={`tel:${popup.telCompany.replace(/[^0-9+]/g,"")}`} style={{fontSize:"0.85rem",color:"#2563eb",textDecoration:"none"}}>{popup.telCompany}</a>
+                    </div>
+                  )}
+                  {popup.address&&(
+                    <div style={{display:"flex",alignItems:"flex-start",gap:"0.5rem"}}>
+                      <span style={{fontSize:"0.82rem",color:C.textSub,width:20,textAlign:"center",marginTop:"0.1rem"}}>🗺️</span>
+                      <span style={{fontSize:"0.82rem",color:C.text}}>{popup.address}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+              {/* メモ */}
+              {(popup.memos||[]).length>0&&(
+                <div style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"0.875rem",padding:"0.875rem 1rem"}}>
+                  <div style={{fontWeight:700,fontSize:"0.82rem",color:C.text,marginBottom:"0.5rem"}}>📝 メモ</div>
+                  {(popup.memos||[]).map(m=>(
+                    <div key={m.id} style={{background:C.bg,borderRadius:"0.5rem",padding:"0.5rem 0.75rem",marginBottom:"0.35rem",fontSize:"0.82rem",color:C.text,whiteSpace:"pre-wrap"}}>
+                      {m.text}
+                      <div style={{fontSize:"0.65rem",color:C.textMuted,marginTop:"0.2rem"}}>{m.date?new Date(m.date).toLocaleDateString("ja-JP"):""}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        );
-      })}
+        </div>
+      )}
     </div>
   );
 }
@@ -3761,7 +3847,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   const [bcDupQueue,     setBcDupQueue]     = useState([]);     // CSV重複キュー
   const [bcDupBuffer,    setBcDupBuffer]    = useState([]);     // 追加確定済みカード
   const [bcImportSummary,setBcImportSummary]= useState(null);   // {added,skipped}
-  const BC_ADD_INIT = {owner:"",company:"",department:"",title:"",lastName:"",firstName:"",email:"",zip:"",address:"",telCompany:"",telDept:"",telDirect:"",fax:"",mobile:"",url:"",exchangedAt:""};
+  const BC_ADD_INIT = {owners:[],company:"",department:"",title:"",lastName:"",firstName:"",email:"",zip:"",address:"",telCompany:"",telDept:"",telDirect:"",fax:"",mobile:"",url:"",exchangedAt:""};
   const [bcAddForm,    setBcAddForm]    = useState(BC_ADD_INIT); // 名刺手動追加フォーム
   // ── 削除モーダル内 state（IIFEでuseStateを使えないため親stateで管理）──
   const [dmSearch,   setDmSearch]   = useState("");
@@ -3807,20 +3893,37 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     setTimeout(()=>{setMatchChecked({});checkMatchAfterImport(newEntries, nd);}, 150);
   };
 
-  // 手動追加：重複チェックありモーダル表示
+  // 手動追加：同社+同名 = 同一人物 → owners[] に追加（1枚統合）
   const addBizCard = (card) => {
-    const dup=bizCards.find(c=>c.company===card.company&&c.lastName===card.lastName&&c.firstName===card.firstName);
+    const dup = bizCards.find(bc=>bc.company===card.company&&bc.lastName===card.lastName&&bc.firstName===card.firstName);
+    const newOwner = (card.owners||[card.owner||""]).filter(Boolean)[0] || "";
     if(dup){
-      setBcDupModal({
-        existing:dup,
-        incoming:`${card.lastName} ${card.firstName}（${card.company}）`,
-        onAdd:()=>{ _commitBizCard(card); setBcDupModal(null); setSheet(null); },
-        onSkip:()=>{ setBcDupModal(null); setBcActiveId(dup.id); setBcScreen("detail"); setSheet(null); },
-        onCancel:()=>setBcDupModal(null),
-      });
+      const existOwners = dup.owners || (dup.owner ? [dup.owner] : []);
+      if(newOwner && !existOwners.includes(newOwner)){
+        // 同一人物の別所有者 → ownersに追加して統合
+        const merged = {...dup, owners:[...existOwners, newOwner], owner:undefined};
+        const nd = {...data, businessCards: bizCards.map(bc=>bc.id===dup.id ? merged : bc)};
+        save(nd);
+        setBcDupModal({
+          existing:merged, merged:true, addedOwner:newOwner,
+          incoming:`${card.lastName} ${card.firstName}（${card.company}）`,
+          onSkip:()=>{ setBcDupModal(null); setBcActiveId(dup.id); setBcScreen("detail"); setSheet(null); },
+          onCancel:()=>setBcDupModal(null),
+        });
+      } else {
+        // 完全重複 → 既存カードへ誘導
+        setBcDupModal({
+          existing:dup,
+          incoming:`${card.lastName} ${card.firstName}（${card.company}）`,
+          onAdd:()=>{ _commitBizCard({...card,owners:[newOwner],owner:undefined}); setBcDupModal(null); setSheet(null); },
+          onSkip:()=>{ setBcDupModal(null); setBcActiveId(dup.id); setBcScreen("detail"); setSheet(null); },
+          onCancel:()=>setBcDupModal(null),
+        });
+      }
+      setSheet(null);
       return;
     }
-    _commitBizCard(card);
+    _commitBizCard({...card, owners:newOwner?[newOwner]:[], owner:undefined});
     setSheet(null);
   };
   const updateBizCard = (id,ch) => {
@@ -3868,29 +3971,53 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     });
   };
 
-  // CSVインポート開始：重複と非重複を仕分け
+  // CSVインポート：同社+同名 = 同一人物 → owners[] に統合
   const importBizCards = (rows) => {
-    const clean=[],dups=[];
+    // 既存cards + 今回インポート分の中で同社+同名を統合
+    const merges = []; // {existingId, newOwner} - 既存cardにownerを追加
+    const clean  = []; // 新規追加するカード
+    const truedup= []; // 完全重複（同社+同名+同所有者）
+
     rows.forEach(row=>{
-      const dup=bizCards.find(c=>c.company===row.company&&c.lastName===row.lastName&&c.firstName===row.firstName);
-      if(dup) dups.push({existing:dup,incoming:row});
-      else clean.push(row);
+      const newOwner = (row.owners||[row.owner||""]).filter(Boolean)[0]||"";
+      const dup = bizCards.find(bc=>bc.company===row.company&&bc.lastName===row.lastName&&bc.firstName===row.firstName);
+      if(dup){
+        const existOwners = dup.owners || (dup.owner ? [dup.owner] : []);
+        if(newOwner && !existOwners.includes(newOwner)){
+          merges.push({existingId:dup.id, newOwner, existOwners});
+        } else {
+          truedup.push({existing:dup, incoming:row});
+        }
+      } else {
+        clean.push({...row, owners:newOwner?[newOwner]:[], owner:undefined});
+      }
     });
-    const initialSummary={added:clean.length,skipped:0};
-    if(dups.length===0){
-      _commitBizCards(clean);
+
+    // 既存カードに所有者を統合
+    let updatedCards = [...bizCards];
+    merges.forEach(({existingId, newOwner, existOwners})=>{
+      updatedCards = updatedCards.map(bc=>bc.id===existingId ? {...bc, owners:[...existOwners, newOwner], owner:undefined} : bc);
+    });
+
+    const initialSummary={added:clean.length, merged:merges.length, skipped:0};
+
+    if(truedup.length===0){
+      const newEntries = clean.map(c=>({...c, id:Date.now()+Math.random(), createdAt:new Date().toISOString(), createdBy:currentUser?.id||""}));
+      const nd = {...data, businessCards:[...updatedCards, ...newEntries]};
+      save(nd);
       setBcImportPrev(null); setBcImportErr("");
       setBcImportSummary(initialSummary);
       setSheet(null);
+      if(newEntries.length) setTimeout(()=>{setMatchChecked({});checkMatchAfterImport(newEntries, nd);}, 150);
       return;
     }
-    // 非重複を一旦バッファに
+    // 完全重複がある場合は1件ずつ確認
     setBcDupBuffer(clean);
-    setBcDupQueue(dups);
-    setSheet(null);
-    _processBcDupQueue(dups,clean,initialSummary);
-  };
-
+    const mergedCards = updatedCards;
+    setBcDupQueue(truedup.map(d=>({...d, _mergedCards:mergedCards})));
+    setBcImportSummary(initialSummary);
+    _processBcDupQueue(truedup, clean, initialSummary);
+  };;
   // ── Eight CSV パーサー ────────────────────────────────────────────────
   const parseEightCsv = (text) => {
     const parseRow = (line) => {
@@ -3917,7 +4044,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       if(cols.every(c=>!c.trim())) continue;
       if(isNewFmt){
         rows.push({
-          owner:      cols[1]||"",
+          owners:     (cols[1]||"").trim() ? [(cols[1]||"").trim()] : [],
           company:    cols[2]||"",
           department: cols[3]||"",
           title:      cols[4]||"",
@@ -3937,7 +4064,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
         });
       } else {
         rows.push({
-          owner:      "",
+          owners:     [],
           company:    cols[0]||"",
           department: cols[1]||"",
           title:      cols[2]||"",
@@ -4135,10 +4262,12 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       matches.forEach(entity=>{
         const key = `${entity.type}_${entity.id}`;
         if(!groups[key]) groups[key] = {entity, cards:[]};
-        groups[key].cards.push(card);
+        // 既に同じエンティティに紐づき済みのカードは除外
+        const alreadyLinked = card.salesRef && String(card.salesRef.id)===String(entity.id) && card.salesRef.type===entity.type;
+        if(!alreadyLinked) groups[key].cards.push(card);
       });
     });
-    const groupList = Object.values(groups);
+    const groupList = Object.values(groups).filter(g=>g.cards.length>0);
     if(!groupList.length) return;
     setMatchModal({
       mode: "import_to_entity",
@@ -7429,35 +7558,48 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           if(!bcDupModal) return null;
           const ex=bcDupModal.existing;
           const exName=(`${ex.lastName||""} ${ex.firstName||""}`).trim()||"（名前なし）";
-          return (
-            <div style={{position:"fixed",inset:0,zIndex:600,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.65)",padding:"1rem"}}>
-              <div style={{background:"white",borderRadius:"1.25rem",padding:"1.5rem 1.25rem",maxWidth:360,width:"100%",boxShadow:"0 12px 50px rgba(0,0,0,0.3)",maxHeight:"85vh",overflowY:"auto"}}>
+          const exOwners=(ex.owners||[ex.owner]).filter(Boolean);
+
+          // 統合済みケース（所有者が追加された）
+          if(bcDupModal.merged) return (
+            <div style={{position:"fixed",inset:0,zIndex:600,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.5)",padding:"1rem"}}
+              onClick={e=>{if(e.target===e.currentTarget){setBcDupModal(null);setSheet(null);}}}>
+              <div style={{background:"white",borderRadius:"1.25rem",padding:"1.5rem",maxWidth:380,width:"100%",boxShadow:"0 12px 50px rgba(0,0,0,0.25)"}}>
                 <div style={{textAlign:"center",marginBottom:"1rem"}}>
-                  <div style={{fontSize:"2rem",marginBottom:"0.4rem"}}>⚠️</div>
-                  <div style={{fontWeight:800,fontSize:"1rem",color:C.text}}>同じ名刺が既に存在します</div>
-                  <div style={{fontSize:"0.78rem",color:C.textMuted,marginTop:"0.25rem"}}>登録しようとした名刺</div>
-                  <div style={{fontWeight:700,fontSize:"0.9rem",color:"#dc2626",background:"#fee2e2",borderRadius:"0.625rem",padding:"0.45rem 0.875rem",marginTop:"0.4rem"}}>「{bcDupModal.incoming}」</div>
+                  <div style={{fontSize:"2rem",marginBottom:"0.5rem"}}>✅</div>
+                  <div style={{fontWeight:800,fontSize:"0.95rem",color:C.text}}>所有者を追加しました</div>
+                  <div style={{fontSize:"0.82rem",color:C.textSub,marginTop:"0.35rem"}}>「{exName}」に <strong style={{color:"#7c3aed"}}>{bcDupModal.addedOwner}</strong> を追加しました</div>
                 </div>
-                <div style={{background:C.bg,borderRadius:"0.875rem",padding:"0.875rem",marginBottom:"1.25rem"}}>
-                  <div style={{fontSize:"0.7rem",fontWeight:700,color:C.textMuted,marginBottom:"0.5rem"}}>📋 既に登録されているデータ</div>
-                  {[["氏名",exName],["会社",ex.company],["役職",ex.title],["メール",ex.email],["携帯",ex.mobile||ex.telDirect]].filter(([,v])=>v).map(([l,v])=>(
-                    <div key={l} style={{display:"flex",gap:"0.5rem",padding:"0.28rem 0",borderBottom:`1px solid ${C.borderLight}`}}>
-                      <span style={{fontSize:"0.72rem",fontWeight:700,color:C.textSub,flexShrink:0,minWidth:48}}>{l}</span>
-                      <span style={{fontSize:"0.8rem",color:C.text,wordBreak:"break-all"}}>{v}</span>
-                    </div>
-                  ))}
+                <div style={{background:"#f5f3ff",borderRadius:"0.75rem",padding:"0.75rem",marginBottom:"1rem"}}>
+                  <div style={{fontSize:"0.72rem",color:"#5b21b6",fontWeight:700,marginBottom:"0.35rem"}}>👤 所有者一覧</div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:"0.3rem"}}>
+                    {exOwners.map(o=><span key={o} style={{fontSize:"0.78rem",fontWeight:700,color:"#7c3aed",background:"#ede9fe",borderRadius:999,padding:"0.15rem 0.5rem"}}>{o}</span>)}
+                  </div>
                 </div>
-                {bcDupQueue.length>1&&<div style={{fontSize:"0.72rem",color:C.textMuted,textAlign:"center",marginBottom:"0.75rem"}}>残り {bcDupQueue.length} 件の重複を確認中</div>}
-                <div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
-                  <button onClick={bcDupModal.onSkip} style={{padding:"0.75rem",borderRadius:"0.75rem",border:"none",background:C.accent,color:"white",fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.9rem"}}>
-                    既存のデータを使う（スキップ）
-                  </button>
-                  <button onClick={bcDupModal.onAdd} style={{padding:"0.75rem",borderRadius:"0.75rem",border:`1.5px solid ${C.accent}`,background:"white",color:C.accent,fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.9rem"}}>
-                    それでも新規追加する
-                  </button>
-                  <button onClick={bcDupModal.onCancel} style={{padding:"0.6rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:600,cursor:"pointer",fontFamily:"inherit",fontSize:"0.85rem"}}>
-                    {bcDupQueue.length>1?"残りをすべてスキップ":"キャンセル（入力に戻る）"}
-                  </button>
+                <button onClick={()=>{setBcDupModal(null);}} style={{width:"100%",padding:"0.65rem",borderRadius:"0.875rem",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.88rem",cursor:"pointer",fontFamily:"inherit"}}>OK</button>
+              </div>
+            </div>
+          );
+
+          // 完全重複ケース
+          return (
+            <div style={{position:"fixed",inset:0,zIndex:600,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.5)",padding:"1rem"}}>
+              <div style={{background:"white",borderRadius:"1.25rem",padding:"1.5rem",maxWidth:380,width:"100%",boxShadow:"0 12px 50px rgba(0,0,0,0.25)"}}>
+                <div style={{fontWeight:800,fontSize:"0.95rem",color:C.text,marginBottom:"0.5rem"}}>⚠️ 同じ名刺が既に存在します</div>
+                <div style={{fontSize:"0.82rem",color:C.textSub,marginBottom:"1rem"}}>「{bcDupModal.incoming}」は既に登録されています</div>
+                <div style={{background:C.bg,borderRadius:"0.75rem",padding:"0.75rem",marginBottom:"1rem"}}>
+                  <div style={{fontWeight:700,fontSize:"0.88rem",color:C.text}}>{exName}</div>
+                  <div style={{fontSize:"0.75rem",color:C.textSub}}>{ex.title} {ex.company}</div>
+                  {exOwners.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:"0.3rem",marginTop:"0.35rem"}}>
+                    {exOwners.map(o=><span key={o} style={{fontSize:"0.7rem",color:"#7c3aed",fontWeight:600}}>👤{o}</span>)}
+                  </div>}
+                  <div style={{fontSize:"0.72rem",color:C.textMuted,marginTop:"0.25rem"}}>登録日: {ex.createdAt?new Date(ex.createdAt).toLocaleDateString("ja-JP"):""}</div>
+                </div>
+                {bcDupQueue.length>1&&<div style={{fontSize:"0.72rem",color:C.textMuted,marginBottom:"0.75rem"}}>残り {bcDupQueue.length-1} 件の重複があります</div>}
+                <div style={{display:"flex",gap:"0.5rem",flexDirection:"column"}}>
+                  <button onClick={bcDupModal.onSkip} style={{padding:"0.55rem",borderRadius:"0.75rem",border:`1.5px solid ${C.accent}`,background:C.accentBg,color:C.accent,fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>既存の名刺を確認する</button>
+                  {bcDupModal.onAdd&&<button onClick={bcDupModal.onAdd} style={{padding:"0.55rem",borderRadius:"0.75rem",border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:600,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}}>別カードとして登録する</button>}
+                  <button onClick={bcDupModal.onCancel} style={{padding:"0.45rem",borderRadius:"0.75rem",border:"none",background:"none",color:C.textMuted,fontWeight:600,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit"}}>スキップ</button>
                 </div>
               </div>
             </div>
@@ -7514,8 +7656,20 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                     {card.email&&<a href={`mailto:${card.email}`} style={{padding:"0.45rem 0.75rem",borderRadius:"0.625rem",background:"#f0fdf4",color:"#059669",fontSize:"0.78rem",fontWeight:700,textDecoration:"none"}}>✉️ メール</a>}
                   </div>
                 </div>
-                {card.owner&&<div style={{marginTop:"0.4rem",fontSize:"0.75rem",fontWeight:700,color:"#7c3aed",background:"#ede9fe",borderRadius:"0.4rem",padding:"0.2rem 0.5rem",display:"inline-block"}}>👤 所有者：{card.owner}</div>}
-                {card.owner&&<div style={{marginTop:"0.4rem",fontSize:"0.75rem",fontWeight:700,color:"#7c3aed",background:"#ede9fe",borderRadius:"0.4rem",padding:"0.2rem 0.5rem",display:"inline-block"}}>👤 所有者：{card.owner}</div>}
+                {(card.owners||[card.owner]).filter(Boolean).length>0&&(
+                <div style={{marginTop:"0.4rem",display:"flex",flexWrap:"wrap",gap:"0.3rem"}}>
+                  {(card.owners||[card.owner]).filter(Boolean).map(o=>(
+                    <span key={o} style={{fontSize:"0.75rem",fontWeight:700,color:"#7c3aed",background:"#ede9fe",borderRadius:"0.4rem",padding:"0.2rem 0.5rem"}}>👤 {o}</span>
+                  ))}
+                </div>
+              )}
+                {(card.owners||[card.owner]).filter(Boolean).length>0&&(
+                <div style={{marginTop:"0.4rem",display:"flex",flexWrap:"wrap",gap:"0.3rem"}}>
+                  {(card.owners||[card.owner]).filter(Boolean).map(o=>(
+                    <span key={o} style={{fontSize:"0.75rem",fontWeight:700,color:"#7c3aed",background:"#ede9fe",borderRadius:"0.4rem",padding:"0.2rem 0.5rem"}}>👤 {o}</span>
+                  ))}
+                </div>
+              )}
                 {card.exchangedAt&&<div style={{marginTop:"0.5rem",fontSize:"0.72rem",color:C.textMuted}}>🤝 名刺交換日：{card.exchangedAt}</div>}
               </Card>
               <Card style={{padding:"1rem",marginBottom:"1rem"}}>
@@ -7681,7 +7835,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                             <div style={{fontSize:"0.72rem",color:C.textSub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{[card.title,card.department].filter(Boolean).join("　")}</div>
                             <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap"}}>
                               {phone&&<span style={{fontSize:"0.7rem",color:C.textMuted}}>📞 {phone}</span>}
-                              {card.owner&&<span style={{fontSize:"0.68rem",color:"#7c3aed",fontWeight:600}}>👤 {card.owner}</span>}
+                              {(card.owners||[card.owner]).filter(Boolean).length>0&&<span style={{fontSize:"0.68rem",color:"#7c3aed",fontWeight:600}}>👤 {(card.owners||[card.owner]).filter(Boolean).join("・")}</span>}
                             </div>
                           </div>
                           {!bulkMode&&<span style={{color:C.textMuted,fontSize:"0.85rem",flexShrink:0}}>›</span>}
@@ -7717,11 +7871,25 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                   <div key={k} style={{marginBottom:"0.625rem"}}>
                     <div style={{fontSize:"0.7rem",fontWeight:700,color:C.textSub,marginBottom:"0.2rem"}}>{label}</div>
                     {type==="select"?(
-                      <select value={bcAddForm[k]||""} onChange={e=>setBcAddForm(p=>({...p,[k]:e.target.value}))}
-                        style={{width:"100%",padding:"0.5rem 0.75rem",borderRadius:"0.625rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.82rem",boxSizing:"border-box",background:"white"}}>
-                        <option value="">選択してください</option>
-                        {users.map(u=><option key={u.id} value={u.name}>{u.name}</option>)}
-                      </select>
+                      <div>
+                        <div style={{fontSize:"0.7rem",color:C.textMuted,marginBottom:"0.35rem"}}>複数選択可（自分と相手どちらが交換したか）</div>
+                        <div style={{display:"flex",flexWrap:"wrap",gap:"0.35rem"}}>
+                          {users.map(u=>{
+                            const sel=(bcAddForm.owners||[bcAddForm.owner||""]).filter(Boolean).includes(u.name);
+                            return (
+                              <button key={u.id} type="button"
+                                onClick={()=>{
+                                  const cur=(bcAddForm.owners||[bcAddForm.owner||""]).filter(Boolean);
+                                  const next=sel?cur.filter(n=>n!==u.name):[...cur,u.name];
+                                  setBcAddForm(p=>({...p,owners:next,owner:undefined}));
+                                }}
+                                style={{padding:"0.3rem 0.75rem",borderRadius:999,border:`1.5px solid ${sel?"#7c3aed":C.border}`,background:sel?"#ede9fe":"white",color:sel?"#7c3aed":C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                                {sel?"☑":"☐"} {u.name}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
                     ):(
                       <input type={type} value={bcAddForm[k]||""} onChange={e=>setBcAddForm(p=>({...p,[k]:e.target.value}))}
                         placeholder={
@@ -7735,7 +7903,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                 ))}
                 <div style={{display:"flex",gap:"0.75rem",marginTop:"1rem"}}>
                   <Btn variant="secondary" style={{flex:1}} onClick={()=>{setSheet(null);setBcAddForm(BC_ADD_INIT);}}>キャンセル</Btn>
-                  <Btn style={{flex:2}} size="lg" disabled={!bcAddForm.company.trim()} onClick={()=>{addBizCard(bcAddForm);setBcAddForm(BC_ADD_INIT);}}>保存する</Btn>
+                  <Btn style={{flex:2}} size="lg" disabled={!bcAddForm.company.trim()} onClick={()=>{const owners=bcAddForm.owners&&bcAddForm.owners.length?bcAddForm.owners:(bcAddForm.owner?[bcAddForm.owner]:[]);addBizCard({...bcAddForm,owners,owner:undefined});setBcAddForm(BC_ADD_INIT);}}>保存する</Btn>
                 </div>
               </Sheet>
             )}
