@@ -5967,6 +5967,23 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     </div>
   );
 })()}
+      {linkBizcardModal&&(
+        <LinkBizcardModal
+          allCards={data.businessCards||[]}
+          entityType={linkBizcardModal.entityType}
+          entityId={linkBizcardModal.entityId}
+          entityName={linkBizcardModal.entityName}
+          users={users}
+          onLink={selectedIds=>{
+            const nd={...data,businessCards:(data.businessCards||[]).map(bc=>
+              selectedIds.includes(bc.id)?{...bc,salesRef:{type:linkBizcardModal.entityType,id:String(linkBizcardModal.entityId),name:linkBizcardModal.entityName}}:bc
+            )};
+            save(nd);
+            setLinkBizcardModal(null);
+          }}
+          onClose={()=>setLinkBizcardModal(null)}
+        />
+      )}
     </>
   );
 
@@ -8145,25 +8162,6 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       <ActivityLog data={data} users={users} filterTypes={["企業","業者","自治体"]} />
 
       {renderModals()}
-      {linkBizcardModal&&(
-        <LinkBizcardModal
-          allCards={data.businessCards||[]}
-          linkedIds={new Set((data.businessCards||[]).filter(c=>c.salesRef&&String(c.salesRef.id)===String(linkBizcardModal.entityId)&&c.salesRef.type===linkBizcardModal.entityType).map(c=>c.id))}
-          entityType={linkBizcardModal.entityType}
-          entityId={linkBizcardModal.entityId}
-          entityName={linkBizcardModal.entityName}
-          users={users}
-          onLink={selectedIds=>{
-            const mergedCards=[...(data.businessCards||[])];
-            let nd={...data,businessCards:mergedCards.map(bc=>
-              selectedIds.includes(bc.id)?{...bc,salesRef:{type:linkBizcardModal.entityType,id:String(linkBizcardModal.entityId),name:linkBizcardModal.entityName}}:bc
-            )};
-            save(nd);
-            setLinkBizcardModal(null);
-          }}
-          onClose={()=>setLinkBizcardModal(null)}
-        />
-      )}
     </div>
   );
 }
