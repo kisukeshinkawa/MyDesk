@@ -3404,7 +3404,7 @@ function LinkBizcardModal({ allCards=[], entityType, entityId, entityName, users
   const q = norm(search);
 
   const candidates = React.useMemo(() => {
-    return allCards.filter(card => {
+    const filtered = allCards.filter(card => {
       // すでに同エンティティに紐づき済みは除外
       if(card.salesRef && String(card.salesRef.id)===String(entityId) && card.salesRef.type===entityType) return false;
       // 所有者フィルター
@@ -3420,6 +3420,17 @@ function LinkBizcardModal({ allCards=[], entityType, entityId, entityName, users
              norm(card.title).includes(q) ||
              norm(card.department).includes(q) ||
              norm(card.email).includes(q);
+    });
+    // 検索時は名前マッチを最優先で上位に並べる
+    if(!q) return filtered;
+    return filtered.sort((a, b) => {
+      const nameA = norm(`${a.lastName||""}${a.firstName||""}`);
+      const nameB = norm(`${b.lastName||""}${b.firstName||""}`);
+      const aNameMatch = nameA.includes(q) ? 0 : 1;
+      const bNameMatch = nameB.includes(q) ? 0 : 1;
+      if(aNameMatch !== bNameMatch) return aNameMatch - bNameMatch;
+      // 名前が一致する場合は氏名の読みで昇順
+      return nameA.localeCompare(nameB, "ja");
     });
   }, [allCards, entityId, entityType, filterOwner, q]);
 
@@ -3542,7 +3553,7 @@ function LinkedBizcardList({ cards=[], users=[], onUnlink, onNavigateToBizcard, 
       <span style={{fontSize:"0.72rem"}}>「名刺を紐づける」から追加できます</span>
       <div style={{display:"flex",gap:"0.5rem",justifyContent:"center",marginTop:"0.75rem",flexWrap:"wrap"}}>
         {onLink&&(
-          <button onClick={onLink}
+          <button onClick={e=>{e.stopPropagation();onLink();}}
             style={{padding:"0.4rem 0.875rem",borderRadius:999,border:`1.5px solid ${C.accent}`,background:C.accentBg,color:C.accent,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
             ＋ 名刺を紐づける
           </button>
@@ -3562,7 +3573,7 @@ function LinkedBizcardList({ cards=[], users=[], onUnlink, onNavigateToBizcard, 
   return (
     <div>
       {onLink&&(
-        <button onClick={onLink}
+        <button onClick={e=>{e.stopPropagation();onLink();}}
           style={{width:"100%",marginBottom:"0.75rem",padding:"0.55rem",borderRadius:"0.75rem",border:`1.5px dashed ${C.accent}`,background:C.accentBg,color:C.accent,fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
           ＋ 名刺を紐づける
         </button>
