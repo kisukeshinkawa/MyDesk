@@ -3973,30 +3973,52 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
 
   // CSVインポート：同社+同名 = 同一人物 → owners[] に統合
   const importBizCards = (rows) => {
-    // 既存cards + 今回インポート分の中で同社+同名を統合
-    const merges = []; // {existingId, newOwner} - 既存cardにownerを追加
-    const clean  = []; // 新規追加するカード
-    const truedup= []; // 完全重複（同社+同名+同所有者）
-
+    // ── Step 1: インポートバッチ内で同社+同名を統合 ──
+    const batchMap = {}; // "company|lastName|firstName" → merged row
     rows.forEach(row=>{
+      const key = `${row.company||""}|${row.lastName||""}|${row.firstName||""}`;
       const newOwner = (row.owners||[row.owner||""]).filter(Boolean)[0]||"";
+      if(batchMap[key]){
+        // 同社+同名が既にバッチ内に存在 → ownerを追加
+        const existing = batchMap[key];
+        if(newOwner && !existing.owners.includes(newOwner)){
+          existing.owners = [...existing.owners, newOwner];
+        }
+        // 役職・部署など空欄があれば補完
+        if(!existing.title && row.title) existing.title = row.title;
+        if(!existing.department && row.department) existing.department = row.department;
+        if(!existing.email && row.email) existing.email = row.email;
+        if(!existing.mobile && row.mobile) existing.mobile = row.mobile;
+      } else {
+        batchMap[key] = {...row, owners:newOwner?[newOwner]:[], owner:undefined};
+      }
+    });
+    const deduped = Object.values(batchMap);
+
+    // ── Step 2: 既存カードとの照合 ──
+    const merges  = []; // 既存cardにownerを追加
+    const clean   = []; // 新規追加するカード
+    const truedup = []; // 完全重複（同社+同名、所有者も全て同じ）
+
+    deduped.forEach(row=>{
       const dup = bizCards.find(bc=>bc.company===row.company&&bc.lastName===row.lastName&&bc.firstName===row.firstName);
       if(dup){
         const existOwners = dup.owners || (dup.owner ? [dup.owner] : []);
-        if(newOwner && !existOwners.includes(newOwner)){
-          merges.push({existingId:dup.id, newOwner, existOwners});
+        const newOwners = row.owners.filter(o=>o && !existOwners.includes(o));
+        if(newOwners.length > 0){
+          merges.push({existingId:dup.id, newOwners, existOwners});
         } else {
           truedup.push({existing:dup, incoming:row});
         }
       } else {
-        clean.push({...row, owners:newOwner?[newOwner]:[], owner:undefined});
+        clean.push(row);
       }
     });
 
     // 既存カードに所有者を統合
     let updatedCards = [...bizCards];
-    merges.forEach(({existingId, newOwner, existOwners})=>{
-      updatedCards = updatedCards.map(bc=>bc.id===existingId ? {...bc, owners:[...existOwners, newOwner], owner:undefined} : bc);
+    merges.forEach(({existingId, newOwners, existOwners})=>{
+      updatedCards = updatedCards.map(bc=>bc.id===existingId ? {...bc, owners:[...existOwners, ...newOwners], owner:undefined} : bc);
     });
 
     const initialSummary={added:clean.length, merged:merges.length, skipped:0};
@@ -4017,7 +4039,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     setBcDupQueue(truedup.map(d=>({...d, _mergedCards:mergedCards})));
     setBcImportSummary(initialSummary);
     _processBcDupQueue(truedup, clean, initialSummary);
-  };;
+  };
   // ── Eight CSV パーサー ────────────────────────────────────────────────
   const parseEightCsv = (text) => {
     const parseRow = (line) => {
@@ -4549,7 +4571,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       return cols;
     };
     return lines.map(parseRow);
-  };;
+  };
 
   // CSV文字コード自動判定（UTF-8/Shift-JIS両対応）
   const readFileAsText = (file) => new Promise((res, rej) => {
