@@ -2397,7 +2397,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     const TASK_TABS=[["info","📋","情報"],["memo","📝","メモ"],["chat","💬","チャット"],["review","📨","確認依頼"],["files","📎","ファイル"]];
     return (
       <div>
-        <button onClick={()=>{setScreen(fromProject?"projectDetail":"list");setTaskTab("info");}}
+        <button onClick={()=>{setScreen(fromProject?"projectDetail":"list");setTaskTab("info");if(!fromProject)setActiveTaskId(null);}}
           style={{display:"flex",alignItems:"center",gap:"0.4rem",background:"none",border:"none",color:C.textSub,fontWeight:700,fontSize:"0.85rem",cursor:"pointer",marginBottom:"1.25rem",padding:0}}>
           ‹ {fromProject?activePj?.name:"タスク一覧"}
         </button>
@@ -2492,7 +2492,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     const PJ_TABS=[["tasks","📋","タスク"],["memo","📝","メモ"],["chat","💬","チャット"],["files","📎","ファイル"]];
     return (
       <div>
-        <button onClick={()=>{setScreen("list");setPjTab("tasks");}}
+        <button onClick={()=>{setScreen("list");setPjTab("tasks");setActivePjId(null);}}
           style={{display:"flex",alignItems:"center",gap:"0.4rem",background:"none",border:"none",color:C.textSub,fontWeight:700,fontSize:"0.85rem",cursor:"pointer",marginBottom:"1.25rem",padding:0}}>
           ‹ タスク一覧
         </button>
@@ -5785,8 +5785,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     <>
       {/* ════ 失注・見送りモーダル ════ */}
 {lossModal&&(
-  <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.5)",padding:"1rem"}} onClick={e=>{if(e.target===e.currentTarget)setLossModal(null);}}>
-    <div style={{background:"white",borderRadius:"1.25rem",padding:"1.5rem",maxWidth:400,width:"100%",boxShadow:"0 12px 50px rgba(0,0,0,0.25)"}}>
+  <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.5)",padding:"1rem"}}>
+    <div onClick={e=>e.stopPropagation()} style={{background:"white",borderRadius:"1.25rem",padding:"1.5rem",maxWidth:400,width:"100%",boxShadow:"0 12px 50px rgba(0,0,0,0.25)"}}>
       <div style={{fontSize:"1rem",fontWeight:800,color:C.text,marginBottom:"0.2rem"}}>📋 {lossModal.newStatus}の理由を記録</div>
       <div style={{fontSize:"0.82rem",color:C.textSub,marginBottom:"1rem"}}>「{lossModal.entityName}」</div>
       <div style={{marginBottom:"0.75rem"}}>
@@ -5814,8 +5814,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
 
 {/* ════ アプローチ記録モーダル ════ */}
 {approachModal&&(
-  <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.5)",padding:"1rem"}} onClick={e=>{if(e.target===e.currentTarget)setApproachModal(null);}}>
-    <div style={{background:"white",borderRadius:"1.25rem",padding:"1.5rem",maxWidth:380,width:"100%",boxShadow:"0 12px 50px rgba(0,0,0,0.25)"}}>
+  <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.5)",padding:"1rem"}}>
+    <div onClick={e=>e.stopPropagation()} style={{background:"white",borderRadius:"1.25rem",padding:"1.5rem",maxWidth:380,width:"100%",boxShadow:"0 12px 50px rgba(0,0,0,0.25)"}}>
       <div style={{fontSize:"1rem",fontWeight:800,color:C.text,marginBottom:"0.2rem"}}>📞 アプローチを記録</div>
       <div style={{fontSize:"0.82rem",color:C.textSub,marginBottom:"1rem"}}>「{approachModal.entityName}」</div>
       <div style={{marginBottom:"0.75rem"}}>
@@ -5841,8 +5841,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
 
 {/* ════ 次回アクション設定モーダル ════ */}
 {nextActionModal&&(
-  <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.5)",padding:"1rem"}} onClick={e=>{if(e.target===e.currentTarget)setNextActionModal(null);}}>
-    <div style={{background:"white",borderRadius:"1.25rem",padding:"1.5rem",maxWidth:360,width:"100%",boxShadow:"0 12px 50px rgba(0,0,0,0.25)"}}>
+  <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.5)",padding:"1rem"}}>
+    <div onClick={e=>e.stopPropagation()} style={{background:"white",borderRadius:"1.25rem",padding:"1.5rem",maxWidth:360,width:"100%",boxShadow:"0 12px 50px rgba(0,0,0,0.25)"}}>
       <div style={{fontSize:"1rem",fontWeight:800,color:C.text,marginBottom:"0.2rem"}}>📅 次回アクション</div>
       <div style={{fontSize:"0.82rem",color:C.textSub,marginBottom:"1rem"}}>「{nextActionModal.entityName}」</div>
       <div style={{marginBottom:"0.75rem"}}>
@@ -8474,6 +8474,58 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
               </div>
             )}
           </div>
+
+          {/* 管理者専用: ユーザーパスワードリセット */}
+          {currentUser?.name==='新川希亮' && (()=>{
+            const [resetTarget, setResetTarget] = React.useState("");
+            const [newPw, setNewPw] = React.useState("");
+            const [resetMsg, setResetMsg] = React.useState("");
+            const doAdminReset = async () => {
+              if(!resetTarget || !newPw || newPw.length < 4) {
+                setResetMsg("❌ ユーザーと新パスワード（4文字以上）を入力してください");
+                return;
+              }
+              const target = users.find(u => u.id === resetTarget);
+              if(!target) { setResetMsg("❌ ユーザーが見つかりません"); return; }
+              const updated = {...target, passwordHash: hashPass(newPw)};
+              const newUsers = users.map(u => u.id === resetTarget ? updated : u);
+              await saveUsers(newUsers);
+              setUsers(newUsers);
+              setResetMsg(`✅ ${target.name} のパスワードをリセットしました`);
+              setNewPw(""); setResetTarget("");
+            };
+            return (
+              <div style={{marginTop:"1.25rem",paddingTop:"1.25rem",borderTop:"1px solid "+C.borderLight}}>
+                <div style={{fontSize:"0.87rem",fontWeight:700,color:"#dc2626",marginBottom:"0.625rem"}}>🔑 管理者：パスワードリセット</div>
+                <div style={{background:"#fff1f2",border:"1px solid #fca5a5",borderRadius:"0.75rem",padding:"0.875rem"}}>
+                  <div style={{fontSize:"0.75rem",color:"#dc2626",marginBottom:"0.75rem"}}>
+                    ログインできないユーザーのパスワードをここから変更できます
+                  </div>
+                  <div style={{marginBottom:"0.5rem"}}>
+                    <div style={{fontSize:"0.72rem",fontWeight:700,color:C.textSub,marginBottom:"0.2rem"}}>対象ユーザー</div>
+                    <select value={resetTarget} onChange={e=>setResetTarget(e.target.value)}
+                      style={{width:"100%",padding:"0.5rem 0.75rem",borderRadius:"0.625rem",border:"1px solid #fca5a5",fontFamily:"inherit",fontSize:"0.82rem",background:"white"}}>
+                      <option value="">選択してください</option>
+                      {users.filter(u=>u.id!==currentUser.id).map(u=>(
+                        <option key={u.id} value={u.id}>{u.name}（{u.email}）</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div style={{marginBottom:"0.75rem"}}>
+                    <div style={{fontSize:"0.72rem",fontWeight:700,color:C.textSub,marginBottom:"0.2rem"}}>新しいパスワード</div>
+                    <input type="password" value={newPw} onChange={e=>setNewPw(e.target.value)}
+                      placeholder="4文字以上"
+                      style={{width:"100%",padding:"0.5rem 0.75rem",borderRadius:"0.625rem",border:"1px solid #fca5a5",fontFamily:"inherit",fontSize:"0.82rem",boxSizing:"border-box"}}/>
+                  </div>
+                  {resetMsg&&<div style={{fontSize:"0.78rem",marginBottom:"0.5rem",color:resetMsg.startsWith("✅")?"#059669":"#dc2626"}}>{resetMsg}</div>}
+                  <button onClick={doAdminReset}
+                    style={{width:"100%",padding:"0.55rem",borderRadius:"0.75rem",border:"none",background:"#dc2626",color:"white",fontWeight:700,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>
+                    パスワードをリセット
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* 新川希亮のみ: プッシュ通知テストパネル */}
           {currentUser?.name==='新川希亮' && (
