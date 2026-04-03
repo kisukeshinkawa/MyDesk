@@ -78,15 +78,15 @@ async function sbGet(id) {
 
 async function sbSet(id, data) {
   const now = new Date().toISOString();
+  // 保存開始時点でタイムスタンプをセット（fetch中のポーリング上書きを防ぐ）
+  window.__myDeskLastSave = Date.now();
+  window.__myDeskLastSaveAt = now;
   try {
     await fetch(`${SB_URL}/rest/v1/app_data`, {
       method: "POST",
       headers: { ...SB_HEADERS, "Prefer": "resolution=merge-duplicates" },
       body: JSON.stringify({ id, data, updated_at: now }),
     });
-    // 書き込み完了後にタイムスタンプを更新（競合防止を書き込み完了時刻から計算）
-    window.__myDeskLastSave = Date.now();
-    window.__myDeskLastSaveAt = now;
   } catch {}
 }
 
@@ -1879,7 +1879,8 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
       console.error("MyDesk: saveWithPush rejected — would wipe existing data", nd); return;
     }
     setData(nd);
-    window.__myDeskLastSave = Date.now(); // 競合防止タグ
+    window.__myDeskLastSave = Date.now();
+    window.__myDeskLastSaveAt = new Date().toISOString(); // 競合防止タグ
     saveData(nd); // グローバル関数
     // 新着通知を検出してWeb Push送信
     const newNotifs = (nd.notifications||[]).filter(n=>
@@ -1913,17 +1914,20 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
       // メール通知（notifyMode が "email" or "both" のユーザー）
       const emailTargets = targets.filter(id=>{
         const u = users.find(x=>x.id===id);
-        return u?.notifyMode==='email' || u?.notifyMode==='both';
+        return (u?.notifyMode==='email' || u?.notifyMode==='both') && u?.email;
       });
       emailTargets.forEach(id=>{
         const u = users.find(x=>x.id===id);
-        const toAddr = 'bm-dx@beetle-ems.com';
-        const emailBody = `【${u?.name||'メンバー'}宛】\n${body}\n\n──\nMyDesk チーム業務管理`;
+        if(!u?.email) return;
+        const emailBody = `【MyDesk通知】${u?.name||'メンバー'}さん\n\n${title}\n\n${body}\n\n──\nMyDesk チーム業務管理\nhttps://my-desk-theta.vercel.app`;
         fetch('/api/send-email',{
           method:'POST',
           headers:{'Content-Type':'application/json','x-mydesk-secret':'mydesk2026'},
-          body:JSON.stringify({to:toAddr,toName:u?.name||'',subject:title,body:emailBody}),
-        }).catch(()=>{});
+          body:JSON.stringify({to:u.email, toName:u?.name||'', subject:`[MyDesk] ${title}`, body:emailBody}),
+        }).catch(()=>{
+          // フォールバック: コンソールにログ
+          console.log('[MyDesk] メール送信失敗:', u.email, title);
+        });
       });
     });
   }, [setData, users, uid]);
@@ -2944,20 +2948,25 @@ function EmailView({data,setData,currentUser=null}) {
         ? `${styleRef}${pastRef}以下の受信メールへの返信文を作成してください。\n\n【返信の指示・方向性】\n${instruction}\n\n【受信メール】\n${inputText}\n\n返信本文のみ出力してください。宛名・署名・件名は不要です。`
         : `${styleRef}${pastRef}以下の目的・内容でメール文書を作成してください。\n\n【メールの指示・方向性】\n${instruction}\n\n【目的・内容・補足】\n${inputText}\n\nメール本文のみ出力してください。宛名・署名は含めてください。件名は不要です。`;
 
-      const res = await fetch("/api/generate-email",{
-        method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({prompt})
+      // Anthropic APIを直接呼び出し（Vercel API不要）
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 1500,
+          messages: [{ role: "user", content: prompt }]
+        })
       });
       const json = await res.json();
-      if(!res.ok) throw new Error(json.error||"生成に失敗しました");
-      setGenerated((json.text||"生成に失敗しました。").trim());
+      if(!res.ok) throw new Error(json.error?.message||"生成に失敗しました");
+      const text = (json.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("");
+      setGenerated((text||"生成に失敗しました。").trim());
       setPhase("edit");
     } catch(e) {
       const msg = e.message || "不明なエラー";
       let hint = "";
       if (msg.includes("Failed to fetch") || msg.includes("NetworkError")) hint = "\n\n※ネットワークエラーです。接続を確認してください。";
-      else if (msg.includes("404")) hint = "\n\n※api/generate-email.js がVercelに未デプロイです。GitHubにファイルを追加してください。";
-      else if (msg.includes("500")) hint = "\n\n※サーバーエラーです。VercelにANTHROPIC_API_KEYが設定されているか確認してください。";
       setGenerated("⚠️ 生成に失敗しました。\n\n原因: " + msg + hint);
       setPhase("edit");
     }
@@ -3606,7 +3615,7 @@ function LinkedBizcardList({ cards=[], users=[], onUnlink, onNavigateToBizcard, 
       {popup&&(
         <div style={{position:"fixed",inset:0,zIndex:600,display:"flex",alignItems:"flex-end",justifyContent:"center",background:"rgba(0,0,0,0.5)",padding:"0"}}
           onClick={e=>{if(e.target===e.currentTarget)setPopup(null);}}>
-          <div style={{background:"white",borderRadius:"1.25rem 1.25rem 0 0",width:"100%",maxWidth:520,maxHeight:"85dvh",overflowY:"auto",boxShadow:"0 -8px 40px rgba(0,0,0,0.2)"}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"white",borderRadius:"1.25rem 1.25rem 0 0",width:"100%",maxWidth:520,maxHeight:"85dvh",overflowY:"auto",boxShadow:"0 -8px 40px rgba(0,0,0,0.2)"}}>
             <div style={{position:"sticky",top:0,background:"white",borderRadius:"1.25rem 1.25rem 0 0",padding:"1rem 1.25rem 0.75rem",borderBottom:`1px solid ${C.borderLight}`,zIndex:1}}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                 <div style={{fontWeight:800,fontSize:"1rem",color:C.text}}>🪪 名刺詳細</div>
@@ -3693,7 +3702,7 @@ function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach
 
   return (
     <div>
-      <button onClick={onAddApproach}
+      <button onClick={e=>{e.stopPropagation();onAddApproach();}}
         style={{width:"100%",marginBottom:"0.75rem",padding:"0.55rem",borderRadius:"0.75rem",border:`1.5px dashed ${C.accent}`,background:C.accentBg,color:C.accent,fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
         ＋ アプローチを記録
       </button>
@@ -4331,7 +4340,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     if (currentHasContent && !hasContent) {
       console.error("MyDesk: SalesView.save rejected — would wipe existing data", d); return;
     }
-    window.__myDeskLastSave = Date.now(); // 競合防止タグ
+    window.__myDeskLastSave = Date.now();
+    window.__myDeskLastSaveAt = new Date().toISOString(); // 競合防止タグ
     // 新しく追加された通知を検出してWeb Push送信
     const notifsBefore = data.notifications || [];
     const newNotifs = (d.notifications||[]).filter(n=>!notifsBefore.some(o=>o.id===n.id));
@@ -6023,6 +6033,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
               {comp.address&&<div style={{gridColumn:"1/-1"}}><span style={{color:C.textMuted}}>📍 </span>{comp.address}</div>}
             </div>
             {(comp.assigneeIds||[]).length>0&&<div style={{marginTop:"0.5rem"}}><AssigneeRow ids={comp.assigneeIds}/></div>}
+            {comp.notes&&<div style={{marginTop:"0.5rem",fontSize:"0.78rem",color:C.textSub,background:"#f8fafc",borderRadius:"0.5rem",padding:"0.4rem 0.6rem",borderLeft:"3px solid #cbd5e1"}}>{comp.notes}</div>}
             {/* 次回アクション表示 */}
             {comp.nextActionDate&&(
               <div style={{marginTop:"0.5rem",display:"flex",alignItems:"center",gap:"0.4rem",padding:"0.3rem 0.6rem",background:"#f0f9ff",borderRadius:"0.5rem",border:"1px solid #bae6fd"}}>
@@ -6030,7 +6041,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                 <span style={{fontSize:"0.75rem",fontWeight:700,color:"#0369a1"}}>{comp.nextActionDate}</span>
                 <span style={{fontSize:"0.72rem",color:"#0369a1"}}>{comp.nextActionType}</span>
                 {comp.nextActionNote&&<span style={{fontSize:"0.7rem",color:"#64748b",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{comp.nextActionNote}</span>}
-                <button onClick={()=>openNextActionModal("companies",comp.id,comp.name,comp)} style={{background:"none",border:"none",cursor:"pointer",fontSize:"0.7rem",color:"#94a3b8",flexShrink:0}}>✏️</button>
+                <button onClick={e=>{e.stopPropagation();openNextActionModal("companies",comp.id,comp.name,comp);}} style={{background:"none",border:"none",cursor:"pointer",fontSize:"0.7rem",color:"#94a3b8",flexShrink:0}}>✏️</button>
               </div>
             )}
           </Card>
@@ -6040,11 +6051,11 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
               style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:comp.needFollow?"#fef9c3":"#f3f4f6",color:comp.needFollow?"#854d0e":"#6b7280"}}>
               {comp.needFollow?"⭐ フォロー中":"☆ フォロー"}
             </button>
-            <button onClick={()=>openApproachModal("companies",comp.id,comp.name)}
+            <button onClick={e=>{e.stopPropagation();openApproachModal("companies",comp.id,comp.name);}}
               style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#dbeafe",color:"#1d4ed8"}}>
               📞 アプローチ記録
             </button>
-            <button onClick={()=>openNextActionModal("companies",comp.id,comp.name,comp)}
+            <button onClick={e=>{e.stopPropagation();openNextActionModal("companies",comp.id,comp.name,comp);}}
               style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#d1fae5",color:"#065f46"}}>
               📅 {comp.nextActionDate?"次回変更":"次回設定"}
             </button>
@@ -6480,6 +6491,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             )}
             <AssigneeRow ids={v.assigneeIds}/>
             {v.address&&<div style={{fontSize:"0.78rem",color:C.textSub,marginTop:"0.4rem"}}>📍 {v.address}</div>}
+            {v.notes&&<div style={{marginTop:"0.5rem",fontSize:"0.78rem",color:C.textSub,background:"#f8fafc",borderRadius:"0.5rem",padding:"0.4rem 0.6rem",borderLeft:"3px solid #cbd5e1"}}>{v.notes}</div>}
             <div style={{marginTop:"0.6rem"}}>
               <div style={{fontSize:"0.62rem",fontWeight:700,color:"#5b21b6",marginBottom:"0.3rem"}}>📋 許可別営業状況</div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.2rem"}}>
@@ -6512,11 +6524,11 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
               style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:v.needFollow?"#fef9c3":"#f3f4f6",color:v.needFollow?"#854d0e":"#6b7280"}}>
               {v.needFollow?"⭐ フォロー中":"☆ フォロー"}
             </button>
-            <button onClick={()=>openApproachModal("vendors",v.id,v.name)}
+            <button onClick={e=>{e.stopPropagation();openApproachModal("vendors",v.id,v.name);}}
               style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#dbeafe",color:"#1d4ed8"}}>
               📞 アプローチ記録
             </button>
-            <button onClick={()=>openNextActionModal("vendors",v.id,v.name,v)}
+            <button onClick={e=>{e.stopPropagation();openNextActionModal("vendors",v.id,v.name,v);}}
               style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#d1fae5",color:"#065f46"}}>
               📅 {v.nextActionDate?"次回変更":"次回設定"}
             </button>
@@ -6999,6 +7011,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           </div>
           {muni.artBranch&&<div style={{marginTop:"0.5rem",fontSize:"0.75rem",color:C.textSub}}>🏢 アート引越センター 管轄支店：{muni.artBranch}</div>}
           {muni.address&&<div style={{marginTop:"0.35rem",fontSize:"0.75rem",color:C.textSub}}>📍 {muni.address}</div>}
+          {muni.notes&&<div style={{marginTop:"0.5rem",fontSize:"0.78rem",color:C.textSub,background:"#f8fafc",borderRadius:"0.5rem",padding:"0.4rem 0.6rem",borderLeft:"3px solid #cbd5e1"}}>{muni.notes}</div>}
           {(muni.contactName||muni.contactEmail||muni.contactPhone)&&(
             <div style={{marginTop:"0.5rem",background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:"0.5rem",padding:"0.4rem 0.625rem",fontSize:"0.72rem",color:"#0369a1"}}>
               <span style={{fontWeight:700}}>👤 {muni.contactName||"担当者"}</span>
@@ -7071,11 +7084,11 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
         </div>
         {/* アクションボタン行 */}
         <div style={{marginBottom:"0.75rem",display:"flex",alignItems:"center",gap:"0.4rem",flexWrap:"wrap"}}>
-          <button onClick={()=>openApproachModal("municipalities",muni.id,muni.name)}
+          <button onClick={e=>{e.stopPropagation();openApproachModal("municipalities",muni.id,muni.name);}}
             style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#dbeafe",color:"#1d4ed8"}}>
             📞 アプローチ記録
           </button>
-          <button onClick={()=>openNextActionModal("municipalities",muni.id,muni.name,muni)}
+          <button onClick={e=>{e.stopPropagation();openNextActionModal("municipalities",muni.id,muni.name,muni);}}
             style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#d1fae5",color:"#065f46"}}>
             📅 {muni.nextActionDate?"次回変更":"次回設定"}
           </button>
@@ -8713,8 +8726,6 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
         </div>
       )}
 
-      )}
-
       {/* ── メールテンプレート ── */}
       {section==="template"&&(()=>{
         const templates = data.emailTemplates||[];
@@ -10296,7 +10307,7 @@ export default function App() {
           }
           // 自分がsaveしてから5秒以上経過、またはまだ一度もsaveしていない
           if(!window.__myDeskLastSave) return true; // 初回
-          return timeSinceSave > 5000;
+          return timeSinceSave > 15000;
         })();
         if(serverIsNewer) {
           setData(d);
