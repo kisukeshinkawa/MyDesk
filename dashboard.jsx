@@ -2948,19 +2948,15 @@ function EmailView({data,setData,currentUser=null}) {
         ? `${styleRef}${pastRef}以下の受信メールへの返信文を作成してください。\n\n【返信の指示・方向性】\n${instruction}\n\n【受信メール】\n${inputText}\n\n返信本文のみ出力してください。宛名・署名・件名は不要です。`
         : `${styleRef}${pastRef}以下の目的・内容でメール文書を作成してください。\n\n【メールの指示・方向性】\n${instruction}\n\n【目的・内容・補足】\n${inputText}\n\nメール本文のみ出力してください。宛名・署名は含めてください。件名は不要です。`;
 
-      // Anthropic APIを直接呼び出し（Vercel API不要）
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
+      // Vercel API経由でAnthropicを呼ぶ（CORSのため直接呼び出し不可）
+      const res = await fetch("/api/generate-email", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1500,
-          messages: [{ role: "user", content: prompt }]
-        })
+        headers: { "Content-Type": "application/json", "x-mydesk-secret": "mydesk2026" },
+        body: JSON.stringify({ prompt })
       });
       const json = await res.json();
-      if(!res.ok) throw new Error(json.error?.message||"生成に失敗しました");
-      const text = (json.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("");
+      if(!res.ok) throw new Error(json.error||"生成に失敗しました");
+      const text = json.text||"";
       setGenerated((text||"生成に失敗しました。").trim());
       setPhase("edit");
     } catch(e) {
@@ -4516,17 +4512,18 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   // モーダルオープナー（stateリセット込み）
   const openLossModal = (entityKey, entityId, entityName, newStatus) => {
     setLossReason(""); setLossNote(""); setLossNextCons("");
-    setLossModal({entityKey, entityId, entityName, newStatus});
+    setTimeout(()=>setLossModal({entityKey, entityId, entityName, newStatus}), 0);
   };
   const openApproachModal = (entityKey, entityId, entityName) => {
     setAType("電話"); setANote(""); setADate(new Date().toISOString().slice(0,10));
-    setApproachModal({entityKey, entityId, entityName});
+    // setTimeout で次のイベントループに defer → クリックイベント伝播後に確実に表示
+    setTimeout(()=>setApproachModal({entityKey, entityId, entityName}), 0);
   };
   const openNextActionModal = (entityKey, entityId, entityName, current={}) => {
     setNaType(current.nextActionType||"電話");
     setNaDate(current.nextActionDate||"");
     setNaNote(current.nextActionNote||"");
-    setNextActionModal({entityKey, entityId, entityName});
+    setTimeout(()=>setNextActionModal({entityKey, entityId, entityName}), 0);
   };
 
   // ── アプローチ履歴を追加 ────────────────────────────────────────────────
