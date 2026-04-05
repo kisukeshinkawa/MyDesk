@@ -6409,6 +6409,18 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             <div style={{fontSize:"0.75rem",marginTop:"0.25rem"}}>アプローチを記録すると、ここに集計されます</div>
           </div>
         )}
+
+        {/* ── 案件スコアリング＋アラート ── */}
+        <ScoringAlertPanel data={data} users={users} currentUser={currentUser}
+          onNavigate={(type,id)=>{
+            if(type==="companies"){setActiveCompany(id);setSalesTab("company");setActiveDetail("timeline");}
+            else if(type==="vendors"){setActiveVendor(id);setSalesTab("vendor");setActiveDetail("timeline");}
+            else if(type==="municipalities"){setActiveMuni(id);setSalesTab("muni");setMuniScreen("muniDetail");setActiveDetail("timeline");}
+          }}/>
+
+        {/* ── 週次レポート生成 ── */}
+        <WeeklyReportPanel data={data} users={users} currentUser={currentUser}/>
+
       </div>
     );
   }
@@ -6647,15 +6659,6 @@ ${orig}`})
           onClose={()=>setLinkBizcardModal(null)}
         />
       )}
-      {/* ── 案件スコアリング＋アラート ── */}
-      <ScoringAlertPanel data={data} users={users} currentUser={currentUser}
-        onNavigate={(type,id)=>{
-          if(type==="companies"){setActiveCompany(id);setActiveDetail("timeline");}
-          else if(type==="vendors"){setActiveVendor(id);setActiveDetail("timeline");}
-          else if(type==="municipalities"){setActiveMuni(id);setMuniScreen("muniDetail");setActiveDetail("timeline");}
-        }}/>
-      {/* ── 週次レポート生成 ── */}
-      <WeeklyReportPanel data={data} users={users} currentUser={currentUser}/>
     </>
   );
 
