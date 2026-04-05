@@ -25,8 +25,8 @@ export default async function handler(req, res) {
         },
         body: JSON.stringify({
           personalizations: [{ to: [{ email: to, name: toName || '' }] }],
-          from: { email: 'bm-dx@beetle-ems.com', name: 'MyDesk' },
-          reply_to: { email: 'bm-dx@beetle-ems.com' },
+          from: { email: 'info@dustalk.com', name: 'MyDesk' },
+          reply_to: { email: 'info@dustalk.com' },
           subject: subject,
           content: [{ type: 'text/plain', value: body }],
         }),
@@ -50,7 +50,7 @@ export default async function handler(req, res) {
       },
     });
     await transporter.sendMail({
-      from:    '"MyDesk" <bm-dx@beetle-ems.com>',
+      from:    '"MyDesk" <info@dustalk.com>',
       to:      `"${toName}" <${to}>`,
       subject: subject,
       text:    body,
