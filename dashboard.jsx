@@ -32,6 +32,15 @@ const STATUS_META = {
   "保留":    { color:"#4b5563", bg:"#f3f4f6", dot:"#9ca3af" },
   "完了":    { color:"#065f46", bg:"#d1fae5", dot:"#10b981" },
 };
+// ─── SHARED STYLE HELPERS ───────────────────────────────────────────────────
+const S = {
+  row:    {display:"flex",alignItems:"center"},
+  rowSB:  {display:"flex",alignItems:"center",justifyContent:"space-between"},
+  col:    {display:"flex",flexDirection:"column"},
+  chip:   (bg,color)=>({padding:"0.2rem 0.55rem",borderRadius:999,fontSize:"0.72rem",fontWeight:700,background:bg,color:color}),
+  iconBtn:{background:"none",border:"none",cursor:"pointer",fontFamily:"inherit"},
+};
+
 const C = {
   bg:"#f0f5ff", surface:"#ffffff",
   border:"#dbe4f5", borderLight:"#eef2fb",
@@ -1926,7 +1935,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
           body:JSON.stringify({to:u.email, toName:u?.name||'', subject:`[MyDesk] ${title}`, body:emailBody}),
         }).catch(()=>{
           // フォールバック: コンソールにログ
-          console.log('[MyDesk] メール送信失敗:', u.email, title);
+          // メール送信失敗: logged
         });
       });
     });
@@ -2962,7 +2971,12 @@ function EmailView({data,setData,currentUser=null}) {
     } catch(e) {
       const msg = e.message || "不明なエラー";
       let hint = "";
-      if (msg.includes("Failed to fetch") || msg.includes("NetworkError")) hint = "\n\n※ネットワークエラーです。接続を確認してください。";
+      if (msg.includes("Failed to fetch") || msg.includes("NetworkError"))
+        hint = "\n\n※api/generate-email.js がVercelに未デプロイです。\nGitHubのapiフォルダにgenerate-email.jsを追加してください。";
+      else if (msg.includes("invalid x-api-key") || msg.includes("invalid_api_key"))
+        hint = "\n\n※VercelにANTHROPIC_API_KEYが設定されていません。\nVercel → Settings → Environment Variables から追加してください。";
+      else if (msg.includes("404"))
+        hint = "\n\n※api/generate-email.js が見つかりません。GitHubのapiフォルダに追加してDeployしてください。";
       setGenerated("⚠️ 生成に失敗しました。\n\n原因: " + msg + hint);
       setPhase("edit");
     }
@@ -3154,7 +3168,7 @@ const JAPAN_PREFS_SEED = JAPAN_REGIONS.flatMap(r=>r.prefs.map(name=>({name,regio
 
 
 // ─── MAP TAB ──────────────────────────────────────────────────────────────────
-function MapTab({prefs,munis,vendors,companies,prefCoords,onSelectPref}) {
+function MapTab({prefs,munis,vendors,companies,prefCoords,onSelectPref,nextActions=[]}) {
   const mapRef = useRef(null);
   const leafletRef = useRef(null);
   const markersRef = useRef([]);
@@ -3315,6 +3329,9 @@ function MapTab({prefs,munis,vendors,companies,prefCoords,onSelectPref}) {
         ))}
       </div>
 
+      {/* 訪問ルート最適化 */}
+      {nextActions.length>0&&<VisitRoutePlanner entities={nextActions}/>}
+
       {/* Map container */}
       <div style={{position:"relative",borderRadius:"1rem",overflow:"hidden",border:`1.5px solid ${C.border}`,boxShadow:C.shadowMd}}>
         {!loaded&&(
@@ -3391,6 +3408,526 @@ function MapTab({prefs,munis,vendors,companies,prefCoords,onSelectPref}) {
     </div>
   );
 }
+
+// ─── SCORING ALERT PANEL ─────────────────────────────────────────────────────
+function ScoringAlertPanel({ data, users=[], currentUser, onNavigate }) {
+  const [expanded, setExpanded] = React.useState(true);
+  const [filterType, setFilterType] = React.useState("all"); // all|企業|自治体|業者
+
+  const todayStr = new Date().toISOString().slice(0,10);
+  const now = Date.now();
+  const CLOSED = new Set(["失注","見送り","断り","協定済","成約","加入済"]);
+
+  // 全エンティティをスコアリング
+  const scored = React.useMemo(() => {
+    const allEntities = [
+      ...(data.companies||[]).map(e=>({...e,_type:"companies",_label:"企業"})),
+      ...(data.municipalities||[]).map(e=>({...e,_type:"municipalities",_label:"自治体"})),
+      ...(data.vendors||[]).map(e=>({...e,_type:"vendors",_label:"業者"})),
+    ];
+
+    return allEntities
+      .filter(e => !CLOSED.has(e.treatyStatus||e.status||""))
+      .map(e => {
+        const alerts = [];
+        let score = 0;
+
+        // 1. 担当者未設定
+        if(!(e.assigneeIds||[]).length) {
+          alerts.push({type:"no_assignee", label:"担当者未設定", color:"#dc2626", bg:"#fee2e2"});
+          score += 30;
+        }
+
+        // 2. 最終アプローチから日数
+        const logs = (e.approachLogs||[]);
+        const lastLog = logs.length ? logs.reduce((a,b)=>new Date(a.createdAt||a.date)>new Date(b.createdAt||b.date)?a:b) : null;
+        const daysSince = lastLog
+          ? Math.floor((now - new Date(lastLog.createdAt||lastLog.date)) / 86400000)
+          : null;
+
+        if(daysSince===null) {
+          alerts.push({type:"no_approach", label:"アプローチ未記録", color:"#d97706", bg:"#fef3c7"});
+          score += 25;
+        } else if(daysSince > 60) {
+          alerts.push({type:"stale_60", label:`${daysSince}日間アプローチなし`, color:"#dc2626", bg:"#fee2e2"});
+          score += 20;
+        } else if(daysSince > 30) {
+          alerts.push({type:"stale_30", label:`${daysSince}日間アプローチなし`, color:"#d97706", bg:"#fef3c7"});
+          score += 10;
+        }
+
+        // 3. ステータスが長期間変わっていない（createdAt基準）
+        const daysSinceCreated = Math.floor((now - new Date(e.createdAt||0)) / 86400000);
+        const status = e.treatyStatus || e.status || "未接触";
+        if(status === "未接触" && daysSinceCreated > 90) {
+          alerts.push({type:"no_contact", label:"90日以上未接触", color:"#7c3aed", bg:"#ede9fe"});
+          score += 15;
+        }
+
+        // 4. 次回アクション期限切れ
+        if(e.nextActionDate && e.nextActionDate < todayStr) {
+          const overdue = Math.floor((now - new Date(e.nextActionDate)) / 86400000);
+          alerts.push({type:"overdue", label:`次回アクション${overdue}日超過`, color:"#dc2626", bg:"#fee2e2"});
+          score += 20;
+        }
+
+        return { ...e, _alerts: alerts, _score: score };
+      })
+      .filter(e => e._score > 0)
+      .sort((a,b) => b._score - a._score);
+  }, [data, todayStr]);
+
+  const filtered = filterType==="all" ? scored : scored.filter(e=>e._label===filterType);
+  const counts = {企業:0, 自治体:0, 業者:0};
+  scored.forEach(e=>counts[e._label]=(counts[e._label]||0)+1);
+
+  if(!scored.length) return (
+    <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:"1rem",padding:"0.875rem 1rem",marginBottom:"0.75rem",display:"flex",alignItems:"center",gap:"0.5rem"}}>
+      <span style={{fontSize:"1.2rem"}}>✅</span>
+      <span style={{fontSize:"0.82rem",fontWeight:700,color:"#166534"}}>フォローが必要な案件はありません</span>
+    </div>
+  );
+
+  return (
+    <div style={{background:"white",border:`2px solid #fca5a5`,borderRadius:"1rem",marginBottom:"0.75rem",overflow:"hidden"}}>
+      {/* ヘッダー */}
+      <div onClick={()=>setExpanded(p=>!p)}
+        style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.875rem 1rem",cursor:"pointer",background:"#fff1f2"}}>
+        <span style={{fontSize:"1.1rem"}}>🚨</span>
+        <span style={{fontWeight:800,fontSize:"0.9rem",color:"#dc2626",flex:1}}>
+          要フォロー案件 {scored.length}件
+        </span>
+        <div style={{display:"flex",gap:"0.3rem"}}>
+          {Object.entries(counts).filter(([,n])=>n>0).map(([label,n])=>(
+            <span key={label} style={{fontSize:"0.68rem",fontWeight:800,background:"#fee2e2",color:"#dc2626",borderRadius:999,padding:"0.1rem 0.45rem"}}>
+              {label} {n}
+            </span>
+          ))}
+        </div>
+        <span style={{color:"#dc2626",fontSize:"0.8rem"}}>{expanded?"▲":"▼"}</span>
+      </div>
+
+      {expanded&&(
+        <div style={{padding:"0.5rem 0.75rem 0.75rem"}}>
+          {/* フィルター */}
+          <div style={{display:"flex",gap:"0.3rem",marginBottom:"0.5rem",flexWrap:"wrap"}}>
+            {["all","企業","自治体","業者"].map(t=>(
+              <button key={t} onClick={()=>setFilterType(t)}
+                style={{padding:"0.2rem 0.6rem",borderRadius:999,border:`1.5px solid ${filterType===t?"#dc2626":"#e5e7eb"}`,background:filterType===t?"#fee2e2":"white",color:filterType===t?"#dc2626":"#6b7280",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                {t==="all"?"すべて":t}
+                {t!=="all"&&counts[t]>0&&` (${counts[t]})`}
+              </button>
+            ))}
+          </div>
+
+          {/* 案件リスト */}
+          {filtered.slice(0,10).map(e=>(
+            <div key={e.id} onClick={()=>onNavigate&&onNavigate(e._type,e.id)}
+              style={{display:"flex",alignItems:"flex-start",gap:"0.6rem",padding:"0.6rem 0.75rem",background:"#fafafa",borderRadius:"0.75rem",marginBottom:"0.35rem",cursor:"pointer",border:"1px solid #f3f4f6"}}
+              onMouseEnter={el=>el.currentTarget.style.background="#fff1f2"}
+              onMouseLeave={el=>el.currentTarget.style.background="#fafafa"}>
+              <div style={{minWidth:0,flex:1}}>
+                <div style={{display:"flex",alignItems:"center",gap:"0.4rem",flexWrap:"wrap",marginBottom:"0.25rem"}}>
+                  <span style={{fontSize:"0.68rem",fontWeight:800,color:"white",background:{"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"}[e._label],borderRadius:999,padding:"0.1rem 0.4rem"}}>{e._label}</span>
+                  <span style={{fontWeight:700,fontSize:"0.85rem",color:"#1e293b"}}>{e.name}</span>
+                  <span style={{fontSize:"0.68rem",color:"#dc2626",fontWeight:800,marginLeft:"auto"}}>スコア {e._score}</span>
+                </div>
+                <div style={{display:"flex",gap:"0.3rem",flexWrap:"wrap"}}>
+                  {e._alerts.map((a,i)=>(
+                    <span key={i} style={{fontSize:"0.65rem",fontWeight:700,background:a.bg,color:a.color,borderRadius:999,padding:"0.1rem 0.45rem"}}>
+                      {a.label}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <span style={{fontSize:"0.75rem",color:"#94a3b8",flexShrink:0,alignSelf:"center"}}>›</span>
+            </div>
+          ))}
+          {filtered.length>10&&(
+            <div style={{textAlign:"center",fontSize:"0.75rem",color:"#94a3b8",paddingTop:"0.25rem"}}>
+              他 {filtered.length-10} 件
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+// ─── VISIT ROUTE PLANNER ─────────────────────────────────────────────────────
+const VisitRoutePlanner = React.memo(function VisitRoutePlannerInner({ entities=[] }) {
+  const [route, setRoute]       = React.useState(null); // null | {order, summary}
+  const [loading, setLoading]   = React.useState(false);
+  const [showAll, setShowAll]   = React.useState(false);
+
+  if(!entities.length) return null;
+
+  const planRoute = async () => {
+    setLoading(true);
+    const list = entities.slice(0,10).map((e,i)=>`${i+1}. ${e.name}（${e._type==="municipalities"?"自治体":e._type==="vendors"?"業者":"企業"}）住所：${e.address||"住所不明"} 次回アクション：${e.nextActionDate}`).join("\n");
+    try {
+      const res = await fetch("/api/generate-email", {
+        method:"POST",
+        headers:{"Content-Type":"application/json","x-mydesk-secret":"mydesk2026"},
+        body:JSON.stringify({prompt:`以下の訪問予定先を、東京都心を起点として訪問効率が最も良い順番に並べ替えてください。
+
+${list}
+
+以下のJSON形式のみで返してください（余分なテキスト不要）:
+{"order":[1,2,3...],"summary":"〇〇→〇〇→〇〇の順で回ると効率的です。予想移動距離は約〇km。"}`})
+      });
+      const j = await res.json();
+      const text = j.text||"";
+      const m = text.match(/\{[\s\S]*\}/);
+      if(m) {
+        const parsed = JSON.parse(m[0]);
+        const ordered = (parsed.order||[]).map(idx=>entities[idx-1]).filter(Boolean);
+        setRoute({ordered, summary:parsed.summary||""});
+      }
+    } catch(e) {
+      setRoute({ordered:entities, summary:"ルート最適化に失敗しました。"});
+    }
+    setLoading(false);
+  };
+
+  const typeColor = {"municipalities":"#059669","vendors":"#7c3aed","companies":"#2563eb"};
+  const typeLabel = {"municipalities":"自治体","vendors":"業者","companies":"企業"};
+
+  return (
+    <div style={{background:"white",border:`1.5px solid #2563eb`,borderRadius:"1rem",padding:"0.875rem 1rem",marginBottom:"0.75rem"}}>
+      <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem"}}>
+        <span style={{fontSize:"1rem"}}>🗺️</span>
+        <span style={{fontWeight:800,fontSize:"0.88rem",color:"#1e293b",flex:1}}>
+          本日の訪問予定 {entities.length}件
+        </span>
+        {!route&&(
+          <button onClick={planRoute} disabled={loading}
+            style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",background:loading?"#e2e8f0":"#2563eb",color:loading?"#94a3b8":"white",fontWeight:700,fontSize:"0.75rem",cursor:loading?"not-allowed":"pointer",fontFamily:"inherit"}}>
+            {loading?"最適化中...":"✨ ルート最適化"}
+          </button>
+        )}
+        {route&&(
+          <button onClick={()=>setRoute(null)}
+            style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"1px solid #e2e8f0",background:"white",color:"#64748b",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}}>
+            リセット
+          </button>
+        )}
+      </div>
+
+      {/* 訪問先リスト */}
+      {!route&&(
+        <div style={{display:"flex",flexDirection:"column",gap:"0.3rem"}}>
+          {(showAll?entities:entities.slice(0,3)).map((e,i)=>(
+            <div key={e.id} style={{display:"flex",alignItems:"center",gap:"0.5rem",fontSize:"0.8rem"}}>
+              <span style={{width:20,height:20,borderRadius:"50%",background:"#dbeafe",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:"0.7rem",color:"#2563eb",flexShrink:0}}>{i+1}</span>
+              <span style={{fontSize:"0.65rem",fontWeight:800,color:"white",background:typeColor[e._type]||"#6b7280",borderRadius:999,padding:"0.05rem 0.35rem"}}>{typeLabel[e._type]}</span>
+              <span style={{fontWeight:600,color:"#1e293b",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.name}</span>
+              <span style={{fontSize:"0.68rem",color:"#94a3b8",flexShrink:0}}>{e.nextActionDate}</span>
+            </div>
+          ))}
+          {entities.length>3&&<button onClick={()=>setShowAll(p=>!p)} style={{fontSize:"0.72rem",color:"#2563eb",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+            {showAll?"▲ 折りたたむ":`▼ 他 ${entities.length-3} 件`}
+          </button>}
+        </div>
+      )}
+
+      {route&&(
+        <div>
+          <div style={{background:"#eff6ff",borderRadius:"0.625rem",padding:"0.5rem 0.75rem",marginBottom:"0.5rem",fontSize:"0.8rem",color:"#1d4ed8",fontWeight:600}}>
+            {route.summary}
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:"0.3rem"}}>
+            {route.ordered.map((e,i)=>(
+              <div key={e.id} style={{display:"flex",alignItems:"center",gap:"0.5rem"}}>
+                <span style={{width:22,height:22,borderRadius:"50%",background:"#2563eb",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:"0.75rem",color:"white",flexShrink:0}}>{i+1}</span>
+                <span style={{fontSize:"0.65rem",fontWeight:800,color:"white",background:typeColor[e._type]||"#6b7280",borderRadius:999,padding:"0.05rem 0.35rem"}}>{typeLabel[e._type]}</span>
+                <span style={{fontWeight:700,color:"#1e293b",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:"0.82rem"}}>{e.name}</span>
+                {i<route.ordered.length-1&&<span style={{fontSize:"0.7rem",color:"#94a3b8"}}>→</span>}
+              </div>
+            ))}
+          </div>
+          <button onClick={()=>{
+            const text = route.ordered.map((e,i)=>`${i+1}. ${e.name}（${e.address||""}）`).join("\n");
+            navigator.clipboard?.writeText(text);
+          }} style={{marginTop:"0.5rem",width:"100%",padding:"0.4rem",borderRadius:"0.5rem",border:"1px solid #e2e8f0",background:"white",color:"#64748b",fontSize:"0.75rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+            📋 ルートをコピー
+          </button>
+        </div>
+      )}
+    </div>
+  );
+});
+
+
+// ─── WEEKLY REPORT PANEL ────────────────────────────────────────────────────
+function WeeklyReportPanel({ data, users=[], currentUser }) {
+  const [generating, setGenerating] = React.useState(false);
+  const [report, setReport]         = React.useState("");
+  const [showReport, setShowReport] = React.useState(false);
+  const [period, setPeriod]         = React.useState("week"); // week | month
+
+  const exportReportPDF = (reportText, periodType) => {
+    const title = periodType==="week" ? "週次営業レポート" : "月次営業レポート";
+    const date = new Date().toLocaleDateString("ja-JP",{year:"numeric",month:"long",day:"numeric"});
+    const html = `<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>${title}</title>
+<style>
+  body { font-family: "Hiragino Kaku Gothic ProN","Meiryo",sans-serif; font-size:13px; line-height:1.8; color:#1e293b; padding:30px 40px; max-width:700px; margin:0 auto; }
+  h1 { font-size:20px; font-weight:800; color:#1e293b; border-bottom:3px solid #2563eb; padding-bottom:8px; margin-bottom:4px; }
+  .meta { font-size:11px; color:#64748b; margin-bottom:24px; }
+  .logo { font-size:13px; font-weight:800; color:#2563eb; margin-bottom:4px; }
+  pre { white-space:pre-wrap; font-family:inherit; font-size:13px; line-height:1.8; }
+  @media print { body { padding:20px; } }
+</style>
+</head>
+<body>
+  <div class="logo">⚡ MyDesk チーム業務管理</div>
+  <h1>${title}</h1>
+  <div class="meta">作成日：${date}</div>
+  <pre>${reportText.replace(/</g,"&lt;").replace(/>/g,"&gt;")}</pre>
+</body>
+</html>`;
+    const win = window.open("","_blank");
+    if(win) {
+      win.document.write(html);
+      win.document.close();
+      setTimeout(()=>win.print(), 500);
+    }
+  };
+
+  const generateReport = async () => {
+    setGenerating(true);
+    setReport("");
+
+    // 集計期間の設定
+    const now = new Date();
+    const periodDays = period === "week" ? 7 : 30;
+    const since = new Date(now - periodDays * 86400000);
+    const periodLabel = period === "week" ? "週次" : "月次";
+
+    // データ集計
+    const companies    = data.companies     || [];
+    const vendors      = data.vendors       || [];
+    const munis        = data.municipalities|| [];
+    const bizcards     = data.businessCards || [];
+    const allTasks     = data.tasks         || [];
+    const allProjects  = data.projects      || [];
+
+    // アプローチログ集計
+    const approachLogs = [
+      ...companies.flatMap(e=>(e.approachLogs||[]).map(l=>({...l,entityType:"企業",entityName:e.name}))),
+      ...vendors.flatMap(e=>(e.approachLogs||[]).map(l=>({...l,entityType:"業者",entityName:e.name}))),
+      ...munis.flatMap(e=>(e.approachLogs||[]).map(l=>({...l,entityType:"自治体",entityName:e.name}))),
+    ].filter(l=>new Date(l.createdAt||l.date)>=since);
+
+    // タスク完了集計
+    const completedTasks = allTasks.filter(t=>t.status==="done"&&new Date(t.updatedAt||t.createdAt)>=since);
+    // 新規追加
+    const newCompanies = companies.filter(e=>new Date(e.createdAt)>=since);
+    const newMunis     = munis.filter(e=>new Date(e.createdAt)>=since);
+    const newVendors   = vendors.filter(e=>new Date(e.createdAt)>=since);
+    const newBizcards  = bizcards.filter(e=>new Date(e.createdAt)>=since);
+    // ステータス変化（成約など）
+    const contracted = [...companies,...munis,...vendors].filter(e=>
+      (e.treatyStatus==="締結"||e.treatyStatus==="成約"||e.treatyStatus==="協定締結")&&
+      new Date(e.updatedAt||e.createdAt)>=since
+    );
+
+    // 担当者別アプローチ数
+    const byUser = {};
+    users.forEach(u=>{ byUser[u.id]={name:u.name,count:0,types:{}}; });
+    approachLogs.forEach(l=>{
+      const uid = l.createdBy||l.userId||"";
+      if(!byUser[uid]) byUser[uid]={name:"不明",count:0,types:{}};
+      byUser[uid].count++;
+      byUser[uid].types[l.type||"その他"] = (byUser[uid].types[l.type||"その他"]||0)+1;
+    });
+
+    const userSummary = Object.values(byUser)
+      .filter(u=>u.count>0)
+      .sort((a,b)=>b.count-a.count)
+      .map(u=>{
+        const typeStr = Object.entries(u.types).map(([t,n])=>`${t}:${n}件`).join("、");
+        return `${u.name}（${u.count}件：${typeStr}）`;
+      }).join("\n");
+
+    // フォロー必要な案件
+    const needFollow = [...companies,...munis,...vendors]
+      .filter(e=>e.needFollow)
+      .map(e=>e.name)
+      .slice(0,10);
+
+    const prompt = `あなたは営業チームのマネージャーアシスタントです。
+以下のチーム活動データをもとに、${periodLabel}営業レポートを作成してください。
+
+【集計期間】${since.toLocaleDateString("ja-JP")} 〜 ${now.toLocaleDateString("ja-JP")}
+
+【アプローチ活動】
+- 合計：${approachLogs.length}件
+- 担当者別：
+${userSummary||"（活動なし）"}
+
+【新規登録】
+- 企業：${newCompanies.length}件　自治体：${newMunis.length}件　業者：${newVendors.length}件
+- 名刺：${newBizcards.length}枚
+
+【タスク完了】：${completedTasks.length}件
+
+【契約・協定締結】：${contracted.length}件${contracted.length>0?"（"+contracted.map(e=>e.name).join("、")+"）":""}
+
+【フォロー中案件（${needFollow.length}件）】${needFollow.length>0?"："+needFollow.join("、"):""}
+
+【全体感の数字】
+- 管理企業：${companies.length}件　自治体：${munis.length}件　業者：${vendors.length}件
+- 名刺合計：${bizcards.length}枚
+
+以下の形式でレポートを作成してください：
+1. ${periodLabel}サマリー（3文程度）
+2. 主な成果・ハイライト
+3. 担当者別の活動ハイライト（上位2〜3名）
+4. 来週に向けた推奨アクション（具体的に3点）
+
+簡潔かつ前向きなトーンで、日本語でお願いします。`;
+
+    try {
+      const res = await fetch("/api/generate-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-mydesk-secret": "mydesk2026" },
+        body: JSON.stringify({ prompt }),
+      });
+      const json = await res.json();
+      if(!res.ok) throw new Error(json.error||"生成失敗");
+      setReport(json.text||"");
+      setShowReport(true);
+    } catch(e) {
+            setReport("⚠️ 生成に失敗しました：" + e.message + "\n\n※ api/generate-email.js がVercelにデプロイされ、ANTHROPIC_API_KEYが設定されているか確認してください。");
+      setShowReport(true);
+    }
+    setGenerating(false);
+  };
+
+  const copyReport = () => {
+    if(navigator.clipboard) navigator.clipboard.writeText(report);
+  };
+
+  return (
+    <div style={{background:"white",borderRadius:"1rem",border:`1px solid ${C.border}`,padding:"1rem",marginTop:"0.75rem"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.75rem"}}>
+        <div style={{fontWeight:800,fontSize:"0.88rem",color:C.text}}>📊 営業レポート自動生成</div>
+        <div style={{display:"flex",gap:"0.3rem"}}>
+          {[["week","週次"],["month","月次"]].map(([id,lbl])=>(
+            <button key={id} onClick={()=>{setPeriod(id);setShowReport(false);}}
+              style={{padding:"0.2rem 0.6rem",borderRadius:999,border:`1.5px solid ${period===id?C.accent:C.border}`,background:period===id?C.accentBg:"white",color:period===id?C.accent:C.textSub,fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+              {lbl}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {!showReport&&(
+        <button onClick={generateReport} disabled={generating}
+          style={{width:"100%",padding:"0.65rem",borderRadius:"0.875rem",border:"none",background:generating?"#e2e8f0":C.accent,color:generating?"#94a3b8":"white",fontWeight:700,fontSize:"0.88rem",cursor:generating?"not-allowed":"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
+          {generating
+            ? <><span style={{fontSize:"1rem",display:"inline-block",animation:"spin 1s linear infinite"}}>⚙️</span> レポート生成中...</>
+            : <><span>✨</span> AIで{period==="week"?"週次":"月次"}レポートを生成</>}
+        </button>
+      )}
+
+      {showReport&&report&&(
+        <div>
+          <div style={{background:"#f8fafc",borderRadius:"0.75rem",padding:"0.875rem",fontSize:"0.82rem",color:C.text,lineHeight:1.7,whiteSpace:"pre-wrap",maxHeight:400,overflowY:"auto",border:`1px solid ${C.borderLight}`}}>
+            {report}
+          </div>
+          <div style={{display:"flex",gap:"0.5rem",marginTop:"0.75rem",flexWrap:"wrap"}}>
+            <button onClick={copyReport}
+              style={{flex:1,padding:"0.55rem",borderRadius:"0.75rem",border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",minWidth:80}}>
+              📋 コピー
+            </button>
+            <button onClick={()=>exportReportPDF(report, period)}
+              style={{flex:1,padding:"0.55rem",borderRadius:"0.75rem",border:"1.5px solid #dc2626",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",minWidth:80}}>
+              📄 PDF
+            </button>
+            <button onClick={()=>{setShowReport(false);setReport("");}}
+              style={{flex:1,padding:"0.55rem",borderRadius:"0.75rem",border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",minWidth:80}}>
+              🔄 再生成
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+// ─── BIZCARD SCANNER (名刺写真→自動入力) ────────────────────────────────────
+const BizCardScanner = React.memo(function BizCardScannerInner({ onResult, currentUser }) {
+  const [scanning, setScanning] = React.useState(false);
+  const [preview, setPreview]   = React.useState(null);
+  const [error, setError]       = React.useState("");
+  const fileRef = React.useRef();
+
+  const handleFile = async (file) => {
+    if(!file || !file.type.startsWith("image/")) return;
+    setError("");
+    // プレビュー
+    const reader = new FileReader();
+    reader.onload = e => setPreview(e.target.result);
+    reader.readAsDataURL(file);
+    // base64変換してAPI送信
+    const b64 = await new Promise(res => {
+      const r = new FileReader();
+      r.onload = () => res(r.result.split(",")[1]);
+      r.readAsDataURL(file);
+    });
+    setScanning(true);
+    try {
+      const resp = await fetch("/api/scan-bizcard", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-mydesk-secret": "mydesk2026" },
+        body: JSON.stringify({ imageBase64: b64, mediaType: file.type }),
+      });
+      const json = await resp.json();
+      if(!resp.ok) throw new Error(json.error || "読み取り失敗");
+      // フォームに反映（所有者は現在ユーザー）
+      const fields = json.fields || {};
+      if(currentUser?.name && !fields.owners?.length) {
+        fields.owners = [currentUser.name];
+      }
+      onResult(fields);
+      setPreview(null);
+    } catch(e) {
+      setError("⚠️ " + e.message);
+    }
+    setScanning(false);
+  };
+
+  return (
+    <div style={{marginBottom:"1rem"}}>
+      <input ref={fileRef} type="file" accept="image/*" capture="environment"
+        style={{display:"none"}} onChange={e=>handleFile(e.target.files[0])}/>
+      <button type="button"
+        onClick={()=>fileRef.current?.click()}
+        disabled={scanning}
+        style={{width:"100%",padding:"0.75rem",borderRadius:"0.875rem",border:"2px dashed #2563eb",background:scanning?"#eff6ff":"white",color:scanning?"#93c5fd":"#2563eb",fontWeight:700,fontSize:"0.88rem",cursor:scanning?"not-allowed":"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
+        {scanning
+          ? <><span style={{fontSize:"1.2rem",animation:"spin 1s linear infinite"}}>🔄</span> 読み取り中...</>
+          : <><span style={{fontSize:"1.2rem"}}>📷</span> 名刺を撮影して自動入力</>}
+      </button>
+      {preview&&!scanning&&(
+        <div style={{marginTop:"0.5rem",borderRadius:"0.625rem",overflow:"hidden",maxHeight:120,textAlign:"center"}}>
+          <img src={preview} style={{maxHeight:120,maxWidth:"100%",objectFit:"contain",borderRadius:"0.5rem"}} alt="名刺プレビュー"/>
+        </div>
+      )}
+      {error&&<div style={{marginTop:"0.35rem",fontSize:"0.78rem",color:"#dc2626"}}>{error}</div>}
+      <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
+    </div>
+  );
+});
+
 
 // ─── LINK BIZCARD MODAL ─────────────────────────────────────────────────────
 function LinkBizcardModal({ allCards=[], entityType, entityId, entityName, users=[], onLink, onClose }) {
@@ -3569,7 +4106,7 @@ function LinkedBizcardList({ cards=[], users=[], onUnlink, onNavigateToBizcard, 
     </div>
   );
 
-  const phone = popup ? (popup.telDirect||popup.mobile||popup.telCompany||"") : "";
+
 
   return (
     <div>
@@ -4039,12 +4576,12 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   const [naNote, setNaNote] = useState("");
   const [matchChecked, setMatchChecked] = useState({}); // {cardId: bool}
 
-  // ── データ参照（hook後、コンポーネント内計算）──
-  const prefs     = data.prefectures    || [];
-  const munis     = data.municipalities || [];
-  const vendors   = data.vendors        || [];
-  const companies = data.companies      || [];
-  const bizCards  = data.businessCards  || [];
+  // ── データ参照（メモ化で再レンダリングコスト削減）──
+  const prefs     = React.useMemo(() => data.prefectures    || [], [data.prefectures]);
+  const munis     = React.useMemo(() => data.municipalities || [], [data.municipalities]);
+  const vendors   = React.useMemo(() => data.vendors        || [], [data.vendors]);
+  const companies = React.useMemo(() => data.companies      || [], [data.companies]);
+  const bizCards  = React.useMemo(() => data.businessCards  || [], [data.businessCards]);
 
   // ── 名刺 CRUD ──────────────────────────────────────────────────────────
   const _commitBizCard = (card) => {
@@ -4325,7 +4862,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     save(nd);
   };
 
-  const save = (d) => {
+  const save = React.useCallback((d) => {
     // ── データ保護ガード ──────────────────────────────────────────────────
     if (!d || typeof d !== "object" || Array.isArray(d)) {
       console.error("MyDesk: SalesView.save rejected invalid data", d); return;
@@ -4366,7 +4903,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
         }
       });
     }
-  };
+  }, [data]);
 
   // ── 営業エンティティからタスク/プロジェクトを生成 ─────────────────────────
   const addTaskFromSales = (entityType, entityId, entityName, extraFields={}) => {
@@ -4409,22 +4946,54 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   // ── 名刺↔営業エンティティ マッチング ──────────────────────────────────
 
   // 法人格を除去してコア名を抽出
+  // ⑦ 強化版 normBizName：表記揺れ・略称・括弧表記に対応
   const normBizName = (s) => (s||"")
-    .replace(/^(株式会社|有限会社|合同会社|一般社団法人|一般財団法人|公益社団法人|公益財団法人|特定非営利活動法人|NPO法人|社会福祉法人)\s*/g,"")
-    .replace(/\s*(株式会社|有限会社|合同会社)$/g,"")
-    .replace(/[\s\u3000]/g,"")
+    // 法人格の前後スペース除去
+    .replace(/\s*(株式会社|有限会社|合同会社|一般社団法人|一般財団法人|公益社団法人|公益財団法人|特定非営利活動法人|NPO法人|社会福祉法人|学校法人|宗教法人|医療法人)\s*/gi,"")
+    // 括弧表記の法人格 (株)(有)(合) など
+    .replace(/[（(]株[)）]|[（(]有[)）]|[（(]合[)）]|[（(]社[)）]/g,"")
+    // 全角→半角変換
+    .replace(/[Ａ-Ｚａ-ｚ０-９]/g, ch=>String.fromCharCode(ch.charCodeAt(0)-0xFEE0))
+    // カタカナ→ひらがな正規化
+    .replace(/[ァ-ン]/g, ch=>String.fromCharCode(ch.charCodeAt(0)-0x60))
+    // 区切り文字・スペース除去
+    .replace(/[\s\u3000・　]/g,"")
+    // 記号除去
+    .replace(/[-－ー〜～、。・]/g,"")
     .toLowerCase();
 
-  // 名刺のcompanyに対してマッチする営業エンティティを探す
-  const findMatchingEntities = (cardCompany) => {
+  // ⑦ ファジーマッチング：normBizName が一致しなくても部分一致で候補を返す
+  const fuzzyMatchEntity = (cardCompany) => {
     const norm = normBizName(cardCompany);
     if(!norm) return [];
     const results = [];
-    (data.companies||[]).forEach(e=>{ if(normBizName(e.name)===norm) results.push({type:"企業",id:e.id,name:e.name}); });
-    (data.municipalities||[]).forEach(e=>{ if(normBizName(e.name)===norm) results.push({type:"自治体",id:e.id,name:e.name}); });
-    (data.vendors||[]).forEach(e=>{ if(normBizName(e.name)===norm) results.push({type:"業者",id:e.id,name:e.name}); });
-    return results;
+    const addIfMatch = (entities, type) => {
+      entities.forEach(e => {
+        const en = normBizName(e.name);
+        if(!en) return;
+        // 完全一致
+        if(en === norm) { results.push({type,id:e.id,name:e.name,score:100}); return; }
+        // 部分一致（長い方が短い方を含む）
+        if(en.includes(norm) || norm.includes(en)) {
+          const score = Math.round(Math.min(norm.length,en.length)/Math.max(norm.length,en.length)*90);
+          results.push({type,id:e.id,name:e.name,score});
+        }
+      });
+    };
+    addIfMatch(data.companies||[], "企業");
+    addIfMatch(data.municipalities||[], "自治体");
+    addIfMatch(data.vendors||[], "業者");
+    // スコア降順でソート、重複IDを除外
+    const seen = new Set();
+    return results
+      .filter(r=>{ if(seen.has(r.id)) return false; seen.add(r.id); return true; })
+      .sort((a,b)=>b.score-a.score)
+      .slice(0,5);
   };
+
+  // 名刺のcompanyに対してマッチする営業エンティティを探す
+  // ⑦ fuzzyMatchEntity を使った強化版マッチング
+  const findMatchingEntities = (cardCompany) => fuzzyMatchEntity(cardCompany);
 
   // 営業エンティティ名に対してマッチする名刺を探す
   const findMatchingCards = (entityName) => {
@@ -4481,6 +5050,19 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   };
 
   // 実際に紐付けを実行（selectedIds: 紐づける名刺idの配列）
+  const navToBizcard = {
+    company: () => { setActiveCompany(null); setSalesTab("bizcard"); },
+    vendor:  () => { setActiveVendor(null);  setSalesTab("bizcard"); },
+    muni:    () => { setActiveMuni(null); setMuniScreen("top"); setSalesTab("bizcard"); },
+  };
+  const linkedBizcards = (entityType, entityId) =>
+    (data.businessCards||[]).filter(bc =>
+      String(bc.salesRef?.id)===String(entityId) && bc.salesRef?.type===entityType
+    );
+  const unlinkBizCard = (cardId) => {
+    const nd = {...data, businessCards:(data.businessCards||[]).map(bc=>bc.id===cardId?{...bc,salesRef:null}:bc)};
+    save(nd);
+  };
   const applyBizCardLinks = (selectedIds, entityType, entityId, entityName, baseData) => {
     const uid = currentUser?.id;
     // 最新のdataを使い、baseDataのbusinessCardsをマージ（新規追加カードを含む）
@@ -4509,21 +5091,19 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     setMatchModal(null);
   };
 
-  // モーダルオープナー（stateリセット込み）
   const openLossModal = (entityKey, entityId, entityName, newStatus) => {
     setLossReason(""); setLossNote(""); setLossNextCons("");
-    setTimeout(()=>setLossModal({entityKey, entityId, entityName, newStatus}), 0);
+    requestAnimationFrame(()=>setLossModal({entityKey, entityId, entityName, newStatus}));
   };
   const openApproachModal = (entityKey, entityId, entityName) => {
     setAType("電話"); setANote(""); setADate(new Date().toISOString().slice(0,10));
-    // setTimeout で次のイベントループに defer → クリックイベント伝播後に確実に表示
-    setTimeout(()=>setApproachModal({entityKey, entityId, entityName}), 0);
+    requestAnimationFrame(()=>setApproachModal({entityKey, entityId, entityName}));
   };
   const openNextActionModal = (entityKey, entityId, entityName, current={}) => {
     setNaType(current.nextActionType||"電話");
     setNaDate(current.nextActionDate||"");
     setNaNote(current.nextActionNote||"");
-    setTimeout(()=>setNextActionModal({entityKey, entityId, entityName}), 0);
+    requestAnimationFrame(()=>setNextActionModal({entityKey, entityId, entityName}));
   };
 
   // ── アプローチ履歴を追加 ────────────────────────────────────────────────
@@ -4538,9 +5118,46 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       createdAt: new Date().toISOString(),
     };
     const entities = data[entityKey] || [];
-    const nd = {...data, [entityKey]: entities.map(e =>
+    const entity = entities.find(e=>e.id===entityId);
+    const entityName = entity?.name || "";
+    let nd = {...data, [entityKey]: entities.map(e =>
       e.id===entityId ? {...e, approachLogs:[...(e.approachLogs||[]), log]} : e
     )};
+    // チームへのリアルタイム通知（自分以外の担当者へ）
+    const assigneeIds = entity?.assigneeIds || [];
+    const notifyIds = assigneeIds.filter(id=>id!==uid);
+    if(notifyIds.length>0) {
+      nd = addNotif(nd, {
+        type:"approach_log",
+        title:`${currentUser?.name||"誰か"}がアプローチを記録しました`,
+        body:`【${entityName}】${log.type}：${log.note.slice(0,50)}${log.note.length>50?"…":""}`,
+        toUserIds: notifyIds,
+        fromUserId: uid,
+        entityId, entityType: entityKey==="companies"?"企業":entityKey==="vendors"?"業者":"自治体",
+      });
+    }
+
+    // ⑤ AIによるタスク自動生成（「〇〇する」「連絡する」などのキーワードを検出）
+    const taskKeywords = /来月|来週|後日|次回|追って|確認する|送る|提出|連絡|電話|訪問|資料|提案|見積|アポ|打ち合わせ/;
+    if(log.note && taskKeywords.test(log.note)) {
+      const autoTask = {
+        id: Date.now()+Math.random()+0.1,
+        title: `【${entityName}】${log.note.slice(0,40)}`,
+        status: "未着手",
+        priority: "medium",
+        assignees: uid ? [uid] : [],
+        assigneeIds: uid ? [uid] : [],
+        createdBy: uid,
+        createdAt: new Date().toISOString(),
+        notes: `アプローチ記録から自動生成：${log.note}`,
+        projectId: null,
+        comments: [], memos: [], chat: [],
+        dueDate: entry.date || "",
+        _autoFromApproach: true,
+      };
+      nd = {...nd, tasks:[...(nd.tasks||[]), autoTask]};
+    }
+
     save(nd);
     setApproachModal(null);
   };
@@ -5539,6 +6156,15 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             prefs={prefs} munis={munis} vendors={vendors} companies={companies}
             prefCoords={PREF_COORDS}
             onSelectPref={(prefId)=>{setActivePref(prefId);setSalesTab("muni");setMuniScreen("top");}}
+            nextActions={(()=>{
+              const todayStr=new Date().toISOString().slice(0,10);
+              const all=[
+                ...companies.filter(e=>e.nextActionDate&&e.nextActionDate<=todayStr&&e.address).map(e=>({...e,_type:"企業"})),
+                ...vendors.filter(e=>e.nextActionDate&&e.nextActionDate<=todayStr&&e.address).map(e=>({...e,_type:"業者"})),
+                ...munis.filter(e=>e.nextActionDate&&e.nextActionDate<=todayStr&&e.address).map(e=>({...e,_type:"自治体"})),
+              ];
+              return all.sort((a,b)=>a.nextActionDate.localeCompare(b.nextActionDate));
+            })()}
           />
         </ErrorBoundary>
       </div>
@@ -5837,7 +6463,30 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
         </div>
       </div>
       <FieldLbl label="日付"><Input type="date" value={aDate} onChange={e=>setADate(e.target.value)}/></FieldLbl>
-      <FieldLbl label="内容・メモ"><Textarea value={aNote} onChange={e=>setANote(e.target.value)} style={{height:80}} placeholder="アプローチの内容を入力..."/></FieldLbl>
+      <FieldLbl label="内容・メモ">
+        <Textarea value={aNote} onChange={e=>setANote(e.target.value)} style={{height:80}} placeholder="走り書きでOK。「田中さん来月予算通れば前向き」など"/>
+        {aNote.trim().length>5&&(
+          <button type="button"
+            onClick={async()=>{
+              const orig=aNote;
+              setANote("✨ 整形中...");
+              try{
+                const res=await fetch("/api/generate-email",{method:"POST",
+                  headers:{"Content-Type":"application/json","x-mydesk-secret":"mydesk2026"},
+                  body:JSON.stringify({prompt:`以下の商談メモを「要点・合意事項・次のアクション」の3項目で整形してください。元の情報を失わず、箇条書きで簡潔に。日本語で。
+
+【メモ原文】
+${orig}`})
+                });
+                const j=await res.json();
+                setANote(j.text||orig);
+              }catch{setANote(orig);}
+            }}
+            style={{marginTop:"0.35rem",width:"100%",padding:"0.35rem",borderRadius:"0.5rem",border:"1px dashed #7c3aed",background:"#faf5ff",color:"#7c3aed",fontSize:"0.75rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+            ✨ AIで商談メモを整形する
+          </button>
+        )}
+      </FieldLbl>
       <div style={{display:"flex",gap:"0.75rem",marginTop:"0.5rem"}}>
         <Btn variant="secondary" style={{flex:1}} onClick={()=>setApproachModal(null)}>キャンセル</Btn>
         <Btn style={{flex:2}} onClick={()=>addApproachLog(approachModal.entityKey,approachModal.entityId,{type:aType,note:aNote,date:aDate})} disabled={!aNote.trim()&&!aDate}>記録する</Btn>
@@ -5998,6 +6647,15 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           onClose={()=>setLinkBizcardModal(null)}
         />
       )}
+      {/* ── 案件スコアリング＋アラート ── */}
+      <ScoringAlertPanel data={data} users={users} currentUser={currentUser}
+        onNavigate={(type,id)=>{
+          if(type==="companies"){setActiveCompany(id);setActiveDetail("timeline");}
+          else if(type==="vendors"){setActiveVendor(id);setActiveDetail("timeline");}
+          else if(type==="municipalities"){setActiveMuni(id);setMuniScreen("muniDetail");setActiveDetail("timeline");}
+        }}/>
+      {/* ── 週次レポート生成 ── */}
+      <WeeklyReportPanel data={data} users={users} currentUser={currentUser}/>
     </>
   );
 
@@ -6091,8 +6749,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           {activeDetail==="chat"&&ChatSection({chat:comp.chat,entityKey:"companies",entityId:comp.id})}
           {activeDetail==="tasks"&&<SalesTaskPanel entityType="企業" entityId={comp.id} entityName={comp.name} data={data} onSave={save} currentUser={currentUser} users={users} onNavigateToTask={onNavigateToTask} onNavigateToProject={onNavigateToProject}/>}
           {activeDetail==="bizcard"&&(()=>{
-            const linked=(data.businessCards||[]).filter(c=>String(c.salesRef?.id)===String(comp.id)&&c.salesRef?.type==="企業");
-            return <LinkedBizcardList cards={linked} users={users} onUnlink={id=>{const nd={...data,businessCards:(data.businessCards||[]).map(c=>c.id===id?{...c,salesRef:null}:c)};save(nd);}} onNavigateToBizcard={()=>{setActiveCompany(null);setSalesTab("bizcard");}} onLink={()=>setLinkBizcardModal({entityType:"企業",entityId:comp.id,entityName:comp.name})}/>;
+            const linked=linkedBizcards("企業",comp.id);
+            return <LinkedBizcardList cards={linked} users={users} onUnlink={id=>unlinkBizCard(id)} onNavigateToBizcard={navToBizcard.company} onLink={()=>requestAnimationFrame(()=>setLinkBizcardModal({entityType:"企業",entityId:comp.id,entityName:comp.name}))}/>;
           })()}
           {activeDetail==="files"&&<FileSection files={comp.files||[]} currentUserId={currentUser?.id}
             entityType="companies" entityId={comp.id}
@@ -6565,8 +7223,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           {activeDetail==="chat"&&ChatSection({chat:v.chat,entityKey:"vendors",entityId:v.id})}
           {activeDetail==="tasks"&&<SalesTaskPanel entityType="業者" entityId={v.id} entityName={v.name} data={data} onSave={save} currentUser={currentUser} users={users} onNavigateToTask={onNavigateToTask} onNavigateToProject={onNavigateToProject}/>}
           {activeDetail==="bizcard"&&(()=>{
-            const linked=(data.businessCards||[]).filter(c=>String(c.salesRef?.id)===String(v.id)&&c.salesRef?.type==="業者");
-            return <LinkedBizcardList cards={linked} users={users} onUnlink={id=>{const nd={...data,businessCards:(data.businessCards||[]).map(c=>c.id===id?{...c,salesRef:null}:c)};save(nd);}} onNavigateToBizcard={()=>{setActiveVendor(null);setSalesTab("bizcard");}} onLink={()=>setLinkBizcardModal({entityType:"業者",entityId:v.id,entityName:v.name})}/>;
+            const linked=linkedBizcards("業者",v.id);
+            return <LinkedBizcardList cards={linked} users={users} onUnlink={id=>unlinkBizCard(id)} onNavigateToBizcard={navToBizcard.vendor} onLink={()=>requestAnimationFrame(()=>setLinkBizcardModal({entityType:"業者",entityId:v.id,entityName:v.name}))}/>;
           })()}
           {activeDetail==="files"&&<FileSection files={v.files||[]} currentUserId={currentUser?.id}
             entityType="vendors" entityId={v.id}
@@ -7107,8 +7765,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
         {activeDetail==="chat"&&<div style={{marginBottom:"1rem"}}>{ChatSection({chat:muni.chat,entityKey:"municipalities",entityId:muni.id})}</div>}
         {activeDetail==="tasks"&&<div style={{marginBottom:"1rem"}}><SalesTaskPanel entityType="自治体" entityId={muni.id} entityName={muni.name} data={data} onSave={save} currentUser={currentUser} users={users} onNavigateToTask={onNavigateToTask} onNavigateToProject={onNavigateToProject}/></div>}
         {activeDetail==="bizcard"&&<div style={{marginBottom:"1rem"}}>{(()=>{
-          const linked=(data.businessCards||[]).filter(c=>String(c.salesRef?.id)===String(muni.id)&&c.salesRef?.type==="自治体");
-          return <LinkedBizcardList cards={linked} users={users} onUnlink={id=>{const nd={...data,businessCards:(data.businessCards||[]).map(c=>c.id===id?{...c,salesRef:null}:c)};save(nd);}} onNavigateToBizcard={()=>{setActiveMuni(null);setMuniScreen("top");setSalesTab("bizcard");}} onLink={()=>setLinkBizcardModal({entityType:"自治体",entityId:muni.id,entityName:muni.name})}/>;
+          const linked=linkedBizcards("自治体",muni.id);
+          return <LinkedBizcardList cards={linked} users={users} onUnlink={id=>unlinkBizCard(id)} onNavigateToBizcard={navToBizcard.muni} onLink={()=>requestAnimationFrame(()=>setLinkBizcardModal({entityType:"自治体",entityId:muni.id,entityName:muni.name}))}/>;
         })()}</div>}
 
         {activeDetail==="files"&&<div style={{marginBottom:"1rem"}}><FileSection files={muni.files||[]} currentUserId={currentUser?.id}
@@ -8069,6 +8727,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             {/* 手動追加シート */}
             {sheet==="bcAdd"&&(
               <Sheet title="名刺を追加" onClose={()=>{setSheet(null);setBcAddForm(BC_ADD_INIT);}}>
+                <BizCardScanner onResult={fields=>setBcAddForm(p=>({...p,...fields}))} currentUser={currentUser}/>
                 {[
                   ["所有者（誰が交換した名刺か）","owner","select"],
                   ["会社名 *","company","text"],
@@ -8423,11 +9082,14 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
               <div style={{fontSize:"0.75rem",color:C.textMuted}}>{currentUser?.email}</div>
             </div>
           </div>
-          {[["氏名 *","name","田中太郎","text"],["メールアドレス","email","example@mail.com","email"],["電話番号","phone","090-0000-0000","tel"]].map(([label,field,ph,type])=>(
+          {[["氏名 *","name","田中太郎","text"],["メールアドレス *（通知受信に必要）","email","example@mail.com","email"],["電話番号","phone","090-0000-0000","tel"]].map(([label,field,ph,type])=>(
             <div key={field} style={{marginBottom:"0.875rem"}}>
-              <div style={{fontSize:"0.78rem",fontWeight:700,color:C.textSub,marginBottom:"0.3rem"}}>{label}</div>
+              <div style={{fontSize:"0.78rem",fontWeight:700,color:field==="email"&&!profileForm.email?"#dc2626":C.textSub,marginBottom:"0.3rem"}}>{label}</div>
               <input type={type} value={profileForm[field]||""} onChange={e=>setProfileForm(p=>({...p,[field]:e.target.value}))} placeholder={ph}
-                style={{width:"100%",padding:"0.625rem 0.75rem",borderRadius:"0.625rem",border:"1.5px solid "+C.border,fontSize:"0.9rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
+                style={{width:"100%",padding:"0.625rem 0.75rem",borderRadius:"0.625rem",border:`1.5px solid ${field==="email"&&!profileForm.email?"#fca5a5":C.border}`,fontSize:"0.9rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
+              {field==="email"&&!profileForm.email&&(
+                <div style={{fontSize:"0.7rem",color:"#dc2626",marginTop:"0.2rem"}}>📧 メール通知を受け取るために入力してください</div>
+              )}
             </div>
           ))}
           {profileMsg&&<div style={{marginBottom:"0.75rem",fontSize:"0.82rem",color:profileMsg.startsWith("✅")?"#059669":"#dc2626"}}>{profileMsg}</div>}
@@ -8463,8 +9125,11 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
               );
             })()}
             {(currentUser?.notifyMode==='email'||currentUser?.notifyMode==='both')&&(
-              <div style={{fontSize:"0.72rem",color:C.textMuted,background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:"0.5rem",padding:"0.4rem 0.625rem",marginBottom:"0.625rem"}}>
-                📧 送信先: bm-dx@beetle-ems.com
+              <div style={{fontSize:"0.72rem",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:"0.5rem",padding:"0.4rem 0.625rem",marginBottom:"0.625rem"}}>
+                {currentUser?.email
+                  ? <span style={{color:"#166534"}}>📧 送信先: <strong>{currentUser.email}</strong></span>
+                  : <span style={{color:"#dc2626"}}>⚠️ 上の「メールアドレス」を入力して保存すると通知が届きます</span>
+                }
               </div>
             )}
             {(currentUser?.notifyMode!=='email')&&(
@@ -9804,8 +10469,86 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
   const cumPayTotal = PAY_KEYS.reduce((s,[k])=>s+(cumPay[k]||0),0);
   const exitBase = +d.exits?.top||0;
 
+  // ⑧ 活動ログPDF出力
+  const exportActivityPDF = () => {
+    const now = new Date();
+    const dateStr = now.toLocaleDateString("ja-JP",{year:"numeric",month:"long",day:"numeric"});
+    const companies  = data.companies||[];
+    const munis      = data.municipalities||[];
+    const vendors    = data.vendors||[];
+
+    // 今月のアプローチログ集計
+    const thisMonth = now.toISOString().slice(0,7);
+    const allLogs = [
+      ...companies.flatMap(e=>(e.approachLogs||[]).map(l=>({...l,entityName:e.name,entityType:"企業"}))),
+      ...munis.flatMap(e=>(e.approachLogs||[]).map(l=>({...l,entityName:e.name,entityType:"自治体"}))),
+      ...vendors.flatMap(e=>(e.approachLogs||[]).map(l=>({...l,entityName:e.name,entityType:"業者"}))),
+    ].filter(l=>(l.createdAt||l.date||"").slice(0,7)===thisMonth)
+     .sort((a,b)=>new Date(b.createdAt||b.date)-new Date(a.createdAt||a.date));
+
+    const userMap = {};
+    (users||[]).forEach(u=>{ userMap[u.id]=u.name; });
+
+    const rows = allLogs.map(l=>`
+      <tr>
+        <td>${(l.createdAt||l.date||"").slice(0,10)}</td>
+        <td><span class="badge badge-${l.entityType==="企業"?"blue":l.entityType==="自治体"?"green":"purple"}">${l.entityType}</span></td>
+        <td>${l.entityName||""}</td>
+        <td>${l.type||""}</td>
+        <td>${(l.note||"").replace(/</g,"&lt;")}</td>
+        <td>${userMap[l.userId||l.createdBy]||""}</td>
+      </tr>`).join("");
+
+    const html = `<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>活動ログ報告書</title>
+<style>
+  body{font-family:"Hiragino Kaku Gothic ProN","Meiryo",sans-serif;font-size:12px;color:#1e293b;padding:20px 30px;}
+  h1{font-size:18px;font-weight:800;border-bottom:3px solid #2563eb;padding-bottom:6px;margin-bottom:4px;}
+  .meta{font-size:10px;color:#64748b;margin-bottom:16px;}
+  .logo{font-size:12px;font-weight:800;color:#2563eb;margin-bottom:2px;}
+  table{width:100%;border-collapse:collapse;font-size:11px;}
+  th{background:#f1f5f9;padding:6px 8px;text-align:left;font-weight:700;border:1px solid #e2e8f0;}
+  td{padding:5px 8px;border:1px solid #e2e8f0;vertical-align:top;}
+  tr:nth-child(even){background:#f8fafc;}
+  .badge{display:inline-block;padding:1px 6px;border-radius:999px;font-size:10px;font-weight:700;color:white;}
+  .badge-blue{background:#2563eb;} .badge-green{background:#059669;} .badge-purple{background:#7c3aed;}
+  .summary{display:flex;gap:16px;margin-bottom:16px;}
+  .summary-item{background:#f1f5f9;border-radius:8px;padding:8px 14px;text-align:center;}
+  .summary-item .num{font-size:22px;font-weight:800;color:#2563eb;}
+  .summary-item .lbl{font-size:10px;color:#64748b;}
+  @media print{body{padding:10px;}}
+</style>
+</head>
+<body>
+  <div class="logo">⚡ MyDesk チーム業務管理</div>
+  <h1>活動ログ報告書</h1>
+  <div class="meta">作成日：${dateStr}　対象期間：${thisMonth}月分</div>
+  <div class="summary">
+    <div class="summary-item"><div class="num">${allLogs.length}</div><div class="lbl">合計アプローチ</div></div>
+    <div class="summary-item"><div class="num">${allLogs.filter(l=>l.entityType==="企業").length}</div><div class="lbl">企業</div></div>
+    <div class="summary-item"><div class="num">${allLogs.filter(l=>l.entityType==="自治体").length}</div><div class="lbl">自治体</div></div>
+    <div class="summary-item"><div class="num">${allLogs.filter(l=>l.entityType==="業者").length}</div><div class="lbl">業者</div></div>
+  </div>
+  <table>
+    <thead><tr><th>日付</th><th>種別</th><th>相手先</th><th>方法</th><th>内容</th><th>担当</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+</body>
+</html>`;
+    const win = window.open("","_blank");
+    if(win){ win.document.write(html); win.document.close(); setTimeout(()=>win.print(),500); }
+  };
+
   return (
     <div>
+      {/* ⑧ 活動ログPDF出力ボタン */}
+      <button onClick={exportActivityPDF}
+        style={{marginBottom:"0.75rem",padding:"0.5rem 1rem",borderRadius:"0.75rem",border:"1.5px solid #dc2626",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"0.4rem"}}>
+        📄 活動ログをPDF出力（今月分）
+      </button>
       {/* System tabs */}
       <div style={{display:"flex",background:C.bg,borderRadius:"0.875rem",padding:"0.25rem",marginBottom:"1rem",border:`1px solid ${C.border}`}}>
         {ANALYTICS_SYSTEMS.map(s=>(
@@ -10181,6 +10924,108 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
   );
 }
 
+// ─── GLOBAL SEARCH MODAL ─────────────────────────────────────────────────────
+function GlobalSearchModal({ query, onQueryChange, onClose, data, onNavigate, users=[] }) {
+  const inputRef = React.useRef();
+  React.useEffect(()=>{ setTimeout(()=>inputRef.current?.focus(), 50); }, []);
+
+  const norm = s => (s||"").replace(/[ 　	]/g,"").toLowerCase();
+  const q = norm(query);
+
+  const results = React.useMemo(() => {
+    if(!q || q.length < 1) return [];
+    const hits = [];
+
+    // 企業
+    (data.companies||[]).forEach(e => {
+      if(norm(e.name).includes(q) || norm(e.notes).includes(q)) {
+        hits.push({type:"企業",id:e.id,name:e.name,sub:e.status||"",icon:"🏢",tab:"sales"});
+      }
+    });
+    // 自治体
+    (data.municipalities||[]).forEach(e => {
+      if(norm(e.name).includes(q)) {
+        hits.push({type:"自治体",id:e.id,name:e.name,sub:e.treatyStatus||"",icon:"🏛️",tab:"sales"});
+      }
+    });
+    // 業者
+    (data.vendors||[]).forEach(e => {
+      if(norm(e.name).includes(q)) {
+        hits.push({type:"業者",id:e.id,name:e.name,sub:e.status||"",icon:"🔧",tab:"sales"});
+      }
+    });
+    // 名刺
+    (data.businessCards||[]).forEach(bc => {
+      const name = `${bc.lastName||""}${bc.firstName||""}`;
+      if(norm(name).includes(q) || norm(bc.company).includes(q) || norm(bc.title).includes(q)) {
+        hits.push({type:"名刺",id:bc.id,name:`${name}（${bc.company||""}）`,sub:bc.title||"",icon:"🪪",tab:"sales"});
+      }
+    });
+    // タスク
+    (data.tasks||[]).forEach(t => {
+      if(norm(t.title).includes(q) || norm(t.notes).includes(q)) {
+        hits.push({type:"タスク",id:t.id,name:t.title,sub:t.status||"",icon:"✅",tab:"tasks"});
+      }
+    });
+    // プロジェクト
+    (data.projects||[]).forEach(p => {
+      if(norm(p.name).includes(q)) {
+        hits.push({type:"プロジェクト",id:p.id,name:p.name,sub:"",icon:"📁",tab:"tasks"});
+      }
+    });
+
+    return hits.slice(0, 30);
+  }, [q, data]);
+
+  const typeColor = {"企業":"#2563eb","自治体":"#059669","業者":"#7c3aed","名刺":"#0891b2","タスク":"#d97706","プロジェクト":"#6b7280"};
+
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:900,background:"rgba(0,0,0,0.6)",display:"flex",alignItems:"flex-start",justifyContent:"center",paddingTop:"4dvh"}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"white",borderRadius:"1.25rem",width:"95%",maxWidth:520,maxHeight:"80dvh",display:"flex",flexDirection:"column",boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
+        {/* 検索入力 */}
+        <div style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.875rem 1rem",borderBottom:`1px solid ${C.borderLight}`}}>
+          <span style={{fontSize:"1.1rem"}}>🔍</span>
+          <input ref={inputRef} value={query} onChange={e=>onQueryChange(e.target.value)}
+            placeholder="企業・自治体・名刺・タスクを検索..."
+            style={{flex:1,border:"none",outline:"none",fontSize:"1rem",fontFamily:"inherit",color:C.text,background:"transparent"}}/>
+          <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",fontSize:"1.2rem",color:C.textMuted,padding:"0.2rem"}}>✕</button>
+        </div>
+        {/* 結果 */}
+        <div style={{overflowY:"auto",flex:1,padding:"0.5rem 0.5rem"}}>
+          {!q&&(
+            <div style={{textAlign:"center",padding:"2rem",color:C.textMuted,fontSize:"0.85rem"}}>
+              キーワードを入力してください<br/>
+              <span style={{fontSize:"0.75rem"}}>企業・自治体・業者・名刺・タスク・プロジェクトを横断検索</span>
+            </div>
+          )}
+          {q&&results.length===0&&(
+            <div style={{textAlign:"center",padding:"2rem",color:C.textMuted,fontSize:"0.85rem"}}>「{query}」に一致する結果がありません</div>
+          )}
+          {results.map((r,i)=>(
+            <div key={i} onClick={()=>onNavigate(r.tab)}
+              style={{display:"flex",alignItems:"center",gap:"0.6rem",padding:"0.6rem 0.75rem",borderRadius:"0.75rem",cursor:"pointer",marginBottom:"0.2rem"}}
+              onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
+              onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+              <span style={{fontSize:"1.1rem",flexShrink:0}}>{r.icon}</span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontWeight:600,fontSize:"0.88rem",color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.name}</div>
+                {r.sub&&<div style={{fontSize:"0.72rem",color:C.textMuted}}>{r.sub}</div>}
+              </div>
+              <span style={{fontSize:"0.65rem",fontWeight:800,color:"white",background:typeColor[r.type]||"#6b7280",borderRadius:999,padding:"0.1rem 0.4rem",flexShrink:0}}>{r.type}</span>
+            </div>
+          ))}
+        </div>
+        {results.length>0&&(
+          <div style={{padding:"0.5rem 1rem",borderTop:`1px solid ${C.borderLight}`,fontSize:"0.72rem",color:C.textMuted,textAlign:"center"}}>
+            {results.length}件 — タップして画面に移動
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
 export default function App() {
   const [data,setData]       = useState(INIT);
   const [users,setUsers]     = useState([]);
@@ -10207,6 +11052,16 @@ export default function App() {
   const [loaded,setLoaded]   = useState(false);
   const [showUserMenu,setShowUserMenu] = useState(false);
   const [showNotifPanel,setShowNotifPanel] = useState(false);
+  const [globalSearch, setGlobalSearch] = useState(null); // null=閉じ, ""=開く
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  // ① オフライン検知
+  React.useEffect(()=>{
+    const goOffline = () => setIsOffline(true);
+    const goOnline  = () => setIsOffline(false);
+    window.addEventListener("offline", goOffline);
+    window.addEventListener("online",  goOnline);
+    return ()=>{ window.removeEventListener("offline",goOffline); window.removeEventListener("online",goOnline); };
+  }, []);
   const [notifFilter,setNotifFilter] = useState("all");
   const contentRef = useRef(null);
   const scrollPos  = useRef({});   // tab → scrollY
@@ -10597,6 +11452,11 @@ export default function App() {
 
             {/* Notification bell + User menu */}
             <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:"0.5rem",position:"relative"}}>
+              {/* ④ グローバル検索 */}
+              <button onClick={()=>setGlobalSearch("")}
+                style={{width:38,height:38,borderRadius:"50%",background:C.bg,border:`1.5px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0,fontSize:"1rem"}}>
+                🔍
+              </button>
               {/* Bell */}
               <button onClick={()=>setShowNotifPanel(v=>!v)}
                 style={{position:"relative",width:38,height:38,borderRadius:"50%",background:appUnread.length>0?C.accentBg:C.bg,border:`1.5px solid ${appUnread.length>0?C.accent:C.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",transition:"all 0.15s",flexShrink:0}}>
@@ -10817,6 +11677,23 @@ export default function App() {
         </div>
       </div>
       </div>{/* end content+bottomNav wrapper */}
+      {/* ① オフラインバナー */}
+      {isOffline&&(
+        <div style={{position:"fixed",top:0,left:0,right:0,zIndex:1000,background:"#fef3c7",borderBottom:"2px solid #f59e0b",padding:"0.5rem 1rem",textAlign:"center",fontSize:"0.82rem",fontWeight:700,color:"#92400e"}}>
+          📵 オフライン — 閲覧のみ可能です。接続が回復すると自動同期されます。
+        </div>
+      )}
+      {/* ④ グローバル検索モーダル */}
+      {globalSearch!==null&&(
+        <GlobalSearchModal
+          query={globalSearch}
+          onQueryChange={setGlobalSearch}
+          onClose={()=>setGlobalSearch(null)}
+          data={data}
+          onNavigate={(tab)=>{setGlobalSearch(null);setTab(tab);}}
+          users={users}
+        />
+      )}
     </div>
   );
 }
