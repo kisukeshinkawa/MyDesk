@@ -3734,6 +3734,356 @@ ${list}
 });
 
 
+// ─── TODAY'S TODO PANEL ──────────────────────────────────────────────────────
+function TodayTodoPanel({ data, currentUser, users=[], onNavigate }) {
+  const uid = currentUser?.id;
+  const todayStr = new Date().toISOString().slice(0,10);
+  const [expanded, setExpanded] = React.useState(true);
+
+  const todos = React.useMemo(() => {
+    const items = [];
+    const all = [
+      ...(data.companies||[]).map(e=>({...e,_type:"companies",_label:"企業"})),
+      ...(data.municipalities||[]).map(e=>({...e,_type:"municipalities",_label:"自治体"})),
+      ...(data.vendors||[]).map(e=>({...e,_type:"vendors",_label:"業者"})),
+    ].filter(e=>(e.assigneeIds||[]).includes(uid));
+
+    const CLOSED = new Set(["失注","見送り","断り","協定済","成約","加入済"]);
+
+    all.forEach(e => {
+      if(CLOSED.has(e.treatyStatus||e.status||"")) return;
+      // 期限切れ次回アクション
+      if(e.nextActionDate && e.nextActionDate <= todayStr) {
+        const overdue = Math.floor((Date.now()-new Date(e.nextActionDate))/86400000);
+        items.push({
+          priority: overdue > 7 ? "high" : "medium",
+          icon: {電話:"📞",訪問:"🚗",メール:"📧",オンライン:"💻"}[e.nextActionType]||"📅",
+          title: `${e.name} — ${e.nextActionType||"アクション"}`,
+          sub: overdue===0 ? "本日期限" : `${overdue}日超過`,
+          color: overdue > 7 ? "#dc2626" : "#d97706",
+          bg: overdue > 7 ? "#fff1f2" : "#fffbeb",
+          action: ()=>onNavigate&&onNavigate(e._type, e.id),
+          entity: e,
+        });
+      }
+      // 30日以上アプローチなし
+      const logs = e.approachLogs||[];
+      const last = logs.length ? logs.reduce((a,b)=>new Date(a.createdAt||a.date)>new Date(b.createdAt||b.date)?a:b) : null;
+      const days = last ? Math.floor((Date.now()-new Date(last.createdAt||last.date))/86400000) : 999;
+      if(days >= 30 && !e.nextActionDate) {
+        items.push({
+          priority: days>60?"high":"low",
+          icon:"📋", title:`${e.name} — フォロー確認`,
+          sub:`最終アプローチから${days}日`,
+          color:"#7c3aed", bg:"#faf5ff",
+          action:()=>onNavigate&&onNavigate(e._type, e.id),
+          entity: e,
+        });
+      }
+    });
+
+    // 自分担当タスクの期限切れ・本日期限
+    (data.tasks||[]).filter(t=>
+      (t.assigneeIds||t.assignees||[]).includes(uid) &&
+      t.status!=="done" && t.status!=="完了" && t.dueDate && t.dueDate<=todayStr
+    ).forEach(t=>{
+      const overdue = Math.floor((Date.now()-new Date(t.dueDate))/86400000);
+      items.push({
+        priority: overdue>3?"high":"medium",
+        icon:"✅", title:t.title,
+        sub: overdue===0?"本日期限":`${overdue}日超過`,
+        color:"#2563eb", bg:"#eff6ff",
+        action: null, entity: null,
+      });
+    });
+
+    return items.sort((a,b)=>{
+      const p={high:0,medium:1,low:2};
+      return (p[a.priority]||1)-(p[b.priority]||1);
+    });
+  }, [data, uid, todayStr]);
+
+  if(!todos.length) return (
+    <div style={{background:"#f0fdf4",border:"1.5px solid #bbf7d0",borderRadius:"1rem",padding:"0.875rem 1rem",marginBottom:"0.75rem",display:"flex",alignItems:"center",gap:"0.5rem"}}>
+      <span style={{fontSize:"1.3rem"}}>🌟</span>
+      <div>
+        <div style={{fontWeight:800,fontSize:"0.85rem",color:"#166534"}}>今日やることはありません</div>
+        <div style={{fontSize:"0.72rem",color:"#16a34a",marginTop:"0.1rem"}}>担当案件はすべて対応済みです</div>
+      </div>
+    </div>
+  );
+
+  const high = todos.filter(t=>t.priority==="high").length;
+  return (
+    <div style={{background:"white",border:`2px solid ${high>0?"#dc2626":"#f59e0b"}`,borderRadius:"1rem",marginBottom:"0.75rem",overflow:"hidden"}}>
+      <div onClick={()=>setExpanded(p=>!p)}
+        style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.875rem 1rem",cursor:"pointer",background:high>0?"#fff1f2":"#fffbeb"}}>
+        <span style={{fontSize:"1.1rem"}}>📋</span>
+        <span style={{fontWeight:800,fontSize:"0.9rem",color:high>0?"#dc2626":"#92400e",flex:1}}>
+          今日やること {todos.length}件
+          {high>0&&<span style={{marginLeft:"0.4rem",fontSize:"0.72rem",background:"#dc2626",color:"white",borderRadius:999,padding:"0.1rem 0.4rem"}}>緊急 {high}件</span>}
+        </span>
+        <span style={{color:"#94a3b8",fontSize:"0.85rem"}}>{expanded?"▲":"▼"}</span>
+      </div>
+      {expanded&&(
+        <div style={{padding:"0.5rem 0.75rem 0.75rem"}}>
+          {todos.map((t,i)=>(
+            <div key={i} onClick={t.action||undefined}
+              style={{display:"flex",alignItems:"center",gap:"0.6rem",padding:"0.6rem 0.75rem",background:t.bg,borderRadius:"0.75rem",marginBottom:"0.35rem",cursor:t.action?"pointer":"default",border:`1px solid ${t.color}33`}}>
+              <span style={{fontSize:"1.1rem",flexShrink:0}}>{t.icon}</span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontWeight:700,fontSize:"0.85rem",color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div>
+                <div style={{fontSize:"0.72rem",color:t.color,fontWeight:700}}>{t.sub}</div>
+              </div>
+              {t.entity&&<span style={{fontSize:"0.65rem",fontWeight:800,color:"white",background:{"companies":"#2563eb","municipalities":"#059669","vendors":"#7c3aed"}[t.entity._type],borderRadius:999,padding:"0.1rem 0.4rem",flexShrink:0}}>{t.entity._label}</span>}
+              {t.action&&<span style={{color:"#94a3b8",fontSize:"0.8rem",flexShrink:0}}>›</span>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── MY CASES PANEL ─────────────────────────────────────────────────────────
+function MyCasesPanel({ data, currentUser, users=[], onNavigate }) {
+  const uid = currentUser?.id;
+  const [filter, setFilter] = React.useState("all"); // all|companies|municipalities|vendors
+  const [sortBy, setSortBy] = React.useState("nextAction"); // nextAction|lastApproach|status
+
+  const cases = React.useMemo(() => {
+    const CLOSED = new Set(["失注","見送り","断り","協定済","成約","加入済"]);
+    const all = [
+      ...(data.companies||[]).map(e=>({...e,_type:"companies",_label:"企業",_statusKey:"status"})),
+      ...(data.municipalities||[]).map(e=>({...e,_type:"municipalities",_label:"自治体",_statusKey:"treatyStatus"})),
+      ...(data.vendors||[]).map(e=>({...e,_type:"vendors",_label:"業者",_statusKey:"status"})),
+    ].filter(e=>(e.assigneeIds||[]).includes(uid));
+
+    const withMeta = all.map(e=>{
+      const logs = e.approachLogs||[];
+      const last = logs.length ? logs.reduce((a,b)=>new Date(a.createdAt||a.date)>new Date(b.createdAt||b.date)?a:b) : null;
+      const daysSince = last ? Math.floor((Date.now()-new Date(last.createdAt||last.date))/86400000) : null;
+      const status = e[e._statusKey]||"未接触";
+      const isClosed = CLOSED.has(status);
+      return {...e, _lastApproach:last, _daysSince:daysSince, _status:status, _isClosed:isClosed};
+    });
+
+    const filtered = filter==="all" ? withMeta : withMeta.filter(e=>e._type===filter);
+
+    return filtered.sort((a,b)=>{
+      if(sortBy==="nextAction") {
+        if(!a.nextActionDate && !b.nextActionDate) return 0;
+        if(!a.nextActionDate) return 1;
+        if(!b.nextActionDate) return -1;
+        return a.nextActionDate.localeCompare(b.nextActionDate);
+      }
+      if(sortBy==="lastApproach") {
+        if(a._daysSince===null) return 1;
+        if(b._daysSince===null) return -1;
+        return b._daysSince - a._daysSince;
+      }
+      return (a._status||"").localeCompare(b._status||"");
+    });
+  }, [data, uid, filter, sortBy]);
+
+  const typeColor = {"companies":"#2563eb","municipalities":"#059669","vendors":"#7c3aed"};
+  const counts = {all:0,companies:0,municipalities:0,vendors:0};
+  cases.forEach(e=>{ counts.all++; counts[e._type]=(counts[e._type]||0)+1; });
+
+  return (
+    <div style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"1rem",marginBottom:"0.75rem",overflow:"hidden"}}>
+      <div style={{padding:"0.875rem 1rem 0.625rem",borderBottom:`1px solid ${C.borderLight}`}}>
+        <div style={{fontWeight:800,fontSize:"0.9rem",color:C.text,marginBottom:"0.5rem"}}>👤 担当案件一覧 <span style={{fontWeight:400,fontSize:"0.75rem",color:C.textMuted}}>({cases.length}件)</span></div>
+        {/* Type filter */}
+        <div style={{display:"flex",gap:"0.3rem",flexWrap:"wrap",marginBottom:"0.4rem"}}>
+          {[["all","すべて"],["companies","企業"],["municipalities","自治体"],["vendors","業者"]].map(([k,l])=>(
+            <button key={k} onClick={()=>setFilter(k)}
+              style={{padding:"0.2rem 0.55rem",borderRadius:999,border:`1.5px solid ${filter===k?"#2563eb":C.border}`,background:filter===k?"#dbeafe":"white",color:filter===k?"#1d4ed8":C.textSub,fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+              {l}{k!=="all"&&counts[k]>0?` (${counts[k]})`:""}</button>
+          ))}
+          <select value={sortBy} onChange={e=>setSortBy(e.target.value)}
+            style={{marginLeft:"auto",padding:"0.2rem 0.5rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit",color:C.textSub,background:"white"}}>
+            <option value="nextAction">次回アクション順</option>
+            <option value="lastApproach">最終AP日順</option>
+            <option value="status">ステータス順</option>
+          </select>
+        </div>
+      </div>
+      <div style={{maxHeight:400,overflowY:"auto"}}>
+        {cases.length===0&&<div style={{textAlign:"center",padding:"1.5rem",color:C.textMuted,fontSize:"0.82rem"}}>担当案件がありません</div>}
+        {cases.map(e=>{
+          const todayStr = new Date().toISOString().slice(0,10);
+          const isOverdue = e.nextActionDate && e.nextActionDate < todayStr;
+          const isToday = e.nextActionDate === todayStr;
+          return (
+            <div key={e.id} onClick={()=>onNavigate&&onNavigate(e._type,e.id)}
+              style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.6rem 1rem",borderBottom:`1px solid ${C.borderLight}`,cursor:"pointer"}}
+              onMouseEnter={el=>el.currentTarget.style.background="#f8fafc"}
+              onMouseLeave={el=>el.currentTarget.style.background="white"}>
+              <span style={{fontSize:"0.65rem",fontWeight:800,color:"white",background:typeColor[e._type],borderRadius:999,padding:"0.1rem 0.4rem",flexShrink:0}}>{e._label}</span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontWeight:700,fontSize:"0.85rem",color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.name}</div>
+                <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap",marginTop:"0.1rem"}}>
+                  <span style={{fontSize:"0.68rem",color:C.textMuted}}>{e._status}</span>
+                  {e._daysSince!==null&&<span style={{fontSize:"0.68rem",color:e._daysSince>30?"#dc2626":"#64748b"}}>AP:{e._daysSince}日前</span>}
+                </div>
+              </div>
+              {e.nextActionDate&&(
+                <div style={{textAlign:"right",flexShrink:0}}>
+                  <div style={{fontSize:"0.7rem",fontWeight:700,color:isOverdue?"#dc2626":isToday?"#d97706":"#2563eb"}}>
+                    {isOverdue?"⚠️ 期限切れ":isToday?"📅 本日":e.nextActionDate.slice(5)}
+                  </div>
+                  <div style={{fontSize:"0.65rem",color:C.textMuted}}>{e.nextActionType||""}</div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── PIPELINE KANBAN ─────────────────────────────────────────────────────────
+function PipelineKanban({ data, currentUser, onNavigate, onStatusChange }) {
+  const uid = currentUser?.id;
+  const [entityFilter, setEntityFilter] = React.useState("all");
+  const [dragItem, setDragItem] = React.useState(null);
+  const [dragOver, setDragOver] = React.useState(null);
+
+  const PIPELINE = ["未接触","電話済","資料送付","商談中","成約","失注"];
+  const PIPE_COLOR = {"未接触":"#6b7280","電話済":"#2563eb","資料送付":"#7c3aed","商談中":"#d97706","成約":"#059669","失注":"#dc2626"};
+  const PIPE_BG   = {"未接触":"#f3f4f6","電話済":"#dbeafe","資料送付":"#ede9fe","商談中":"#fef3c7","成約":"#d1fae5","失注":"#fee2e2"};
+
+  const allEntities = React.useMemo(()=>[
+    ...(data.companies||[]).map(e=>({...e,_type:"companies",_label:"企業",_status:e.status||"未接触"})),
+    ...(data.municipalities||[]).map(e=>({...e,_type:"municipalities",_label:"自治体",_status:e.treatyStatus||"未接触"})),
+    ...(data.vendors||[]).map(e=>({...e,_type:"vendors",_label:"業者",_status:e.status||"未接触"})),
+  ].filter(e=>entityFilter==="all"||(e.assigneeIds||[]).includes(uid)), [data, uid, entityFilter]);
+
+  const grouped = {};
+  PIPELINE.forEach(s=>{ grouped[s]=allEntities.filter(e=>e._status===s||(!PIPELINE.includes(e._status)&&s==="未接触")); });
+
+  const typeColor = {"companies":"#2563eb","municipalities":"#059669","vendors":"#7c3aed"};
+
+  const handleDrop = (newStatus) => {
+    if(!dragItem) return;
+    onStatusChange&&onStatusChange(dragItem._type, dragItem.id, newStatus);
+    setDragItem(null); setDragOver(null);
+  };
+
+  return (
+    <div style={{marginBottom:"0.75rem"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.5rem"}}>
+        <div style={{fontWeight:800,fontSize:"0.88rem",color:C.text}}>📊 営業パイプライン</div>
+        <div style={{display:"flex",gap:"0.3rem"}}>
+          {[["all","全員"],["mine","自分"]].map(([k,l])=>(
+            <button key={k} onClick={()=>setEntityFilter(k)}
+              style={{padding:"0.2rem 0.6rem",borderRadius:999,border:`1.5px solid ${entityFilter===k?C.accent:C.border}`,background:entityFilter===k?C.accentBg:"white",color:entityFilter===k?C.accent:C.textSub,fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+              {l}</button>
+          ))}
+        </div>
+      </div>
+      <div style={{display:"flex",gap:"0.4rem",overflowX:"auto",paddingBottom:"0.5rem"}}>
+        {PIPELINE.map(status=>{
+          const items = grouped[status]||[];
+          const isOver = dragOver===status;
+          return (
+            <div key={status}
+              onDragOver={e=>{e.preventDefault();setDragOver(status);}}
+              onDragLeave={()=>setDragOver(null)}
+              onDrop={()=>handleDrop(status)}
+              style={{minWidth:140,background:isOver?"#f0f9ff":PIPE_BG[status],borderRadius:"0.875rem",padding:"0.5rem",border:`2px solid ${isOver?C.accent:PIPE_COLOR[status]+"44"}`,transition:"all 0.15s",flexShrink:0}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.4rem"}}>
+                <span style={{fontSize:"0.72rem",fontWeight:800,color:PIPE_COLOR[status]}}>{status}</span>
+                <span style={{fontSize:"0.7rem",fontWeight:800,background:PIPE_COLOR[status],color:"white",borderRadius:999,padding:"0.05rem 0.4rem"}}>{items.length}</span>
+              </div>
+              {items.slice(0,8).map(e=>(
+                <div key={e.id}
+                  draggable
+                  onDragStart={()=>setDragItem(e)}
+                  onDragEnd={()=>{setDragItem(null);setDragOver(null);}}
+                  onClick={()=>onNavigate&&onNavigate(e._type,e.id)}
+                  style={{background:"white",borderRadius:"0.5rem",padding:"0.4rem 0.5rem",marginBottom:"0.3rem",cursor:"grab",boxShadow:"0 1px 3px rgba(0,0,0,0.08)",border:`1px solid ${C.borderLight}`,opacity:dragItem?.id===e.id?0.5:1}}>
+                  <div style={{fontSize:"0.75rem",fontWeight:700,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.name}</div>
+                  <div style={{display:"flex",alignItems:"center",gap:"0.3rem",marginTop:"0.15rem"}}>
+                    <span style={{fontSize:"0.6rem",fontWeight:800,color:"white",background:typeColor[e._type],borderRadius:999,padding:"0.05rem 0.3rem"}}>{e._label}</span>
+                    {e.nextActionDate&&<span style={{fontSize:"0.6rem",color:C.textMuted}}>{e.nextActionDate.slice(5)}</span>}
+                  </div>
+                </div>
+              ))}
+              {items.length>8&&<div style={{fontSize:"0.65rem",color:C.textMuted,textAlign:"center",padding:"0.2rem"}}>他 {items.length-8} 件</div>}
+            </div>
+          );
+        })}
+      </div>
+      <div style={{fontSize:"0.65rem",color:C.textMuted,textAlign:"center",marginTop:"0.25rem"}}>💡 カードをドラッグ&ドロップしてステータスを変更できます</div>
+    </div>
+  );
+}
+
+// ─── TEAM ACTIVITY BOARD ─────────────────────────────────────────────────────
+function TeamActivityBoard({ data, users=[], currentUser }) {
+  const [period, setPeriod] = React.useState("month");
+  const now = new Date();
+  const since = new Date(now - (period==="week"?7:30)*86400000);
+
+  const stats = React.useMemo(()=>{
+    return users.map(u=>{
+      const approaches = [
+        ...(data.companies||[]).flatMap(e=>(e.approachLogs||[]).filter(l=>l.userId===u.id&&new Date(l.createdAt||l.date)>=since)),
+        ...(data.municipalities||[]).flatMap(e=>(e.approachLogs||[]).filter(l=>l.userId===u.id&&new Date(l.createdAt||l.date)>=since)),
+        ...(data.vendors||[]).flatMap(e=>(e.approachLogs||[]).filter(l=>l.userId===u.id&&new Date(l.createdAt||l.date)>=since)),
+      ];
+      const assigned = [
+        ...(data.companies||[]).filter(e=>(e.assigneeIds||[]).includes(u.id)),
+        ...(data.municipalities||[]).filter(e=>(e.assigneeIds||[]).includes(u.id)),
+        ...(data.vendors||[]).filter(e=>(e.assigneeIds||[]).includes(u.id)),
+      ];
+      const tasks = (data.tasks||[]).filter(t=>(t.assigneeIds||t.assignees||[]).includes(u.id));
+      const doneTasks = tasks.filter(t=>t.status==="done"||t.status==="完了");
+      const CLOSED = new Set(["失注","見送り","断り","協定済","成約","加入済"]);
+      const contracted = assigned.filter(e=>CLOSED.has(e.treatyStatus||e.status||"")).length;
+      return {u, approaches:approaches.length, assigned:assigned.length, tasks:tasks.length, doneTasks:doneTasks.length, contracted};
+    }).sort((a,b)=>b.approaches-a.approaches);
+  },[data,users,period,since]);
+
+  const maxApp = Math.max(...stats.map(s=>s.approaches), 1);
+
+  return (
+    <div style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"1rem",padding:"0.875rem 1rem",marginBottom:"0.75rem"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.75rem"}}>
+        <div style={{fontWeight:800,fontSize:"0.88rem",color:C.text}}>👥 チーム活動ボード</div>
+        <div style={{display:"flex",gap:"0.3rem"}}>
+          {[["week","週間"],["month","月間"]].map(([k,l])=>(
+            <button key={k} onClick={()=>setPeriod(k)}
+              style={{padding:"0.2rem 0.55rem",borderRadius:999,border:`1.5px solid ${period===k?C.accent:C.border}`,background:period===k?C.accentBg:"white",color:period===k?C.accent:C.textSub,fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{l}</button>
+          ))}
+        </div>
+      </div>
+      {stats.map(({u,approaches,assigned,tasks,doneTasks,contracted},i)=>(
+        <div key={u.id} style={{marginBottom:"0.625rem",padding:"0.625rem 0.75rem",background:i===0?"#fffbeb":"#f8fafc",borderRadius:"0.75rem",border:`1px solid ${i===0?"#fde68a":C.borderLight}`}}>
+          <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.35rem"}}>
+            {i===0&&<span style={{fontSize:"0.75rem"}}>🏆</span>}
+            <span style={{fontWeight:800,fontSize:"0.85rem",color:C.text}}>{u.name}</span>
+            <div style={{flex:1,height:6,background:"#f1f5f9",borderRadius:999,overflow:"hidden"}}>
+              <div style={{height:"100%",width:`${Math.round(approaches/maxApp*100)}%`,background:`linear-gradient(90deg,${C.accent},#7c3aed)`,borderRadius:999,transition:"width 0.5s"}}/>
+            </div>
+            <span style={{fontWeight:800,fontSize:"0.88rem",color:C.accent,minWidth:24,textAlign:"right"}}>{approaches}</span>
+          </div>
+          <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap"}}>
+            <span style={{fontSize:"0.68rem",color:"#64748b"}}>📋 AP: <strong>{approaches}</strong></span>
+            <span style={{fontSize:"0.68rem",color:"#64748b"}}>🏢 担当: <strong>{assigned}</strong></span>
+            <span style={{fontSize:"0.68rem",color:"#64748b"}}>✅ タスク: <strong>{doneTasks}/{tasks}</strong></span>
+            {contracted>0&&<span style={{fontSize:"0.68rem",color:"#059669",fontWeight:700}}>🎉 成約等: {contracted}</span>}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+
 // ─── WEEKLY REPORT PANEL ────────────────────────────────────────────────────
 function WeeklyReportPanel({ data, users=[], currentUser }) {
   const [generating, setGenerating] = React.useState(false);
@@ -5129,6 +5479,40 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     vendor:  () => { setActiveVendor(null);  setSalesTab("bizcard"); },
     muni:    () => { setActiveMuni(null); setMuniScreen("top"); setSalesTab("bizcard"); },
   };
+
+  // ④ パイプラインのステータス変更ハンドラ
+  const handlePipelineStatusChange = (type, entityId, newStatus) => {
+    if(type==="companies") {
+      const nd = {...data, companies:(data.companies||[]).map(e=>e.id===entityId?{...e,status:newStatus}:e)};
+      save(nd);
+    } else if(type==="municipalities") {
+      const nd = {...data, municipalities:(data.municipalities||[]).map(e=>e.id===entityId?{...e,treatyStatus:newStatus}:e)};
+      save(nd);
+    } else if(type==="vendors") {
+      const nd = {...data, vendors:(data.vendors||[]).map(e=>e.id===entityId?{...e,status:newStatus}:e)};
+      save(nd);
+    }
+  };
+
+  // ⑤⑧ AIタスク提案ダイアログ
+  const [aiTaskProposal, setAiTaskProposal] = React.useState(null);
+  React.useEffect(()=>{
+    const handler = () => {
+      if(window.__myDeskAiTaskProposal) {
+        setAiTaskProposal(window.__myDeskAiTaskProposal);
+        delete window.__myDeskAiTaskProposal;
+      }
+    };
+    window.addEventListener("mydesk-ai-task-proposal", handler);
+    return ()=>window.removeEventListener("mydesk-ai-task-proposal", handler);
+  }, []);
+
+  // ② 担当案件ナビゲート
+  const navigateToEntity = (type, id) => {
+    if(type==="companies") { setActiveCompany(id); setSalesTab("company"); setActiveDetail("timeline"); }
+    else if(type==="municipalities") { setActiveMuni(id); setSalesTab("muni"); setMuniScreen("muniDetail"); setActiveDetail("timeline"); }
+    else if(type==="vendors") { setActiveVendor(id); setSalesTab("vendor"); setActiveDetail("timeline"); }
+  };
   const linkedBizcards = (entityType, entityId) =>
     (data.businessCards||[]).filter(bc =>
       String(bc.salesRef?.id)===String(entityId) && bc.salesRef?.type===entityType
@@ -5211,25 +5595,49 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       });
     }
 
-    // ⑤ AIによるタスク自動生成（「〇〇する」「連絡する」などのキーワードを検出）
+    // ⑤⑧ AIによるタスク提案 + 次のアクション提案
     const taskKeywords = /来月|来週|後日|次回|追って|確認する|送る|提出|連絡|電話|訪問|資料|提案|見積|アポ|打ち合わせ/;
     if(log.note && taskKeywords.test(log.note)) {
-      const autoTask = {
-        id: Date.now()+Math.random()+0.1,
-        title: `【${entityName}】${log.note.slice(0,40)}`,
-        status: "未着手",
-        priority: "medium",
-        assignees: uid ? [uid] : [],
-        assigneeIds: uid ? [uid] : [],
-        createdBy: uid,
-        createdAt: new Date().toISOString(),
-        notes: `アプローチ記録から自動生成：${log.note}`,
-        projectId: null,
-        comments: [], memos: [], chat: [],
-        dueDate: entry.date || "",
-        _autoFromApproach: true,
-      };
-      nd = {...nd, tasks:[...(nd.tasks||[]), autoTask]};
+      // AI にタスク詳細と次のアクションを提案してもらう
+      const entity = (data[entityKey]||[]).find(e=>e.id===entityId);
+      const recentLogs = (entity?.approachLogs||[]).slice(-3).map(l=>`${l.date}: ${l.type} - ${l.note}`).join("\n");
+      fetch("/api/generate-email",{
+        method:"POST",
+        headers:{"Content-Type":"application/json","x-mydesk-secret":"mydesk2026"},
+        body:JSON.stringify({prompt:`以下のアプローチメモから、具体的なタスクと次のアクションを提案してください。
+JSON形式のみで返答してください：
+{"taskTitle":"タスク名（20字以内）","dueDate":"YYYY-MM-DD（来週か来月か文脈から判断、不明なら今日から14日後）","nextAction":"次に何をすべきか1文で"}
+
+【アプローチメモ】
+${log.note}
+
+【最近のアプローチ履歴】
+${recentLogs}
+
+【案件名】${entityName}`
+        })
+      }).then(r=>r.json()).then(j=>{
+        try {
+          const m = (j.text||"").match(/\{[\s\S]*\}/);
+          if(!m) return;
+          const ai = JSON.parse(m[0]);
+          // AI提案タスクをステートに保存してダイアログ表示
+          const proposed = {
+            id: Date.now()+Math.random()+0.1,
+            title: ai.taskTitle||`【${entityName}】${log.note.slice(0,40)}`,
+            status:"未着手", priority:"medium",
+            assignees:uid?[uid]:[], assigneeIds:uid?[uid]:[],
+            createdBy:uid, createdAt:new Date().toISOString(),
+            notes:`アプローチ記録から自動提案：${log.note}`,
+            projectId:null, comments:[], memos:[], chat:[],
+            dueDate: ai.dueDate||entry.date||"",
+            _autoFromApproach:true,
+          };
+          window.__myDeskAiTaskProposal = {task:proposed, nextAction:ai.nextAction, entityName};
+          // グローバルイベントで通知
+          window.dispatchEvent(new Event("mydesk-ai-task-proposal"));
+        } catch{}
+      }).catch(()=>{});
     }
 
     save(nd);
@@ -6484,15 +6892,25 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           </div>
         )}
 
-        {/* ── 案件スコアリング＋アラート ── */}
-        <ScoringAlertPanel data={data} users={users} currentUser={currentUser}
-          onNavigate={(type,id)=>{
-            if(type==="companies"){setActiveCompany(id);setSalesTab("company");setActiveDetail("timeline");}
-            else if(type==="vendors"){setActiveVendor(id);setSalesTab("vendor");setActiveDetail("timeline");}
-            else if(type==="municipalities"){setActiveMuni(id);setSalesTab("muni");setMuniScreen("muniDetail");setActiveDetail("timeline");}
-          }}/>
+        {/* ① 今日やること */}
+        <TodayTodoPanel data={data} currentUser={currentUser} users={users} onNavigate={navigateToEntity}/>
 
-        {/* ── 週次レポート生成 ── */}
+        {/* ② 担当案件一覧 */}
+        <MyCasesPanel data={data} currentUser={currentUser} users={users} onNavigate={navigateToEntity}/>
+
+        {/* ④ 営業パイプライン */}
+        <PipelineKanban data={data} currentUser={currentUser}
+          onNavigate={navigateToEntity}
+          onStatusChange={handlePipelineStatusChange}/>
+
+        {/* ⑨ チーム活動ボード */}
+        <TeamActivityBoard data={data} users={users} currentUser={currentUser}/>
+
+        {/* 🚨 案件スコアリング＋アラート */}
+        <ScoringAlertPanel data={data} users={users} currentUser={currentUser}
+          onNavigate={navigateToEntity}/>
+
+        {/* 📊 週次レポート */}
         <WeeklyReportPanel data={data} users={users} currentUser={currentUser}/>
 
       </div>
@@ -6732,6 +7150,43 @@ ${orig}`})
           }}
           onClose={()=>setLinkBizcardModal(null)}
         />
+      )}
+      {/* ⑤⑧ AIタスク提案ダイアログ */}
+      {aiTaskProposal&&(
+        <div style={{position:"fixed",inset:0,zIndex:700,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.55)",padding:"1rem"}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"white",borderRadius:"1.25rem",padding:"1.5rem",maxWidth:400,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.25)"}}>
+            <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem"}}>
+              <span style={{fontSize:"1.3rem"}}>✨</span>
+              <div style={{fontWeight:800,fontSize:"0.95rem",color:C.text}}>AIがタスクを提案しました</div>
+            </div>
+            <div style={{fontSize:"0.78rem",color:C.textSub,marginBottom:"1rem"}}>「{aiTaskProposal.entityName}」のアプローチから自動生成</div>
+            <div style={{background:"#eff6ff",borderRadius:"0.75rem",padding:"0.875rem",marginBottom:"0.75rem"}}>
+              <div style={{fontSize:"0.72rem",fontWeight:700,color:"#2563eb",marginBottom:"0.3rem"}}>📋 提案タスク</div>
+              <div style={{fontWeight:700,fontSize:"0.9rem",color:C.text,marginBottom:"0.25rem"}}>{aiTaskProposal.task.title}</div>
+              {aiTaskProposal.task.dueDate&&<div style={{fontSize:"0.75rem",color:"#64748b"}}>📅 期限：{aiTaskProposal.task.dueDate}</div>}
+            </div>
+            {aiTaskProposal.nextAction&&(
+              <div style={{background:"#faf5ff",borderRadius:"0.75rem",padding:"0.75rem",marginBottom:"1rem",border:"1px solid #ede9fe"}}>
+                <div style={{fontSize:"0.72rem",fontWeight:700,color:"#7c3aed",marginBottom:"0.2rem"}}>💡 次のアクション提案</div>
+                <div style={{fontSize:"0.82rem",color:C.text}}>{aiTaskProposal.nextAction}</div>
+              </div>
+            )}
+            <div style={{display:"flex",gap:"0.5rem"}}>
+              <button onClick={()=>setAiTaskProposal(null)}
+                style={{flex:1,padding:"0.6rem",borderRadius:"0.75rem",border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
+                スキップ
+              </button>
+              <button onClick={()=>{
+                const nd = {...data, tasks:[...(data.tasks||[]), aiTaskProposal.task]};
+                save(nd);
+                setAiTaskProposal(null);
+              }}
+                style={{flex:2,padding:"0.6rem",borderRadius:"0.75rem",border:"none",background:C.accent,color:"white",fontWeight:800,fontSize:"0.88rem",cursor:"pointer",fontFamily:"inherit"}}>
+                ✅ タスクに追加する
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );
