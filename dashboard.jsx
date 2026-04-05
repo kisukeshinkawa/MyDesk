@@ -1187,7 +1187,7 @@ const EMAILJS = {
   serviceId:  "YOUR_SERVICE_ID",    // EmailJS > Email Services でコピー
   templateId: "YOUR_TEMPLATE_ID",   // EmailJS > Email Templates でコピー
   publicKey:  "YOUR_PUBLIC_KEY",    // EmailJS > Account > Public Key でコピー
-  fromEmail:  "bm-dx@beetle-ems.com",
+  fromEmail:  "info@dustalk.com",
 };
 
 async function sendEmail({ toEmail, toName, subject, body }) {
