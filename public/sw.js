@@ -1,48 +1,86 @@
-// MyDesk Service Worker v6
-const APP_URL = '/';
+// public/sw.js - MyDesk Service Worker (PWA強化版)
+const CACHE_NAME = 'mydesk-v3';
+const STATIC_ASSETS = [
+  '/',
+  '/index.html',
+];
 
-self.addEventListener('install', (e) => { self.skipWaiting(); });
-self.addEventListener('activate', (e) => { e.waitUntil(clients.claim()); });
-
-self.addEventListener('push', (e) => {
-  if (!e.data) return;
-  let data = {};
-  try { data = e.data.json(); } catch { data = { title: 'MyDesk', body: e.data.text() }; }
-
-  e.waitUntil(
-    self.registration.showNotification(data.title || 'MyDesk', {
-      body: data.body || '',
-      icon: '/icon-192.png',
-      badge: '/icon-192.png',
-      tag: data.tag || 'mydesk',
-      renotify: true,
-      vibrate: [200, 100, 200],
-      data: { url: data.url || APP_URL },
+// Install: キャッシュに静的アセットを保存
+self.addEventListener('install', event => {
+  event.waitUntil(
+    caches.open(CACHE_NAME).then(cache => {
+      return cache.addAll(STATIC_ASSETS).catch(() => {});
     })
   );
+  self.skipWaiting();
 });
 
-self.addEventListener('notificationclick', (e) => {
-  e.notification.close();
-  const url = e.notification.data?.url || APP_URL;
-  e.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
-      for (const c of list) {
-        if (c.url.startsWith(self.location.origin) && 'focus' in c) {
-          c.navigate(url); return c.focus();
+// Activate: 古いキャッシュを削除
+self.addEventListener('activate', event => {
+  event.waitUntil(
+    caches.keys().then(keys =>
+      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
+    )
+  );
+  self.clients.claim();
+});
+
+// Fetch: ネットワーク優先、失敗時はキャッシュから
+self.addEventListener('fetch', event => {
+  const url = new URL(event.request.url);
+
+  // Supabase / API calls はキャッシュしない
+  if (url.hostname.includes('supabase') ||
+      url.pathname.startsWith('/api/') ||
+      url.pathname.includes('anthropic')) {
+    return;
+  }
+
+  // ナビゲーション (HTML): キャッシュ優先でオフライン対応
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request).catch(() =>
+        caches.match('/index.html').then(r => r || fetch(event.request))
+      )
+    );
+    return;
+  }
+
+  // 静的アセット: キャッシュ優先
+  event.respondWith(
+    caches.match(event.request).then(cached => {
+      if (cached) return cached;
+      return fetch(event.request).then(response => {
+        if (response.ok && event.request.method === 'GET') {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
         }
-      }
-      if (clients.openWindow) return clients.openWindow(url);
+        return response;
+      }).catch(() => cached);
     })
   );
 });
 
-self.addEventListener('pushsubscriptionchange', (e) => {
-  if (!e.oldSubscription) return;
-  e.waitUntil(
-    self.registration.pushManager.subscribe(e.oldSubscription.options)
-      .then(sub => self.clients.matchAll().then(cs =>
-        cs.forEach(c => c.postMessage({ type: 'PUSH_RESUBSCRIBED', subscription: sub.toJSON() }))
-      )).catch(err => console.warn('[SW] Re-subscribe failed:', err))
+// Push通知受信
+self.addEventListener('push', event => {
+  const data = event.data?.json() || {};
+  const options = {
+    body: data.body || '',
+    icon: '/icon-192.png',
+    badge: '/icon-192.png',
+    tag: data.tag || 'mydesk-notif',
+    data: { url: data.url || '/' },
+    requireInteraction: false,
+  };
+  event.waitUntil(
+    self.registration.showNotification(data.title || 'MyDesk', options)
+  );
+});
+
+// 通知クリック時
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  event.waitUntil(
+    clients.openWindow(event.notification.data?.url || '/')
   );
 });
