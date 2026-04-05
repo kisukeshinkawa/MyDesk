@@ -2923,6 +2923,10 @@ function EmailView({data,setData,currentUser=null}) {
   const [mode,setMode]           = useState("reply");
   const [inputText,setInputText] = useState(""); // 受信メール(reply) or 目的・内容(compose)
   const [instruction,setInstruction] = useState("");
+  // 宛先情報
+  const [toCompany, setToCompany] = useState("");   // 会社名（社外のみ）
+  const [toName, setToName]       = useState("");   // 担当者名
+  const [isInternal, setIsInternal] = useState(false); // 社内/社外
   const [generated,setGenerated] = useState("");
   const [loading,setLoading]     = useState(false);
   const [phase,setPhase]         = useState("input"); // "input" | "edit"
@@ -2953,9 +2957,33 @@ function EmailView({data,setData,currentUser=null}) {
       const pastRef = myEmails.length>0
         ? "【過去に私が書いたメール参考】\n"+myEmails.slice(-2).map(e=>e.generated.slice(0,300)).join("\n---\n")+"\n\n" : "";
 
+      const myName = currentUser?.name || "";
+      const myCompany = "株式会社西原商事ホールディングス";
+
+      // 宛名ブロック
+      const addressBlock = isInternal
+        ? (toName ? `${toName} さん` : "")
+        : (toCompany && toName
+            ? `${toCompany}\n${toName} 様`
+            : toName
+              ? `${toName} 様`
+              : "");
+
+      // 書き出しブロック
+      const openingBlock = isInternal
+        ? (myName ? `${myName}です。` : "")
+        : `お世話になります。\n${myCompany}の${myName}です。`;
+
+      // フォーマット指示
+      const formatRule = `\n\n【メール書式ルール（必ず守ること）】\n` +
+        (addressBlock ? `・冒頭は必ず以下の宛名から始めること：\n${addressBlock}\n` : "") +
+        `・宛名の次の行は空行\n` +
+        (openingBlock ? `・書き出しは「${openingBlock}」から始める\n` : "") +
+        `・件名は含めない\n・署名は含めない`;
+
       const prompt = mode==="reply"
-        ? `${styleRef}${pastRef}以下の受信メールへの返信文を作成してください。\n\n【返信の指示・方向性】\n${instruction}\n\n【受信メール】\n${inputText}\n\n返信本文のみ出力してください。宛名・署名・件名は不要です。`
-        : `${styleRef}${pastRef}以下の目的・内容でメール文書を作成してください。\n\n【メールの指示・方向性】\n${instruction}\n\n【目的・内容・補足】\n${inputText}\n\nメール本文のみ出力してください。宛名・署名は含めてください。件名は不要です。`;
+        ? `${styleRef}${pastRef}以下の受信メールへの返信文を作成してください。${formatRule}\n\n【返信の指示・方向性】\n${instruction}\n\n【受信メール】\n${inputText}\n\n上記の書式ルールを厳守して返信本文のみ出力してください。`
+        : `${styleRef}${pastRef}以下の目的・内容でメール文書を作成してください。${formatRule}\n\n【メールの指示・方向性】\n${instruction}\n\n【目的・内容・補足】\n${inputText}\n\n上記の書式ルールを厳守してメール本文のみ出力してください。`;
 
       // Vercel API経由でAnthropicを呼ぶ（CORSのため直接呼び出し不可）
       const res = await fetch("/api/generate-email", {
@@ -3033,6 +3061,52 @@ function EmailView({data,setData,currentUser=null}) {
               style={{padding:"0.35rem 0.875rem",background:myStyles.length>0?C.accentBg:C.bg,border:`1.5px solid ${myStyles.length>0?C.accent:C.border}`,borderRadius:999,cursor:"pointer",fontSize:"0.75rem",fontWeight:700,color:myStyles.length>0?C.accentDark:C.textSub}}>
               ✍️ 文体サンプル {myStyles.length>0?`(${myStyles.length}件)`:"未登録"}
             </button>
+          </div>
+
+          {/* ── 宛先・社内外 ── */}
+          <div style={{background:"#f8fafc",borderRadius:"0.875rem",padding:"0.875rem",marginBottom:"0.875rem",border:`1px solid ${C.borderLight}`}}>
+            <div style={{fontSize:"0.75rem",fontWeight:800,color:C.textSub,marginBottom:"0.625rem"}}>📬 宛先情報</div>
+
+            {/* 社内/社外トグル */}
+            <div style={{display:"flex",gap:"0.4rem",marginBottom:"0.625rem"}}>
+              {[{v:false,l:"🏢 社外（取引先・自治体など）"},{v:true,l:"👥 社内（社員宛）"}].map(({v,l})=>(
+                <button key={String(v)} onClick={()=>setIsInternal(v)}
+                  style={{flex:1,padding:"0.4rem",borderRadius:"0.625rem",border:`1.5px solid ${isInternal===v?C.accent:C.border}`,background:isInternal===v?C.accentBg:"white",color:isInternal===v?C.accent:C.textSub,fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit"}}>
+                  {l}
+                </button>
+              ))}
+            </div>
+
+            {/* 会社名（社外のみ） */}
+            {!isInternal&&(
+              <div style={{marginBottom:"0.5rem"}}>
+                <div style={{fontSize:"0.72rem",fontWeight:700,color:C.textSub,marginBottom:"0.2rem"}}>会社名</div>
+                <input value={toCompany} onChange={e=>setToCompany(e.target.value)}
+                  placeholder="例：株式会社〇〇"
+                  style={{width:"100%",padding:"0.45rem 0.75rem",borderRadius:"0.5rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.85rem",boxSizing:"border-box"}}/>
+              </div>
+            )}
+
+            {/* 担当者名 */}
+            <div>
+              <div style={{fontSize:"0.72rem",fontWeight:700,color:C.textSub,marginBottom:"0.2rem"}}>担当者名</div>
+              <input value={toName} onChange={e=>setToName(e.target.value)}
+                placeholder={isInternal?"例：田中":"例：田中 部長"}
+                style={{width:"100%",padding:"0.45rem 0.75rem",borderRadius:"0.5rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.85rem",boxSizing:"border-box"}}/>
+            </div>
+
+            {/* プレビュー */}
+            {(toName||toCompany)&&(
+              <div style={{marginTop:"0.5rem",background:"white",borderRadius:"0.5rem",padding:"0.5rem 0.75rem",fontSize:"0.78rem",color:C.text,border:`1px solid ${C.borderLight}`,lineHeight:1.7}}>
+                {!isInternal&&toCompany&&<div>{toCompany}</div>}
+                {toName&&<div>{toName}{isInternal?" さん":" 様"}</div>}
+                <div style={{marginTop:"0.35rem",color:C.textSub}}>
+                  {isInternal
+                    ? (currentUser?.name||"")+"です。"
+                    : "お世話になります。株式会社西原商事ホールディングスの"+(currentUser?.name||"")+"です。"}
+                </div>
+              </div>
+            )}
           </div>
 
           <FieldLbl label={mode==="reply"?"受信メールを貼り付け *":"目的・補足情報 *"}>
