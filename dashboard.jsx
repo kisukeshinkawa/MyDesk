@@ -2957,7 +2957,9 @@ function EmailView({data,setData,currentUser=null}) {
       const pastRef = myEmails.length>0
         ? "【過去に私が書いたメール参考】\n"+myEmails.slice(-2).map(e=>e.generated.slice(0,300)).join("\n---\n")+"\n\n" : "";
 
-      const myName = currentUser?.name || "";
+      const myFullName = currentUser?.name || "";
+      // 苗字だけ使う（スペース前を取得）
+      const myName = myFullName.split(/[\s　]/)[0] || myFullName;
       const myCompany = "株式会社西原商事ホールディングス";
 
       // 宛名ブロック
@@ -3102,8 +3104,8 @@ function EmailView({data,setData,currentUser=null}) {
                 {toName&&<div>{toName}{isInternal?" さん":" 様"}</div>}
                 <div style={{marginTop:"0.35rem",color:C.textSub}}>
                   {isInternal
-                    ? (currentUser?.name||"")+"です。"
-                    : "お世話になります。株式会社西原商事ホールディングスの"+(currentUser?.name||"")+"です。"}
+                    ? ((currentUser?.name||"").split(/[\s\u3000]/)[0]||currentUser?.name||"")+"です。"
+                    : "お世話になります。株式会社西原商事ホールディングスの"+((currentUser?.name||"").split(/[\s\u3000]/)[0]||currentUser?.name||"")+"です。"}
                 </div>
               </div>
             )}
@@ -3518,14 +3520,16 @@ function ScoringAlertPanel({ data, users=[], currentUser, onNavigate }) {
         const daysSince = lastLog
           ? Math.floor((now - new Date(lastLog.createdAt||lastLog.date)) / 86400000)
           : null;
+        // 登録から何日か（新規登録直後はアラートなし）
+        const registeredDays = e.createdAt ? Math.floor((now - new Date(e.createdAt)) / 86400000) : 999;
 
-        if(daysSince===null) {
-          alerts.push({type:"no_approach", label:"アプローチ未記録", color:"#d97706", bg:"#fef3c7"});
+        if(daysSince===null && registeredDays >= 60) {
+          alerts.push({type:"no_approach", label:"アプローチ未記録（60日超）", color:"#d97706", bg:"#fef3c7"});
           score += 25;
-        } else if(daysSince > 60) {
+        } else if(daysSince !== null && daysSince > 60) {
           alerts.push({type:"stale_60", label:`${daysSince}日間アプローチなし`, color:"#dc2626", bg:"#fee2e2"});
           score += 20;
-        } else if(daysSince > 30) {
+        } else if(daysSince !== null && daysSince > 30) {
           alerts.push({type:"stale_30", label:`${daysSince}日間アプローチなし`, color:"#d97706", bg:"#fef3c7"});
           score += 10;
         }
@@ -3766,15 +3770,21 @@ function TodayTodoPanel({ data, currentUser, users=[], onNavigate }) {
           entity: e,
         });
       }
-      // 30日以上アプローチなし
+      // 30日以上アプローチなし（登録から30日以上経過したものだけ対象）
       const logs = e.approachLogs||[];
       const last = logs.length ? logs.reduce((a,b)=>new Date(a.createdAt||a.date)>new Date(b.createdAt||b.date)?a:b) : null;
-      const days = last ? Math.floor((Date.now()-new Date(last.createdAt||last.date))/86400000) : 999;
-      if(days >= 30 && !e.nextActionDate) {
+      const days = last ? Math.floor((Date.now()-new Date(last.createdAt||last.date))/86400000) : null;
+      const registeredDays = e.createdAt ? Math.floor((Date.now()-new Date(e.createdAt))/86400000) : 0;
+      // アプローチ記録ありで30日超 OR アプローチ記録なしで登録から60日超
+      const noApproachAlert = (days !== null && days >= 30) || (days === null && registeredDays >= 60);
+      if(noApproachAlert && !e.nextActionDate) {
+        const subText = days === null
+          ? "アプローチ記録なし"
+          : `最終AP から${days}日`;
         items.push({
-          priority: days>60?"high":"low",
+          priority: (days===null&&registeredDays>=90)||(days!==null&&days>60) ? "high" : "low",
           icon:"📋", title:`${e.name} — フォロー確認`,
-          sub:`最終アプローチから${days}日`,
+          sub: subText,
           color:"#7c3aed", bg:"#faf5ff",
           action:()=>onNavigate&&onNavigate(e._type, e.id),
           entity: e,
@@ -3925,7 +3935,9 @@ function MyCasesPanel({ data, currentUser, users=[], onNavigate }) {
                 <div style={{fontWeight:700,fontSize:"0.85rem",color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.name}</div>
                 <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap",marginTop:"0.1rem"}}>
                   <span style={{fontSize:"0.68rem",color:C.textMuted}}>{e._status}</span>
-                  {e._daysSince!==null&&<span style={{fontSize:"0.68rem",color:e._daysSince>30?"#dc2626":"#64748b"}}>AP:{e._daysSince}日前</span>}
+                  {e._daysSince!==null
+                    ? <span style={{fontSize:"0.68rem",color:e._daysSince>30?"#dc2626":"#64748b"}}>AP: {e._daysSince}日前</span>
+                    : <span style={{fontSize:"0.68rem",color:"#94a3b8"}}>AP未記録</span>}
                 </div>
               </div>
               {e.nextActionDate&&(
