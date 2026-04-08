@@ -3016,7 +3016,7 @@ function EmailView({data,setData,currentUser=null}) {
   };
 
   const generate = async () => {
-    if (!inputText.trim()||!instruction.trim()) return;
+    if (mode!=="follow" && (!inputText.trim()||!instruction.trim())) return;
     setLoading(true);
     try {
       const styleRef = myStyles.length>0
