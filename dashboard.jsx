@@ -10919,12 +10919,17 @@ async function exportMultiMonthPPTX(sys, currentMk, allAnalytics) {
 }
 
 function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
-  if(!saveWithPush) saveWithPush=(nd)=>{setData(nd);saveData(nd);};
+  if(!saveWithPush) saveWithPush=(nd)=>{
+    window.__myDeskLastSave = Date.now();
+    window.__myDeskLastSaveAt = new Date().toISOString();
+    setData(nd); saveData(nd);
+  };
   const [sys,      setSys]      = useState("dustalk");
   const [mk,       setMk]       = useState(getMonthKey());
   const [yk,       setYk]       = useState(getYearKey());
   const [editing,  setEditing]  = useState(false);
   const [draft,    setDraft]    = useState(null);
+  const [draftAnalytics, setDraftAnalytics] = useState(null); // 編集開始時点のanalytics全体を保持
   const [chart,    setChart]    = useState(null);
   // expanded sections for collapsible partner stores
   const [openSects,setOpenSects]= useState({serviceLog:false,requests:false,contracts:false,revenue:false});
@@ -10948,8 +10953,8 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
     return {};
   };
 
-  const startEdit = () => { setDraft(getCurrent()); setEditing(true); };
-  const cancel    = () => { setEditing(false); setDraft(null); };
+  const startEdit = () => { setDraft(getCurrent()); setDraftAnalytics({...data.analytics}); setEditing(true); };
+  const cancel    = () => { setEditing(false); setDraft(null); setDraftAnalytics(null); };
 
   const saveEdit = () => {
     let saved = {...draft};
@@ -10957,7 +10962,9 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
       const diff = (draft.monthly||0) - (raw.monthly||0);
       saved.cumulative = Math.max(0, (draft.cumulative||0) + diff);
     }
-    const nd = {...data, analytics:{...ana,[sys]:{...sysData,[key]:saved}}};
+    // draftAnalytics: 編集開始時点の全分析データを基準にする（ポーリング上書き防止）
+    const baseAnalytics = draftAnalytics || data.analytics || {};
+    const nd = {...data, analytics:{...baseAnalytics,[sys]:{...(baseAnalytics[sys]||{}),[key]:saved}}};
     // 分析更新通知
     const allUsers = (data.users||[]).map(u=>u.id).filter(Boolean);
     const withNotif = allUsers.length>0
