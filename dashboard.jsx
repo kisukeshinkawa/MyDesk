@@ -227,16 +227,9 @@ async function saveData(d) {
   // analyticsにデータがあれば配列が空でも保存を許可（分析データ専用保存の保護）
   const hasAnalyticsData = d.analytics && typeof d.analytics === "object" && Object.keys(d.analytics).length > 0;
   if (allArraysEmpty && !hasAnalyticsData) {
-    // 既存保存データがあるか確認してから書き込む
-    try {
-      const check = await sbGet("main");
-      if (check?._rawData) {
-        const existingHasData = ARRAY_KEYS.some(k => Array.isArray(check._rawData[k]) && check._rawData[k].length > 0);
-        if (existingHasData) {
-          console.error("MyDesk: saveData rejected — would overwrite non-empty DB with empty arrays", d); return;
-        }
-      }
-    } catch {}
+    // 配列が全て空かつ分析データもない場合は保存しない（データ保護）
+    console.warn("MyDesk: saveData skipped — all arrays empty and no analytics");
+    return;
   }
   const ok = await sbSet("main", d);
   if(!ok) {
@@ -6094,6 +6087,11 @@ ${recentLogs}
     if(toMemo.length) nd=addNotif(nd,{type:"memo",entityId,entityType:eType2,title:`「${entity?.name||""}」にメモが追加されました`,body:text.slice(0,60),toUserIds:toMemo,fromUserId:currentUser?.id});
     save(nd);
     setMemoInputs(p=>({...p,[entityId]:""}));
+    // テキストエリアの高さもリセット
+    requestAnimationFrame(()=>{
+      const ta = document.querySelector(`textarea[data-memoid="${entityId}"]`);
+      if(ta) ta.style.height = "";
+    });
   };
   const addChat=(entityKey,entityId,text)=>{
     if(!text?.trim()) return;
@@ -6667,7 +6665,7 @@ ${recentLogs}
         {!(memos||[]).length&&<div style={{textAlign:"center",padding:"1.25rem",color:C.textMuted,background:C.bg,borderRadius:"0.875rem",fontSize:"0.82rem"}}>メモがありません</div>}
       </div>
       <div style={{display:"flex",gap:"0.5rem"}}>
-        <textarea value={memoInputs[entityId]||""} onChange={e=>{setMemoInputs(p=>({...p,[entityId]:e.target.value}));e.target.style.height="auto";e.target.style.height=e.target.scrollHeight+"px";}}
+        <textarea data-memoid={entityId} value={memoInputs[entityId]||""} onChange={e=>{setMemoInputs(p=>({...p,[entityId]:e.target.value}));e.target.style.height="auto";e.target.style.height=e.target.scrollHeight+"px";}} onBlur={e=>{if(!e.target.value.trim())e.target.style.height="";e.target.style.height="auto";if(e.target.value)e.target.style.height=e.target.scrollHeight+"px";}}
           placeholder="メモを追加... (Shift+Enterで改行)"
           style={{flex:1,padding:"0.625rem 0.75rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",resize:"none",minHeight:60,outline:"none",lineHeight:1.5,overflow:"hidden"}}/>
         <button onClick={()=>addMemo(entityKey,entityId,memoInputs[entityId]||"")} disabled={!(memoInputs[entityId]||"").trim()}
@@ -12001,7 +11999,7 @@ export default function App() {
     };
     // 初回実行
     poll();
-    const id = setInterval(poll, 30000);
+    const id = setInterval(poll, 60000);
     return () => clearInterval(id);
   }, [currentUser?.id]);
   useEffect(()=>{
