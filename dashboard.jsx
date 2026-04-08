@@ -9537,11 +9537,13 @@ ${orig}`})
                         <div style={{fontSize:"0.7rem",color:C.textMuted,marginBottom:"0.35rem"}}>複数選択可（自分と相手どちらが交換したか）</div>
                         <div style={{display:"flex",flexWrap:"wrap",gap:"0.35rem"}}>
                           {users.map(u=>{
-                            const sel=(bcAddForm.owners||[bcAddForm.owner||""]).filter(Boolean).includes(u.name);
+                            const defaultOwners = (!bcAddForm.owners?.length && !bcAddForm.owner) ? (currentUser?.name ? [currentUser.name] : []) : [];
+              const sel=(bcAddForm.owners?.length||bcAddForm.owner ? (bcAddForm.owners||[bcAddForm.owner||""]).filter(Boolean) : defaultOwners).includes(u.name);
                             return (
                               <button key={u.id} type="button"
                                 onClick={()=>{
-                                  const cur=(bcAddForm.owners||[bcAddForm.owner||""]).filter(Boolean);
+                                  const defaultOwners2 = (!bcAddForm.owners?.length && !bcAddForm.owner) ? (currentUser?.name ? [currentUser.name] : []) : [];
+                  const cur=(bcAddForm.owners?.length||bcAddForm.owner ? (bcAddForm.owners||[bcAddForm.owner||""]).filter(Boolean) : defaultOwners2);
                                   const next=sel?cur.filter(n=>n!==u.name):[...cur,u.name];
                                   setBcAddForm(p=>({...p,owners:next,owner:undefined}));
                                 }}
