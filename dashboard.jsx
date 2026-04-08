@@ -1592,7 +1592,9 @@ function SalesRefPicker({value, onChange, salesData={}}) {
           {/* リスト */}
           <div style={{maxHeight:200,overflowY:"auto"}}>
             {items.length===0
-              ? <div style={{padding:"1rem",textAlign:"center",color:"#94a3b8",fontSize:"0.8rem"}}>データなし</div>
+              ? <div style={{padding:"0.75rem",textAlign:"center",color:"#94a3b8",fontSize:"0.8rem"}}>
+                  {q ? <div style={{color:"#64748b"}}>「{q}」は未登録です</div> : <div>データなし</div>}
+                </div>
               : items.map(x=>(
                 <div key={x.id} onClick={()=>{onChange({type:tab,id:String(x.id),name:x.name});setOpen(false);}}
                   style={{padding:"0.5rem 0.75rem",cursor:"pointer",fontSize:"0.85rem",color:"#1e293b",borderBottom:"1px solid #f8fafc"}}
@@ -1602,6 +1604,13 @@ function SalesRefPicker({value, onChange, salesData={}}) {
                 </div>
               ))
             }
+            {/* 未登録時に新規登録を促す */}
+            {q&&<div style={{borderTop:"1px solid #f1f5f9",padding:"0.5rem 0.75rem"}}>
+              <button onClick={()=>{onChange({type:tab,id:"__new__",name:q,_isNew:true});setOpen(false);}}
+                style={{width:"100%",padding:"0.4rem",borderRadius:"0.5rem",border:"1.5px dashed #7c3aed",background:"#faf5ff",color:"#7c3aed",fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                ＋ 「{q}」を{tab}として新規登録
+              </button>
+            </div>}
           </div>
         </div>
       </>}
@@ -4636,7 +4645,7 @@ function LinkBizcardModal({ allCards=[], entityType, entityId, entityName, users
             </div>
           )}
           {candidates.map(card=>{
-            const name=`${card.lastName||""}${card.firstName||""}`.trim()||"（名前なし）";
+            const name=`${card.lastName||""}${card.firstName ? " "+card.firstName : ""}`.trim()||"（名前なし）";
             const owners=card.owners||(card.owner?[card.owner]:[]);
             const isSel=selected.has(card.id);
             const hasOtherLink=!!(card.salesRef&&!(String(card.salesRef.id)===String(entityId)&&card.salesRef.type===entityType));
@@ -4720,7 +4729,7 @@ function LinkedBizcardList({ cards=[], users=[], onUnlink, onNavigateToBizcard, 
       )}
       <div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
         {cards.map(card=>{
-          const name = `${card.lastName||""}${card.firstName||""}`.trim()||"（名前なし）";
+          const name = `${card.lastName||""}${card.firstName ? " "+card.firstName : ""}`.trim()||"（名前なし）";
           return (
             <div key={card.id} onClick={()=>setPopup(card)}
               style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"0.875rem",padding:"0.75rem 1rem",boxShadow:C.shadow,display:"flex",alignItems:"center",gap:"0.75rem",cursor:"pointer",transition:"box-shadow 0.1s"}}
@@ -4760,7 +4769,7 @@ function LinkedBizcardList({ cards=[], users=[], onUnlink, onNavigateToBizcard, 
             <div style={{padding:"1rem 1.25rem 2rem"}}>
               {/* ヘッダー */}
               <div style={{background:"linear-gradient(135deg,#f0f9ff,#ede9fe)",borderRadius:"0.875rem",padding:"1rem",marginBottom:"1rem"}}>
-                <div style={{fontSize:"1.3rem",fontWeight:800,color:C.text}}>{`${popup.lastName||""}${popup.firstName||""}`.trim()||"（名前なし）"}</div>
+                <div style={{fontSize:"1.3rem",fontWeight:800,color:C.text}}>{`${popup.lastName||""}${popup.firstName ? " "+popup.firstName : ""}`.trim()||"（名前なし）"}</div>
                 {popup.title&&<div style={{fontSize:"0.82rem",color:C.textSub,marginTop:"0.15rem"}}>{popup.title}</div>}
                 <div style={{fontSize:"0.92rem",fontWeight:700,color:"#2563eb",marginTop:"0.35rem"}}>🏢 {popup.company}</div>
                 {popup.department&&<div style={{fontSize:"0.75rem",color:C.textMuted}}>{popup.department}</div>}
@@ -9411,7 +9420,7 @@ ${orig}`})
                 <button onClick={()=>{setDeleteModal({type:"bizcard"});setDmSearch("");setDmFilter("");setDmSelected(new Set());}}
                   style={{padding:"0.45rem 0.75rem",borderRadius:"0.75rem",border:"1.5px solid #fca5a5",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🗑 削除</button>
                 <Btn size="sm" variant="secondary" onClick={()=>setSheet("bcImport")}>📥 CSV取込</Btn>
-                <Btn size="sm" onClick={()=>setSheet("bcAdd")}>＋ 追加</Btn>
+                <Btn size="sm" onClick={()=>{setBcAddForm({...BC_ADD_INIT,owners:currentUser?.name?[currentUser.name]:[]});setSheet("bcAdd");}}>＋ 追加</Btn>
               </div>
             </div>
 
@@ -9565,7 +9574,26 @@ ${orig}`})
                     const owners=bcAddForm.owners&&bcAddForm.owners.length?bcAddForm.owners:(bcAddForm.owner?[bcAddForm.owner]:[]);
                     const today=new Date().toISOString().slice(0,10);
                     const cardData={...bcAddForm,owners,owner:undefined,exchangedAt:bcAddForm.exchangedAt||today};
-                    if(bcAddForm._salesRef) cardData.salesRef=bcAddForm._salesRef;
+                    let ref=bcAddForm._salesRef||null;
+                    // 新規登録フラグがあれば企業/業者/自治体を自動作成
+                    if(ref?._isNew){
+                      const newId=Date.now()+"_"+Math.random().toString(36).substr(2,6);
+                      const phone=bcAddForm.telDirect||bcAddForm.mobile||bcAddForm.telCompany||"";
+                      if(ref.type==="企業"){
+                        const newEnt={id:newId,name:ref.name,status:"未接触",phone,address:bcAddForm.address||"",assigneeIds:[],memos:[],chat:[],createdAt:today};
+                        save({...data,companies:[...(data.companies||[]),newEnt]});
+                        ref={type:"企業",id:newId,name:ref.name};
+                      } else if(ref.type==="業者"){
+                        const newEnt={id:"v_"+newId,name:ref.name,status:"未接触",phone,address:bcAddForm.address||"",municipalityIds:[],assigneeIds:[],memos:[],chat:[],approachLogs:[],createdAt:today};
+                        save({...data,vendors:[...(data.vendors||[]),newEnt]});
+                        ref={type:"業者",id:"v_"+newId,name:ref.name};
+                      } else if(ref.type==="自治体"){
+                        const newEnt={id:"m_"+newId,name:ref.name,status:"未接触",address:bcAddForm.address||"",assigneeIds:[],dustalk:"未展開",treatyStatus:"未接触",artBranch:"",memos:[],chat:[],approachLogs:[],createdAt:today};
+                        save({...data,municipalities:[...(data.municipalities||[]),newEnt]});
+                        ref={type:"自治体",id:"m_"+newId,name:ref.name};
+                      }
+                    }
+                    if(ref) cardData.salesRef=ref;
                     delete cardData._salesRef;
                     addBizCard(cardData);
                     setBcAddForm(BC_ADD_INIT);
