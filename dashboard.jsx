@@ -1869,8 +1869,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
   const [collapsedPjs,   setCollapsedPjs]   = useState(()=>{ try{ return new Set(JSON.parse(localStorage.getItem("md_collapsedPjs")||"[]")); }catch{ return new Set(); }});
   const [collapsedStats, setCollapsedStats] = useState(()=>{ try{ const saved=JSON.parse(localStorage.getItem("md_collapsedStats")||"null"); if(saved) return new Set(saved); }catch{} // デフォルト：「完了」は常に折りたたみ
     return new Set(["standalone_完了"]); });
-  // 完了ステータスは常に折りたたみ（ユーザー操作に関わらず）
-  const isStatCollapsed = (key) => collapsedStats.has(key) || key.endsWith("_完了");
+  const isStatCollapsed = (key) => collapsedStats.has(key);
 
   const togglePjSection  = () => setPjSectionOpen(v=>{ const n=!v; localStorage.setItem("md_pjSectionOpen", JSON.stringify(n)); return n; });
   const toggleTaskSection= () => setTaskSectionOpen(v=>{ const n=!v; localStorage.setItem("md_taskSectionOpen", JSON.stringify(n)); return n; });
