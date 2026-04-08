@@ -8260,6 +8260,7 @@ ${orig}`})
                 phone:normalizeImport(r[5]||""),
                 notes:(r[6]||"").trim(),
                 address:normalizeImport(r[7]||""),
+                permitTypeNames:(r[8]?.trim()||"").split(/[,，]/).map(s=>s.trim()).filter(Boolean),
               })).filter(r=>r.name);
               setPreview(mapped); setErr("");
             }catch(e){setErr("ファイルの読み込みに失敗しました。");}
@@ -8276,6 +8277,7 @@ ${orig}`})
                 phone:r.phone||"",
                 municipalityIds:mids, assigneeIds:[],
                 address:r.address||"",
+                permitTypes:(r.permitTypeNames||[]).filter(pt=>["家庭収運","事業収運","一廃収運","産廃収運","産廃処分","産廃収運処分"].includes(pt)),
                 memos:r.notes?[{id:"mn_"+Date.now()+"_"+Math.random().toString(36).substr(2,9),text:r.notes,userId:currentUser?.id,date:new Date().toISOString()}]:[],
                 chat:[], createdAt:new Date().toISOString()
               };
@@ -8290,9 +8292,9 @@ ${orig}`})
                 <div style={{fontWeight:700,fontSize:"0.82rem",color:"#5b21b6",marginBottom:"0.5rem"}}>📥 テンプレートをダウンロード</div>
                 <div style={{fontSize:"0.75rem",color:"#6d28d9",marginBottom:"0.625rem"}}>テンプレートに入力してCSV形式で保存後、アップロードしてください</div>
                 <button onClick={()=>downloadCSV("業者インポートテンプレート.csv",
-                  ["業者名 *","ステータス","都道府県","自治体名（複数はカンマ区切り）","担当者名","電話番号","メモ","住所"],
-                  [["株式会社クリーンA","加入済","福岡県","福岡市,北九州市","山田一郎","092-111-2222","","福岡県福岡市〇〇1-2-3"],
-                   ["環境サービスB","商談中","東京都","新宿区","","","来月契約予定",""],
+                  ["業者名 *","ステータス","都道府県","自治体名（複数はカンマ区切り）","担当者名","電話番号","備考","住所","許可種別（複数はカンマ区切り）"],
+                  [["株式会社クリーンA","加入済","福岡県","福岡市,北九州市","山田一郎","092-111-2222","","福岡県福岡市〇〇1-2-3","産廃収運,一廃収運"],
+                   ["環境サービスB","商談中","東京都","新宿区","","","来月契約予定","","家庭収運"],
                    ["","","","","","","",""]])}
                   style={{background:"#7c3aed",border:"none",borderRadius:"0.625rem",color:"white",fontWeight:700,fontSize:"0.78rem",padding:"0.45rem 0.875rem",cursor:"pointer",fontFamily:"inherit"}}>
                   ⬇️ CSVテンプレートをダウンロード
