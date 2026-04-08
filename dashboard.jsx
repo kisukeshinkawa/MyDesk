@@ -9544,7 +9544,7 @@ ${orig}`})
                         </div>
                       </div>
                     ):(
-                      <input type={type} value={bcAddForm[k]||""} onChange={e=>setBcAddForm(p=>({...p,[k]:e.target.value}))}
+                      <input type={type} value={k==="exchangedAt" ? (bcAddForm[k] || new Date().toISOString().slice(0,10)) : (bcAddForm[k]||"")} onChange={e=>setBcAddForm(p=>({...p,[k]:e.target.value}))}
                         placeholder={
                           k==="company"?"株式会社○○":k==="lastName"?"山田":k==="firstName"?"太郎":
                           k==="department"?"営業部":k==="title"?"部長":k==="email"?"xxx@example.com":
@@ -9554,9 +9554,22 @@ ${orig}`})
                     )}
                   </div>
                 ))}
+                <div style={{marginBottom:"0.75rem"}}>
+                  <div style={{fontSize:"0.7rem",fontWeight:700,color:C.textSub,marginBottom:"0.35rem"}}>営業先に登録（任意）</div>
+                  <div style={{fontSize:"0.72rem",color:C.textMuted,marginBottom:"0.5rem"}}>保存と同時に企業/業者/自治体として登録できます</div>
+                  <SalesRefPicker value={bcAddForm._salesRef||null} onChange={v=>setBcAddForm(p=>({...p,_salesRef:v}))} salesData={data}/>
+                </div>
                 <div style={{display:"flex",gap:"0.75rem",marginTop:"1rem"}}>
                   <Btn variant="secondary" style={{flex:1}} onClick={()=>{setSheet(null);setBcAddForm(BC_ADD_INIT);}}>キャンセル</Btn>
-                  <Btn style={{flex:2}} size="lg" disabled={!bcAddForm.company.trim()} onClick={()=>{const owners=bcAddForm.owners&&bcAddForm.owners.length?bcAddForm.owners:(bcAddForm.owner?[bcAddForm.owner]:[]);addBizCard({...bcAddForm,owners,owner:undefined});setBcAddForm(BC_ADD_INIT);}}>保存する</Btn>
+                  <Btn style={{flex:2}} size="lg" disabled={!bcAddForm.company.trim()} onClick={()=>{
+                    const owners=bcAddForm.owners&&bcAddForm.owners.length?bcAddForm.owners:(bcAddForm.owner?[bcAddForm.owner]:[]);
+                    const today=new Date().toISOString().slice(0,10);
+                    const cardData={...bcAddForm,owners,owner:undefined,exchangedAt:bcAddForm.exchangedAt||today};
+                    if(bcAddForm._salesRef) cardData.salesRef=bcAddForm._salesRef;
+                    delete cardData._salesRef;
+                    addBizCard(cardData);
+                    setBcAddForm(BC_ADD_INIT);
+                  }}>保存する</Btn>
                 </div>
               </Sheet>
             )}
