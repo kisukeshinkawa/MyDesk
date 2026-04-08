@@ -103,7 +103,7 @@ async function sbSet(id, data) {
     return true;
   } catch(e) {
     console.error("[MyDesk] sbSet failed:", e.message);
-    // 保存失敗時は __myDeskLastSaveAt をクリアして次回ポーリングで再取得を許可
+    // 保存失敗時はタイムスタンプをリセット → 次回ポーリングでサーバーから再取得可能にする
     window.__myDeskLastSave = 0;
     window.__myDeskLastSaveAt = null;
     return false;
@@ -322,7 +322,7 @@ async function loadUsers() {
   } catch{}
   return [];
 }
-async function saveUsers(u) { sbSet("users", u); }
+async function saveUsers(u) { await sbSet("users", u); }
 
 function getSession() { try { return JSON.parse(localStorage.getItem(SESSION_KEY)||"null"); } catch{ return null; } }
 function setSession(u) { u ? localStorage.setItem(SESSION_KEY,JSON.stringify(u)) : localStorage.removeItem(SESSION_KEY); }
@@ -11789,10 +11789,19 @@ export default function App() {
   const [globalSearch, setGlobalSearch] = useState(null); // null=閉じ, ""=開く
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [saveError, setSaveError] = useState("");
-  // ① オフライン検知
+  const [pendingSave, setPendingSave] = useState(false);
+  // ① オフライン検知 + 保存中リロード防止
   React.useEffect(()=>{
     const goOffline = () => setIsOffline(true);
     const goOnline  = () => setIsOffline(false);
+    const onBeforeUnload = (e) => {
+      const timeSinceSave = Date.now() - (window.__myDeskLastSave || 0);
+      if(timeSinceSave < 3000) { // 保存から3秒以内はリロード警告
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
     const onSaveErr = () => {
       setSaveError(window.__myDeskSaveError || "保存に失敗しました");
       setTimeout(()=>setSaveError(""), 8000);
@@ -11804,6 +11813,7 @@ export default function App() {
       window.removeEventListener("offline",goOffline);
       window.removeEventListener("online",goOnline);
       window.removeEventListener("mydesk-save-error",onSaveErr);
+      window.removeEventListener("beforeunload",onBeforeUnload);
     };
   }, []);
   const [notifFilter,setNotifFilter] = useState("all");
@@ -11866,6 +11876,10 @@ export default function App() {
         else setSession(null);
       }
       setLoaded(true);
+    }).catch(err => {
+      console.error("[MyDesk] 初期データ読み込みエラー:", err);
+      setData(INIT);
+      setLoaded(true);
     });
   },[]);
 
@@ -11918,7 +11932,35 @@ export default function App() {
           return timeSinceSave > 15000;
         })();
         if(serverIsNewer) {
-          setData(d);
+          // 常にローカルの「失われた可能性のあるデータ」をサーバーデータにマージ
+          const localData2 = dataRef.current || {};
+          // 各配列について: サーバーにないローカルアイテムを追加（IDベースマージ）
+          const mergeArrays = (serverArr, localArr) => {
+            const serverIds = new Set((serverArr||[]).map(x=>String(x.id)));
+            const localOnly = (localArr||[]).filter(x=>!serverIds.has(String(x.id)));
+            return localOnly.length > 0 ? [...(serverArr||[]), ...localOnly] : (serverArr||[]);
+          };
+          const merged = {
+            ...d,
+            tasks:          mergeArrays(d.tasks,          localData2.tasks),
+            projects:       mergeArrays(d.projects,       localData2.projects),
+            companies:      mergeArrays(d.companies,      localData2.companies),
+            vendors:        mergeArrays(d.vendors,        localData2.vendors),
+            municipalities: mergeArrays(d.municipalities, localData2.municipalities),
+            businessCards:  mergeArrays(d.businessCards,  localData2.businessCards),
+            // analytics: サーバー優先だがローカルが充実していればマージ
+            analytics: (()=>{
+              const sysKeys = new Set([...Object.keys(d.analytics||{}), ...Object.keys(localData2.analytics||{})]);
+              const merged = {...(d.analytics||{})};
+              sysKeys.forEach(sys=>{
+                const sData = (d.analytics||{})[sys]||{};
+                const lData = (localData2.analytics||{})[sys]||{};
+                merged[sys] = {...lData, ...sData}; // サーバー優先、ローカルで補完
+              });
+              return merged;
+            })(),
+          };
+          setData(merged);
           if(serverUpdatedAt) window.__myDeskLastSaveAt = serverUpdatedAt;
         }
         setUsers(u);
