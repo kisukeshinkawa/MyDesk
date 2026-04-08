@@ -12001,7 +12001,7 @@ export default function App() {
     };
     // 初回実行
     poll();
-    const id = setInterval(poll, 8000);
+    const id = setInterval(poll, 30000);
     return () => clearInterval(id);
   }, [currentUser?.id]);
   useEffect(()=>{
