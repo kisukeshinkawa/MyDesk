@@ -3357,7 +3357,7 @@ function EmailView({data,setData,currentUser=null}) {
           </div>
           <div style={{display:"flex",gap:"0.75rem"}}>
             <Btn variant="secondary" style={{flex:1}} onClick={save}>💾 保存</Btn>
-            <Btn style={{flex:2}} size="lg"
+            <Btn size="lg"
               onClick={()=>copyText(generated)}
               variant={copyState==="ok"?"secondary":copyState==="fail"?"danger":"primary"}
               style={{flex:2,background:copyState==="ok"?"#10b981":copyState==="fail"?"#dc2626":C.accent,color:"white"}}>
