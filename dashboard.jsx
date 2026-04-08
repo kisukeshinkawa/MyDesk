@@ -213,7 +213,9 @@ async function saveData(d) {
   // （全消去を防ぐ強化ガード）
   const ARRAY_KEYS = ["tasks","projects","companies","vendors","municipalities","businessCards"];
   const allArraysEmpty = ARRAY_KEYS.every(k => !Array.isArray(d[k]) || d[k].length === 0);
-  if (allArraysEmpty) {
+  // analyticsにデータがあれば配列が空でも保存を許可（分析データ専用保存の保護）
+  const hasAnalyticsData = d.analytics && typeof d.analytics === "object" && Object.keys(d.analytics).length > 0;
+  if (allArraysEmpty && !hasAnalyticsData) {
     // 既存保存データがあるか確認してから書き込む
     try {
       const check = await sbGet("main");
@@ -2919,7 +2921,7 @@ function ScheduleView() {
 function EmailView({data,setData,currentUser=null}) {
   const uid = currentUser?.id;
 
-  // "reply" = 受信メールへの返信, "compose" = 新規メール作成
+  // "reply" = 受信メールへの返信, "compose" = 新規メール作成, "follow" = フォローメール
   const [mode,setMode]           = useState("reply");
   const [inputText,setInputText] = useState(""); // 受信メール(reply) or 目的・内容(compose)
   const [instruction,setInstruction] = useState("");
@@ -2927,6 +2929,10 @@ function EmailView({data,setData,currentUser=null}) {
   const [toCompany, setToCompany] = useState("");   // 会社名（社外のみ）
   const [toName, setToName]       = useState("");   // 担当者名
   const [isInternal, setIsInternal] = useState(false); // 社内/社外
+  // フォローメール専用フィールド
+  const [followIndustry, setFollowIndustry] = useState("");   // 業種
+  const [followRelation, setFollowRelation] = useState("話した"); // 関係性
+  const [followMemo, setFollowMemo]         = useState("");   // 一言メモ
   const [generated,setGenerated] = useState("");
   const [loading,setLoading]     = useState(false);
   const [phase,setPhase]         = useState("input"); // "input" | "edit"
@@ -2939,6 +2945,67 @@ function EmailView({data,setData,currentUser=null}) {
   const allEmails = data.emails      || [];
   const myStyles  = allStyles.filter(s=>!s.userId||s.userId===uid);
   const myEmails  = allEmails.filter(e=>!e.userId||e.userId===uid);
+
+  // メール本文から宛先情報を自動抽出
+  const extractRecipientFromEmail = (text) => {
+    if(!text || text.length < 5) return;
+    const lines = text.split(/\n/).map(l=>l.trim()).filter(Boolean);
+
+    let company = "";
+    let name = "";
+
+    // パターン1: 冒頭の「会社名\n担当者名 様」形式
+    // 例: KitaQALLJAM実行委員会 / 山下 様
+    for(let i = 0; i < Math.min(lines.length, 8); i++) {
+      const line = lines[i];
+      // 「〇〇 様」「〇〇様」にマッチ
+      const samaMach = line.match(/^(.+?)[　\s]?様$/);
+      if(samaMach) {
+        name = samaMach[1].trim();
+        // 前の行が会社名の可能性
+        if(i > 0 && lines[i-1] && !lines[i-1].match(/様$|さん$|です|ます|した|ます/)) {
+          company = lines[i-1].trim();
+        }
+        break;
+      }
+      // 「〇〇さん」にマッチ（社内）
+      const sanMatch = line.match(/^(.+?)[　\s]?さん$/);
+      if(sanMatch) {
+        name = sanMatch[1].trim();
+        break;
+      }
+    }
+
+    // パターン2: 署名から会社名を抽出（末尾10行以内）
+    if(!company) {
+      const tail = lines.slice(-10);
+      for(const line of tail) {
+        if(line.match(/株式会社|有限会社|合同会社|（株）|\(株\)|実行委員会|協会|組合|法人|Holdings/)) {
+          // ただし自社は除外
+          if(!line.includes("西原商事")) {
+            company = line.replace(/^[　\s]*/, "").replace(/[　\s]*$/, "");
+            break;
+          }
+        }
+      }
+    }
+
+    // パターン3: 「〇〇株式会社　田中」形式（1行に両方ある場合）
+    if(!company && !name) {
+      for(let i = 0; i < Math.min(lines.length, 5); i++) {
+        const m = lines[i].match(/^(.*(株式会社|有限会社|合同会社)[^　\s]*)[　\s]+(.+)$/);
+        if(m && !m[0].includes("西原商事")) {
+          company = m[1].trim();
+          name = m[3].trim();
+          break;
+        }
+      }
+    }
+
+    // 更新（既に入力済みの場合は上書きしない）
+    if(company && !toCompany) setToCompany(company);
+    if(name && !toName) setToName(name);
+  };
 
   const copyText = (text) => {
     const ok=()=>{setCopyState("ok");setTimeout(()=>setCopyState("idle"),2500);};
@@ -2959,7 +3026,7 @@ function EmailView({data,setData,currentUser=null}) {
 
       const myFullName = currentUser?.name || "";
       // 苗字だけ使う（スペース前を取得）
-      const myName = myFullName.split(/[\s　]/)[0] || myFullName;
+      const myName = myFullName.split(/[\s\u3000]/)[0] || myFullName;
       const myCompany = "株式会社西原商事ホールディングス";
 
       // 宛名ブロック
@@ -2983,9 +3050,47 @@ function EmailView({data,setData,currentUser=null}) {
         (openingBlock ? `・書き出しは「${openingBlock}」から始める\n` : "") +
         `・件名は含めない\n・署名は含めない`;
 
+      // フォローメール専用プロンプト
+      const addr = (!isInternal&&toCompany ? toCompany+"\n" : "") + (toName ? toName+(isInternal?" さん":" 様")+"\n" : "");
+      const opening = isInternal ? myName+"です。" : ("お世話になります。\n"+myCompany+"の"+myName+"です。");
+      const inp = toCompany||"（未入力）";
+      const inn = toName||"（未入力）";
+      const ini = followIndustry||"（未入力）";
+      const inm = followMemo||inputText||"（未入力）";
+      const industryHint = followIndustry ? ("\n　業種："+followIndustry) : "";
+      const followPrompt = [
+        "あなたは優秀なビジネス営業担当です。自然で印象が良く、営業感を出さないフォローメールを作成してください。",
+        "",
+        "【目的】関係構築（最優先）。「また話してもいいかな」と思わせる。営業感は出さない。",
+        "【文体ルール】丁寧だが硬すぎない。売り込みしない。自然な日本語。スマホ1画面。「誠に」「どうぞ」は使わない。",
+        "",
+        "【必須構成】",
+        "①冒頭："+addr+opening,
+        "②名刺交換・会食のお礼",
+        "③一言（会話内容や印象）",
+        "④会社紹介（簡潔）：50年以上回収業務・20年全国管理",
+        "⑤ダストーク説明（簡潔）：属人化→システム化・AI活用",
+        "⑥相手業種に合わせた一言（重要）"+industryHint+" 例：建築→施工廃材、飲食→多店舗管理、小売→コスト差",
+        "⑦軽い価値提示：「整理するだけで改善することもある」など",
+        "⑧締め：「一度聞いてみようかな」くらいの温度感。アポを強く取りにいかない",
+        "",
+        "【NG】押し売り・強い営業ワード・長すぎる説明",
+        "",
+        "【入力情報】",
+        "相手会社名："+inp,
+        "担当者名："+inn,
+        "業種："+ini,
+        "関係性："+followRelation,
+        "一言メモ："+inm,
+        "",
+        "【出力】そのまま送れるメール文面のみ。件名・署名不要。営業感を極限まで消しつつ相手の記憶に残る文章。",
+      ].join("\n");
+
       const prompt = mode==="reply"
         ? `${styleRef}${pastRef}以下の受信メールへの返信文を作成してください。${formatRule}\n\n【返信の指示・方向性】\n${instruction}\n\n【受信メール】\n${inputText}\n\n上記の書式ルールを厳守して返信本文のみ出力してください。`
-        : `${styleRef}${pastRef}以下の目的・内容でメール文書を作成してください。${formatRule}\n\n【メールの指示・方向性】\n${instruction}\n\n【目的・内容・補足】\n${inputText}\n\n上記の書式ルールを厳守してメール本文のみ出力してください。`;
+        : mode==="follow"
+          ? followPrompt
+          : `${styleRef}${pastRef}以下の目的・内容でメール文書を作成してください。${formatRule}\n\n【メールの指示・方向性】\n${instruction}\n\n【目的・内容・補足】\n${inputText}\n\n上記の書式ルールを厳守してメール本文のみ出力してください。`;
 
       // Vercel API経由でAnthropicを呼ぶ（CORSのため直接呼び出し不可）
       const res = await fetch("/api/generate-email", {
@@ -3031,10 +3136,10 @@ function EmailView({data,setData,currentUser=null}) {
     <div>
       {/* Mode selector */}
       <div style={{display:"flex",background:C.bg,borderRadius:"0.875rem",padding:"0.25rem",marginBottom:"1.25rem",border:`1px solid ${C.border}`}}>
-        {[["reply","↩️ 返信文を作成"],["compose","✉️ メール文書を作成"]].map(([id,lbl])=>(
+        {[["reply","↩️ 返信"],["compose","✉️ 新規"],["follow","🤝 フォロー"]].map(([id,lbl])=>(
           <button key={id} onClick={()=>{setMode(id);setPhase("input");setGenerated("");}}
-            style={{flex:1,padding:"0.625rem 0.5rem",borderRadius:"0.625rem",border:"none",cursor:"pointer",fontFamily:"inherit",
-              fontWeight:700,fontSize:"0.82rem",
+            style={{flex:1,padding:"0.625rem 0.35rem",borderRadius:"0.625rem",border:"none",cursor:"pointer",fontFamily:"inherit",
+              fontWeight:700,fontSize:"0.78rem",
               background:mode===id?C.accent:"transparent",
               color:mode===id?"white":C.textSub,
               boxShadow:mode===id?`0 2px 8px ${C.accent}44`:"none",transition:"all 0.2s"}}>
@@ -3058,6 +3163,57 @@ function EmailView({data,setData,currentUser=null}) {
       {/* ── INPUT PHASE ── */}
       {phase==="input"&&(
         <div>
+
+          {/* 🤝 フォローメール専用フォーム */}
+          {mode==="follow"&&(
+            <div style={{background:"#f0fdf4",border:"1.5px solid #bbf7d0",borderRadius:"1rem",padding:"1rem",marginBottom:"1rem"}}>
+              <div style={{fontWeight:800,fontSize:"0.82rem",color:"#166534",marginBottom:"0.75rem"}}>🤝 フォローメール情報</div>
+
+              {/* 宛先 */}
+              <div style={{display:"flex",gap:"0.5rem",marginBottom:"0.5rem"}}>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:"0.72rem",fontWeight:700,color:"#166534",marginBottom:"0.2rem"}}>会社名</div>
+                  <input value={toCompany} onChange={e=>setToCompany(e.target.value)} placeholder="例：株式会社〇〇"
+                    style={{width:"100%",padding:"0.45rem 0.625rem",borderRadius:"0.5rem",border:"1px solid #bbf7d0",fontFamily:"inherit",fontSize:"0.82rem",boxSizing:"border-box"}}/>
+                </div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:"0.72rem",fontWeight:700,color:"#166534",marginBottom:"0.2rem"}}>担当者名</div>
+                  <input value={toName} onChange={e=>setToName(e.target.value)} placeholder="例：山下"
+                    style={{width:"100%",padding:"0.45rem 0.625rem",borderRadius:"0.5rem",border:"1px solid #bbf7d0",fontFamily:"inherit",fontSize:"0.82rem",boxSizing:"border-box"}}/>
+                </div>
+              </div>
+
+              {/* 業種 */}
+              <div style={{marginBottom:"0.5rem"}}>
+                <div style={{fontSize:"0.72rem",fontWeight:700,color:"#166534",marginBottom:"0.2rem"}}>業種（重要）</div>
+                <input value={followIndustry} onChange={e=>setFollowIndustry(e.target.value)}
+                  placeholder="例：建設業、飲食業、小売業、自治体、医療 など"
+                  style={{width:"100%",padding:"0.45rem 0.625rem",borderRadius:"0.5rem",border:"1px solid #bbf7d0",fontFamily:"inherit",fontSize:"0.82rem",boxSizing:"border-box"}}/>
+              </div>
+
+              {/* 関係性 */}
+              <div style={{marginBottom:"0.5rem"}}>
+                <div style={{fontSize:"0.72rem",fontWeight:700,color:"#166534",marginBottom:"0.2rem"}}>関係性</div>
+                <div style={{display:"flex",gap:"0.3rem",flexWrap:"wrap"}}>
+                  {["名刺交換のみ","少し話した","会食した","仲良い"].map(r=>(
+                    <button key={r} onClick={()=>setFollowRelation(r)}
+                      style={{padding:"0.3rem 0.625rem",borderRadius:999,border:`1.5px solid ${followRelation===r?"#059669":"#bbf7d0"}`,background:followRelation===r?"#dcfce7":"white",color:followRelation===r?"#166534":"#64748b",fontSize:"0.75rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                      {r}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 一言メモ */}
+              <div>
+                <div style={{fontSize:"0.72rem",fontWeight:700,color:"#166534",marginBottom:"0.2rem"}}>一言メモ（話した内容・印象など）</div>
+                <textarea value={followMemo} onChange={e=>setFollowMemo(e.target.value)} rows={3}
+                  placeholder="例：廃棄物コストに悩んでいると話していた / 明るくて話しやすい方だった"
+                  style={{width:"100%",padding:"0.5rem 0.625rem",borderRadius:"0.5rem",border:"1px solid #bbf7d0",fontFamily:"inherit",fontSize:"0.82rem",resize:"vertical",boxSizing:"border-box"}}/>
+              </div>
+            </div>
+          )}
+
           <div style={{display:"flex",justifyContent:"flex-end",marginBottom:"1rem"}}>
             <button onClick={()=>setStyleSheet(true)}
               style={{padding:"0.35rem 0.875rem",background:myStyles.length>0?C.accentBg:C.bg,border:`1.5px solid ${myStyles.length>0?C.accent:C.border}`,borderRadius:999,cursor:"pointer",fontSize:"0.75rem",fontWeight:700,color:myStyles.length>0?C.accentDark:C.textSub}}>
@@ -3065,8 +3221,8 @@ function EmailView({data,setData,currentUser=null}) {
             </button>
           </div>
 
-          {/* ── 宛先・社内外 ── */}
-          <div style={{background:"#f8fafc",borderRadius:"0.875rem",padding:"0.875rem",marginBottom:"0.875rem",border:`1px solid ${C.borderLight}`}}>
+          {/* ── 宛先・社内外（reply/compose のみ） ── */}
+          {mode!=="follow"&&<div style={{background:"#f8fafc",borderRadius:"0.875rem",padding:"0.875rem",marginBottom:"0.875rem",border:`1px solid ${C.borderLight}`}}>
             <div style={{fontSize:"0.75rem",fontWeight:800,color:C.textSub,marginBottom:"0.625rem"}}>📬 宛先情報</div>
 
             {/* 社内/社外トグル */}
@@ -3109,21 +3265,22 @@ function EmailView({data,setData,currentUser=null}) {
                 </div>
               </div>
             )}
-          </div>
+          </div>}
 
-          <FieldLbl label={mode==="reply"?"受信メールを貼り付け *":"目的・補足情報 *"}>
+          {mode!=="follow"&&<FieldLbl label={mode==="reply"?"受信メールを貼り付け *":"目的・補足情報 *"}>
             <div style={{position:"relative"}}>
-              <Textarea value={inputText} onChange={e=>setInputText(e.target.value)}
-                placeholder={mode==="reply"
-                  ?"返信したいメールの本文をここに貼り付けてください..."
-                  :"例：A社の田中部長への初回アポイント依頼。来月の新製品説明会の案内として送りたい。先方とは先月の展示会で名刺交換済み。"}
+              <Textarea value={inputText} onChange={e=>{
+                  setInputText(e.target.value);
+                  if(mode==="reply") extractRecipientFromEmail(e.target.value);
+                }}
+                placeholder={mode==="reply"?"返信したいメールの本文をここに貼り付けてください...\n\n💡 貼り付けると会社名・担当者名を自動取得します":"例：A社の田中部長への初回アポイント依頼。来月の新製品説明会の案内として送りたい。先方とは先月の展示会で名刺交換済み。"}
                 style={{height:160}}/>
               {inputText&&<button onClick={()=>setInputText("")}
                 style={{position:"absolute",top:"0.5rem",right:"0.5rem",background:"#f1f5f9",border:"none",borderRadius:"0.4rem",padding:"0.2rem 0.5rem",cursor:"pointer",fontSize:"0.72rem",color:"#64748b",fontWeight:700,lineHeight:1}}>✕ リセット</button>}
             </div>
-          </FieldLbl>
+          </FieldLbl>}
 
-          <FieldLbl label={mode==="reply"?"返信の指示・方向性 *":"メールの指示・方向性 *"}>
+          {mode!=="follow"&&<FieldLbl label={mode==="reply"?"返信の指示・方向性 *":"メールの指示・方向性 *"}>
             <div style={{position:"relative"}}>
               <Textarea value={instruction} onChange={e=>setInstruction(e.target.value)}
                 placeholder={mode==="reply"
@@ -3136,10 +3293,11 @@ function EmailView({data,setData,currentUser=null}) {
             {!instruction.trim()&&inputText.trim()&&(
               <div style={{fontSize:"0.72rem",color:"#dc2626",marginTop:"0.35rem",fontWeight:600}}>⚠️ 指示は必須です</div>
             )}
-          </FieldLbl>
+          </FieldLbl>}
 
-          <Btn onClick={generate} size="lg" style={{width:"100%"}} disabled={loading||!inputText.trim()||!instruction.trim()}>
-            {loading?"🤖 生成中...":mode==="reply"?"🤖 返信文を生成":"🤖 メール文を生成"}
+          <Btn onClick={generate} size="lg" style={{width:"100%"}}
+            disabled={loading||(mode==="follow"?(!toName&&!toCompany&&!followMemo&&!inputText.trim()):(!inputText.trim()||!instruction.trim()))}>
+            {loading?"🤖 生成中...":mode==="reply"?"🤖 返信文を生成":mode==="follow"?"🤝 フォローメールを生成":"🤖 メール文を生成"}
           </Btn>
 
           {/* Past emails */}
@@ -5306,7 +5464,9 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     const GUARD_KEYS = ["tasks","projects","companies","vendors","municipalities","businessCards"];
     const hasContent = GUARD_KEYS.some(k => Array.isArray(d[k]) && d[k].length > 0);
     const currentHasContent = GUARD_KEYS.some(k => Array.isArray(data[k]) && data[k].length > 0);
-    if (currentHasContent && !hasContent) {
+    // analyticsデータがあれば配列が空でも許可
+    const hasSalesAnalytics = d.analytics && typeof d.analytics === "object" && Object.keys(d.analytics).length > 0;
+    if (currentHasContent && !hasContent && !hasSalesAnalytics) {
       console.error("MyDesk: SalesView.save rejected — would wipe existing data", d); return;
     }
     window.__myDeskLastSave = Date.now();
@@ -9540,21 +9700,29 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
 
   const doRestore = async (snap) => {
     setSnapMsg("復元中...");
-    const s = await loadSnapshot(snap.key);
-    if(s?.data) {
+    try {
+      const s = await loadSnapshot(snap.key);
+      if(!s?.data) { setSnapMsg("❌ スナップショットデータが見つかりません"); setTimeout(()=>setSnapMsg(""),5000); return; }
+
       // 復元前に現時点のデータをバックアップ
       const beforeLabel = "⏪ 復元前の自動退避 " + new Date().toLocaleString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"});
       await saveSnapshot(data, beforeLabel);
+
+      // 復元データを直接Supabaseに書き込む（ガードをバイパス）
+      await sbSet("main", s.data);
+      // Stateを更新
       setData({...s.data});
-      await saveData(s.data);
+      window.__myDeskLastSave = Date.now();
+
       const dt = snap.savedAt ? new Date(snap.savedAt).toLocaleString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"}) : "";
-      setSnapMsg("✅ " + dt + " のデータを復元しました");
+      setSnapMsg("✅ " + dt + " のデータを復元しました。ページを再読み込みしてください。");
       setRestoreConfirm(null);
       loadSnaps();
-    } else {
-      setSnapMsg("❌ 復元に失敗しました");
+    } catch(e) {
+      console.error("doRestore error", e);
+      setSnapMsg("❌ 復元に失敗しました: " + e.message);
     }
-    setTimeout(()=>setSnapMsg(""),6000);
+    setTimeout(()=>setSnapMsg(""),10000);
   };
 
   const saveProfile = async () => {
@@ -10751,7 +10919,7 @@ async function exportMultiMonthPPTX(sys, currentMk, allAnalytics) {
 }
 
 function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
-  if(!saveWithPush) saveWithPush=(nd)=>{setData(nd);};
+  if(!saveWithPush) saveWithPush=(nd)=>{setData(nd);saveData(nd);};
   const [sys,      setSys]      = useState("dustalk");
   const [mk,       setMk]       = useState(getMonthKey());
   const [yk,       setYk]       = useState(getYearKey());
