@@ -11860,6 +11860,15 @@ export default function App() {
           console.warn("MyDesk: poll skipped — server returned empty data while local has content");
           setUsers(u); return;
         }
+        // ── 分析データ保護：ローカルに分析データがあるのにサーバーにない場合は保持 ──
+        const localHasAnalytics = data.analytics && Object.keys(data.analytics||{}).length > 0;
+        const serverHasAnalytics = d.analytics && Object.keys(d.analytics||{}).length > 0;
+        if(localHasAnalytics && !serverHasAnalytics) {
+          console.warn("MyDesk: poll analytics guard — merging local analytics into server data");
+          // サーバーデータにローカルの分析データをマージして使用
+          setData({...d, analytics: data.analytics});
+          setUsers(u); return;
+        }
         // 自分が最後にsaveした時刻との比較で上書き判定
         const timeSinceSave = Date.now() - (window.__myDeskLastSave || 0);
         // サーバーのupdated_atが自分の最終保存より新しい（他ユーザーの更新）場合のみ反映
@@ -11963,6 +11972,9 @@ export default function App() {
     if (!nd || typeof nd !== "object" || Array.isArray(nd)) {
       console.error("MyDesk: SalesView saveWithPush rejected invalid data"); return;
     }
+    // 保存タイムスタンプを先に設定（ポーリング上書き防止）
+    window.__myDeskLastSave = Date.now();
+    window.__myDeskLastSaveAt = new Date().toISOString();
     setData(nd); saveData(nd);
     // 新しく追加された通知を検出
     const newNotifs = (nd.notifications||[]).filter(n=>
