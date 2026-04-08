@@ -91,12 +91,23 @@ async function sbSet(id, data) {
   window.__myDeskLastSave = Date.now();
   window.__myDeskLastSaveAt = now;
   try {
-    await fetch(`${SB_URL}/rest/v1/app_data`, {
+    const res = await fetch(`${SB_URL}/rest/v1/app_data`, {
       method: "POST",
       headers: { ...SB_HEADERS, "Prefer": "resolution=merge-duplicates" },
       body: JSON.stringify({ id, data, updated_at: now }),
     });
-  } catch {}
+    if(!res.ok) {
+      const errText = await res.text().catch(()=>"");
+      throw new Error(`Supabase write failed: ${res.status} ${errText}`);
+    }
+    return true;
+  } catch(e) {
+    console.error("[MyDesk] sbSet failed:", e.message);
+    // 保存失敗時は __myDeskLastSaveAt をクリアして次回ポーリングで再取得を許可
+    window.__myDeskLastSave = 0;
+    window.__myDeskLastSaveAt = null;
+    return false;
+  }
 }
 
 const INIT = { tasks:[], projects:[], emails:[], emailStyles:[], prefectures:[], municipalities:[], vendors:[], companies:[], businessCards:[], notifications:[], changeLogs:[], analytics:{}, emailTemplates:[] };
@@ -227,7 +238,12 @@ async function saveData(d) {
       }
     } catch {}
   }
-  await sbSet("main", d);
+  const ok = await sbSet("main", d);
+  if(!ok) {
+    // 保存失敗をUIに通知（window経由）
+    window.__myDeskSaveError = "データの保存に失敗しました。ネットワークを確認してください。";
+    window.dispatchEvent(new Event("mydesk-save-error"));
+  }
   // 自動スナップショット（3分に1回スロットリング、非同期・非ブロッキング）
   const now = Date.now();
   const last = window.__lastAutoSnap || 0;
@@ -11772,13 +11788,23 @@ export default function App() {
   const [showNotifPanel,setShowNotifPanel] = useState(false);
   const [globalSearch, setGlobalSearch] = useState(null); // null=閉じ, ""=開く
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  const [saveError, setSaveError] = useState("");
   // ① オフライン検知
   React.useEffect(()=>{
     const goOffline = () => setIsOffline(true);
     const goOnline  = () => setIsOffline(false);
+    const onSaveErr = () => {
+      setSaveError(window.__myDeskSaveError || "保存に失敗しました");
+      setTimeout(()=>setSaveError(""), 8000);
+    };
     window.addEventListener("offline", goOffline);
     window.addEventListener("online",  goOnline);
-    return ()=>{ window.removeEventListener("offline",goOffline); window.removeEventListener("online",goOnline); };
+    window.addEventListener("mydesk-save-error", onSaveErr);
+    return ()=>{
+      window.removeEventListener("offline",goOffline);
+      window.removeEventListener("online",goOnline);
+      window.removeEventListener("mydesk-save-error",onSaveErr);
+    };
   }, []);
   const [notifFilter,setNotifFilter] = useState("all");
   const contentRef = useRef(null);
@@ -11848,6 +11874,9 @@ export default function App() {
   const lastNotifIdsRef = useRef(null);
   // 最後に自分でsaveした時刻（競合防止用）
   const lastSaveTimeRef = useRef(0);
+  // 常に最新のdataを参照するref（ポーリング内のstale closure対策）
+  const dataRef = useRef(null);
+  React.useEffect(()=>{ dataRef.current = data; }, [data]);
 
   useEffect(()=>{
     if(!currentUser) return;
@@ -11860,19 +11889,19 @@ export default function App() {
         // ── ポーリング受信データの空チェック ─────────────────────────────
         // サーバーから空データが返ってきた場合は現在のデータを保持する
         const POLL_GUARD_KEYS = ["tasks","projects","companies","vendors","municipalities","businessCards"];
+        const localData = dataRef.current || {};
         const serverHasContent = POLL_GUARD_KEYS.some(k => Array.isArray(d[k]) && d[k].length > 0);
-        const localHasContent  = POLL_GUARD_KEYS.some(k => Array.isArray(data[k]) && data[k].length > 0);
+        const localHasContent  = POLL_GUARD_KEYS.some(k => Array.isArray(localData[k]) && localData[k].length > 0);
         if (localHasContent && !serverHasContent) {
           console.warn("MyDesk: poll skipped — server returned empty data while local has content");
           setUsers(u); return;
         }
         // ── 分析データ保護：ローカルに分析データがあるのにサーバーにない場合は保持 ──
-        const localHasAnalytics = data.analytics && Object.keys(data.analytics||{}).length > 0;
+        const localHasAnalytics = localData.analytics && Object.keys(localData.analytics||{}).length > 0;
         const serverHasAnalytics = d.analytics && Object.keys(d.analytics||{}).length > 0;
         if(localHasAnalytics && !serverHasAnalytics) {
           console.warn("MyDesk: poll analytics guard — merging local analytics into server data");
-          // サーバーデータにローカルの分析データをマージして使用
-          setData({...d, analytics: data.analytics});
+          setData({...d, analytics: localData.analytics});
           setUsers(u); return;
         }
         // 自分が最後にsaveした時刻との比較で上書き判定
@@ -12411,6 +12440,13 @@ export default function App() {
       {isOffline&&(
         <div style={{position:"fixed",top:0,left:0,right:0,zIndex:1000,background:"#fef3c7",borderBottom:"2px solid #f59e0b",padding:"0.5rem 1rem",textAlign:"center",fontSize:"0.82rem",fontWeight:700,color:"#92400e"}}>
           📵 オフライン — 閲覧のみ可能です。接続が回復すると自動同期されます。
+        </div>
+      )}
+      {/* 保存エラーバナー */}
+      {saveError&&(
+        <div style={{position:"fixed",top:0,left:0,right:0,zIndex:1001,background:"#fee2e2",borderBottom:"2px solid #dc2626",padding:"0.5rem 1rem",textAlign:"center",fontSize:"0.82rem",fontWeight:700,color:"#991b1b",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
+          ⚠️ {saveError}
+          <button onClick={()=>setSaveError("")} style={{background:"none",border:"none",cursor:"pointer",color:"#991b1b",fontWeight:800,fontSize:"1rem",padding:"0 0.25rem"}}>✕</button>
         </div>
       )}
       {/* ④ グローバル検索モーダル */}
