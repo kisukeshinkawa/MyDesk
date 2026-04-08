@@ -6195,6 +6195,12 @@ ${recentLogs}
       if(added.length) nd=addNotif(nd,{type:"sales_assign",entityType:"muni",entityId:form.id,title:`「${form.name}」の担当者に追加されました`,body:"自治体",toUserIds:added,fromUserId:currentUser?.id});
     } else {
       const newMuni={id:"m_"+Date.now()+"_"+Math.random().toString(36).substr(2,9),prefectureId:activePref,...form,dustalk:form.dustalk||"未展開",status:form.status||"未接触",assigneeIds:[],treatyStatus:'未接触',artBranch:"",memos:[],chat:[],approachLogs:[],createdAt:new Date().toISOString()};
+      // 名刺から登録した場合は自動紐づけ
+      if(window.__pendingBizcardLink?.type==="自治体"){
+        const {cardId}=window.__pendingBizcardLink;
+        nd={...nd,businessCards:(nd.businessCards||[]).map(bc=>bc.id===cardId?{...bc,salesRef:{type:"自治体",id:newMuni.id,name:newMuni.name}}:bc)};
+        delete window.__pendingBizcardLink;
+      }
       nd={...nd,municipalities:[...munis,newMuni]};
       nd=addChangeLog(nd,{entityType:"自治体",entityId:newMuni.id,entityName:newMuni.name,field:"登録",oldVal:"",newVal:"新規登録"});
       save(nd); setSheet(null);
@@ -9314,6 +9320,54 @@ ${orig}`})
                   </div>
                 )}
               </Card>
+              {/* ── 企業/業者/自治体として登録 ── */}
+              {(()=>{
+                const ref = card.salesRef;
+                const company = card.company||"";
+                const phone = card.telDirect||card.mobile||card.telCompany||"";
+                const address = card.address||"";
+                const alreadyLinked = !!ref;
+                return (
+                  <Card style={{padding:"1rem",marginBottom:"1rem"}}>
+                    <div style={{fontWeight:700,fontSize:"0.82rem",color:C.text,marginBottom:"0.75rem"}}>🏢 営業先として登録</div>
+                    {alreadyLinked ? (
+                      <div style={{fontSize:"0.78rem",color:"#059669",background:"#f0fdf4",borderRadius:"0.75rem",padding:"0.625rem 0.875rem",fontWeight:600}}>
+                        ✅ {ref.type}「{ref.name}」として登録済み
+                      </div>
+                    ) : (
+                      <div>
+                        <div style={{fontSize:"0.75rem",color:C.textMuted,marginBottom:"0.625rem"}}>この名刺の情報を引き継いで営業先に登録できます</div>
+                        <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap"}}>
+                          <button onClick={()=>{
+                            setForm({name:company,phone,address,status:"未接触",assigneeIds:[],notes:""});
+                            setSalesTab("company");
+                            requestAnimationFrame(()=>setSheet("addCompany"));
+                            window.__pendingBizcardLink={cardId:card.id,type:"企業",name:company};
+                          }} style={{flex:1,padding:"0.6rem 0.5rem",borderRadius:"0.75rem",background:"#eff6ff",color:"#2563eb",fontWeight:700,fontSize:"0.78rem",border:"1.5px solid #bfdbfe",cursor:"pointer",fontFamily:"inherit"}}>
+                            🏢 企業として登録
+                          </button>
+                          <button onClick={()=>{
+                            setForm({name:company,phone,address,status:"未接触",assigneeIds:[],notes:""});
+                            setSalesTab("vendor");
+                            requestAnimationFrame(()=>setSheet("addVendor"));
+                            window.__pendingBizcardLink={cardId:card.id,type:"業者",name:company};
+                          }} style={{flex:1,padding:"0.6rem 0.5rem",borderRadius:"0.75rem",background:"#f5f3ff",color:"#7c3aed",fontWeight:700,fontSize:"0.78rem",border:"1.5px solid #ddd6fe",cursor:"pointer",fontFamily:"inherit"}}>
+                            🏭 業者として登録
+                          </button>
+                          <button onClick={()=>{
+                            setForm({name:company,address,status:"未接触",assigneeIds:[],notes:""});
+                            setSalesTab("muni");
+                            requestAnimationFrame(()=>setSheet("addMuni"));
+                            window.__pendingBizcardLink={cardId:card.id,type:"自治体",name:company};
+                          }} style={{flex:1,padding:"0.6rem 0.5rem",borderRadius:"0.75rem",background:"#f0fdf4",color:"#059669",fontWeight:700,fontSize:"0.78rem",border:"1.5px solid #bbf7d0",cursor:"pointer",fontFamily:"inherit"}}>
+                            🏛 自治体として登録
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </Card>
+                );
+              })()}
               <Btn variant="danger" size="sm" onClick={()=>{if(window.confirm("この名刺を削除しますか？")){deleteBizCard(card.id);setBcScreen("list");}}}>🗑 削除</Btn>
             </div>
           );
@@ -9426,7 +9480,9 @@ ${orig}`})
                           <div style={{flex:1,minWidth:0}}>
                             <div style={{display:"flex",alignItems:"center",gap:"0.35rem",flexWrap:"wrap"}}>
                               <span style={{fontSize:"0.88rem",fontWeight:700,color:C.text}}>{name}</span>
-                              {card.salesRef&&<span style={{fontSize:"0.62rem",fontWeight:700,color:"white",background:{"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"}[card.salesRef.type]||"#64748b",borderRadius:999,padding:"0.05rem 0.35rem"}}>{card.salesRef.type}</span>}
+                              {card.salesRef
+                                ? <span style={{fontSize:"0.62rem",fontWeight:700,color:"white",background:{"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"}[card.salesRef.type]||"#64748b",borderRadius:999,padding:"0.05rem 0.35rem"}}>{card.salesRef.type}</span>
+                                : <span style={{fontSize:"0.62rem",fontWeight:700,color:"#d97706",background:"#fef3c7",borderRadius:999,padding:"0.05rem 0.35rem",border:"1px solid #fde68a"}}>未登録</span>}
                             </div>
                             <div style={{fontSize:"0.72rem",color:C.textSub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{[card.title,card.department].filter(Boolean).join("　")}</div>
                             <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap"}}>
