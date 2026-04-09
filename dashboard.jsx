@@ -1106,7 +1106,7 @@ function GSheetImportWizard({ data, onSave, onClose, prefs, munis, vendors }) {
   );
 }
 
-function DupModal({existing, incoming, onKeepBoth, onUseExisting, onCancel}) {
+function DupModal({existing, incoming, onKeepBoth, onUseExisting, onCancel, dupReason}) {
   // existing は {name, status?, phone?, email?, address?, notes?, title?, dueDate?, assignees?} 等
   const rows = [
     existing.title   && ["タイトル",   existing.title],
@@ -1126,7 +1126,9 @@ function DupModal({existing, incoming, onKeepBoth, onUseExisting, onCancel}) {
         <div style={{textAlign:"center",marginBottom:"1rem"}}>
           <div style={{fontSize:"1.8rem",marginBottom:"0.4rem"}}>⚠️</div>
           <div style={{fontWeight:800,fontSize:"1rem",color:C.text}}>同じ名前が既に存在します</div>
-          <div style={{fontSize:"0.78rem",color:C.textMuted,marginTop:"0.2rem"}}>登録しようとした名前</div>
+          <div style={{fontSize:"0.78rem",color:C.textMuted,marginTop:"0.2rem"}}>
+            {dupReason ? <span style={{color:"#d97706",fontWeight:700}}>⚠️ {dupReason}する業者が既に登録されています</span> : "登録しようとした名前"}
+          </div>
           <div style={{fontWeight:700,fontSize:"0.95rem",color:"#dc2626",background:"#fee2e2",borderRadius:"0.625rem",padding:"0.5rem 0.875rem",marginTop:"0.4rem"}}>「{incoming}」</div>
         </div>
         <div style={{background:C.bg,borderRadius:"0.875rem",padding:"0.875rem 1rem",marginBottom:"1.25rem"}}>
@@ -6225,12 +6227,27 @@ ${recentLogs}
   const saveVendor=(skipDupCheck=false)=>{
     if(!form.name?.trim())return;
     if(!form.id && !skipDupCheck){
-      const normName = s => (s||"").replace(/[\s　]/g,"").toLowerCase();
-      const dup=vendors.find(v=>normName(v.name)===normName(form.name));
-      if(dup){setDupModal({existing:dup,incoming:form.name.trim(),
-        onKeepBoth:()=>{setDupModal(null);saveVendor(true);},
-        onUseExisting:()=>{setActiveVendor(dup.id);setDupModal(null);setSheet(null);}
-      });return;}
+      const normStr = s => (s||"").replace(/[\s　\-ー－]/g,"").toLowerCase();
+      const normPhone = s => (s||"").replace(/[^0-9]/g,"");
+      const formName  = normStr(form.name);
+      const formAddr  = normStr(form.address||"");
+      const formPhone = normPhone(form.phone||"");
+
+      // 会社名が一致する重複チェック
+      const dupByName = vendors.find(v=>normStr(v.name)===formName);
+      // 電話番号が一致（7桁以上の場合のみ）
+      const dupByPhone = formPhone.length>=7 ? vendors.find(v=>normPhone(v.phone||"")===formPhone && normPhone(v.phone||"").length>=7) : null;
+      // 住所が一致（10文字以上の場合のみ）
+      const dupByAddr = formAddr.length>=10 ? vendors.find(v=>normStr(v.address||"")===formAddr) : null;
+
+      const dup = dupByName || dupByPhone || dupByAddr;
+      if(dup){
+        const reason = dupByName?"会社名が一致":dupByPhone?"電話番号が一致":"住所が一致";
+        setDupModal({existing:dup,incoming:form.name.trim(),
+          dupReason: reason,
+          onKeepBoth:()=>{setDupModal(null);saveVendor(true);},
+          onUseExisting:()=>{setActiveVendor(dup.id);setDupModal(null);setSheet(null);}
+        });return;}
     }
     let nd={...data};
     if(form.id){
@@ -8282,8 +8299,20 @@ ${orig}`})
           };
           const doImport=()=>{
             if(!preview?.length)return;
+            const normStr2 = s => (s||"").replace(/[\s　\-ー－]/g,"").toLowerCase();
+            const normPhone2 = s => (s||"").replace(/[^0-9]/g,"");
+            const isDupVendor = r => {
+              const rName = normStr2(r.name);
+              const rPhone = normPhone2(r.phone||"");
+              const rAddr = normStr2(r.address||"");
+              return vendors.some(v=>
+                normStr2(v.name)===rName ||
+                (rPhone.length>=7 && normPhone2(v.phone||"")===rPhone && normPhone2(v.phone||"").length>=7) ||
+                (rAddr.length>=10 && normStr2(v.address||"")===rAddr)
+              );
+            };
             const existNames=new Set(vendors.map(v=>(v.name||"").trim()));
-            const toAdd=preview.filter(r=>!existNames.has(r.name)).map(r=>{
+            const toAdd=preview.filter(r=>!isDupVendor(r)).map(r=>{
               // Resolve municipality IDs from names
               const mids=r.muniNames.map(mn=>munis.find(m=>m.name===mn)?.id).filter(Boolean);
               return {
@@ -9153,7 +9182,7 @@ ${orig}`})
         </Sheet>
       )}
         {/* 重複検出モーダル */}
-        {dupModal&&<DupModal existing={dupModal.existing} incoming={dupModal.incoming} onKeepBoth={dupModal.onKeepBoth} onUseExisting={dupModal.onUseExisting} onCancel={()=>setDupModal(null)}/>}
+        {dupModal&&<DupModal existing={dupModal.existing} incoming={dupModal.incoming} dupReason={dupModal.dupReason} onKeepBoth={dupModal.onKeepBoth} onUseExisting={dupModal.onUseExisting} onCancel={()=>setDupModal(null)}/>}
       </>}{/* end salesTab==="muni" */}
 
       {/* ── 削除モーダル（全タブ共通） ── */}
