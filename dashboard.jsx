@@ -5119,7 +5119,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   const [vendFilterPref, setVendFilterPref] = useState(""); // 都道府県フィルタ
   const [vendFilterMuni, setVendFilterMuni] = useState(""); // 自治体フィルタ
   const [vendFilterStatus, setVendFilterStatus] = useState(""); // ステータスフィルタ
-  const [vendFilterPermit, setVendFilterPermit] = useState(""); // 許可種別フィルタ
+  const [vendFilterPermit, setVendFilterPermit] = useState("");
+  const [vendFilterBeeNet, setVendFilterBeeNet] = useState(""); // "" | "加入済み" | "未加入" // 許可種別フィルタ
   const [vendFilterAssignee, setVendFilterAssignee] = useState(""); // 担当フィルタ
   const [openCompGrp,  setOpenCompGrp]  = useState(new Set());
   const [openVendGrp,  setOpenVendGrp]  = useState(new Set());
@@ -7895,6 +7896,7 @@ ${orig}`})
             )}
             <AssigneeRow ids={v.assigneeIds}/>
             {v.address&&<div style={{fontSize:"0.78rem",color:C.textSub,marginTop:"0.4rem"}}>📍 {v.address}</div>}
+                  {v.beeNet&&<div style={{display:"inline-flex",alignItems:"center",gap:"0.3rem",marginTop:"0.35rem",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:999,padding:"0.15rem 0.5rem",fontSize:"0.68rem",fontWeight:700,color:"#1d4ed8"}}>🔷 bee-net加入済み</div>}
             {v.notes&&<div style={{marginTop:"0.5rem",fontSize:"0.78rem",color:C.textSub,background:"#f8fafc",borderRadius:"0.5rem",padding:"0.4rem 0.6rem",borderLeft:"3px solid #cbd5e1"}}>{v.notes}</div>}
             <div style={{marginTop:"0.6rem"}}>
               <div style={{fontSize:"0.62rem",fontWeight:700,color:"#5b21b6",marginBottom:"0.3rem"}}>📋 許可別営業状況</div>
@@ -8001,6 +8003,12 @@ ${orig}`})
                   })}
                 </div>
               </FieldLbl>
+              <FieldLbl label="bee-net加入">
+                <label style={{display:"flex",alignItems:"center",gap:"0.625rem",cursor:"pointer",padding:"0.625rem 0.875rem",borderRadius:"0.75rem",background:form.beeNet?"#eff6ff":"#f8fafc",border:`1.5px solid ${form.beeNet?"#2563eb":"#e2e8f0"}`,transition:"all 0.15s"}}>
+                  <input type="checkbox" checked={!!form.beeNet} onChange={e=>setForm({...form,beeNet:e.target.checked})} style={{width:18,height:18,accentColor:"#2563eb",cursor:"pointer"}}/>
+                  <span style={{fontSize:"0.85rem",fontWeight:form.beeNet?700:400,color:form.beeNet?"#1d4ed8":"#6b7280"}}>{form.beeNet?"✅ 加入済み":"未加入"}</span>
+                </label>
+              </FieldLbl>
               <FieldLbl label="備考"><Textarea value={form.notes||""} onChange={e=>setForm({...form,notes:e.target.value})} style={{height:70}}/></FieldLbl>
               <div style={{display:"flex",gap:"0.625rem"}}>
                 <Btn variant="secondary" style={{flex:1}} onClick={()=>setSheet(null)}>キャンセル</Btn>
@@ -8022,6 +8030,8 @@ ${orig}`})
       if(vendFilterMuni && !(v.municipalityIds||[]).map(String).includes(vendFilterMuni)) return false;
       if(vendFilterStatus && (v.status||"未接触")!==vendFilterStatus) return false;
       if(vendFilterPermit && !(v.permitTypes||[]).includes(vendFilterPermit)) return false;
+      if(vendFilterBeeNet === "加入済み" && !v.beeNet) return false;
+      if(vendFilterBeeNet === "未加入" && v.beeNet) return false;
       if(vendFilterAssignee==="__me__" && !(v.assigneeIds||[]).some(id=>id===currentUser?.id)) return false;
       if(vendFilterAssignee && vendFilterAssignee!=="__me__" && !(v.assigneeIds||[]).some(id=>String(id)===vendFilterAssignee)) return false;
       return true;
@@ -8097,6 +8107,12 @@ ${orig}`})
                   style={{padding:"0.3rem 0.4rem",borderRadius:"0.5rem",border:`1.5px solid ${vendFilterPermit?C.accent:C.border}`,fontSize:"0.72rem",background:vendFilterPermit?"#eff6ff":"white",color:vendFilterPermit?C.accent:C.text,fontFamily:"inherit"}}>
                   <option value="">📋 許可種別</option>
                   {PERMIT_TYPES.map(p=><option key={p} value={p}>{p}</option>)}
+                </select>
+                <select value={vendFilterBeeNet} onChange={e=>setVendFilterBeeNet(e.target.value)}
+                  style={{padding:"0.3rem 0.4rem",borderRadius:"0.5rem",border:`1.5px solid ${vendFilterBeeNet?C.accent:C.border}`,fontSize:"0.72rem",background:vendFilterBeeNet?"#eff6ff":"white",color:vendFilterBeeNet?C.accent:C.text,fontFamily:"inherit"}}>
+                  <option value="">🔷 bee-net</option>
+                  <option value="加入済み">加入済み</option>
+                  <option value="未加入">未加入</option>
                 </select>
                 <select value={vendFilterAssignee} onChange={e=>setVendFilterAssignee(e.target.value)}
                   style={{padding:"0.3rem 0.4rem",borderRadius:"0.5rem",border:`1.5px solid ${vendFilterAssignee?C.accent:C.border}`,fontSize:"0.72rem",background:vendFilterAssignee?"#eff6ff":"white",color:vendFilterAssignee?C.accent:C.text,fontFamily:"inherit"}}>
@@ -8266,6 +8282,12 @@ ${orig}`})
                   })}
                 </div>
             </FieldLbl>
+            <FieldLbl label="bee-net加入">
+                <label style={{display:"flex",alignItems:"center",gap:"0.625rem",cursor:"pointer",padding:"0.625rem 0.875rem",borderRadius:"0.75rem",background:form.beeNet?"#eff6ff":"#f8fafc",border:`1.5px solid ${form.beeNet?"#2563eb":"#e2e8f0"}`,transition:"all 0.15s"}}>
+                  <input type="checkbox" checked={!!form.beeNet} onChange={e=>setForm({...form,beeNet:e.target.checked})} style={{width:18,height:18,accentColor:"#2563eb",cursor:"pointer"}}/>
+                  <span style={{fontSize:"0.85rem",fontWeight:form.beeNet?700:400,color:form.beeNet?"#1d4ed8":"#6b7280"}}>{form.beeNet?"✅ 加入済み":"未加入"}</span>
+                </label>
+              </FieldLbl>
             <FieldLbl label="備考"><Textarea value={form.notes||""} onChange={e=>setForm({...form,notes:e.target.value})} style={{height:60}}/></FieldLbl>
             <div style={{display:"flex",gap:"0.625rem"}}>
               <Btn variant="secondary" style={{flex:1}} onClick={()=>setSheet(null)}>キャンセル</Btn>
@@ -8293,6 +8315,7 @@ ${orig}`})
                 notes:(r[6]||"").trim(),
                 address:normalizeImport(r[7]||""),
                 permitTypeNames:(r[8]?.trim()||"").split(/[,，]/).map(s=>s.trim()).filter(Boolean),
+                beeNet:!!(r[9]?.trim()),
               })).filter(r=>r.name);
               setPreview(mapped); setErr("");
             }catch(e){setErr("ファイルの読み込みに失敗しました。");}
@@ -8322,6 +8345,7 @@ ${orig}`})
                 municipalityIds:mids, assigneeIds:[],
                 address:r.address||"",
                 permitTypes:(r.permitTypeNames||[]).filter(pt=>["家庭収運","事業収運","一廃収運","産廃収運","産廃処分","産廃収運処分"].includes(pt)),
+                beeNet:!!r.beeNet,
                 memos:r.notes?[{id:"mn_"+Date.now()+"_"+Math.random().toString(36).substr(2,9),text:r.notes,userId:currentUser?.id,date:new Date().toISOString()}]:[],
                 chat:[], createdAt:new Date().toISOString()
               };
@@ -8336,9 +8360,9 @@ ${orig}`})
                 <div style={{fontWeight:700,fontSize:"0.82rem",color:"#5b21b6",marginBottom:"0.5rem"}}>📥 テンプレートをダウンロード</div>
                 <div style={{fontSize:"0.75rem",color:"#6d28d9",marginBottom:"0.625rem"}}>テンプレートに入力してCSV形式で保存後、アップロードしてください</div>
                 <button onClick={()=>downloadCSV("業者インポートテンプレート.csv",
-                  ["業者名 *","ステータス","都道府県","自治体名（複数はカンマ区切り）","担当者名","電話番号","備考","住所","許可種別（複数はカンマ区切り）"],
-                  [["株式会社クリーンA","加入済","福岡県","福岡市,北九州市","山田一郎","092-111-2222","","福岡県福岡市〇〇1-2-3","産廃収運,一廃収運"],
-                   ["環境サービスB","商談中","東京都","新宿区","","","来月契約予定","","家庭収運"],
+                  ["業者名 *","ステータス","都道府県","自治体名（複数はカンマ区切り）","担当者名","電話番号","備考","住所","許可種別（複数はカンマ区切り）","bee-net加入（○）"],
+                  [["株式会社クリーンA","加入済","福岡県","福岡市,北九州市","山田一郎","092-111-2222","","福岡県福岡市〇〇1-2-3","産廃収運,一廃収運","○"],
+                   ["環境サービスB","商談中","東京都","新宿区","","","来月契約予定","","家庭収運",""],
                    ["","","","","","","",""]])}
                   style={{background:"#7c3aed",border:"none",borderRadius:"0.625rem",color:"white",fontWeight:700,fontSize:"0.78rem",padding:"0.45rem 0.875rem",cursor:"pointer",fontFamily:"inherit"}}>
                   ⬇️ CSVテンプレートをダウンロード
@@ -8589,6 +8613,12 @@ ${orig}`})
             <FieldLbl label="ステータス"><StatusPicker map={VENDOR_STATUS} value={form.status||"未接触"} onChange={s=>setForm({...form,status:s})}/></FieldLbl>
             <FieldLbl label="担当者">{AssigneePicker({ids:form.assigneeIds||[],onChange:ids=>setForm({...form,assigneeIds:ids})})}</FieldLbl>
             <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
+            <FieldLbl label="bee-net加入">
+                <label style={{display:"flex",alignItems:"center",gap:"0.625rem",cursor:"pointer",padding:"0.625rem 0.875rem",borderRadius:"0.75rem",background:form.beeNet?"#eff6ff":"#f8fafc",border:`1.5px solid ${form.beeNet?"#2563eb":"#e2e8f0"}`,transition:"all 0.15s"}}>
+                  <input type="checkbox" checked={!!form.beeNet} onChange={e=>setForm({...form,beeNet:e.target.checked})} style={{width:18,height:18,accentColor:"#2563eb",cursor:"pointer"}}/>
+                  <span style={{fontSize:"0.85rem",fontWeight:form.beeNet?700:400,color:form.beeNet?"#1d4ed8":"#6b7280"}}>{form.beeNet?"✅ 加入済み":"未加入"}</span>
+                </label>
+              </FieldLbl>
             <FieldLbl label="備考"><Textarea value={form.notes||""} onChange={e=>setForm({...form,notes:e.target.value})} style={{height:70}} placeholder="メモ、特記事項など"/></FieldLbl>
             <div style={{display:"flex",gap:"0.625rem"}}>
               <Btn variant="secondary" style={{flex:1}} onClick={()=>{setSheet(null);setSalesTab("muni");}}>キャンセル</Btn>
