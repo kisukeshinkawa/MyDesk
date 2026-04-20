@@ -2968,84 +2968,119 @@ function EmailView({data,setData,currentUser=null}) {
   // メール本文から宛先情報を自動抽出
   const extractRecipientFromEmail = (text) => {
     if(!text || text.length < 5) return;
-    const lines = text.split(/\n/).map(l=>l.trim()).filter(Boolean);
     const myFullName = currentUser?.name || "";
     const myLastName = myFullName.split(/[\s\u3000]/)[0] || myFullName;
+    const rawLines = text.split(/\n/).map(l=>l.trim()).filter(Boolean);
 
     let company = "";
     let name = "";
 
-    // ── 優先: 署名（末尾15行）から送信者情報を抽出 ──
-    // 受信メールの場合、送信者の情報はフッター署名にある
-    const tail = lines.slice(-15);
-    
-    // 署名から会社名を抽出（自社除外）
+    // ── Step1: 各行を署名区切り文字で分割してフラット化 ──
+    // 「・-・-・ 株式会社〇〇 担当者名」のような1行署名にも対応
+    const lines = [];
+    rawLines.forEach(line => {
+      // 区切り文字を含む行はスペースで分割してさらに展開
+      if(line.match(/[・\-]{3,}/) && line.length > 20) {
+        const parts = line.split(/\s{2,}|[・\-]{3,}/).map(p=>p.trim()).filter(Boolean);
+        lines.push(...parts);
+      } else {
+        lines.push(line);
+      }
+    });
+
+    // ── Step2: 署名部分（末尾20行）から会社名と担当者名を探す ──
+    const tail = lines.slice(-20);
+
+    // 会社名を探す（自社除外）
+    const companyKeywords = /株式会社|有限会社|合同会社|（株）|\(株\)|実行委員会|協会|組合|法人|Holdings|Inc\.|Corp\./;
     for(const line of tail) {
-      if(line.match(/株式会社|有限会社|合同会社|（株）|\(株\)|実行委員会|協会|組合|法人|Holdings|Inc\.|Corp\./)) {
-        if(!line.includes("西原商事")) {
-          company = line.replace(/^[　\s]*/, "").replace(/[　\s]*$/, "");
+      if(companyKeywords.test(line) && !line.includes("西原商事")) {
+        const cleaned = line.replace(/^[・\-\s]+/, "").trim();
+        // 会社名だけを抽出（株式会社〇〇の形式）
+        const compM = cleaned.match(/^((?:株式会社|有限会社|合同会社|\(株\))[^\s　]{1,20})/);
+        company = compM ? compM[1] : cleaned.split(/\s|　/)[0].trim();
+        // 同じ行から担当者名も抽出を試みる（「髙梨 翔（英語名）」パターン）
+        if(!name) {
+          const nameM = cleaned.match(/([一-鿿髙]{1,4}[\s\u3000]?[一-鿿髙]{1,4})\s*[（(]/);
+          if(nameM) {
+            const candidate = nameM[1].trim();
+            if(!candidate.includes(myLastName) && candidate.length >= 2 && candidate.length <= 8
+               && !candidate.match(/株式|有限|合同|部門|事業|推進|グループ|センター/)) {
+              name = candidate;
+            }
+          }
+        }
+        break;
+      }
+    }
+
+    // 担当者名を探す（会社名が含まれる行、またはその近く）
+    // パターンA: 「会社名 部署 担当者名（英語名）」が1行に収まっているケース
+    const companyLineIdx = tail.findIndex(l => company && l.includes(company.slice(0,6).replace(/株式会社|有限会社/g, "").trim()));
+    const targetLines = companyLineIdx >= 0
+      ? tail.slice(Math.max(0, companyLineIdx-2), companyLineIdx+3)
+      : tail;
+
+    for(const line of targetLines) {
+      // 「髙梨 翔（Takanashi Sho）」「田中 太郎」のような日本語人名パターン
+      const nameM = line.match(/([一-鿿龥-鿿髙髙]{1,4}[\s\u3000]?[一-鿿髙]{1,4})\s*[（(]/);
+      if(nameM) {
+        const candidate = nameM[1].trim();
+        if(!candidate.includes(myLastName) && candidate.length >= 2 && candidate.length <= 8
+           && !candidate.match(/株式|有限|合同|部門|事業|推進|グループ|センター/)) {
+          name = candidate;
+          break;
+        }
+      }
+      // 括弧なしのケース（末尾が名前だけの行）
+      const standaloneM = line.match(/^([一-鿿髙]{1,4}[\s\u3000][一-鿿髙]{1,4})$/);
+      if(standaloneM) {
+        const candidate = standaloneM[1].trim();
+        if(!candidate.includes(myLastName) && candidate.length >= 2 && candidate.length <= 8) {
+          name = candidate;
           break;
         }
       }
     }
 
-    // 署名から担当者名を抽出（会社名の近くにある名前）
-    if(company) {
-      const compIdx = tail.findIndex(l => l.includes(company.replace(/株式会社|有限会社|合同会社/g,"").trim().slice(0,6)));
-      // 会社名の前後3行で名前を探す
-      const searchRange = tail.slice(Math.max(0, compIdx-3), Math.min(tail.length, compIdx+4));
-      for(const line of searchRange) {
-        if(line === company) continue;
-        // 「山田 太郎」「田中翔」などの人名パターン（長すぎず短すぎず）
-        // 括弧付き（Takanashi Sho）は除外、純粋な日本語名を優先
-        const nameMatch = line.match(/^([\u3000-\u9fff\u30a0-\u30ff]{2,10}[\s　]{0,2}[\u3000-\u9fff\u30a0-\u30ff]{0,6})(?:[（(].*)?$/);
-        if(nameMatch && !line.includes("部") && !line.includes("室") && !line.includes("グループ") && !line.includes("課") && !line.includes("担当")) {
-          const candidate = nameMatch[1].trim();
-          // 自分の名前は除外
-          if(!candidate.includes(myLastName) && candidate.length >= 2 && candidate.length <= 10) {
+    // ── Step3: 会社名が取れなかった場合のフォールバック ──
+    // 「〇〇株式会社の田中です」パターン（本文冒頭）
+    if(!company || !name) {
+      for(let i = 0; i < Math.min(rawLines.length, 6); i++) {
+        const line = rawLines[i];
+        const m = line.match(/^([^\s]+(?:株式会社|有限会社|合同会社)[^\s]*)(?:の|\s+)(.+?)(?:です|でございます|と申します)/);
+        if(m && !m[1].includes("西原商事")) {
+          if(!company) company = m[1];
+          if(!name) name = m[2].trim();
+          break;
+        }
+      }
+    }
+
+    // ── Step4: 冒頭宛名（自分の名前は除外）──
+    if(!name) {
+      for(let i = 0; i < Math.min(rawLines.length, 8); i++) {
+        const line = rawLines[i];
+        const samaMach = line.match(/^(.+?)[　\s]?様$/);
+        if(samaMach) {
+          const candidate = samaMach[1].trim();
+          if(!candidate.includes(myLastName) && candidate.length <= 15) {
             name = candidate;
+            if(i > 0 && !company && !rawLines[i-1].match(/様$|さん$|です|ます/)) {
+              company = rawLines[i-1].trim();
+            }
             break;
           }
         }
       }
     }
 
-    // ── フォールバック: 冒頭の宛名から（ただし自分の名前は除外）──
-    if(!name) {
-      for(let i = 0; i < Math.min(lines.length, 8); i++) {
-        const line = lines[i];
-        const samaMach = line.match(/^(.+?)[　\s]?様$/);
-        if(samaMach) {
-          const candidate = samaMach[1].trim();
-          // 自分の名前が含まれていたらスキップ（自分宛の挨拶）
-          if(candidate.includes(myLastName)) continue;
-          name = candidate;
-          if(i > 0 && lines[i-1] && !lines[i-1].match(/様$|さん$|です|ます|した/) && !company) {
-            company = lines[i-1].trim();
-          }
-          break;
-        }
-      }
-    }
-
-    // パターン3: 「〇〇株式会社　田中」形式（1行に両方ある場合）
-    if(!company && !name) {
-      for(let i = 0; i < Math.min(lines.length, 5); i++) {
-        const m = lines[i].match(/^(.*(株式会社|有限会社|合同会社)[^　\s]*)[　\s]+(.+)$/);
-        if(m && !m[0].includes("西原商事")) {
-          company = m[1].trim();
-          name = m[3].trim();
-          break;
-        }
-      }
-    }
-
-    // 更新（既に入力済みの場合は上書きしない）
+    // 更新
     if(company && !toCompany) setToCompany(company);
     if(name && !toName) setToName(name);
   };
 
-  const copyText = (text) => {
+    const copyText = (text) => {
     const ok=()=>{setCopyState("ok");setTimeout(()=>setCopyState("idle"),2500);};
     const fail=()=>{setCopyState("fail");setTimeout(()=>setCopyState("idle"),2500);};
     if (navigator.clipboard?.writeText) { navigator.clipboard.writeText(text).then(ok).catch(()=>fallback(text)); }
@@ -3211,13 +3246,19 @@ function EmailView({data,setData,currentUser=null}) {
               <div style={{display:"flex",gap:"0.5rem",marginBottom:"0.5rem"}}>
                 <div style={{flex:1}}>
                   <div style={{fontSize:"0.72rem",fontWeight:700,color:"#166534",marginBottom:"0.2rem"}}>会社名</div>
-                  <input value={toCompany} onChange={e=>setToCompany(e.target.value)} placeholder="例：株式会社〇〇"
-                    style={{width:"100%",padding:"0.45rem 0.625rem",borderRadius:"0.5rem",border:"1px solid #bbf7d0",fontFamily:"inherit",fontSize:"0.82rem",boxSizing:"border-box"}}/>
+                  <div style={{position:"relative"}}>
+                    <input value={toCompany} onChange={e=>setToCompany(e.target.value)} placeholder="例：株式会社〇〇"
+                      style={{width:"100%",padding:"0.45rem 1.5rem 0.45rem 0.625rem",borderRadius:"0.5rem",border:"1px solid #bbf7d0",fontFamily:"inherit",fontSize:"0.82rem",boxSizing:"border-box"}}/>
+                    {toCompany&&<button onClick={()=>setToCompany("")} style={{position:"absolute",right:"0.3rem",top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",color:"#94a3b8",fontSize:"0.8rem",padding:"0.1rem",lineHeight:1}}>✕</button>}
+                  </div>
                 </div>
                 <div style={{flex:1}}>
                   <div style={{fontSize:"0.72rem",fontWeight:700,color:"#166534",marginBottom:"0.2rem"}}>担当者名</div>
-                  <input value={toName} onChange={e=>setToName(e.target.value)} placeholder="例：山下"
-                    style={{width:"100%",padding:"0.45rem 0.625rem",borderRadius:"0.5rem",border:"1px solid #bbf7d0",fontFamily:"inherit",fontSize:"0.82rem",boxSizing:"border-box"}}/>
+                  <div style={{position:"relative"}}>
+                    <input value={toName} onChange={e=>setToName(e.target.value)} placeholder="例：山下"
+                      style={{width:"100%",padding:"0.45rem 1.5rem 0.45rem 0.625rem",borderRadius:"0.5rem",border:"1px solid #bbf7d0",fontFamily:"inherit",fontSize:"0.82rem",boxSizing:"border-box"}}/>
+                    {toName&&<button onClick={()=>setToName("")} style={{position:"absolute",right:"0.3rem",top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",color:"#94a3b8",fontSize:"0.8rem",padding:"0.1rem",lineHeight:1}}>✕</button>}
+                  </div>
                 </div>
               </div>
 
@@ -3252,7 +3293,15 @@ function EmailView({data,setData,currentUser=null}) {
             </div>
           )}
 
-          <div style={{display:"flex",justifyContent:"flex-end",marginBottom:"1rem"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1rem"}}>
+            {/* 全リセットボタン */}
+            <button onClick={()=>{
+              setInputText(""); setInstruction(""); setToCompany(""); setToName("");
+              setIsInternal(false); setFollowIndustry(""); setFollowRelation("話した"); setFollowMemo("");
+              setGenerated(""); setPhase("input"); setCopyState("idle");
+            }} style={{padding:"0.35rem 0.875rem",background:"#fff1f2",border:"1.5px solid #fca5a5",borderRadius:"0.625rem",color:"#dc2626",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}}>
+              🗑 全リセット
+            </button>
             <button onClick={()=>setStyleSheet(true)}
               style={{padding:"0.35rem 0.875rem",background:myStyles.length>0?C.accentBg:C.bg,border:`1.5px solid ${myStyles.length>0?C.accent:C.border}`,borderRadius:999,cursor:"pointer",fontSize:"0.75rem",fontWeight:700,color:myStyles.length>0?C.accentDark:C.textSub}}>
               ✍️ 文体サンプル {myStyles.length>0?`(${myStyles.length}件)`:"未登録"}
@@ -5763,17 +5812,17 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
 
   const openLossModal = (entityKey, entityId, entityName, newStatus) => {
     setLossReason(""); setLossNote(""); setLossNextCons("");
-    requestAnimationFrame(()=>setLossModal({entityKey, entityId, entityName, newStatus}));
+    setLossModal({entityKey, entityId, entityName, newStatus});
   };
   const openApproachModal = (entityKey, entityId, entityName) => {
     setAType("電話"); setANote(""); setADate(new Date().toISOString().slice(0,10));
-    requestAnimationFrame(()=>setApproachModal({entityKey, entityId, entityName}));
+    setApproachModal({entityKey, entityId, entityName});
   };
   const openNextActionModal = (entityKey, entityId, entityName, current={}) => {
     setNaType(current.nextActionType||"電話");
     setNaDate(current.nextActionDate||"");
     setNaNote(current.nextActionNote||"");
-    requestAnimationFrame(()=>setNextActionModal({entityKey, entityId, entityName}));
+    setNextActionModal({entityKey, entityId, entityName});
   };
 
   // ── アプローチ履歴を追加 ────────────────────────────────────────────────
