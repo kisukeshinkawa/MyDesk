@@ -2969,42 +2969,61 @@ function EmailView({data,setData,currentUser=null}) {
   const extractRecipientFromEmail = (text) => {
     if(!text || text.length < 5) return;
     const lines = text.split(/\n/).map(l=>l.trim()).filter(Boolean);
+    const myFullName = currentUser?.name || "";
+    const myLastName = myFullName.split(/[\s\u3000]/)[0] || myFullName;
 
     let company = "";
     let name = "";
 
-    // パターン1: 冒頭の「会社名\n担当者名 様」形式
-    // 例: KitaQALLJAM実行委員会 / 山下 様
-    for(let i = 0; i < Math.min(lines.length, 8); i++) {
-      const line = lines[i];
-      // 「〇〇 様」「〇〇様」にマッチ
-      const samaMach = line.match(/^(.+?)[　\s]?様$/);
-      if(samaMach) {
-        name = samaMach[1].trim();
-        // 前の行が会社名の可能性
-        if(i > 0 && lines[i-1] && !lines[i-1].match(/様$|さん$|です|ます|した|ます/)) {
-          company = lines[i-1].trim();
+    // ── 優先: 署名（末尾15行）から送信者情報を抽出 ──
+    // 受信メールの場合、送信者の情報はフッター署名にある
+    const tail = lines.slice(-15);
+    
+    // 署名から会社名を抽出（自社除外）
+    for(const line of tail) {
+      if(line.match(/株式会社|有限会社|合同会社|（株）|\(株\)|実行委員会|協会|組合|法人|Holdings|Inc\.|Corp\./)) {
+        if(!line.includes("西原商事")) {
+          company = line.replace(/^[　\s]*/, "").replace(/[　\s]*$/, "");
+          break;
         }
-        break;
-      }
-      // 「〇〇さん」にマッチ（社内）
-      const sanMatch = line.match(/^(.+?)[　\s]?さん$/);
-      if(sanMatch) {
-        name = sanMatch[1].trim();
-        break;
       }
     }
 
-    // パターン2: 署名から会社名を抽出（末尾10行以内）
-    if(!company) {
-      const tail = lines.slice(-10);
-      for(const line of tail) {
-        if(line.match(/株式会社|有限会社|合同会社|（株）|\(株\)|実行委員会|協会|組合|法人|Holdings/)) {
-          // ただし自社は除外
-          if(!line.includes("西原商事")) {
-            company = line.replace(/^[　\s]*/, "").replace(/[　\s]*$/, "");
+    // 署名から担当者名を抽出（会社名の近くにある名前）
+    if(company) {
+      const compIdx = tail.findIndex(l => l.includes(company.replace(/株式会社|有限会社|合同会社/g,"").trim().slice(0,6)));
+      // 会社名の前後3行で名前を探す
+      const searchRange = tail.slice(Math.max(0, compIdx-3), Math.min(tail.length, compIdx+4));
+      for(const line of searchRange) {
+        if(line === company) continue;
+        // 「山田 太郎」「田中翔」などの人名パターン（長すぎず短すぎず）
+        // 括弧付き（Takanashi Sho）は除外、純粋な日本語名を優先
+        const nameMatch = line.match(/^([\u3000-\u9fff\u30a0-\u30ff]{2,10}[\s　]{0,2}[\u3000-\u9fff\u30a0-\u30ff]{0,6})(?:[（(].*)?$/);
+        if(nameMatch && !line.includes("部") && !line.includes("室") && !line.includes("グループ") && !line.includes("課") && !line.includes("担当")) {
+          const candidate = nameMatch[1].trim();
+          // 自分の名前は除外
+          if(!candidate.includes(myLastName) && candidate.length >= 2 && candidate.length <= 10) {
+            name = candidate;
             break;
           }
+        }
+      }
+    }
+
+    // ── フォールバック: 冒頭の宛名から（ただし自分の名前は除外）──
+    if(!name) {
+      for(let i = 0; i < Math.min(lines.length, 8); i++) {
+        const line = lines[i];
+        const samaMach = line.match(/^(.+?)[　\s]?様$/);
+        if(samaMach) {
+          const candidate = samaMach[1].trim();
+          // 自分の名前が含まれていたらスキップ（自分宛の挨拶）
+          if(candidate.includes(myLastName)) continue;
+          name = candidate;
+          if(i > 0 && lines[i-1] && !lines[i-1].match(/様$|さん$|です|ます|した/) && !company) {
+            company = lines[i-1].trim();
+          }
+          break;
         }
       }
     }
@@ -5178,6 +5197,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   const [lossModal,  setLossModal]  = useState(null);
   const [nextActionModal, setNextActionModal] = useState(null);
   const [approachModal, setApproachModal] = useState(null);
+  const [mtgModal,      setMtgModal]      = useState(null); // {entityKey,entityId,entityName}
   // モーダルフォーム用state（IIFEでhooks不可のため最上位で管理）
   const [lossReason,   setLossReason]   = useState("");
   const [lossNote,     setLossNote]     = useState("");
@@ -7136,6 +7156,200 @@ ${recentLogs}
   }
 
   // ── モーダル一括レンダラー（早期returnでも表示できるよう関数化）────────────
+  // ── MTG記録モーダルコンポーネント ─────────────────────────────────────────
+  function MtgRecordModal({entityKey,entityId,entityName,data,users,currentUser,onSave,onClose}) {
+    const [phase,      setPhase]      = React.useState("record"); // record|result
+    const [recording,  setRecording]  = React.useState(false);
+    const [transcript, setTranscript] = React.useState("");
+    const [elapsed,    setElapsed]    = React.useState(0);
+    const [aiResult,   setAiResult]   = React.useState(null); // {summary,tasks:[{title,dueDate,assignees,notes}]}
+    const [aiLoading,  setAiLoading]  = React.useState(false);
+    const [editedTasks,setEditedTasks]= React.useState([]);
+    const [checkedIds, setCheckedIds] = React.useState(new Set());
+    const recognRef = React.useRef(null);
+    const timerRef  = React.useRef(null);
+    const uid = currentUser?.id;
+    const myName = currentUser?.name||"";
+
+    // 録音開始
+    const startRecording = () => {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if(!SpeechRecognition){ alert("このブラウザは音声認識に対応していません。ChromeまたはSafariをお使いください。"); return; }
+      const recog = new SpeechRecognition();
+      recog.lang = "ja-JP";
+      recog.continuous = true;
+      recog.interimResults = true;
+      let finalText = transcript;
+      recog.onresult = e => {
+        let interim = "";
+        for(let i = e.resultIndex; i < e.results.length; i++){
+          const t = e.results[i][0].transcript;
+          if(e.results[i].isFinal){ finalText += t + "。"; }
+          else{ interim = t; }
+        }
+        setTranscript(finalText + (interim ? "（" + interim + "）" : ""));
+      };
+      recog.onerror = e => { console.warn("STT error:", e.error); };
+      recog.start();
+      recognRef.current = recog;
+      setRecording(true);
+      timerRef.current = setInterval(()=>setElapsed(s=>s+1), 1000);
+    };
+
+    // 録音停止
+    const stopRecording = () => {
+      recognRef.current?.stop();
+      clearInterval(timerRef.current);
+      setRecording(false);
+    };
+
+    // AI処理
+    const processWithAI = async () => {
+      if(!transcript.trim()){ alert("文字起こしが空です。録音してから処理してください。"); return; }
+      setAiLoading(true);
+      try {
+        const res = await fetch("/api/generate-email", {
+          method: "POST",
+          headers: {"Content-Type":"application/json","x-mydesk-secret":"mydesk2026"},
+          body: JSON.stringify({ prompt:
+            "以下はMTGの文字起こしです。以下の形式でJSONのみ返してください（他の文字は一切不要）:\n" +
+            "{\n  \"summary\": \"議事録（決定事項・課題・次のアクションを含む300字以内）\",\n" +
+            "  \"tasks\": [\n    {\n      \"title\": \"タスク名\",\n      \"dueDate\": \"YYYY-MM-DD or 空文字\",\n" +
+            "      \"assigneeName\": \"担当者名 or 空文字\",\n      \"notes\": \"補足 or 空文字\"\n    }\n  ]\n}\n\n" +
+            "【参加者リスト】\n" + users.map(u=>u.name).join("、") + "\n\n【文字起こし】\n" + transcript.slice(0,3000)
+          })
+        });
+        const json = await res.json();
+        const text = (json.text||"").replace(/```json|```/g,"").trim();
+        const parsed = JSON.parse(text);
+        // assigneeNameからidを解決
+        const resolved = (parsed.tasks||[]).map((t,i)=>{
+          const u = users.find(u=>u.name===t.assigneeName||u.name?.includes(t.assigneeName||"__"));
+          return {...t, id:i, assignees:u?[u.id]:[], _assigneeName:t.assigneeName};
+        });
+        setAiResult({...parsed, tasks:resolved});
+        setEditedTasks(resolved);
+        setCheckedIds(new Set(resolved.map((_,i)=>i)));
+        setPhase("result");
+      } catch(e) {
+        alert("AI処理に失敗しました: " + e.message);
+      }
+      setAiLoading(false);
+    };
+
+    const fmt = s => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
+
+    return (
+      <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"flex-end",justifyContent:"center",background:"rgba(0,0,0,0.55)"}}>
+        <div onClick={e=>e.stopPropagation()} style={{background:"white",borderRadius:"1.5rem 1.5rem 0 0",padding:"1.5rem 1.25rem 2rem",width:"100%",maxWidth:520,maxHeight:"92vh",overflowY:"auto",boxShadow:"0 -8px 40px rgba(0,0,0,0.18)"}}>
+          {/* ヘッダー */}
+          <div style={{display:"flex",alignItems:"center",marginBottom:"1.25rem"}}>
+            <div style={{flex:1}}>
+              <div style={{fontWeight:800,fontSize:"1rem",color:"#1e293b"}}>🎤 MTG記録</div>
+              <div style={{fontSize:"0.75rem",color:"#64748b",marginTop:"0.1rem"}}>📌 {entityName}</div>
+            </div>
+            <button onClick={onClose} style={{background:"none",border:"none",fontSize:"1.4rem",color:"#94a3b8",cursor:"pointer",padding:"0.2rem"}}>✕</button>
+          </div>
+
+          {phase==="record"&&(
+            <>
+              {/* 録音コントロール */}
+              <div style={{textAlign:"center",marginBottom:"1.25rem"}}>
+                {recording
+                  ? <div>
+                      <div style={{fontSize:"3rem",marginBottom:"0.5rem",animation:"pulse 1s infinite"}}>🔴</div>
+                      <div style={{fontWeight:800,fontSize:"1.5rem",color:"#dc2626",fontVariantNumeric:"tabular-nums"}}>{fmt(elapsed)}</div>
+                      <div style={{fontSize:"0.75rem",color:"#64748b",marginTop:"0.25rem"}}>録音中...</div>
+                      <button onClick={stopRecording} style={{marginTop:"1rem",padding:"0.75rem 2rem",borderRadius:999,background:"#dc2626",color:"white",fontWeight:800,fontSize:"0.9rem",border:"none",cursor:"pointer",fontFamily:"inherit"}}>
+                        ⏹ 録音停止
+                      </button>
+                    </div>
+                  : <div>
+                      <div style={{fontSize:"2.5rem",marginBottom:"0.5rem"}}>🎙️</div>
+                      <button onClick={startRecording} style={{padding:"0.875rem 2.5rem",borderRadius:999,background:"#059669",color:"white",fontWeight:800,fontSize:"0.95rem",border:"none",cursor:"pointer",fontFamily:"inherit",boxShadow:"0 4px 16px rgba(5,150,105,0.3)"}}>
+                        🎤 録音開始
+                      </button>
+                    </div>
+                }
+              </div>
+
+              {/* 文字起こし表示 */}
+              {transcript&&(
+                <div style={{marginBottom:"1rem"}}>
+                  <div style={{fontSize:"0.72rem",fontWeight:700,color:"#64748b",marginBottom:"0.35rem"}}>📝 文字起こし</div>
+                  <div style={{background:"#f8fafc",borderRadius:"0.75rem",padding:"0.875rem",fontSize:"0.82rem",color:"#374151",lineHeight:1.7,maxHeight:200,overflowY:"auto",border:"1px solid #e2e8f0"}}>
+                    {transcript||"（ここに文字起こしが表示されます）"}
+                  </div>
+                  <div style={{marginTop:"0.35rem",fontSize:"0.7rem",color:"#94a3b8"}}>直接編集も可能です</div>
+                  <textarea value={transcript} onChange={e=>setTranscript(e.target.value)}
+                    style={{width:"100%",marginTop:"0.5rem",padding:"0.5rem 0.75rem",borderRadius:"0.625rem",border:"1px solid #e2e8f0",fontFamily:"inherit",fontSize:"0.8rem",height:80,boxSizing:"border-box",resize:"vertical"}}/>
+                </div>
+              )}
+
+              <div style={{display:"flex",gap:"0.625rem"}}>
+                <button onClick={onClose} style={{flex:1,padding:"0.75rem",borderRadius:"0.75rem",border:"1.5px solid #e2e8f0",background:"white",color:"#64748b",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>キャンセル</button>
+                <button onClick={processWithAI} disabled={!transcript.trim()||aiLoading}
+                  style={{flex:2,padding:"0.75rem",borderRadius:"0.75rem",background:transcript.trim()?"#7c3aed":"#e2e8f0",color:transcript.trim()?"white":"#94a3b8",fontWeight:800,border:"none",cursor:transcript.trim()?"pointer":"default",fontFamily:"inherit",fontSize:"0.9rem"}}>
+                  {aiLoading?"🤖 AI処理中...":"🤖 AIで議事録・タスクを生成"}
+                </button>
+              </div>
+            </>
+          )}
+
+          {phase==="result"&&aiResult&&(
+            <>
+              {/* 議事録 */}
+              <div style={{marginBottom:"1.25rem"}}>
+                <div style={{fontWeight:700,fontSize:"0.82rem",color:"#1e293b",marginBottom:"0.5rem"}}>📋 議事録（メモとして保存されます）</div>
+                <textarea value={aiResult.summary} onChange={e=>setAiResult(r=>({...r,summary:e.target.value}))}
+                  style={{width:"100%",padding:"0.75rem",borderRadius:"0.75rem",border:"1.5px solid #e2e8f0",fontFamily:"inherit",fontSize:"0.82rem",height:120,boxSizing:"border-box",resize:"vertical",lineHeight:1.6}}/>
+              </div>
+
+              {/* タスク候補 */}
+              {editedTasks.length>0&&(
+                <div style={{marginBottom:"1.25rem"}}>
+                  <div style={{fontWeight:700,fontSize:"0.82rem",color:"#1e293b",marginBottom:"0.5rem"}}>
+                    ✅ タスク候補（チェックしたものを登録）
+                  </div>
+                  {editedTasks.map((t,i)=>(
+                    <div key={i} style={{background:checkedIds.has(i)?"#f0fdf4":"#f8fafc",border:`1.5px solid ${checkedIds.has(i)?"#bbf7d0":"#e2e8f0"}`,borderRadius:"0.75rem",padding:"0.75rem",marginBottom:"0.5rem"}}>
+                      <div style={{display:"flex",alignItems:"flex-start",gap:"0.5rem"}}>
+                        <input type="checkbox" checked={checkedIds.has(i)} onChange={()=>{setCheckedIds(prev=>{const n=new Set(prev);n.has(i)?n.delete(i):n.add(i);return n;});}}
+                          style={{width:16,height:16,marginTop:3,accentColor:"#059669",cursor:"pointer",flexShrink:0}}/>
+                        <div style={{flex:1}}>
+                          <input value={t.title} onChange={e=>setEditedTasks(ts=>ts.map((x,j)=>j===i?{...x,title:e.target.value}:x))}
+                            style={{width:"100%",padding:"0.3rem 0.5rem",borderRadius:"0.5rem",border:"1px solid #e2e8f0",fontFamily:"inherit",fontSize:"0.85rem",fontWeight:600,boxSizing:"border-box",marginBottom:"0.35rem"}}/>
+                          <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap"}}>
+                            <input type="date" value={t.dueDate||""} onChange={e=>setEditedTasks(ts=>ts.map((x,j)=>j===i?{...x,dueDate:e.target.value}:x))}
+                              style={{padding:"0.2rem 0.4rem",borderRadius:"0.4rem",border:"1px solid #e2e8f0",fontFamily:"inherit",fontSize:"0.72rem"}}/>
+                            <select value={t.assignees?.[0]||""} onChange={e=>setEditedTasks(ts=>ts.map((x,j)=>j===i?{...x,assignees:e.target.value?[e.target.value]:[]}:x))}
+                              style={{padding:"0.2rem 0.4rem",borderRadius:"0.4rem",border:"1px solid #e2e8f0",fontFamily:"inherit",fontSize:"0.72rem"}}>
+                              <option value="">担当者未設定</option>
+                              {users.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
+                            </select>
+                          </div>
+                          {t.notes&&<div style={{fontSize:"0.72rem",color:"#64748b",marginTop:"0.25rem"}}>{t.notes}</div>}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div style={{display:"flex",gap:"0.625rem"}}>
+                <button onClick={()=>setPhase("record")} style={{flex:1,padding:"0.75rem",borderRadius:"0.75rem",border:"1.5px solid #e2e8f0",background:"white",color:"#64748b",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>← 戻る</button>
+                <button onClick={()=>onSave(aiResult.summary, editedTasks.filter((_,i)=>checkedIds.has(i)))}
+                  style={{flex:2,padding:"0.75rem",borderRadius:"0.75rem",background:"#059669",color:"white",fontWeight:800,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:"0.9rem"}}>
+                  💾 保存する（{checkedIds.size}件のタスク）
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   const renderModals = () => (
     <>
       {/* ════ 失注・見送りモーダル ════ */}
@@ -7406,6 +7620,41 @@ ${orig}`})
           </div>
         </div>
       )}
+      {/* ── MTG記録モーダル ── */}
+      {mtgModal&&(
+        <MtgRecordModal
+          entityKey={mtgModal.entityKey}
+          entityId={mtgModal.entityId}
+          entityName={mtgModal.entityName}
+          data={data}
+          users={users}
+          currentUser={currentUser}
+          onSave={(note,tasks)=>{
+            // メモとして保存
+            const arr=(data[mtgModal.entityKey]||[]).map(x=>x.id===mtgModal.entityId
+              ?{...x,memos:[...(x.memos||[]),{id:Date.now(),userId:currentUser?.id,text:note,date:new Date().toISOString(),isMtg:true}]}
+              :x);
+            let nd={...data,[mtgModal.entityKey]:arr};
+            // アプローチ記録も追加
+            const entity=(data[mtgModal.entityKey]||[]).find(x=>x.id===mtgModal.entityId);
+            nd={...nd,[mtgModal.entityKey]:(nd[mtgModal.entityKey]||[]).map(x=>x.id===mtgModal.entityId
+              ?{...x,approachLogs:[...(x.approachLogs||[]),{id:Date.now()+1,type:"MTG",note:note.slice(0,80),date:new Date().toISOString().slice(0,10),createdAt:new Date().toISOString(),createdBy:currentUser?.id}]}
+              :x)};
+            save(nd);
+            // タスク登録（確定済みのもの）
+            if(tasks?.length){
+              let nd2={...nd};
+              tasks.forEach(t=>{
+                const newTask={id:Date.now()+Math.random(),title:t.title,status:"未着手",dueDate:t.dueDate||"",assignees:t.assignees||[],notes:t.notes||"",createdBy:currentUser?.id,createdAt:new Date().toISOString(),projectId:null,memos:[],chat:[],comments:[],salesRef:{type:{companies:"企業",vendors:"業者",municipalities:"自治体"}[mtgModal.entityKey],id:mtgModal.entityId,name:mtgModal.entityName}};
+                nd2={...nd2,tasks:[...(nd2.tasks||[]),newTask]};
+              });
+              save(nd2);
+            }
+            setMtgModal(null);
+          }}
+          onClose={()=>setMtgModal(null)}
+        />
+      )}
     </>
   );
 
@@ -7459,6 +7708,10 @@ ${orig}`})
             <button onClick={e=>{e.stopPropagation();openApproachModal("companies",comp.id,comp.name);}}
               style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#dbeafe",color:"#1d4ed8"}}>
               📞 アプローチ記録
+            </button>
+            <button onClick={e=>{e.stopPropagation();setMtgModal({entityKey:"companies",entityId:comp.id,entityName:comp.name});}}
+              style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#f0fdf4",color:"#166534"}}>
+              🎤 MTG記録
             </button>
             <button onClick={e=>{e.stopPropagation();openNextActionModal("companies",comp.id,comp.name,comp);}}
               style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#d1fae5",color:"#065f46"}}>
@@ -7933,6 +8186,10 @@ ${orig}`})
             <button onClick={e=>{e.stopPropagation();openApproachModal("vendors",v.id,v.name);}}
               style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#dbeafe",color:"#1d4ed8"}}>
               📞 アプローチ記録
+            </button>
+            <button onClick={e=>{e.stopPropagation();setMtgModal({entityKey:"vendors",entityId:v.id,entityName:v.name});}}
+              style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#f0fdf4",color:"#166534"}}>
+              🎤 MTG記録
             </button>
             <button onClick={e=>{e.stopPropagation();openNextActionModal("vendors",v.id,v.name,v);}}
               style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#d1fae5",color:"#065f46"}}>
@@ -8529,6 +8786,10 @@ ${orig}`})
           <button onClick={e=>{e.stopPropagation();openApproachModal("municipalities",muni.id,muni.name);}}
             style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#dbeafe",color:"#1d4ed8"}}>
             📞 アプローチ記録
+          </button>
+          <button onClick={e=>{e.stopPropagation();setMtgModal({entityKey:"municipalities",entityId:muni.id,entityName:muni.name});}}
+            style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#f0fdf4",color:"#166534"}}>
+            🎤 MTG記録
           </button>
           <button onClick={e=>{e.stopPropagation();openNextActionModal("municipalities",muni.id,muni.name,muni);}}
             style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#d1fae5",color:"#065f46"}}>
