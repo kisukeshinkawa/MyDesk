@@ -87,26 +87,35 @@ async function sbGet(id) {
 
 async function sbSet(id, data) {
   const now = new Date().toISOString();
-  // 保存開始時点でタイムスタンプをセット（fetch中のポーリング上書きを防ぐ）
   window.__myDeskLastSave = Date.now();
   window.__myDeskLastSaveAt = now;
-  try {
-    const res = await fetch(`${SB_URL}/rest/v1/app_data`, {
-      method: "POST",
-      headers: { ...SB_HEADERS, "Prefer": "resolution=merge-duplicates" },
-      body: JSON.stringify({ id, data, updated_at: now }),
-    });
-    if(!res.ok) {
-      const errText = await res.text().catch(()=>"");
-      throw new Error(`Supabase write failed: ${res.status} ${errText}`);
+  // 最大3回リトライ（一時的なネットワーク障害に対応）
+  const MAX_RETRY = 3;
+  for(let attempt = 1; attempt <= MAX_RETRY; attempt++) {
+    try {
+      const res = await fetch(`${SB_URL}/rest/v1/app_data`, {
+        method: "POST",
+        headers: { ...SB_HEADERS, "Prefer": "resolution=merge-duplicates" },
+        body: JSON.stringify({ id, data, updated_at: now }),
+      });
+      if(!res.ok) {
+        const errText = await res.text().catch(()=>"");
+        throw new Error(`${res.status} ${errText}`);
+      }
+      return true;
+    } catch(e) {
+      console.warn(`[MyDesk] sbSet attempt ${attempt}/${MAX_RETRY} failed: ${e.message}`);
+      if(attempt < MAX_RETRY) {
+        // リトライ前に少し待つ（1秒→2秒→終了）
+        await new Promise(r => setTimeout(r, attempt * 1000));
+      } else {
+        // 全リトライ失敗
+        console.error("[MyDesk] sbSet all retries failed:", e.message);
+        window.__myDeskLastSave = 0;
+        window.__myDeskLastSaveAt = null;
+        return false;
+      }
     }
-    return true;
-  } catch(e) {
-    console.error("[MyDesk] sbSet failed:", e.message);
-    // 保存失敗時はタイムスタンプをリセット → 次回ポーリングでサーバーから再取得可能にする
-    window.__myDeskLastSave = 0;
-    window.__myDeskLastSaveAt = null;
-    return false;
   }
 }
 
@@ -233,14 +242,13 @@ async function saveData(d) {
   }
   const ok = await sbSet("main", d);
   if(!ok) {
-    // 保存失敗をUIに通知（window経由）
-    window.__myDeskSaveError = "データの保存に失敗しました。ネットワークを確認してください。";
+    window.__myDeskSaveError = "データの保存に失敗しました（3回リトライ済）。ネットワークを確認してください。";
     window.dispatchEvent(new Event("mydesk-save-error"));
   }
   // 自動スナップショット（3分に1回スロットリング、非同期・非ブロッキング）
   const now = Date.now();
   const last = window.__lastAutoSnap || 0;
-  if (now - last > 3 * 60 * 1000) {
+  if (now - last > 10 * 60 * 1000) { // 10分に1回（Supabase負荷軽減）
     window.__lastAutoSnap = now;
     autoSnapshot(d).catch(() => {});
   }
@@ -6075,9 +6083,10 @@ ${recentLogs}
   };
   const normalizeImport = (str) => {
     if (!str) return "";
-    // スペース類を全て除去し、半角英数→全角に変換
+    // 埋め込み改行はスペースに変換してから処理
     return str
-      .replace(/[\s　]/g, "") // スペース系全削除
+      .replace(/\n/g, " ")   // 改行→スペース
+      .replace(/[\s　]+/g, " ").trim() // 連続スペース→1つに
       .replace(/[A-Za-z0-9]/g, c => String.fromCharCode(c.charCodeAt(0) + 0xFEE0)) // 英数→全角
       .replace(/[-]/g, "−"); // ハイフン→全角ハイフン
   };
@@ -6085,28 +6094,32 @@ ${recentLogs}
   const parseCSV = (text) => {
     // BOM除去・改行正規化
     const clean = text.replace(/^\uFEFF/, "").replace(/\r\n/g,"\n").replace(/\r/g,"\n");
-    const lines = clean.split("\n").filter(l => l.trim());
-    if (!lines.length) return [];
-    const parseRow = line => {
-      const cols = []; let cur = "", inQ = false;
-      for (let i = 0; i < line.length; i++) {
-        const ch = line[i];
-        if (inQ) {
-          if (ch === '"' && line[i+1] === '"') { cur += '"'; i++; }
-          else if (ch === '"') inQ = false;
-          else cur += ch;
-        } else if (ch === '"') {
-          inQ = true;
-        } else if (ch === ',') {
-          cols.push(cur.trim()); cur = "";
-        } else {
-          cur += ch;
-        }
+    if (!clean.trim()) return [];
+    // クォートフィールド内の改行に対応した正しいCSVパーサー
+    const rows = [];
+    let cur = "", inQ = false, cols = [];
+    for (let i = 0; i < clean.length; i++) {
+      const ch = clean[i];
+      if (inQ) {
+        if (ch === '"' && clean[i+1] === '"') { cur += '"'; i++; }       // エスケープ引用符
+        else if (ch === '"') { inQ = false; }                             // 引用符終了
+        else { cur += ch; }                                               // フィールド内文字（改行含む）
+      } else if (ch === '"') {
+        inQ = true;                                                       // 引用符開始
+      } else if (ch === ',') {
+        cols.push(cur.trim()); cur = "";                                  // フィールド区切り
+      } else if (ch === '\n') {
+        cols.push(cur.trim());                                            // 行末
+        if (cols.some(c => c)) rows.push(cols);                          // 空行スキップ
+        cols = []; cur = "";
+      } else {
+        cur += ch;
       }
-      cols.push(cur.trim());
-      return cols;
-    };
-    return lines.map(parseRow);
+    }
+    // 最終行
+    cols.push(cur.trim());
+    if (cols.some(c => c)) rows.push(cols);
+    return rows;
   };
 
   // CSV文字コード自動判定（UTF-8/Shift-JIS両対応）
@@ -8040,7 +8053,7 @@ ${orig}`})
               const text=await readFileAsText(file);
               const rows=parseCSV(text);
               // Skip header rows: find first row where col0 looks like a company name (not header text)
-              const headerKeywords=["企業名","会社名","name","company"];
+              const headerKeywords=["企業名","会社名","name","company","企業名 *","会社名 *"];
               const dataRows=rows.filter(r=>r[0]&&!headerKeywords.some(k=>r[0].toLowerCase().includes(k.toLowerCase())));
               const mapped=dataRows.map(r=>({
                 name:normalizeImport(r[0]||""),
@@ -8322,6 +8335,8 @@ ${orig}`})
               </div>
             </Sheet>
           )}
+        {renderModals()}
+        {renderModals()}
         </div>
       );
     }
@@ -8609,18 +8624,18 @@ ${orig}`})
             try{
               const text=await readFileAsText(file);
               const rows=parseCSV(text);
-              const skip=["業者名","名前","name","vendor"];
+              const skip=["業者名","名前","name","vendor","業者名 *","business"];
               const dataRows=rows.filter(r=>r[0]&&!skip.some(k=>r[0].toLowerCase().includes(k.toLowerCase())));
               const mapped=dataRows.map(r=>({
                 name:normalizeImport(r[0]||""),
                 status:Object.keys(VENDOR_STATUS).includes(r[1]?.trim())?r[1].trim():"未接触",
                 prefName:normalizeImport(r[2]||""),
-                muniNames:(r[3]?.trim()||"").split(/[,，]/).map(s=>normalizeImport(s)).filter(Boolean),
+                muniNames:(r[3]?.trim()||"").replace(/\n/g,",").split(/[,，]/).map(s=>normalizeImport(s)).filter(Boolean),
                 assigneeName:(r[4]||"").trim(),
                 phone:normalizeImport(r[5]||""),
                 notes:(r[6]||"").trim(),
                 address:normalizeImport(r[7]||""),
-                permitTypeNames:(r[8]?.trim()||"").split(/[,，]/).map(s=>s.trim()).filter(Boolean),
+                permitTypeNames:(r[8]?.trim()||"").replace(/\n/g,",").split(/[,，]/).map(s=>s.trim()).filter(Boolean),
                 beeNet:!!(r[9]?.trim()),
               })).filter(r=>r.name);
               setPreview(mapped); setErr("");
@@ -12954,9 +12969,10 @@ export default function App() {
       )}
       {/* 保存エラーバナー */}
       {saveError&&(
-        <div style={{position:"fixed",top:0,left:0,right:0,zIndex:1001,background:"#fee2e2",borderBottom:"2px solid #dc2626",padding:"0.5rem 1rem",textAlign:"center",fontSize:"0.82rem",fontWeight:700,color:"#991b1b",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
-          ⚠️ {saveError}
-          <button onClick={()=>setSaveError("")} style={{background:"none",border:"none",cursor:"pointer",color:"#991b1b",fontWeight:800,fontSize:"1rem",padding:"0 0.25rem"}}>✕</button>
+        <div style={{position:"fixed",top:0,left:0,right:0,zIndex:1001,background:"#fee2e2",borderBottom:"2px solid #dc2626",padding:"0.4rem 0.75rem",fontSize:"0.75rem",fontWeight:700,color:"#991b1b",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
+          ⚠️ 保存に失敗しました
+          <button onClick={()=>{setSaveError(""); window.__myDeskLastSave=0; window.location.reload();}} style={{background:"#dc2626",border:"none",cursor:"pointer",color:"white",fontWeight:700,fontSize:"0.7rem",padding:"0.2rem 0.5rem",borderRadius:"0.4rem"}}>再読み込み</button>
+          <button onClick={()=>setSaveError("")} style={{background:"none",border:"none",cursor:"pointer",color:"#991b1b",fontWeight:800,fontSize:"1rem",padding:"0 0.1rem",lineHeight:1}}>✕</button>
         </div>
       )}
       {/* ④ グローバル検索モーダル */}
