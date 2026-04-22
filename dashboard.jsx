@@ -7220,54 +7220,98 @@ ${recentLogs}
   // ── モーダル一括レンダラー（早期returnでも表示できるよう関数化）────────────
   // ── MTG記録モーダルコンポーネント ─────────────────────────────────────────
   function MtgRecordModal({entityKey,entityId,entityName,data,users,currentUser,onSave,onClose}) {
-    const [phase,      setPhase]      = React.useState("record"); // record|result
-    const [recording,  setRecording]  = React.useState(false);
-    const [transcript, setTranscript] = React.useState("");
-    const [elapsed,    setElapsed]    = React.useState(0);
-    const [aiResult,   setAiResult]   = React.useState(null); // {summary,tasks:[{title,dueDate,assignees,notes}]}
-    const [aiLoading,  setAiLoading]  = React.useState(false);
-    const [editedTasks,setEditedTasks]= React.useState([]);
-    const [checkedIds, setCheckedIds] = React.useState(new Set());
-    const recognRef = React.useRef(null);
-    const timerRef  = React.useRef(null);
-    const uid = currentUser?.id;
-    const myName = currentUser?.name||"";
+    const [phase,       setPhase]      = React.useState("record");
+    const [recording,   setRecording]  = React.useState(false);
+    const [finalText,   setFinalText]  = React.useState("");
+    const [interimText, setInterimText]= React.useState("");
+    const [elapsed,     setElapsed]    = React.useState(0);
+    const [aiResult,    setAiResult]   = React.useState(null);
+    const [aiLoading,   setAiLoading]  = React.useState(false);
+    const [editedTasks, setEditedTasks]= React.useState([]);
+    const [checkedIds,  setCheckedIds] = React.useState(new Set());
+    const [permError,   setPermError]  = React.useState("");
+    const recognRef  = React.useRef(null);
+    const timerRef   = React.useRef(null);
+    const recordingRef = React.useRef(false); // stale closure対策
 
-    // 録音開始
     const startRecording = () => {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if(!SpeechRecognition){ alert("このブラウザは音声認識に対応していません。ChromeまたはSafariをお使いください。"); return; }
-      const recog = new SpeechRecognition();
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if(!SR) { setPermError("このブラウザは音声認識に非対応です。ChromeまたはSafariをご利用ください。"); return; }
+      setPermError("");
+      const recog = new SR();
       recog.lang = "ja-JP";
       recog.continuous = true;
       recog.interimResults = true;
-      let finalText = transcript;
+      recog.maxAlternatives = 1;
+
+      recog.onstart = () => {
+        setRecording(true);
+        recordingRef.current = true;
+      };
+
       recog.onresult = e => {
         let interim = "";
+        let newFinal = "";
         for(let i = e.resultIndex; i < e.results.length; i++){
           const t = e.results[i][0].transcript;
-          if(e.results[i].isFinal){ finalText += t + "。"; }
-          else{ interim = t; }
+          if(e.results[i].isFinal){ newFinal += t + " "; }
+          else { interim = t; }
         }
-        setTranscript(finalText + (interim ? "（" + interim + "）" : ""));
+        if(newFinal) setFinalText(prev => prev + newFinal);
+        setInterimText(interim);
       };
-      recog.onerror = e => { console.warn("STT error:", e.error); };
-      recog.start();
+
+      recog.onerror = e => {
+        console.warn("STT error:", e.error);
+        if(e.error === "not-allowed" || e.error === "service-not-allowed") {
+          setPermError("マイクのアクセスが拒否されました。ブラウザの設定でマイクを許可してください。");
+          stopRecording();
+        }
+        // network/no-speech errors → auto-retry if still recording
+        if(e.error === "network" || e.error === "no-speech") {
+          if(recordingRef.current) {
+            setTimeout(() => { if(recordingRef.current) recog.start(); }, 500);
+          }
+        }
+      };
+
+      recog.onend = () => {
+        setInterimText("");
+        // 録音中なら自動再起動（iOS/Chromeは一定時間後に自動停止する）
+        if(recordingRef.current) {
+          setTimeout(() => { if(recordingRef.current) { try { recog.start(); } catch{} } }, 200);
+        }
+      };
+
       recognRef.current = recog;
-      setRecording(true);
-      timerRef.current = setInterval(()=>setElapsed(s=>s+1), 1000);
+      try {
+        recog.start();
+        timerRef.current = setInterval(()=>setElapsed(s=>s+1), 1000);
+      } catch(e) {
+        setPermError("録音の開始に失敗しました: " + e.message);
+      }
     };
 
-    // 録音停止
     const stopRecording = () => {
-      recognRef.current?.stop();
-      clearInterval(timerRef.current);
+      recordingRef.current = false;
       setRecording(false);
+      setInterimText("");
+      clearInterval(timerRef.current);
+      try { recognRef.current?.stop(); } catch {}
+      recognRef.current = null;
     };
 
-    // AI処理
+    // クリーンアップ
+    React.useEffect(() => () => {
+      recordingRef.current = false;
+      clearInterval(timerRef.current);
+      try { recognRef.current?.stop(); } catch {}
+    }, []);
+
+    const fullTranscript = finalText + (interimText ? "…" + interimText : "");
+
     const processWithAI = async () => {
-      if(!transcript.trim()){ alert("文字起こしが空です。録音してから処理してください。"); return; }
+      if(!finalText.trim()) { alert("文字起こしが空です。録音してから処理してください。"); return; }
       setAiLoading(true);
       try {
         const res = await fetch("/api/generate-email", {
@@ -7278,101 +7322,99 @@ ${recentLogs}
             "{\n  \"summary\": \"議事録（決定事項・課題・次のアクションを含む300字以内）\",\n" +
             "  \"tasks\": [\n    {\n      \"title\": \"タスク名\",\n      \"dueDate\": \"YYYY-MM-DD or 空文字\",\n" +
             "      \"assigneeName\": \"担当者名 or 空文字\",\n      \"notes\": \"補足 or 空文字\"\n    }\n  ]\n}\n\n" +
-            "【参加者リスト】\n" + users.map(u=>u.name).join("、") + "\n\n【文字起こし】\n" + transcript.slice(0,3000)
+            "【参加者リスト】\n" + users.map(u=>u.name).join("、") + "\n\n【文字起こし】\n" + finalText.slice(0,3000)
           })
         });
         const json = await res.json();
         const text = (json.text||"").replace(/```json|```/g,"").trim();
         const parsed = JSON.parse(text);
-        // assigneeNameからidを解決
         const resolved = (parsed.tasks||[]).map((t,i)=>{
           const u = users.find(u=>u.name===t.assigneeName||u.name?.includes(t.assigneeName||"__"));
-          return {...t, id:i, assignees:u?[u.id]:[], _assigneeName:t.assigneeName};
+          return {...t, id:i, assignees:u?[u.id]:[]};
         });
         setAiResult({...parsed, tasks:resolved});
         setEditedTasks(resolved);
         setCheckedIds(new Set(resolved.map((_,i)=>i)));
         setPhase("result");
-      } catch(e) {
-        alert("AI処理に失敗しました: " + e.message);
-      }
+      } catch(e) { alert("AI処理に失敗しました: " + e.message); }
       setAiLoading(false);
     };
 
-    const fmt = s => `${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
+    const fmt = s => String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0");
 
     return (
       <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"flex-end",justifyContent:"center",background:"rgba(0,0,0,0.55)"}}>
-        <div onClick={e=>e.stopPropagation()} style={{background:"white",borderRadius:"1.5rem 1.5rem 0 0",padding:"1.5rem 1.25rem 2rem",width:"100%",maxWidth:520,maxHeight:"92vh",overflowY:"auto",boxShadow:"0 -8px 40px rgba(0,0,0,0.18)"}}>
-          {/* ヘッダー */}
-          <div style={{display:"flex",alignItems:"center",marginBottom:"1.25rem"}}>
-            <div style={{flex:1}}>
-              <div style={{fontWeight:800,fontSize:"1rem",color:"#1e293b"}}>🎤 MTG記録</div>
-              <div style={{fontSize:"0.75rem",color:"#64748b",marginTop:"0.1rem"}}>📌 {entityName}</div>
+        <div onClick={e=>e.stopPropagation()} style={{background:"white",borderRadius:"1.5rem 1.5rem 0 0",width:"100%",maxWidth:520,maxHeight:"92vh",display:"flex",flexDirection:"column",boxShadow:"0 -8px 40px rgba(0,0,0,0.18)"}}>
+          {/* ヘッダー（固定） */}
+          <div style={{padding:"1.25rem 1.25rem 0.75rem",borderBottom:"1px solid #f1f5f9",flexShrink:0}}>
+            <div style={{display:"flex",alignItems:"center"}}>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:800,fontSize:"1rem",color:"#1e293b"}}>🎤 MTG記録</div>
+                <div style={{fontSize:"0.72rem",color:"#64748b"}}>📌 {entityName}</div>
+              </div>
+              <button onClick={()=>{stopRecording();onClose();}} style={{background:"none",border:"none",fontSize:"1.4rem",color:"#94a3b8",cursor:"pointer",padding:"0.2rem"}}>✕</button>
             </div>
-            <button onClick={onClose} style={{background:"none",border:"none",fontSize:"1.4rem",color:"#94a3b8",cursor:"pointer",padding:"0.2rem"}}>✕</button>
           </div>
 
-          {phase==="record"&&(
-            <>
-              {/* 録音コントロール */}
-              <div style={{textAlign:"center",marginBottom:"1.25rem"}}>
-                {recording
-                  ? <div>
-                      <div style={{fontSize:"3rem",marginBottom:"0.5rem",animation:"pulse 1s infinite"}}>🔴</div>
-                      <div style={{fontWeight:800,fontSize:"1.5rem",color:"#dc2626",fontVariantNumeric:"tabular-nums"}}>{fmt(elapsed)}</div>
-                      <div style={{fontSize:"0.75rem",color:"#64748b",marginTop:"0.25rem"}}>録音中...</div>
-                      <button onClick={stopRecording} style={{marginTop:"1rem",padding:"0.75rem 2rem",borderRadius:999,background:"#dc2626",color:"white",fontWeight:800,fontSize:"0.9rem",border:"none",cursor:"pointer",fontFamily:"inherit"}}>
-                        ⏹ 録音停止
-                      </button>
-                    </div>
-                  : <div>
-                      <div style={{fontSize:"2.5rem",marginBottom:"0.5rem"}}>🎙️</div>
-                      <button onClick={startRecording} style={{padding:"0.875rem 2.5rem",borderRadius:999,background:"#059669",color:"white",fontWeight:800,fontSize:"0.95rem",border:"none",cursor:"pointer",fontFamily:"inherit",boxShadow:"0 4px 16px rgba(5,150,105,0.3)"}}>
-                        🎤 録音開始
-                      </button>
-                    </div>
-                }
-              </div>
+          {/* スクロール可能コンテンツ */}
+          <div style={{overflowY:"auto",flex:1,padding:"1rem 1.25rem"}}>
 
-              {/* 文字起こし表示 */}
-              {transcript&&(
-                <div style={{marginBottom:"1rem"}}>
-                  <div style={{fontSize:"0.72rem",fontWeight:700,color:"#64748b",marginBottom:"0.35rem"}}>📝 文字起こし</div>
-                  <div style={{background:"#f8fafc",borderRadius:"0.75rem",padding:"0.875rem",fontSize:"0.82rem",color:"#374151",lineHeight:1.7,maxHeight:200,overflowY:"auto",border:"1px solid #e2e8f0"}}>
-                    {transcript||"（ここに文字起こしが表示されます）"}
+            {phase==="record"&&(<>
+              {/* エラー表示 */}
+              {permError&&<div style={{background:"#fee2e2",borderRadius:"0.75rem",padding:"0.75rem",marginBottom:"0.75rem",fontSize:"0.8rem",color:"#dc2626",fontWeight:600}}>{permError}</div>}
+
+              {/* 録音状態表示 */}
+              <div style={{textAlign:"center",padding:"1rem 0"}}>
+                {recording ? (
+                  <div>
+                    <div style={{fontSize:"0.8rem",color:"#dc2626",fontWeight:700,marginBottom:"0.25rem",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.4rem"}}>
+                      <span style={{width:8,height:8,borderRadius:"50%",background:"#dc2626",display:"inline-block",animation:"none"}}>●</span>
+                      録音中 {fmt(elapsed)}
+                    </div>
+                    <div style={{fontSize:"0.7rem",color:"#94a3b8",marginBottom:"0.875rem"}}>話してください。リアルタイムで文字起こしされます</div>
                   </div>
-                  <div style={{marginTop:"0.35rem",fontSize:"0.7rem",color:"#94a3b8"}}>直接編集も可能です</div>
-                  <textarea value={transcript} onChange={e=>setTranscript(e.target.value)}
-                    style={{width:"100%",marginTop:"0.5rem",padding:"0.5rem 0.75rem",borderRadius:"0.625rem",border:"1px solid #e2e8f0",fontFamily:"inherit",fontSize:"0.8rem",height:80,boxSizing:"border-box",resize:"vertical"}}/>
-                </div>
-              )}
-
-              <div style={{display:"flex",gap:"0.625rem"}}>
-                <button onClick={onClose} style={{flex:1,padding:"0.75rem",borderRadius:"0.75rem",border:"1.5px solid #e2e8f0",background:"white",color:"#64748b",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>キャンセル</button>
-                <button onClick={processWithAI} disabled={!transcript.trim()||aiLoading}
-                  style={{flex:2,padding:"0.75rem",borderRadius:"0.75rem",background:transcript.trim()?"#7c3aed":"#e2e8f0",color:transcript.trim()?"white":"#94a3b8",fontWeight:800,border:"none",cursor:transcript.trim()?"pointer":"default",fontFamily:"inherit",fontSize:"0.9rem"}}>
-                  {aiLoading?"🤖 AI処理中...":"🤖 AIで議事録・タスクを生成"}
-                </button>
+                ) : (
+                  <div>
+                    <div style={{fontSize:"2rem",marginBottom:"0.5rem"}}>🎙️</div>
+                    <button onClick={startRecording} style={{padding:"0.875rem 2.5rem",borderRadius:999,background:"#059669",color:"white",fontWeight:800,fontSize:"0.95rem",border:"none",cursor:"pointer",fontFamily:"inherit"}}>
+                      🎤 録音開始
+                    </button>
+                    <div style={{fontSize:"0.7rem",color:"#94a3b8",marginTop:"0.5rem"}}>マイクの許可が必要です</div>
+                  </div>
+                )}
               </div>
-            </>
-          )}
 
-          {phase==="result"&&aiResult&&(
-            <>
-              {/* 議事録 */}
-              <div style={{marginBottom:"1.25rem"}}>
-                <div style={{fontWeight:700,fontSize:"0.82rem",color:"#1e293b",marginBottom:"0.5rem"}}>📋 議事録（メモとして保存されます）</div>
+              {/* 文字起こしエリア（常時表示） */}
+              <div style={{marginBottom:"0.75rem"}}>
+                <div style={{fontSize:"0.72rem",fontWeight:700,color:"#64748b",marginBottom:"0.35rem",display:"flex",alignItems:"center",gap:"0.5rem"}}>
+                  📝 文字起こし
+                  {finalText&&<span style={{fontSize:"0.65rem",background:"#dcfce7",color:"#166534",borderRadius:999,padding:"0.05rem 0.4rem",fontWeight:600}}>{finalText.length}文字</span>}
+                </div>
+                <div style={{background:"#f8fafc",borderRadius:"0.75rem",border:"1px solid #e2e8f0",minHeight:100,maxHeight:200,overflowY:"auto",padding:"0.75rem",fontSize:"0.82rem",color:"#374151",lineHeight:1.7,position:"relative"}}>
+                  {finalText ? (
+                    <span>{finalText}</span>
+                  ) : (
+                    <span style={{color:"#94a3b8"}}>{recording ? "話しかけてください..." : "録音開始後に文字起こしが表示されます"}</span>
+                  )}
+                  {interimText&&<span style={{color:"#94a3b8",fontStyle:"italic"}}>{interimText}</span>}
+                </div>
+                {finalText&&(
+                  <textarea value={finalText} onChange={e=>setFinalText(e.target.value)}
+                    style={{width:"100%",marginTop:"0.4rem",padding:"0.5rem 0.75rem",borderRadius:"0.625rem",border:"1px solid #e2e8f0",fontFamily:"inherit",fontSize:"0.78rem",height:60,boxSizing:"border-box",resize:"vertical",color:"#64748b"}}
+                    placeholder="文字起こし結果を直接編集できます"/>
+                )}
+              </div>
+            </>)}
+
+            {phase==="result"&&aiResult&&(<>
+              <div style={{marginBottom:"1rem"}}>
+                <div style={{fontWeight:700,fontSize:"0.82rem",color:"#1e293b",marginBottom:"0.5rem"}}>📋 議事録</div>
                 <textarea value={aiResult.summary} onChange={e=>setAiResult(r=>({...r,summary:e.target.value}))}
                   style={{width:"100%",padding:"0.75rem",borderRadius:"0.75rem",border:"1.5px solid #e2e8f0",fontFamily:"inherit",fontSize:"0.82rem",height:120,boxSizing:"border-box",resize:"vertical",lineHeight:1.6}}/>
               </div>
-
-              {/* タスク候補 */}
               {editedTasks.length>0&&(
-                <div style={{marginBottom:"1.25rem"}}>
-                  <div style={{fontWeight:700,fontSize:"0.82rem",color:"#1e293b",marginBottom:"0.5rem"}}>
-                    ✅ タスク候補（チェックしたものを登録）
-                  </div>
+                <div style={{marginBottom:"1rem"}}>
+                  <div style={{fontWeight:700,fontSize:"0.82rem",color:"#1e293b",marginBottom:"0.5rem"}}>✅ タスク候補</div>
                   {editedTasks.map((t,i)=>(
                     <div key={i} style={{background:checkedIds.has(i)?"#f0fdf4":"#f8fafc",border:`1.5px solid ${checkedIds.has(i)?"#bbf7d0":"#e2e8f0"}`,borderRadius:"0.75rem",padding:"0.75rem",marginBottom:"0.5rem"}}>
                       <div style={{display:"flex",alignItems:"flex-start",gap:"0.5rem"}}>
@@ -7380,8 +7422,8 @@ ${recentLogs}
                           style={{width:16,height:16,marginTop:3,accentColor:"#059669",cursor:"pointer",flexShrink:0}}/>
                         <div style={{flex:1}}>
                           <input value={t.title} onChange={e=>setEditedTasks(ts=>ts.map((x,j)=>j===i?{...x,title:e.target.value}:x))}
-                            style={{width:"100%",padding:"0.3rem 0.5rem",borderRadius:"0.5rem",border:"1px solid #e2e8f0",fontFamily:"inherit",fontSize:"0.85rem",fontWeight:600,boxSizing:"border-box",marginBottom:"0.35rem"}}/>
-                          <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap"}}>
+                            style={{width:"100%",padding:"0.3rem 0.5rem",borderRadius:"0.5rem",border:"1px solid #e2e8f0",fontFamily:"inherit",fontSize:"0.85rem",fontWeight:600,boxSizing:"border-box",marginBottom:"0.3rem"}}/>
+                          <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap"}}>
                             <input type="date" value={t.dueDate||""} onChange={e=>setEditedTasks(ts=>ts.map((x,j)=>j===i?{...x,dueDate:e.target.value}:x))}
                               style={{padding:"0.2rem 0.4rem",borderRadius:"0.4rem",border:"1px solid #e2e8f0",fontFamily:"inherit",fontSize:"0.72rem"}}/>
                             <select value={t.assignees?.[0]||""} onChange={e=>setEditedTasks(ts=>ts.map((x,j)=>j===i?{...x,assignees:e.target.value?[e.target.value]:[]}:x))}
@@ -7390,27 +7432,49 @@ ${recentLogs}
                               {users.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
                             </select>
                           </div>
-                          {t.notes&&<div style={{fontSize:"0.72rem",color:"#64748b",marginTop:"0.25rem"}}>{t.notes}</div>}
                         </div>
                       </div>
                     </div>
                   ))}
                 </div>
               )}
+            </>)}
+          </div>
 
+          {/* フッターボタン（固定） */}
+          <div style={{padding:"0.75rem 1.25rem 1.5rem",borderTop:"1px solid #f1f5f9",flexShrink:0}}>
+            {phase==="record"&&(
+              <div style={{display:"flex",gap:"0.625rem"}}>
+                {recording ? (
+                  <button onClick={stopRecording} style={{flex:1,padding:"0.875rem",borderRadius:"0.75rem",background:"#dc2626",color:"white",fontWeight:800,fontSize:"0.95rem",border:"none",cursor:"pointer",fontFamily:"inherit"}}>
+                    ⏹ 録音を停止する
+                  </button>
+                ) : (
+                  <>
+                    <button onClick={()=>{stopRecording();onClose();}} style={{flex:1,padding:"0.75rem",borderRadius:"0.75rem",border:"1.5px solid #e2e8f0",background:"white",color:"#64748b",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>閉じる</button>
+                    <button onClick={processWithAI} disabled={!finalText.trim()||aiLoading}
+                      style={{flex:2,padding:"0.75rem",borderRadius:"0.75rem",background:finalText.trim()?"#7c3aed":"#e2e8f0",color:finalText.trim()?"white":"#94a3b8",fontWeight:800,border:"none",cursor:finalText.trim()?"pointer":"default",fontFamily:"inherit",fontSize:"0.9rem"}}>
+                      {aiLoading?"🤖 AI処理中...":"🤖 AIで議事録・タスク生成"}
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+            {phase==="result"&&(
               <div style={{display:"flex",gap:"0.625rem"}}>
                 <button onClick={()=>setPhase("record")} style={{flex:1,padding:"0.75rem",borderRadius:"0.75rem",border:"1.5px solid #e2e8f0",background:"white",color:"#64748b",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>← 戻る</button>
                 <button onClick={()=>onSave(aiResult.summary, editedTasks.filter((_,i)=>checkedIds.has(i)))}
-                  style={{flex:2,padding:"0.75rem",borderRadius:"0.75rem",background:"#059669",color:"white",fontWeight:800,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:"0.9rem"}}>
-                  💾 保存する（{checkedIds.size}件のタスク）
+                  style={{flex:2,padding:"0.75rem",borderRadius:"0.75rem",background:"#059669",color:"white",fontWeight:800,border:"none",cursor:"pointer",fontFamily:"inherit"}}>
+                  💾 保存（タスク{checkedIds.size}件）
                 </button>
               </div>
-            </>
-          )}
+            )}
+          </div>
         </div>
       </div>
     );
   }
+
 
   const renderModals = () => (
     <>
@@ -7837,6 +7901,7 @@ ${orig}`})
               </div>
             </Sheet>
           )}
+        {renderModals()}
         </div>
       );
     }
@@ -8335,6 +8400,7 @@ ${orig}`})
               </div>
             </Sheet>
           )}
+        {renderModals()}
         {renderModals()}
         {renderModals()}
         </div>
@@ -12923,7 +12989,7 @@ export default function App() {
       {/* Content + BottomNav wrapper */}
       <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
       {/* Content */}
-      <div ref={contentRef} className="mydesk-content" data-sales-scroll style={{flex:1,overflowY:"auto",WebkitOverflowScrolling:"touch",
+      <div ref={contentRef} className="mydesk-content" data-sales-scroll style={{flex:1,overflowY:"auto",
         paddingBottom:"calc(5rem + env(safe-area-inset-bottom,0px))"}}>
         <div style={{maxWidth:680,margin:"0 auto",width:"100%",padding:"1.25rem 1rem 0.5rem",boxSizing:"border-box"}}>
           <ErrorBoundary>
