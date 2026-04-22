@@ -7234,10 +7234,10 @@ ${recentLogs}
     const timerRef   = React.useRef(null);
     const recordingRef = React.useRef(false); // stale closure対策
 
-    const startRecording = () => {
+    const startRecognition = () => {
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if(!SR) { setPermError("このブラウザは音声認識に非対応です。ChromeまたはSafariをご利用ください。"); return; }
-      setPermError("");
+      if(!SR) return;
+
       const recog = new SR();
       recog.lang = "ja-JP";
       recog.continuous = true;
@@ -7245,8 +7245,8 @@ ${recentLogs}
       recog.maxAlternatives = 1;
 
       recog.onstart = () => {
-        setRecording(true);
-        recordingRef.current = true;
+        setPermError("");
+        console.log("[MTG] 認識開始");
       };
 
       recog.onresult = e => {
@@ -7254,45 +7254,61 @@ ${recentLogs}
         let newFinal = "";
         for(let i = e.resultIndex; i < e.results.length; i++){
           const t = e.results[i][0].transcript;
-          if(e.results[i].isFinal){ newFinal += t + " "; }
+          if(e.results[i].isFinal){ newFinal += t; }
           else { interim = t; }
         }
-        if(newFinal) setFinalText(prev => prev + newFinal);
+        if(newFinal) setFinalText(prev => prev + newFinal + "　");
         setInterimText(interim);
       };
 
       recog.onerror = e => {
-        console.warn("STT error:", e.error);
+        console.warn("[MTG] STT error:", e.error);
         if(e.error === "not-allowed" || e.error === "service-not-allowed") {
-          setPermError("マイクのアクセスが拒否されました。ブラウザの設定でマイクを許可してください。");
-          stopRecording();
+          setPermError("マイクのアクセスが拒否されました。ブラウザ設定でマイクを許可してください。");
+          recordingRef.current = false;
+          setRecording(false);
+          clearInterval(timerRef.current);
         }
-        // network/no-speech errors → auto-retry if still recording
-        if(e.error === "network" || e.error === "no-speech") {
-          if(recordingRef.current) {
-            setTimeout(() => { if(recordingRef.current) recog.start(); }, 500);
-          }
+        // network/no-speech → auto-retry
+        if((e.error === "network" || e.error === "no-speech" || e.error === "aborted") && recordingRef.current) {
+          setTimeout(() => { if(recordingRef.current) startRecognition(); }, 300);
         }
       };
 
       recog.onend = () => {
         setInterimText("");
-        // 録音中なら自動再起動（iOS/Chromeは一定時間後に自動停止する）
+        console.log("[MTG] 認識終了, recordingRef:", recordingRef.current);
+        // 録音継続中なら新しいインスタンスで再起動（iOS/Chrome対策）
         if(recordingRef.current) {
-          setTimeout(() => { if(recordingRef.current) { try { recog.start(); } catch{} } }, 200);
+          setTimeout(() => { if(recordingRef.current) startRecognition(); }, 200);
         }
       };
 
       recognRef.current = recog;
       try {
         recog.start();
-        timerRef.current = setInterval(()=>setElapsed(s=>s+1), 1000);
+        console.log("[MTG] recog.start() 呼び出し完了");
       } catch(e) {
-        setPermError("録音の開始に失敗しました: " + e.message);
+        console.error("[MTG] recog.start() エラー:", e.message);
+        setPermError("録音開始エラー: " + e.message);
       }
     };
 
-    const stopRecording = () => {
+    const startRecording = () => {
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if(!SR) {
+        setPermError("このブラウザは音声認識に非対応です。ChromeまたはSafariをご利用ください。");
+        return;
+      }
+      recordingRef.current = true;
+      setRecording(true);
+      setFinalText("");
+      setInterimText("");
+      timerRef.current = setInterval(()=>setElapsed(s=>s+1), 1000);
+      startRecognition();
+    };
+
+        const stopRecording = () => {
       recordingRef.current = false;
       setRecording(false);
       setInterimText("");
@@ -7362,6 +7378,10 @@ ${recentLogs}
             {phase==="record"&&(<>
               {/* エラー表示 */}
               {permError&&<div style={{background:"#fee2e2",borderRadius:"0.75rem",padding:"0.75rem",marginBottom:"0.75rem",fontSize:"0.8rem",color:"#dc2626",fontWeight:600}}>{permError}</div>}
+              {/* iOS向けヒント */}
+              {!permError&&!recording&&<div style={{background:"#eff6ff",borderRadius:"0.75rem",padding:"0.625rem 0.875rem",marginBottom:"0.75rem",fontSize:"0.72rem",color:"#1d4ed8"}}>
+                💡 iPhoneでご利用の場合はSafariでお試しください。録音開始後にマイクへのアクセスを許可してください。
+              </div>}
 
               {/* 録音状態表示 */}
               <div style={{textAlign:"center",padding:"1rem 0"}}>
@@ -7392,11 +7412,15 @@ ${recentLogs}
                 </div>
                 <div style={{background:"#f8fafc",borderRadius:"0.75rem",border:"1px solid #e2e8f0",minHeight:100,maxHeight:200,overflowY:"auto",padding:"0.75rem",fontSize:"0.82rem",color:"#374151",lineHeight:1.7,position:"relative"}}>
                   {finalText ? (
-                    <span>{finalText}</span>
+                    <span style={{lineHeight:1.8}}>{finalText}</span>
+                  ) : recording ? (
+                    <span style={{color:"#94a3b8",display:"flex",alignItems:"center",gap:"0.4rem"}}>
+                      <span style={{animation:"pulse 1s infinite",display:"inline-block"}}>●</span> 聞き取り中...
+                    </span>
                   ) : (
-                    <span style={{color:"#94a3b8"}}>{recording ? "話しかけてください..." : "録音開始後に文字起こしが表示されます"}</span>
+                    <span style={{color:"#94a3b8"}}>録音開始後に文字起こしが表示されます</span>
                   )}
-                  {interimText&&<span style={{color:"#94a3b8",fontStyle:"italic"}}>{interimText}</span>}
+                  {interimText&&<div style={{color:"#64748b",fontStyle:"italic",marginTop:"0.35rem",paddingTop:"0.35rem",borderTop:"1px dashed #e2e8f0",fontSize:"0.78rem"}}>{interimText}</div>}
                 </div>
                 {finalText&&(
                   <textarea value={finalText} onChange={e=>setFinalText(e.target.value)}
