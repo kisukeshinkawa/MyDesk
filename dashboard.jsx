@@ -7230,6 +7230,8 @@ ${recentLogs}
     const [editedTasks, setEditedTasks]= React.useState([]);
     const [checkedIds,  setCheckedIds] = React.useState(new Set());
     const [permError,   setPermError]  = React.useState("");
+    const [listening,   setListening]  = React.useState(false);
+    const [soundDetected, setSoundDetected] = React.useState(false);
     const recognRef  = React.useRef(null);
     const timerRef   = React.useRef(null);
     const recordingRef = React.useRef(false); // stale closure対策
@@ -7240,13 +7242,28 @@ ${recentLogs}
 
       const recog = new SR();
       recog.lang = "ja-JP";
-      recog.continuous = true;
+      recog.continuous = false;  // Chromeはcontinuous:falseの方が安定
       recog.interimResults = true;
       recog.maxAlternatives = 1;
 
       recog.onstart = () => {
         setPermError("");
+        setListening(true);
         console.log("[MTG] 認識開始");
+      };
+
+      recog.onaudiostart = () => {
+        console.log("[MTG] マイク入力検出");
+        setListening(true);
+      };
+
+      recog.onsoundstart = () => {
+        console.log("[MTG] 音声検出");
+        setSoundDetected(true);
+      };
+
+      recog.onsoundend = () => {
+        setSoundDetected(false);
       };
 
       recog.onresult = e => {
@@ -7311,6 +7328,8 @@ ${recentLogs}
         const stopRecording = () => {
       recordingRef.current = false;
       setRecording(false);
+      setListening(false);
+      setSoundDetected(false);
       setInterimText("");
       clearInterval(timerRef.current);
       try { recognRef.current?.stop(); } catch {}
@@ -7414,13 +7433,14 @@ ${recentLogs}
                   {finalText ? (
                     <span style={{lineHeight:1.8}}>{finalText}</span>
                   ) : recording ? (
-                    <span style={{color:"#94a3b8",display:"flex",alignItems:"center",gap:"0.4rem"}}>
-                      <span style={{animation:"pulse 1s infinite",display:"inline-block"}}>●</span> 聞き取り中...
-                    </span>
+                    <div style={{display:"flex",alignItems:"center",gap:"0.5rem",color:"#94a3b8"}}>
+                      <span style={{width:10,height:10,borderRadius:"50%",background:soundDetected?"#22c55e":"#94a3b8",display:"inline-block",transition:"background 0.1s"}}/>
+                      {soundDetected ? <span style={{color:"#22c55e",fontWeight:600}}>音声を検出中...</span> : <span>マイクに向かって話してください</span>}
+                    </div>
                   ) : (
                     <span style={{color:"#94a3b8"}}>録音開始後に文字起こしが表示されます</span>
                   )}
-                  {interimText&&<div style={{color:"#64748b",fontStyle:"italic",marginTop:"0.35rem",paddingTop:"0.35rem",borderTop:"1px dashed #e2e8f0",fontSize:"0.78rem"}}>{interimText}</div>}
+                  {interimText&&<div style={{color:"#059669",fontStyle:"italic",marginTop:"0.35rem",paddingTop:"0.35rem",borderTop:"1px dashed #e2e8f0",fontSize:"0.78rem",fontWeight:600}}>{interimText}</div>}
                 </div>
                 {finalText&&(
                   <textarea value={finalText} onChange={e=>setFinalText(e.target.value)}
