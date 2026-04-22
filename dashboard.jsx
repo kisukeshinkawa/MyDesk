@@ -7239,90 +7239,63 @@ ${recentLogs}
     const startRecognition = () => {
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
       if(!SR) return;
-
       const recog = new SR();
       recog.lang = "ja-JP";
-      recog.continuous = false;  // Chromeはcontinuous:falseの方が安定
+      recog.continuous = true;
       recog.interimResults = true;
       recog.maxAlternatives = 1;
-
-      recog.onstart = () => {
-        setPermError("");
-        setListening(true);
-        console.log("[MTG] 認識開始");
-      };
-
-      recog.onaudiostart = () => {
-        console.log("[MTG] マイク入力検出");
-        setListening(true);
-      };
-
-      recog.onsoundstart = () => {
-        console.log("[MTG] 音声検出");
-        setSoundDetected(true);
-      };
-
-      recog.onsoundend = () => {
-        setSoundDetected(false);
-      };
-
+      recog.onstart    = () => { setListening(true); setPermError(""); };
+      recog.onaudiostart = () => setListening(true);
+      recog.onsoundstart = () => setSoundDetected(true);
+      recog.onsoundend   = () => setSoundDetected(false);
       recog.onresult = e => {
-        let interim = "";
-        let newFinal = "";
+        let interim = "", newFinal = "";
         for(let i = e.resultIndex; i < e.results.length; i++){
           const t = e.results[i][0].transcript;
-          if(e.results[i].isFinal){ newFinal += t; }
-          else { interim = t; }
+          if(e.results[i].isFinal) newFinal += t;
+          else interim = t;
         }
-        if(newFinal) setFinalText(prev => prev + newFinal + "　");
+        if(newFinal) setFinalText(prev => prev + newFinal + " ");
         setInterimText(interim);
       };
-
       recog.onerror = e => {
-        console.warn("[MTG] STT error:", e.error);
+        console.warn("[MTG] error:", e.error);
         if(e.error === "not-allowed" || e.error === "service-not-allowed") {
-          setPermError("マイクのアクセスが拒否されました。ブラウザ設定でマイクを許可してください。");
-          recordingRef.current = false;
-          setRecording(false);
-          clearInterval(timerRef.current);
-        }
-        // network/no-speech → auto-retry
-        if((e.error === "network" || e.error === "no-speech" || e.error === "aborted") && recordingRef.current) {
-          setTimeout(() => { if(recordingRef.current) startRecognition(); }, 300);
+          setPermError("マイクへのアクセスが拒否されました。URLバー左のマイクアイコンから許可してください。");
+          recordingRef.current = false; setRecording(false); clearInterval(timerRef.current);
+        } else if(recordingRef.current) {
+          setTimeout(() => { if(recordingRef.current) startRecognition(); }, 500);
         }
       };
-
       recog.onend = () => {
-        setInterimText("");
-        console.log("[MTG] 認識終了, recordingRef:", recordingRef.current);
-        // 録音継続中なら新しいインスタンスで再起動（iOS/Chrome対策）
-        if(recordingRef.current) {
-          setTimeout(() => { if(recordingRef.current) startRecognition(); }, 200);
-        }
+        setInterimText(""); setSoundDetected(false);
+        if(recordingRef.current) setTimeout(() => { if(recordingRef.current) startRecognition(); }, 300);
       };
-
       recognRef.current = recog;
-      try {
-        recog.start();
-        console.log("[MTG] recog.start() 呼び出し完了");
-      } catch(e) {
-        console.error("[MTG] recog.start() エラー:", e.message);
-        setPermError("録音開始エラー: " + e.message);
-      }
+      try { recog.start(); } catch(e) { setPermError("録音エラー: " + e.message); }
     };
 
     const startRecording = () => {
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if(!SR) {
-        setPermError("このブラウザは音声認識に非対応です。ChromeまたはSafariをご利用ください。");
-        return;
-      }
-      recordingRef.current = true;
-      setRecording(true);
-      setFinalText("");
-      setInterimText("");
-      timerRef.current = setInterval(()=>setElapsed(s=>s+1), 1000);
-      startRecognition();
+      if(!SR) { setPermError("このブラウザは音声認識に非対応です。"); return; }
+      setPermError("");
+      // まずマイク権限を明示的に取得してからSpeechRecognition開始
+      navigator.mediaDevices.getUserMedia({ audio: true })
+        .then(stream => {
+          // 権限取得成功 → streamは使わずに閉じる（SpeechRecognitionが自分で取得する）
+          stream.getTracks().forEach(t => t.stop());
+          recordingRef.current = true;
+          setRecording(true);
+          setFinalText("");
+          setInterimText("");
+          setElapsed(0);
+          timerRef.current = setInterval(() => setElapsed(s => s + 1), 1000);
+          startRecognition();
+        })
+        .catch(err => {
+          console.error("[MTG] マイク権限エラー:", err);
+          setPermError("マイクへのアクセスが拒否されました。URLバー左のマイクアイコン🎤から許可してください。");
+        });
     };
 
         const stopRecording = () => {
@@ -7397,9 +7370,11 @@ ${recentLogs}
             {phase==="record"&&(<>
               {/* エラー表示 */}
               {permError&&<div style={{background:"#fee2e2",borderRadius:"0.75rem",padding:"0.75rem",marginBottom:"0.75rem",fontSize:"0.8rem",color:"#dc2626",fontWeight:600}}>{permError}</div>}
-              {/* iOS向けヒント */}
-              {!permError&&!recording&&<div style={{background:"#eff6ff",borderRadius:"0.75rem",padding:"0.625rem 0.875rem",marginBottom:"0.75rem",fontSize:"0.72rem",color:"#1d4ed8"}}>
-                💡 iPhoneでご利用の場合はSafariでお試しください。録音開始後にマイクへのアクセスを許可してください。
+              {/* ブラウザ別ヒント */}
+              {!permError&&!recording&&<div style={{background:"#eff6ff",borderRadius:"0.75rem",padding:"0.625rem 0.875rem",marginBottom:"0.75rem",fontSize:"0.72rem",color:"#1d4ed8",lineHeight:1.6}}>
+                💡 <strong>使い方：</strong>録音開始後、マイクの許可を求めるダイアログが出たら「許可」を押してください。<br/>
+                PCのマイクで話した内容が文字起こしされます。<br/>
+                ⚠️ オンラインMTGの相手の声は現状拾えません（自分の声のみ）。
               </div>}
 
               {/* 録音状態表示 */}
