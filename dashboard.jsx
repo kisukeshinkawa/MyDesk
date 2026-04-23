@@ -7813,16 +7813,14 @@ ${orig}`})
   // ── 企業タブ ──────────────────────────────────────────────────────────────
   if(salesTab==="company"){
     // Mobile: show detail only
-    if(!isPC && activeCompany){
-      const comp=companyOf(activeCompany);
-      if(!comp){setActiveCompany(null);return null;}
+  function renderCompanyDetail(comp){
       const compChatUnread=(data.notifications||[]).filter(n=>n.toUserId===currentUser?.id&&!n.read&&n.type==="mention"&&n.entityId===comp.id).length;
       return (
         <div>
-          <div style={{display:"flex",alignItems:"center",marginBottom:"1rem",gap:"0.5rem"}}>
+          {!isPC&&<div style={{display:"flex",alignItems:"center",marginBottom:"1rem",gap:"0.5rem"}}>
             <button onClick={()=>{setActiveCompany(null);restoreSalesScroll("company");}} style={{background:"none",border:"none",color:C.textSub,fontWeight:700,fontSize:"0.85rem",cursor:"pointer",padding:0}}>‹ 一覧</button>
             <span style={{flex:1}}/>
-          </div>
+          </div>}
           <Card style={{padding:"1.25rem",marginBottom:"1rem"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"0.75rem"}}>
               <div>
@@ -7848,6 +7846,13 @@ ${orig}`})
       );
     }
 
+    // Mobile: show detail full screen
+    if(!isPC && activeCompany){
+      const comp=companyOf(activeCompany);
+      if(!comp){setActiveCompany(null);return null;}
+      return renderCompanyDetail(comp);
+    }
+
     // List view - grouped by status
     const compsByStatus = Object.keys(COMPANY_STATUS).map(s=>({
       status:s, meta:COMPANY_STATUS[s],
@@ -7861,10 +7866,9 @@ ${orig}`})
     const searchedComps = compSearch ? compFilteredBase.filter(c=>normSearch(c.name).includes(normSearch(compSearch))) : null;
     const compVisibleIds=(searchedComps||compFilteredBase).map(c=>c.id);
     return (
-      <div style={{display:isPC&&activeCompany?"flex":"block",height:isPC&&activeCompany?"calc(100vh - 60px)":"auto",overflow:isPC&&activeCompany?"hidden":"visible"}}>
-        {/* PC: left list pane */}
-        <div style={{flex:isPC&&activeCompany?"none":"auto",width:isPC&&activeCompany?300:undefined,overflowY:isPC&&activeCompany?"auto":"visible",borderRight:isPC&&activeCompany?"1px solid #e5e5ea":"none"}}>
-        <div>
+      <div style={{display:"flex",height:isPC?"calc(100vh - 60px)":"auto",overflow:isPC?"hidden":"visible"}}>
+        {/* List pane */}
+        <div style={{width:isPC?(activeCompany?320:"100%"):"100%",flexShrink:0,overflowY:isPC?"auto":"visible",borderRight:isPC&&activeCompany?"1px solid #e5e5ea":"none",transition:"width 0.2s"}}>
         <TopTabs/>
         <BulkBar statusMap={COMPANY_STATUS} applyFn={applyBulkComp} visibleIds={compVisibleIds} onDelete={deleteBulkComp}/>
         {/* 担当者フィルタ */}
@@ -8185,33 +8189,18 @@ ${orig}`})
           </Sheet>
         )}
       {renderModals()}
-        </div>{/* end inner list div */}
-        </div>{/* end left pane */}
+        </div>{/* end list pane */}
         {/* PC: right detail pane */}
         {isPC&&activeCompany&&(()=>{
           const comp=companyOf(activeCompany);
-          if(!comp) return null;
-          const compChatUnread=(data.notifications||[]).filter(n=>n.toUserId===currentUser?.id&&!n.read&&n.type==="mention"&&n.entityId===comp.id).length;
+          if(!comp){setActiveCompany(null);return null;}
           return (
-            <div style={{flex:1,overflowY:"auto",padding:"1.5rem",borderLeft:"1px solid #e5e5ea",background:"white"}}>
-              <div style={{display:"flex",alignItems:"center",marginBottom:"1rem"}}>
-                <div style={{flex:1,fontSize:"1.15rem",fontWeight:700,color:C.text}}>{comp.name}</div>
-                <button onClick={()=>setActiveCompany(null)} style={{background:"none",border:"1px solid #e5e5ea",borderRadius:"6px",padding:"0.3rem 0.75rem",cursor:"pointer",fontSize:"0.8rem",color:C.textSub}}>✕ 閉じる</button>
+            <div style={{flex:1,overflowY:"auto",borderLeft:"1px solid #e5e5ea",background:"#ffffff"}}>
+              <div style={{padding:"1rem 1.5rem",borderBottom:"1px solid #e5e5ea",display:"flex",alignItems:"center",background:"white",position:"sticky",top:0,zIndex:10}}>
+                <div style={{flex:1,fontWeight:700,fontSize:"1rem",color:C.text}}>{comp.name}</div>
+                <button onClick={()=>setActiveCompany(null)} style={{background:"none",border:"1px solid #e5e5ea",borderRadius:"6px",padding:"0.3rem 0.75rem",cursor:"pointer",fontSize:"0.8rem",color:C.textSub}}>✕</button>
               </div>
-              <SChip s={comp.status} map={COMPANY_STATUS}/>
-              <div style={{marginTop:"1rem",fontSize:"0.82rem",color:C.textSub,display:"flex",flexDirection:"column",gap:"0.3rem"}}>
-                {comp.phone&&<div>📞 {comp.phone}</div>}
-                {comp.email&&<div>✉️ {comp.email}</div>}
-                {comp.address&&<div>📍 {comp.address}</div>}
-              </div>
-              <div style={{marginTop:"1rem"}}>
-                <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap",marginBottom:"1rem"}}>
-                  <Btn size="sm" onClick={()=>openApproachModal("companies",comp.id,comp.name)}>📞 アプローチ</Btn>
-                  <Btn size="sm" onClick={()=>setMtgModal({entityKey:"companies",entityId:comp.id,entityName:comp.name})}>🎤 MTG</Btn>
-                  <Btn size="sm" variant="secondary" onClick={()=>{setForm({...comp});setSheet("editCompany");}}>✏️ 編集</Btn>
-                </div>
-                <ApproachTimeline entity={comp} entityKey="companies" entityId={comp.id} users={users} onAddApproach={()=>openApproachModal("companies",comp.id,comp.name)} onSave={nd=>save(nd)} data={data}/>
-              </div>
+              <div style={{padding:"1rem 1.5rem"}}>{renderCompanyDetail(comp)}</div>
             </div>
           );
         })()}
@@ -8222,12 +8211,11 @@ ${orig}`})
 
   // ── 業者タブ ──────────────────────────────────────────────────────────────
   if(salesTab==="vendor"){
-    if(!isPC && activeVendor){
-      const v=vendorOf(activeVendor);
-      if(!v){setActiveVendor(null);return null;}
+  function renderVendorDetail(v){
       const vmunis=vendorMunis(v);
       const vendChatUnread=(data.notifications||[]).filter(n=>n.toUserId===currentUser?.id&&!n.read&&n.type==="mention"&&n.entityId===v.id).length;
       return (
+
         <div>
           <div style={{display:"flex",alignItems:"center",marginBottom:"1rem",gap:"0.5rem"}}>
             <button onClick={()=>{
@@ -8385,6 +8373,12 @@ ${orig}`})
         </div>
       );
     }
+    // Mobile: show detail full screen
+    if(!isPC && activeVendor){
+      const v=vendorOf(activeVendor);
+      if(!v){setActiveVendor(null);return null;}
+      return renderVendorDetail(v);
+    }
     // Vendor list - grouped by status
     const normVSearch = s => (s||"").replace(/[\s\u3000]/g,"").toLowerCase();
     // フィルタ適用
@@ -8405,7 +8399,9 @@ ${orig}`})
     const searchedVendors = vendSearch ? filteredVendors.filter(v=>normVSearch(v.name).includes(normVSearch(vendSearch))) : null;
     const vendVisibleIds=(searchedVendors||filteredVendors).map(v=>v.id);
     return (
-      <div>
+      <div style={{display:"flex",height:isPC?"calc(100vh - 60px)":"auto",overflow:isPC?"hidden":"visible"}}>
+        {/* List pane */}
+        <div style={{width:isPC?(activeVendor?320:"100%"):"100%",flexShrink:0,overflowY:isPC?"auto":"visible",borderRight:isPC&&activeVendor?"1px solid #e5e5ea":"none",transition:"width 0.2s"}}>
         <TopTabs/>
         <BulkBar statusMap={VENDOR_STATUS} applyFn={applyBulkVend} visibleIds={vendVisibleIds} onDelete={deleteBulkVend}/>
         {/* フォロー中業者 */}
@@ -8774,21 +8770,38 @@ ${orig}`})
             </Sheet>
           );
         })()}
+        </div>{/* end list pane */}
+        {/* PC: right detail pane */}
+        {isPC&&activeVendor&&(()=>{
+          const v=vendorOf(activeVendor);
+          if(!v){setActiveVendor(null);return null;}
+          return (
+            <div style={{flex:1,overflowY:"auto",borderLeft:"1px solid #e5e5ea",background:"#ffffff"}}>
+              <div style={{padding:"1rem 1.5rem",borderBottom:"1px solid #e5e5ea",display:"flex",alignItems:"center",background:"white",position:"sticky",top:0,zIndex:10}}>
+                <div style={{flex:1,fontWeight:700,fontSize:"1rem",color:C.text}}>{v.name}</div>
+                <button onClick={()=>setActiveVendor(null)} style={{background:"none",border:"1px solid #e5e5ea",borderRadius:"6px",padding:"0.3rem 0.75rem",cursor:"pointer",fontSize:"0.8rem",color:C.textSub}}>✕</button>
+              </div>
+              <div style={{padding:"1rem 1.5rem"}}>{renderVendorDetail(v)}</div>
+            </div>
+          );
+        })()}
       {renderModals()}
     </div>
     );
   }
 
   // ── 自治体タブ ────────────────────────────────────────────────────────────
-  if(!isPC&&salesTab==="muni"&&activeMuni&&muniScreen==="muniDetail"){
-    const muni=muniOf(activeMuni);
-    if(!muni){setActiveMuni(null);setMuniScreen("top");return null;}
-    const pref=prefOf(muni.prefectureId);
-    const mvend=muniVendors(activeMuni);
+  function renderMuniDetail(activeMuni){
+      const muni=muniOf(activeMuni);
+      if(!muni){return null;}
+      const pref=prefOf(muni.prefectureId);
+      const mvend=muniVendors(activeMuni);
+
     const joined=mvend.filter(v=>v.status==="加入済").length;
     const ds=DUSTALK_STATUS[muni.dustalk]||DUSTALK_STATUS["未展開"];
     const muniChatUnread=(data.notifications||[]).filter(n=>n.toUserId===currentUser?.id&&!n.read&&n.type==="mention"&&n.entityId===muni.id).length;
-    return (
+      return (
+
       <div>
         <div style={{display:"flex",alignItems:"center",marginBottom:"1rem",gap:"0.5rem"}}>
           <button onClick={()=>{setMuniScreen("top");setActiveMuni(null);restoreSalesScroll("muni");}} style={{background:"none",border:"none",color:C.textSub,fontWeight:700,fontSize:"0.85rem",cursor:"pointer",padding:0}}>‹ {pref?.name||"一覧"}</button>
@@ -9097,13 +9110,18 @@ ${orig}`})
         })()}
       {renderModals()}
     </div>
-    );
+      );
+    }
+  if(!isPC&&salesTab==="muni"&&activeMuni&&muniScreen==="muniDetail"){
+    return renderMuniDetail(activeMuni);
   }
 
   // ── 自治体トップビュー（地方→都道府県→自治体 折りたたみ）─────────────────
   // 一括変更ヘルパー
   return (
-    <div>
+    <div style={{display:"flex",height:isPC&&activeMuni&&muniScreen==="muniDetail"?"calc(100vh - 60px)":"auto",overflow:isPC&&activeMuni&&muniScreen==="muniDetail"?"hidden":"visible"}}>
+      {/* List/main pane */}
+      <div style={{flex:1,overflowY:isPC&&activeMuni&&muniScreen==="muniDetail"?"auto":"visible",width:"100%"}}>
       <TopTabs/>
       {/* ── 自治体タブ（トップビュー） ── */}
       {salesTab==="muni"&&<>
@@ -10085,6 +10103,19 @@ ${orig}`})
       {/* ── 活動ログ ── */}
       <ActivityLog data={data} users={users} filterTypes={["企業","業者","自治体"]} />
 
+      </div>{/* end list/main pane */}
+      {/* PC: muni right detail pane */}
+      {isPC&&activeMuni&&muniScreen==="muniDetail"&&(()=>{
+        return (
+          <div style={{width:560,flexShrink:0,overflowY:"auto",borderLeft:"1px solid #e5e5ea",background:"#ffffff"}}>
+            <div style={{padding:"1rem 1.5rem",borderBottom:"1px solid #e5e5ea",display:"flex",alignItems:"center",background:"white",position:"sticky",top:0,zIndex:10}}>
+              <div style={{flex:1,fontWeight:700,fontSize:"1rem",color:C.text}}>{muniOf(activeMuni)?.name||""}</div>
+              <button onClick={()=>{setActiveMuni(null);setMuniScreen("top");}} style={{background:"none",border:"1px solid #e5e5ea",borderRadius:"6px",padding:"0.3rem 0.75rem",cursor:"pointer",fontSize:"0.8rem",color:C.textSub}}>✕</button>
+            </div>
+            <div style={{padding:"1rem 1.5rem"}}>{renderMuniDetail(activeMuni)}</div>
+          </div>
+        );
+      })()}
       {renderModals()}
     </div>
   );
