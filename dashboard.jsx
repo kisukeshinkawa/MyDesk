@@ -13,7 +13,7 @@ class ErrorBoundary extends React.Component {
           <div style={{fontWeight:800,fontSize:"1rem",color:"#dc2626",marginBottom:"0.5rem"}}>表示エラーが発生しました</div>
           <div style={{fontSize:"0.78rem",color:"#6b7280",marginBottom:"1.5rem",maxWidth:300}}>{this.state.error}</div>
           <button onClick={()=>this.setState({hasError:false,error:""})}
-            style={{padding:"0.625rem 1.5rem",borderRadius:"0.75rem",border:"none",background:"#2563eb",color:"white",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+            style={{padding:"0.625rem 1.5rem",borderRadius:"6px",border:"none",background:"#2563eb",color:"white",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
             ← 戻る / 再試行
           </button>
         </div>
@@ -42,13 +42,13 @@ const S = {
 };
 
 const C = {
-  bg:"#f4f6fb", surface:"#ffffff",
-  border:"#e2e5ef", borderLight:"#edf0f7",
-  text:"#111827", textSub:"#4b5563", textMuted:"#9ca3af",
-  accent:"#4f46e5", accentDark:"#4338ca", accentBg:"#eef2ff",
-  blue:"#4f46e5", blueBg:"#eef2ff",
-  shadow:"0 1px 3px rgba(0,0,0,0.06),0 1px 2px rgba(0,0,0,0.04)",
-  shadowMd:"0 4px 24px rgba(0,0,0,0.08),0 2px 8px rgba(0,0,0,0.04)",
+  bg:"#f7f8fa", surface:"#ffffff",
+  border:"#e8eaed", borderLight:"#f0f2f5",
+  text:"#1a1a2e", textSub:"#5f6368", textMuted:"#9aa0a6",
+  accent:"#1a73e8", accentDark:"#1557b0", accentBg:"#e8f0fe",
+  blue:"#1a73e8", blueBg:"#e8f0fe",
+  shadow:"0 1px 2px rgba(0,0,0,0.05)",
+  shadowMd:"0 2px 8px rgba(0,0,0,0.08)",
 };
 
 // ─── STORAGE ──────────────────────────────────────────────────────────────────
@@ -354,11 +354,11 @@ function isNearDue(task) {
 
 // ─── BASE COMPONENTS ──────────────────────────────────────────────────────────
 const Card = ({children, style={}, onClick}) => (
-  <div onClick={onClick} style={{background:C.surface,borderRadius:"0.875rem",border:`1px solid ${C.border}`,boxShadow:C.shadow,...style}}>{children}</div>
+  <div onClick={onClick} style={{background:C.surface,borderRadius:"8px",border:`1px solid ${C.border}`,boxShadow:"0 1px 2px rgba(0,0,0,0.04)",...style}}>{children}</div>
 );
 
 const Btn = ({children,onClick,variant="primary",size="md",style={},disabled=false}) => {
-  const base = {border:"none",borderRadius:"0.75rem",fontWeight:700,cursor:disabled?"not-allowed":"pointer",fontFamily:"inherit",opacity:disabled?0.5:1,transition:"opacity 0.15s",...style};
+  const base = {border:"none",borderRadius:"6px",fontWeight:700,cursor:disabled?"not-allowed":"pointer",fontFamily:"inherit",opacity:disabled?0.5:1,transition:"opacity 0.15s",...style};
   const sz   = size==="sm"?{padding:"0.35rem 0.875rem",fontSize:"0.78rem"}:size==="lg"?{padding:"0.875rem 1.25rem",fontSize:"1rem"}:{padding:"0.55rem 1rem",fontSize:"0.85rem"};
   const vc   = variant==="primary"?{background:C.accent,color:"white",boxShadow:`0 2px 10px ${C.accent}44`}
              : variant==="secondary"?{background:C.bg,color:C.textSub,border:`1.5px solid ${C.border}`}
@@ -368,15 +368,15 @@ const Btn = ({children,onClick,variant="primary",size="md",style={},disabled=fal
 };
 
 const Input = ({style={},...p}) => (
-  <input {...p} style={{width:"100%",padding:"0.65rem 0.875rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,fontSize:"0.9rem",color:C.text,outline:"none",boxSizing:"border-box",fontFamily:"inherit",...style}}/>
+  <input {...p} style={{width:"100%",padding:"0.65rem 0.875rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,fontSize:"0.9rem",color:C.text,outline:"none",boxSizing:"border-box",fontFamily:"inherit",...style}}/>
 );
 
 const Textarea = ({style={},...p}) => (
-  <textarea {...p} style={{width:"100%",padding:"0.75rem 0.875rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,fontSize:"0.88rem",color:C.text,outline:"none",resize:"vertical",boxSizing:"border-box",fontFamily:"inherit",lineHeight:1.6,...style}}/>
+  <textarea {...p} style={{width:"100%",padding:"0.75rem 0.875rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,fontSize:"0.88rem",color:C.text,outline:"none",resize:"vertical",boxSizing:"border-box",fontFamily:"inherit",lineHeight:1.6,...style}}/>
 );
 
 const SelectEl = ({children,style={},...p}) => (
-  <select {...p} style={{width:"100%",padding:"0.65rem 0.875rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,fontSize:"0.9rem",color:C.text,outline:"none",background:"white",fontFamily:"inherit",...style}}>{children}</select>
+  <select {...p} style={{width:"100%",padding:"0.65rem 0.875rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,fontSize:"0.9rem",color:C.text,outline:"none",background:"white",fontFamily:"inherit",...style}}>{children}</select>
 );
 
 const FieldLbl = ({label,children}) => (
@@ -415,7 +415,7 @@ function StatusPill({status,onChange}) {
       </button>
       {open && <>
         <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:199}}/>
-        <div style={{position:"fixed",top:pos.top,right:pos.right,zIndex:200,background:"white",borderRadius:"0.875rem",boxShadow:C.shadowMd,border:`1px solid ${C.border}`,overflow:"hidden",minWidth:130}}>
+        <div style={{position:"fixed",top:pos.top,right:pos.right,zIndex:200,background:"white",borderRadius:"8px",boxShadow:"0 1px 3px rgba(0,0,0,0.06),0 0 0 1px rgba(0,0,0,0.04)",border:`1px solid ${C.border}`,overflow:"hidden",minWidth:130}}>
           {STATUS_OPTIONS.map(s=>{const m=STATUS_META[s];return(
             <button key={s} onClick={e=>{e.stopPropagation();onChange(s);setOpen(false);}}
               style={{display:"flex",alignItems:"center",gap:"0.5rem",width:"100%",padding:"0.625rem 0.875rem",border:"none",background:s===status?m.bg:"white",cursor:"pointer",fontFamily:"inherit",fontWeight:s===status?700:500,color:s===status?m.color:C.text,fontSize:"0.83rem",textAlign:"left"}}>
@@ -504,10 +504,10 @@ function FileSection({ files=[], onAdd, onDelete, currentUserId, entityType, ent
 
   return (
     <div>
-      {files.length === 0 && <div style={{textAlign:"center",padding:"1.25rem",color:C.textMuted,background:C.bg,borderRadius:"0.875rem",fontSize:"0.82rem",marginBottom:"0.75rem"}}>ファイルがありません</div>}
+      {files.length === 0 && <div style={{textAlign:"center",padding:"1.25rem",color:C.textMuted,background:C.bg,borderRadius:"8px",fontSize:"0.82rem",marginBottom:"0.75rem"}}>ファイルがありません</div>}
       <div style={{display:"flex",flexDirection:"column",gap:"0.4rem",marginBottom:"0.75rem"}}>
         {files.map(f => (
-          <div key={f.id||f.url} style={{display:"flex",alignItems:"center",gap:"0.625rem",background:"white",border:`1px solid ${C.border}`,borderRadius:"0.75rem",padding:"0.5rem 0.75rem",boxShadow:C.shadow}}>
+          <div key={f.id||f.url} style={{display:"flex",alignItems:"center",gap:"0.625rem",background:"white",border:`1px solid ${C.border}`,borderRadius:"6px",padding:"0.5rem 0.75rem",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
             <span style={{fontSize:"1.2rem",flexShrink:0}}>{icon(f.type)}</span>
             <div style={{flex:1,minWidth:0}}>
               <a href={f.url||(f.path?`${SB_URL}/storage/v1/object/public/${STORAGE_BUCKET}/${f.path}`:null)||f.path||"#"}
@@ -535,7 +535,7 @@ function FileSection({ files=[], onAdd, onDelete, currentUserId, entityType, ent
       </div>
       {error && <div style={{color:"#dc2626",fontSize:"0.75rem",marginBottom:"0.5rem",padding:"0.5rem",background:"#fee2e2",borderRadius:"0.5rem"}}>{error}</div>}
       {!readOnly && (
-        <label style={{display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem",border:`2px dashed ${uploading?C.accent:C.border}`,borderRadius:"0.875rem",padding:"0.875rem",cursor:"pointer",background:uploading?C.accentBg:C.bg,color:uploading?C.accentDark:C.textSub,fontWeight:700,fontSize:"0.82rem"}}>
+        <label style={{display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem",border:`2px dashed ${uploading?C.accent:C.border}`,borderRadius:"8px",padding:"0.875rem",cursor:"pointer",background:uploading?C.accentBg:C.bg,color:uploading?C.accentDark:C.textSub,fontWeight:700,fontSize:"0.82rem"}}>
           {uploading ? "⏳ アップロード中..." : "📎 ファイルを追加（最大20MB）"}
           <input ref={fileInputRef} type="file" onChange={handleFile} disabled={uploading} style={{display:"none"}}/>
         </label>
@@ -572,14 +572,14 @@ function ReviewRequestSection({ task, users=[], uid, allTasks=[], onRequestRevie
         <div>
           {/* 確認完了済みバナー */}
           {task.reviewOf && task.reviewOf.approved && (
-            <div style={{background:"#d1fae5",border:"1.5px solid #6ee7b7",borderRadius:"0.875rem",padding:"0.875rem 1rem",marginBottom:"0.75rem"}}>
+            <div style={{background:"#d1fae5",border:"1.5px solid #6ee7b7",borderRadius:"8px",padding:"0.875rem 1rem",marginBottom:"0.75rem"}}>
               <div style={{fontSize:"0.8rem",fontWeight:800,color:"#065f46"}}>✅ 確認完了済み</div>
               <div style={{fontSize:"0.78rem",color:"#047857",marginTop:"0.25rem"}}>元タスク：{originalTask ? originalTask.title : task.reviewOf.taskTitle}</div>
             </div>
           )}
           {/* 差し戻し済みバナー */}
           {isRejected ? (
-            <div style={{background:"#fee2e2",border:"1.5px solid #fca5a5",borderRadius:"0.875rem",padding:"0.875rem 1rem",marginBottom:"0.75rem"}}>
+            <div style={{background:"#fee2e2",border:"1.5px solid #fca5a5",borderRadius:"8px",padding:"0.875rem 1rem",marginBottom:"0.75rem"}}>
               <div style={{fontSize:"0.72rem",fontWeight:800,color:"#991b1b",marginBottom:"0.35rem"}}>↩️ 差し戻し済み</div>
               <div style={{fontSize:"0.82rem",color:"#7f1d1d",marginBottom:"0.25rem"}}>
                 依頼元：<strong>{originalUser?.name || "不明"}</strong>
@@ -596,7 +596,7 @@ function ReviewRequestSection({ task, users=[], uid, allTasks=[], onRequestRevie
             </div>
           ) : (
             /* 通常の確認依頼バナー */
-            <div style={{background:"#fef3c7",border:"1px solid #fbbf24",borderRadius:"0.875rem",padding:"0.75rem 1rem",marginBottom:"0.75rem"}}>
+            <div style={{background:"#fef3c7",border:"1px solid #fbbf24",borderRadius:"8px",padding:"0.75rem 1rem",marginBottom:"0.75rem"}}>
               <div style={{fontSize:"0.68rem",fontWeight:700,color:"#92400e",marginBottom:"0.3rem"}}>📋 確認依頼タスク</div>
               <div style={{fontSize:"0.82rem",color:"#78350f",marginBottom:"0.25rem"}}>
                 依頼元：<strong>{originalUser?.name || "不明"}</strong>
@@ -614,16 +614,16 @@ function ReviewRequestSection({ task, users=[], uid, allTasks=[], onRequestRevie
           {!isRejected && task.status !== "完了" && (
             <div style={{marginBottom:"0.75rem"}}>
               <button onClick={()=>{if(window.confirm("確認完了としてよろしいですか?\n元のタスクも「完了」に変更されます。"))onApproveReview(task.id);}}
-                style={{width:"100%",padding:"0.875rem",borderRadius:"0.875rem",border:"none",background:"linear-gradient(135deg,#059669,#047857)",color:"white",fontWeight:800,fontSize:"1rem",cursor:"pointer",fontFamily:"inherit",marginBottom:"0.5rem",boxShadow:"0 2px 8px rgba(5,150,105,0.35)",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
+                style={{width:"100%",padding:"0.875rem",borderRadius:"8px",border:"none",background:"linear-gradient(135deg,#059669,#047857)",color:"white",fontWeight:800,fontSize:"1rem",cursor:"pointer",fontFamily:"inherit",marginBottom:"0.5rem",boxShadow:"0 2px 8px rgba(5,150,105,0.35)",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
                 <span style={{fontSize:"1.25rem"}}>✅</span> 確認完了
               </button>
               {!showRejectForm ? (
                 <button onClick={() => setShowRejectForm(true)}
-                  style={{width:"100%",padding:"0.625rem",borderRadius:"0.75rem",border:"1.5px solid #fca5a5",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
+                  style={{width:"100%",padding:"0.625rem",borderRadius:"6px",border:"1.5px solid #fca5a5",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
                   ↩️ 差し戻す
                 </button>
               ) : (
-                <div style={{background:"#fff1f2",border:"1.5px solid #fca5a5",borderRadius:"0.875rem",padding:"0.875rem"}}>
+                <div style={{background:"#fff1f2",border:"1.5px solid #fca5a5",borderRadius:"8px",padding:"0.875rem"}}>
                   <div style={{fontWeight:700,fontSize:"0.82rem",color:"#dc2626",marginBottom:"0.625rem"}}>↩️ 差し戻し</div>
                   <div style={{fontSize:"0.75rem",fontWeight:700,color:C.textSub,marginBottom:"0.35rem"}}>差し戻し理由（任意）</div>
                   <textarea value={rejectNote} onChange={e=>setRejectNote(e.target.value)}
@@ -631,11 +631,11 @@ function ReviewRequestSection({ task, users=[], uid, allTasks=[], onRequestRevie
                     style={{width:"100%",padding:"0.5rem",borderRadius:"0.625rem",border:`1.5px solid #fca5a5`,fontSize:"0.82rem",fontFamily:"inherit",resize:"none",outline:"none",boxSizing:"border-box",marginBottom:"0.75rem"}}/>
                   <div style={{display:"flex",gap:"0.5rem"}}>
                     <button onClick={()=>{setShowRejectForm(false);setRejectNote("");}}
-                      style={{flex:1,padding:"0.5rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.82rem"}}>
+                      style={{flex:1,padding:"0.5rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.82rem"}}>
                       キャンセル
                     </button>
                     <button onClick={()=>{onRejectReview(task.id, rejectNote); setShowRejectForm(false); setRejectNote("");}}
-                      style={{flex:2,padding:"0.5rem",borderRadius:"0.75rem",border:"none",background:"#dc2626",color:"white",fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.82rem"}}>
+                      style={{flex:2,padding:"0.5rem",borderRadius:"6px",border:"none",background:"#dc2626",color:"white",fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.82rem"}}>
                       差し戻しを確定する
                     </button>
                   </div>
@@ -649,7 +649,7 @@ function ReviewRequestSection({ task, users=[], uid, allTasks=[], onRequestRevie
       {/* ── 元タスク側（依頼者が見る）── */}
       {/* 差し戻しされた通知 */}
       {rejectedReview && (
-        <div style={{background:"#fee2e2",border:"1.5px solid #fca5a5",borderRadius:"0.875rem",padding:"0.875rem 1rem",marginBottom:"0.75rem"}}>
+        <div style={{background:"#fee2e2",border:"1.5px solid #fca5a5",borderRadius:"8px",padding:"0.875rem 1rem",marginBottom:"0.75rem"}}>
           <div style={{fontSize:"0.72rem",fontWeight:800,color:"#991b1b",marginBottom:"0.35rem"}}>↩️ 確認依頼が差し戻されました</div>
           <div style={{fontSize:"0.82rem",color:"#7f1d1d",marginBottom:"0.25rem"}}>
             差し戻し者：<strong>{users.find(u=>(rejectedReview.assignees||[]).includes(u.id))?.name || "不明"}</strong>
@@ -665,7 +665,7 @@ function ReviewRequestSection({ task, users=[], uid, allTasks=[], onRequestRevie
 
       {/* 確認完了済み（依頼者側） */}
       {reviewTasks.some(rt => rt.reviewOf && rt.reviewOf.approved) && (
-        <div style={{background:"#d1fae5",border:"1.5px solid #6ee7b7",borderRadius:"0.875rem",padding:"0.875rem 1rem",marginBottom:"0.75rem"}}>
+        <div style={{background:"#d1fae5",border:"1.5px solid #6ee7b7",borderRadius:"8px",padding:"0.875rem 1rem",marginBottom:"0.75rem"}}>
           <div style={{fontSize:"0.8rem",fontWeight:800,color:"#065f46",marginBottom:"0.25rem"}}>✅ 確認完了</div>
           <div style={{fontSize:"0.78rem",color:"#047857"}}>
             {(()=>{const rt=reviewTasks.find(r=>r.reviewOf&&r.reviewOf.approved);const u=users.find(x=>(rt.assignees||[]).includes(x.id));return "確認者: "+(u?u.name:"不明");})()}
@@ -683,7 +683,7 @@ function ReviewRequestSection({ task, users=[], uid, allTasks=[], onRequestRevie
             const statusBg = isRej ? "#fee2e2" : rt.status === "完了" ? "#d1fae5" : rt.status === "進行中" ? "#dbeafe" : "#f3f4f6";
             const label = isRej ? "差し戻し" : rt.status;
             return (
-              <div key={rt.id} style={{background:"white",border:`1px solid ${isRej?"#fca5a5":C.border}`,borderRadius:"0.75rem",padding:"0.5rem 0.875rem",marginBottom:"0.35rem",display:"flex",alignItems:"center",gap:"0.625rem"}}>
+              <div key={rt.id} style={{background:"white",border:`1px solid ${isRej?"#fca5a5":C.border}`,borderRadius:"6px",padding:"0.5rem 0.875rem",marginBottom:"0.35rem",display:"flex",alignItems:"center",gap:"0.625rem"}}>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:"0.82rem",fontWeight:600,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{rt.title}</div>
                   <div style={{fontSize:"0.68rem",color:C.textMuted}}>担当：{assignee?.name || "未設定"}</div>
@@ -703,11 +703,11 @@ function ReviewRequestSection({ task, users=[], uid, allTasks=[], onRequestRevie
         <div>
           {!showPicker ? (
             <button onClick={() => setShowPicker(true)}
-              style={{width:"100%",padding:"0.625rem",borderRadius:"0.75rem",border:"1.5px solid #f59e0b",background:"#fef3c7",color:"#92400e",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
+              style={{width:"100%",padding:"0.625rem",borderRadius:"6px",border:"1.5px solid #f59e0b",background:"#fef3c7",color:"#92400e",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
               📨 確認依頼を送る
             </button>
           ) : (
-            <div style={{background:"#fffbeb",border:"1.5px solid #fbbf24",borderRadius:"0.875rem",padding:"0.875rem"}}>
+            <div style={{background:"#fffbeb",border:"1.5px solid #fbbf24",borderRadius:"8px",padding:"0.875rem"}}>
               <div style={{fontWeight:700,fontSize:"0.82rem",color:"#92400e",marginBottom:"0.625rem"}}>確認依頼を送る</div>
               <div style={{fontSize:"0.75rem",fontWeight:700,color:C.textSub,marginBottom:"0.35rem"}}>依頼先</div>
               <div style={{display:"flex",flexWrap:"wrap",gap:"0.35rem",marginBottom:"0.75rem"}}>
@@ -728,12 +728,12 @@ function ReviewRequestSection({ task, users=[], uid, allTasks=[], onRequestRevie
                 style={{width:"100%",padding:"0.5rem",borderRadius:"0.625rem",border:`1.5px solid ${C.border}`,fontSize:"0.82rem",fontFamily:"inherit",resize:"none",outline:"none",boxSizing:"border-box",marginBottom:"0.75rem"}}/>
               <div style={{display:"flex",gap:"0.5rem"}}>
                 <button onClick={()=>{setShowPicker(false);setSelectedUser(null);setNote("");}}
-                  style={{flex:1,padding:"0.5rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.82rem"}}>
+                  style={{flex:1,padding:"0.5rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.82rem"}}>
                   キャンセル
                 </button>
                 <button onClick={()=>{if(!selectedUser)return; onRequestReview(selectedUser,note); setShowPicker(false);setSelectedUser(null);setNote("");}}
                   disabled={!selectedUser}
-                  style={{flex:2,padding:"0.5rem",borderRadius:"0.75rem",border:"none",background:selectedUser?"#f59e0b":"#e5e7eb",color:selectedUser?"white":"#9ca3af",fontWeight:700,cursor:selectedUser?"pointer":"not-allowed",fontFamily:"inherit",fontSize:"0.82rem"}}>
+                  style={{flex:2,padding:"0.5rem",borderRadius:"6px",border:"none",background:selectedUser?"#f59e0b":"#e5e7eb",color:selectedUser?"white":"#9ca3af",fontWeight:700,cursor:selectedUser?"pointer":"not-allowed",fontFamily:"inherit",fontSize:"0.82rem"}}>
                   依頼を送る
                 </button>
               </div>
@@ -993,7 +993,7 @@ function GSheetImportWizard({ data, onSave, onClose, prefs, munis, vendors }) {
       {/* ── STEP 0: 入力 ── */}
       {step===0&&(
         <div>
-          <div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:"0.875rem",padding:"0.875rem",marginBottom:"1rem",fontSize:"0.78rem",color:"#1e40af",lineHeight:1.7}}>
+          <div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:"8px",padding:"0.875rem",marginBottom:"1rem",fontSize:"0.78rem",color:"#1e40af",lineHeight:1.7}}>
             📋 <strong>スプレッドシートの構成：</strong><br/>
             ・シート名 = 自治体名<br/>
             ・A列 = 業者名　B列 = メモ　C列 = ステータス（任意）<br/>
@@ -1019,7 +1019,7 @@ function GSheetImportWizard({ data, onSave, onClose, prefs, munis, vendors }) {
           {err&&<div style={{background:"#fee2e2",border:"1px solid #fca5a5",borderRadius:"0.625rem",padding:"0.625rem 0.875rem",fontSize:"0.78rem",color:"#991b1b",marginBottom:"0.875rem",whiteSpace:"pre-wrap"}}>{err}</div>}
 
           <button onClick={fetchAll} disabled={!sheetId.trim()||!prefName}
-            style={{width:"100%",padding:"0.875rem",borderRadius:"0.875rem",border:"none",
+            style={{width:"100%",padding:"0.875rem",borderRadius:"8px",border:"none",
               background:sheetId.trim()&&prefName?"#2563eb":"#e2e8f0",
               color:sheetId.trim()&&prefName?"white":"#94a3b8",
               fontWeight:800,fontSize:"0.9rem",cursor:sheetId.trim()&&prefName?"pointer":"not-allowed",fontFamily:"inherit"}}>
@@ -1041,12 +1041,12 @@ function GSheetImportWizard({ data, onSave, onClose, prefs, munis, vendors }) {
       {/* ── STEP 2: 確認 ── */}
       {step===2&&(
         <div>
-          <div style={{background:"#d1fae5",border:"1px solid #6ee7b7",borderRadius:"0.875rem",padding:"0.875rem",marginBottom:"1rem"}}>
+          <div style={{background:"#d1fae5",border:"1px solid #6ee7b7",borderRadius:"8px",padding:"0.875rem",marginBottom:"1rem"}}>
             <div style={{fontWeight:800,color:"#065f46",fontSize:"0.88rem",marginBottom:"0.25rem"}}>✅ {sheetData.length}自治体 / {totalVendors}業者 を検出</div>
             <div style={{fontSize:"0.75rem",color:"#047857"}}>都道府県：{prefName}　インポート先を確認してください</div>
           </div>
 
-          <div style={{maxHeight:320,overflowY:"auto",border:"1px solid #e2e8f0",borderRadius:"0.875rem",marginBottom:"1rem"}}>
+          <div style={{maxHeight:320,overflowY:"auto",border:"1px solid #e2e8f0",borderRadius:"8px",marginBottom:"1rem"}}>
             {sheetData.map((d,i)=>(
               <div key={i} style={{borderBottom:"1px solid #f1f5f9",padding:"0.625rem 0.875rem"}}>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:d.vendors.length?0:"0"}}>
@@ -1075,11 +1075,11 @@ function GSheetImportWizard({ data, onSave, onClose, prefs, munis, vendors }) {
 
           <div style={{display:"flex",gap:"0.625rem"}}>
             <button onClick={()=>setStep(0)}
-              style={{flex:1,padding:"0.75rem",borderRadius:"0.875rem",border:"1.5px solid #e2e8f0",background:"white",color:"#64748b",fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.85rem"}}>
+              style={{flex:1,padding:"0.75rem",borderRadius:"8px",border:"1.5px solid #e2e8f0",background:"white",color:"#64748b",fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.85rem"}}>
               戻る
             </button>
             <button onClick={doImport}
-              style={{flex:2,padding:"0.75rem",borderRadius:"0.875rem",border:"none",background:"#2563eb",color:"white",fontWeight:800,cursor:"pointer",fontFamily:"inherit",fontSize:"0.85rem"}}>
+              style={{flex:2,padding:"0.75rem",borderRadius:"8px",border:"none",background:"#2563eb",color:"white",fontWeight:800,cursor:"pointer",fontFamily:"inherit",fontSize:"0.85rem"}}>
               📥 {prefName}にインポート
             </button>
           </div>
@@ -1098,14 +1098,14 @@ function GSheetImportWizard({ data, onSave, onClose, prefs, munis, vendors }) {
               ["⏭ 既存自治体", importResult.skipMuni+"件スキップ"],
               ["⏭ 既存業者", importResult.skipVendor+"件（自治体紐付け）"],
             ].map(([k,v])=>(
-              <div key={k} style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:"0.75rem",padding:"0.625rem 0.5rem",textAlign:"center"}}>
+              <div key={k} style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:"6px",padding:"0.625rem 0.5rem",textAlign:"center"}}>
                 <div style={{fontSize:"0.72rem",color:"#64748b",marginBottom:"0.15rem"}}>{k}</div>
                 <div style={{fontWeight:800,fontSize:"0.9rem",color:"#1e3a5f"}}>{v}</div>
               </div>
             ))}
           </div>
           <button onClick={onClose}
-            style={{width:"100%",padding:"0.875rem",borderRadius:"0.875rem",border:"none",background:"#2563eb",color:"white",fontWeight:800,cursor:"pointer",fontFamily:"inherit",fontSize:"0.9rem"}}>
+            style={{width:"100%",padding:"0.875rem",borderRadius:"8px",border:"none",background:"#2563eb",color:"white",fontWeight:800,cursor:"pointer",fontFamily:"inherit",fontSize:"0.9rem"}}>
             閉じる
           </button>
         </div>
@@ -1130,7 +1130,7 @@ function DupModal({existing, incoming, onKeepBoth, onUseExisting, onCancel, dupR
   ].filter(Boolean);
   return (
     <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.6)",padding:"1rem"}}>
-      <div style={{background:"white",borderRadius:"1.25rem",padding:"1.5rem 1.25rem",maxWidth:380,width:"100%",boxShadow:"0 12px 50px rgba(0,0,0,0.25)",maxHeight:"85vh",overflowY:"auto"}}>
+      <div style={{background:"white",borderRadius:"10px",padding:"1.5rem 1.25rem",maxWidth:380,width:"100%",boxShadow:"0 12px 50px rgba(0,0,0,0.25)",maxHeight:"85vh",overflowY:"auto"}}>
         <div style={{textAlign:"center",marginBottom:"1rem"}}>
           <div style={{fontSize:"1.8rem",marginBottom:"0.4rem"}}>⚠️</div>
           <div style={{fontWeight:800,fontSize:"1rem",color:C.text}}>同じ名前が既に存在します</div>
@@ -1139,7 +1139,7 @@ function DupModal({existing, incoming, onKeepBoth, onUseExisting, onCancel, dupR
           </div>
           <div style={{fontWeight:700,fontSize:"0.95rem",color:"#dc2626",background:"#fee2e2",borderRadius:"0.625rem",padding:"0.5rem 0.875rem",marginTop:"0.4rem"}}>「{incoming}」</div>
         </div>
-        <div style={{background:C.bg,borderRadius:"0.875rem",padding:"0.875rem 1rem",marginBottom:"1.25rem"}}>
+        <div style={{background:C.bg,borderRadius:"8px",padding:"0.875rem 1rem",marginBottom:"1.25rem"}}>
           <div style={{fontSize:"0.7rem",fontWeight:700,color:C.textMuted,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:"0.5rem"}}>📋 既に登録されているデータ</div>
           {rows.length===0
             ? <div style={{fontSize:"0.82rem",color:C.textMuted}}>（詳細情報なし）</div>
@@ -1153,14 +1153,14 @@ function DupModal({existing, incoming, onKeepBoth, onUseExisting, onCancel, dupR
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
           {onUseExisting&&(
-            <button onClick={onUseExisting} style={{padding:"0.75rem",borderRadius:"0.75rem",border:"none",background:C.accent,color:"white",fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.9rem"}}>
+            <button onClick={onUseExisting} style={{padding:"0.75rem",borderRadius:"6px",border:"none",background:C.accent,color:"white",fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.9rem"}}>
               既存のものを開く
             </button>
           )}
-          <button onClick={onKeepBoth} style={{padding:"0.75rem",borderRadius:"0.75rem",border:`1.5px solid ${C.accent}`,background:"white",color:C.accent,fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.9rem"}}>
+          <button onClick={onKeepBoth} style={{padding:"0.75rem",borderRadius:"6px",border:`1.5px solid ${C.accent}`,background:"white",color:C.accent,fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.9rem"}}>
             それでも新規追加する
           </button>
-          <button onClick={onCancel} style={{padding:"0.625rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:600,cursor:"pointer",fontFamily:"inherit",fontSize:"0.85rem"}}>
+          <button onClick={onCancel} style={{padding:"0.625rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:600,cursor:"pointer",fontFamily:"inherit",fontSize:"0.85rem"}}>
             キャンセル（入力に戻る）
           </button>
         </div>
@@ -1189,7 +1189,7 @@ function UserPicker({users=[],selected=[],onChange,label="担当者"}) {
 function PrivateToggle({value,onChange}) {
   return (
     <div onClick={()=>onChange(!value)}
-      style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0.75rem 1rem",background:value?"#fff1f2":"#f8fafc",borderRadius:"0.75rem",border:`1.5px solid ${value?"#fca5a5":C.border}`,marginBottom:"1rem",cursor:"pointer"}}>
+      style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0.75rem 1rem",background:value?"#fff1f2":"#f8fafc",borderRadius:"6px",border:`1.5px solid ${value?"#fca5a5":C.border}`,marginBottom:"1rem",cursor:"pointer"}}>
       <div>
         <div style={{fontSize:"0.85rem",fontWeight:700,color:value?"#dc2626":C.text}}>🔒 プライベート</div>
         <div style={{fontSize:"0.72rem",color:C.textMuted,marginTop:"0.1rem"}}>ONにすると自分だけに表示</div>
@@ -1264,20 +1264,21 @@ const authFwStyle    = {marginBottom:"1rem"};
 
 function AuthWrap({children}) {
   return (
-    <div style={{minHeight:"100vh",background:"#f8f9fc",display:"flex",alignItems:"center",justifyContent:"center",padding:"1.5rem",fontFamily:"-apple-system,'Helvetica Neue','Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif"}}>
+    <div style={{minHeight:"100vh",background:"#ffffff",display:"flex",alignItems:"center",justifyContent:"center",padding:"1.5rem",fontFamily:"-apple-system,'Helvetica Neue','Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif"}}>
       <div style={{width:"100%",maxWidth:380}}>
         <div style={{textAlign:"center",marginBottom:"2rem"}}>
-          <div style={{margin:"0 auto 1.25rem",textAlign:"center"}}>
-            <svg width="56" height="56" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg" style={{margin:"0 auto",display:"block"}}>
-              <rect width="56" height="56" rx="16" fill="#4f46e5"/>
-              <path d="M14 20h6l4 10 4-10h6v16h-5V26l-3.5 10h-3L19 26v10h-5V20z" fill="white"/>
-              <circle cx="40" cy="38" r="4" fill="#a5b4fc"/>
-            </svg>
+          <div style={{margin:"0 auto 2rem",textAlign:"center"}}>
+            <div style={{display:"inline-flex",alignItems:"center",gap:"0.625rem"}}>
+              <div style={{width:36,height:36,borderRadius:"10px",background:C.accent,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                  <path d="M3 5h5l2 5 2-5h5v10h-3.5V9.5L11 15H9L6.5 9.5V15H3V5z" fill="white"/>
+                </svg>
+              </div>
+              <span style={{fontSize:"1.5rem",fontWeight:700,color:C.text,letterSpacing:"-0.02em"}}>MyDesk</span>
+            </div>
           </div>
-          <div style={{fontSize:"1.75rem",fontWeight:800,color:C.text,letterSpacing:"-0.04em",fontFamily:"Georgia,serif"}}>MyDesk</div>
-          <div style={{fontSize:"0.78rem",color:C.textMuted,marginTop:"0.3rem",letterSpacing:"0.08em",textTransform:"uppercase",fontWeight:500}}>Sales & Team Management</div>
         </div>
-        <div style={{background:"white",borderRadius:"1.5rem",padding:"2.25rem 2rem",boxShadow:"0 0 0 1px rgba(0,0,0,0.06),0 8px 48px rgba(0,0,0,0.08)"}}>
+        <div style={{background:"white",borderRadius:"12px",padding:"2.5rem 2rem",boxShadow:"0 0 0 1px #e8eaed",border:"1px solid #e8eaed"}}>
           {children}
         </div>
       </div>
@@ -1295,7 +1296,7 @@ function AuthInfoBox({msg}) {
 function AuthBigBtn({onClick,disabled,children}) {
   return (
     <button onClick={onClick} disabled={disabled}
-      style={{width:"100%",padding:"0.875rem",borderRadius:"0.875rem",border:"none",cursor:"pointer",fontFamily:"inherit",background:C.accent,color:"white",fontWeight:700,fontSize:"0.95rem",letterSpacing:"0.01em",boxShadow:`0 1px 2px rgba(0,0,0,0.1)`,opacity:disabled?0.7:1}}>
+      style={{width:"100%",padding:"0.875rem",borderRadius:"8px",border:"none",cursor:"pointer",fontFamily:"inherit",background:C.accent,color:"white",fontWeight:600,fontSize:"0.9rem",letterSpacing:"0.01em",boxShadow:"none",opacity:disabled?0.7:1}}>
       {children}
     </button>
   );
@@ -1442,7 +1443,7 @@ function AuthScreen({onLogin}) {
   // ── LOGIN / REGISTER ──────────────────────────────────────────────────────
   return (
     <AuthWrap>
-      <div style={{display:"flex",background:C.bg,borderRadius:"0.75rem",padding:"0.25rem",marginBottom:"1.75rem"}}>
+      <div style={{display:"flex",background:C.bg,borderRadius:"6px",padding:"0.25rem",marginBottom:"1.75rem"}}>
         {[["login","ログイン"],["register","新規登録"]].map(([id,lbl2])=>(
           <button key={id} onClick={()=>goMode(id)}
             style={{flex:1,padding:"0.55rem",borderRadius:"0.55rem",border:"none",cursor:"pointer",fontWeight:700,fontSize:"0.85rem",fontFamily:"inherit",
@@ -1590,7 +1591,7 @@ function SalesRefPicker({value, onChange, salesData={}}) {
       )}
       {open && <>
         <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:490}}/>
-        <div style={{position:"fixed",top:pos.top,left:pos.left,width:pos.width,zIndex:491,border:"1.5px solid #e2e8f0",borderRadius:"0.75rem",background:"white",overflow:"hidden",boxShadow:"0 8px 32px rgba(0,0,0,0.18)"}}>
+        <div style={{position:"fixed",top:pos.top,left:pos.left,width:pos.width,zIndex:491,border:"1.5px solid #e2e8f0",borderRadius:"6px",background:"white",overflow:"hidden",boxShadow:"0 8px 32px rgba(0,0,0,0.18)"}}>
           {/* タブ */}
           <div style={{display:"flex",borderBottom:"1px solid #e2e8f0"}}>
             {TABS.map(([lbl,icon])=>(
@@ -1727,9 +1728,9 @@ function TaskCommentInput({taskId, data, setData, users=[], uid}) {
       <input value={text} onChange={e=>setText(e.target.value)}
         onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();submit();}}}
         placeholder="コメントを追加... (@名前 でメンション)"
-        style={{flex:1,padding:"0.5rem 0.75rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none"}}/>
+        style={{flex:1,padding:"0.5rem 0.75rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none"}}/>
       <button onClick={submit} disabled={!text.trim()}
-        style={{padding:"0.5rem 0.875rem",borderRadius:"0.75rem",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",opacity:text.trim()?1:0.4}}>
+        style={{padding:"0.5rem 0.875rem",borderRadius:"6px",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",opacity:text.trim()?1:0.4}}>
         送信
       </button>
     </div>
@@ -1808,7 +1809,7 @@ function ActivityLog({ data, users=[], filterTypes=null }) {
           {/* フィルター＋検索 */}
           <div style={{display:"flex",flexDirection:"column",gap:"0.5rem",marginBottom:"0.75rem"}}>
             <input value={search} onChange={e=>{setSearch(e.target.value);setPage(0);}} placeholder="🔍 名前・操作で検索..."
-              style={{width:"100%",padding:"0.5rem 0.75rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,fontSize:"0.82rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
+              style={{width:"100%",padding:"0.5rem 0.75rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,fontSize:"0.82rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
             <div style={{display:"flex",gap:"0.375rem",flexWrap:"wrap"}}>
               {types.map(t=>(
                 <button key={t} onClick={()=>{setFilter(t);setPage(0);}}
@@ -1816,7 +1817,7 @@ function ActivityLog({ data, users=[], filterTypes=null }) {
                     fontSize:"0.72rem",fontWeight:filter===t?800:500,
                     background:filter===t?(TYPE_META[t]?.bg||C.accent):"white",
                     color:filter===t?(TYPE_META[t]?.color||"white"):C.textSub,
-                    boxShadow:C.shadow}}>
+                    boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
                   {t==="all"?"すべて":(TYPE_META[t]?.icon+" "+t)}
                 </button>
               ))}
@@ -1833,7 +1834,7 @@ function ActivityLog({ data, users=[], filterTypes=null }) {
               const tm = TYPE_META[log.entityType] || {bg:"#f1f5f9",color:"#475569",icon:"📝"};
               const fi = FIELD_ICON[log.field] || "📝";
               return (
-                <div key={log.id||i} style={{background:"white",borderRadius:"0.75rem",padding:"0.625rem 0.875rem",border:`1px solid ${C.borderLight}`,display:"flex",gap:"0.625rem",alignItems:"flex-start"}}>
+                <div key={log.id||i} style={{background:"white",borderRadius:"6px",padding:"0.625rem 0.875rem",border:`1px solid ${C.borderLight}`,display:"flex",gap:"0.625rem",alignItems:"flex-start"}}>
                   {/* 種別アイコン */}
                   <div style={{flexShrink:0,width:28,height:28,borderRadius:"50%",background:tm.bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.8rem",marginTop:"0.05rem"}}>
                     {tm.icon}
@@ -1865,7 +1866,7 @@ function ActivityLog({ data, users=[], filterTypes=null }) {
           {/* もっと見る */}
           {hasMore && (
             <button onClick={()=>setPage(p=>p+1)}
-              style={{width:"100%",marginTop:"0.625rem",padding:"0.625rem",borderRadius:"0.75rem",border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.8rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+              style={{width:"100%",marginTop:"0.625rem",padding:"0.625rem",borderRadius:"6px",border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.8rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
               さらに表示（残り{filtered.length-paged.length}件）
             </button>
           )}
@@ -2301,13 +2302,13 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
   const TMemoSection = ({entityKey,entityId,memos=[]}) => (
     <div>
       <div style={{display:"flex",flexDirection:"column",gap:"0.5rem",marginBottom:"0.625rem"}}>
-        {memos.length===0&&<div style={{textAlign:"center",padding:"1.5rem",color:C.textMuted,background:C.bg,borderRadius:"0.75rem",fontSize:"0.82rem"}}>メモなし</div>}
+        {memos.length===0&&<div style={{textAlign:"center",padding:"1.5rem",color:C.textMuted,background:C.bg,borderRadius:"6px",fontSize:"0.82rem"}}>メモなし</div>}
         {[...memos].reverse().map(m=>{
           const mu=users.find(u=>u.id===m.userId);
           const isMe=m.userId===uid;
           const isEditing=tMemoEdit?.entityId===entityId&&tMemoEdit?.memoId===m.id;
           return (
-            <div key={m.id} style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"0.875rem",padding:"0.75rem 1rem",boxShadow:C.shadow}}>
+            <div key={m.id} style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"8px",padding:"0.75rem 1rem",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.3rem"}}>
                 <span style={{fontSize:"0.72rem",fontWeight:700,color:C.accentDark}}>{mu?.name||"不明"}</span>
                 <div style={{display:"flex",alignItems:"center",gap:"0.25rem"}}>
@@ -2340,9 +2341,9 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
       <div style={{display:"flex",gap:"0.4rem"}}>
         <textarea value={tMemoIn[entityId]||""} onChange={e=>{setTMemoIn(p=>({...p,[entityId]:e.target.value}));e.target.style.height="auto";e.target.style.height=e.target.scrollHeight+"px";}}
           placeholder="メモを追加... (Shift+Enterで改行)"
-          style={{flex:1,padding:"0.5rem 0.75rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none",resize:"none",minHeight:60,lineHeight:1.5,overflow:"hidden"}}/>
+          style={{flex:1,padding:"0.5rem 0.75rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none",resize:"none",minHeight:60,lineHeight:1.5,overflow:"hidden"}}/>
         <button onClick={()=>addTMemo(entityKey,entityId,tMemoIn[entityId]||"")} disabled={!(tMemoIn[entityId]||"").trim()}
-          style={{padding:"0.5rem 0.875rem",borderRadius:"0.75rem",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",alignSelf:"flex-end",opacity:(tMemoIn[entityId]||"").trim()?1:0.4}}>
+          style={{padding:"0.5rem 0.875rem",borderRadius:"6px",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",alignSelf:"flex-end",opacity:(tMemoIn[entityId]||"").trim()?1:0.4}}>
           追加
         </button>
       </div>
@@ -2362,7 +2363,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     return (
     <div>
       <div style={{display:"flex",flexDirection:"column",gap:"0.4rem",marginBottom:"0.625rem"}}>
-        {chat.length===0&&<div style={{textAlign:"center",padding:"1.5rem",color:C.textMuted,background:C.bg,borderRadius:"0.75rem",fontSize:"0.82rem"}}>まだコメントがありません</div>}
+        {chat.length===0&&<div style={{textAlign:"center",padding:"1.5rem",color:C.textMuted,background:C.bg,borderRadius:"6px",fontSize:"0.82rem"}}>まだコメントがありません</div>}
         {chat.map(m=>{
           const cu=users.find(u=>u.id===m.userId);
           const isMe=m.userId===uid;
@@ -2385,7 +2386,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
                   </div>
                 ):(
                   <div style={{position:"relative"}}>
-                    <div style={{background:isMe?C.accent:"white",color:isMe?"white":C.text,borderRadius:isMe?"0.875rem 0.875rem 0.25rem 0.875rem":"0.875rem 0.875rem 0.875rem 0.25rem",padding:"0.4rem 0.7rem",fontSize:"0.85rem",lineHeight:1.5,border:isMe?"none":`1px solid ${C.border}`,boxShadow:C.shadow}}>
+                    <div style={{background:isMe?C.accent:"white",color:isMe?"white":C.text,borderRadius:isMe?"0.875rem 0.875rem 0.25rem 0.875rem":"0.875rem 0.875rem 0.875rem 0.25rem",padding:"0.4rem 0.7rem",fontSize:"0.85rem",lineHeight:1.5,border:isMe?"none":`1px solid ${C.border}`,boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
                       {m.text.split(/(@\S+)/g).map((p,i)=>p.startsWith("@")?<span key={i} style={{background:"rgba(255,255,255,0.25)",borderRadius:3,padding:"0 2px",fontWeight:700}}>{p}</span>:p)}
                     </div>
                     {isMe&&<div style={{display:"flex",gap:"0.2rem",justifyContent:"flex-end",marginTop:"0.15rem"}}>
@@ -2405,7 +2406,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
       </div>
       <div style={{position:"relative"}}>
         {mentionCandidates.length>0&&(
-          <div style={{position:"absolute",bottom:"100%",left:0,right:0,background:"white",border:`1px solid ${C.border}`,borderRadius:"0.75rem",boxShadow:C.shadowMd,zIndex:50,overflow:"hidden",marginBottom:4}}>
+          <div style={{position:"absolute",bottom:"100%",left:0,right:0,background:"white",border:`1px solid ${C.border}`,borderRadius:"6px",boxShadow:"0 1px 3px rgba(0,0,0,0.06),0 0 0 1px rgba(0,0,0,0.04)",zIndex:50,overflow:"hidden",marginBottom:4}}>
             {mentionCandidates.map(u=>(
               <button key={u.id} onMouseDown={e=>{e.preventDefault();insertMention(u.name);}}
                 style={{display:"flex",alignItems:"center",gap:"0.5rem",width:"100%",padding:"0.5rem 0.875rem",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",borderBottom:`1px solid ${C.borderLight}`}}>
@@ -2421,9 +2422,9 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
           <textarea value={val} onChange={e=>{setTChatIn(p=>({...p,[entityId]:e.target.value}));e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,160)+"px";}}
             onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();addTChat(entityKey,entityId,val);}}}
             placeholder="コメント... (@ でメンション、Enterで送信)"
-            style={{flex:1,padding:"0.5rem 0.75rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none",resize:"none",minHeight:40,maxHeight:160,lineHeight:1.5,overflow:"auto"}}/>
+            style={{flex:1,padding:"0.5rem 0.75rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none",resize:"none",minHeight:40,maxHeight:160,lineHeight:1.5,overflow:"auto"}}/>
           <button onClick={()=>addTChat(entityKey,entityId,val)} disabled={!val.trim()}
-            style={{padding:"0.5rem 0.875rem",borderRadius:"0.75rem",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",opacity:val.trim()?1:0.4,flexShrink:0}}>
+            style={{padding:"0.5rem 0.875rem",borderRadius:"6px",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",opacity:val.trim()?1:0.4,flexShrink:0}}>
             送信
           </button>
         </div>
@@ -2466,7 +2467,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
           </div>
         </Card>
         {/* Tabs */}
-        <div style={{display:"flex",background:"white",borderRadius:"0.75rem",padding:"0.2rem",marginBottom:"1rem",border:`1px solid ${C.border}`}}>
+        <div style={{display:"flex",background:"white",borderRadius:"6px",padding:"0.2rem",marginBottom:"1rem",border:`1px solid ${C.border}`}}>
           {TASK_TABS.map(([id,icon,lbl])=>(
             <button key={id} onClick={()=>setTaskTab(id)} style={{flex:1,padding:"0.5rem",borderRadius:"0.5rem",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.78rem",position:"relative",background:taskTab===id?C.accent:"transparent",color:taskTab===id?"white":C.textSub}}>
               {icon} {lbl}
@@ -2496,13 +2497,13 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
             })()}
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.5rem",marginBottom:"0.875rem"}}>
               {[["📅 期限",activeTask.dueDate||"未設定"],["👤 担当",assignedNames.length>0?assignedNames.join("・"):"未設定"]].map(([k,v])=>(
-                <div key={k} style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"0.625rem",padding:"0.5rem 0.75rem",boxShadow:C.shadow}}>
+                <div key={k} style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"0.625rem",padding:"0.5rem 0.75rem",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
                   <div style={{fontSize:"0.65rem",color:C.textMuted}}>{k}</div>
                   <div style={{fontSize:"0.82rem",fontWeight:700,color:C.text}}>{v}</div>
                 </div>
               ))}
             </div>
-            {activeTask.notes&&<div style={{fontSize:"0.85rem",color:C.textSub,lineHeight:1.6,padding:"0.75rem",background:"white",border:`1px solid ${C.border}`,borderRadius:"0.75rem",marginBottom:"0.875rem",boxShadow:C.shadow}}>{activeTask.notes}</div>}
+            {activeTask.notes&&<div style={{fontSize:"0.85rem",color:C.textSub,lineHeight:1.6,padding:"0.75rem",background:"white",border:`1px solid ${C.border}`,borderRadius:"6px",marginBottom:"0.875rem",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>{activeTask.notes}</div>}
             <div style={{display:"flex",gap:"0.5rem"}}>
               <Btn variant="secondary" onClick={()=>setSheet("editTask")}>✏️ 編集</Btn>
               <Btn variant="danger" onClick={()=>{if(window.confirm("削除しますか？")){deleteTask(activeTask.id);setScreen(fromProject?"projectDetail":"list");}}}>🗑 削除</Btn>
@@ -2591,14 +2592,14 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
                   u = globalAddChangeLog(u,{entityType:"プロジェクト",entityId:activePj.id,entityName:activePj.name,field:"ステータス",oldVal:activePj.status||"",newVal:"完了",userId:uid});
                   setData(u); saveData(u);
                 }}
-                style={{width:"100%",padding:"0.7rem",borderRadius:"0.75rem",border:"none",background:"#059669",color:"white",fontWeight:800,fontSize:"0.88rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
+                style={{width:"100%",padding:"0.7rem",borderRadius:"6px",border:"none",background:"#059669",color:"white",fontWeight:800,fontSize:"0.88rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
                 ✅ プロジェクトを完了にする
               </button>
             )}
           </div>
         </Card>
         {/* Tabs */}
-        <div style={{display:"flex",background:"white",borderRadius:"0.75rem",padding:"0.2rem",marginBottom:"1rem",border:`1px solid ${C.border}`}}>
+        <div style={{display:"flex",background:"white",borderRadius:"6px",padding:"0.2rem",marginBottom:"1rem",border:`1px solid ${C.border}`}}>
           {PJ_TABS.map(([id,icon,lbl])=>(
             <button key={id} onClick={()=>setPjTab(id)} style={{flex:1,padding:"0.5rem",borderRadius:"0.5rem",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.78rem",position:"relative",background:pjTab===id?C.accent:"transparent",color:pjTab===id?"white":C.textSub}}>
               {icon} {lbl}
@@ -2708,7 +2709,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     <div>
       {/* 期限アラート */}
       {urgentTasks.length>0&&(
-        <div style={{marginBottom:"1rem",background:"#fff7ed",border:"1.5px solid #fed7aa",borderRadius:"0.875rem",overflow:"hidden"}}>
+        <div style={{marginBottom:"1rem",background:"#fff7ed",border:"1.5px solid #fed7aa",borderRadius:"8px",overflow:"hidden"}}>
           <div style={{padding:"0.6rem 1rem",display:"flex",alignItems:"center",gap:"0.5rem",borderBottom:"1px solid #fed7aa"}}>
             <span style={{fontSize:"1rem"}}>⏰</span>
             <span style={{fontWeight:800,fontSize:"0.85rem",color:"#c2410c"}}>期限が近いタスク</span>
@@ -2737,7 +2738,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
 
       {/* 次回アクションアラート */}
       {urgentNextActions.length>0&&(
-        <div style={{marginBottom:"1rem",background:"#f0f9ff",border:"1.5px solid #bae6fd",borderRadius:"0.875rem",overflow:"hidden"}}>
+        <div style={{marginBottom:"1rem",background:"#f0f9ff",border:"1.5px solid #bae6fd",borderRadius:"8px",overflow:"hidden"}}>
           <div style={{padding:"0.6rem 1rem",display:"flex",alignItems:"center",gap:"0.5rem",borderBottom:"1px solid #bae6fd"}}>
             <span style={{fontSize:"1rem"}}>📅</span>
             <span style={{fontWeight:800,fontSize:"0.85rem",color:"#0369a1"}}>フォロー予定</span>
@@ -3222,7 +3223,7 @@ function EmailView({data,setData,currentUser=null}) {
   return (
     <div>
       {/* Mode selector */}
-      <div style={{display:"flex",background:C.bg,borderRadius:"0.875rem",padding:"0.25rem",marginBottom:"1.25rem",border:`1px solid ${C.border}`}}>
+      <div style={{display:"flex",background:C.bg,borderRadius:"8px",padding:"0.25rem",marginBottom:"1.25rem",border:`1px solid ${C.border}`}}>
         {[["reply","↩️ 返信"],["compose","✉️ 新規"],["follow","🤝 フォロー"]].map(([id,lbl])=>(
           <button key={id} onClick={()=>{setMode(id);setPhase("input");setGenerated("");}}
             style={{flex:1,padding:"0.625rem 0.35rem",borderRadius:"0.625rem",border:"none",cursor:"pointer",fontFamily:"inherit",
@@ -3323,7 +3324,7 @@ function EmailView({data,setData,currentUser=null}) {
           </div>
 
           {/* ── 宛先・社内外（reply/compose のみ） ── */}
-          {mode!=="follow"&&<div style={{background:"#f8fafc",borderRadius:"0.875rem",padding:"0.875rem",marginBottom:"0.875rem",border:`1px solid ${C.borderLight}`}}>
+          {mode!=="follow"&&<div style={{background:"#f8fafc",borderRadius:"8px",padding:"0.875rem",marginBottom:"0.875rem",border:`1px solid ${C.borderLight}`}}>
             <div style={{fontSize:"0.75rem",fontWeight:800,color:C.textSub,marginBottom:"0.625rem"}}>📬 宛先情報</div>
 
             {/* 社内/社外トグル */}
@@ -3450,7 +3451,7 @@ function EmailView({data,setData,currentUser=null}) {
               {copyState==="ok"?"✓ コピー完了！":copyState==="fail"?"✗ 失敗":"📋 コピー"}
             </Btn>
           </div>
-          <div style={{marginTop:"0.75rem",padding:"0.75rem",background:C.bg,borderRadius:"0.75rem",fontSize:"0.78rem",color:C.textSub}}>
+          <div style={{marginTop:"0.75rem",padding:"0.75rem",background:C.bg,borderRadius:"6px",fontSize:"0.78rem",color:C.textSub}}>
             💡 「コピー」してメールアプリに貼り付けてください。「保存」すると次回の文体学習に活用されます。
           </div>
         </div>
@@ -3459,7 +3460,7 @@ function EmailView({data,setData,currentUser=null}) {
       {/* Style sample sheet */}
       {styleSheet&&(
         <Sheet title="文体サンプルを登録" onClose={()=>setStyleSheet(false)}>
-          <div style={{background:C.accentBg,border:`1px solid ${C.accent}30`,borderRadius:"0.75rem",padding:"0.875rem",marginBottom:"1rem",fontSize:"0.82rem",color:C.accentDark}}>
+          <div style={{background:C.accentBg,border:`1px solid ${C.accent}30`,borderRadius:"6px",padding:"0.875rem",marginBottom:"1rem",fontSize:"0.82rem",color:C.accentDark}}>
             💡 実際に送ったメールや自分らしい文章をそのまま貼り付けてください。AIがあなたの文体・語調を学習します。
           </div>
           <FieldLbl label="サンプル文章">
@@ -3668,7 +3669,7 @@ function MapTab({prefs,munis,vendors,companies,prefCoords,onSelectPref,nextActio
       {nextActions.length>0&&<VisitRoutePlanner entities={nextActions}/>}
 
       {/* Map container */}
-      <div style={{position:"relative",borderRadius:"1rem",overflow:"hidden",border:`1.5px solid ${C.border}`,boxShadow:C.shadowMd}}>
+      <div style={{position:"relative",borderRadius:"1rem",overflow:"hidden",border:`1.5px solid ${C.border}`,boxShadow:"0 1px 3px rgba(0,0,0,0.06),0 0 0 1px rgba(0,0,0,0.04)"}}>
         {!loaded&&(
           <div style={{height:480,display:"flex",alignItems:"center",justifyContent:"center",background:C.bg,flexDirection:"column",gap:"0.75rem"}}>
             <div style={{width:36,height:36,borderRadius:"50%",border:`3px solid ${C.accent}`,borderTopColor:"transparent",animation:"spin 0.8s linear infinite"}}/>
@@ -3678,7 +3679,7 @@ function MapTab({prefs,munis,vendors,companies,prefCoords,onSelectPref,nextActio
         <div ref={mapRef} style={{height:480,display:loaded?"block":"none"}}/>
         {/* Tooltip */}
         {tooltip&&(
-          <div style={{position:"absolute",left:Math.min(tooltip.x+12, 260),top:Math.max(tooltip.y-80,8),zIndex:500,background:"white",borderRadius:"0.75rem",boxShadow:"0 4px 20px rgba(0,0,0,0.18)",border:`1px solid ${C.border}`,padding:"0.625rem 0.875rem",pointerEvents:"none",minWidth:150}}>
+          <div style={{position:"absolute",left:Math.min(tooltip.x+12, 260),top:Math.max(tooltip.y-80,8),zIndex:500,background:"white",borderRadius:"6px",boxShadow:"0 4px 20px rgba(0,0,0,0.18)",border:`1px solid ${C.border}`,padding:"0.625rem 0.875rem",pointerEvents:"none",minWidth:150}}>
             <div style={{fontWeight:800,fontSize:"0.88rem",color:C.text,marginBottom:"0.35rem"}}>{tooltip.name}</div>
             <div style={{display:"flex",flexDirection:"column",gap:"0.2rem"}}>
               <div style={{display:"flex",justifyContent:"space-between",gap:"1rem"}}>
@@ -3704,7 +3705,7 @@ function MapTab({prefs,munis,vendors,companies,prefCoords,onSelectPref,nextActio
       </div>
 
       {/* Legend */}
-      <div style={{marginTop:"0.625rem",padding:"0.625rem 0.875rem",background:"white",borderRadius:"0.75rem",border:`1px solid ${C.border}`}}>
+      <div style={{marginTop:"0.625rem",padding:"0.625rem 0.875rem",background:"white",borderRadius:"6px",border:`1px solid ${C.border}`}}>
         {view==="dustalk"&&(
           <div style={{display:"flex",gap:"0.75rem",flexWrap:"wrap",alignItems:"center"}}>
             <span style={{fontSize:"0.65rem",fontWeight:700,color:C.textMuted}}>展開率</span>
@@ -3860,7 +3861,7 @@ function ScoringAlertPanel({ data, users=[], currentUser, onNavigate }) {
           {/* 案件リスト */}
           {filtered.slice(0,10).map(e=>(
             <div key={e.id} onClick={()=>onNavigate&&onNavigate(e._type,e.id)}
-              style={{display:"flex",alignItems:"flex-start",gap:"0.6rem",padding:"0.6rem 0.75rem",background:"#fafafa",borderRadius:"0.75rem",marginBottom:"0.35rem",cursor:"pointer",border:"1px solid #f3f4f6"}}
+              style={{display:"flex",alignItems:"flex-start",gap:"0.6rem",padding:"0.6rem 0.75rem",background:"#fafafa",borderRadius:"6px",marginBottom:"0.35rem",cursor:"pointer",border:"1px solid #f3f4f6"}}
               onMouseEnter={el=>el.currentTarget.style.background="#fff1f2"}
               onMouseLeave={el=>el.currentTarget.style.background="#fafafa"}>
               <div style={{minWidth:0,flex:1}}>
@@ -4098,7 +4099,7 @@ function TodayTodoPanel({ data, currentUser, users=[], onNavigate }) {
         <div style={{padding:"0.5rem 0.75rem 0.75rem"}}>
           {todos.map((t,i)=>(
             <div key={i} onClick={t.action||undefined}
-              style={{display:"flex",alignItems:"center",gap:"0.6rem",padding:"0.6rem 0.75rem",background:t.bg,borderRadius:"0.75rem",marginBottom:"0.35rem",cursor:t.action?"pointer":"default",border:`1px solid ${t.color}33`}}>
+              style={{display:"flex",alignItems:"center",gap:"0.6rem",padding:"0.6rem 0.75rem",background:t.bg,borderRadius:"6px",marginBottom:"0.35rem",cursor:t.action?"pointer":"default",border:`1px solid ${t.color}33`}}>
               <span style={{fontSize:"1.1rem",flexShrink:0}}>{t.icon}</span>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontWeight:700,fontSize:"0.85rem",color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div>
@@ -4264,7 +4265,7 @@ function PipelineKanban({ data, currentUser, onNavigate, onStatusChange }) {
               onDragOver={e=>{e.preventDefault();setDragOver(status);}}
               onDragLeave={()=>setDragOver(null)}
               onDrop={()=>handleDrop(status)}
-              style={{minWidth:140,background:isOver?"#f0f9ff":PIPE_BG[status],borderRadius:"0.875rem",padding:"0.5rem",border:`2px solid ${isOver?C.accent:PIPE_COLOR[status]+"44"}`,transition:"all 0.15s",flexShrink:0}}>
+              style={{minWidth:140,background:isOver?"#f0f9ff":PIPE_BG[status],borderRadius:"8px",padding:"0.5rem",border:`2px solid ${isOver?C.accent:PIPE_COLOR[status]+"44"}`,transition:"all 0.15s",flexShrink:0}}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.4rem"}}>
                 <span style={{fontSize:"0.72rem",fontWeight:800,color:PIPE_COLOR[status]}}>{status}</span>
                 <span style={{fontSize:"0.7rem",fontWeight:800,background:PIPE_COLOR[status],color:"white",borderRadius:999,padding:"0.05rem 0.4rem"}}>{items.length}</span>
@@ -4333,7 +4334,7 @@ function TeamActivityBoard({ data, users=[], currentUser }) {
         </div>
       </div>
       {stats.map(({u,approaches,assigned,tasks,doneTasks,contracted},i)=>(
-        <div key={u.id} style={{marginBottom:"0.625rem",padding:"0.625rem 0.75rem",background:i===0?"#fffbeb":"#f8fafc",borderRadius:"0.75rem",border:`1px solid ${i===0?"#fde68a":C.borderLight}`}}>
+        <div key={u.id} style={{marginBottom:"0.625rem",padding:"0.625rem 0.75rem",background:i===0?"#fffbeb":"#f8fafc",borderRadius:"6px",border:`1px solid ${i===0?"#fde68a":C.borderLight}`}}>
           <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.35rem"}}>
             {i===0&&<span style={{fontSize:"0.75rem"}}>🏆</span>}
             <span style={{fontWeight:800,fontSize:"0.85rem",color:C.text}}>{u.name}</span>
@@ -4525,7 +4526,7 @@ ${userSummary||"（活動なし）"}
 
       {!showReport&&(
         <button onClick={generateReport} disabled={generating}
-          style={{width:"100%",padding:"0.65rem",borderRadius:"0.875rem",border:"none",background:generating?"#e2e8f0":C.accent,color:generating?"#94a3b8":"white",fontWeight:700,fontSize:"0.88rem",cursor:generating?"not-allowed":"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
+          style={{width:"100%",padding:"0.65rem",borderRadius:"8px",border:"none",background:generating?"#e2e8f0":C.accent,color:generating?"#94a3b8":"white",fontWeight:700,fontSize:"0.88rem",cursor:generating?"not-allowed":"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
           {generating
             ? <><span style={{fontSize:"1rem",display:"inline-block",animation:"spin 1s linear infinite"}}>⚙️</span> レポート生成中...</>
             : <><span>✨</span> AIで{period==="week"?"週次":"月次"}レポートを生成</>}
@@ -4534,20 +4535,20 @@ ${userSummary||"（活動なし）"}
 
       {showReport&&report&&(
         <div>
-          <div style={{background:"#f8fafc",borderRadius:"0.75rem",padding:"0.875rem",fontSize:"0.82rem",color:C.text,lineHeight:1.7,whiteSpace:"pre-wrap",maxHeight:400,overflowY:"auto",border:`1px solid ${C.borderLight}`}}>
+          <div style={{background:"#f8fafc",borderRadius:"6px",padding:"0.875rem",fontSize:"0.82rem",color:C.text,lineHeight:1.7,whiteSpace:"pre-wrap",maxHeight:400,overflowY:"auto",border:`1px solid ${C.borderLight}`}}>
             {report}
           </div>
           <div style={{display:"flex",gap:"0.5rem",marginTop:"0.75rem",flexWrap:"wrap"}}>
             <button onClick={copyReport}
-              style={{flex:1,padding:"0.55rem",borderRadius:"0.75rem",border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",minWidth:80}}>
+              style={{flex:1,padding:"0.55rem",borderRadius:"6px",border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",minWidth:80}}>
               📋 コピー
             </button>
             <button onClick={()=>exportReportPDF(report, period)}
-              style={{flex:1,padding:"0.55rem",borderRadius:"0.75rem",border:"1.5px solid #dc2626",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",minWidth:80}}>
+              style={{flex:1,padding:"0.55rem",borderRadius:"6px",border:"1.5px solid #dc2626",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",minWidth:80}}>
               📄 PDF
             </button>
             <button onClick={()=>{setShowReport(false);setReport("");}}
-              style={{flex:1,padding:"0.55rem",borderRadius:"0.75rem",border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",minWidth:80}}>
+              style={{flex:1,padding:"0.55rem",borderRadius:"6px",border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",minWidth:80}}>
               🔄 再生成
             </button>
           </div>
@@ -4607,7 +4608,7 @@ const BizCardScanner = React.memo(function BizCardScannerInner({ onResult, curre
       <button type="button"
         onClick={()=>fileRef.current?.click()}
         disabled={scanning}
-        style={{width:"100%",padding:"0.75rem",borderRadius:"0.875rem",border:"2px dashed #2563eb",background:scanning?"#eff6ff":"white",color:scanning?"#93c5fd":"#2563eb",fontWeight:700,fontSize:"0.88rem",cursor:scanning?"not-allowed":"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
+        style={{width:"100%",padding:"0.75rem",borderRadius:"8px",border:"2px dashed #2563eb",background:scanning?"#eff6ff":"white",color:scanning?"#93c5fd":"#2563eb",fontWeight:700,fontSize:"0.88rem",cursor:scanning?"not-allowed":"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
         {scanning
           ? <><span style={{fontSize:"1.2rem",animation:"spin 1s linear infinite"}}>🔄</span> 読み取り中...</>
           : <><span style={{fontSize:"1.2rem"}}>📷</span> 名刺を撮影して自動入力</>}
@@ -4735,7 +4736,7 @@ function LinkBizcardModal({ allCards=[], entityType, entityId, entityName, users
             const hasOtherLink=!!(card.salesRef&&!(String(card.salesRef.id)===String(entityId)&&card.salesRef.type===entityType));
             return (
               <div key={card.id} onClick={()=>toggleCard(card.id)}
-                style={{display:"flex",alignItems:"center",gap:"0.6rem",padding:"0.55rem 0.75rem",background:isSel?`${typeColor}11`:"white",borderRadius:"0.75rem",marginBottom:"0.3rem",cursor:"pointer",border:`1.5px solid ${isSel?typeColor:C.borderLight}`,transition:"all 0.1s"}}>
+                style={{display:"flex",alignItems:"center",gap:"0.6rem",padding:"0.55rem 0.75rem",background:isSel?`${typeColor}11`:"white",borderRadius:"6px",marginBottom:"0.3rem",cursor:"pointer",border:`1.5px solid ${isSel?typeColor:C.borderLight}`,transition:"all 0.1s"}}>
                 <div style={{width:20,height:20,borderRadius:"0.3rem",border:`2px solid ${isSel?typeColor:"#cbd5e1"}`,background:isSel?typeColor:"white",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,color:"white",fontSize:"0.8rem"}}>
                   {isSel&&"✓"}
                 </div>
@@ -4759,12 +4760,12 @@ function LinkBizcardModal({ allCards=[], entityType, entityId, entityName, users
           {selected.size>0&&<div style={{fontSize:"0.75rem",fontWeight:700,marginBottom:"0.4rem",textAlign:"center",color:typeColor}}>{selected.size}件を選択中</div>}
           <div style={{display:"flex",gap:"0.75rem"}}>
             <button onClick={onClose}
-              style={{flex:1,padding:"0.65rem",borderRadius:"0.875rem",border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>
+              style={{flex:1,padding:"0.65rem",borderRadius:"8px",border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>
               キャンセル
             </button>
             <button onClick={()=>selected.size>0&&onLink([...selected])}
               disabled={selected.size===0}
-              style={{flex:2,padding:"0.65rem",borderRadius:"0.875rem",border:"none",background:selected.size>0?typeColor:"#e2e8f0",color:selected.size>0?"white":"#94a3b8",fontWeight:800,fontSize:"0.88rem",cursor:selected.size>0?"pointer":"default",fontFamily:"inherit",transition:"background 0.15s"}}>
+              style={{flex:2,padding:"0.65rem",borderRadius:"8px",border:"none",background:selected.size>0?typeColor:"#e2e8f0",color:selected.size>0?"white":"#94a3b8",fontWeight:800,fontSize:"0.88rem",cursor:selected.size>0?"pointer":"default",fontFamily:"inherit",transition:"background 0.15s"}}>
               {selected.size>0?`${selected.size}件を紐づける`:"名刺を選択してください"}
             </button>
           </div>
@@ -4807,7 +4808,7 @@ function LinkedBizcardList({ cards=[], users=[], onUnlink, onNavigateToBizcard, 
     <div>
       {onLink&&(
         <button onClick={e=>{e.stopPropagation();onLink();}}
-          style={{width:"100%",marginBottom:"0.75rem",padding:"0.55rem",borderRadius:"0.75rem",border:`1.5px dashed ${C.accent}`,background:C.accentBg,color:C.accent,fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
+          style={{width:"100%",marginBottom:"0.75rem",padding:"0.55rem",borderRadius:"6px",border:`1.5px dashed ${C.accent}`,background:"#e8f0fe",color:C.accent,fontWeight:600,borderRadius:"6px",fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
           ＋ 名刺を紐づける
         </button>
       )}
@@ -4816,7 +4817,7 @@ function LinkedBizcardList({ cards=[], users=[], onUnlink, onNavigateToBizcard, 
           const name = `${card.lastName||""}${card.firstName ? " "+card.firstName : ""}`.trim()||"（名前なし）";
           return (
             <div key={card.id} onClick={()=>setPopup(card)}
-              style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"0.875rem",padding:"0.75rem 1rem",boxShadow:C.shadow,display:"flex",alignItems:"center",gap:"0.75rem",cursor:"pointer",transition:"box-shadow 0.1s"}}
+              style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"8px",padding:"0.75rem 1rem",boxShadow:"0 1px 2px rgba(0,0,0,0.04)",display:"flex",alignItems:"center",gap:"0.75rem",cursor:"pointer",transition:"box-shadow 0.1s"}}
               onMouseEnter={e=>e.currentTarget.style.boxShadow="0 4px 16px rgba(0,0,0,0.12)"}
               onMouseLeave={e=>e.currentTarget.style.boxShadow=C.shadow}>
               <div style={{width:38,height:38,borderRadius:"50%",background:"linear-gradient(135deg,#2563eb22,#7c3aed22)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"1rem",flexShrink:0}}>🪪</div>
@@ -4852,7 +4853,7 @@ function LinkedBizcardList({ cards=[], users=[], onUnlink, onNavigateToBizcard, 
             </div>
             <div style={{padding:"1rem 1.25rem 2rem"}}>
               {/* ヘッダー */}
-              <div style={{background:"linear-gradient(135deg,#f0f9ff,#ede9fe)",borderRadius:"0.875rem",padding:"1rem",marginBottom:"1rem"}}>
+              <div style={{background:"linear-gradient(135deg,#f0f9ff,#ede9fe)",borderRadius:"8px",padding:"1rem",marginBottom:"1rem"}}>
                 <div style={{fontSize:"1.3rem",fontWeight:800,color:C.text}}>{`${popup.lastName||""}${popup.firstName ? " "+popup.firstName : ""}`.trim()||"（名前なし）"}</div>
                 {popup.title&&<div style={{fontSize:"0.82rem",color:C.textSub,marginTop:"0.15rem"}}>{popup.title}</div>}
                 <div style={{fontSize:"0.92rem",fontWeight:700,color:"#2563eb",marginTop:"0.35rem"}}>🏢 {popup.company}</div>
@@ -4868,7 +4869,7 @@ function LinkedBizcardList({ cards=[], users=[], onUnlink, onNavigateToBizcard, 
               </div>
               {/* 連絡先 */}
               {(popup.email||popup.mobile||popup.telDirect||popup.telCompany||popup.address)&&(
-                <div style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"0.875rem",padding:"0.875rem 1rem",marginBottom:"1rem"}}>
+                <div style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"8px",padding:"0.875rem 1rem",marginBottom:"1rem"}}>
                   {popup.email&&(
                     <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem"}}>
                       <span style={{fontSize:"0.82rem",color:C.textSub,width:20,textAlign:"center"}}>✉️</span>
@@ -4897,7 +4898,7 @@ function LinkedBizcardList({ cards=[], users=[], onUnlink, onNavigateToBizcard, 
               )}
               {/* メモ */}
               {(popup.memos||[]).length>0&&(
-                <div style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"0.875rem",padding:"0.875rem 1rem"}}>
+                <div style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"8px",padding:"0.875rem 1rem"}}>
                   <div style={{fontWeight:700,fontSize:"0.82rem",color:C.text,marginBottom:"0.5rem"}}>📝 メモ</div>
                   {(popup.memos||[]).map(m=>(
                     <div key={m.id} style={{background:C.bg,borderRadius:"0.5rem",padding:"0.5rem 0.75rem",marginBottom:"0.35rem",fontSize:"0.82rem",color:C.text,whiteSpace:"pre-wrap"}}>
@@ -4931,7 +4932,7 @@ function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach
   return (
     <div>
       <button onClick={e=>{e.stopPropagation();onAddApproach();}}
-        style={{width:"100%",marginBottom:"0.75rem",padding:"0.55rem",borderRadius:"0.75rem",border:`1.5px dashed ${C.accent}`,background:C.accentBg,color:C.accent,fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
+        style={{width:"100%",marginBottom:"0.75rem",padding:"0.55rem",borderRadius:"6px",border:`1.5px dashed ${C.accent}`,background:"#e8f0fe",color:C.accent,fontWeight:600,borderRadius:"6px",fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
         ＋ アプローチを記録
       </button>
       {items.length===0&&(
@@ -5056,7 +5057,7 @@ function SalesTaskPanel({ entityType, entityId, entityName, data, onSave, curren
             const done=pjTasks.filter(t=>t.status==="完了").length;
             return (
               <div key={pj.id} onClick={()=>onNavigateToProject?.(pj.id)}
-                style={{background:C.bg,borderRadius:"0.75rem",padding:"0.625rem 0.875rem",marginBottom:"0.4rem",border:`1px solid ${C.border}`,cursor:onNavigateToProject?"pointer":"default"}}>
+                style={{background:C.bg,borderRadius:"6px",padding:"0.625rem 0.875rem",marginBottom:"0.4rem",border:`1px solid ${C.border}`,cursor:onNavigateToProject?"pointer":"default"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.2rem"}}>
                   <div style={{fontWeight:700,fontSize:"0.85rem",color:C.text}}>{pj.name}</div>
                   {onNavigateToProject&&<span style={{fontSize:"0.68rem",color:C.textMuted}}>›</span>}
@@ -5083,7 +5084,7 @@ function SalesTaskPanel({ entityType, entityId, entityName, data, onSave, curren
             const overdue=due&&due<today&&t.status!=="完了";
             return (
               <div key={t.id} onClick={()=>onNavigateToTask?.(t.id)}
-                style={{background:"white",borderRadius:"0.75rem",padding:"0.625rem 0.875rem",marginBottom:"0.4rem",border:`1px solid ${overdue?"#fca5a5":C.border}`,display:"flex",alignItems:"center",gap:"0.625rem",cursor:onNavigateToTask?"pointer":"default"}}>
+                style={{background:"white",borderRadius:"6px",padding:"0.625rem 0.875rem",marginBottom:"0.4rem",border:`1px solid ${overdue?"#fca5a5":C.border}`,display:"flex",alignItems:"center",gap:"0.625rem",cursor:onNavigateToTask?"pointer":"default"}}>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontWeight:600,fontSize:"0.85rem",color:t.status==="完了"?C.textMuted:C.text,textDecoration:t.status==="完了"?"line-through":"none",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div>
                   {t.dueDate&&<div style={{fontSize:"0.65rem",color:overdue?"#dc2626":C.textMuted,marginTop:"0.1rem"}}>{overdue?"⚠️ ":""}期限：{t.dueDate}</div>}
@@ -5109,7 +5110,7 @@ function SalesTaskPanel({ entityType, entityId, entityName, data, onSave, curren
       )}
       {/* タスク追加フォーム */}
       {addMode==="task"&&(
-        <div style={{background:C.bg,borderRadius:"0.875rem",padding:"0.875rem",border:`1px solid ${C.border}`}}>
+        <div style={{background:C.bg,borderRadius:"8px",padding:"0.875rem",border:`1px solid ${C.border}`}}>
           <div style={{fontWeight:700,fontSize:"0.82rem",color:C.text,marginBottom:"0.75rem"}}>✅ タスクを追加</div>
           <FieldLbl label="タイトル"><Input value={tf.title} onChange={e=>setTf({...tf,title:e.target.value})} autoFocus/></FieldLbl>
           <FieldLbl label="期限"><Input type="date" value={tf.dueDate} onChange={e=>setTf({...tf,dueDate:e.target.value})}/></FieldLbl>
@@ -5132,7 +5133,7 @@ function SalesTaskPanel({ entityType, entityId, entityName, data, onSave, curren
       )}
       {/* プロジェクト追加フォーム */}
       {addMode==="project"&&(
-        <div style={{background:C.bg,borderRadius:"0.875rem",padding:"0.875rem",border:`1px solid ${C.border}`}}>
+        <div style={{background:C.bg,borderRadius:"8px",padding:"0.875rem",border:`1px solid ${C.border}`}}>
           <div style={{fontWeight:700,fontSize:"0.82rem",color:C.text,marginBottom:"0.75rem"}}>🗂 プロジェクトを追加</div>
           <FieldLbl label="プロジェクト名"><Input value={pf.name} onChange={e=>setPf({...pf,name:e.target.value})} autoFocus/></FieldLbl>
           <FieldLbl label="メンバー">
@@ -6403,7 +6404,7 @@ ${recentLogs}
   const deleteBulkBizCard=(ids)=>{const nd={...data,businessCards:(data.businessCards||[]).filter(c=>!ids.includes(c.id))};save(nd);resetBulk();};
   const BulkBar=({statusMap,applyFn,field,extraFields,visibleIds=[],onDelete})=>(
     bulkMode?(
-      <div style={{background:"#eff6ff",border:"1.5px solid #93c5fd",borderRadius:"0.875rem",padding:"0.75rem",marginBottom:"0.875rem"}}>
+      <div style={{background:"#eff6ff",border:"1.5px solid #93c5fd",borderRadius:"8px",padding:"0.75rem",marginBottom:"0.875rem"}}>
         {/* 上段：選択情報 ＋ 全選択/解除 */}
         <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem",flexWrap:"wrap"}}>
           <span style={{fontSize:"0.82rem",fontWeight:800,color:"#1d4ed8",minWidth:"5rem"}}>{bulkSelected.size}件選択中</span>
@@ -6573,7 +6574,7 @@ ${recentLogs}
           {/* フッター */}
           <div style={{padding:"0.875rem 1.25rem",borderTop:`1px solid ${C.borderLight}`,flexShrink:0,display:"flex",gap:"0.625rem"}}>
             <button onClick={()=>setDeleteModal(null)}
-              style={{flex:1,padding:"0.75rem",borderRadius:"0.875rem",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontFamily:"inherit",fontSize:"0.9rem",cursor:"pointer"}}>
+              style={{flex:1,padding:"0.75rem",borderRadius:"8px",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontFamily:"inherit",fontSize:"0.9rem",cursor:"pointer"}}>
               キャンセル
             </button>
             <button onClick={()=>{
@@ -6582,7 +6583,7 @@ ${recentLogs}
               cfg.onDelete([...dmSelected]);
               setDeleteModal(null);
             }}
-              style={{flex:2,padding:"0.75rem",borderRadius:"0.875rem",border:"none",background:dmSelected.size===0?"#f3f4f6":"#dc2626",color:dmSelected.size===0?C.textMuted:"white",fontWeight:800,fontFamily:"inherit",fontSize:"0.9rem",cursor:dmSelected.size===0?"not-allowed":"pointer",transition:"background 0.15s"}}>
+              style={{flex:2,padding:"0.75rem",borderRadius:"8px",border:"none",background:dmSelected.size===0?"#f3f4f6":"#dc2626",color:dmSelected.size===0?C.textMuted:"white",fontWeight:800,fontFamily:"inherit",fontSize:"0.9rem",cursor:dmSelected.size===0?"not-allowed":"pointer",transition:"background 0.15s"}}>
               🗑 {dmSelected.size>0?`${dmSelected.size}件を削除`:"削除する項目を選択"}
             </button>
           </div>
@@ -6592,7 +6593,7 @@ ${recentLogs}
   })();
 
   const TopTabs=()=>(
-    <div style={{display:"flex",background:"white",borderRadius:"0.875rem",padding:"0.25rem",marginBottom:"1rem",border:`1px solid ${C.border}`,boxShadow:C.shadow,position:"relative"}}>
+    <div style={{display:"flex",background:"white",borderRadius:"8px",padding:"0.25rem",marginBottom:"1rem",border:`1px solid ${C.border}`,boxShadow:"0 1px 2px rgba(0,0,0,0.04)",position:"relative"}}>
       {[["dash","📊","概況"],["map","🗺️","地図"],["company","🏢","企業"],["muni","🏛️","自治体"],["vendor","🔧","業者"],["bizcard","🪪","名刺"]].map(([id,icon,lbl])=>(
         <button key={id} onClick={()=>{
           setSalesTab(id);
@@ -6697,7 +6698,7 @@ ${recentLogs}
         </select>
         {/* 自治体チェックボックスグリッド */}
         {muniPickerPref&&(
-          <div style={{border:`1.5px solid ${C.accent}`,borderRadius:"0.75rem",overflow:"hidden",background:"white"}}>
+          <div style={{border:`1.5px solid ${C.accent}`,borderRadius:"6px",overflow:"hidden",background:"white"}}>
             {/* ヘッダー：全選択・全解除 */}
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"0.4rem 0.625rem",background:C.accentBg,borderBottom:`1px solid ${C.border}`}}>
               <span style={{fontSize:"0.72rem",fontWeight:700,color:C.accentDark}}>{prefs.find(p=>p.id===Number(muniPickerPref))?.name} の自治体</span>
@@ -6752,7 +6753,7 @@ ${recentLogs}
           const isMe=m.userId===currentUser?.id;
           const isEditing=memoEdit?.entityId===entityId&&memoEdit?.memoId===m.id;
           return (
-            <div key={m.id} style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"0.875rem",padding:"0.75rem 1rem",boxShadow:C.shadow}}>
+            <div key={m.id} style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"8px",padding:"0.75rem 1rem",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.35rem"}}>
                 <span style={{fontSize:"0.72rem",fontWeight:700,color:C.accentDark}}>{uName(m.userId)}</span>
                 <div style={{display:"flex",alignItems:"center",gap:"0.25rem"}}>
@@ -6783,14 +6784,14 @@ ${recentLogs}
             </div>
           );
         })}
-        {!(memos||[]).length&&<div style={{textAlign:"center",padding:"1.25rem",color:C.textMuted,background:C.bg,borderRadius:"0.875rem",fontSize:"0.82rem"}}>メモがありません</div>}
+        {!(memos||[]).length&&<div style={{textAlign:"center",padding:"1.25rem",color:C.textMuted,background:C.bg,borderRadius:"8px",fontSize:"0.82rem"}}>メモがありません</div>}
       </div>
       <div style={{display:"flex",gap:"0.5rem"}}>
         <textarea data-memoid={entityId} value={memoInputs[entityId]||""} onChange={e=>{setMemoInputs(p=>({...p,[entityId]:e.target.value}));e.target.style.height="auto";e.target.style.height=e.target.scrollHeight+"px";}} onBlur={e=>{if(!e.target.value.trim())e.target.style.height="";e.target.style.height="auto";if(e.target.value)e.target.style.height=e.target.scrollHeight+"px";}}
           placeholder="メモを追加... (Shift+Enterで改行)"
-          style={{flex:1,padding:"0.625rem 0.75rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",resize:"none",minHeight:60,outline:"none",lineHeight:1.5,overflow:"hidden"}}/>
+          style={{flex:1,padding:"0.625rem 0.75rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",resize:"none",minHeight:60,outline:"none",lineHeight:1.5,overflow:"hidden"}}/>
         <button onClick={()=>addMemo(entityKey,entityId,memoInputs[entityId]||"")} disabled={!(memoInputs[entityId]||"").trim()}
-          style={{alignSelf:"flex-end",padding:"0.5rem 0.875rem",borderRadius:"0.75rem",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",opacity:(memoInputs[entityId]||"").trim()?1:0.4}}>
+          style={{alignSelf:"flex-end",padding:"0.5rem 0.875rem",borderRadius:"6px",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",opacity:(memoInputs[entityId]||"").trim()?1:0.4}}>
           追加
         </button>
       </div>
@@ -6838,7 +6839,7 @@ ${recentLogs}
                     </div>
                   ):(
                     <div>
-                      <div style={{background:isMe?C.accent:"white",color:isMe?"white":C.text,borderRadius:isMe?"0.875rem 0.875rem 0.25rem 0.875rem":"0.875rem 0.875rem 0.875rem 0.25rem",padding:"0.45rem 0.7rem",fontSize:"0.87rem",lineHeight:1.5,border:isMe?"none":`1px solid ${C.border}`,boxShadow:C.shadow}}>
+                      <div style={{background:isMe?C.accent:"white",color:isMe?"white":C.text,borderRadius:isMe?"0.875rem 0.875rem 0.25rem 0.875rem":"0.875rem 0.875rem 0.875rem 0.25rem",padding:"0.45rem 0.7rem",fontSize:"0.87rem",lineHeight:1.5,border:isMe?"none":`1px solid ${C.border}`,boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
                         {renderMsg(m.text)}
                       </div>
                       {isMe&&<div style={{display:"flex",gap:"0.2rem",justifyContent:"flex-end",marginTop:"0.15rem"}}>
@@ -6857,12 +6858,12 @@ ${recentLogs}
               </div>
             );
           })}
-          {!(chat||[]).length&&<div style={{textAlign:"center",padding:"1.5rem",color:C.textMuted,background:C.bg,borderRadius:"0.875rem",fontSize:"0.82rem"}}>まだメッセージがありません</div>}
+          {!(chat||[]).length&&<div style={{textAlign:"center",padding:"1.5rem",color:C.textMuted,background:C.bg,borderRadius:"8px",fontSize:"0.82rem"}}>まだメッセージがありません</div>}
         </div>
-        <div style={{background:C.bg,borderRadius:"0.875rem",padding:"0.5rem"}}>
+        <div style={{background:C.bg,borderRadius:"8px",padding:"0.5rem"}}>
           <div style={{position:"relative"}}>
             {mentionCandidates.length>0&&(
-              <div style={{position:"absolute",bottom:"100%",left:0,right:0,background:"white",border:`1px solid ${C.border}`,borderRadius:"0.75rem",boxShadow:C.shadowMd,zIndex:50,overflow:"hidden",marginBottom:4}}>
+              <div style={{position:"absolute",bottom:"100%",left:0,right:0,background:"white",border:`1px solid ${C.border}`,borderRadius:"6px",boxShadow:"0 1px 3px rgba(0,0,0,0.06),0 0 0 1px rgba(0,0,0,0.04)",zIndex:50,overflow:"hidden",marginBottom:4}}>
                 {mentionCandidates.map(u=>(
                   <button key={u.id} onMouseDown={e=>{e.preventDefault();insertMention(u.name);}}
                     style={{display:"flex",alignItems:"center",gap:"0.5rem",width:"100%",padding:"0.5rem 0.875rem",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",borderBottom:`1px solid ${C.borderLight}`}}>
@@ -6879,9 +6880,9 @@ ${recentLogs}
                 onChange={e=>{setChatInputs(p=>({...p,[entityId]:e.target.value}));e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,160)+"px";}}
                 onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();addChat(entityKey,entityId,val);}}}
                 placeholder="メッセージ... (@ でメンション、Enterで送信)"
-                style={{flex:1,padding:"0.5rem 0.75rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none",resize:"none",minHeight:40,maxHeight:160,lineHeight:1.5,overflow:"auto"}}/>
+                style={{flex:1,padding:"0.5rem 0.75rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none",resize:"none",minHeight:40,maxHeight:160,lineHeight:1.5,overflow:"auto"}}/>
               <button onClick={()=>addChat(entityKey,entityId,val)} disabled={!val.trim()}
-                style={{padding:"0.5rem 0.875rem",borderRadius:"0.75rem",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",opacity:val.trim()?1:0.4,flexShrink:0}}>
+                style={{padding:"0.5rem 0.875rem",borderRadius:"6px",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",opacity:val.trim()?1:0.4,flexShrink:0}}>
                 送信
               </button>
             </div>
@@ -6898,14 +6899,14 @@ ${recentLogs}
     const item=dupQueue[dupIdx];
     return (
       <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:300,display:"flex",alignItems:"center",justifyContent:"center",padding:"1.5rem"}}>
-        <div style={{background:"white",borderRadius:"1.25rem",padding:"1.75rem",maxWidth:380,width:"100%",boxShadow:"0 8px 40px rgba(0,0,0,0.2)"}}>
+        <div style={{background:"white",borderRadius:"10px",padding:"1.75rem",maxWidth:380,width:"100%",boxShadow:"0 8px 40px rgba(0,0,0,0.2)"}}>
           <div style={{fontSize:"1.5rem",textAlign:"center",marginBottom:"0.625rem"}}>⚠️</div>
           <div style={{fontWeight:800,fontSize:"0.93rem",color:C.text,textAlign:"center",marginBottom:"0.25rem"}}>重複する名前があります</div>
           <div style={{fontSize:"0.7rem",color:C.textMuted,textAlign:"center",marginBottom:"0.75rem"}}>{dupIdx+1}/{dupQueue.length}件</div>
-          <div style={{background:C.accentBg,borderRadius:"0.75rem",padding:"0.75rem",marginBottom:"1rem",textAlign:"center",fontWeight:700,color:C.text}}>「{item.name}」</div>
+          <div style={{background:C.accentBg,borderRadius:"6px",padding:"0.75rem",marginBottom:"1rem",textAlign:"center",fontWeight:700,color:C.text}}>「{item.name}」</div>
           <div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
-            <button onClick={()=>handleDupChoice("edit")} style={{padding:"0.75rem",borderRadius:"0.875rem",border:`1.5px solid ${C.accent}`,background:C.accentBg,color:C.accentDark,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>✏️ 既存を編集</button>
-            <button onClick={()=>handleDupChoice("new")} style={{padding:"0.75rem",borderRadius:"0.875rem",border:`1.5px solid ${C.border}`,background:"white",color:C.text,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>➕ 新規登録</button>
+            <button onClick={()=>handleDupChoice("edit")} style={{padding:"0.75rem",borderRadius:"8px",border:`1.5px solid ${C.accent}`,background:C.accentBg,color:C.accentDark,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>✏️ 既存を編集</button>
+            <button onClick={()=>handleDupChoice("new")} style={{padding:"0.75rem",borderRadius:"8px",border:`1.5px solid ${C.border}`,background:"white",color:C.text,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>➕ 新規登録</button>
             <button onClick={()=>{const n=dupIdx+1;if(n>=dupQueue.length){setDupQueue([]);setSheet("bulkDone");}else setDupIdx(n);}} style={{padding:"0.5rem",border:"none",background:"none",color:C.textMuted,cursor:"pointer",fontFamily:"inherit"}}>スキップ</button>
           </div>
         </div>
@@ -7036,7 +7037,7 @@ ${recentLogs}
 
     // ── UI helpers
     const KPI=({label,val,sub,color="#1e293b",bg="white",icon})=>(
-      <div style={{background:bg,border:`1px solid ${C.border}`,borderRadius:"0.875rem",padding:"0.75rem 1rem",boxShadow:C.shadow,flex:1,minWidth:0}}>
+      <div style={{background:bg,border:`1px solid ${C.border}`,borderRadius:"8px",padding:"0.75rem 1rem",boxShadow:"0 1px 2px rgba(0,0,0,0.04)",flex:1,minWidth:0}}>
         {icon&&<div style={{fontSize:"1.2rem",marginBottom:"0.1rem"}}>{icon}</div>}
         <div style={{fontSize:"1.6rem",fontWeight:800,color,lineHeight:1.1}}>{val??"-"}</div>
         <div style={{fontSize:"0.72rem",color:C.textSub,fontWeight:600,marginTop:"0.15rem"}}>{label}</div>
@@ -7049,7 +7050,7 @@ ${recentLogs}
         <TopTabs/>
 
         {/* 期間切替 */}
-        <div style={{display:"flex",background:"white",borderRadius:"0.875rem",padding:"0.25rem",marginBottom:"1rem",border:`1px solid ${C.border}`,gap:"0.25rem"}}>
+        <div style={{display:"flex",background:"white",borderRadius:"8px",padding:"0.25rem",marginBottom:"1rem",border:`1px solid ${C.border}`,gap:"0.25rem"}}>
           {[["week","📅 週間"],["month","📆 月間"]].map(([id,lbl])=>(
             <button key={id} onClick={()=>setDashPeriod(id)}
               style={{flex:1,padding:"0.55rem",borderRadius:"0.625rem",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.82rem",background:dashPeriod===id?C.accent:"transparent",color:dashPeriod===id?"white":C.textSub,transition:"all 0.15s"}}>
@@ -7069,28 +7070,28 @@ ${recentLogs}
 
         {/* 累計KPI */}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.5rem",marginBottom:"1rem"}}>
-          <div style={{background:"linear-gradient(135deg,#1d4ed8,#2563eb)",borderRadius:"0.875rem",padding:"0.875rem 1rem",color:"white"}}>
+          <div style={{background:"linear-gradient(135deg,#1d4ed8,#2563eb)",borderRadius:"8px",padding:"0.875rem 1rem",color:"white"}}>
             <div style={{fontSize:"0.7rem",fontWeight:700,opacity:0.8,marginBottom:"0.25rem"}}>🏢 企業 成約</div>
             <div style={{display:"flex",alignItems:"baseline",gap:"0.3rem"}}>
               <span style={{fontSize:"1.8rem",fontWeight:800}}>{compClosed}</span>
               <span style={{fontSize:"0.75rem",opacity:0.7}}>/ {totalComp}</span>
             </div>
           </div>
-          <div style={{background:"linear-gradient(135deg,#065f46,#059669)",borderRadius:"0.875rem",padding:"0.875rem 1rem",color:"white"}}>
+          <div style={{background:"linear-gradient(135deg,#065f46,#059669)",borderRadius:"8px",padding:"0.875rem 1rem",color:"white"}}>
             <div style={{fontSize:"0.7rem",fontWeight:700,opacity:0.8,marginBottom:"0.25rem"}}>🏛️ 連携協定済</div>
             <div style={{display:"flex",alignItems:"baseline",gap:"0.3rem"}}>
               <span style={{fontSize:"1.8rem",fontWeight:800}}>{treatyDone}</span>
               <span style={{fontSize:"0.75rem",opacity:0.7}}>/ {totalMuni}</span>
             </div>
           </div>
-          <div style={{background:"linear-gradient(135deg,#5b21b6,#7c3aed)",borderRadius:"0.875rem",padding:"0.875rem 1rem",color:"white"}}>
+          <div style={{background:"linear-gradient(135deg,#5b21b6,#7c3aed)",borderRadius:"8px",padding:"0.875rem 1rem",color:"white"}}>
             <div style={{fontSize:"0.7rem",fontWeight:700,opacity:0.8,marginBottom:"0.25rem"}}>✅ ダストーク展開</div>
             <div style={{display:"flex",alignItems:"baseline",gap:"0.3rem"}}>
               <span style={{fontSize:"1.8rem",fontWeight:800}}>{deployed}</span>
               <span style={{fontSize:"0.75rem",opacity:0.7}}>/ {totalMuni}</span>
             </div>
           </div>
-          <div style={{background:"linear-gradient(135deg,#92400e,#d97706)",borderRadius:"0.875rem",padding:"0.875rem 1rem",color:"white"}}>
+          <div style={{background:"linear-gradient(135deg,#92400e,#d97706)",borderRadius:"8px",padding:"0.875rem 1rem",color:"white"}}>
             <div style={{fontSize:"0.7rem",fontWeight:700,opacity:0.8,marginBottom:"0.25rem"}}>🔧 業者 加入済</div>
             <div style={{display:"flex",alignItems:"baseline",gap:"0.3rem"}}>
               <span style={{fontSize:"1.8rem",fontWeight:800}}>{vendJoined}</span>
@@ -7101,7 +7102,7 @@ ${recentLogs}
 
         {/* 担当者別スコアボード */}
         {userStats.length>0&&(
-          <div style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"0.875rem",overflow:"hidden",marginBottom:"1rem",boxShadow:C.shadow}}>
+          <div style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"8px",overflow:"hidden",marginBottom:"1rem",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
             <div style={{padding:"0.75rem 1rem",borderBottom:`1px solid ${C.borderLight}`,fontWeight:800,fontSize:"0.85rem",color:C.text}}>
               👥 担当者別アクティビティ
             </div>
@@ -7148,11 +7149,11 @@ ${recentLogs}
 
         {/* アプローチ種別内訳 */}
         {allApproaches.length>0&&(
-          <div style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"0.875rem",padding:"0.875rem 1rem",marginBottom:"1rem",boxShadow:C.shadow}}>
+          <div style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"8px",padding:"0.875rem 1rem",marginBottom:"1rem",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
             <div style={{fontWeight:800,fontSize:"0.85rem",color:C.text,marginBottom:"0.75rem"}}>📊 アプローチ種別</div>
             <div style={{display:"flex",flexWrap:"wrap",gap:"0.5rem"}}>
               {Object.entries(approachByType).sort((a,b)=>b[1]-a[1]).map(([type,cnt])=>(
-                <div key={type} style={{display:"flex",alignItems:"center",gap:"0.4rem",background:C.bg,borderRadius:"0.75rem",padding:"0.4rem 0.75rem"}}>
+                <div key={type} style={{display:"flex",alignItems:"center",gap:"0.4rem",background:C.bg,borderRadius:"6px",padding:"0.4rem 0.75rem"}}>
                   <span style={{fontSize:"0.95rem"}}>{APPROACH_ICON[type]||"📝"}</span>
                   <span style={{fontSize:"0.82rem",fontWeight:700,color:C.text}}>{type}</span>
                   <span style={{fontSize:"0.85rem",fontWeight:800,color:C.accent}}>{cnt}</span>
@@ -7164,7 +7165,7 @@ ${recentLogs}
 
         {/* 最近のアプローチ履歴 */}
         {recentApproaches.length>0&&(
-          <div style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"0.875rem",overflow:"hidden",boxShadow:C.shadow}}>
+          <div style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"8px",overflow:"hidden",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
             <div style={{padding:"0.75rem 1rem",borderBottom:`1px solid ${C.borderLight}`,fontWeight:800,fontSize:"0.85rem",color:C.text}}>
               📋 アプローチ履歴
             </div>
@@ -7375,9 +7376,9 @@ ${recentLogs}
 
             {phase==="record"&&(<>
               {/* エラー表示 */}
-              {permError&&<div style={{background:"#fee2e2",borderRadius:"0.75rem",padding:"0.75rem",marginBottom:"0.75rem",fontSize:"0.8rem",color:"#dc2626",fontWeight:600}}>{permError}</div>}
+              {permError&&<div style={{background:"#fee2e2",borderRadius:"6px",padding:"0.75rem",marginBottom:"0.75rem",fontSize:"0.8rem",color:"#dc2626",fontWeight:600}}>{permError}</div>}
               {/* ブラウザ別ヒント */}
-              {!permError&&!recording&&<div style={{background:"#eff6ff",borderRadius:"0.75rem",padding:"0.625rem 0.875rem",marginBottom:"0.75rem",fontSize:"0.72rem",color:"#1d4ed8",lineHeight:1.6}}>
+              {!permError&&!recording&&<div style={{background:"#eff6ff",borderRadius:"6px",padding:"0.625rem 0.875rem",marginBottom:"0.75rem",fontSize:"0.72rem",color:"#1d4ed8",lineHeight:1.6}}>
                 💡 <strong>使い方：</strong>録音開始後、マイクの許可を求めるダイアログが出たら「許可」を押してください。<br/>
                 PCのマイクで話した内容が文字起こしされます。<br/>
                 ⚠️ オンラインMTGの相手の声は現状拾えません（自分の声のみ）。
@@ -7410,7 +7411,7 @@ ${recentLogs}
                   📝 文字起こし
                   {finalText&&<span style={{fontSize:"0.65rem",background:"#dcfce7",color:"#166534",borderRadius:999,padding:"0.05rem 0.4rem",fontWeight:600}}>{finalText.length}文字</span>}
                 </div>
-                <div style={{background:"#f8fafc",borderRadius:"0.75rem",border:"1px solid #e2e8f0",minHeight:100,maxHeight:200,overflowY:"auto",padding:"0.75rem",fontSize:"0.82rem",color:"#374151",lineHeight:1.7,position:"relative"}}>
+                <div style={{background:"#f8fafc",borderRadius:"6px",border:"1px solid #e2e8f0",minHeight:100,maxHeight:200,overflowY:"auto",padding:"0.75rem",fontSize:"0.82rem",color:"#374151",lineHeight:1.7,position:"relative"}}>
                   {finalText ? (
                     <span style={{lineHeight:1.8}}>{finalText}</span>
                   ) : recording ? (
@@ -7435,13 +7436,13 @@ ${recentLogs}
               <div style={{marginBottom:"1rem"}}>
                 <div style={{fontWeight:700,fontSize:"0.82rem",color:"#1e293b",marginBottom:"0.5rem"}}>📋 議事録</div>
                 <textarea value={aiResult.summary} onChange={e=>setAiResult(r=>({...r,summary:e.target.value}))}
-                  style={{width:"100%",padding:"0.75rem",borderRadius:"0.75rem",border:"1.5px solid #e2e8f0",fontFamily:"inherit",fontSize:"0.82rem",height:120,boxSizing:"border-box",resize:"vertical",lineHeight:1.6}}/>
+                  style={{width:"100%",padding:"0.75rem",borderRadius:"6px",border:"1.5px solid #e2e8f0",fontFamily:"inherit",fontSize:"0.82rem",height:120,boxSizing:"border-box",resize:"vertical",lineHeight:1.6}}/>
               </div>
               {editedTasks.length>0&&(
                 <div style={{marginBottom:"1rem"}}>
                   <div style={{fontWeight:700,fontSize:"0.82rem",color:"#1e293b",marginBottom:"0.5rem"}}>✅ タスク候補</div>
                   {editedTasks.map((t,i)=>(
-                    <div key={i} style={{background:checkedIds.has(i)?"#f0fdf4":"#f8fafc",border:`1.5px solid ${checkedIds.has(i)?"#bbf7d0":"#e2e8f0"}`,borderRadius:"0.75rem",padding:"0.75rem",marginBottom:"0.5rem"}}>
+                    <div key={i} style={{background:checkedIds.has(i)?"#f0fdf4":"#f8fafc",border:`1.5px solid ${checkedIds.has(i)?"#bbf7d0":"#e2e8f0"}`,borderRadius:"6px",padding:"0.75rem",marginBottom:"0.5rem"}}>
                       <div style={{display:"flex",alignItems:"flex-start",gap:"0.5rem"}}>
                         <input type="checkbox" checked={checkedIds.has(i)} onChange={()=>{setCheckedIds(prev=>{const n=new Set(prev);n.has(i)?n.delete(i):n.add(i);return n;});}}
                           style={{width:16,height:16,marginTop:3,accentColor:"#059669",cursor:"pointer",flexShrink:0}}/>
@@ -7471,14 +7472,14 @@ ${recentLogs}
             {phase==="record"&&(
               <div style={{display:"flex",gap:"0.625rem"}}>
                 {recording ? (
-                  <button onClick={stopRecording} style={{flex:1,padding:"0.875rem",borderRadius:"0.75rem",background:"#dc2626",color:"white",fontWeight:800,fontSize:"0.95rem",border:"none",cursor:"pointer",fontFamily:"inherit"}}>
+                  <button onClick={stopRecording} style={{flex:1,padding:"0.875rem",borderRadius:"6px",background:"#dc2626",color:"white",fontWeight:800,fontSize:"0.95rem",border:"none",cursor:"pointer",fontFamily:"inherit"}}>
                     ⏹ 録音を停止する
                   </button>
                 ) : (
                   <>
-                    <button onClick={()=>{stopRecording();onClose();}} style={{flex:1,padding:"0.75rem",borderRadius:"0.75rem",border:"1.5px solid #e2e8f0",background:"white",color:"#64748b",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>閉じる</button>
+                    <button onClick={()=>{stopRecording();onClose();}} style={{flex:1,padding:"0.75rem",borderRadius:"6px",border:"1.5px solid #e2e8f0",background:"white",color:"#64748b",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>閉じる</button>
                     <button onClick={processWithAI} disabled={!finalText.trim()||aiLoading}
-                      style={{flex:2,padding:"0.75rem",borderRadius:"0.75rem",background:finalText.trim()?"#7c3aed":"#e2e8f0",color:finalText.trim()?"white":"#94a3b8",fontWeight:800,border:"none",cursor:finalText.trim()?"pointer":"default",fontFamily:"inherit",fontSize:"0.9rem"}}>
+                      style={{flex:2,padding:"0.75rem",borderRadius:"6px",background:finalText.trim()?"#7c3aed":"#e2e8f0",color:finalText.trim()?"white":"#94a3b8",fontWeight:800,border:"none",cursor:finalText.trim()?"pointer":"default",fontFamily:"inherit",fontSize:"0.9rem"}}>
                       {aiLoading?"🤖 AI処理中...":"🤖 AIで議事録・タスク生成"}
                     </button>
                   </>
@@ -7487,9 +7488,9 @@ ${recentLogs}
             )}
             {phase==="result"&&(
               <div style={{display:"flex",gap:"0.625rem"}}>
-                <button onClick={()=>setPhase("record")} style={{flex:1,padding:"0.75rem",borderRadius:"0.75rem",border:"1.5px solid #e2e8f0",background:"white",color:"#64748b",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>← 戻る</button>
+                <button onClick={()=>setPhase("record")} style={{flex:1,padding:"0.75rem",borderRadius:"6px",border:"1.5px solid #e2e8f0",background:"white",color:"#64748b",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>← 戻る</button>
                 <button onClick={()=>onSave(aiResult.summary, editedTasks.filter((_,i)=>checkedIds.has(i)))}
-                  style={{flex:2,padding:"0.75rem",borderRadius:"0.75rem",background:"#059669",color:"white",fontWeight:800,border:"none",cursor:"pointer",fontFamily:"inherit"}}>
+                  style={{flex:2,padding:"0.75rem",borderRadius:"6px",background:"#059669",color:"white",fontWeight:800,border:"none",cursor:"pointer",fontFamily:"inherit"}}>
                   💾 保存（タスク{checkedIds.size}件）
                 </button>
               </div>
@@ -7506,7 +7507,7 @@ ${recentLogs}
       {/* ════ 失注・見送りモーダル ════ */}
 {lossModal&&(
   <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.5)",padding:"1rem"}}>
-    <div onClick={e=>e.stopPropagation()} style={{background:"white",borderRadius:"1.25rem",padding:"1.5rem",maxWidth:400,width:"100%",boxShadow:"0 12px 50px rgba(0,0,0,0.25)"}}>
+    <div onClick={e=>e.stopPropagation()} style={{background:"white",borderRadius:"10px",padding:"1.5rem",maxWidth:400,width:"100%",boxShadow:"0 12px 50px rgba(0,0,0,0.25)"}}>
       <div style={{fontSize:"1rem",fontWeight:800,color:C.text,marginBottom:"0.2rem"}}>📋 {lossModal.newStatus}の理由を記録</div>
       <div style={{fontSize:"0.82rem",color:C.textSub,marginBottom:"1rem"}}>「{lossModal.entityName}」</div>
       <div style={{marginBottom:"0.75rem"}}>
@@ -7535,7 +7536,7 @@ ${recentLogs}
 {/* ════ アプローチ記録モーダル ════ */}
 {approachModal&&(
   <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.5)",padding:"1rem"}}>
-    <div onClick={e=>e.stopPropagation()} style={{background:"white",borderRadius:"1.25rem",padding:"1.5rem",maxWidth:380,width:"100%",boxShadow:"0 12px 50px rgba(0,0,0,0.25)"}}>
+    <div onClick={e=>e.stopPropagation()} style={{background:"white",borderRadius:"10px",padding:"1.5rem",maxWidth:380,width:"100%",boxShadow:"0 12px 50px rgba(0,0,0,0.25)"}}>
       <div style={{fontSize:"1rem",fontWeight:800,color:C.text,marginBottom:"0.2rem"}}>📞 アプローチを記録</div>
       <div style={{fontSize:"0.82rem",color:C.textSub,marginBottom:"1rem"}}>「{approachModal.entityName}」</div>
       <div style={{marginBottom:"0.75rem"}}>
@@ -7585,7 +7586,7 @@ ${orig}`})
 {/* ════ 次回アクション設定モーダル ════ */}
 {nextActionModal&&(
   <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.5)",padding:"1rem"}}>
-    <div onClick={e=>e.stopPropagation()} style={{background:"white",borderRadius:"1.25rem",padding:"1.5rem",maxWidth:360,width:"100%",boxShadow:"0 12px 50px rgba(0,0,0,0.25)"}}>
+    <div onClick={e=>e.stopPropagation()} style={{background:"white",borderRadius:"10px",padding:"1.5rem",maxWidth:360,width:"100%",boxShadow:"0 12px 50px rgba(0,0,0,0.25)"}}>
       <div style={{fontSize:"1rem",fontWeight:800,color:C.text,marginBottom:"0.2rem"}}>📅 次回アクション</div>
       <div style={{fontSize:"0.82rem",color:C.textSub,marginBottom:"1rem"}}>「{nextActionModal.entityName}」</div>
       <div style={{marginBottom:"0.75rem"}}>
@@ -7616,13 +7617,13 @@ ${orig}`})
     const card = matchModal.cards[0];
     return (
       <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.5)",padding:"1rem"}} onClick={e=>{if(e.target===e.currentTarget)setMatchModal(null);}}>
-        <div style={{background:"white",borderRadius:"1.25rem",padding:"1.5rem",maxWidth:380,width:"100%",boxShadow:"0 12px 50px rgba(0,0,0,0.25)"}}>
+        <div style={{background:"white",borderRadius:"10px",padding:"1.5rem",maxWidth:380,width:"100%",boxShadow:"0 12px 50px rgba(0,0,0,0.25)"}}>
           <div style={{fontSize:"1rem",fontWeight:800,color:C.text,marginBottom:"0.5rem"}}>🔗 営業先と一致しました</div>
           <div style={{fontSize:"0.82rem",color:C.textSub,marginBottom:"1rem"}}>
             「{card.lastName}{card.firstName}」({card.company}) を以下に紐づけますか？
           </div>
           {matchModal.entities.map(ent=>(
-            <div key={ent.id} style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.6rem 0.75rem",marginBottom:"0.5rem",background:`${COLOR[ent.type]}15`,border:`1.5px solid ${COLOR[ent.type]}44`,borderRadius:"0.75rem"}}>
+            <div key={ent.id} style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.6rem 0.75rem",marginBottom:"0.5rem",background:`${COLOR[ent.type]}15`,border:`1.5px solid ${COLOR[ent.type]}44`,borderRadius:"6px"}}>
               <span style={{fontSize:"0.7rem",fontWeight:800,color:"white",background:COLOR[ent.type],borderRadius:999,padding:"0.1rem 0.5rem",flexShrink:0}}>{ent.type}</span>
               <span style={{fontSize:"0.88rem",fontWeight:700,color:COLOR[ent.type],flex:1}}>{ent.name}</span>
               {card.salesRef ? (
@@ -7647,7 +7648,7 @@ ${orig}`})
           <div style={{fontSize:"1rem",fontWeight:800,color:C.text,marginBottom:"0.5rem"}}>🔗 営業先との一致が見つかりました</div>
           <div style={{fontSize:"0.82rem",color:C.textSub,marginBottom:"1rem"}}>紐づける名刺を選択してください</div>
           {matchModal.groups.map(({entity, cards})=>(
-            <div key={`${entity.type}_${entity.id}`} style={{marginBottom:"1rem",background:"#f8fafc",borderRadius:"0.75rem",padding:"0.75rem"}}>
+            <div key={`${entity.type}_${entity.id}`} style={{marginBottom:"1rem",background:"#f8fafc",borderRadius:"6px",padding:"0.75rem"}}>
               <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginBottom:"0.5rem"}}>
                 <span style={{fontSize:"0.7rem",fontWeight:800,color:"white",background:COLOR[entity.type],borderRadius:999,padding:"0.1rem 0.45rem"}}>{entity.type}</span>
                 <span style={{fontSize:"0.88rem",fontWeight:700}}>{entity.name}</span>
@@ -7685,7 +7686,7 @@ ${orig}`})
   // entity_to_cards
   return (
     <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.5)",padding:"1rem"}} onClick={e=>{if(e.target===e.currentTarget)setMatchModal(null);}}>
-      <div style={{background:"white",borderRadius:"1.25rem",padding:"1.5rem",maxWidth:400,width:"100%",maxHeight:"80vh",overflowY:"auto",boxShadow:"0 12px 50px rgba(0,0,0,0.25)"}}>
+      <div style={{background:"white",borderRadius:"10px",padding:"1.5rem",maxWidth:400,width:"100%",maxHeight:"80vh",overflowY:"auto",boxShadow:"0 12px 50px rgba(0,0,0,0.25)"}}>
         <div style={{fontSize:"1rem",fontWeight:800,color:C.text,marginBottom:"0.5rem"}}>🔗 一致する名刺が見つかりました</div>
         <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginBottom:"1rem"}}>
           <span style={{fontSize:"0.7rem",fontWeight:800,color:"white",background:COLOR[matchModal.entity.type]||C.accent,borderRadius:999,padding:"0.1rem 0.45rem"}}>{matchModal.entity.type}</span>
@@ -7737,26 +7738,26 @@ ${orig}`})
       {/* ⑤⑧ AIタスク提案ダイアログ */}
       {aiTaskProposal&&(
         <div style={{position:"fixed",inset:0,zIndex:700,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.55)",padding:"1rem"}}>
-          <div onClick={e=>e.stopPropagation()} style={{background:"white",borderRadius:"1.25rem",padding:"1.5rem",maxWidth:400,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.25)"}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"white",borderRadius:"10px",padding:"1.5rem",maxWidth:400,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.25)"}}>
             <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem"}}>
               <span style={{fontSize:"1.3rem"}}>✨</span>
               <div style={{fontWeight:800,fontSize:"0.95rem",color:C.text}}>AIがタスクを提案しました</div>
             </div>
             <div style={{fontSize:"0.78rem",color:C.textSub,marginBottom:"1rem"}}>「{aiTaskProposal.entityName}」のアプローチから自動生成</div>
-            <div style={{background:"#eff6ff",borderRadius:"0.75rem",padding:"0.875rem",marginBottom:"0.75rem"}}>
+            <div style={{background:"#eff6ff",borderRadius:"6px",padding:"0.875rem",marginBottom:"0.75rem"}}>
               <div style={{fontSize:"0.72rem",fontWeight:700,color:"#2563eb",marginBottom:"0.3rem"}}>📋 提案タスク</div>
               <div style={{fontWeight:700,fontSize:"0.9rem",color:C.text,marginBottom:"0.25rem"}}>{aiTaskProposal.task.title}</div>
               {aiTaskProposal.task.dueDate&&<div style={{fontSize:"0.75rem",color:"#64748b"}}>📅 期限：{aiTaskProposal.task.dueDate}</div>}
             </div>
             {aiTaskProposal.nextAction&&(
-              <div style={{background:"#faf5ff",borderRadius:"0.75rem",padding:"0.75rem",marginBottom:"1rem",border:"1px solid #ede9fe"}}>
+              <div style={{background:"#faf5ff",borderRadius:"6px",padding:"0.75rem",marginBottom:"1rem",border:"1px solid #ede9fe"}}>
                 <div style={{fontSize:"0.72rem",fontWeight:700,color:"#7c3aed",marginBottom:"0.2rem"}}>💡 次のアクション提案</div>
                 <div style={{fontSize:"0.82rem",color:C.text}}>{aiTaskProposal.nextAction}</div>
               </div>
             )}
             <div style={{display:"flex",gap:"0.5rem"}}>
               <button onClick={()=>setAiTaskProposal(null)}
-                style={{flex:1,padding:"0.6rem",borderRadius:"0.75rem",border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
+                style={{flex:1,padding:"0.6rem",borderRadius:"6px",border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
                 スキップ
               </button>
               <button onClick={()=>{
@@ -7764,7 +7765,7 @@ ${orig}`})
                 save(nd);
                 setAiTaskProposal(null);
               }}
-                style={{flex:2,padding:"0.6rem",borderRadius:"0.75rem",border:"none",background:C.accent,color:"white",fontWeight:800,fontSize:"0.88rem",cursor:"pointer",fontFamily:"inherit"}}>
+                style={{flex:2,padding:"0.6rem",borderRadius:"6px",border:"none",background:C.accent,color:"white",fontWeight:800,fontSize:"0.88rem",cursor:"pointer",fontFamily:"inherit"}}>
                 ✅ タスクに追加する
               </button>
             </div>
@@ -7889,7 +7890,7 @@ ${orig}`})
             )}
           </div>
           {/* Sub-tabs: タイムライン・チャット・タスク・ファイル */}
-          <div style={{display:"flex",background:"white",borderRadius:"0.75rem",padding:"0.2rem",marginBottom:"1rem",border:`1px solid ${C.border}`}}>
+          <div style={{display:"flex",background:"white",borderRadius:"6px",padding:"0.2rem",marginBottom:"1rem",border:`1px solid ${C.border}`}}>
             {[["timeline","📋","履歴"],["chat","💬","チャット"],["tasks","✅","タスク"],["bizcard","🪪","名刺"],["files","📎","ファイル"]].map(([id,icon,lbl])=>(
               <button key={id} onClick={()=>setActiveDetail(id)} style={{flex:1,padding:"0.5rem",borderRadius:"0.5rem",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.72rem",position:"relative",background:activeDetail===id?C.accent:"transparent",color:activeDetail===id?"white":C.textSub}}>
                 {icon} {lbl}
@@ -7920,7 +7921,7 @@ ${orig}`})
               <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
               <FieldLbl label="備考"><Textarea value={form.notes||""} onChange={e=>setForm({...form,notes:e.target.value})} style={{height:70}}/></FieldLbl>
               <div style={{display:"flex",gap:"0.625rem"}}>
-                <button onClick={()=>{if(window.confirm("削除しますか？")){deleteCompany(comp.id);setSheet(null);}}} style={{padding:"0.75rem",borderRadius:"0.875rem",border:`1.5px solid #fee2e2`,background:"#fee2e2",color:"#dc2626",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🗑</button>
+                <button onClick={()=>{if(window.confirm("削除しますか？")){deleteCompany(comp.id);setSheet(null);}}} style={{padding:"0.75rem",borderRadius:"8px",border:`1.5px solid #fee2e2`,background:"#fee2e2",color:"#dc2626",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🗑</button>
                 <Btn variant="secondary" style={{flex:1}} onClick={()=>setSheet(null)}>キャンセル</Btn>
                 <Btn style={{flex:2}} onClick={saveCompany} disabled={!form.name?.trim()}>保存</Btn>
               </div>
@@ -7952,7 +7953,7 @@ ${orig}`})
           const fCount=compFilteredBase.length;
           const statusCounts=hasF?Object.keys(COMPANY_STATUS).map(s=>{const n=compFilteredBase.filter(c=>(c.status||"未接触")===s).length;return n>0?{s,n}:null;}).filter(Boolean):[];
           return (
-            <div style={{background:"#f8fafc",border:`1px solid ${hasF?C.accent:C.border}`,borderRadius:"0.875rem",padding:"0.625rem 0.75rem",marginBottom:"0.75rem"}}>
+            <div style={{background:"#f8fafc",border:`1px solid ${hasF?C.accent:C.border}`,borderRadius:"8px",padding:"0.625rem 0.75rem",marginBottom:"0.75rem"}}>
               <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:hasF?"0.4rem":0}}>
                 <select value={compFilter.assignee} onChange={e=>setCompFilter(p=>({...p,assignee:e.target.value}))}
                   style={{flex:1,padding:"0.3rem 0.5rem",borderRadius:"0.5rem",border:`1.5px solid ${hasF?C.accent:C.border}`,fontSize:"0.78rem",background:hasF?"#eff6ff":"white",color:hasF?C.accent:C.text,fontFamily:"inherit",fontWeight:hasF?700:400}}>
@@ -7979,7 +7980,7 @@ ${orig}`})
           const followComps = companies.filter(c=>c.needFollow);
           if(!followComps.length) return null;
           return (
-            <div style={{background:"#fefce8",border:"1.5px solid #fde047",borderRadius:"0.875rem",padding:"0.75rem 1rem",marginBottom:"0.75rem"}}>
+            <div style={{background:"#fefce8",border:"1.5px solid #fde047",borderRadius:"8px",padding:"0.75rem 1rem",marginBottom:"0.75rem"}}>
               <div style={{fontSize:"0.75rem",fontWeight:800,color:"#854d0e",marginBottom:"0.4rem"}}>⭐ フォロー中 ({followComps.length}件)</div>
               <div style={{display:"flex",flexDirection:"column",gap:"0.3rem"}}>
                 {followComps.map(c=>(
@@ -7997,20 +7998,20 @@ ${orig}`})
           <div style={{position:"relative",flex:1}}>
             <span style={{position:"absolute",left:"0.625rem",top:"50%",transform:"translateY(-50%)",color:C.textMuted,fontSize:"0.85rem",pointerEvents:"none"}}>🔍</span>
             <input value={compSearch} onChange={e=>setCompSearch(e.target.value)} placeholder="企業名で検索"
-              style={{width:"100%",padding:"0.5rem 0.5rem 0.5rem 2rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
+              style={{width:"100%",padding:"0.5rem 0.5rem 0.5rem 2rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
           </div>
           <button onClick={()=>setBulkMode(v=>{if(v){resetBulk();return false;}setBulkSelected(new Set());return true;})}
-            style={{padding:"0.45rem 0.625rem",borderRadius:"0.75rem",border:`1.5px solid ${bulkMode?"#2563eb":C.border}`,background:bulkMode?"#eff6ff":"white",color:bulkMode?"#1d4ed8":C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>☑️</button>
+            style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:`1.5px solid ${bulkMode?"#2563eb":C.border}`,background:bulkMode?"#eff6ff":"white",color:bulkMode?"#1d4ed8":C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>☑️</button>
           <button onClick={()=>setSheet("importCompany")}
-            style={{padding:"0.45rem 0.625rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📥</button>
+            style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📥</button>
           <button onClick={()=>{const rows=companies.map(c=>[c.name||"",c.status||"",c.industry||"",c.contactName||"",c.phone||"",c.email||"",c.address||"",(c.memos||[]).map(m=>m.text||"").join(" / ")]);downloadCSV("企業一覧.csv",["企業名","ステータス","業種","担当者名","電話番号","メールアドレス","住所","メモ"],rows);}}
-            style={{padding:"0.45rem 0.625rem",borderRadius:"0.75rem",border:"1.5px solid #059669",background:"#d1fae5",color:"#065f46",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📤CSV</button>
+            style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:"1.5px solid #059669",background:"#d1fae5",color:"#065f46",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📤CSV</button>
           <button onClick={()=>{setDeleteModal({type:"company"});setDmSearch("");setDmFilter("");setDmSelected(new Set());}}
-            style={{padding:"0.45rem 0.75rem",borderRadius:"0.75rem",border:"1.5px solid #fca5a5",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🗑 削除</button>
+            style={{padding:"0.45rem 0.75rem",borderRadius:"6px",border:"1.5px solid #fca5a5",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🗑 削除</button>
           <Btn size="sm" onClick={()=>{setForm({status:"未接触",assigneeIds:[]});setSheet("addCompany");}}>＋</Btn>
         </div>
         {companies.length===0&&(
-          <div style={{textAlign:"center",padding:"3rem 1rem",color:C.textMuted,background:"white",borderRadius:"0.875rem",border:`1.5px dashed ${C.border}`}}>
+          <div style={{textAlign:"center",padding:"3rem 1rem",color:C.textMuted,background:"white",borderRadius:"8px",border:`1.5px dashed ${C.border}`}}>
             <div style={{fontSize:"2.5rem",marginBottom:"0.75rem"}}>🏢</div>
             <div style={{fontWeight:700,marginBottom:"0.25rem",fontSize:"0.9rem"}}>企業が登録されていません</div>
             <div style={{fontSize:"0.8rem"}}>「＋」から追加してください</div>
@@ -8019,7 +8020,7 @@ ${orig}`})
         {/* 担当者フィルタ結果フラットリスト */}
         {!compSearch&&compFilter.assignee&&(()=>{
           if(!compFilteredBase.length) return (
-            <div style={{textAlign:"center",padding:"1.5rem",color:C.textMuted,background:"white",borderRadius:"0.875rem",border:`1.5px dashed ${C.border}`,fontSize:"0.82rem"}}>該当する企業がありません</div>
+            <div style={{textAlign:"center",padding:"1.5rem",color:C.textMuted,background:"white",borderRadius:"8px",border:`1.5px dashed ${C.border}`,fontSize:"0.82rem"}}>該当する企業がありません</div>
           );
           return (
             <div style={{marginBottom:"0.75rem"}}>
@@ -8031,7 +8032,7 @@ ${orig}`})
                   const lastMemo=(c.memos||[]).slice(-1)[0];
                   return (
                     <div key={c.id} onClick={()=>{setSalesTab("company");saveSalesScroll("company");setActiveCompany(c.id);setActiveDetail("timeline");}}
-                      style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.625rem 0.75rem",background:"white",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,cursor:"pointer",boxShadow:C.shadow}}
+                      style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.625rem 0.75rem",background:"white",borderRadius:"6px",border:`1.5px solid ${C.border}`,cursor:"pointer",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}
                       onMouseEnter={e=>e.currentTarget.style.borderColor=C.accent}
                       onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}>
                       <div style={{flex:1,minWidth:0}}>
@@ -8058,7 +8059,7 @@ ${orig}`})
               const lastMemo=(c.memos||[]).slice(-1)[0];
               return (
                 <div key={c.id} onClick={()=>{setSalesTab("company");saveSalesScroll("company");setActiveCompany(c.id);setActiveDetail("timeline");setCompSearch("");}}
-                  style={{background:"white",border:`1.5px solid ${C.border}`,borderRadius:"0.875rem",padding:"0.875rem 1rem",cursor:"pointer",boxShadow:C.shadow}}>
+                  style={{background:"white",border:`1.5px solid ${C.border}`,borderRadius:"8px",padding:"0.875rem 1rem",cursor:"pointer",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"0.3rem"}}>
                     <span style={{fontWeight:700,fontSize:"0.93rem",color:C.text,flex:1}}>{c.name}</span>
                     <SChip s={c.status} map={COMPANY_STATUS}/>
@@ -8078,7 +8079,7 @@ ${orig}`})
               const items=compFilteredBase.filter(c=>(c.status||"未接触")===s);
               const isOpen=openCompGrp.has(s);
               return (
-                <div key={s} style={{background:"white",borderRadius:"0.875rem",border:`1.5px solid ${C.border}`,overflow:"hidden",boxShadow:C.shadow}}>
+                <div key={s} style={{background:"white",borderRadius:"8px",border:`1.5px solid ${C.border}`,overflow:"hidden",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
                   {/* Group header */}
                   <button onClick={()=>toggleGrp(setOpenCompGrp,s)}
                     style={{width:"100%",display:"flex",alignItems:"center",gap:"0.625rem",padding:"0.75rem 1rem",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
@@ -8181,7 +8182,7 @@ ${orig}`})
                   setImportPreview(mapped); setImportErr("");
                 };
                 return (<>
-                  <div style={{display:"flex",background:"#f1f5f9",borderRadius:"0.75rem",padding:"0.2rem",marginBottom:"1rem"}}>
+                  <div style={{display:"flex",background:"#f1f5f9",borderRadius:"6px",padding:"0.2rem",marginBottom:"1rem"}}>
                     {[["csv","📁 CSVファイル"],["text","📝 テキスト入力"]].map(([id,lbl])=>(
                       <button key={id} onClick={()=>{setImpMode(id);setImportPreview(null);}} style={{flex:1,padding:"0.5rem",borderRadius:"0.55rem",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.8rem",background:impMode===id?"white":"transparent",color:impMode===id?C.text:C.textMuted,boxShadow:impMode===id?"0 1px 4px rgba(0,0,0,0.1)":"none"}}>{lbl}</button>
                     ))}
@@ -8190,14 +8191,14 @@ ${orig}`})
                     <div style={{marginBottom:"1rem"}}>
                       <div style={{fontWeight:700,fontSize:"0.82rem",color:C.text,marginBottom:"0.35rem"}}>企業名を入力（改行・カンマ区切り）</div>
                       <div style={{fontSize:"0.72rem",color:C.textMuted,marginBottom:"0.5rem"}}>スペースは自動削除されます。ステータスは「未接触」で一括登録されます。</div>
-                      <textarea value={textInput} onChange={e=>setTextInput(e.target.value)} placeholder={"株式会社A\n株式会社B\n○○商事"} style={{width:"100%",height:140,borderRadius:"0.75rem",border:`1px solid ${C.border}`,padding:"0.625rem",fontSize:"0.83rem",fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
-                      <button onClick={handleTextParse} disabled={!textInput.trim()} style={{marginTop:"0.5rem",width:"100%",padding:"0.6rem",borderRadius:"0.75rem",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.83rem",cursor:textInput.trim()?"pointer":"default",opacity:textInput.trim()?1:0.5,fontFamily:"inherit"}}>解析する</button>
+                      <textarea value={textInput} onChange={e=>setTextInput(e.target.value)} placeholder={"株式会社A\n株式会社B\n○○商事"} style={{width:"100%",height:140,borderRadius:"6px",border:`1px solid ${C.border}`,padding:"0.625rem",fontSize:"0.83rem",fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
+                      <button onClick={handleTextParse} disabled={!textInput.trim()} style={{marginTop:"0.5rem",width:"100%",padding:"0.6rem",borderRadius:"6px",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.83rem",cursor:textInput.trim()?"pointer":"default",opacity:textInput.trim()?1:0.5,fontFamily:"inherit"}}>解析する</button>
                     </div>
                   )}
                 </>);
               })()}
               {/* Download template (CSV mode only) */}
-              {true&&<div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:"0.875rem",padding:"0.875rem",marginBottom:"1rem"}}>
+              {true&&<div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:"8px",padding:"0.875rem",marginBottom:"1rem"}}>
                 <div style={{fontWeight:700,fontSize:"0.82rem",color:"#1d4ed8",marginBottom:"0.5rem"}}>📥 CSVテンプレートをダウンロード</div>
                 <div style={{fontSize:"0.75rem",color:"#3730a3",marginBottom:"0.625rem"}}>テンプレートに入力してCSV形式で保存後、アップロードしてください</div>
                 <button onClick={()=>downloadCSV("企業インポートテンプレート.csv",
@@ -8212,7 +8213,7 @@ ${orig}`})
               {/* Upload */}
               <div style={{marginBottom:"1rem"}}>
                 <div style={{fontWeight:700,fontSize:"0.82rem",color:C.text,marginBottom:"0.5rem"}}>📤 CSVファイルをアップロード</div>
-                <label style={{display:"block",border:`2px dashed ${C.border}`,borderRadius:"0.875rem",padding:"1.25rem",textAlign:"center",cursor:"pointer",background:C.bg}}>
+                <label style={{display:"block",border:`2px dashed ${C.border}`,borderRadius:"8px",padding:"1.25rem",textAlign:"center",cursor:"pointer",background:C.bg}}>
                   <div style={{fontSize:"1.5rem",marginBottom:"0.35rem"}}>📂</div>
                   <div style={{fontSize:"0.8rem",fontWeight:600,color:C.textSub}}>クリックしてCSVを選択</div>
                   <div style={{fontSize:"0.7rem",color:C.textMuted,marginTop:"0.2rem"}}>UTF-8 / Shift-JIS 両対応 (.csv)</div>
@@ -8228,7 +8229,7 @@ ${orig}`})
                     <span style={{background:"#d1fae5",color:"#065f46",borderRadius:999,fontSize:"0.7rem",fontWeight:700,padding:"0.1rem 0.5rem"}}>{preview.length}件</span>
                     <span style={{fontSize:"0.7rem",color:C.textMuted}}>既存と重複する場合はスキップ</span>
                   </div>
-                  <div style={{maxHeight:220,overflowY:"auto",border:`1px solid ${C.border}`,borderRadius:"0.75rem",overflow:"hidden"}}>
+                  <div style={{maxHeight:220,overflowY:"auto",border:`1px solid ${C.border}`,borderRadius:"6px",overflow:"hidden"}}>
                     {preview.slice(0,20).map((r,i)=>{
                       const dup=companies.some(c=>c.name===r.name);
                       return (
@@ -8370,7 +8371,7 @@ ${orig}`})
             <Btn variant="danger" size="sm" onClick={()=>{if(window.confirm(`${v.name}を削除しますか？`))deleteVendor(v.id);}}>🗑 削除</Btn>
           </div>
           {/* Sub-tabs: 履歴・チャット・タスク・ファイル */}
-          <div style={{display:"flex",background:"white",borderRadius:"0.75rem",padding:"0.2rem",marginBottom:"1rem",border:`1px solid ${C.border}`}}>
+          <div style={{display:"flex",background:"white",borderRadius:"6px",padding:"0.2rem",marginBottom:"1rem",border:`1px solid ${C.border}`}}>
             {[["timeline","📋","履歴"],["chat","💬","チャット"],["tasks","✅","タスク"],["bizcard","🪪","名刺"],["files","📎","ファイル"]].map(([id,icon,lbl])=>(
               <button key={id} onClick={()=>setActiveDetail(id)} style={{flex:1,padding:"0.5rem",borderRadius:"0.5rem",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.72rem",position:"relative",background:activeDetail===id?C.accent:"transparent",color:activeDetail===id?"white":C.textSub}}>
                 {icon} {lbl}
@@ -8400,7 +8401,7 @@ ${orig}`})
               <FieldLbl label="担当者">{AssigneePicker({ids:form.assigneeIds||[],onChange:ids=>setForm({...form,assigneeIds:ids})})}</FieldLbl>
               <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
               <FieldLbl label="許可種別（複数選択可）">
-                <div style={{display:"flex",flexWrap:"wrap",gap:"0.4rem",padding:"0.5rem",background:"#f8fafc",borderRadius:"0.75rem",border:"1px solid #e2e8f0"}}>
+                <div style={{display:"flex",flexWrap:"wrap",gap:"0.4rem",padding:"0.5rem",background:"#f8fafc",borderRadius:"6px",border:"1px solid #e2e8f0"}}>
                   {PERMIT_TYPES.map(p=>{
                     const checked=(form.permitTypes||[]).includes(p);
                     return (
@@ -8413,7 +8414,7 @@ ${orig}`})
                 </div>
               </FieldLbl>
               <FieldLbl label="bee-net加入">
-                <label style={{display:"flex",alignItems:"center",gap:"0.625rem",cursor:"pointer",padding:"0.625rem 0.875rem",borderRadius:"0.75rem",background:form.beeNet?"#eff6ff":"#f8fafc",border:`1.5px solid ${form.beeNet?"#2563eb":"#e2e8f0"}`,transition:"all 0.15s"}}>
+                <label style={{display:"flex",alignItems:"center",gap:"0.625rem",cursor:"pointer",padding:"0.625rem 0.875rem",borderRadius:"6px",background:form.beeNet?"#eff6ff":"#f8fafc",border:`1.5px solid ${form.beeNet?"#2563eb":"#e2e8f0"}`,transition:"all 0.15s"}}>
                   <input type="checkbox" checked={!!form.beeNet} onChange={e=>setForm({...form,beeNet:e.target.checked})} style={{width:18,height:18,accentColor:"#2563eb",cursor:"pointer"}}/>
                   <span style={{fontSize:"0.85rem",fontWeight:form.beeNet?700:400,color:form.beeNet?"#1d4ed8":"#6b7280"}}>{form.beeNet?"✅ 加入済み":"未加入"}</span>
                 </label>
@@ -8459,7 +8460,7 @@ ${orig}`})
           const followVends = vendors.filter(v=>v.needFollow);
           if(!followVends.length) return null;
           return (
-            <div style={{background:"#fefce8",border:"1.5px solid #fde047",borderRadius:"0.875rem",padding:"0.75rem 1rem",marginBottom:"0.75rem"}}>
+            <div style={{background:"#fefce8",border:"1.5px solid #fde047",borderRadius:"8px",padding:"0.75rem 1rem",marginBottom:"0.75rem"}}>
               <div style={{fontSize:"0.75rem",fontWeight:800,color:"#854d0e",marginBottom:"0.4rem"}}>⭐ フォロー中 ({followVends.length}件)</div>
               <div style={{display:"flex",flexDirection:"column",gap:"0.3rem"}}>
                 {followVends.map(v=>{
@@ -8491,7 +8492,7 @@ ${orig}`})
           const muniOptions=vendFilterPref?munis.filter(m=>String(m.prefectureId)===vendFilterPref):[];
           const clearAll=()=>{setVendFilterPref("");setVendFilterMuni("");setVendFilterStatus("");setVendFilterPermit("");setVendFilterAssignee("");};
           return (
-            <div style={{background:"#f8fafc",border:`1px solid ${hasFilter?"#7c3aed":C.border}`,borderRadius:"0.875rem",padding:"0.625rem 0.75rem",marginBottom:"0.75rem"}}>
+            <div style={{background:"#f8fafc",border:`1px solid ${hasFilter?"#7c3aed":C.border}`,borderRadius:"8px",padding:"0.625rem 0.75rem",marginBottom:"0.75rem"}}>
               <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem"}}>
                 <span style={{fontSize:"0.72rem",fontWeight:800,color:C.textSub}}>🔍 絞り込み</span>
                 {hasFilter&&<button onClick={clearAll} style={{fontSize:"0.65rem",background:"#fef2f2",color:"#dc2626",border:"1px solid #fca5a5",borderRadius:999,padding:"0.1rem 0.45rem",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>全解除</button>}
@@ -8547,18 +8548,18 @@ ${orig}`})
           <div style={{position:"relative",flex:1}}>
             <span style={{position:"absolute",left:"0.625rem",top:"50%",transform:"translateY(-50%)",color:C.textMuted,fontSize:"0.85rem",pointerEvents:"none"}}>🔍</span>
             <input value={vendSearch} onChange={e=>setVendSearch(e.target.value)} placeholder="業者名で検索"
-              style={{width:"100%",padding:"0.5rem 0.5rem 0.5rem 2rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
+              style={{width:"100%",padding:"0.5rem 0.5rem 0.5rem 2rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
           </div>
           <button onClick={()=>setBulkMode(v=>{if(v){resetBulk();return false;}setBulkSelected(new Set());return true;})}
-            style={{padding:"0.45rem 0.625rem",borderRadius:"0.75rem",border:`1.5px solid ${bulkMode?"#2563eb":C.border}`,background:bulkMode?"#eff6ff":"white",color:bulkMode?"#1d4ed8":C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>☑️</button>
+            style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:`1.5px solid ${bulkMode?"#2563eb":C.border}`,background:bulkMode?"#eff6ff":"white",color:bulkMode?"#1d4ed8":C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>☑️</button>
           <button onClick={()=>setSheet("importVendor")}
-            style={{padding:"0.45rem 0.625rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📥</button>
+            style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📥</button>
           <button onClick={()=>{setDeleteModal({type:"vendor"});setDmSearch("");setDmFilter("");setDmSelected(new Set());}}
-            style={{padding:"0.45rem 0.75rem",borderRadius:"0.75rem",border:"1.5px solid #fca5a5",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🗑 削除</button>
+            style={{padding:"0.45rem 0.75rem",borderRadius:"6px",border:"1.5px solid #fca5a5",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🗑 削除</button>
           <Btn size="sm" onClick={()=>{setForm({status:"未接触",municipalityIds:[],assigneeIds:[]});setSheet("addVendor");}}>＋</Btn>
         </div>
         {vendors.length===0&&(
-          <div style={{textAlign:"center",padding:"3rem 1rem",color:C.textMuted,background:"white",borderRadius:"0.875rem",border:`1.5px dashed ${C.border}`}}>
+          <div style={{textAlign:"center",padding:"3rem 1rem",color:C.textMuted,background:"white",borderRadius:"8px",border:`1.5px dashed ${C.border}`}}>
             <div style={{fontSize:"2rem",marginBottom:"0.5rem"}}>🔧</div>
             <div style={{fontSize:"0.85rem",fontWeight:600,marginBottom:"0.25rem"}}>業者が登録されていません</div>
             <div style={{fontSize:"0.78rem"}}>「＋」から追加してください</div>
@@ -8567,7 +8568,7 @@ ${orig}`})
         {/* 担当者フィルタ結果フラットリスト */}
         {!vendSearch&&vendFilterAssignee&&(()=>{
           if(!filteredVendors.length) return (
-            <div style={{textAlign:"center",padding:"1.5rem",color:C.textMuted,background:"white",borderRadius:"0.875rem",border:`1.5px dashed ${C.border}`,fontSize:"0.82rem"}}>該当する業者がありません</div>
+            <div style={{textAlign:"center",padding:"1.5rem",color:C.textMuted,background:"white",borderRadius:"8px",border:`1.5px dashed ${C.border}`,fontSize:"0.82rem"}}>該当する業者がありません</div>
           );
           return (
             <div style={{marginBottom:"0.75rem"}}>
@@ -8580,7 +8581,7 @@ ${orig}`})
                   const lastMemo=(v.memos||[]).slice(-1)[0];
                   return (
                     <div key={v.id} onClick={()=>{saveSalesScroll("vendor");setActiveVendor(v.id);setActiveDetail("timeline");}}
-                      style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.625rem 0.75rem",background:"white",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,cursor:"pointer",boxShadow:C.shadow}}
+                      style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.625rem 0.75rem",background:"white",borderRadius:"6px",border:`1.5px solid ${C.border}`,cursor:"pointer",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}
                       onMouseEnter={e=>e.currentTarget.style.borderColor=C.accent}
                       onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}>
                       <div style={{flex:1,minWidth:0}}>
@@ -8611,7 +8612,7 @@ ${orig}`})
               const lastMemo=(v.memos||[]).slice(-1)[0];
               return (
                 <div key={v.id} onClick={()=>{saveSalesScroll("vendor");setActiveVendor(v.id);setActiveDetail("timeline");}}
-                  style={{background:"white",border:`1.5px solid ${C.border}`,borderRadius:"0.875rem",padding:"0.875rem 1rem",cursor:"pointer",boxShadow:C.shadow}}>
+                  style={{background:"white",border:`1.5px solid ${C.border}`,borderRadius:"8px",padding:"0.875rem 1rem",cursor:"pointer",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"0.3rem"}}>
                     <span style={{fontWeight:700,fontSize:"0.93rem",color:C.text,flex:1}}>{v.name}</span>
                     <SChip s={v.status} map={VENDOR_STATUS}/>
@@ -8631,7 +8632,7 @@ ${orig}`})
               const items=filteredVendors.filter(v=>v.status===s);
               const isOpen=openVendGrp.has(s);
               return (
-                <div key={s} style={{background:"white",borderRadius:"0.875rem",border:`1.5px solid ${C.border}`,overflow:"hidden",boxShadow:C.shadow}}>
+                <div key={s} style={{background:"white",borderRadius:"8px",border:`1.5px solid ${C.border}`,overflow:"hidden",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
                   <button onClick={()=>toggleGrp(setOpenVendGrp,s)}
                     style={{width:"100%",display:"flex",alignItems:"center",gap:"0.625rem",padding:"0.75rem 1rem",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
                     <span style={{width:10,height:10,borderRadius:"50%",background:meta.color,flexShrink:0,display:"inline-block"}}/>
@@ -8682,7 +8683,7 @@ ${orig}`})
             <FieldLbl label="担当者">{AssigneePicker({ids:form.assigneeIds||[],onChange:ids=>setForm({...form,assigneeIds:ids})})}</FieldLbl>
             <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
             <FieldLbl label="許可種別（複数選択可）">
-                <div style={{display:"flex",flexWrap:"wrap",gap:"0.4rem",padding:"0.5rem",background:"#f8fafc",borderRadius:"0.75rem",border:"1px solid #e2e8f0"}}>
+                <div style={{display:"flex",flexWrap:"wrap",gap:"0.4rem",padding:"0.5rem",background:"#f8fafc",borderRadius:"6px",border:"1px solid #e2e8f0"}}>
                   {PERMIT_TYPES.map(p=>{
                     const checked=(form.permitTypes||[]).includes(p);
                     return (
@@ -8695,7 +8696,7 @@ ${orig}`})
                 </div>
             </FieldLbl>
             <FieldLbl label="bee-net加入">
-                <label style={{display:"flex",alignItems:"center",gap:"0.625rem",cursor:"pointer",padding:"0.625rem 0.875rem",borderRadius:"0.75rem",background:form.beeNet?"#eff6ff":"#f8fafc",border:`1.5px solid ${form.beeNet?"#2563eb":"#e2e8f0"}`,transition:"all 0.15s"}}>
+                <label style={{display:"flex",alignItems:"center",gap:"0.625rem",cursor:"pointer",padding:"0.625rem 0.875rem",borderRadius:"6px",background:form.beeNet?"#eff6ff":"#f8fafc",border:`1.5px solid ${form.beeNet?"#2563eb":"#e2e8f0"}`,transition:"all 0.15s"}}>
                   <input type="checkbox" checked={!!form.beeNet} onChange={e=>setForm({...form,beeNet:e.target.checked})} style={{width:18,height:18,accentColor:"#2563eb",cursor:"pointer"}}/>
                   <span style={{fontSize:"0.85rem",fontWeight:form.beeNet?700:400,color:form.beeNet?"#1d4ed8":"#6b7280"}}>{form.beeNet?"✅ 加入済み":"未加入"}</span>
                 </label>
@@ -8768,7 +8769,7 @@ ${orig}`})
           };
           return (
             <Sheet title="業者をインポート" onClose={()=>{setSheet(null);setImportPreview(null);setImportErr("");}}>
-              <div style={{background:"#f5f3ff",border:"1px solid #ddd6fe",borderRadius:"0.875rem",padding:"0.875rem",marginBottom:"1rem"}}>
+              <div style={{background:"#f5f3ff",border:"1px solid #ddd6fe",borderRadius:"8px",padding:"0.875rem",marginBottom:"1rem"}}>
                 <div style={{fontWeight:700,fontSize:"0.82rem",color:"#5b21b6",marginBottom:"0.5rem"}}>📥 テンプレートをダウンロード</div>
                 <div style={{fontSize:"0.75rem",color:"#6d28d9",marginBottom:"0.625rem"}}>テンプレートに入力してCSV形式で保存後、アップロードしてください</div>
                 <button onClick={()=>downloadCSV("業者インポートテンプレート.csv",
@@ -8782,7 +8783,7 @@ ${orig}`})
               </div>
               <div style={{marginBottom:"1rem"}}>
                 <div style={{fontWeight:700,fontSize:"0.82rem",color:C.text,marginBottom:"0.5rem"}}>📤 CSVファイルをアップロード</div>
-                <label style={{display:"block",border:`2px dashed ${C.border}`,borderRadius:"0.875rem",padding:"1.25rem",textAlign:"center",cursor:"pointer",background:C.bg}}>
+                <label style={{display:"block",border:`2px dashed ${C.border}`,borderRadius:"8px",padding:"1.25rem",textAlign:"center",cursor:"pointer",background:C.bg}}>
                   <div style={{fontSize:"1.5rem",marginBottom:"0.35rem"}}>📂</div>
                   <div style={{fontSize:"0.8rem",fontWeight:600,color:C.textSub}}>クリックしてCSVを選択</div>
                   <input type="file" accept=".csv,.txt" onChange={handleFile} style={{display:"none"}}/>
@@ -8795,7 +8796,7 @@ ${orig}`})
                     <span style={{fontWeight:700,fontSize:"0.82rem",color:C.text}}>プレビュー</span>
                     <span style={{background:"#d1fae5",color:"#065f46",borderRadius:999,fontSize:"0.7rem",fontWeight:700,padding:"0.1rem 0.5rem"}}>{preview.length}件</span>
                   </div>
-                  <div style={{maxHeight:200,overflowY:"auto",border:`1px solid ${C.border}`,borderRadius:"0.75rem",overflow:"hidden"}}>
+                  <div style={{maxHeight:200,overflowY:"auto",border:`1px solid ${C.border}`,borderRadius:"6px",overflow:"hidden"}}>
                     {preview.slice(0,20).map((r,i)=>{
                       const dup=vendors.some(v=>v.name===r.name);
                       return (
@@ -8903,7 +8904,7 @@ ${orig}`})
             </div>
           </div>
           {/* 許可業者調査チェック */}
-          <div style={{marginTop:"0.75rem",display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.5rem 0.75rem",background:muni.surveyDone?"#d1fae5":"#f8fafc",borderRadius:"0.75rem",border:`1.5px solid ${muni.surveyDone?"#6ee7b7":"#e2e8f0"}`}}>
+          <div style={{marginTop:"0.75rem",display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.5rem 0.75rem",background:muni.surveyDone?"#d1fae5":"#f8fafc",borderRadius:"6px",border:`1.5px solid ${muni.surveyDone?"#6ee7b7":"#e2e8f0"}`}}>
             <input type="checkbox" checked={!!muni.surveyDone} onChange={e=>{
               const nd={...data,municipalities:munis.map(m=>String(m.id)===String(activeMuni)?{...m,surveyDone:e.target.checked,surveyDoneAt:e.target.checked?new Date().toISOString():null}:m)};
               save(nd);
@@ -8955,7 +8956,7 @@ ${orig}`})
           )}
         </div>
         {/* Sub-tabs: 履歴・チャット・タスク・ファイル */}
-        <div style={{display:"flex",background:"white",borderRadius:"0.75rem",padding:"0.2rem",marginBottom:"0.75rem",border:`1px solid ${C.border}`}}>
+        <div style={{display:"flex",background:"white",borderRadius:"6px",padding:"0.2rem",marginBottom:"0.75rem",border:`1px solid ${C.border}`}}>
           {[["timeline","📋","履歴"],["chat","💬","チャット"],["tasks","✅","タスク"],["bizcard","🪪","名刺"],["files","📎","ファイル"]].map(([id,icon,lbl])=>(
             <button key={id} onClick={()=>setActiveDetail(id)} style={{flex:1,padding:"0.5rem",borderRadius:"0.5rem",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.72rem",position:"relative",background:activeDetail===id?C.accent:"transparent",color:activeDetail===id?"white":C.textSub}}>
               {icon} {lbl}
@@ -8985,11 +8986,11 @@ ${orig}`})
               <Btn size="sm" onClick={()=>{setForm({municipalityIds:[activeMuni],status:"未接触",assigneeIds:[]});setSalesTab("vendor");setActiveVendor(null);setSheet("addVendorFromMuni");}}>＋ 新規</Btn>
             </div>
           </div>
-          {mvend.length===0&&<div style={{textAlign:"center",padding:"1rem",color:C.textMuted,background:C.bg,borderRadius:"0.875rem",fontSize:"0.82rem"}}>業者が登録されていません</div>}
+          {mvend.length===0&&<div style={{textAlign:"center",padding:"1rem",color:C.textMuted,background:C.bg,borderRadius:"8px",fontSize:"0.82rem"}}>業者が登録されていません</div>}
           <div style={{display:"flex",flexDirection:"column",gap:"0.35rem"}}>
             {mvend.map(v=>(
               <div key={v.id} onClick={()=>{setPrevTab({tab:"muni",muniId:activeMuni,prefId:activePref});setSalesTab("vendor");setActiveVendor(v.id);setActiveDetail("timeline");}}
-                style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"0.625rem 0.875rem",background:"white",border:`1.5px solid ${C.border}`,borderRadius:"0.75rem",cursor:"pointer",gap:"0.5rem"}}>
+                style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"0.625rem 0.875rem",background:"white",border:`1.5px solid ${C.border}`,borderRadius:"6px",cursor:"pointer",gap:"0.5rem"}}>
                 <span style={{fontWeight:600,fontSize:"0.88rem",color:C.text,flex:1}}>{v.name}</span>
                 <SChip s={v.status} map={VENDOR_STATUS}/>
               </div>
@@ -9030,7 +9031,7 @@ ${orig}`})
             <FieldLbl label="担当者">{AssigneePicker({ids:form.assigneeIds||[],onChange:ids=>setForm({...form,assigneeIds:ids})})}</FieldLbl>
             <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
             <FieldLbl label="bee-net加入">
-                <label style={{display:"flex",alignItems:"center",gap:"0.625rem",cursor:"pointer",padding:"0.625rem 0.875rem",borderRadius:"0.75rem",background:form.beeNet?"#eff6ff":"#f8fafc",border:`1.5px solid ${form.beeNet?"#2563eb":"#e2e8f0"}`,transition:"all 0.15s"}}>
+                <label style={{display:"flex",alignItems:"center",gap:"0.625rem",cursor:"pointer",padding:"0.625rem 0.875rem",borderRadius:"6px",background:form.beeNet?"#eff6ff":"#f8fafc",border:`1.5px solid ${form.beeNet?"#2563eb":"#e2e8f0"}`,transition:"all 0.15s"}}>
                   <input type="checkbox" checked={!!form.beeNet} onChange={e=>setForm({...form,beeNet:e.target.checked})} style={{width:18,height:18,accentColor:"#2563eb",cursor:"pointer"}}/>
                   <span style={{fontSize:"0.85rem",fontWeight:form.beeNet?700:400,color:form.beeNet?"#1d4ed8":"#6b7280"}}>{form.beeNet?"✅ 加入済み":"未加入"}</span>
                 </label>
@@ -9119,7 +9120,7 @@ ${orig}`})
                 {lvFiltered.map(v=>{
                   const gl=groupLabel(v);
                   return (
-                    <div key={v.id} style={{display:"flex",alignItems:"center",padding:"0.625rem 0.75rem",border:`1.5px solid ${gl?gl.color:C.border}`,borderRadius:"0.75rem",background:gl?gl.color.replace("1fae5","f0fdf4").replace("beafe","eff6ff").replace("e9fe","f5f3ff"):"white",gap:"0.5rem"}}>
+                    <div key={v.id} style={{display:"flex",alignItems:"center",padding:"0.625rem 0.75rem",border:`1.5px solid ${gl?gl.color:C.border}`,borderRadius:"6px",background:gl?gl.color.replace("1fae5","f0fdf4").replace("beafe","eff6ff").replace("e9fe","f5f3ff"):"white",gap:"0.5rem"}}>
                       <div style={{flex:1}}>
                         <div style={{display:"flex",alignItems:"center",gap:"0.4rem"}}>
                           <span style={{fontWeight:600,fontSize:"0.88rem",color:C.text}}>{v.name}</span>
@@ -9157,7 +9158,7 @@ ${orig}`})
         const followMunis = munis.filter(m=>m.needFollow);
         if(!followMunis.length) return null;
         return (
-          <div style={{background:"#fefce8",border:"1.5px solid #fde047",borderRadius:"0.875rem",padding:"0.75rem 1rem",marginBottom:"0.75rem"}}>
+          <div style={{background:"#fefce8",border:"1.5px solid #fde047",borderRadius:"8px",padding:"0.75rem 1rem",marginBottom:"0.75rem"}}>
             <div style={{fontSize:"0.75rem",fontWeight:800,color:"#854d0e",marginBottom:"0.4rem"}}>⭐ フォロー中 ({followMunis.length}件)</div>
             <div style={{display:"flex",flexDirection:"column",gap:"0.3rem"}}>
               {followMunis.map(m=>{
@@ -9181,20 +9182,20 @@ ${orig}`})
         <div style={{position:"relative",flex:1}}>
           <span style={{position:"absolute",left:"0.625rem",top:"50%",transform:"translateY(-50%)",color:C.textMuted,fontSize:"0.85rem",pointerEvents:"none"}}>🔍</span>
           <input value={muniTopSearch} onChange={e=>setMuniTopSearch(e.target.value)} placeholder="自治体名で検索"
-            style={{width:"100%",padding:"0.5rem 0.5rem 0.5rem 2rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
+            style={{width:"100%",padding:"0.5rem 0.5rem 0.5rem 2rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
         </div>
         <button onClick={()=>{setBulkMode(v=>{if(v){resetBulk();return false;}setBulkSelected(new Set());setBulkTarget("dustalk");setBulkStatus("");return true;});}}
-          style={{padding:"0.5rem 0.75rem",borderRadius:"0.75rem",border:`1.5px solid ${bulkMode?"#2563eb":C.border}`,background:bulkMode?"#eff6ff":"white",color:bulkMode?"#1d4ed8":C.textSub,fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>
+          style={{padding:"0.5rem 0.75rem",borderRadius:"6px",border:`1.5px solid ${bulkMode?"#2563eb":C.border}`,background:bulkMode?"#eff6ff":"white",color:bulkMode?"#1d4ed8":C.textSub,fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>
           ☑️ 一括
         </button>
         <button onClick={()=>{setDeleteModal({type:"muni"});setDmSearch("");setDmFilter("");setDmSelected(new Set());}}
-          style={{padding:"0.5rem 0.75rem",borderRadius:"0.75rem",border:"1.5px solid #fca5a5",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>🗑 削除</button>
+          style={{padding:"0.5rem 0.75rem",borderRadius:"6px",border:"1.5px solid #fca5a5",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>🗑 削除</button>
         <button onClick={()=>setSheet("importMuni")}
-          style={{padding:"0.5rem 0.625rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📥</button>
+          style={{padding:"0.5rem 0.625rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📥</button>
         <button onClick={()=>setShowGSheetImport(true)}
-          style={{padding:"0.5rem 0.625rem",borderRadius:"0.75rem",border:"1.5px solid #bfdbfe",background:"#eff6ff",color:"#2563eb",fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>📊 GSheet</button>
+          style={{padding:"0.5rem 0.625rem",borderRadius:"6px",border:"1.5px solid #bfdbfe",background:"#eff6ff",color:"#2563eb",fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>📊 GSheet</button>
         <button onClick={exportMuniStatusReport}
-          style={{padding:"0.5rem 0.75rem",borderRadius:"0.75rem",border:"1.5px solid #7c3aed",background:"#ede9fe",color:"#5b21b6",fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>📋 全国出力</button>
+          style={{padding:"0.5rem 0.75rem",borderRadius:"6px",border:"1.5px solid #7c3aed",background:"#ede9fe",color:"#5b21b6",fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>📋 全国出力</button>
       </div>
       {/* 担当者フィルタ */}
       {(()=>{
@@ -9216,7 +9217,7 @@ ${orig}`})
           return {region:rg.region,n,prefDetails};
         }).filter(Boolean) : [];
         return (
-          <div style={{background:"#f8fafc",border:`1px solid ${muniFilterAssignee?C.accent:C.border}`,borderRadius:"0.875rem",padding:"0.625rem 0.75rem",marginBottom:"0.5rem"}}>
+          <div style={{background:"#f8fafc",border:`1px solid ${muniFilterAssignee?C.accent:C.border}`,borderRadius:"8px",padding:"0.625rem 0.75rem",marginBottom:"0.5rem"}}>
             <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.4rem"}}>
               <select value={muniFilterAssignee} onChange={e=>setMuniFilterAssignee(e.target.value)}
                 style={{flex:1,padding:"0.3rem 0.5rem",borderRadius:"0.5rem",border:`1.5px solid ${muniFilterAssignee?C.accent:C.border}`,fontSize:"0.78rem",background:muniFilterAssignee?"#eff6ff":"white",color:muniFilterAssignee?C.accent:C.text,fontFamily:"inherit",fontWeight:muniFilterAssignee?700:400}}>
@@ -9279,14 +9280,14 @@ ${orig}`})
         });
         return (
           <div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
-            {hits.length===0&&<div style={{textAlign:"center",padding:"2rem",color:C.textMuted,background:"white",borderRadius:"0.875rem",fontSize:"0.85rem",border:`1.5px dashed ${C.border}`}}>「{muniTopSearch}」に一致する自治体はありません</div>}
+            {hits.length===0&&<div style={{textAlign:"center",padding:"2rem",color:C.textMuted,background:"white",borderRadius:"8px",fontSize:"0.85rem",border:`1.5px dashed ${C.border}`}}>「{muniTopSearch}」に一致する自治体はありません</div>}
             {hits.map(m=>{
               const pref=prefOf(m.prefectureId);
               const ds=DUSTALK_STATUS[m.dustalk]||DUSTALK_STATUS["未展開"];
               const mv=muniVendors(m.id);
               return (
                 <div key={m.id} onClick={()=>{setSheet(null);setActivePref(String(m.prefectureId));setActiveMuni(String(m.id));setMuniScreen("muniDetail");setActiveDetail("timeline");}}
-                  style={{background:"white",border:`1.5px solid ${C.border}`,borderRadius:"0.875rem",padding:"0.875rem 1rem",cursor:"pointer",boxShadow:C.shadow}}>
+                  style={{background:"white",border:`1.5px solid ${C.border}`,borderRadius:"8px",padding:"0.875rem 1rem",cursor:"pointer",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.25rem"}}>
                     <div>
                       <span style={{fontWeight:700,fontSize:"0.93rem",color:C.text}}>{m.name}</span>
@@ -9313,7 +9314,7 @@ ${orig}`})
           if(muniFilterAssignee==="__me__") return (m.assigneeIds||[]).some(id=>id===currentUser?.id);
           return (m.assigneeIds||[]).some(id=>String(id)===muniFilterAssignee);
         });
-        if(!fMunis.length) return <div style={{textAlign:"center",padding:"1.5rem",color:C.textMuted,background:"white",borderRadius:"0.875rem",border:`1.5px dashed ${C.border}`,fontSize:"0.82rem"}}>該当する自治体がありません</div>;
+        if(!fMunis.length) return <div style={{textAlign:"center",padding:"1.5rem",color:C.textMuted,background:"white",borderRadius:"8px",border:`1.5px dashed ${C.border}`,fontSize:"0.82rem"}}>該当する自治体がありません</div>;
         return (
           <div style={{marginBottom:"0.75rem"}}>
             <div style={{fontSize:"0.7rem",fontWeight:800,color:C.textSub,marginBottom:"0.4rem",textTransform:"uppercase",letterSpacing:"0.04em"}}>
@@ -9329,7 +9330,7 @@ ${orig}`})
                 const mvs=muniVendors(m.id);
                 return (
                   <div key={m.id} onClick={()=>{setActivePref(String(m.prefectureId));setActiveMuni(String(m.id));setMuniScreen("muniDetail");setActiveDetail("timeline");}}
-                    style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.625rem 0.75rem",background:"white",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,cursor:"pointer",boxShadow:C.shadow}}
+                    style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.625rem 0.75rem",background:"white",borderRadius:"6px",border:`1.5px solid ${C.border}`,cursor:"pointer",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}
                     onMouseEnter={e=>e.currentTarget.style.borderColor=C.accent}
                     onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}>
                     <div style={{flex:1,minWidth:0}}>
@@ -9362,7 +9363,7 @@ ${orig}`})
           const rTreaty=rMunis.filter(m=>m.treatyStatus==="協定済").length;
           const rDeploy=rMunis.filter(m=>m.dustalk==="展開").length;
           return (
-            <div key={rg.region} style={{background:"white",borderRadius:"1rem",border:`1.5px solid ${C.border}`,overflow:"hidden",boxShadow:C.shadow}}>
+            <div key={rg.region} style={{background:"white",borderRadius:"1rem",border:`1.5px solid ${C.border}`,overflow:"hidden",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
               <button onClick={()=>setOpenRegions(o=>({...o,[rg.region]:!rOpen}))}
                 style={{width:"100%",display:"flex",alignItems:"center",padding:"0.8rem 1rem",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",gap:"0.5rem"}}>
                 <span style={{fontSize:"0.93rem",fontWeight:800,color:C.text,flex:1,textAlign:"left"}}>{rg.region}</span>
@@ -9463,7 +9464,7 @@ ${orig}`})
                     const pn=prefOf(activePref)?.name||"";
                     return (
                       <Sheet title={`一括登録（${pn}）`} onClose={()=>setSheet(null)}>
-                        <div style={{background:C.accentBg,border:`1px solid ${C.accent}30`,borderRadius:"0.75rem",padding:"0.75rem",marginBottom:"0.875rem",fontSize:"0.8rem",color:C.accentDark}}>💡 自治体名を1行1件で入力してください。</div>
+                        <div style={{background:C.accentBg,border:`1px solid ${C.accent}30`,borderRadius:"6px",padding:"0.75rem",marginBottom:"0.875rem",fontSize:"0.8rem",color:C.accentDark}}>💡 自治体名を1行1件で入力してください。</div>
                         <FieldLbl label="自治体名リスト（1行1件）"><Textarea value={bulkText} onChange={e=>setBulkText(e.target.value)} style={{height:180}} placeholder={"○○市\n△△町\n□□村"} autoFocus/></FieldLbl>
                         <div style={{marginBottom:"0.875rem",fontSize:"0.78rem",color:C.textSub}}>{bulkText.split("\n").filter(l=>l.trim()).length}件 入力中</div>
                         <div style={{display:"flex",gap:"0.625rem"}}>
@@ -9537,7 +9538,7 @@ ${orig}`})
         return (
           <Sheet title="自治体をインポート" onClose={()=>{setSheet(null);setImportPreview(null);setImportErr("");}}>
             {/* Download template */}
-            <div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:"0.875rem",padding:"0.875rem",marginBottom:"1rem"}}>
+            <div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:"8px",padding:"0.875rem",marginBottom:"1rem"}}>
               <div style={{fontWeight:700,fontSize:"0.82rem",color:"#1d4ed8",marginBottom:"0.35rem"}}>📥 CSVテンプレートをダウンロード</div>
               <div style={{fontSize:"0.72rem",color:"#3730a3",marginBottom:"0.625rem",lineHeight:1.5}}>
                 テンプレートに沿って入力 → CSV(UTF-8)で保存 → アップロード
@@ -9567,7 +9568,7 @@ ${orig}`})
             {/* Upload */}
             <div style={{marginBottom:"1rem"}}>
               <div style={{fontWeight:700,fontSize:"0.82rem",color:C.text,marginBottom:"0.5rem"}}>📤 CSVファイルをアップロード</div>
-              <label style={{display:"block",border:`2px dashed ${C.border}`,borderRadius:"0.875rem",padding:"1.5rem",textAlign:"center",cursor:"pointer",background:C.bg}}>
+              <label style={{display:"block",border:`2px dashed ${C.border}`,borderRadius:"8px",padding:"1.5rem",textAlign:"center",cursor:"pointer",background:C.bg}}>
                 <div style={{fontSize:"1.75rem",marginBottom:"0.35rem"}}>📂</div>
                 <div style={{fontSize:"0.82rem",fontWeight:600,color:C.textSub}}>クリックしてCSVを選択</div>
                 <div style={{fontSize:"0.7rem",color:C.textMuted,marginTop:"0.2rem"}}>UTF-8 CSV形式 (.csv)</div>
@@ -9583,7 +9584,7 @@ ${orig}`})
                   <span style={{background:"#d1fae5",color:"#065f46",borderRadius:999,fontSize:"0.7rem",fontWeight:700,padding:"0.1rem 0.5rem"}}>{preview.length}件</span>
                   <span style={{fontSize:"0.7rem",color:C.textMuted}}>既存と名前が一致する場合はスキップ</span>
                 </div>
-                <div style={{maxHeight:240,overflowY:"auto",border:`1px solid ${C.border}`,borderRadius:"0.75rem",overflow:"hidden"}}>
+                <div style={{maxHeight:240,overflowY:"auto",border:`1px solid ${C.border}`,borderRadius:"6px",overflow:"hidden"}}>
                   {preview.slice(0,30).map((r,i)=>{
                     const pref=prefs.find(p=>p.name===r.prefName);
                     const dup=pref&&munis.some(m=>String(m.prefectureId)===String(pref.id)&&m.name===r.name);
@@ -9650,19 +9651,19 @@ ${orig}`})
           if(bcDupModal.merged) return (
             <div style={{position:"fixed",inset:0,zIndex:600,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.5)",padding:"1rem"}}
               onClick={e=>{if(e.target===e.currentTarget){setBcDupModal(null);setSheet(null);}}}>
-              <div style={{background:"white",borderRadius:"1.25rem",padding:"1.5rem",maxWidth:380,width:"100%",boxShadow:"0 12px 50px rgba(0,0,0,0.25)"}}>
+              <div style={{background:"white",borderRadius:"10px",padding:"1.5rem",maxWidth:380,width:"100%",boxShadow:"0 12px 50px rgba(0,0,0,0.25)"}}>
                 <div style={{textAlign:"center",marginBottom:"1rem"}}>
                   <div style={{fontSize:"2rem",marginBottom:"0.5rem"}}>✅</div>
                   <div style={{fontWeight:800,fontSize:"0.95rem",color:C.text}}>所有者を追加しました</div>
                   <div style={{fontSize:"0.82rem",color:C.textSub,marginTop:"0.35rem"}}>「{exName}」に <strong style={{color:"#7c3aed"}}>{bcDupModal.addedOwner}</strong> を追加しました</div>
                 </div>
-                <div style={{background:"#f5f3ff",borderRadius:"0.75rem",padding:"0.75rem",marginBottom:"1rem"}}>
+                <div style={{background:"#f5f3ff",borderRadius:"6px",padding:"0.75rem",marginBottom:"1rem"}}>
                   <div style={{fontSize:"0.72rem",color:"#5b21b6",fontWeight:700,marginBottom:"0.35rem"}}>👤 所有者一覧</div>
                   <div style={{display:"flex",flexWrap:"wrap",gap:"0.3rem"}}>
                     {exOwners.map(o=><span key={o} style={{fontSize:"0.78rem",fontWeight:700,color:"#7c3aed",background:"#ede9fe",borderRadius:999,padding:"0.15rem 0.5rem"}}>{o}</span>)}
                   </div>
                 </div>
-                <button onClick={()=>{setBcDupModal(null);}} style={{width:"100%",padding:"0.65rem",borderRadius:"0.875rem",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.88rem",cursor:"pointer",fontFamily:"inherit"}}>OK</button>
+                <button onClick={()=>{setBcDupModal(null);}} style={{width:"100%",padding:"0.65rem",borderRadius:"8px",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.88rem",cursor:"pointer",fontFamily:"inherit"}}>OK</button>
               </div>
             </div>
           );
@@ -9670,10 +9671,10 @@ ${orig}`})
           // 完全重複ケース
           return (
             <div style={{position:"fixed",inset:0,zIndex:600,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.5)",padding:"1rem"}}>
-              <div style={{background:"white",borderRadius:"1.25rem",padding:"1.5rem",maxWidth:380,width:"100%",boxShadow:"0 12px 50px rgba(0,0,0,0.25)"}}>
+              <div style={{background:"white",borderRadius:"10px",padding:"1.5rem",maxWidth:380,width:"100%",boxShadow:"0 12px 50px rgba(0,0,0,0.25)"}}>
                 <div style={{fontWeight:800,fontSize:"0.95rem",color:C.text,marginBottom:"0.5rem"}}>⚠️ 同じ名刺が既に存在します</div>
                 <div style={{fontSize:"0.82rem",color:C.textSub,marginBottom:"1rem"}}>「{bcDupModal.incoming}」は既に登録されています</div>
-                <div style={{background:C.bg,borderRadius:"0.75rem",padding:"0.75rem",marginBottom:"1rem"}}>
+                <div style={{background:C.bg,borderRadius:"6px",padding:"0.75rem",marginBottom:"1rem"}}>
                   <div style={{fontWeight:700,fontSize:"0.88rem",color:C.text}}>{exName}</div>
                   <div style={{fontSize:"0.75rem",color:C.textSub}}>{ex.title} {ex.company}</div>
                   {exOwners.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:"0.3rem",marginTop:"0.35rem"}}>
@@ -9683,9 +9684,9 @@ ${orig}`})
                 </div>
                 {bcDupQueue.length>1&&<div style={{fontSize:"0.72rem",color:C.textMuted,marginBottom:"0.75rem"}}>残り {bcDupQueue.length-1} 件の重複があります</div>}
                 <div style={{display:"flex",gap:"0.5rem",flexDirection:"column"}}>
-                  <button onClick={bcDupModal.onSkip} style={{padding:"0.55rem",borderRadius:"0.75rem",border:`1.5px solid ${C.accent}`,background:C.accentBg,color:C.accent,fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>既存の名刺を確認する</button>
-                  {bcDupModal.onAdd&&<button onClick={bcDupModal.onAdd} style={{padding:"0.55rem",borderRadius:"0.75rem",border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:600,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}}>別カードとして登録する</button>}
-                  <button onClick={bcDupModal.onCancel} style={{padding:"0.45rem",borderRadius:"0.75rem",border:"none",background:"none",color:C.textMuted,fontWeight:600,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit"}}>スキップ</button>
+                  <button onClick={bcDupModal.onSkip} style={{padding:"0.55rem",borderRadius:"6px",border:`1.5px solid ${C.accent}`,background:"#e8f0fe",color:C.accent,fontWeight:600,borderRadius:"6px",fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>既存の名刺を確認する</button>
+                  {bcDupModal.onAdd&&<button onClick={bcDupModal.onAdd} style={{padding:"0.55rem",borderRadius:"6px",border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:600,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}}>別カードとして登録する</button>}
+                  <button onClick={bcDupModal.onCancel} style={{padding:"0.45rem",borderRadius:"6px",border:"none",background:"none",color:C.textMuted,fontWeight:600,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit"}}>スキップ</button>
                 </div>
               </div>
             </div>
@@ -9697,7 +9698,7 @@ ${orig}`})
           if(!bcImportSummary) return null;
           return (
             <div style={{position:"fixed",inset:0,zIndex:600,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.6)",padding:"1rem"}}>
-              <div style={{background:"white",borderRadius:"1.25rem",padding:"2rem 1.5rem",maxWidth:320,width:"100%",textAlign:"center",boxShadow:"0 12px 50px rgba(0,0,0,0.25)"}}>
+              <div style={{background:"white",borderRadius:"10px",padding:"2rem 1.5rem",maxWidth:320,width:"100%",textAlign:"center",boxShadow:"0 12px 50px rgba(0,0,0,0.25)"}}>
                 <div style={{fontSize:"2.5rem",marginBottom:"0.5rem"}}>✅</div>
                 <div style={{fontWeight:800,fontSize:"1.05rem",color:C.text,marginBottom:"0.5rem"}}>取込み完了</div>
                 <div style={{fontSize:"0.88rem",color:C.textSub,marginBottom:"0.25rem"}}>追加：<b style={{color:"#059669"}}>{bcImportSummary.added}件</b></div>
@@ -9791,7 +9792,7 @@ ${orig}`})
               <Card style={{padding:"1rem",marginBottom:"1rem"}}>
                 <div style={{fontWeight:700,fontSize:"0.82rem",color:C.text,marginBottom:"0.5rem"}}>🔗 営業先への紐づけ</div>
                 {card.salesRef ? (
-                  <div style={{display:"flex",alignItems:"center",gap:"0.5rem",background:C.bg,borderRadius:"0.75rem",padding:"0.6rem 0.75rem"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:"0.5rem",background:C.bg,borderRadius:"6px",padding:"0.6rem 0.75rem"}}>
                     <span style={{fontSize:"0.72rem",fontWeight:800,color:"white",background:{"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"}[card.salesRef.type]||C.accent,borderRadius:999,padding:"0.1rem 0.45rem"}}>{card.salesRef.type}</span>
                     <span style={{flex:1,fontSize:"0.88rem",fontWeight:600,color:C.text}}>{card.salesRef.name}</span>
                     <button onClick={()=>updateBizCard(card.id,{salesRef:null})}
@@ -9815,7 +9816,7 @@ ${orig}`})
                   <Card style={{padding:"1rem",marginBottom:"1rem"}}>
                     <div style={{fontWeight:700,fontSize:"0.82rem",color:C.text,marginBottom:"0.75rem"}}>🏢 営業先として登録</div>
                     {alreadyLinked ? (
-                      <div style={{fontSize:"0.78rem",color:"#059669",background:"#f0fdf4",borderRadius:"0.75rem",padding:"0.625rem 0.875rem",fontWeight:600}}>
+                      <div style={{fontSize:"0.78rem",color:"#059669",background:"#f0fdf4",borderRadius:"6px",padding:"0.625rem 0.875rem",fontWeight:600}}>
                         ✅ {ref.type}「{ref.name}」として登録済み
                       </div>
                     ) : (
@@ -9827,7 +9828,7 @@ ${orig}`})
                             setSalesTab("company");
                             requestAnimationFrame(()=>setSheet("addCompany"));
                             window.__pendingBizcardLink={cardId:card.id,type:"企業",name:company};
-                          }} style={{flex:1,padding:"0.6rem 0.5rem",borderRadius:"0.75rem",background:"#eff6ff",color:"#2563eb",fontWeight:700,fontSize:"0.78rem",border:"1.5px solid #bfdbfe",cursor:"pointer",fontFamily:"inherit"}}>
+                          }} style={{flex:1,padding:"0.6rem 0.5rem",borderRadius:"6px",background:"#eff6ff",color:"#2563eb",fontWeight:700,fontSize:"0.78rem",border:"1.5px solid #bfdbfe",cursor:"pointer",fontFamily:"inherit"}}>
                             🏢 企業として登録
                           </button>
                           <button onClick={()=>{
@@ -9835,7 +9836,7 @@ ${orig}`})
                             setSalesTab("vendor");
                             requestAnimationFrame(()=>setSheet("addVendor"));
                             window.__pendingBizcardLink={cardId:card.id,type:"業者",name:company};
-                          }} style={{flex:1,padding:"0.6rem 0.5rem",borderRadius:"0.75rem",background:"#f5f3ff",color:"#7c3aed",fontWeight:700,fontSize:"0.78rem",border:"1.5px solid #ddd6fe",cursor:"pointer",fontFamily:"inherit"}}>
+                          }} style={{flex:1,padding:"0.6rem 0.5rem",borderRadius:"6px",background:"#f5f3ff",color:"#7c3aed",fontWeight:700,fontSize:"0.78rem",border:"1.5px solid #ddd6fe",cursor:"pointer",fontFamily:"inherit"}}>
                             🏭 業者として登録
                           </button>
                           <button onClick={()=>{
@@ -9843,7 +9844,7 @@ ${orig}`})
                             setSalesTab("muni");
                             requestAnimationFrame(()=>setSheet("addMuni"));
                             window.__pendingBizcardLink={cardId:card.id,type:"自治体",name:company};
-                          }} style={{flex:1,padding:"0.6rem 0.5rem",borderRadius:"0.75rem",background:"#f0fdf4",color:"#059669",fontWeight:700,fontSize:"0.78rem",border:"1.5px solid #bbf7d0",cursor:"pointer",fontFamily:"inherit"}}>
+                          }} style={{flex:1,padding:"0.6rem 0.5rem",borderRadius:"6px",background:"#f0fdf4",color:"#059669",fontWeight:700,fontSize:"0.78rem",border:"1.5px solid #bbf7d0",cursor:"pointer",fontFamily:"inherit"}}>
                             🏛 自治体として登録
                           </button>
                         </div>
@@ -9893,7 +9894,7 @@ ${orig}`})
               </div>
               <div style={{display:"flex",gap:"0.5rem"}}>
                 <button onClick={()=>{setDeleteModal({type:"bizcard"});setDmSearch("");setDmFilter("");setDmSelected(new Set());}}
-                  style={{padding:"0.45rem 0.75rem",borderRadius:"0.75rem",border:"1.5px solid #fca5a5",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🗑 削除</button>
+                  style={{padding:"0.45rem 0.75rem",borderRadius:"6px",border:"1.5px solid #fca5a5",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🗑 削除</button>
                 <Btn size="sm" variant="secondary" onClick={()=>setSheet("bcImport")}>📥 CSV取込</Btn>
                 <Btn size="sm" onClick={()=>{setBcAddForm({...BC_ADD_INIT,owners:currentUser?.name?[currentUser.name]:[]});setSheet("bcAdd");}}>＋ 追加</Btn>
               </div>
@@ -9923,7 +9924,7 @@ ${orig}`})
             <div style={{marginBottom:"0.75rem",position:"relative"}}>
               <span style={{position:"absolute",left:"0.75rem",top:"50%",transform:"translateY(-50%)",fontSize:"0.85rem",color:C.textMuted,pointerEvents:"none"}}>🔍</span>
               <input value={bcSearch} onChange={e=>setBcSearch(e.target.value)} placeholder="氏名・役職・メール・電話番号で検索..."
-                style={{width:"100%",padding:"0.6rem 0.75rem 0.6rem 2.2rem",borderRadius:"0.75rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.85rem",boxSizing:"border-box"}}/>
+                style={{width:"100%",padding:"0.6rem 0.75rem 0.6rem 2.2rem",borderRadius:"6px",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.85rem",boxSizing:"border-box"}}/>
             </div>
 
             {/* 一覧 */}
@@ -10360,7 +10361,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
       <div style={{fontWeight:800,fontSize:"1.1rem",color:C.text,marginBottom:"1.25rem"}}>⚙️ 設定</div>
 
       {/* Section Tabs */}
-      <div style={{display:"flex",gap:"0.375rem",marginBottom:"1.25rem",background:"white",borderRadius:"0.875rem",padding:"0.25rem",border:"1px solid "+C.border}}>
+      <div style={{display:"flex",gap:"0.375rem",marginBottom:"1.25rem",background:"white",borderRadius:"8px",padding:"0.25rem",border:"1px solid "+C.border}}>
         {menuItems.map(m=>(
           <button key={m.id} onClick={()=>setSection(m.id)}
             style={{flex:1,padding:"0.5rem 0.25rem",borderRadius:"0.625rem",border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:"0.72rem",fontWeight:section===m.id?800:500,background:section===m.id?C.accent:"transparent",color:section===m.id?"white":C.textSub,display:"flex",flexDirection:"column",alignItems:"center",gap:"0.2rem"}}>
@@ -10372,7 +10373,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
 
       {/* ── プロフィール設定 ── */}
       {section==="profile"&&(
-        <div style={{background:"white",borderRadius:"1rem",padding:"1.25rem",border:"1px solid "+C.border,boxShadow:C.shadow}}>
+        <div style={{background:"white",borderRadius:"1rem",padding:"1.25rem",border:"1px solid "+C.border,boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
           <div style={{fontWeight:800,fontSize:"0.9rem",color:C.text,marginBottom:"1rem"}}>👤 自分の情報</div>
           <div style={{display:"flex",alignItems:"center",gap:"1rem",marginBottom:"1.25rem"}}>
             <div style={{width:56,height:56,borderRadius:"50%",background:"linear-gradient(135deg,"+C.accent+","+C.accentDark+")",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"1.5rem",fontWeight:800,color:"white",flexShrink:0}}>
@@ -10395,7 +10396,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
           ))}
           {profileMsg&&<div style={{marginBottom:"0.75rem",fontSize:"0.82rem",color:profileMsg.startsWith("✅")?"#059669":"#dc2626"}}>{profileMsg}</div>}
           <button onClick={saveProfile} disabled={profileSaving||!profileForm.name.trim()}
-            style={{width:"100%",padding:"0.75rem",borderRadius:"0.75rem",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.9rem",cursor:"pointer",fontFamily:"inherit",opacity:profileSaving?0.6:1}}>
+            style={{width:"100%",padding:"0.75rem",borderRadius:"6px",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.9rem",cursor:"pointer",fontFamily:"inherit",opacity:profileSaving?0.6:1}}>
             {profileSaving?"保存中...":"保存する"}
           </button>
 
@@ -10473,7 +10474,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
             return (
               <div style={{marginTop:"1.25rem",paddingTop:"1.25rem",borderTop:"1px solid "+C.borderLight}}>
                 <div style={{fontSize:"0.87rem",fontWeight:700,color:"#dc2626",marginBottom:"0.625rem"}}>🔑 管理者：パスワードリセット</div>
-                <div style={{background:"#fff1f2",border:"1px solid #fca5a5",borderRadius:"0.75rem",padding:"0.875rem"}}>
+                <div style={{background:"#fff1f2",border:"1px solid #fca5a5",borderRadius:"6px",padding:"0.875rem"}}>
                   <div style={{fontSize:"0.75rem",color:"#dc2626",marginBottom:"0.75rem"}}>
                     ログインできないユーザーのパスワードをここから変更できます
                   </div>
@@ -10495,7 +10496,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
                   </div>
                   {resetMsg&&<div style={{fontSize:"0.78rem",marginBottom:"0.5rem",color:resetMsg.startsWith("✅")?"#059669":"#dc2626"}}>{resetMsg}</div>}
                   <button onClick={doAdminReset}
-                    style={{width:"100%",padding:"0.55rem",borderRadius:"0.75rem",border:"none",background:"#dc2626",color:"white",fontWeight:700,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>
+                    style={{width:"100%",padding:"0.55rem",borderRadius:"6px",border:"none",background:"#dc2626",color:"white",fontWeight:700,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>
                     パスワードをリセット
                   </button>
                 </div>
@@ -10510,7 +10511,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
 
           {/* ログアウト */}
           <button onClick={onLogout}
-            style={{width:"100%",marginTop:"1rem",padding:"0.75rem",borderRadius:"0.75rem",border:"1.5px solid #fee2e2",background:"white",color:"#dc2626",fontWeight:700,fontSize:"0.87rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
+            style={{width:"100%",marginTop:"1rem",padding:"0.75rem",borderRadius:"6px",border:"1.5px solid #fee2e2",background:"white",color:"#dc2626",fontWeight:700,fontSize:"0.87rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
             🚪 ログアウト
           </button>
         </div>
@@ -10532,21 +10533,21 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
               </div>
             </div>
           )}
-          <div style={{background:"white",borderRadius:"1rem",border:"1px solid "+C.border,boxShadow:C.shadow,overflow:"hidden"}}>
+          <div style={{background:"white",borderRadius:"1rem",border:"1px solid "+C.border,boxShadow:"0 1px 2px rgba(0,0,0,0.04)",overflow:"hidden"}}>
             <div style={{padding:"0.875rem 1rem",background:"linear-gradient(135deg,#1e40af,#2563eb)",color:"white"}}>
               <div style={{fontWeight:800,fontSize:"0.9rem"}}>📋 Jobcan 勤怠管理</div>
               <div style={{fontSize:"0.72rem",opacity:0.85,marginTop:"0.2rem"}}>出退勤・休暇申請はこちらから</div>
             </div>
             <div style={{padding:"1rem"}}>
               <a href="https://ssl.jobcan.jp/login/mb-employee?client_id=nhd&lang_code=ja" target="_blank" rel="noopener noreferrer"
-                style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0.75rem 1rem",borderRadius:"0.75rem",background:C.accentBg,border:"1.5px solid "+C.accent+"40",color:C.accentDark,fontWeight:700,fontSize:"0.9rem",textDecoration:"none"}}>
+                style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0.75rem 1rem",borderRadius:"6px",background:C.accentBg,border:"1.5px solid "+C.accent+"40",color:C.accentDark,fontWeight:700,fontSize:"0.9rem",textDecoration:"none"}}>
                 <span>🕐 勤怠打刻・申請を開く</span>
                 <span style={{fontSize:"0.9rem"}}>↗</span>
               </a>
             </div>
           </div>
 
-          <div style={{background:"white",borderRadius:"1rem",border:"1px solid "+C.border,boxShadow:C.shadow,overflow:"hidden"}}>
+          <div style={{background:"white",borderRadius:"1rem",border:"1px solid "+C.border,boxShadow:"0 1px 2px rgba(0,0,0,0.04)",overflow:"hidden"}}>
             <div style={{padding:"0.875rem 1rem",background:"linear-gradient(135deg,#5b21b6,#7c3aed)",color:"white"}}>
               <div style={{fontWeight:800,fontSize:"0.9rem"}}>📝 Jobcan ワークフロー（稟議）</div>
               <div style={{fontSize:"0.72rem",opacity:0.85,marginTop:"0.2rem"}}>各種申請・承認はこちらから</div>
@@ -10557,7 +10558,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
                 <span style={{fontSize:"0.88rem",color:"#5b21b6",fontWeight:800,letterSpacing:"0.05em"}}>C15348-28852-43733</span>
               </div>
               <a href="https://id.jobcan.jp/users/sign_in?app_key=wf" target="_blank" rel="noopener noreferrer"
-                style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0.75rem 1rem",borderRadius:"0.75rem",background:"#f5f3ff",border:"1.5px solid #ddd6fe",color:"#5b21b6",fontWeight:700,fontSize:"0.9rem",textDecoration:"none"}}>
+                style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0.75rem 1rem",borderRadius:"6px",background:"#f5f3ff",border:"1.5px solid #ddd6fe",color:"#5b21b6",fontWeight:700,fontSize:"0.9rem",textDecoration:"none"}}>
                 <span>📄 稟議・申請を開く</span>
                 <span style={{fontSize:"0.9rem"}}>↗</span>
               </a>
@@ -10577,7 +10578,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
           </div>
 
           {/* アクションカード：契約書をアップロード */}
-          <div style={{background:"white",borderRadius:"1rem",border:"1px solid "+C.border,boxShadow:C.shadow,overflow:"hidden"}}>
+          <div style={{background:"white",borderRadius:"1rem",border:"1px solid "+C.border,boxShadow:"0 1px 2px rgba(0,0,0,0.04)",overflow:"hidden"}}>
             <div style={{padding:"0.75rem 1rem",background:"linear-gradient(135deg,#065f46,#059669)",color:"white",display:"flex",alignItems:"center",gap:"0.5rem"}}>
               <span style={{fontSize:"1.2rem"}}>📁</span>
               <div>
@@ -10591,14 +10592,14 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
                 署名済み契約書の保管にも使用できます。
               </div>
               <button onClick={()=>setContractModal("upload")}
-                style={{width:"100%",padding:"0.75rem",borderRadius:"0.75rem",border:"none",background:"#059669",color:"white",fontWeight:700,fontSize:"0.9rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
+                style={{width:"100%",padding:"0.75rem",borderRadius:"6px",border:"none",background:"#059669",color:"white",fontWeight:700,fontSize:"0.9rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
                 📤 契約書をアップロード
               </button>
             </div>
           </div>
 
           {/* アクションカード：契約書を生成 */}
-          <div style={{background:"white",borderRadius:"1rem",border:"1px solid "+C.border,boxShadow:C.shadow,overflow:"hidden"}}>
+          <div style={{background:"white",borderRadius:"1rem",border:"1px solid "+C.border,boxShadow:"0 1px 2px rgba(0,0,0,0.04)",overflow:"hidden"}}>
             <div style={{padding:"0.75rem 1rem",background:"linear-gradient(135deg,#4c1d95,#7c3aed)",color:"white",display:"flex",alignItems:"center",gap:"0.5rem"}}>
               <span style={{fontSize:"1.2rem"}}>✨</span>
               <div>
@@ -10621,14 +10622,14 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
                 ))}
               </div>
               <button onClick={()=>setContractModal("generate")}
-                style={{width:"100%",padding:"0.75rem",borderRadius:"0.75rem",border:"none",background:"linear-gradient(135deg,#6d28d9,#7c3aed)",color:"white",fontWeight:700,fontSize:"0.9rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
+                style={{width:"100%",padding:"0.75rem",borderRadius:"6px",border:"none",background:"linear-gradient(135deg,#6d28d9,#7c3aed)",color:"white",fontWeight:700,fontSize:"0.9rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
                 ✨ 情報を入力して契約書を生成
               </button>
             </div>
           </div>
 
           {/* アクションカード：契約書一覧 */}
-          <div style={{background:"white",borderRadius:"1rem",border:"1px solid "+C.border,boxShadow:C.shadow,overflow:"hidden"}}>
+          <div style={{background:"white",borderRadius:"1rem",border:"1px solid "+C.border,boxShadow:"0 1px 2px rgba(0,0,0,0.04)",overflow:"hidden"}}>
             <div style={{padding:"0.75rem 1rem",background:"linear-gradient(135deg,#92400e,#d97706)",color:"white",display:"flex",alignItems:"center",gap:"0.5rem"}}>
               <span style={{fontSize:"1.2rem"}}>📋</span>
               <div>
@@ -10641,7 +10642,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
                 企業別・期間別に契約書を一覧表示。ステータス管理（締結前・締結済・期限切れ）や更新リマインダーも設定できます。
               </div>
               <button onClick={()=>setContractModal("list")}
-                style={{width:"100%",padding:"0.75rem",borderRadius:"0.75rem",border:"1.5px solid #d97706",background:"#fffbeb",color:"#92400e",fontWeight:700,fontSize:"0.9rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
+                style={{width:"100%",padding:"0.75rem",borderRadius:"6px",border:"1.5px solid #d97706",background:"#fffbeb",color:"#92400e",fontWeight:700,fontSize:"0.9rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
                 📋 契約書一覧を見る
               </button>
             </div>
@@ -10653,7 +10654,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
       {contractModal&&(
         <div style={{position:"fixed",inset:0,zIndex:600,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.6)",padding:"1rem"}}
           onClick={()=>setContractModal(null)}>
-          <div style={{background:"white",borderRadius:"1.25rem",padding:"2rem 1.5rem",maxWidth:340,width:"100%",textAlign:"center",boxShadow:"0 16px 60px rgba(0,0,0,0.25)"}}
+          <div style={{background:"white",borderRadius:"10px",padding:"2rem 1.5rem",maxWidth:340,width:"100%",textAlign:"center",boxShadow:"0 16px 60px rgba(0,0,0,0.25)"}}
             onClick={e=>e.stopPropagation()}>
             <div style={{fontSize:"3rem",marginBottom:"0.75rem"}}>🚧</div>
             <div style={{fontWeight:800,fontSize:"1.05rem",color:C.text,marginBottom:"0.5rem"}}>準備中</div>
@@ -10663,7 +10664,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
               {contractModal==="list"&&"契約書一覧機能は現在開発中です。もうしばらくお待ちください。"}
             </div>
             <button onClick={()=>setContractModal(null)}
-              style={{padding:"0.75rem 2rem",borderRadius:"0.75rem",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.9rem",cursor:"pointer",fontFamily:"inherit"}}>
+              style={{padding:"0.75rem 2rem",borderRadius:"6px",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.9rem",cursor:"pointer",fontFamily:"inherit"}}>
               閉じる
             </button>
           </div>
@@ -10672,7 +10673,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
 
       {/* ── パスワード変更 ── */}
       {section==="account"&&(
-        <div style={{background:"white",borderRadius:"1rem",padding:"1.25rem",border:"1px solid "+C.border,boxShadow:C.shadow}}>
+        <div style={{background:"white",borderRadius:"1rem",padding:"1.25rem",border:"1px solid "+C.border,boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
           <div style={{fontWeight:800,fontSize:"0.9rem",color:C.text,marginBottom:"1rem"}}>🔑 パスワード変更</div>
           {[["現在のパスワード","cur"],["新しいパスワード（6文字以上）","next"],["新しいパスワード（確認）","next2"]].map(([label,field])=>(
             <div key={field} style={{marginBottom:"0.875rem"}}>
@@ -10683,7 +10684,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
           ))}
           {pwMsg&&<div style={{marginBottom:"0.75rem",fontSize:"0.82rem",color:pwMsg.startsWith("✅")?"#059669":"#dc2626"}}>{pwMsg}</div>}
           <button onClick={changePassword}
-            style={{width:"100%",padding:"0.75rem",borderRadius:"0.75rem",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.9rem",cursor:"pointer",fontFamily:"inherit"}}>
+            style={{width:"100%",padding:"0.75rem",borderRadius:"6px",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.9rem",cursor:"pointer",fontFamily:"inherit"}}>
             変更する
           </button>
         </div>
@@ -10726,7 +10727,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
             </div>
 
             {/* 変数一覧 */}
-            <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:"0.75rem",padding:"0.75rem",marginBottom:"1rem",fontSize:"0.75rem",color:"#166534"}}>
+            <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:"6px",padding:"0.75rem",marginBottom:"1rem",fontSize:"0.75rem",color:"#166534"}}>
               <div style={{fontWeight:700,marginBottom:"0.35rem"}}>使える変数</div>
               <div style={{display:"flex",flexWrap:"wrap",gap:"0.35rem"}}>
                 {EMAIL_TEMPLATE_VARS.map(v=>(
@@ -10737,7 +10738,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
 
             {/* 入力フォーム */}
             {showForm&&(
-              <div style={{background:"white",border:`1.5px solid ${C.accent}`,borderRadius:"0.875rem",padding:"1rem",marginBottom:"1rem"}}>
+              <div style={{background:"white",border:`1.5px solid ${C.accent}`,borderRadius:"8px",padding:"1rem",marginBottom:"1rem"}}>
                 <div style={{fontWeight:700,fontSize:"0.85rem",color:C.accent,marginBottom:"0.75rem"}}>{editId?"テンプレートを編集":"新規テンプレート"}</div>
                 <FieldLbl label="テンプレート名 *"><Input value={tplForm.name} onChange={e=>setTplForm(p=>({...p,name:e.target.value}))} placeholder="例：初回アプローチ（企業向け）"/></FieldLbl>
                 <FieldLbl label="対象種別">
@@ -10766,7 +10767,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
             {templates.map(t=>{
               const typeColor={"企業":"#2563eb","自治体":"#059669","業者":"#7c3aed","共通":"#6b7280"}[t.targetType]||"#6b7280";
               return (
-                <div key={t.id} style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"0.875rem",padding:"1rem",marginBottom:"0.75rem",boxShadow:C.shadow}}>
+                <div key={t.id} style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"8px",padding:"1rem",marginBottom:"0.75rem",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
                   <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.4rem"}}>
                     <span style={{fontSize:"0.68rem",fontWeight:800,color:"white",background:typeColor,borderRadius:999,padding:"0.1rem 0.45rem"}}>{t.targetType||"共通"}</span>
                     <span style={{fontWeight:700,fontSize:"0.88rem",color:C.text,flex:1}}>{t.name}</span>
@@ -10805,14 +10806,14 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
             </div>
 
             {/* メッセージ */}
-            {snapMsg&&<div style={{fontSize:"0.82rem",color:snapMsg.startsWith("✅")?"#059669":snapMsg.startsWith("❌")?"#dc2626":"#1d4ed8",background:snapMsg.startsWith("✅")?"#d1fae5":snapMsg.startsWith("❌")?"#fee2e2":"#dbeafe",borderRadius:"0.75rem",padding:"0.625rem 0.875rem"}}>{snapMsg}</div>}
+            {snapMsg&&<div style={{fontSize:"0.82rem",color:snapMsg.startsWith("✅")?"#059669":snapMsg.startsWith("❌")?"#dc2626":"#1d4ed8",background:snapMsg.startsWith("✅")?"#d1fae5":snapMsg.startsWith("❌")?"#fee2e2":"#dbeafe",borderRadius:"6px",padding:"0.625rem 0.875rem"}}>{snapMsg}</div>}
 
             {/* アクションボタン */}
             <div style={{display:"flex",gap:"0.5rem"}}>
-              <button onClick={doBackup} style={{flex:2,padding:"0.7rem",borderRadius:"0.75rem",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
+              <button onClick={doBackup} style={{flex:2,padding:"0.7rem",borderRadius:"6px",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
                 📌 今すぐ手動保存
               </button>
-              <button onClick={loadSnaps} style={{flex:1,padding:"0.7rem",borderRadius:"0.75rem",border:"1px solid "+C.border,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
+              <button onClick={loadSnaps} style={{flex:1,padding:"0.7rem",borderRadius:"6px",border:"1px solid "+C.border,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
                 {snapLoading?"読込中...":"🔄 更新"}
               </button>
             </div>
@@ -10829,7 +10830,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
               <div key={day}>
                 {/* 日付ヘッダー */}
                 <div style={{fontSize:"0.72rem",fontWeight:800,color:C.textMuted,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:"0.375rem",padding:"0 0.25rem"}}>{day}</div>
-                <div style={{background:"white",borderRadius:"0.875rem",border:"1px solid "+C.border,overflow:"hidden",boxShadow:C.shadow}}>
+                <div style={{background:"white",borderRadius:"8px",border:"1px solid "+C.border,overflow:"hidden",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
                   {grouped[day].map((s,i)=>{
                     const dt = s.savedAt ? new Date(s.savedAt) : null;
                     const timeStr = dt ? dt.toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit",second:"2-digit"}) : "";
@@ -10864,7 +10865,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
             {/* 復元確認モーダル */}
             {restoreConfirm&&(
               <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
-                <div style={{background:"white",borderRadius:"1.25rem",padding:"1.5rem",maxWidth:340,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
+                <div style={{background:"white",borderRadius:"10px",padding:"1.5rem",maxWidth:340,width:"100%",boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
                   <div style={{fontSize:"2rem",textAlign:"center",marginBottom:"0.75rem"}}>⏪</div>
                   <div style={{fontWeight:800,fontSize:"0.95rem",color:C.text,marginBottom:"0.5rem",textAlign:"center"}}>このデータを復元しますか？</div>
                   <div style={{textAlign:"center",marginBottom:"0.5rem"}}>
@@ -10877,10 +10878,10 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
                     ただし<strong>復元前のデータは自動退避</strong>されるため、やり直しも可能です。
                   </div>
                   <div style={{display:"flex",gap:"0.625rem"}}>
-                    <button onClick={()=>setRestoreConfirm(null)} style={{flex:1,padding:"0.75rem",borderRadius:"0.75rem",border:"1px solid "+C.border,background:"white",color:C.text,fontWeight:700,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>
+                    <button onClick={()=>setRestoreConfirm(null)} style={{flex:1,padding:"0.75rem",borderRadius:"6px",border:"1px solid "+C.border,background:"white",color:C.text,fontWeight:700,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>
                       キャンセル
                     </button>
-                    <button onClick={()=>doRestore(restoreConfirm)} style={{flex:2,padding:"0.75rem",borderRadius:"0.75rem",border:"none",background:"#dc2626",color:"white",fontWeight:700,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>
+                    <button onClick={()=>doRestore(restoreConfirm)} style={{flex:2,padding:"0.75rem",borderRadius:"6px",border:"none",background:"#dc2626",color:"white",fontWeight:700,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>
                       この時刻に戻す
                     </button>
                   </div>
@@ -10908,7 +10909,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
             <div style={{display:"flex",gap:"0.375rem",flexWrap:"wrap"}}>
               {types.map(t=>(
                 <button key={t} onClick={()=>setLogFilter(t)}
-                  style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:"0.73rem",fontWeight:logFilter===t?800:500,background:logFilter===t?C.accent:"white",color:logFilter===t?"white":C.textSub,boxShadow:C.shadow}}>
+                  style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:"0.73rem",fontWeight:logFilter===t?800:500,background:logFilter===t?C.accent:"white",color:logFilter===t?"white":C.textSub,boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
                   {t==="all"?"すべて":t}
                 </button>
               ))}
@@ -10919,7 +10920,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
               const user = users.find(u=>u.id===log.userId);
               const tc = typeColor[log.entityType]||{bg:"#f1f5f9",color:"#475569"};
               return (
-                <div key={log.id||i} style={{background:"white",borderRadius:"0.875rem",padding:"0.75rem 1rem",border:"1px solid "+C.borderLight,boxShadow:C.shadow}}>
+                <div key={log.id||i} style={{background:"white",borderRadius:"8px",padding:"0.75rem 1rem",border:"1px solid "+C.borderLight,boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
                   <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.3rem",flexWrap:"wrap"}}>
                     <span style={{fontSize:"0.68rem",background:tc.bg,color:tc.color,borderRadius:999,padding:"0.1rem 0.5rem",fontWeight:700,flexShrink:0}}>{log.entityType}</span>
                     <span style={{fontSize:"0.8rem",fontWeight:700,color:C.text,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{log.entityName||"—"}</span>
@@ -11671,7 +11672,7 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
             ))}
           </div>
           <div style={{padding:"0.5rem 0"}}>{BarChart({points, unit:metric.unit})}</div>
-          <div style={{marginTop:"0.75rem",background:C.accentBg,borderRadius:"0.875rem",padding:"0.75rem 1rem",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div style={{marginTop:"0.75rem",background:C.accentBg,borderRadius:"8px",padding:"0.75rem 1rem",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
             <span style={{fontSize:"0.82rem",color:C.accentDark,fontWeight:700}}>{monthLabel(mk)} ({metric.label})</span>
             <span style={{fontSize:"1.15rem",fontWeight:800,color:C.accentDark}}>{points[11]?.value?.toLocaleString()}{metric.unit}</span>
           </div>
@@ -11854,11 +11855,11 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
     <div>
       {/* ⑧ 活動ログPDF出力ボタン */}
       <button onClick={exportActivityPDF}
-        style={{marginBottom:"0.75rem",padding:"0.5rem 1rem",borderRadius:"0.75rem",border:"1.5px solid #dc2626",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"0.4rem"}}>
+        style={{marginBottom:"0.75rem",padding:"0.5rem 1rem",borderRadius:"6px",border:"1.5px solid #dc2626",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"0.4rem"}}>
         📄 活動ログをPDF出力（今月分）
       </button>
       {/* System tabs */}
-      <div style={{display:"flex",background:C.bg,borderRadius:"0.875rem",padding:"0.25rem",marginBottom:"1rem",border:`1px solid ${C.border}`}}>
+      <div style={{display:"flex",background:C.bg,borderRadius:"8px",padding:"0.25rem",marginBottom:"1rem",border:`1px solid ${C.border}`}}>
         {ANALYTICS_SYSTEMS.map(s=>(
           <button key={s.id} onClick={()=>switchSys(s.id)}
             style={{flex:1,padding:"0.55rem 0.2rem",borderRadius:"0.625rem",border:"none",cursor:"pointer",
@@ -11872,7 +11873,7 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
 
       {/* Period selector */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"1rem",
-        background:"white",borderRadius:"0.875rem",padding:"0.625rem 1rem",border:`1px solid ${C.border}`}}>
+        background:"white",borderRadius:"8px",padding:"0.625rem 1rem",border:`1px solid ${C.border}`}}>
         {sys==="bizcon" ? (
           <>
             <button onClick={()=>setYk(shiftYear(yk,-1))} style={{background:"none",border:"none",fontSize:"1.2rem",cursor:"pointer",color:C.textSub,padding:"0.2rem 0.4rem"}}>‹</button>
@@ -11890,7 +11891,7 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
 
       {/* bee-net placeholder */}
       {sys==="beenet" && (
-        <div style={{textAlign:"center",padding:"4rem 1rem",color:C.textMuted,background:"white",borderRadius:"0.875rem",border:`1.5px dashed ${C.border}`}}>
+        <div style={{textAlign:"center",padding:"4rem 1rem",color:C.textMuted,background:"white",borderRadius:"8px",border:`1.5px dashed ${C.border}`}}>
           <div style={{fontSize:"2.5rem",marginBottom:"0.75rem"}}>🚧</div>
           <div style={{fontWeight:700,marginBottom:"0.35rem"}}>bee-net</div>
           <div style={{fontSize:"0.82rem"}}>準備中</div>
@@ -11899,7 +11900,7 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
 
       {/* Data panel */}
       {sys!=="beenet" && (
-        <div style={{background:"white",borderRadius:"1rem",padding:"1.25rem",border:`1px solid ${C.border}`,boxShadow:C.shadow}}>
+        <div style={{background:"white",borderRadius:"1rem",padding:"1.25rem",border:`1px solid ${C.border}`,boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1.25rem"}}>
             <span style={{fontWeight:800,fontSize:"0.88rem",color:C.textSub}}>
               {ANALYTICS_SYSTEMS.find(s=>s.id===sys)?.label} · {sys==="bizcon"?yearLabel(yk):monthLabel(mk)}
@@ -12176,7 +12177,7 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
                   }
                 </div>
               </div>
-              {editing&&<div style={{background:C.accentBg,border:`1px solid ${C.accent}30`,borderRadius:"0.75rem",padding:"0.75rem",fontSize:"0.8rem",color:C.accentDark}}>
+              {editing&&<div style={{background:C.accentBg,border:`1px solid ${C.accent}30`,borderRadius:"6px",padding:"0.75rem",fontSize:"0.8rem",color:C.accentDark}}>
                 💡 月間ユーザー数を変更すると、差分が累積に自動加算されます。HP閲覧数の累積は全月の合計です。
               </div>}
             </div>
@@ -12289,7 +12290,7 @@ function GlobalSearchModal({ query, onQueryChange, onClose, data, onNavigate, us
 
   return (
     <div style={{position:"fixed",inset:0,zIndex:900,background:"rgba(0,0,0,0.6)",display:"flex",alignItems:"flex-start",justifyContent:"center",paddingTop:"4dvh"}}>
-      <div onClick={e=>e.stopPropagation()} style={{background:"white",borderRadius:"1.25rem",width:"95%",maxWidth:520,maxHeight:"80dvh",display:"flex",flexDirection:"column",boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"white",borderRadius:"10px",width:"95%",maxWidth:520,maxHeight:"80dvh",display:"flex",flexDirection:"column",boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
         {/* 検索入力 */}
         <div style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.875rem 1rem",borderBottom:`1px solid ${C.borderLight}`}}>
           <span style={{fontSize:"1.1rem"}}>🔍</span>
@@ -12311,7 +12312,7 @@ function GlobalSearchModal({ query, onQueryChange, onClose, data, onNavigate, us
           )}
           {results.map((r,i)=>(
             <div key={i} onClick={()=>onNavigate(r.tab)}
-              style={{display:"flex",alignItems:"center",gap:"0.6rem",padding:"0.6rem 0.75rem",borderRadius:"0.75rem",cursor:"pointer",marginBottom:"0.2rem"}}
+              style={{display:"flex",alignItems:"center",gap:"0.6rem",padding:"0.6rem 0.75rem",borderRadius:"6px",cursor:"pointer",marginBottom:"0.2rem"}}
               onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
               onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
               <span style={{fontSize:"1.1rem",flexShrink:0}}>{r.icon}</span>
@@ -12816,16 +12817,16 @@ export default function App() {
         @keyframes spin{to{transform:rotate(360deg)}}
       `}</style>
       {/* Header */}
-      <div className="mydesk-header" style={{background:"white",borderBottom:`1px solid ${C.border}`,position:"sticky",top:0,zIndex:100,boxShadow:"0 1px 0 rgba(0,0,0,0.04)",flexShrink:0}}>
+      <div className="mydesk-header" style={{background:"#ffffff",borderBottom:"1px solid #e8eaed",position:"sticky",top:0,zIndex:100,flexShrink:0}}>
         <div style={{maxWidth:680,margin:"0 auto",padding:"0 clamp(0.75rem,3vw,1rem)"}}>
           <div style={{display:"flex",alignItems:"center",height:52,gap:"0.625rem"}}>
             <div style={{display:"flex",alignItems:"center",gap:"0.5rem"}}>
-              <svg width="30" height="30" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect width="56" height="56" rx="14" fill="#4f46e5"/>
-                <path d="M14 20h6l4 10 4-10h6v16h-5V26l-3.5 10h-3L19 26v10h-5V20z" fill="white"/>
-                <circle cx="40" cy="38" r="4" fill="#a5b4fc"/>
-              </svg>
-              <div style={{fontWeight:800,fontSize:"1rem",color:C.text,letterSpacing:"-0.03em",fontFamily:"Georgia,serif"}}>MyDesk</div>
+              <div style={{width:28,height:28,borderRadius:"8px",background:C.accent,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+                  <path d="M3 5h5l2 5 2-5h5v10h-3.5V9.5L11 15H9L6.5 9.5V15H3V5z" fill="white"/>
+                </svg>
+              </div>
+              <span style={{fontWeight:700,fontSize:"1rem",color:C.text,letterSpacing:"-0.02em"}}>MyDesk</span>
             </div>
 
             {/* Notification bell + User menu */}
@@ -12858,7 +12859,7 @@ export default function App() {
               {showUserMenu&&(
                 <>
                   <div onClick={()=>setShowUserMenu(false)} style={{position:"fixed",inset:0,zIndex:199}}/>
-                  <div style={{position:"absolute",top:"calc(100% + 8px)",right:0,background:"white",borderRadius:"0.875rem",boxShadow:C.shadowMd,border:`1px solid ${C.border}`,zIndex:200,minWidth:200,overflow:"hidden"}}>
+                  <div style={{position:"absolute",top:"calc(100% + 8px)",right:0,background:"white",borderRadius:"8px",boxShadow:"0 1px 3px rgba(0,0,0,0.06),0 0 0 1px rgba(0,0,0,0.04)",border:`1px solid ${C.border}`,zIndex:200,minWidth:200,overflow:"hidden"}}>
                     <div style={{padding:"1rem",borderBottom:`1px solid ${C.borderLight}`}}>
                       <div style={{fontWeight:700,fontSize:"0.9rem",color:C.text}}>{currentUser.name}</div>
                       <div style={{fontSize:"0.75rem",color:C.textMuted,marginTop:"0.15rem"}}>{currentUser.email}</div>
@@ -13007,7 +13008,7 @@ export default function App() {
         <div style={{fontSize:"0.65rem",fontWeight:800,color:C.textMuted,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:"0.5rem",paddingLeft:"0.5rem"}}>ナビゲーション</div>
         {TABS.map(t=>(
           <button key={t.id} onClick={()=>persistTab("md_tab",t.id,setTab)}
-            style={{width:"100%",display:"flex",alignItems:"center",gap:"0.75rem",padding:"0.625rem 0.75rem",borderRadius:"0.75rem",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:tab===t.id?800:500,fontSize:"0.87rem",background:tab===t.id?C.accentBg:"transparent",color:tab===t.id?C.accentDark:C.textSub,marginBottom:"0.15rem",textAlign:"left"}}>
+            style={{width:"100%",display:"flex",alignItems:"center",gap:"0.75rem",padding:"0.625rem 0.75rem",borderRadius:"6px",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:tab===t.id?800:500,fontSize:"0.87rem",background:tab===t.id?C.accentBg:"transparent",color:tab===t.id?C.accentDark:C.textSub,marginBottom:"0.15rem",textAlign:"left"}}>
             <span style={{fontSize:"1.2rem",lineHeight:1,flexShrink:0}}>{t.emoji}</span>
             <span>{t.label}</span>
           </button>
