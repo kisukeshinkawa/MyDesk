@@ -42,13 +42,14 @@ const S = {
 };
 
 const C = {
-  bg:"#f7f8fa", surface:"#ffffff",
-  border:"#e8eaed", borderLight:"#f0f2f5",
-  text:"#1a1a2e", textSub:"#5f6368", textMuted:"#9aa0a6",
-  accent:"#1a73e8", accentDark:"#1557b0", accentBg:"#e8f0fe",
-  blue:"#1a73e8", blueBg:"#e8f0fe",
-  shadow:"0 1px 2px rgba(0,0,0,0.05)",
-  shadowMd:"0 2px 8px rgba(0,0,0,0.08)",
+  bg:"#f5f5f7", surface:"#ffffff",
+  border:"#d2d2d7", borderLight:"#e8e8ed",
+  text:"#1d1d1f", textSub:"#6e6e73", textMuted:"#aeaeb2",
+  accent:"#0071e3", accentDark:"#0060c3", accentBg:"#e8f1fd",
+  blue:"#0071e3", blueBg:"#e8f1fd",
+  nav:"#1c1c1e", navText:"#f5f5f7", navSub:"#98989d",
+  shadow:"0 1px 3px rgba(0,0,0,0.06)",
+  shadowMd:"0 4px 20px rgba(0,0,0,0.08)",
 };
 
 // ─── STORAGE ──────────────────────────────────────────────────────────────────
@@ -354,15 +355,15 @@ function isNearDue(task) {
 
 // ─── BASE COMPONENTS ──────────────────────────────────────────────────────────
 const Card = ({children, style={}, onClick}) => (
-  <div onClick={onClick} style={{background:"#ffffff",borderRadius:"8px",border:"1px solid #e8eaed",boxShadow:"none",...style}}>{children}</div>
+  <div onClick={onClick} style={{background:"#ffffff",borderRadius:"12px",border:"1px solid #e5e5ea",boxShadow:"0 1px 4px rgba(0,0,0,0.04)",...style}}>{children}</div>
 );
 
 const Btn = ({children,onClick,variant="primary",size="md",style={},disabled=false}) => {
-  const base = {border:"none",borderRadius:"6px",fontWeight:600,cursor:disabled?"not-allowed":"pointer",fontFamily:"inherit",opacity:disabled?0.5:1,transition:"background 0.1s",...style};
-  const sz   = size==="sm"?{padding:"0.3rem 0.75rem",fontSize:"0.78rem"}:size==="lg"?{padding:"0.75rem 1.25rem",fontSize:"0.95rem"}:{padding:"0.5rem 1rem",fontSize:"0.85rem"};
-  const vc   = variant==="primary"?{background:C.accent,color:"white"}
-             : variant==="secondary"?{background:"#f1f3f4",color:C.textSub,border:"1px solid #e8eaed"}
-             : variant==="danger"?{background:"#fce8e6",color:"#c5221f"}
+  const base = {border:"none",borderRadius:"8px",fontWeight:600,cursor:disabled?"not-allowed":"pointer",fontFamily:"inherit",opacity:disabled?0.55:1,transition:"opacity 0.15s,transform 0.1s",lineHeight:1,...style};
+  const sz   = size==="sm"?{padding:"0.35rem 0.875rem",fontSize:"0.78rem"}:size==="lg"?{padding:"0.8rem 1.5rem",fontSize:"0.95rem"}:{padding:"0.55rem 1.125rem",fontSize:"0.85rem"};
+  const vc   = variant==="primary"?{background:C.accent,color:"white",boxShadow:"0 1px 4px rgba(0,113,227,0.3)"}
+             : variant==="secondary"?{background:"#f5f5f7",color:C.textSub,border:"1px solid #d2d2d7"}
+             : variant==="danger"?{background:"#fff0ee",color:"#c5221f",border:"1px solid #ffd0c8"}
              : {background:"transparent",color:C.textSub};
   return <button onClick={disabled?undefined:onClick} style={{...base,...sz,...vc}}>{children}</button>;
 };
@@ -1264,21 +1265,20 @@ const authFwStyle    = {marginBottom:"1rem"};
 
 function AuthWrap({children}) {
   return (
-    <div style={{minHeight:"100vh",background:"#ffffff",display:"flex",alignItems:"center",justifyContent:"center",padding:"1.5rem",fontFamily:"-apple-system,'Helvetica Neue','Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif"}}>
-      <div style={{width:"100%",maxWidth:380}}>
-        <div style={{textAlign:"center",marginBottom:"2rem"}}>
-          <div style={{margin:"0 auto 2rem",textAlign:"center"}}>
-            <div style={{display:"inline-flex",alignItems:"center",gap:"0.625rem"}}>
-              <div style={{width:36,height:36,borderRadius:"10px",background:C.accent,display:"flex",alignItems:"center",justifyContent:"center"}}>
-                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-                  <path d="M3 5h5l2 5 2-5h5v10h-3.5V9.5L11 15H9L6.5 9.5V15H3V5z" fill="white"/>
-                </svg>
-              </div>
-              <span style={{fontSize:"1.5rem",fontWeight:700,color:C.text,letterSpacing:"-0.02em"}}>MyDesk</span>
+    <div style={{minHeight:"100vh",background:"linear-gradient(145deg,#0f0f1a 0%,#1a1a2e 50%,#16213e 100%)",display:"flex",alignItems:"center",justifyContent:"center",padding:"1.5rem",fontFamily:"-apple-system,'Helvetica Neue','Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif"}}>
+      <div style={{width:"100%",maxWidth:420}}>
+        <div style={{textAlign:"center",marginBottom:"2.5rem"}}>
+          <div style={{display:"inline-flex",alignItems:"center",gap:"0.875rem",marginBottom:"1rem"}}>
+            <div style={{width:48,height:48,borderRadius:"14px",background:"linear-gradient(135deg,#0071e3,#40a9ff)",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 4px 20px rgba(0,113,227,0.4)"}}>
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+                <path d="M4 6h4l3 6 3-6h4v12h-4V11.5l-2.5 5.5h-1L8 11.5V18H4V6z" fill="white"/>
+              </svg>
             </div>
+            <span style={{fontSize:"2rem",fontWeight:700,color:"#ffffff",letterSpacing:"-0.04em"}}>MyDesk</span>
           </div>
+          <div style={{fontSize:"0.8rem",color:"rgba(255,255,255,0.45)",letterSpacing:"0.12em",textTransform:"uppercase",fontWeight:500}}>Sales & Team Management</div>
         </div>
-        <div style={{background:"white",borderRadius:"12px",padding:"2.5rem 2rem",boxShadow:"0 0 0 1px #e8eaed",border:"1px solid #e8eaed"}}>
+        <div style={{background:"rgba(255,255,255,0.97)",borderRadius:"20px",padding:"2.5rem",boxShadow:"0 25px 60px rgba(0,0,0,0.4),0 0 0 1px rgba(255,255,255,0.1)"}}>
           {children}
         </div>
       </div>
@@ -9912,7 +9912,7 @@ ${orig}`})
                   const active=bcCompanyFilter===name;
                   return (
                     <button key={name} onClick={()=>setBcCompanyFilter(active?"":name)}
-                      style={{flexShrink:0,padding:"0.3rem 0.75rem",borderRadius:999,border:`1.5px solid ${active?C.accent:C.border}`,background:active?C.accentBg:"white",color:active?C.accent:C.textSub,fontWeight:active?700:500,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap",maxWidth:160,overflow:"hidden",textOverflow:"ellipsis"}}>
+                      style={{flexShrink:0,padding:"0.3rem 0.75rem",borderRadius:999,border:`1.5px solid ${active?C.accent:C.border}`,background:active?C.accentBg:"white",color:active?"#60a5fa":"#98989d",fontWeight:active?700:500,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap",maxWidth:160,overflow:"hidden",textOverflow:"ellipsis"}}>
                       🏢 {name}（{cnt}）
                     </button>
                   );
@@ -12817,7 +12817,7 @@ export default function App() {
         @keyframes spin{to{transform:rotate(360deg)}}
       `}</style>
       {/* Header */}
-      <div className="mydesk-header" style={{background:"#ffffff",borderBottom:"1px solid #e8eaed",position:"sticky",top:0,zIndex:100,flexShrink:0}}>
+      <div className="mydesk-header" style={{background:"#1c1c1e",borderBottom:"1px solid #2c2c2e",position:"sticky",top:0,zIndex:100,flexShrink:0}}>
         <div style={{maxWidth:680,margin:"0 auto",padding:"0 clamp(0.75rem,3vw,1rem)"}}>
           <div style={{display:"flex",alignItems:"center",height:52,gap:"0.625rem"}}>
             <div style={{display:"flex",alignItems:"center",gap:"0.5rem"}}>
@@ -12826,14 +12826,14 @@ export default function App() {
                   <path d="M3 5h5l2 5 2-5h5v10h-3.5V9.5L11 15H9L6.5 9.5V15H3V5z" fill="white"/>
                 </svg>
               </div>
-              <span style={{fontWeight:700,fontSize:"1rem",color:C.text,letterSpacing:"-0.02em"}}>MyDesk</span>
+              <span style={{fontWeight:700,fontSize:"1rem",color:"#f5f5f7",letterSpacing:"-0.02em"}}>MyDesk</span>
             </div>
 
             {/* Notification bell + User menu */}
             <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:"0.5rem",position:"relative"}}>
               {/* ④ グローバル検索 */}
               <button onClick={()=>setGlobalSearch("")}
-                style={{width:38,height:38,borderRadius:"50%",background:C.bg,border:`1.5px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0,fontSize:"1rem"}}>
+                style={{width:36,height:36,borderRadius:"50%",background:"rgba(255,255,255,0.08)",border:"none",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0,fontSize:"1rem",color:"#f5f5f7"}}>
                 🔍
               </button>
               {/* Bell */}
