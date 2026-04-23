@@ -27,9 +27,9 @@ class ErrorBoundary extends React.Component {
 const STATUS_OPTIONS = ["未着手","進行中","先方待ち","保留","完了"];
 const STATUS_META = {
   "未着手":  { color:"#475569", bg:"#f1f5f9", dot:"#94a3b8" },
-  "進行中":  { color:"#1d4ed8", bg:"#dbeafe", dot:"#3b82f6" },
+  "進行中":  { color:"#1d4ed8", bg:"#e8f0fe", dot:"#3b82f6" },
   "先方待ち":{ color:"#1d4ed8", bg:"#fef3c7", dot:"#f59e0b" },
-  "保留":    { color:"#4b5563", bg:"#f3f4f6", dot:"#9ca3af" },
+  "保留":    { color:"#4b5563", bg:"#f1f3f4", dot:"#9ca3af" },
   "完了":    { color:"#065f46", bg:"#d1fae5", dot:"#10b981" },
 };
 // ─── SHARED STYLE HELPERS ───────────────────────────────────────────────────
@@ -129,41 +129,41 @@ const PERMIT_TYPES = [
 
 const DUSTALK_STATUS = {
   "展開":   { color:"#059669", bg:"#d1fae5", icon:"✅" },
-  "未展開": { color:"#6b7280", bg:"#f3f4f6", icon:"⬜" },
+  "未展開": { color:"#6b7280", bg:"#f1f3f4", icon:"⬜" },
 };
 const TREATY_STATUS = {
-  "未接触": { color:"#6b7280", bg:"#f3f4f6" },
-  "電話済": { color:"#2563eb", bg:"#dbeafe" },
+  "未接触": { color:"#6b7280", bg:"#f1f3f4" },
+  "電話済": { color:"#2563eb", bg:"#e8f0fe" },
   "資料送付":{ color:"#7c3aed", bg:"#ede9fe" },
   "商談中": { color:"#d97706", bg:"#fef3c7" },
   "協定済": { color:"#059669", bg:"#d1fae5" },
 };
 const VENDOR_STATUS = {
-  "未接触":  { color:"#6b7280", bg:"#f3f4f6" },
-  "電話済":  { color:"#2563eb", bg:"#dbeafe" },
+  "未接触":  { color:"#6b7280", bg:"#f1f3f4" },
+  "電話済":  { color:"#2563eb", bg:"#e8f0fe" },
   "資料送付":{ color:"#7c3aed", bg:"#ede9fe" },
   "商談中":  { color:"#d97706", bg:"#fef3c7" },
   "加入済":  { color:"#059669", bg:"#d1fae5" },
-  "断り":    { color:"#dc2626", bg:"#fee2e2" },
-  "見送り":  { color:"#9ca3af", bg:"#f3f4f6" },
+  "断り":    { color:"#dc2626", bg:"#fce8e6" },
+  "見送り":  { color:"#9ca3af", bg:"#f1f3f4" },
 };
 const COMPANY_STATUS = {
-  "未接触":  { color:"#6b7280", bg:"#f3f4f6" },
-  "電話済":  { color:"#2563eb", bg:"#dbeafe" },
+  "未接触":  { color:"#6b7280", bg:"#f1f3f4" },
+  "電話済":  { color:"#2563eb", bg:"#e8f0fe" },
   "資料送付":{ color:"#7c3aed", bg:"#ede9fe" },
   "商談中":  { color:"#d97706", bg:"#fef3c7" },
   "成約":    { color:"#059669", bg:"#d1fae5" },
-  "失注":    { color:"#dc2626", bg:"#fee2e2" },
-  "見送り":  { color:"#9ca3af", bg:"#f3f4f6" },
+  "失注":    { color:"#dc2626", bg:"#fce8e6" },
+  "見送り":  { color:"#9ca3af", bg:"#f1f3f4" },
 };
 const MUNI_STATUS = {
-  "未接触": { color:"#6b7280", bg:"#f3f4f6" },
-  "電話済": { color:"#2563eb", bg:"#dbeafe" },
+  "未接触": { color:"#6b7280", bg:"#f1f3f4" },
+  "電話済": { color:"#2563eb", bg:"#e8f0fe" },
   "資料送付":{ color:"#7c3aed", bg:"#ede9fe" },
   "商談中": { color:"#d97706", bg:"#fef3c7" },
   "協定済": { color:"#059669", bg:"#d1fae5" },
-  "失注":   { color:"#dc2626", bg:"#fee2e2" },
-  "見送り": { color:"#9ca3af", bg:"#f3f4f6" },
+  "失注":   { color:"#dc2626", bg:"#fce8e6" },
+  "見送り": { color:"#9ca3af", bg:"#f1f3f4" },
 };
 const VENDOR_LOG_TYPES = ["電話","訪問","資料送付","メール","WEB会議","その他"];
 const VENDOR_LOG_ICON  = {"電話":"📞","訪問":"🚗","資料送付":"📄","メール":"✉️","WEB会議":"💻","その他":"📝"};
@@ -354,25 +354,25 @@ function isNearDue(task) {
 
 // ─── BASE COMPONENTS ──────────────────────────────────────────────────────────
 const Card = ({children, style={}, onClick}) => (
-  <div onClick={onClick} style={{background:C.surface,borderRadius:"8px",border:`1px solid ${C.border}`,boxShadow:"0 1px 2px rgba(0,0,0,0.04)",...style}}>{children}</div>
+  <div onClick={onClick} style={{background:"#ffffff",borderRadius:"8px",border:"1px solid #e8eaed",boxShadow:"none",...style}}>{children}</div>
 );
 
 const Btn = ({children,onClick,variant="primary",size="md",style={},disabled=false}) => {
-  const base = {border:"none",borderRadius:"6px",fontWeight:700,cursor:disabled?"not-allowed":"pointer",fontFamily:"inherit",opacity:disabled?0.5:1,transition:"opacity 0.15s",...style};
-  const sz   = size==="sm"?{padding:"0.35rem 0.875rem",fontSize:"0.78rem"}:size==="lg"?{padding:"0.875rem 1.25rem",fontSize:"1rem"}:{padding:"0.55rem 1rem",fontSize:"0.85rem"};
-  const vc   = variant==="primary"?{background:C.accent,color:"white",boxShadow:`0 2px 10px ${C.accent}44`}
-             : variant==="secondary"?{background:C.bg,color:C.textSub,border:`1.5px solid ${C.border}`}
-             : variant==="danger"?{background:"#fee2e2",color:"#dc2626"}
+  const base = {border:"none",borderRadius:"6px",fontWeight:600,cursor:disabled?"not-allowed":"pointer",fontFamily:"inherit",opacity:disabled?0.5:1,transition:"background 0.1s",...style};
+  const sz   = size==="sm"?{padding:"0.3rem 0.75rem",fontSize:"0.78rem"}:size==="lg"?{padding:"0.75rem 1.25rem",fontSize:"0.95rem"}:{padding:"0.5rem 1rem",fontSize:"0.85rem"};
+  const vc   = variant==="primary"?{background:C.accent,color:"white"}
+             : variant==="secondary"?{background:"#f1f3f4",color:C.textSub,border:"1px solid #e8eaed"}
+             : variant==="danger"?{background:"#fce8e6",color:"#c5221f"}
              : {background:"transparent",color:C.textSub};
   return <button onClick={disabled?undefined:onClick} style={{...base,...sz,...vc}}>{children}</button>;
 };
 
 const Input = ({style={},...p}) => (
-  <input {...p} style={{width:"100%",padding:"0.65rem 0.875rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,fontSize:"0.9rem",color:C.text,outline:"none",boxSizing:"border-box",fontFamily:"inherit",...style}}/>
+  <input {...p} style={{width:"100%",padding:"0.6rem 0.875rem",borderRadius:"6px",border:"1px solid #dadce0",fontSize:"0.88rem",color:C.text,outline:"none",boxSizing:"border-box",fontFamily:"inherit",...style}}/>
 );
 
 const Textarea = ({style={},...p}) => (
-  <textarea {...p} style={{width:"100%",padding:"0.75rem 0.875rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,fontSize:"0.88rem",color:C.text,outline:"none",resize:"vertical",boxSizing:"border-box",fontFamily:"inherit",lineHeight:1.6,...style}}/>
+  <textarea {...p} style={{width:"100%",padding:"0.65rem 0.875rem",borderRadius:"6px",border:"1px solid #dadce0",fontSize:"0.88rem",color:C.text,outline:"none",resize:"vertical",boxSizing:"border-box",fontFamily:"inherit",lineHeight:1.6,...style}}/>
 );
 
 const SelectEl = ({children,style={},...p}) => (
@@ -380,8 +380,8 @@ const SelectEl = ({children,style={},...p}) => (
 );
 
 const FieldLbl = ({label,children}) => (
-  <div style={{marginBottom:"1rem"}}>
-    <label style={{display:"block",fontSize:"0.78rem",fontWeight:700,color:C.textSub,marginBottom:"0.4rem"}}>{label}</label>
+  <div style={{marginBottom:"0.875rem"}}>
+    <label style={{display:"block",fontSize:"0.75rem",fontWeight:500,color:C.textSub,marginBottom:"0.35rem"}}>{label}</label>
     {children}
   </div>
 );
@@ -390,7 +390,7 @@ function Sheet({title,onClose,children}) {
   return (
     <div style={{position:"fixed",inset:0,zIndex:300,display:"flex",flexDirection:"column",justifyContent:"flex-end"}}>
       <div onClick={onClose} style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.45)"}}/>
-      <div style={{position:"relative",background:"white",borderRadius:"1.5rem 1.5rem 0 0",padding:"1.5rem 1.25rem calc(5rem + env(safe-area-inset-bottom,16px))",maxHeight:"90vh",overflowY:"auto",boxShadow:"0 -8px 40px rgba(0,0,0,0.18)"}}>
+      <div style={{position:"relative",background:"white",borderRadius:"12px 12px 0 0",padding:"1.5rem 1.25rem calc(5rem + env(safe-area-inset-bottom,16px))",maxHeight:"90vh",overflowY:"auto",boxShadow:"0 -4px 20px rgba(0,0,0,0.1)"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1.5rem"}}>
           <h3 style={{margin:0,fontSize:"1.05rem",fontWeight:800,color:C.text}}>{title}</h3>
           <button onClick={onClose} style={{background:"none",border:"none",fontSize:"1.4rem",color:C.textMuted,cursor:"pointer",lineHeight:1}}>×</button>
@@ -1747,7 +1747,7 @@ function ActivityLog({ data, users=[], filterTypes=null }) {
   const PAGE = 30;
 
   const TYPE_META = {
-    "タスク":      { bg:"#dbeafe", color:"#1d4ed8", icon:"✅" },
+    "タスク":      { bg:"#e8f0fe", color:"#1d4ed8", icon:"✅" },
     "プロジェクト":{ bg:"#ede9fe", color:"#7c3aed", icon:"📁" },
     "企業":        { bg:"#d1fae5", color:"#059669", icon:"🏢" },
     "業者":        { bg:"#fef3c7", color:"#d97706", icon:"🔧" },
@@ -3554,17 +3554,17 @@ function MapTab({prefs,munis,vendors,companies,prefCoords,onSelectPref,nextActio
       if(!pm.length) return {bg:"#e5e7eb",border:"#d1d5db",text:"#9ca3af"};
       const n=pm.filter(m=>m.dustalk==="展開").length;
       const pct=n/pm.length;
-      if(pct===0) return {bg:"#f3f4f6",border:"#d1d5db",text:"#6b7280"};
-      if(pct<0.3) return {bg:"#dbeafe",border:"#93c5fd",text:"#1d4ed8"};
+      if(pct===0) return {bg:"#f1f3f4",border:"#d1d5db",text:"#6b7280"};
+      if(pct<0.3) return {bg:"#e8f0fe",border:"#93c5fd",text:"#1d4ed8"};
       if(pct<0.7) return {bg:"#bfdbfe",border:"#3b82f6",text:"#1d4ed8"};
       return {bg:"#d1fae5",border:"#34d399",text:"#065f46"};
     };
     const treatyCol=(p)=>{
       const pm=munis.filter(m=>String(m.prefectureId)===String(p.id));
-      if(!pm.length) return {bg:"#f3f4f6",border:"#d1d5db",text:"#9ca3af"};
+      if(!pm.length) return {bg:"#f1f3f4",border:"#d1d5db",text:"#9ca3af"};
       const n=pm.filter(m=>m.treatyStatus==="協定済").length;
       const pct=n/pm.length;
-      if(pct===0) return {bg:"#f3f4f6",border:"#d1d5db",text:"#6b7280"};
+      if(pct===0) return {bg:"#f1f3f4",border:"#d1d5db",text:"#6b7280"};
       if(pct<0.1) return {bg:"#ede9fe",border:"#a78bfa",text:"#5b21b6"};
       if(pct<0.3) return {bg:"#ddd6fe",border:"#7c3aed",text:"#4c1d95"};
       return {bg:"#c4b5fd",border:"#6d28d9",text:"#3b0764"};
@@ -3574,7 +3574,7 @@ function MapTab({prefs,munis,vendors,companies,prefCoords,onSelectPref,nextActio
       const joinedCount=pm.reduce((s,m)=>{
         return s+vendors.filter(v=>(v.municipalityIds||[]).includes(m.id)&&v.status==="加入済").length;
       },0);
-      if(joinedCount===0) return {bg:"#f3f4f6",border:"#d1d5db",text:"#9ca3af"};
+      if(joinedCount===0) return {bg:"#f1f3f4",border:"#d1d5db",text:"#9ca3af"};
       if(joinedCount<3)   return {bg:"#fef3c7",border:"#fcd34d",text:"#92400e"};
       if(joinedCount<8)   return {bg:"#fed7aa",border:"#fb923c",text:"#7c2d12"};
       return {bg:"#fca5a5",border:"#f87171",text:"#7f1d1d"};
@@ -3595,7 +3595,7 @@ function MapTab({prefs,munis,vendors,companies,prefCoords,onSelectPref,nextActio
       if(view==="dustalk") col=dustalkCol(p);
       else if(view==="treaty") col=treatyCol(p);
       else if(view==="vendor") col=vendorCol(p);
-      else col={bg:"#dbeafe",border:"#3b82f6",text:"#1d4ed8"};
+      else col={bg:"#e8f0fe",border:"#3b82f6",text:"#1d4ed8"};
 
       const size = pm.length===0?28 : Math.max(28, Math.min(52, 28+pm.length/8));
 
@@ -3709,7 +3709,7 @@ function MapTab({prefs,munis,vendors,companies,prefCoords,onSelectPref,nextActio
         {view==="dustalk"&&(
           <div style={{display:"flex",gap:"0.75rem",flexWrap:"wrap",alignItems:"center"}}>
             <span style={{fontSize:"0.65rem",fontWeight:700,color:C.textMuted}}>展開率</span>
-            {[["0%",{bg:"#f3f4f6",border:"#d1d5db"}],["1〜29%",{bg:"#dbeafe",border:"#93c5fd"}],["30〜69%",{bg:"#bfdbfe",border:"#3b82f6"}],["70%〜",{bg:"#d1fae5",border:"#34d399"}]].map(([lbl,c])=>(
+            {[["0%",{bg:"#f1f3f4",border:"#d1d5db"}],["1〜29%",{bg:"#e8f0fe",border:"#93c5fd"}],["30〜69%",{bg:"#bfdbfe",border:"#3b82f6"}],["70%〜",{bg:"#d1fae5",border:"#34d399"}]].map(([lbl,c])=>(
               <span key={lbl} style={{display:"flex",alignItems:"center",gap:"0.25rem"}}>
                 <span style={{width:12,height:12,borderRadius:"50%",background:c.bg,border:`2px solid ${c.border}`,display:"inline-block"}}/>
                 <span style={{fontSize:"0.65rem",color:C.textSub}}>{lbl}</span>
@@ -3720,7 +3720,7 @@ function MapTab({prefs,munis,vendors,companies,prefCoords,onSelectPref,nextActio
         {view==="treaty"&&(
           <div style={{display:"flex",gap:"0.75rem",flexWrap:"wrap",alignItems:"center"}}>
             <span style={{fontSize:"0.65rem",fontWeight:700,color:C.textMuted}}>協定率</span>
-            {[["0%",{bg:"#f3f4f6",border:"#d1d5db"}],["〜9%",{bg:"#ede9fe",border:"#a78bfa"}],["10〜29%",{bg:"#ddd6fe",border:"#7c3aed"}],["30%〜",{bg:"#c4b5fd",border:"#6d28d9"}]].map(([lbl,c])=>(
+            {[["0%",{bg:"#f1f3f4",border:"#d1d5db"}],["〜9%",{bg:"#ede9fe",border:"#a78bfa"}],["10〜29%",{bg:"#ddd6fe",border:"#7c3aed"}],["30%〜",{bg:"#c4b5fd",border:"#6d28d9"}]].map(([lbl,c])=>(
               <span key={lbl} style={{display:"flex",alignItems:"center",gap:"0.25rem"}}>
                 <span style={{width:12,height:12,borderRadius:"50%",background:c.bg,border:`2px solid ${c.border}`,display:"inline-block"}}/>
                 <span style={{fontSize:"0.65rem",color:C.textSub}}>{lbl}</span>
@@ -3731,7 +3731,7 @@ function MapTab({prefs,munis,vendors,companies,prefCoords,onSelectPref,nextActio
         {view==="vendor"&&(
           <div style={{display:"flex",gap:"0.75rem",flexWrap:"wrap",alignItems:"center"}}>
             <span style={{fontSize:"0.65rem",fontWeight:700,color:C.textMuted}}>加入業者数</span>
-            {[["0",{bg:"#f3f4f6",border:"#d1d5db"}],["1〜2",{bg:"#fef3c7",border:"#fcd34d"}],["3〜7",{bg:"#fed7aa",border:"#fb923c"}],["8〜",{bg:"#fca5a5",border:"#f87171"}]].map(([lbl,c])=>(
+            {[["0",{bg:"#f1f3f4",border:"#d1d5db"}],["1〜2",{bg:"#fef3c7",border:"#fcd34d"}],["3〜7",{bg:"#fed7aa",border:"#fb923c"}],["8〜",{bg:"#fca5a5",border:"#f87171"}]].map(([lbl,c])=>(
               <span key={lbl} style={{display:"flex",alignItems:"center",gap:"0.25rem"}}>
                 <span style={{width:12,height:12,borderRadius:"50%",background:c.bg,border:`2px solid ${c.border}`,display:"inline-block"}}/>
                 <span style={{fontSize:"0.65rem",color:C.textSub}}>{lbl}</span>
@@ -3770,7 +3770,7 @@ function ScoringAlertPanel({ data, users=[], currentUser, onNavigate }) {
 
         // 1. 担当者未設定
         if(!(e.assigneeIds||[]).length) {
-          alerts.push({type:"no_assignee", label:"担当者未設定", color:"#dc2626", bg:"#fee2e2"});
+          alerts.push({type:"no_assignee", label:"担当者未設定", color:"#dc2626", bg:"#fce8e6"});
           score += 30;
         }
 
@@ -3787,7 +3787,7 @@ function ScoringAlertPanel({ data, users=[], currentUser, onNavigate }) {
           alerts.push({type:"no_approach", label:"アプローチ未記録（60日超）", color:"#d97706", bg:"#fef3c7"});
           score += 25;
         } else if(daysSince !== null && daysSince > 60) {
-          alerts.push({type:"stale_60", label:`${daysSince}日間アプローチなし`, color:"#dc2626", bg:"#fee2e2"});
+          alerts.push({type:"stale_60", label:`${daysSince}日間アプローチなし`, color:"#dc2626", bg:"#fce8e6"});
           score += 20;
         } else if(daysSince !== null && daysSince > 30) {
           alerts.push({type:"stale_30", label:`${daysSince}日間アプローチなし`, color:"#d97706", bg:"#fef3c7"});
@@ -3805,7 +3805,7 @@ function ScoringAlertPanel({ data, users=[], currentUser, onNavigate }) {
         // 4. 次回アクション期限切れ
         if(e.nextActionDate && e.nextActionDate < todayStr) {
           const overdue = Math.floor((now - new Date(e.nextActionDate)) / 86400000);
-          alerts.push({type:"overdue", label:`次回アクション${overdue}日超過`, color:"#dc2626", bg:"#fee2e2"});
+          alerts.push({type:"overdue", label:`次回アクション${overdue}日超過`, color:"#dc2626", bg:"#fce8e6"});
           score += 20;
         }
 
@@ -5012,8 +5012,8 @@ function SalesTaskPanel({ entityType, entityId, entityName, data, onSave, curren
   const [tf,setTf] = useState({title:entityName,dueDate:"",notes:"",assignees:uid?[uid]:[]});
   const [pf,setPf] = useState({name:entityName,notes:"",members:uid?[uid]:[]});
   const STATUS_META_MINI={
-    "未着手":{color:"#6b7280",bg:"#f3f4f6"},
-    "進行中":{color:"#2563eb",bg:"#dbeafe"},
+    "未着手":{color:"#6b7280",bg:"#f1f3f4"},
+    "進行中":{color:"#2563eb",bg:"#e8f0fe"},
     "先方待ち":{color:"#1d4ed8",bg:"#fef3c7"},
     "完了":{color:"#059669",bg:"#d1fae5"},
     "保留":{color:"#9333ea",bg:"#f3e8ff"},
@@ -6621,7 +6621,7 @@ ${recentLogs}
   const SChip=({s,map})=>{
     const safeMap=map||VENDOR_STATUS;
     const label=s||"未接触";
-    const m=safeMap[label]||Object.values(safeMap)[0]||{color:"#6b7280",bg:"#f3f4f6"};
+    const m=safeMap[label]||Object.values(safeMap)[0]||{color:"#6b7280",bg:"#f1f3f4"};
     return <span style={{padding:"0.15rem 0.5rem",borderRadius:999,fontSize:"0.7rem",fontWeight:700,background:m.bg,color:m.color,whiteSpace:"nowrap"}}>{label}</span>;
   };
 
@@ -10898,7 +10898,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
         const types = ["all","タスク","プロジェクト","企業","業者","自治体"];
         const filtered = logFilter==="all" ? logs : logs.filter(l=>l.entityType===logFilter);
         const typeColor = {
-          "タスク":{bg:"#dbeafe",color:"#1d4ed8"},
+          "タスク":{bg:"#e8f0fe",color:"#1d4ed8"},
           "プロジェクト":{bg:"#ede9fe",color:"#7c3aed"},
           "企業":{bg:"#d1fae5",color:"#059669"},
           "業者":{bg:"#fef3c7",color:"#d97706"},
