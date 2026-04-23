@@ -5158,7 +5158,7 @@ function SalesTaskPanel({ entityType, entityId, entityName, data, onSave, curren
 }
 
 // ─── SALES VIEW ───────────────────────────────────────────────────────────────
-function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab, onNavigateToTask, onNavigateToProject, onNavigateToCompany, onNavigateToVendor, onNavigateToMuni, salesNavTarget, clearSalesNavTarget }) {
+function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab, isPC=false, onNavigateToTask, onNavigateToProject, onNavigateToCompany, onNavigateToVendor, onNavigateToMuni, salesNavTarget, clearSalesNavTarget }) {
   // salesNavTarget は App から prop として渡される（内部stateは不要）
   // salesTab managed by App for persistence
   const [muniScreen,   setMuniScreen]   = useState("top"); // top|muniDetail
@@ -7812,125 +7812,7 @@ ${orig}`})
 
   // ── 企業タブ ──────────────────────────────────────────────────────────────
   if(salesTab==="company"){
-    // Detail view
-    if(activeCompany){
-      const comp=companyOf(activeCompany);
-      if(!comp) {setActiveCompany(null);return null;}
-      const compChatUnread=(data.notifications||[]).filter(n=>n.toUserId===currentUser?.id&&!n.read&&n.type==="mention"&&n.entityId===comp.id).length;
-      return (
-        <div>
-          <div style={{display:"flex",alignItems:"center",marginBottom:"1rem",gap:"0.5rem"}}>
-            <button onClick={()=>{setActiveCompany(null);restoreSalesScroll("company");}} style={{background:"none",border:"none",color:C.textSub,fontWeight:700,fontSize:"0.85rem",cursor:"pointer",padding:0}}>‹ 一覧</button>
-            <span style={{flex:1}}/>
-    
-          </div>
-          {/* Header card */}
-          <Card style={{padding:"1.25rem",marginBottom:"1rem"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"0.75rem"}}>
-              <div>
-                <div style={{fontSize:"1.15rem",fontWeight:800,color:C.text}}>{comp.name}</div>
-                <div style={{marginTop:"0.35rem"}}><SChip s={comp.status} map={COMPANY_STATUS}/></div>
-              </div>
-              <button onClick={()=>{setForm({...comp});setSheet("editCompany");}} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:"0.625rem",padding:"0.35rem 0.625rem",cursor:"pointer",fontSize:"0.82rem",color:C.textSub}}>✏️</button>
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.5rem",fontSize:"0.78rem"}}>
-              {comp.phone&&<div><span style={{color:C.textMuted}}>📞 </span>{comp.phone}</div>}
-              {comp.email&&<div><span style={{color:C.textMuted}}>✉️ </span>{comp.email}</div>}
-              {comp.address&&<div style={{gridColumn:"1/-1"}}><span style={{color:C.textMuted}}>📍 </span>{comp.address}</div>}
-            </div>
-            {(comp.assigneeIds||[]).length>0&&<div style={{marginTop:"0.5rem"}}><AssigneeRow ids={comp.assigneeIds}/></div>}
-            {comp.notes&&<div style={{marginTop:"0.5rem",fontSize:"0.78rem",color:C.textSub,background:"#f8fafc",borderRadius:"0.5rem",padding:"0.4rem 0.6rem",borderLeft:"3px solid #cbd5e1"}}>{comp.notes}</div>}
-            {/* 次回アクション表示 */}
-            {comp.nextActionDate&&(
-              <div style={{marginTop:"0.5rem",display:"flex",alignItems:"center",gap:"0.4rem",padding:"0.3rem 0.6rem",background:"#f0f9ff",borderRadius:"0.5rem",border:"1px solid #bae6fd"}}>
-                <span style={{fontSize:"0.7rem"}}>{APPROACH_ICON[comp.nextActionType]||"📅"}</span>
-                <span style={{fontSize:"0.75rem",fontWeight:700,color:"#0369a1"}}>{comp.nextActionDate}</span>
-                <span style={{fontSize:"0.72rem",color:"#0369a1"}}>{comp.nextActionType}</span>
-                {comp.nextActionNote&&<span style={{fontSize:"0.7rem",color:"#64748b",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{comp.nextActionNote}</span>}
-                <button onClick={e=>{e.stopPropagation();openNextActionModal("companies",comp.id,comp.name,comp);}} style={{background:"none",border:"none",cursor:"pointer",fontSize:"0.7rem",color:"#94a3b8",flexShrink:0}}>✏️</button>
-              </div>
-            )}
-          </Card>
-          {/* アクションボタン行 */}
-          <div style={{marginBottom:"0.75rem",display:"flex",alignItems:"center",gap:"0.4rem",flexWrap:"wrap"}}>
-            <button onClick={()=>{const nd={...data,companies:companies.map(c=>c.id===comp.id?{...c,needFollow:!comp.needFollow}:c)};save(nd);}}
-              style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:comp.needFollow?"#fef9c3":"#f3f4f6",color:comp.needFollow?"#854d0e":"#6b7280"}}>
-              {comp.needFollow?"⭐ フォロー中":"☆ フォロー"}
-            </button>
-            <button onClick={e=>{e.stopPropagation();openApproachModal("companies",comp.id,comp.name);}}
-              style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#dbeafe",color:"#1d4ed8"}}>
-              📞 アプローチ記録
-            </button>
-            <button onClick={e=>{e.stopPropagation();setMtgModal({entityKey:"companies",entityId:comp.id,entityName:comp.name});}}
-              style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#f0fdf4",color:"#166534"}}>
-              🎤 MTG記録
-            </button>
-            <button onClick={e=>{e.stopPropagation();openNextActionModal("companies",comp.id,comp.name,comp);}}
-              style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#d1fae5",color:"#065f46"}}>
-              📅 {comp.nextActionDate?"次回変更":"次回設定"}
-            </button>
-          </div>
-          {/* Status quick-change */}
-          <div style={{marginBottom:"1rem"}}>
-            <div style={{fontSize:"0.72rem",fontWeight:700,color:C.textSub,marginBottom:"0.4rem"}}>ステータス変更</div>
-            <StatusPicker map={COMPANY_STATUS} value={comp.status} onChange={s=>{
-              if(CLOSED_STATUSES.has(s)){
-                openLossModal("companies",comp.id,comp.name,s);
-              } else {
-                let nd={...data,companies:companies.map(c=>c.id===comp.id?{...c,status:s}:c)};
-                nd=addChangeLog(nd,{entityType:"企業",entityId:comp.id,entityName:comp.name,field:"ステータス",oldVal:comp.status,newVal:s});
-                save(nd);
-              }
-            }}/>
-            {/* 失注情報表示 */}
-            {CLOSED_STATUSES.has(comp.status)&&comp.lossReason&&(
-              <div style={{marginTop:"0.4rem",padding:"0.4rem 0.6rem",background:"#fee2e2",borderRadius:"0.5rem",fontSize:"0.75rem",color:"#dc2626"}}>
-                📋 {comp.lossReason}{comp.lossNote&&`：${comp.lossNote}`}{comp.nextConsideration&&` （次回検討: ${comp.nextConsideration}）`}
-              </div>
-            )}
-          </div>
-          {/* Sub-tabs: タイムライン・チャット・タスク・ファイル */}
-          <div style={{display:"flex",background:"white",borderRadius:"6px",padding:"0.2rem",marginBottom:"1rem",border:`1px solid ${C.border}`}}>
-            {[["timeline","📋","履歴"],["chat","💬","チャット"],["tasks","✅","タスク"],["bizcard","🪪","名刺"],["files","📎","ファイル"]].map(([id,icon,lbl])=>(
-              <button key={id} onClick={()=>setActiveDetail(id)} style={{flex:1,padding:"0.5rem",borderRadius:"0.5rem",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.72rem",position:"relative",background:activeDetail===id?C.accent:"transparent",color:activeDetail===id?"white":C.textSub}}>
-                {icon} {lbl}
-                {id==="chat"&&compChatUnread>0&&<span style={{position:"absolute",top:3,right:6,background:"#dc2626",color:"white",borderRadius:999,fontSize:"0.5rem",fontWeight:800,padding:"0.05rem 0.25rem",lineHeight:1.4}}>{compChatUnread}</span>}
-                {id==="tasks"&&(()=>{const n=(data.tasks||[]).filter(t=>t.salesRef?.id===comp.id&&t.status!=="完了").length;return n>0?<span style={{position:"absolute",top:3,right:6,background:C.accent,color:"white",borderRadius:999,fontSize:"0.5rem",fontWeight:800,padding:"0.05rem 0.25rem",lineHeight:1.4}}>{n}</span>:null;})()}
-              </button>
-            ))}
-          </div>
 
-          {activeDetail==="timeline"&&<ApproachTimeline entity={comp} entityKey="companies" entityId={comp.id} users={users} onAddApproach={()=>openApproachModal("companies",comp.id,comp.name)} onSave={nd=>save(nd)} data={data}/>}
-          {activeDetail==="chat"&&ChatSection({chat:comp.chat,entityKey:"companies",entityId:comp.id})}
-          {activeDetail==="tasks"&&<SalesTaskPanel entityType="企業" entityId={comp.id} entityName={comp.name} data={data} onSave={save} currentUser={currentUser} users={users} onNavigateToTask={onNavigateToTask} onNavigateToProject={onNavigateToProject}/>}
-          {activeDetail==="bizcard"&&(()=>{
-            const linked=linkedBizcards("企業",comp.id);
-            return <LinkedBizcardList cards={linked} users={users} onUnlink={id=>unlinkBizCard(id)} onNavigateToBizcard={navToBizcard.company} onLink={()=>requestAnimationFrame(()=>setLinkBizcardModal({entityType:"企業",entityId:comp.id,entityName:comp.name}))}/>;
-          })()}
-          {activeDetail==="files"&&<FileSection files={comp.files||[]} currentUserId={currentUser?.id}
-            entityType="companies" entityId={comp.id}
-          onAdd={f=>addFileToEntity("companies",comp.id,f)}
-            onDelete={fid=>removeFileFromEntity("companies",comp.id,fid)}/>}
-          {sheet==="editCompany"&&(
-            <Sheet title="企業を編集" onClose={()=>setSheet(null)}>
-              <FieldLbl label="企業名 *"><Input value={form.name||""} onChange={e=>setForm({...form,name:e.target.value})} autoFocus/></FieldLbl>
-              <FieldLbl label="ステータス"><StatusPicker map={COMPANY_STATUS} value={form.status||"未接触"} onChange={s=>setForm({...form,status:s})}/></FieldLbl>
-              <FieldLbl label="担当者">{AssigneePicker({ids:form.assigneeIds||[],onChange:ids=>setForm({...form,assigneeIds:ids})})}</FieldLbl>
-              <FieldLbl label="電話番号（任意）"><Input value={form.phone||""} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="000-0000-0000"/></FieldLbl>
-              <FieldLbl label="メールアドレス（任意）"><Input value={form.email||""} onChange={e=>setForm({...form,email:e.target.value})} placeholder="example@mail.com"/></FieldLbl>
-              <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
-              <FieldLbl label="備考"><Textarea value={form.notes||""} onChange={e=>setForm({...form,notes:e.target.value})} style={{height:70}}/></FieldLbl>
-              <div style={{display:"flex",gap:"0.625rem"}}>
-                <button onClick={()=>{if(window.confirm("削除しますか？")){deleteCompany(comp.id);setSheet(null);}}} style={{padding:"0.75rem",borderRadius:"8px",border:`1.5px solid #fee2e2`,background:"#fee2e2",color:"#dc2626",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🗑</button>
-                <Btn variant="secondary" style={{flex:1}} onClick={()=>setSheet(null)}>キャンセル</Btn>
-                <Btn style={{flex:2}} onClick={saveCompany} disabled={!form.name?.trim()}>保存</Btn>
-              </div>
-            </Sheet>
-          )}
-        {renderModals()}
-        </div>
-      );
-    }
     // List view - grouped by status
     const compsByStatus = Object.keys(COMPANY_STATUS).map(s=>({
       status:s, meta:COMPANY_STATUS[s],
@@ -7944,7 +7826,10 @@ ${orig}`})
     const searchedComps = compSearch ? compFilteredBase.filter(c=>normSearch(c.name).includes(normSearch(compSearch))) : null;
     const compVisibleIds=(searchedComps||compFilteredBase).map(c=>c.id);
     return (
-      <div>
+      <div style={{display:isPC&&activeCompany?"flex":"block",height:isPC&&activeCompany?"calc(100vh - 60px)":"auto",overflow:isPC&&activeCompany?"hidden":"visible"}}>
+        {/* PC: left list pane */}
+        <div style={{flex:isPC&&activeCompany?"none":"auto",width:isPC&&activeCompany?300:undefined,overflowY:isPC&&activeCompany?"auto":"visible",borderRight:isPC&&activeCompany?"1px solid #e5e5ea":"none"}}>
+        <div>
         <TopTabs/>
         <BulkBar statusMap={COMPANY_STATUS} applyFn={applyBulkComp} visibleIds={compVisibleIds} onDelete={deleteBulkComp}/>
         {/* 担当者フィルタ */}
@@ -8127,6 +8012,7 @@ ${orig}`})
             <FieldLbl label="担当者">{AssigneePicker({ids:form.assigneeIds||[],onChange:ids=>setForm({...form,assigneeIds:ids})})}</FieldLbl>
             <FieldLbl label="電話番号（任意）"><Input value={form.phone||""} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="000-0000-0000"/></FieldLbl>
             <FieldLbl label="メールアドレス（任意）"><Input value={form.email||""} onChange={e=>setForm({...form,email:e.target.value})} placeholder="example@mail.com"/></FieldLbl>
+            <FieldLbl label="電話番号（任意）"><Input value={form.phone||""} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="092-xxx-xxxx" type="tel"/></FieldLbl>
             <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
             <FieldLbl label="備考"><Textarea value={form.notes||""} onChange={e=>setForm({...form,notes:e.target.value})} style={{height:70}} placeholder="メモ、特記事項など"/></FieldLbl>
             <div style={{display:"flex",gap:"0.625rem"}}>
@@ -8264,6 +8150,37 @@ ${orig}`})
           </Sheet>
         )}
       {renderModals()}
+        </div>{/* end inner list div */}
+        </div>{/* end left pane */}
+        {/* PC: right detail pane */}
+        {isPC&&activeCompany&&(()=>{
+          const comp=companyOf(activeCompany);
+          if(!comp) return null;
+          const compChatUnread=(data.notifications||[]).filter(n=>n.toUserId===currentUser?.id&&!n.read&&n.type==="mention"&&n.entityId===comp.id).length;
+          return (
+            <div style={{flex:1,overflowY:"auto",padding:"1.5rem",borderLeft:"1px solid #e5e5ea",background:"white"}}>
+              <div style={{display:"flex",alignItems:"center",marginBottom:"1rem"}}>
+                <div style={{flex:1,fontSize:"1.15rem",fontWeight:700,color:C.text}}>{comp.name}</div>
+                <button onClick={()=>setActiveCompany(null)} style={{background:"none",border:"1px solid #e5e5ea",borderRadius:"6px",padding:"0.3rem 0.75rem",cursor:"pointer",fontSize:"0.8rem",color:C.textSub}}>✕ 閉じる</button>
+              </div>
+              <SChip s={comp.status} map={COMPANY_STATUS}/>
+              <div style={{marginTop:"1rem",fontSize:"0.82rem",color:C.textSub,display:"flex",flexDirection:"column",gap:"0.3rem"}}>
+                {comp.phone&&<div>📞 {comp.phone}</div>}
+                {comp.email&&<div>✉️ {comp.email}</div>}
+                {comp.address&&<div>📍 {comp.address}</div>}
+              </div>
+              <div style={{marginTop:"1rem"}}>
+                <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap",marginBottom:"1rem"}}>
+                  <Btn size="sm" onClick={()=>openApproachModal("companies",comp.id,comp.name)}>📞 アプローチ</Btn>
+                  <Btn size="sm" onClick={()=>setMtgModal({entityKey:"companies",entityId:comp.id,entityName:comp.name})}>🎤 MTG</Btn>
+                  <Btn size="sm" variant="secondary" onClick={()=>{setForm({...comp});setSheet("editCompany");}}>✏️ 編集</Btn>
+                </div>
+                <ApproachTimeline entity={comp} entityKey="companies" entityId={comp.id} users={users} onAddApproach={()=>openApproachModal("companies",comp.id,comp.name)} onSave={nd=>save(nd)} data={data}/>
+              </div>
+            </div>
+          );
+        })()}
+      {renderModals()}
     </div>
     );
   }
@@ -8399,6 +8316,7 @@ ${orig}`})
                 <MuniPicker ids={form.municipalityIds||[]} onChange={ids=>setForm({...form,municipalityIds:ids})}/>
               </FieldLbl>
               <FieldLbl label="担当者">{AssigneePicker({ids:form.assigneeIds||[],onChange:ids=>setForm({...form,assigneeIds:ids})})}</FieldLbl>
+              <FieldLbl label="電話番号（任意）"><Input value={form.phone||""} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="092-xxx-xxxx" type="tel"/></FieldLbl>
               <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
               <FieldLbl label="許可種別（複数選択可）">
                 <div style={{display:"flex",flexWrap:"wrap",gap:"0.4rem",padding:"0.5rem",background:"#f8fafc",borderRadius:"6px",border:"1px solid #e2e8f0"}}>
@@ -8681,6 +8599,7 @@ ${orig}`})
               <MuniPicker ids={form.municipalityIds||[]} onChange={ids=>setForm({...form,municipalityIds:ids})}/>
             </FieldLbl>
             <FieldLbl label="担当者">{AssigneePicker({ids:form.assigneeIds||[],onChange:ids=>setForm({...form,assigneeIds:ids})})}</FieldLbl>
+            <FieldLbl label="電話番号（任意）"><Input value={form.phone||""} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="092-xxx-xxxx" type="tel"/></FieldLbl>
             <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
             <FieldLbl label="許可種別（複数選択可）">
                 <div style={{display:"flex",flexWrap:"wrap",gap:"0.4rem",padding:"0.5rem",background:"#f8fafc",borderRadius:"6px",border:"1px solid #e2e8f0"}}>
@@ -12341,6 +12260,15 @@ export default function App() {
   const [currentUser,setCurrentUser] = useState(null);
   // 通知フォールバック用にcurrentUserIdをwindowに保存
   React.useEffect(()=>{ window.__myDeskCurrentUserId = currentUser?.id||""; },[currentUser?.id]);
+  // PC/スマホ判定
+  const [windowWidth, setWindowWidth] = React.useState(typeof window !== "undefined" ? window.innerWidth : 1200);
+  React.useEffect(() => {
+    const handler = () => setWindowWidth(window.innerWidth);
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, []);
+  const isPC = windowWidth >= 900;
+
   const [tab,setTab]         = useState(()=>localStorage.getItem("md_tab")||"tasks");
   const [salesTab,setSalesTab]=useState(()=>localStorage.getItem("md_salesTab")||"muni");
   const [taskTab,setTaskTab]  =useState(()=>localStorage.getItem("md_taskTab")||"info");
@@ -13005,10 +12933,10 @@ export default function App() {
 
       {/* PC Sidebar Nav */}
       <div className="mydesk-sidebar" style={{display:"none",position:"fixed",top:52,left:0,bottom:0,width:200,background:"white",borderRight:`1px solid ${C.border}`,zIndex:99,overflowY:"auto",padding:"1rem 0.75rem"}}>
-        <div style={{fontSize:"0.65rem",fontWeight:800,color:C.textMuted,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:"0.5rem",paddingLeft:"0.5rem"}}>ナビゲーション</div>
+        <div style={{fontSize:"0.62rem",fontWeight:600,color:"#636366",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:"0.5rem",paddingLeft:"0.75rem"}}>ナビゲーション</div>
         {TABS.map(t=>(
           <button key={t.id} onClick={()=>persistTab("md_tab",t.id,setTab)}
-            style={{width:"100%",display:"flex",alignItems:"center",gap:"0.75rem",padding:"0.625rem 0.75rem",borderRadius:"6px",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:tab===t.id?800:500,fontSize:"0.87rem",background:tab===t.id?C.accentBg:"transparent",color:tab===t.id?C.accentDark:C.textSub,marginBottom:"0.15rem",textAlign:"left"}}>
+            style={{width:"100%",display:"flex",alignItems:"center",gap:"0.75rem",padding:"0.6rem 0.75rem",borderRadius:"8px",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:tab===t.id?600:400,fontSize:"0.87rem",background:tab===t.id?"rgba(96,165,250,0.15)":"transparent",color:tab===t.id?"#60a5fa":"#98989d",marginBottom:"0.1rem",textAlign:"left"}}>
             <span style={{fontSize:"1.2rem",lineHeight:1,flexShrink:0}}>{t.emoji}</span>
             <span>{t.label}</span>
           </button>
@@ -13020,7 +12948,7 @@ export default function App() {
       {/* Content */}
       <div ref={contentRef} className="mydesk-content" data-sales-scroll style={{flex:1,overflowY:"auto",
         paddingBottom:"calc(5rem + env(safe-area-inset-bottom,0px))"}}>
-        <div style={{maxWidth:680,margin:"0 auto",width:"100%",padding:"1.25rem 1rem 0.5rem",boxSizing:"border-box"}}>
+        <div style={{maxWidth:tab==="sales"&&isPC?1200:680,margin:"0 auto",width:"100%",padding:isPC?"1.5rem 2rem 0.5rem":"1.25rem 1rem 0.5rem",boxSizing:"border-box"}}>
           <ErrorBoundary>
             {tab==="tasks"     && <TaskView      data={data} setData={setData} users={users} currentUser={currentUser}
               taskTab={taskTab} setTaskTab={(v)=>persistTab('md_taskTab',v,setTaskTab)}
@@ -13028,7 +12956,7 @@ export default function App() {
               navTarget={navTarget} clearNavTarget={()=>setNavTarget(null)}/>}
             {tab==="schedule"  && <ScheduleView/>}
             {tab==="email"     && <EmailView     data={data} setData={setData} currentUser={currentUser}/>}
-            {tab==="sales"     && <SalesView     data={data} setData={setData} currentUser={currentUser} users={users}
+            {tab==="sales"     && <SalesView     data={data} setData={setData} currentUser={currentUser} users={users} isPC={isPC}
               salesTab={salesTab} setSalesTab={(v)=>persistTab("md_salesTab",v,setSalesTab)}
               onNavigateToTask={(id)=>{setNavTarget({type:"task",id});persistTab("md_tab","tasks",setTab);}}
               onNavigateToProject={(id)=>{setNavTarget({type:"project",id});persistTab("md_tab","tasks",setTab);}}
