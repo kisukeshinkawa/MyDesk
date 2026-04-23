@@ -42,13 +42,13 @@ const S = {
 };
 
 const C = {
-  bg:"#f0f5ff", surface:"#ffffff",
-  border:"#dbe4f5", borderLight:"#eef2fb",
-  text:"#0f172a", textSub:"#64748b", textMuted:"#94a3b8",
-  accent:"#2563eb", accentDark:"#1d4ed8", accentBg:"#eff6ff",
-  blue:"#2563eb", blueBg:"#eff6ff",
-  shadow:"0 1px 4px rgba(0,0,0,0.07)",
-  shadowMd:"0 8px 30px rgba(0,0,0,0.12)",
+  bg:"#f4f6fb", surface:"#ffffff",
+  border:"#e2e5ef", borderLight:"#edf0f7",
+  text:"#111827", textSub:"#4b5563", textMuted:"#9ca3af",
+  accent:"#4f46e5", accentDark:"#4338ca", accentBg:"#eef2ff",
+  blue:"#4f46e5", blueBg:"#eef2ff",
+  shadow:"0 1px 3px rgba(0,0,0,0.06),0 1px 2px rgba(0,0,0,0.04)",
+  shadowMd:"0 4px 24px rgba(0,0,0,0.08),0 2px 8px rgba(0,0,0,0.04)",
 };
 
 // ─── STORAGE ──────────────────────────────────────────────────────────────────
@@ -1258,20 +1258,26 @@ async function verifyResetToken(email, code) {
 }
 
 // ─── AUTH HELPER COMPONENTS (defined outside to prevent remount) ──────────────
-const authInputStyle = {width:"100%",padding:"0.75rem 1rem",borderRadius:"0.75rem",border:`1.5px solid ${C.border}`,fontSize:"0.95rem",color:C.text,outline:"none",boxSizing:"border-box",fontFamily:"inherit"};
+const authInputStyle = {width:"100%",padding:"0.75rem 1rem",borderRadius:"0.625rem",border:`1.5px solid ${C.border}`,fontSize:"0.9rem",color:C.text,outline:"none",boxSizing:"border-box",fontFamily:"inherit"};
 const authLblStyle   = {display:"block",fontSize:"0.78rem",fontWeight:700,color:C.textSub,marginBottom:"0.35rem"};
 const authFwStyle    = {marginBottom:"1rem"};
 
 function AuthWrap({children}) {
   return (
-    <div style={{minHeight:"100vh",background:`linear-gradient(135deg,#eff6ff,#dbeafe,#e0f2fe)`,display:"flex",alignItems:"center",justifyContent:"center",padding:"1.5rem",fontFamily:"-apple-system,'Hiragino Kaku Gothic ProN',sans-serif"}}>
+    <div style={{minHeight:"100vh",background:"#f8f9fc",display:"flex",alignItems:"center",justifyContent:"center",padding:"1.5rem",fontFamily:"-apple-system,'Helvetica Neue','Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif"}}>
       <div style={{width:"100%",maxWidth:380}}>
         <div style={{textAlign:"center",marginBottom:"2rem"}}>
-          <div style={{width:64,height:64,borderRadius:"1.25rem",background:`linear-gradient(135deg,${C.accent},${C.accentDark})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"2rem",margin:"0 auto 1rem",boxShadow:`0 8px 32px ${C.accent}44`}}>⚡</div>
-          <div style={{fontSize:"1.6rem",fontWeight:800,color:C.text,letterSpacing:"-0.03em"}}>MyDesk</div>
-          <div style={{fontSize:"0.82rem",color:C.textSub,marginTop:"0.25rem"}}>チーム業務管理</div>
+          <div style={{margin:"0 auto 1.25rem",textAlign:"center"}}>
+            <svg width="56" height="56" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg" style={{margin:"0 auto",display:"block"}}>
+              <rect width="56" height="56" rx="16" fill="#4f46e5"/>
+              <path d="M14 20h6l4 10 4-10h6v16h-5V26l-3.5 10h-3L19 26v10h-5V20z" fill="white"/>
+              <circle cx="40" cy="38" r="4" fill="#a5b4fc"/>
+            </svg>
+          </div>
+          <div style={{fontSize:"1.75rem",fontWeight:800,color:C.text,letterSpacing:"-0.04em",fontFamily:"Georgia,serif"}}>MyDesk</div>
+          <div style={{fontSize:"0.78rem",color:C.textMuted,marginTop:"0.3rem",letterSpacing:"0.08em",textTransform:"uppercase",fontWeight:500}}>Sales & Team Management</div>
         </div>
-        <div style={{background:"white",borderRadius:"1.25rem",padding:"2rem",boxShadow:"0 8px 40px rgba(0,0,0,0.1)"}}>
+        <div style={{background:"white",borderRadius:"1.5rem",padding:"2.25rem 2rem",boxShadow:"0 0 0 1px rgba(0,0,0,0.06),0 8px 48px rgba(0,0,0,0.08)"}}>
           {children}
         </div>
       </div>
@@ -1289,7 +1295,7 @@ function AuthInfoBox({msg}) {
 function AuthBigBtn({onClick,disabled,children}) {
   return (
     <button onClick={onClick} disabled={disabled}
-      style={{width:"100%",padding:"0.875rem",borderRadius:"0.875rem",border:"none",cursor:"pointer",fontFamily:"inherit",background:`linear-gradient(135deg,${C.accent},${C.accentDark})`,color:"white",fontWeight:800,fontSize:"1rem",boxShadow:`0 4px 20px ${C.accent}55`,opacity:disabled?0.7:1}}>
+      style={{width:"100%",padding:"0.875rem",borderRadius:"0.875rem",border:"none",cursor:"pointer",fontFamily:"inherit",background:C.accent,color:"white",fontWeight:700,fontSize:"0.95rem",letterSpacing:"0.01em",boxShadow:`0 1px 2px rgba(0,0,0,0.1)`,opacity:disabled?0.7:1}}>
       {children}
     </button>
   );
@@ -2363,7 +2369,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
           const isEditing=tChatEdit?.entityId===entityId&&tChatEdit?.chatId===m.id;
           return (
             <div key={m.id} style={{display:"flex",flexDirection:isMe?"row-reverse":"row",gap:"0.4rem",alignItems:"flex-end"}}>
-              <div style={{width:24,height:24,borderRadius:"50%",background:`linear-gradient(135deg,${C.accent},${C.accentDark})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.62rem",fontWeight:800,color:"white",flexShrink:0}}>
+              <div style={{width:24,height:24,borderRadius:"50%",background:C.accent,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.62rem",fontWeight:800,color:"white",flexShrink:0}}>
                 {cu?cu.name.charAt(0):"?"}
               </div>
               <div style={{maxWidth:"75%"}}>
@@ -2403,7 +2409,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
             {mentionCandidates.map(u=>(
               <button key={u.id} onMouseDown={e=>{e.preventDefault();insertMention(u.name);}}
                 style={{display:"flex",alignItems:"center",gap:"0.5rem",width:"100%",padding:"0.5rem 0.875rem",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",borderBottom:`1px solid ${C.borderLight}`}}>
-                <div style={{width:22,height:22,borderRadius:"50%",background:`linear-gradient(135deg,${C.accent},${C.accentDark})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.6rem",fontWeight:800,color:"white",flexShrink:0}}>
+                <div style={{width:22,height:22,borderRadius:"50%",background:C.accent,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.6rem",fontWeight:800,color:"white",flexShrink:0}}>
                   {u.name.charAt(0)}
                 </div>
                 <span style={{fontSize:"0.85rem",fontWeight:600,color:C.text}}>@{u.name}</span>
@@ -6814,7 +6820,7 @@ ${recentLogs}
             const isEditing=chatEdit?.entityId===entityId&&chatEdit?.chatId===m.id;
             return (
               <div key={m.id} style={{display:"flex",flexDirection:isMe?"row-reverse":"row",gap:"0.4rem",alignItems:"flex-end"}}>
-                <div style={{width:26,height:26,borderRadius:"50%",background:`linear-gradient(135deg,${C.accent},${C.accentDark})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.68rem",fontWeight:800,color:"white",flexShrink:0}}>
+                <div style={{width:26,height:26,borderRadius:"50%",background:C.accent,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.68rem",fontWeight:800,color:"white",flexShrink:0}}>
                   {uInit(m.userId)}
                 </div>
                 <div style={{maxWidth:"72%"}}>
@@ -6860,7 +6866,7 @@ ${recentLogs}
                 {mentionCandidates.map(u=>(
                   <button key={u.id} onMouseDown={e=>{e.preventDefault();insertMention(u.name);}}
                     style={{display:"flex",alignItems:"center",gap:"0.5rem",width:"100%",padding:"0.5rem 0.875rem",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",borderBottom:`1px solid ${C.borderLight}`}}>
-                    <div style={{width:22,height:22,borderRadius:"50%",background:`linear-gradient(135deg,${C.accent},${C.accentDark})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.6rem",fontWeight:800,color:"white",flexShrink:0}}>
+                    <div style={{width:22,height:22,borderRadius:"50%",background:C.accent,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.6rem",fontWeight:800,color:"white",flexShrink:0}}>
                       {u.name.charAt(0)}
                     </div>
                     <span style={{fontSize:"0.85rem",fontWeight:600,color:C.text}}>@{u.name}</span>
@@ -9952,7 +9958,7 @@ ${orig}`})
                         }}
                           style={{display:"flex",alignItems:"center",gap:"0.75rem",padding:"0.75rem 1rem",borderBottom:`1px solid ${C.borderLight}`,cursor:"pointer",background:isSelected?"#eff6ff":"white",transition:"background 0.1s"}}>
                           {bulkMode&&<input type="checkbox" checked={isSelected} readOnly style={{width:15,height:15,accentColor:C.accent,flexShrink:0}}/>}
-                          <div style={{width:38,height:38,borderRadius:"50%",background:`linear-gradient(135deg,${C.accent},${C.accentDark})`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                          <div style={{width:38,height:38,borderRadius:"50%",background:C.accent,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                             <span style={{fontSize:"1rem",fontWeight:800,color:"white"}}>{(card.lastName||card.company||"?")[0]}</span>
                           </div>
                           <div style={{flex:1,minWidth:0}}>
@@ -12813,10 +12819,13 @@ export default function App() {
       <div className="mydesk-header" style={{background:"white",borderBottom:`1px solid ${C.border}`,position:"sticky",top:0,zIndex:100,boxShadow:"0 1px 0 rgba(0,0,0,0.04)",flexShrink:0}}>
         <div style={{maxWidth:680,margin:"0 auto",padding:"0 clamp(0.75rem,3vw,1rem)"}}>
           <div style={{display:"flex",alignItems:"center",height:52,gap:"0.625rem"}}>
-            <div style={{width:34,height:34,borderRadius:"0.75rem",background:`linear-gradient(135deg,${C.accent},${C.accentDark})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"1.15rem",boxShadow:`0 2px 8px ${C.accent}44`}}>⚡</div>
-            <div>
-              <div style={{fontWeight:800,fontSize:"0.95rem",color:C.text,letterSpacing:"-0.02em",lineHeight:1.1}}>MyDesk</div>
-              <div style={{fontSize:"0.6rem",color:C.textMuted,fontWeight:500}}>チーム業務管理</div>
+            <div style={{display:"flex",alignItems:"center",gap:"0.5rem"}}>
+              <svg width="30" height="30" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect width="56" height="56" rx="14" fill="#4f46e5"/>
+                <path d="M14 20h6l4 10 4-10h6v16h-5V26l-3.5 10h-3L19 26v10h-5V20z" fill="white"/>
+                <circle cx="40" cy="38" r="4" fill="#a5b4fc"/>
+              </svg>
+              <div style={{fontWeight:800,fontSize:"1rem",color:C.text,letterSpacing:"-0.03em",fontFamily:"Georgia,serif"}}>MyDesk</div>
             </div>
 
             {/* Notification bell + User menu */}
@@ -12840,7 +12849,7 @@ export default function App() {
               <div style={{position:"relative"}}>
               <button onClick={()=>setShowUserMenu(v=>!v)}
                 style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.4rem 0.75rem",borderRadius:999,border:`1.5px solid ${C.border}`,background:C.bg,cursor:"pointer",fontFamily:"inherit"}}>
-                <div style={{width:26,height:26,borderRadius:"50%",background:`linear-gradient(135deg,${C.accent},${C.accentDark})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.75rem",fontWeight:800,color:"white",flexShrink:0}}>
+                <div style={{width:26,height:26,borderRadius:"50%",background:C.accent,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.75rem",fontWeight:800,color:"white",flexShrink:0}}>
                   {currentUser.name.charAt(0)}
                 </div>
                 <span style={{fontSize:"0.82rem",fontWeight:700,color:C.text,maxWidth:80,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{currentUser.name}</span>
