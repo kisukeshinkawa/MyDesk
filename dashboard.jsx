@@ -7812,6 +7812,41 @@ ${orig}`})
 
   // ── 企業タブ ──────────────────────────────────────────────────────────────
   if(salesTab==="company"){
+    // Mobile: show detail only
+    if(!isPC && activeCompany){
+      const comp=companyOf(activeCompany);
+      if(!comp){setActiveCompany(null);return null;}
+      const compChatUnread=(data.notifications||[]).filter(n=>n.toUserId===currentUser?.id&&!n.read&&n.type==="mention"&&n.entityId===comp.id).length;
+      return (
+        <div>
+          <div style={{display:"flex",alignItems:"center",marginBottom:"1rem",gap:"0.5rem"}}>
+            <button onClick={()=>{setActiveCompany(null);restoreSalesScroll("company");}} style={{background:"none",border:"none",color:C.textSub,fontWeight:700,fontSize:"0.85rem",cursor:"pointer",padding:0}}>‹ 一覧</button>
+            <span style={{flex:1}}/>
+          </div>
+          <Card style={{padding:"1.25rem",marginBottom:"1rem"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"0.75rem"}}>
+              <div>
+                <div style={{fontSize:"1.15rem",fontWeight:800,color:C.text}}>{comp.name}</div>
+                <div style={{marginTop:"0.35rem"}}><SChip s={comp.status} map={COMPANY_STATUS}/></div>
+              </div>
+              <button onClick={()=>{setForm({...comp});setSheet("editCompany");}} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:"6px",padding:"0.35rem 0.625rem",cursor:"pointer",fontSize:"0.82rem",color:C.textSub}}>✏️</button>
+            </div>
+            <div style={{fontSize:"0.78rem",color:C.textSub,display:"flex",flexDirection:"column",gap:"0.25rem"}}>
+              {comp.phone&&<div>📞 {comp.phone}</div>}
+              {comp.email&&<div>✉️ {comp.email}</div>}
+              {comp.address&&<div>📍 {comp.address}</div>}
+            </div>
+          </Card>
+          <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap",marginBottom:"0.75rem"}}>
+            <button onClick={e=>{e.stopPropagation();openApproachModal("companies",comp.id,comp.name);}} style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#dbeafe",color:"#1d4ed8"}}>📞 アプローチ記録</button>
+            <button onClick={e=>{e.stopPropagation();setMtgModal({entityKey:"companies",entityId:comp.id,entityName:comp.name});}} style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#f0fdf4",color:"#166534"}}>🎤 MTG記録</button>
+            <button onClick={e=>{e.stopPropagation();openNextActionModal("companies",comp.id,comp.name,comp);}} style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#d1fae5",color:"#065f46"}}>📅 {comp.nextActionDate?"次回変更":"次回設定"}</button>
+          </div>
+          <ApproachTimeline entity={comp} entityKey="companies" entityId={comp.id} users={users} onAddApproach={()=>openApproachModal("companies",comp.id,comp.name)} onSave={nd=>save(nd)} data={data}/>
+          {renderModals()}
+        </div>
+      );
+    }
 
     // List view - grouped by status
     const compsByStatus = Object.keys(COMPANY_STATUS).map(s=>({
@@ -8187,7 +8222,7 @@ ${orig}`})
 
   // ── 業者タブ ──────────────────────────────────────────────────────────────
   if(salesTab==="vendor"){
-    if(activeVendor){
+    if(!isPC && activeVendor){
       const v=vendorOf(activeVendor);
       if(!v){setActiveVendor(null);return null;}
       const vmunis=vendorMunis(v);
@@ -8745,7 +8780,7 @@ ${orig}`})
   }
 
   // ── 自治体タブ ────────────────────────────────────────────────────────────
-  if(salesTab==="muni"&&activeMuni&&muniScreen==="muniDetail"){
+  if(!isPC&&salesTab==="muni"&&activeMuni&&muniScreen==="muniDetail"){
     const muni=muniOf(activeMuni);
     if(!muni){setActiveMuni(null);setMuniScreen("top");return null;}
     const pref=prefOf(muni.prefectureId);
@@ -12946,9 +12981,9 @@ export default function App() {
       {/* Content + BottomNav wrapper */}
       <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
       {/* Content */}
-      <div ref={contentRef} className="mydesk-content" data-sales-scroll style={{flex:1,overflowY:"auto",
-        paddingBottom:"calc(5rem + env(safe-area-inset-bottom,0px))"}}>
-        <div style={{maxWidth:tab==="sales"&&isPC?1200:680,margin:"0 auto",width:"100%",padding:isPC?"1.5rem 2rem 0.5rem":"1.25rem 1rem 0.5rem",boxSizing:"border-box"}}>
+      <div ref={contentRef} className="mydesk-content" data-sales-scroll style={{flex:1,overflowY:isPC?"hidden":"auto",display:isPC?"flex":"block",
+        paddingBottom:isPC?0:"calc(5rem + env(safe-area-inset-bottom,0px))"}}>
+        <div style={{maxWidth:isPC?"none":680,margin:isPC?0:"0 auto",width:"100%",flex:isPC?1:undefined,overflowY:isPC?"auto":"visible",padding:isPC?"1.5rem 2rem 0.5rem":"1.25rem 1rem 0.5rem",boxSizing:"border-box"}}>
           <ErrorBoundary>
             {tab==="tasks"     && <TaskView      data={data} setData={setData} users={users} currentUser={currentUser}
               taskTab={taskTab} setTaskTab={(v)=>persistTab('md_taskTab',v,setTaskTab)}
