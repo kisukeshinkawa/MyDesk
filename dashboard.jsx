@@ -1710,7 +1710,7 @@ function TaskCommentInput({taskId, data, setData, users=[], uid}) {
     // 自己完結保存+プッシュ
     setData(nd); saveData(nd);
     if(toIds.length) {
-      fetch('/api/send-push',{method:'POST',headers:{'Content-Type':'application/json','x-mydesk-secret':'mydesk2026'},
+      fetch(`${API_BASE}/api/send-push`,{method:'POST',headers:{'Content-Type':'application/json','x-mydesk-secret':'mydesk2026'},
         body:JSON.stringify({toUserIds:toIds,title:`「${task.title}」にコメントが追加されました`,body:text.slice(0,60),tag:'task_comment'})
       }).then(r=>r.json()).then(d=>console.log('[MyDesk] push sent:',d)).catch(e=>console.warn('[MyDesk] push failed:',e));
     }
@@ -1942,7 +1942,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
         return !u?.notifyMode || u.notifyMode==='push' || u.notifyMode==='both';
       });
       if(pushTargets.length){
-        fetch('/api/send-push',{
+        fetch(`${API_BASE}/api/send-push`,{
           method:'POST',
           headers:{'Content-Type':'application/json','x-mydesk-secret':'mydesk2026'},
           body:JSON.stringify({toUserIds:pushTargets,title,body,tag}),
@@ -1958,7 +1958,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
         const u = users.find(x=>x.id===id);
         if(!u?.email) return;
         const emailBody = `【MyDesk通知】${u?.name||'メンバー'}さん\n\n${title}\n\n${body}\n\n──\nMyDesk チーム業務管理\nhttps://my-desk-theta.vercel.app`;
-        fetch('/api/send-email',{
+        fetch(`${API_BASE}/api/send-email`,{
           method:'POST',
           headers:{'Content-Type':'application/json','x-mydesk-secret':'mydesk2026'},
           body:JSON.stringify({to:u.email, toName:u?.name||'', subject:`[MyDesk] ${title}`, body:emailBody}),
@@ -3174,7 +3174,7 @@ function EmailView({data,setData,currentUser=null}) {
           : `${styleRef}${pastRef}以下の目的・内容でメール文書を作成してください。${formatRule}\n\n【メールの指示・方向性】\n${instruction}\n\n【目的・内容・補足】\n${inputText}\n\n上記の書式ルールを厳守してメール本文のみ出力してください。`;
 
       // Vercel API経由でAnthropicを呼ぶ（CORSのため直接呼び出し不可）
-      const res = await fetch("/api/generate-email", {
+      const res = await fetch(`${API_BASE}/api/generate-email`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-mydesk-secret": "mydesk2026" },
         body: JSON.stringify({ prompt })
@@ -3898,7 +3898,7 @@ const VisitRoutePlanner = React.memo(function VisitRoutePlannerInner({ entities=
     setLoading(true);
     const list = entities.slice(0,10).map((e,i)=>`${i+1}. ${e.name}（${e._type==="municipalities"?"自治体":e._type==="vendors"?"業者":"企業"}）住所：${e.address||"住所不明"} 次回アクション：${e.nextActionDate}`).join("\n");
     try {
-      const res = await fetch("/api/generate-email", {
+      const res = await fetch(`${API_BASE}/api/generate-email`, {
         method:"POST",
         headers:{"Content-Type":"application/json","x-mydesk-secret":"mydesk2026"},
         body:JSON.stringify({prompt:`以下の訪問予定先を、東京都心を起点として訪問効率が最も良い順番に並べ替えてください。
@@ -4483,7 +4483,7 @@ ${userSummary||"（活動なし）"}
 簡潔かつ前向きなトーンで、日本語でお願いします。`;
 
     try {
-      const res = await fetch("/api/generate-email", {
+      const res = await fetch(`${API_BASE}/api/generate-email`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-mydesk-secret": "mydesk2026" },
         body: JSON.stringify({ prompt }),
@@ -4574,7 +4574,7 @@ const BizCardScanner = React.memo(function BizCardScannerInner({ onResult, curre
     });
     setScanning(true);
     try {
-      const resp = await fetch("/api/scan-bizcard", {
+      const resp = await fetch(`${API_BASE}/api/scan-bizcard`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-mydesk-secret": "mydesk2026" },
         body: JSON.stringify({ imageBase64: b64, mediaType: file.type }),
@@ -5589,7 +5589,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           ? users.filter(u=>u.id!==currentUser?.id).map(u=>u.id)
           : (uid!==currentUser?.id ? [uid] : []);
         if(targets.length) {
-          fetch('/api/send-push', {
+          fetch(`${API_BASE}/api/send-push`, {
             method:'POST', headers:{'Content-Type':'application/json','x-mydesk-secret':'mydesk2026'},
             body: JSON.stringify({toUserIds:targets, title, body:body||'', tag:tag||'mydesk'}),
           }).catch(()=>{});
@@ -5870,7 +5870,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       // AI にタスク詳細と次のアクションを提案してもらう
       const entity = (data[entityKey]||[]).find(e=>e.id===entityId);
       const recentLogs = (entity?.approachLogs||[]).slice(-3).map(l=>`${l.date}: ${l.type} - ${l.note}`).join("\n");
-      fetch("/api/generate-email",{
+      fetch(`${API_BASE}/api/generate-email`,{
         method:"POST",
         headers:{"Content-Type":"application/json","x-mydesk-secret":"mydesk2026"},
         body:JSON.stringify({prompt:`以下のアプローチメモから、具体的なタスクと次のアクションを提案してください。
@@ -7322,7 +7322,7 @@ ${recentLogs}
       if(!finalText.trim()) { alert("文字起こしが空です。録音してから処理してください。"); return; }
       setAiLoading(true);
       try {
-        const res = await fetch("/api/generate-email", {
+        const res = await fetch(`${API_BASE}/api/generate-email`, {
           method: "POST",
           headers: {"Content-Type":"application/json","x-mydesk-secret":"mydesk2026"},
           body: JSON.stringify({ prompt:
@@ -7552,7 +7552,7 @@ ${recentLogs}
               const orig=aNote;
               setANote("✨ 整形中...");
               try{
-                const res=await fetch("/api/generate-email",{method:"POST",
+                const res=await fetch(`${API_BASE}/api/generate-email`,{method:"POST",
                   headers:{"Content-Type":"application/json","x-mydesk-secret":"mydesk2026"},
                   body:JSON.stringify({prompt:`以下の商談メモを「要点・合意事項・次のアクション」の3項目で整形してください。元の情報を失わず、箇条書きで簡潔に。日本語で。
 
@@ -10143,7 +10143,7 @@ function PushTestPanel({ currentUser, users }) {
   const checkSubs = async () => {
     addLog('購読状態を確認中...', 'info');
     try {
-      const r = await fetch('/api/push-test', { headers: { 'x-mydesk-secret': SECRET } });
+      const r = await fetch(`${API_BASE}/api/push-test`, { headers: { 'x-mydesk-secret': SECRET } });
       if (!r.ok) { addLog('APIエラー: ' + r.status, 'error'); return; }
       const d = await r.json();
       const nameMap = {};
@@ -12721,7 +12721,7 @@ export default function App() {
   const sendPushToUsers = async (toUserIds, title, body, tag='mydesk') => {
     if (!toUserIds?.length) return;
     try {
-      await fetch('/api/send-push', {
+      await fetch(`${API_BASE}/api/send-push`, {
         method:'POST',
         headers:{'Content-Type':'application/json','x-mydesk-secret':'mydesk2026'},
         body: JSON.stringify({ toUserIds, title, body, tag }),
@@ -13074,3 +13074,4 @@ export default function App() {
     </div>
   );
 }
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
