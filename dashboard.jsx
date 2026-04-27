@@ -7354,24 +7354,35 @@ ${recentLogs}
     const isIOS = /iP(hone|od|ad)/.test(navigator.userAgent);
     const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent) && !window.chrome;
 
+    const restartTimerRef = React.useRef(null); // 重複restart防止
+
+    const scheduleRestart = (delay) => {
+      if(restartTimerRef.current) clearTimeout(restartTimerRef.current);
+      restartTimerRef.current = setTimeout(() => {
+        restartTimerRef.current = null;
+        if(recordingRef.current) startRecognition();
+      }, delay);
+    };
+
     const startRecognition = () => {
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
       if(!SR) return;
-      // 既存のインスタンスがあれば先に止める
-      if(recognRef.current) {
-        try { recognRef.current.abort(); } catch{}
-        recognRef.current = null;
+
+      // 既存インスタンスを完全に破棄してから新規作成
+      const old = recognRef.current;
+      recognRef.current = null;
+      if(old) {
+        old.onstart = old.onend = old.onerror = old.onresult = null;
+        try { old.abort(); } catch{}
       }
+
       const recog = new SR();
       recog.lang = "ja-JP";
       recog.continuous = true;
       recog.interimResults = true;
       recog.maxAlternatives = 1;
 
-      recog.onstart = () => {
-        setListening(true);
-        setPermError("");
-      };
+      recog.onstart = () => { setListening(true); setPermError(""); };
       recog.onspeechstart = () => setSoundDetected(true);
       recog.onspeechend   = () => setSoundDetected(false);
 
@@ -7388,38 +7399,30 @@ ${recentLogs}
       };
 
       recog.onerror = e => {
-        // no-speech: 無音タイムアウト → 何もしない（continuousなので自動継続）
-        if(e.error === "no-speech") return;
-        // aborted: こちらから止めた → 無視
-        if(e.error === "aborted") return;
-        // 権限エラー
+        if(e.error === "aborted") return; // 自分でabortした → 無視
         if(e.error === "not-allowed" || e.error === "service-not-allowed") {
           setPermError(isIOS
             ? "マイクを許可：設定 → Safari → マイク → このサイトを「許可」"
             : "マイクが拒否されています。URLバー左の🎤アイコンから許可してください。");
-          recordingRef.current = false;
-          setRecording(false);
-          clearInterval(timerRef.current);
+          recordingRef.current = false; setRecording(false); clearInterval(timerRef.current);
           return;
         }
-        // network等その他エラー → 2秒後に再起動
-        console.warn("[MTG] error:", e.error);
-        if(recordingRef.current) setTimeout(() => { if(recordingRef.current) startRecognition(); }, 2000);
+        // no-speech等: onendも発火するのでそちらで再起動。ここでは何もしない
       };
 
       recog.onend = () => {
-        setInterimText("");
-        setSoundDetected(false);
-        // continuousなのに終了した = ブラウザが止めた（iOS等）→ 即再起動
-        if(recordingRef.current) setTimeout(() => { if(recordingRef.current) startRecognition(); }, 200);
+        setInterimText(""); setSoundDetected(false);
+        // このインスタンスが現在の recognRef でない場合は無視（古いインスタンス）
+        if(recognRef.current !== recog) return;
+        recognRef.current = null;
+        if(recordingRef.current) scheduleRestart(300);
       };
 
       recognRef.current = recog;
-      try {
-        recog.start();
-      } catch(err) {
-        console.warn("[MTG] start err:", err.message);
-        if(recordingRef.current) setTimeout(() => { if(recordingRef.current) startRecognition(); }, 1000);
+      try { recog.start(); }
+      catch(err) {
+        recognRef.current = null;
+        if(recordingRef.current) scheduleRestart(800);
       }
     };
 
@@ -7448,20 +7451,24 @@ ${recentLogs}
 
         const stopRecording = () => {
       recordingRef.current = false;
+      if(restartTimerRef.current) { clearTimeout(restartTimerRef.current); restartTimerRef.current = null; }
       setRecording(false);
       setListening(false);
       setSoundDetected(false);
       setInterimText("");
       clearInterval(timerRef.current);
-      try { recognRef.current?.stop(); } catch {}
+      const r = recognRef.current;
       recognRef.current = null;
+      if(r) { r.onend = null; try { r.abort(); } catch {} }
     };
 
     // クリーンアップ
     React.useEffect(() => () => {
       recordingRef.current = false;
+      if(restartTimerRef.current) clearTimeout(restartTimerRef.current);
       clearInterval(timerRef.current);
-      try { recognRef.current?.stop(); } catch {}
+      const r = recognRef.current; recognRef.current = null;
+      if(r) { r.onend = null; try { r.abort(); } catch {} }
     }, []);
 
     const fullTranscript = finalText + (interimText ? "…" + interimText : "");
