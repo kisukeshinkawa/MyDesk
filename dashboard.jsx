@@ -7398,9 +7398,16 @@ ${recentLogs}
     const [permError,   setPermError]  = React.useState("");
     const [listening,   setListening]  = React.useState(false);
     const [soundDetected, setSoundDetected] = React.useState(false);
+    const [audioLevel,    setAudioLevel] = React.useState(0); // 0-100 マイク入力レベル
+    const [manualMode,    setManualMode] = React.useState(false); // 音声NG時の手入力モード
     const recognRef  = React.useRef(null);
     const timerRef   = React.useRef(null);
     const recordingRef = React.useRef(false); // stale closure対策
+    // 音声レベルメーター用
+    const audioStreamRef = React.useRef(null);
+    const audioCtxRef    = React.useRef(null);
+    const analyserRef    = React.useRef(null);
+    const levelAnimRef   = React.useRef(null);
 
     // デバイス判定（コンポーネントレベルで1回だけ計算）
     const isIOS = /iP(hone|od|ad)/.test(navigator.userAgent);
@@ -7496,6 +7503,49 @@ ${recentLogs}
       }
     };
 
+    // ── 音声レベルメーター（マイク入力を可視化）──
+    const startAudioMeter = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+        audioStreamRef.current = stream;
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if(!AudioCtx) return;
+        const ctx = new AudioCtx();
+        audioCtxRef.current = ctx;
+        const source = ctx.createMediaStreamSource(stream);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 512;
+        source.connect(analyser);
+        analyserRef.current = analyser;
+        const buffer = new Uint8Array(analyser.frequencyBinCount);
+        const tick = () => {
+          if(!analyserRef.current) return;
+          analyser.getByteFrequencyData(buffer);
+          // 平均音量を 0-100 に正規化
+          let sum = 0;
+          for(let i=0;i<buffer.length;i++) sum += buffer[i];
+          const avg = sum / buffer.length;
+          const level = Math.min(100, Math.round(avg * 1.5)); // 増幅
+          setAudioLevel(level);
+          levelAnimRef.current = requestAnimationFrame(tick);
+        };
+        tick();
+      } catch(err) {
+        console.warn("音声レベルメーター起動失敗:", err);
+        // メーターは諦めるが録音は続行
+      }
+    };
+
+    const stopAudioMeter = () => {
+      if(levelAnimRef.current) { cancelAnimationFrame(levelAnimRef.current); levelAnimRef.current = null; }
+      analyserRef.current = null;
+      try { audioCtxRef.current?.close(); } catch{}
+      audioCtxRef.current = null;
+      try { audioStreamRef.current?.getTracks().forEach(t=>t.stop()); } catch{}
+      audioStreamRef.current = null;
+      setAudioLevel(0);
+    };
+
     const startRecording = () => {
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
       if(!SR) {
@@ -7510,8 +7560,9 @@ ${recentLogs}
         return;
       }
       setPermError("");
-      // getUserMediaは使わず直接SpeechRecognitionで開始
-      // （getUserMedia後にstopするとマイクが一瞬切れてSR開始に失敗することがある）
+      // 音声レベルメーターを起動（getUserMediaの権限ダイアログもここで出る）
+      startAudioMeter();
+      // SpeechRecognition は直接起動（getUserMedia STOP 後に開始するとマイクが取れない問題があるため）
       // 権限不足の場合は recog.onerror で "not-allowed" がキャッチされるのでそこで案内表示
       recordingRef.current = true;
       setRecording(true);
@@ -7532,6 +7583,7 @@ ${recentLogs}
       setSoundDetected(false);
       setInterimText("");
       clearInterval(timerRef.current);
+      stopAudioMeter();
       const r = recognRef.current;
       recognRef.current = null;
       if(r) {
@@ -7546,6 +7598,7 @@ ${recentLogs}
       recordingRef.current = false;
       if(restartTimerRef.current) clearTimeout(restartTimerRef.current);
       clearInterval(timerRef.current);
+      stopAudioMeter();
       const r = recognRef.current; recognRef.current = null;
       if(r) {
         // 全ハンドラを完全にnullにしてからabort
@@ -7649,9 +7702,9 @@ ${recentLogs}
                     <span style={{lineHeight:1.8}}>{finalText}</span>
                   ) : recording ? (
                     <div style={{display:"flex",alignItems:"center",gap:"0.5rem",color:"#94a3b8"}}>
-                      <span style={{width:10,height:10,borderRadius:"50%",background:soundDetected?"#22c55e":"#94a3b8",display:"inline-block",transition:"background 0.1s"}}/>
-                      {soundDetected
-                    ? <span style={{color:"#22c55e",fontWeight:600}}>🎙 音声検出中</span>
+                      <span style={{width:10,height:10,borderRadius:"50%",background:audioLevel>15?"#22c55e":"#94a3b8",display:"inline-block",transition:"background 0.1s"}}/>
+                      {audioLevel>15
+                    ? <span style={{color:"#22c55e",fontWeight:600}}>🎙 マイク音声検出中（{audioLevel}%）</span>
                     : listening
                     ? <span style={{color:C.accent,fontWeight:500}}>待機中 — はっきり話してください</span>
                     : <span style={{color:C.textSub}}>マイクに接続中...</span>}
@@ -7661,20 +7714,55 @@ ${recentLogs}
                   )}
                   {interimText&&<div style={{color:"#059669",fontStyle:"italic",marginTop:"0.35rem",paddingTop:"0.35rem",borderTop:"1px dashed #e2e8f0",fontSize:"0.78rem",fontWeight:600}}>{interimText}</div>}
                 </div>
+                {/* 音声レベルメーター（録音中常時表示） */}
+                {recording && (
+                  <div style={{marginTop:"0.4rem"}}>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",fontSize:"0.65rem",color:"#64748b",marginBottom:"0.2rem"}}>
+                      <span>🎚️ マイク入力レベル</span>
+                      <span style={{fontWeight:700,color:audioLevel>15?"#059669":"#dc2626"}}>{audioLevel>15?"OK":"無音"}（{audioLevel}%）</span>
+                    </div>
+                    <div style={{position:"relative",height:8,background:"#e2e8f0",borderRadius:999,overflow:"hidden"}}>
+                      <div style={{position:"absolute",left:0,top:0,bottom:0,width:`${audioLevel}%`,background:audioLevel>50?"#22c55e":audioLevel>15?"#84cc16":"#fbbf24",transition:"width 0.1s ease-out"}}/>
+                    </div>
+                    <div style={{fontSize:"0.6rem",color:"#94a3b8",marginTop:"0.15rem"}}>
+                      ※ メーターが動かない場合 → マイク自体の問題（PC設定やデバイス選択）<br/>
+                      ※ メーターは動くが文字起こしされない場合 → 音声認識サーバー（ネットワーク）の問題
+                    </div>
+                  </div>
+                )}
                 {/* 10秒以上、文字起こしが進まない場合の警告 */}
                 {recording && elapsed >= 10 && !finalText && !interimText && (
                   <div style={{marginTop:"0.5rem",background:"#fef3c7",border:"1px solid #fbbf24",borderRadius:"6px",padding:"0.5rem 0.75rem",fontSize:"0.72rem",color:"#92400e",lineHeight:1.6}}>
-                    ⚠️ <strong>音声が検出されていません。</strong><br/>
-                    {isIOS
-                      ? "・iPhone/iPadはSafariで開いていますか？\n・設定 → Safari → マイク でこのサイトを「許可」"
-                      : "・URLバー左の🔒/🎤アイコンを確認 → 「マイク：許可」になっているか\n・他のアプリ（Zoom/Teams等）がマイクを使っていないか\n・PCの設定でマイクが有効になっているか"
+                    ⚠️ <strong>{audioLevel>15?"マイク入力はあるが文字起こしされていません":"音声が検出されていません"}</strong><br/>
+                    {audioLevel>15
+                      ? "音声認識サーバー（Google）への接続に問題があります。\n・Wi-Fi / 通信環境を確認\n・他のタブやアプリを閉じて再試行\n・Service Worker のキャッシュが原因の可能性も"
+                      : isIOS
+                        ? "・iPhone/iPadはSafariで開いていますか？\n・設定 → Safari → マイク でこのサイトを「許可」"
+                        : "・URLバー左の🔒/🎤アイコンを確認 → 「マイク：許可」になっているか\n・他のアプリ（Zoom/Teams等）がマイクを使っていないか\n・PCの設定でマイクが有効になっているか"
                     }
-                    <div style={{marginTop:"0.3rem"}}>
+                    <div style={{marginTop:"0.4rem",display:"flex",gap:"0.4rem",flexWrap:"wrap"}}>
                       <button onClick={()=>{stopRecording();setTimeout(()=>startRecording(),300);}}
-                        style={{padding:"0.25rem 0.6rem",borderRadius:"0.4rem",border:"1px solid #fbbf24",background:"white",color:"#92400e",fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.7rem"}}>
+                        style={{padding:"0.3rem 0.7rem",borderRadius:"0.4rem",border:"1px solid #fbbf24",background:"white",color:"#92400e",fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.7rem"}}>
                         🔄 録音をリトライ
                       </button>
+                      <button onClick={()=>{stopRecording();setManualMode(true);}}
+                        style={{padding:"0.3rem 0.7rem",borderRadius:"0.4rem",border:"1px solid #2563eb",background:"#dbeafe",color:"#1d4ed8",fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.7rem"}}>
+                        ⌨️ 手入力に切替
+                      </button>
                     </div>
+                  </div>
+                )}
+                {/* 手入力モード（音声認識が使えない時のフォールバック） */}
+                {(manualMode||(!recording&&finalText===""&&!permError))&&!finalText&&(
+                  <div style={{marginTop:"0.5rem",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:"6px",padding:"0.625rem 0.75rem"}}>
+                    <div style={{fontSize:"0.72rem",fontWeight:700,color:"#1d4ed8",marginBottom:"0.35rem",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                      <span>⌨️ 手入力モード（録音なしで議事録作成）</span>
+                      {manualMode&&<button onClick={()=>setManualMode(false)} style={{background:"none",border:"none",color:"#64748b",fontSize:"0.65rem",cursor:"pointer",fontFamily:"inherit"}}>✕ 閉じる</button>}
+                    </div>
+                    <textarea
+                      placeholder="MTGの内容を直接入力してください...（議事録・タスクのAI生成に使えます）"
+                      onChange={e=>setFinalText(e.target.value)}
+                      style={{width:"100%",padding:"0.5rem 0.75rem",borderRadius:"0.5rem",border:"1px solid #bfdbfe",fontFamily:"inherit",fontSize:"0.82rem",height:120,boxSizing:"border-box",resize:"vertical",lineHeight:1.6}}/>
                   </div>
                 )}
                 {finalText&&(
