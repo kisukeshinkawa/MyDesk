@@ -7400,6 +7400,10 @@ ${recentLogs}
     const [soundDetected, setSoundDetected] = React.useState(false);
     const [audioLevel,    setAudioLevel] = React.useState(0); // 0-100 マイク入力レベル
     const [manualMode,    setManualMode] = React.useState(false); // 音声NG時の手入力モード
+    const [audioDevices, setAudioDevices] = React.useState([]); // 利用可能なマイク一覧
+    const [selectedDeviceId, setSelectedDeviceId] = React.useState(
+      () => localStorage.getItem("md_mtgMicDeviceId") || ""
+    );
     const recognRef  = React.useRef(null);
     const timerRef   = React.useRef(null);
     const recordingRef = React.useRef(false); // stale closure対策
@@ -7408,6 +7412,24 @@ ${recentLogs}
     const audioCtxRef    = React.useRef(null);
     const analyserRef    = React.useRef(null);
     const levelAnimRef   = React.useRef(null);
+
+    // 利用可能なマイク一覧を取得（モーダル開いた時 & 録音許可後）
+    const refreshDevices = React.useCallback(async () => {
+      try {
+        const list = await navigator.mediaDevices.enumerateDevices();
+        const mics = list.filter(d => d.kind === "audioinput");
+        setAudioDevices(mics);
+        return mics;
+      } catch(e) {
+        console.warn("デバイス一覧取得失敗:", e);
+        return [];
+      }
+    }, []);
+
+    React.useEffect(() => {
+      // 初回：許可前は label が空文字なのでデバイス名が出ないが、デバイスIDは取得できる
+      refreshDevices();
+    }, [refreshDevices]);
 
     // デバイス判定（コンポーネントレベルで1回だけ計算）
     const isIOS = /iP(hone|od|ad)/.test(navigator.userAgent);
@@ -7506,8 +7528,24 @@ ${recentLogs}
     // ── 音声レベルメーター（マイク入力を可視化）──
     const startAudioMeter = async () => {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+        // 選択されたデバイスがあればそれを使う、なければデフォルト
+        const audioConstraints = selectedDeviceId
+          ? { deviceId: { exact: selectedDeviceId } }
+          : true;
+        const stream = await navigator.mediaDevices.getUserMedia({audio: audioConstraints});
         audioStreamRef.current = stream;
+
+        // 許可が下りたのでデバイス名（label）が取れる → 一覧を再取得
+        refreshDevices();
+
+        // 実際に使われたデバイスのIDを保存（ユーザーがまだ未選択ならデフォルトを記憶）
+        const track = stream.getAudioTracks()[0];
+        const settings = track?.getSettings?.();
+        if(settings?.deviceId && !selectedDeviceId) {
+          setSelectedDeviceId(settings.deviceId);
+          localStorage.setItem("md_mtgMicDeviceId", settings.deviceId);
+        }
+
         const AudioCtx = window.AudioContext || window.webkitAudioContext;
         if(!AudioCtx) return;
         const ctx = new AudioCtx();
@@ -7670,6 +7708,41 @@ ${recentLogs}
                 ⚠️ オンラインMTGの相手の声は現状拾えません（自分の声のみ）。
               </div>}
 
+              {/* 🎙 マイクデバイス選択（重要：iPhoneがContinuityで使われる問題対策） */}
+              <div style={{background:"#f8fafc",border:`1px solid ${C.border}`,borderRadius:"8px",padding:"0.625rem 0.75rem",marginBottom:"0.75rem"}}>
+                <div style={{fontSize:"0.72rem",fontWeight:700,color:"#1e293b",marginBottom:"0.35rem",display:"flex",alignItems:"center",gap:"0.4rem"}}>
+                  🎙 使用するマイク
+                  <button onClick={()=>refreshDevices()} title="再検出"
+                    style={{background:"none",border:"none",cursor:"pointer",fontSize:"0.7rem",color:C.accent,fontFamily:"inherit",padding:"0.1rem 0.3rem"}}>🔄 再検出</button>
+                </div>
+                <select
+                  value={selectedDeviceId}
+                  onChange={async e=>{
+                    const id = e.target.value;
+                    setSelectedDeviceId(id);
+                    if(id) localStorage.setItem("md_mtgMicDeviceId", id);
+                    else localStorage.removeItem("md_mtgMicDeviceId");
+                    // 録音中なら再起動して新しいデバイスを反映
+                    if(recordingRef.current) {
+                      stopRecording();
+                      setTimeout(()=>startRecording(), 250);
+                    }
+                  }}
+                  style={{width:"100%",padding:"0.45rem 0.6rem",borderRadius:"0.5rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.8rem",background:"white",boxSizing:"border-box"}}>
+                  <option value="">（システム既定のマイク）</option>
+                  {audioDevices.map((d,i)=>(
+                    <option key={d.deviceId||i} value={d.deviceId}>
+                      {d.label || `マイク #${i+1}（許可後に名前が表示されます）`}
+                    </option>
+                  ))}
+                </select>
+                <div style={{fontSize:"0.65rem",color:"#64748b",marginTop:"0.35rem",lineHeight:1.5}}>
+                  💡 <strong>iPhoneが反応する場合：</strong>このリストから「<strong>MacBook Pro マイクロフォン</strong>」など<strong>PC本体のマイク</strong>を選択してください。<br/>
+                  ※ 一覧が空の時は「録音開始」を一度押してマイクを許可するとデバイス名が表示されます。<br/>
+                  ※ macOSの場合：<strong>システム設定 → サウンド → 入力</strong> でも既定マイクを変更できます（こちらが優先されます）。
+                </div>
+              </div>
+
               {/* 録音状態表示 */}
               <div style={{textAlign:"center",padding:"1rem 0"}}>
                 {recording ? (
@@ -7725,8 +7798,9 @@ ${recentLogs}
                       <div style={{position:"absolute",left:0,top:0,bottom:0,width:`${audioLevel}%`,background:audioLevel>50?"#22c55e":audioLevel>15?"#84cc16":"#fbbf24",transition:"width 0.1s ease-out"}}/>
                     </div>
                     <div style={{fontSize:"0.6rem",color:"#94a3b8",marginTop:"0.15rem"}}>
-                      ※ メーターが動かない場合 → マイク自体の問題（PC設定やデバイス選択）<br/>
-                      ※ メーターは動くが文字起こしされない場合 → 音声認識サーバー（ネットワーク）の問題
+                      ※ メーターが動かない場合 → 上の「使用するマイク」を別デバイスに変更してみてください<br/>
+                      ※ メーターは動くが文字起こしされない場合 → 音声認識サーバー（ネットワーク）の問題<br/>
+                      ※ <strong>macOS：iPhoneが反応する</strong>のはContinuity（連携）でiPhoneがマイクとして使われている可能性があります。上のリストでPC本体のマイクを選んでください。
                     </div>
                   </div>
                 )}
