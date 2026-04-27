@@ -7407,6 +7407,10 @@ ${recentLogs}
     const [diagnostics, setDiagnostics] = React.useState(null); // マイク診断情報
     const [testRecording, setTestRecording] = React.useState(false); // テスト録音中
     const [testAudioUrl, setTestAudioUrl] = React.useState(""); // テスト録音再生用URL
+    // Whisper録音用
+    const [whisperProcessing, setWhisperProcessing] = React.useState(false); // Whisper API呼び出し中
+    const [whisperError, setWhisperError] = React.useState(""); // Whisperエラー
+    const [recordedAudioUrl, setRecordedAudioUrl] = React.useState(""); // 録音された音声の再生URL
     const recognRef  = React.useRef(null);
     const timerRef   = React.useRef(null);
     const recordingRef = React.useRef(false); // stale closure対策
@@ -7418,6 +7422,10 @@ ${recentLogs}
     // テスト録音用
     const testRecorderRef = React.useRef(null);
     const testStreamRef   = React.useRef(null);
+    // Whisper録音用
+    const mediaRecorderRef = React.useRef(null);
+    const recordingStreamRef = React.useRef(null);
+    const audioChunksRef     = React.useRef([]);
 
     // 利用可能なマイク一覧を取得（モーダル開いた時 & 録音許可後）
     const refreshDevices = React.useCallback(async () => {
@@ -7443,93 +7451,62 @@ ${recentLogs}
 
     const restartTimerRef = React.useRef(null); // 重複restart防止
 
-    const scheduleRestart = (delay) => {
-      if(restartTimerRef.current) clearTimeout(restartTimerRef.current);
-      restartTimerRef.current = setTimeout(() => {
-        restartTimerRef.current = null;
-        if(recordingRef.current) startRecognition();
-      }, delay);
-    };
+    // ── Whisper API へ音声送信して文字起こしを取得 ──
+    const transcribeWithWhisper = async (blob) => {
+      setWhisperProcessing(true);
+      setWhisperError("");
+      try {
+        // Blob を base64 に変換
+        const base64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            // dataURL "data:audio/webm;base64,XXXX..." からbase64部分のみ抽出
+            const result = reader.result;
+            const idx = result.indexOf(",");
+            resolve(idx >= 0 ? result.slice(idx + 1) : result);
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
 
-    const startRecognition = () => {
-      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if(!SR) return;
-
-      // 既存インスタンスを完全に破棄してから新規作成
-      const old = recognRef.current;
-      recognRef.current = null;
-      if(old) {
-        // 全ハンドラを完全にnullにしてからabort
-        old.onstart = old.onend = old.onerror = old.onresult = old.onspeechstart = old.onspeechend = null;
-        try { old.abort(); } catch{}
-      }
-
-      const recog = new SR();
-      recog.lang = "ja-JP";
-      recog.continuous = true;
-      recog.interimResults = true;
-      recog.maxAlternatives = 1;
-
-      recog.onstart = () => { setListening(true); setPermError(""); };
-      recog.onspeechstart = () => setSoundDetected(true);
-      recog.onspeechend   = () => setSoundDetected(false);
-
-      recog.onresult = e => {
-        setSoundDetected(true);
-        let interim = "", newFinal = "";
-        for(let i = e.resultIndex; i < e.results.length; i++){
-          const t = e.results[i][0].transcript;
-          if(e.results[i].isFinal) newFinal += t;
-          else interim = t;
+        // サイズチェック（base64で~22MB = 元16MB相当）
+        if(base64.length > 22 * 1024 * 1024) {
+          throw new Error("録音時間が長すぎます（約15分以内に）");
         }
-        if(newFinal) setFinalText(prev => prev + newFinal + "　");
-        setInterimText(interim);
-      };
 
-      recog.onerror = e => {
-        if(e.error === "aborted") return; // 自分でabortした → 完全に無視（ログも出さない）
-        if(e.error === "no-speech") return; // 沈黙時 → onendで再起動するので無視
-        console.warn("SpeechRecognition error:", e.error, e);
-        if(e.error === "not-allowed" || e.error === "service-not-allowed") {
-          setPermError(isIOS
-            ? "マイクを許可：設定 → Safari → マイク → このサイトを「許可」"
-            : "マイクが拒否されています。URLバー左の🔒/🎤アイコンから許可してください。");
-          recordingRef.current = false; setRecording(false); clearInterval(timerRef.current);
-          return;
-        }
-        if(e.error === "audio-capture") {
-          setPermError("マイクから音声が取得できません。マイク機器を確認してください。");
-          recordingRef.current = false; setRecording(false); clearInterval(timerRef.current);
-          return;
-        }
-        if(e.error === "network") {
-          setPermError("ネットワークエラー：音声認識サーバーに接続できません。Wi-Fi/通信環境を確認してください。");
-          recordingRef.current = false; setRecording(false); clearInterval(timerRef.current);
-          return;
-        }
-        if(e.error === "language-not-supported") {
-          setPermError("日本語の音声認識がサポートされていません。Chrome/Safariの最新版でお試しください。");
-          recordingRef.current = false; setRecording(false); clearInterval(timerRef.current);
-          return;
-        }
-        // その他: onendも発火するのでそちらで再起動。ここでは何もしない
-      };
+        const res = await fetch(`${API_BASE}/api/transcribe`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-mydesk-secret": "mydesk2026",
+          },
+          body: JSON.stringify({
+            audio: base64,
+            filename: `mtg-${Date.now()}.webm`,
+            mimeType: blob.type || "audio/webm",
+          }),
+        });
 
-      recog.onend = () => {
-        setInterimText(""); setSoundDetected(false);
-        // このインスタンスが現在の recognRef でない場合は無視（古いインスタンス）
-        if(recognRef.current !== recog) return;
-        recognRef.current = null;
-        if(recordingRef.current) scheduleRestart(300);
-      };
+        if(!res.ok) {
+          const errText = await res.text();
+          throw new Error(`Whisper APIエラー（${res.status}）: ${errText.slice(0, 200)}`);
+        }
 
-      recognRef.current = recog;
-      try { recog.start(); }
-      catch(err) {
-        recognRef.current = null;
-        if(recordingRef.current) scheduleRestart(800);
+        const json = await res.json();
+        const text = (json.text || "").trim();
+        if(!text) {
+          throw new Error("文字起こし結果が空でした。録音した内容に音声が含まれていない可能性があります。");
+        }
+        // 既存テキストに追記
+        setFinalText(prev => prev ? prev + "\n\n" + text : text);
+      } catch(e) {
+        console.error("Whisper送信エラー:", e);
+        setWhisperError(e.message || "文字起こしに失敗しました");
+      } finally {
+        setWhisperProcessing(false);
       }
     };
+
 
     // ── 音声レベルメーター（マイク入力を可視化）──
     const startAudioMeter = async () => {
@@ -7721,50 +7698,127 @@ ${recentLogs}
       }
     };
 
-    const startRecording = () => {
-      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if(!SR) {
-        setPermError(isIOS
-          ? "iOSはSafariアプリで開いてください（ChromeはiOSで音声認識非対応）"
-          : "このブラウザは音声認識に非対応です。Chrome/Safariをお使いください。");
-        return;
-      }
+    const startRecording = async () => {
       // HTTPS必須のチェック
       if(window.location.protocol!=="https:" && window.location.hostname!=="localhost") {
-        setPermError("音声認識はHTTPS環境のみで動作します。");
+        setPermError("録音はHTTPS環境のみで動作します。");
+        return;
+      }
+      // MediaRecorder API サポート確認
+      if(typeof MediaRecorder === "undefined") {
+        setPermError("このブラウザは録音機能（MediaRecorder API）に非対応です。Chrome/Safari/Edgeの最新版をお使いください。");
         return;
       }
       setPermError("");
-      // 音声レベルメーターを起動（getUserMediaの権限ダイアログもここで出る）
-      startAudioMeter();
-      // SpeechRecognition は直接起動（getUserMedia STOP 後に開始するとマイクが取れない問題があるため）
-      // 権限不足の場合は recog.onerror で "not-allowed" がキャッチされるのでそこで案内表示
-      recordingRef.current = true;
-      setRecording(true);
-      setFinalText("");
-      setInterimText("");
-      setElapsed(0);
-      setSoundDetected(false);
-      setListening(false);
-      timerRef.current = setInterval(() => setElapsed(s => s + 1), 1000);
-      startRecognition();
+      setWhisperError("");
+      // 既存の音声URLがあれば破棄
+      if(recordedAudioUrl) { try { URL.revokeObjectURL(recordedAudioUrl); } catch{} setRecordedAudioUrl(""); }
+
+      try {
+        // 音声処理を全部無効化して生のマイク音声を取得
+        const audioConstraints = {
+          deviceId: selectedDeviceId ? { exact: selectedDeviceId } : undefined,
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        };
+        const stream = await navigator.mediaDevices.getUserMedia({audio: audioConstraints});
+        recordingStreamRef.current = stream;
+
+        // 許可下りたのでデバイス一覧再取得
+        refreshDevices();
+
+        // MediaRecorder セットアップ
+        const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus"
+                   : MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm"
+                   : MediaRecorder.isTypeSupported("audio/mp4") ? "audio/mp4"
+                   : "";
+        const recorder = mime ? new MediaRecorder(stream, {mimeType: mime, audioBitsPerSecond: 64000})
+                              : new MediaRecorder(stream, {audioBitsPerSecond: 64000});
+        mediaRecorderRef.current = recorder;
+        audioChunksRef.current = [];
+
+        recorder.ondataavailable = e => { if(e.data && e.data.size > 0) audioChunksRef.current.push(e.data); };
+
+        recorder.onstop = async () => {
+          // ストリーム解放
+          try { stream.getTracks().forEach(t => t.stop()); } catch{}
+          recordingStreamRef.current = null;
+
+          // タイマー停止
+          recordingRef.current = false;
+          if(timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+          setRecording(false);
+
+          // メーター停止
+          stopAudioMeter();
+
+          // 録音データを統合
+          const chunks = audioChunksRef.current;
+          audioChunksRef.current = [];
+          if(chunks.length === 0) {
+            setWhisperError("録音データが取得できませんでした。マイクが動作していない可能性があります。");
+            return;
+          }
+
+          const blob = new Blob(chunks, { type: mime || "audio/webm" });
+          // 再生確認用URL
+          const url = URL.createObjectURL(blob);
+          setRecordedAudioUrl(url);
+
+          // 0.5秒未満ならスキップ
+          if(blob.size < 1000) {
+            setWhisperError("録音時間が短すぎます。もう少し長く録音してください。");
+            return;
+          }
+
+          // Whisper API へ送信
+          await transcribeWithWhisper(blob);
+        };
+
+        recorder.onerror = e => {
+          console.warn("MediaRecorder error:", e);
+          setPermError("録音中にエラーが発生しました: " + (e.error?.message || "不明"));
+          recordingRef.current = false;
+          setRecording(false);
+          if(timerRef.current) clearInterval(timerRef.current);
+          stopAudioMeter();
+        };
+
+        // 音声レベルメーター（録音中のフィードバック用）
+        startAudioMeter();
+
+        // 録音開始
+        recorder.start(1000); // 1秒ごとに ondataavailable 発火
+        recordingRef.current = true;
+        setRecording(true);
+        setElapsed(0);
+        timerRef.current = setInterval(() => setElapsed(s => s + 1), 1000);
+
+      } catch(err) {
+        console.error("録音開始エラー:", err);
+        if(err.name === "NotAllowedError") {
+          setPermError("マイクが許可されていません。URLバー左の🔒/🎤アイコンから許可してください。");
+        } else if(err.name === "NotFoundError") {
+          setPermError("マイクデバイスが見つかりません。マイクの接続を確認してください。");
+        } else {
+          setPermError("録音開始に失敗しました: " + (err.message || err.name || "不明なエラー"));
+        }
+      }
     };
 
-        const stopRecording = () => {
-      recordingRef.current = false;
-      if(restartTimerRef.current) { clearTimeout(restartTimerRef.current); restartTimerRef.current = null; }
-      setRecording(false);
-      setListening(false);
-      setSoundDetected(false);
-      setInterimText("");
-      clearInterval(timerRef.current);
-      stopAudioMeter();
-      const r = recognRef.current;
-      recognRef.current = null;
-      if(r) {
-        // 全ハンドラを完全にnullにしてからabort（aborted onerror発火を防ぐ）
-        r.onstart = r.onend = r.onerror = r.onresult = r.onspeechstart = r.onspeechend = null;
-        try { r.abort(); } catch {}
+    const stopRecording = () => {
+      const recorder = mediaRecorderRef.current;
+      mediaRecorderRef.current = null;
+      if(recorder && recorder.state === "recording") {
+        try { recorder.stop(); } catch(e) { console.warn("recorder.stop失敗:", e); }
+        // 残りの処理は recorder.onstop で実行
+      } else {
+        // recorderがない場合は手動でクリーンアップ
+        recordingRef.current = false;
+        setRecording(false);
+        if(timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+        stopAudioMeter();
       }
     };
 
@@ -7778,12 +7832,10 @@ ${recentLogs}
       try { testRecorderRef.current?.state==="recording" && testRecorderRef.current?.stop(); } catch{}
       try { testStreamRef.current?.getTracks().forEach(t=>t.stop()); } catch{}
       if(testAudioUrl) { try { URL.revokeObjectURL(testAudioUrl); } catch{} }
-      const r = recognRef.current; recognRef.current = null;
-      if(r) {
-        // 全ハンドラを完全にnullにしてからabort
-        r.onstart = r.onend = r.onerror = r.onresult = r.onspeechstart = r.onspeechend = null;
-        try { r.abort(); } catch {}
-      }
+      // Whisper録音のクリーンアップ
+      try { mediaRecorderRef.current?.state==="recording" && mediaRecorderRef.current?.stop(); } catch{}
+      try { recordingStreamRef.current?.getTracks().forEach(t=>t.stop()); } catch{}
+      if(recordedAudioUrl) { try { URL.revokeObjectURL(recordedAudioUrl); } catch{} }
     }, []);
 
     const fullTranscript = finalText + (interimText ? "…" + interimText : "");
@@ -7841,11 +7893,10 @@ ${recentLogs}
               {/* エラー表示 */}
               {permError&&<div style={{background:"#fee2e2",borderRadius:"6px",padding:"0.75rem",marginBottom:"0.75rem",fontSize:"0.8rem",color:"#dc2626",fontWeight:600}}>{permError}</div>}
               {/* ブラウザ別ヒント */}
-              {!permError&&!recording&&<div style={{background:"#eff6ff",borderRadius:"6px",padding:"0.625rem 0.875rem",marginBottom:"0.75rem",fontSize:"0.72rem",color:"#1d4ed8",lineHeight:1.6}}>
-                💡 <strong>使い方：</strong>「録音開始」を押す → ブラウザのマイク許可ダイアログで「許可」→ そのまま話す<br/>
-                <strong>iPhone/iPad：</strong>必ずSafariで開く（ChromeはiOSで音声認識非対応）<br/>
-                <strong>iPhoneが反応する場合：</strong>Siriをオフに → 設定 → Siriと検索 →「"ねえSiri"を聞き取る」をオフ<br/>
-                PCのマイクで話した内容が文字起こしされます。<br/>
+              {!permError&&!recording&&!whisperProcessing&&<div style={{background:"#eff6ff",borderRadius:"6px",padding:"0.625rem 0.875rem",marginBottom:"0.75rem",fontSize:"0.72rem",color:"#1d4ed8",lineHeight:1.6}}>
+                💡 <strong>使い方：</strong>「録音開始」を押して話す → 「録音停止」を押すと <strong>OpenAI Whisper</strong> が高精度で文字起こしします<br/>
+                ⏱ <strong>録音時間の目安：</strong>15分以内（長すぎるとサイズ超過）<br/>
+                🎯 <strong>精度：</strong>Whisperは句読点も自動で付き、専門用語（産廃・収運等）も正確に認識します<br/>
                 ⚠️ オンラインMTGの相手の声は現状拾えません（自分の声のみ）。
               </div>}
 
@@ -7989,13 +8040,33 @@ ${recentLogs}
 
               {/* 録音状態表示 */}
               <div style={{textAlign:"center",padding:"1rem 0"}}>
-                {recording ? (
+                {whisperProcessing ? (
                   <div>
-                    <div style={{fontSize:"0.8rem",color:"#dc2626",fontWeight:700,marginBottom:"0.25rem",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.4rem"}}>
-                      <span style={{width:8,height:8,borderRadius:"50%",background:"#dc2626",display:"inline-block",animation:"none"}}>●</span>
+                    <div style={{fontSize:"2rem",marginBottom:"0.5rem"}}>🤖</div>
+                    <div style={{fontSize:"0.95rem",color:"#1d4ed8",fontWeight:800,marginBottom:"0.3rem"}}>
+                      Whisperで文字起こし中...
+                    </div>
+                    <div style={{fontSize:"0.72rem",color:"#64748b",lineHeight:1.6}}>
+                      録音時間が長いと数十秒かかります。少々お待ちください。
+                    </div>
+                    {/* 簡易プログレスバー */}
+                    <div style={{marginTop:"0.625rem",height:6,background:"#dbeafe",borderRadius:999,overflow:"hidden",maxWidth:300,margin:"0.625rem auto 0"}}>
+                      <div style={{height:"100%",width:"40%",background:"linear-gradient(90deg,#3b82f6,#60a5fa)",animation:"none"}}/>
+                    </div>
+                  </div>
+                ) : recording ? (
+                  <div>
+                    <div style={{fontSize:"0.85rem",color:"#dc2626",fontWeight:800,marginBottom:"0.25rem",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.4rem"}}>
+                      <span style={{width:10,height:10,borderRadius:"50%",background:"#dc2626",display:"inline-block"}}/>
                       録音中 {fmt(elapsed)}
                     </div>
-                    <div style={{fontSize:"0.7rem",color:"#94a3b8",marginBottom:"0.875rem"}}>話してください。リアルタイムで文字起こしされます</div>
+                    <div style={{fontSize:"0.7rem",color:"#94a3b8",marginBottom:"0.625rem"}}>
+                      話してください。停止後にWhisperが文字起こしします
+                    </div>
+                    <button onClick={stopRecording}
+                      style={{padding:"0.875rem 2.5rem",borderRadius:999,background:"#dc2626",color:"white",fontWeight:800,fontSize:"0.95rem",border:"none",cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(220,38,38,0.3)"}}>
+                      ⏹ 録音停止＆文字起こし
+                    </button>
                   </div>
                 ) : (
                   <div>
@@ -8004,6 +8075,19 @@ ${recentLogs}
                       🎤 録音開始
                     </button>
                     <div style={{fontSize:"0.7rem",color:"#94a3b8",marginTop:"0.5rem"}}>マイクの許可が必要です</div>
+                  </div>
+                )}
+                {/* Whisperエラー表示 */}
+                {whisperError&&(
+                  <div style={{marginTop:"0.75rem",background:"#fee2e2",border:"1px solid #fca5a5",borderRadius:"6px",padding:"0.625rem 0.75rem",fontSize:"0.75rem",color:"#991b1b",lineHeight:1.6,textAlign:"left"}}>
+                    <div style={{fontWeight:700,marginBottom:"0.2rem"}}>❌ 文字起こしに失敗しました</div>
+                    <div style={{fontSize:"0.7rem"}}>{whisperError}</div>
+                    {recordedAudioUrl&&(
+                      <div style={{marginTop:"0.4rem",display:"flex",alignItems:"center",gap:"0.4rem",flexWrap:"wrap"}}>
+                        <span style={{fontSize:"0.7rem",color:"#7f1d1d"}}>録音ファイルは保存済み:</span>
+                        <audio src={recordedAudioUrl} controls style={{height:32,maxWidth:240}}/>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -8130,19 +8214,16 @@ ${recentLogs}
           <div style={{padding:"0.75rem 1.25rem 1.5rem",borderTop:"1px solid #f1f5f9",flexShrink:0}}>
             {phase==="record"&&(
               <div style={{display:"flex",gap:"0.625rem"}}>
-                {recording ? (
-                  <button onClick={stopRecording} style={{flex:1,padding:"0.875rem",borderRadius:"6px",background:"#dc2626",color:"white",fontWeight:800,fontSize:"0.95rem",border:"none",cursor:"pointer",fontFamily:"inherit"}}>
-                    ⏹ 録音を停止する
-                  </button>
-                ) : (
-                  <>
-                    <button onClick={()=>{stopRecording();onClose();}} style={{flex:1,padding:"0.75rem",borderRadius:"6px",border:"1.5px solid #e2e8f0",background:"white",color:"#64748b",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>閉じる</button>
-                    <button onClick={processWithAI} disabled={!finalText.trim()||aiLoading}
-                      style={{flex:2,padding:"0.75rem",borderRadius:"6px",background:finalText.trim()?"#7c3aed":"#e2e8f0",color:finalText.trim()?"white":"#94a3b8",fontWeight:800,border:"none",cursor:finalText.trim()?"pointer":"default",fontFamily:"inherit",fontSize:"0.9rem"}}>
-                      {aiLoading?"🤖 AI処理中...":"🤖 AIで議事録・タスク生成"}
-                    </button>
-                  </>
-                )}
+                <button onClick={()=>{stopRecording();onClose();}}
+                  disabled={whisperProcessing}
+                  style={{flex:1,padding:"0.75rem",borderRadius:"6px",border:"1.5px solid #e2e8f0",background:"white",color:"#64748b",fontWeight:700,cursor:whisperProcessing?"default":"pointer",fontFamily:"inherit",opacity:whisperProcessing?0.5:1}}>
+                  閉じる
+                </button>
+                <button onClick={processWithAI}
+                  disabled={!finalText.trim()||aiLoading||recording||whisperProcessing}
+                  style={{flex:2,padding:"0.75rem",borderRadius:"6px",background:(finalText.trim()&&!recording&&!whisperProcessing)?"#7c3aed":"#e2e8f0",color:(finalText.trim()&&!recording&&!whisperProcessing)?"white":"#94a3b8",fontWeight:800,border:"none",cursor:(finalText.trim()&&!recording&&!whisperProcessing)?"pointer":"default",fontFamily:"inherit",fontSize:"0.9rem"}}>
+                  {aiLoading?"🤖 AI処理中...":"🤖 AIで議事録・タスク生成"}
+                </button>
               </div>
             )}
             {phase==="result"&&(
