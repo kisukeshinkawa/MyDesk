@@ -7350,25 +7350,23 @@ ${recentLogs}
     const timerRef   = React.useRef(null);
     const recordingRef = React.useRef(false); // stale closure対策
 
-    // iOS/Safari判定
+    // デバイス判定（コンポーネントレベルで1回だけ計算）
     const isIOS = /iP(hone|od|ad)/.test(navigator.userAgent);
-    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-    const needsNonContinuous = isIOS || isSafari;
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent) && !window.chrome;
 
     const startRecognition = () => {
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
       if(!SR) return;
       const recog = new SR();
       recog.lang = "ja-JP";
-      // iOS/Safariはcontinuousをtrueにすると動かない → falseで都度再起動
-      recog.continuous = !needsNonContinuous;
-      recog.interimResults = !needsNonContinuous; // iOSはinterimも不安定
+      recog.continuous = true;   // 全デバイスでtrue（onendで再起動するため問題なし）
+      recog.interimResults = true;
       recog.maxAlternatives = 1;
-      recog.onstart    = () => { setListening(true); setPermError(""); };
-      recog.onaudiostart = () => setListening(true);
-      recog.onsoundstart = () => setSoundDetected(true);
-      recog.onsoundend   = () => setSoundDetected(false);
+      recog.onstart = () => { setListening(true); setPermError(""); setSoundDetected(true); };
+      recog.onspeechstart = () => setSoundDetected(true);
+      recog.onspeechend   = () => setSoundDetected(false);
       recog.onresult = e => {
+        setSoundDetected(true);
         let interim = "", newFinal = "";
         for(let i = e.resultIndex; i < e.results.length; i++){
           const t = e.results[i][0].transcript;
@@ -7379,28 +7377,30 @@ ${recentLogs}
         setInterimText(interim);
       };
       recog.onerror = e => {
-        console.warn("[MTG] SpeechRecognition error:", e.error);
+        console.warn("[MTG] error:", e.error);
         if(e.error === "not-allowed" || e.error === "service-not-allowed") {
           setPermError(isIOS
-            ? "マイクを許可してください：設定 → Safari → マイク → 許可"
-            : "マイクへのアクセスが拒否されました。URLバー左のマイクアイコン🎤から許可してください。");
+            ? "マイクを許可：設定 → Safari → マイク → このサイトを「許可」"
+            : "マイクが拒否されました。ブラウザのURLバー左のマイクアイコン🎤から許可してください。");
           recordingRef.current = false; setRecording(false); clearInterval(timerRef.current);
-        } else if(e.error === "no-speech") {
-          // 無音タイムアウト → 再起動
-          if(recordingRef.current) setTimeout(() => { if(recordingRef.current) startRecognition(); }, 200);
-        } else if(recordingRef.current) {
-          setTimeout(() => { if(recordingRef.current) startRecognition(); }, 500);
+        } else if(e.error !== "aborted") {
+          // no-speechやnetworkエラーは再起動
+          if(recordingRef.current) setTimeout(() => { if(recordingRef.current) startRecognition(); }, 300);
         }
       };
       recog.onend = () => {
-        setInterimText(""); setSoundDetected(false);
-        // iOS/Safariは常に再起動、Chromeはcontinuousなので通常ここに来ない
-        if(recordingRef.current) setTimeout(() => { if(recordingRef.current) startRecognition(); }, needsNonContinuous ? 100 : 300);
+        setInterimText("");
+        // 録音中なら常に再起動（continuousでもiOSは自動終了する）
+        if(recordingRef.current) setTimeout(() => { if(recordingRef.current) startRecognition(); }, 150);
       };
       recognRef.current = recog;
-      try { recog.start(); } catch(err) {
-        console.warn("[MTG] recog.start error:", err);
-        setPermError("音声認識の開始に失敗しました: " + err.message);
+      try { recog.start(); }
+      catch(err) {
+        console.warn("[MTG] start error:", err.message);
+        // 既に起動中エラーは無視、その他は少し待って再起動
+        if(!err.message.includes("already started")) {
+          setTimeout(() => { if(recordingRef.current) startRecognition(); }, 500);
+        }
       }
     };
 
@@ -7408,29 +7408,24 @@ ${recentLogs}
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
       if(!SR) {
         setPermError(isIOS
-          ? "iOSはSafariで録音してください（Chrome非対応）"
+          ? "iOSはSafariアプリで開いてください（Chromeは音声認識非対応）"
           : "このブラウザは音声認識に非対応です。Chromeをお使いください。");
         return;
       }
       setPermError("");
-      navigator.mediaDevices.getUserMedia({ audio: true, video: false })
-        .then(stream => {
-          stream.getTracks().forEach(t => t.stop()); // permissionだけ取得してclose
-          recordingRef.current = true;
-          setRecording(true);
-          setFinalText("");
-          setInterimText("");
-          setElapsed(0);
-          timerRef.current = setInterval(() => setElapsed(s => s + 1), 1000);
-          startRecognition();
-        })
-        .catch(err => {
-          console.error("[MTG] マイク権限エラー:", err);
-          setPermError(isIOS
-            ? "マイクが許可されていません。設定 → Safari → マイク → このサイトを「許可」に変更してください。"
-            : "マイクへのアクセスが拒否されました。URLバー左のマイクアイコン🎤から許可してください。");
-        });
+      // getUserMediaは使わず直接SpeechRecognitionで開始
+      // （getUserMedia後にstopするとマイクが一瞬切れてSR開始に失敗することがある）
+      recordingRef.current = true;
+      setRecording(true);
+      setFinalText("");
+      setInterimText("");
+      setElapsed(0);
+      setSoundDetected(false);
+      timerRef.current = setInterval(() => setElapsed(s => s + 1), 1000);
+      startRecognition();
     };
+
+;
 
         const stopRecording = () => {
       recordingRef.current = false;
@@ -7506,8 +7501,9 @@ ${recentLogs}
               {permError&&<div style={{background:"#fee2e2",borderRadius:"6px",padding:"0.75rem",marginBottom:"0.75rem",fontSize:"0.8rem",color:"#dc2626",fontWeight:600}}>{permError}</div>}
               {/* ブラウザ別ヒント */}
               {!permError&&!recording&&<div style={{background:"#eff6ff",borderRadius:"6px",padding:"0.625rem 0.875rem",marginBottom:"0.75rem",fontSize:"0.72rem",color:"#1d4ed8",lineHeight:1.6}}>
-                💡 <strong>使い方：</strong>録音開始ボタンを押したら、マイクの許可を「許可」で押してください。<br/>
-                iOSの場合：設定 → Safari → マイク → このサイトを許可<br/>
+                💡 <strong>使い方：</strong>「録音開始」を押す → ブラウザのマイク許可ダイアログで「許可」→ そのまま話す<br/>
+                <strong>iPhone/iPad：</strong>必ずSafariで開く（ChromeはiOSで音声認識非対応）<br/>
+                <strong>iPhoneが反応する場合：</strong>Siriをオフに → 設定 → Siriと検索 →「"ねえSiri"を聞き取る」をオフ<br/>
                 PCのマイクで話した内容が文字起こしされます。<br/>
                 ⚠️ オンラインMTGの相手の声は現状拾えません（自分の声のみ）。
               </div>}
@@ -7545,7 +7541,7 @@ ${recentLogs}
                   ) : recording ? (
                     <div style={{display:"flex",alignItems:"center",gap:"0.5rem",color:"#94a3b8"}}>
                       <span style={{width:10,height:10,borderRadius:"50%",background:soundDetected?"#22c55e":"#94a3b8",display:"inline-block",transition:"background 0.1s"}}/>
-                      {soundDetected ? <span style={{color:"#22c55e",fontWeight:600}}>音声を検出中...</span> : <span>マイクに向かって話してください</span>}
+                      {soundDetected ? <span style={{color:"#22c55e",fontWeight:600}}>🎙 認識中...</span> : <span style={{color:C.textSub}}>マイクに向かってはっきり話してください</span>}
                     </div>
                   ) : (
                     <span style={{color:"#94a3b8"}}>録音開始後に文字起こしが表示されます</span>
