@@ -7357,14 +7357,24 @@ ${recentLogs}
     const startRecognition = () => {
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
       if(!SR) return;
+      // 既存のインスタンスがあれば先に止める
+      if(recognRef.current) {
+        try { recognRef.current.abort(); } catch{}
+        recognRef.current = null;
+      }
       const recog = new SR();
       recog.lang = "ja-JP";
-      recog.continuous = true;   // 全デバイスでtrue（onendで再起動するため問題なし）
+      recog.continuous = true;
       recog.interimResults = true;
       recog.maxAlternatives = 1;
-      recog.onstart = () => { setListening(true); setPermError(""); setSoundDetected(true); };
+
+      recog.onstart = () => {
+        setListening(true);
+        setPermError("");
+      };
       recog.onspeechstart = () => setSoundDetected(true);
       recog.onspeechend   = () => setSoundDetected(false);
+
       recog.onresult = e => {
         setSoundDetected(true);
         let interim = "", newFinal = "";
@@ -7376,31 +7386,40 @@ ${recentLogs}
         if(newFinal) setFinalText(prev => prev + newFinal + "　");
         setInterimText(interim);
       };
+
       recog.onerror = e => {
-        console.warn("[MTG] error:", e.error);
+        // no-speech: 無音タイムアウト → 何もしない（continuousなので自動継続）
+        if(e.error === "no-speech") return;
+        // aborted: こちらから止めた → 無視
+        if(e.error === "aborted") return;
+        // 権限エラー
         if(e.error === "not-allowed" || e.error === "service-not-allowed") {
           setPermError(isIOS
             ? "マイクを許可：設定 → Safari → マイク → このサイトを「許可」"
-            : "マイクが拒否されました。ブラウザのURLバー左のマイクアイコン🎤から許可してください。");
-          recordingRef.current = false; setRecording(false); clearInterval(timerRef.current);
-        } else if(e.error !== "aborted") {
-          // no-speechやnetworkエラーは再起動
-          if(recordingRef.current) setTimeout(() => { if(recordingRef.current) startRecognition(); }, 300);
+            : "マイクが拒否されています。URLバー左の🎤アイコンから許可してください。");
+          recordingRef.current = false;
+          setRecording(false);
+          clearInterval(timerRef.current);
+          return;
         }
+        // network等その他エラー → 2秒後に再起動
+        console.warn("[MTG] error:", e.error);
+        if(recordingRef.current) setTimeout(() => { if(recordingRef.current) startRecognition(); }, 2000);
       };
+
       recog.onend = () => {
         setInterimText("");
-        // 録音中なら常に再起動（continuousでもiOSは自動終了する）
-        if(recordingRef.current) setTimeout(() => { if(recordingRef.current) startRecognition(); }, 150);
+        setSoundDetected(false);
+        // continuousなのに終了した = ブラウザが止めた（iOS等）→ 即再起動
+        if(recordingRef.current) setTimeout(() => { if(recordingRef.current) startRecognition(); }, 200);
       };
+
       recognRef.current = recog;
-      try { recog.start(); }
-      catch(err) {
-        console.warn("[MTG] start error:", err.message);
-        // 既に起動中エラーは無視、その他は少し待って再起動
-        if(!err.message.includes("already started")) {
-          setTimeout(() => { if(recordingRef.current) startRecognition(); }, 500);
-        }
+      try {
+        recog.start();
+      } catch(err) {
+        console.warn("[MTG] start err:", err.message);
+        if(recordingRef.current) setTimeout(() => { if(recordingRef.current) startRecognition(); }, 1000);
       }
     };
 
@@ -7541,7 +7560,11 @@ ${recentLogs}
                   ) : recording ? (
                     <div style={{display:"flex",alignItems:"center",gap:"0.5rem",color:"#94a3b8"}}>
                       <span style={{width:10,height:10,borderRadius:"50%",background:soundDetected?"#22c55e":"#94a3b8",display:"inline-block",transition:"background 0.1s"}}/>
-                      {soundDetected ? <span style={{color:"#22c55e",fontWeight:600}}>🎙 認識中...</span> : <span style={{color:C.textSub}}>マイクに向かってはっきり話してください</span>}
+                      {soundDetected
+                    ? <span style={{color:"#22c55e",fontWeight:600}}>🎙 音声検出中</span>
+                    : listening
+                    ? <span style={{color:C.accent,fontWeight:500}}>待機中 — はっきり話してください</span>
+                    : <span style={{color:C.textSub}}>マイクに接続中...</span>}
                     </div>
                   ) : (
                     <span style={{color:"#94a3b8"}}>録音開始後に文字起こしが表示されます</span>
