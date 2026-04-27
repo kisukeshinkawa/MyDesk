@@ -1,86 +1,107 @@
-// public/sw.js - MyDesk Service Worker (PWA強化版)
+// MyDesk Service Worker（修正版）
+// 主な修正:
+//  - chrome-extension:// スキームをキャッシュしない
+//  - SpeechRecognition / WebSocket / 音声ストリームの通信を邪魔しない
+//  - GET 以外のメソッドはキャッシュしない
+//  - Cross-origin（Google APIs等）はキャッシュしない
+
 const CACHE_NAME = 'mydesk-v3';
-const STATIC_ASSETS = [
+const APP_SHELL = [
   '/',
   '/index.html',
+  '/icon-192.png',
 ];
 
-// Install: キャッシュに静的アセットを保存
-self.addEventListener('install', event => {
+self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => {
-      return cache.addAll(STATIC_ASSETS).catch(() => {});
-    })
+    caches.open(CACHE_NAME)
+      .then((cache) => cache.addAll(APP_SHELL).catch(() => null))
+      .then(() => self.skipWaiting())
   );
-  self.skipWaiting();
 });
 
-// Activate: 古いキャッシュを削除
-self.addEventListener('activate', event => {
+self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
-    )
+    caches.keys()
+      .then((keys) => Promise.all(
+        keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))
+      ))
+      .then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
 
-// Fetch: ネットワーク優先、失敗時はキャッシュから
-self.addEventListener('fetch', event => {
-  const url = new URL(event.request.url);
+// ── キャッシュ可否判定（重要：SpeechRecognition等を邪魔しない）──
+function isCacheable(request) {
+  // GET 以外は対象外
+  if (request.method !== 'GET') return false;
+  const url = new URL(request.url);
+  // http(s) 以外は無視（chrome-extension://, data:, blob:, ws:, wss: 等）
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+  // 自分のオリジンのみ
+  if (url.origin !== self.location.origin) return false;
+  // /api/ 配下は動的なのでキャッシュしない
+  if (url.pathname.startsWith('/api/')) return false;
+  return true;
+}
 
-  // Supabase / API calls はキャッシュしない
-  if (url.hostname.includes('supabase') ||
-      url.pathname.startsWith('/api/') ||
-      url.pathname.includes('anthropic')) {
-    return;
-  }
+self.addEventListener('fetch', (event) => {
+  const req = event.request;
+  // キャッシュ対象外のリクエストには respondWith せず、ブラウザ標準のネットワーク経路に任せる
+  // → SpeechRecognition の WebSocket / fetch も影響を受けない
+  if (!isCacheable(req)) return;
 
-  // ナビゲーション (HTML): キャッシュ優先でオフライン対応
-  if (event.request.mode === 'navigate') {
-    event.respondWith(
-      fetch(event.request).catch(() =>
-        caches.match('/index.html').then(r => r || fetch(event.request))
-      )
-    );
-    return;
-  }
-
-  // 静的アセット: キャッシュ優先
   event.respondWith(
-    caches.match(event.request).then(cached => {
-      if (cached) return cached;
-      return fetch(event.request).then(response => {
-        if (response.ok && event.request.method === 'GET') {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+    caches.match(req).then((cached) => {
+      if (cached) {
+        // キャッシュがあれば即返却し、裏で更新（stale-while-revalidate）
+        fetch(req).then((res) => {
+          if (res && res.ok) {
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(req, res.clone()).catch(() => {});
+            });
+          }
+        }).catch(() => {});
+        return cached;
+      }
+      // キャッシュなし → ネットワーク取得 + キャッシュに保存
+      return fetch(req).then((res) => {
+        if (res && res.ok) {
+          // res は一度しか consume できないため clone してキャッシュ
+          const clone = res.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(req, clone).catch(() => {});
+          });
         }
-        return response;
-      }).catch(() => cached);
+        return res;
+      }).catch(() => cached || Response.error());
     })
   );
 });
 
-// Push通知受信
-self.addEventListener('push', event => {
-  const data = event.data?.json() || {};
+// ── Web Push 受信 ─────────────────────────────────────────────
+self.addEventListener('push', (event) => {
+  let payload = {};
+  try { payload = event.data ? event.data.json() : {}; } catch {}
+  const title = payload.title || 'MyDesk';
   const options = {
-    body: data.body || '',
+    body: payload.body || '',
     icon: '/icon-192.png',
     badge: '/icon-192.png',
-    tag: data.tag || 'mydesk-notif',
-    data: { url: data.url || '/' },
-    requireInteraction: false,
+    tag: payload.tag || 'mydesk',
+    renotify: true,
+    data: payload.data || {},
   };
-  event.waitUntil(
-    self.registration.showNotification(data.title || 'MyDesk', options)
-  );
+  event.waitUntil(self.registration.showNotification(title, options));
 });
 
-// 通知クリック時
-self.addEventListener('notificationclick', event => {
+self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   event.waitUntil(
-    clients.openWindow(event.notification.data?.url || '/')
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((cs) => {
+      for (const c of cs) {
+        if ('focus' in c) return c.focus();
+      }
+      if (clients.openWindow) return clients.openWindow('/');
+    })
   );
 });
