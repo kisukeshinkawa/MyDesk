@@ -7534,10 +7534,14 @@ ${recentLogs}
     // ── 音声レベルメーター（マイク入力を可視化）──
     const startAudioMeter = async () => {
       try {
-        // 選択されたデバイスがあればそれを使う、なければデフォルト
-        const audioConstraints = selectedDeviceId
-          ? { deviceId: { exact: selectedDeviceId } }
-          : true;
+        // 音声処理を全部無効化して「生のマイク音声」を取得
+        // （echoCancellation/noiseSuppressionが過剰に効いて無音化される問題への対策）
+        const audioConstraints = {
+          deviceId: selectedDeviceId ? { exact: selectedDeviceId } : undefined,
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        };
         const stream = await navigator.mediaDevices.getUserMedia({audio: audioConstraints});
         audioStreamRef.current = stream;
 
@@ -7618,9 +7622,13 @@ ${recentLogs}
       // 既存の再生URLを破棄
       if(testAudioUrl) { try { URL.revokeObjectURL(testAudioUrl); } catch{} setTestAudioUrl(""); }
       try {
-        const audioConstraints = selectedDeviceId
-          ? { deviceId: { exact: selectedDeviceId } }
-          : true;
+        // 音声処理を無効化して生のマイク音声を取得
+        const audioConstraints = {
+          deviceId: selectedDeviceId ? { exact: selectedDeviceId } : undefined,
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        };
         const stream = await navigator.mediaDevices.getUserMedia({audio: audioConstraints});
         testStreamRef.current = stream;
 
@@ -7637,19 +7645,70 @@ ${recentLogs}
         testRecorderRef.current = recorder;
         const chunks = [];
         recorder.ondataavailable = e => { if(e.data && e.data.size>0) chunks.push(e.data); };
-        recorder.onstop = () => {
+        recorder.onstop = async () => {
           // ストリーム解放
           try { stream.getTracks().forEach(t=>t.stop()); } catch{}
           testStreamRef.current = null;
           if(chunks.length===0) {
             setTestRecording(false);
-            alert("録音データが取得できませんでした。マイクが動作していない可能性があります。");
+            alert("🚨 録音データが取得できませんでした。マイクが動作していません。\n\n対処：\n・macOS システム設定 → プライバシーとセキュリティ → マイク → Chromeにチェックを入れる\n・Chromeを再起動");
             return;
           }
           const blob = new Blob(chunks, {type: mime||"audio/webm"});
           const url = URL.createObjectURL(blob);
           setTestAudioUrl(url);
           setTestRecording(false);
+
+          // 🔍 音声を解析して無音判定（自動）
+          try {
+            const arrayBuffer = await blob.arrayBuffer();
+            const TmpCtx = window.AudioContext || window.webkitAudioContext;
+            const tmpCtx = new TmpCtx();
+            const audioBuffer = await tmpCtx.decodeAudioData(arrayBuffer);
+            let peak = 0;
+            let sumSquares = 0;
+            let sampleCount = 0;
+            for(let ch = 0; ch < audioBuffer.numberOfChannels; ch++){
+              const dataArr = audioBuffer.getChannelData(ch);
+              for(let i = 0; i < dataArr.length; i++){
+                const abs = Math.abs(dataArr[i]);
+                if(abs > peak) peak = abs;
+                sumSquares += dataArr[i] * dataArr[i];
+                sampleCount++;
+              }
+            }
+            const rms = Math.sqrt(sumSquares / Math.max(1, sampleCount));
+            try { tmpCtx.close(); } catch{}
+            const peakPct = (peak * 100).toFixed(1);
+            const rmsPct = (rms * 100).toFixed(2);
+            // 結果をdiagnosticsにマージして表示
+            setDiagnostics(prev => ({
+              ...(prev||{}),
+              testResult: {
+                peak: peak,
+                peakPct,
+                rms,
+                rmsPct,
+                isSilent: peak < 0.005,
+                durationSec: audioBuffer.duration.toFixed(2),
+              }
+            }));
+            if(peak < 0.005) {
+              alert("🚨 録音完了 — しかし\u3000完全に無音\u3000でした。\n\n" +
+                    "Chromeはマイクストリームを取得できていますが、実際の音声データが入っていません。\n\n" +
+                    "【macOSの場合の対処】\n" +
+                    "1. システム設定 → プライバシーとセキュリティ → マイク → Chromeにチェック\n" +
+                    "2. システム設定 → サウンド → 入力 → 「内蔵マイク」を選択（iPhoneを選ばない）\n" +
+                    "3. Continuity（連携）でiPhoneに渡っている可能性 → iPhoneを離す or システム設定でPC本体マイクを既定に\n" +
+                    "4. 他のアプリ（Zoom/Teams/録音アプリ等）がマイクを排他使用していないか確認\n" +
+                    "5. キーボードにマイクミュートキーがある場合はOFFにする\n\n" +
+                    "Chromeを完全終了して再起動するのも有効です。");
+            } else {
+              alert(`✅ マイクは正常に動作しています！\n\n最大音量: ${peakPct}%\n平均音量(RMS): ${rmsPct}%\n録音時間: ${audioBuffer.duration.toFixed(2)}秒\n\n再生ボタンで実際の音声を確認できます。\n音声認識（文字起こし）が動かない場合は、ネットワークやService Worker側の問題です。`);
+            }
+          } catch(e) {
+            console.warn("音声解析失敗:", e);
+          }
         };
         recorder.start();
         setTestRecording(true);
@@ -7825,35 +7884,48 @@ ${recentLogs}
                 </div>
               </div>
 
-              {/* 🔍 マイク診断パネル（実際にマイクが拾えるかテスト） */}
-              <div style={{background:"#fefce8",border:"1px solid #fde68a",borderRadius:"8px",padding:"0.625rem 0.75rem",marginBottom:"0.75rem"}}>
-                <div style={{fontSize:"0.72rem",fontWeight:700,color:"#854d0e",marginBottom:"0.4rem"}}>🔍 マイク診断（録音前にテスト推奨）</div>
-                <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap",alignItems:"center"}}>
+              {/* 🚨 マイク診断パネル（録音前に必ずテスト推奨） */}
+              <div style={{background:"#fef3c7",border:"2px solid #f59e0b",borderRadius:"10px",padding:"0.875rem 1rem",marginBottom:"0.875rem",boxShadow:"0 2px 8px rgba(245,158,11,0.15)"}}>
+                <div style={{fontSize:"0.85rem",fontWeight:800,color:"#92400e",marginBottom:"0.5rem",display:"flex",alignItems:"center",gap:"0.4rem"}}>
+                  🚨 まずマイクが動くか確認！
+                </div>
+                <div style={{fontSize:"0.72rem",color:"#92400e",marginBottom:"0.6rem",lineHeight:1.6}}>
+                  下のボタンを押して<strong>3秒間「あー」と発声</strong>してください。<br/>
+                  完了後に <strong>自動で結果がポップアップ</strong>します。再生ボタンで実際の音も確認できます。
+                </div>
+                <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap",alignItems:"center"}}>
                   <button onClick={startTestRecording} disabled={testRecording||recording}
-                    style={{padding:"0.4rem 0.875rem",borderRadius:"0.5rem",background:testRecording?"#fbbf24":"#f59e0b",color:"white",fontSize:"0.78rem",fontWeight:700,border:"none",cursor:(testRecording||recording)?"default":"pointer",fontFamily:"inherit",opacity:(recording)?0.5:1}}>
+                    style={{padding:"0.7rem 1.5rem",borderRadius:"0.625rem",background:testRecording?"#dc2626":(recording?"#9ca3af":"#f59e0b"),color:"white",fontSize:"0.92rem",fontWeight:800,border:"none",cursor:(testRecording||recording)?"default":"pointer",fontFamily:"inherit",boxShadow:"0 2px 4px rgba(0,0,0,0.1)"}}>
                     {testRecording?"⏺ 録音中...(3秒)":"🎤 3秒テスト録音"}
                   </button>
                   {testAudioUrl&&(
-                    <audio src={testAudioUrl} controls style={{height:36,maxWidth:240}}/>
+                    <audio src={testAudioUrl} controls style={{height:40,maxWidth:280}}/>
                   )}
                 </div>
-                <div style={{fontSize:"0.65rem",color:"#854d0e",marginTop:"0.3rem",lineHeight:1.5}}>
-                  ボタンを押して3秒間「あー」と発声 → 再生して聞こえれば<strong>マイクは正常</strong>。<br/>
-                  無音なら：①macOSのシステム設定で Chromeにマイク許可があるか確認、②上のドロップダウンで別のデバイスを選択。
-                </div>
-                {/* 診断詳細情報 */}
+                {/* テスト結果（永続表示） */}
+                {diagnostics?.testResult&&(
+                  <div style={{marginTop:"0.6rem",padding:"0.5rem 0.75rem",borderRadius:"0.5rem",background:diagnostics.testResult.isSilent?"#fee2e2":"#d1fae5",border:`1.5px solid ${diagnostics.testResult.isSilent?"#dc2626":"#059669"}`}}>
+                    <div style={{fontWeight:800,fontSize:"0.78rem",color:diagnostics.testResult.isSilent?"#991b1b":"#065f46"}}>
+                      {diagnostics.testResult.isSilent ? "🚨 完全に無音 - マイクから音が来ていません" : "✅ マイクは正常動作"}
+                    </div>
+                    <div style={{fontSize:"0.68rem",color:diagnostics.testResult.isSilent?"#7f1d1d":"#064e3b",marginTop:"0.2rem"}}>
+                      最大: {diagnostics.testResult.peakPct}% / 平均: {diagnostics.testResult.rmsPct}% / 録音: {diagnostics.testResult.durationSec}秒
+                    </div>
+                  </div>
+                )}
+                {/* 詳細診断情報（折りたたみ） */}
                 {diagnostics&&(
-                  <details style={{marginTop:"0.4rem"}}>
-                    <summary style={{fontSize:"0.65rem",color:"#854d0e",cursor:"pointer",fontWeight:700}}>📋 詳細診断情報を表示</summary>
+                  <details style={{marginTop:"0.5rem"}}>
+                    <summary style={{fontSize:"0.7rem",color:"#92400e",cursor:"pointer",fontWeight:700}}>📋 詳細診断情報を表示</summary>
                     <div style={{fontSize:"0.62rem",color:"#451a03",marginTop:"0.3rem",background:"white",borderRadius:"0.4rem",padding:"0.4rem 0.6rem",fontFamily:"monospace",lineHeight:1.6,wordBreak:"break-all"}}>
                       {diagnostics.error
                         ? <div style={{color:"#dc2626",fontWeight:700}}>❌ エラー: {diagnostics.error}</div>
                         : <>
                             <div>📛 デバイス名: <strong>{diagnostics.label}</strong></div>
-                            <div>🎙 状態: {diagnostics.readyState} {diagnostics.muted&&<span style={{color:"#dc2626",fontWeight:700}}>⚠️ ミュート中</span>} {!diagnostics.enabled&&<span style={{color:"#dc2626",fontWeight:700}}>⚠️ 無効化</span>}</div>
-                            <div>📊 サンプルレート: {diagnostics.settings.sampleRate||"?"}Hz / チャンネル: {diagnostics.settings.channelCount||"?"}</div>
-                            <div>🔊 自動ゲイン: {String(diagnostics.settings.autoGainControl??"?")}, ノイズ抑制: {String(diagnostics.settings.noiseSuppression??"?")}, エコーキャンセル: {String(diagnostics.settings.echoCancellation??"?")}</div>
-                            <div>🆔 deviceId: {(diagnostics.settings.deviceId||"").slice(0,20)}...</div>
+                            <div>🎙 状態: {diagnostics.readyState} {diagnostics.muted&&<span style={{color:"#dc2626",fontWeight:700}}>⚠️ ミュート中</span>} {diagnostics.enabled===false&&<span style={{color:"#dc2626",fontWeight:700}}>⚠️ 無効化</span>}</div>
+                            <div>📊 サンプルレート: {diagnostics.settings?.sampleRate||"?"}Hz / チャンネル: {diagnostics.settings?.channelCount||"?"}</div>
+                            <div>🔊 自動ゲイン: {String(diagnostics.settings?.autoGainControl??"?")}, ノイズ抑制: {String(diagnostics.settings?.noiseSuppression??"?")}, エコーキャンセル: {String(diagnostics.settings?.echoCancellation??"?")}</div>
+                            <div>🆔 deviceId: {(diagnostics.settings?.deviceId||"").slice(0,20)}...</div>
                           </>
                       }
                     </div>
