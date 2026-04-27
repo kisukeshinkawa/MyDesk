@@ -7877,6 +7877,31 @@ ${recentLogs}
                     </option>
                   ))}
                 </select>
+                {/* 怪しいデバイスを検出して警告 */}
+                {(()=>{
+                  const labels = audioDevices.map(d=>(d.label||"").toLowerCase());
+                  const hasIPhone = labels.some(l=>/iphone|ipad/i.test(l));
+                  const hasVirtual = labels.some(l=>/eshareaudio|virtual|loopback|aggregat/i.test(l));
+                  const hasBuiltIn = labels.some(l=>/built|内蔵|macbook/i.test(l));
+                  const builtInDev = audioDevices.find(d=>/built|内蔵|macbook/i.test(d.label||"") && !/default|既定/i.test(d.label||""));
+                  if(hasIPhone || hasVirtual) {
+                    return (
+                      <div style={{marginTop:"0.4rem",padding:"0.5rem 0.625rem",background:"#fee2e2",border:"1px solid #fca5a5",borderRadius:"0.4rem",fontSize:"0.68rem",color:"#7f1d1d",lineHeight:1.6}}>
+                        ⚠️ <strong>{hasIPhone?"iPhone/iPad":"仮想オーディオデバイス"}</strong>が検出されました。これらはChromeで音が拾えない原因になります。<br/>
+                        {hasBuiltIn&&builtInDev&&(
+                          <button onClick={()=>{
+                            setSelectedDeviceId(builtInDev.deviceId);
+                            localStorage.setItem("md_mtgMicDeviceId", builtInDev.deviceId);
+                          }}
+                          style={{marginTop:"0.3rem",padding:"0.3rem 0.6rem",background:"#dc2626",color:"white",border:"none",borderRadius:"0.4rem",fontWeight:700,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit"}}>
+                            🎯 「{(builtInDev.label||"").slice(0,30)}」に切り替え
+                          </button>
+                        )}
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
                 <div style={{fontSize:"0.65rem",color:"#64748b",marginTop:"0.35rem",lineHeight:1.5}}>
                   💡 <strong>iPhoneが反応する場合：</strong>このリストから「<strong>MacBook Pro マイクロフォン</strong>」など<strong>PC本体のマイク</strong>を選択してください。<br/>
                   ※ 一覧が空の時は「録音開始」を一度押してマイクを許可するとデバイス名が表示されます。<br/>
@@ -7904,13 +7929,42 @@ ${recentLogs}
                 </div>
                 {/* テスト結果（永続表示） */}
                 {diagnostics?.testResult&&(
-                  <div style={{marginTop:"0.6rem",padding:"0.5rem 0.75rem",borderRadius:"0.5rem",background:diagnostics.testResult.isSilent?"#fee2e2":"#d1fae5",border:`1.5px solid ${diagnostics.testResult.isSilent?"#dc2626":"#059669"}`}}>
-                    <div style={{fontWeight:800,fontSize:"0.78rem",color:diagnostics.testResult.isSilent?"#991b1b":"#065f46"}}>
+                  <div style={{marginTop:"0.6rem",padding:"0.625rem 0.75rem",borderRadius:"0.5rem",background:diagnostics.testResult.isSilent?"#fee2e2":"#d1fae5",border:`1.5px solid ${diagnostics.testResult.isSilent?"#dc2626":"#059669"}`}}>
+                    <div style={{fontWeight:800,fontSize:"0.82rem",color:diagnostics.testResult.isSilent?"#991b1b":"#065f46"}}>
                       {diagnostics.testResult.isSilent ? "🚨 完全に無音 - マイクから音が来ていません" : "✅ マイクは正常動作"}
                     </div>
-                    <div style={{fontSize:"0.68rem",color:diagnostics.testResult.isSilent?"#7f1d1d":"#064e3b",marginTop:"0.2rem"}}>
+                    <div style={{fontSize:"0.68rem",color:diagnostics.testResult.isSilent?"#7f1d1d":"#064e3b",marginTop:"0.25rem"}}>
                       最大: {diagnostics.testResult.peakPct}% / 平均: {diagnostics.testResult.rmsPct}% / 録音: {diagnostics.testResult.durationSec}秒
                     </div>
+                    {/* 無音だった場合の詳細手順（画面内に常設） */}
+                    {diagnostics.testResult.isSilent&&(
+                      <div style={{marginTop:"0.5rem",padding:"0.625rem 0.75rem",background:"white",borderRadius:"0.4rem",border:"1px solid #fca5a5",fontSize:"0.7rem",color:"#1f2937",lineHeight:1.7}}>
+                        <div style={{fontWeight:800,color:"#dc2626",marginBottom:"0.35rem"}}>📱 iPhoneが反応している = macOS Continuityでマイクが奪われています</div>
+                        <div style={{fontWeight:700,marginBottom:"0.2rem"}}>🛠️ macOSでの解決手順（順番に試す）：</div>
+                        <ol style={{margin:0,paddingLeft:"1.2rem"}}>
+                          <li><strong>iPhone側で「Hey Siri」をオフ</strong>：iPhoneの 設定 → Siriと検索 → 「"Hey Siri"を聞き取る」をオフ</li>
+                          <li><strong>iPhoneを物理的に離す</strong>（同じWi-Fiでも数mで効果あり）</li>
+                          <li><strong>macOSのサウンド入力デバイスを変更</strong>：システム設定 → サウンド → 入力 → <strong>「MacBook Proのマイク」</strong>を選択（iPhoneやEShareAudio等を選ばない）</li>
+                          <li><strong>Continuityを完全に切る</strong>：システム設定 → 一般 → AirDropとHandoff → 「Handoff」をOFF（一時的に）</li>
+                          <li><strong>Chromeを完全終了して再起動</strong>（Cmd+Q してから再度開く）</li>
+                          <li><strong>macOSのChromeマイク権限を再確認</strong>：システム設定 → プライバシーとセキュリティ → マイク → Chromeにチェック</li>
+                          <li>キーボードに <strong>マイクミュートキー（F4等）</strong>がある場合はOFFに</li>
+                        </ol>
+                        <div style={{marginTop:"0.4rem",padding:"0.4rem 0.5rem",background:"#fef3c7",borderRadius:"0.3rem",fontSize:"0.65rem",color:"#78350f"}}>
+                          💡 <strong>すぐに議事録を作りたい場合：</strong>下の「⌨️ 手入力モード」で内容を直接打ち込めば、AI議事録・タスク生成は使えます。
+                        </div>
+                        <div style={{marginTop:"0.4rem",display:"flex",gap:"0.3rem",flexWrap:"wrap"}}>
+                          <button onClick={()=>setManualMode(true)}
+                            style={{padding:"0.3rem 0.7rem",borderRadius:"0.4rem",border:"1px solid #2563eb",background:"#dbeafe",color:"#1d4ed8",fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.7rem"}}>
+                            ⌨️ 手入力モードで議事録作成
+                          </button>
+                          <button onClick={startTestRecording} disabled={testRecording}
+                            style={{padding:"0.3rem 0.7rem",borderRadius:"0.4rem",border:"1px solid #f59e0b",background:"white",color:"#92400e",fontWeight:700,cursor:testRecording?"default":"pointer",fontFamily:"inherit",fontSize:"0.7rem"}}>
+                            🔄 もう一度テスト
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
                 {/* 詳細診断情報（折りたたみ） */}
