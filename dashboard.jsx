@@ -3230,8 +3230,21 @@ function EmailView({data,setData,currentUser=null}) {
         "【出力】そのまま送れるメール文面のみ。件名・署名不要。営業感を極限まで消しつつ相手の記憶に残る文章。",
       ].join("\n");
 
+      // 返信モード専用フォーマットルール（受信メール本文から宛先を自動抽出）
+      const replyFormatRule = `\n\n【メール書式ルール（必ず守ること）】\n` +
+        `・受信メールの差出人情報（署名・本文・From名）から、相手の会社名・氏名（または苗字）を読み取ること\n` +
+        `・冒頭は必ず以下の形式で始める：\n` +
+        `　1行目: 相手の会社名（社外の場合のみ。社内同士なら省略）\n` +
+        `　2行目: 相手の氏名 + 「様」（社外）または「さん」（社内・同僚）\n` +
+        `・氏名が読み取れない場合は「ご担当者様」とする\n` +
+        `・宛名の次の行は空行\n` +
+        `・社外宛の書き出しは「お世話になります。\n${myCompany}の${myName}です。」\n` +
+        `・社内宛の書き出しは「${myName}です。」\n` +
+        `・受信メールの内容から社外/社内を判断（${myCompany}・西原商事・ニシハラなどのドメインや署名なら社内）\n` +
+        `・件名は含めない\n・署名は含めない`;
+
       const prompt = mode==="reply"
-        ? `${styleRef}${pastRef}以下の受信メールへの返信文を作成してください。${formatRule}\n\n【返信の指示・方向性】\n${instruction}\n\n【受信メール】\n${inputText}\n\n上記の書式ルールを厳守して返信本文のみ出力してください。`
+        ? `${styleRef}${pastRef}以下の受信メールへの返信文を作成してください。受信メール本文から相手の会社名・氏名を読み取り、適切な宛名で始めてください。${replyFormatRule}\n\n【返信の指示・方向性】\n${instruction}\n\n【受信メール】\n${inputText}\n\n上記の書式ルールを厳守して返信本文のみ出力してください。`
         : mode==="follow"
           ? followPrompt
           : `${styleRef}${pastRef}以下の目的・内容でメール文書を作成してください。${formatRule}\n\n【メールの指示・方向性】\n${instruction}\n\n【目的・内容・補足】\n${inputText}\n\n上記の書式ルールを厳守してメール本文のみ出力してください。`;
@@ -3379,8 +3392,8 @@ function EmailView({data,setData,currentUser=null}) {
             </button>
           </div>
 
-          {/* ── 宛先・社内外（reply/compose のみ） ── */}
-          {mode!=="follow"&&<div style={{background:"#f8fafc",borderRadius:"8px",padding:"0.875rem",marginBottom:"0.875rem",border:`1px solid ${C.borderLight}`}}>
+          {/* ── 宛先・社内外（compose のみ。replyは本文から自動抽出するので不要） ── */}
+          {mode==="compose"&&<div style={{background:"#f8fafc",borderRadius:"8px",padding:"0.875rem",marginBottom:"0.875rem",border:`1px solid ${C.borderLight}`}}>
             <div style={{fontSize:"0.75rem",fontWeight:800,color:C.textSub,marginBottom:"0.625rem"}}>📬 宛先情報</div>
 
             {/* 社内/社外トグル */}
@@ -3431,7 +3444,7 @@ function EmailView({data,setData,currentUser=null}) {
                   setInputText(e.target.value);
                   if(mode==="reply") extractRecipientFromEmail(e.target.value);
                 }}
-                placeholder={mode==="reply"?"返信したいメールの本文をここに貼り付けてください...\n\n💡 貼り付けると会社名・担当者名を自動取得します":"例：A社の田中部長への初回アポイント依頼。来月の新製品説明会の案内として送りたい。先方とは先月の展示会で名刺交換済み。"}
+                placeholder={mode==="reply"?"返信したいメールの本文をここに貼り付けてください...\n\n💡 本文から会社名・担当者名をAIが自動判別します（宛先入力は不要）":"例：A社の田中部長への初回アポイント依頼。来月の新製品説明会の案内として送りたい。先方とは先月の展示会で名刺交換済み。"}
                 style={{height:160}}/>
               {inputText&&<button onClick={()=>setInputText("")}
                 style={{position:"absolute",top:"0.5rem",right:"0.5rem",background:"#f1f5f9",border:"none",borderRadius:"0.4rem",padding:"0.2rem 0.5rem",cursor:"pointer",fontSize:"0.72rem",color:"#64748b",fontWeight:700,lineHeight:1}}>✕ リセット</button>}
@@ -7399,11 +7412,28 @@ ${recentLogs}
       };
 
       recog.onerror = e => {
+        console.warn("SpeechRecognition error:", e.error, e);
         if(e.error === "aborted") return; // 自分でabortした → 無視
         if(e.error === "not-allowed" || e.error === "service-not-allowed") {
           setPermError(isIOS
             ? "マイクを許可：設定 → Safari → マイク → このサイトを「許可」"
-            : "マイクが拒否されています。URLバー左の🎤アイコンから許可してください。");
+            : "マイクが拒否されています。URLバー左の🔒/🎤アイコンから許可してください。");
+          recordingRef.current = false; setRecording(false); clearInterval(timerRef.current);
+          return;
+        }
+        if(e.error === "audio-capture") {
+          setPermError("マイクから音声が取得できません。マイク機器を確認してください。");
+          recordingRef.current = false; setRecording(false); clearInterval(timerRef.current);
+          return;
+        }
+        if(e.error === "network") {
+          setPermError("ネットワークエラー：音声認識サーバーに接続できません。Wi-Fi/通信環境を確認してください。");
+          // networkエラーは継続的なので録音停止
+          recordingRef.current = false; setRecording(false); clearInterval(timerRef.current);
+          return;
+        }
+        if(e.error === "language-not-supported") {
+          setPermError("日本語の音声認識がサポートされていません。Chrome/Safariの最新版でお試しください。");
           recordingRef.current = false; setRecording(false); clearInterval(timerRef.current);
           return;
         }
@@ -7426,7 +7456,7 @@ ${recentLogs}
       }
     };
 
-    const startRecording = () => {
+    const startRecording = async () => {
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
       if(!SR) {
         setPermError(isIOS
@@ -7434,20 +7464,45 @@ ${recentLogs}
           : "このブラウザは音声認識に非対応です。Chromeをお使いください。");
         return;
       }
+      // HTTPS必須のチェック
+      if(window.location.protocol!=="https:" && window.location.hostname!=="localhost") {
+        setPermError("音声認識はHTTPS環境のみで動作します。");
+        return;
+      }
       setPermError("");
-      // getUserMediaは使わず直接SpeechRecognitionで開始
-      // （getUserMedia後にstopするとマイクが一瞬切れてSR開始に失敗することがある）
+
+      // ① まず getUserMedia でマイク許可を明示的に取得（ダイアログを出す）
+      // これによりpermission状態が確定するため、SpeechRecognition側で失敗しにくくなる
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+        // ストリームはすぐ止める（SpeechRecognitionが内部で別途取得するため）
+        stream.getTracks().forEach(t=>t.stop());
+      } catch(err) {
+        console.error("getUserMedia失敗:", err);
+        const msg = err.name==="NotAllowedError" || err.name==="PermissionDeniedError"
+          ? (isIOS
+              ? "マイク拒否：設定 → Safari → マイク → このサイトを「許可」"
+              : "マイクが拒否されています。URLバー左の🔒/🎤アイコンから「マイク：許可」に変更してください。")
+          : err.name==="NotFoundError"
+            ? "マイクが見つかりません。マイク機器を接続してください。"
+            : err.name==="NotReadableError"
+              ? "マイクが他のアプリ（Zoom/Teams等）に使用中です。終了してから再試行してください。"
+              : "マイクの取得に失敗しました: "+err.message;
+        setPermError(msg);
+        return;
+      }
+
       recordingRef.current = true;
       setRecording(true);
       setFinalText("");
       setInterimText("");
       setElapsed(0);
       setSoundDetected(false);
+      setListening(false);
       timerRef.current = setInterval(() => setElapsed(s => s + 1), 1000);
-      startRecognition();
+      // 少し遅延させてから開始（getUserMedia直後だとマイクがまだロックされていることがある）
+      setTimeout(()=>{ if(recordingRef.current) startRecognition(); }, 200);
     };
-
-;
 
         const stopRecording = () => {
       recordingRef.current = false;
@@ -7578,6 +7633,22 @@ ${recentLogs}
                   )}
                   {interimText&&<div style={{color:"#059669",fontStyle:"italic",marginTop:"0.35rem",paddingTop:"0.35rem",borderTop:"1px dashed #e2e8f0",fontSize:"0.78rem",fontWeight:600}}>{interimText}</div>}
                 </div>
+                {/* 10秒以上、文字起こしが進まない場合の警告 */}
+                {recording && elapsed >= 10 && !finalText && !interimText && (
+                  <div style={{marginTop:"0.5rem",background:"#fef3c7",border:"1px solid #fbbf24",borderRadius:"6px",padding:"0.5rem 0.75rem",fontSize:"0.72rem",color:"#92400e",lineHeight:1.6}}>
+                    ⚠️ <strong>音声が検出されていません。</strong><br/>
+                    {isIOS
+                      ? "・iPhone/iPadはSafariで開いていますか？\n・設定 → Safari → マイク でこのサイトを「許可」"
+                      : "・URLバー左の🔒/🎤アイコンを確認 → 「マイク：許可」になっているか\n・他のアプリ（Zoom/Teams等）がマイクを使っていないか\n・PCの設定でマイクが有効になっているか"
+                    }
+                    <div style={{marginTop:"0.3rem"}}>
+                      <button onClick={()=>{stopRecording();setTimeout(()=>startRecording(),300);}}
+                        style={{padding:"0.25rem 0.6rem",borderRadius:"0.4rem",border:"1px solid #fbbf24",background:"white",color:"#92400e",fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.7rem"}}>
+                        🔄 録音をリトライ
+                      </button>
+                    </div>
+                  </div>
+                )}
                 {finalText&&(
                   <textarea value={finalText} onChange={e=>setFinalText(e.target.value)}
                     style={{width:"100%",marginTop:"0.4rem",padding:"0.5rem 0.75rem",borderRadius:"0.625rem",border:"1px solid #e2e8f0",fontFamily:"inherit",fontSize:"0.78rem",height:60,boxSizing:"border-box",resize:"vertical",color:"#64748b"}}
@@ -7994,7 +8065,27 @@ ${orig}`})
             <button onClick={e=>{e.stopPropagation();setMtgModal({entityKey:"companies",entityId:comp.id,entityName:comp.name});}} style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#f0fdf4",color:"#166534"}}>🎤 MTG記録</button>
             <button onClick={e=>{e.stopPropagation();openNextActionModal("companies",comp.id,comp.name,comp);}} style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#d1fae5",color:"#065f46"}}>📅 {comp.nextActionDate?"次回変更":"次回設定"}</button>
           </div>
-          <ApproachTimeline entity={comp} entityKey="companies" entityId={comp.id} users={users} onAddApproach={()=>openApproachModal("companies",comp.id,comp.name)} onSave={nd=>save(nd)} data={data}/>
+          {/* Sub-tabs: 履歴・チャット・タスク・名刺・ファイル */}
+          <div style={{display:"flex",background:"white",borderRadius:"6px",padding:"0.2rem",marginBottom:"1rem",border:`1px solid ${C.border}`}}>
+            {[["timeline","📋","履歴"],["chat","💬","チャット"],["tasks","✅","タスク"],["bizcard","🪪","名刺"],["files","📎","ファイル"]].map(([id,icon,lbl])=>(
+              <button key={id} onClick={()=>setActiveDetail(id)} style={{flex:1,padding:"0.5rem",borderRadius:"0.5rem",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.72rem",position:"relative",background:activeDetail===id?C.accent:"transparent",color:activeDetail===id?"white":C.textSub}}>
+                {icon} {lbl}
+                {id==="chat"&&compChatUnread>0&&<span style={{position:"absolute",top:3,right:6,background:"#dc2626",color:"white",borderRadius:999,fontSize:"0.5rem",fontWeight:800,padding:"0.05rem 0.25rem",lineHeight:1.4}}>{compChatUnread}</span>}
+                {id==="tasks"&&(()=>{const n=(data.tasks||[]).filter(t=>t.salesRef?.id===comp.id&&t.status!=="完了").length;return n>0?<span style={{position:"absolute",top:3,right:6,background:C.accent,color:"white",borderRadius:999,fontSize:"0.5rem",fontWeight:800,padding:"0.05rem 0.25rem",lineHeight:1.4}}>{n}</span>:null;})()}
+              </button>
+            ))}
+          </div>
+          {activeDetail==="timeline"&&<ApproachTimeline entity={comp} entityKey="companies" entityId={comp.id} users={users} onAddApproach={()=>openApproachModal("companies",comp.id,comp.name)} onSave={nd=>save(nd)} data={data}/>}
+          {activeDetail==="chat"&&ChatSection({chat:comp.chat,entityKey:"companies",entityId:comp.id})}
+          {activeDetail==="tasks"&&<SalesTaskPanel entityType="企業" entityId={comp.id} entityName={comp.name} data={data} onSave={save} currentUser={currentUser} users={users} onNavigateToTask={onNavigateToTask} onNavigateToProject={onNavigateToProject}/>}
+          {activeDetail==="bizcard"&&(()=>{
+            const linked=linkedBizcards("企業",comp.id);
+            return <LinkedBizcardList cards={linked} users={users} onUnlink={id=>unlinkBizCard(id)} onNavigateToBizcard={navToBizcard.company} onLink={()=>requestAnimationFrame(()=>setLinkBizcardModal({entityType:"企業",entityId:comp.id,entityName:comp.name}))}/>;
+          })()}
+          {activeDetail==="files"&&<FileSection files={comp.files||[]} currentUserId={currentUser?.id}
+            entityType="companies" entityId={comp.id}
+            onAdd={f=>addFileToEntity("companies",comp.id,f)}
+            onDelete={fid=>removeFileFromEntity("companies",comp.id,fid)}/>}
           {renderModals()}
         </div>
       );
