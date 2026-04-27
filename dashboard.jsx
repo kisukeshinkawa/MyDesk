@@ -98,31 +98,24 @@ const C = {
 // ─── STORAGE ──────────────────────────────────────────────────────────────────
 const SESSION_KEY = "mydesk_session_v2";
 
-// ─── SUPABASE 設定 ────────────────────────────────────────────────────────────
-const SB_URL = "https://lnzczkwnvkjacrmkhyft.supabase.co";
-const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxuemN6a3dudmtqYWNybWtoeWZ0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIxNDQwOTUsImV4cCI6MjA4NzcyMDA5NX0.Jx89KsMXlDQCNvuxeRyfLsfAkmkVB5-MeabMq9g1j4Y";
-const SB_HEADERS = {
-  "apikey": SB_KEY,
-  "Authorization": `Bearer ${SB_KEY}`,
+// ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
+const DB_API_BASE   = "https://jqlqlslmkjo3dl6bo4iugpg4he0bdtvn.lambda-url.ap-northeast-1.on.aws";
+const DB_API_SECRET = "mydesk2026secret";
+const DB_API_HEADERS = {
   "Content-Type": "application/json",
+  "x-mydesk-secret": DB_API_SECRET,
 };
+const S3_BUCKET = "mydesk-files-dustalk-1777302196";
+const S3_REGION = "ap-northeast-1";
+const S3_PUBLIC_BASE = `https://${S3_BUCKET}.s3.${S3_REGION}.amazonaws.com`;
 
 async function sbGet(id) {
   try {
-    // まず updated_at 付きで取得を試みる
-    const r = await fetch(`${SB_URL}/rest/v1/app_data?id=eq.${encodeURIComponent(id)}&select=data,updated_at`, { headers: SB_HEADERS });
-    if(r.ok) {
-      const rows = await r.json();
-      if(rows?.[0]?.data !== undefined) {
-        return { _rawData: rows[0].data, _updatedAt: rows[0].updated_at ?? null };
-      }
-    }
-    // フォールバック: data のみで取得
-    const r2 = await fetch(`${SB_URL}/rest/v1/app_data?id=eq.${encodeURIComponent(id)}&select=data`, { headers: SB_HEADERS });
-    if(r2.ok) {
-      const rows2 = await r2.json();
-      if(rows2?.[0]?.data !== undefined) {
-        return { _rawData: rows2[0].data, _updatedAt: null };
+    const r = await fetch(`${DB_API_BASE}/data?id=${encodeURIComponent(id)}`, { headers: DB_API_HEADERS });
+    if (r.ok) {
+      const obj = await r.json();
+      if (obj && obj.data !== undefined) {
+        return { _rawData: obj.data, _updatedAt: obj.updated_at ?? null };
       }
     }
     return null;
@@ -133,14 +126,13 @@ async function sbSet(id, data) {
   const now = new Date().toISOString();
   window.__myDeskLastSave = Date.now();
   window.__myDeskLastSaveAt = now;
-  // 最大3回リトライ（一時的なネットワーク障害に対応）
   const MAX_RETRY = 3;
   for(let attempt = 1; attempt <= MAX_RETRY; attempt++) {
     try {
-      const res = await fetch(`${SB_URL}/rest/v1/app_data`, {
+      const res = await fetch(`${DB_API_BASE}/data`, {
         method: "POST",
-        headers: { ...SB_HEADERS, "Prefer": "resolution=merge-duplicates" },
-        body: JSON.stringify({ id, data, updated_at: now }),
+        headers: DB_API_HEADERS,
+        body: JSON.stringify({ id, data }),
       });
       if(!res.ok) {
         const errText = await res.text().catch(()=>"");
@@ -150,10 +142,8 @@ async function sbSet(id, data) {
     } catch(e) {
       console.warn(`[MyDesk] sbSet attempt ${attempt}/${MAX_RETRY} failed: ${e.message}`);
       if(attempt < MAX_RETRY) {
-        // リトライ前に少し待つ（1秒→2秒→終了）
         await new Promise(r => setTimeout(r, attempt * 1000));
       } else {
-        // 全リトライ失敗
         console.error("[MyDesk] sbSet all retries failed:", e.message);
         window.__myDeskLastSave = 0;
         window.__myDeskLastSaveAt = null;
@@ -486,32 +476,36 @@ function StatusPill({status,onChange}) {
 // ─── FILE SECTION ─────────────────────────────────────────────────────────────
 // Supabase Storage を使ったファイルアップロード
 // 事前準備: Supabaseダッシュボード → Storage → New bucket → "mydesk-files" (Public)
-const STORAGE_BUCKET = "mydesk-files";
+// STORAGE_BUCKET は S3_BUCKET に統一済み
 
 async function uploadFileToSupabase(file, entityType, entityId) {
-  // Supabase Storage は日本語・特殊文字を受け付けないため英数字のみに変換
-  const ext = file.name.includes(".") ? "." + file.name.split(".").pop().replace(/[^a-zA-Z0-9]/g, "") : "";
+  const ext = file.name.includes(".")
+    ? "." + file.name.split(".").pop().replace(/[^a-zA-Z0-9]/g, "") : "";
   const safeName = Date.now() + ext;
   const path = `${entityType}/${entityId}/${safeName}`;
-  const publicUrl = `${SB_URL}/storage/v1/object/public/${STORAGE_BUCKET}/${path}`;
+  const contentType = file.type || "application/octet-stream";
 
-  // アップロード
-  const res = await fetch(`${SB_URL}/storage/v1/object/${STORAGE_BUCKET}/${path}`, {
+  // Lambda から署名付きURLを取得
+  const presignRes = await fetch(`${DB_API_BASE}/storage/upload-url`, {
     method: "POST",
-    headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": file.type || "application/octet-stream" },
+    headers: DB_API_HEADERS,
+    body: JSON.stringify({ path, contentType }),
+  });
+  if (!presignRes.ok) {
+    const e = await presignRes.text();
+    throw new Error("署名付きURL取得失敗: HTTP " + presignRes.status + ": " + e);
+  }
+  const { uploadUrl, publicUrl } = await presignRes.json();
+
+  // S3 へ直接アップロード
+  const upRes = await fetch(uploadUrl, {
+    method: "PUT",
+    headers: { "Content-Type": contentType },
     body: file,
   });
-  if (!res.ok) { const e = await res.text(); throw new Error("HTTP " + res.status + ": " + e); }
-
-  // アップロード後に公開URLへのアクセス確認
-  try {
-    const check = await fetch(publicUrl, { method: "HEAD" });
-    if (!check.ok) {
-      throw new Error("ファイルのアップロードは成功しましたが、他のユーザーが閲覧できない状態です。\nSupabase Storage → Policies で「SELECT」ポリシーを追加してください。\n（anon ロール、条件: true）");
-    }
-  } catch(e) {
-    if (e.message.includes("Policies")) throw e;
-    // HEADチェック自体が失敗（CORSなど）は無視して続行
+  if (!upRes.ok) {
+    const e = await upRes.text();
+    throw new Error("S3アップロード失敗: HTTP " + upRes.status + ": " + e);
   }
 
   return {
@@ -526,10 +520,13 @@ async function uploadFileToSupabase(file, entityType, entityId) {
 }
 
 async function deleteFileFromSupabase(path) {
-  await fetch(`${SB_URL}/storage/v1/object/${STORAGE_BUCKET}/${path}`, {
-    method: "DELETE",
-    headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` },
-  });
+  try {
+    await fetch(`${DB_API_BASE}/storage/delete`, {
+      method: "POST",
+      headers: DB_API_HEADERS,
+      body: JSON.stringify({ path }),
+    });
+  } catch {}
 }
 
 function FileSection({ files=[], onAdd, onDelete, currentUserId, entityType, entityId, readOnly=false }) {
@@ -561,10 +558,10 @@ function FileSection({ files=[], onAdd, onDelete, currentUserId, entityType, ent
           <div key={f.id||f.url} style={{display:"flex",alignItems:"center",gap:"0.625rem",background:"white",border:`1px solid ${C.border}`,borderRadius:"6px",padding:"0.5rem 0.75rem",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
             <span style={{fontSize:"1.2rem",flexShrink:0}}>{icon(f.type)}</span>
             <div style={{flex:1,minWidth:0}}>
-              <a href={f.url||(f.path?`${SB_URL}/storage/v1/object/public/${STORAGE_BUCKET}/${f.path}`:null)||f.path||"#"}
+              <a href={f.url||(f.path?`${S3_PUBLIC_BASE}/${f.path}`:null)||f.path||"#"}
                 target="_blank" rel="noopener noreferrer"
                 onClick={e=>{
-                  const url=f.url||(f.path?`${SB_URL}/storage/v1/object/public/${STORAGE_BUCKET}/${f.path}`:null)||f.path;
+                  const url=f.url||(f.path?`${S3_PUBLIC_BASE}/${f.path}`:null)||f.path;
                   if(!url){e.preventDefault();alert("ファイルURLが取得できません。再アップロードをお試しください");return;}
                   // iOSでtarget=_blankが効かない場合のフォールバック
                   const isIosUA = typeof navigator!=='undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent);
