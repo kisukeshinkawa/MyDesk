@@ -7404,6 +7404,9 @@ ${recentLogs}
     const [selectedDeviceId, setSelectedDeviceId] = React.useState(
       () => localStorage.getItem("md_mtgMicDeviceId") || ""
     );
+    const [diagnostics, setDiagnostics] = React.useState(null); // マイク診断情報
+    const [testRecording, setTestRecording] = React.useState(false); // テスト録音中
+    const [testAudioUrl, setTestAudioUrl] = React.useState(""); // テスト録音再生用URL
     const recognRef  = React.useRef(null);
     const timerRef   = React.useRef(null);
     const recordingRef = React.useRef(false); // stale closure対策
@@ -7412,6 +7415,9 @@ ${recentLogs}
     const audioCtxRef    = React.useRef(null);
     const analyserRef    = React.useRef(null);
     const levelAnimRef   = React.useRef(null);
+    // テスト録音用
+    const testRecorderRef = React.useRef(null);
+    const testStreamRef   = React.useRef(null);
 
     // 利用可能なマイク一覧を取得（モーダル開いた時 & 録音許可後）
     const refreshDevices = React.useCallback(async () => {
@@ -7546,10 +7552,32 @@ ${recentLogs}
           localStorage.setItem("md_mtgMicDeviceId", settings.deviceId);
         }
 
+        // 🔍 Track診断情報を保持（UIで表示）
+        const updateDiag = () => {
+          const t = stream.getAudioTracks()[0];
+          if(!t) return;
+          setDiagnostics({
+            label: t.label || "（名前なし）",
+            muted: t.muted,
+            enabled: t.enabled,
+            readyState: t.readyState,
+            settings: t.getSettings?.() || {},
+          });
+        };
+        updateDiag();
+        // muted状態の変化を監視
+        track.addEventListener("mute", updateDiag);
+        track.addEventListener("unmute", updateDiag);
+        track.addEventListener("ended", updateDiag);
+
         const AudioCtx = window.AudioContext || window.webkitAudioContext;
         if(!AudioCtx) return;
         const ctx = new AudioCtx();
         audioCtxRef.current = ctx;
+        // ★ Chrome の autoplay ポリシー対策：必ず resume を呼ぶ
+        if(ctx.state === "suspended") {
+          try { await ctx.resume(); } catch(e) { console.warn("AudioContext resume失敗:", e); }
+        }
         const source = ctx.createMediaStreamSource(stream);
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 512;
@@ -7570,6 +7598,7 @@ ${recentLogs}
         tick();
       } catch(err) {
         console.warn("音声レベルメーター起動失敗:", err);
+        setDiagnostics({error: err.name+": "+err.message});
         // メーターは諦めるが録音は続行
       }
     };
@@ -7582,6 +7611,55 @@ ${recentLogs}
       try { audioStreamRef.current?.getTracks().forEach(t=>t.stop()); } catch{}
       audioStreamRef.current = null;
       setAudioLevel(0);
+    };
+
+    // ── 🔍 テスト録音（3秒録音→再生で実際にマイクが拾えるか確認）──
+    const startTestRecording = async () => {
+      // 既存の再生URLを破棄
+      if(testAudioUrl) { try { URL.revokeObjectURL(testAudioUrl); } catch{} setTestAudioUrl(""); }
+      try {
+        const audioConstraints = selectedDeviceId
+          ? { deviceId: { exact: selectedDeviceId } }
+          : true;
+        const stream = await navigator.mediaDevices.getUserMedia({audio: audioConstraints});
+        testStreamRef.current = stream;
+
+        // MediaRecorder API でWebM録音
+        if(typeof MediaRecorder === "undefined") {
+          alert("このブラウザはMediaRecorder APIに非対応です。Chrome/Safariの最新版でお試しください。");
+          stream.getTracks().forEach(t=>t.stop()); return;
+        }
+        const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus"
+                   : MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm"
+                   : MediaRecorder.isTypeSupported("audio/mp4") ? "audio/mp4"
+                   : "";
+        const recorder = mime ? new MediaRecorder(stream, {mimeType:mime}) : new MediaRecorder(stream);
+        testRecorderRef.current = recorder;
+        const chunks = [];
+        recorder.ondataavailable = e => { if(e.data && e.data.size>0) chunks.push(e.data); };
+        recorder.onstop = () => {
+          // ストリーム解放
+          try { stream.getTracks().forEach(t=>t.stop()); } catch{}
+          testStreamRef.current = null;
+          if(chunks.length===0) {
+            setTestRecording(false);
+            alert("録音データが取得できませんでした。マイクが動作していない可能性があります。");
+            return;
+          }
+          const blob = new Blob(chunks, {type: mime||"audio/webm"});
+          const url = URL.createObjectURL(blob);
+          setTestAudioUrl(url);
+          setTestRecording(false);
+        };
+        recorder.start();
+        setTestRecording(true);
+        // 3秒で自動停止
+        setTimeout(()=>{ try { recorder.state==="recording" && recorder.stop(); } catch{} }, 3000);
+      } catch(err) {
+        console.warn("テスト録音失敗:", err);
+        alert("テスト録音に失敗しました: " + (err.message||err.name||"不明なエラー"));
+        setTestRecording(false);
+      }
     };
 
     const startRecording = () => {
@@ -7637,6 +7715,10 @@ ${recentLogs}
       if(restartTimerRef.current) clearTimeout(restartTimerRef.current);
       clearInterval(timerRef.current);
       stopAudioMeter();
+      // テスト録音のクリーンアップ
+      try { testRecorderRef.current?.state==="recording" && testRecorderRef.current?.stop(); } catch{}
+      try { testStreamRef.current?.getTracks().forEach(t=>t.stop()); } catch{}
+      if(testAudioUrl) { try { URL.revokeObjectURL(testAudioUrl); } catch{} }
       const r = recognRef.current; recognRef.current = null;
       if(r) {
         // 全ハンドラを完全にnullにしてからabort
@@ -7741,6 +7823,42 @@ ${recentLogs}
                   ※ 一覧が空の時は「録音開始」を一度押してマイクを許可するとデバイス名が表示されます。<br/>
                   ※ macOSの場合：<strong>システム設定 → サウンド → 入力</strong> でも既定マイクを変更できます（こちらが優先されます）。
                 </div>
+              </div>
+
+              {/* 🔍 マイク診断パネル（実際にマイクが拾えるかテスト） */}
+              <div style={{background:"#fefce8",border:"1px solid #fde68a",borderRadius:"8px",padding:"0.625rem 0.75rem",marginBottom:"0.75rem"}}>
+                <div style={{fontSize:"0.72rem",fontWeight:700,color:"#854d0e",marginBottom:"0.4rem"}}>🔍 マイク診断（録音前にテスト推奨）</div>
+                <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap",alignItems:"center"}}>
+                  <button onClick={startTestRecording} disabled={testRecording||recording}
+                    style={{padding:"0.4rem 0.875rem",borderRadius:"0.5rem",background:testRecording?"#fbbf24":"#f59e0b",color:"white",fontSize:"0.78rem",fontWeight:700,border:"none",cursor:(testRecording||recording)?"default":"pointer",fontFamily:"inherit",opacity:(recording)?0.5:1}}>
+                    {testRecording?"⏺ 録音中...(3秒)":"🎤 3秒テスト録音"}
+                  </button>
+                  {testAudioUrl&&(
+                    <audio src={testAudioUrl} controls style={{height:36,maxWidth:240}}/>
+                  )}
+                </div>
+                <div style={{fontSize:"0.65rem",color:"#854d0e",marginTop:"0.3rem",lineHeight:1.5}}>
+                  ボタンを押して3秒間「あー」と発声 → 再生して聞こえれば<strong>マイクは正常</strong>。<br/>
+                  無音なら：①macOSのシステム設定で Chromeにマイク許可があるか確認、②上のドロップダウンで別のデバイスを選択。
+                </div>
+                {/* 診断詳細情報 */}
+                {diagnostics&&(
+                  <details style={{marginTop:"0.4rem"}}>
+                    <summary style={{fontSize:"0.65rem",color:"#854d0e",cursor:"pointer",fontWeight:700}}>📋 詳細診断情報を表示</summary>
+                    <div style={{fontSize:"0.62rem",color:"#451a03",marginTop:"0.3rem",background:"white",borderRadius:"0.4rem",padding:"0.4rem 0.6rem",fontFamily:"monospace",lineHeight:1.6,wordBreak:"break-all"}}>
+                      {diagnostics.error
+                        ? <div style={{color:"#dc2626",fontWeight:700}}>❌ エラー: {diagnostics.error}</div>
+                        : <>
+                            <div>📛 デバイス名: <strong>{diagnostics.label}</strong></div>
+                            <div>🎙 状態: {diagnostics.readyState} {diagnostics.muted&&<span style={{color:"#dc2626",fontWeight:700}}>⚠️ ミュート中</span>} {!diagnostics.enabled&&<span style={{color:"#dc2626",fontWeight:700}}>⚠️ 無効化</span>}</div>
+                            <div>📊 サンプルレート: {diagnostics.settings.sampleRate||"?"}Hz / チャンネル: {diagnostics.settings.channelCount||"?"}</div>
+                            <div>🔊 自動ゲイン: {String(diagnostics.settings.autoGainControl??"?")}, ノイズ抑制: {String(diagnostics.settings.noiseSuppression??"?")}, エコーキャンセル: {String(diagnostics.settings.echoCancellation??"?")}</div>
+                            <div>🆔 deviceId: {(diagnostics.settings.deviceId||"").slice(0,20)}...</div>
+                          </>
+                      }
+                    </div>
+                  </details>
+                )}
               </div>
 
               {/* 録音状態表示 */}
@@ -8277,7 +8395,6 @@ ${orig}`})
             entityType="companies" entityId={comp.id}
             onAdd={f=>addFileToEntity("companies",comp.id,f)}
             onDelete={fid=>removeFileFromEntity("companies",comp.id,fid)}/>}
-          {renderModals()}
         </div>
       );
     }
@@ -8286,7 +8403,7 @@ ${orig}`})
     if(!isPC && activeCompany){
       const comp=companyOf(activeCompany);
       if(!comp){setActiveCompany(null);return null;}
-      return renderCompanyDetail(comp);
+      return <>{renderCompanyDetail(comp)}{renderModals()}</>;
     }
 
     // List view - grouped by status
@@ -8639,7 +8756,6 @@ ${orig}`})
             <Btn style={{width:"100%"}} onClick={()=>setSheet(null)}>閉じる</Btn>
           </Sheet>
         )}
-      {renderModals()}
         </div>{/* end list pane */}
         {/* PC: right detail pane */}
         {isPC&&activeCompany&&(()=>{
@@ -8822,9 +8938,6 @@ ${orig}`})
               </div>
             </Sheet>
           )}
-        {renderModals()}
-        {renderModals()}
-        {renderModals()}
         </div>
       );
     }
@@ -8832,7 +8945,7 @@ ${orig}`})
     if(!isPC && activeVendor){
       const v=vendorOf(activeVendor);
       if(!v){setActiveVendor(null);return null;}
-      return renderVendorDetail(v);
+      return <>{renderVendorDetail(v)}{renderModals()}</>;
     }
     // Vendor list - grouped by status
     const normVSearch = s => (s||"").replace(/[\s\u3000]/g,"").toLowerCase();
@@ -9694,12 +9807,11 @@ ${orig}`})
             </Sheet>
           );
         })()}
-      {renderModals()}
     </div>
       );
     }
   if(!isPC&&salesTab==="muni"&&activeMuni&&muniScreen==="muniDetail"){
-    return renderMuniDetail(activeMuni);
+    return <>{renderMuniDetail(activeMuni)}{renderModals()}</>;
   }
 
   // ── 自治体トップビュー（地方→都道府県→自治体 折りたたみ）─────────────────
