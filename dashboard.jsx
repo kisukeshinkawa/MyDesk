@@ -7385,7 +7385,8 @@ ${recentLogs}
       const old = recognRef.current;
       recognRef.current = null;
       if(old) {
-        old.onstart = old.onend = old.onerror = old.onresult = null;
+        // 全ハンドラを完全にnullにしてからabort
+        old.onstart = old.onend = old.onerror = old.onresult = old.onspeechstart = old.onspeechend = null;
         try { old.abort(); } catch{}
       }
 
@@ -7412,8 +7413,9 @@ ${recentLogs}
       };
 
       recog.onerror = e => {
+        if(e.error === "aborted") return; // 自分でabortした → 完全に無視（ログも出さない）
+        if(e.error === "no-speech") return; // 沈黙時 → onendで再起動するので無視
         console.warn("SpeechRecognition error:", e.error, e);
-        if(e.error === "aborted") return; // 自分でabortした → 無視
         if(e.error === "not-allowed" || e.error === "service-not-allowed") {
           setPermError(isIOS
             ? "マイクを許可：設定 → Safari → マイク → このサイトを「許可」"
@@ -7428,7 +7430,6 @@ ${recentLogs}
         }
         if(e.error === "network") {
           setPermError("ネットワークエラー：音声認識サーバーに接続できません。Wi-Fi/通信環境を確認してください。");
-          // networkエラーは継続的なので録音停止
           recordingRef.current = false; setRecording(false); clearInterval(timerRef.current);
           return;
         }
@@ -7437,7 +7438,7 @@ ${recentLogs}
           recordingRef.current = false; setRecording(false); clearInterval(timerRef.current);
           return;
         }
-        // no-speech等: onendも発火するのでそちらで再起動。ここでは何もしない
+        // その他: onendも発火するのでそちらで再起動。ここでは何もしない
       };
 
       recog.onend = () => {
@@ -7456,12 +7457,12 @@ ${recentLogs}
       }
     };
 
-    const startRecording = async () => {
+    const startRecording = () => {
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
       if(!SR) {
         setPermError(isIOS
-          ? "iOSはSafariアプリで開いてください（Chromeは音声認識非対応）"
-          : "このブラウザは音声認識に非対応です。Chromeをお使いください。");
+          ? "iOSはSafariアプリで開いてください（ChromeはiOSで音声認識非対応）"
+          : "このブラウザは音声認識に非対応です。Chrome/Safariをお使いください。");
         return;
       }
       // HTTPS必須のチェック
@@ -7470,28 +7471,9 @@ ${recentLogs}
         return;
       }
       setPermError("");
-
-      // ① まず getUserMedia でマイク許可を明示的に取得（ダイアログを出す）
-      // これによりpermission状態が確定するため、SpeechRecognition側で失敗しにくくなる
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({audio:true});
-        // ストリームはすぐ止める（SpeechRecognitionが内部で別途取得するため）
-        stream.getTracks().forEach(t=>t.stop());
-      } catch(err) {
-        console.error("getUserMedia失敗:", err);
-        const msg = err.name==="NotAllowedError" || err.name==="PermissionDeniedError"
-          ? (isIOS
-              ? "マイク拒否：設定 → Safari → マイク → このサイトを「許可」"
-              : "マイクが拒否されています。URLバー左の🔒/🎤アイコンから「マイク：許可」に変更してください。")
-          : err.name==="NotFoundError"
-            ? "マイクが見つかりません。マイク機器を接続してください。"
-            : err.name==="NotReadableError"
-              ? "マイクが他のアプリ（Zoom/Teams等）に使用中です。終了してから再試行してください。"
-              : "マイクの取得に失敗しました: "+err.message;
-        setPermError(msg);
-        return;
-      }
-
+      // getUserMediaは使わず直接SpeechRecognitionで開始
+      // （getUserMedia後にstopするとマイクが一瞬切れてSR開始に失敗することがある）
+      // 権限不足の場合は recog.onerror で "not-allowed" がキャッチされるのでそこで案内表示
       recordingRef.current = true;
       setRecording(true);
       setFinalText("");
@@ -7500,8 +7482,7 @@ ${recentLogs}
       setSoundDetected(false);
       setListening(false);
       timerRef.current = setInterval(() => setElapsed(s => s + 1), 1000);
-      // 少し遅延させてから開始（getUserMedia直後だとマイクがまだロックされていることがある）
-      setTimeout(()=>{ if(recordingRef.current) startRecognition(); }, 200);
+      startRecognition();
     };
 
         const stopRecording = () => {
@@ -7514,7 +7495,11 @@ ${recentLogs}
       clearInterval(timerRef.current);
       const r = recognRef.current;
       recognRef.current = null;
-      if(r) { r.onend = null; try { r.abort(); } catch {} }
+      if(r) {
+        // 全ハンドラを完全にnullにしてからabort（aborted onerror発火を防ぐ）
+        r.onstart = r.onend = r.onerror = r.onresult = r.onspeechstart = r.onspeechend = null;
+        try { r.abort(); } catch {}
+      }
     };
 
     // クリーンアップ
@@ -7523,7 +7508,11 @@ ${recentLogs}
       if(restartTimerRef.current) clearTimeout(restartTimerRef.current);
       clearInterval(timerRef.current);
       const r = recognRef.current; recognRef.current = null;
-      if(r) { r.onend = null; try { r.abort(); } catch {} }
+      if(r) {
+        // 全ハンドラを完全にnullにしてからabort
+        r.onstart = r.onend = r.onerror = r.onresult = r.onspeechstart = r.onspeechend = null;
+        try { r.abort(); } catch {}
+      }
     }, []);
 
     const fullTranscript = finalText + (interimText ? "…" + interimText : "");
@@ -8305,6 +8294,21 @@ ${orig}`})
             </div>
           </Sheet>
         )}
+        {sheet==="editCompany"&&(
+          <Sheet title="企業を編集" onClose={()=>setSheet(null)}>
+            <FieldLbl label="企業名 *"><Input value={form.name||""} onChange={e=>setForm({...form,name:e.target.value})} autoFocus/></FieldLbl>
+            <FieldLbl label="ステータス"><StatusPicker map={COMPANY_STATUS} value={form.status||"未接触"} onChange={s=>setForm({...form,status:s})}/></FieldLbl>
+            <FieldLbl label="担当者">{AssigneePicker({ids:form.assigneeIds||[],onChange:ids=>setForm({...form,assigneeIds:ids})})}</FieldLbl>
+            <FieldLbl label="電話番号（任意）"><Input value={form.phone||""} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="092-xxx-xxxx" type="tel"/></FieldLbl>
+            <FieldLbl label="メールアドレス（任意）"><Input value={form.email||""} onChange={e=>setForm({...form,email:e.target.value})} placeholder="example@mail.com"/></FieldLbl>
+            <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
+            <FieldLbl label="備考"><Textarea value={form.notes||""} onChange={e=>setForm({...form,notes:e.target.value})} style={{height:70}} placeholder="メモ、特記事項など"/></FieldLbl>
+            <div style={{display:"flex",gap:"0.625rem"}}>
+              <Btn variant="secondary" style={{flex:1}} onClick={()=>setSheet(null)}>キャンセル</Btn>
+              <Btn style={{flex:2}} onClick={()=>saveCompany()} disabled={!form.name?.trim()}>保存</Btn>
+            </div>
+          </Sheet>
+        )}
         {sheet==="importCompany"&&(()=>{
           const preview=importPreview; const setPreview=setImportPreview;
           const err=importErr; const setErr=setImportErr;
@@ -8506,11 +8510,11 @@ ${orig}`})
                         <select value={salesStatus} onClick={e=>e.stopPropagation()} onChange={e=>{
                           const nd={...data,vendors:vendors.map(x=>x.id===v.id?{...x,permitSales:{...(x.permitSales||{}),[pt]:e.target.value}}:x)};
                           save(nd);
-                        }} style={{fontSize:"0.58rem",border:"none",background:"transparent",color:salesTextColors[salesStatus],fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0,width:"100%",marginTop:"0.1rem"}}>
+                        }} style={{fontSize:"0.58rem",border:"none",background:"transparent",color:salesTextColors[salesStatus],fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0,width:"100%",marginTop:"0.1rem",appearance:"none",WebkitAppearance:"none",MozAppearance:"none",lineHeight:"1.2",height:"auto",boxSizing:"border-box"}}>
                           {["未営業","営業済","資料送付","商談中","加入済"].map(s=><option key={s} value={s}>{s}</option>)}
                         </select>
                       )}
-                      {!has&&<div style={{fontSize:"0.58rem",color:"#dc2626",marginTop:"0.1rem"}}>未保有</div>}
+                      {!has&&<div style={{fontSize:"0.58rem",color:"#dc2626",marginTop:"0.1rem",lineHeight:"1.2"}}>未保有</div>}
                     </div>
                   );
                 })}
@@ -9096,7 +9100,18 @@ ${orig}`})
               {muni.needFollow?"⭐ フォロー中":"☆ フォロー"}
             </button>
           </div>
-          {(muni.assigneeIds||[]).length>0&&<div style={{marginTop:"0.5rem"}}><AssigneeRow ids={muni.assigneeIds}/></div>}
+          {(muni.assigneeIds||[]).length>0&&<div style={{marginTop:"0.5rem",display:"flex",flexWrap:"wrap",gap:"0.3rem"}}>
+            {(muni.assigneeIds||[]).map(id=>{
+              const u=users.find(x=>x.id===id); if(!u) return null;
+              const role=(muni.assigneeRoles||{})[id]||"";
+              return (
+                <span key={id} style={{display:"inline-flex",alignItems:"center",gap:"0.25rem",fontSize:"0.7rem",background:C.accentBg,color:C.accent,padding:"0.15rem 0.5rem",borderRadius:"4px",fontWeight:600}}>
+                  👤 {u.name}
+                  {role&&<span style={{fontSize:"0.65rem",background:"#fef3c7",color:"#92400e",padding:"0.05rem 0.35rem",borderRadius:"3px",fontWeight:700}}>{role}</span>}
+                </span>
+              );
+            })}
+          </div>}
           {/* 許可種別ごと業者数 */}
           <div style={{marginTop:"0.75rem",background:"#fafafa",border:"1px solid #e5e7eb",borderRadius:"0.625rem",padding:"0.625rem 0.75rem"}}>
             <div style={{fontSize:"0.65rem",fontWeight:700,color:C.textSub,marginBottom:"0.5rem"}}>📋 許可種別ごとの業者数</div>
@@ -9219,7 +9234,51 @@ ${orig}`})
           <Sheet title="自治体を編集" onClose={()=>setSheet(null)}>
             <FieldLbl label="自治体名 *"><Input value={form.name||""} onChange={e=>setForm({...form,name:e.target.value})} autoFocus/></FieldLbl>
             <FieldLbl label="ステータス"><StatusPicker map={MUNI_STATUS} value={form.status||"未接触"} onChange={s=>setForm({...form,status:s})}/></FieldLbl>
-            <FieldLbl label="担当者">{AssigneePicker({ids:form.assigneeIds||[],onChange:ids=>setForm({...form,assigneeIds:ids})})}</FieldLbl>
+            <FieldLbl label="担当者（ラベル付き）">
+              <div style={{background:"#f8fafc",border:`1px solid ${C.border}`,borderRadius:"0.5rem",padding:"0.5rem"}}>
+                <div style={{fontSize:"0.65rem",color:C.textMuted,marginBottom:"0.4rem"}}>クリックで選択 → 選択後にラベル（例：施設担当）を入力できます</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:"0.35rem",marginBottom:"0.5rem"}}>
+                  {users.map(u=>{
+                    const sel=(form.assigneeIds||[]).includes(u.id);
+                    return (
+                      <button key={u.id} onClick={()=>{
+                        const cur=form.assigneeIds||[];
+                        const curRoles=form.assigneeRoles||{};
+                        if(sel){
+                          // 選択解除：roleも削除
+                          const newRoles={...curRoles}; delete newRoles[u.id];
+                          setForm({...form,assigneeIds:cur.filter(i=>i!==u.id),assigneeRoles:newRoles});
+                        } else {
+                          setForm({...form,assigneeIds:[...cur,u.id]});
+                        }
+                      }} style={{padding:"0.3rem 0.75rem",borderRadius:999,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",border:`1.5px solid ${sel?C.accent:C.border}`,background:sel?C.accentBg:"white",color:sel?C.accentDark:C.textSub,fontFamily:"inherit"}}>
+                        {u.name}
+                      </button>
+                    );
+                  })}
+                </div>
+                {/* 選択済み担当者ごとにラベル入力欄 */}
+                {(form.assigneeIds||[]).length>0&&(
+                  <div style={{borderTop:`1px dashed ${C.border}`,paddingTop:"0.5rem",display:"flex",flexDirection:"column",gap:"0.4rem"}}>
+                    {(form.assigneeIds||[]).map(uid=>{
+                      const u=users.find(x=>x.id===uid);
+                      if(!u) return null;
+                      return (
+                        <div key={uid} style={{display:"flex",alignItems:"center",gap:"0.5rem"}}>
+                          <span style={{fontSize:"0.78rem",fontWeight:700,color:C.text,minWidth:"5rem"}}>{u.name}</span>
+                          <input
+                            value={(form.assigneeRoles||{})[uid]||""}
+                            onChange={e=>setForm({...form,assigneeRoles:{...(form.assigneeRoles||{}),[uid]:e.target.value}})}
+                            placeholder="例：施設担当 / 総務 / 廃棄物担当"
+                            style={{flex:1,padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </FieldLbl>
             <FieldLbl label="展開ステータス（ダストーク）"><DustalkPicker value={form.dustalk||"未展開"} onChange={s=>setForm({...form,dustalk:s})}/></FieldLbl>
 
             <FieldLbl label="アート引越センター 管轄支店"><Input value={form.artBranch||""} onChange={e=>setForm({...form,artBranch:e.target.value})} placeholder="例：福岡支店"/></FieldLbl>
@@ -12818,8 +12877,18 @@ export default function App() {
     };
     // 初回実行
     poll();
-    const id = setInterval(poll, 60000);
-    return () => clearInterval(id);
+    // 20秒間隔に短縮（多端末間での反映を高速化）
+    const id = setInterval(poll, 20000);
+    // タブ復帰時 / フォーカス時に即座にポーリング（即時反映）
+    const onVisible = () => { if(document.visibilityState==="visible") poll(); };
+    const onFocus = () => poll();
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onFocus);
+    };
   }, [currentUser?.id]);
   useEffect(()=>{
     if(!currentUser||!data.tasks) return;
