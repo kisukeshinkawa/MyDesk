@@ -1,5 +1,14 @@
 import React, { useState, useEffect, useRef } from "react";
 
+// Load DM Sans font
+(function(){
+  if(document.querySelector('link[href*="DM+Sans"]')) return;
+  const l=document.createElement('link');
+  l.rel='stylesheet';
+  l.href='https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=DM+Mono:wght@400;500&display=swap';
+  document.head.appendChild(l);
+})();
+
 // ─── ERROR BOUNDARY ───────────────────────────────────────────────────────────
 class ErrorBoundary extends React.Component {
   constructor(props){super(props);this.state={hasError:false,error:""};}
@@ -42,14 +51,48 @@ const S = {
 };
 
 const C = {
-  bg:"#f5f5f7", surface:"#ffffff",
-  border:"#d2d2d7", borderLight:"#e8e8ed",
-  text:"#1d1d1f", textSub:"#6e6e73", textMuted:"#aeaeb2",
-  accent:"#0071e3", accentDark:"#0060c3", accentBg:"#e8f1fd",
-  blue:"#0071e3", blueBg:"#e8f1fd",
-  nav:"#1c1c1e", navText:"#f5f5f7", navSub:"#98989d",
-  shadow:"0 1px 3px rgba(0,0,0,0.06)",
-  shadowMd:"0 4px 20px rgba(0,0,0,0.08)",
+  // ── Base surfaces ──────────────────────────────
+  bg:"#fafaf9",           // Warm off-white — Notion DNA
+  surface:"#ffffff",
+  surfaceHover:"#f7f7f6",
+  overlay:"rgba(0,0,0,0.5)",
+
+  // ── Border system (one weight) ──────────────────
+  border:"#e8e8e5",
+  borderLight:"#f2f2f0",
+
+  // ── Text hierarchy (3 levels) ───────────────────
+  text:"#171716",         // Near-black, warm tint
+  textSub:"#696966",      // 60% opacity feel
+  textMuted:"#b0b0ad",    // Ghost text
+
+  // ── Accent — single precise indigo ──────────────
+  accent:"#5b5bd6",       // Radix-inspired indigo
+  accentDark:"#4747bf",
+  accentBg:"#eeeefc",
+  accentLight:"rgba(91,91,214,0.08)",
+
+  // ── Semantic (muted, desaturated) ───────────────
+  blue:"#3b82f6",   blueBg:"#eff6ff",
+  green:"#16a34a",  greenBg:"#f0fdf4",
+  yellow:"#d97706", yellowBg:"#fffbeb",
+  red:"#dc2626",    redBg:"#fef2f2",
+  purple:"#7c3aed", purpleBg:"#f5f3ff",
+  orange:"#ea580c", orangeBg:"#fff7ed",
+
+  // ── Navigation (near-black sidebar) ─────────────
+  nav:"#0e0e0d",
+  navBorder:"#1c1c1a",
+  navText:"#e6e6e3",
+  navTextSub:"#5a5a57",
+  navActive:"rgba(255,255,255,0.06)",
+  navActiveText:"#ffffff",
+
+  // ── Elevation (barely-there shadows) ────────────
+  shadow:"0 1px 3px rgba(0,0,0,0.05),0 0 0 1px rgba(0,0,0,0.04)",
+  shadowMd:"0 4px 16px rgba(0,0,0,0.07),0 0 0 1px rgba(0,0,0,0.04)",
+  shadowLg:"0 16px 40px rgba(0,0,0,0.10),0 0 0 1px rgba(0,0,0,0.04)",
+  shadowFloat:"0 24px 48px rgba(0,0,0,0.14),0 0 0 1px rgba(0,0,0,0.06)",
 };
 
 // ─── STORAGE ──────────────────────────────────────────────────────────────────
@@ -140,31 +183,31 @@ const TREATY_STATUS = {
   "協定済": { color:"#059669", bg:"#d1fae5" },
 };
 const VENDOR_STATUS = {
-  "未接触":  { color:"#6b7280", bg:"#f1f3f4" },
-  "電話済":  { color:"#2563eb", bg:"#e8f0fe" },
-  "資料送付":{ color:"#7c3aed", bg:"#ede9fe" },
-  "商談中":  { color:"#d97706", bg:"#fef3c7" },
-  "加入済":  { color:"#059669", bg:"#d1fae5" },
-  "断り":    { color:"#dc2626", bg:"#fce8e6" },
-  "見送り":  { color:"#9ca3af", bg:"#f1f3f4" },
+  "未接触":  { color:"#8b8b89", bg:"#f4f4f2", dot:true },
+  "電話済":  { color:"#0f62fe", bg:"#edf5ff", dot:true },
+  "資料送付":{ color:"#6929c4", bg:"#f6f2ff", dot:true },
+  "商談中":  { color:"#a37300", bg:"#fdf6dd", dot:true },
+  "加入済":  { color:"#198038", bg:"#defbe6", dot:true },
+  "断り":    { color:"#da1e28", bg:"#fff1f1", dot:true },
+  "見送り":  { color:"#6b6b69", bg:"#f4f4f2", dot:true },
 };
 const COMPANY_STATUS = {
-  "未接触":  { color:"#6b7280", bg:"#f1f3f4" },
-  "電話済":  { color:"#2563eb", bg:"#e8f0fe" },
-  "資料送付":{ color:"#7c3aed", bg:"#ede9fe" },
-  "商談中":  { color:"#d97706", bg:"#fef3c7" },
-  "成約":    { color:"#059669", bg:"#d1fae5" },
-  "失注":    { color:"#dc2626", bg:"#fce8e6" },
-  "見送り":  { color:"#9ca3af", bg:"#f1f3f4" },
+  "未接触":  { color:"#8b8b89", bg:"#f4f4f2", dot:true },
+  "電話済":  { color:"#0f62fe", bg:"#edf5ff", dot:true },
+  "資料送付":{ color:"#6929c4", bg:"#f6f2ff", dot:true },
+  "商談中":  { color:"#a37300", bg:"#fdf6dd", dot:true },
+  "成約":    { color:"#198038", bg:"#defbe6", dot:true },
+  "失注":    { color:"#da1e28", bg:"#fff1f1", dot:true },
+  "見送り":  { color:"#6b6b69", bg:"#f4f4f2", dot:true },
 };
 const MUNI_STATUS = {
-  "未接触": { color:"#6b7280", bg:"#f1f3f4" },
-  "電話済": { color:"#2563eb", bg:"#e8f0fe" },
-  "資料送付":{ color:"#7c3aed", bg:"#ede9fe" },
-  "商談中": { color:"#d97706", bg:"#fef3c7" },
-  "協定済": { color:"#059669", bg:"#d1fae5" },
-  "失注":   { color:"#dc2626", bg:"#fce8e6" },
-  "見送り": { color:"#9ca3af", bg:"#f1f3f4" },
+  "未接触": { color:"#8b8b89", bg:"#f4f4f2", dot:true },
+  "電話済": { color:"#0f62fe", bg:"#edf5ff", dot:true },
+  "資料送付":{ color:"#6929c4", bg:"#f6f2ff", dot:true },
+  "商談中": { color:"#a37300", bg:"#fdf6dd", dot:true },
+  "協定済": { color:"#198038", bg:"#defbe6", dot:true },
+  "失注":   { color:"#da1e28", bg:"#fff1f1", dot:true },
+  "見送り": { color:"#6b6b69", bg:"#f4f4f2", dot:true },
 };
 const VENDOR_LOG_TYPES = ["電話","訪問","資料送付","メール","WEB会議","その他"];
 const VENDOR_LOG_ICON  = {"電話":"📞","訪問":"🚗","資料送付":"📄","メール":"✉️","WEB会議":"💻","その他":"📝"};
@@ -359,30 +402,37 @@ const Card = ({children, style={}, onClick}) => (
 );
 
 const Btn = ({children,onClick,variant="primary",size="md",style={},disabled=false}) => {
-  const base = {border:"none",borderRadius:"8px",fontWeight:600,cursor:disabled?"not-allowed":"pointer",fontFamily:"inherit",opacity:disabled?0.55:1,transition:"opacity 0.15s,transform 0.1s",lineHeight:1,...style};
-  const sz   = size==="sm"?{padding:"0.35rem 0.875rem",fontSize:"0.78rem"}:size==="lg"?{padding:"0.8rem 1.5rem",fontSize:"0.95rem"}:{padding:"0.55rem 1.125rem",fontSize:"0.85rem"};
-  const vc   = variant==="primary"?{background:C.accent,color:"white",boxShadow:"0 1px 4px rgba(0,113,227,0.3)"}
-             : variant==="secondary"?{background:"#f5f5f7",color:C.textSub,border:"1px solid #d2d2d7"}
-             : variant==="danger"?{background:"#fff0ee",color:"#c5221f",border:"1px solid #ffd0c8"}
-             : {background:"transparent",color:C.textSub};
+  const base = {border:"none",borderRadius:"7px",fontWeight:500,cursor:disabled?"not-allowed":"pointer",fontFamily:"'DM Sans',inherit",opacity:disabled?0.4:1,transition:"all 0.12s",lineHeight:"1.4",letterSpacing:"-0.01em",display:"inline-flex",alignItems:"center",gap:"0.375rem",...style};
+  const sz = size==="sm"?{padding:"0.3rem 0.75rem",fontSize:"0.8rem"}
+           : size==="lg"?{padding:"0.7rem 1.5rem",fontSize:"0.925rem"}
+           : {padding:"0.45rem 1rem",fontSize:"0.85rem"};
+  const vc = variant==="primary"   ? {background:C.accent,color:"#fff",boxShadow:"0 1px 3px rgba(91,91,214,0.3),inset 0 1px 0 rgba(255,255,255,0.1)"}
+           : variant==="secondary" ? {background:"#f3f3f1",color:C.text,border:"1px solid #e8e8e5"}
+           : variant==="ghost"     ? {background:"transparent",color:C.textSub}
+           : variant==="danger"    ? {background:"#fef2f2",color:C.red,border:"1px solid #fecaca"}
+           : {background:C.accentBg,color:C.accent};
   return <button onClick={disabled?undefined:onClick} style={{...base,...sz,...vc}}>{children}</button>;
 };
 
+
 const Input = ({style={},...p}) => (
-  <input {...p} style={{width:"100%",padding:"0.6rem 0.875rem",borderRadius:"6px",border:"1px solid #dadce0",fontSize:"0.88rem",color:C.text,outline:"none",boxSizing:"border-box",fontFamily:"inherit",...style}}/>
+  <input {...p} style={{width:"100%",padding:"0.55rem 0.875rem",borderRadius:"7px",border:`1.5px solid ${C.border}`,fontSize:"0.875rem",color:C.text,outline:"none",background:"#fff",boxSizing:"border-box",fontFamily:"'DM Sans',inherit",lineHeight:"1.5",transition:"border-color 0.15s",...style}}/>
 );
 
 const Textarea = ({style={},...p}) => (
-  <textarea {...p} style={{width:"100%",padding:"0.65rem 0.875rem",borderRadius:"6px",border:"1px solid #dadce0",fontSize:"0.88rem",color:C.text,outline:"none",resize:"vertical",boxSizing:"border-box",fontFamily:"inherit",lineHeight:1.6,...style}}/>
+  <textarea {...p} style={{width:"100%",padding:"0.55rem 0.875rem",borderRadius:"6px",border:`1px solid ${C.border}`,fontSize:"0.875rem",color:C.text,outline:"none",resize:"vertical",background:C.surface,boxSizing:"border-box",fontFamily:"'DM Sans',inherit",lineHeight:"1.6",...style}}/>
 );
 
 const SelectEl = ({children,style={},...p}) => (
   <select {...p} style={{width:"100%",padding:"0.65rem 0.875rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,fontSize:"0.9rem",color:C.text,outline:"none",background:"white",fontFamily:"inherit",...style}}>{children}</select>
 );
 
-const FieldLbl = ({label,children}) => (
-  <div style={{marginBottom:"0.875rem"}}>
-    <label style={{display:"block",fontSize:"0.75rem",fontWeight:500,color:C.textSub,marginBottom:"0.35rem"}}>{label}</label>
+const FieldLbl = ({label,required,children}) => (
+  <div style={{marginBottom:"1rem"}}>
+    <label style={{display:"flex",alignItems:"center",gap:"0.25rem",fontSize:"0.75rem",fontWeight:500,color:C.textSub,marginBottom:"0.375rem",letterSpacing:"0.01em"}}>
+      {label}
+      {required&&<span style={{color:C.red,fontSize:"0.65rem"}}>*</span>}
+    </label>
     {children}
   </div>
 );
@@ -1265,26 +1315,32 @@ const authFwStyle    = {marginBottom:"1rem"};
 
 function AuthWrap({children}) {
   return (
-    <div style={{minHeight:"100vh",background:"linear-gradient(145deg,#0f0f1a 0%,#1a1a2e 50%,#16213e 100%)",display:"flex",alignItems:"center",justifyContent:"center",padding:"1.5rem",fontFamily:"-apple-system,'Helvetica Neue','Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif"}}>
-      <div style={{width:"100%",maxWidth:420}}>
+    <div style={{minHeight:"100vh",background:"#0e0e0d",display:"flex",alignItems:"center",justifyContent:"center",padding:"1.5rem",fontFamily:"'DM Sans','Hiragino Kaku Gothic ProN','Noto Sans JP',system-ui,sans-serif",position:"relative",overflow:"hidden"}}>
+      {/* Subtle radial gradient bg */}
+      <div style={{position:"absolute",inset:0,background:"radial-gradient(ellipse 80% 60% at 50% 0%,rgba(91,91,214,0.15) 0%,transparent 70%)",pointerEvents:"none"}}/>
+      <div style={{position:"absolute",inset:0,background:"radial-gradient(ellipse 60% 40% at 80% 80%,rgba(91,91,214,0.07) 0%,transparent 60%)",pointerEvents:"none"}}/>
+      <div style={{width:"100%",maxWidth:420,position:"relative"}}>
+        {/* Logo */}
         <div style={{textAlign:"center",marginBottom:"2.5rem"}}>
-          <div style={{display:"inline-flex",alignItems:"center",gap:"0.875rem",marginBottom:"1rem"}}>
-            <div style={{width:48,height:48,borderRadius:"14px",background:"linear-gradient(135deg,#0071e3,#40a9ff)",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 4px 20px rgba(0,113,227,0.4)"}}>
-              <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
-                <path d="M4 6h4l3 6 3-6h4v12h-4V11.5l-2.5 5.5h-1L8 11.5V18H4V6z" fill="white"/>
+          <div style={{display:"inline-flex",alignItems:"center",gap:"0.75rem",marginBottom:"0.5rem"}}>
+            <div style={{width:40,height:40,borderRadius:"10px",background:"linear-gradient(135deg,#5b5bd6,#7c7cf0)",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 4px 16px rgba(91,91,214,0.4)"}}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                <path d="M4 5h4.5l3 7 3-7H19v14h-4V10l-3 6h-2l-3-6v9H4V5z" fill="white"/>
               </svg>
             </div>
-            <span style={{fontSize:"2rem",fontWeight:700,color:"#ffffff",letterSpacing:"-0.04em"}}>MyDesk</span>
+            <span style={{fontSize:"1.625rem",fontWeight:600,color:"#ffffff",letterSpacing:"-0.04em"}}>MyDesk</span>
           </div>
-          <div style={{fontSize:"0.8rem",color:"rgba(255,255,255,0.45)",letterSpacing:"0.12em",textTransform:"uppercase",fontWeight:500}}>Sales & Team Management</div>
+          <div style={{fontSize:"0.78rem",color:"rgba(255,255,255,0.35)",letterSpacing:"0.06em",textTransform:"uppercase",fontWeight:400}}>Sales & Team Intelligence</div>
         </div>
-        <div style={{background:"rgba(255,255,255,0.97)",borderRadius:"20px",padding:"2.5rem",boxShadow:"0 25px 60px rgba(0,0,0,0.4),0 0 0 1px rgba(255,255,255,0.1)"}}>
+        {/* Card */}
+        <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:"16px",padding:"2.25rem 2rem",backdropFilter:"blur(12px)"}}>
           {children}
         </div>
       </div>
     </div>
   );
 }
+
 function AuthErrBox({msg}) {
   if (!msg) return null;
   return <div style={{background:"#fff1f2",border:"1px solid #fca5a5",borderRadius:"0.625rem",padding:"0.625rem 0.875rem",fontSize:"0.82rem",color:"#dc2626",marginBottom:"1rem"}}>{msg}</div>;
@@ -1296,7 +1352,7 @@ function AuthInfoBox({msg}) {
 function AuthBigBtn({onClick,disabled,children}) {
   return (
     <button onClick={onClick} disabled={disabled}
-      style={{width:"100%",padding:"0.875rem",borderRadius:"8px",border:"none",cursor:"pointer",fontFamily:"inherit",background:C.accent,color:"white",fontWeight:600,fontSize:"0.9rem",letterSpacing:"0.01em",boxShadow:"none",opacity:disabled?0.7:1}}>
+      style={{width:"100%",padding:"0.8rem",borderRadius:"8px",border:"none",cursor:disabled?"not-allowed":"pointer",fontFamily:"'DM Sans',inherit",background:"#0f62fe",color:"white",fontWeight:600,fontSize:"0.875rem",letterSpacing:"0.01em",boxShadow:disabled?"none":"0 0 0 1px rgba(15,98,254,0.5),0 4px 16px rgba(15,98,254,0.3)",opacity:disabled?0.5:1,transition:"all 0.12s"}}>
       {children}
     </button>
   );
@@ -5158,6 +5214,54 @@ function SalesTaskPanel({ entityType, entityId, entityName, data, onSave, curren
 }
 
 // ─── SALES VIEW ───────────────────────────────────────────────────────────────
+
+// ── タップで電話 ＋ 通話後に議事録 ──────────────────────────────────────────
+function PhoneLink({number, label, size="md", onMtg=null}) {
+  const [showMtgPrompt, setShowMtgPrompt] = React.useState(false);
+  if (!number) return null;
+  const clean = number.replace(/[^0-9+]/g, "");
+  const fs = size === "sm" ? "0.78rem" : "0.85rem";
+
+  const handleCall = () => {
+    // 電話発信後に議事録プロンプトを表示
+    if(onMtg) setShowMtgPrompt(true);
+  };
+
+  return (
+    <div style={{display:"inline-flex",flexDirection:"column",gap:"0.375rem"}}>
+      <div style={{display:"inline-flex",alignItems:"center",gap:"0.375rem"}}>
+        {/* 電話ボタン */}
+        <a href={`tel:${clean}`} onClick={handleCall}
+          style={{display:"inline-flex",alignItems:"center",gap:"0.375rem",color:C.accent,textDecoration:"none",fontSize:fs,fontWeight:500,padding:"0.35rem 0.75rem",borderRadius:"6px",background:C.accentBg,border:`1px solid rgba(91,91,214,0.15)`,whiteSpace:"nowrap",transition:"all 0.1s"}}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81a19.79 19.79 0 01-3.07-8.64A2 2 0 012 .18h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 14.92z"/>
+          </svg>
+          {label || number}
+        </a>
+        {/* 議事録ボタン（onMtgがある場合のみ） */}
+        {onMtg&&<button onClick={onMtg}
+          style={{display:"inline-flex",alignItems:"center",gap:"0.25rem",fontSize:fs,fontWeight:500,padding:"0.35rem 0.625rem",borderRadius:"6px",background:"#f0fdf4",color:"#16a34a",border:"1px solid #bbf7d0",cursor:"pointer",whiteSpace:"nowrap"}}>
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
+          </svg>
+          議事録
+        </button>}
+      </div>
+      {/* 通話後プロンプト */}
+      {showMtgPrompt&&onMtg&&(
+        <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:"8px",padding:"0.625rem 0.75rem",fontSize:"0.78rem",color:"#92400e",display:"flex",alignItems:"center",gap:"0.5rem",maxWidth:280}}>
+          <span>📞 通話お疲れ様です！議事録を取りますか？</span>
+          <button onClick={()=>{setShowMtgPrompt(false);onMtg();}}
+            style={{background:"#d97706",color:"white",border:"none",borderRadius:"5px",padding:"0.25rem 0.625rem",fontSize:"0.72rem",fontWeight:600,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>
+            録音開始
+          </button>
+          <button onClick={()=>setShowMtgPrompt(false)}
+            style={{background:"none",border:"none",color:"#92400e",cursor:"pointer",fontSize:"0.8rem",padding:"0.1rem",flexShrink:0}}>✕</button>
+        </div>
+      )}
+    </div>
+  );
+}
 function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab, isPC=false, onNavigateToTask, onNavigateToProject, onNavigateToCompany, onNavigateToVendor, onNavigateToMuni, salesNavTarget, clearSalesNavTarget }) {
   // salesNavTarget は App から prop として渡される（内部stateは不要）
   // salesTab managed by App for persistence
@@ -6621,13 +6725,16 @@ ${recentLogs}
   const SChip=({s,map})=>{
     const safeMap=map||VENDOR_STATUS;
     const label=s||"未接触";
-    const m=safeMap[label]||Object.values(safeMap)[0]||{color:"#6b7280",bg:"#f1f3f4"};
-    return <span style={{padding:"0.15rem 0.5rem",borderRadius:999,fontSize:"0.7rem",fontWeight:700,background:m.bg,color:m.color,whiteSpace:"nowrap"}}>{label}</span>;
+    const d=safeMap[label]||Object.values(safeMap)[0]||{color:"#6b6b69",bg:"#f4f4f2"};
+    return <span style={{display:"inline-flex",alignItems:"center",gap:"0.3rem",padding:"0.18rem 0.6rem",borderRadius:"20px",fontSize:"0.7rem",fontWeight:500,background:d.bg,color:d.color,whiteSpace:"nowrap",letterSpacing:"0.01em",border:`1px solid ${d.color}22`}}>
+      {d.dot&&<span style={{width:"5px",height:"5px",borderRadius:"50%",background:d.color,flexShrink:0,display:"inline-block"}}/>}
+      {label}
+    </span>;
   };
 
   const AssigneeRow=({ids=[]})=>(
     <div style={{display:"flex",flexWrap:"wrap",gap:"0.25rem"}}>
-      {(ids||[]).map(id=>{const u=users.find(u=>u.id===id);return u?<span key={id} style={{fontSize:"0.7rem",background:C.accentBg,color:C.accentDark,padding:"0.1rem 0.4rem",borderRadius:999,fontWeight:600}}>{u.name}</span>:null;})}
+      {(ids||[]).map(id=>{const u=users.find(u=>u.id===id);return u?<span key={id} style={{fontSize:"0.7rem",background:C.accentBg,color:C.accent,padding:"0.1rem 0.5rem",borderRadius:"4px",fontWeight:500,fontSize:"0.68rem"}}>{u.name}</span>:null;})}
       {(!ids||ids.length===0)&&<span style={{fontSize:"0.7rem",color:C.textMuted}}>未設定</span>}
     </div>
   );
@@ -7243,13 +7350,19 @@ ${recentLogs}
     const timerRef   = React.useRef(null);
     const recordingRef = React.useRef(false); // stale closure対策
 
+    // iOS/Safari判定
+    const isIOS = /iP(hone|od|ad)/.test(navigator.userAgent);
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+    const needsNonContinuous = isIOS || isSafari;
+
     const startRecognition = () => {
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
       if(!SR) return;
       const recog = new SR();
       recog.lang = "ja-JP";
-      recog.continuous = true;
-      recog.interimResults = true;
+      // iOS/Safariはcontinuousをtrueにすると動かない → falseで都度再起動
+      recog.continuous = !needsNonContinuous;
+      recog.interimResults = !needsNonContinuous; // iOSはinterimも不安定
       recog.maxAlternatives = 1;
       recog.onstart    = () => { setListening(true); setPermError(""); };
       recog.onaudiostart = () => setListening(true);
@@ -7262,35 +7375,47 @@ ${recentLogs}
           if(e.results[i].isFinal) newFinal += t;
           else interim = t;
         }
-        if(newFinal) setFinalText(prev => prev + newFinal + " ");
+        if(newFinal) setFinalText(prev => prev + newFinal + "　");
         setInterimText(interim);
       };
       recog.onerror = e => {
-        console.warn("[MTG] error:", e.error);
+        console.warn("[MTG] SpeechRecognition error:", e.error);
         if(e.error === "not-allowed" || e.error === "service-not-allowed") {
-          setPermError("マイクへのアクセスが拒否されました。URLバー左のマイクアイコンから許可してください。");
+          setPermError(isIOS
+            ? "マイクを許可してください：設定 → Safari → マイク → 許可"
+            : "マイクへのアクセスが拒否されました。URLバー左のマイクアイコン🎤から許可してください。");
           recordingRef.current = false; setRecording(false); clearInterval(timerRef.current);
+        } else if(e.error === "no-speech") {
+          // 無音タイムアウト → 再起動
+          if(recordingRef.current) setTimeout(() => { if(recordingRef.current) startRecognition(); }, 200);
         } else if(recordingRef.current) {
           setTimeout(() => { if(recordingRef.current) startRecognition(); }, 500);
         }
       };
       recog.onend = () => {
         setInterimText(""); setSoundDetected(false);
-        if(recordingRef.current) setTimeout(() => { if(recordingRef.current) startRecognition(); }, 300);
+        // iOS/Safariは常に再起動、Chromeはcontinuousなので通常ここに来ない
+        if(recordingRef.current) setTimeout(() => { if(recordingRef.current) startRecognition(); }, needsNonContinuous ? 100 : 300);
       };
       recognRef.current = recog;
-      try { recog.start(); } catch(e) { setPermError("録音エラー: " + e.message); }
+      try { recog.start(); } catch(err) {
+        console.warn("[MTG] recog.start error:", err);
+        setPermError("音声認識の開始に失敗しました: " + err.message);
+      }
     };
 
     const startRecording = () => {
       const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if(!SR) { setPermError("このブラウザは音声認識に非対応です。"); return; }
+      if(!SR) {
+        setPermError(isIOS
+          ? "iOSはSafariで録音してください（Chrome非対応）"
+          : "このブラウザは音声認識に非対応です。Chromeをお使いください。");
+        return;
+      }
       setPermError("");
-      // まずマイク権限を明示的に取得してからSpeechRecognition開始
-      navigator.mediaDevices.getUserMedia({ audio: true })
+      navigator.mediaDevices.getUserMedia({ audio: true, video: false })
         .then(stream => {
-          // 権限取得成功 → streamは使わずに閉じる（SpeechRecognitionが自分で取得する）
-          stream.getTracks().forEach(t => t.stop());
+          stream.getTracks().forEach(t => t.stop()); // permissionだけ取得してclose
           recordingRef.current = true;
           setRecording(true);
           setFinalText("");
@@ -7301,7 +7426,9 @@ ${recentLogs}
         })
         .catch(err => {
           console.error("[MTG] マイク権限エラー:", err);
-          setPermError("マイクへのアクセスが拒否されました。URLバー左のマイクアイコン🎤から許可してください。");
+          setPermError(isIOS
+            ? "マイクが許可されていません。設定 → Safari → マイク → このサイトを「許可」に変更してください。"
+            : "マイクへのアクセスが拒否されました。URLバー左のマイクアイコン🎤から許可してください。");
         });
     };
 
@@ -7379,7 +7506,8 @@ ${recentLogs}
               {permError&&<div style={{background:"#fee2e2",borderRadius:"6px",padding:"0.75rem",marginBottom:"0.75rem",fontSize:"0.8rem",color:"#dc2626",fontWeight:600}}>{permError}</div>}
               {/* ブラウザ別ヒント */}
               {!permError&&!recording&&<div style={{background:"#eff6ff",borderRadius:"6px",padding:"0.625rem 0.875rem",marginBottom:"0.75rem",fontSize:"0.72rem",color:"#1d4ed8",lineHeight:1.6}}>
-                💡 <strong>使い方：</strong>録音開始後、マイクの許可を求めるダイアログが出たら「許可」を押してください。<br/>
+                💡 <strong>使い方：</strong>録音開始ボタンを押したら、マイクの許可を「許可」で押してください。<br/>
+                iOSの場合：設定 → Safari → マイク → このサイトを許可<br/>
                 PCのマイクで話した内容が文字起こしされます。<br/>
                 ⚠️ オンラインMTGの相手の声は現状拾えません（自分の声のみ）。
               </div>}
@@ -7830,7 +7958,7 @@ ${orig}`})
               <button onClick={()=>{setForm({...comp});setSheet("editCompany");}} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:"6px",padding:"0.35rem 0.625rem",cursor:"pointer",fontSize:"0.82rem",color:C.textSub}}>✏️</button>
             </div>
             <div style={{fontSize:"0.78rem",color:C.textSub,display:"flex",flexDirection:"column",gap:"0.25rem"}}>
-              {comp.phone&&<div>📞 {comp.phone}</div>}
+              {comp.phone&&<div style={{marginTop:"0.5rem"}}><PhoneLink number={comp.phone} onMtg={()=>setMtgModal({entityKey:"companies",entityId:comp.id,entityName:comp.name})}/></div>}
               {comp.email&&<div>✉️ {comp.email}</div>}
               {comp.address&&<div>📍 {comp.address}</div>}
             </div>
@@ -8198,6 +8326,7 @@ ${orig}`})
             <div style={{flex:1,overflowY:"auto",borderLeft:"1px solid #e5e5ea",background:"#ffffff"}}>
               <div style={{padding:"1rem 1.5rem",borderBottom:"1px solid #e5e5ea",display:"flex",alignItems:"center",background:"white",position:"sticky",top:0,zIndex:10}}>
                 <div style={{flex:1,fontWeight:700,fontSize:"1rem",color:C.text}}>{comp.name}</div>
+                {comp.phone&&<PhoneLink number={comp.phone} size="sm" onMtg={()=>setMtgModal({entityKey:"companies",entityId:comp.id,entityName:comp.name})}/>}
                 <button onClick={()=>setActiveCompany(null)} style={{background:"none",border:"1px solid #e5e5ea",borderRadius:"6px",padding:"0.3rem 0.75rem",cursor:"pointer",fontSize:"0.8rem",color:C.textSub}}>✕</button>
               </div>
               <div style={{padding:"1rem 1.5rem"}}>{renderCompanyDetail(comp)}</div>
@@ -8237,10 +8366,11 @@ ${orig}`})
             {vmunis.length>0&&(
               <div style={{marginBottom:"0.5rem"}}>
                 <div style={{fontSize:"0.68rem",fontWeight:700,color:C.textSub,marginBottom:"0.3rem"}}>許可エリア</div>
-                <div style={{display:"flex",flexWrap:"wrap",gap:"0.25rem"}}>{vmunis.map(m=><span key={m.id} style={{fontSize:"0.7rem",background:C.accentBg,color:C.accentDark,padding:"0.1rem 0.4rem",borderRadius:999,fontWeight:600}}>{m.name}</span>)}</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:"0.25rem"}}>{vmunis.map(m=><span key={m.id} style={{fontSize:"0.7rem",background:C.accentBg,color:C.accent,padding:"0.1rem 0.5rem",borderRadius:"4px",fontWeight:500,fontSize:"0.68rem"}}>{m.name}</span>)}</div>
               </div>
             )}
             <AssigneeRow ids={v.assigneeIds}/>
+            {v.phone&&<div style={{marginTop:"0.5rem"}}><PhoneLink number={v.phone} onMtg={()=>setMtgModal({entityKey:"vendors",entityId:v.id,entityName:v.name})}/></div>}
             {v.address&&<div style={{fontSize:"0.78rem",color:C.textSub,marginTop:"0.4rem"}}>📍 {v.address}</div>}
                   {v.beeNet&&<div style={{display:"inline-flex",alignItems:"center",gap:"0.3rem",marginTop:"0.35rem",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:999,padding:"0.15rem 0.5rem",fontSize:"0.68rem",fontWeight:700,color:"#1d4ed8"}}>🔷 bee-net加入済み</div>}
             {v.notes&&<div style={{marginTop:"0.5rem",fontSize:"0.78rem",color:C.textSub,background:"#f8fafc",borderRadius:"0.5rem",padding:"0.4rem 0.6rem",borderLeft:"3px solid #cbd5e1"}}>{v.notes}</div>}
@@ -8779,6 +8909,7 @@ ${orig}`})
             <div style={{flex:1,overflowY:"auto",borderLeft:"1px solid #e5e5ea",background:"#ffffff"}}>
               <div style={{padding:"1rem 1.5rem",borderBottom:"1px solid #e5e5ea",display:"flex",alignItems:"center",background:"white",position:"sticky",top:0,zIndex:10}}>
                 <div style={{flex:1,fontWeight:700,fontSize:"1rem",color:C.text}}>{v.name}</div>
+                {v.phone&&<PhoneLink number={v.phone} size="sm" onMtg={()=>setMtgModal({entityKey:"vendors",entityId:v.id,entityName:v.name})}/>}
                 <button onClick={()=>setActiveVendor(null)} style={{background:"none",border:"1px solid #e5e5ea",borderRadius:"6px",padding:"0.3rem 0.75rem",cursor:"pointer",fontSize:"0.8rem",color:C.textSub}}>✕</button>
               </div>
               <div style={{padding:"1rem 1.5rem"}}>{renderVendorDetail(v)}</div>
@@ -12786,10 +12917,12 @@ export default function App() {
   if (!currentUser) return <AuthScreen onLogin={handleLogin}/>;
 
   return (
+    <>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Noto+Sans+JP:wght@300;400;500;700&display=swap" rel="stylesheet"/>
     <div style={{
       height:"100dvh", /* dynamic viewport height - handles mobile browser bars */
       background:C.bg,
-      fontFamily:"-apple-system,'Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif",
+      fontFamily:"'DM Sans','Hiragino Kaku Gothic ProN','Noto Sans JP',system-ui,sans-serif",
       display:"flex",flexDirection:"column",
       maxWidth:"100vw",overflowX:"hidden",
       /* PC: center the app, give side gutters */
@@ -12811,7 +12944,7 @@ export default function App() {
         @keyframes spin{to{transform:rotate(360deg)}}
       `}</style>
       {/* Header */}
-      <div className="mydesk-header" style={{background:"#1c1c1e",borderBottom:"1px solid #2c2c2e",position:"sticky",top:0,zIndex:100,flexShrink:0}}>
+      <div className="mydesk-header" style={{background:C.nav,borderBottom:`1px solid ${C.navBorder}`,position:"sticky",top:0,zIndex:100,backdropFilter:"blur(20px)",flexShrink:0}}>
         <div style={{maxWidth:680,margin:"0 auto",padding:"0 clamp(0.75rem,3vw,1rem)"}}>
           <div style={{display:"flex",alignItems:"center",height:52,gap:"0.625rem"}}>
             <div style={{display:"flex",alignItems:"center",gap:"0.5rem"}}>
@@ -12820,7 +12953,7 @@ export default function App() {
                   <path d="M3 5h5l2 5 2-5h5v10h-3.5V9.5L11 15H9L6.5 9.5V15H3V5z" fill="white"/>
                 </svg>
               </div>
-              <span style={{fontWeight:700,fontSize:"1rem",color:"#f5f5f7",letterSpacing:"-0.02em"}}>MyDesk</span>
+              <span style={{fontWeight:600,fontSize:"0.95rem",color:C.navText,letterSpacing:"-0.03em"}}>MyDesk</span>
             </div>
 
             {/* Notification bell + User menu */}
@@ -12998,11 +13131,11 @@ export default function App() {
       )}
 
       {/* PC Sidebar Nav */}
-      <div className="mydesk-sidebar" style={{display:"none",position:"fixed",top:52,left:0,bottom:0,width:200,background:"white",borderRight:`1px solid ${C.border}`,zIndex:99,overflowY:"auto",padding:"1rem 0.75rem"}}>
-        <div style={{fontSize:"0.62rem",fontWeight:600,color:"#636366",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:"0.5rem",paddingLeft:"0.75rem"}}>ナビゲーション</div>
+      <div className="mydesk-sidebar" style={{display:"none",position:"fixed",top:52,left:0,bottom:0,width:200,background:C.nav,borderRight:`1px solid ${C.navBorder}`,zIndex:99,overflowY:"auto",padding:"1rem 0.75rem"}}>
+        <div style={{fontSize:"0.62rem",fontWeight:500,color:C.navTextSub,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:"0.5rem",paddingLeft:"0.75rem"}}>ナビゲーション</div>
         {TABS.map(t=>(
           <button key={t.id} onClick={()=>persistTab("md_tab",t.id,setTab)}
-            style={{width:"100%",display:"flex",alignItems:"center",gap:"0.75rem",padding:"0.6rem 0.75rem",borderRadius:"8px",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:tab===t.id?600:400,fontSize:"0.87rem",background:tab===t.id?"rgba(96,165,250,0.15)":"transparent",color:tab===t.id?"#60a5fa":"#98989d",marginBottom:"0.1rem",textAlign:"left"}}>
+            style={{width:"100%",display:"flex",alignItems:"center",gap:"0.625rem",padding:"0.45rem 0.75rem",borderRadius:"6px",border:"none",cursor:"pointer",fontFamily:"'DM Sans',inherit",fontWeight:tab===t.id?500:400,fontSize:"0.85rem",background:tab===t.id?C.navActive:"transparent",color:tab===t.id?C.navActiveText:C.navTextSub,marginBottom:"0.125rem",textAlign:"left",transition:"all 0.1s",letterSpacing:"-0.005em"}}>
             <span style={{fontSize:"1.2rem",lineHeight:1,flexShrink:0}}>{t.emoji}</span>
             <span>{t.label}</span>
           </button>
@@ -13014,7 +13147,7 @@ export default function App() {
       {/* Content */}
       <div ref={contentRef} className="mydesk-content" data-sales-scroll style={{flex:1,overflowY:isPC?"hidden":"auto",display:isPC?"flex":"block",
         paddingBottom:isPC?0:"calc(5rem + env(safe-area-inset-bottom,0px))"}}>
-        <div style={{maxWidth:isPC?"none":680,margin:isPC?0:"0 auto",width:"100%",flex:isPC?1:undefined,overflowY:isPC?"auto":"visible",padding:isPC?"1.5rem 2rem 0.5rem":"1.25rem 1rem 0.5rem",boxSizing:"border-box"}}>
+        <div style={{maxWidth:isPC?"none":720,margin:isPC?0:"0 auto",width:"100%",flex:isPC?1:undefined,overflowY:isPC?"auto":"visible",padding:isPC?"1.5rem 2rem 0.5rem":"1.25rem 1rem 0.5rem",boxSizing:"border-box"}}>
           <ErrorBoundary>
             {tab==="tasks"     && <TaskView      data={data} setData={setData} users={users} currentUser={currentUser}
               taskTab={taskTab} setTaskTab={(v)=>persistTab('md_taskTab',v,setTaskTab)}
@@ -13076,6 +13209,7 @@ export default function App() {
         />
       )}
     </div>
+    </>
   );
 }
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
