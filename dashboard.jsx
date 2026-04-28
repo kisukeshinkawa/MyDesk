@@ -5300,24 +5300,29 @@ function PhoneLink({number, label, size="md", onMtg=null, onCallRecord=null}) {
     if(onMtg) setShowMtgPrompt(true);
   };
 
-  // 録音通話ボタン: 電話発信と同時に録音モーダルを自動起動
+  // 録音通話ボタン: 録音開始 → 電話発信の順
   const handleRecordCall = (e) => {
     e.preventDefault();
     if(!onCallRecord) return;
     // ユーザーに通知
     const proceed = window.confirm(
       "📞 録音通話を開始します\n\n" +
-      "1. iPhoneで電話が発信されます\n" +
-      "2. iPhoneを「スピーカーホン」にしてください\n" +
-      "3. Macの近くに置いて通話してください\n" +
-      "4. 通話終了後、MyDeskの「停止」ボタンを押してください\n\n" +
+      "【手順】\n" +
+      "1. これからMacの録音モーダルが開き、自動で録音開始されます\n" +
+      "2. その後、自動的に電話アプリが開きます\n" +
+      "3. iPhoneを「スピーカーホン」にして、Macの近くに置いてください\n" +
+      "4. 通話終了後、MyDeskに戻って「停止」ボタンを押してください\n\n" +
       "続けますか？"
     );
     if(!proceed) return;
-    // 電話発信
-    window.location.href = `tel:${clean}`;
-    // 少し遅延して録音モーダルを起動（電話アプリへの遷移後）
-    setTimeout(() => { onCallRecord(); }, 500);
+    // 1. 先にモーダルを開く（録音モーダルは autoStart=true で自動録音開始）
+    onCallRecord();
+    // 2. 録音が開始されてから、電話アプリを起動する（2秒待機）
+    // ※ MtgRecordModal側の autoStart useEffect で 800ms 後に startRecording される
+    // ※ さらに録音準備に1秒程度かかるので、合計2秒待機
+    setTimeout(() => {
+      window.location.href = `tel:${clean}`;
+    }, 2000);
   };
 
   return (
