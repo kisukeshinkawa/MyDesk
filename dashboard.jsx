@@ -2072,14 +2072,17 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     clearNavTarget?.();
   },[navTarget]);
 
-  const allTasks    = data.tasks    || [];
-  const allProjects = data.projects || [];
+  const allTasks    = React.useMemo(() => data.tasks    || [], [data.tasks]);
+  const allProjects = React.useMemo(() => data.projects || [], [data.projects]);
 
-  const visibleTasks    = allTasks.filter(t=>canSee(t,uid));
-  const allVisibleProjects = allProjects.filter(p=>canSee(p,uid));
-  const allFilteredProjects = showMineOnly ? allVisibleProjects.filter(p=>(p.members||[]).includes(uid)||p.createdBy===uid) : allVisibleProjects;
-  const visibleProjects  = allFilteredProjects.filter(p=>p.status!=="完了");
-  const archivedProjects = allFilteredProjects.filter(p=>p.status==="完了");
+  const visibleTasks    = React.useMemo(() => allTasks.filter(t=>canSee(t,uid)), [allTasks, uid]);
+  const allVisibleProjects = React.useMemo(() => allProjects.filter(p=>canSee(p,uid)), [allProjects, uid]);
+  const allFilteredProjects = React.useMemo(
+    () => showMineOnly ? allVisibleProjects.filter(p=>(p.members||[]).includes(uid)||p.createdBy===uid) : allVisibleProjects,
+    [allVisibleProjects, showMineOnly, uid]
+  );
+  const visibleProjects  = React.useMemo(() => allFilteredProjects.filter(p=>p.status!=="完了"), [allFilteredProjects]);
+  const archivedProjects = React.useMemo(() => allFilteredProjects.filter(p=>p.status==="完了"), [allFilteredProjects]);
 
   const requestReview = (taskId, toUserId, note) => {
     const task = allTasks.find(t => t.id === taskId);
@@ -7316,17 +7319,55 @@ ${recentLogs}
   });
 
 
-  const prefOf     = id=>prefs.find(p=>String(p.id)===String(id));
+  // ── 高速ルックアップマップ（O(N) find を O(1) lookup に）──────────────────
+  const prefMap = React.useMemo(() => {
+    const m = new Map();
+    prefs.forEach(p => m.set(String(p.id), p));
+    return m;
+  }, [prefs]);
+  const muniMap = React.useMemo(() => {
+    const m = new Map();
+    munis.forEach(mu => m.set(String(mu.id), mu));
+    return m;
+  }, [munis]);
+  const vendorMap = React.useMemo(() => {
+    const m = new Map();
+    vendors.forEach(v => m.set(v.id, v));
+    return m;
+  }, [vendors]);
+  const companyMap = React.useMemo(() => {
+    const m = new Map();
+    companies.forEach(c => m.set(c.id, c));
+    return m;
+  }, [companies]);
+  // 自治体ID → 業者リスト（逆引き）
+  const muniToVendorsMap = React.useMemo(() => {
+    const m = new Map();
+    vendors.forEach(v => {
+      (v.municipalityIds || []).forEach(mid => {
+        const k = String(mid);
+        if (!m.has(k)) m.set(k, []);
+        m.get(k).push(v);
+      });
+    });
+    return m;
+  }, [vendors]);
 
+  const prefOf     = React.useCallback(id => prefMap.get(String(id)), [prefMap]);
   // ── Excel seed import ─────────────────────────────────────────────────────
-  const muniOf     = id=>munis.find(m=>String(m.id)===String(id));
-  const vendorOf   = id=>vendors.find(v=>v.id===id);
-  const companyOf  = id=>companies.find(c=>c.id===id);
-  const muniVendors= mid=>vendors.filter(v=>(v.municipalityIds||[]).some(id=>String(id)===String(mid)));
-  const vendorMunis= v=>(v.municipalityIds||[]).map(muniOf).filter(Boolean);
+  const muniOf     = React.useCallback(id => muniMap.get(String(id)), [muniMap]);
+  const vendorOf   = React.useCallback(id => vendorMap.get(id), [vendorMap]);
+  const companyOf  = React.useCallback(id => companyMap.get(id), [companyMap]);
+  const muniVendors= React.useCallback(mid => muniToVendorsMap.get(String(mid)) || [], [muniToVendorsMap]);
+  const vendorMunis= React.useCallback(v => (v.municipalityIds||[]).map(id => muniMap.get(String(id))).filter(Boolean), [muniMap]);
   const checkDup   = (name,list)=>list.find(x=>x.name?.trim()===name?.trim());
-  const uName      = id=>{const u=users.find(u=>u.id===id);return u?u.name:"—";};
-  const uInit      = id=>{const u=users.find(u=>u.id===id);return u?u.name.charAt(0):"?";};
+  const userMap = React.useMemo(() => {
+    const m = new Map();
+    (users||[]).forEach(u => m.set(u.id, u));
+    return m;
+  }, [users]);
+  const uName      = React.useCallback(id => { const u = userMap.get(id); return u ? u.name : "—"; }, [userMap]);
+  const uInit      = React.useCallback(id => { const u = userMap.get(id); return u ? u.name.charAt(0) : "?"; }, [userMap]);
 
 
 
@@ -7787,7 +7828,7 @@ ${recentLogs}
 
   const AssigneeRow=({ids=[]})=>(
     <div style={{display:"flex",flexWrap:"wrap",gap:"0.25rem"}}>
-      {(ids||[]).map(id=>{const u=users.find(u=>u.id===id);return u?<span key={id} style={{fontSize:"0.7rem",background:C.accentBg,color:C.accent,padding:"0.1rem 0.5rem",borderRadius:"4px",fontWeight:500,fontSize:"0.68rem"}}>{u.name}</span>:null;})}
+      {(ids||[]).map(id=>{const u=userMap.get(id);return u?<span key={id} style={{fontSize:"0.68rem",background:C.accentBg,color:C.accent,padding:"0.1rem 0.5rem",borderRadius:"4px",fontWeight:500}}>{u.name}</span>:null;})}
       {(!ids||ids.length===0)&&<span style={{fontSize:"0.7rem",color:C.textMuted}}>未設定</span>}
     </div>
   );
@@ -13607,8 +13648,11 @@ export default function App() {
   };
 
   // __all__ notifications are shown to every logged-in user
-  const appNotifs = (data.notifications||[]).filter(n=>n.toUserId===currentUser?.id||n.toUserId==="__all__");
-  const appUnread = appNotifs.filter(n=>!n.read);
+  const appNotifs = React.useMemo(
+    () => (data.notifications||[]).filter(n=>n.toUserId===currentUser?.id||n.toUserId==="__all__"),
+    [data.notifications, currentUser?.id]
+  );
+  const appUnread = React.useMemo(() => appNotifs.filter(n=>!n.read), [appNotifs]);
   const markAllRead = () => {
     const uid=currentUser?.id;
     const nd={...data,notifications:(data.notifications||[]).map(n=>(n.toUserId===uid||n.toUserId==="__all__")?{...n,read:true}:n)};
