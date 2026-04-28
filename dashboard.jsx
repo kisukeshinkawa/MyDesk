@@ -5367,7 +5367,7 @@ function PhoneLink({number, label, size="md", onMtg=null, onCallRecord=null}) {
 }
 // ── モーダル一括レンダラー（早期returnでも表示できるよう関数化）────────────
 // ── MTG記録モーダルコンポーネント ─────────────────────────────────────────
-function MtgRecordModal({entityKey,entityId,entityName,data,users,currentUser,onSave,onClose}) {
+function MtgRecordModal({entityKey,entityId,entityName,data,users,currentUser,onSave,onClose,autoStart=false,callMode=false}) {
   const [phase,       setPhase]      = React.useState("record");
   const [recording,   setRecording]  = React.useState(false);
   const [finalText,   setFinalText]  = React.useState("");
