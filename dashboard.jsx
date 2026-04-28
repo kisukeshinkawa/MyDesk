@@ -5289,7 +5289,7 @@ function SalesTaskPanel({ entityType, entityId, entityName, data, onSave, curren
 // ─── SALES VIEW ───────────────────────────────────────────────────────────────
 
 // ── タップで電話 ＋ 通話後に議事録 ──────────────────────────────────────────
-function PhoneLink({number, label, size="md", onMtg=null}) {
+function PhoneLink({number, label, size="md", onMtg=null, onCallRecord=null}) {
   const [showMtgPrompt, setShowMtgPrompt] = React.useState(false);
   if (!number) return null;
   const clean = number.replace(/[^0-9+]/g, "");
@@ -5300,9 +5300,29 @@ function PhoneLink({number, label, size="md", onMtg=null}) {
     if(onMtg) setShowMtgPrompt(true);
   };
 
+  // 録音通話ボタン: 電話発信と同時に録音モーダルを自動起動
+  const handleRecordCall = (e) => {
+    e.preventDefault();
+    if(!onCallRecord) return;
+    // ユーザーに通知
+    const proceed = window.confirm(
+      "📞 録音通話を開始します\n\n" +
+      "1. iPhoneで電話が発信されます\n" +
+      "2. iPhoneを「スピーカーホン」にしてください\n" +
+      "3. Macの近くに置いて通話してください\n" +
+      "4. 通話終了後、MyDeskの「停止」ボタンを押してください\n\n" +
+      "続けますか？"
+    );
+    if(!proceed) return;
+    // 電話発信
+    window.location.href = `tel:${clean}`;
+    // 少し遅延して録音モーダルを起動（電話アプリへの遷移後）
+    setTimeout(() => { onCallRecord(); }, 500);
+  };
+
   return (
     <div style={{display:"inline-flex",flexDirection:"column",gap:"0.375rem"}}>
-      <div style={{display:"inline-flex",alignItems:"center",gap:"0.375rem"}}>
+      <div style={{display:"inline-flex",alignItems:"center",gap:"0.375rem",flexWrap:"wrap"}}>
         {/* 電話ボタン */}
         <a href={`tel:${clean}`} onClick={handleCall}
           style={{display:"inline-flex",alignItems:"center",gap:"0.375rem",color:C.accent,textDecoration:"none",fontSize:fs,fontWeight:500,padding:"0.35rem 0.75rem",borderRadius:"6px",background:C.accentBg,border:`1px solid rgba(91,91,214,0.15)`,whiteSpace:"nowrap",transition:"all 0.1s"}}>
@@ -5311,6 +5331,11 @@ function PhoneLink({number, label, size="md", onMtg=null}) {
           </svg>
           {label || number}
         </a>
+        {/* 録音通話ボタン（onCallRecordがある場合） */}
+        {onCallRecord&&<button onClick={handleRecordCall} title="電話＋自動録音"
+          style={{display:"inline-flex",alignItems:"center",gap:"0.25rem",fontSize:fs,fontWeight:600,padding:"0.35rem 0.625rem",borderRadius:"6px",background:"#fef3c7",color:"#92400e",border:"1px solid #fde68a",cursor:"pointer",whiteSpace:"nowrap"}}>
+          🎙️ 録音通話
+        </button>}
         {/* 議事録ボタン（onMtgがある場合のみ） */}
         {onMtg&&<button onClick={onMtg}
           style={{display:"inline-flex",alignItems:"center",gap:"0.25rem",fontSize:fs,fontWeight:500,padding:"0.35rem 0.625rem",borderRadius:"6px",background:"#f0fdf4",color:"#16a34a",border:"1px solid #bbf7d0",cursor:"pointer",whiteSpace:"nowrap"}}>
@@ -5396,6 +5421,20 @@ function MtgRecordModal({entityKey,entityId,entityName,data,users,currentUser,on
     // 初回：許可前は label が空文字なのでデバイス名が出ないが、デバイスIDは取得できる
     refreshDevices();
   }, [refreshDevices]);
+
+  // autoStart: 電話自動録音モード - モーダル開いた瞬間に録音開始
+  React.useEffect(() => {
+    if(autoStart && !recordingRef.current) {
+      // refreshDevicesが終わってから録音開始（デバイスID取得のため）
+      const timer = setTimeout(() => {
+        if(!recordingRef.current) {
+          startRecording();
+        }
+      }, 800); // 0.8秒待機
+      return () => clearTimeout(timer);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStart]);
 
   // デバイス判定（コンポーネントレベルで1回だけ計算）
   const isIOS = /iP(hone|od|ad)/.test(navigator.userAgent);
@@ -5836,7 +5875,7 @@ function MtgRecordModal({entityKey,entityId,entityName,data,users,currentUser,on
         <div style={{padding:"1.25rem 1.25rem 0.75rem",borderBottom:"1px solid #f1f5f9",flexShrink:0}}>
           <div style={{display:"flex",alignItems:"center"}}>
             <div style={{flex:1}}>
-              <div style={{fontWeight:800,fontSize:"1rem",color:"#1e293b"}}>🎤 MTG記録</div>
+              <div style={{fontWeight:800,fontSize:"1rem",color:"#1e293b"}}>{callMode?"📞 電話通話 録音中":"🎤 MTG記録"}</div>
               <div style={{fontSize:"0.72rem",color:"#64748b"}}>📌 {entityName}</div>
             </div>
             <button onClick={()=>{stopRecording();onClose();}} style={{background:"none",border:"none",fontSize:"1.4rem",color:"#94a3b8",cursor:"pointer",padding:"0.2rem"}}>✕</button>
@@ -5850,7 +5889,15 @@ function MtgRecordModal({entityKey,entityId,entityName,data,users,currentUser,on
             {/* エラー表示 */}
             {permError&&<div style={{background:"#fee2e2",borderRadius:"6px",padding:"0.75rem",marginBottom:"0.75rem",fontSize:"0.8rem",color:"#dc2626",fontWeight:600}}>{permError}</div>}
             {/* ブラウザ別ヒント */}
-            {!permError&&!recording&&!whisperProcessing&&<div style={{background:"#eff6ff",borderRadius:"6px",padding:"0.625rem 0.875rem",marginBottom:"0.75rem",fontSize:"0.72rem",color:"#1d4ed8",lineHeight:1.6}}>
+            {/* 電話通話モード専用ヒント */}
+            {callMode&&!permError&&<div style={{background:"#fffbeb",borderRadius:"6px",padding:"0.75rem 1rem",marginBottom:"0.75rem",fontSize:"0.78rem",color:"#92400e",lineHeight:1.6,border:"1px solid #fde68a"}}>
+              📞 <strong>電話通話モード：</strong><br/>
+              1. iPhoneで電話発信中 → <strong>スピーカーホン</strong>に切り替えてください<br/>
+              2. iPhoneを <strong>Macの近くに置く</strong>（マイクが拾える位置）<br/>
+              3. 通話終了後、下の<strong>「⏹ 録音停止＆文字起こし」</strong>ボタンを押す<br/>
+              4. AI が自動で議事録・タスクを生成します
+            </div>}
+            {!callMode&&!permError&&!recording&&!whisperProcessing&&<div style={{background:"#eff6ff",borderRadius:"6px",padding:"0.625rem 0.875rem",marginBottom:"0.75rem",fontSize:"0.72rem",color:"#1d4ed8",lineHeight:1.6}}>
               💡 <strong>使い方：</strong>「録音開始」を押して話す → 「録音停止」を押すと <strong>OpenAI Whisper</strong> が高精度で文字起こしします<br/>
               ⏱ <strong>録音時間の目安：</strong>15分以内（長すぎるとサイズ超過）<br/>
               🎯 <strong>精度：</strong>Whisperは句読点も自動で付き、専門用語（産廃・収運等）も正確に認識します<br/>
@@ -8557,10 +8604,11 @@ ${orig}`})
               ?{...x,memos:[...(x.memos||[]),{id:Date.now(),userId:currentUser?.id,text:note,date:new Date().toISOString(),isMtg:true}]}
               :x);
             let nd={...data,[mtgModal.entityKey]:arr};
-            // アプローチ記録も追加
+            // アプローチ記録も追加 (callModeなら "電話"、通常は "MTG")
+            const approachType = mtgModal.callMode ? "電話" : "MTG";
             const entity=(data[mtgModal.entityKey]||[]).find(x=>x.id===mtgModal.entityId);
             nd={...nd,[mtgModal.entityKey]:(nd[mtgModal.entityKey]||[]).map(x=>x.id===mtgModal.entityId
-              ?{...x,approachLogs:[...(x.approachLogs||[]),{id:Date.now()+1,type:"MTG",note:note.slice(0,80),date:new Date().toISOString().slice(0,10),createdAt:new Date().toISOString(),createdBy:currentUser?.id}]}
+              ?{...x,approachLogs:[...(x.approachLogs||[]),{id:Date.now()+1,type:approachType,note:note.slice(0,80),date:new Date().toISOString().slice(0,10),createdAt:new Date().toISOString(),createdBy:currentUser?.id}]}
               :x)};
             save(nd);
             // タスク登録（確定済みのもの）
@@ -8600,7 +8648,7 @@ ${orig}`})
               <button onClick={()=>{setForm({...comp});setSheet("editCompany");}} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:"6px",padding:"0.35rem 0.625rem",cursor:"pointer",fontSize:"0.82rem",color:C.textSub}}>✏️</button>
             </div>
             <div style={{fontSize:"0.78rem",color:C.textSub,display:"flex",flexDirection:"column",gap:"0.25rem"}}>
-              {comp.phone&&<div style={{marginTop:"0.5rem"}}><PhoneLink number={comp.phone} onMtg={()=>setMtgModal({entityKey:"companies",entityId:comp.id,entityName:comp.name})}/></div>}
+              {comp.phone&&<div style={{marginTop:"0.5rem"}}><PhoneLink number={comp.phone} onMtg={()=>setMtgModal({entityKey:"companies",entityId:comp.id,entityName:comp.name})} onCallRecord={()=>setMtgModal({entityKey:"companies",entityId:comp.id,entityName:comp.name,autoStart:true,callMode:true})}/></div>}
               {comp.email&&<div>✉️ {comp.email}</div>}
               {comp.address&&<div>📍 {comp.address}</div>}
               {comp.updatedAt&&<div style={{fontSize:"0.7rem",color:C.textMuted,marginTop:"0.2rem"}}>📅 最終更新：{comp.updatedAt}</div>}
@@ -9002,7 +9050,7 @@ ${orig}`})
             <div style={{flex:1,overflowY:"auto",borderLeft:"1px solid #e5e5ea",background:"#ffffff"}}>
               <div style={{padding:"1rem 1.5rem",borderBottom:"1px solid #e5e5ea",display:"flex",alignItems:"center",background:"white",position:"sticky",top:0,zIndex:10}}>
                 <div style={{flex:1,fontWeight:700,fontSize:"1rem",color:C.text}}>{comp.name}</div>
-                {comp.phone&&<PhoneLink number={comp.phone} size="sm" onMtg={()=>setMtgModal({entityKey:"companies",entityId:comp.id,entityName:comp.name})}/>}
+                {comp.phone&&<PhoneLink number={comp.phone} size="sm" onMtg={()=>setMtgModal({entityKey:"companies",entityId:comp.id,entityName:comp.name})} onCallRecord={()=>setMtgModal({entityKey:"companies",entityId:comp.id,entityName:comp.name,autoStart:true,callMode:true})}/>}
                 <button onClick={()=>setActiveCompany(null)} style={{background:"none",border:"1px solid #e5e5ea",borderRadius:"6px",padding:"0.3rem 0.75rem",cursor:"pointer",fontSize:"0.8rem",color:C.textSub}}>✕</button>
               </div>
               <div style={{padding:"1rem 1.5rem"}}>{renderCompanyDetail(comp)}</div>
@@ -9046,7 +9094,7 @@ ${orig}`})
               </div>
             )}
             <AssigneeRow ids={v.assigneeIds}/>
-            {v.phone&&<div style={{marginTop:"0.5rem"}}><PhoneLink number={v.phone} onMtg={()=>setMtgModal({entityKey:"vendors",entityId:v.id,entityName:v.name})}/></div>}
+            {v.phone&&<div style={{marginTop:"0.5rem"}}><PhoneLink number={v.phone} onMtg={()=>setMtgModal({entityKey:"vendors",entityId:v.id,entityName:v.name})} onCallRecord={()=>setMtgModal({entityKey:"vendors",entityId:v.id,entityName:v.name,autoStart:true,callMode:true})}/></div>}
             {v.address&&<div style={{fontSize:"0.78rem",color:C.textSub,marginTop:"0.4rem"}}>📍 {v.address}</div>}
             {v.updatedAt&&<div style={{fontSize:"0.7rem",color:C.textMuted,marginTop:"0.3rem"}}>📅 最終更新：{v.updatedAt}</div>}
                   {v.beeNet&&<div style={{display:"inline-flex",alignItems:"center",gap:"0.3rem",marginTop:"0.35rem",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:999,padding:"0.15rem 0.5rem",fontSize:"0.68rem",fontWeight:700,color:"#1d4ed8"}}>🔷 bee-net加入済み</div>}
@@ -9584,7 +9632,7 @@ ${orig}`})
             <div style={{flex:1,overflowY:"auto",borderLeft:"1px solid #e5e5ea",background:"#ffffff"}}>
               <div style={{padding:"1rem 1.5rem",borderBottom:"1px solid #e5e5ea",display:"flex",alignItems:"center",background:"white",position:"sticky",top:0,zIndex:10}}>
                 <div style={{flex:1,fontWeight:700,fontSize:"1rem",color:C.text}}>{v.name}</div>
-                {v.phone&&<PhoneLink number={v.phone} size="sm" onMtg={()=>setMtgModal({entityKey:"vendors",entityId:v.id,entityName:v.name})}/>}
+                {v.phone&&<PhoneLink number={v.phone} size="sm" onMtg={()=>setMtgModal({entityKey:"vendors",entityId:v.id,entityName:v.name})} onCallRecord={()=>setMtgModal({entityKey:"vendors",entityId:v.id,entityName:v.name,autoStart:true,callMode:true})}/>}
                 <button onClick={()=>setActiveVendor(null)} style={{background:"none",border:"1px solid #e5e5ea",borderRadius:"6px",padding:"0.3rem 0.75rem",cursor:"pointer",fontSize:"0.8rem",color:C.textSub}}>✕</button>
               </div>
               <div style={{padding:"1rem 1.5rem"}}>{renderVendorDetail(v)}</div>
