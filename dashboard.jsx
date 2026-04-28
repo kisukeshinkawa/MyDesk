@@ -6348,6 +6348,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   const [compFilter,   setCompFilter]   = useState({status:"",assignee:""});
   const [vendSearch,   setVendSearch]   = useState("");
   const [debouncedVendSearch, setDebouncedVendSearch] = useState("");
+  // 詳細ページのヘッダー展開状態（業者・企業・自治体共用、デフォルト折りたたみ）
+  const [headerExpanded, setHeaderExpanded] = useState(false);
   // 業者名検索の debounce: 入力停止後 300ms で実際のフィルタ対象を更新
   React.useEffect(() => {
     const timer = setTimeout(() => setDebouncedVendSearch(vendSearch), 300);
@@ -8706,22 +8708,32 @@ ${orig}`})
             <button onClick={()=>{setActiveCompany(null);restoreSalesScroll("company");}} style={{background:"none",border:"none",color:C.textSub,fontWeight:700,fontSize:"0.85rem",cursor:"pointer",padding:0}}>‹ 一覧</button>
             <span style={{flex:1}}/>
           </div>}
-          <Card style={{padding:"1.25rem",marginBottom:"1rem"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"0.75rem"}}>
-              <div>
-                <div style={{fontSize:"1.15rem",fontWeight:800,color:C.text}}>{comp.name}</div>
-                <div style={{marginTop:"0.35rem"}}><SChip s={comp.status} map={COMPANY_STATUS}/></div>
+          <Card style={{padding:"0.75rem 1rem",marginBottom:"0.5rem"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:"0.5rem"}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{display:"flex",alignItems:"center",gap:"0.5rem",flexWrap:"wrap"}}>
+                  <div style={{fontSize:"0.95rem",fontWeight:800,color:C.text}}>{comp.name}</div>
+                  <SChip s={comp.status} map={COMPANY_STATUS}/>
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginTop:"0.25rem",flexWrap:"wrap"}}>
+                  <AssigneeRow ids={comp.assigneeIds}/>
+                  {comp.phone&&<PhoneLink number={comp.phone} size="sm" onMtg={()=>setMtgModal({entityKey:"companies",entityId:comp.id,entityName:comp.name})} onCallRecord={()=>setMtgModal({entityKey:"companies",entityId:comp.id,entityName:comp.name,autoStart:true,callMode:true})}/>}
+                </div>
               </div>
-              <button onClick={()=>{setForm({...comp});setSheet("editCompany");}} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:"6px",padding:"0.35rem 0.625rem",cursor:"pointer",fontSize:"0.82rem",color:C.textSub}}>✏️</button>
+              <button onClick={()=>setHeaderExpanded(prev=>!prev)} title={headerExpanded?"詳細を閉じる":"詳細を見る"}
+                style={{background:"none",border:`1px solid ${C.border}`,borderRadius:"6px",padding:"0.25rem 0.5rem",cursor:"pointer",fontSize:"0.75rem",color:C.textSub,whiteSpace:"nowrap"}}>
+                {headerExpanded?"▲":"▼"}
+              </button>
+              <button onClick={()=>{setForm({...comp});setSheet("editCompany");}} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:"6px",padding:"0.25rem 0.5rem",cursor:"pointer",fontSize:"0.78rem",color:C.textSub}}>✏️</button>
             </div>
-            <AssigneeRow ids={comp.assigneeIds}/>
-            <div style={{fontSize:"0.78rem",color:C.textSub,display:"flex",flexDirection:"column",gap:"0.25rem"}}>
-              {comp.phone&&<div style={{marginTop:"0.5rem"}}><PhoneLink number={comp.phone} onMtg={()=>setMtgModal({entityKey:"companies",entityId:comp.id,entityName:comp.name})} onCallRecord={()=>setMtgModal({entityKey:"companies",entityId:comp.id,entityName:comp.name,autoStart:true,callMode:true})}/></div>}
-              {comp.email&&<div>✉️ {comp.email}</div>}
-              {comp.address&&<div>📍 {comp.address}</div>}
-              {comp.updatedAt&&<div style={{fontSize:"0.7rem",color:C.textMuted,marginTop:"0.2rem"}}>📅 最終更新：{comp.updatedAt}</div>}
-            </div>
-            {comp.notes&&<div style={{marginTop:"0.5rem",fontSize:"0.78rem",color:C.textSub,background:"#f8fafc",borderRadius:"0.5rem",padding:"0.5rem 0.75rem",borderLeft:"3px solid #cbd5e1",whiteSpace:"pre-wrap"}}><div style={{fontSize:"0.68rem",fontWeight:700,color:C.textSub,marginBottom:"0.2rem"}}>📝 備考</div>{comp.notes}</div>}
+            {headerExpanded&&(
+              <div style={{marginTop:"0.625rem",paddingTop:"0.625rem",borderTop:`1px solid ${C.borderLight}`,fontSize:"0.78rem",color:C.textSub}}>
+                {comp.email&&<div style={{marginBottom:"0.25rem"}}>✉️ {comp.email}</div>}
+                {comp.address&&<div style={{marginBottom:"0.25rem"}}>📍 {comp.address}</div>}
+                {comp.updatedAt&&<div style={{fontSize:"0.68rem",color:C.textMuted,marginBottom:"0.3rem"}}>📅 最終更新：{comp.updatedAt}</div>}
+                {comp.notes&&<div style={{marginTop:"0.4rem",fontSize:"0.75rem",color:C.textSub,background:"#f8fafc",borderRadius:6,padding:"0.45rem 0.6rem",borderLeft:"3px solid #cbd5e1",whiteSpace:"pre-wrap"}}><div style={{fontSize:"0.65rem",fontWeight:700,color:C.textSub,marginBottom:"0.15rem"}}>📝 備考</div>{comp.notes}</div>}
+              </div>
+            )}
           </Card>
           <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap",marginBottom:"0.75rem"}}>
             <button onClick={e=>{e.stopPropagation();openApproachModal("companies",comp.id,comp.name);}} style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#dbeafe",color:"#1d4ed8"}}>📞 アプローチ記録</button>
@@ -8858,12 +8870,16 @@ ${orig}`})
               <div style={{fontSize:"0.7rem",fontWeight:800,color:C.textSub,marginBottom:"0.4rem",textTransform:"uppercase",letterSpacing:"0.04em"}}>
                 担当案件 {compFilteredBase.length}件
               </div>
-              <div style={{display:"flex",flexDirection:"column",gap:"0.3rem"}}>
-                {compFilteredBase.map(c=>{
+              <VirtualList
+                items={compFilteredBase}
+                itemHeight={76}
+                maxHeight={Math.min(compFilteredBase.length*76+8, 600)}
+                getKey={c=>c.id}
+                renderItem={(c)=>{
                   const lastMemo=(c.memos||[]).slice(-1)[0];
                   return (
-                    <div key={c.id} onClick={()=>{setSalesTab("company");saveSalesScroll("company");setActiveCompany(c.id);setActiveDetail("timeline");}}
-                      style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.625rem 0.75rem",background:"white",borderRadius:"6px",border:`1.5px solid ${C.border}`,cursor:"pointer",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}
+                    <div onClick={()=>{setSalesTab("company");saveSalesScroll("company");setActiveCompany(c.id);setActiveDetail("timeline");}}
+                      style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.625rem 0.75rem",background:"white",borderRadius:"6px",border:`1.5px solid ${C.border}`,cursor:"pointer",boxShadow:"0 1px 2px rgba(0,0,0,0.04)",margin:"0 0 0.3rem 0",height:"calc(100% - 0.3rem)",boxSizing:"border-box",overflow:"hidden"}}
                       onMouseEnter={e=>e.currentTarget.style.borderColor=C.accent}
                       onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}>
                       <div style={{flex:1,minWidth:0}}>
@@ -8878,29 +8894,38 @@ ${orig}`})
                       <span style={{fontSize:"0.8rem",color:C.textSub,flexShrink:0}}>›</span>
                     </div>
                   );
-                })}
-              </div>
+                }}
+              />
             </div>
           );
         })()}
         {/* Search results: flat list */}
         {compSearch&&(
-          <div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
-            {(searchedComps||[]).map(c=>{
-              const lastMemo=(c.memos||[]).slice(-1)[0];
-              return (
-                <div key={c.id} onClick={()=>{setSalesTab("company");saveSalesScroll("company");setActiveCompany(c.id);setActiveDetail("timeline");setCompSearch("");}}
-                  style={{background:"white",border:`1.5px solid ${C.border}`,borderRadius:"8px",padding:"0.875rem 1rem",cursor:"pointer",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"0.3rem"}}>
-                    <span style={{fontWeight:700,fontSize:"0.93rem",color:C.text,flex:1}}>{c.name}</span>
-                    <SChip s={c.status} map={COMPANY_STATUS}/>
-                  </div>
-                  <AssigneeRow ids={c.assigneeIds}/>
-                  {lastMemo&&<div style={{fontSize:"0.72rem",color:C.textMuted,marginTop:"0.2rem",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📝 {lastMemo.text}</div>}
-                </div>
-              );
-            })}
-            {!searchedComps?.length&&<div style={{textAlign:"center",padding:"1.5rem",color:C.textMuted,fontSize:"0.85rem"}}>該当する企業がありません</div>}
+          <div>
+            {searchedComps&&searchedComps.length>0?(
+              <VirtualList
+                items={searchedComps}
+                itemHeight={94}
+                maxHeight={Math.min(searchedComps.length*94+8, 600)}
+                getKey={c=>c.id}
+                renderItem={(c)=>{
+                  const lastMemo=(c.memos||[]).slice(-1)[0];
+                  return (
+                    <div onClick={()=>{setSalesTab("company");saveSalesScroll("company");setActiveCompany(c.id);setActiveDetail("timeline");setCompSearch("");}}
+                      style={{background:"white",border:`1.5px solid ${C.border}`,borderRadius:"8px",padding:"0.875rem 1rem",cursor:"pointer",boxShadow:"0 1px 2px rgba(0,0,0,0.04)",margin:"0 0 0.5rem 0",height:"calc(100% - 0.5rem)",boxSizing:"border-box",overflow:"hidden"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"0.3rem"}}>
+                        <span style={{fontWeight:700,fontSize:"0.93rem",color:C.text,flex:1}}>{c.name}</span>
+                        <SChip s={c.status} map={COMPANY_STATUS}/>
+                      </div>
+                      <AssigneeRow ids={c.assigneeIds}/>
+                      {lastMemo&&<div style={{fontSize:"0.72rem",color:C.textMuted,marginTop:"0.2rem",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📝 {lastMemo.text}</div>}
+                    </div>
+                  );
+                }}
+              />
+            ):(
+              <div style={{textAlign:"center",padding:"1.5rem",color:C.textMuted,fontSize:"0.85rem"}}>該当する企業がありません</div>
+            )}
           </div>
         )}
         {/* Grouped view */}
@@ -8919,28 +8944,34 @@ ${orig}`})
                     <span style={{fontSize:"0.75rem",fontWeight:700,color:C.textMuted,background:C.bg,borderRadius:999,padding:"0.1rem 0.5rem"}}>{items.length}</span>
                     <span style={{fontSize:"0.75rem",color:C.textMuted,transition:"transform 0.2s",display:"inline-block",transform:isOpen?"rotate(0deg)":"rotate(-90deg)"}}>▼</span>
                   </button>
-                  {/* Items */}
+                  {/* Items (virtualized) */}
                   {isOpen&&items.length>0&&(
                     <div style={{borderTop:`1px solid ${C.borderLight}`}}>
-                      {items.map((c,i)=>{
-                        const lastMemo=(c.memos||[]).slice(-1)[0];
-                        return (
-                          <div key={c.id} onClick={()=>{if(bulkMode){setBulkSelected(prev=>{const n=new Set(prev);n.has(c.id)?n.delete(c.id):n.add(c.id);return n;});return;}saveSalesScroll("company");setActiveCompany(c.id);setActiveDetail("timeline");setCompSearch("");}}
-                            style={{padding:"0.75rem 1rem",cursor:"pointer",borderTop:i>0?`1px solid ${C.borderLight}`:"none",background:bulkSelected.has(c.id)?"#eff6ff":"white",display:"flex",alignItems:"flex-start",gap:"0.5rem",transition:"background 0.1s"}}
-                            onMouseEnter={e=>{if(!bulkSelected.has(c.id))e.currentTarget.style.background=C.bg;}}
-                            onMouseLeave={e=>{if(!bulkSelected.has(c.id))e.currentTarget.style.background="white";}}>
-                            {bulkMode&&<input type="checkbox" checked={bulkSelected.has(c.id)} readOnly style={{width:15,height:15,accentColor:C.accent,flexShrink:0,marginTop:2}}/>}
-                            <div style={{flex:1,minWidth:0}}>
-                            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"0.2rem"}}>
-                              <span style={{fontWeight:700,fontSize:"0.9rem",color:C.text,flex:1}}>{c.name}</span>
-                              <AssigneeRow ids={c.assigneeIds}/>
+                      <VirtualList
+                        items={items}
+                        itemHeight={84}
+                        maxHeight={Math.min(items.length*84, 480)}
+                        getKey={c=>c.id}
+                        renderItem={(c,i)=>{
+                          const lastMemo=(c.memos||[]).slice(-1)[0];
+                          return (
+                            <div onClick={()=>{if(bulkMode){setBulkSelected(prev=>{const n=new Set(prev);n.has(c.id)?n.delete(c.id):n.add(c.id);return n;});return;}saveSalesScroll("company");setActiveCompany(c.id);setActiveDetail("timeline");setCompSearch("");}}
+                              style={{padding:"0.75rem 1rem",cursor:"pointer",borderTop:i>0?`1px solid ${C.borderLight}`:"none",background:bulkSelected.has(c.id)?"#eff6ff":"white",display:"flex",alignItems:"flex-start",gap:"0.5rem",transition:"background 0.1s",height:"100%",boxSizing:"border-box",overflow:"hidden"}}
+                              onMouseEnter={e=>{if(!bulkSelected.has(c.id))e.currentTarget.style.background=C.bg;}}
+                              onMouseLeave={e=>{if(!bulkSelected.has(c.id))e.currentTarget.style.background="white";}}>
+                              {bulkMode&&<input type="checkbox" checked={bulkSelected.has(c.id)} readOnly style={{width:15,height:15,accentColor:C.accent,flexShrink:0,marginTop:2}}/>}
+                              <div style={{flex:1,minWidth:0}}>
+                              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"0.2rem"}}>
+                                <span style={{fontWeight:700,fontSize:"0.9rem",color:C.text,flex:1}}>{c.name}</span>
+                                <AssigneeRow ids={c.assigneeIds}/>
+                              </div>
+                              {(c.phone||c.email)&&<div style={{fontSize:"0.68rem",color:C.textMuted,marginBottom:"0.15rem"}}>{c.phone||c.email}</div>}
+                              {lastMemo&&<div style={{fontSize:"0.7rem",color:C.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📝 {lastMemo.text}</div>}
+                              </div>
                             </div>
-                            {(c.phone||c.email)&&<div style={{fontSize:"0.68rem",color:C.textMuted,marginBottom:"0.15rem"}}>{c.phone||c.email}</div>}
-                            {lastMemo&&<div style={{fontSize:"0.7rem",color:C.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📝 {lastMemo.text}</div>}
-                            </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        }}
+                      />
                     </div>
                   )}
                   {isOpen&&items.length===0&&(
@@ -9148,51 +9179,65 @@ ${orig}`})
             </button>
             <span style={{flex:1}}/>
           </div>
-          <Card style={{padding:"1.25rem",marginBottom:"1rem"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"0.75rem"}}>
-              <div>
-                <div style={{fontSize:"1.15rem",fontWeight:800,color:C.text}}>{v.name}</div>
-                <div style={{marginTop:"0.35rem"}}><SChip s={v.status} map={VENDOR_STATUS}/></div>
+          <Card style={{padding:"0.75rem 1rem",marginBottom:"0.5rem"}}>
+            {/* コンパクトヘッダー（常時表示） */}
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:"0.5rem"}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{display:"flex",alignItems:"center",gap:"0.5rem",flexWrap:"wrap"}}>
+                  <div style={{fontSize:"0.95rem",fontWeight:800,color:C.text}}>{v.name}</div>
+                  <SChip s={v.status} map={VENDOR_STATUS}/>
+                  {v.beeNet&&<span style={{fontSize:"0.6rem",background:"#eff6ff",color:"#1d4ed8",padding:"0.1rem 0.4rem",borderRadius:999,fontWeight:700,border:"1px solid #bfdbfe"}}>🔷 bee-net</span>}
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginTop:"0.25rem",flexWrap:"wrap"}}>
+                  <AssigneeRow ids={v.assigneeIds}/>
+                  {v.phone&&<PhoneLink number={v.phone} size="sm" onMtg={()=>setMtgModal({entityKey:"vendors",entityId:v.id,entityName:v.name})} onCallRecord={()=>setMtgModal({entityKey:"vendors",entityId:v.id,entityName:v.name,autoStart:true,callMode:true})}/>}
+                </div>
               </div>
-              <button onClick={()=>{setForm({...v});setSheet("editVendor");}} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:"0.625rem",padding:"0.35rem 0.625rem",cursor:"pointer",fontSize:"0.82rem",color:C.textSub}}>✏️</button>
+              <button onClick={()=>setHeaderExpanded(prev=>!prev)} title={headerExpanded?"詳細を閉じる":"詳細を見る"}
+                style={{background:"none",border:`1px solid ${C.border}`,borderRadius:"6px",padding:"0.25rem 0.5rem",cursor:"pointer",fontSize:"0.75rem",color:C.textSub,whiteSpace:"nowrap"}}>
+                {headerExpanded?"▲":"▼"}
+              </button>
+              <button onClick={()=>{setForm({...v});setSheet("editVendor");}} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:"6px",padding:"0.25rem 0.5rem",cursor:"pointer",fontSize:"0.78rem",color:C.textSub}}>✏️</button>
             </div>
-            {vmunis.length>0&&(
-              <div style={{marginBottom:"0.5rem"}}>
-                <div style={{fontSize:"0.68rem",fontWeight:700,color:C.textSub,marginBottom:"0.3rem"}}>許可エリア</div>
-                <div style={{display:"flex",flexWrap:"wrap",gap:"0.25rem"}}>{vmunis.map(m=><span key={m.id} style={{fontSize:"0.7rem",background:C.accentBg,color:C.accent,padding:"0.1rem 0.5rem",borderRadius:"4px",fontWeight:500,fontSize:"0.68rem"}}>{m.name}</span>)}</div>
+            {/* 折りたたみ詳細 */}
+            {headerExpanded&&(
+              <div style={{marginTop:"0.625rem",paddingTop:"0.625rem",borderTop:`1px solid ${C.borderLight}`}}>
+                {vmunis.length>0&&(
+                  <div style={{marginBottom:"0.5rem"}}>
+                    <div style={{fontSize:"0.65rem",fontWeight:700,color:C.textSub,marginBottom:"0.25rem"}}>許可エリア</div>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:"0.2rem"}}>{vmunis.map(m=><span key={m.id} style={{fontSize:"0.65rem",background:C.accentBg,color:C.accent,padding:"0.1rem 0.4rem",borderRadius:4,fontWeight:500}}>{m.name}</span>)}</div>
+                  </div>
+                )}
+                {v.address&&<div style={{fontSize:"0.75rem",color:C.textSub,marginBottom:"0.3rem"}}>📍 {v.address}</div>}
+                {v.updatedAt&&<div style={{fontSize:"0.68rem",color:C.textMuted,marginBottom:"0.3rem"}}>📅 最終更新：{v.updatedAt}</div>}
+                {v.notes&&<div style={{marginTop:"0.4rem",fontSize:"0.75rem",color:C.textSub,background:"#f8fafc",borderRadius:6,padding:"0.45rem 0.6rem",borderLeft:"3px solid #cbd5e1",whiteSpace:"pre-wrap"}}><div style={{fontSize:"0.65rem",fontWeight:700,color:C.textSub,marginBottom:"0.15rem"}}>📝 備考</div>{v.notes}</div>}
+                <div style={{marginTop:"0.5rem"}}>
+                  <div style={{fontSize:"0.6rem",fontWeight:700,color:"#5b21b6",marginBottom:"0.25rem"}}>📋 許可別営業状況</div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.2rem"}}>
+                    {PERMIT_TYPES.map(pt=>{
+                      const has=(v.permitTypes||[]).includes(pt);
+                      const salesStatus=(v.permitSales||{})[pt]||"未営業";
+                      const salesColors={"営業済":"#d1fae5","資料送付":"#dbeafe","商談中":"#fef3c7","加入済":"#d1fae5","未営業":"#f3f4f6"};
+                      const salesTextColors={"営業済":"#065f46","資料送付":"#1d4ed8","商談中":"#92400e","加入済":"#065f46","未営業":"#9ca3af"};
+                      return (
+                        <div key={pt} style={{background:has?salesColors[salesStatus]:"#fef2f2",border:`1px solid ${has?salesTextColors[salesStatus]+"40":"#fca5a5"}`,borderRadius:"0.35rem",padding:"0.25rem 0.35rem"}}>
+                          <div style={{fontSize:"0.6rem",fontWeight:700,color:has?"#374151":"#dc2626"}}>{has?"✓":"-"} {pt}</div>
+                          {has&&(
+                            <select value={salesStatus} onClick={e=>e.stopPropagation()} onChange={e=>{
+                              const nd={...data,vendors:vendors.map(x=>x.id===v.id?{...x,permitSales:{...(x.permitSales||{}),[pt]:e.target.value}}:x)};
+                              save(nd);
+                            }} style={{fontSize:"0.58rem",border:"none",background:"transparent",color:salesTextColors[salesStatus],fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0,width:"100%",marginTop:"0.1rem",appearance:"none",WebkitAppearance:"none",MozAppearance:"none",lineHeight:"1.2",height:"auto",boxSizing:"border-box"}}>
+                              {["未営業","営業済","資料送付","商談中","加入済"].map(s=><option key={s} value={s}>{s}</option>)}
+                            </select>
+                          )}
+                          {!has&&<div style={{fontSize:"0.58rem",color:"#dc2626",marginTop:"0.1rem",lineHeight:"1.2"}}>未保有</div>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             )}
-            <AssigneeRow ids={v.assigneeIds}/>
-            {v.phone&&<div style={{marginTop:"0.5rem"}}><PhoneLink number={v.phone} onMtg={()=>setMtgModal({entityKey:"vendors",entityId:v.id,entityName:v.name})} onCallRecord={()=>setMtgModal({entityKey:"vendors",entityId:v.id,entityName:v.name,autoStart:true,callMode:true})}/></div>}
-            {v.address&&<div style={{fontSize:"0.78rem",color:C.textSub,marginTop:"0.4rem"}}>📍 {v.address}</div>}
-            {v.updatedAt&&<div style={{fontSize:"0.7rem",color:C.textMuted,marginTop:"0.3rem"}}>📅 最終更新：{v.updatedAt}</div>}
-                  {v.beeNet&&<div style={{display:"inline-flex",alignItems:"center",gap:"0.3rem",marginTop:"0.35rem",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:999,padding:"0.15rem 0.5rem",fontSize:"0.68rem",fontWeight:700,color:"#1d4ed8"}}>🔷 bee-net加入済み</div>}
-            {v.notes&&<div style={{marginTop:"0.5rem",fontSize:"0.78rem",color:C.textSub,background:"#f8fafc",borderRadius:"0.5rem",padding:"0.5rem 0.75rem",borderLeft:"3px solid #cbd5e1",whiteSpace:"pre-wrap"}}><div style={{fontSize:"0.68rem",fontWeight:700,color:C.textSub,marginBottom:"0.2rem"}}>📝 備考</div>{v.notes}</div>}
-            <div style={{marginTop:"0.6rem"}}>
-              <div style={{fontSize:"0.62rem",fontWeight:700,color:"#5b21b6",marginBottom:"0.3rem"}}>📋 許可別営業状況</div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.2rem"}}>
-                {PERMIT_TYPES.map(pt=>{
-                  const has=(v.permitTypes||[]).includes(pt);
-                  const salesStatus=(v.permitSales||{})[pt]||"未営業";
-                  const salesColors={"営業済":"#d1fae5","資料送付":"#dbeafe","商談中":"#fef3c7","加入済":"#d1fae5","未営業":"#f3f4f6"};
-                  const salesTextColors={"営業済":"#065f46","資料送付":"#1d4ed8","商談中":"#92400e","加入済":"#065f46","未営業":"#9ca3af"};
-                  return (
-                    <div key={pt} style={{background:has?salesColors[salesStatus]:"#fef2f2",border:`1px solid ${has?salesTextColors[salesStatus]+"40":"#fca5a5"}`,borderRadius:"0.4rem",padding:"0.3rem 0.4rem"}}>
-                      <div style={{fontSize:"0.6rem",fontWeight:700,color:has?"#374151":"#dc2626"}}>{has?"✓":"-"} {pt}</div>
-                      {has&&(
-                        <select value={salesStatus} onClick={e=>e.stopPropagation()} onChange={e=>{
-                          const nd={...data,vendors:vendors.map(x=>x.id===v.id?{...x,permitSales:{...(x.permitSales||{}),[pt]:e.target.value}}:x)};
-                          save(nd);
-                        }} style={{fontSize:"0.58rem",border:"none",background:"transparent",color:salesTextColors[salesStatus],fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0,width:"100%",marginTop:"0.1rem",appearance:"none",WebkitAppearance:"none",MozAppearance:"none",lineHeight:"1.2",height:"auto",boxSizing:"border-box"}}>
-                          {["未営業","営業済","資料送付","商談中","加入済"].map(s=><option key={s} value={s}>{s}</option>)}
-                        </select>
-                      )}
-                      {!has&&<div style={{fontSize:"0.58rem",color:"#dc2626",marginTop:"0.1rem",lineHeight:"1.2"}}>未保有</div>}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
           </Card>
           {/* アクションボタン行 */}
           <div style={{marginBottom:"0.75rem",display:"flex",alignItems:"center",gap:"0.4rem",flexWrap:"wrap"}}>
@@ -9446,13 +9491,17 @@ ${orig}`})
               <div style={{fontSize:"0.7rem",fontWeight:800,color:C.textSub,marginBottom:"0.4rem",textTransform:"uppercase",letterSpacing:"0.04em"}}>
                 担当案件 {filteredVendors.length}件
               </div>
-              <div style={{display:"flex",flexDirection:"column",gap:"0.3rem"}}>
-                {filteredVendors.map(v=>{
+              <VirtualList
+                items={filteredVendors}
+                itemHeight={80}
+                maxHeight={Math.min(filteredVendors.length*80+8, 600)}
+                getKey={v=>v.id}
+                renderItem={(v)=>{
                   const vmunis2=vendorMunis(v);
                   const lastMemo=(v.memos||[]).slice(-1)[0];
                   return (
-                    <div key={v.id} onClick={()=>{saveSalesScroll("vendor");setActiveVendor(v.id);setActiveDetail("timeline");}}
-                      style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.625rem 0.75rem",background:"white",borderRadius:"6px",border:`1.5px solid ${C.border}`,cursor:"pointer",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}
+                    <div onClick={()=>{saveSalesScroll("vendor");setActiveVendor(v.id);setActiveDetail("timeline");}}
+                      style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.625rem 0.75rem",background:"white",borderRadius:"6px",border:`1.5px solid ${C.border}`,cursor:"pointer",boxShadow:"0 1px 2px rgba(0,0,0,0.04)",margin:"0 0 0.3rem 0",height:"calc(100% - 0.3rem)",boxSizing:"border-box",overflow:"hidden"}}
                       onMouseEnter={e=>e.currentTarget.style.borderColor=C.accent}
                       onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}>
                       <div style={{flex:1,minWidth:0}}>
@@ -9470,30 +9519,39 @@ ${orig}`})
                       <span style={{fontSize:"0.8rem",color:C.textSub,flexShrink:0}}>›</span>
                     </div>
                   );
-                })}
-              </div>
+                }}
+              />
             </div>
           );
         })()}
-        {/* Search results: flat */}
+        {/* Search results: flat (virtualized) */}
         {vendSearch&&(
-          <div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
-            {(searchedVendors||[]).map(v=>{
-              const vmunis2=vendorMunis(v);
-              const lastMemo=(v.memos||[]).slice(-1)[0];
-              return (
-                <div key={v.id} onClick={()=>{saveSalesScroll("vendor");setActiveVendor(v.id);setActiveDetail("timeline");}}
-                  style={{background:"white",border:`1.5px solid ${C.border}`,borderRadius:"8px",padding:"0.875rem 1rem",cursor:"pointer",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"0.3rem"}}>
-                    <span style={{fontWeight:700,fontSize:"0.93rem",color:C.text,flex:1}}>{v.name}</span>
-                    <SChip s={v.status} map={VENDOR_STATUS}/>
-                  </div>
-                  {vmunis2.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:"0.2rem",marginBottom:"0.2rem"}}>{vmunis2.slice(0,3).map(m=><span key={m.id} style={{fontSize:"0.62rem",background:C.accentBg,color:C.accentDark,padding:"0.05rem 0.35rem",borderRadius:999}}>{m.name}</span>)}{vmunis2.length>3&&<span style={{fontSize:"0.62rem",color:C.textMuted}}>+{vmunis2.length-3}</span>}</div>}
-                  {lastMemo&&<div style={{fontSize:"0.7rem",color:C.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📝 {lastMemo.text}</div>}
-                </div>
-              );
-            })}
-            {!searchedVendors?.length&&<div style={{textAlign:"center",padding:"1.5rem",color:C.textMuted,fontSize:"0.85rem"}}>該当する業者がありません</div>}
+          <div>
+            {searchedVendors&&searchedVendors.length>0?(
+              <VirtualList
+                items={searchedVendors}
+                itemHeight={94}
+                maxHeight={Math.min(searchedVendors.length*94+8, 600)}
+                getKey={v=>v.id}
+                renderItem={(v)=>{
+                  const vmunis2=vendorMunis(v);
+                  const lastMemo=(v.memos||[]).slice(-1)[0];
+                  return (
+                    <div onClick={()=>{saveSalesScroll("vendor");setActiveVendor(v.id);setActiveDetail("timeline");}}
+                      style={{background:"white",border:`1.5px solid ${C.border}`,borderRadius:"8px",padding:"0.875rem 1rem",cursor:"pointer",boxShadow:"0 1px 2px rgba(0,0,0,0.04)",margin:"0 0 0.5rem 0",height:"calc(100% - 0.5rem)",boxSizing:"border-box",overflow:"hidden"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"0.3rem"}}>
+                        <span style={{fontWeight:700,fontSize:"0.93rem",color:C.text,flex:1}}>{v.name}</span>
+                        <SChip s={v.status} map={VENDOR_STATUS}/>
+                      </div>
+                      {vmunis2.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:"0.2rem",marginBottom:"0.2rem"}}>{vmunis2.slice(0,3).map(m=><span key={m.id} style={{fontSize:"0.62rem",background:C.accentBg,color:C.accentDark,padding:"0.05rem 0.35rem",borderRadius:999}}>{m.name}</span>)}{vmunis2.length>3&&<span style={{fontSize:"0.62rem",color:C.textMuted}}>+{vmunis2.length-3}</span>}</div>}
+                      {lastMemo&&<div style={{fontSize:"0.7rem",color:C.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📝 {lastMemo.text}</div>}
+                    </div>
+                  );
+                }}
+              />
+            ):(
+              <div style={{textAlign:"center",padding:"1.5rem",color:C.textMuted,fontSize:"0.85rem"}}>該当する業者がありません</div>
+            )}
           </div>
         )}
         {/* Grouped view */}
@@ -9736,61 +9794,71 @@ ${orig}`})
           <button onClick={()=>{setMuniScreen("top");setActiveMuni(null);restoreSalesScroll("muni");}} style={{background:"none",border:"none",color:C.textSub,fontWeight:700,fontSize:"0.85rem",cursor:"pointer",padding:0}}>‹ {pref?.name||"一覧"}</button>
           <span style={{flex:1}}/>
         </div>
-        <Card style={{padding:"1.25rem",marginBottom:"1rem"}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"0.875rem"}}>
-            <div>
-              <div style={{fontSize:"1.15rem",fontWeight:800,color:C.text}}>{muni.name}</div>
-              <div style={{fontSize:"0.75rem",color:C.textSub,marginTop:"0.15rem"}}>{pref?.name}</div>
+        <Card style={{padding:"0.75rem 1rem",marginBottom:"0.5rem"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:"0.5rem"}}>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{display:"flex",alignItems:"center",gap:"0.4rem",flexWrap:"wrap"}}>
+                <div style={{fontSize:"0.95rem",fontWeight:800,color:C.text}}>{muni.name}</div>
+                <span style={{fontSize:"0.68rem",color:C.textSub}}>{pref?.name}</span>
+              </div>
             </div>
-            <button onClick={()=>{setForm({...muni});setSheet("editMuni");}} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:"0.625rem",padding:"0.35rem 0.625rem",cursor:"pointer",fontSize:"0.82rem",color:C.textSub}}>✏️</button>
+            <button onClick={()=>setHeaderExpanded(prev=>!prev)} title={headerExpanded?"詳細を閉じる":"詳細を見る"}
+              style={{background:"none",border:`1px solid ${C.border}`,borderRadius:"6px",padding:"0.25rem 0.5rem",cursor:"pointer",fontSize:"0.75rem",color:C.textSub,whiteSpace:"nowrap"}}>
+              {headerExpanded?"▲":"▼"}
+            </button>
+            <button onClick={()=>{setForm({...muni});setSheet("editMuni");}} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:"6px",padding:"0.25rem 0.5rem",cursor:"pointer",fontSize:"0.78rem",color:C.textSub}}>✏️</button>
           </div>
-          {/* Stats row */}
-          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:"0.35rem",marginBottom:"0.875rem"}}>
+          {/* Stats row（常時表示） */}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:"0.25rem",marginTop:"0.5rem"}}>
             {[["業者数",mvend.length,"#2563eb"],["加入済",joined,"#059669"],["断り",mvend.filter(v=>v.status==="断り").length,"#dc2626"],["商談中",mvend.filter(v=>v.status==="商談中").length,"#d97706"]].map(([l,n,c])=>(
-              <div key={l} style={{background:C.bg,borderRadius:"0.5rem",padding:"0.4rem",textAlign:"center"}}>
-                <div style={{fontSize:"0.58rem",color:C.textMuted}}>{l}</div>
-                <div style={{fontSize:"1rem",fontWeight:800,color:c}}>{n}</div>
+              <div key={l} style={{background:C.bg,borderRadius:"0.4rem",padding:"0.3rem",textAlign:"center"}}>
+                <div style={{fontSize:"0.55rem",color:C.textMuted}}>{l}</div>
+                <div style={{fontSize:"0.9rem",fontWeight:800,color:c}}>{n}</div>
               </div>
             ))}
           </div>
-          {/* Key badges */}
-          <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap",alignItems:"center"}}>
-            <div style={{padding:"0.2rem 0.5rem",borderRadius:999,fontSize:"0.7rem",fontWeight:700,background:ds.bg,color:ds.color}}>{ds.icon} {muni.dustalk||"未展開"}</div>
-            {(()=>{const ts=TREATY_STATUS[muni.treatyStatus];return ts?<span style={{padding:"0.2rem 0.5rem",borderRadius:999,fontSize:"0.7rem",fontWeight:700,background:ts.bg,color:ts.color}}>🤝 {muni.treatyStatus}</span>:null;})()}
+          {/* Key badges（常時表示） */}
+          <div style={{display:"flex",gap:"0.35rem",flexWrap:"wrap",alignItems:"center",marginTop:"0.4rem"}}>
+            <div style={{padding:"0.15rem 0.4rem",borderRadius:999,fontSize:"0.65rem",fontWeight:700,background:ds.bg,color:ds.color}}>{ds.icon} {muni.dustalk||"未展開"}</div>
+            {(()=>{const ts=TREATY_STATUS[muni.treatyStatus];return ts?<span style={{padding:"0.15rem 0.4rem",borderRadius:999,fontSize:"0.65rem",fontWeight:700,background:ts.bg,color:ts.color}}>🤝 {muni.treatyStatus}</span>:null;})()}
             <SChip s={muni.status||"未接触"} map={MUNI_STATUS}/>
-            {muni.updatedAt&&<span style={{fontSize:"0.7rem",color:C.textMuted,marginLeft:"0.4rem"}}>更新：{muni.updatedAt}</span>}
           </div>
-          {muni.artBranch&&<div style={{marginTop:"0.5rem",fontSize:"0.75rem",color:C.textSub}}>🏢 アート引越センター 管轄支店：{muni.artBranch}</div>}
-          {muni.address&&<div style={{marginTop:"0.35rem",fontSize:"0.75rem",color:C.textSub}}>📍 {muni.address}</div>}
-          {muni.updatedAt&&<div style={{marginTop:"0.3rem",fontSize:"0.7rem",color:C.textMuted}}>📅 最終更新：{muni.updatedAt}</div>}
-          {muni.notes&&<div style={{marginTop:"0.5rem",fontSize:"0.78rem",color:C.textSub,background:"#f8fafc",borderRadius:"0.5rem",padding:"0.5rem 0.75rem",borderLeft:"3px solid #cbd5e1",whiteSpace:"pre-wrap"}}><div style={{fontSize:"0.68rem",fontWeight:700,color:C.textSub,marginBottom:"0.2rem"}}>📝 備考</div>{muni.notes}</div>}
-          {(()=>{
-            const govContacts = muni.govContacts || [];
-            const hasLegacy = !govContacts.length && (muni.contactName||muni.contactEmail||muni.contactPhone);
-            const allContacts = govContacts.length>0
-              ? govContacts
-              : (hasLegacy ? [{id:"legacy",name:muni.contactName,email:muni.contactEmail,phone:muni.contactPhone,role:""}] : []);
-            if(allContacts.length===0) return null;
-            return (
-              <div style={{marginTop:"0.5rem",background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:"0.5rem",padding:"0.5rem 0.625rem"}}>
-                <div style={{fontSize:"0.7rem",fontWeight:700,color:"#0369a1",marginBottom:"0.3rem"}}>👤 行政担当者（{allContacts.length}名）</div>
-                <div style={{display:"flex",flexDirection:"column",gap:"0.35rem"}}>
-                  {allContacts.map(c=>(
-                    <div key={c.id} style={{fontSize:"0.72rem",color:"#0c4a6e",display:"flex",flexWrap:"wrap",alignItems:"center",gap:"0.4rem"}}>
-                      <span style={{fontWeight:700}}>{c.name||"（名前未設定）"}</span>
-                      {c.role&&<span style={{fontSize:"0.65rem",background:"#fef3c7",color:"#92400e",padding:"0.05rem 0.35rem",borderRadius:"3px",fontWeight:700}}>{c.role}</span>}
-                      {c.phone&&<a href={`tel:${c.phone.replace(/[^0-9+]/g,"")}`} style={{color:"#0369a1",textDecoration:"none"}}>📞 {c.phone}</a>}
-                      {c.email&&onNavigateToEmail&&(
-                        <button onClick={()=>onNavigateToEmail({toName:c.name||"",toCompany:muni.name||"",isInternal:false,mode:"compose"})}
-                          style={{background:"#dbeafe",color:"#1d4ed8",border:"none",borderRadius:"0.3rem",padding:"0.1rem 0.4rem",fontSize:"0.65rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>📧 メール作成</button>
-                      )}
-                      {c.email&&<a href={`mailto:${c.email}`} style={{color:"#0369a1",textDecoration:"none",fontSize:"0.68rem"}}>✉️ {c.email}</a>}
+          {/* 折りたたみ詳細 */}
+          {headerExpanded&&(
+            <div style={{marginTop:"0.5rem",paddingTop:"0.5rem",borderTop:`1px solid ${C.borderLight}`}}>
+              {muni.artBranch&&<div style={{fontSize:"0.72rem",color:C.textSub,marginBottom:"0.3rem"}}>🏢 アート引越センター 管轄支店：{muni.artBranch}</div>}
+              {muni.address&&<div style={{fontSize:"0.72rem",color:C.textSub,marginBottom:"0.3rem"}}>📍 {muni.address}</div>}
+              {muni.updatedAt&&<div style={{fontSize:"0.65rem",color:C.textMuted,marginBottom:"0.3rem"}}>📅 最終更新：{muni.updatedAt}</div>}
+              {muni.notes&&<div style={{marginTop:"0.4rem",fontSize:"0.75rem",color:C.textSub,background:"#f8fafc",borderRadius:6,padding:"0.45rem 0.6rem",borderLeft:"3px solid #cbd5e1",whiteSpace:"pre-wrap"}}><div style={{fontSize:"0.65rem",fontWeight:700,color:C.textSub,marginBottom:"0.15rem"}}>📝 備考</div>{muni.notes}</div>}
+              {(()=>{
+                const govContacts = muni.govContacts || [];
+                const hasLegacy = !govContacts.length && (muni.contactName||muni.contactEmail||muni.contactPhone);
+                const allContacts = govContacts.length>0
+                  ? govContacts
+                  : (hasLegacy ? [{id:"legacy",name:muni.contactName,email:muni.contactEmail,phone:muni.contactPhone,role:""}] : []);
+                if(allContacts.length===0) return null;
+                return (
+                  <div style={{marginTop:"0.4rem",background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:6,padding:"0.4rem 0.5rem"}}>
+                    <div style={{fontSize:"0.65rem",fontWeight:700,color:"#0369a1",marginBottom:"0.25rem"}}>👤 行政担当者（{allContacts.length}名）</div>
+                    <div style={{display:"flex",flexDirection:"column",gap:"0.3rem"}}>
+                      {allContacts.map(c=>(
+                        <div key={c.id} style={{fontSize:"0.7rem",color:"#0c4a6e",display:"flex",flexWrap:"wrap",alignItems:"center",gap:"0.35rem"}}>
+                          <span style={{fontWeight:700}}>{c.name||"（名前未設定）"}</span>
+                          {c.role&&<span style={{fontSize:"0.62rem",background:"#fef3c7",color:"#92400e",padding:"0.05rem 0.3rem",borderRadius:3,fontWeight:700}}>{c.role}</span>}
+                          {c.phone&&<a href={`tel:${c.phone.replace(/[^0-9+]/g,"")}`} style={{color:"#0369a1",textDecoration:"none"}}>📞 {c.phone}</a>}
+                          {c.email&&onNavigateToEmail&&(
+                            <button onClick={()=>onNavigateToEmail({toName:c.name||"",toCompany:muni.name||"",isInternal:false,mode:"compose"})}
+                              style={{background:"#dbeafe",color:"#1d4ed8",border:"none",borderRadius:"0.3rem",padding:"0.1rem 0.4rem",fontSize:"0.62rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>📧 メール作成</button>
+                          )}
+                          {c.email&&<a href={`mailto:${c.email}`} style={{color:"#0369a1",textDecoration:"none",fontSize:"0.65rem"}}>✉️ {c.email}</a>}
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })()}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
           {/* フォローフラグ */}
           <div style={{marginTop:"0.5rem",display:"flex",alignItems:"center",gap:"0.5rem"}}>
             <button onClick={()=>{const nd={...data,municipalities:munis.map(m=>String(m.id)===String(activeMuni)?{...m,needFollow:!muni.needFollow}:m)};save(nd);}}
