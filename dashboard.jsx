@@ -127,17 +127,38 @@ async function sbGet(id) {
   }
 }
 
+// gzip圧縮ヘルパー
+async function _gzipBody(jsonStr) {
+  if (typeof CompressionStream === "undefined") return null;
+  const stream = new Blob([jsonStr]).stream().pipeThrough(new CompressionStream("gzip"));
+  return await new Response(stream).blob();
+}
+
 async function sbSet(id, data) {
   const now = new Date().toISOString();
   window.__myDeskLastSave = Date.now();
   window.__myDeskLastSaveAt = now;
   const MAX_RETRY = 3;
+  const jsonStr = JSON.stringify({ id, data });
+  // 100KB以上ならgzip圧縮で送信
+  let body, extraHeaders = {};
+  if (jsonStr.length > 100 * 1024) {
+    const gzipped = await _gzipBody(jsonStr);
+    if (gzipped) {
+      body = gzipped;
+      extraHeaders = { "Content-Encoding": "gzip" };
+    } else {
+      body = jsonStr;  // CompressionStreamがない古いブラウザは非圧縮
+    }
+  } else {
+    body = jsonStr;
+  }
   for(let attempt = 1; attempt <= MAX_RETRY; attempt++) {
     try {
       const res = await fetch(`${DB_API_BASE}/data`, {
         method: "POST",
-        headers: DB_API_HEADERS,
-        body: JSON.stringify({ id, data }),
+        headers: { ...DB_API_HEADERS, ...extraHeaders },
+        body,
       });
       if(!res.ok) {
         const errText = await res.text().catch(()=>"");
