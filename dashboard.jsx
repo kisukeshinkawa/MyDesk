@@ -6289,8 +6289,19 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   const [openRegions,  setOpenRegions]  = useState({});
   const [openPrefs,    setOpenPrefs]    = useState({});
   const [compSearch,   setCompSearch]   = useState("");
+  const [debouncedCompSearch, setDebouncedCompSearch] = useState("");
+  React.useEffect(() => {
+    const timer = setTimeout(() => setDebouncedCompSearch(compSearch), 300);
+    return () => clearTimeout(timer);
+  }, [compSearch]);
   const [compFilter,   setCompFilter]   = useState({status:"",assignee:""});
   const [vendSearch,   setVendSearch]   = useState("");
+  const [debouncedVendSearch, setDebouncedVendSearch] = useState("");
+  // 業者名検索の debounce: 入力停止後 300ms で実際のフィルタ対象を更新
+  React.useEffect(() => {
+    const timer = setTimeout(() => setDebouncedVendSearch(vendSearch), 300);
+    return () => clearTimeout(timer);
+  }, [vendSearch]);
   const [vendFilterPref, setVendFilterPref] = useState(""); // 都道府県フィルタ
   const [vendFilterMuni, setVendFilterMuni] = useState(""); // 自治体フィルタ
   const [vendFilterStatus, setVendFilterStatus] = useState(""); // ステータスフィルタ
@@ -8701,14 +8712,14 @@ ${orig}`})
     // List view - grouped by status
     const compsByStatus = Object.keys(COMPANY_STATUS).map(s=>({
       status:s, meta:COMPANY_STATUS[s],
-      items:companies.filter(c=>(c.status||"未接触")===s&&(!compSearch||normSearch(c.name).includes(normSearch(compSearch))))
-    })).filter(g=>g.items.length>0||(compSearch&&companies.some(c=>(c.status||"未接触")===g.status)));
+      items:companies.filter(c=>(c.status||"未接触")===s&&(!debouncedCompSearch||normSearch(c.name).includes(normSearch(debouncedCompSearch))))
+    })).filter(g=>g.items.length>0||(debouncedCompSearch&&companies.some(c=>(c.status||"未接触")===g.status)));
     const compFilteredBase = companies.filter(c=>{
       if(compFilter.assignee==="__me__") return (c.assigneeIds||[]).some(id=>id===currentUser?.id);
       if(compFilter.assignee) return (c.assigneeIds||[]).some(id=>String(id)===compFilter.assignee);
       return true;
     });
-    const searchedComps = compSearch ? compFilteredBase.filter(c=>normSearch(c.name).includes(normSearch(compSearch))) : null;
+    const searchedComps = debouncedCompSearch ? compFilteredBase.filter(c=>normSearch(c.name).includes(normSearch(debouncedCompSearch))) : null;
     const compVisibleIds=(searchedComps||compFilteredBase).map(c=>c.id);
     return (
       <div style={{display:"flex",height:isPC?"calc(100vh - 60px)":"auto",overflow:isPC?"hidden":"visible"}}>
@@ -9256,7 +9267,7 @@ ${orig}`})
       if(vendFilterAssignee && vendFilterAssignee!=="__me__" && !(v.assigneeIds||[]).some(id=>String(id)===vendFilterAssignee)) return false;
       return true;
     });
-    const searchedVendors = vendSearch ? filteredVendors.filter(v=>normVSearch(v.name).includes(normVSearch(vendSearch))) : null;
+    const searchedVendors = debouncedVendSearch ? filteredVendors.filter(v=>normVSearch(v.name).includes(normVSearch(debouncedVendSearch))) : null;
     const vendVisibleIds=(searchedVendors||filteredVendors).map(v=>v.id);
     return (
       <div style={{display:"flex",height:isPC?"calc(100vh - 60px)":"auto",overflow:isPC?"hidden":"visible"}}>
