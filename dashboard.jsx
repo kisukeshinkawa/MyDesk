@@ -5288,6 +5288,57 @@ function SalesTaskPanel({ entityType, entityId, entityName, data, onSave, curren
 
 // ─── SALES VIEW ───────────────────────────────────────────────────────────────
 
+// ── 汎用仮想スクロールコンポーネント ─────────────────────────────────────
+// 大量リストを表示する際、画面に見えている部分だけDOMに描画してパフォーマンスを最適化
+// items: 表示するアイテム配列
+// itemHeight: 各アイテムの高さ(px) ※固定高さ前提
+// renderItem: (item, index) => ReactElement のレンダー関数
+// overscan: 画面外でも先読み描画する個数（デフォルト3）
+// containerStyle: 外側 div のスタイル（高さ指定がない場合は内容に合わせて自動）
+// maxHeight: 最大の高さ（これより内容が大きい場合スクロール、デフォルト 600px）
+function VirtualList({items, itemHeight=72, renderItem, overscan=3, containerStyle={}, maxHeight=600, getKey=null}) {
+  const [scrollTop, setScrollTop] = React.useState(0);
+  const [containerHeight, setContainerHeight] = React.useState(maxHeight);
+  const containerRef = React.useRef(null);
+
+  // コンテナの実際の高さを測る
+  React.useEffect(() => {
+    if(!containerRef.current) return;
+    const el = containerRef.current;
+    const update = () => {
+      const h = el.clientHeight || maxHeight;
+      setContainerHeight(h);
+    };
+    update();
+    // ウィンドウリサイズで再計算
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, [maxHeight]);
+
+  const totalHeight = items.length * itemHeight;
+  // 表示範囲計算（スクロール位置から見える範囲 + overscan）
+  const startIdx = Math.max(0, Math.floor(scrollTop / itemHeight) - overscan);
+  const endIdx = Math.min(items.length, Math.ceil((scrollTop + containerHeight) / itemHeight) + overscan);
+  const visibleItems = items.slice(startIdx, endIdx);
+  const offsetY = startIdx * itemHeight;
+
+  return (
+    <div ref={containerRef}
+      onScroll={e=>setScrollTop(e.currentTarget.scrollTop)}
+      style={{overflowY:"auto", maxHeight:`${maxHeight}px`, position:"relative", ...containerStyle}}>
+      <div style={{height:`${totalHeight}px`, position:"relative"}}>
+        <div style={{transform:`translateY(${offsetY}px)`, position:"absolute", left:0, right:0, top:0}}>
+          {visibleItems.map((item, i) => (
+            <div key={getKey ? getKey(item) : (item.id ?? (startIdx + i))} style={{height:`${itemHeight}px`}}>
+              {renderItem(item, startIdx + i)}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── タップで電話 ＋ 通話後に議事録 ──────────────────────────────────────────
 function PhoneLink({number, label, size="md", onMtg=null, onCallRecord=null}) {
   const [showMtgPrompt, setShowMtgPrompt] = React.useState(false);
@@ -9462,27 +9513,33 @@ ${orig}`})
                   </button>
                   {isOpen&&items.length>0&&(
                     <div style={{borderTop:`1px solid ${C.borderLight}`}}>
-                      {items.map((v,i)=>{
-                        const vmunis2=vendorMunis(v);
-                        const lastMemo=(v.memos||[]).slice(-1)[0];
-                        return (
-                          <div key={v.id} onClick={()=>{if(bulkMode){setBulkSelected(prev=>{const n=new Set(prev);n.has(v.id)?n.delete(v.id):n.add(v.id);return n;});return;}saveSalesScroll("vendor");setActiveVendor(v.id);setActiveDetail("timeline");}}
-                            style={{padding:"0.75rem 1rem",cursor:"pointer",borderTop:i>0?`1px solid ${C.borderLight}`:"none",background:bulkSelected.has(v.id)?"#eff6ff":"white",display:"flex",alignItems:"flex-start",gap:"0.5rem",transition:"background 0.1s"}}
-                            onMouseEnter={e=>{if(!bulkSelected.has(v.id))e.currentTarget.style.background=C.bg;}}
-                            onMouseLeave={e=>{if(!bulkSelected.has(v.id))e.currentTarget.style.background="white";}}>
-                            {bulkMode&&<input type="checkbox" checked={bulkSelected.has(v.id)} readOnly style={{width:15,height:15,accentColor:C.accent,flexShrink:0,marginTop:2}}/>}
-                            <div style={{flex:1,minWidth:0}}>
-                            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"0.2rem"}}>
-                              <span style={{fontWeight:700,fontSize:"0.9rem",color:C.text,flex:1}}>{v.name}</span>
-                              <AssigneeRow ids={v.assigneeIds}/>
+                      <VirtualList
+                        items={items}
+                        itemHeight={84}
+                        maxHeight={Math.min(items.length*84, 480)}
+                        getKey={v=>v.id}
+                        renderItem={(v,i)=>{
+                          const vmunis2=vendorMunis(v);
+                          const lastMemo=(v.memos||[]).slice(-1)[0];
+                          return (
+                            <div onClick={()=>{if(bulkMode){setBulkSelected(prev=>{const n=new Set(prev);n.has(v.id)?n.delete(v.id):n.add(v.id);return n;});return;}saveSalesScroll("vendor");setActiveVendor(v.id);setActiveDetail("timeline");}}
+                              style={{padding:"0.75rem 1rem",cursor:"pointer",borderTop:i>0?`1px solid ${C.borderLight}`:"none",background:bulkSelected.has(v.id)?"#eff6ff":"white",display:"flex",alignItems:"flex-start",gap:"0.5rem",transition:"background 0.1s",height:"100%",boxSizing:"border-box",overflow:"hidden"}}
+                              onMouseEnter={e=>{if(!bulkSelected.has(v.id))e.currentTarget.style.background=C.bg;}}
+                              onMouseLeave={e=>{if(!bulkSelected.has(v.id))e.currentTarget.style.background="white";}}>
+                              {bulkMode&&<input type="checkbox" checked={bulkSelected.has(v.id)} readOnly style={{width:15,height:15,accentColor:C.accent,flexShrink:0,marginTop:2}}/>}
+                              <div style={{flex:1,minWidth:0}}>
+                              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"0.2rem"}}>
+                                <span style={{fontWeight:700,fontSize:"0.9rem",color:C.text,flex:1}}>{v.name}</span>
+                                <AssigneeRow ids={v.assigneeIds}/>
+                              </div>
+                              {(v.permitTypes||[]).length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:"0.2rem",marginBottom:"0.2rem"}}>{(v.permitTypes||[]).map(p=><span key={p} style={{fontSize:"0.6rem",background:"#ede9fe",color:"#5b21b6",padding:"0.1rem 0.3rem",borderRadius:999,fontWeight:600}}>{p}</span>)}</div>}
+                              {vmunis2.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:"0.2rem",marginBottom:"0.2rem"}}>{vmunis2.slice(0,3).map(m=><span key={m.id} style={{fontSize:"0.62rem",background:C.accentBg,color:C.accentDark,padding:"0.05rem 0.35rem",borderRadius:999}}>{m.name}</span>)}{vmunis2.length>3&&<span style={{fontSize:"0.62rem",color:C.textMuted}}>+{vmunis2.length-3}</span>}</div>}
+                              {lastMemo&&<div style={{fontSize:"0.7rem",color:C.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📝 {lastMemo.text}</div>}
+                              </div>
                             </div>
-                            {(v.permitTypes||[]).length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:"0.2rem",marginBottom:"0.2rem"}}>{(v.permitTypes||[]).map(p=><span key={p} style={{fontSize:"0.6rem",background:"#ede9fe",color:"#5b21b6",padding:"0.1rem 0.3rem",borderRadius:999,fontWeight:600}}>{p}</span>)}</div>}
-                            {vmunis2.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:"0.2rem",marginBottom:"0.2rem"}}>{vmunis2.slice(0,3).map(m=><span key={m.id} style={{fontSize:"0.62rem",background:C.accentBg,color:C.accentDark,padding:"0.05rem 0.35rem",borderRadius:999}}>{m.name}</span>)}{vmunis2.length>3&&<span style={{fontSize:"0.62rem",color:C.textMuted}}>+{vmunis2.length-3}</span>}</div>}
-                            {lastMemo&&<div style={{fontSize:"0.7rem",color:C.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📝 {lastMemo.text}</div>}
-                            </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        }}
+                      />
                     </div>
                   )}
                   {isOpen&&items.length===0&&(
