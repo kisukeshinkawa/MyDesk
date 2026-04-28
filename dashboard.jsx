@@ -6348,8 +6348,6 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   const [compFilter,   setCompFilter]   = useState({status:"",assignee:""});
   const [vendSearch,   setVendSearch]   = useState("");
   const [debouncedVendSearch, setDebouncedVendSearch] = useState("");
-  // 詳細ページのヘッダー展開状態（業者・企業・自治体共用、デフォルト折りたたみ）
-  const [headerExpanded, setHeaderExpanded] = useState(false);
   // 業者名検索の debounce: 入力停止後 300ms で実際のフィルタ対象を更新
   React.useEffect(() => {
     const timer = setTimeout(() => setDebouncedVendSearch(vendSearch), 300);
@@ -8708,30 +8706,38 @@ ${orig}`})
             <button onClick={()=>{setActiveCompany(null);restoreSalesScroll("company");}} style={{background:"none",border:"none",color:C.textSub,fontWeight:700,fontSize:"0.85rem",cursor:"pointer",padding:0}}>‹ 一覧</button>
             <span style={{flex:1}}/>
           </div>}
-          <Card style={{padding:"0.75rem 1rem",marginBottom:"0.5rem"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:"0.5rem"}}>
+          <Card style={{padding:"0.875rem 1rem",marginBottom:"0.625rem"}}>
+            {/* タイトル行 */}
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:"0.5rem",marginBottom:"0.5rem"}}>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:"flex",alignItems:"center",gap:"0.5rem",flexWrap:"wrap"}}>
-                  <div style={{fontSize:"0.95rem",fontWeight:800,color:C.text}}>{comp.name}</div>
+                  <h2 style={{fontSize:"1.05rem",fontWeight:800,color:C.text,margin:0,lineHeight:1.3}}>{comp.name}</h2>
                   <SChip s={comp.status} map={COMPANY_STATUS}/>
                 </div>
-                <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginTop:"0.25rem",flexWrap:"wrap"}}>
-                  <AssigneeRow ids={comp.assigneeIds}/>
-                  {comp.phone&&<PhoneLink number={comp.phone} size="sm" onMtg={()=>setMtgModal({entityKey:"companies",entityId:comp.id,entityName:comp.name})} onCallRecord={()=>setMtgModal({entityKey:"companies",entityId:comp.id,entityName:comp.name,autoStart:true,callMode:true})}/>}
-                </div>
               </div>
-              <button onClick={()=>setHeaderExpanded(prev=>!prev)} title={headerExpanded?"詳細を閉じる":"詳細を見る"}
-                style={{background:"none",border:`1px solid ${C.border}`,borderRadius:"6px",padding:"0.25rem 0.5rem",cursor:"pointer",fontSize:"0.75rem",color:C.textSub,whiteSpace:"nowrap"}}>
-                {headerExpanded?"▲":"▼"}
-              </button>
-              <button onClick={()=>{setForm({...comp});setSheet("editCompany");}} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:"6px",padding:"0.25rem 0.5rem",cursor:"pointer",fontSize:"0.78rem",color:C.textSub}}>✏️</button>
+              <button onClick={()=>{setForm({...comp});setSheet("editCompany");}} title="編集"
+                style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"6px",padding:"0.3rem 0.55rem",cursor:"pointer",fontSize:"0.8rem",color:C.textSub,flexShrink:0}}>✏️</button>
             </div>
-            {headerExpanded&&(
-              <div style={{marginTop:"0.625rem",paddingTop:"0.625rem",borderTop:`1px solid ${C.borderLight}`,fontSize:"0.78rem",color:C.textSub}}>
-                {comp.email&&<div style={{marginBottom:"0.25rem"}}>✉️ {comp.email}</div>}
-                {comp.address&&<div style={{marginBottom:"0.25rem"}}>📍 {comp.address}</div>}
-                {comp.updatedAt&&<div style={{fontSize:"0.68rem",color:C.textMuted,marginBottom:"0.3rem"}}>📅 最終更新：{comp.updatedAt}</div>}
-                {comp.notes&&<div style={{marginTop:"0.4rem",fontSize:"0.75rem",color:C.textSub,background:"#f8fafc",borderRadius:6,padding:"0.45rem 0.6rem",borderLeft:"3px solid #cbd5e1",whiteSpace:"pre-wrap"}}><div style={{fontSize:"0.65rem",fontWeight:700,color:C.textSub,marginBottom:"0.15rem"}}>📝 備考</div>{comp.notes}</div>}
+            {/* 担当者 + 電話 */}
+            {((comp.assigneeIds||[]).length>0||comp.phone)&&(
+              <div style={{display:"flex",alignItems:"center",gap:"0.5rem",flexWrap:"wrap",marginBottom:"0.5rem"}}>
+                <AssigneeRow ids={comp.assigneeIds}/>
+                {comp.phone&&<PhoneLink number={comp.phone} size="sm" onMtg={()=>setMtgModal({entityKey:"companies",entityId:comp.id,entityName:comp.name})} onCallRecord={()=>setMtgModal({entityKey:"companies",entityId:comp.id,entityName:comp.name,autoStart:true,callMode:true})}/>}
+              </div>
+            )}
+            {/* 連絡先・住所・最終更新（インライン） */}
+            {(comp.email||comp.address||comp.updatedAt)&&(
+              <div style={{display:"flex",alignItems:"center",gap:"0.75rem",flexWrap:"wrap",fontSize:"0.72rem",color:C.textMuted,marginBottom:comp.notes?"0.5rem":0}}>
+                {comp.email&&<span>✉️ {comp.email}</span>}
+                {comp.address&&<span>📍 {comp.address}</span>}
+                {comp.updatedAt&&<span>📅 {comp.updatedAt}</span>}
+              </div>
+            )}
+            {/* 備考 */}
+            {comp.notes&&(
+              <div style={{fontSize:"0.75rem",color:C.text,background:"#f8fafc",borderRadius:6,padding:"0.5rem 0.7rem",borderLeft:"3px solid #cbd5e1",whiteSpace:"pre-wrap"}}>
+                <div style={{fontSize:"0.62rem",fontWeight:700,color:C.textSub,marginBottom:"0.2rem",letterSpacing:"0.04em"}}>📝 備考</div>
+                {comp.notes}
               </div>
             )}
           </Card>
@@ -9179,63 +9185,73 @@ ${orig}`})
             </button>
             <span style={{flex:1}}/>
           </div>
-          <Card style={{padding:"0.75rem 1rem",marginBottom:"0.5rem"}}>
-            {/* コンパクトヘッダー（常時表示） */}
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:"0.5rem"}}>
+          <Card style={{padding:"0.875rem 1rem",marginBottom:"0.625rem"}}>
+            {/* タイトル行: 業者名 + ステータス + 編集ボタン */}
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:"0.5rem",marginBottom:"0.5rem"}}>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:"flex",alignItems:"center",gap:"0.5rem",flexWrap:"wrap"}}>
-                  <div style={{fontSize:"0.95rem",fontWeight:800,color:C.text}}>{v.name}</div>
+                  <h2 style={{fontSize:"1.05rem",fontWeight:800,color:C.text,margin:0,lineHeight:1.3}}>{v.name}</h2>
                   <SChip s={v.status} map={VENDOR_STATUS}/>
-                  {v.beeNet&&<span style={{fontSize:"0.6rem",background:"#eff6ff",color:"#1d4ed8",padding:"0.1rem 0.4rem",borderRadius:999,fontWeight:700,border:"1px solid #bfdbfe"}}>🔷 bee-net</span>}
-                </div>
-                <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginTop:"0.25rem",flexWrap:"wrap"}}>
-                  <AssigneeRow ids={v.assigneeIds}/>
-                  {v.phone&&<PhoneLink number={v.phone} size="sm" onMtg={()=>setMtgModal({entityKey:"vendors",entityId:v.id,entityName:v.name})} onCallRecord={()=>setMtgModal({entityKey:"vendors",entityId:v.id,entityName:v.name,autoStart:true,callMode:true})}/>}
+                  {v.beeNet&&<span style={{fontSize:"0.62rem",background:"#eff6ff",color:"#1d4ed8",padding:"0.1rem 0.45rem",borderRadius:999,fontWeight:700,border:"1px solid #bfdbfe"}}>🔷 bee-net</span>}
                 </div>
               </div>
-              <button onClick={()=>setHeaderExpanded(prev=>!prev)} title={headerExpanded?"詳細を閉じる":"詳細を見る"}
-                style={{background:"none",border:`1px solid ${C.border}`,borderRadius:"6px",padding:"0.25rem 0.5rem",cursor:"pointer",fontSize:"0.75rem",color:C.textSub,whiteSpace:"nowrap"}}>
-                {headerExpanded?"▲":"▼"}
-              </button>
-              <button onClick={()=>{setForm({...v});setSheet("editVendor");}} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:"6px",padding:"0.25rem 0.5rem",cursor:"pointer",fontSize:"0.78rem",color:C.textSub}}>✏️</button>
+              <button onClick={()=>{setForm({...v});setSheet("editVendor");}} title="編集"
+                style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"6px",padding:"0.3rem 0.55rem",cursor:"pointer",fontSize:"0.8rem",color:C.textSub,flexShrink:0}}>✏️</button>
             </div>
-            {/* 折りたたみ詳細 */}
-            {headerExpanded&&(
-              <div style={{marginTop:"0.625rem",paddingTop:"0.625rem",borderTop:`1px solid ${C.borderLight}`}}>
-                {vmunis.length>0&&(
-                  <div style={{marginBottom:"0.5rem"}}>
-                    <div style={{fontSize:"0.65rem",fontWeight:700,color:C.textSub,marginBottom:"0.25rem"}}>許可エリア</div>
-                    <div style={{display:"flex",flexWrap:"wrap",gap:"0.2rem"}}>{vmunis.map(m=><span key={m.id} style={{fontSize:"0.65rem",background:C.accentBg,color:C.accent,padding:"0.1rem 0.4rem",borderRadius:4,fontWeight:500}}>{m.name}</span>)}</div>
-                  </div>
-                )}
-                {v.address&&<div style={{fontSize:"0.75rem",color:C.textSub,marginBottom:"0.3rem"}}>📍 {v.address}</div>}
-                {v.updatedAt&&<div style={{fontSize:"0.68rem",color:C.textMuted,marginBottom:"0.3rem"}}>📅 最終更新：{v.updatedAt}</div>}
-                {v.notes&&<div style={{marginTop:"0.4rem",fontSize:"0.75rem",color:C.textSub,background:"#f8fafc",borderRadius:6,padding:"0.45rem 0.6rem",borderLeft:"3px solid #cbd5e1",whiteSpace:"pre-wrap"}}><div style={{fontSize:"0.65rem",fontWeight:700,color:C.textSub,marginBottom:"0.15rem"}}>📝 備考</div>{v.notes}</div>}
-                <div style={{marginTop:"0.5rem"}}>
-                  <div style={{fontSize:"0.6rem",fontWeight:700,color:"#5b21b6",marginBottom:"0.25rem"}}>📋 許可別営業状況</div>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.2rem"}}>
-                    {PERMIT_TYPES.map(pt=>{
-                      const has=(v.permitTypes||[]).includes(pt);
-                      const salesStatus=(v.permitSales||{})[pt]||"未営業";
-                      const salesColors={"営業済":"#d1fae5","資料送付":"#dbeafe","商談中":"#fef3c7","加入済":"#d1fae5","未営業":"#f3f4f6"};
-                      const salesTextColors={"営業済":"#065f46","資料送付":"#1d4ed8","商談中":"#92400e","加入済":"#065f46","未営業":"#9ca3af"};
-                      return (
-                        <div key={pt} style={{background:has?salesColors[salesStatus]:"#fef2f2",border:`1px solid ${has?salesTextColors[salesStatus]+"40":"#fca5a5"}`,borderRadius:"0.35rem",padding:"0.25rem 0.35rem"}}>
-                          <div style={{fontSize:"0.6rem",fontWeight:700,color:has?"#374151":"#dc2626"}}>{has?"✓":"-"} {pt}</div>
-                          {has&&(
-                            <select value={salesStatus} onClick={e=>e.stopPropagation()} onChange={e=>{
-                              const nd={...data,vendors:vendors.map(x=>x.id===v.id?{...x,permitSales:{...(x.permitSales||{}),[pt]:e.target.value}}:x)};
-                              save(nd);
-                            }} style={{fontSize:"0.58rem",border:"none",background:"transparent",color:salesTextColors[salesStatus],fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:0,width:"100%",marginTop:"0.1rem",appearance:"none",WebkitAppearance:"none",MozAppearance:"none",lineHeight:"1.2",height:"auto",boxSizing:"border-box"}}>
-                              {["未営業","営業済","資料送付","商談中","加入済"].map(s=><option key={s} value={s}>{s}</option>)}
-                            </select>
-                          )}
-                          {!has&&<div style={{fontSize:"0.58rem",color:"#dc2626",marginTop:"0.1rem",lineHeight:"1.2"}}>未保有</div>}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
+            {/* 担当者 + 電話 */}
+            {((v.assigneeIds||[]).length>0||v.phone)&&(
+              <div style={{display:"flex",alignItems:"center",gap:"0.5rem",flexWrap:"wrap",marginBottom:"0.5rem"}}>
+                <AssigneeRow ids={v.assigneeIds}/>
+                {v.phone&&<PhoneLink number={v.phone} size="sm" onMtg={()=>setMtgModal({entityKey:"vendors",entityId:v.id,entityName:v.name})} onCallRecord={()=>setMtgModal({entityKey:"vendors",entityId:v.id,entityName:v.name,autoStart:true,callMode:true})}/>}
+              </div>
+            )}
+            {/* 住所・最終更新（インライン） */}
+            {(v.address||v.updatedAt)&&(
+              <div style={{display:"flex",alignItems:"center",gap:"0.75rem",flexWrap:"wrap",fontSize:"0.72rem",color:C.textMuted,marginBottom:"0.5rem"}}>
+                {v.address&&<span style={{display:"inline-flex",alignItems:"center",gap:"0.2rem"}}>📍 {v.address}</span>}
+                {v.updatedAt&&<span style={{display:"inline-flex",alignItems:"center",gap:"0.2rem"}}>📅 {v.updatedAt}</span>}
+              </div>
+            )}
+            {/* 許可エリア（タグ） */}
+            {vmunis.length>0&&(
+              <div style={{display:"flex",alignItems:"center",gap:"0.4rem",flexWrap:"wrap",marginBottom:"0.5rem"}}>
+                <span style={{fontSize:"0.6rem",fontWeight:700,color:C.textSub,letterSpacing:"0.04em"}}>許可エリア</span>
+                {vmunis.slice(0,8).map(m=><span key={m.id} style={{fontSize:"0.65rem",background:C.accentBg,color:C.accent,padding:"0.1rem 0.45rem",borderRadius:4,fontWeight:600}}>{m.name}</span>)}
+                {vmunis.length>8&&<span style={{fontSize:"0.62rem",color:C.textMuted}}>+{vmunis.length-8}</span>}
+              </div>
+            )}
+            {/* 許可別営業状況（コンパクトな4列グリッド） */}
+            <div style={{marginBottom:v.notes?"0.5rem":0}}>
+              <div style={{fontSize:"0.6rem",fontWeight:700,color:"#5b21b6",marginBottom:"0.3rem",letterSpacing:"0.04em"}}>📋 許可別営業状況</div>
+              <div style={{display:"grid",gridTemplateColumns:isPC?"repeat(4,1fr)":"repeat(2,1fr)",gap:"0.3rem"}}>
+                {PERMIT_TYPES.map(pt=>{
+                  const has=(v.permitTypes||[]).includes(pt);
+                  const salesStatus=(v.permitSales||{})[pt]||"未営業";
+                  const salesColors={"営業済":"#d1fae5","資料送付":"#dbeafe","商談中":"#fef3c7","加入済":"#d1fae5","未営業":"#f3f4f6"};
+                  const salesTextColors={"営業済":"#065f46","資料送付":"#1d4ed8","商談中":"#92400e","加入済":"#065f46","未営業":"#9ca3af"};
+                  return (
+                    <div key={pt} style={{background:has?salesColors[salesStatus]:"#fef2f2",border:`1px solid ${has?salesTextColors[salesStatus]+"30":"#fca5a5"}`,borderRadius:"0.4rem",padding:"0.35rem 0.45rem"}}>
+                      <div style={{fontSize:"0.62rem",fontWeight:700,color:has?"#374151":"#dc2626"}}>{has?"✓":"–"} {pt}</div>
+                      {has?(
+                        <select value={salesStatus} onClick={e=>e.stopPropagation()} onChange={e=>{
+                          const nd={...data,vendors:vendors.map(x=>x.id===v.id?{...x,permitSales:{...(x.permitSales||{}),[pt]:e.target.value}}:x)};
+                          save(nd);
+                        }} style={{fontSize:"0.6rem",border:"none",background:"transparent",color:salesTextColors[salesStatus],fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:"0.05rem 0",width:"100%",marginTop:"0.15rem",appearance:"none",WebkitAppearance:"none",MozAppearance:"none",lineHeight:"1.2",boxSizing:"border-box"}}>
+                          {["未営業","営業済","資料送付","商談中","加入済"].map(s=><option key={s} value={s}>{s}</option>)}
+                        </select>
+                      ):(
+                        <div style={{fontSize:"0.6rem",color:"#dc2626",marginTop:"0.15rem",lineHeight:"1.2"}}>未保有</div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            {/* 備考 */}
+            {v.notes&&(
+              <div style={{fontSize:"0.75rem",color:C.text,background:"#f8fafc",borderRadius:6,padding:"0.5rem 0.7rem",borderLeft:"3px solid #cbd5e1",whiteSpace:"pre-wrap"}}>
+                <div style={{fontSize:"0.62rem",fontWeight:700,color:C.textSub,marginBottom:"0.2rem",letterSpacing:"0.04em"}}>📝 備考</div>
+                {v.notes}
               </div>
             )}
           </Card>
@@ -9794,69 +9810,74 @@ ${orig}`})
           <button onClick={()=>{setMuniScreen("top");setActiveMuni(null);restoreSalesScroll("muni");}} style={{background:"none",border:"none",color:C.textSub,fontWeight:700,fontSize:"0.85rem",cursor:"pointer",padding:0}}>‹ {pref?.name||"一覧"}</button>
           <span style={{flex:1}}/>
         </div>
-        <Card style={{padding:"0.75rem 1rem",marginBottom:"0.5rem"}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:"0.5rem"}}>
+        <Card style={{padding:"0.875rem 1rem",marginBottom:"0.625rem"}}>
+          {/* タイトル行 */}
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:"0.5rem",marginBottom:"0.5rem"}}>
             <div style={{flex:1,minWidth:0}}>
-              <div style={{display:"flex",alignItems:"center",gap:"0.4rem",flexWrap:"wrap"}}>
-                <div style={{fontSize:"0.95rem",fontWeight:800,color:C.text}}>{muni.name}</div>
-                <span style={{fontSize:"0.68rem",color:C.textSub}}>{pref?.name}</span>
+              <div style={{display:"flex",alignItems:"baseline",gap:"0.4rem",flexWrap:"wrap"}}>
+                <h2 style={{fontSize:"1.05rem",fontWeight:800,color:C.text,margin:0,lineHeight:1.3}}>{muni.name}</h2>
+                <span style={{fontSize:"0.7rem",color:C.textSub,fontWeight:500}}>{pref?.name}</span>
               </div>
             </div>
-            <button onClick={()=>setHeaderExpanded(prev=>!prev)} title={headerExpanded?"詳細を閉じる":"詳細を見る"}
-              style={{background:"none",border:`1px solid ${C.border}`,borderRadius:"6px",padding:"0.25rem 0.5rem",cursor:"pointer",fontSize:"0.75rem",color:C.textSub,whiteSpace:"nowrap"}}>
-              {headerExpanded?"▲":"▼"}
-            </button>
-            <button onClick={()=>{setForm({...muni});setSheet("editMuni");}} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:"6px",padding:"0.25rem 0.5rem",cursor:"pointer",fontSize:"0.78rem",color:C.textSub}}>✏️</button>
+            <button onClick={()=>{setForm({...muni});setSheet("editMuni");}} title="編集"
+              style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"6px",padding:"0.3rem 0.55rem",cursor:"pointer",fontSize:"0.8rem",color:C.textSub,flexShrink:0}}>✏️</button>
           </div>
-          {/* Stats row（常時表示） */}
-          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:"0.25rem",marginTop:"0.5rem"}}>
+          {/* ステータスバッジ群 */}
+          <div style={{display:"flex",gap:"0.35rem",flexWrap:"wrap",alignItems:"center",marginBottom:"0.5rem"}}>
+            <span style={{padding:"0.15rem 0.5rem",borderRadius:999,fontSize:"0.65rem",fontWeight:700,background:ds.bg,color:ds.color}}>{ds.icon} {muni.dustalk||"未展開"}</span>
+            {(()=>{const ts=TREATY_STATUS[muni.treatyStatus];return ts?<span style={{padding:"0.15rem 0.5rem",borderRadius:999,fontSize:"0.65rem",fontWeight:700,background:ts.bg,color:ts.color}}>🤝 {muni.treatyStatus}</span>:null;})()}
+            <SChip s={muni.status||"未接触"} map={MUNI_STATUS}/>
+          </div>
+          {/* 統計（4列） */}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:"0.3rem",marginBottom:"0.5rem"}}>
             {[["業者数",mvend.length,"#2563eb"],["加入済",joined,"#059669"],["断り",mvend.filter(v=>v.status==="断り").length,"#dc2626"],["商談中",mvend.filter(v=>v.status==="商談中").length,"#d97706"]].map(([l,n,c])=>(
-              <div key={l} style={{background:C.bg,borderRadius:"0.4rem",padding:"0.3rem",textAlign:"center"}}>
-                <div style={{fontSize:"0.55rem",color:C.textMuted}}>{l}</div>
-                <div style={{fontSize:"0.9rem",fontWeight:800,color:c}}>{n}</div>
+              <div key={l} style={{background:C.bg,borderRadius:"0.4rem",padding:"0.35rem 0.3rem",textAlign:"center"}}>
+                <div style={{fontSize:"0.58rem",color:C.textMuted,marginBottom:"0.1rem"}}>{l}</div>
+                <div style={{fontSize:"0.95rem",fontWeight:800,color:c,lineHeight:1}}>{n}</div>
               </div>
             ))}
           </div>
-          {/* Key badges（常時表示） */}
-          <div style={{display:"flex",gap:"0.35rem",flexWrap:"wrap",alignItems:"center",marginTop:"0.4rem"}}>
-            <div style={{padding:"0.15rem 0.4rem",borderRadius:999,fontSize:"0.65rem",fontWeight:700,background:ds.bg,color:ds.color}}>{ds.icon} {muni.dustalk||"未展開"}</div>
-            {(()=>{const ts=TREATY_STATUS[muni.treatyStatus];return ts?<span style={{padding:"0.15rem 0.4rem",borderRadius:999,fontSize:"0.65rem",fontWeight:700,background:ts.bg,color:ts.color}}>🤝 {muni.treatyStatus}</span>:null;})()}
-            <SChip s={muni.status||"未接触"} map={MUNI_STATUS}/>
-          </div>
-          {/* 折りたたみ詳細 */}
-          {headerExpanded&&(
-            <div style={{marginTop:"0.5rem",paddingTop:"0.5rem",borderTop:`1px solid ${C.borderLight}`}}>
-              {muni.artBranch&&<div style={{fontSize:"0.72rem",color:C.textSub,marginBottom:"0.3rem"}}>🏢 アート引越センター 管轄支店：{muni.artBranch}</div>}
-              {muni.address&&<div style={{fontSize:"0.72rem",color:C.textSub,marginBottom:"0.3rem"}}>📍 {muni.address}</div>}
-              {muni.updatedAt&&<div style={{fontSize:"0.65rem",color:C.textMuted,marginBottom:"0.3rem"}}>📅 最終更新：{muni.updatedAt}</div>}
-              {muni.notes&&<div style={{marginTop:"0.4rem",fontSize:"0.75rem",color:C.textSub,background:"#f8fafc",borderRadius:6,padding:"0.45rem 0.6rem",borderLeft:"3px solid #cbd5e1",whiteSpace:"pre-wrap"}}><div style={{fontSize:"0.65rem",fontWeight:700,color:C.textSub,marginBottom:"0.15rem"}}>📝 備考</div>{muni.notes}</div>}
-              {(()=>{
-                const govContacts = muni.govContacts || [];
-                const hasLegacy = !govContacts.length && (muni.contactName||muni.contactEmail||muni.contactPhone);
-                const allContacts = govContacts.length>0
-                  ? govContacts
-                  : (hasLegacy ? [{id:"legacy",name:muni.contactName,email:muni.contactEmail,phone:muni.contactPhone,role:""}] : []);
-                if(allContacts.length===0) return null;
-                return (
-                  <div style={{marginTop:"0.4rem",background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:6,padding:"0.4rem 0.5rem"}}>
-                    <div style={{fontSize:"0.65rem",fontWeight:700,color:"#0369a1",marginBottom:"0.25rem"}}>👤 行政担当者（{allContacts.length}名）</div>
-                    <div style={{display:"flex",flexDirection:"column",gap:"0.3rem"}}>
-                      {allContacts.map(c=>(
-                        <div key={c.id} style={{fontSize:"0.7rem",color:"#0c4a6e",display:"flex",flexWrap:"wrap",alignItems:"center",gap:"0.35rem"}}>
-                          <span style={{fontWeight:700}}>{c.name||"（名前未設定）"}</span>
-                          {c.role&&<span style={{fontSize:"0.62rem",background:"#fef3c7",color:"#92400e",padding:"0.05rem 0.3rem",borderRadius:3,fontWeight:700}}>{c.role}</span>}
-                          {c.phone&&<a href={`tel:${c.phone.replace(/[^0-9+]/g,"")}`} style={{color:"#0369a1",textDecoration:"none"}}>📞 {c.phone}</a>}
-                          {c.email&&onNavigateToEmail&&(
-                            <button onClick={()=>onNavigateToEmail({toName:c.name||"",toCompany:muni.name||"",isInternal:false,mode:"compose"})}
-                              style={{background:"#dbeafe",color:"#1d4ed8",border:"none",borderRadius:"0.3rem",padding:"0.1rem 0.4rem",fontSize:"0.62rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>📧 メール作成</button>
-                          )}
-                          {c.email&&<a href={`mailto:${c.email}`} style={{color:"#0369a1",textDecoration:"none",fontSize:"0.65rem"}}>✉️ {c.email}</a>}
-                        </div>
-                      ))}
+          {/* メタ情報（インライン） */}
+          {(muni.artBranch||muni.address||muni.updatedAt)&&(
+            <div style={{display:"flex",alignItems:"center",gap:"0.75rem",flexWrap:"wrap",fontSize:"0.72rem",color:C.textMuted,marginBottom:"0.5rem"}}>
+              {muni.artBranch&&<span>🏢 {muni.artBranch}</span>}
+              {muni.address&&<span>📍 {muni.address}</span>}
+              {muni.updatedAt&&<span>📅 {muni.updatedAt}</span>}
+            </div>
+          )}
+          {/* 行政担当者リスト */}
+          {(()=>{
+            const govContacts = muni.govContacts || [];
+            const hasLegacy = !govContacts.length && (muni.contactName||muni.contactEmail||muni.contactPhone);
+            const allContacts = govContacts.length>0
+              ? govContacts
+              : (hasLegacy ? [{id:"legacy",name:muni.contactName,email:muni.contactEmail,phone:muni.contactPhone,role:""}] : []);
+            if(allContacts.length===0) return null;
+            return (
+              <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:6,padding:"0.5rem 0.7rem",marginBottom:muni.notes?"0.5rem":0}}>
+                <div style={{fontSize:"0.62rem",fontWeight:700,color:"#0369a1",marginBottom:"0.3rem",letterSpacing:"0.04em"}}>👤 行政担当者（{allContacts.length}名）</div>
+                <div style={{display:"flex",flexDirection:"column",gap:"0.35rem"}}>
+                  {allContacts.map(c=>(
+                    <div key={c.id} style={{fontSize:"0.72rem",color:"#0c4a6e",display:"flex",flexWrap:"wrap",alignItems:"center",gap:"0.4rem"}}>
+                      <span style={{fontWeight:700}}>{c.name||"（名前未設定）"}</span>
+                      {c.role&&<span style={{fontSize:"0.62rem",background:"#fef3c7",color:"#92400e",padding:"0.05rem 0.35rem",borderRadius:3,fontWeight:700}}>{c.role}</span>}
+                      {c.phone&&<a href={`tel:${c.phone.replace(/[^0-9+]/g,"")}`} style={{color:"#0369a1",textDecoration:"none"}}>📞 {c.phone}</a>}
+                      {c.email&&onNavigateToEmail&&(
+                        <button onClick={()=>onNavigateToEmail({toName:c.name||"",toCompany:muni.name||"",isInternal:false,mode:"compose"})}
+                          style={{background:"#dbeafe",color:"#1d4ed8",border:"none",borderRadius:"0.3rem",padding:"0.1rem 0.4rem",fontSize:"0.62rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>📧 メール作成</button>
+                      )}
+                      {c.email&&<a href={`mailto:${c.email}`} style={{color:"#0369a1",textDecoration:"none",fontSize:"0.66rem"}}>✉️ {c.email}</a>}
                     </div>
-                  </div>
-                );
-              })()}
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+          {/* 備考 */}
+          {muni.notes&&(
+            <div style={{fontSize:"0.75rem",color:C.text,background:"#f8fafc",borderRadius:6,padding:"0.5rem 0.7rem",borderLeft:"3px solid #cbd5e1",whiteSpace:"pre-wrap"}}>
+              <div style={{fontSize:"0.62rem",fontWeight:700,color:C.textSub,marginBottom:"0.2rem",letterSpacing:"0.04em"}}>📝 備考</div>
+              {muni.notes}
             </div>
           )}
           {/* フォローフラグ */}
