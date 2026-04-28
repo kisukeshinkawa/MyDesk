@@ -8778,18 +8778,39 @@ ${orig}`})
       return <>{renderCompanyDetail(comp)}{renderModals()}</>;
     }
 
-    // List view - grouped by status
-    const compsByStatus = Object.keys(COMPANY_STATUS).map(s=>({
-      status:s, meta:COMPANY_STATUS[s],
-      items:companies.filter(c=>(c.status||"未接触")===s&&(!debouncedCompSearch||normSearch(c.name).includes(normSearch(debouncedCompSearch))))
-    })).filter(g=>g.items.length>0||(debouncedCompSearch&&companies.some(c=>(c.status||"未接触")===g.status)));
-    const compFilteredBase = companies.filter(c=>{
-      if(compFilter.assignee==="__me__") return (c.assigneeIds||[]).some(id=>id===currentUser?.id);
-      if(compFilter.assignee) return (c.assigneeIds||[]).some(id=>String(id)===compFilter.assignee);
-      return true;
-    });
-    const searchedComps = debouncedCompSearch ? compFilteredBase.filter(c=>normSearch(c.name).includes(normSearch(debouncedCompSearch))) : null;
-    const compVisibleIds=(searchedComps||compFilteredBase).map(c=>c.id);
+    // List view - grouped by status (useMemo, 1回ループ)
+    const compFilteredBase = React.useMemo(() => {
+      return companies.filter(c=>{
+        if(compFilter.assignee==="__me__") return (c.assigneeIds||[]).some(id=>id===currentUser?.id);
+        if(compFilter.assignee) return (c.assigneeIds||[]).some(id=>String(id)===compFilter.assignee);
+        return true;
+      });
+    }, [companies, compFilter.assignee, currentUser?.id]);
+    const compsByStatus = React.useMemo(() => {
+      const grouped = {};
+      Object.keys(COMPANY_STATUS).forEach(s => { grouped[s] = []; });
+      const q = debouncedCompSearch ? normSearch(debouncedCompSearch) : null;
+      for (let i = 0; i < companies.length; i++) {
+        const c = companies[i];
+        const s = c.status || "未接触";
+        if (!grouped[s]) continue;
+        if (q && !normSearch(c.name).includes(q)) continue;
+        grouped[s].push(c);
+      }
+      return Object.keys(COMPANY_STATUS).map(s => ({
+        status: s,
+        meta: COMPANY_STATUS[s],
+        items: grouped[s] || []
+      })).filter(g => g.items.length > 0 || (debouncedCompSearch && companies.some(c => (c.status||"未接触")===g.status)));
+    }, [companies, debouncedCompSearch]);
+    const searchedComps = React.useMemo(
+      () => debouncedCompSearch ? compFilteredBase.filter(c=>normSearch(c.name).includes(normSearch(debouncedCompSearch))) : null,
+      [compFilteredBase, debouncedCompSearch]
+    );
+    const compVisibleIds = React.useMemo(
+      () => (searchedComps||compFilteredBase).map(c=>c.id),
+      [searchedComps, compFilteredBase]
+    );
     return (
       <div style={{display:"flex",height:isPC?"calc(100vh - 60px)":"auto",overflow:isPC?"hidden":"visible"}}>
         {/* List pane */}
@@ -9364,23 +9385,52 @@ ${orig}`})
     }
     // Vendor list - grouped by status
     const normVSearch = s => (s||"").replace(/[\s\u3000]/g,"").toLowerCase();
-    // フィルタ適用
-    const filteredVendors = vendors.filter(v=>{
-      if(vendFilterPref){
-        const vmuniPrefs=(v.municipalityIds||[]).map(id=>muniOf(id)).filter(Boolean).map(m=>String(m.prefectureId));
-        if(!vmuniPrefs.includes(vendFilterPref)) return false;
+    // 自治体IDから都道府県IDへの高速ルックアップマップ（一度だけ計算）
+    const muniIdToPrefIdMap = React.useMemo(() => {
+      const m = new Map();
+      (data.municipalities||[]).forEach(mu => m.set(mu.id, String(mu.prefectureId)));
+      return m;
+    }, [data.municipalities]);
+    // フィルタ適用 (useMemo)
+    const filteredVendors = React.useMemo(() => {
+      return vendors.filter(v=>{
+        if(vendFilterPref){
+          const ids = v.municipalityIds||[];
+          let match = false;
+          for(let i=0;i<ids.length;i++){
+            if(muniIdToPrefIdMap.get(ids[i])===vendFilterPref){ match=true; break; }
+          }
+          if(!match) return false;
+        }
+        if(vendFilterMuni && !(v.municipalityIds||[]).map(String).includes(vendFilterMuni)) return false;
+        if(vendFilterStatus && (v.status||"未接触")!==vendFilterStatus) return false;
+        if(vendFilterPermit && !(v.permitTypes||[]).includes(vendFilterPermit)) return false;
+        if(vendFilterBeeNet === "加入済み" && !v.beeNet) return false;
+        if(vendFilterBeeNet === "未加入" && v.beeNet) return false;
+        if(vendFilterAssignee==="__me__" && !(v.assigneeIds||[]).some(id=>id===currentUser?.id)) return false;
+        if(vendFilterAssignee && vendFilterAssignee!=="__me__" && !(v.assigneeIds||[]).some(id=>String(id)===vendFilterAssignee)) return false;
+        return true;
+      });
+    }, [vendors, vendFilterPref, vendFilterMuni, vendFilterStatus, vendFilterPermit, vendFilterBeeNet, vendFilterAssignee, currentUser?.id, muniIdToPrefIdMap]);
+    const searchedVendors = React.useMemo(
+      () => debouncedVendSearch ? filteredVendors.filter(v=>normVSearch(v.name).includes(normVSearch(debouncedVendSearch))) : null,
+      [filteredVendors, debouncedVendSearch]
+    );
+    // ステータスごとの業者リスト（1回のループでグループ化）
+    const vendorsByStatus = React.useMemo(() => {
+      const map = {};
+      Object.keys(VENDOR_STATUS).forEach(s => { map[s] = []; });
+      for (let i = 0; i < filteredVendors.length; i++) {
+        const v = filteredVendors[i];
+        const s = v.status || "未接触";
+        if (map[s]) map[s].push(v);
       }
-      if(vendFilterMuni && !(v.municipalityIds||[]).map(String).includes(vendFilterMuni)) return false;
-      if(vendFilterStatus && (v.status||"未接触")!==vendFilterStatus) return false;
-      if(vendFilterPermit && !(v.permitTypes||[]).includes(vendFilterPermit)) return false;
-      if(vendFilterBeeNet === "加入済み" && !v.beeNet) return false;
-      if(vendFilterBeeNet === "未加入" && v.beeNet) return false;
-      if(vendFilterAssignee==="__me__" && !(v.assigneeIds||[]).some(id=>id===currentUser?.id)) return false;
-      if(vendFilterAssignee && vendFilterAssignee!=="__me__" && !(v.assigneeIds||[]).some(id=>String(id)===vendFilterAssignee)) return false;
-      return true;
-    });
-    const searchedVendors = debouncedVendSearch ? filteredVendors.filter(v=>normVSearch(v.name).includes(normVSearch(debouncedVendSearch))) : null;
-    const vendVisibleIds=(searchedVendors||filteredVendors).map(v=>v.id);
+      return map;
+    }, [filteredVendors]);
+    const vendVisibleIds = React.useMemo(
+      () => (searchedVendors||filteredVendors).map(v=>v.id),
+      [searchedVendors, filteredVendors]
+    );
     return (
       <div style={{display:"flex",height:isPC?"calc(100vh - 60px)":"auto",overflow:isPC?"hidden":"visible"}}>
         {/* List pane */}
@@ -9574,7 +9624,7 @@ ${orig}`})
         {!vendSearch&&!vendFilterAssignee&&(
           <div style={{display:"flex",flexDirection:"column",gap:"0.625rem"}}>
             {Object.entries(VENDOR_STATUS).map(([s,meta])=>{
-              const items=filteredVendors.filter(v=>v.status===s);
+              const items=vendorsByStatus[s]||[];
               const isOpen=openVendGrp.has(s);
               return (
                 <div key={s} style={{background:"white",borderRadius:"8px",border:`1.5px solid ${C.border}`,overflow:"hidden",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
