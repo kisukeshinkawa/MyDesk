@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const DB_API_BASE   = "https://jqlqlslmkjo3dl6bo4iugpg4he0bdtvn.lambda-url.ap-northeast-1.on.aws";
+const DB_API_BASE   = "https://zv3hlppejxw32cjxhn2mnsdgqq0sxeqa.lambda-url.ap-northeast-1.on.aws";
 const DB_API_SECRET = "mydesk2026secret";
 const DB_API_HEADERS = {
   "Content-Type": "application/json",
@@ -111,15 +111,20 @@ const S3_PUBLIC_BASE = `https://${S3_BUCKET}.s3.${S3_REGION}.amazonaws.com`;
 
 async function sbGet(id) {
   try {
-    const r = await fetch(`${DB_API_BASE}/data?id=${encodeURIComponent(id)}`, { headers: DB_API_HEADERS });
-    if (r.ok) {
-      const obj = await r.json();
-      if (obj && obj.data !== undefined) {
-        return { _rawData: obj.data, _updatedAt: obj.updated_at ?? null };
-      }
+    const r = await fetch(`${DB_API_BASE}/data?id=${encodeURIComponent(id)}`, {
+      headers: { ...DB_API_HEADERS, "Accept-Encoding": "gzip" },
+    });
+    if (!r.ok) return null;
+    // ブラウザは Content-Encoding: gzip を自動展開するので、そのまま json() 可
+    const obj = await r.json();
+    if (obj && obj.data !== undefined) {
+      return { _rawData: obj.data, _updatedAt: obj.updated_at ?? null };
     }
     return null;
-  } catch { return null; }
+  } catch (e) {
+    console.warn("[sbGet] failed:", e);
+    return null;
+  }
 }
 
 async function sbSet(id, data) {
