@@ -8652,12 +8652,14 @@ ${orig}`})
               </div>
               <button onClick={()=>{setForm({...comp});setSheet("editCompany");}} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:"6px",padding:"0.35rem 0.625rem",cursor:"pointer",fontSize:"0.82rem",color:C.textSub}}>✏️</button>
             </div>
+            <AssigneeRow ids={comp.assigneeIds}/>
             <div style={{fontSize:"0.78rem",color:C.textSub,display:"flex",flexDirection:"column",gap:"0.25rem"}}>
               {comp.phone&&<div style={{marginTop:"0.5rem"}}><PhoneLink number={comp.phone} onMtg={()=>setMtgModal({entityKey:"companies",entityId:comp.id,entityName:comp.name})} onCallRecord={()=>setMtgModal({entityKey:"companies",entityId:comp.id,entityName:comp.name,autoStart:true,callMode:true})}/></div>}
               {comp.email&&<div>✉️ {comp.email}</div>}
               {comp.address&&<div>📍 {comp.address}</div>}
               {comp.updatedAt&&<div style={{fontSize:"0.7rem",color:C.textMuted,marginTop:"0.2rem"}}>📅 最終更新：{comp.updatedAt}</div>}
             </div>
+            {comp.notes&&<div style={{marginTop:"0.5rem",fontSize:"0.78rem",color:C.textSub,background:"#f8fafc",borderRadius:"0.5rem",padding:"0.5rem 0.75rem",borderLeft:"3px solid #cbd5e1",whiteSpace:"pre-wrap"}}><div style={{fontSize:"0.68rem",fontWeight:700,color:C.textSub,marginBottom:"0.2rem"}}>📝 備考</div>{comp.notes}</div>}
           </Card>
           <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap",marginBottom:"0.75rem"}}>
             <button onClick={e=>{e.stopPropagation();openApproachModal("companies",comp.id,comp.name);}} style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#dbeafe",color:"#1d4ed8"}}>📞 アプローチ記録</button>
@@ -9103,7 +9105,7 @@ ${orig}`})
             {v.address&&<div style={{fontSize:"0.78rem",color:C.textSub,marginTop:"0.4rem"}}>📍 {v.address}</div>}
             {v.updatedAt&&<div style={{fontSize:"0.7rem",color:C.textMuted,marginTop:"0.3rem"}}>📅 最終更新：{v.updatedAt}</div>}
                   {v.beeNet&&<div style={{display:"inline-flex",alignItems:"center",gap:"0.3rem",marginTop:"0.35rem",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:999,padding:"0.15rem 0.5rem",fontSize:"0.68rem",fontWeight:700,color:"#1d4ed8"}}>🔷 bee-net加入済み</div>}
-            {v.notes&&<div style={{marginTop:"0.5rem",fontSize:"0.78rem",color:C.textSub,background:"#f8fafc",borderRadius:"0.5rem",padding:"0.4rem 0.6rem",borderLeft:"3px solid #cbd5e1"}}>{v.notes}</div>}
+            {v.notes&&<div style={{marginTop:"0.5rem",fontSize:"0.78rem",color:C.textSub,background:"#f8fafc",borderRadius:"0.5rem",padding:"0.5rem 0.75rem",borderLeft:"3px solid #cbd5e1",whiteSpace:"pre-wrap"}}><div style={{fontSize:"0.68rem",fontWeight:700,color:C.textSub,marginBottom:"0.2rem"}}>📝 備考</div>{v.notes}</div>}
             <div style={{marginTop:"0.6rem"}}>
               <div style={{fontSize:"0.62rem",fontWeight:700,color:"#5b21b6",marginBottom:"0.3rem"}}>📋 許可別営業状況</div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.2rem"}}>
@@ -9693,7 +9695,7 @@ ${orig}`})
           {muni.artBranch&&<div style={{marginTop:"0.5rem",fontSize:"0.75rem",color:C.textSub}}>🏢 アート引越センター 管轄支店：{muni.artBranch}</div>}
           {muni.address&&<div style={{marginTop:"0.35rem",fontSize:"0.75rem",color:C.textSub}}>📍 {muni.address}</div>}
           {muni.updatedAt&&<div style={{marginTop:"0.3rem",fontSize:"0.7rem",color:C.textMuted}}>📅 最終更新：{muni.updatedAt}</div>}
-          {muni.notes&&<div style={{marginTop:"0.5rem",fontSize:"0.78rem",color:C.textSub,background:"#f8fafc",borderRadius:"0.5rem",padding:"0.4rem 0.6rem",borderLeft:"3px solid #cbd5e1"}}>{muni.notes}</div>}
+          {muni.notes&&<div style={{marginTop:"0.5rem",fontSize:"0.78rem",color:C.textSub,background:"#f8fafc",borderRadius:"0.5rem",padding:"0.5rem 0.75rem",borderLeft:"3px solid #cbd5e1",whiteSpace:"pre-wrap"}}><div style={{fontSize:"0.68rem",fontWeight:700,color:C.textSub,marginBottom:"0.2rem"}}>📝 備考</div>{muni.notes}</div>}
           {(()=>{
             const govContacts = muni.govContacts || [];
             const hasLegacy = !govContacts.length && (muni.contactName||muni.contactEmail||muni.contactPhone);
