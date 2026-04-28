@@ -13877,7 +13877,7 @@ export default function App() {
   },[currentUser]);
 
   // ── プッシュ通知送信ラッパー（addNotifと連動）─────────────────────────────
-  const VAPID_PUBLIC_KEY = 'BOlCwpwWlsbXAd_aw4puzgjrshGrRHbsq-fTQYiGnDmsS-4oFknxdZMRoF_Y8p5ObJ7HgVLxW6j5Tl2XLpy5Agg';
+  const VAPID_PUBLIC_KEY = 'BOKMSyDIs8uUrBfo7DZp5CseQwxeNhMUFzn6JDYI7Xt14r3Q6N15OWh4HaZFNVa5EbzRiuMlKaU3171WY46L9nA';
   const saveWithPush = (nd, notifsBefore) => {
     if (!nd || typeof nd !== "object" || Array.isArray(nd)) {
       console.error("MyDesk: SalesView saveWithPush rejected invalid data"); return;
@@ -13958,11 +13958,19 @@ export default function App() {
         });
       }
 
-      // ── ④ Supabaseに購読情報を保存 ──────────────────────────────────
-      const subs = (await sbGet('push_subs')) || {};
-      subs[userId] = sub.toJSON();
+      // ── ④ AWS RDSに購読情報を保存（複数デバイス対応） ─────────────────
+      // 構造: { [userId]: [ subscription, subscription, ... ] }
+      const stored = await sbGet('push_subs');
+      const subs = (stored?._rawData) || {};
+      const subJson = sub.toJSON();
+      const list = Array.isArray(subs[userId]) ? subs[userId] : (subs[userId] ? [subs[userId]] : []);
+      // 同じendpointが既にあれば置き換え、なければ追加
+      const existingIdx = list.findIndex(s => s.endpoint === subJson.endpoint);
+      if (existingIdx >= 0) list[existingIdx] = subJson;
+      else list.push(subJson);
+      subs[userId] = list;
       await sbSet('push_subs', subs);
-      console.log('[MyDesk] ✅ Push購読を保存しました userId:', userId, 'endpoint:', sub.endpoint.slice(-20));
+      console.log('[MyDesk] ✅ Push購読を保存 userId:', userId, 'devices:', list.length, 'endpoint:', sub.endpoint.slice(-20));
       return true;
     } catch(e) {
       console.error('[MyDesk] Push購読に失敗:', e.name, e.message);
@@ -13975,23 +13983,77 @@ export default function App() {
     try {
       const reg = await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.getSubscription();
+      const removeEndpoint = sub?.endpoint || null;
       if (sub) await sub.unsubscribe();
-      const subs = (await sbGet('push_subs')) || {};
-      delete subs[userId];
+      const stored = await sbGet('push_subs');
+      const subs = (stored?._rawData) || {};
+      // このデバイスの subscription だけ削除（他のデバイスは残す）
+      if (Array.isArray(subs[userId]) && removeEndpoint) {
+        subs[userId] = subs[userId].filter(s => s.endpoint !== removeEndpoint);
+        if (subs[userId].length === 0) delete subs[userId];
+      } else {
+        delete subs[userId];
+      }
       await sbSet('push_subs', subs);
     } catch {}
   };
 
-  // Vercel APIを通じてプッシュ通知を送信
+  // 各ユーザーの全デバイスに対して Web Push を送信（新Lambdaは1件ずつ受け取る）
   const sendPushToUsers = async (toUserIds, title, body, tag='mydesk') => {
     if (!toUserIds?.length) return;
     try {
-      await fetch(`${API_BASE}/api/send-push`, {
-        method:'POST',
-        headers:{'Content-Type':'application/json','x-mydesk-secret':'mydesk2026'},
-        body: JSON.stringify({ toUserIds, title, body, tag }),
-      });
-    } catch {}
+      // RDSから全userの subscription を取得
+      const stored = await sbGet('push_subs');
+      const allSubs = (stored?._rawData) || {};
+      // 失効した subscription を集める（ループ後に一括削除）
+      const expiredEndpoints = [];
+      const sendPromises = [];
+      for (const uid of toUserIds) {
+        const list = allSubs[uid];
+        if (!list) continue;
+        // 旧形式（オブジェクト1個）と新形式（配列）を両対応
+        const subList = Array.isArray(list) ? list : [list];
+        for (const sub of subList) {
+          if (!sub?.endpoint) continue;
+          sendPromises.push(
+            fetch(`${API_BASE}/api/send-push`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'x-mydesk-secret': 'mydesk2026' },
+              body: JSON.stringify({
+                subscription: sub,
+                payload: { title, body, tag, url: '/' },
+              }),
+            }).then(async r => {
+              const j = await r.json().catch(() => ({}));
+              if (j.expired || r.status === 410) {
+                expiredEndpoints.push({ uid, endpoint: sub.endpoint });
+              }
+              return j;
+            }).catch(e => console.warn('[sendPush] error:', e))
+          );
+        }
+      }
+      await Promise.all(sendPromises);
+      // 失効したsubscriptionをクリーンアップ
+      if (expiredEndpoints.length > 0) {
+        try {
+          const stored2 = await sbGet('push_subs');
+          const subs2 = (stored2?._rawData) || {};
+          for (const { uid, endpoint } of expiredEndpoints) {
+            if (Array.isArray(subs2[uid])) {
+              subs2[uid] = subs2[uid].filter(s => s.endpoint !== endpoint);
+              if (subs2[uid].length === 0) delete subs2[uid];
+            }
+          }
+          await sbSet('push_subs', subs2);
+          console.log('[sendPush] cleaned up', expiredEndpoints.length, 'expired subscriptions');
+        } catch (e) {
+          console.warn('[sendPush] cleanup failed:', e);
+        }
+      }
+    } catch (e) {
+      console.warn('[sendPush] failed:', e);
+    }
   };
 
   const [pushEnabled, setPushEnabled] = useState(false);
