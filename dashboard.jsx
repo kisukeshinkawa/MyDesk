@@ -52,47 +52,47 @@ const S = {
 
 const C = {
   // ── Base surfaces ──────────────────────────────
-  bg:"#fafaf9",           // Warm off-white — Notion DNA
+  bg:"#F5F6F8",           // Cool light gray-blue (画像準拠)
   surface:"#ffffff",
-  surfaceHover:"#f7f7f6",
-  overlay:"rgba(0,0,0,0.5)",
+  surfaceHover:"#F8FAFC",
+  overlay:"rgba(15,23,42,0.5)",
 
-  // ── Border system (one weight) ──────────────────
-  border:"#e8e8e5",
-  borderLight:"#f2f2f0",
+  // ── Border system ──────────────────────────────
+  border:"#E2E8F0",       // slate-200
+  borderLight:"#F1F5F9",  // slate-100
 
   // ── Text hierarchy (3 levels) ───────────────────
-  text:"#171716",         // Near-black, warm tint
-  textSub:"#696966",      // 60% opacity feel
-  textMuted:"#b0b0ad",    // Ghost text
+  text:"#0F172A",         // slate-900
+  textSub:"#475569",      // slate-600
+  textMuted:"#94A3B8",    // slate-400
 
-  // ── Accent — single precise indigo ──────────────
-  accent:"#5b5bd6",       // Radix-inspired indigo
-  accentDark:"#4747bf",
-  accentBg:"#eeeefc",
-  accentLight:"rgba(91,91,214,0.08)",
+  // ── Accent — Bright Blue ──────────────────────
+  accent:"#3B82F6",       // blue-500 (画像のアクセント青)
+  accentDark:"#2563EB",   // blue-600
+  accentBg:"#EFF6FF",     // blue-50
+  accentLight:"rgba(59,130,246,0.08)",
 
-  // ── Semantic (muted, desaturated) ───────────────
-  blue:"#3b82f6",   blueBg:"#eff6ff",
-  green:"#16a34a",  greenBg:"#f0fdf4",
-  yellow:"#d97706", yellowBg:"#fffbeb",
-  red:"#dc2626",    redBg:"#fef2f2",
-  purple:"#7c3aed", purpleBg:"#f5f3ff",
-  orange:"#ea580c", orangeBg:"#fff7ed",
+  // ── Semantic ────────────────────────────────────
+  blue:"#3B82F6",   blueBg:"#DBEAFE",     // blue-100
+  green:"#10B981",  greenBg:"#D1FAE5",    // emerald-100
+  yellow:"#F59E0B", yellowBg:"#FEF3C7",   // amber-100
+  red:"#EF4444",    redBg:"#FEE2E2",      // red-100
+  purple:"#8B5CF6", purpleBg:"#EDE9FE",   // violet-100
+  orange:"#F97316", orangeBg:"#FFEDD5",   // orange-100
 
-  // ── Navigation (near-black sidebar) ─────────────
-  nav:"#0e0e0d",
-  navBorder:"#1c1c1a",
-  navText:"#e6e6e3",
-  navTextSub:"#5a5a57",
-  navActive:"rgba(255,255,255,0.06)",
-  navActiveText:"#ffffff",
+  // ── Navigation (NOW WHITE) ──────────────────────
+  nav:"#ffffff",
+  navBorder:"#E2E8F0",
+  navText:"#475569",
+  navTextSub:"#94A3B8",
+  navActive:"#EFF6FF",
+  navActiveText:"#3B82F6",
 
-  // ── Elevation (barely-there shadows) ────────────
-  shadow:"0 1px 3px rgba(0,0,0,0.05),0 0 0 1px rgba(0,0,0,0.04)",
-  shadowMd:"0 4px 16px rgba(0,0,0,0.07),0 0 0 1px rgba(0,0,0,0.04)",
-  shadowLg:"0 16px 40px rgba(0,0,0,0.10),0 0 0 1px rgba(0,0,0,0.04)",
-  shadowFloat:"0 24px 48px rgba(0,0,0,0.14),0 0 0 1px rgba(0,0,0,0.06)",
+  // ── Elevation (subtle, modern) ──────────────────
+  shadow:"0 1px 3px rgba(15,23,42,0.04),0 1px 2px rgba(15,23,42,0.06)",
+  shadowMd:"0 4px 12px rgba(15,23,42,0.08)",
+  shadowLg:"0 8px 24px rgba(15,23,42,0.12)",
+  shadowFloat:"0 16px 40px rgba(15,23,42,0.18)",
 };
 
 // ─── STORAGE ──────────────────────────────────────────────────────────────────
@@ -414,7 +414,7 @@ function isNearDue(task) {
 
 // ─── BASE COMPONENTS ──────────────────────────────────────────────────────────
 const Card = ({children, style={}, onClick}) => (
-  <div onClick={onClick} style={{background:"#ffffff",borderRadius:"12px",border:"1px solid #e5e5ea",boxShadow:"0 1px 4px rgba(0,0,0,0.04)",...style}}>{children}</div>
+  <div onClick={onClick} style={{background:C.surface,borderRadius:"12px",border:`1px solid ${C.border}`,boxShadow:C.shadow,...style}}>{children}</div>
 );
 
 const Btn = ({children,onClick,variant="primary",size="md",style={},disabled=false}) => {
@@ -422,17 +422,17 @@ const Btn = ({children,onClick,variant="primary",size="md",style={},disabled=fal
   const sz = size==="sm"?{padding:"0.3rem 0.75rem",fontSize:"0.8rem"}
            : size==="lg"?{padding:"0.7rem 1.5rem",fontSize:"0.925rem"}
            : {padding:"0.45rem 1rem",fontSize:"0.85rem"};
-  const vc = variant==="primary"   ? {background:C.accent,color:"#fff",boxShadow:"0 1px 3px rgba(91,91,214,0.3),inset 0 1px 0 rgba(255,255,255,0.1)"}
-           : variant==="secondary" ? {background:"#f3f3f1",color:C.text,border:"1px solid #e8e8e5"}
+  const vc = variant==="primary"   ? {background:C.accent,color:"#fff",boxShadow:"0 1px 2px rgba(59,130,246,0.25),0 2px 4px rgba(59,130,246,0.15)"}
+           : variant==="secondary" ? {background:C.borderLight,color:C.text,border:`1px solid ${C.border}`}
            : variant==="ghost"     ? {background:"transparent",color:C.textSub}
-           : variant==="danger"    ? {background:"#fef2f2",color:C.red,border:"1px solid #fecaca"}
+           : variant==="danger"    ? {background:C.redBg,color:C.red,border:`1px solid ${C.red}40`}
            : {background:C.accentBg,color:C.accent};
   return <button onClick={disabled?undefined:onClick} style={{...base,...sz,...vc}}>{children}</button>;
 };
 
 
 const Input = ({style={},...p}) => (
-  <input {...p} style={{width:"100%",padding:"0.55rem 0.875rem",borderRadius:"7px",border:`1.5px solid ${C.border}`,fontSize:"0.875rem",color:C.text,outline:"none",background:"#fff",boxSizing:"border-box",fontFamily:"'DM Sans',inherit",lineHeight:"1.5",transition:"border-color 0.15s",...style}}/>
+  <input {...p} style={{width:"100%",padding:"0.625rem 0.875rem",borderRadius:"8px",border:`1px solid ${C.border}`,fontSize:"0.875rem",color:C.text,outline:"none",background:C.surface,boxSizing:"border-box",fontFamily:"inherit",lineHeight:"1.5",transition:"all 0.15s",...style}}/>
 );
 
 const Textarea = ({style={},...p}) => (
@@ -477,8 +477,9 @@ function StatusPill({status,onChange}) {
   return (
     <>
       <button ref={btnRef} onClick={handleOpen}
-        style={{padding:"0.2rem 0.625rem",borderRadius:999,border:`1.5px solid ${meta.color}50`,background:meta.bg,color:meta.color,fontSize:"0.72rem",fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
-        {status} ▾
+        style={{padding:"0.25rem 0.75rem",borderRadius:999,border:"none",background:meta.bg,color:meta.color,fontSize:"0.72rem",fontWeight:600,cursor:"pointer",whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:"0.3rem"}}>
+        <span style={{width:6,height:6,borderRadius:"50%",background:meta.dot||meta.color,flexShrink:0}}/>
+        {status}
       </button>
       {open && <>
         <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:199}}/>
@@ -13752,40 +13753,50 @@ export default function App() {
         @media(min-width:700px){
           .mydesk-sidebar{display:block !important;}
           .mydesk-bottomnav{display:none !important;}
-          .mydesk-content{margin-left:200px !important;}
-          .mydesk-header{padding-left:200px !important;}
+          .mydesk-content{margin-left:220px !important;}
+          .mydesk-header{padding-left:220px !important;}
+          .mydesk-mobile-logo{display:none !important;}
+          .mydesk-greeting{display:flex !important;}
         }
         * { box-sizing: border-box; }
-        ::-webkit-scrollbar{width:4px;height:4px;}
-        ::-webkit-scrollbar-thumb{background:rgba(0,0,0,0.15);border-radius:2px;}
+        ::-webkit-scrollbar{width:6px;height:6px;}
+        ::-webkit-scrollbar-track{background:transparent;}
+        ::-webkit-scrollbar-thumb{background:rgba(15,23,42,0.15);border-radius:3px;}
+        ::-webkit-scrollbar-thumb:hover{background:rgba(15,23,42,0.3);}
         @keyframes spin{to{transform:rotate(360deg)}}
       `}</style>
       {/* Header */}
-      <div className="mydesk-header" style={{background:C.nav,borderBottom:`1px solid ${C.navBorder}`,position:"sticky",top:0,zIndex:100,backdropFilter:"blur(20px)",flexShrink:0}}>
-        <div style={{maxWidth:680,margin:"0 auto",padding:"0 clamp(0.75rem,3vw,1rem)"}}>
-          <div style={{display:"flex",alignItems:"center",height:52,gap:"0.625rem"}}>
-            <div style={{display:"flex",alignItems:"center",gap:"0.5rem"}}>
-              <div style={{width:28,height:28,borderRadius:"8px",background:C.accent,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+      <div className="mydesk-header" style={{background:"#ffffff",borderBottom:`1px solid ${C.border}`,position:"sticky",top:0,zIndex:100,flexShrink:0}}>
+        <div style={{margin:"0",padding:"0 1.25rem"}}>
+          <div style={{display:"flex",alignItems:"center",height:56,gap:"0.625rem"}}>
+            <div className="mydesk-mobile-logo" style={{display:"flex",alignItems:"center",gap:"0.5rem"}}>
+              <div style={{width:30,height:30,borderRadius:"8px",background:C.accent,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:"0 2px 4px rgba(59,130,246,0.25)"}}>
+                <svg width="17" height="17" viewBox="0 0 20 20" fill="none">
                   <path d="M3 5h5l2 5 2-5h5v10h-3.5V9.5L11 15H9L6.5 9.5V15H3V5z" fill="white"/>
                 </svg>
               </div>
-              <span style={{fontWeight:600,fontSize:"0.95rem",color:C.navText,letterSpacing:"-0.03em"}}>MyDesk</span>
+              <span style={{fontWeight:700,fontSize:"1rem",color:C.text,letterSpacing:"-0.02em"}}>MyDesk</span>
+            </div>
+            
+            {/* PC: Greeting */}
+            <div className="mydesk-greeting" style={{display:"none",flexDirection:"column",lineHeight:1.2}}>
+              <div style={{fontSize:"0.85rem",fontWeight:600,color:C.text}}>{(()=>{const h=new Date().getHours();return h<11?"おはようございます":h<18?"こんにちは":"こんばんは";})()}、{currentUser?.name||""}さん 👋</div>
+              <div style={{fontSize:"0.7rem",color:C.textMuted,marginTop:"0.15rem"}}>今日も一日、最高のパフォーマンスを。</div>
             </div>
 
             {/* Notification bell + User menu */}
             <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:"0.5rem",position:"relative"}}>
               {/* ④ グローバル検索 */}
               <button onClick={()=>setGlobalSearch("")}
-                style={{width:36,height:36,borderRadius:"50%",background:"rgba(255,255,255,0.08)",border:"none",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0,fontSize:"1rem",color:"#f5f5f7"}}>
+                style={{width:38,height:38,borderRadius:"50%",background:C.bg,border:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0,fontSize:"1rem",color:C.textSub,transition:"all 0.15s"}}>
                 🔍
               </button>
               {/* Bell */}
               <button onClick={()=>setShowNotifPanel(v=>!v)}
-                style={{position:"relative",width:38,height:38,borderRadius:"50%",background:appUnread.length>0?C.accentBg:C.bg,border:`1.5px solid ${appUnread.length>0?C.accent:C.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",transition:"all 0.15s",flexShrink:0}}>
-                <span style={{fontSize:"1.1rem",lineHeight:1}}>🔔</span>
+                style={{position:"relative",width:38,height:38,borderRadius:"50%",background:C.bg,border:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",transition:"all 0.15s",flexShrink:0}}>
+                <span style={{fontSize:"1.05rem",lineHeight:1}}>🔔</span>
                 {appUnread.length>0&&(
-                  <span style={{position:"absolute",top:-3,right:-3,background:"#dc2626",color:"white",borderRadius:999,fontSize:"0.55rem",fontWeight:800,padding:"0.1rem 0.3rem",minWidth:16,textAlign:"center",lineHeight:1.4}}>
+                  <span style={{position:"absolute",top:-2,right:-2,background:C.red,color:"white",borderRadius:999,fontSize:"0.55rem",fontWeight:700,padding:"0.1rem 0.3rem",minWidth:16,textAlign:"center",lineHeight:1.4,boxShadow:"0 1px 3px rgba(239,68,68,0.4)"}}>
                     {appUnread.length}
                   </span>
                 )}
@@ -13793,12 +13804,12 @@ export default function App() {
               {/* User menu button */}
               <div style={{position:"relative"}}>
               <button onClick={()=>setShowUserMenu(v=>!v)}
-                style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.4rem 0.75rem",borderRadius:999,border:`1.5px solid ${C.border}`,background:C.bg,cursor:"pointer",fontFamily:"inherit"}}>
-                <div style={{width:26,height:26,borderRadius:"50%",background:C.accent,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.75rem",fontWeight:800,color:"white",flexShrink:0}}>
+                style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.35rem 0.75rem 0.35rem 0.4rem",borderRadius:999,border:`1px solid ${C.border}`,background:C.surface,cursor:"pointer",fontFamily:"inherit",transition:"all 0.15s"}}>
+                <div style={{width:28,height:28,borderRadius:"50%",background:C.accent,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.78rem",fontWeight:700,color:"white",flexShrink:0,boxShadow:"0 1px 3px rgba(59,130,246,0.3)"}}>
                   {currentUser.name.charAt(0)}
                 </div>
-                <span style={{fontSize:"0.82rem",fontWeight:700,color:C.text,maxWidth:80,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{currentUser.name}</span>
-                <span style={{fontSize:"0.7rem",color:C.textMuted}}>▾</span>
+                <span style={{fontSize:"0.82rem",fontWeight:600,color:C.text,maxWidth:100,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{currentUser.name}</span>
+                <span style={{fontSize:"0.65rem",color:C.textMuted,marginLeft:"-0.1rem"}}>▾</span>
               </button>
               {showUserMenu&&(
                 <>
@@ -13948,15 +13959,40 @@ export default function App() {
       )}
 
       {/* PC Sidebar Nav */}
-      <div className="mydesk-sidebar" style={{display:"none",position:"fixed",top:52,left:0,bottom:0,width:200,background:C.nav,borderRight:`1px solid ${C.navBorder}`,zIndex:99,overflowY:"auto",padding:"1rem 0.75rem"}}>
-        <div style={{fontSize:"0.62rem",fontWeight:500,color:C.navTextSub,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:"0.5rem",paddingLeft:"0.75rem"}}>ナビゲーション</div>
-        {TABS.map(t=>(
+      <div className="mydesk-sidebar" style={{display:"none",position:"fixed",top:0,left:0,bottom:0,width:220,background:"#ffffff",borderRight:`1px solid ${C.border}`,zIndex:99,overflowY:"auto"}}>
+        {/* Logo at top */}
+        <div style={{padding:"1rem 1.25rem",borderBottom:`1px solid ${C.borderLight}`,display:"flex",alignItems:"center",gap:"0.6rem"}}>
+          <div style={{width:32,height:32,borderRadius:"8px",background:C.accent,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:"0 2px 6px rgba(59,130,246,0.3)"}}>
+            <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+              <path d="M3 5h5l2 5 2-5h5v10h-3.5V9.5L11 15H9L6.5 9.5V15H3V5z" fill="white"/>
+            </svg>
+          </div>
+          <span style={{fontWeight:700,fontSize:"1.05rem",color:C.text,letterSpacing:"-0.02em"}}>MyDesk</span>
+        </div>
+        <div style={{padding:"1rem 0.875rem"}}>
+        <div style={{fontSize:"0.65rem",fontWeight:600,color:C.textMuted,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:"0.75rem",paddingLeft:"0.75rem"}}>ナビゲーション</div>
+        {TABS.filter(t=>t.id!=="mypage").map(t=>(
           <button key={t.id} onClick={()=>persistTab("md_tab",t.id,setTab)}
-            style={{width:"100%",display:"flex",alignItems:"center",gap:"0.625rem",padding:"0.45rem 0.75rem",borderRadius:"6px",border:"none",cursor:"pointer",fontFamily:"'DM Sans',inherit",fontWeight:tab===t.id?500:400,fontSize:"0.85rem",background:tab===t.id?C.navActive:"transparent",color:tab===t.id?C.navActiveText:C.navTextSub,marginBottom:"0.125rem",textAlign:"left",transition:"all 0.1s",letterSpacing:"-0.005em"}}>
-            <span style={{fontSize:"1.2rem",lineHeight:1,flexShrink:0}}>{t.emoji}</span>
+            style={{width:"100%",display:"flex",alignItems:"center",gap:"0.75rem",padding:"0.6rem 0.875rem",borderRadius:"8px",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:tab===t.id?600:500,fontSize:"0.875rem",background:tab===t.id?C.accentBg:"transparent",color:tab===t.id?C.accent:C.textSub,marginBottom:"0.25rem",textAlign:"left",transition:"all 0.15s",letterSpacing:"-0.005em"}}
+            onMouseEnter={e=>{if(tab!==t.id){e.currentTarget.style.background=C.borderLight;}}}
+            onMouseLeave={e=>{if(tab!==t.id){e.currentTarget.style.background="transparent";}}}>
+            <span style={{fontSize:"1.15rem",lineHeight:1,flexShrink:0}}>{t.emoji}</span>
             <span>{t.label}</span>
           </button>
         ))}
+        </div>{/* end main nav padding */}
+        {/* Bottom: 設定 */}
+        <div style={{position:"absolute",bottom:"1rem",left:"0.875rem",right:"0.875rem",borderTop:`1px solid ${C.border}`,paddingTop:"0.875rem"}}>
+          {TABS.filter(t=>t.id==="mypage").map(t=>(
+            <button key={t.id} onClick={()=>persistTab("md_tab",t.id,setTab)}
+              style={{width:"100%",display:"flex",alignItems:"center",gap:"0.75rem",padding:"0.6rem 0.875rem",borderRadius:"8px",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:tab===t.id?600:500,fontSize:"0.875rem",background:tab===t.id?C.accentBg:"transparent",color:tab===t.id?C.accent:C.textSub,textAlign:"left",transition:"all 0.15s"}}
+              onMouseEnter={e=>{if(tab!==t.id){e.currentTarget.style.background=C.borderLight;}}}
+              onMouseLeave={e=>{if(tab!==t.id){e.currentTarget.style.background="transparent";}}}>
+              <span style={{fontSize:"1.15rem",lineHeight:1,flexShrink:0}}>{t.emoji}</span>
+              <span>{t.label}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Content + BottomNav wrapper */}
@@ -13964,7 +14000,7 @@ export default function App() {
       {/* Content */}
       <div ref={contentRef} className="mydesk-content" data-sales-scroll style={{flex:1,overflowY:isPC?"hidden":"auto",display:isPC?"flex":"block",
         paddingBottom:isPC?0:"calc(5rem + env(safe-area-inset-bottom,0px))"}}>
-        <div style={{maxWidth:isPC?"none":720,margin:isPC?0:"0 auto",width:"100%",flex:isPC?1:undefined,overflowY:isPC?"auto":"visible",padding:isPC?"1.5rem 2rem 0.5rem":"1.25rem 1rem 0.5rem",boxSizing:"border-box"}}>
+        <div style={{maxWidth:isPC?"none":720,margin:isPC?0:"0 auto",width:"100%",flex:isPC?1:undefined,overflowY:isPC?"auto":"visible",padding:isPC?"1.75rem 2rem 1rem":"1.25rem 1rem 0.5rem",boxSizing:"border-box"}}>
           <ErrorBoundary>
             {tab==="tasks"     && <TaskView      data={data} setData={setData} users={users} currentUser={currentUser}
               taskTab={taskTab} setTaskTab={(v)=>persistTab('md_taskTab',v,setTaskTab)}
@@ -13988,14 +14024,14 @@ export default function App() {
       </div>
 
       {/* Bottom Nav (mobile) */}
-      <div className="mydesk-bottomnav" style={{flexShrink:0,background:"white",borderTop:`1px solid ${C.border}`,boxShadow:"0 -2px 16px rgba(0,0,0,0.06)",zIndex:100,paddingBottom:"env(safe-area-inset-bottom,0px)"}}>
+      <div className="mydesk-bottomnav" style={{flexShrink:0,background:C.surface,borderTop:`1px solid ${C.border}`,boxShadow:"0 -2px 8px rgba(15,23,42,0.04)",zIndex:100,paddingBottom:"env(safe-area-inset-bottom,0px)"}}>
         <div style={{maxWidth:680,margin:"0 auto",display:"flex"}}>
           {TABS.map(t=>(
             <button key={t.id} onClick={()=>persistTab("md_tab",t.id,setTab)}
-              style={{flex:1,padding:"0.625rem 0.25rem 0.75rem",border:"none",background:"transparent",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:"0.2rem",position:"relative"}}>
-              {tab===t.id&&<div style={{position:"absolute",top:0,left:"20%",right:"20%",height:2.5,background:C.accent,borderRadius:"0 0 3px 3px"}}/>}
-              <span style={{fontSize:"1.2rem",lineHeight:1}}>{t.emoji}</span>
-              <span style={{fontSize:"0.6rem",fontWeight:tab===t.id?800:500,color:tab===t.id?C.accentDark:C.textMuted}}>{t.label}</span>
+              style={{flex:1,padding:"0.7rem 0.25rem 0.85rem",border:"none",background:"transparent",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:"0.25rem",position:"relative"}}>
+              {tab===t.id&&<div style={{position:"absolute",top:0,left:"30%",right:"30%",height:3,background:C.accent,borderRadius:"0 0 3px 3px"}}/>}
+              <span style={{fontSize:"1.2rem",lineHeight:1,opacity:tab===t.id?1:0.6}}>{t.emoji}</span>
+              <span style={{fontSize:"0.62rem",fontWeight:tab===t.id?700:500,color:tab===t.id?C.accent:C.textMuted}}>{t.label}</span>
             </button>
           ))}
         </div>
