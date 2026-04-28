@@ -2015,7 +2015,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     const byUser = {};
     newNotifs.forEach(n=>{
       if(!n.toUserId) return;
-      if(!byUser[n.toUserId]) byUser[n.toUserId]={title:n.title,body:n.body||'',tag:n.type||'mydesk'};
+      if(!byUser[n.toUserId]) byUser[n.toUserId]={title:n.title,body:n.body||'',tag:`${n.type||'mydesk'}_${n.entityType||''}_${n.entityId||'g'}`};
     });
     Object.entries(byUser).forEach(([toId,{title,body,tag}])=>{
       const targets = toId==='__all__'
@@ -6747,7 +6747,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     // 他ユーザーへWeb Push（バックグラウンド通知）
     if(newNotifs.length) {
       const byUser = {};
-      newNotifs.forEach(n=>{ if(n.toUserId && !byUser[n.toUserId]) byUser[n.toUserId]={title:n.title,body:n.body,tag:n.type}; });
+      newNotifs.forEach(n=>{ if(n.toUserId && !byUser[n.toUserId]) byUser[n.toUserId]={title:n.title,body:n.body,tag:`${n.type||'mydesk'}_${n.entityType||''}_${n.entityId||'g'}`}; });
       Object.entries(byUser).forEach(([uid,{title,body,tag}])=>{
         const targets = uid==='__all__'
           ? users.filter(u=>u.id!==currentUser?.id).map(u=>u.id)
@@ -13896,7 +13896,7 @@ export default function App() {
     newNotifs.forEach(n=>{
       const uid = n.toUserId;
       if(!uid) return;
-      if(!byUser[uid]) byUser[uid]={title:n.title,body:n.body,tag:n.type};
+      if(!byUser[uid]) byUser[uid]={title:n.title,body:n.body,tag:`${n.type||'mydesk'}_${n.entityType||''}_${n.entityId||'g'}`};
     });
     Object.entries(byUser).forEach(([uid,{title,body,tag}])=>{
       // 他ユーザー → Vercel API経由でWeb Push
