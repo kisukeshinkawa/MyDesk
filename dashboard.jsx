@@ -7846,9 +7846,14 @@ ${recentLogs}
       }
     };
 
-    // クリーンアップ
+    // クリーンアップ：本当のアンマウント時のみ録音停止
     React.useEffect(() => () => {
-      recordingRef.current = false;
+      // recordingRef は録音中フラグ。これがtrueの間は意図しない停止をしない
+      if (recordingRef.current) {
+        // 録音中なのでクリーンアップしない（ユーザーがstopRecordingを呼ぶまで継続）
+        console.log("[MtgRecordModal] cleanup skipped while recording");
+        return;
+      }
       if(restartTimerRef.current) clearTimeout(restartTimerRef.current);
       clearInterval(timerRef.current);
       stopAudioMeter();
