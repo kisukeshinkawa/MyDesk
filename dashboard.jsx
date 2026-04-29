@@ -7213,11 +7213,12 @@ ${recentLogs}
     a.download=filename; a.click();
   };
 
-  // ── SheetJS（xlsx）動的ロード ─────────────────────────────────────────
+  // ── xlsx-js-style（スタイル対応版SheetJS）動的ロード ────────────────
   const loadXLSX = () => new Promise((resolve, reject) => {
     if (window.XLSX) return resolve(window.XLSX);
     const s = document.createElement('script');
-    s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+    // xlsx-js-style: スタイル(色・配置・フォント)を書き出せるフォーク版
+    s.src = 'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js';
     s.onload = () => window.XLSX ? resolve(window.XLSX) : reject(new Error('XLSX load failed'));
     s.onerror = () => reject(new Error('XLSX script load error'));
     document.head.appendChild(s);
@@ -7250,7 +7251,7 @@ ${recentLogs}
           ws[cellRef].s = {
             font: {bold:true, color:{rgb:"FFFFFF"}, sz:11},
             fill: {fgColor:{rgb:"2563EB"}, patternType:"solid"},
-            alignment: {horizontal:"center", vertical:"center", wrapText:true},
+            alignment: {horizontal:"left", vertical:"top", wrapText:true},
             border: {
               top:{style:"thin", color:{rgb:"FFFFFF"}},
               bottom:{style:"thin", color:{rgb:"FFFFFF"}},
@@ -9869,9 +9870,16 @@ ${orig}`})
                   return (
                     <div key={v.id} onClick={()=>{saveSalesScroll("vendor");setActiveVendor(v.id);setActiveDetail("timeline");}}
                       style={{display:"flex",alignItems:"center",gap:"0.5rem",cursor:"pointer",padding:"0.35rem 0.5rem",background:"white",borderRadius:"0.5rem",border:"1px solid #fde047"}}>
-                      <span style={{fontSize:"0.8rem",fontWeight:700,color:C.text,flex:1}}>{v.name}</span>
-                      <SChip s={v.status} map={VENDOR_STATUS}/>
-                      {vmunis2.length>0&&<span style={{fontSize:"0.62rem",color:C.textMuted}}>{vmunis2[0].name}{vmunis2.length>1?`他${vmunis2.length-1}`:""}</span>}
+                      {/* 業者名: flex:1 で残り全部 */}
+                      <span style={{fontSize:"0.8rem",fontWeight:700,color:C.text,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{v.name}</span>
+                      {/* ステータス: 固定幅 */}
+                      <div style={{width:80,flexShrink:0,display:"flex",justifyContent:"flex-end"}}>
+                        <SChip s={v.status} map={VENDOR_STATUS}/>
+                      </div>
+                      {/* 自治体: 固定幅で右揃え */}
+                      <div style={{width:120,flexShrink:0,fontSize:"0.62rem",color:C.textMuted,textAlign:"right",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                        {vmunis2.length>0?`${vmunis2[0].name}${vmunis2.length>1?`他${vmunis2.length-1}`:""}`:"—"}
+                      </div>
                     </div>
                   );
                 })}
@@ -9884,10 +9892,10 @@ ${orig}`})
           const hasFilter=vendFilterPref||vendFilterMuni||vendFilterStatus||vendFilterPermit||vendFilterAssignee;
           // 絞り込み結果の集計
           const fvCount=filteredVendors.length;
-          // 都道府県ごとの件数
-          const prefCounts=hasFilter?prefs.map(p=>{
-            const n=filteredVendors.filter(v=>(v.municipalityIds||[]).some(id=>{const m=muniOf(id);return m&&String(m.prefectureId)===String(p.id);})).length;
-            return n>0?{name:p.name,n}:null;
+          // 許可種別ごとの件数
+          const permitCounts=hasFilter?PERMIT_TYPES.map(p=>{
+            const n=filteredVendors.filter(v=>(v.permitTypes||[]).includes(p)).length;
+            return n>0?{name:p,n}:null;
           }).filter(Boolean):[];
           // 自治体選択肢（都道府県が選択されている場合に絞る）
           const muniOptions=vendFilterPref?munis.filter(m=>String(m.prefectureId)===vendFilterPref):[];
@@ -9935,9 +9943,9 @@ ${orig}`})
                   {users.map(u=><option key={u.id} value={String(u.id)}>{u.name}</option>)}
                 </select>
               </div>
-              {hasFilter&&prefCounts.length>0&&(
+              {hasFilter&&permitCounts.length>0&&(
                 <div style={{display:"flex",gap:"0.25rem",flexWrap:"wrap"}}>
-                  {prefCounts.map(({name,n})=>(
+                  {permitCounts.map(({name,n})=>(
                     <span key={name} style={{fontSize:"0.62rem",background:"#ede9fe",color:"#5b21b6",padding:"0.1rem 0.35rem",borderRadius:999,fontWeight:700}}>{name}: {n}社</span>
                   ))}
                 </div>
