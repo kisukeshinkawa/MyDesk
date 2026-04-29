@@ -2016,12 +2016,15 @@ function ActivityLog({ data, users=[], filterTypes=null }) {
 // ─── TASK VIEW ────────────────────────────────────────────────────────────────
 
 // ─── 資料セクション (ファイル + 見積書のサブタブ) ─────────────────────
-function DocumentSection({entityType, entityId, entityName, files, currentUserId, currentUser, users=[], onSaveFiles, data, setData}) {
+function DocumentSection({entityType, entityId, entityName, files, currentUserId, currentUser, users=[], onSaveFiles, data, setData, save}) {
   const [subTab, setSubTab] = React.useState(() => localStorage.getItem(`md_docTab_${entityType}_${entityId}`) || "files");
   const switchTab = (t) => {
     setSubTab(t);
     localStorage.setItem(`md_docTab_${entityType}_${entityId}`, t);
   };
+  
+  // データの永続化：save が渡されていればそれを使い、なければ setData にフォールバック
+  const persist = save || setData;
   
   // このエンティティに紐づく見積書のみ取得
   const linkedQuotes = (data?.quotes || []).filter(q => 
@@ -2055,25 +2058,47 @@ function DocumentSection({entityType, entityId, entityName, files, currentUserId
       salesRef: { type: entityType, id: String(entityId), name: entityName },
     };
     const nd = {...data, quotes: [newQuote, ...(data.quotes||[])]};
-    setData(nd);
+    persist(nd);
     setActiveQuoteId(newQuote.id);
   };
   
   const updateQuote = (id, updates) => {
     const nd = {...data, quotes: (data.quotes||[]).map(q => q.id===id ? {...q, ...updates, updatedAt:new Date().toISOString()} : q)};
-    setData(nd);
+    persist(nd);
   };
   
   const deleteQuote = (id) => {
-    if (!window.confirm("この見積書を削除しますか？")) return;
+    if (!window.confirm("この見積書を削除しますか？\nこの操作は元に戻せません。")) return;
     const nd = {...data, quotes: (data.quotes||[]).filter(q => q.id !== id)};
-    setData(nd);
+    persist(nd);
     if (activeQuoteId === id) setActiveQuoteId(null);
   };
+  
+  // 同じ顧客の過去見積書から description/unit を抽出（オートコンプリート用）
+  const pastQuoteSuggestions = React.useMemo(() => {
+    const descs = new Map(); // description -> {unit, price, count}
+    const allQuotes = data?.quotes || [];
+    allQuotes.forEach(q => {
+      if (q.id === activeQuoteId) return; // 自分自身は除く
+      // 同じ宛先 OR 同じエンティティに紐づく見積書
+      const sameCustomer = (q.to||"") === entityName || 
+        (q.salesRef && String(q.salesRef.id) === String(entityId) && q.salesRef.type === entityType);
+      if (!sameCustomer) return;
+      (q.items || []).forEach(it => {
+        const d = (it?.description||"").trim();
+        if (!d) return;
+        if (!descs.has(d)) descs.set(d, {unit: it.unit||"", price: it.price||0, count: 1});
+        else descs.get(d).count++;
+      });
+    });
+    // 使用回数順にソート
+    return [...descs.entries()].sort((a,b)=>b[1].count-a[1].count).map(([d, info]) => ({description: d, ...info}));
+  }, [data?.quotes, activeQuoteId, entityName, entityId, entityType]);
   
   // 見積書編集中
   if (activeQuote) {
     return <QuoteEditor quote={activeQuote} users={users} currentUser={currentUser}
+      pastItems={pastQuoteSuggestions}
       onUpdate={(updates) => updateQuote(activeQuote.id, updates)}
       onDelete={() => deleteQuote(activeQuote.id)}
       onClose={() => setActiveQuoteId(null)}/>;
@@ -2264,7 +2289,7 @@ function QuoteView({data, setData, users=[], currentUser=null, onNavigateToSales
 }
 
 // 見積書エディタ
-function QuoteEditor({quote, users=[], currentUser, onUpdate, onDelete, onClose}) {
+function QuoteEditor({quote, users=[], currentUser, onUpdate, onDelete, onClose, pastItems=[]}) {
   const [showPreview, setShowPreview] = React.useState(false);
   const [showHistory, setShowHistory] = React.useState(false);
   const [saveLabel, setSaveLabel] = React.useState("");
@@ -2364,17 +2389,19 @@ function QuoteEditor({quote, users=[], currentUser, onUpdate, onDelete, onClose}
   const fmtDt = iso => { try { return new Date(iso).toLocaleString('ja-JP', {year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}); } catch { return iso||""; } };
   
   return (
-    <div style={{padding:"1rem",maxWidth:920,margin:"0 auto"}}>
-      <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem",flexWrap:"wrap"}}>
-        <button onClick={onClose} style={{padding:"0.4rem 0.7rem",borderRadius:"0.4rem",border:"1px solid #e5e7eb",background:"white",color:"#6b7280",fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit"}}>← 一覧へ</button>
-        <span style={{fontSize:"0.85rem",color:"#6b7280",fontWeight:600}}>見積書 #{quote.no}</span>
-        <div style={{flex:1}}/>
-        <button onClick={() => setShowHistory(true)} title="変更履歴を表示"
-          style={{padding:"0.5rem 0.85rem",borderRadius:"0.4rem",border:"1px solid #d1d5db",background:"white",color:"#374151",fontWeight:700,fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit"}}>📜 履歴 {versionCount>0?`(${versionCount})`:""}</button>
-        <button onClick={saveVersion} title="現在の状態をバージョンとして保存"
-          style={{padding:"0.5rem 0.95rem",borderRadius:"0.4rem",border:"none",background:"#059669",color:"white",fontWeight:700,fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit",boxShadow:"0 1px 2px rgba(5,150,105,0.2)"}}>💾 保存</button>
-        <button onClick={() => setShowPreview(true)} style={{padding:"0.5rem 0.95rem",borderRadius:"0.4rem",border:"none",background:"#2563eb",color:"white",fontWeight:700,fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit",boxShadow:"0 1px 2px rgba(37,99,235,0.2)"}}>👁 プレビュー / PDF</button>
-        <button onClick={onDelete} style={{padding:"0.5rem 0.7rem",borderRadius:"0.4rem",border:"1px solid #fca5a5",background:"#fef2f2",color:"#dc2626",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}}>🗑 削除</button>
+    <div style={{padding:"0.75rem",maxWidth:920,margin:"0 auto"}}>
+      <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginBottom:"0.5rem",flexWrap:"wrap"}}>
+        <button onClick={onClose} style={{padding:"0.4rem 0.65rem",borderRadius:"0.4rem",border:"1px solid #e5e7eb",background:"white",color:"#6b7280",fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>← 一覧へ</button>
+        <span style={{fontSize:"0.78rem",color:"#6b7280",fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:"40%"}}>#{quote.no}</span>
+        <div style={{flex:"1 1 auto",minWidth:0}}/>
+        <div style={{display:"flex",gap:"0.35rem",flexWrap:"wrap",justifyContent:"flex-end"}}>
+          <button onClick={() => setShowHistory(true)} title="変更履歴を表示"
+            style={{padding:"0.4rem 0.65rem",borderRadius:"0.4rem",border:"1px solid #d1d5db",background:"white",color:"#374151",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>📜 履歴{versionCount>0?` (${versionCount})`:""}</button>
+          <button onClick={saveVersion} title="現在の状態をバージョンとして保存"
+            style={{padding:"0.4rem 0.85rem",borderRadius:"0.4rem",border:"none",background:"#059669",color:"white",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>💾 保存</button>
+          <button onClick={() => setShowPreview(true)} style={{padding:"0.4rem 0.85rem",borderRadius:"0.4rem",border:"none",background:"#2563eb",color:"white",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>👁 プレビュー / PDF</button>
+          <button onClick={onDelete} style={{padding:"0.4rem 0.65rem",borderRadius:"0.4rem",border:"1px solid #fca5a5",background:"#fef2f2",color:"#dc2626",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>🗑 削除</button>
+        </div>
       </div>
       
       {/* 最終編集情報 */}
@@ -2444,9 +2471,17 @@ function QuoteEditor({quote, users=[], currentUser, onUpdate, onDelete, onClose}
       {/* 明細 */}
       <div style={sectionStyle}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.7rem",paddingBottom:"0.5rem",borderBottom:"1px solid #f3f4f6"}}>
-          <div style={{fontSize:"0.78rem",fontWeight:800,color:"#1f2937",display:"flex",alignItems:"center",gap:"0.4rem"}}>📝 明細 <span style={{fontSize:"0.7rem",fontWeight:600,color:"#9ca3af"}}>（{(quote.items||[]).length}件）</span></div>
+          <div style={{fontSize:"0.78rem",fontWeight:800,color:"#1f2937",display:"flex",alignItems:"center",gap:"0.4rem"}}>📝 明細 <span style={{fontSize:"0.7rem",fontWeight:600,color:"#9ca3af"}}>（{(quote.items||[]).length}件）</span>
+            {pastItems.length>0 && <span style={{fontSize:"0.65rem",fontWeight:600,color:"#0284c7",background:"#e0f2fe",padding:"0.1rem 0.4rem",borderRadius:"0.25rem",marginLeft:"0.3rem"}}>💡 過去{pastItems.length}件の明細が候補に出ます</span>}
+          </div>
           <button onClick={addItem} style={{padding:"0.4rem 0.8rem",borderRadius:"0.4rem",border:"1px solid #93c5fd",background:"#eff6ff",color:"#1d4ed8",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}}>＋ 行を追加</button>
         </div>
+        {/* 過去明細のオートコンプリート用 datalist */}
+        {pastItems.length>0 && (
+          <datalist id="quote-desc-suggestions">
+            {pastItems.map((p,i) => <option key={i} value={p.description}>{p.unit?`${p.unit} ・ `:""}¥{Number(p.price||0).toLocaleString()}{p.count>1?` (${p.count}回使用)`:""}</option>)}
+          </datalist>
+        )}
         <div style={{overflowX:"auto"}}>
           <table style={{width:"100%",borderCollapse:"collapse",fontSize:"0.82rem"}}>
             <thead>
@@ -2466,7 +2501,27 @@ function QuoteEditor({quote, users=[], currentUser, onUpdate, onDelete, onClose}
                 return (
                   <tr key={idx} style={{borderBottom:"1px solid #f3f4f6"}}>
                     <td style={{padding:"0.4rem",color:"#9ca3af",fontSize:"0.75rem"}}>{idx+1}</td>
-                    <td style={{padding:"0.3rem"}}><input value={it.description||""} onChange={e => updateItem(idx,"description",e.target.value)} placeholder="品目・サービス内容" style={{...inputStyle,padding:"0.3rem 0.45rem",fontSize:"0.82rem"}}/></td>
+                    <td style={{padding:"0.3rem"}}><input value={it.description||""} 
+                      list={pastItems.length>0 ? `quote-desc-suggestions` : undefined}
+                      onChange={e => {
+                        const v = e.target.value;
+                        // 過去の項目から完全一致したら、単位・単価も自動補完
+                        const matched = pastItems.find(p => p.description === v);
+                        if (matched) {
+                          const newItems = [...(quote.items||[])];
+                          newItems[idx] = {
+                            ...newItems[idx],
+                            description: v,
+                            unit: newItems[idx]?.unit || matched.unit || "",
+                            price: (Number(newItems[idx]?.price)>0) ? newItems[idx].price : (matched.price || 0),
+                          };
+                          onUpdate({items: newItems});
+                        } else {
+                          updateItem(idx,"description",v);
+                        }
+                      }}
+                      placeholder={pastItems.length>0?"品目（過去明細から候補）":"品目・サービス内容"} 
+                      style={{...inputStyle,padding:"0.3rem 0.45rem",fontSize:"0.82rem"}}/></td>
                     <td style={{padding:"0.3rem"}}><input type="number" value={it.qty||""} onChange={e => updateItem(idx,"qty",e.target.value)} style={{...inputStyle,padding:"0.3rem 0.4rem",fontSize:"0.82rem",textAlign:"right"}}/></td>
                     <td style={{padding:"0.3rem"}}><input value={it.unit||""} onChange={e => updateItem(idx,"unit",e.target.value)} placeholder="個" style={{...inputStyle,padding:"0.3rem 0.4rem",fontSize:"0.82rem"}}/></td>
                     <td style={{padding:"0.3rem"}}><input type="number" value={it.price||""} onChange={e => updateItem(idx,"price",e.target.value)} style={{...inputStyle,padding:"0.3rem 0.4rem",fontSize:"0.82rem",textAlign:"right"}}/></td>
@@ -2606,6 +2661,12 @@ function QuoteEditor({quote, users=[], currentUser, onUpdate, onDelete, onClose}
                           return <span>合計: ¥{(adj+tx).toLocaleString()}</span>;
                         })()}
                       </div>
+                      {/* 内部メモ（あれば表示） */}
+                      {v.snapshot?.internalMemo && (
+                        <div style={{fontSize:"0.7rem",color:"#92400e",marginTop:"0.4rem",padding:"0.4rem 0.55rem",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:"0.3rem",whiteSpace:"pre-wrap",lineHeight:1.4,maxHeight:"4.5em",overflow:"hidden"}}>
+                          🗒️ {v.snapshot.internalMemo.slice(0,150)}{v.snapshot.internalMemo.length>150?"...":""}
+                        </div>
+                      )}
                     </div>
                     <button onClick={()=>restoreVersion(v.id)} 
                       style={{padding:"0.35rem 0.7rem",borderRadius:"0.4rem",border:"1px solid #2563eb",background:"#eff6ff",color:"#1d4ed8",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>↩ 復元</button>
@@ -2676,6 +2737,42 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
   const adjustedSub = subtotal + miscYen + adjYen;
   const tax = Math.round(adjustedSub * (Number(quote.taxRate)||0) / 100);
   const grandTotal = adjustedSub + tax;
+  
+  // モバイル対応：画面幅に合わせてA4プレビューを自動縮小
+  const [scale, setScale] = React.useState(1);
+  const [docHeight, setDocHeight] = React.useState(1123); // 297mm at 96dpi
+  const innerRef = React.useRef(null);
+  
+  React.useEffect(() => {
+    const docW = 793.7; // 210mm at 96dpi
+    const calc = () => {
+      const winW = window.innerWidth;
+      const padding = 24;
+      if (winW < docW + padding) {
+        setScale(Math.max(0.25, (winW - padding) / docW));
+      } else {
+        setScale(1);
+      }
+      // 実際のコンテンツ高さを取得（A4高=1123pxを下限とする）
+      if (innerRef.current) {
+        setDocHeight(Math.max(1123, innerRef.current.scrollHeight));
+      }
+    };
+    calc();
+    window.addEventListener('resize', calc);
+    
+    // 印刷時はスケールを1に戻す
+    const onBefore = () => setScale(1);
+    const onAfter = () => setTimeout(calc, 50);
+    window.addEventListener('beforeprint', onBefore);
+    window.addEventListener('afterprint', onAfter);
+    
+    return () => {
+      window.removeEventListener('resize', calc);
+      window.removeEventListener('beforeprint', onBefore);
+      window.removeEventListener('afterprint', onAfter);
+    };
+  }, []);
 
   const items = [...(quote.items||[])];
   while(items.length < 15) items.push(null);
@@ -2715,51 +2812,46 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
   const colW = [3.53, 6.60, 7.77, 4.91, 7.77, 7.77, 10.91, 4.76, 10.14, 10.91, 8.30, 8.30, 8.30];
 
   return (
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:1000,overflow:"auto",padding:"1rem"}}>
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:1000,overflow:"auto",padding:"0.5rem"}}>
       <div style={{maxWidth:"calc(210mm + 2rem)",margin:"0 auto"}}>
         {/* ヘッダー（操作ボタン） */}
-        <div className="no-print" style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.7rem 1rem",borderRadius:"0.5rem 0.5rem 0 0",background:"#f9fafb",border:"1px solid #e5e7eb",borderBottom:"none"}}>
-          <button onClick={onClose} style={{padding:"0.4rem 0.75rem",borderRadius:"0.4rem",border:"1px solid #d1d5db",background:"white",fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit"}}>← 戻る</button>
-          <span style={{fontSize:"0.85rem",color:"#6b7280",fontWeight:700}}>見積書プレビュー</span>
-          <div style={{flex:1}}/>
-          <button onClick={async () => {
+        <div className="no-print" style={{display:"flex",alignItems:"center",gap:"0.4rem",padding:"0.5rem 0.75rem",borderRadius:"0.5rem 0.5rem 0 0",background:"#f9fafb",border:"1px solid #e5e7eb",borderBottom:"none",flexWrap:"wrap"}}>
+          <button onClick={onClose} style={{padding:"0.4rem 0.7rem",borderRadius:"0.4rem",border:"1px solid #d1d5db",background:"white",fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>← 戻る</button>
+          <span style={{fontSize:"0.78rem",color:"#6b7280",fontWeight:700,whiteSpace:"nowrap"}}>見積書プレビュー</span>
+          <div style={{flex:"1 1 auto",minWidth:0}}/>
+          <button onClick={() => {
+            // モバイル対応：window.print()を同期的に呼ぶ（ジェスチャーコンテキスト保持）
             const originalTitle = document.title;
+            const safeName = (s) => (s||"").replace(/[\\/:*?"<>|]/g,"_").replace(/\s+/g,"").slice(0,80);
             const dateStr = (quote.issuedDate || "").replace(/-/g, "");
-            const fallback = `見積書_${(quote.to||"").slice(0,30)}_${dateStr}`;
-            // AI命名は最大2秒で諦めてfallbackを使う（印刷を絶対にブロックしない）
-            let name = fallback;
+            const fallback = `見積書_${safeName(quote.to).slice(0,30)}_${dateStr}`;
+            // タイトルを即座に設定（印刷ダイアログのファイル名候補に使われる）
+            document.title = fallback;
+            // AI命名はバックグラウンドで実行（印刷をブロックしない）
             try {
-              const aiPromise = generateSmartFileName({
-                type: "見積書",
-                to: quote.to,
-                site: quote.site,
-                workContent: quote.workContent,
-                date: quote.issuedDate,
-                total: grandTotal,
+              generateSmartFileName({
+                type: "見積書", to: quote.to, site: quote.site,
+                workContent: quote.workContent, date: quote.issuedDate, total: grandTotal,
                 items: (quote.items||[]).map(i=>i.description).filter(Boolean).slice(0,5).join("、")
-              }, fallback);
-              const timeoutPromise = new Promise(resolve => setTimeout(() => resolve(fallback), 2000));
-              name = await Promise.race([aiPromise, timeoutPromise]);
-            } catch(e) {
-              name = fallback;
-            }
-            document.title = name || fallback;
-            // 印刷ダイアログを開いた後に閉じる処理
+              }, fallback).then(name => {
+                if (name && document.title === fallback) document.title = name;
+              }).catch(()=>{});
+            } catch(e) {}
+            // タイトル復元処理
             const restore = () => {
               document.title = originalTitle;
               window.removeEventListener('afterprint', restore);
             };
             window.addEventListener('afterprint', restore);
-            // フォールバック：万一afterprintが発火しない場合は2秒後に強制復元
-            setTimeout(restore, 5000);
-            // 確実に印刷ダイアログを開く
+            setTimeout(restore, 8000);
+            // 同期的に印刷ダイアログを開く（iOSでもジェスチャーコンテキストが保たれる）
             try {
               window.print();
             } catch(e) {
-              window.alert("印刷の起動に失敗しました。ブラウザの印刷機能をご確認ください。");
+              window.alert("印刷の起動に失敗しました。\nブラウザの印刷機能をご確認ください。");
               restore();
             }
-          }} style={{padding:"0.5rem 1rem",borderRadius:"0.4rem",border:"none",background:"#2563eb",color:"white",fontWeight:700,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>🖨 印刷 / PDF保存</button>
+          }} style={{padding:"0.4rem 0.85rem",borderRadius:"0.4rem",border:"none",background:"#2563eb",color:"white",fontWeight:700,fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>🖨 印刷 / PDF保存</button>
         </div>
 
         <style>{`
@@ -2771,11 +2863,29 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
           @media print {
             body * { visibility: hidden; }
             .quote-print, .quote-print * { visibility: visible; }
-            .quote-print { position: absolute; left: 0; top: 0; width: 210mm; box-shadow: none !important; padding: 8mm 8mm !important; }
+            .quote-print { position: absolute; left: 0; top: 0; width: 210mm; box-shadow: none !important; padding: 8mm 8mm !important; transform: none !important; }
+            .quote-scale-outer { width: auto !important; height: auto !important; overflow: visible !important; position: static !important; }
+            .quote-scale-inner { transform: none !important; position: static !important; width: auto !important; }
             .no-print { display: none !important; }
             @page { size: A4; margin: 0; }
           }
         `}</style>
+
+        {/* スケールラッパー（モバイル時に縮小して画面に収める） */}
+        <div className="quote-scale-outer" style={{
+          width: scale < 1 ? `${793.7 * scale}px` : "210mm",
+          height: scale < 1 ? `${docHeight * scale}px` : "auto",
+          margin: "0 auto",
+          overflow: "hidden",
+          position: "relative",
+        }}>
+          <div className="quote-scale-inner" ref={innerRef} style={{
+            transform: scale < 1 ? `scale(${scale})` : "none",
+            transformOrigin: "top left",
+            width: "210mm",
+            position: scale < 1 ? "absolute" : "relative",
+            top: 0, left: 0,
+          }}>
 
         {/* A4 ページ本体 */}
         <div className="quote-print" style={{
@@ -3029,6 +3139,8 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
             </tbody>
           </table>
         </div>
+          </div>{/* /quote-scale-inner */}
+        </div>{/* /quote-scale-outer */}
       </div>
     </div>
   );
@@ -10660,7 +10772,7 @@ ${orig}`})
           {activeDetail==="files"&&<DocumentSection 
             entityType="企業" entityId={comp.id} entityName={comp.name}
             files={comp.files||[]} currentUserId={currentUser?.id} currentUser={currentUser} users={users}
-            data={data} setData={setData}
+            data={data} setData={setData} save={save}
             onSaveFiles={fs => save({...data, companies: companies.map(c => c.id===comp.id ? {...c, files:fs} : c)})}/>}
         </div>
       );
@@ -10677,7 +10789,7 @@ ${orig}`})
     return (
       <div style={{display:"flex",height:isPC?"calc(100vh - 60px)":"auto",overflow:isPC?"hidden":"visible",justifyContent:isPC&&!activeCompany?"center":"flex-start"}}>
         {/* List pane */}
-        <div style={{width:isPC?(activeCompany?440:"100%"):"100%",maxWidth:isPC&&!activeCompany?960:"none",flexShrink:isPC&&!activeCompany?1:0,overflowY:isPC?"auto":"visible",borderRight:isPC&&activeCompany?"1px solid #e5e5ea":"none",transition:"width 0.2s",minWidth:isPC&&activeCompany?440:undefined,padding:isPC?"1rem 1.25rem":"0",boxSizing:"border-box"}}>
+        <div style={{width:isPC?(activeCompany?440:"100%"):"100%",maxWidth:isPC&&!activeCompany?720:"none",flexShrink:isPC&&!activeCompany?1:0,overflowY:isPC?"auto":"visible",borderRight:isPC&&activeCompany?"1px solid #e5e5ea":"none",transition:"width 0.2s",minWidth:isPC&&activeCompany?440:undefined,padding:isPC?"1rem 1.25rem":"0",boxSizing:"border-box"}}>
         <TopTabs/>
         <BulkBar statusMap={COMPANY_STATUS} applyFn={applyBulkComp} visibleIds={compVisibleIds} onDelete={deleteBulkComp}/>
         {/* 担当者絞り込み中の件数表示 */}
@@ -11292,7 +11404,7 @@ ${orig}`})
           {activeDetail==="files"&&<DocumentSection 
             entityType="業者" entityId={v.id} entityName={v.name}
             files={v.files||[]} currentUserId={currentUser?.id} currentUser={currentUser} users={users}
-            data={data} setData={setData}
+            data={data} setData={setData} save={save}
             onSaveFiles={fs => save({...data, vendors: vendors.map(x => x.id===v.id ? {...x, files:fs} : x)})}/>}
           {sheet==="editVendor"&&(
             <Sheet title="業者を編集" onClose={()=>setSheet(null)}>
@@ -11389,7 +11501,7 @@ ${orig}`})
     return (
       <div style={{display:"flex",height:isPC?"calc(100vh - 60px)":"auto",overflow:isPC?"hidden":"visible",justifyContent:isPC&&!activeVendor?"center":"flex-start"}}>
         {/* List pane */}
-        <div style={{width:isPC?(activeVendor?440:"100%"):"100%",maxWidth:isPC&&!activeVendor?960:"none",flexShrink:isPC&&!activeVendor?1:0,overflowY:isPC?"auto":"visible",borderRight:isPC&&activeVendor?"1px solid #e5e5ea":"none",transition:"width 0.2s",minWidth:isPC&&activeVendor?440:undefined,padding:isPC?"1rem 1.25rem":"0",boxSizing:"border-box"}}>
+        <div style={{width:isPC?(activeVendor?440:"100%"):"100%",maxWidth:isPC&&!activeVendor?720:"none",flexShrink:isPC&&!activeVendor?1:0,overflowY:isPC?"auto":"visible",borderRight:isPC&&activeVendor?"1px solid #e5e5ea":"none",transition:"width 0.2s",minWidth:isPC&&activeVendor?440:undefined,padding:isPC?"1rem 1.25rem":"0",boxSizing:"border-box"}}>
         <TopTabs/>
         <BulkBar statusMap={VENDOR_STATUS} applyFn={applyBulkVend} visibleIds={vendVisibleIds} onDelete={deleteBulkVend}/>
         {/* フォロー中業者 */}
@@ -12059,7 +12171,7 @@ ${orig}`})
         {activeDetail==="files"&&<div style={{marginBottom:"1rem"}}><DocumentSection 
           entityType="自治体" entityId={muni.id} entityName={muni.name}
           files={muni.files||[]} currentUserId={currentUser?.id} currentUser={currentUser} users={users}
-          data={data} setData={setData}
+          data={data} setData={setData} save={save}
           onSaveFiles={fs => save({...data, municipalities: munis.map(m => String(m.id)===String(muni.id) ? {...m, files:fs} : m)})}/></div>}
         {/* 業者一覧（常時表示） */}
         <div style={{marginBottom:"1rem"}}>
@@ -12335,7 +12447,7 @@ ${orig}`})
   return (
     <div style={{display:"flex",height:isPC&&activeMuni&&muniScreen==="muniDetail"?"calc(100vh - 60px)":"auto",overflow:isPC&&activeMuni&&muniScreen==="muniDetail"?"hidden":"visible",justifyContent:isPC&&!(activeMuni&&muniScreen==="muniDetail")?"center":"flex-start"}}>
       {/* List/main pane */}
-      <div style={{width:isPC&&activeMuni&&muniScreen==="muniDetail"?500:"100%",maxWidth:isPC&&!(activeMuni&&muniScreen==="muniDetail")?960:"none",minWidth:isPC&&activeMuni&&muniScreen==="muniDetail"?500:undefined,flexShrink:isPC&&!(activeMuni&&muniScreen==="muniDetail")?1:0,overflowY:isPC&&activeMuni&&muniScreen==="muniDetail"?"auto":"visible",padding:isPC?"1rem 1.25rem":"0",boxSizing:"border-box"}}>
+      <div style={{width:isPC&&activeMuni&&muniScreen==="muniDetail"?500:"100%",maxWidth:isPC&&!(activeMuni&&muniScreen==="muniDetail")?720:"none",minWidth:isPC&&activeMuni&&muniScreen==="muniDetail"?500:undefined,flexShrink:isPC&&!(activeMuni&&muniScreen==="muniDetail")?1:0,overflowY:isPC&&activeMuni&&muniScreen==="muniDetail"?"auto":"visible",padding:isPC?"1rem 1.25rem":"0",boxSizing:"border-box"}}>
       <TopTabs/>
       {/* ── 自治体タブ（トップビュー） ── */}
       {salesTab==="muni"&&<>
