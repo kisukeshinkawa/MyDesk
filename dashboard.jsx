@@ -293,7 +293,7 @@ async function saveData(d) {
   }
   // 配列フィールドがすべて空で、かつ現在のDBに保存済みデータがある場合は書き込まない
   // （全消去を防ぐ強化ガード）
-  const ARRAY_KEYS = ["tasks","projects","companies","vendors","municipalities","businessCards"];
+  const ARRAY_KEYS = ["tasks","projects","companies","vendors","municipalities","businessCards","quotes"];
   const allArraysEmpty = ARRAY_KEYS.every(k => !Array.isArray(d[k]) || d[k].length === 0);
   // analyticsにデータがあれば配列が空でも保存を許可（分析データ専用保存の保護）
   const hasAnalyticsData = d.analytics && typeof d.analytics === "object" && Object.keys(d.analytics).length > 0;
@@ -1968,6 +1968,442 @@ function ActivityLog({ data, users=[], filterTypes=null }) {
 }
 
 // ─── TASK VIEW ────────────────────────────────────────────────────────────────
+// ─── 見積書ビュー ─────────────────────────────────────────────────────
+function QuoteView({data, setData, users=[], currentUser=null, onNavigateToSales}) {
+  const uid = currentUser?.id;
+  const quotes = data.quotes || [];
+  const [activeQuoteId, setActiveQuoteId] = React.useState(null);
+  const [showNewModal, setShowNewModal] = React.useState(false);
+  const [searchQ, setSearchQ] = React.useState("");
+  
+  const activeQuote = quotes.find(q => q.id === activeQuoteId);
+  
+  const createQuote = () => {
+    const today = new Date().toISOString().slice(0,10);
+    const newQuote = {
+      id: Date.now() + Math.random(),
+      no: "Q" + Date.now().toString().slice(-8),
+      issuedDate: today,
+      companyInfoId: "holdings", // デフォルト
+      to: "", // 宛先
+      site: "", // 事業所名
+      workContent: "", // 業務内容
+      validUntil: "御見積り後", // 有効期限
+      contactName: "", // ご担当者
+      items: [], // {description, qty, unit, price}
+      adjustment: 0,
+      misc: 0,
+      taxRate: 10,
+      months: "",
+      remarks: "",
+      createdBy: uid,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const nd = {...data, quotes: [newQuote, ...quotes]};
+    setData(nd);
+    setActiveQuoteId(newQuote.id);
+    setShowNewModal(false);
+  };
+  
+  const updateQuote = (id, updates) => {
+    const nd = {...data, quotes: quotes.map(q => q.id===id ? {...q, ...updates, updatedAt:new Date().toISOString()} : q)};
+    setData(nd);
+  };
+  
+  const deleteQuote = (id) => {
+    if(!window.confirm("この見積書を削除しますか？")) return;
+    const nd = {...data, quotes: quotes.filter(q => q.id !== id)};
+    setData(nd);
+    if(activeQuoteId === id) setActiveQuoteId(null);
+  };
+  
+  const filteredQuotes = quotes.filter(q => {
+    if(!searchQ) return true;
+    const haystack = [q.no, q.to, q.site, q.workContent].join(" ").toLowerCase();
+    return haystack.includes(searchQ.toLowerCase());
+  });
+  
+  if(activeQuote) {
+    return <QuoteEditor quote={activeQuote} users={users} currentUser={currentUser}
+      onUpdate={(updates) => updateQuote(activeQuote.id, updates)}
+      onDelete={() => deleteQuote(activeQuote.id)}
+      onClose={() => setActiveQuoteId(null)}/>;
+  }
+  
+  return (
+    <div style={{padding:"1rem"}}>
+      <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"1rem",flexWrap:"wrap"}}>
+        <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder="🔍 見積書を検索..."
+          style={{flex:1,minWidth:200,padding:"0.5rem 0.75rem",border:"1.5px solid #e5e7eb",borderRadius:"0.5rem",fontSize:"0.85rem",fontFamily:"inherit"}}/>
+        <button onClick={createQuote} style={{padding:"0.55rem 1rem",borderRadius:"0.5rem",border:"none",background:"#2563eb",color:"white",fontWeight:700,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>＋ 新規作成</button>
+      </div>
+      
+      {filteredQuotes.length === 0 ? (
+        <div style={{padding:"3rem",textAlign:"center",color:"#6b7280"}}>
+          <div style={{fontSize:"3rem",marginBottom:"0.5rem"}}>📄</div>
+          <div style={{fontSize:"0.9rem",fontWeight:600,marginBottom:"0.3rem"}}>{searchQ ? "該当する見積書はありません" : "まだ見積書がありません"}</div>
+          {!searchQ && <div style={{fontSize:"0.8rem"}}>「＋ 新規作成」から見積書を作成できます</div>}
+        </div>
+      ) : (
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill, minmax(280px, 1fr))",gap:"0.75rem"}}>
+          {filteredQuotes.map(q => {
+            const total = (q.items||[]).reduce((sum, it) => sum + (Number(it.qty)||0)*(Number(it.price)||0), 0) + (Number(q.misc)||0) + (Number(q.adjustment)||0);
+            const tax = Math.round(total * (Number(q.taxRate)||0) / 100);
+            const grandTotal = total + tax;
+            const company = COMPANY_INFO.find(c => c.id === q.companyInfoId) || COMPANY_INFO[0];
+            const author = users.find(u => u.id === q.createdBy);
+            return (
+              <div key={q.id} onClick={() => setActiveQuoteId(q.id)}
+                style={{background:"white",border:"1.5px solid #e5e7eb",borderRadius:"0.625rem",padding:"0.85rem",cursor:"pointer",transition:"all 0.15s"}}
+                onMouseEnter={e=>{e.currentTarget.style.borderColor="#2563eb";e.currentTarget.style.boxShadow="0 2px 8px rgba(37,99,235,0.1)";}}
+                onMouseLeave={e=>{e.currentTarget.style.borderColor="#e5e7eb";e.currentTarget.style.boxShadow="none";}}>
+                <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginBottom:"0.4rem"}}>
+                  <span style={{fontSize:"0.62rem",fontWeight:700,color:"white",background:"#2563eb",padding:"0.1rem 0.4rem",borderRadius:"3px"}}>{q.no}</span>
+                  <span style={{fontSize:"0.62rem",color:"#6b7280"}}>{q.issuedDate}</span>
+                </div>
+                <div style={{fontSize:"0.92rem",fontWeight:700,color:"#111827",marginBottom:"0.2rem",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{q.to || "(宛先未入力)"}</div>
+                <div style={{fontSize:"0.72rem",color:"#6b7280",marginBottom:"0.5rem",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{q.workContent || "(業務内容未入力)"}</div>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                  <span style={{fontSize:"0.62rem",color:"#6b7280"}}>{company.name}</span>
+                  <span style={{fontSize:"0.95rem",fontWeight:800,color:"#059669"}}>¥{grandTotal.toLocaleString()}-</span>
+                </div>
+                {author && <div style={{fontSize:"0.62rem",color:"#9ca3af",marginTop:"0.25rem"}}>作成: {author.name}</div>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// 見積書エディタ
+function QuoteEditor({quote, users=[], currentUser, onUpdate, onDelete, onClose}) {
+  const [showPreview, setShowPreview] = React.useState(false);
+  const author = users.find(u => u.id === quote.createdBy) || currentUser;
+  const authorLastName = (author?.name || "").split(/\s+/)[0] || "";
+  const company = COMPANY_INFO.find(c => c.id === quote.companyInfoId) || COMPANY_INFO[0];
+  
+  const subtotal = (quote.items||[]).reduce((sum, it) => sum + (Number(it.qty)||0)*(Number(it.price)||0), 0);
+  const adjustedSub = subtotal + (Number(quote.misc)||0) + (Number(quote.adjustment)||0);
+  const tax = Math.round(adjustedSub * (Number(quote.taxRate)||0) / 100);
+  const grandTotal = adjustedSub + tax;
+  
+  const updateItem = (idx, field, value) => {
+    const newItems = [...(quote.items||[])];
+    newItems[idx] = {...newItems[idx], [field]: value};
+    onUpdate({items: newItems});
+  };
+  const addItem = () => {
+    const newItems = [...(quote.items||[]), {description:"", qty:1, unit:"", price:0, remarks:""}];
+    onUpdate({items: newItems});
+  };
+  const removeItem = (idx) => {
+    onUpdate({items: (quote.items||[]).filter((_,i)=>i!==idx)});
+  };
+  
+  if(showPreview) {
+    return <QuotePreview quote={quote} company={company} authorLastName={authorLastName} onClose={() => setShowPreview(false)}/>;
+  }
+  
+  const inputStyle = {width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #e5e7eb",borderRadius:"0.4rem",fontSize:"0.85rem",fontFamily:"inherit",boxSizing:"border-box"};
+  const labelStyle = {fontSize:"0.7rem",fontWeight:700,color:"#6b7280",marginBottom:"0.2rem",display:"block"};
+  
+  return (
+    <div style={{padding:"1rem",maxWidth:900,margin:"0 auto"}}>
+      <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"1rem",flexWrap:"wrap"}}>
+        <button onClick={onClose} style={{padding:"0.4rem 0.7rem",borderRadius:"0.4rem",border:"1px solid #e5e7eb",background:"white",color:"#6b7280",fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit"}}>← 一覧へ</button>
+        <span style={{fontSize:"0.85rem",color:"#6b7280"}}>見積書 #{quote.no}</span>
+        <div style={{flex:1}}/>
+        <button onClick={() => setShowPreview(true)} style={{padding:"0.5rem 0.85rem",borderRadius:"0.4rem",border:"none",background:"#2563eb",color:"white",fontWeight:700,fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit"}}>👁 プレビュー / PDF</button>
+        <button onClick={onDelete} style={{padding:"0.5rem 0.7rem",borderRadius:"0.4rem",border:"1.5px solid #fca5a5",background:"#fef2f2",color:"#dc2626",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}}>🗑 削除</button>
+      </div>
+      
+      <div style={{background:"white",border:"1.5px solid #e5e7eb",borderRadius:"0.625rem",padding:"1.25rem",marginBottom:"1rem"}}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.85rem",marginBottom:"0.85rem"}}>
+          <div>
+            <label style={labelStyle}>発行日</label>
+            <input type="date" value={quote.issuedDate} onChange={e => onUpdate({issuedDate: e.target.value})} style={inputStyle}/>
+          </div>
+          <div>
+            <label style={labelStyle}>弊社（自社情報）</label>
+            <select value={quote.companyInfoId} onChange={e => onUpdate({companyInfoId: e.target.value})} style={inputStyle}>
+              {COMPANY_INFO.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.85rem",marginBottom:"0.85rem"}}>
+          <div>
+            <label style={labelStyle}>宛先 *</label>
+            <input value={quote.to||""} onChange={e => onUpdate({to: e.target.value})} placeholder="例: 株式会社○○ 御中 / 山田 様" style={inputStyle}/>
+          </div>
+          <div>
+            <label style={labelStyle}>事業所名</label>
+            <input value={quote.site||""} onChange={e => onUpdate({site: e.target.value})} placeholder="例: ○○本社" style={inputStyle}/>
+          </div>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"0.85rem",marginBottom:"0.85rem"}}>
+          <div>
+            <label style={labelStyle}>業務内容</label>
+            <input value={quote.workContent||""} onChange={e => onUpdate({workContent: e.target.value})} placeholder="例: 廃棄物収集運搬" style={inputStyle}/>
+          </div>
+          <div>
+            <label style={labelStyle}>ご担当者</label>
+            <input value={quote.contactName||""} onChange={e => onUpdate({contactName: e.target.value})} placeholder="例: 田中様" style={inputStyle}/>
+          </div>
+          <div>
+            <label style={labelStyle}>有効期限</label>
+            <input value={quote.validUntil||""} onChange={e => onUpdate({validUntil: e.target.value})} placeholder="例: 御見積り後30日" style={inputStyle}/>
+          </div>
+        </div>
+        <div>
+          <label style={labelStyle}>ヶ月（任意）</label>
+          <input value={quote.months||""} onChange={e => onUpdate({months: e.target.value})} placeholder="例: 12" style={{...inputStyle, maxWidth:120}}/>
+        </div>
+      </div>
+      
+      {/* 明細 */}
+      <div style={{background:"white",border:"1.5px solid #e5e7eb",borderRadius:"0.625rem",padding:"1rem",marginBottom:"1rem"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.6rem"}}>
+          <div style={{fontSize:"0.95rem",fontWeight:800,color:"#111827"}}>明細</div>
+          <button onClick={addItem} style={{padding:"0.35rem 0.7rem",borderRadius:"0.35rem",border:"1.5px solid #93c5fd",background:"#eff6ff",color:"#1d4ed8",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}}>＋ 行を追加</button>
+        </div>
+        <div style={{overflowX:"auto"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:"0.82rem"}}>
+            <thead>
+              <tr style={{background:"#f9fafb",borderBottom:"1px solid #e5e7eb"}}>
+                <th style={{padding:"0.45rem",textAlign:"left",fontWeight:700,fontSize:"0.72rem",color:"#6b7280",width:30}}>#</th>
+                <th style={{padding:"0.45rem",textAlign:"left",fontWeight:700,fontSize:"0.72rem",color:"#6b7280"}}>内容</th>
+                <th style={{padding:"0.45rem",textAlign:"right",fontWeight:700,fontSize:"0.72rem",color:"#6b7280",width:70}}>数量</th>
+                <th style={{padding:"0.45rem",textAlign:"left",fontWeight:700,fontSize:"0.72rem",color:"#6b7280",width:70}}>単位</th>
+                <th style={{padding:"0.45rem",textAlign:"right",fontWeight:700,fontSize:"0.72rem",color:"#6b7280",width:100}}>単価</th>
+                <th style={{padding:"0.45rem",textAlign:"right",fontWeight:700,fontSize:"0.72rem",color:"#6b7280",width:110}}>金額</th>
+                <th style={{padding:"0.45rem",width:30}}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {(quote.items||[]).map((it, idx) => {
+                const amount = (Number(it.qty)||0)*(Number(it.price)||0);
+                return (
+                  <tr key={idx} style={{borderBottom:"1px solid #f3f4f6"}}>
+                    <td style={{padding:"0.4rem",color:"#9ca3af",fontSize:"0.75rem"}}>{idx+1}</td>
+                    <td style={{padding:"0.3rem"}}><input value={it.description||""} onChange={e => updateItem(idx,"description",e.target.value)} placeholder="品目・サービス内容" style={{...inputStyle,padding:"0.3rem 0.45rem",fontSize:"0.82rem"}}/></td>
+                    <td style={{padding:"0.3rem"}}><input type="number" value={it.qty||""} onChange={e => updateItem(idx,"qty",e.target.value)} style={{...inputStyle,padding:"0.3rem 0.4rem",fontSize:"0.82rem",textAlign:"right"}}/></td>
+                    <td style={{padding:"0.3rem"}}><input value={it.unit||""} onChange={e => updateItem(idx,"unit",e.target.value)} placeholder="個" style={{...inputStyle,padding:"0.3rem 0.4rem",fontSize:"0.82rem"}}/></td>
+                    <td style={{padding:"0.3rem"}}><input type="number" value={it.price||""} onChange={e => updateItem(idx,"price",e.target.value)} style={{...inputStyle,padding:"0.3rem 0.4rem",fontSize:"0.82rem",textAlign:"right"}}/></td>
+                    <td style={{padding:"0.4rem",textAlign:"right",fontWeight:700,color:"#374151"}}>¥{amount.toLocaleString()}</td>
+                    <td style={{padding:"0.3rem",textAlign:"center"}}><button onClick={() => removeItem(idx)} style={{background:"none",border:"none",cursor:"pointer",color:"#dc2626",fontSize:"0.85rem",padding:"0.2rem"}}>🗑</button></td>
+                  </tr>
+                );
+              })}
+              {(quote.items||[]).length === 0 && (
+                <tr><td colSpan="7" style={{padding:"1.25rem",textAlign:"center",color:"#9ca3af",fontSize:"0.8rem"}}>「＋ 行を追加」から明細を追加してください</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      
+      {/* 計算サマリ */}
+      <div style={{background:"white",border:"1.5px solid #e5e7eb",borderRadius:"0.625rem",padding:"1rem",marginBottom:"1rem",maxWidth:480,marginLeft:"auto"}}>
+        <div style={{display:"flex",justifyContent:"space-between",padding:"0.4rem 0",fontSize:"0.85rem"}}>
+          <span style={{color:"#6b7280"}}>小計</span>
+          <span style={{fontWeight:700}}>¥{subtotal.toLocaleString()}</span>
+        </div>
+        <div style={{display:"flex",justifyContent:"space-between",padding:"0.4rem 0",fontSize:"0.85rem",alignItems:"center"}}>
+          <span style={{color:"#6b7280"}}>諸経費</span>
+          <input type="number" value={quote.misc||0} onChange={e => onUpdate({misc: Number(e.target.value)||0})} style={{...inputStyle,maxWidth:120,textAlign:"right"}}/>
+        </div>
+        <div style={{display:"flex",justifyContent:"space-between",padding:"0.4rem 0",fontSize:"0.85rem",alignItems:"center"}}>
+          <span style={{color:"#6b7280"}}>調整費</span>
+          <input type="number" value={quote.adjustment||0} onChange={e => onUpdate({adjustment: Number(e.target.value)||0})} style={{...inputStyle,maxWidth:120,textAlign:"right"}}/>
+        </div>
+        <div style={{display:"flex",justifyContent:"space-between",padding:"0.4rem 0",fontSize:"0.85rem",borderTop:"1px solid #e5e7eb"}}>
+          <span style={{color:"#374151",fontWeight:700}}>小計（税抜）</span>
+          <span style={{fontWeight:800}}>¥{adjustedSub.toLocaleString()}</span>
+        </div>
+        <div style={{display:"flex",justifyContent:"space-between",padding:"0.4rem 0",fontSize:"0.85rem",alignItems:"center"}}>
+          <span style={{color:"#6b7280"}}>消費税
+            <input type="number" value={quote.taxRate||10} onChange={e => onUpdate({taxRate: Number(e.target.value)||0})} style={{...inputStyle,maxWidth:60,marginLeft:"0.4rem",padding:"0.15rem 0.3rem"}}/>%
+          </span>
+          <span style={{fontWeight:700}}>¥{tax.toLocaleString()}</span>
+        </div>
+        <div style={{display:"flex",justifyContent:"space-between",padding:"0.5rem 0",fontSize:"1rem",borderTop:"2px solid #2563eb",marginTop:"0.3rem"}}>
+          <span style={{color:"#1e40af",fontWeight:800}}>合計（税込）</span>
+          <span style={{fontWeight:800,color:"#1e40af"}}>¥{grandTotal.toLocaleString()}-</span>
+        </div>
+      </div>
+      
+      {/* 備考 */}
+      <div style={{background:"white",border:"1.5px solid #e5e7eb",borderRadius:"0.625rem",padding:"1rem"}}>
+        <label style={labelStyle}>備考</label>
+        <textarea value={quote.remarks||""} onChange={e => onUpdate({remarks: e.target.value})}
+          style={{...inputStyle,minHeight:80,resize:"vertical"}} placeholder="補足事項があれば記入..."/>
+      </div>
+    </div>
+  );
+}
+
+// 見積書プレビュー（PDF風表示・印刷可能）
+function QuotePreview({quote, company, authorLastName, onClose}) {
+  const subtotal = (quote.items||[]).reduce((sum, it) => sum + (Number(it.qty)||0)*(Number(it.price)||0), 0);
+  const adjustedSub = subtotal + (Number(quote.misc)||0) + (Number(quote.adjustment)||0);
+  const tax = Math.round(adjustedSub * (Number(quote.taxRate)||0) / 100);
+  const grandTotal = adjustedSub + tax;
+  const items = [...(quote.items||[])];
+  // 行数を15行に固定（ひな形に合わせる）
+  while(items.length < 15) items.push(null);
+  
+  const dateStr = quote.issuedDate ? quote.issuedDate.replace(/-/g,"年").replace(/年(\d+)$/,"年$1月") + "日" : "";
+  // 整形: 2026-04-29 → 2026年4月29日
+  const fmt = (d) => {
+    if(!d) return "";
+    const m = d.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if(!m) return d;
+    return `${m[1]}年${parseInt(m[2])}月${parseInt(m[3])}日`;
+  };
+  
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:1000,overflow:"auto",padding:"1rem"}}>
+      <div style={{maxWidth:900,margin:"0 auto",background:"white",borderRadius:"0.625rem",overflow:"hidden"}}>
+        {/* ヘッダー（操作ボタン） - 印刷時非表示 */}
+        <div className="no-print" style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.85rem 1rem",borderBottom:"1px solid #e5e7eb",background:"#f9fafb"}}>
+          <button onClick={onClose} style={{padding:"0.4rem 0.75rem",borderRadius:"0.4rem",border:"1px solid #e5e7eb",background:"white",fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit"}}>← 戻る</button>
+          <span style={{fontSize:"0.85rem",color:"#6b7280",fontWeight:700}}>見積書プレビュー</span>
+          <div style={{flex:1}}/>
+          <button onClick={() => window.print()} style={{padding:"0.5rem 1rem",borderRadius:"0.4rem",border:"none",background:"#2563eb",color:"white",fontWeight:700,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>🖨 印刷 / PDF保存</button>
+        </div>
+        
+        {/* 印刷スタイル */}
+        <style>{`
+          @media print {
+            body * { visibility: hidden; }
+            .quote-print, .quote-print * { visibility: visible; }
+            .quote-print { position: absolute; left: 0; top: 0; width: 100%; }
+            .no-print { display: none !important; }
+          }
+          .quote-print { font-family: "Hiragino Sans", "Yu Gothic", sans-serif; }
+        `}</style>
+        
+        {/* 見積書本体 */}
+        <div className="quote-print" style={{padding:"2rem 2.5rem",fontSize:"11pt",color:"#000",lineHeight:1.5}}>
+          {/* タイトル */}
+          <div style={{textAlign:"center",fontSize:"22pt",fontWeight:700,letterSpacing:"0.5em",marginBottom:"1.5rem",borderBottom:"2px solid #000",paddingBottom:"0.6rem",display:"inline-block",width:"auto",margin:"0 auto 1.5rem",position:"relative",left:"50%",transform:"translateX(-50%)"}}>御　見　積　書</div>
+          
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:"1.5rem"}}>
+            {/* 左：宛先 */}
+            <div style={{flex:1}}>
+              <div style={{fontSize:"13pt",fontWeight:700,marginBottom:"0.3rem",borderBottom:"1px solid #000",paddingBottom:"0.2rem",display:"inline-block"}}>{quote.to || ""} 御中</div>
+              {quote.contactName && <div style={{fontSize:"11pt",marginTop:"0.4rem"}}>{quote.contactName} 様</div>}
+              {quote.site && <div style={{fontSize:"10pt",marginTop:"0.4rem",color:"#333"}}>事業所名： {quote.site}</div>}
+              {quote.workContent && <div style={{fontSize:"10pt",marginTop:"0.2rem",color:"#333"}}>業務内容： {quote.workContent}</div>}
+              {quote.contactName && <div style={{fontSize:"10pt",marginTop:"0.2rem",color:"#333"}}>ご担当者： {quote.contactName}</div>}
+              <div style={{fontSize:"10pt",marginTop:"0.2rem",color:"#333"}}>有効期限： {quote.validUntil || "御見積り後"}</div>
+            </div>
+            {/* 右：自社情報 + 日付 */}
+            <div style={{textAlign:"right",fontSize:"10pt",position:"relative"}}>
+              <div style={{marginBottom:"0.5rem"}}>{fmt(quote.issuedDate)}</div>
+              <div style={{fontWeight:700,fontSize:"12pt",marginBottom:"0.2rem"}}>{company.name}</div>
+              <div>{company.zip}</div>
+              <div>{company.address}</div>
+              <div>TEL  {company.tel}</div>
+              <div>FAX  {company.fax}</div>
+              {/* 担当者印 */}
+              {authorLastName && (
+                <div style={{position:"absolute",right:"4rem",top:"3rem",border:"2px solid #d00",borderRadius:"50%",width:"55px",height:"55px",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"14pt",fontWeight:700,color:"#d00",transform:"rotate(-12deg)",fontFamily:"serif",letterSpacing:"-0.05em"}}>{authorLastName}</div>
+              )}
+            </div>
+          </div>
+          
+          {/* リード文 */}
+          <div style={{fontSize:"10.5pt",marginBottom:"0.6rem"}}>下記の通りお見積りさせていただきます。</div>
+          <div style={{fontSize:"10.5pt",marginBottom:"1rem"}}>ご検討のほど、お願い申し上げます。</div>
+          
+          {/* 合計欄 */}
+          <div style={{border:"2px solid #000",padding:"0.5rem 0.85rem",marginBottom:"0.7rem",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <div style={{fontSize:"12pt",fontWeight:700}}>見積金額</div>
+            <div style={{fontSize:"16pt",fontWeight:800}}>¥{grandTotal.toLocaleString()}-</div>
+            <div style={{fontSize:"10pt"}}>（税込）</div>
+            {quote.months && <div style={{fontSize:"10pt"}}>{quote.months}ヶ月</div>}
+            <div style={{fontSize:"9pt",color:"#666"}}>承認 / 検印 / 担当者</div>
+          </div>
+          
+          {/* 明細表 */}
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:"10pt",marginBottom:"0.6rem"}}>
+            <thead>
+              <tr>
+                <th style={{border:"1px solid #000",padding:"0.3rem",background:"#f0f0f0",textAlign:"center",width:"30px"}}>#</th>
+                <th style={{border:"1px solid #000",padding:"0.3rem",background:"#f0f0f0"}}>内容</th>
+                <th style={{border:"1px solid #000",padding:"0.3rem",background:"#f0f0f0",width:"60px"}}>数量</th>
+                <th style={{border:"1px solid #000",padding:"0.3rem",background:"#f0f0f0",width:"50px"}}>単位</th>
+                <th style={{border:"1px solid #000",padding:"0.3rem",background:"#f0f0f0",width:"90px"}}>単価</th>
+                <th style={{border:"1px solid #000",padding:"0.3rem",background:"#f0f0f0",width:"100px"}}>金額</th>
+                <th style={{border:"1px solid #000",padding:"0.3rem",background:"#f0f0f0",width:"100px"}}>備考</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((it, idx) => {
+                const amount = it ? (Number(it.qty)||0)*(Number(it.price)||0) : 0;
+                return (
+                  <tr key={idx}>
+                    <td style={{border:"1px solid #000",padding:"0.25rem 0.3rem",textAlign:"center",height:"22px"}}>{idx+1}</td>
+                    <td style={{border:"1px solid #000",padding:"0.25rem 0.4rem"}}>{it?.description || ""}</td>
+                    <td style={{border:"1px solid #000",padding:"0.25rem 0.3rem",textAlign:"right"}}>{it?.qty || ""}</td>
+                    <td style={{border:"1px solid #000",padding:"0.25rem 0.3rem",textAlign:"center"}}>{it?.unit || ""}</td>
+                    <td style={{border:"1px solid #000",padding:"0.25rem 0.4rem",textAlign:"right"}}>{it?.price ? Number(it.price).toLocaleString() : ""}</td>
+                    <td style={{border:"1px solid #000",padding:"0.25rem 0.4rem",textAlign:"right"}}>{it ? amount.toLocaleString() : ""}</td>
+                    <td style={{border:"1px solid #000",padding:"0.25rem 0.4rem",fontSize:"9pt"}}>{it?.remarks || ""}</td>
+                  </tr>
+                );
+              })}
+              {/* 集計行 */}
+              <tr>
+                <td colSpan="5" style={{border:"1px solid #000",padding:"0.25rem 0.4rem",textAlign:"right",fontWeight:700}}>小計</td>
+                <td style={{border:"1px solid #000",padding:"0.25rem 0.4rem",textAlign:"right",fontWeight:700}}>{subtotal.toLocaleString()}</td>
+                <td style={{border:"1px solid #000",padding:"0.25rem 0.4rem"}}></td>
+              </tr>
+              <tr>
+                <td colSpan="5" style={{border:"1px solid #000",padding:"0.25rem 0.4rem",textAlign:"right"}}>諸経費</td>
+                <td style={{border:"1px solid #000",padding:"0.25rem 0.4rem",textAlign:"right"}}>{(Number(quote.misc)||0).toLocaleString()}</td>
+                <td style={{border:"1px solid #000",padding:"0.25rem 0.4rem"}}></td>
+              </tr>
+              <tr>
+                <td colSpan="5" style={{border:"1px solid #000",padding:"0.25rem 0.4rem",textAlign:"right"}}>調整費</td>
+                <td style={{border:"1px solid #000",padding:"0.25rem 0.4rem",textAlign:"right"}}>{(Number(quote.adjustment)||0).toLocaleString()}</td>
+                <td style={{border:"1px solid #000",padding:"0.25rem 0.4rem"}}></td>
+              </tr>
+              <tr>
+                <td colSpan="5" style={{border:"1px solid #000",padding:"0.25rem 0.4rem",textAlign:"right",fontWeight:700}}>小計（税抜）</td>
+                <td style={{border:"1px solid #000",padding:"0.25rem 0.4rem",textAlign:"right",fontWeight:700}}>{adjustedSub.toLocaleString()}</td>
+                <td style={{border:"1px solid #000",padding:"0.25rem 0.4rem"}}></td>
+              </tr>
+              <tr>
+                <td colSpan="5" style={{border:"1px solid #000",padding:"0.25rem 0.4rem",textAlign:"right"}}>消費税 {quote.taxRate||10}%</td>
+                <td style={{border:"1px solid #000",padding:"0.25rem 0.4rem",textAlign:"right"}}>{tax.toLocaleString()}</td>
+                <td style={{border:"1px solid #000",padding:"0.25rem 0.4rem"}}></td>
+              </tr>
+              <tr>
+                <td colSpan="5" style={{border:"2px solid #000",padding:"0.35rem 0.4rem",textAlign:"right",fontWeight:800,background:"#f0f0f0"}}>合計（税込）</td>
+                <td style={{border:"2px solid #000",padding:"0.35rem 0.4rem",textAlign:"right",fontWeight:800,background:"#f0f0f0"}}>{grandTotal.toLocaleString()}</td>
+                <td style={{border:"1px solid #000",padding:"0.25rem 0.4rem"}}></td>
+              </tr>
+            </tbody>
+          </table>
+          
+          {/* 備考 */}
+          {quote.remarks && (
+            <div style={{border:"1px solid #000",padding:"0.5rem 0.7rem",fontSize:"10pt",minHeight:"60px",whiteSpace:"pre-wrap"}}>
+              <div style={{fontWeight:700,marginBottom:"0.2rem"}}>備考</div>
+              {quote.remarks}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjTab,setPjTab,navTarget,clearNavTarget,onNavigateToSales}) {
   const uid = currentUser?.id;
 
@@ -2795,8 +3231,23 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     </div>
   );
 
+  // ビュー切替: タスク・プロジェクト or 見積書
+  const [mainView, setMainView] = React.useState(() => localStorage.getItem("md_taskMainView") || "tasks");
+  const switchView = (v) => { setMainView(v); localStorage.setItem("md_taskMainView", v); };
+
   return (
     <div>
+      {/* メインビュー切替タブ */}
+      <div style={{display:"flex",gap:"0.4rem",marginBottom:"1rem",borderBottom:`1px solid ${C.border}`,paddingBottom:"0.4rem"}}>
+        <button onClick={()=>switchView("tasks")}
+          style={{padding:"0.5rem 1rem",borderRadius:"0.4rem 0.4rem 0 0",border:"none",borderBottom:mainView==="tasks"?`2.5px solid ${C.accent}`:"2.5px solid transparent",background:"none",color:mainView==="tasks"?C.accent:C.textSub,fontWeight:mainView==="tasks"?800:600,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>📋 タスク・プロジェクト</button>
+        <button onClick={()=>switchView("quotes")}
+          style={{padding:"0.5rem 1rem",borderRadius:"0.4rem 0.4rem 0 0",border:"none",borderBottom:mainView==="quotes"?`2.5px solid ${C.accent}`:"2.5px solid transparent",background:"none",color:mainView==="quotes"?C.accent:C.textSub,fontWeight:mainView==="quotes"?800:600,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>📄 見積書</button>
+      </div>
+      
+      {mainView==="quotes" && <QuoteView data={data} setData={setData} users={users} currentUser={currentUser} onNavigateToSales={onNavigateToSales}/>}
+      {mainView==="tasks" && <></>/* タスク・プロジェクト本体は下に続く */}
+      {mainView==="tasks" && <>
       {/* 期限アラート */}
       {urgentTasks.length>0&&(
         <div style={{marginBottom:"1rem",background:"#fff7ed",border:"1.5px solid #fed7aa",borderRadius:"8px",overflow:"hidden"}}>
@@ -3001,6 +3452,8 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
 
       {/* ── 活動ログ ── */}
       <ActivityLog data={data} users={users} filterTypes={["タスク","プロジェクト"]} />
+      </>}
+      {/* タスク・プロジェクト関連モーダル（両ビュー共通） */}
       {sheet==="addTask"&&<Sheet title="タスクを追加" onClose={()=>setSheet(null)}>
         <TaskForm initial={{status:"未着手"}} salesData={data} users={users} currentUserId={uid} onClose={()=>setSheet(null)}
           onSave={f=>{addTask(f,null);}}/>
@@ -3615,6 +4068,15 @@ const JAPAN_REGIONS = [
   { region:"九州・沖縄", prefs:["福岡県","佐賀県","長崎県","熊本県","大分県","宮崎県","鹿児島県","沖縄県"] },
 ];
 const JAPAN_PREFS_SEED = JAPAN_REGIONS.flatMap(r=>r.prefs.map(name=>({name,region:r.region})));
+
+// ─── 弊社情報（見積書用） ─────────────────────────────────────────────
+const COMPANY_INFO = [
+  { id:"holdings", name:"株式会社西原商事ホールディングス", zip:"〒807-0821", address:"北九州市八幡西区陣原2-2-21", tel:"093-641-2055", fax:"093-641-2088" },
+  { id:"nishihara", name:"株式会社西原商事", zip:"〒807-0821", address:"北九州市八幡西区陣原2-2-21", tel:"093-641-2055", fax:"093-641-2088" },
+  { id:"beetle_mgmt", name:"株式会社ビートルマネージメント", zip:"〒807-0821", address:"北九州市八幡西区陣原2-8-2", tel:"093-644-0158", fax:"093-644-0168" },
+  { id:"beetle_eng", name:"株式会社ビートルエンジニアリング", zip:"〒807-0821", address:"北九州市八幡西区陣原2-8-2", tel:"093-644-0158", fax:"093-644-0168" },
+];
+
 
 
 // ─── MAP TAB ──────────────────────────────────────────────────────────────────
@@ -8479,12 +8941,58 @@ ${recentLogs}
     </span>;
   };
 
-  const AssigneeRow=({ids=[]})=>(
-    <div style={{display:"flex",flexWrap:"wrap",gap:"0.25rem"}}>
-      {(ids||[]).map(id=>{const u=userMap.get(id);return u?<span key={id} style={{fontSize:"0.68rem",background:C.accentBg,color:C.accent,padding:"0.1rem 0.5rem",borderRadius:"4px",fontWeight:500}}>{u.name}</span>:null;})}
-      {(!ids||ids.length===0)&&<span style={{fontSize:"0.7rem",color:C.textMuted}}>未設定</span>}
-    </div>
-  );
+  // 担当者表示 (compact: アバター+名前) + 編集機能
+  // 編集モード: onChange を渡すと、+ ボタンが出て、各バッジに ✕ も出る
+  const AssigneeRow=({ids=[],onChange,size="sm"})=>{
+    const [editOpen,setEditOpen]=React.useState(false);
+    const ref=React.useRef(null);
+    React.useEffect(()=>{
+      if(!editOpen) return;
+      const handler=(e)=>{ if(ref.current && !ref.current.contains(e.target)) setEditOpen(false); };
+      document.addEventListener("mousedown",handler);
+      return ()=>document.removeEventListener("mousedown",handler);
+    },[editOpen]);
+    const fontSize = size==="lg" ? "0.82rem" : "0.7rem";
+    const padding = size==="lg" ? "0.2rem 0.55rem" : "0.12rem 0.45rem";
+    const list = (ids||[]).map(id=>userMap.get(id)).filter(Boolean);
+    return (
+      <div ref={ref} style={{position:"relative",display:"inline-flex",alignItems:"center",flexWrap:"wrap",gap:"0.25rem"}}>
+        {list.length===0 ? (
+          <span style={{fontSize,color:C.textMuted,fontStyle:"italic"}}>担当者未設定</span>
+        ) : list.map(u=>(
+          <span key={u.id} style={{display:"inline-flex",alignItems:"center",gap:"0.2rem",fontSize,background:C.accentBg,color:C.accent,padding,borderRadius:"4px",fontWeight:600,whiteSpace:"nowrap"}}>
+            <span style={{width:14,height:14,borderRadius:"50%",background:C.accent,color:"white",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:"0.55rem",fontWeight:800,flexShrink:0}}>{(u.name||"?").charAt(0)}</span>
+            <span>{u.name}</span>
+            {onChange && <button type="button" onClick={(e)=>{e.stopPropagation();onChange(ids.filter(x=>x!==u.id));}} style={{background:"none",border:"none",cursor:"pointer",color:C.accent,opacity:0.5,padding:"0 0 0 0.15rem",fontSize:"0.65rem",fontFamily:"inherit",lineHeight:1}}>✕</button>}
+          </span>
+        ))}
+        {onChange && (
+          <>
+            <button type="button" onClick={()=>setEditOpen(o=>!o)} title="担当者を追加" style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:size==="lg"?22:18,height:size==="lg"?22:18,borderRadius:"50%",border:`1.5px dashed ${C.border}`,background:"white",color:C.textMuted,cursor:"pointer",fontSize:"0.7rem",fontWeight:700,padding:0,fontFamily:"inherit",flexShrink:0}}>＋</button>
+            {editOpen && (
+              <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,zIndex:50,background:"white",border:`1.5px solid ${C.border}`,borderRadius:"0.625rem",boxShadow:"0 4px 12px rgba(0,0,0,0.12)",padding:"0.4rem",minWidth:200,maxHeight:280,overflowY:"auto"}}>
+                <div style={{fontSize:"0.62rem",fontWeight:700,color:C.textMuted,padding:"0.15rem 0.4rem 0.35rem"}}>担当者を選択</div>
+                {users.map(u=>{
+                  const sel=(ids||[]).includes(u.id);
+                  return (
+                    <button key={u.id} type="button" onClick={()=>onChange(sel?(ids||[]).filter(i=>i!==u.id):[...(ids||[]),u.id])}
+                      style={{width:"100%",display:"flex",alignItems:"center",gap:"0.4rem",padding:"0.35rem 0.5rem",border:"none",background:sel?C.accentBg:"white",color:sel?C.accentDark:C.text,borderRadius:"0.4rem",cursor:"pointer",fontFamily:"inherit",fontWeight:sel?700:500,fontSize:"0.78rem",textAlign:"left",marginBottom:"0.1rem"}}
+                      onMouseEnter={e=>{if(!sel)e.currentTarget.style.background=C.bg;}}
+                      onMouseLeave={e=>{if(!sel)e.currentTarget.style.background="white";}}>
+                      <span style={{width:18,height:18,borderRadius:"50%",background:sel?C.accent:C.borderLight,color:sel?"white":C.textMuted,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:"0.6rem",fontWeight:800,flexShrink:0}}>{(u.name||"?").charAt(0)}</span>
+                      <span style={{flex:1}}>{u.name}</span>
+                      {sel && <span style={{fontSize:"0.85rem",color:C.accent}}>✓</span>}
+                    </button>
+                  );
+                })}
+                {users.length===0&&<div style={{fontSize:"0.75rem",color:C.textMuted,padding:"0.5rem"}}>ユーザーが登録されていません</div>}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    );
+  };
 
   const AssigneePicker=({ids=[],onChange})=>(
     <div style={{display:"flex",flexWrap:"wrap",gap:"0.35rem"}}>
@@ -9411,7 +9919,9 @@ ${orig}`})
             {/* 担当者 + 電話 */}
             {((comp.assigneeIds||[]).length>0||comp.phone)&&(
               <div style={{display:"flex",alignItems:"center",gap:"0.5rem",flexWrap:"wrap",marginBottom:"0.5rem"}}>
-                <AssigneeRow ids={comp.assigneeIds}/>
+                <AssigneeRow ids={comp.assigneeIds||[]} size="lg" onChange={ids=>{
+                    save({...data,companies:companies.map(x=>x.id===comp.id?{...x,assigneeIds:ids,updatedAt:new Date().toISOString().slice(0,10)}:x)});
+                  }}/>
                 {comp.phone&&<PhoneLink number={comp.phone} size="sm" onMtg={()=>setMtgModal({entityKey:"companies",entityId:comp.id,entityName:comp.name})} onCallRecord={()=>setMtgModal({entityKey:"companies",entityId:comp.id,entityName:comp.name,autoStart:true,callMode:true})}/>}
               </div>
             )}
@@ -9996,7 +10506,9 @@ ${orig}`})
             {/* 担当者 + 電話 */}
             {((v.assigneeIds||[]).length>0||v.phone)&&(
               <div style={{display:"flex",alignItems:"center",gap:"0.5rem",flexWrap:"wrap",marginBottom:"0.5rem"}}>
-                <AssigneeRow ids={v.assigneeIds}/>
+                <AssigneeRow ids={v.assigneeIds||[]} size="lg" onChange={ids=>{
+                  save({...data,vendors:vendors.map(x=>x.id===v.id?{...x,assigneeIds:ids,updatedAt:new Date().toISOString().slice(0,10)}:x)});
+                }}/>
                 {v.phone&&<PhoneLink number={v.phone} size="sm" onMtg={()=>setMtgModal({entityKey:"vendors",entityId:v.id,entityName:v.name})} onCallRecord={()=>setMtgModal({entityKey:"vendors",entityId:v.id,entityName:v.name,autoStart:true,callMode:true})}/>}
               </div>
             )}
@@ -10790,18 +11302,21 @@ ${orig}`})
               {muni.needFollow?"⭐ フォロー中":"☆ フォロー"}
             </button>
           </div>
-          {(muni.assigneeIds||[]).length>0&&<div style={{marginTop:"0.5rem",display:"flex",flexWrap:"wrap",gap:"0.3rem"}}>
-            {(muni.assigneeIds||[]).map(id=>{
-              const u=users.find(x=>x.id===id); if(!u) return null;
-              const role=(muni.assigneeRoles||{})[id]||"";
-              return (
-                <span key={id} style={{display:"inline-flex",alignItems:"center",gap:"0.25rem",fontSize:"0.7rem",background:C.accentBg,color:C.accent,padding:"0.15rem 0.5rem",borderRadius:"4px",fontWeight:600}}>
-                  👤 {u.name}
-                  {role&&<span style={{fontSize:"0.65rem",background:"#fef3c7",color:"#92400e",padding:"0.05rem 0.35rem",borderRadius:"3px",fontWeight:700}}>{role}</span>}
-                </span>
-              );
-            })}
-          </div>}
+          <div style={{marginTop:"0.5rem"}}>
+            <AssigneeRow ids={muni.assigneeIds||[]} size="lg" onChange={ids=>{
+              save({...data,municipalities:munis.map(m=>String(m.id)===String(activeMuni)?{...m,assigneeIds:ids,updatedAt:new Date().toISOString().slice(0,10)}:m)});
+            }}/>
+            {(muni.assigneeIds||[]).filter(id=>(muni.assigneeRoles||{})[id]).length>0 && (
+              <div style={{marginTop:"0.3rem",display:"flex",flexWrap:"wrap",gap:"0.25rem"}}>
+                {(muni.assigneeIds||[]).map(id=>{
+                  const u=users.find(x=>x.id===id);
+                  const role=(muni.assigneeRoles||{})[id];
+                  if(!u||!role) return null;
+                  return <span key={id} style={{fontSize:"0.62rem",background:"#fef3c7",color:"#92400e",padding:"0.1rem 0.4rem",borderRadius:"3px",fontWeight:700}}>{u.name}: {role}</span>;
+                })}
+              </div>
+            )}
+          </div>
           {/* 許可種別ごと業者数 */}
           <div style={{marginTop:"0.75rem",background:"#fafafa",border:"1px solid #e5e7eb",borderRadius:"0.625rem",padding:"0.625rem 0.75rem"}}>
             <div style={{fontSize:"0.65rem",fontWeight:700,color:C.textSub,marginBottom:"0.5rem"}}>📋 許可種別ごとの業者数</div>
