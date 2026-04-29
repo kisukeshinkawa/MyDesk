@@ -2822,25 +2822,23 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 <td colSpan={2} style={{...cellBase,textAlign:"center",borderTop:bThin,padding:"0 1mm",fontSize:"10.5pt"}}>業務内容：</td>
                 <td colSpan={5} style={{...cellBase,textAlign:"center",borderTop:bThin,whiteSpace:"normal"}}>{quote.workContent||""}</td>
                 <td colSpan={3}></td>
-                <td colSpan={3} style={{...cellBase,padding:"0 1mm",overflow:"hidden",whiteSpace:"nowrap",verticalAlign:"middle"}}>
+                <td colSpan={3} style={{...cellBase,padding:0,overflow:"hidden",whiteSpace:"nowrap",verticalAlign:"middle"}}>
                   {(()=>{
                     const nm = company.name||"";
                     const len = [...nm].length;
                     if(!nm) return null;
-                    // 必ず1行で表示。文字数で自動サイズ調整（K-M=45mm内に収める）
-                    let fs, useFlex;
-                    if(len <= 8) { fs = "13pt"; useFlex = true; }       // 「株式会社西原商事」 distributed
-                    else if(len <= 9) { fs = "11.5pt"; useFlex = true; }
-                    else if(len <= 11) { fs = "9.5pt"; useFlex = false; }
-                    else if(len <= 13) { fs = "8.2pt"; useFlex = false; }
-                    else if(len <= 15) { fs = "7pt"; useFlex = false; }
-                    else if(len <= 17) { fs = "6.2pt"; useFlex = false; }   // 株式会社西原商事ホールディングス（16文字）
-                    else if(len <= 20) { fs = "5.3pt"; useFlex = false; }
-                    else { fs = "4.7pt"; useFlex = false; }
-                    if(useFlex) {
-                      return <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",height:"100%",fontSize:fs,fontFamily:SERIF,fontWeight:500,whiteSpace:"nowrap"}}>{[...nm].map((c,i)=><span key={i}>{c}</span>)}</div>;
-                    }
-                    return <div style={{textAlign:"center",fontSize:fs,fontFamily:SERIF,fontWeight:500,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"clip"}}>{nm}</div>;
+                    // K-M列幅(47mm)を最大限活用、padding=0、中央揃え
+                    // 文字数で自動サイズ調整 + letter-spacing微調整で大きく見せる
+                    let fs, ls;
+                    if(len <= 8)       { fs = "14pt"; ls = "0";       }  // 「株式会社西原商事」
+                    else if(len <= 10) { fs = "12.5pt"; ls = "0";     }
+                    else if(len <= 12) { fs = "10.5pt"; ls = "0";     }
+                    else if(len <= 14) { fs = "9.5pt"; ls = "-0.02em";}
+                    else if(len <= 16) { fs = "8.5pt"; ls = "-0.04em";}  // 株式会社西原商事ホールディングス（16文字）
+                    else if(len <= 18) { fs = "7.5pt"; ls = "-0.04em";}
+                    else if(len <= 22) { fs = "6.2pt"; ls = "-0.03em";}
+                    else               { fs = "5.3pt"; ls = "-0.02em";}
+                    return <div style={{textAlign:"center",fontSize:fs,fontFamily:SERIF,fontWeight:500,whiteSpace:"nowrap",overflow:"hidden",letterSpacing:ls}}>{nm}</div>;
                   })()}
                 </td>
               </tr>
