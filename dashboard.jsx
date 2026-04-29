@@ -1964,7 +1964,7 @@ function ActivityLog({ data, users=[], filterTypes=null }) {
 }
 
 // ─── TASK VIEW ────────────────────────────────────────────────────────────────
-function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjTab,setPjTab,navTarget,clearNavTarget}) {
+function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjTab,setPjTab,navTarget,clearNavTarget,onNavigateToSales}) {
   const uid = currentUser?.id;
 
   // ── State（全て先頭にまとめる）─────────────────────────────────────────
@@ -2572,6 +2572,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
                     ? <div style={{background:col+"15",border:`1px solid ${col}44`,borderRadius:"0.625rem",padding:"0.5rem 0.75rem",display:"flex",alignItems:"center",gap:"0.5rem"}}>
                         <span style={{fontSize:"0.7rem",fontWeight:700,color:"white",background:col,borderRadius:999,padding:"0.1rem 0.5rem"}}>{activeTask.salesRef.type}</span>
                         <span style={{fontSize:"0.82rem",fontWeight:700,color:col,flex:1}}>{activeTask.salesRef.name}</span>
+                        {onNavigateToSales && <button onClick={()=>onNavigateToSales(activeTask.salesRef)} title="営業先の詳細を開く" style={{background:col,border:"none",cursor:"pointer",color:"white",fontSize:"0.7rem",fontWeight:700,padding:"0.25rem 0.6rem",borderRadius:6,fontFamily:"inherit",whiteSpace:"nowrap"}}>詳細へ →</button>}
                         <button onClick={()=>updateTask(activeTask.id,{salesRef:null})} style={{background:"none",border:"none",cursor:"pointer",color:"#94a3b8",fontSize:"0.85rem",padding:"0 0.2rem"}}>✕</button>
                       </div>
                     : <SalesRefPicker value={null} onChange={v=>updateTask(activeTask.id,{salesRef:v})} salesData={data}/>
@@ -2642,6 +2643,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
                   ? <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginTop:"0.35rem",background:col+"15",border:`1px solid ${col}44`,borderRadius:"0.625rem",padding:"0.3rem 0.6rem"}}>
                       <span style={{fontSize:"0.68rem",fontWeight:800,color:"white",background:col,borderRadius:999,padding:"0.08rem 0.4rem",flexShrink:0}}>{activePj.salesRef.type}</span>
                       <span style={{fontSize:"0.82rem",fontWeight:700,color:col,flex:1}}>{activePj.salesRef.name}</span>
+                      {onNavigateToSales && <button onClick={()=>onNavigateToSales(activePj.salesRef)} title="営業先の詳細を開く" style={{background:col,border:"none",cursor:"pointer",color:"white",fontSize:"0.66rem",fontWeight:700,padding:"0.2rem 0.55rem",borderRadius:5,fontFamily:"inherit",whiteSpace:"nowrap",flexShrink:0}}>詳細へ →</button>}
                       <button onClick={()=>updateProject(activePj.id,{salesRef:null})} style={{background:"none",border:"none",cursor:"pointer",color:"#94a3b8",fontSize:"0.85rem",padding:"0 0.1rem",flexShrink:0}}>✕</button>
                     </div>
                   : <div style={{marginTop:"0.35rem"}}>
@@ -6542,6 +6544,15 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   const [openVendGrp,  setOpenVendGrp]  = useState(new Set());
   const [muniTopSearch,setMuniTopSearch]= useState("");
   const [muniFilterAssignee, setMuniFilterAssignee] = useState(""); // 担当者フィルタ
+  // フォロー中エリアの折りたたみ状態（デフォルト閉じる、localStorage で永続化）
+  const [followCompOpen, setFollowCompOpen] = useState(()=>localStorage.getItem("md_followCompOpen")==="1");
+  const [followVendOpen, setFollowVendOpen] = useState(()=>localStorage.getItem("md_followVendOpen")==="1");
+  const [followMuniOpen, setFollowMuniOpen] = useState(()=>localStorage.getItem("md_followMuniOpen")==="1");
+  // ステータスタブの選択状態
+  const [compStatusTab, setCompStatusTab] = useState(()=>localStorage.getItem("md_compStatusTab")||"未接触");
+  const [vendStatusTab, setVendStatusTab] = useState(()=>localStorage.getItem("md_vendStatusTab")||"未接触");
+  // 自治体の地方タブ
+  const [muniRegionTab, setMuniRegionTab] = useState(()=>localStorage.getItem("md_muniRegionTab")||"関東");
   const [chatInputs,   setChatInputs]   = useState({});
   const [memoInputs,   setMemoInputs]   = useState({});
   const [memoEdit,     setMemoEdit]     = useState(null); // {entityId, memoId, text}
@@ -6848,7 +6859,11 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     return {rows};
   }
 
-  const toggleGrp=(setter,key)=>setter(prev=>{const n=new Set(prev);n.has(key)?n.delete(key):n.add(key);return n;});
+  // アコーディオン動作: 開く時は他を閉じる、同じグループならトグル
+  const toggleGrp=(setter,key)=>setter(prev=>{
+    if(prev.has(key)) return new Set(); // 開いてたら閉じる
+    return new Set([key]); // 別のを開く時は他を全部閉じる（アコーディオン）
+  });
   const normSearch = s => {
     if(!s) return "";
     return s
@@ -9469,30 +9484,37 @@ ${orig}`})
             </div>
           );
         })()}
-        {/* フォロー中企業 */}
+        {/* フォロー中企業（折りたたみ可） */}
         {(()=>{
           const followComps = companies.filter(c=>c.needFollow);
           if(!followComps.length) return null;
           return (
-            <div style={{background:"#fefce8",border:"1.5px solid #fde047",borderRadius:"8px",padding:"0.75rem 1rem",marginBottom:"0.75rem"}}>
-              <div style={{fontSize:"0.75rem",fontWeight:800,color:"#854d0e",marginBottom:"0.4rem"}}>⭐ フォロー中 ({followComps.length}件)</div>
-              <div style={{display:"flex",flexDirection:"column",gap:"0.3rem"}}>
-                {followComps.map(c=>{
-                  const lastApproach = (c.approachLogs||[]).slice(-1)[0];
-                  const lastDate = lastApproach ? (lastApproach.date||lastApproach.createdAt||"").slice(5,10).replace("-","/") : "";
-                  const sMeta = COMPANY_STATUS[c.status||"未接触"];
-                  return (
-                    <div key={c.id} onClick={()=>{setSalesTab("company");saveSalesScroll("company");setActiveCompany(c.id);setActiveDetail("timeline");}}
-                      style={{display:"flex",flexDirection:"column",gap:"0.2rem",cursor:"pointer",padding:"0.4rem 0.55rem",background:"white",borderRadius:"0.5rem",border:"1px solid #fde047"}}>
-                      <span style={{fontSize:"0.82rem",fontWeight:700,color:C.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{c.name}</span>
-                      <div style={{display:"flex",alignItems:"center",gap:"0.4rem",fontSize:"0.6rem"}}>
-                        {sMeta&&<span style={{padding:"0.05rem 0.35rem",borderRadius:999,background:sMeta.color+"22",color:sMeta.color,fontWeight:700,whiteSpace:"nowrap",flexShrink:0}}>● {c.status||"未接触"}</span>}
-                        {lastDate&&<span style={{color:C.textMuted,whiteSpace:"nowrap",flexShrink:0}}>📞 {lastDate}</span>}
+            <div style={{background:"#fefce8",border:"1.5px solid #fde047",borderRadius:"8px",marginBottom:"0.75rem",overflow:"hidden"}}>
+              <button onClick={()=>{setFollowCompOpen(v=>{localStorage.setItem("md_followCompOpen",!v?"1":"0");return !v;});}}
+                style={{width:"100%",display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.55rem 0.85rem",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+                <span style={{fontSize:"0.78rem",fontWeight:800,color:"#854d0e",flex:1}}>⭐ フォロー中 ({followComps.length}件)</span>
+                <span style={{fontSize:"0.7rem",color:"#854d0e",transition:"transform 0.2s",display:"inline-block",transform:followCompOpen?"rotate(0deg)":"rotate(-90deg)"}}>▼</span>
+              </button>
+              {followCompOpen && (
+                <div style={{padding:"0 0.85rem 0.7rem",display:"flex",flexDirection:"column",gap:"0.3rem",borderTop:"1px solid #fde047"}}>
+                  <div style={{height:"0.5rem"}}/>
+                  {followComps.map(c=>{
+                    const lastApproach = (c.approachLogs||[]).slice(-1)[0];
+                    const lastDate = lastApproach ? (lastApproach.date||lastApproach.createdAt||"").slice(5,10).replace("-","/") : "";
+                    const sMeta = COMPANY_STATUS[c.status||"未接触"];
+                    return (
+                      <div key={c.id} onClick={()=>{setSalesTab("company");saveSalesScroll("company");setActiveCompany(c.id);setActiveDetail("timeline");}}
+                        style={{display:"flex",flexDirection:"column",gap:"0.2rem",cursor:"pointer",padding:"0.4rem 0.55rem",background:"white",borderRadius:"0.5rem",border:"1px solid #fde047"}}>
+                        <span style={{fontSize:"0.82rem",fontWeight:700,color:C.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{c.name}</span>
+                        <div style={{display:"flex",alignItems:"center",gap:"0.4rem",fontSize:"0.6rem"}}>
+                          {sMeta&&<span style={{padding:"0.05rem 0.35rem",borderRadius:999,background:sMeta.color+"22",color:sMeta.color,fontWeight:700,whiteSpace:"nowrap",flexShrink:0}}>● {c.status||"未接触"}</span>}
+                          {lastDate&&<span style={{color:C.textMuted,whiteSpace:"nowrap",flexShrink:0}}>📞 {lastDate}</span>}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           );
         })()}
@@ -9599,80 +9621,77 @@ ${orig}`})
             )}
           </div>
         )}
-        {/* Grouped view */}
-        {!compSearch&&!compFilter.assignee&&(
-          <div style={{display:"flex",flexDirection:"column",gap:"0.625rem"}}>
-            {Object.entries(COMPANY_STATUS).map(([s,meta])=>{
-              const items=compFilteredBase.filter(c=>(c.status||"未接触")===s);
-              const isOpen=openCompGrp.has(s);
-              return (
-                <div key={s} style={{background:"white",borderRadius:"8px",border:`1.5px solid ${C.border}`,overflow:"hidden",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
-                  {/* Group header */}
-                  <button onClick={()=>toggleGrp(setOpenCompGrp,s)}
-                    style={{width:"100%",display:"flex",alignItems:"center",gap:"0.625rem",padding:"0.75rem 1rem",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
-                    <span style={{width:10,height:10,borderRadius:"50%",background:meta.color,flexShrink:0,display:"inline-block"}}/>
-                    <span style={{fontWeight:800,fontSize:"0.88rem",color:C.text,flex:1}}>{s}</span>
-                    <span style={{fontSize:"0.75rem",fontWeight:700,color:C.textMuted,background:C.bg,borderRadius:999,padding:"0.1rem 0.5rem"}}>{items.length}</span>
-                    <span style={{fontSize:"0.75rem",color:C.textMuted,transition:"transform 0.2s",display:"inline-block",transform:isOpen?"rotate(0deg)":"rotate(-90deg)"}}>▼</span>
-                  </button>
-                  {/* Items (virtualized) */}
-                  {isOpen&&items.length>0&&(
-                    <div style={{borderTop:`1px solid ${C.borderLight}`}}>
-                      <VirtualList
-                        items={items}
-                        itemHeight={76}
-                        maxHeight={Math.min(items.length*76, 540)}
-                        getKey={c=>c.id}
-                        renderItem={(c,i)=>{
-                          const sortedLogs = [...(c.approachLogs||[])].sort((a,b)=>
-                            new Date(b.createdAt||b.date||0)-new Date(a.createdAt||a.date||0)
-                          );
-                          const lastApproach=sortedLogs[0];
-                          const lastDate=lastApproach?(lastApproach.date||lastApproach.createdAt||"").slice(5,10).replace("-","/"):"";
-                          const lastType=lastApproach?(lastApproach.type||""):"";
-                          const lastNote=lastApproach?(lastApproach.note||""):"";
-                          const APPROACH_ICON_MAP={"電話":"📞","メール":"✉️","訪問":"🚶","MTG":"🤝","その他":"📝","メモ":"📝"};
-                          const approachIcon=APPROACH_ICON_MAP[lastType]||"📝";
-                          return (
-                            <div onClick={()=>{if(bulkMode){setBulkSelected(prev=>{const n=new Set(prev);n.has(c.id)?n.delete(c.id):n.add(c.id);return n;});return;}saveSalesScroll("company");setActiveCompany(c.id);setActiveDetail("timeline");setCompSearch("");}}
-                              style={{padding:"0.55rem 0.875rem",cursor:"pointer",borderTop:i>0?`1px solid ${C.borderLight}`:"none",background:bulkSelected.has(c.id)?"#eff6ff":"white",display:"flex",flexDirection:"column",gap:"0.3rem",transition:"background 0.1s",height:"100%",boxSizing:"border-box",overflow:"hidden",justifyContent:"center"}}
-                              onMouseEnter={e=>{if(!bulkSelected.has(c.id))e.currentTarget.style.background=C.bg;}}
-                              onMouseLeave={e=>{if(!bulkSelected.has(c.id))e.currentTarget.style.background="white";}}>
-                              {/* 1行目: 企業名 + 先方担当 + 自社担当 */}
-                              <div style={{display:"flex",alignItems:"center",gap:"0.5rem",minWidth:0}}>
-                                {bulkMode&&<input type="checkbox" checked={bulkSelected.has(c.id)} readOnly style={{width:15,height:15,accentColor:C.accent,flexShrink:0}}/>}
-                                <div style={{flex:1,minWidth:0,fontWeight:700,fontSize:"0.88rem",color:C.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{c.name}</div>
-                                {(c.contacts||[]).length>0&&<span style={{fontSize:"0.62rem",color:C.textMuted,flexShrink:0}}>👤 {(c.contacts[0].name||"無名")}{c.contacts.length>1?`+${c.contacts.length-1}`:""}</span>}
-                                <div style={{flexShrink:0}}><AssigneeRow ids={c.assigneeIds}/></div>
-                              </div>
-                              {/* 2行目: 連絡先 + 最終アプローチ内容 */}
-                              <div style={{display:"flex",alignItems:"center",gap:"0.5rem",fontSize:"0.66rem",minWidth:0}}>
-                                {(c.phone||c.email)&&(
-                                  <span style={{color:C.textMuted,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",flexShrink:0,maxWidth:180}}>📞 {c.phone||c.email}</span>
-                                )}
-                                <div style={{flex:1,minWidth:0,color:C.textMuted,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",textAlign:"right"}}>
-                                  {lastApproach?(
-                                    <span title={lastNote}>
-                                      <span style={{color:"#475569",fontWeight:600}}>{approachIcon} {lastDate}</span>
-                                      {lastNote&&<span style={{color:C.textMuted,marginLeft:"0.3rem"}}>{lastNote.slice(0,40)}{lastNote.length>40?"…":""}</span>}
-                                    </span>
-                                  ):<span style={{fontStyle:"italic",color:"#cbd5e0"}}>未接触</span>}
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        }}
-                      />
-                    </div>
-                  )}
-                  {isOpen&&items.length===0&&(
-                    <div style={{borderTop:`1px solid ${C.borderLight}`,padding:"0.75rem 1rem",fontSize:"0.78rem",color:C.textMuted,textAlign:"center"}}>なし</div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
+        {/* ステータスタブビュー */}
+        {!compSearch&&!compFilter.assignee&&(()=>{
+          const items = compFilteredBase.filter(c=>(c.status||"未接触")===compStatusTab);
+          return (
+            <div style={{background:"white",borderRadius:"8px",border:`1.5px solid ${C.border}`,overflow:"hidden",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
+              {/* ステータスタブ（横スクロール可能） */}
+              <div style={{display:"flex",overflowX:"auto",borderBottom:`1px solid ${C.borderLight}`,WebkitOverflowScrolling:"touch",scrollbarWidth:"thin"}}>
+                {Object.entries(COMPANY_STATUS).map(([s,meta])=>{
+                  const cnt = compFilteredBase.filter(c=>(c.status||"未接触")===s).length;
+                  const active = compStatusTab===s;
+                  return (
+                    <button key={s} onClick={()=>{setCompStatusTab(s);localStorage.setItem("md_compStatusTab",s);}}
+                      style={{flex:"0 0 auto",padding:"0.6rem 0.85rem",border:"none",background:active?meta.color+"15":"white",borderBottom:active?`2.5px solid ${meta.color}`:"2.5px solid transparent",cursor:"pointer",fontFamily:"inherit",fontWeight:active?800:600,fontSize:"0.78rem",color:active?meta.color:C.textSub,whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:"0.4rem"}}>
+                      <span style={{width:8,height:8,borderRadius:"50%",background:meta.color,flexShrink:0,display:"inline-block"}}/>
+                      <span>{s}</span>
+                      <span style={{fontSize:"0.7rem",fontWeight:700,color:active?meta.color:C.textMuted,background:active?"white":C.bg,borderRadius:999,padding:"0.1rem 0.45rem"}}>{cnt}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {/* 選択中ステータスのリスト */}
+              {items.length===0?(
+                <div style={{padding:"2rem 1rem",fontSize:"0.85rem",color:C.textMuted,textAlign:"center"}}>このステータスの企業はありません</div>
+              ):(
+                <VirtualList
+                  items={items}
+                  itemHeight={76}
+                  maxHeight={Math.min(items.length*76, Math.max(420, (typeof window!=='undefined'?window.innerHeight:700)*0.75))}
+                  getKey={c=>c.id}
+                  renderItem={(c,i)=>{
+                    const sortedLogs = [...(c.approachLogs||[])].sort((a,b)=>
+                      new Date(b.createdAt||b.date||0)-new Date(a.createdAt||a.date||0)
+                    );
+                    const lastApproach=sortedLogs[0];
+                    const lastDate=lastApproach?(lastApproach.date||lastApproach.createdAt||"").slice(5,10).replace("-","/"):"";
+                    const lastType=lastApproach?(lastApproach.type||""):"";
+                    const lastNote=lastApproach?(lastApproach.note||""):"";
+                    const APPROACH_ICON_MAP={"電話":"📞","メール":"✉️","訪問":"🚶","MTG":"🤝","その他":"📝","メモ":"📝"};
+                    const approachIcon=APPROACH_ICON_MAP[lastType]||"📝";
+                    return (
+                      <div onClick={()=>{if(bulkMode){setBulkSelected(prev=>{const n=new Set(prev);n.has(c.id)?n.delete(c.id):n.add(c.id);return n;});return;}saveSalesScroll("company");setActiveCompany(c.id);setActiveDetail("timeline");setCompSearch("");}}
+                        style={{padding:"0.55rem 0.875rem",cursor:"pointer",borderTop:i>0?`1px solid ${C.borderLight}`:"none",background:bulkSelected.has(c.id)?"#eff6ff":"white",display:"flex",flexDirection:"column",gap:"0.3rem",transition:"background 0.1s",height:"100%",boxSizing:"border-box",overflow:"hidden",justifyContent:"center"}}
+                        onMouseEnter={e=>{if(!bulkSelected.has(c.id))e.currentTarget.style.background=C.bg;}}
+                        onMouseLeave={e=>{if(!bulkSelected.has(c.id))e.currentTarget.style.background="white";}}>
+                        <div style={{display:"flex",alignItems:"center",gap:"0.5rem",minWidth:0}}>
+                          {bulkMode&&<input type="checkbox" checked={bulkSelected.has(c.id)} readOnly style={{width:15,height:15,accentColor:C.accent,flexShrink:0}}/>}
+                          <div style={{flex:1,minWidth:0,fontWeight:700,fontSize:"0.88rem",color:C.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{c.name}</div>
+                          {(c.contacts||[]).length>0&&<span style={{fontSize:"0.62rem",color:C.textMuted,flexShrink:0}}>👤 {(c.contacts[0].name||"無名")}{c.contacts.length>1?`+${c.contacts.length-1}`:""}</span>}
+                          <div style={{flexShrink:0}}><AssigneeRow ids={c.assigneeIds}/></div>
+                        </div>
+                        <div style={{display:"flex",alignItems:"center",gap:"0.5rem",fontSize:"0.66rem",minWidth:0}}>
+                          {(c.phone||c.email)&&(
+                            <span style={{color:C.textMuted,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",flexShrink:0,maxWidth:180}}>📞 {c.phone||c.email}</span>
+                          )}
+                          <div style={{flex:1,minWidth:0,color:C.textMuted,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",textAlign:"right"}}>
+                            {lastApproach?(
+                              <span title={lastNote}>
+                                <span style={{color:"#475569",fontWeight:600}}>{approachIcon} {lastDate}</span>
+                                {lastNote&&<span style={{color:C.textMuted,marginLeft:"0.3rem"}}>{lastNote.slice(0,40)}{lastNote.length>40?"…":""}</span>}
+                              </span>
+                            ):<span style={{fontStyle:"italic",color:"#cbd5e0"}}>未接触</span>}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }}
+                />
+              )}
+            </div>
+          );
+        })()}
         {sheet==="addCompany"&&(
           <Sheet title="企業を追加" onClose={()=>setSheet(null)}>
             <FieldLbl label="企業名 *"><Input value={form.name||""} onChange={e=>setForm({...form,name:e.target.value})} autoFocus/></FieldLbl>
@@ -10166,9 +10185,15 @@ ${orig}`})
           const followVends = vendors.filter(v=>v.needFollow);
           if(!followVends.length) return null;
           return (
-            <div style={{background:"#fefce8",border:"1.5px solid #fde047",borderRadius:"8px",padding:"0.75rem 1rem",marginBottom:"0.75rem"}}>
-              <div style={{fontSize:"0.75rem",fontWeight:800,color:"#854d0e",marginBottom:"0.4rem"}}>⭐ フォロー中 ({followVends.length}件)</div>
-              <div style={{display:"flex",flexDirection:"column",gap:"0.3rem"}}>
+            <div style={{background:"#fefce8",border:"1.5px solid #fde047",borderRadius:"8px",marginBottom:"0.75rem",overflow:"hidden"}}>
+              <button onClick={()=>{setFollowVendOpen(o=>{localStorage.setItem("md_followVendOpen",!o?"1":"0");return !o;});}}
+                style={{width:"100%",display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.55rem 0.85rem",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+                <span style={{fontSize:"0.78rem",fontWeight:800,color:"#854d0e",flex:1}}>⭐ フォロー中 ({followVends.length}件)</span>
+                <span style={{fontSize:"0.7rem",color:"#854d0e",transition:"transform 0.2s",display:"inline-block",transform:followVendOpen?"rotate(0deg)":"rotate(-90deg)"}}>▼</span>
+              </button>
+              {followVendOpen && (
+              <div style={{padding:"0 0.85rem 0.7rem",display:"flex",flexDirection:"column",gap:"0.3rem",borderTop:"1px solid #fde047"}}>
+                <div style={{height:"0.5rem"}}/>
                 {followVends.map(v=>{
                   const vmunis2=vendorMunis(v);
                   const muniText = vmunis2.length>0?`${vmunis2[0].name}${vmunis2.length>1?`他${vmunis2.length-1}`:""}`:"";
@@ -10187,6 +10212,7 @@ ${orig}`})
                   );
                 })}
               </div>
+              )}
             </div>
           );
         })()}
@@ -10368,29 +10394,36 @@ ${orig}`})
             )}
           </div>
         )}
-        {/* Grouped view */}
-        {!vendSearch&&!vendFilterAssignee&&(
-          <div style={{display:"flex",flexDirection:"column",gap:"0.625rem"}}>
-            {Object.entries(VENDOR_STATUS).map(([s,meta])=>{
-              const items=vendorsByStatus[s]||[];
-              const isOpen=openVendGrp.has(s);
-              return (
-                <div key={s} style={{background:"white",borderRadius:"8px",border:`1.5px solid ${C.border}`,overflow:"hidden",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
-                  <button onClick={()=>toggleGrp(setOpenVendGrp,s)}
-                    style={{width:"100%",display:"flex",alignItems:"center",gap:"0.625rem",padding:"0.75rem 1rem",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
-                    <span style={{width:10,height:10,borderRadius:"50%",background:meta.color,flexShrink:0,display:"inline-block"}}/>
-                    <span style={{fontWeight:800,fontSize:"0.88rem",color:C.text,flex:1}}>{s}</span>
-                    <span style={{fontSize:"0.75rem",fontWeight:700,color:C.textMuted,background:C.bg,borderRadius:999,padding:"0.1rem 0.5rem"}}>{items.length}</span>
-                    <span style={{fontSize:"0.75rem",color:C.textMuted,transition:"transform 0.2s",display:"inline-block",transform:isOpen?"rotate(0deg)":"rotate(-90deg)"}}>▼</span>
-                  </button>
-                  {isOpen&&items.length>0&&(
-                    <div style={{borderTop:`1px solid ${C.borderLight}`}}>
-                      <VirtualList
-                        items={items}
-                        itemHeight={76}
-                        maxHeight={Math.min(items.length*76, 540)}
-                        getKey={v=>v.id}
-                        renderItem={(v,i)=>{
+        {/* ステータスタブビュー */}
+        {!vendSearch&&!vendFilterAssignee&&(()=>{
+          const items = vendorsByStatus[vendStatusTab]||[];
+          return (
+            <div style={{background:"white",borderRadius:"8px",border:`1.5px solid ${C.border}`,overflow:"hidden",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
+              {/* ステータスタブ（横スクロール可能） */}
+              <div style={{display:"flex",overflowX:"auto",borderBottom:`1px solid ${C.borderLight}`,WebkitOverflowScrolling:"touch",scrollbarWidth:"thin"}}>
+                {Object.entries(VENDOR_STATUS).map(([s,meta])=>{
+                  const cnt = (vendorsByStatus[s]||[]).length;
+                  const active = vendStatusTab===s;
+                  return (
+                    <button key={s} onClick={()=>{setVendStatusTab(s);localStorage.setItem("md_vendStatusTab",s);}}
+                      style={{flex:"0 0 auto",padding:"0.6rem 0.85rem",border:"none",background:active?meta.color+"15":"white",borderBottom:active?`2.5px solid ${meta.color}`:"2.5px solid transparent",cursor:"pointer",fontFamily:"inherit",fontWeight:active?800:600,fontSize:"0.78rem",color:active?meta.color:C.textSub,whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:"0.4rem"}}>
+                      <span style={{width:8,height:8,borderRadius:"50%",background:meta.color,flexShrink:0,display:"inline-block"}}/>
+                      <span>{s}</span>
+                      <span style={{fontSize:"0.7rem",fontWeight:700,color:active?meta.color:C.textMuted,background:active?"white":C.bg,borderRadius:999,padding:"0.1rem 0.45rem"}}>{cnt}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {/* 選択中ステータスのリスト */}
+              {items.length===0?(
+                <div style={{padding:"2rem 1rem",fontSize:"0.85rem",color:C.textMuted,textAlign:"center"}}>このステータスの業者はありません</div>
+              ):(
+                <VirtualList
+                  items={items}
+                  itemHeight={76}
+                  maxHeight={Math.min(items.length*76, Math.max(420, (typeof window!=='undefined'?window.innerHeight:700)*0.75))}
+                  getKey={v=>v.id}
+                  renderItem={(v,i)=>{
                           const vmunis2=vendorMunis(v);
                           // approachLogs を日付順でソートして最新を取る
                           const sortedLogs = [...(v.approachLogs||[])].sort((a,b)=>
@@ -10441,16 +10474,10 @@ ${orig}`})
                           );
                         }}
                       />
-                    </div>
-                  )}
-                  {isOpen&&items.length===0&&(
-                    <div style={{borderTop:`1px solid ${C.borderLight}`,padding:"0.75rem 1rem",fontSize:"0.78rem",color:C.textMuted,textAlign:"center"}}>なし</div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
+              )}
+            </div>
+          );
+        })()}
         {sheet==="addVendor"&&(
           <Sheet title="業者を追加" onClose={()=>setSheet(null)}>
             <FieldLbl label="業者名 *"><Input value={form.name||""} onChange={e=>setForm({...form,name:e.target.value})} autoFocus/></FieldLbl>
@@ -11104,9 +11131,15 @@ ${orig}`})
         const followMunis = munis.filter(m=>m.needFollow);
         if(!followMunis.length) return null;
         return (
-          <div style={{background:"#fefce8",border:"1.5px solid #fde047",borderRadius:"8px",padding:"0.75rem 1rem",marginBottom:"0.75rem"}}>
-            <div style={{fontSize:"0.75rem",fontWeight:800,color:"#854d0e",marginBottom:"0.4rem"}}>⭐ フォロー中 ({followMunis.length}件)</div>
-            <div style={{display:"flex",flexDirection:"column",gap:"0.3rem"}}>
+          <div style={{background:"#fefce8",border:"1.5px solid #fde047",borderRadius:"8px",marginBottom:"0.75rem",overflow:"hidden"}}>
+            <button onClick={()=>{setFollowMuniOpen(o=>{localStorage.setItem("md_followMuniOpen",!o?"1":"0");return !o;});}}
+              style={{width:"100%",display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.55rem 0.85rem",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+              <span style={{fontSize:"0.78rem",fontWeight:800,color:"#854d0e",flex:1}}>⭐ フォロー中 ({followMunis.length}件)</span>
+              <span style={{fontSize:"0.7rem",color:"#854d0e",transition:"transform 0.2s",display:"inline-block",transform:followMuniOpen?"rotate(0deg)":"rotate(-90deg)"}}>▼</span>
+            </button>
+            {followMuniOpen && (
+            <div style={{padding:"0 0.85rem 0.7rem",display:"flex",flexDirection:"column",gap:"0.3rem",borderTop:"1px solid #fde047"}}>
+              <div style={{height:"0.5rem"}}/>
               {followMunis.map(m=>{
                 const pref=prefOf(m.prefectureId);
                 const ts=TREATY_STATUS[m.treatyStatus||"未接触"];
@@ -11122,6 +11155,7 @@ ${orig}`})
                 );
               })}
             </div>
+            )}
           </div>
         );
       })()}
@@ -11304,28 +11338,36 @@ ${orig}`})
           </div>
         );
       })()}
-      {/* Hierarchy view */}
-      {!muniTopSearch&&!muniFilterAssignee&&<div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
-        {JAPAN_REGIONS.map(rg=>{
-          const rOpen=openRegions[rg.region]===true;
-          const rPrefs=prefs.filter(p=>p.region===rg.region||(!p.region&&rg.prefs.includes(p.name)));
-          const rMunis=rPrefs.flatMap(p=>munis.filter(m=>String(m.prefectureId)===String(p.id)));
-          const rTreaty=rMunis.filter(m=>m.treatyStatus==="協定済").length;
-          const rDeploy=rMunis.filter(m=>m.dustalk==="展開").length;
+      {/* Hierarchy view: 地方タブ式 */}
+      {!muniTopSearch&&!muniFilterAssignee&&(()=>{
+        // 現在選択中の地方
+        const activeRegion = JAPAN_REGIONS.find(r=>r.region===muniRegionTab) || JAPAN_REGIONS[0];
+        return (
+        <div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
+          {/* 地方タブ */}
+          <div style={{display:"flex",overflowX:"auto",background:"white",border:`1.5px solid ${C.border}`,borderRadius:"0.75rem",WebkitOverflowScrolling:"touch",scrollbarWidth:"thin",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
+            {JAPAN_REGIONS.map(rg=>{
+              const rPrefs=prefs.filter(p=>p.region===rg.region||(!p.region&&rg.prefs.includes(p.name)));
+              const rMunis=rPrefs.flatMap(p=>munis.filter(m=>String(m.prefectureId)===String(p.id)));
+              const rDeploy=rMunis.filter(m=>m.dustalk==="展開").length;
+              const active=muniRegionTab===rg.region;
+              return (
+                <button key={rg.region} onClick={()=>{setMuniRegionTab(rg.region);localStorage.setItem("md_muniRegionTab",rg.region);}}
+                  style={{flex:"0 0 auto",padding:"0.55rem 0.85rem",border:"none",background:active?"#ede9fe":"white",borderBottom:active?"2.5px solid #7c3aed":"2.5px solid transparent",cursor:"pointer",fontFamily:"inherit",fontWeight:active?800:600,fontSize:"0.78rem",color:active?"#7c3aed":C.textSub,whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:"0.4rem"}}>
+                  <span>{rg.region}</span>
+                  <span style={{fontSize:"0.65rem",fontWeight:700,color:active?"#7c3aed":C.textMuted,background:active?"white":C.bg,borderRadius:999,padding:"0.05rem 0.4rem"}}>{rDeploy}/{rMunis.length}</span>
+                </button>
+              );
+            })}
+          </div>
+          {/* 選択中の地方の都道府県ツリー */}
+          {(()=>{
+          const rg = activeRegion;
+          const rOpen = true; // 地方は常に「開いた」状態でツリー表示
+          const rPrefs = prefs.filter(p=>p.region===rg.region||(!p.region&&rg.prefs.includes(p.name)));
+          const rMunis = rPrefs.flatMap(p=>munis.filter(m=>String(m.prefectureId)===String(p.id)));
           return (
             <div key={rg.region} style={{background:"white",borderRadius:"1rem",border:`1.5px solid ${C.border}`,overflow:"hidden",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
-              <button onClick={()=>setOpenRegions(o=>({...o,[rg.region]:!rOpen}))}
-                style={{width:"100%",display:"flex",alignItems:"center",padding:"0.8rem 1rem",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",gap:"0.5rem"}}>
-                <span style={{fontSize:"0.93rem",fontWeight:800,color:C.text,flex:1,textAlign:"left"}}>{rg.region}</span>
-                {rMunis.length>0&&(
-                  <div style={{display:"flex",gap:"0.35rem",flexShrink:0}}>
-                    <span style={{fontSize:"0.62rem",background:"#d1fae5",color:"#059669",padding:"0.1rem 0.35rem",borderRadius:999,fontWeight:700}}>展開{rDeploy}</span>
-                    {rTreaty>0&&<span style={{fontSize:"0.62rem",background:"#d1fae5",color:"#059669",padding:"0.1rem 0.35rem",borderRadius:999,fontWeight:700}}>協定{rTreaty}</span>}
-                    <span style={{fontSize:"0.62rem",color:C.textMuted}}>自治体{rMunis.length}</span>
-                  </div>
-                )}
-                <span style={{fontSize:"0.75rem",color:C.textMuted,transform:rOpen?"rotate(0deg)":"rotate(-90deg)",transition:"transform 0.2s",display:"inline-block",flexShrink:0}}>▼</span>
-              </button>
               {rOpen&&rPrefs.length>0&&(
                 <div style={{borderTop:`1px solid ${C.borderLight}`}}>
                   {rPrefs.map(pref=>{
@@ -11438,8 +11480,10 @@ ${orig}`})
               )}
             </div>
           );
-        })}
-      </div>}
+          })()}
+        </div>
+        );
+      })()}
       {sheet==="importMuni"&&(()=>{
         const preview=importPreview; const setPreview=setImportPreview;
         const err=importErr; const setErr=setImportErr;
@@ -15246,6 +15290,13 @@ export default function App() {
             {tab==="tasks"     && <TaskView      data={data} setData={setData} users={users} currentUser={currentUser}
               taskTab={taskTab} setTaskTab={(v)=>persistTab('md_taskTab',v,setTaskTab)}
               pjTab={pjTab} setPjTab={(v)=>persistTab('md_pjTab',v,setPjTab)}
+              onNavigateToSales={(salesRef)=>{
+                if(!salesRef) return;
+                const t = salesRef.type;
+                if(t==="企業") { setSalesNavTarget({type:"company",id:salesRef.id}); persistTab("md_tab","sales",setTab); }
+                else if(t==="業者") { setSalesNavTarget({type:"vendor",id:salesRef.id}); persistTab("md_tab","sales",setTab); }
+                else if(t==="自治体") { setSalesNavTarget({type:"muni",id:salesRef.id}); persistTab("md_tab","sales",setTab); }
+              }}
               navTarget={navTarget} clearNavTarget={()=>setNavTarget(null)}/>}
             {tab==="schedule"  && <ScheduleView/>}
             {tab==="email"     && <EmailView     data={data} setData={setData} currentUser={currentUser}/>}
