@@ -1647,9 +1647,6 @@ function SalesRefPicker({value, onChange, salesData={}}) {
     .filter(x=>!q||(x.name||"").includes(q));
 
   const handleOpen = () => {
-    if(!btnRef.current) return;
-    const r = btnRef.current.getBoundingClientRect();
-    setPos({top: r.bottom + 4, left: r.left, width: Math.max(r.width, 280)});
     setOpen(true);
     setQ("");
   };
@@ -1670,8 +1667,15 @@ function SalesRefPicker({value, onChange, salesData={}}) {
         </button>
       )}
       {open && <>
-        <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:490}}/>
-        <div style={{position:"fixed",top:pos.top,left:pos.left,width:Math.max(pos.width||360, 360),maxWidth:540,zIndex:491,border:"1.5px solid #e2e8f0",borderRadius:"10px",background:"white",overflow:"hidden",boxShadow:"0 12px 48px rgba(0,0,0,0.22)"}}>
+        {/* オーバーレイ（半透明背景） */}
+        <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:490,background:"rgba(15,23,42,0.4)"}}/>
+        {/* モーダル中央配置 */}
+        <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",width:"min(540px, calc(100vw - 32px))",maxHeight:"min(560px, calc(100vh - 32px))",zIndex:491,border:"1.5px solid #e2e8f0",borderRadius:"12px",background:"white",overflow:"hidden",boxShadow:"0 24px 80px rgba(0,0,0,0.32)",display:"flex",flexDirection:"column"}}>
+          {/* ヘッダー */}
+          <div style={{padding:"0.75rem 1rem",borderBottom:"1px solid #e2e8f0",display:"flex",alignItems:"center",gap:"0.5rem",background:"#f8fafc"}}>
+            <span style={{fontSize:"0.92rem",fontWeight:800,color:"#1e293b",flex:1}}>🔗 営業先を選択</span>
+            <button onClick={()=>setOpen(false)} style={{background:"white",border:"1px solid #e2e8f0",borderRadius:"6px",padding:"0.3rem 0.6rem",cursor:"pointer",fontSize:"0.8rem",color:"#64748b",fontWeight:600,fontFamily:"inherit"}}>✕ 閉じる</button>
+          </div>
           {/* タブ */}
           <div style={{display:"flex",borderBottom:"1px solid #e2e8f0"}}>
             {TABS.map(([lbl,icon])=>(
@@ -1687,7 +1691,7 @@ function SalesRefPicker({value, onChange, salesData={}}) {
               style={{width:"100%",padding:"0.5rem 0.7rem",border:"1.5px solid #e2e8f0",borderRadius:"0.5rem",fontSize:"0.92rem",fontFamily:"inherit",boxSizing:"border-box",outline:"none"}}/>
           </div>
           {/* リスト */}
-          <div style={{maxHeight:380,overflowY:"auto"}}>
+          <div style={{flex:1,minHeight:0,overflowY:"auto"}}>
             {items.length===0
               ? <div style={{padding:"1.25rem",textAlign:"center",color:"#94a3b8",fontSize:"0.85rem"}}>
                   {q ? <div style={{color:"#64748b"}}>「{q}」は未登録です</div> : <div>データなし</div>}
@@ -7873,7 +7877,7 @@ ${recentLogs}
           localStorage.setItem("md_salesTab",id);
         }}
           style={{flex:1,padding:"0.55rem 0.15rem",borderRadius:"0.625rem",border:"none",cursor:"pointer",fontFamily:"inherit",
-            fontWeight:700,fontSize:"0.75rem",transition:"all 0.15s",position:"relative",
+            fontWeight:700,fontSize:"0.75rem",transition:"all 0.15s",position:"relative",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",
             background:salesTab===id?C.accent:"transparent",color:salesTab===id?"white":C.textSub,
             boxShadow:salesTab===id?`0 2px 8px ${C.accent}44`:"none"}}>
           {icon} {lbl}
@@ -8840,10 +8844,26 @@ ${orig}`})
             )}
             {/* 連絡先・住所・最終更新（インライン） */}
             {(comp.email||comp.address||comp.updatedAt)&&(
-              <div style={{display:"flex",alignItems:"center",gap:"0.75rem",flexWrap:"wrap",fontSize:"0.72rem",color:C.textMuted,marginBottom:comp.notes?"0.5rem":0}}>
+              <div style={{display:"flex",alignItems:"center",gap:"0.75rem",flexWrap:"wrap",fontSize:"0.72rem",color:C.textMuted,marginBottom:"0.5rem"}}>
                 {comp.email&&<span>✉️ {comp.email}</span>}
                 {comp.address&&<span>📍 {comp.address}</span>}
                 {comp.updatedAt&&<span>📅 {comp.updatedAt}</span>}
+              </div>
+            )}
+            {/* 先方担当者リスト */}
+            {(comp.contacts||[]).length>0&&(
+              <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:"0.5rem",padding:"0.5rem 0.625rem",marginBottom:comp.notes?"0.5rem":0}}>
+                <div style={{fontSize:"0.62rem",fontWeight:700,color:"#0369a1",marginBottom:"0.3rem",letterSpacing:"0.04em"}}>👤 先方担当者</div>
+                <div style={{display:"flex",flexDirection:"column",gap:"0.3rem"}}>
+                  {comp.contacts.map(c=>(
+                    <div key={c.id} style={{display:"flex",alignItems:"center",gap:"0.5rem",flexWrap:"wrap",fontSize:"0.72rem"}}>
+                      <span style={{fontWeight:700,color:"#0c4a6e"}}>{c.name||"(無名)"}</span>
+                      {c.role&&<span style={{fontSize:"0.65rem",color:"#0369a1",background:"#dbeafe",padding:"0.05rem 0.35rem",borderRadius:3,fontWeight:600}}>{c.role}</span>}
+                      {c.phone&&<PhoneLink number={c.phone} size="sm"/>}
+                      {c.email&&<a href={`mailto:${c.email}`} style={{fontSize:"0.7rem",color:"#0369a1",textDecoration:"none"}}>✉️ {c.email}</a>}
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
             {/* 備考 */}
@@ -9111,8 +9131,53 @@ ${orig}`})
             <FieldLbl label="企業名 *"><Input value={form.name||""} onChange={e=>setForm({...form,name:e.target.value})} autoFocus/></FieldLbl>
             <FieldLbl label="ステータス"><StatusPicker map={COMPANY_STATUS} value={form.status||"未接触"} onChange={s=>setForm({...form,status:s})}/></FieldLbl>
             <FieldLbl label="担当者">{AssigneePicker({ids:form.assigneeIds||[],onChange:ids=>setForm({...form,assigneeIds:ids})})}</FieldLbl>
-            <FieldLbl label="電話番号（任意）"><Input value={form.phone||""} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="092-xxx-xxxx" type="tel"/></FieldLbl>
-            <FieldLbl label="メールアドレス（任意）"><Input value={form.email||""} onChange={e=>setForm({...form,email:e.target.value})} placeholder="example@mail.com"/></FieldLbl>
+            <FieldLbl label="代表電話番号（任意）"><Input value={form.phone||""} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="092-xxx-xxxx" type="tel"/></FieldLbl>
+            <FieldLbl label="代表メールアドレス（任意）"><Input value={form.email||""} onChange={e=>setForm({...form,email:e.target.value})} placeholder="example@mail.com"/></FieldLbl>
+            {/* 先方担当者リスト */}
+            <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:"0.625rem",padding:"0.625rem 0.75rem",marginBottom:"0.5rem"}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.4rem"}}>
+                <div style={{fontSize:"0.75rem",fontWeight:700,color:"#0369a1"}}>👤 先方担当者（複数登録可）</div>
+                <button onClick={()=>{
+                  const cur = form.contacts || [];
+                  setForm({...form, contacts:[...cur, {id:Date.now()+Math.random(),name:"",role:"",phone:"",email:""}]});
+                }} style={{background:"#0369a1",color:"white",border:"none",borderRadius:"0.4rem",padding:"0.3rem 0.7rem",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>＋ 担当者を追加</button>
+              </div>
+              {(()=>{
+                const list = form.contacts || [];
+                if(list.length===0) return (
+                  <div style={{fontSize:"0.7rem",color:"#0c4a6e",fontStyle:"italic",padding:"0.4rem"}}>「＋ 担当者を追加」をタップして登録してください</div>
+                );
+                const updateAt = (idx, key, val) => {
+                  const next = list.map((c,i)=>i===idx?{...c,[key]:val}:c);
+                  setForm({...form, contacts:next});
+                };
+                const removeAt = (idx) => {
+                  setForm({...form, contacts:list.filter((_,i)=>i!==idx)});
+                };
+                return (
+                  <div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
+                    {list.map((c,idx)=>(
+                      <div key={c.id} style={{background:"white",border:"1px solid #bae6fd",borderRadius:"0.5rem",padding:"0.5rem 0.625rem"}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.35rem"}}>
+                          <div style={{fontSize:"0.7rem",fontWeight:700,color:"#0369a1"}}>担当者 #{idx+1}</div>
+                          <button onClick={()=>removeAt(idx)} style={{background:"none",border:"none",color:"#dc2626",cursor:"pointer",fontSize:"0.7rem",fontWeight:700,padding:"0.1rem 0.3rem",fontFamily:"inherit"}}>🗑 削除</button>
+                        </div>
+                        <div style={{display:"flex",flexDirection:"column",gap:"0.35rem"}}>
+                          <input value={c.name||""} onChange={e=>updateAt(idx,"name",e.target.value)} placeholder="名前（例：山田 太郎）"
+                            style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
+                          <input value={c.role||""} onChange={e=>updateAt(idx,"role",e.target.value)} placeholder="役職・部署（例：営業部長）"
+                            style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
+                          <input value={c.phone||""} onChange={e=>updateAt(idx,"phone",formatPhone(e.target.value))} placeholder="電話番号（半角に自動変換）" type="tel"
+                            style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
+                          <input value={c.email||""} onChange={e=>updateAt(idx,"email",e.target.value)} placeholder="メールアドレス"
+                            style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
             <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
             <FieldLbl label="備考"><Textarea value={form.notes||""} onChange={e=>setForm({...form,notes:e.target.value})} style={{height:70}} placeholder="メモ、特記事項など"/></FieldLbl>
             <div style={{display:"flex",gap:"0.625rem"}}>
