@@ -5186,7 +5186,7 @@ function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach
         if(item._kind==="approach") {
           const icon = APPROACH_ICON[item.type]||"📝";
           const isLoss = item.isLoss;
-          const canEdit = !isLoss && (!currentUserId || item.userId===currentUserId);
+          const canEdit = !isLoss && (!currentUserId || String(item.userId||item.createdBy)===String(currentUserId));
           const isEditing = editingId === item.id;
           return (
             <div key={item.id||i} style={{display:"flex",gap:"0.6rem",marginBottom:"0.75rem"}}>
@@ -6857,10 +6857,17 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   const addFileToEntity = (entityKey, entityId, file) => {
     const entity = (data[entityKey]||[]).find(e=>e.id===entityId);
     const eType = entityKey==="companies"?"company":entityKey==="vendors"?"vendor":entityKey==="municipalities"?"muni":entityKey;
-    let nd = { ...data, [entityKey]: (data[entityKey]||[]).map(e => e.id===entityId ? {...e, files:[...(e.files||[]),file]} : e) };
+    const uid = currentUser?.id;
+    // 記録者（アップロード者）を担当者に自動追加
+    const currentAssigneeIds = entity?.assigneeIds || [];
+    const newAssigneeIds = (uid && !currentAssigneeIds.includes(uid))
+      ? [...currentAssigneeIds, uid]
+      : currentAssigneeIds;
+    const today = new Date().toISOString().slice(0,10);
+    let nd = { ...data, [entityKey]: (data[entityKey]||[]).map(e => e.id===entityId ? {...e, files:[...(e.files||[]),file], assigneeIds:newAssigneeIds, updatedAt:today} : e) };
     // 担当者全員に通知
-    const assignees=(entity?.assigneeIds||[]).filter(id=>id!==currentUser?.id);
-    if(assignees.length) nd=addNotif(nd,{type:"task_assign",entityId,entityType:eType,title:`「${entity?.name||""}」にファイルが追加されました`,body:file.name||"ファイル",toUserIds:assignees,fromUserId:currentUser?.id});
+    const assignees=newAssigneeIds.filter(id=>id!==uid);
+    if(assignees.length) nd=addNotif(nd,{type:"task_assign",entityId,entityType:eType,title:`「${entity?.name||""}」にファイルが追加されました`,body:file.name||"ファイル",toUserIds:assignees,fromUserId:uid});
     window.__myDeskLastSave = Date.now();
     save(nd);
   };
@@ -7894,9 +7901,16 @@ ${recentLogs}
   // ── Memo & Chat ───────────────────────────────────────────────────────────
   const addMemo=(entityKey,entityId,text)=>{
     if(!text?.trim()) return;
-    const memo={id:Date.now(),userId:currentUser?.id,text,date:new Date().toISOString()};
-    const arr=(data[entityKey]||[]).map(x=>x.id===entityId?{...x,memos:[...(x.memos||[]),memo]}:x);
+    const uid=currentUser?.id;
+    const memo={id:Date.now(),userId:uid,text,date:new Date().toISOString()};
     const entity=(data[entityKey]||[]).find(x=>x.id===entityId);
+    // 記録者を担当者に自動追加（既に入っていなければ）
+    const currentAssigneeIds = entity?.assigneeIds || [];
+    const newAssigneeIds = (uid && !currentAssigneeIds.includes(uid))
+      ? [...currentAssigneeIds, uid]
+      : currentAssigneeIds;
+    const today = new Date().toISOString().slice(0,10);
+    const arr=(data[entityKey]||[]).map(x=>x.id===entityId?{...x,memos:[...(x.memos||[]),memo],assigneeIds:newAssigneeIds,updatedAt:today}:x);
     let nd={...data,[entityKey]:arr};
     // メモ投稿は全員に通知（自分以外）
     const toAll=users.filter(u=>u.id!==currentUser?.id).map(u=>u.id);
@@ -7914,13 +7928,20 @@ ${recentLogs}
   };
   const addChat=(entityKey,entityId,text)=>{
     if(!text?.trim()) return;
-    const msg={id:Date.now(),userId:currentUser?.id,text,date:new Date().toISOString()};
-    const arr=(data[entityKey]||[]).map(x=>x.id===entityId?{...x,chat:[...(x.chat||[]),msg]}:x);
+    const uid=currentUser?.id;
+    const msg={id:Date.now(),userId:uid,text,date:new Date().toISOString()};
     const entity=(data[entityKey]||[]).find(x=>x.id===entityId);
+    // 記録者を担当者に自動追加（既に入っていなければ）
+    const currentAssigneeIds = entity?.assigneeIds || [];
+    const newAssigneeIds = (uid && !currentAssigneeIds.includes(uid))
+      ? [...currentAssigneeIds, uid]
+      : currentAssigneeIds;
+    const today = new Date().toISOString().slice(0,10);
+    const arr=(data[entityKey]||[]).map(x=>x.id===entityId?{...x,chat:[...(x.chat||[]),msg],assigneeIds:newAssigneeIds,updatedAt:today}:x);
     const eType=entityKey==="companies"?"company":entityKey==="vendors"?"vendor":entityKey==="municipalities"?"muni":entityKey;
     let nd={...data,[entityKey]:arr};
-    // 担当者全員に通知（自分以外）
-    const assignees=(entity?.assigneeIds||[]).filter(id=>id!==currentUser?.id);
+    // 担当者全員に通知（自分以外、newAssigneeIdsベース）
+    const assignees=newAssigneeIds.filter(id=>id!==uid);
     if(assignees.length) nd=addNotif(nd,{type:"task_comment",entityId,entityType:eType,title:`「${entity?.name||""}」にチャットが投稿されました`,body:(currentUser?.name||"")+": "+text.slice(0,50),toUserIds:assignees,fromUserId:currentUser?.id});
     // @メンション通知（担当者以外へも）
     const mentioned=users.filter(u=>u.id!==currentUser?.id&&!assignees.includes(u.id)&&text.includes(`@${u.name}`));
@@ -9237,8 +9258,14 @@ ${orig}`})
             // アプローチ記録も追加 (callModeなら "電話"、通常は "MTG")
             const approachType = mtgModal.callMode ? "電話" : "MTG";
             const entity=(data[mtgModal.entityKey]||[]).find(x=>x.id===mtgModal.entityId);
+            const uid = currentUser?.id;
+            // 記録者を担当者に自動追加（既に入っていなければ）
+            const currentAssigneeIds = entity?.assigneeIds || [];
+            const newAssigneeIds = (uid && !currentAssigneeIds.includes(uid))
+              ? [...currentAssigneeIds, uid]
+              : currentAssigneeIds;
             nd={...nd,[mtgModal.entityKey]:(nd[mtgModal.entityKey]||[]).map(x=>x.id===mtgModal.entityId
-              ?{...x,approachLogs:[...(x.approachLogs||[]),{id:Date.now()+1,type:approachType,note:note.slice(0,80),date:new Date().toISOString().slice(0,10),createdAt:new Date().toISOString(),createdBy:currentUser?.id}]}
+              ?{...x,approachLogs:[...(x.approachLogs||[]),{id:Date.now()+1,type:approachType,note:note.slice(0,80),date:new Date().toISOString().slice(0,10),createdAt:new Date().toISOString(),userId:uid,createdBy:uid}],assigneeIds:newAssigneeIds,updatedAt:new Date().toISOString().slice(0,10)}
               :x)};
             save(nd);
             // タスク登録（確定済みのもの）
