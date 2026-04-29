@@ -7213,6 +7213,188 @@ ${recentLogs}
     a.download=filename; a.click();
   };
 
+  // ── SheetJS（xlsx）動的ロード ─────────────────────────────────────────
+  const loadXLSX = () => new Promise((resolve, reject) => {
+    if (window.XLSX) return resolve(window.XLSX);
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+    s.onload = () => window.XLSX ? resolve(window.XLSX) : reject(new Error('XLSX load failed'));
+    s.onerror = () => reject(new Error('XLSX script load error'));
+    document.head.appendChild(s);
+  });
+  
+  // ── 共通: xlsx ファイル生成・ダウンロード ─────────────────────────────
+  const downloadXLSX = async (filename, headers, rows, colWidths=[], sheetName="一覧") => {
+    try {
+      const XLSX = await loadXLSX();
+      const aoa = [headers, ...rows];
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      
+      // 列幅
+      ws['!cols'] = colWidths.length ? colWidths.map(w=>({wch:w})) : headers.map(()=>({wch:18}));
+      
+      // 行高（ヘッダー固定 + データ行は内容に応じて自動）
+      const rowHeights = [{hpt:24}];
+      rows.forEach(r=>{
+        // アプローチ履歴の行数からおおよその高さを計算
+        const maxLines = Math.max(...r.map(c => String(c||"").split("\n").length));
+        rowHeights.push({hpt: Math.max(20, Math.min(maxLines*15+4, 200))});
+      });
+      ws['!rows'] = rowHeights;
+      
+      // ヘッダー行のスタイル（背景色・太字・センター・折返し）
+      const range = XLSX.utils.decode_range(ws['!ref']);
+      for(let C=range.s.c; C<=range.e.c; C++){
+        const cellRef = XLSX.utils.encode_cell({r:0, c:C});
+        if(ws[cellRef]) {
+          ws[cellRef].s = {
+            font: {bold:true, color:{rgb:"FFFFFF"}, sz:11},
+            fill: {fgColor:{rgb:"2563EB"}, patternType:"solid"},
+            alignment: {horizontal:"center", vertical:"center", wrapText:true},
+            border: {
+              top:{style:"thin", color:{rgb:"FFFFFF"}},
+              bottom:{style:"thin", color:{rgb:"FFFFFF"}},
+              left:{style:"thin", color:{rgb:"FFFFFF"}},
+              right:{style:"thin", color:{rgb:"FFFFFF"}}
+            }
+          };
+        }
+      }
+      
+      // データセルのスタイル（折返し・上揃え・薄罫線）
+      for(let R=1; R<=range.e.r; R++){
+        for(let C=range.s.c; C<=range.e.c; C++){
+          const cellRef = XLSX.utils.encode_cell({r:R, c:C});
+          if(!ws[cellRef]) continue;
+          const isAlt = R % 2 === 0; // 偶数行は薄背景
+          ws[cellRef].s = {
+            font: {sz:10},
+            alignment: {vertical:"top", wrapText:true, horizontal:"left"},
+            fill: isAlt ? {fgColor:{rgb:"F8FAFC"}, patternType:"solid"} : undefined,
+            border: {
+              top:{style:"thin", color:{rgb:"E5E7EB"}},
+              bottom:{style:"thin", color:{rgb:"E5E7EB"}},
+              left:{style:"thin", color:{rgb:"E5E7EB"}},
+              right:{style:"thin", color:{rgb:"E5E7EB"}}
+            }
+          };
+        }
+      }
+      
+      // フリーズペイン: 1行目（ヘッダー）と1列目（業者名/企業名）を固定
+      ws['!freeze'] = {xSplit:1, ySplit:1};
+      ws['!views'] = [{state:"frozen", xSplit:1, ySplit:1, topLeftCell:"B2", activePane:"bottomRight"}];
+      
+      // 自動フィルター（ヘッダー範囲）
+      ws['!autofilter'] = {ref: XLSX.utils.encode_range({s:{r:0,c:0}, e:{r:0,c:range.e.c}})};
+      
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, sheetName);
+      XLSX.writeFile(wb, filename);
+    } catch(e) {
+      console.error("xlsx export failed", e);
+      window.alert("Excel出力に失敗しました: "+e.message);
+    }
+  };
+  
+  // ── 業者一覧をExcel出力（フィルター済み・社内展開用）──────────────────
+  const exportVendorList = async (vendorList, filterDesc="") => {
+    if(!vendorList.length) {
+      window.alert("出力する業者がありません。");
+      return;
+    }
+    const today = new Date().toISOString().slice(0,10);
+    const userName = uid => (users.find(u=>u.id===uid)?.name)||"";
+    
+    const headers = [
+      "業者名","ステータス","bee-net","代表電話","住所",
+      "許可種別","対応自治体","自社担当","先方担当",
+      "最終接触日","最新アプローチ内容","アプローチ履歴(全件)",
+      "備考","登録日","最終更新"
+    ];
+    // 業者名は広く、アプローチ履歴は超広く、その他は中間
+    const colWidths = [22, 10, 8, 14, 28, 16, 24, 14, 28, 11, 30, 60, 24, 11, 11];
+    
+    const rows = vendorList.map(v => {
+      const vmunis2 = vendorMunis(v);
+      const muniNames = vmunis2.map(m=>m.name).join("、");
+      const permits = (v.permitTypes||[]).join("、");
+      const assignees = (v.assigneeIds||[]).map(userName).filter(Boolean).join("、");
+      const contacts = (v.contacts||[]).map(c=>{
+        const parts=[c.name, c.role, c.phone, c.email].filter(Boolean);
+        return parts.join(" / ");
+      }).join("\n");
+      const sortedLogs = [...(v.approachLogs||[])]
+        .sort((a,b)=>new Date(a.createdAt||a.date)-new Date(b.createdAt||b.date));
+      const approachHistory = sortedLogs.map(l => {
+        const date = (l.date||l.createdAt||"").slice(0,10);
+        const user = userName(l.userId);
+        const note = l.note||"";
+        return `[${date}] ${l.type||""} (${user})\n${note}`;
+      }).join("\n\n");
+      const lastLog = sortedLogs[sortedLogs.length-1];
+      const lastDate = lastLog ? (lastLog.date||lastLog.createdAt||"").slice(0,10) : "";
+      const lastNote = lastLog ? `${lastLog.type||""}: ${(lastLog.note||"").slice(0,80)}` : "";
+      
+      return [
+        v.name||"", v.status||"", v.beeNet?"✓":"", v.phone||"", v.address||"",
+        permits, muniNames, assignees, contacts,
+        lastDate, lastNote, approachHistory,
+        v.notes||"", (v.createdAt||"").slice(0,10), v.updatedAt||"",
+      ];
+    });
+    
+    const filename = `業者営業状況_${filterDesc?filterDesc+"_":""}${today}.xlsx`;
+    await downloadXLSX(filename, headers, rows, colWidths, "業者一覧");
+  };
+  
+  // ── 企業一覧をExcel出力（フィルター済み・社内展開用）──────────────────
+  const exportCompanyList = async (compList, filterDesc="") => {
+    if(!compList.length) {
+      window.alert("出力する企業がありません。");
+      return;
+    }
+    const today = new Date().toISOString().slice(0,10);
+    const userName = uid => (users.find(u=>u.id===uid)?.name)||"";
+    
+    const headers = [
+      "企業名","ステータス","代表電話","代表メール","住所",
+      "自社担当","先方担当",
+      "最終接触日","最新アプローチ内容","アプローチ履歴(全件)",
+      "備考","登録日","最終更新"
+    ];
+    const colWidths = [24, 10, 14, 22, 28, 14, 28, 11, 30, 60, 24, 11, 11];
+    
+    const rows = compList.map(c => {
+      const assignees = (c.assigneeIds||[]).map(userName).filter(Boolean).join("、");
+      const contacts = (c.contacts||[]).map(ct=>{
+        const parts=[ct.name, ct.role, ct.phone, ct.email].filter(Boolean);
+        return parts.join(" / ");
+      }).join("\n");
+      const sortedLogs = [...(c.approachLogs||[])]
+        .sort((a,b)=>new Date(a.createdAt||a.date)-new Date(b.createdAt||b.date));
+      const approachHistory = sortedLogs.map(l => {
+        const date = (l.date||l.createdAt||"").slice(0,10);
+        const user = userName(l.userId);
+        const note = l.note||"";
+        return `[${date}] ${l.type||""} (${user})\n${note}`;
+      }).join("\n\n");
+      const lastLog = sortedLogs[sortedLogs.length-1];
+      const lastDate = lastLog ? (lastLog.date||lastLog.createdAt||"").slice(0,10) : "";
+      const lastNote = lastLog ? `${lastLog.type||""}: ${(lastLog.note||"").slice(0,80)}` : "";
+      
+      return [
+        c.name||"", c.status||"", c.phone||"", c.email||"", c.address||"",
+        assignees, contacts,
+        lastDate, lastNote, approachHistory,
+        c.notes||"", (c.createdAt||"").slice(0,10), c.updatedAt||"",
+      ];
+    });
+    
+    const filename = `企業営業状況_${filterDesc?filterDesc+"_":""}${today}.xlsx`;
+    await downloadXLSX(filename, headers, rows, colWidths, "企業一覧");
+  };
+
   // ── 全自治体展開状況 一括出力 ──────────────────────────────────────────
   const exportMuniStatusReport = () => {
     const today = new Date();
@@ -9041,8 +9223,18 @@ ${orig}`})
             style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:`1.5px solid ${bulkMode?"#2563eb":C.border}`,background:bulkMode?"#eff6ff":"white",color:bulkMode?"#1d4ed8":C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>☑️</button>
           <button onClick={()=>setSheet("importCompany")}
             style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📥</button>
-          <button onClick={()=>{const rows=companies.map(c=>[c.name||"",c.status||"",c.industry||"",c.contactName||"",c.phone||"",c.email||"",c.address||"",(c.memos||[]).map(m=>m.text||"").join(" / ")]);downloadCSV("企業一覧.csv",["企業名","ステータス","業種","担当者名","電話番号","メールアドレス","住所","メモ"],rows);}}
-            style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:"1.5px solid #059669",background:"#d1fae5",color:"#065f46",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📤CSV</button>
+          <button onClick={()=>{
+            const list = bulkMode && bulkSelected.size>0
+              ? companies.filter(c=>bulkSelected.has(c.id))
+              : (compSearch ? searchedComps : (compFilterAssignee ? compFilteredBase : compFilteredBase));
+            const desc = bulkMode && bulkSelected.size>0 ? `選択${bulkSelected.size}件`
+              : compSearch ? `検索_${compSearch}`
+              : compFilterStatus ? `ステータス_${compFilterStatus}`
+              : compFilterAssignee ? `担当_${(users.find(u=>u.id===compFilterAssignee)?.name)||""}`
+              : "全件";
+            exportCompanyList(list, desc);
+          }} title="エクセル出力（フィルター済み・全アプローチ含む）"
+            style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:"1.5px solid #10b981",background:"#ecfdf5",color:"#059669",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📊</button>
           <button onClick={()=>{setDeleteModal({type:"company"});setDmSearch("");setDmFilter("");setDmSelected(new Set());}}
             style={{padding:"0.45rem 0.75rem",borderRadius:"6px",border:"1.5px solid #fca5a5",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🗑 削除</button>
           <Btn size="sm" onClick={()=>{setForm({status:"未接触",assigneeIds:[]});setSheet("addCompany");}}>＋</Btn>
@@ -9761,8 +9953,24 @@ ${orig}`})
           </div>
           <button onClick={()=>setBulkMode(v=>{if(v){resetBulk();return false;}setBulkSelected(new Set());return true;})}
             style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:`1.5px solid ${bulkMode?"#2563eb":C.border}`,background:bulkMode?"#eff6ff":"white",color:bulkMode?"#1d4ed8":C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>☑️</button>
-          <button onClick={()=>setSheet("importVendor")}
+          <button onClick={()=>setSheet("importVendor")} title="CSV取込"
             style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📥</button>
+          <button onClick={()=>{
+            // フィルター条件に該当する業者リストを取得
+            const list = bulkMode && bulkSelected.size>0
+              ? vendors.filter(v=>bulkSelected.has(v.id))
+              : (vendSearch ? searchedVendors : (vendFilterAssignee ? filteredVendors : filteredVendors));
+            const desc = bulkMode && bulkSelected.size>0 ? `選択${bulkSelected.size}件`
+              : vendSearch ? `検索_${vendSearch}`
+              : vendFilterStatus ? `ステータス_${vendFilterStatus}`
+              : vendFilterPermit ? `許可_${vendFilterPermit}`
+              : vendFilterPref ? `都道府県_${prefOf(vendFilterPref)?.name||""}`
+              : vendFilterMuni ? `自治体_${muniOf(vendFilterMuni)?.name||""}`
+              : vendFilterAssignee ? `担当_${(users.find(u=>u.id===vendFilterAssignee)?.name)||""}`
+              : "全件";
+            exportVendorList(list, desc);
+          }} title="エクセル出力（フィルター済み・全アプローチ含む）"
+            style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:"1.5px solid #10b981",background:"#ecfdf5",color:"#059669",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📊</button>
           <button onClick={()=>{setDeleteModal({type:"vendor"});setDmSearch("");setDmFilter("");setDmSelected(new Set());}}
             style={{padding:"0.45rem 0.75rem",borderRadius:"6px",border:"1.5px solid #fca5a5",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🗑 削除</button>
           <Btn size="sm" onClick={()=>{setForm({status:"未接触",municipalityIds:[],assigneeIds:[]});setSheet("addVendor");}}>＋</Btn>
