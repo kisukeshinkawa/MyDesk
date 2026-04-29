@@ -1649,6 +1649,10 @@ function SalesRefPicker({value, onChange, salesData={}}) {
   const items = React.useMemo(() => {
     const tabKey = TABS.find(t=>t[0]===tab)?.[2];
     const baseList = salesData[tabKey] || [];
+    // デバッグ: tab切替時にどのデータを参照しているかコンソールに出力
+    if(typeof window !== "undefined" && window.__myDeskDebugSalesRef) {
+      console.log("[SalesRefPicker]", {tab, tabKey, count: baseList.length, sample: baseList.slice(0,2).map(x=>x.name)});
+    }
     if(!q) return baseList;
     return baseList.filter(x=>(x.name||"").includes(q));
   }, [tab, q, salesData]);
@@ -1698,10 +1702,10 @@ function SalesRefPicker({value, onChange, salesData={}}) {
               style={{width:"100%",padding:"0.5rem 0.7rem",border:"1.5px solid #e2e8f0",borderRadius:"0.5rem",fontSize:"0.92rem",fontFamily:"inherit",boxSizing:"border-box",outline:"none"}}/>
           </div>
           {/* リスト */}
-          <div style={{flex:1,minHeight:0,overflowY:"auto"}}>
+          <div key={tab} style={{flex:1,minHeight:0,overflowY:"auto"}}>
             {items.length===0
               ? <div style={{padding:"1.25rem",textAlign:"center",color:"#94a3b8",fontSize:"0.85rem"}}>
-                  {q ? <div style={{color:"#64748b"}}>「{q}」は未登録です</div> : <div>データなし</div>}
+                  {q ? <div style={{color:"#64748b"}}>「{q}」は未登録です</div> : <div>{tab}のデータがありません</div>}
                 </div>
               : items.map(x=>(
                 <div key={x.id} onClick={()=>{onChange({type:tab,id:String(x.id),name:x.name});setOpen(false);}}
@@ -8453,36 +8457,53 @@ ${recentLogs}
     </div>
   );
 
-  const StatusPicker=({map,value,onChange})=>(
-    <div style={{display:"flex",flexWrap:"wrap",gap:"0.35rem"}}>
-      {Object.entries(map).map(([s,m])=>(
-        <button key={s} onClick={()=>onChange(s)}
-          style={{padding:"0.3rem 0.75rem",borderRadius:999,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",border:`1.5px solid ${value===s?m.color:C.border}`,background:value===s?m.bg:"white",color:value===s?m.color:C.textSub}}>
-          {s}
+  // コンパクトステータスピッカー：現在のステータスチップ1個 + クリックでドロップダウン
+  const CompactStatusPicker=({map,value,onChange,getLabel})=>{
+    const [open,setOpen]=React.useState(false);
+    const ref=React.useRef(null);
+    React.useEffect(()=>{
+      if(!open) return;
+      const handler=(e)=>{ if(ref.current && !ref.current.contains(e.target)) setOpen(false); };
+      document.addEventListener("mousedown",handler);
+      return ()=>document.removeEventListener("mousedown",handler);
+    },[open]);
+    const meta = map[value] || Object.values(map)[0];
+    const lbl = getLabel ? getLabel(value, meta) : value;
+    return (
+      <div ref={ref} style={{position:"relative",display:"inline-block"}}>
+        <button onClick={()=>onChange&&setOpen(o=>!o)}
+          style={{padding:"0.3rem 0.85rem",borderRadius:999,fontSize:"0.82rem",fontWeight:700,cursor:onChange?"pointer":"default",border:`1.5px solid ${meta?.color||C.border}`,background:meta?.bg||"white",color:meta?.color||C.text,fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:"0.4rem",whiteSpace:"nowrap"}}>
+          {meta?.icon && <span>{meta.icon}</span>}
+          <span>{lbl}</span>
+          {onChange&&<span style={{fontSize:"0.65rem",opacity:0.7,marginLeft:"0.15rem"}}>▼</span>}
         </button>
-      ))}
-    </div>
+        {open && onChange && (
+          <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,zIndex:50,background:"white",border:`1.5px solid ${C.border}`,borderRadius:"0.625rem",boxShadow:"0 4px 12px rgba(0,0,0,0.12)",padding:"0.4rem",display:"flex",flexDirection:"column",gap:"0.25rem",minWidth:180,maxHeight:300,overflowY:"auto"}}>
+            {Object.entries(map).map(([s,m])=>(
+              <button key={s} onClick={()=>{onChange(s);setOpen(false);}}
+                style={{padding:"0.45rem 0.7rem",borderRadius:"0.5rem",border:"none",background:value===s?(m.bg||C.accentBg):"white",color:m.color||C.text,fontWeight:700,fontSize:"0.8rem",cursor:"pointer",textAlign:"left",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"0.45rem"}}
+                onMouseEnter={e=>{if(value!==s)e.currentTarget.style.background=C.bg;}}
+                onMouseLeave={e=>{if(value!==s)e.currentTarget.style.background="white";}}>
+                {m.icon && <span>{m.icon}</span>}
+                <span>{getLabel ? getLabel(s, m) : s}</span>
+                {value===s && <span style={{marginLeft:"auto",fontSize:"0.85rem"}}>✓</span>}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const StatusPicker=({map,value,onChange})=>(
+    <CompactStatusPicker map={map} value={value} onChange={onChange}/>
   );
 
   const DustalkPicker=({value,onChange})=>(
-    <div style={{display:"flex",flexWrap:"wrap",gap:"0.35rem"}}>
-      {Object.entries(DUSTALK_STATUS).map(([s,m])=>(
-        <button key={s} onClick={()=>onChange&&onChange(s)}
-          style={{padding:"0.3rem 0.875rem",borderRadius:999,fontSize:"0.82rem",fontWeight:700,cursor:onChange?"pointer":"default",border:`1.5px solid ${value===s?m.color:C.border}`,background:value===s?m.bg:"white",color:value===s?m.color:C.textSub}}>
-          {m.icon} {s}
-        </button>
-      ))}
-    </div>
+    <CompactStatusPicker map={DUSTALK_STATUS} value={value} onChange={onChange}/>
   );
   const TreatyPicker=({value,onChange})=>(
-    <div style={{display:"flex",flexWrap:"wrap",gap:"0.35rem"}}>
-      {Object.entries(TREATY_STATUS).map(([s,m])=>(
-        <button key={s} onClick={()=>onChange&&onChange(s)}
-          style={{padding:"0.3rem 0.75rem",borderRadius:999,fontSize:"0.78rem",fontWeight:700,cursor:onChange?"pointer":"default",border:`1.5px solid ${value===s?m.color:C.border}`,background:value===s?m.bg:"white",color:value===s?m.color:C.textSub}}>
-          {s}
-        </button>
-      ))}
-    </div>
+    <CompactStatusPicker map={TREATY_STATUS} value={value} onChange={onChange}/>
   );
 
   // MuniPicker - 都道府県→自治体チェックボックス複数選択
