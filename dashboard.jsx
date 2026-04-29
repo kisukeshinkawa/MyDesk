@@ -2382,6 +2382,7 @@ function QuoteEditor({quote, users=[], currentUser, onUpdate, onDelete, onClose}
               <option value="yen">円</option>
               <option value="percent">%</option>
             </select>
+            <span style={{color:"#9ca3af",fontWeight:600,fontSize:"0.85rem"}}>=</span>
             <span style={{minWidth:90,textAlign:"right",fontWeight:700,color:"#374151"}}>¥{miscYen.toLocaleString()}</span>
           </div>
         </div>
@@ -2394,6 +2395,7 @@ function QuoteEditor({quote, users=[], currentUser, onUpdate, onDelete, onClose}
               <option value="yen">円</option>
               <option value="percent">%</option>
             </select>
+            <span style={{color:"#9ca3af",fontWeight:600,fontSize:"0.85rem"}}>=</span>
             <span style={{minWidth:90,textAlign:"right",fontWeight:700,color:"#374151"}}>¥{adjYen.toLocaleString()}</span>
           </div>
         </div>
@@ -2576,96 +2578,85 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
             </colgroup>
             <tbody>
               
-              {/* ── 御中行（A5:F5 + G5、下に二重線） ──────────────── */}
-              <tr style={{height:"8.5mm"}}>
+              {/* ── 御中行（A5:F5 + G5、下に二重線）右側は空 ──────────────── */}
+              <tr style={{height:"9mm"}}>
                 <td colSpan={6} style={{...cellBase,fontSize:"12pt",textAlign:"center",borderBottom:bDouble,verticalAlign:"bottom",paddingBottom:"1mm"}}>
                   {quote.to||""}
                 </td>
                 <td style={{...cellBase,fontSize:"11pt",textAlign:"center",borderBottom:bDouble,verticalAlign:"bottom",paddingBottom:"1mm"}}>
                   御中
                 </td>
-                <td colSpan={3}></td>
-                <td colSpan={3} style={{...cellBase,fontSize:"10.5pt",verticalAlign:"middle",whiteSpace:"normal"}}>
-                  {company.zip}
-                </td>
+                <td colSpan={6}></td>
               </tr>
 
-              {/* ── 事業所名行 + 住所 ──────────────── */}
-              <tr style={{height:"8.5mm"}}>
+              {/* ── 事業所名行 + 〒+住所（2行）───────────── */}
+              <tr style={{height:"11mm"}}>
                 <td colSpan={2} style={{...cellBase,textAlign:"center",borderTop:bDouble,borderBottom:bThin,padding:"0 1mm",fontSize:"10.5pt"}}>事業所名：</td>
                 <td colSpan={5} style={{...cellBase,textAlign:"center",borderTop:bDouble,borderBottom:bThin,whiteSpace:"normal"}}>{quote.site||""}</td>
                 <td colSpan={3}></td>
-                <td colSpan={3} style={{...cellBase,fontSize:"10pt",verticalAlign:"middle",whiteSpace:"nowrap",overflow:"visible"}}>
+                <td colSpan={3} style={{...cellBase,fontSize:"10pt",verticalAlign:"middle",whiteSpace:"normal",lineHeight:1.5,padding:"0 0.5mm"}}>
+                  {company.zip}<br/>
                   {company.address}
                 </td>
               </tr>
 
-              {/* ── 業務内容行 + 会社名 ──────────────── */}
-              <tr style={{height:"8.5mm"}}>
+              {/* ── 業務内容行 + 会社名 ───────────── */}
+              <tr style={{height:"9.5mm"}}>
                 <td colSpan={2} style={{...cellBase,textAlign:"center",borderTop:bThin,padding:"0 1mm",fontSize:"10.5pt"}}>業務内容：</td>
                 <td colSpan={5} style={{...cellBase,textAlign:"center",borderTop:bThin,whiteSpace:"normal"}}>{quote.workContent||""}</td>
                 <td colSpan={3}></td>
-                <td colSpan={3} style={{...cellBase,padding:"0 1mm",verticalAlign:"middle"}}>
+                <td colSpan={3} style={{...cellBase,padding:0,overflow:"visible",position:"relative"}}>
                   {(()=>{
                     const nm = company.name||"";
                     const len = [...nm].length;
                     if(!nm) return null;
-                    // 各文字数に対して45mm幅にちょうど収まるサイズ。安全マージン込み
-                    let fs, useFlex;
-                    if(len <= 8) { fs = "14pt"; useFlex = true; }       // 「株式会社西原商事」 distributed
-                    else if(len <= 10) { fs = "12pt"; useFlex = true; }
-                    else if(len <= 12) { fs = "10pt"; useFlex = false; }
-                    else if(len <= 14) { fs = "8.7pt"; useFlex = false; }
-                    else if(len <= 16) { fs = "7.6pt"; useFlex = false; } // 16文字でも余裕で収まる
-                    else { fs = "6.8pt"; useFlex = false; }
-                    if(useFlex) {
-                      return <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:fs,fontFamily:SERIF,fontWeight:500,padding:"0 0.5mm"}}>{[...nm].map((c,i)=><span key={i}>{c}</span>)}</div>;
+                    // 短い名前は K-M 範囲内で distributed (両端揃え) - Excel本来の見た目
+                    if(len <= 9) {
+                      return <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",height:"100%",fontSize:"15pt",fontFamily:SERIF,fontWeight:500,padding:"0 1mm"}}>{[...nm].map((c,i)=><span key={i}>{c}</span>)}</div>;
                     }
-                    return <div style={{textAlign:"center",fontSize:fs,fontFamily:SERIF,fontWeight:500,whiteSpace:"nowrap"}}>{nm}</div>;
+                    // 長い名前は M列右端に右寄せ、左方向にオーバーフロー（Excel風の見た目で大きく表示）
+                    const fs = len <= 13 ? "14pt" : len <= 16 ? "13pt" : len <= 18 ? "12pt" : "11pt";
+                    return (
+                      <div style={{position:"absolute",right:"1mm",top:0,bottom:0,display:"flex",alignItems:"center"}}>
+                        <span style={{whiteSpace:"nowrap",fontSize:fs,fontFamily:SERIF,fontWeight:500}}>{nm}</span>
+                      </div>
+                    );
                   })()}
                 </td>
               </tr>
 
-              {/* ── ご担当者行 + TEL ──────────────── */}
-              <tr style={{height:"8.5mm"}}>
+              {/* ── ご担当者行 + TEL+FAX（2行）───────────── */}
+              <tr style={{height:"11mm"}}>
                 <td colSpan={2} style={{...cellBase,textAlign:"center",borderTop:bThin,borderBottom:bThin,padding:"0 1mm",fontSize:"10.5pt"}}>ご担当者：</td>
                 <td colSpan={4} style={{...cellBase,textAlign:"center",borderTop:bThin,borderBottom:bThin,whiteSpace:"normal"}}>{quote.contactName||""}</td>
                 <td style={{...cellBase,borderTop:bThin,borderBottom:bThin,textAlign:"left",paddingLeft:"1mm"}}>{quote.contactName?"様":""}</td>
                 <td colSpan={3}></td>
-                <td colSpan={3} style={{...cellBase,fontSize:"10.5pt",textAlign:"right"}}>
-                  TEL　{company.tel}
+                <td colSpan={3} style={{...cellBase,fontSize:"10.5pt",textAlign:"right",whiteSpace:"normal",lineHeight:1.5,verticalAlign:"middle"}}>
+                  TEL　{company.tel}<br/>
+                  FAX　{company.fax}
                 </td>
               </tr>
 
-              {/* ── 有効期限行 + FAX ──────────────── */}
-              <tr style={{height:"8.5mm"}}>
+              {/* ── 有効期限行 + 承認/検印/担当者 ヘッダー（グレー背景）───────────── */}
+              <tr style={{height:"7.5mm"}}>
                 <td colSpan={2} style={{...cellBase,textAlign:"center",borderTop:bThin,borderBottom:bThin,padding:"0 1mm",fontSize:"10.5pt"}}>有効期限：</td>
                 <td colSpan={2} style={{...cellBase,borderTop:bThin,borderBottom:bThin}}>{quote.validUntil || "御見積り後"}</td>
                 <td style={{...cellBase,borderTop:bThin,borderBottom:bThin,textAlign:"center"}}>{quote.months||""}</td>
                 <td colSpan={2} style={{...cellBase,borderTop:bThin,borderBottom:bThin}}>ケ月</td>
                 <td colSpan={3}></td>
-                <td colSpan={3} style={{...cellBase,fontSize:"10.5pt",textAlign:"right"}}>
-                  FAX　{company.fax}
-                </td>
+                {/* 承認/検印/担当者 グレーヘッダー */}
+                <td style={{...cellBase,background:GREY,textAlign:"center",border:bThin,fontSize:"10pt"}}>承認</td>
+                <td style={{...cellBase,background:GREY,textAlign:"center",border:bThin,fontSize:"10pt"}}>検印</td>
+                <td style={{...cellBase,background:GREY,textAlign:"center",border:bThin,fontSize:"10pt"}}>担当者</td>
               </tr>
 
-              {/* ── スペーサー行 ──────────────── */}
-              <tr style={{height:"3mm"}}>
-                <td colSpan={10}></td>
-                {/* 承認/検印/担当者 ヘッダー（グレー背景） */}
-                <td style={{...cellBase,background:GREY,textAlign:"center",border:bThin,fontSize:"10pt",height:"6mm"}}>承認</td>
-                <td style={{...cellBase,background:GREY,textAlign:"center",border:bThin,fontSize:"10pt",height:"6mm"}}>検印</td>
-                <td style={{...cellBase,background:GREY,textAlign:"center",border:bThin,fontSize:"10pt",height:"6mm"}}>担当者</td>
-              </tr>
-
-              {/* ── リード文 + 承認等の枠（square box ~16mm×16mm） ──────────────── */}
+              {/* ── リード文 + 承認等の枠（正方形 ~16mm×16mm） ──────────────── */}
               <tr style={{height:"8mm"}}>
                 <td colSpan={6} rowSpan={2} style={{...cellBase,fontSize:"10pt",verticalAlign:"top",lineHeight:1.6,paddingTop:"2mm",whiteSpace:"normal"}}>
                   下記の通りお見積りさせていただきます。<br/>
                   ご検討のほど、お願い申し上げます。
                 </td>
                 <td colSpan={4} rowSpan={2}></td>
-                {/* 承認・検印・担当者ボックス（正方形、約16x16mm） */}
                 <td rowSpan={2} style={{...cellBase,border:bThin,textAlign:"center",verticalAlign:"middle",padding:0}}></td>
                 <td rowSpan={2} style={{...cellBase,border:bThin,textAlign:"center",verticalAlign:"middle",padding:0}}></td>
                 <td rowSpan={2} style={{...cellBase,border:bThin,textAlign:"center",verticalAlign:"middle",padding:0}}>
