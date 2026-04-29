@@ -5054,7 +5054,7 @@ function LinkedBizcardList({ cards=[], users=[], onUnlink, onNavigateToBizcard, 
 }
 
 // ─── APPROACH TIMELINE ────────────────────────────────────────────────────────
-function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach, onSave, data, currentUserId, onSendChat, onUpdateChat, onDeleteChat }) {
+function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach, onSave, data, currentUserId, onSendChat, onUpdateChat, onDeleteChat, onUpdateMemo, onDeleteMemo }) {
   const [editingId, setEditingId] = React.useState(null);
   const [editNote, setEditNote] = React.useState("");
   const [editType, setEditType] = React.useState("");
@@ -5062,6 +5062,8 @@ function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach
   const [chatText, setChatText] = React.useState("");
   const [editChatId, setEditChatId] = React.useState(null);
   const [editChatText, setEditChatText] = React.useState("");
+  const [editMemoId, setEditMemoId] = React.useState(null);
+  const [editMemoText, setEditMemoText] = React.useState("");
   
   const startEdit = (log) => {
     setEditingId(log.id);
@@ -5232,19 +5234,40 @@ function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach
           );
         }
         if(item._kind==="memo") {
+          const memoUserId = item.userId || item.createdBy;
+          const canEditMemo = !currentUserId || String(memoUserId)===String(currentUserId);
+          const isEditingMemo = editMemoId === item.id;
           return (
             <div key={item.id||i} style={{display:"flex",gap:"0.6rem",marginBottom:"0.75rem"}}>
               <div style={{display:"flex",flexDirection:"column",alignItems:"center"}}>
                 <div style={{width:30,height:30,borderRadius:"50%",background:"#f3f4f6",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.85rem",flexShrink:0}}>📝</div>
                 {i<items.length-1&&<div style={{width:2,flex:1,background:C.borderLight,margin:"4px 0"}}/>}
               </div>
-              <div style={{flex:1,paddingBottom:"0.5rem"}}>
-                <div style={{display:"flex",gap:"0.5rem",alignItems:"center",marginBottom:"0.2rem"}}>
-                  <span style={{fontSize:"0.72rem",fontWeight:700,color:C.textSub}}>メモ</span>
+              <div style={{flex:1,paddingBottom:"0.5rem",minWidth:0}}>
+                <div style={{display:"flex",gap:"0.5rem",alignItems:"center",marginBottom:"0.2rem",flexWrap:"wrap"}}>
+                  <span style={{fontSize:"0.72rem",fontWeight:700,color:C.textSub}}>{item.isMtg?"🎤 MTGメモ":"メモ"}</span>
                   <span style={{fontSize:"0.68rem",color:C.textMuted}}>{dateStr}</span>
                   {u&&<span style={{fontSize:"0.68rem",color:C.textSub}}>👤 {u.name}</span>}
+                  {item.editedAt&&<span style={{fontSize:"0.62rem",color:"#9ca3af",fontStyle:"italic"}}>(編集済)</span>}
+                  {canEditMemo && !isEditingMemo && onUpdateMemo && (
+                    <span style={{marginLeft:"auto",display:"flex",gap:"0.2rem"}}>
+                      <button onClick={()=>{setEditMemoId(item.id);setEditMemoText(item.text||"");}} title="編集" style={{background:"none",border:"none",cursor:"pointer",color:C.textSub,padding:"0.1rem 0.3rem",fontSize:"0.85rem",fontFamily:"inherit"}}>✏️</button>
+                      <button onClick={()=>{if(window.confirm("このメモを削除しますか？"))onDeleteMemo(item.id);}} title="削除" style={{background:"none",border:"none",cursor:"pointer",color:"#dc2626",padding:"0.1rem 0.3rem",fontSize:"0.8rem",fontFamily:"inherit"}}>🗑</button>
+                    </span>
+                  )}
                 </div>
-                <div style={{fontSize:"0.82rem",color:C.text,background:"#f8fafc",borderRadius:"0.5rem",padding:"0.4rem 0.6rem",border:`1px solid ${C.borderLight}`}}>{item.text}</div>
+                {isEditingMemo ? (
+                  <div style={{background:"#fffbeb",border:"1.5px solid #fbbf24",borderRadius:"0.5rem",padding:"0.5rem"}}>
+                    <textarea value={editMemoText} onChange={e=>setEditMemoText(e.target.value)}
+                      style={{width:"100%",minHeight:60,padding:"0.45rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.82rem",boxSizing:"border-box",resize:"vertical"}}/>
+                    <div style={{display:"flex",gap:"0.4rem",marginTop:"0.4rem",justifyContent:"flex-end"}}>
+                      <button onClick={()=>{setEditMemoId(null);setEditMemoText("");}} style={{padding:"0.3rem 0.7rem",borderRadius:5,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.75rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>キャンセル</button>
+                      <button onClick={()=>{onUpdateMemo(item.id, editMemoText);setEditMemoId(null);setEditMemoText("");}} disabled={!editMemoText.trim()} style={{padding:"0.3rem 0.85rem",borderRadius:5,border:"none",background:"#059669",color:"white",fontSize:"0.75rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>💾 保存</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{fontSize:"0.82rem",color:C.text,background:"#f8fafc",borderRadius:"0.5rem",padding:"0.4rem 0.6rem",border:`1px solid ${C.borderLight}`,whiteSpace:"pre-wrap"}}>{item.text}</div>
+                )}
               </div>
             </div>
           );
@@ -7187,37 +7210,40 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     setNextActionModal({entityKey, entityId, entityName});
   };
 
-  // ── 既存のapproachLogsから担当者を補完（ワンタイム実行） ────────────────
-  // 過去にアプローチを記録したユーザーが assigneeIds に入っていない場合、補完する
+  // ── 既存記録から担当者を補完（ワンタイム実行） ───────────────────────
+  // 過去にアプローチ・メモ・チャットを記録したユーザーが assigneeIds に入っていない場合、補完する
   React.useEffect(() => {
     if(!data || !currentUser) return;
-    if(data._assigneeBackfillDone) return;
+    // v2フラグ: メモ・チャットも対象に拡張したので、旧フラグは無視
+    if(data._assigneeBackfillDoneV2) return;
     let changed = false;
     const newData = {...data};
     ["companies","vendors","municipalities"].forEach(key => {
       const list = data[key] || [];
       newData[key] = list.map(e => {
         const logs = e.approachLogs || [];
-        if(!logs.length) return e;
-        // 過去ログから userId を全部集める
-        const logUserIds = [...new Set(logs.map(l=>l.userId).filter(Boolean))];
+        const memos = e.memos || [];
+        const chats = e.chat || [];
+        if(!logs.length && !memos.length && !chats.length) return e;
+        // 過去ログ・メモ・チャットから userId/createdBy を全部集める
+        const allUserIds = new Set();
+        logs.forEach(l => { if(l.userId) allUserIds.add(l.userId); if(l.createdBy) allUserIds.add(l.createdBy); });
+        memos.forEach(m => { if(m.userId) allUserIds.add(m.userId); if(m.createdBy) allUserIds.add(m.createdBy); });
+        chats.forEach(c => { if(c.userId) allUserIds.add(c.userId); });
         const currentIds = e.assigneeIds || [];
         // 未登録の userId だけ追加
-        const toAdd = logUserIds.filter(id => !currentIds.includes(id));
+        const toAdd = [...allUserIds].filter(id => !currentIds.includes(id));
         if(toAdd.length === 0) return e;
         changed = true;
         return {...e, assigneeIds: [...currentIds, ...toAdd]};
       });
     });
+    // v2フラグを立てて再実行を防ぐ
+    newData._assigneeBackfillDoneV2 = true;
     if(changed) {
-      // フラグを立てて再実行を防ぐ
-      newData._assigneeBackfillDone = true;
-      console.log("[MyDesk] 担当者補完を実行しました");
-      save(newData);
-    } else {
-      // 変更なくてもフラグだけ立てる
-      save({...data, _assigneeBackfillDone: true});
+      console.log("[MyDesk] 担当者補完(v2)を実行しました");
     }
+    save(newData);
   }, [currentUser?.id]); // ユーザーがログインしたら一度だけ実行
 
     // ── アプローチ履歴を追加 ────────────────────────────────────────────────
@@ -7230,12 +7256,17 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       const entities = data[key] || [];
       result[key] = entities.map(e => {
         const logs = e.approachLogs || [];
-        if(logs.length === 0) return e;
-        // approachLogs に出てくる userId をユニークに集める
-        const logUserIds = [...new Set(logs.map(l => l.userId).filter(Boolean))];
+        const memos = e.memos || [];
+        const chats = e.chat || [];
+        if(logs.length === 0 && memos.length === 0 && chats.length === 0) return e;
+        // 全記録から userId/createdBy をユニークに集める
+        const allUserIds = new Set();
+        logs.forEach(l => { if(l.userId) allUserIds.add(l.userId); if(l.createdBy) allUserIds.add(l.createdBy); });
+        memos.forEach(m => { if(m.userId) allUserIds.add(m.userId); if(m.createdBy) allUserIds.add(m.createdBy); });
+        chats.forEach(c => { if(c.userId) allUserIds.add(c.userId); });
         // 既存の assigneeIds に追加（重複除外）
         const currentIds = e.assigneeIds || [];
-        const newIds = [...new Set([...currentIds, ...logUserIds])];
+        const newIds = [...new Set([...currentIds, ...allUserIds])];
         if(newIds.length > currentIds.length) {
           updatedCount++;
           return {...e, assigneeIds: newIds};
@@ -7245,11 +7276,11 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     });
     
     if(updatedCount === 0) {
-      window.alert("補完が必要なエンティティはありませんでした。\n（全てのアプローチ記録の実行者が既に担当者として登録済みです）");
+      window.alert("補完が必要なエンティティはありませんでした。\n（全ての記録者が既に担当者として登録済みです）");
       return;
     }
     
-    if(!window.confirm(`${updatedCount}件のエンティティで、アプローチ実行者を担当者に追加します。\n（業者・企業・自治体すべて対象、過去のアプローチ記録から自動補完）\n\n実行しますか？`)) {
+    if(!window.confirm(`${updatedCount}件のエンティティで、過去の記録者（アプローチ・メモ・チャット）を担当者に追加します。\n（業者・企業・自治体すべて対象）\n\n実行しますか？`)) {
       return;
     }
     
@@ -9362,8 +9393,8 @@ ${orig}`})
               </button>
             ))}
           </div>
-          {activeDetail==="timeline"&&<ApproachTimeline entity={comp} entityKey="companies" entityId={comp.id} users={users} onAddApproach={()=>openApproachModal("companies",comp.id,comp.name)} onSave={nd=>save(nd)} data={data} currentUserId={currentUser?.id} onSendChat={txt=>addChat("companies",comp.id,txt)} onUpdateChat={(cid,txt)=>updateChat("companies",comp.id,cid,txt)} onDeleteChat={cid=>deleteChat("companies",comp.id,cid)}/>}
-          {activeDetail==="chat"&&<ApproachTimeline entity={comp} entityKey="companies" entityId={comp.id} users={users} onAddApproach={()=>openApproachModal("companies",comp.id,comp.name)} onSave={nd=>save(nd)} data={data} currentUserId={currentUser?.id} onSendChat={txt=>addChat("companies",comp.id,txt)} onUpdateChat={(cid,txt)=>updateChat("companies",comp.id,cid,txt)} onDeleteChat={cid=>deleteChat("companies",comp.id,cid)}/>}
+          {activeDetail==="timeline"&&<ApproachTimeline entity={comp} entityKey="companies" entityId={comp.id} users={users} onAddApproach={()=>openApproachModal("companies",comp.id,comp.name)} onSave={nd=>save(nd)} data={data} currentUserId={currentUser?.id} onSendChat={txt=>addChat("companies",comp.id,txt)} onUpdateChat={(cid,txt)=>updateChat("companies",comp.id,cid,txt)} onDeleteChat={cid=>deleteChat("companies",comp.id,cid)} onUpdateMemo={(mid,txt)=>updateMemo("companies",comp.id,mid,txt)} onDeleteMemo={mid=>deleteMemo("companies",comp.id,mid)}/>}
+          {activeDetail==="chat"&&<ApproachTimeline entity={comp} entityKey="companies" entityId={comp.id} users={users} onAddApproach={()=>openApproachModal("companies",comp.id,comp.name)} onSave={nd=>save(nd)} data={data} currentUserId={currentUser?.id} onSendChat={txt=>addChat("companies",comp.id,txt)} onUpdateChat={(cid,txt)=>updateChat("companies",comp.id,cid,txt)} onDeleteChat={cid=>deleteChat("companies",comp.id,cid)} onUpdateMemo={(mid,txt)=>updateMemo("companies",comp.id,mid,txt)} onDeleteMemo={mid=>deleteMemo("companies",comp.id,mid)}/>}
           {activeDetail==="tasks"&&<SalesTaskPanel entityType="企業" entityId={comp.id} entityName={comp.name} data={data} onSave={save} currentUser={currentUser} users={users} onNavigateToTask={onNavigateToTask} onNavigateToProject={onNavigateToProject}/>}
           {activeDetail==="bizcard"&&(()=>{
             const linked=linkedBizcards("企業",comp.id);
@@ -10004,8 +10035,8 @@ ${orig}`})
               </button>
             ))}
           </div>
-          {activeDetail==="timeline"&&<ApproachTimeline entity={v} entityKey="vendors" entityId={v.id} users={users} onAddApproach={()=>openApproachModal("vendors",v.id,v.name)} onSave={nd=>save(nd)} data={data} currentUserId={currentUser?.id} onSendChat={txt=>addChat("vendors",v.id,txt)} onUpdateChat={(cid,txt)=>updateChat("vendors",v.id,cid,txt)} onDeleteChat={cid=>deleteChat("vendors",v.id,cid)}/>}
-          {activeDetail==="chat"&&<ApproachTimeline entity={v} entityKey="vendors" entityId={v.id} users={users} onAddApproach={()=>openApproachModal("vendors",v.id,v.name)} onSave={nd=>save(nd)} data={data} currentUserId={currentUser?.id} onSendChat={txt=>addChat("vendors",v.id,txt)} onUpdateChat={(cid,txt)=>updateChat("vendors",v.id,cid,txt)} onDeleteChat={cid=>deleteChat("vendors",v.id,cid)}/>}
+          {activeDetail==="timeline"&&<ApproachTimeline entity={v} entityKey="vendors" entityId={v.id} users={users} onAddApproach={()=>openApproachModal("vendors",v.id,v.name)} onSave={nd=>save(nd)} data={data} currentUserId={currentUser?.id} onSendChat={txt=>addChat("vendors",v.id,txt)} onUpdateChat={(cid,txt)=>updateChat("vendors",v.id,cid,txt)} onDeleteChat={cid=>deleteChat("vendors",v.id,cid)} onUpdateMemo={(mid,txt)=>updateMemo("vendors",v.id,mid,txt)} onDeleteMemo={mid=>deleteMemo("vendors",v.id,mid)}/>}
+          {activeDetail==="chat"&&<ApproachTimeline entity={v} entityKey="vendors" entityId={v.id} users={users} onAddApproach={()=>openApproachModal("vendors",v.id,v.name)} onSave={nd=>save(nd)} data={data} currentUserId={currentUser?.id} onSendChat={txt=>addChat("vendors",v.id,txt)} onUpdateChat={(cid,txt)=>updateChat("vendors",v.id,cid,txt)} onDeleteChat={cid=>deleteChat("vendors",v.id,cid)} onUpdateMemo={(mid,txt)=>updateMemo("vendors",v.id,mid,txt)} onDeleteMemo={mid=>deleteMemo("vendors",v.id,mid)}/>}
           {activeDetail==="tasks"&&<SalesTaskPanel entityType="業者" entityId={v.id} entityName={v.name} data={data} onSave={save} currentUser={currentUser} users={users} onNavigateToTask={onNavigateToTask} onNavigateToProject={onNavigateToProject}/>}
           {activeDetail==="bizcard"&&(()=>{
             const linked=linkedBizcards("業者",v.id);
@@ -10762,8 +10793,8 @@ ${orig}`})
             </button>
           ))}
         </div>
-        {activeDetail==="timeline"&&<div style={{marginBottom:"1rem"}}><ApproachTimeline entity={muni} entityKey="municipalities" entityId={muni.id} users={users} onAddApproach={()=>openApproachModal("municipalities",muni.id,muni.name)} onSave={nd=>save(nd)} data={data} currentUserId={currentUser?.id} onSendChat={txt=>addChat("municipalities",muni.id,txt)} onUpdateChat={(cid,txt)=>updateChat("municipalities",muni.id,cid,txt)} onDeleteChat={cid=>deleteChat("municipalities",muni.id,cid)}/></div>}
-        {activeDetail==="chat"&&<div style={{marginBottom:"1rem"}}><ApproachTimeline entity={muni} entityKey="municipalities" entityId={muni.id} users={users} onAddApproach={()=>openApproachModal("municipalities",muni.id,muni.name)} onSave={nd=>save(nd)} data={data} currentUserId={currentUser?.id} onSendChat={txt=>addChat("municipalities",muni.id,txt)} onUpdateChat={(cid,txt)=>updateChat("municipalities",muni.id,cid,txt)} onDeleteChat={cid=>deleteChat("municipalities",muni.id,cid)}/></div>}
+        {activeDetail==="timeline"&&<div style={{marginBottom:"1rem"}}><ApproachTimeline entity={muni} entityKey="municipalities" entityId={muni.id} users={users} onAddApproach={()=>openApproachModal("municipalities",muni.id,muni.name)} onSave={nd=>save(nd)} data={data} currentUserId={currentUser?.id} onSendChat={txt=>addChat("municipalities",muni.id,txt)} onUpdateChat={(cid,txt)=>updateChat("municipalities",muni.id,cid,txt)} onDeleteChat={cid=>deleteChat("municipalities",muni.id,cid)} onUpdateMemo={(mid,txt)=>updateMemo("municipalities",muni.id,mid,txt)} onDeleteMemo={mid=>deleteMemo("municipalities",muni.id,mid)}/></div>}
+        {activeDetail==="chat"&&<div style={{marginBottom:"1rem"}}><ApproachTimeline entity={muni} entityKey="municipalities" entityId={muni.id} users={users} onAddApproach={()=>openApproachModal("municipalities",muni.id,muni.name)} onSave={nd=>save(nd)} data={data} currentUserId={currentUser?.id} onSendChat={txt=>addChat("municipalities",muni.id,txt)} onUpdateChat={(cid,txt)=>updateChat("municipalities",muni.id,cid,txt)} onDeleteChat={cid=>deleteChat("municipalities",muni.id,cid)} onUpdateMemo={(mid,txt)=>updateMemo("municipalities",muni.id,mid,txt)} onDeleteMemo={mid=>deleteMemo("municipalities",muni.id,mid)}/></div>}
         {activeDetail==="tasks"&&<div style={{marginBottom:"1rem"}}><SalesTaskPanel entityType="自治体" entityId={muni.id} entityName={muni.name} data={data} onSave={save} currentUser={currentUser} users={users} onNavigateToTask={onNavigateToTask} onNavigateToProject={onNavigateToProject}/></div>}
         {activeDetail==="bizcard"&&<div style={{marginBottom:"1rem"}}>{(()=>{
           const linked=linkedBizcards("自治体",muni.id);
