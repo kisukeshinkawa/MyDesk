@@ -2387,7 +2387,6 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
   // 行数を15行に固定（ひな形に合わせる）
   while(items.length < 15) items.push(null);
   
-  const dateStr = quote.issuedDate ? quote.issuedDate.replace(/-/g,"年").replace(/年(\d+)$/,"年$1月") + "日" : "";
   // 整形: 2026-04-29 → 2026年4月29日
   const fmt = (d) => {
     if(!d) return "";
@@ -2395,6 +2394,18 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
     if(!m) return d;
     return `${m[1]}年${parseInt(m[2])}月${parseInt(m[3])}日`;
   };
+  
+  // セルの共通スタイル
+  const cellBase = {
+    border: "1px solid #000",
+    padding: "3px 5px",
+    fontSize: "10pt",
+    boxSizing: "border-box",
+    verticalAlign: "middle",
+  };
+  const cellCenter = {...cellBase, textAlign: "center"};
+  const cellRight = {...cellBase, textAlign: "right"};
+  const headerCell = {...cellBase, background: "#f5f5f5", fontWeight: 700, textAlign: "center", fontSize: "9pt"};
   
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:1000,overflow:"auto",padding:"1rem"}}>
@@ -2412,124 +2423,182 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
           @media print {
             body * { visibility: hidden; }
             .quote-print, .quote-print * { visibility: visible; }
-            .quote-print { position: absolute; left: 0; top: 0; width: 100%; }
+            .quote-print { position: absolute; left: 0; top: 0; width: 100%; padding: 15mm 18mm !important; }
             .no-print { display: none !important; }
+            @page { size: A4; margin: 0; }
           }
-          .quote-print { font-family: "Hiragino Sans", "Yu Gothic", sans-serif; }
+          .quote-print { font-family: "Yu Mincho", "Hiragino Mincho ProN", "Hiragino Mincho Pro", "MS Mincho", serif; }
+          .quote-print td, .quote-print th { border: 1px solid #000 !important; }
         `}</style>
         
-        {/* 見積書本体 */}
-        <div className="quote-print" style={{padding:"2rem 2.5rem",fontSize:"11pt",color:"#000",lineHeight:1.5}}>
-          {/* タイトル */}
-          <div style={{textAlign:"center",fontSize:"22pt",fontWeight:700,letterSpacing:"0.5em",marginBottom:"1.5rem",borderBottom:"2px solid #000",paddingBottom:"0.6rem",display:"inline-block",width:"auto",margin:"0 auto 1.5rem",position:"relative",left:"50%",transform:"translateX(-50%)"}}>御　見　積　書</div>
+        {/* 見積書本体 - A4比率 */}
+        <div className="quote-print" style={{padding:"22mm 25mm",fontSize:"10pt",color:"#000",lineHeight:1.4,minHeight:"297mm",boxSizing:"border-box"}}>
           
-          <div style={{display:"flex",justifyContent:"space-between",marginBottom:"1.5rem"}}>
-            {/* 左：宛先 */}
-            <div style={{flex:1}}>
-              <div style={{fontSize:"13pt",fontWeight:700,marginBottom:"0.3rem",borderBottom:"1px solid #000",paddingBottom:"0.2rem",display:"inline-block"}}>{quote.to || ""} 御中</div>
-              {quote.contactName && <div style={{fontSize:"11pt",marginTop:"0.4rem"}}>{quote.contactName} 様</div>}
-              {quote.site && <div style={{fontSize:"10pt",marginTop:"0.4rem",color:"#333"}}>事業所名： {quote.site}</div>}
-              {quote.workContent && <div style={{fontSize:"10pt",marginTop:"0.2rem",color:"#333"}}>業務内容： {quote.workContent}</div>}
-              {quote.contactName && <div style={{fontSize:"10pt",marginTop:"0.2rem",color:"#333"}}>ご担当者： {quote.contactName}</div>}
-              <div style={{fontSize:"10pt",marginTop:"0.2rem",color:"#333"}}>有効期限： {quote.validUntil || "御見積り後"}</div>
-            </div>
-            {/* 右：自社情報 + 日付 */}
-            <div style={{textAlign:"right",fontSize:"10pt",position:"relative"}}>
-              <div style={{marginBottom:"0.5rem"}}>{fmt(quote.issuedDate)}</div>
-              <div style={{fontWeight:700,fontSize:"12pt",marginBottom:"0.2rem"}}>{company.name}</div>
-              <div>{company.zip}</div>
-              <div>{company.address}</div>
-              <div>TEL  {company.tel}</div>
-              <div>FAX  {company.fax}</div>
-              {/* 担当者印 */}
-              {authorLastName && (
-                <div style={{position:"absolute",right:"4rem",top:"3rem",border:"2px solid #d00",borderRadius:"50%",width:"55px",height:"55px",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"14pt",fontWeight:700,color:"#d00",transform:"rotate(-12deg)",fontFamily:"serif",letterSpacing:"-0.05em"}}>{authorLastName}</div>
-              )}
-            </div>
+          {/* タイトル */}
+          <div style={{textAlign:"center",marginBottom:"8mm"}}>
+            <div style={{display:"inline-block",fontSize:"20pt",fontWeight:700,letterSpacing:"0.7em",paddingBottom:"2mm",borderBottom:"1.5px solid #000",paddingLeft:"0.7em"}}>御　見　積　書</div>
           </div>
+          
+          {/* 上部レイアウト：左に宛先、右に発行日+自社情報 */}
+          <table style={{width:"100%",borderCollapse:"collapse",marginBottom:"5mm"}}>
+            <tbody>
+              <tr>
+                {/* 左：宛先エリア */}
+                <td style={{verticalAlign:"top",width:"55%",padding:"0",border:"none"}}>
+                  <div style={{borderBottom:"1px solid #000",paddingBottom:"1mm",marginBottom:"2mm"}}>
+                    <span style={{fontSize:"13pt",fontWeight:700}}>{quote.to || ""}</span>
+                    <span style={{fontSize:"11pt",fontWeight:700,marginLeft:"0.5em"}}>御中</span>
+                  </div>
+                  {quote.contactName && (
+                    <div style={{fontSize:"10pt",marginBottom:"1.2mm"}}>
+                      <span>{quote.contactName}</span>
+                      <span style={{marginLeft:"0.5em"}}>様</span>
+                    </div>
+                  )}
+                  <div style={{marginTop:"5mm",fontSize:"10pt",lineHeight:1.7}}>
+                    <div>事業所名：　{quote.site || ""}</div>
+                    <div>業務内容：　{quote.workContent || ""}</div>
+                    <div>ご担当者：　{quote.contactName || ""}</div>
+                    <div>有効期限：　{quote.validUntil || "御見積り後"}</div>
+                  </div>
+                </td>
+                {/* 右：日付・自社情報（印影含む） */}
+                <td style={{verticalAlign:"top",width:"45%",padding:"0",border:"none",position:"relative"}}>
+                  <div style={{textAlign:"left",fontSize:"10pt",marginBottom:"4mm"}}>{fmt(quote.issuedDate)}</div>
+                  <div style={{position:"relative"}}>
+                    <div style={{fontWeight:700,fontSize:"12.5pt",letterSpacing:"0.05em",marginBottom:"1.5mm"}}>{company.name}</div>
+                    <div style={{fontSize:"9.5pt",lineHeight:1.7}}>
+                      <div>{company.zip}</div>
+                      <div>{company.address}</div>
+                      <div>TEL　{company.tel}</div>
+                      <div>FAX　{company.fax}</div>
+                    </div>
+                    {/* 担当者印（角印風） */}
+                    {authorLastName && (
+                      <div style={{position:"absolute",right:"8mm",top:"-2mm",border:"2px solid #c80000",width:"18mm",height:"18mm",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"13pt",fontWeight:900,color:"#c80000",fontFamily:"\"Yu Mincho\", \"Hiragino Mincho Pro\", serif",letterSpacing:"-0.05em",borderRadius:"1mm",transform:"rotate(-3deg)",background:"rgba(255,255,255,0.4)"}}>{authorLastName}</div>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
           
           {/* リード文 */}
-          <div style={{fontSize:"10.5pt",marginBottom:"0.6rem"}}>下記の通りお見積りさせていただきます。</div>
-          <div style={{fontSize:"10.5pt",marginBottom:"1rem"}}>ご検討のほど、お願い申し上げます。</div>
+          <div style={{fontSize:"10pt",marginBottom:"1.5mm"}}>下記の通りお見積りさせていただきます。</div>
+          <div style={{fontSize:"10pt",marginBottom:"4mm"}}>ご検討のほど、お願い申し上げます。</div>
           
-          {/* 合計欄 */}
-          <div style={{border:"2px solid #000",padding:"0.5rem 0.85rem",marginBottom:"0.7rem",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-            <div style={{fontSize:"12pt",fontWeight:700}}>見積金額</div>
-            <div style={{fontSize:"16pt",fontWeight:800}}>¥{grandTotal.toLocaleString()}-</div>
-            <div style={{fontSize:"10pt"}}>（税込）</div>
-            {quote.months && <div style={{fontSize:"10pt"}}>{quote.months}ヶ月</div>}
-            <div style={{fontSize:"9pt",color:"#666"}}>承認 / 検印 / 担当者</div>
-          </div>
+          {/* 見積金額バー */}
+          <table style={{width:"100%",borderCollapse:"collapse",marginBottom:"4mm"}}>
+            <tbody>
+              <tr>
+                <td style={{...cellBase,width:"22%",fontWeight:700,fontSize:"11pt",textAlign:"center",padding:"4mm 2mm"}}>見積金額</td>
+                <td style={{...cellBase,width:"38%",textAlign:"center",fontSize:"15pt",fontWeight:800,padding:"4mm 2mm"}}>¥{grandTotal.toLocaleString()}-</td>
+                <td style={{...cellBase,width:"15%",textAlign:"center",fontSize:"9.5pt",padding:"4mm 2mm"}}>（税込）</td>
+                <td style={{...cellBase,width:"10%",textAlign:"center",fontSize:"9pt",padding:"4mm 2mm"}}>{quote.months || ""}{quote.months ? "ヶ月" : ""}</td>
+                <td style={{...cellBase,width:"15%",padding:"0",border:"1px solid #000"}}>
+                  <table style={{width:"100%",borderCollapse:"collapse",height:"100%"}}>
+                    <tbody>
+                      <tr>
+                        <td style={{border:"1px solid #000",padding:"1mm 1mm",fontSize:"7.5pt",textAlign:"center",width:"33%",height:"6mm"}}>承認</td>
+                        <td style={{border:"1px solid #000",padding:"1mm 1mm",fontSize:"7.5pt",textAlign:"center",width:"33%"}}>検印</td>
+                        <td style={{border:"1px solid #000",padding:"1mm 1mm",fontSize:"7.5pt",textAlign:"center",width:"34%"}}>担当者</td>
+                      </tr>
+                      <tr>
+                        <td style={{border:"1px solid #000",padding:"1mm",height:"10mm"}}></td>
+                        <td style={{border:"1px solid #000",padding:"1mm"}}></td>
+                        <td style={{border:"1px solid #000",padding:"1mm",fontSize:"10pt",textAlign:"center",fontWeight:700,color:"#c80000"}}>{authorLastName || ""}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </td>
+              </tr>
+            </tbody>
+          </table>
           
           {/* 明細表 */}
-          <table style={{width:"100%",borderCollapse:"collapse",fontSize:"10pt",marginBottom:"0.6rem"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",marginBottom:"3mm"}}>
             <thead>
               <tr>
-                <th style={{border:"1px solid #000",padding:"0.3rem",background:"#f0f0f0",textAlign:"center",width:"30px"}}>#</th>
-                <th style={{border:"1px solid #000",padding:"0.3rem",background:"#f0f0f0"}}>内容</th>
-                <th style={{border:"1px solid #000",padding:"0.3rem",background:"#f0f0f0",width:"60px"}}>数量</th>
-                <th style={{border:"1px solid #000",padding:"0.3rem",background:"#f0f0f0",width:"50px"}}>単位</th>
-                <th style={{border:"1px solid #000",padding:"0.3rem",background:"#f0f0f0",width:"90px"}}>単価</th>
-                <th style={{border:"1px solid #000",padding:"0.3rem",background:"#f0f0f0",width:"100px"}}>金額</th>
-                <th style={{border:"1px solid #000",padding:"0.3rem",background:"#f0f0f0",width:"100px"}}>備考</th>
+                <th style={{...headerCell,width:"7%"}}></th>
+                <th style={{...headerCell,width:"38%"}}>内　容</th>
+                <th style={{...headerCell,width:"9%"}}>数　量</th>
+                <th style={{...headerCell,width:"8%"}}>単位</th>
+                <th style={{...headerCell,width:"13%"}}>単　価</th>
+                <th style={{...headerCell,width:"13%"}}>金　額</th>
+                <th style={{...headerCell,width:"12%"}}>備考欄</th>
               </tr>
             </thead>
             <tbody>
               {items.map((it, idx) => {
                 const amount = it ? (Number(it.qty)||0)*(Number(it.price)||0) : 0;
                 return (
-                  <tr key={idx}>
-                    <td style={{border:"1px solid #000",padding:"0.25rem 0.3rem",textAlign:"center",height:"22px"}}>{idx+1}</td>
-                    <td style={{border:"1px solid #000",padding:"0.25rem 0.4rem"}}>{it?.description || ""}</td>
-                    <td style={{border:"1px solid #000",padding:"0.25rem 0.3rem",textAlign:"right"}}>{it?.qty || ""}</td>
-                    <td style={{border:"1px solid #000",padding:"0.25rem 0.3rem",textAlign:"center"}}>{it?.unit || ""}</td>
-                    <td style={{border:"1px solid #000",padding:"0.25rem 0.4rem",textAlign:"right"}}>{it?.price ? Number(it.price).toLocaleString() : ""}</td>
-                    <td style={{border:"1px solid #000",padding:"0.25rem 0.4rem",textAlign:"right"}}>{it ? amount.toLocaleString() : ""}</td>
-                    <td style={{border:"1px solid #000",padding:"0.25rem 0.4rem",fontSize:"9pt"}}>{it?.remarks || ""}</td>
+                  <tr key={idx} style={{height:"7mm"}}>
+                    <td style={{...cellCenter}}>{idx+1}</td>
+                    <td style={{...cellBase}}>{it?.description || ""}</td>
+                    <td style={{...cellRight}}>{it?.qty || ""}</td>
+                    <td style={{...cellCenter}}>{it?.unit || ""}</td>
+                    <td style={{...cellRight}}>{it?.price ? Number(it.price).toLocaleString() : ""}</td>
+                    <td style={{...cellRight,fontWeight:it?700:400}}>{it ? amount.toLocaleString() : ""}</td>
+                    <td style={{...cellBase,fontSize:"8.5pt"}}>{it?.remarks || ""}</td>
                   </tr>
                 );
               })}
-              {/* 集計行 */}
-              <tr>
-                <td colSpan="5" style={{border:"1px solid #000",padding:"0.25rem 0.4rem",textAlign:"right",fontWeight:700}}>小計</td>
-                <td style={{border:"1px solid #000",padding:"0.25rem 0.4rem",textAlign:"right",fontWeight:700}}>{subtotal.toLocaleString()}</td>
-                <td style={{border:"1px solid #000",padding:"0.25rem 0.4rem"}}></td>
+              {/* 小計 */}
+              <tr style={{height:"6mm"}}>
+                <td colSpan="4" style={{...cellBase,textAlign:"center",letterSpacing:"0.4em"}}>小　　計</td>
+                <td style={{...cellBase,background:"#fafafa"}}></td>
+                <td style={{...cellRight,fontWeight:700}}>{subtotal.toLocaleString()}</td>
+                <td style={{...cellBase}}></td>
               </tr>
-              <tr>
-                <td colSpan="5" style={{border:"1px solid #000",padding:"0.25rem 0.4rem",textAlign:"right"}}>諸経費</td>
-                <td style={{border:"1px solid #000",padding:"0.25rem 0.4rem",textAlign:"right"}}>{(Number(quote.misc)||0).toLocaleString()}</td>
-                <td style={{border:"1px solid #000",padding:"0.25rem 0.4rem"}}></td>
+              {/* 諸経費 */}
+              <tr style={{height:"6mm"}}>
+                <td colSpan="4" style={{...cellBase,textAlign:"center",letterSpacing:"0.4em"}}>諸　経　費</td>
+                <td style={{...cellBase,background:"#fafafa"}}></td>
+                <td style={{...cellRight}}>{(Number(quote.misc)||0).toLocaleString()}</td>
+                <td style={{...cellBase}}></td>
               </tr>
-              <tr>
-                <td colSpan="5" style={{border:"1px solid #000",padding:"0.25rem 0.4rem",textAlign:"right"}}>調整費</td>
-                <td style={{border:"1px solid #000",padding:"0.25rem 0.4rem",textAlign:"right"}}>{(Number(quote.adjustment)||0).toLocaleString()}</td>
-                <td style={{border:"1px solid #000",padding:"0.25rem 0.4rem"}}></td>
+              {/* 調整費 */}
+              <tr style={{height:"6mm"}}>
+                <td colSpan="4" style={{...cellBase,textAlign:"center",letterSpacing:"0.4em"}}>調　整　費</td>
+                <td style={{...cellBase,background:"#fafafa"}}></td>
+                <td style={{...cellRight}}>{(Number(quote.adjustment)||0).toLocaleString()}</td>
+                <td style={{...cellBase}}></td>
               </tr>
-              <tr>
-                <td colSpan="5" style={{border:"1px solid #000",padding:"0.25rem 0.4rem",textAlign:"right",fontWeight:700}}>小計（税抜）</td>
-                <td style={{border:"1px solid #000",padding:"0.25rem 0.4rem",textAlign:"right",fontWeight:700}}>{adjustedSub.toLocaleString()}</td>
-                <td style={{border:"1px solid #000",padding:"0.25rem 0.4rem"}}></td>
+              {/* 小計(税抜) */}
+              <tr style={{height:"6mm"}}>
+                <td colSpan="4" style={{...cellBase,textAlign:"center",letterSpacing:"0.2em",fontWeight:700}}>小　　計　(税抜)</td>
+                <td style={{...cellBase,background:"#fafafa"}}></td>
+                <td style={{...cellRight,fontWeight:700}}>{adjustedSub.toLocaleString()}</td>
+                <td style={{...cellBase}}></td>
               </tr>
-              <tr>
-                <td colSpan="5" style={{border:"1px solid #000",padding:"0.25rem 0.4rem",textAlign:"right"}}>消費税 {quote.taxRate||10}%</td>
-                <td style={{border:"1px solid #000",padding:"0.25rem 0.4rem",textAlign:"right"}}>{tax.toLocaleString()}</td>
-                <td style={{border:"1px solid #000",padding:"0.25rem 0.4rem"}}></td>
+              {/* 消費税 */}
+              <tr style={{height:"6mm"}}>
+                <td colSpan="4" style={{...cellBase,textAlign:"center",letterSpacing:"0.2em"}}>消　　費　　税</td>
+                <td style={{...cellCenter,fontSize:"9pt"}}>{quote.taxRate||10}%</td>
+                <td style={{...cellRight}}>{tax.toLocaleString()}</td>
+                <td style={{...cellBase}}></td>
               </tr>
-              <tr>
-                <td colSpan="5" style={{border:"2px solid #000",padding:"0.35rem 0.4rem",textAlign:"right",fontWeight:800,background:"#f0f0f0"}}>合計（税込）</td>
-                <td style={{border:"2px solid #000",padding:"0.35rem 0.4rem",textAlign:"right",fontWeight:800,background:"#f0f0f0"}}>{grandTotal.toLocaleString()}</td>
-                <td style={{border:"1px solid #000",padding:"0.25rem 0.4rem"}}></td>
+              {/* 合計(税込) */}
+              <tr style={{height:"7mm"}}>
+                <td colSpan="4" style={{...cellBase,textAlign:"center",letterSpacing:"0.2em",fontWeight:800,background:"#f0f0f0"}}>合　　計　(税込)</td>
+                <td style={{...cellBase,background:"#f0f0f0"}}></td>
+                <td style={{...cellRight,fontWeight:800,background:"#f0f0f0"}}>{grandTotal.toLocaleString()}</td>
+                <td style={{...cellBase,background:"#f0f0f0"}}></td>
               </tr>
             </tbody>
           </table>
           
-          {/* 備考 */}
-          {quote.remarks && (
-            <div style={{border:"1px solid #000",padding:"0.5rem 0.7rem",fontSize:"10pt",minHeight:"60px",whiteSpace:"pre-wrap"}}>
-              <div style={{fontWeight:700,marginBottom:"0.2rem"}}>備考</div>
-              {quote.remarks}
-            </div>
-          )}
+          {/* 備考欄 */}
+          <table style={{width:"100%",borderCollapse:"collapse"}}>
+            <tbody>
+              <tr>
+                <td style={{...cellBase,width:"100%",height:"22mm",verticalAlign:"top",padding:"3mm 4mm",whiteSpace:"pre-wrap",fontSize:"9.5pt"}}>
+                  <div style={{fontWeight:700,marginBottom:"1.5mm",letterSpacing:"0.4em"}}>備　考</div>
+                  {quote.remarks || ""}
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -10156,34 +10225,22 @@ ${orig}`})
     return (
       <div style={{display:"flex",height:isPC?"calc(100vh - 60px)":"auto",overflow:isPC?"hidden":"visible"}}>
         {/* List pane */}
-        <div style={{width:isPC?(activeCompany?440:"100%"):"100%",flexShrink:0,overflowY:isPC?"auto":"visible",borderRight:isPC&&activeCompany?"1px solid #e5e5ea":"none",transition:"width 0.2s",minWidth:isPC&&activeCompany?440:undefined}}>
+        <div style={{width:isPC?(activeCompany?440:"100%"):"100%",maxWidth:isPC&&!activeCompany?960:"none",margin:isPC&&!activeCompany?"0 auto":"0",flexShrink:0,overflowY:isPC?"auto":"visible",borderRight:isPC&&activeCompany?"1px solid #e5e5ea":"none",transition:"width 0.2s",minWidth:isPC&&activeCompany?440:undefined}}>
         <TopTabs/>
         <BulkBar statusMap={COMPANY_STATUS} applyFn={applyBulkComp} visibleIds={compVisibleIds} onDelete={deleteBulkComp}/>
-        {/* 担当者フィルタ */}
-        {(()=>{
-          const hasF=!!compFilter.assignee;
+        {/* 担当者絞り込み中の件数表示 */}
+        {compFilter.assignee && (()=>{
           const fCount=compFilteredBase.length;
-          const statusCounts=hasF?Object.keys(COMPANY_STATUS).map(s=>{const n=compFilteredBase.filter(c=>(c.status||"未接触")===s).length;return n>0?{s,n}:null;}).filter(Boolean):[];
+          const statusCounts=Object.keys(COMPANY_STATUS).map(s=>{const n=compFilteredBase.filter(c=>(c.status||"未接触")===s).length;return n>0?{s,n}:null;}).filter(Boolean);
           return (
-            <div style={{background:"#f8fafc",border:`1px solid ${hasF?C.accent:C.border}`,borderRadius:"8px",padding:"0.625rem 0.75rem",marginBottom:"0.75rem"}}>
-              <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:hasF?"0.4rem":0}}>
-                <select value={compFilter.assignee} onChange={e=>setCompFilter(p=>({...p,assignee:e.target.value}))}
-                  style={{flex:1,padding:"0.3rem 0.5rem",borderRadius:"0.5rem",border:`1.5px solid ${hasF?C.accent:C.border}`,fontSize:"0.78rem",background:hasF?"#eff6ff":"white",color:hasF?C.accent:C.text,fontFamily:"inherit",fontWeight:hasF?700:400}}>
-                  <option value="">👤 担当者で絞り込み</option>
-                  <option value="__me__">自分</option>
-                  {users.map(u=><option key={u.id} value={String(u.id)}>{u.name}</option>)}
-                </select>
-                {hasF&&<span style={{fontSize:"0.8rem",fontWeight:800,color:"#7c3aed",flexShrink:0}}>{fCount}件</span>}
-                {hasF&&<button onClick={()=>setCompFilter(p=>({...p,assignee:""}))}
-                  style={{fontSize:"0.65rem",background:"#fef2f2",color:"#dc2626",border:"1px solid #fca5a5",borderRadius:999,padding:"0.1rem 0.45rem",cursor:"pointer",fontWeight:700,fontFamily:"inherit",flexShrink:0}}>解除</button>}
-              </div>
-              {hasF&&statusCounts.length>0&&(
-                <div style={{display:"flex",gap:"0.25rem",flexWrap:"wrap"}}>
-                  {statusCounts.map(({s,n})=>(
-                    <span key={s} style={{fontSize:"0.62rem",padding:"0.1rem 0.35rem",borderRadius:999,fontWeight:700,background:COMPANY_STATUS[s]?.bg,color:COMPANY_STATUS[s]?.color}}>{s}: {n}件</span>
-                  ))}
-                </div>
-              )}
+            <div style={{background:"#eff6ff",border:`1px solid ${C.accent}`,borderRadius:"8px",padding:"0.45rem 0.7rem",marginBottom:"0.75rem",display:"flex",alignItems:"center",gap:"0.5rem",flexWrap:"wrap"}}>
+              <span style={{fontSize:"0.72rem",fontWeight:800,color:C.accent}}>👤 絞り込み中: {fCount}件</span>
+              {statusCounts.map(({s,n})=>(
+                <span key={s} style={{fontSize:"0.62rem",padding:"0.1rem 0.35rem",borderRadius:999,fontWeight:700,background:COMPANY_STATUS[s]?.bg,color:COMPANY_STATUS[s]?.color}}>{s}: {n}件</span>
+              ))}
+              <div style={{flex:1}}/>
+              <button onClick={()=>setCompFilter(p=>({...p,assignee:""}))}
+                style={{fontSize:"0.65rem",background:"#fef2f2",color:"#dc2626",border:"1px solid #fca5a5",borderRadius:999,padding:"0.15rem 0.55rem",cursor:"pointer",fontWeight:700,fontFamily:"inherit"}}>✕ 解除</button>
             </div>
           );
         })()}
@@ -10193,11 +10250,20 @@ ${orig}`})
           if(!followComps.length) return null;
           return (
             <div style={{background:"#fefce8",border:"1.5px solid #fde047",borderRadius:"8px",marginBottom:"0.75rem",overflow:"hidden"}}>
-              <button onClick={()=>{setFollowCompOpen(v=>{localStorage.setItem("md_followCompOpen",!v?"1":"0");return !v;});}}
-                style={{width:"100%",display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.55rem 0.85rem",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
-                <span style={{fontSize:"0.78rem",fontWeight:800,color:"#854d0e",flex:1}}>⭐ フォロー中 ({followComps.length}件)</span>
-                <span style={{fontSize:"0.7rem",color:"#854d0e",transition:"transform 0.2s",display:"inline-block",transform:followCompOpen?"rotate(0deg)":"rotate(-90deg)"}}>▼</span>
-              </button>
+              <div style={{display:"flex",alignItems:"center",gap:"0.4rem",padding:"0.4rem 0.6rem 0.4rem 0.85rem"}}>
+                <button onClick={()=>{setFollowCompOpen(v=>{localStorage.setItem("md_followCompOpen",!v?"1":"0");return !v;});}}
+                  style={{display:"flex",alignItems:"center",gap:"0.4rem",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",textAlign:"left",padding:"0.15rem 0",flexShrink:0}}>
+                  <span style={{fontSize:"0.78rem",fontWeight:800,color:"#854d0e"}}>⭐ フォロー中 ({followComps.length}件)</span>
+                  <span style={{fontSize:"0.7rem",color:"#854d0e",transition:"transform 0.2s",display:"inline-block",transform:followCompOpen?"rotate(0deg)":"rotate(-90deg)"}}>▼</span>
+                </button>
+                <div style={{flex:1}}/>
+                <select value={compFilter.assignee} onChange={e=>setCompFilter(p=>({...p,assignee:e.target.value}))} onClick={e=>e.stopPropagation()}
+                  style={{padding:"0.25rem 0.45rem",borderRadius:"0.4rem",border:`1.5px solid ${compFilter.assignee?C.accent:"#fde047"}`,fontSize:"0.7rem",background:compFilter.assignee?"#eff6ff":"white",color:compFilter.assignee?C.accent:"#854d0e",fontFamily:"inherit",fontWeight:compFilter.assignee?700:600,maxWidth:140,minWidth:80}}>
+                  <option value="">👤 担当者</option>
+                  <option value="__me__">自分</option>
+                  {users.map(u=><option key={u.id} value={String(u.id)}>{u.name}</option>)}
+                </select>
+              </div>
               {followCompOpen && (
                 <div style={{padding:"0 0.85rem 0.7rem",display:"flex",flexDirection:"column",gap:"0.3rem",borderTop:"1px solid #fde047"}}>
                   <div style={{height:"0.5rem"}}/>
@@ -10877,7 +10943,7 @@ ${orig}`})
     return (
       <div style={{display:"flex",height:isPC?"calc(100vh - 60px)":"auto",overflow:isPC?"hidden":"visible"}}>
         {/* List pane */}
-        <div style={{width:isPC?(activeVendor?440:"100%"):"100%",flexShrink:0,overflowY:isPC?"auto":"visible",borderRight:isPC&&activeVendor?"1px solid #e5e5ea":"none",transition:"width 0.2s",minWidth:isPC&&activeVendor?440:undefined}}>
+        <div style={{width:isPC?(activeVendor?440:"100%"):"100%",maxWidth:isPC&&!activeVendor?960:"none",margin:isPC&&!activeVendor?"0 auto":"0",flexShrink:0,overflowY:isPC?"auto":"visible",borderRight:isPC&&activeVendor?"1px solid #e5e5ea":"none",transition:"width 0.2s",minWidth:isPC&&activeVendor?440:undefined}}>
         <TopTabs/>
         <BulkBar statusMap={VENDOR_STATUS} applyFn={applyBulkVend} visibleIds={vendVisibleIds} onDelete={deleteBulkVend}/>
         {/* フォロー中業者 */}
@@ -10886,11 +10952,20 @@ ${orig}`})
           if(!followVends.length) return null;
           return (
             <div style={{background:"#fefce8",border:"1.5px solid #fde047",borderRadius:"8px",marginBottom:"0.75rem",overflow:"hidden"}}>
-              <button onClick={()=>{setFollowVendOpen(o=>{localStorage.setItem("md_followVendOpen",!o?"1":"0");return !o;});}}
-                style={{width:"100%",display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.55rem 0.85rem",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
-                <span style={{fontSize:"0.78rem",fontWeight:800,color:"#854d0e",flex:1}}>⭐ フォロー中 ({followVends.length}件)</span>
-                <span style={{fontSize:"0.7rem",color:"#854d0e",transition:"transform 0.2s",display:"inline-block",transform:followVendOpen?"rotate(0deg)":"rotate(-90deg)"}}>▼</span>
-              </button>
+              <div style={{display:"flex",alignItems:"center",gap:"0.4rem",padding:"0.4rem 0.6rem 0.4rem 0.85rem"}}>
+                <button onClick={()=>{setFollowVendOpen(o=>{localStorage.setItem("md_followVendOpen",!o?"1":"0");return !o;});}}
+                  style={{display:"flex",alignItems:"center",gap:"0.4rem",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",textAlign:"left",padding:"0.15rem 0",flexShrink:0}}>
+                  <span style={{fontSize:"0.78rem",fontWeight:800,color:"#854d0e"}}>⭐ フォロー中 ({followVends.length}件)</span>
+                  <span style={{fontSize:"0.7rem",color:"#854d0e",transition:"transform 0.2s",display:"inline-block",transform:followVendOpen?"rotate(0deg)":"rotate(-90deg)"}}>▼</span>
+                </button>
+                <div style={{flex:1}}/>
+                <select value={vendFilterAssignee} onChange={e=>setVendFilterAssignee(e.target.value)} onClick={e=>e.stopPropagation()}
+                  style={{padding:"0.25rem 0.45rem",borderRadius:"0.4rem",border:`1.5px solid ${vendFilterAssignee?C.accent:"#fde047"}`,fontSize:"0.7rem",background:vendFilterAssignee?"#eff6ff":"white",color:vendFilterAssignee?C.accent:"#854d0e",fontFamily:"inherit",fontWeight:vendFilterAssignee?700:600,maxWidth:140,minWidth:80}}>
+                  <option value="">👤 担当者</option>
+                  <option value="__me__">自分</option>
+                  {users.map(u=><option key={u.id} value={String(u.id)}>{u.name}</option>)}
+                </select>
+              </div>
               {followVendOpen && (
               <div style={{padding:"0 0.85rem 0.7rem",display:"flex",flexDirection:"column",gap:"0.3rem",borderTop:"1px solid #fde047"}}>
                 <div style={{height:"0.5rem"}}/>
@@ -11821,7 +11896,7 @@ ${orig}`})
   return (
     <div style={{display:"flex",height:isPC&&activeMuni&&muniScreen==="muniDetail"?"calc(100vh - 60px)":"auto",overflow:isPC&&activeMuni&&muniScreen==="muniDetail"?"hidden":"visible"}}>
       {/* List/main pane */}
-      <div style={{width:isPC&&activeMuni&&muniScreen==="muniDetail"?500:"100%",minWidth:isPC&&activeMuni&&muniScreen==="muniDetail"?500:undefined,flexShrink:0,overflowY:isPC&&activeMuni&&muniScreen==="muniDetail"?"auto":"visible"}}>
+      <div style={{width:isPC&&activeMuni&&muniScreen==="muniDetail"?500:"100%",maxWidth:isPC&&!(activeMuni&&muniScreen==="muniDetail")?960:"none",margin:isPC&&!(activeMuni&&muniScreen==="muniDetail")?"0 auto":"0",minWidth:isPC&&activeMuni&&muniScreen==="muniDetail"?500:undefined,flexShrink:0,overflowY:isPC&&activeMuni&&muniScreen==="muniDetail"?"auto":"visible"}}>
       <TopTabs/>
       {/* ── 自治体タブ（トップビュー） ── */}
       {salesTab==="muni"&&<>
@@ -11831,11 +11906,20 @@ ${orig}`})
         if(!followMunis.length) return null;
         return (
           <div style={{background:"#fefce8",border:"1.5px solid #fde047",borderRadius:"8px",marginBottom:"0.75rem",overflow:"hidden"}}>
-            <button onClick={()=>{setFollowMuniOpen(o=>{localStorage.setItem("md_followMuniOpen",!o?"1":"0");return !o;});}}
-              style={{width:"100%",display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.55rem 0.85rem",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
-              <span style={{fontSize:"0.78rem",fontWeight:800,color:"#854d0e",flex:1}}>⭐ フォロー中 ({followMunis.length}件)</span>
-              <span style={{fontSize:"0.7rem",color:"#854d0e",transition:"transform 0.2s",display:"inline-block",transform:followMuniOpen?"rotate(0deg)":"rotate(-90deg)"}}>▼</span>
-            </button>
+            <div style={{display:"flex",alignItems:"center",gap:"0.4rem",padding:"0.4rem 0.6rem 0.4rem 0.85rem"}}>
+              <button onClick={()=>{setFollowMuniOpen(o=>{localStorage.setItem("md_followMuniOpen",!o?"1":"0");return !o;});}}
+                style={{display:"flex",alignItems:"center",gap:"0.4rem",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",textAlign:"left",padding:"0.15rem 0",flexShrink:0}}>
+                <span style={{fontSize:"0.78rem",fontWeight:800,color:"#854d0e"}}>⭐ フォロー中 ({followMunis.length}件)</span>
+                <span style={{fontSize:"0.7rem",color:"#854d0e",transition:"transform 0.2s",display:"inline-block",transform:followMuniOpen?"rotate(0deg)":"rotate(-90deg)"}}>▼</span>
+              </button>
+              <div style={{flex:1}}/>
+              <select value={muniFilterAssignee} onChange={e=>setMuniFilterAssignee(e.target.value)} onClick={e=>e.stopPropagation()}
+                style={{padding:"0.25rem 0.45rem",borderRadius:"0.4rem",border:`1.5px solid ${muniFilterAssignee?C.accent:"#fde047"}`,fontSize:"0.7rem",background:muniFilterAssignee?"#eff6ff":"white",color:muniFilterAssignee?C.accent:"#854d0e",fontFamily:"inherit",fontWeight:muniFilterAssignee?700:600,maxWidth:140,minWidth:80}}>
+                <option value="">👤 担当者</option>
+                <option value="__me__">自分</option>
+                {users.map(u=><option key={u.id} value={String(u.id)}>{u.name}</option>)}
+              </select>
+            </div>
             {followMuniOpen && (
             <div style={{padding:"0 0.85rem 0.7rem",display:"flex",flexDirection:"column",gap:"0.3rem",borderTop:"1px solid #fde047"}}>
               <div style={{height:"0.5rem"}}/>
