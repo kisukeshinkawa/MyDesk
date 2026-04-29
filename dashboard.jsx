@@ -5188,7 +5188,9 @@ function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach
         if(item._kind==="approach") {
           const icon = APPROACH_ICON[item.type]||"📝";
           const isLoss = item.isLoss;
-          const canEdit = !isLoss && (!currentUserId || String(item.userId||item.createdBy)===String(currentUserId));
+          // userId/createdBy が両方未設定の古い記録は「全員編集可」とする
+          const itemUserId = item.userId || item.createdBy;
+          const canEdit = !isLoss && (!currentUserId || !itemUserId || String(itemUserId)===String(currentUserId));
           const isEditing = editingId === item.id;
           return (
             <div key={item.id||i} style={{display:"flex",gap:"0.6rem",marginBottom:"0.75rem"}}>
@@ -5235,7 +5237,8 @@ function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach
         }
         if(item._kind==="memo") {
           const memoUserId = item.userId || item.createdBy;
-          const canEditMemo = !currentUserId || String(memoUserId)===String(currentUserId);
+          // userId未設定の古いメモは全員編集可
+          const canEditMemo = !currentUserId || !memoUserId || String(memoUserId)===String(currentUserId);
           const isEditingMemo = editMemoId === item.id;
           return (
             <div key={item.id||i} style={{display:"flex",gap:"0.6rem",marginBottom:"0.75rem"}}>
@@ -7210,13 +7213,12 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     setNextActionModal({entityKey, entityId, entityName});
   };
 
-  // ── 既存記録から担当者を補完（ワンタイム実行） ───────────────────────
+  // ── 既存記録から担当者を補完（ワンタイム実行 + コンソール手動実行可能） ─────
   // 過去にアプローチ・メモ・チャットを記録したユーザーが assigneeIds に入っていない場合、補完する
-  React.useEffect(() => {
-    if(!data || !currentUser) return;
-    // v2フラグ: メモ・チャットも対象に拡張したので、旧フラグは無視
-    if(data._assigneeBackfillDoneV2) return;
-    let changed = false;
+  // 強制実行は localStorage.removeItem("md_backfillV3") してリロード、または window.MyDeskBackfillAssignees() で実行
+  const performBackfill = React.useCallback((force=false) => {
+    if(!data) return {updated:0};
+    let updatedCount = 0;
     const newData = {...data};
     ["companies","vendors","municipalities"].forEach(key => {
       const list = data[key] || [];
@@ -7225,26 +7227,43 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
         const memos = e.memos || [];
         const chats = e.chat || [];
         if(!logs.length && !memos.length && !chats.length) return e;
-        // 過去ログ・メモ・チャットから userId/createdBy を全部集める
         const allUserIds = new Set();
         logs.forEach(l => { if(l.userId) allUserIds.add(l.userId); if(l.createdBy) allUserIds.add(l.createdBy); });
         memos.forEach(m => { if(m.userId) allUserIds.add(m.userId); if(m.createdBy) allUserIds.add(m.createdBy); });
         chats.forEach(c => { if(c.userId) allUserIds.add(c.userId); });
         const currentIds = e.assigneeIds || [];
-        // 未登録の userId だけ追加
         const toAdd = [...allUserIds].filter(id => !currentIds.includes(id));
         if(toAdd.length === 0) return e;
-        changed = true;
+        updatedCount++;
         return {...e, assigneeIds: [...currentIds, ...toAdd]};
       });
     });
-    // v2フラグを立てて再実行を防ぐ
-    newData._assigneeBackfillDoneV2 = true;
-    if(changed) {
-      console.log("[MyDesk] 担当者補完(v2)を実行しました");
+    if(updatedCount > 0) {
+      newData._assigneeBackfillDoneV4 = true;
+      console.log(`[MyDesk] 担当者補完(v3): ${updatedCount}件のエンティティを更新`);
+      save(newData);
+    } else if(force) {
+      console.log("[MyDesk] 補完対象なし");
     }
-    save(newData);
-  }, [currentUser?.id]); // ユーザーがログインしたら一度だけ実行
+    return {updated: updatedCount};
+  }, [data]);
+  
+  // ログイン時に1回だけ自動実行
+  React.useEffect(() => {
+    if(!data || !currentUser) return;
+    if(data._assigneeBackfillDoneV4) return;
+    performBackfill(false);
+  }, [currentUser?.id, data?._assigneeBackfillDoneV4]);
+  
+  // ブラウザコンソールから手動実行できるようにグローバル関数を公開
+  React.useEffect(() => {
+    if(!data) return;
+    window.MyDeskBackfillAssignees = () => {
+      const r = performBackfill(true);
+      window.alert(r.updated > 0 ? `✅ ${r.updated}件のエンティティの担当者を補完しました` : "補完対象はありませんでした");
+      return r;
+    };
+  }, [performBackfill]);
 
     // ── アプローチ履歴を追加 ────────────────────────────────────────────────
   // ── 過去のアプローチログから担当者を一括補完（既存データ修復用）─────
