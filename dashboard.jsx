@@ -6486,6 +6486,47 @@ function MtgRecordModal({entityKey,entityId,entityName,data,users,currentUser,on
   );
 }
 
+// ─── COMPACT STATUS PICKER (独立した関数コンポーネント) ────────────────
+function CompactStatusPicker({map, value, onChange, getLabel, colors}) {
+  const C = colors || { border:"#e5e7eb", text:"#111827", bg:"#f9fafb", accentBg:"#dbeafe" };
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef(null);
+  React.useEffect(() => {
+    if (!open) return;
+    const handler = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+  const meta = map[value] || Object.values(map)[0] || {};
+  const lbl = getLabel ? getLabel(value, meta) : value;
+  return (
+    <div ref={ref} style={{position:"relative", display:"inline-block"}}>
+      <button onClick={() => onChange && setOpen(o => !o)} type="button"
+        style={{padding:"0.3rem 0.85rem", borderRadius:999, fontSize:"0.82rem", fontWeight:700, cursor: onChange ? "pointer" : "default", border:`1.5px solid ${meta.color || C.border}`, background: meta.bg || "white", color: meta.color || C.text, fontFamily:"inherit", display:"inline-flex", alignItems:"center", gap:"0.4rem", whiteSpace:"nowrap"}}>
+        {meta.icon && <span>{meta.icon}</span>}
+        <span>{lbl}</span>
+        {onChange && <span style={{fontSize:"0.65rem", opacity:0.7, marginLeft:"0.15rem"}}>▼</span>}
+      </button>
+      {open && onChange && (
+        <div style={{position:"absolute", top:"calc(100% + 4px)", left:0, zIndex:50, background:"white", border:`1.5px solid ${C.border}`, borderRadius:"0.625rem", boxShadow:"0 4px 12px rgba(0,0,0,0.12)", padding:"0.4rem", display:"flex", flexDirection:"column", gap:"0.25rem", minWidth:180, maxHeight:300, overflowY:"auto"}}>
+          {Object.entries(map).map(([s, m]) => (
+            <button key={s} onClick={() => { onChange(s); setOpen(false); }} type="button"
+              style={{padding:"0.45rem 0.7rem", borderRadius:"0.5rem", border:"none", background: value === s ? (m.bg || C.accentBg) : "white", color: m.color || C.text, fontWeight:700, fontSize:"0.8rem", cursor:"pointer", textAlign:"left", fontFamily:"inherit", display:"flex", alignItems:"center", gap:"0.45rem"}}
+              onMouseEnter={e => { if (value !== s) e.currentTarget.style.background = C.bg; }}
+              onMouseLeave={e => { if (value !== s) e.currentTarget.style.background = "white"; }}>
+              {m.icon && <span>{m.icon}</span>}
+              <span>{getLabel ? getLabel(s, m) : s}</span>
+              {value === s && <span style={{marginLeft:"auto", fontSize:"0.85rem"}}>✓</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab, isPC=false, onNavigateToTask, onNavigateToProject, onNavigateToCompany, onNavigateToVendor, onNavigateToMuni, onNavigateToEmail, salesNavTarget, clearSalesNavTarget }) {
   // salesNavTarget は App から prop として渡される（内部stateは不要）
   // salesTab managed by App for persistence
@@ -8457,53 +8498,15 @@ ${recentLogs}
     </div>
   );
 
-  // コンパクトステータスピッカー：現在のステータスチップ1個 + クリックでドロップダウン
-  const CompactStatusPicker=({map,value,onChange,getLabel})=>{
-    const [open,setOpen]=React.useState(false);
-    const ref=React.useRef(null);
-    React.useEffect(()=>{
-      if(!open) return;
-      const handler=(e)=>{ if(ref.current && !ref.current.contains(e.target)) setOpen(false); };
-      document.addEventListener("mousedown",handler);
-      return ()=>document.removeEventListener("mousedown",handler);
-    },[open]);
-    const meta = map[value] || Object.values(map)[0];
-    const lbl = getLabel ? getLabel(value, meta) : value;
-    return (
-      <div ref={ref} style={{position:"relative",display:"inline-block"}}>
-        <button onClick={()=>onChange&&setOpen(o=>!o)}
-          style={{padding:"0.3rem 0.85rem",borderRadius:999,fontSize:"0.82rem",fontWeight:700,cursor:onChange?"pointer":"default",border:`1.5px solid ${meta?.color||C.border}`,background:meta?.bg||"white",color:meta?.color||C.text,fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:"0.4rem",whiteSpace:"nowrap"}}>
-          {meta?.icon && <span>{meta.icon}</span>}
-          <span>{lbl}</span>
-          {onChange&&<span style={{fontSize:"0.65rem",opacity:0.7,marginLeft:"0.15rem"}}>▼</span>}
-        </button>
-        {open && onChange && (
-          <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,zIndex:50,background:"white",border:`1.5px solid ${C.border}`,borderRadius:"0.625rem",boxShadow:"0 4px 12px rgba(0,0,0,0.12)",padding:"0.4rem",display:"flex",flexDirection:"column",gap:"0.25rem",minWidth:180,maxHeight:300,overflowY:"auto"}}>
-            {Object.entries(map).map(([s,m])=>(
-              <button key={s} onClick={()=>{onChange(s);setOpen(false);}}
-                style={{padding:"0.45rem 0.7rem",borderRadius:"0.5rem",border:"none",background:value===s?(m.bg||C.accentBg):"white",color:m.color||C.text,fontWeight:700,fontSize:"0.8rem",cursor:"pointer",textAlign:"left",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"0.45rem"}}
-                onMouseEnter={e=>{if(value!==s)e.currentTarget.style.background=C.bg;}}
-                onMouseLeave={e=>{if(value!==s)e.currentTarget.style.background="white";}}>
-                {m.icon && <span>{m.icon}</span>}
-                <span>{getLabel ? getLabel(s, m) : s}</span>
-                {value===s && <span style={{marginLeft:"auto",fontSize:"0.85rem"}}>✓</span>}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  };
-
+  // CompactStatusPicker は外部で定義（SalesView の外、再レンダリング時にコンポーネントが再生成されないようにする）
   const StatusPicker=({map,value,onChange})=>(
-    <CompactStatusPicker map={map} value={value} onChange={onChange}/>
+    <CompactStatusPicker map={map} value={value} onChange={onChange} colors={C}/>
   );
-
   const DustalkPicker=({value,onChange})=>(
-    <CompactStatusPicker map={DUSTALK_STATUS} value={value} onChange={onChange}/>
+    <CompactStatusPicker map={DUSTALK_STATUS} value={value} onChange={onChange} colors={C}/>
   );
   const TreatyPicker=({value,onChange})=>(
-    <CompactStatusPicker map={TREATY_STATUS} value={value} onChange={onChange}/>
+    <CompactStatusPicker map={TREATY_STATUS} value={value} onChange={onChange} colors={C}/>
   );
 
   // MuniPicker - 都道府県→自治体チェックボックス複数選択
@@ -9388,7 +9391,7 @@ ${orig}`})
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:"flex",alignItems:"center",gap:"0.5rem",flexWrap:"wrap"}}>
                   <h2 style={{fontSize:"1.05rem",fontWeight:800,color:C.text,margin:0,lineHeight:1.3}}>{comp.name}</h2>
-                  <CompactStatusPicker map={COMPANY_STATUS} value={comp.status||"未接触"} onChange={s=>{
+                  <CompactStatusPicker map={COMPANY_STATUS} value={comp.status||"未接触"} colors={C} onChange={s=>{
                     if(CLOSED_STATUSES.has(s)){
                       openLossModal("companies",comp.id,comp.name,s);
                     } else {
@@ -9972,7 +9975,7 @@ ${orig}`})
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:"flex",alignItems:"center",gap:"0.5rem",flexWrap:"wrap"}}>
                   <h2 style={{fontSize:"1.05rem",fontWeight:800,color:C.text,margin:0,lineHeight:1.3}}>{v.name}</h2>
-                  <CompactStatusPicker map={VENDOR_STATUS} value={v.status||"未接触"} onChange={s=>{
+                  <CompactStatusPicker map={VENDOR_STATUS} value={v.status||"未接触"} colors={C} onChange={s=>{
                     if(CLOSED_STATUSES.has(s)){
                       openLossModal("vendors",v.id,v.name,s);
                     } else {
@@ -10709,17 +10712,24 @@ ${orig}`})
           </div>
           {/* ステータスバッジ群（クリックで変更可能） */}
           <div style={{display:"flex",gap:"0.35rem",flexWrap:"wrap",alignItems:"center",marginBottom:"0.5rem"}}>
-            <CompactStatusPicker map={DUSTALK_STATUS} value={muni.dustalk||"未展開"} onChange={s=>{
+            <span style={{fontSize:"0.62rem",color:C.textMuted,fontWeight:700,marginRight:"0.1rem"}}>展開</span>
+            <CompactStatusPicker map={DUSTALK_STATUS} value={muni.dustalk||"未展開"} colors={C} onChange={s=>{
               let nd={...data,municipalities:munis.map(m=>String(m.id)===String(activeMuni)?{...m,dustalk:s,updatedAt:new Date().toISOString()}:m)};
               nd=addChangeLog(nd,{entityType:"自治体",entityId:muni.id,entityName:muni.name,field:"ダストーク",oldVal:muni.dustalk,newVal:s});
               save(nd);
             }}/>
-            <CompactStatusPicker map={TREATY_STATUS} value={muni.treatyStatus||"未接触"} onChange={s=>{
+            <span style={{fontSize:"0.62rem",color:C.textMuted,fontWeight:700,marginLeft:"0.3rem",marginRight:"0.1rem"}}>協定</span>
+            <CompactStatusPicker map={TREATY_STATUS} value={muni.treatyStatus||"未接触"} colors={C} onChange={s=>{
               let nd={...data,municipalities:munis.map(m=>String(m.id)===String(activeMuni)?{...m,treatyStatus:s}:m)};
               nd=addChangeLog(nd,{entityType:"自治体",entityId:muni.id,entityName:muni.name,field:"連携協定",oldVal:muni.treatyStatus,newVal:s});
               save(nd);
             }}/>
-            <SChip s={muni.status||"未接触"} map={MUNI_STATUS}/>
+            <span style={{fontSize:"0.62rem",color:C.textMuted,fontWeight:700,marginLeft:"0.3rem",marginRight:"0.1rem"}}>営業</span>
+            <CompactStatusPicker map={MUNI_STATUS} value={muni.status||"未接触"} colors={C} onChange={s=>{
+              let nd={...data,municipalities:munis.map(m=>String(m.id)===String(activeMuni)?{...m,status:s,updatedAt:new Date().toISOString()}:m)};
+              nd=addChangeLog(nd,{entityType:"自治体",entityId:muni.id,entityName:muni.name,field:"ステータス",oldVal:muni.status,newVal:s});
+              save(nd);
+            }}/>
           </div>
           {/* 統計（4列） */}
           <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:"0.3rem",marginBottom:"0.5rem"}}>
