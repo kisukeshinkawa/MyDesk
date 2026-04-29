@@ -1968,6 +1968,138 @@ function ActivityLog({ data, users=[], filterTypes=null }) {
 }
 
 // ─── TASK VIEW ────────────────────────────────────────────────────────────────
+
+// ─── 資料セクション (ファイル + 見積書のサブタブ) ─────────────────────
+function DocumentSection({entityType, entityId, entityName, files, currentUserId, currentUser, users=[], onSaveFiles, data, setData}) {
+  const [subTab, setSubTab] = React.useState(() => localStorage.getItem(`md_docTab_${entityType}_${entityId}`) || "files");
+  const switchTab = (t) => {
+    setSubTab(t);
+    localStorage.setItem(`md_docTab_${entityType}_${entityId}`, t);
+  };
+  
+  // このエンティティに紐づく見積書のみ取得
+  const linkedQuotes = (data?.quotes || []).filter(q => 
+    q.salesRef && String(q.salesRef.id) === String(entityId) && q.salesRef.type === entityType
+  );
+  
+  const [activeQuoteId, setActiveQuoteId] = React.useState(null);
+  const activeQuote = linkedQuotes.find(q => q.id === activeQuoteId);
+  
+  const createQuoteForEntity = () => {
+    const today = new Date().toISOString().slice(0,10);
+    const newQuote = {
+      id: Date.now() + Math.random(),
+      no: "Q" + Date.now().toString().slice(-8),
+      issuedDate: today,
+      companyInfoId: "holdings",
+      to: entityName || "",
+      site: "",
+      workContent: "",
+      validUntil: "御見積り後",
+      contactName: "",
+      items: [],
+      adjustment: 0,
+      misc: 0,
+      taxRate: 10,
+      months: "",
+      remarks: "",
+      createdBy: currentUserId,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      salesRef: { type: entityType, id: String(entityId), name: entityName },
+    };
+    const nd = {...data, quotes: [newQuote, ...(data.quotes||[])]};
+    setData(nd);
+    setActiveQuoteId(newQuote.id);
+  };
+  
+  const updateQuote = (id, updates) => {
+    const nd = {...data, quotes: (data.quotes||[]).map(q => q.id===id ? {...q, ...updates, updatedAt:new Date().toISOString()} : q)};
+    setData(nd);
+  };
+  
+  const deleteQuote = (id) => {
+    if (!window.confirm("この見積書を削除しますか？")) return;
+    const nd = {...data, quotes: (data.quotes||[]).filter(q => q.id !== id)};
+    setData(nd);
+    if (activeQuoteId === id) setActiveQuoteId(null);
+  };
+  
+  // 見積書編集中
+  if (activeQuote) {
+    return <QuoteEditor quote={activeQuote} users={users} currentUser={currentUser}
+      onUpdate={(updates) => updateQuote(activeQuote.id, updates)}
+      onDelete={() => deleteQuote(activeQuote.id)}
+      onClose={() => setActiveQuoteId(null)}/>;
+  }
+  
+  return (
+    <div>
+      {/* サブタブ */}
+      <div style={{display:"flex",gap:"0.4rem",marginBottom:"1rem",borderBottom:"1px solid #e5e7eb",paddingBottom:"0.3rem"}}>
+        <button onClick={() => switchTab("files")}
+          style={{padding:"0.45rem 0.9rem",borderRadius:"0.4rem 0.4rem 0 0",border:"none",borderBottom:subTab==="files"?"2.5px solid #2563eb":"2.5px solid transparent",background:"none",color:subTab==="files"?"#2563eb":"#6b7280",fontWeight:subTab==="files"?800:600,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
+          📎 ファイル {(files||[]).length>0 && <span style={{fontSize:"0.65rem",background:"#dbeafe",color:"#1d4ed8",padding:"0.05rem 0.35rem",borderRadius:999,marginLeft:"0.3rem",fontWeight:700}}>{files.length}</span>}
+        </button>
+        <button onClick={() => switchTab("quotes")}
+          style={{padding:"0.45rem 0.9rem",borderRadius:"0.4rem 0.4rem 0 0",border:"none",borderBottom:subTab==="quotes"?"2.5px solid #2563eb":"2.5px solid transparent",background:"none",color:subTab==="quotes"?"#2563eb":"#6b7280",fontWeight:subTab==="quotes"?800:600,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
+          📄 見積書 {linkedQuotes.length>0 && <span style={{fontSize:"0.65rem",background:"#dbeafe",color:"#1d4ed8",padding:"0.05rem 0.35rem",borderRadius:999,marginLeft:"0.3rem",fontWeight:700}}>{linkedQuotes.length}</span>}
+        </button>
+      </div>
+      
+      {/* ファイルタブ */}
+      {subTab === "files" && (
+        <FileSection files={files||[]} currentUserId={currentUserId} entityType={entityType} entityId={entityId} onSave={onSaveFiles}/>
+      )}
+      
+      {/* 見積書タブ */}
+      {subTab === "quotes" && (
+        <div>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.85rem",flexWrap:"wrap",gap:"0.5rem"}}>
+            <div style={{fontSize:"0.85rem",fontWeight:700,color:"#374151"}}>{entityName} の見積書</div>
+            <button onClick={createQuoteForEntity}
+              style={{padding:"0.5rem 0.95rem",borderRadius:"0.4rem",border:"none",background:"#2563eb",color:"white",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
+              ＋ 新規見積書
+            </button>
+          </div>
+          
+          {linkedQuotes.length === 0 ? (
+            <div style={{padding:"2.5rem 1rem",textAlign:"center",color:"#9ca3af",background:"#f9fafb",borderRadius:"0.625rem",border:"1.5px dashed #e5e7eb"}}>
+              <div style={{fontSize:"2.5rem",marginBottom:"0.4rem"}}>📄</div>
+              <div style={{fontSize:"0.9rem",fontWeight:600,marginBottom:"0.25rem",color:"#6b7280"}}>まだ見積書がありません</div>
+              <div style={{fontSize:"0.78rem"}}>「＋ 新規見積書」から作成できます</div>
+            </div>
+          ) : (
+            <div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
+              {linkedQuotes.map(q => {
+                const total = (q.items||[]).reduce((sum, it) => sum + (Number(it.qty)||0)*(Number(it.price)||0), 0) + (Number(q.misc)||0) + (Number(q.adjustment)||0);
+                const tax = Math.round(total * (Number(q.taxRate)||0) / 100);
+                const grandTotal = total + tax;
+                const company = COMPANY_INFO.find(c => c.id === q.companyInfoId) || COMPANY_INFO[0];
+                const author = users.find(u => u.id === q.createdBy);
+                return (
+                  <div key={q.id} onClick={() => setActiveQuoteId(q.id)}
+                    style={{background:"white",border:"1.5px solid #e5e7eb",borderRadius:"0.5rem",padding:"0.7rem 0.85rem",cursor:"pointer",transition:"all 0.15s",display:"flex",alignItems:"center",gap:"0.6rem",flexWrap:"wrap"}}
+                    onMouseEnter={e=>{e.currentTarget.style.borderColor="#2563eb";e.currentTarget.style.boxShadow="0 2px 8px rgba(37,99,235,0.1)";}}
+                    onMouseLeave={e=>{e.currentTarget.style.borderColor="#e5e7eb";e.currentTarget.style.boxShadow="none";}}>
+                    <span style={{fontSize:"0.6rem",fontWeight:700,color:"white",background:"#2563eb",padding:"0.1rem 0.4rem",borderRadius:"3px",flexShrink:0}}>{q.no}</span>
+                    <span style={{fontSize:"0.62rem",color:"#6b7280",flexShrink:0}}>{q.issuedDate}</span>
+                    <span style={{flex:1,minWidth:120,fontSize:"0.85rem",fontWeight:700,color:"#111827",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{q.workContent || "(業務内容未入力)"}</span>
+                    <span style={{fontSize:"0.65rem",color:"#6b7280",flexShrink:0}}>{company.name.replace("株式会社","㈱")}</span>
+                    <span style={{fontSize:"0.92rem",fontWeight:800,color:"#059669",flexShrink:0}}>¥{grandTotal.toLocaleString()}-</span>
+                    {author && <span style={{fontSize:"0.62rem",color:"#9ca3af",flexShrink:0}}>👤 {author.name}</span>}
+                    <span style={{color:"#9ca3af",fontSize:"0.85rem",flexShrink:0}}>›</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── 見積書ビュー ─────────────────────────────────────────────────────
 function QuoteView({data, setData, users=[], currentUser=null, onNavigateToSales}) {
   const uid = currentUser?.id;
@@ -3231,23 +3363,8 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     </div>
   );
 
-  // ビュー切替: タスク・プロジェクト or 見積書
-  const [mainView, setMainView] = React.useState(() => localStorage.getItem("md_taskMainView") || "tasks");
-  const switchView = (v) => { setMainView(v); localStorage.setItem("md_taskMainView", v); };
-
   return (
     <div>
-      {/* メインビュー切替タブ */}
-      <div style={{display:"flex",gap:"0.4rem",marginBottom:"1rem",borderBottom:`1px solid ${C.border}`,paddingBottom:"0.4rem"}}>
-        <button onClick={()=>switchView("tasks")}
-          style={{padding:"0.5rem 1rem",borderRadius:"0.4rem 0.4rem 0 0",border:"none",borderBottom:mainView==="tasks"?`2.5px solid ${C.accent}`:"2.5px solid transparent",background:"none",color:mainView==="tasks"?C.accent:C.textSub,fontWeight:mainView==="tasks"?800:600,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>📋 タスク・プロジェクト</button>
-        <button onClick={()=>switchView("quotes")}
-          style={{padding:"0.5rem 1rem",borderRadius:"0.4rem 0.4rem 0 0",border:"none",borderBottom:mainView==="quotes"?`2.5px solid ${C.accent}`:"2.5px solid transparent",background:"none",color:mainView==="quotes"?C.accent:C.textSub,fontWeight:mainView==="quotes"?800:600,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>📄 見積書</button>
-      </div>
-      
-      {mainView==="quotes" && <QuoteView data={data} setData={setData} users={users} currentUser={currentUser} onNavigateToSales={onNavigateToSales}/>}
-      {mainView==="tasks" && <></>/* タスク・プロジェクト本体は下に続く */}
-      {mainView==="tasks" && <>
       {/* 期限アラート */}
       {urgentTasks.length>0&&(
         <div style={{marginBottom:"1rem",background:"#fff7ed",border:"1.5px solid #fed7aa",borderRadius:"8px",overflow:"hidden"}}>
@@ -3452,8 +3569,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
 
       {/* ── 活動ログ ── */}
       <ActivityLog data={data} users={users} filterTypes={["タスク","プロジェクト"]} />
-      </>}
-      {/* タスク・プロジェクト関連モーダル（両ビュー共通） */}
+      {/* タスク・プロジェクト関連モーダル */}
       {sheet==="addTask"&&<Sheet title="タスクを追加" onClose={()=>setSheet(null)}>
         <TaskForm initial={{status:"未着手"}} salesData={data} users={users} currentUserId={uid} onClose={()=>setSheet(null)}
           onSave={f=>{addTask(f,null);}}/>
@@ -6989,6 +7105,52 @@ function CompactStatusPicker({map, value, onChange, getLabel, colors}) {
   );
 }
 
+// ─── 先方担当者バッジ（クリックで詳細ポップオーバー） ─────────────────
+function ContactBadge({contact, color="#0369a1", bg="#dbeafe"}) {
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef(null);
+  React.useEffect(() => {
+    if (!open) return;
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+  if (!contact) return null;
+  const name = contact.name || "(無名)";
+  return (
+    <div ref={ref} style={{position:"relative", display:"inline-block"}}>
+      <button onClick={(e) => {e.stopPropagation(); setOpen(o => !o);}}
+        style={{display:"inline-flex", alignItems:"center", gap:"0.3rem", padding:"0.2rem 0.5rem", borderRadius:"0.4rem", border:`1px solid ${bg}`, background:"white", color, fontSize:"0.72rem", fontWeight:700, cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap"}}>
+        <span style={{width:18, height:18, borderRadius:"50%", background:bg, color, display:"inline-flex", alignItems:"center", justifyContent:"center", fontSize:"0.62rem", fontWeight:800}}>{name.charAt(0)}</span>
+        <span>{name}</span>
+        {contact.role && <span style={{fontSize:"0.6rem", background:bg, color, padding:"0.05rem 0.3rem", borderRadius:"0.25rem"}}>{contact.role}</span>}
+      </button>
+      {open && (
+        <div style={{position:"absolute", top:"calc(100% + 4px)", left:0, zIndex:50, background:"white", border:`1.5px solid ${bg}`, borderRadius:"0.5rem", boxShadow:"0 6px 16px rgba(0,0,0,0.12)", padding:"0.7rem 0.85rem", minWidth:240}}>
+          <div style={{fontSize:"0.92rem", fontWeight:800, color, marginBottom:"0.35rem"}}>{name}{contact.role && <span style={{marginLeft:"0.4rem", fontSize:"0.7rem", background:bg, color, padding:"0.1rem 0.4rem", borderRadius:"0.25rem", fontWeight:600}}>{contact.role}</span>}</div>
+          {contact.dept && <div style={{fontSize:"0.7rem", color:"#64748b", marginBottom:"0.3rem"}}>📁 {contact.dept}</div>}
+          {contact.phone && (
+            <a href={`tel:${contact.phone}`} style={{display:"flex", alignItems:"center", gap:"0.45rem", padding:"0.4rem 0.5rem", marginTop:"0.3rem", background:"#f0f9ff", borderRadius:"0.35rem", textDecoration:"none", color:"#0369a1", fontSize:"0.82rem", fontWeight:700}}>
+              <span style={{fontSize:"0.95rem"}}>📞</span>
+              <span>{contact.phone}</span>
+            </a>
+          )}
+          {contact.email && (
+            <a href={`mailto:${contact.email}`} style={{display:"flex", alignItems:"center", gap:"0.45rem", padding:"0.4rem 0.5rem", marginTop:"0.3rem", background:"#f0f9ff", borderRadius:"0.35rem", textDecoration:"none", color:"#0369a1", fontSize:"0.78rem", fontWeight:600}}>
+              <span style={{fontSize:"0.95rem"}}>✉️</span>
+              <span style={{overflow:"hidden", textOverflow:"ellipsis"}}>{contact.email}</span>
+            </a>
+          )}
+          {!contact.phone && !contact.email && (
+            <div style={{fontSize:"0.72rem", color:"#94a3b8", padding:"0.3rem 0", fontStyle:"italic"}}>連絡先未登録</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab, isPC=false, onNavigateToTask, onNavigateToProject, onNavigateToCompany, onNavigateToVendor, onNavigateToMuni, onNavigateToEmail, salesNavTarget, clearSalesNavTarget }) {
   // salesNavTarget は App から prop として渡される（内部stateは不要）
   // salesTab managed by App for persistence
@@ -9933,18 +10095,13 @@ ${orig}`})
                 {comp.updatedAt&&<span>📅 {comp.updatedAt}</span>}
               </div>
             )}
-            {/* 先方担当者リスト */}
+            {/* 先方担当者リスト（クリックで電話・メール） */}
             {(comp.contacts||[]).length>0&&(
               <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:"0.5rem",padding:"0.5rem 0.625rem",marginBottom:comp.notes?"0.5rem":0}}>
-                <div style={{fontSize:"0.62rem",fontWeight:700,color:"#0369a1",marginBottom:"0.3rem",letterSpacing:"0.04em"}}>👤 先方担当者</div>
-                <div style={{display:"flex",flexDirection:"column",gap:"0.3rem"}}>
+                <div style={{fontSize:"0.62rem",fontWeight:700,color:"#0369a1",marginBottom:"0.4rem",letterSpacing:"0.04em"}}>👤 先方担当者 ({comp.contacts.length}名)</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:"0.35rem"}}>
                   {comp.contacts.map(c=>(
-                    <div key={c.id} style={{display:"flex",alignItems:"center",gap:"0.5rem",flexWrap:"wrap",fontSize:"0.72rem"}}>
-                      <span style={{fontWeight:700,color:"#0c4a6e"}}>{c.name||"(無名)"}</span>
-                      {c.role&&<span style={{fontSize:"0.65rem",color:"#0369a1",background:"#dbeafe",padding:"0.05rem 0.35rem",borderRadius:3,fontWeight:600}}>{c.role}</span>}
-                      {c.phone&&<PhoneLink number={c.phone} size="sm"/>}
-                      {c.email&&<a href={`mailto:${c.email}`} style={{fontSize:"0.7rem",color:"#0369a1",textDecoration:"none"}}>✉️ {c.email}</a>}
-                    </div>
+                    <ContactBadge key={c.id} contact={c} color="#0369a1" bg="#dbeafe"/>
                   ))}
                 </div>
               </div>
@@ -9964,7 +10121,7 @@ ${orig}`})
           </div>
           {/* Sub-tabs: 履歴・チャット・タスク・名刺・ファイル */}
           <div style={{display:"flex",background:"white",borderRadius:"6px",padding:"0.2rem",marginBottom:"1rem",border:`1px solid ${C.border}`}}>
-            {[["timeline","📋","履歴・チャット"],["tasks","✅","タスク"],["bizcard","🪪","名刺"],["files","📎","ファイル"]].map(([id,icon,lbl])=>(
+            {[["timeline","📋","履歴・チャット"],["tasks","✅","タスク"],["bizcard","🪪","名刺"],["files","📂","資料"]].map(([id,icon,lbl])=>(
               <button key={id} onClick={()=>setActiveDetail(id)} style={{flex:1,padding:"0.5rem",borderRadius:"0.5rem",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.72rem",position:"relative",background:activeDetail===id?C.accent:"transparent",color:activeDetail===id?"white":C.textSub}}>
                 {icon} {lbl}
                 {id==="timeline"&&compChatUnread>0&&<span style={{position:"absolute",top:3,right:6,background:"#dc2626",color:"white",borderRadius:999,fontSize:"0.5rem",fontWeight:800,padding:"0.05rem 0.25rem",lineHeight:1.4}}>{compChatUnread}</span>}
@@ -9979,10 +10136,11 @@ ${orig}`})
             const linked=linkedBizcards("企業",comp.id);
             return <LinkedBizcardList cards={linked} users={users} onUnlink={id=>unlinkBizCard(id)} onNavigateToBizcard={navToBizcard.company} onLink={()=>requestAnimationFrame(()=>setLinkBizcardModal({entityType:"企業",entityId:comp.id,entityName:comp.name}))} onNavigateToEmail={onNavigateToEmail}/>;
           })()}
-          {activeDetail==="files"&&<FileSection files={comp.files||[]} currentUserId={currentUser?.id}
-            entityType="companies" entityId={comp.id}
-            onAdd={f=>addFileToEntity("companies",comp.id,f)}
-            onDelete={fid=>removeFileFromEntity("companies",comp.id,fid)}/>}
+          {activeDetail==="files"&&<DocumentSection 
+            entityType="企業" entityId={comp.id} entityName={comp.name}
+            files={comp.files||[]} currentUserId={currentUser?.id} currentUser={currentUser} users={users}
+            data={data} setData={setData}
+            onSaveFiles={fs => save({...data, companies: companies.map(c => c.id===comp.id ? {...c, files:fs} : c)})}/>}
         </div>
       );
     }
@@ -10519,18 +10677,13 @@ ${orig}`})
                 {v.updatedAt&&<span style={{display:"inline-flex",alignItems:"center",gap:"0.2rem"}}>📅 {v.updatedAt}</span>}
               </div>
             )}
-            {/* 先方担当者リスト */}
+            {/* 先方担当者リスト（クリックで電話・メール） */}
             {(v.contacts||[]).length>0&&(
               <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:"0.5rem",padding:"0.5rem 0.625rem",marginBottom:"0.5rem"}}>
-                <div style={{fontSize:"0.62rem",fontWeight:700,color:"#92400e",marginBottom:"0.3rem",letterSpacing:"0.04em"}}>👤 先方担当者</div>
-                <div style={{display:"flex",flexDirection:"column",gap:"0.3rem"}}>
+                <div style={{fontSize:"0.62rem",fontWeight:700,color:"#92400e",marginBottom:"0.4rem",letterSpacing:"0.04em"}}>👤 先方担当者 ({v.contacts.length}名)</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:"0.35rem"}}>
                   {v.contacts.map(c=>(
-                    <div key={c.id} style={{display:"flex",alignItems:"center",gap:"0.5rem",flexWrap:"wrap",fontSize:"0.72rem"}}>
-                      <span style={{fontWeight:700,color:"#78350f"}}>{c.name||"(無名)"}</span>
-                      {c.role&&<span style={{fontSize:"0.65rem",color:"#92400e",background:"#fef3c7",padding:"0.05rem 0.35rem",borderRadius:3,fontWeight:600}}>{c.role}</span>}
-                      {c.phone&&<PhoneLink number={c.phone} size="sm"/>}
-                      {c.email&&<a href={`mailto:${c.email}`} style={{fontSize:"0.7rem",color:"#0369a1",textDecoration:"none"}}>✉️ {c.email}</a>}
-                    </div>
+                    <ContactBadge key={c.id} contact={c} color="#92400e" bg="#fef3c7"/>
                   ))}
                 </div>
               </div>
@@ -10609,7 +10762,7 @@ ${orig}`})
           </div>
           {/* Sub-tabs: 履歴・チャット・タスク・ファイル */}
           <div style={{display:"flex",background:"white",borderRadius:"6px",padding:"0.2rem",marginBottom:"1rem",border:`1px solid ${C.border}`}}>
-            {[["timeline","📋","履歴・チャット"],["tasks","✅","タスク"],["bizcard","🪪","名刺"],["files","📎","ファイル"]].map(([id,icon,lbl])=>(
+            {[["timeline","📋","履歴・チャット"],["tasks","✅","タスク"],["bizcard","🪪","名刺"],["files","📂","資料"]].map(([id,icon,lbl])=>(
               <button key={id} onClick={()=>setActiveDetail(id)} style={{flex:1,padding:"0.5rem",borderRadius:"0.5rem",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.72rem",position:"relative",background:activeDetail===id?C.accent:"transparent",color:activeDetail===id?"white":C.textSub}}>
                 {icon} {lbl}
                 {id==="timeline"&&vendChatUnread>0&&<span style={{position:"absolute",top:3,right:6,background:"#dc2626",color:"white",borderRadius:999,fontSize:"0.5rem",fontWeight:800,padding:"0.05rem 0.25rem",lineHeight:1.4}}>{vendChatUnread}</span>}
@@ -10624,10 +10777,11 @@ ${orig}`})
             const linked=linkedBizcards("業者",v.id);
             return <LinkedBizcardList cards={linked} users={users} onUnlink={id=>unlinkBizCard(id)} onNavigateToBizcard={navToBizcard.vendor} onLink={()=>requestAnimationFrame(()=>setLinkBizcardModal({entityType:"業者",entityId:v.id,entityName:v.name}))} onNavigateToEmail={onNavigateToEmail}/>;
           })()}
-          {activeDetail==="files"&&<FileSection files={v.files||[]} currentUserId={currentUser?.id}
-            entityType="vendors" entityId={v.id}
-          onAdd={f=>addFileToEntity("vendors",v.id,f)}
-            onDelete={fid=>removeFileFromEntity("vendors",v.id,fid)}/>}
+          {activeDetail==="files"&&<DocumentSection 
+            entityType="業者" entityId={v.id} entityName={v.name}
+            files={v.files||[]} currentUserId={currentUser?.id} currentUser={currentUser} users={users}
+            data={data} setData={setData}
+            onSaveFiles={fs => save({...data, vendors: vendors.map(x => x.id===v.id ? {...x, files:fs} : x)})}/>}
           {sheet==="editVendor"&&(
             <Sheet title="業者を編集" onClose={()=>setSheet(null)}>
               <FieldLbl label="業者名 *"><Input value={form.name||""} onChange={e=>setForm({...form,name:e.target.value})} autoFocus/></FieldLbl>
@@ -11372,7 +11526,7 @@ ${orig}`})
         </div>
         {/* Sub-tabs: 履歴・チャット・タスク・ファイル */}
         <div style={{display:"flex",background:"white",borderRadius:"6px",padding:"0.2rem",marginBottom:"0.75rem",border:`1px solid ${C.border}`}}>
-          {[["timeline","📋","履歴・チャット"],["tasks","✅","タスク"],["bizcard","🪪","名刺"],["files","📎","ファイル"]].map(([id,icon,lbl])=>(
+          {[["timeline","📋","履歴・チャット"],["tasks","✅","タスク"],["bizcard","🪪","名刺"],["files","📂","資料"]].map(([id,icon,lbl])=>(
             <button key={id} onClick={()=>setActiveDetail(id)} style={{flex:1,padding:"0.5rem",borderRadius:"0.5rem",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.72rem",position:"relative",background:activeDetail===id?C.accent:"transparent",color:activeDetail===id?"white":C.textSub}}>
               {icon} {lbl}
               {id==="timeline"&&muniChatUnread>0&&<span style={{position:"absolute",top:3,right:6,background:"#dc2626",color:"white",borderRadius:999,fontSize:"0.5rem",fontWeight:800,padding:"0.05rem 0.25rem",lineHeight:1.4}}>{muniChatUnread}</span>}
@@ -11388,10 +11542,11 @@ ${orig}`})
           return <LinkedBizcardList cards={linked} users={users} onUnlink={id=>unlinkBizCard(id)} onNavigateToBizcard={navToBizcard.muni} onLink={()=>requestAnimationFrame(()=>setLinkBizcardModal({entityType:"自治体",entityId:muni.id,entityName:muni.name}))} onNavigateToEmail={onNavigateToEmail}/>;
         })()}</div>}
 
-        {activeDetail==="files"&&<div style={{marginBottom:"1rem"}}><FileSection files={muni.files||[]} currentUserId={currentUser?.id}
-          entityType="municipalities" entityId={muni.id}
-          onAdd={f=>addFileToEntity("municipalities",muni.id,f)}
-          onDelete={fid=>removeFileFromEntity("municipalities",muni.id,fid)}/></div>}
+        {activeDetail==="files"&&<div style={{marginBottom:"1rem"}}><DocumentSection 
+          entityType="自治体" entityId={muni.id} entityName={muni.name}
+          files={muni.files||[]} currentUserId={currentUser?.id} currentUser={currentUser} users={users}
+          data={data} setData={setData}
+          onSaveFiles={fs => save({...data, municipalities: munis.map(m => String(m.id)===String(muni.id) ? {...m, files:fs} : m)})}/></div>}
         {/* 業者一覧（常時表示） */}
         <div style={{marginBottom:"1rem"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.5rem"}}>
