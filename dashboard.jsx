@@ -2587,7 +2587,7 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
               {/* ── 事業所名行 + 住所 ──────────────── */}
               <tr style={{height:"8mm"}}>
                 <td colSpan={2} style={{...cellBase,textAlign:"center",borderTop:bDouble,borderBottom:bThin,padding:"0 1mm",fontSize:"10.5pt"}}>事業所名：</td>
-                <td colSpan={5} style={{...cellBase,borderTop:bDouble,borderBottom:bThin,whiteSpace:"normal"}}>{quote.site||""}</td>
+                <td colSpan={5} style={{...cellBase,textAlign:"center",borderTop:bDouble,borderBottom:bThin,whiteSpace:"normal"}}>{quote.site||""}</td>
                 <td colSpan={3}></td>
                 <td colSpan={3} style={{...cellBase,fontSize:"9.5pt",verticalAlign:"top",whiteSpace:"nowrap",overflow:"visible"}}>
                   {company.address}
@@ -2597,18 +2597,22 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
               {/* ── 業務内容行 + 会社名（distributed/両端揃え） ──────────────── */}
               <tr style={{height:"9mm"}}>
                 <td colSpan={2} style={{...cellBase,textAlign:"center",borderTop:bThin,padding:"0 1mm",fontSize:"10.5pt"}}>業務内容：</td>
-                <td colSpan={5} style={{...cellBase,borderTop:bThin,whiteSpace:"normal"}}>{quote.workContent||""}</td>
+                <td colSpan={5} style={{...cellBase,textAlign:"center",borderTop:bThin,whiteSpace:"normal"}}>{quote.workContent||""}</td>
                 <td colSpan={3}></td>
-                <td colSpan={3} style={{...cellBase,padding:0}}>
+                <td colSpan={3} style={{...cellBase,padding:"0 1mm",overflow:"visible"}}>
                   {(()=>{
                     const nm = company.name||"";
                     const len = [...nm].length;
-                    // セル幅~47mm。実フォントメトリクスを考慮してサイズ選定
-                    const fs = len >= 17 ? "7pt" : len >= 16 ? "8pt" : len >= 14 ? "9pt" : len >= 12 ? "10.5pt" : len >= 10 ? "12pt" : len >= 9 ? "13pt" : "14pt";
-                    if(len >= 11) {
-                      return <div style={{textAlign:"center",fontSize:fs,fontFamily:SERIF,whiteSpace:"nowrap",overflow:"hidden",fontWeight:500}}>{nm}</div>;
-                    }
-                    return <DistributedText text={nm} style={{fontSize:fs,fontFamily:SERIF,fontWeight:500,padding:"0 1mm"}}/>;
+                    if(!nm) return null;
+                    // SVG + textLength で長さ問わず必ずセル幅にフィット（縦の文字幅は維持）
+                    // 14pt視認性を保ちつつ自動圧縮：短ければ自然な distributed 表示
+                    const fs = len <= 8 ? 16 : len <= 10 ? 15 : len <= 12 ? 14 : 13;
+                    const heightMm = 6.5;
+                    return (
+                      <svg width="100%" height={heightMm+"mm"} viewBox="0 0 100 22" preserveAspectRatio="none" style={{display:"block"}}>
+                        <text x="50" y="16" textAnchor="middle" fontSize={fs} fontFamily="'Yu Mincho','Hiragino Mincho ProN','MS PMincho','MS Mincho',serif" fontWeight="500" textLength="98" lengthAdjust="spacingAndGlyphs">{nm}</text>
+                      </svg>
+                    );
                   })()}
                 </td>
               </tr>
@@ -2616,7 +2620,7 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
               {/* ── ご担当者行 + TEL ──────────────── */}
               <tr style={{height:"8mm"}}>
                 <td colSpan={2} style={{...cellBase,textAlign:"center",borderTop:bThin,borderBottom:bThin,padding:"0 1mm",fontSize:"10.5pt"}}>ご担当者：</td>
-                <td colSpan={4} style={{...cellBase,borderTop:bThin,borderBottom:bThin,whiteSpace:"normal"}}>{quote.contactName||""}</td>
+                <td colSpan={4} style={{...cellBase,textAlign:"center",borderTop:bThin,borderBottom:bThin,whiteSpace:"normal"}}>{quote.contactName||""}</td>
                 <td style={{...cellBase,borderTop:bThin,borderBottom:bThin,textAlign:"left",paddingLeft:"1mm"}}>{quote.contactName?"様":""}</td>
                 <td colSpan={3}></td>
                 <td colSpan={3} style={{...cellBase,fontSize:"11pt",textAlign:"right"}}>
@@ -2645,21 +2649,21 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 <td style={{...cellBase,background:GREY,textAlign:"center",border:bThin,fontSize:"10pt",height:"6mm"}}>担当者</td>
               </tr>
 
-              {/* ── リード文 + 承認等の枠（square box） ──────────────── */}
-              <tr style={{height:"11mm"}}>
+              {/* ── リード文 + 承認等の枠（square box ~16mm×16mm） ──────────────── */}
+              <tr style={{height:"8mm"}}>
                 <td colSpan={6} rowSpan={2} style={{...cellBase,fontSize:"10pt",verticalAlign:"top",lineHeight:1.6,paddingTop:"2mm",whiteSpace:"normal"}}>
                   下記の通りお見積りさせていただきます。<br/>
                   ご検討のほど、お願い申し上げます。
                 </td>
                 <td colSpan={4} rowSpan={2}></td>
-                {/* 承認・検印・担当者ボックス本体（rowSpan=2で正方形に近い形を作る） */}
+                {/* 承認・検印・担当者ボックス（正方形、約16x16mm） */}
                 <td rowSpan={2} style={{...cellBase,border:bThin,textAlign:"center",verticalAlign:"middle",padding:0}}></td>
                 <td rowSpan={2} style={{...cellBase,border:bThin,textAlign:"center",verticalAlign:"middle",padding:0}}></td>
                 <td rowSpan={2} style={{...cellBase,border:bThin,textAlign:"center",verticalAlign:"middle",padding:0}}>
                   <HankoStamp name={authorLastName}/>
                 </td>
               </tr>
-              <tr style={{height:"11mm"}}>
+              <tr style={{height:"8mm"}}>
                 {/* セルは前行のrowSpanで埋まる */}
               </tr>
 
@@ -2773,16 +2777,12 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 <td colSpan={13}></td>
               </tr>
 
-              {/* ── 備考ヘッダー（左に小ボックス、右に細線、下にボーダーなし） ───── */}
+              {/* ── 備考（シンプルな1つの枠、ラベルは枠内左上） ──────────────── */}
               <tr style={{height:"7mm"}}>
-                <td colSpan={2} style={{...cellBase,letterSpacing:"0.5em",paddingLeft:"calc(2mm + 0.5em)",borderTop:bThin,borderLeft:bThin,borderRight:bThin}}>備　考</td>
-                <td colSpan={11} style={{borderTop:bThin,borderRight:bThin}}></td>
+                <td colSpan={13} style={{...cellBase,letterSpacing:"0.5em",paddingLeft:"calc(2mm + 0.5em)",borderTop:bThin,borderLeft:bThin,borderRight:bThin}}>備　考</td>
               </tr>
-
-              {/* ── 備考コンテンツ（左の小ボックス枠を継続、上にボーダーなし） ───── */}
               <tr style={{height:"25mm"}}>
-                <td colSpan={2} style={{borderLeft:bThin,borderRight:bThin,borderBottom:bThin}}></td>
-                <td colSpan={11} style={{...cellBase,fontSize:"10pt",verticalAlign:"top",whiteSpace:"pre-wrap",borderRight:bThin,borderBottom:bThin,padding:"2mm 4mm",lineHeight:1.5}}>
+                <td colSpan={13} style={{...cellBase,fontSize:"10pt",verticalAlign:"top",whiteSpace:"pre-wrap",borderLeft:bThin,borderRight:bThin,borderBottom:bThin,padding:"1mm 4mm 2mm 4mm",lineHeight:1.5}}>
                   {quote.remarks || ""}
                 </td>
               </tr>
