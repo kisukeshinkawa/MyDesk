@@ -9388,7 +9388,18 @@ ${orig}`})
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:"flex",alignItems:"center",gap:"0.5rem",flexWrap:"wrap"}}>
                   <h2 style={{fontSize:"1.05rem",fontWeight:800,color:C.text,margin:0,lineHeight:1.3}}>{comp.name}</h2>
-                  <SChip s={comp.status} map={COMPANY_STATUS}/>
+                  <CompactStatusPicker map={COMPANY_STATUS} value={comp.status||"未接触"} onChange={s=>{
+                    if(CLOSED_STATUSES.has(s)){
+                      openLossModal("companies",comp.id,comp.name,s);
+                    } else {
+                      const today = new Date().toISOString().slice(0,10);
+                      let nd={...data,companies:companies.map(x=>x.id===comp.id?{...x,status:s,updatedAt:today}:x)};
+                      nd=addChangeLog(nd,{entityType:"企業",entityId:comp.id,entityName:comp.name,field:"ステータス",oldVal:comp.status,newVal:s});
+                      save(nd);
+                      setCompStatusTab(s);
+                      localStorage.setItem("md_compStatusTab",s);
+                    }
+                  }}/>
                 </div>
               </div>
               <button onClick={()=>{setForm({...comp});setSheet("editCompany");}} title="編集"
@@ -9474,7 +9485,7 @@ ${orig}`})
     return (
       <div style={{display:"flex",height:isPC?"calc(100vh - 60px)":"auto",overflow:isPC?"hidden":"visible"}}>
         {/* List pane */}
-        <div style={{width:isPC?(activeCompany?320:"100%"):"100%",flexShrink:0,overflowY:isPC?"auto":"visible",borderRight:isPC&&activeCompany?"1px solid #e5e5ea":"none",transition:"width 0.2s"}}>
+        <div style={{width:isPC?(activeCompany?440:"100%"):"100%",flexShrink:0,overflowY:isPC?"auto":"visible",borderRight:isPC&&activeCompany?"1px solid #e5e5ea":"none",transition:"width 0.2s",minWidth:isPC&&activeCompany?440:undefined}}>
         <TopTabs/>
         <BulkBar statusMap={COMPANY_STATUS} applyFn={applyBulkComp} visibleIds={compVisibleIds} onDelete={deleteBulkComp}/>
         {/* 担当者フィルタ */}
@@ -9923,7 +9934,7 @@ ${orig}`})
           const comp=companyOf(activeCompany);
           if(!comp){setActiveCompany(null);return null;}
           return (
-            <div style={{flex:1,overflowY:"auto",borderLeft:"1px solid #e5e5ea",background:"#ffffff"}}>
+            <div style={{flex:1,minWidth:0,overflowY:"auto",borderLeft:"1px solid #e5e5ea",background:"#ffffff"}}>
               <div style={{padding:"0.75rem 1.25rem",borderBottom:"1px solid #e5e5ea",display:"flex",alignItems:"center",gap:"0.75rem",background:"white",position:"sticky",top:0,zIndex:10}}>
                 <div style={{flex:1,fontWeight:700,fontSize:"0.95rem",color:C.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",minWidth:0}}>{comp.name}</div>
                 {comp.phone&&<div style={{flexShrink:0}}><PhoneLink number={comp.phone} size="sm" onMtg={()=>setMtgModal({entityKey:"companies",entityId:comp.id,entityName:comp.name})} onCallRecord={()=>setMtgModal({entityKey:"companies",entityId:comp.id,entityName:comp.name,autoStart:true,callMode:true})}/></div>}
@@ -9961,7 +9972,18 @@ ${orig}`})
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:"flex",alignItems:"center",gap:"0.5rem",flexWrap:"wrap"}}>
                   <h2 style={{fontSize:"1.05rem",fontWeight:800,color:C.text,margin:0,lineHeight:1.3}}>{v.name}</h2>
-                  <SChip s={v.status} map={VENDOR_STATUS}/>
+                  <CompactStatusPicker map={VENDOR_STATUS} value={v.status||"未接触"} onChange={s=>{
+                    if(CLOSED_STATUSES.has(s)){
+                      openLossModal("vendors",v.id,v.name,s);
+                    } else {
+                      const today = new Date().toISOString().slice(0,10);
+                      let nd={...data,vendors:vendors.map(x=>x.id===v.id?{...x,status:s,updatedAt:today}:x)};
+                      nd=addChangeLog(nd,{entityType:"業者",entityId:v.id,entityName:v.name,field:"ステータス",oldVal:v.status,newVal:s});
+                      save(nd);
+                      setVendStatusTab(s);
+                      localStorage.setItem("md_vendStatusTab",s);
+                    }
+                  }}/>
                   {v.beeNet&&<span style={{fontSize:"0.62rem",background:"#eff6ff",color:"#1d4ed8",padding:"0.1rem 0.45rem",borderRadius:999,fontWeight:700,border:"1px solid #bfdbfe"}}>🔷 bee-net</span>}
                 </div>
               </div>
@@ -10060,24 +10082,12 @@ ${orig}`})
               📅 {v.nextActionDate?"次回変更":"次回設定"}
             </button>
           </div>
-          <div style={{marginBottom:"1rem"}}>
-            <div style={{fontSize:"0.72rem",fontWeight:700,color:C.textSub,marginBottom:"0.4rem"}}>ステータス変更</div>
-            <StatusPicker map={VENDOR_STATUS} value={v.status} onChange={s=>{
-              if(CLOSED_STATUSES.has(s)){
-                openLossModal("vendors",v.id,v.name,s);
-              } else {
-                const today = new Date().toISOString().slice(0,10);
-                let nd={...data,vendors:vendors.map(x=>x.id===v.id?{...x,status:s,updatedAt:today}:x)};
-                nd=addChangeLog(nd,{entityType:"業者",entityId:v.id,entityName:v.name,field:"ステータス",oldVal:v.status,newVal:s});
-                save(nd);
-              }
-            }}/>
-            {CLOSED_STATUSES.has(v.status)&&v.lossReason&&(
-              <div style={{marginTop:"0.4rem",padding:"0.4rem 0.6rem",background:"#fee2e2",borderRadius:"0.5rem",fontSize:"0.75rem",color:"#dc2626"}}>
-                📋 {v.lossReason}{v.lossNote&&`：${v.lossNote}`}
-              </div>
-            )}
-          </div>
+          {/* 失注理由表示（あれば） */}
+          {CLOSED_STATUSES.has(v.status)&&v.lossReason&&(
+            <div style={{marginBottom:"0.75rem",padding:"0.4rem 0.6rem",background:"#fee2e2",borderRadius:"0.5rem",fontSize:"0.75rem",color:"#dc2626"}}>
+              📋 {v.lossReason}{v.lossNote&&`：${v.lossNote}`}
+            </div>
+          )}
           {/* 削除ボタン */}
           <div style={{marginBottom:"0.75rem",display:"flex",justifyContent:"flex-end"}}>
             <Btn variant="danger" size="sm" onClick={()=>{if(window.confirm(`${v.name}を削除しますか？`))deleteVendor(v.id);}}>🗑 削除</Btn>
@@ -10198,7 +10208,7 @@ ${orig}`})
     return (
       <div style={{display:"flex",height:isPC?"calc(100vh - 60px)":"auto",overflow:isPC?"hidden":"visible"}}>
         {/* List pane */}
-        <div style={{width:isPC?(activeVendor?320:"100%"):"100%",flexShrink:0,overflowY:isPC?"auto":"visible",borderRight:isPC&&activeVendor?"1px solid #e5e5ea":"none",transition:"width 0.2s"}}>
+        <div style={{width:isPC?(activeVendor?440:"100%"):"100%",flexShrink:0,overflowY:isPC?"auto":"visible",borderRight:isPC&&activeVendor?"1px solid #e5e5ea":"none",transition:"width 0.2s",minWidth:isPC&&activeVendor?440:undefined}}>
         <TopTabs/>
         <BulkBar statusMap={VENDOR_STATUS} applyFn={applyBulkVend} visibleIds={vendVisibleIds} onDelete={deleteBulkVend}/>
         {/* フォロー中業者 */}
@@ -10653,7 +10663,7 @@ ${orig}`})
           const v=vendorOf(activeVendor);
           if(!v){setActiveVendor(null);return null;}
           return (
-            <div style={{flex:1,overflowY:"auto",borderLeft:"1px solid #e5e5ea",background:"#ffffff"}}>
+            <div style={{flex:1,minWidth:0,overflowY:"auto",borderLeft:"1px solid #e5e5ea",background:"#ffffff"}}>
               <div style={{padding:"0.75rem 1.25rem",borderBottom:"1px solid #e5e5ea",display:"flex",alignItems:"center",gap:"0.75rem",background:"white",position:"sticky",top:0,zIndex:10}}>
                 <div style={{flex:1,fontWeight:700,fontSize:"0.95rem",color:C.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",minWidth:0}}>{v.name}</div>
                 {v.phone&&<div style={{flexShrink:0}}><PhoneLink number={v.phone} size="sm" onMtg={()=>setMtgModal({entityKey:"vendors",entityId:v.id,entityName:v.name})} onCallRecord={()=>setMtgModal({entityKey:"vendors",entityId:v.id,entityName:v.name,autoStart:true,callMode:true})}/></div>}
@@ -10697,10 +10707,18 @@ ${orig}`})
             <button onClick={()=>{setForm({...muni});setSheet("editMuni");}} title="編集"
               style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"6px",padding:"0.3rem 0.55rem",cursor:"pointer",fontSize:"0.8rem",color:C.textSub,flexShrink:0}}>✏️</button>
           </div>
-          {/* ステータスバッジ群 */}
+          {/* ステータスバッジ群（クリックで変更可能） */}
           <div style={{display:"flex",gap:"0.35rem",flexWrap:"wrap",alignItems:"center",marginBottom:"0.5rem"}}>
-            <span style={{padding:"0.15rem 0.5rem",borderRadius:999,fontSize:"0.65rem",fontWeight:700,background:ds.bg,color:ds.color}}>{ds.icon} {muni.dustalk||"未展開"}</span>
-            {(()=>{const ts=TREATY_STATUS[muni.treatyStatus];return ts?<span style={{padding:"0.15rem 0.5rem",borderRadius:999,fontSize:"0.65rem",fontWeight:700,background:ts.bg,color:ts.color}}>🤝 {muni.treatyStatus}</span>:null;})()}
+            <CompactStatusPicker map={DUSTALK_STATUS} value={muni.dustalk||"未展開"} onChange={s=>{
+              let nd={...data,municipalities:munis.map(m=>String(m.id)===String(activeMuni)?{...m,dustalk:s,updatedAt:new Date().toISOString()}:m)};
+              nd=addChangeLog(nd,{entityType:"自治体",entityId:muni.id,entityName:muni.name,field:"ダストーク",oldVal:muni.dustalk,newVal:s});
+              save(nd);
+            }}/>
+            <CompactStatusPicker map={TREATY_STATUS} value={muni.treatyStatus||"未接触"} onChange={s=>{
+              let nd={...data,municipalities:munis.map(m=>String(m.id)===String(activeMuni)?{...m,treatyStatus:s}:m)};
+              nd=addChangeLog(nd,{entityType:"自治体",entityId:muni.id,entityName:muni.name,field:"連携協定",oldVal:muni.treatyStatus,newVal:s});
+              save(nd);
+            }}/>
             <SChip s={muni.status||"未接触"} map={MUNI_STATUS}/>
           </div>
           {/* 統計（4列） */}
@@ -10809,26 +10827,6 @@ ${orig}`})
           </div>
 
         </Card>
-        {/* Quick change dustalk + treaty */}
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.75rem",marginBottom:"1rem"}}>
-          <div>
-            <div style={{fontSize:"0.68rem",fontWeight:700,color:C.textSub,marginBottom:"0.4rem"}}>ダストーク展開</div>
-            <DustalkPicker value={muni.dustalk||"未展開"} onChange={s=>{
-              let nd={...data,municipalities:munis.map(m=>String(m.id)===String(activeMuni)?{...m,dustalk:s,updatedAt:new Date().toISOString()}:m)};
-              nd=addChangeLog(nd,{entityType:"自治体",entityId:muni.id,entityName:muni.name,field:"ダストーク",oldVal:muni.dustalk,newVal:s});
-              save(nd);
-            }}/>
-
-          </div>
-          <div>
-            <div style={{fontSize:"0.68rem",fontWeight:700,color:C.textSub,marginBottom:"0.4rem"}}>連携協定</div>
-            <TreatyPicker value={muni.treatyStatus||"未接触"} onChange={s=>{
-              let nd={...data,municipalities:munis.map(m=>String(m.id)===String(activeMuni)?{...m,treatyStatus:s}:m)};
-              nd=addChangeLog(nd,{entityType:"自治体",entityId:muni.id,entityName:muni.name,field:"連携協定",oldVal:muni.treatyStatus,newVal:s});
-              save(nd);
-            }}/>
-          </div>
-        </div>
         {/* アクションボタン行 */}
         <div style={{marginBottom:"0.75rem",display:"flex",alignItems:"center",gap:"0.4rem",flexWrap:"wrap"}}>
           <button onClick={e=>{e.stopPropagation();openApproachModal("municipalities",muni.id,muni.name);}}
@@ -11143,7 +11141,7 @@ ${orig}`})
   return (
     <div style={{display:"flex",height:isPC&&activeMuni&&muniScreen==="muniDetail"?"calc(100vh - 60px)":"auto",overflow:isPC&&activeMuni&&muniScreen==="muniDetail"?"hidden":"visible"}}>
       {/* List/main pane */}
-      <div style={{flex:1,overflowY:isPC&&activeMuni&&muniScreen==="muniDetail"?"auto":"visible",width:"100%"}}>
+      <div style={{width:isPC&&activeMuni&&muniScreen==="muniDetail"?500:"100%",minWidth:isPC&&activeMuni&&muniScreen==="muniDetail"?500:undefined,flexShrink:0,overflowY:isPC&&activeMuni&&muniScreen==="muniDetail"?"auto":"visible"}}>
       <TopTabs/>
       {/* ── 自治体タブ（トップビュー） ── */}
       {salesTab==="muni"&&<>
@@ -12287,7 +12285,7 @@ ${orig}`})
       {/* PC: muni right detail pane */}
       {isPC&&activeMuni&&muniScreen==="muniDetail"&&(()=>{
         return (
-          <div style={{width:560,flexShrink:0,overflowY:"auto",borderLeft:"1px solid #e5e5ea",background:"#ffffff"}}>
+          <div style={{flex:1,minWidth:0,overflowY:"auto",borderLeft:"1px solid #e5e5ea",background:"#ffffff"}}>
             <div style={{padding:"1rem 1.5rem",borderBottom:"1px solid #e5e5ea",display:"flex",alignItems:"center",background:"white",position:"sticky",top:0,zIndex:10}}>
               <div style={{flex:1,fontWeight:700,fontSize:"1rem",color:C.text}}>{muniOf(activeMuni)?.name||""}</div>
               <button onClick={()=>{setActiveMuni(null);setMuniScreen("top");}} style={{background:"none",border:"1px solid #e5e5ea",borderRadius:"6px",padding:"0.3rem 0.75rem",cursor:"pointer",fontSize:"0.8rem",color:C.textSub}}>✕</button>
