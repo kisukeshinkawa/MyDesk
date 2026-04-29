@@ -8475,6 +8475,15 @@ ${recentLogs}
     }
   };
   
+  // ── 電話番号を半角に正規化（全角数字・各種ハイフン → 半角） ─────────
+  const toHankakuPhone = (s) => {
+    if(!s) return "";
+    return String(s)
+      .replace(/[０-９]/g, ch => String.fromCharCode(ch.charCodeAt(0)-0xFEE0))
+      .replace(/[−–—ー－]/g, "-")
+      .replace(/　/g, " ");
+  };
+  
   // ── 業者一覧をExcel出力（フィルター済み・社内展開用）──────────────────
   const exportVendorList = async (vendorList, filterDesc="") => {
     if(!vendorList.length) {
@@ -8499,7 +8508,7 @@ ${recentLogs}
       const permits = (v.permitTypes||[]).join("、");
       const assignees = (v.assigneeIds||[]).map(userName).filter(Boolean).join("、");
       const contacts = (v.contacts||[]).map(c=>{
-        const parts=[c.name, c.role, c.phone, c.email].filter(Boolean);
+        const parts=[c.name, c.role, toHankakuPhone(c.phone), c.email].filter(Boolean);
         return parts.join(" / ");
       }).join("\n");
       const sortedLogs = [...(v.approachLogs||[])]
@@ -8514,7 +8523,7 @@ ${recentLogs}
       const lastDate = lastLog ? (lastLog.date||lastLog.createdAt||"").slice(0,10) : "";
       
       return [
-        v.name||"", v.status||"", v.beeNet?"✓":"", v.phone||"", v.address||"",
+        v.name||"", v.status||"", v.beeNet?"✓":"", toHankakuPhone(v.phone||""), v.address||"",
         permits, muniNames, assignees, contacts,
         lastDate, approachHistory,
         v.notes||"", (v.createdAt||"").slice(0,10), v.updatedAt||"",
@@ -8537,15 +8546,15 @@ ${recentLogs}
     const headers = [
       "企業名","ステータス","代表電話","代表メール","住所",
       "自社担当","先方担当",
-      "最終接触日","最新アプローチ内容","アプローチ履歴(全件)",
+      "最終接触日","アプローチ履歴(全件)",
       "備考","登録日","最終更新"
     ];
-    const colWidths = [24, 10, 14, 22, 28, 14, 28, 11, 30, 60, 24, 11, 11];
+    const colWidths = [24, 10, 14, 22, 28, 14, 28, 11, 60, 24, 11, 11];
     
     const rows = compList.map(c => {
       const assignees = (c.assigneeIds||[]).map(userName).filter(Boolean).join("、");
       const contacts = (c.contacts||[]).map(ct=>{
-        const parts=[ct.name, ct.role, ct.phone, ct.email].filter(Boolean);
+        const parts=[ct.name, ct.role, toHankakuPhone(ct.phone), ct.email].filter(Boolean);
         return parts.join(" / ");
       }).join("\n");
       const sortedLogs = [...(c.approachLogs||[])]
@@ -8558,12 +8567,11 @@ ${recentLogs}
       }).join("\n\n");
       const lastLog = sortedLogs[sortedLogs.length-1];
       const lastDate = lastLog ? (lastLog.date||lastLog.createdAt||"").slice(0,10) : "";
-      const lastNote = lastLog ? `${lastLog.type||""}: ${(lastLog.note||"").slice(0,80)}` : "";
       
       return [
-        c.name||"", c.status||"", c.phone||"", c.email||"", c.address||"",
+        c.name||"", c.status||"", toHankakuPhone(c.phone||""), c.email||"", c.address||"",
         assignees, contacts,
-        lastDate, lastNote, approachHistory,
+        lastDate, approachHistory,
         c.notes||"", (c.createdAt||"").slice(0,10), c.updatedAt||"",
       ];
     });
