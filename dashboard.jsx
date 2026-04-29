@@ -1796,11 +1796,7 @@ function TaskCommentInput({taskId, data, setData, users=[], uid}) {
     if(toIds.length) nd = addNotif(nd,{type:"task_comment",entityId:task.id,entityType:"task",title:`「${task.title}」にコメントが追加されました`,body:text.slice(0,60),toUserIds:toIds,fromUserId:uid});
     // 自己完結保存+プッシュ
     setData(nd); saveData(nd);
-    if(toIds.length) {
-      fetch(`${API_BASE}/api/send-push`,{method:'POST',headers:{'Content-Type':'application/json','x-mydesk-secret':'mydesk2026'},
-        body:JSON.stringify({toUserIds:toIds,title:`「${task.title}」にコメントが追加されました`,body:text.slice(0,60),tag:'task_comment'})
-      }).then(r=>r.json()).then(d=>console.log('[MyDesk] push sent:',d)).catch(e=>console.warn('[MyDesk] push failed:',e));
-    }
+    // Push通知は addNotif の集約処理で自動送信されるため、ここでは送信しない
     setText("");
   };
   return (
@@ -2028,13 +2024,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
         const u = users.find(x=>x.id===id);
         return !u?.notifyMode || u.notifyMode==='push' || u.notifyMode==='both';
       });
-      if(pushTargets.length){
-        fetch(`${API_BASE}/api/send-push`,{
-          method:'POST',
-          headers:{'Content-Type':'application/json','x-mydesk-secret':'mydesk2026'},
-          body:JSON.stringify({toUserIds:pushTargets,title,body,tag}),
-        }).catch(()=>{});
-      }
+      // Push通知は addNotif の集約処理で自動送信されるため、ここでは送信しない
 
       // メール通知（notifyMode が "email" or "both" のユーザー）
       const emailTargets = targets.filter(id=>{
@@ -5343,10 +5333,22 @@ function VirtualList({items, itemHeight=72, renderItem, overscan=3, containerSty
 }
 
 // ── タップで電話 ＋ 通話後に議事録 ──────────────────────────────────────────
+// 電話番号を見やすい半角形式に整形（全角→半角、不要文字除去、ハイフン整形）
+function formatPhone(raw) {
+  if(!raw) return "";
+  // 全角数字・記号を半角化
+  let s = String(raw).replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+  s = s.replace(/[―ー－‐]/g, "-").replace(/[（）]/g, "");
+  // 不要な空白・ドット等を削除（ハイフンと数字、+、カンマだけ残す）
+  s = s.replace(/[^0-9+\-,]/g, "");
+  return s;
+}
+
 function PhoneLink({number, label, size="md", onMtg=null, onCallRecord=null}) {
   const [showMtgPrompt, setShowMtgPrompt] = React.useState(false);
   if (!number) return null;
-  const clean = number.replace(/[^0-9+]/g, "");
+  const display = formatPhone(number);
+  const clean = display.replace(/[^0-9+]/g, "");
   const fs = size === "sm" ? "0.78rem" : "0.85rem";
 
   const handleCall = () => {
@@ -5388,7 +5390,7 @@ function PhoneLink({number, label, size="md", onMtg=null, onCallRecord=null}) {
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81a19.79 19.79 0 01-3.07-8.64A2 2 0 012 .18h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 14.92z"/>
           </svg>
-          {label || number}
+          {label || display}
         </a>
         {/* 録音通話ボタン（onCallRecordがある場合） */}
         {onCallRecord&&<button onClick={handleRecordCall} title="電話＋自動録音"
@@ -6747,18 +6749,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     // 他ユーザーへWeb Push（バックグラウンド通知）
     if(newNotifs.length) {
       const byUser = {};
-      newNotifs.forEach(n=>{ if(n.toUserId && !byUser[n.toUserId]) byUser[n.toUserId]={title:n.title,body:n.body,tag:`${n.type||'mydesk'}_${n.entityType||''}_${n.entityId||'g'}`}; });
-      Object.entries(byUser).forEach(([uid,{title,body,tag}])=>{
-        const targets = uid==='__all__'
-          ? users.filter(u=>u.id!==currentUser?.id).map(u=>u.id)
-          : (uid!==currentUser?.id ? [uid] : []);
-        if(targets.length) {
-          fetch(`${API_BASE}/api/send-push`, {
-            method:'POST', headers:{'Content-Type':'application/json','x-mydesk-secret':'mydesk2026'},
-            body: JSON.stringify({toUserIds:targets, title, body:body||'', tag:tag||'mydesk'}),
-          }).catch(()=>{});
-        }
-      });
+      // Push通知は App 側の集約処理 (sendPushToUsers) で送信されるため、ここでは何もしない
     }
   }, [data]);
 
@@ -9265,10 +9256,10 @@ ${orig}`})
           if(!comp){setActiveCompany(null);return null;}
           return (
             <div style={{flex:1,overflowY:"auto",borderLeft:"1px solid #e5e5ea",background:"#ffffff"}}>
-              <div style={{padding:"1rem 1.5rem",borderBottom:"1px solid #e5e5ea",display:"flex",alignItems:"center",background:"white",position:"sticky",top:0,zIndex:10}}>
-                <div style={{flex:1,fontWeight:700,fontSize:"1rem",color:C.text}}>{comp.name}</div>
-                {comp.phone&&<PhoneLink number={comp.phone} size="sm" onMtg={()=>setMtgModal({entityKey:"companies",entityId:comp.id,entityName:comp.name})} onCallRecord={()=>setMtgModal({entityKey:"companies",entityId:comp.id,entityName:comp.name,autoStart:true,callMode:true})}/>}
-                <button onClick={()=>setActiveCompany(null)} style={{background:"none",border:"1px solid #e5e5ea",borderRadius:"6px",padding:"0.3rem 0.75rem",cursor:"pointer",fontSize:"0.8rem",color:C.textSub}}>✕</button>
+              <div style={{padding:"0.75rem 1.25rem",borderBottom:"1px solid #e5e5ea",display:"flex",alignItems:"center",gap:"0.75rem",background:"white",position:"sticky",top:0,zIndex:10}}>
+                <div style={{flex:1,fontWeight:700,fontSize:"0.95rem",color:C.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",minWidth:0}}>{comp.name}</div>
+                {comp.phone&&<div style={{flexShrink:0}}><PhoneLink number={comp.phone} size="sm" onMtg={()=>setMtgModal({entityKey:"companies",entityId:comp.id,entityName:comp.name})} onCallRecord={()=>setMtgModal({entityKey:"companies",entityId:comp.id,entityName:comp.name,autoStart:true,callMode:true})}/></div>}
+                <button onClick={()=>setActiveCompany(null)} style={{background:"none",border:"1px solid #e5e5ea",borderRadius:"6px",padding:"0.3rem 0.6rem",cursor:"pointer",fontSize:"0.8rem",color:C.textSub,flexShrink:0}}>✕</button>
               </div>
               <div style={{padding:"1rem 1.5rem"}}>{renderCompanyDetail(comp)}</div>
             </div>
@@ -9321,6 +9312,22 @@ ${orig}`})
               <div style={{display:"flex",alignItems:"center",gap:"0.75rem",flexWrap:"wrap",fontSize:"0.72rem",color:C.textMuted,marginBottom:"0.5rem"}}>
                 {v.address&&<span style={{display:"inline-flex",alignItems:"center",gap:"0.2rem"}}>📍 {v.address}</span>}
                 {v.updatedAt&&<span style={{display:"inline-flex",alignItems:"center",gap:"0.2rem"}}>📅 {v.updatedAt}</span>}
+              </div>
+            )}
+            {/* 先方担当者リスト */}
+            {(v.contacts||[]).length>0&&(
+              <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:"0.5rem",padding:"0.5rem 0.625rem",marginBottom:"0.5rem"}}>
+                <div style={{fontSize:"0.62rem",fontWeight:700,color:"#92400e",marginBottom:"0.3rem",letterSpacing:"0.04em"}}>👤 先方担当者</div>
+                <div style={{display:"flex",flexDirection:"column",gap:"0.3rem"}}>
+                  {v.contacts.map(c=>(
+                    <div key={c.id} style={{display:"flex",alignItems:"center",gap:"0.5rem",flexWrap:"wrap",fontSize:"0.72rem"}}>
+                      <span style={{fontWeight:700,color:"#78350f"}}>{c.name||"(無名)"}</span>
+                      {c.role&&<span style={{fontSize:"0.65rem",color:"#92400e",background:"#fef3c7",padding:"0.05rem 0.35rem",borderRadius:3,fontWeight:600}}>{c.role}</span>}
+                      {c.phone&&<PhoneLink number={c.phone} size="sm"/>}
+                      {c.email&&<a href={`mailto:${c.email}`} style={{fontSize:"0.7rem",color:"#0369a1",textDecoration:"none"}}>✉️ {c.email}</a>}
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
             {/* 許可エリア（タグ） */}
@@ -9436,7 +9443,52 @@ ${orig}`})
                 <MuniPicker ids={form.municipalityIds||[]} onChange={ids=>setForm({...form,municipalityIds:ids})}/>
               </FieldLbl>
               <FieldLbl label="担当者">{AssigneePicker({ids:form.assigneeIds||[],onChange:ids=>setForm({...form,assigneeIds:ids})})}</FieldLbl>
-              <FieldLbl label="電話番号（任意）"><Input value={form.phone||""} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="092-xxx-xxxx" type="tel"/></FieldLbl>
+              <FieldLbl label="代表電話番号（任意）"><Input value={form.phone||""} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="092-xxx-xxxx" type="tel"/></FieldLbl>
+              {/* 先方担当者リスト */}
+              <div style={{background:"#fef3c7",border:"1px solid #fde68a",borderRadius:"0.625rem",padding:"0.625rem 0.75rem",marginBottom:"0.5rem"}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.4rem"}}>
+                  <div style={{fontSize:"0.75rem",fontWeight:700,color:"#92400e"}}>👤 先方担当者（複数登録可）</div>
+                  <button onClick={()=>{
+                    const cur = form.contacts || [];
+                    setForm({...form, contacts:[...cur, {id:Date.now()+Math.random(),name:"",role:"",phone:"",email:""}]});
+                  }} style={{background:"#92400e",color:"white",border:"none",borderRadius:"0.4rem",padding:"0.3rem 0.7rem",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>＋ 担当者を追加</button>
+                </div>
+                {(()=>{
+                  const list = form.contacts || [];
+                  if(list.length===0) return (
+                    <div style={{fontSize:"0.7rem",color:"#78350f",fontStyle:"italic",padding:"0.4rem"}}>「＋ 担当者を追加」をタップして登録してください</div>
+                  );
+                  const updateAt = (idx, key, val) => {
+                    const next = list.map((c,i)=>i===idx?{...c,[key]:val}:c);
+                    setForm({...form, contacts:next});
+                  };
+                  const removeAt = (idx) => {
+                    setForm({...form, contacts:list.filter((_,i)=>i!==idx)});
+                  };
+                  return (
+                    <div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
+                      {list.map((c,idx)=>(
+                        <div key={c.id} style={{background:"white",border:"1px solid #fde68a",borderRadius:"0.5rem",padding:"0.5rem 0.625rem"}}>
+                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.35rem"}}>
+                            <div style={{fontSize:"0.7rem",fontWeight:700,color:"#92400e"}}>担当者 #{idx+1}</div>
+                            <button onClick={()=>removeAt(idx)} style={{background:"none",border:"none",color:"#dc2626",cursor:"pointer",fontSize:"0.7rem",fontWeight:700,padding:"0.1rem 0.3rem",fontFamily:"inherit"}}>🗑 削除</button>
+                          </div>
+                          <div style={{display:"flex",flexDirection:"column",gap:"0.35rem"}}>
+                            <input value={c.name||""} onChange={e=>updateAt(idx,"name",e.target.value)} placeholder="名前（例：山田 太郎）"
+                              style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
+                            <input value={c.role||""} onChange={e=>updateAt(idx,"role",e.target.value)} placeholder="役職・部署（例：営業部長）"
+                              style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
+                            <input value={c.phone||""} onChange={e=>updateAt(idx,"phone",formatPhone(e.target.value))} placeholder="電話番号（半角に自動変換）" type="tel"
+                              style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
+                            <input value={c.email||""} onChange={e=>updateAt(idx,"email",e.target.value)} placeholder="メールアドレス"
+                              style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
               <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
               <FieldLbl label="許可種別（複数選択可）">
                 <div style={{display:"flex",flexWrap:"wrap",gap:"0.4rem",padding:"0.5rem",background:"#f8fafc",borderRadius:"6px",border:"1px solid #e2e8f0"}}>
@@ -9683,26 +9735,43 @@ ${orig}`})
                     <div style={{borderTop:`1px solid ${C.borderLight}`}}>
                       <VirtualList
                         items={items}
-                        itemHeight={84}
-                        maxHeight={Math.min(items.length*84, 480)}
+                        itemHeight={68}
+                        maxHeight={Math.min(items.length*68, 480)}
                         getKey={v=>v.id}
                         renderItem={(v,i)=>{
                           const vmunis2=vendorMunis(v);
-                          const lastMemo=(v.memos||[]).slice(-1)[0];
+                          const lastApproach=(v.approachLogs||[]).slice(-1)[0];
+                          const approachText=lastApproach?
+                            (lastApproach.date||"").slice(5,10).replace("-","/")+" "+(lastApproach.text||lastApproach.method||"")
+                            : null;
                           return (
                             <div onClick={()=>{if(bulkMode){setBulkSelected(prev=>{const n=new Set(prev);n.has(v.id)?n.delete(v.id):n.add(v.id);return n;});return;}saveSalesScroll("vendor");setActiveVendor(v.id);setActiveDetail("timeline");}}
-                              style={{padding:"0.75rem 1rem",cursor:"pointer",borderTop:i>0?`1px solid ${C.borderLight}`:"none",background:bulkSelected.has(v.id)?"#eff6ff":"white",display:"flex",alignItems:"flex-start",gap:"0.5rem",transition:"background 0.1s",height:"100%",boxSizing:"border-box",overflow:"hidden"}}
+                              style={{padding:"0.55rem 0.875rem",cursor:"pointer",borderTop:i>0?`1px solid ${C.borderLight}`:"none",background:bulkSelected.has(v.id)?"#eff6ff":"white",display:"flex",alignItems:"center",gap:"0.6rem",transition:"background 0.1s",height:"100%",boxSizing:"border-box",overflow:"hidden"}}
                               onMouseEnter={e=>{if(!bulkSelected.has(v.id))e.currentTarget.style.background=C.bg;}}
                               onMouseLeave={e=>{if(!bulkSelected.has(v.id))e.currentTarget.style.background="white";}}>
-                              {bulkMode&&<input type="checkbox" checked={bulkSelected.has(v.id)} readOnly style={{width:15,height:15,accentColor:C.accent,flexShrink:0,marginTop:2}}/>}
-                              <div style={{flex:1,minWidth:0}}>
-                              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"0.2rem"}}>
-                                <span style={{fontWeight:700,fontSize:"0.9rem",color:C.text,flex:1}}>{v.name}</span>
+                              {bulkMode&&<input type="checkbox" checked={bulkSelected.has(v.id)} readOnly style={{width:15,height:15,accentColor:C.accent,flexShrink:0}}/>}
+                              {/* 業者名（2fr） */}
+                              <div style={{flex:"2 1 0",minWidth:0,display:"flex",flexDirection:"column",gap:"0.1rem"}}>
+                                <div style={{fontWeight:700,fontSize:"0.85rem",color:C.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{v.name}</div>
+                                {(v.contacts||[]).length>0&&<div style={{fontSize:"0.62rem",color:C.textMuted,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>👤 {(v.contacts[0].name||"無名")}{v.contacts.length>1?`他${v.contacts.length-1}`:""}</div>}
+                              </div>
+                              {/* 自社担当（1fr） */}
+                              <div style={{flex:"1 1 0",minWidth:0,display:"flex",alignItems:"center",justifyContent:"flex-start"}}>
                                 <AssigneeRow ids={v.assigneeIds}/>
                               </div>
-                              {(v.permitTypes||[]).length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:"0.2rem",marginBottom:"0.2rem"}}>{(v.permitTypes||[]).map(p=><span key={p} style={{fontSize:"0.6rem",background:"#ede9fe",color:"#5b21b6",padding:"0.1rem 0.3rem",borderRadius:999,fontWeight:600}}>{p}</span>)}</div>}
-                              {vmunis2.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:"0.2rem",marginBottom:"0.2rem"}}>{vmunis2.slice(0,3).map(m=><span key={m.id} style={{fontSize:"0.62rem",background:C.accentBg,color:C.accentDark,padding:"0.05rem 0.35rem",borderRadius:999}}>{m.name}</span>)}{vmunis2.length>3&&<span style={{fontSize:"0.62rem",color:C.textMuted}}>+{vmunis2.length-3}</span>}</div>}
-                              {lastMemo&&<div style={{fontSize:"0.7rem",color:C.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📝 {lastMemo.text}</div>}
+                              {/* 許可種別（1.2fr） */}
+                              <div style={{flex:"1.2 1 0",minWidth:0,display:"flex",flexWrap:"wrap",gap:"0.2rem",alignItems:"center"}}>
+                                {(v.permitTypes||[]).slice(0,2).map(p=><span key={p} style={{fontSize:"0.58rem",background:"#ede9fe",color:"#5b21b6",padding:"0.08rem 0.3rem",borderRadius:999,fontWeight:600,whiteSpace:"nowrap"}}>{p}</span>)}
+                                {(v.permitTypes||[]).length>2&&<span style={{fontSize:"0.6rem",color:C.textMuted}}>+{v.permitTypes.length-2}</span>}
+                              </div>
+                              {/* 自治体（1.5fr） */}
+                              <div style={{flex:"1.5 1 0",minWidth:0,display:"flex",flexWrap:"wrap",gap:"0.2rem",alignItems:"center"}}>
+                                {vmunis2.slice(0,2).map(m=><span key={m.id} style={{fontSize:"0.6rem",background:C.accentBg,color:C.accentDark,padding:"0.05rem 0.3rem",borderRadius:999,whiteSpace:"nowrap"}}>{m.name}</span>)}
+                                {vmunis2.length>2&&<span style={{fontSize:"0.6rem",color:C.textMuted}}>+{vmunis2.length-2}</span>}
+                              </div>
+                              {/* 最終アプローチ（1.5fr） */}
+                              <div style={{flex:"1.5 1 0",minWidth:0,fontSize:"0.68rem",color:C.textMuted,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                                {approachText?<span>📞 {approachText}</span>:<span style={{fontStyle:"italic",color:"#cbd5e0"}}>未接触</span>}
                               </div>
                             </div>
                           );
@@ -9873,10 +9942,10 @@ ${orig}`})
           if(!v){setActiveVendor(null);return null;}
           return (
             <div style={{flex:1,overflowY:"auto",borderLeft:"1px solid #e5e5ea",background:"#ffffff"}}>
-              <div style={{padding:"1rem 1.5rem",borderBottom:"1px solid #e5e5ea",display:"flex",alignItems:"center",background:"white",position:"sticky",top:0,zIndex:10}}>
-                <div style={{flex:1,fontWeight:700,fontSize:"1rem",color:C.text}}>{v.name}</div>
-                {v.phone&&<PhoneLink number={v.phone} size="sm" onMtg={()=>setMtgModal({entityKey:"vendors",entityId:v.id,entityName:v.name})} onCallRecord={()=>setMtgModal({entityKey:"vendors",entityId:v.id,entityName:v.name,autoStart:true,callMode:true})}/>}
-                <button onClick={()=>setActiveVendor(null)} style={{background:"none",border:"1px solid #e5e5ea",borderRadius:"6px",padding:"0.3rem 0.75rem",cursor:"pointer",fontSize:"0.8rem",color:C.textSub}}>✕</button>
+              <div style={{padding:"0.75rem 1.25rem",borderBottom:"1px solid #e5e5ea",display:"flex",alignItems:"center",gap:"0.75rem",background:"white",position:"sticky",top:0,zIndex:10}}>
+                <div style={{flex:1,fontWeight:700,fontSize:"0.95rem",color:C.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",minWidth:0}}>{v.name}</div>
+                {v.phone&&<div style={{flexShrink:0}}><PhoneLink number={v.phone} size="sm" onMtg={()=>setMtgModal({entityKey:"vendors",entityId:v.id,entityName:v.name})} onCallRecord={()=>setMtgModal({entityKey:"vendors",entityId:v.id,entityName:v.name,autoStart:true,callMode:true})}/></div>}
+                <button onClick={()=>setActiveVendor(null)} style={{background:"none",border:"1px solid #e5e5ea",borderRadius:"6px",padding:"0.3rem 0.6rem",cursor:"pointer",fontSize:"0.8rem",color:C.textSub,flexShrink:0}}>✕</button>
               </div>
               <div style={{padding:"1rem 1.5rem"}}>{renderVendorDetail(v)}</div>
             </div>
