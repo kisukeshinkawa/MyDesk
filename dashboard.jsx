@@ -2516,8 +2516,8 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
     whiteSpace: "nowrap"
   };
 
-  // Excel列幅 (合計108.45ユニット → %変換、ラベル列を少し広めに調整)
-  const colW = [3.53, 6.60, 7.77, 4.91, 7.77, 7.77, 10.91, 4.76, 10.14, 10.91, 9.37, 7.77, 7.77];
+  // Excel列幅 (合計108.45ユニット → %変換)。K/L/Mを均等にして印鑑枠のバランスを取る
+  const colW = [3.53, 6.60, 7.77, 4.91, 7.77, 7.77, 10.91, 4.76, 10.14, 10.91, 8.30, 8.30, 8.30];
 
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:1000,overflow:"auto",padding:"1rem"}}>
@@ -2599,8 +2599,17 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 <td colSpan={2} style={{...cellBase,textAlign:"center",borderTop:bThin,padding:"0 1mm",fontSize:"10.5pt"}}>業務内容：</td>
                 <td colSpan={5} style={{...cellBase,borderTop:bThin,whiteSpace:"normal"}}>{quote.workContent||""}</td>
                 <td colSpan={3}></td>
-                <td colSpan={3} style={{...cellBase,fontSize:"14pt",padding:"0 1mm"}}>
-                  <DistributedText text={company.name} style={{fontSize:"14pt",fontFamily:SERIF}}/>
+                <td colSpan={3} style={{...cellBase,padding:0}}>
+                  {(()=>{
+                    const nm = company.name||"";
+                    const len = [...nm].length;
+                    // セル幅~47mm。実フォントメトリクスを考慮してサイズ選定
+                    const fs = len >= 17 ? "7pt" : len >= 16 ? "8pt" : len >= 14 ? "9pt" : len >= 12 ? "10.5pt" : len >= 10 ? "12pt" : len >= 9 ? "13pt" : "14pt";
+                    if(len >= 11) {
+                      return <div style={{textAlign:"center",fontSize:fs,fontFamily:SERIF,whiteSpace:"nowrap",overflow:"hidden",fontWeight:500}}>{nm}</div>;
+                    }
+                    return <DistributedText text={nm} style={{fontSize:fs,fontFamily:SERIF,fontWeight:500,padding:"0 1mm"}}/>;
+                  })()}
                 </td>
               </tr>
 
@@ -2672,12 +2681,12 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
 
               {/* ── 明細ヘッダー行（全グレー背景） ──────────────── */}
               <tr style={{height:"7mm"}}>
-                <td style={{...cellBase,background:GREY,textAlign:"center",border:bThin}}></td>
+                <td style={{...cellBase,background:GREY,textAlign:"center",border:bThin,padding:0}}></td>
                 <td colSpan={5} style={{...cellBase,background:GREY,textAlign:"center",border:bThin,letterSpacing:"0.5em",paddingLeft:"calc(2mm + 0.5em)"}}>内　容</td>
-                <td style={{...cellBase,background:GREY,textAlign:"center",border:bThin,letterSpacing:"0.2em",paddingLeft:"calc(2mm + 0.2em)"}}>数 量</td>
-                <td style={{...cellBase,background:GREY,textAlign:"center",border:bThin}}>単位</td>
-                <td style={{...cellBase,background:GREY,textAlign:"center",border:bThin,letterSpacing:"0.2em",paddingLeft:"calc(2mm + 0.2em)"}}>単 価</td>
-                <td style={{...cellBase,background:GREY,textAlign:"center",border:bThin,letterSpacing:"0.2em",paddingLeft:"calc(2mm + 0.2em)"}}>金 額</td>
+                <td style={{...cellBase,background:GREY,textAlign:"center",border:bThin,letterSpacing:"0.2em",padding:"0 0.5mm",paddingLeft:"calc(0.5mm + 0.2em)"}}>数 量</td>
+                <td style={{...cellBase,background:GREY,textAlign:"center",border:bThin,padding:0,fontSize:"10pt"}}>単位</td>
+                <td style={{...cellBase,background:GREY,textAlign:"center",border:bThin,letterSpacing:"0.2em",padding:"0 0.5mm",paddingLeft:"calc(0.5mm + 0.2em)"}}>単 価</td>
+                <td style={{...cellBase,background:GREY,textAlign:"center",border:bThin,letterSpacing:"0.2em",padding:"0 0.5mm",paddingLeft:"calc(0.5mm + 0.2em)"}}>金 額</td>
                 <td colSpan={3} style={{...cellBase,background:GREY,textAlign:"center",border:bThin}}>備考欄</td>
               </tr>
 
@@ -2702,50 +2711,60 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
               {/* ── 小計（上に二重線） ──────────────── */}
               <tr style={{height:"7mm"}}>
                 <td colSpan={6} style={{...cellBase,textAlign:"center",letterSpacing:"0.6em",paddingLeft:"calc(2mm + 0.6em)",borderLeft:bThin,borderRight:bThin,borderBottom:bDotted}}>小　　　計</td>
-                <td colSpan={3} style={{borderLeft:bThin,borderRight:bThin,borderBottom:bDotted}}></td>
-                <td style={{...cellBase,textAlign:"right",borderRight:bThin,borderBottom:bDotted}}>{subtotal.toLocaleString()}</td>
+                <td style={{...cellBase,borderLeft:bThin,borderBottom:bDotted}}></td>
+                <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDotted}}></td>
+                <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDotted}}></td>
+                <td style={{...cellBase,textAlign:"right",borderRight:bThin,borderBottom:bDotted,padding:"0 1mm"}}>{subtotal.toLocaleString()}</td>
                 <td colSpan={3} style={{borderRight:bThin,borderBottom:bDotted}}></td>
               </tr>
 
               {/* ── 諸経費（5%等） ──────────────── */}
               <tr style={{height:"7mm"}}>
                 <td colSpan={6} style={{...cellBase,textAlign:"center",letterSpacing:"0.5em",paddingLeft:"calc(2mm + 0.5em)",borderLeft:bThin,borderRight:bThin,borderBottom:bDotted}}>諸　経　費</td>
-                <td colSpan={2} style={{borderLeft:bThin,borderRight:bThin,borderBottom:bDotted}}></td>
-                <td style={{...cellBase,textAlign:"center",fontSize:"10pt",borderLeft:bThin,borderRight:bThin,borderBottom:bDotted}}>{miscRateLabel}</td>
-                <td style={{...cellBase,textAlign:"right",borderRight:bThin,borderBottom:bDotted}}>{miscYen ? miscYen.toLocaleString() : "0"}</td>
+                <td style={{...cellBase,borderLeft:bThin,borderBottom:bDotted}}></td>
+                <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDotted}}></td>
+                <td style={{...cellBase,textAlign:"center",fontSize:"10pt",borderLeft:bThin,borderRight:bThin,borderBottom:bDotted,padding:0}}>{miscRateLabel}</td>
+                <td style={{...cellBase,textAlign:"right",borderRight:bThin,borderBottom:bDotted,padding:"0 1mm"}}>{miscYen ? miscYen.toLocaleString() : "0"}</td>
                 <td colSpan={3} style={{borderRight:bThin,borderBottom:bDotted}}></td>
               </tr>
 
               {/* ── 調整費（下に二重線） ──────────────── */}
               <tr style={{height:"7mm"}}>
                 <td colSpan={6} style={{...cellBase,textAlign:"center",letterSpacing:"0.5em",paddingLeft:"calc(2mm + 0.5em)",borderLeft:bThin,borderRight:bThin,borderBottom:bDouble}}>調　整　費</td>
-                <td colSpan={3} style={{borderLeft:bThin,borderRight:bThin,borderBottom:bDouble}}></td>
-                <td style={{...cellBase,textAlign:"right",borderRight:bThin,borderBottom:bDouble}}>{adjYen ? adjYen.toLocaleString() : "0"}</td>
+                <td style={{...cellBase,borderLeft:bThin,borderBottom:bDouble}}></td>
+                <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDouble}}></td>
+                <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDouble}}></td>
+                <td style={{...cellBase,textAlign:"right",borderRight:bThin,borderBottom:bDouble,padding:"0 1mm"}}>{adjYen ? adjYen.toLocaleString() : "0"}</td>
                 <td colSpan={3} style={{borderRight:bThin,borderBottom:bDouble}}></td>
               </tr>
 
               {/* ── 小計(税抜) ──────────────── */}
               <tr style={{height:"7mm"}}>
                 <td colSpan={6} style={{...cellBase,textAlign:"center",letterSpacing:"0.2em",paddingLeft:"calc(2mm + 0.2em)",borderLeft:bThin,borderRight:bThin,borderBottom:bDotted}}>小　計　(税抜)</td>
-                <td colSpan={3} style={{borderLeft:bThin,borderRight:bThin,borderBottom:bDotted}}></td>
-                <td style={{...cellBase,textAlign:"right",borderRight:bThin,borderBottom:bDotted}}>{adjustedSub.toLocaleString()}</td>
+                <td style={{...cellBase,borderLeft:bThin,borderBottom:bDotted}}></td>
+                <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDotted}}></td>
+                <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDotted}}></td>
+                <td style={{...cellBase,textAlign:"right",borderRight:bThin,borderBottom:bDotted,padding:"0 1mm"}}>{adjustedSub.toLocaleString()}</td>
                 <td colSpan={3} style={{borderRight:bThin,borderBottom:bDotted}}></td>
               </tr>
 
               {/* ── 消費税（10%等、下に二重線） ──────────────── */}
               <tr style={{height:"7mm"}}>
                 <td colSpan={6} style={{...cellBase,textAlign:"center",letterSpacing:"0.5em",paddingLeft:"calc(2mm + 0.5em)",borderLeft:bThin,borderRight:bThin,borderBottom:bDouble}}>消　費　税</td>
-                <td colSpan={2} style={{borderLeft:bThin,borderRight:bThin,borderBottom:bDouble}}></td>
-                <td style={{...cellBase,textAlign:"center",fontSize:"10pt",borderLeft:bThin,borderRight:bThin,borderBottom:bDouble}}>{(quote.taxRate||10)}%</td>
-                <td style={{...cellBase,textAlign:"right",borderRight:bThin,borderBottom:bDouble}}>{tax.toLocaleString()}</td>
+                <td style={{...cellBase,borderLeft:bThin,borderBottom:bDouble}}></td>
+                <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDouble}}></td>
+                <td style={{...cellBase,textAlign:"center",fontSize:"10pt",borderLeft:bThin,borderRight:bThin,borderBottom:bDouble,padding:0}}>{(quote.taxRate||10)}%</td>
+                <td style={{...cellBase,textAlign:"right",borderRight:bThin,borderBottom:bDouble,padding:"0 1mm"}}>{tax.toLocaleString()}</td>
                 <td colSpan={3} style={{borderRight:bThin,borderBottom:bDouble}}></td>
               </tr>
 
               {/* ── 合計(税込)（最終行・少し背の高い） ──────────────── */}
               <tr style={{height:"10mm"}}>
                 <td colSpan={6} style={{...cellBase,textAlign:"center",letterSpacing:"0.2em",paddingLeft:"calc(2mm + 0.2em)",fontSize:"12pt",fontWeight:700,borderLeft:bThin,borderRight:bThin,borderBottom:bThin}}>合　計　(税込)</td>
-                <td colSpan={3} style={{borderLeft:bThin,borderRight:bThin,borderBottom:bThin}}></td>
-                <td style={{...cellBase,textAlign:"right",fontSize:"12pt",fontWeight:700,borderRight:bThin,borderBottom:bThin}}>{grandTotal.toLocaleString()}</td>
+                <td style={{...cellBase,borderLeft:bThin,borderBottom:bThin}}></td>
+                <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bThin}}></td>
+                <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bThin}}></td>
+                <td style={{...cellBase,textAlign:"right",fontSize:"12pt",fontWeight:700,borderRight:bThin,borderBottom:bThin,padding:"0 1mm"}}>{grandTotal.toLocaleString()}</td>
                 <td colSpan={3} style={{borderRight:bThin,borderBottom:bThin}}></td>
               </tr>
 
@@ -2754,15 +2773,16 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 <td colSpan={13}></td>
               </tr>
 
-              {/* ── 備考ヘッダー（左に小さなボックス、右に細線） ──────────────── */}
+              {/* ── 備考ヘッダー（左に小ボックス、右に細線、下にボーダーなし） ───── */}
               <tr style={{height:"7mm"}}>
-                <td colSpan={2} style={{...cellBase,letterSpacing:"0.5em",paddingLeft:"calc(2mm + 0.5em)",border:bThin}}>備　考</td>
+                <td colSpan={2} style={{...cellBase,letterSpacing:"0.5em",paddingLeft:"calc(2mm + 0.5em)",borderTop:bThin,borderLeft:bThin,borderRight:bThin}}>備　考</td>
                 <td colSpan={11} style={{borderTop:bThin,borderRight:bThin}}></td>
               </tr>
 
-              {/* ── 備考コンテンツ ──────────────── */}
+              {/* ── 備考コンテンツ（左の小ボックス枠を継続、上にボーダーなし） ───── */}
               <tr style={{height:"25mm"}}>
-                <td colSpan={13} style={{...cellBase,fontSize:"10pt",verticalAlign:"top",whiteSpace:"pre-wrap",borderLeft:bThin,borderRight:bThin,borderBottom:bThin,padding:"2mm 4mm",lineHeight:1.5}}>
+                <td colSpan={2} style={{borderLeft:bThin,borderRight:bThin,borderBottom:bThin}}></td>
+                <td colSpan={11} style={{...cellBase,fontSize:"10pt",verticalAlign:"top",whiteSpace:"pre-wrap",borderRight:bThin,borderBottom:bThin,padding:"2mm 4mm",lineHeight:1.5}}>
                   {quote.remarks || ""}
                 </td>
               </tr>
