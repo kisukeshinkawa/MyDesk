@@ -2365,8 +2365,9 @@ function QuoteEditor({quote, users=[], currentUser, onUpdate, onDelete, onClose}
       </div>
       
       {/* 計算サマリ */}
-      <div style={{...sectionStyle,maxWidth:520,marginLeft:"auto"}}>
+      <div style={sectionStyle}>
         <div style={sectionTitleStyle}>💰 金額サマリ</div>
+        <div style={{maxWidth:520,marginLeft:"auto"}}>
         
         {/* 小計 */}
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"0.45rem 0",fontSize:"0.85rem"}}>
@@ -2419,6 +2420,7 @@ function QuoteEditor({quote, users=[], currentUser, onUpdate, onDelete, onClose}
         <div style={{display:"flex",justifyContent:"space-between",padding:"0.6rem 0.7rem",fontSize:"1rem",borderTop:"2px solid #2563eb",marginTop:"0.3rem",background:"#eff6ff",borderRadius:"0.4rem",marginLeft:"-0.2rem",marginRight:"-0.2rem"}}>
           <span style={{color:"#1e40af",fontWeight:800}}>合計（税込）</span>
           <span style={{fontWeight:800,color:"#1e40af"}}>¥{grandTotal.toLocaleString()}-</span>
+        </div>
         </div>
       </div>
       
@@ -2633,11 +2635,29 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                       border:"1px solid #000",
                       padding:0,
                       textAlign:"center",
-                      verticalAlign:"middle",
-                      fontSize:"12pt",
-                      color:"#c8002a",
-                      fontWeight:700
-                    }}>{authorLastName || ""}</td>
+                      verticalAlign:"middle"
+                    }}>
+                      {authorLastName && (
+                        <div style={{
+                          display:"inline-flex",
+                          alignItems:"center",
+                          justifyContent:"center",
+                          width:"10mm",
+                          height:"10mm",
+                          border:"1.2pt solid #c8002a",
+                          borderRadius:"50%",
+                          color:"#c8002a",
+                          fontWeight:700,
+                          fontSize: authorLastName.length >= 3 ? "7pt" : "9pt",
+                          letterSpacing: authorLastName.length >= 3 ? "0" : "0.05em",
+                          lineHeight:1,
+                          boxSizing:"border-box",
+                          background:"transparent",
+                          transform:"rotate(-4deg)",
+                          fontFamily:'"Yu Mincho", "Hiragino Mincho ProN", "MS Mincho", serif'
+                        }}>{authorLastName}</div>
+                      )}
+                    </td>
                   </tr>
                 </tbody>
               </table>
