@@ -6485,6 +6485,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   const [bcMemoIn,   setBcMemoIn]   = useState(""); // 名刺詳細メモ入力
   const [matchModal, setMatchModal] = useState(null);
   const [linkBizcardModal, setLinkBizcardModal] = useState(null); // {entityType, entityId, entityName}
+  const [autoLinkMatches, setAutoLinkMatches] = useState([]); // 自動紐付け候補リスト
+  const [autoLinkSelected, setAutoLinkSelected] = useState(new Set()); // 紐付ける名刺ID
   const [lossModal,  setLossModal]  = useState(null);
   const [nextActionModal, setNextActionModal] = useState(null);
   const [approachModal, setApproachModal] = useState(null);
@@ -6910,6 +6912,47 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   // 名刺のcompanyに対してマッチする営業エンティティを探す
   // ⑦ fuzzyMatchEntity を使った強化版マッチング
   const findMatchingEntities = (cardCompany) => fuzzyMatchEntity(cardCompany);
+  
+  // 完全一致のみで紐付け候補を探す（自動紐付け用）
+  const findExactMatchEntity = (cardCompany) => {
+    const norm = normBizName(cardCompany);
+    if(!norm) return null;
+    // 優先順位: 業者 > 企業 > 自治体（業者が最も具体的、汚染リスク低）
+    const sources = [
+      ["業者", data.vendors||[]],
+      ["企業", data.companies||[]],
+      ["自治体", data.municipalities||[]],
+    ];
+    for(const [type, entities] of sources) {
+      const found = entities.find(e => normBizName(e.name) === norm);
+      if(found) return {type, id:found.id, name:found.name};
+    }
+    return null;
+  };
+  
+  // 一括自動紐付け：未紐付け名刺を全部チェックして候補を返す
+  const findUnlinkedMatches = () => {
+    const unlinked = (data.businessCards||[]).filter(c => !c.salesRef);
+    const matches = [];
+    unlinked.forEach(card => {
+      const match = findExactMatchEntity(card.company);
+      if(match) matches.push({card, match});
+    });
+    return matches;
+  };
+  
+  // 紐付け実行: 名刺の salesRef を更新
+  const applyAutoLinks = (matches) => {
+    if(!matches.length) return;
+    const cardIds = new Set(matches.map(m=>m.card.id));
+    const matchMap = {};
+    matches.forEach(m=>{ matchMap[m.card.id] = m.match; });
+    const updated = (data.businessCards||[]).map(c => {
+      if(!cardIds.has(c.id)) return c;
+      return {...c, salesRef: matchMap[c.id]};
+    });
+    save({...data, businessCards: updated});
+  };
 
   // 営業エンティティ名に対してマッチする名刺を探す
   const findMatchingCards = (entityName) => {
@@ -7057,7 +7100,76 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     setNextActionModal({entityKey, entityId, entityName});
   };
 
-  // ── アプローチ履歴を追加 ────────────────────────────────────────────────
+  // ── 既存のapproachLogsから担当者を補完（ワンタイム実行） ────────────────
+  // 過去にアプローチを記録したユーザーが assigneeIds に入っていない場合、補完する
+  React.useEffect(() => {
+    if(!data || !currentUser) return;
+    if(data._assigneeBackfillDone) return;
+    let changed = false;
+    const newData = {...data};
+    ["companies","vendors","municipalities"].forEach(key => {
+      const list = data[key] || [];
+      newData[key] = list.map(e => {
+        const logs = e.approachLogs || [];
+        if(!logs.length) return e;
+        // 過去ログから userId を全部集める
+        const logUserIds = [...new Set(logs.map(l=>l.userId).filter(Boolean))];
+        const currentIds = e.assigneeIds || [];
+        // 未登録の userId だけ追加
+        const toAdd = logUserIds.filter(id => !currentIds.includes(id));
+        if(toAdd.length === 0) return e;
+        changed = true;
+        return {...e, assigneeIds: [...currentIds, ...toAdd]};
+      });
+    });
+    if(changed) {
+      // フラグを立てて再実行を防ぐ
+      newData._assigneeBackfillDone = true;
+      console.log("[MyDesk] 担当者補完を実行しました");
+      save(newData);
+    } else {
+      // 変更なくてもフラグだけ立てる
+      save({...data, _assigneeBackfillDone: true});
+    }
+  }, [currentUser?.id]); // ユーザーがログインしたら一度だけ実行
+
+    // ── アプローチ履歴を追加 ────────────────────────────────────────────────
+  // ── 過去のアプローチログから担当者を一括補完（既存データ修復用）─────
+  const backfillAssigneesFromApproach = () => {
+    let updatedCount = 0;
+    const result = {};
+    
+    ["companies", "vendors", "municipalities"].forEach(key => {
+      const entities = data[key] || [];
+      result[key] = entities.map(e => {
+        const logs = e.approachLogs || [];
+        if(logs.length === 0) return e;
+        // approachLogs に出てくる userId をユニークに集める
+        const logUserIds = [...new Set(logs.map(l => l.userId).filter(Boolean))];
+        // 既存の assigneeIds に追加（重複除外）
+        const currentIds = e.assigneeIds || [];
+        const newIds = [...new Set([...currentIds, ...logUserIds])];
+        if(newIds.length > currentIds.length) {
+          updatedCount++;
+          return {...e, assigneeIds: newIds};
+        }
+        return e;
+      });
+    });
+    
+    if(updatedCount === 0) {
+      window.alert("補完が必要なエンティティはありませんでした。\n（全てのアプローチ記録の実行者が既に担当者として登録済みです）");
+      return;
+    }
+    
+    if(!window.confirm(`${updatedCount}件のエンティティで、アプローチ実行者を担当者に追加します。\n（業者・企業・自治体すべて対象、過去のアプローチ記録から自動補完）\n\n実行しますか？`)) {
+      return;
+    }
+    
+    save({...data, ...result});
+    window.alert(`✅ ${updatedCount}件のエンティティの担当者を補完しました。`);
+  };
+  
   const addApproachLog = (entityKey, entityId, entry) => {
     const uid = currentUser?.id;
     const log = {
@@ -7072,8 +7184,13 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     const entity = entities.find(e=>e.id===entityId);
     const entityName = entity?.name || "";
     const today = new Date().toISOString().slice(0,10);
+    // アクション実行者を自動的に自社担当者に追加（既に入っていなければ）
+    const currentAssigneeIds = entity?.assigneeIds || [];
+    const newAssigneeIds = (uid && !currentAssigneeIds.includes(uid))
+      ? [...currentAssigneeIds, uid]
+      : currentAssigneeIds;
     let nd = {...data, [entityKey]: entities.map(e =>
-      e.id===entityId ? {...e, approachLogs:[...(e.approachLogs||[]), log], updatedAt:today} : e
+      e.id===entityId ? {...e, approachLogs:[...(e.approachLogs||[]), log], assigneeIds:newAssigneeIds, updatedAt:today} : e
     )};
     // チームへのリアルタイム通知（自分以外の担当者へ）
     const assigneeIds = entity?.assigneeIds || [];
@@ -9203,13 +9320,25 @@ ${orig}`})
             <div style={{background:"#fefce8",border:"1.5px solid #fde047",borderRadius:"8px",padding:"0.75rem 1rem",marginBottom:"0.75rem"}}>
               <div style={{fontSize:"0.75rem",fontWeight:800,color:"#854d0e",marginBottom:"0.4rem"}}>⭐ フォロー中 ({followComps.length}件)</div>
               <div style={{display:"flex",flexDirection:"column",gap:"0.3rem"}}>
-                {followComps.map(c=>(
-                  <div key={c.id} onClick={()=>{setSalesTab("company");saveSalesScroll("company");setActiveCompany(c.id);setActiveDetail("timeline");}}
-                    style={{display:"flex",alignItems:"center",gap:"0.5rem",cursor:"pointer",padding:"0.35rem 0.5rem",background:"white",borderRadius:"0.5rem",border:"1px solid #fde047"}}>
-                    <span style={{fontSize:"0.8rem",fontWeight:700,color:C.text,flex:1}}>{c.name}</span>
-                    <SChip s={c.status} map={COMPANY_STATUS}/>
-                  </div>
-                ))}
+                {followComps.map(c=>{
+                  const lastApproach = (c.approachLogs||[]).slice(-1)[0];
+                  const lastDate = lastApproach ? (lastApproach.date||lastApproach.createdAt||"").slice(5,10).replace("-","/") : "";
+                  return (
+                    <div key={c.id} onClick={()=>{setSalesTab("company");saveSalesScroll("company");setActiveCompany(c.id);setActiveDetail("timeline");}}
+                      style={{display:"flex",alignItems:"center",gap:"0.5rem",cursor:"pointer",padding:"0.35rem 0.5rem",background:"white",borderRadius:"0.5rem",border:"1px solid #fde047"}}>
+                      {/* 企業名: flex:1 で残り全部 */}
+                      <span style={{fontSize:"0.8rem",fontWeight:700,color:C.text,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</span>
+                      {/* ステータス: 固定幅 */}
+                      <div style={{width:80,flexShrink:0,display:"flex",justifyContent:"flex-end"}}>
+                        <SChip s={c.status} map={COMPANY_STATUS}/>
+                      </div>
+                      {/* 最終アプローチ日: 固定幅 */}
+                      <div style={{width:120,flexShrink:0,fontSize:"0.62rem",color:C.textMuted,textAlign:"right",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                        {lastDate?`📞 ${lastDate}`:"—"}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           );
@@ -9336,24 +9465,44 @@ ${orig}`})
                     <div style={{borderTop:`1px solid ${C.borderLight}`}}>
                       <VirtualList
                         items={items}
-                        itemHeight={84}
-                        maxHeight={Math.min(items.length*84, 480)}
+                        itemHeight={76}
+                        maxHeight={Math.min(items.length*76, 540)}
                         getKey={c=>c.id}
                         renderItem={(c,i)=>{
-                          const lastMemo=(c.memos||[]).slice(-1)[0];
+                          const sortedLogs = [...(c.approachLogs||[])].sort((a,b)=>
+                            new Date(b.createdAt||b.date||0)-new Date(a.createdAt||a.date||0)
+                          );
+                          const lastApproach=sortedLogs[0];
+                          const lastDate=lastApproach?(lastApproach.date||lastApproach.createdAt||"").slice(5,10).replace("-","/"):"";
+                          const lastType=lastApproach?(lastApproach.type||""):"";
+                          const lastNote=lastApproach?(lastApproach.note||""):"";
+                          const APPROACH_ICON_MAP={"電話":"📞","メール":"✉️","訪問":"🚶","MTG":"🤝","その他":"📝","メモ":"📝"};
+                          const approachIcon=APPROACH_ICON_MAP[lastType]||"📝";
                           return (
                             <div onClick={()=>{if(bulkMode){setBulkSelected(prev=>{const n=new Set(prev);n.has(c.id)?n.delete(c.id):n.add(c.id);return n;});return;}saveSalesScroll("company");setActiveCompany(c.id);setActiveDetail("timeline");setCompSearch("");}}
-                              style={{padding:"0.75rem 1rem",cursor:"pointer",borderTop:i>0?`1px solid ${C.borderLight}`:"none",background:bulkSelected.has(c.id)?"#eff6ff":"white",display:"flex",alignItems:"flex-start",gap:"0.5rem",transition:"background 0.1s",height:"100%",boxSizing:"border-box",overflow:"hidden"}}
+                              style={{padding:"0.55rem 0.875rem",cursor:"pointer",borderTop:i>0?`1px solid ${C.borderLight}`:"none",background:bulkSelected.has(c.id)?"#eff6ff":"white",display:"flex",flexDirection:"column",gap:"0.3rem",transition:"background 0.1s",height:"100%",boxSizing:"border-box",overflow:"hidden",justifyContent:"center"}}
                               onMouseEnter={e=>{if(!bulkSelected.has(c.id))e.currentTarget.style.background=C.bg;}}
                               onMouseLeave={e=>{if(!bulkSelected.has(c.id))e.currentTarget.style.background="white";}}>
-                              {bulkMode&&<input type="checkbox" checked={bulkSelected.has(c.id)} readOnly style={{width:15,height:15,accentColor:C.accent,flexShrink:0,marginTop:2}}/>}
-                              <div style={{flex:1,minWidth:0}}>
-                              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"0.2rem"}}>
-                                <span style={{fontWeight:700,fontSize:"0.9rem",color:C.text,flex:1}}>{c.name}</span>
-                                <AssigneeRow ids={c.assigneeIds}/>
+                              {/* 1行目: 企業名 + 先方担当 + 自社担当 */}
+                              <div style={{display:"flex",alignItems:"center",gap:"0.5rem",minWidth:0}}>
+                                {bulkMode&&<input type="checkbox" checked={bulkSelected.has(c.id)} readOnly style={{width:15,height:15,accentColor:C.accent,flexShrink:0}}/>}
+                                <div style={{flex:1,minWidth:0,fontWeight:700,fontSize:"0.88rem",color:C.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{c.name}</div>
+                                {(c.contacts||[]).length>0&&<span style={{fontSize:"0.62rem",color:C.textMuted,flexShrink:0}}>👤 {(c.contacts[0].name||"無名")}{c.contacts.length>1?`+${c.contacts.length-1}`:""}</span>}
+                                <div style={{flexShrink:0}}><AssigneeRow ids={c.assigneeIds}/></div>
                               </div>
-                              {(c.phone||c.email)&&<div style={{fontSize:"0.68rem",color:C.textMuted,marginBottom:"0.15rem"}}>{c.phone||c.email}</div>}
-                              {lastMemo&&<div style={{fontSize:"0.7rem",color:C.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📝 {lastMemo.text}</div>}
+                              {/* 2行目: 連絡先 + 最終アプローチ内容 */}
+                              <div style={{display:"flex",alignItems:"center",gap:"0.5rem",fontSize:"0.66rem",minWidth:0}}>
+                                {(c.phone||c.email)&&(
+                                  <span style={{color:C.textMuted,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",flexShrink:0,maxWidth:180}}>📞 {c.phone||c.email}</span>
+                                )}
+                                <div style={{flex:1,minWidth:0,color:C.textMuted,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",textAlign:"right"}}>
+                                  {lastApproach?(
+                                    <span title={lastNote}>
+                                      <span style={{color:"#475569",fontWeight:600}}>{approachIcon} {lastDate}</span>
+                                      {lastNote&&<span style={{color:C.textMuted,marginLeft:"0.3rem"}}>{lastNote.slice(0,40)}{lastNote.length>40?"…":""}</span>}
+                                    </span>
+                                  ):<span style={{fontStyle:"italic",color:"#cbd5e0"}}>未接触</span>}
+                                </div>
                               </div>
                             </div>
                           );
@@ -9979,6 +10128,8 @@ ${orig}`})
             exportVendorList(list, desc);
           }} title="エクセル出力（フィルター済み・全アプローチ含む）"
             style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:"1.5px solid #10b981",background:"#ecfdf5",color:"#059669",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📊</button>
+          <button onClick={backfillAssigneesFromApproach} title="アプローチ実行者を担当者に一括補完（業者・企業・自治体すべて）"
+            style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:"1.5px solid #f59e0b",background:"#fffbeb",color:"#92400e",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🔄</button>
           <button onClick={()=>{setDeleteModal({type:"vendor"});setDmSearch("");setDmFilter("");setDmSelected(new Set());}}
             style={{padding:"0.45rem 0.75rem",borderRadius:"6px",border:"1.5px solid #fca5a5",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🗑 削除</button>
           <Btn size="sm" onClick={()=>{setForm({status:"未接触",municipalityIds:[],assigneeIds:[]});setSheet("addVendor");}}>＋</Btn>
@@ -10087,41 +10238,49 @@ ${orig}`})
                         getKey={v=>v.id}
                         renderItem={(v,i)=>{
                           const vmunis2=vendorMunis(v);
-                          const lastApproach=(v.approachLogs||[]).slice(-1)[0];
-                          const approachText=lastApproach?
-                            (lastApproach.date||"").slice(5,10).replace("-","/")+" "+(lastApproach.text||lastApproach.method||"")
-                            : null;
+                          // approachLogs を日付順でソートして最新を取る
+                          const sortedLogs = [...(v.approachLogs||[])].sort((a,b)=>
+                            new Date(b.createdAt||b.date||0)-new Date(a.createdAt||a.date||0)
+                          );
+                          const lastApproach=sortedLogs[0];
+                          const lastDate=lastApproach?(lastApproach.date||lastApproach.createdAt||"").slice(5,10).replace("-","/"):"";
+                          const lastType=lastApproach?(lastApproach.type||""):"";
+                          const lastNote=lastApproach?(lastApproach.note||""):"";
+                          const APPROACH_ICON_MAP={"電話":"📞","メール":"✉️","訪問":"🚶","MTG":"🤝","その他":"📝","メモ":"📝"};
+                          const approachIcon=APPROACH_ICON_MAP[lastType]||"📝";
                           return (
                             <div onClick={()=>{if(bulkMode){setBulkSelected(prev=>{const n=new Set(prev);n.has(v.id)?n.delete(v.id):n.add(v.id);return n;});return;}saveSalesScroll("vendor");setActiveVendor(v.id);setActiveDetail("timeline");}}
-                              style={{padding:"0.55rem 0.875rem",cursor:"pointer",borderTop:i>0?`1px solid ${C.borderLight}`:"none",background:bulkSelected.has(v.id)?"#eff6ff":"white",display:"flex",flexDirection:"column",gap:"0.25rem",transition:"background 0.1s",height:"100%",boxSizing:"border-box",overflow:"hidden",justifyContent:"center"}}
+                              style={{padding:"0.55rem 0.875rem",cursor:"pointer",borderTop:i>0?`1px solid ${C.borderLight}`:"none",background:bulkSelected.has(v.id)?"#eff6ff":"white",display:"flex",flexDirection:"column",gap:"0.3rem",transition:"background 0.1s",height:"100%",boxSizing:"border-box",overflow:"hidden",justifyContent:"center"}}
                               onMouseEnter={e=>{if(!bulkSelected.has(v.id))e.currentTarget.style.background=C.bg;}}
                               onMouseLeave={e=>{if(!bulkSelected.has(v.id))e.currentTarget.style.background="white";}}>
-                              {/* 1行目: 業者名 + 自社担当 */}
+                              {/* 1行目: 業者名 + 先方担当 + 自社担当 */}
                               <div style={{display:"flex",alignItems:"center",gap:"0.5rem",minWidth:0}}>
                                 {bulkMode&&<input type="checkbox" checked={bulkSelected.has(v.id)} readOnly style={{width:15,height:15,accentColor:C.accent,flexShrink:0}}/>}
                                 <div style={{flex:1,minWidth:0,fontWeight:700,fontSize:"0.88rem",color:C.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{v.name}</div>
                                 {(v.contacts||[]).length>0&&<span style={{fontSize:"0.62rem",color:C.textMuted,flexShrink:0}}>👤 {(v.contacts[0].name||"無名")}{v.contacts.length>1?`+${v.contacts.length-1}`:""}</span>}
                                 <div style={{flexShrink:0}}><AssigneeRow ids={v.assigneeIds}/></div>
                               </div>
-                              {/* 2行目: 許可種別 / 自治体 / 最終アプローチ */}
-                              <div style={{display:"flex",alignItems:"center",gap:"0.5rem",fontSize:"0.62rem",minWidth:0}}>
-                                {/* 許可種別 */}
+                              {/* 2行目: 許可種別 + 自治体 + 最終アプローチ（フル幅で内容もしっかり表示） */}
+                              <div style={{display:"flex",alignItems:"center",gap:"0.5rem",fontSize:"0.66rem",minWidth:0}}>
                                 {(v.permitTypes||[]).length>0&&(
                                   <div style={{display:"flex",gap:"0.15rem",flexShrink:0}}>
-                                    {(v.permitTypes||[]).slice(0,2).map(p=><span key={p} style={{background:"#ede9fe",color:"#5b21b6",padding:"0.05rem 0.3rem",borderRadius:999,fontWeight:600,whiteSpace:"nowrap"}}>{p}</span>)}
-                                    {(v.permitTypes||[]).length>2&&<span style={{color:C.textMuted}}>+{v.permitTypes.length-2}</span>}
+                                    {(v.permitTypes||[]).slice(0,2).map(p=><span key={p} style={{background:"#ede9fe",color:"#5b21b6",padding:"0.05rem 0.35rem",borderRadius:999,fontWeight:600,whiteSpace:"nowrap"}}>{p}</span>)}
+                                    {(v.permitTypes||[]).length>2&&<span style={{color:C.textMuted,fontSize:"0.6rem"}}>+{v.permitTypes.length-2}</span>}
                                   </div>
                                 )}
-                                {/* 自治体 */}
                                 {vmunis2.length>0&&(
                                   <div style={{display:"flex",gap:"0.15rem",flexShrink:0}}>
-                                    {vmunis2.slice(0,2).map(m=><span key={m.id} style={{background:C.accentBg,color:C.accentDark,padding:"0.05rem 0.3rem",borderRadius:999,whiteSpace:"nowrap"}}>{m.name}</span>)}
-                                    {vmunis2.length>2&&<span style={{color:C.textMuted}}>+{vmunis2.length-2}</span>}
+                                    {vmunis2.slice(0,2).map(m=><span key={m.id} style={{background:C.accentBg,color:C.accentDark,padding:"0.05rem 0.35rem",borderRadius:999,whiteSpace:"nowrap"}}>{m.name}</span>)}
+                                    {vmunis2.length>2&&<span style={{color:C.textMuted,fontSize:"0.6rem"}}>+{vmunis2.length-2}</span>}
                                   </div>
                                 )}
-                                {/* 最終アプローチ */}
                                 <div style={{flex:1,minWidth:0,color:C.textMuted,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",textAlign:"right"}}>
-                                  {approachText?<span>📞 {approachText}</span>:<span style={{fontStyle:"italic",color:"#cbd5e0"}}>未接触</span>}
+                                  {lastApproach?(
+                                    <span title={lastNote}>
+                                      <span style={{color:"#475569",fontWeight:600}}>{approachIcon} {lastDate}</span>
+                                      {lastNote&&<span style={{color:C.textMuted,marginLeft:"0.3rem"}}>{lastNote.slice(0,40)}{lastNote.length>40?"…":""}</span>}
+                                    </span>
+                                  ):<span style={{fontStyle:"italic",color:"#cbd5e0"}}>未接触</span>}
                                 </div>
                               </div>
                             </div>
@@ -10800,9 +10959,16 @@ ${orig}`})
                 return (
                   <div key={m.id} onClick={()=>{setActivePref(String(m.prefectureId));setActiveMuni(String(m.id));setMuniScreen("muniDetail");setActiveDetail("timeline");}}
                     style={{display:"flex",alignItems:"center",gap:"0.5rem",cursor:"pointer",padding:"0.35rem 0.5rem",background:"white",borderRadius:"0.5rem",border:"1px solid #fde047"}}>
-                    <span style={{fontSize:"0.8rem",fontWeight:700,color:C.text,flex:1}}>{m.name}</span>
-                    <span style={{fontSize:"0.65rem",color:C.textMuted}}>{pref?.name}</span>
-                    {ts&&<span style={{fontSize:"0.62rem",padding:"0.1rem 0.35rem",borderRadius:999,background:ts.bg,color:ts.color,fontWeight:700}}>{m.treatyStatus}</span>}
+                    {/* 自治体名: flex:1（最大限スペース取る） */}
+                    <span style={{fontSize:"0.8rem",fontWeight:700,color:C.text,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.name}</span>
+                    {/* 都道府県: 固定幅80px・右揃え（縦線揃え用） */}
+                    <div style={{width:80,flexShrink:0,fontSize:"0.62rem",color:C.textMuted,textAlign:"right",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                      {pref?.name||"—"}
+                    </div>
+                    {/* ステータスバッジ: 固定幅80px・右寄せ */}
+                    <div style={{width:80,flexShrink:0,display:"flex",justifyContent:"flex-end"}}>
+                      {ts&&<span style={{fontSize:"0.62rem",padding:"0.1rem 0.4rem",borderRadius:999,background:ts.bg,color:ts.color,fontWeight:700,whiteSpace:"nowrap"}}>{m.treatyStatus}</span>}
+                    </div>
                   </div>
                 );
               })}
@@ -11536,6 +11702,16 @@ ${orig}`})
                 <div style={{fontSize:"0.72rem",color:C.textMuted}}>{bizCards.length}件 · {companyNames.length}社</div>
               </div>
               <div style={{display:"flex",gap:"0.5rem"}}>
+                <button onClick={()=>{
+                  const matches = findUnlinkedMatches();
+                  if(matches.length===0) {
+                    window.alert("自動紐付け可能な名刺はありません。\n\n（未紐付けの名刺で、会社名と一致する企業・業者・自治体が見つかりませんでした）");
+                    return;
+                  }
+                  setAutoLinkMatches(matches);
+                  setSheet("autoLinkConfirm");
+                }} title="未紐付け名刺を会社名で一括マッチング"
+                  style={{padding:"0.45rem 0.75rem",borderRadius:"6px",border:"1.5px solid #10b981",background:"#ecfdf5",color:"#059669",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🔗 自動紐付け</button>
                 <button onClick={()=>{setDeleteModal({type:"bizcard"});setDmSearch("");setDmFilter("");setDmSelected(new Set());}}
                   style={{padding:"0.45rem 0.75rem",borderRadius:"6px",border:"1.5px solid #fca5a5",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🗑 削除</button>
                 <Btn size="sm" variant="secondary" onClick={()=>setSheet("bcImport")}>📥 CSV取込</Btn>
@@ -11627,6 +11803,100 @@ ${orig}`})
               </div>
             )}
 
+            {/* 自動紐付け確認モーダル */}
+            {sheet==="autoLinkConfirm"&&(()=>{
+              const matches = autoLinkMatches;
+              // selectedSet が空の初回は全選択状態として扱う
+              const isAllSelected = autoLinkSelected.size === 0 || matches.every(m=>autoLinkSelected.has(m.card.id));
+              const effectiveSelected = autoLinkSelected.size === 0 ? new Set(matches.map(m=>m.card.id)) : autoLinkSelected;
+              const toggleAll = () => {
+                if(isAllSelected) setAutoLinkSelected(new Set([0])); // sentinel: 0件選択
+                else setAutoLinkSelected(new Set(matches.map(m=>m.card.id)));
+              };
+              const toggleOne = (cardId) => {
+                setAutoLinkSelected(prev => {
+                  const base = prev.size === 0 ? new Set(matches.map(m=>m.card.id)) : new Set(prev);
+                  base.delete(0);
+                  if(base.has(cardId)) base.delete(cardId);
+                  else base.add(cardId);
+                  return base;
+                });
+              };
+              const realSelected = new Set([...effectiveSelected].filter(id=>id!==0));
+              const TYPE_COLOR = {"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"};
+              const groupByType = {};
+              matches.forEach(m => {
+                const t = m.match.type;
+                if(!groupByType[t]) groupByType[t] = [];
+                groupByType[t].push(m);
+              });
+              return (
+                <Sheet title={`🔗 自動紐付け確認（${matches.length}件）`} onClose={()=>{setSheet(null);setAutoLinkMatches([]);setAutoLinkSelected(new Set());}}>
+                  <div style={{background:"#f0fdf4",border:"1px solid #86efac",borderRadius:"0.5rem",padding:"0.6rem 0.75rem",marginBottom:"0.75rem",fontSize:"0.78rem",color:"#166534",lineHeight:1.6}}>
+                    会社名が完全一致した未紐付け名刺を見つけました。<br/>
+                    <strong>紐付ける名刺にチェック</strong>を入れて「紐付ける」を押してください。
+                  </div>
+                  
+                  {/* 全選択/全解除 */}
+                  <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem",padding:"0.4rem 0.5rem",background:"#f8fafc",borderRadius:"0.4rem"}}>
+                    <button onClick={toggleAll} style={{padding:"0.3rem 0.7rem",borderRadius:5,border:`1.5px solid ${isAllSelected?"#10b981":C.border}`,background:isAllSelected?"#10b981":"white",color:isAllSelected?"white":C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}}>
+                      {isAllSelected?"✓ 全選択中":"☐ 全選択"}
+                    </button>
+                    <span style={{fontSize:"0.72rem",color:C.textSub,fontWeight:600}}>選択: {realSelected.size} / {matches.length}件</span>
+                  </div>
+                  
+                  {/* タイプ別グループ表示 */}
+                  <div style={{maxHeight:"50vh",overflowY:"auto",marginBottom:"0.75rem"}}>
+                    {Object.entries(groupByType).map(([type, list]) => (
+                      <div key={type} style={{marginBottom:"0.75rem"}}>
+                        <div style={{fontSize:"0.7rem",fontWeight:800,color:TYPE_COLOR[type],marginBottom:"0.4rem",padding:"0.2rem 0.4rem",background:`${TYPE_COLOR[type]}15`,borderRadius:4,display:"inline-block"}}>
+                          {type === "企業" ? "🏢" : type === "業者" ? "🔧" : "🏛️"} {type} ({list.length}件)
+                        </div>
+                        <div style={{display:"flex",flexDirection:"column",gap:"0.25rem"}}>
+                          {list.map(m => {
+                            const isChecked = effectiveSelected.has(m.card.id);
+                            const ownerStr = (m.card.owners||[]).join(", ") || "—";
+                            const personName = `${m.card.lastName||""} ${m.card.firstName||""}`.trim() || "（氏名なし）";
+                            return (
+                              <div key={m.card.id} onClick={()=>toggleOne(m.card.id)}
+                                style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.5rem 0.625rem",background:isChecked?"#ecfdf5":"white",border:`1.5px solid ${isChecked?"#86efac":C.border}`,borderRadius:"0.4rem",cursor:"pointer",transition:"all 0.1s"}}>
+                                <input type="checkbox" checked={isChecked} readOnly style={{width:16,height:16,accentColor:"#10b981",flexShrink:0}}/>
+                                <div style={{flex:1,minWidth:0}}>
+                                  <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginBottom:"0.15rem"}}>
+                                    <span style={{fontSize:"0.78rem",fontWeight:700,color:C.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",flex:1,minWidth:0}}>{personName}</span>
+                                    <span style={{fontSize:"0.62rem",color:C.textMuted,flexShrink:0}}>👤 {ownerStr}</span>
+                                  </div>
+                                  <div style={{fontSize:"0.68rem",color:C.textMuted,display:"flex",alignItems:"center",gap:"0.4rem"}}>
+                                    <span style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",flex:1,minWidth:0}}>{m.card.company}</span>
+                                    <span style={{flexShrink:0,color:"#059669",fontWeight:700}}>→ {m.match.name}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  
+                  {/* アクションボタン */}
+                  <div style={{display:"flex",gap:"0.625rem"}}>
+                    <Btn variant="secondary" style={{flex:1}} onClick={()=>{setSheet(null);setAutoLinkMatches([]);setAutoLinkSelected(new Set());}}>キャンセル</Btn>
+                    <Btn style={{flex:2}} disabled={realSelected.size===0} onClick={()=>{
+                      const toApply = matches.filter(m=>realSelected.has(m.card.id));
+                      applyAutoLinks(toApply);
+                      setSheet(null);
+                      setAutoLinkMatches([]);
+                      setAutoLinkSelected(new Set());
+                      window.alert(`✅ ${toApply.length}件の名刺を紐付けました！`);
+                    }}>
+                      🔗 {realSelected.size}件を紐付ける
+                    </Btn>
+                  </div>
+                </Sheet>
+              );
+            })()}
+            
             {/* 手動追加シート */}
             {sheet==="bcAdd"&&(
               <Sheet title="名刺を追加" onClose={()=>{setSheet(null);setBcAddForm(BC_ADD_INIT);}}>
@@ -11687,6 +11957,29 @@ ${orig}`})
                 <div style={{marginBottom:"0.75rem"}}>
                   <div style={{fontSize:"0.7rem",fontWeight:700,color:C.textSub,marginBottom:"0.35rem"}}>営業先に登録（任意）</div>
                   <div style={{fontSize:"0.72rem",color:C.textMuted,marginBottom:"0.5rem"}}>保存と同時に企業/業者/自治体として登録できます</div>
+                  
+                  {/* 会社名一致の自動候補表示（_salesRef未設定時のみ） */}
+                  {!bcAddForm._salesRef && bcAddForm.company.trim() && (() => {
+                    const match = findExactMatchEntity(bcAddForm.company);
+                    if(!match) return null;
+                    const TYPE_COLOR = {"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"};
+                    const TYPE_ICON = {"企業":"🏢","業者":"🔧","自治体":"🏛️"};
+                    return (
+                      <div style={{background:"#ecfdf5",border:"1.5px solid #86efac",borderRadius:"0.5rem",padding:"0.6rem 0.75rem",marginBottom:"0.5rem"}}>
+                        <div style={{fontSize:"0.7rem",fontWeight:700,color:"#059669",marginBottom:"0.4rem",display:"flex",alignItems:"center",gap:"0.35rem"}}>
+                          <span>✨ 同じ会社名が見つかりました</span>
+                        </div>
+                        <button onClick={()=>setBcAddForm(p=>({...p,_salesRef:{type:match.type,id:match.id,name:match.name}}))}
+                          style={{display:"flex",alignItems:"center",gap:"0.5rem",width:"100%",padding:"0.5rem 0.75rem",background:"white",border:`1.5px solid ${TYPE_COLOR[match.type]}`,borderRadius:"0.4rem",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+                          <span style={{fontSize:"0.65rem",fontWeight:800,color:"white",background:TYPE_COLOR[match.type],borderRadius:999,padding:"0.1rem 0.45rem",flexShrink:0}}>{TYPE_ICON[match.type]} {match.type}</span>
+                          <span style={{fontSize:"0.85rem",fontWeight:700,color:C.text,flex:1}}>{match.name}</span>
+                          <span style={{fontSize:"0.7rem",color:"#059669",fontWeight:700,flexShrink:0}}>🔗 紐付け →</span>
+                        </button>
+                        <div style={{fontSize:"0.65rem",color:"#166534",marginTop:"0.3rem",fontStyle:"italic"}}>※ クリックすると自動で紐付けられます</div>
+                      </div>
+                    );
+                  })()}
+                  
                   <SalesRefPicker value={bcAddForm._salesRef||null} onChange={v=>setBcAddForm(p=>({...p,_salesRef:v}))} salesData={data}/>
                 </div>
                 <div style={{display:"flex",gap:"0.75rem",marginTop:"1rem"}}>
