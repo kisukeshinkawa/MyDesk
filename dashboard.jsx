@@ -1671,30 +1671,30 @@ function SalesRefPicker({value, onChange, salesData={}}) {
       )}
       {open && <>
         <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:490}}/>
-        <div style={{position:"fixed",top:pos.top,left:pos.left,width:pos.width,zIndex:491,border:"1.5px solid #e2e8f0",borderRadius:"6px",background:"white",overflow:"hidden",boxShadow:"0 8px 32px rgba(0,0,0,0.18)"}}>
+        <div style={{position:"fixed",top:pos.top,left:pos.left,width:Math.max(pos.width||360, 360),maxWidth:540,zIndex:491,border:"1.5px solid #e2e8f0",borderRadius:"10px",background:"white",overflow:"hidden",boxShadow:"0 12px 48px rgba(0,0,0,0.22)"}}>
           {/* タブ */}
           <div style={{display:"flex",borderBottom:"1px solid #e2e8f0"}}>
             {TABS.map(([lbl,icon])=>(
               <button key={lbl} onClick={()=>{setTab(lbl);setQ("");}}
-                style={{flex:1,padding:"0.45rem 0",border:"none",background:tab===lbl?"#eff6ff":"white",color:tab===lbl?COLOR[lbl]:"#6b7280",fontWeight:tab===lbl?800:500,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit"}}>
+                style={{flex:1,padding:"0.6rem 0",border:"none",background:tab===lbl?"#eff6ff":"white",color:tab===lbl?COLOR[lbl]:"#6b7280",fontWeight:tab===lbl?800:600,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>
                 {icon} {lbl}
               </button>
             ))}
           </div>
           {/* 検索 */}
-          <div style={{padding:"0.4rem 0.6rem",borderBottom:"1px solid #f1f5f9"}}>
-            <input value={q} onChange={e=>setQ(e.target.value)} placeholder="検索..." autoFocus
-              style={{width:"100%",padding:"0.3rem 0.5rem",border:"1px solid #e2e8f0",borderRadius:"0.5rem",fontSize:"0.82rem",fontFamily:"inherit",boxSizing:"border-box",outline:"none"}}/>
+          <div style={{padding:"0.6rem 0.75rem",borderBottom:"1px solid #f1f5f9"}}>
+            <input value={q} onChange={e=>setQ(e.target.value)} placeholder="検索（会社名・業者名など）..." autoFocus
+              style={{width:"100%",padding:"0.5rem 0.7rem",border:"1.5px solid #e2e8f0",borderRadius:"0.5rem",fontSize:"0.92rem",fontFamily:"inherit",boxSizing:"border-box",outline:"none"}}/>
           </div>
           {/* リスト */}
-          <div style={{maxHeight:200,overflowY:"auto"}}>
+          <div style={{maxHeight:380,overflowY:"auto"}}>
             {items.length===0
-              ? <div style={{padding:"0.75rem",textAlign:"center",color:"#94a3b8",fontSize:"0.8rem"}}>
+              ? <div style={{padding:"1.25rem",textAlign:"center",color:"#94a3b8",fontSize:"0.85rem"}}>
                   {q ? <div style={{color:"#64748b"}}>「{q}」は未登録です</div> : <div>データなし</div>}
                 </div>
               : items.map(x=>(
                 <div key={x.id} onClick={()=>{onChange({type:tab,id:String(x.id),name:x.name});setOpen(false);}}
-                  style={{padding:"0.5rem 0.75rem",cursor:"pointer",fontSize:"0.85rem",color:"#1e293b",borderBottom:"1px solid #f8fafc"}}
+                  style={{padding:"0.7rem 0.85rem",cursor:"pointer",fontSize:"0.92rem",color:"#1e293b",borderBottom:"1px solid #f8fafc"}}
                   onMouseEnter={e=>e.currentTarget.style.background="#f0f9ff"}
                   onMouseLeave={e=>e.currentTarget.style.background="white"}>
                   {x.name}
@@ -1702,9 +1702,9 @@ function SalesRefPicker({value, onChange, salesData={}}) {
               ))
             }
             {/* 未登録時に新規登録を促す */}
-            {q&&<div style={{borderTop:"1px solid #f1f5f9",padding:"0.5rem 0.75rem"}}>
+            {q&&<div style={{borderTop:"1px solid #f1f5f9",padding:"0.7rem 0.85rem"}}>
               <button onClick={()=>{onChange({type:tab,id:"__new__",name:q,_isNew:true});setOpen(false);}}
-                style={{width:"100%",padding:"0.4rem",borderRadius:"0.5rem",border:"1.5px dashed #7c3aed",background:"#faf5ff",color:"#7c3aed",fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                style={{width:"100%",padding:"0.6rem",borderRadius:"0.5rem",border:"1.5px dashed #7c3aed",background:"#faf5ff",color:"#7c3aed",fontSize:"0.85rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                 ＋ 「{q}」を{tab}として新規登録
               </button>
             </div>}
@@ -9735,8 +9735,8 @@ ${orig}`})
                     <div style={{borderTop:`1px solid ${C.borderLight}`}}>
                       <VirtualList
                         items={items}
-                        itemHeight={68}
-                        maxHeight={Math.min(items.length*68, 480)}
+                        itemHeight={76}
+                        maxHeight={Math.min(items.length*76, 540)}
                         getKey={v=>v.id}
                         renderItem={(v,i)=>{
                           const vmunis2=vendorMunis(v);
@@ -9746,32 +9746,36 @@ ${orig}`})
                             : null;
                           return (
                             <div onClick={()=>{if(bulkMode){setBulkSelected(prev=>{const n=new Set(prev);n.has(v.id)?n.delete(v.id):n.add(v.id);return n;});return;}saveSalesScroll("vendor");setActiveVendor(v.id);setActiveDetail("timeline");}}
-                              style={{padding:"0.55rem 0.875rem",cursor:"pointer",borderTop:i>0?`1px solid ${C.borderLight}`:"none",background:bulkSelected.has(v.id)?"#eff6ff":"white",display:"flex",alignItems:"center",gap:"0.6rem",transition:"background 0.1s",height:"100%",boxSizing:"border-box",overflow:"hidden"}}
+                              style={{padding:"0.55rem 0.875rem",cursor:"pointer",borderTop:i>0?`1px solid ${C.borderLight}`:"none",background:bulkSelected.has(v.id)?"#eff6ff":"white",display:"flex",flexDirection:"column",gap:"0.25rem",transition:"background 0.1s",height:"100%",boxSizing:"border-box",overflow:"hidden",justifyContent:"center"}}
                               onMouseEnter={e=>{if(!bulkSelected.has(v.id))e.currentTarget.style.background=C.bg;}}
                               onMouseLeave={e=>{if(!bulkSelected.has(v.id))e.currentTarget.style.background="white";}}>
-                              {bulkMode&&<input type="checkbox" checked={bulkSelected.has(v.id)} readOnly style={{width:15,height:15,accentColor:C.accent,flexShrink:0}}/>}
-                              {/* 業者名（2fr） */}
-                              <div style={{flex:"2 1 0",minWidth:0,display:"flex",flexDirection:"column",gap:"0.1rem"}}>
-                                <div style={{fontWeight:700,fontSize:"0.85rem",color:C.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{v.name}</div>
-                                {(v.contacts||[]).length>0&&<div style={{fontSize:"0.62rem",color:C.textMuted,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>👤 {(v.contacts[0].name||"無名")}{v.contacts.length>1?`他${v.contacts.length-1}`:""}</div>}
+                              {/* 1行目: 業者名 + 自社担当 */}
+                              <div style={{display:"flex",alignItems:"center",gap:"0.5rem",minWidth:0}}>
+                                {bulkMode&&<input type="checkbox" checked={bulkSelected.has(v.id)} readOnly style={{width:15,height:15,accentColor:C.accent,flexShrink:0}}/>}
+                                <div style={{flex:1,minWidth:0,fontWeight:700,fontSize:"0.88rem",color:C.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{v.name}</div>
+                                {(v.contacts||[]).length>0&&<span style={{fontSize:"0.62rem",color:C.textMuted,flexShrink:0}}>👤 {(v.contacts[0].name||"無名")}{v.contacts.length>1?`+${v.contacts.length-1}`:""}</span>}
+                                <div style={{flexShrink:0}}><AssigneeRow ids={v.assigneeIds}/></div>
                               </div>
-                              {/* 自社担当（1fr） */}
-                              <div style={{flex:"1 1 0",minWidth:0,display:"flex",alignItems:"center",justifyContent:"flex-start"}}>
-                                <AssigneeRow ids={v.assigneeIds}/>
-                              </div>
-                              {/* 許可種別（1.2fr） */}
-                              <div style={{flex:"1.2 1 0",minWidth:0,display:"flex",flexWrap:"wrap",gap:"0.2rem",alignItems:"center"}}>
-                                {(v.permitTypes||[]).slice(0,2).map(p=><span key={p} style={{fontSize:"0.58rem",background:"#ede9fe",color:"#5b21b6",padding:"0.08rem 0.3rem",borderRadius:999,fontWeight:600,whiteSpace:"nowrap"}}>{p}</span>)}
-                                {(v.permitTypes||[]).length>2&&<span style={{fontSize:"0.6rem",color:C.textMuted}}>+{v.permitTypes.length-2}</span>}
-                              </div>
-                              {/* 自治体（1.5fr） */}
-                              <div style={{flex:"1.5 1 0",minWidth:0,display:"flex",flexWrap:"wrap",gap:"0.2rem",alignItems:"center"}}>
-                                {vmunis2.slice(0,2).map(m=><span key={m.id} style={{fontSize:"0.6rem",background:C.accentBg,color:C.accentDark,padding:"0.05rem 0.3rem",borderRadius:999,whiteSpace:"nowrap"}}>{m.name}</span>)}
-                                {vmunis2.length>2&&<span style={{fontSize:"0.6rem",color:C.textMuted}}>+{vmunis2.length-2}</span>}
-                              </div>
-                              {/* 最終アプローチ（1.5fr） */}
-                              <div style={{flex:"1.5 1 0",minWidth:0,fontSize:"0.68rem",color:C.textMuted,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
-                                {approachText?<span>📞 {approachText}</span>:<span style={{fontStyle:"italic",color:"#cbd5e0"}}>未接触</span>}
+                              {/* 2行目: 許可種別 / 自治体 / 最終アプローチ */}
+                              <div style={{display:"flex",alignItems:"center",gap:"0.5rem",fontSize:"0.62rem",minWidth:0}}>
+                                {/* 許可種別 */}
+                                {(v.permitTypes||[]).length>0&&(
+                                  <div style={{display:"flex",gap:"0.15rem",flexShrink:0}}>
+                                    {(v.permitTypes||[]).slice(0,2).map(p=><span key={p} style={{background:"#ede9fe",color:"#5b21b6",padding:"0.05rem 0.3rem",borderRadius:999,fontWeight:600,whiteSpace:"nowrap"}}>{p}</span>)}
+                                    {(v.permitTypes||[]).length>2&&<span style={{color:C.textMuted}}>+{v.permitTypes.length-2}</span>}
+                                  </div>
+                                )}
+                                {/* 自治体 */}
+                                {vmunis2.length>0&&(
+                                  <div style={{display:"flex",gap:"0.15rem",flexShrink:0}}>
+                                    {vmunis2.slice(0,2).map(m=><span key={m.id} style={{background:C.accentBg,color:C.accentDark,padding:"0.05rem 0.3rem",borderRadius:999,whiteSpace:"nowrap"}}>{m.name}</span>)}
+                                    {vmunis2.length>2&&<span style={{color:C.textMuted}}>+{vmunis2.length-2}</span>}
+                                  </div>
+                                )}
+                                {/* 最終アプローチ */}
+                                <div style={{flex:1,minWidth:0,color:C.textMuted,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",textAlign:"right"}}>
+                                  {approachText?<span>📞 {approachText}</span>:<span style={{fontStyle:"italic",color:"#cbd5e0"}}>未接触</span>}
+                                </div>
                               </div>
                             </div>
                           );
