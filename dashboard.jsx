@@ -2487,6 +2487,7 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
   while(items.length < 15) items.push(null);
 
   const miscRateLabel = quote.miscUnit === "percent" && miscVal ? `${miscVal}%` : "";
+  const adjRateLabel = quote.adjustmentUnit === "percent" && adjVal ? `${adjVal}%` : "";
 
   const fmt = (d) => {
     if(!d) return "";
@@ -2531,6 +2532,11 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
         </div>
 
         <style>{`
+          .quote-print, .quote-print * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            color-adjust: exact !important;
+          }
           @media print {
             body * { visibility: hidden; }
             .quote-print, .quote-print * { visibility: visible; }
@@ -2571,7 +2577,7 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
             <tbody>
               
               {/* ── 御中行（A5:F5 + G5、下に二重線） ──────────────── */}
-              <tr style={{height:"9mm"}}>
+              <tr style={{height:"8.5mm"}}>
                 <td colSpan={6} style={{...cellBase,fontSize:"12pt",textAlign:"center",borderBottom:bDouble,verticalAlign:"bottom",paddingBottom:"1mm"}}>
                   {quote.to||""}
                 </td>
@@ -2579,63 +2585,66 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                   御中
                 </td>
                 <td colSpan={3}></td>
-                <td colSpan={3} style={{...cellBase,fontSize:"10pt",verticalAlign:"top",whiteSpace:"normal"}}>
+                <td colSpan={3} style={{...cellBase,fontSize:"10.5pt",verticalAlign:"middle",whiteSpace:"normal"}}>
                   {company.zip}
                 </td>
               </tr>
 
               {/* ── 事業所名行 + 住所 ──────────────── */}
-              <tr style={{height:"8mm"}}>
+              <tr style={{height:"8.5mm"}}>
                 <td colSpan={2} style={{...cellBase,textAlign:"center",borderTop:bDouble,borderBottom:bThin,padding:"0 1mm",fontSize:"10.5pt"}}>事業所名：</td>
                 <td colSpan={5} style={{...cellBase,textAlign:"center",borderTop:bDouble,borderBottom:bThin,whiteSpace:"normal"}}>{quote.site||""}</td>
                 <td colSpan={3}></td>
-                <td colSpan={3} style={{...cellBase,fontSize:"9.5pt",verticalAlign:"top",whiteSpace:"nowrap",overflow:"visible"}}>
+                <td colSpan={3} style={{...cellBase,fontSize:"10pt",verticalAlign:"middle",whiteSpace:"nowrap",overflow:"visible"}}>
                   {company.address}
                 </td>
               </tr>
 
-              {/* ── 業務内容行 + 会社名（distributed/両端揃え） ──────────────── */}
-              <tr style={{height:"9mm"}}>
+              {/* ── 業務内容行 + 会社名 ──────────────── */}
+              <tr style={{height:"8.5mm"}}>
                 <td colSpan={2} style={{...cellBase,textAlign:"center",borderTop:bThin,padding:"0 1mm",fontSize:"10.5pt"}}>業務内容：</td>
                 <td colSpan={5} style={{...cellBase,textAlign:"center",borderTop:bThin,whiteSpace:"normal"}}>{quote.workContent||""}</td>
                 <td colSpan={3}></td>
-                <td colSpan={3} style={{...cellBase,padding:"0 1mm",overflow:"visible"}}>
+                <td colSpan={3} style={{...cellBase,padding:"0 1mm",verticalAlign:"middle"}}>
                   {(()=>{
                     const nm = company.name||"";
                     const len = [...nm].length;
                     if(!nm) return null;
-                    // SVG + textLength で長さ問わず必ずセル幅にフィット（縦の文字幅は維持）
-                    // 14pt視認性を保ちつつ自動圧縮：短ければ自然な distributed 表示
-                    const fs = len <= 8 ? 16 : len <= 10 ? 15 : len <= 12 ? 14 : 13;
-                    const heightMm = 6.5;
-                    return (
-                      <svg width="100%" height={heightMm+"mm"} viewBox="0 0 100 22" preserveAspectRatio="none" style={{display:"block"}}>
-                        <text x="50" y="16" textAnchor="middle" fontSize={fs} fontFamily="'Yu Mincho','Hiragino Mincho ProN','MS PMincho','MS Mincho',serif" fontWeight="500" textLength="98" lengthAdjust="spacingAndGlyphs">{nm}</text>
-                      </svg>
-                    );
+                    // 各文字数に対して45mm幅にちょうど収まるサイズ。安全マージン込み
+                    let fs, useFlex;
+                    if(len <= 8) { fs = "14pt"; useFlex = true; }       // 「株式会社西原商事」 distributed
+                    else if(len <= 10) { fs = "12pt"; useFlex = true; }
+                    else if(len <= 12) { fs = "10pt"; useFlex = false; }
+                    else if(len <= 14) { fs = "8.7pt"; useFlex = false; }
+                    else if(len <= 16) { fs = "7.6pt"; useFlex = false; } // 16文字でも余裕で収まる
+                    else { fs = "6.8pt"; useFlex = false; }
+                    if(useFlex) {
+                      return <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:fs,fontFamily:SERIF,fontWeight:500,padding:"0 0.5mm"}}>{[...nm].map((c,i)=><span key={i}>{c}</span>)}</div>;
+                    }
+                    return <div style={{textAlign:"center",fontSize:fs,fontFamily:SERIF,fontWeight:500,whiteSpace:"nowrap"}}>{nm}</div>;
                   })()}
                 </td>
               </tr>
 
               {/* ── ご担当者行 + TEL ──────────────── */}
-              <tr style={{height:"8mm"}}>
+              <tr style={{height:"8.5mm"}}>
                 <td colSpan={2} style={{...cellBase,textAlign:"center",borderTop:bThin,borderBottom:bThin,padding:"0 1mm",fontSize:"10.5pt"}}>ご担当者：</td>
                 <td colSpan={4} style={{...cellBase,textAlign:"center",borderTop:bThin,borderBottom:bThin,whiteSpace:"normal"}}>{quote.contactName||""}</td>
                 <td style={{...cellBase,borderTop:bThin,borderBottom:bThin,textAlign:"left",paddingLeft:"1mm"}}>{quote.contactName?"様":""}</td>
                 <td colSpan={3}></td>
-                <td colSpan={3} style={{...cellBase,fontSize:"11pt",textAlign:"right"}}>
+                <td colSpan={3} style={{...cellBase,fontSize:"10.5pt",textAlign:"right"}}>
                   TEL　{company.tel}
                 </td>
               </tr>
 
               {/* ── 有効期限行 + FAX ──────────────── */}
-              <tr style={{height:"8mm"}}>
+              <tr style={{height:"8.5mm"}}>
                 <td colSpan={2} style={{...cellBase,textAlign:"center",borderTop:bThin,borderBottom:bThin,padding:"0 1mm",fontSize:"10.5pt"}}>有効期限：</td>
                 <td colSpan={2} style={{...cellBase,borderTop:bThin,borderBottom:bThin}}>{quote.validUntil || "御見積り後"}</td>
                 <td style={{...cellBase,borderTop:bThin,borderBottom:bThin,textAlign:"center"}}>{quote.months||""}</td>
                 <td colSpan={2} style={{...cellBase,borderTop:bThin,borderBottom:bThin}}>ケ月</td>
                 <td colSpan={3}></td>
-                <td colSpan={3} style={{...cellBase,fontSize:"11pt",textAlign:"right"}}>
+                <td colSpan={3} style={{...cellBase,fontSize:"10.5pt",textAlign:"right"}}>
                   FAX　{company.fax}
                 </td>
               </tr>
@@ -2732,12 +2741,12 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 <td colSpan={3} style={{borderRight:bThin,borderBottom:bDotted}}></td>
               </tr>
 
-              {/* ── 調整費（下に二重線） ──────────────── */}
+              {/* ── 調整費（下に二重線、%設定時はレート表示） ──────────────── */}
               <tr style={{height:"7mm"}}>
                 <td colSpan={6} style={{...cellBase,textAlign:"center",letterSpacing:"0.5em",paddingLeft:"calc(2mm + 0.5em)",borderLeft:bThin,borderRight:bThin,borderBottom:bDouble}}>調　整　費</td>
                 <td style={{...cellBase,borderLeft:bThin,borderBottom:bDouble}}></td>
                 <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDouble}}></td>
-                <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDouble}}></td>
+                <td style={{...cellBase,textAlign:"center",fontSize:"10pt",borderLeft:bThin,borderRight:bThin,borderBottom:bDouble,padding:0}}>{adjRateLabel}</td>
                 <td style={{...cellBase,textAlign:"right",borderRight:bThin,borderBottom:bDouble,padding:"0 1mm"}}>{adjYen ? adjYen.toLocaleString() : "0"}</td>
                 <td colSpan={3} style={{borderRight:bThin,borderBottom:bDouble}}></td>
               </tr>
