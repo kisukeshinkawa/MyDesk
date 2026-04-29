@@ -2723,21 +2723,42 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
           <span style={{fontSize:"0.85rem",color:"#6b7280",fontWeight:700}}>見積書プレビュー</span>
           <div style={{flex:1}}/>
           <button onClick={async () => {
-            // AIで自動的に良い感じのファイル名を付けて印刷／PDF保存
             const originalTitle = document.title;
             const dateStr = (quote.issuedDate || "").replace(/-/g, "");
             const fallback = `見積書_${(quote.to||"").slice(0,30)}_${dateStr}`;
-            const name = await generateSmartFileName({
-              type: "見積書",
-              to: quote.to,
-              site: quote.site,
-              workContent: quote.workContent,
-              date: quote.issuedDate,
-              total: grandTotal,
-              items: (quote.items||[]).map(i=>i.description).filter(Boolean).slice(0,5).join("、")
-            }, fallback);
-            document.title = name;
-            setTimeout(() => { window.print(); setTimeout(()=>{document.title = originalTitle;}, 1500); }, 50);
+            // AI命名は最大2秒で諦めてfallbackを使う（印刷を絶対にブロックしない）
+            let name = fallback;
+            try {
+              const aiPromise = generateSmartFileName({
+                type: "見積書",
+                to: quote.to,
+                site: quote.site,
+                workContent: quote.workContent,
+                date: quote.issuedDate,
+                total: grandTotal,
+                items: (quote.items||[]).map(i=>i.description).filter(Boolean).slice(0,5).join("、")
+              }, fallback);
+              const timeoutPromise = new Promise(resolve => setTimeout(() => resolve(fallback), 2000));
+              name = await Promise.race([aiPromise, timeoutPromise]);
+            } catch(e) {
+              name = fallback;
+            }
+            document.title = name || fallback;
+            // 印刷ダイアログを開いた後に閉じる処理
+            const restore = () => {
+              document.title = originalTitle;
+              window.removeEventListener('afterprint', restore);
+            };
+            window.addEventListener('afterprint', restore);
+            // フォールバック：万一afterprintが発火しない場合は2秒後に強制復元
+            setTimeout(restore, 5000);
+            // 確実に印刷ダイアログを開く
+            try {
+              window.print();
+            } catch(e) {
+              window.alert("印刷の起動に失敗しました。ブラウザの印刷機能をご確認ください。");
+              restore();
+            }
           }} style={{padding:"0.5rem 1rem",borderRadius:"0.4rem",border:"none",background:"#2563eb",color:"white",fontWeight:700,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>🖨 印刷 / PDF保存</button>
         </div>
 
@@ -2760,7 +2781,7 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
         <div className="quote-print" style={{
           width:"210mm",
           minHeight:"297mm",
-          padding:"10mm 10mm",
+          padding:"8mm 10mm",
           fontFamily: SERIF,
           color:"#000",
           boxSizing:"border-box",
@@ -2770,7 +2791,7 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
         }}>
 
           {/* タイトル「御見積書」 */}
-          <div style={{textAlign:"center",fontSize:"22pt",fontWeight:400,letterSpacing:"0.7em",paddingLeft:"0.7em",marginBottom:"6mm",marginTop:"3mm",fontFamily:SERIF}}>
+          <div style={{textAlign:"center",fontSize:"22pt",fontWeight:400,letterSpacing:"0.7em",paddingLeft:"0.7em",marginBottom:"4mm",marginTop:"1mm",fontFamily:SERIF}}>
             御見積書
           </div>
 
@@ -2798,7 +2819,7 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
               </tr>
 
               {/* ── 事業所名行 + 〒+住所（2行）── 印鑑枠の幅(K-M)内に収める ── */}
-              <tr style={{height:"11mm"}}>
+              <tr style={{height:"9.5mm"}}>
                 <td colSpan={2} style={{...cellBase,textAlign:"center",borderTop:bDouble,borderBottom:bThin,padding:"0 1mm",fontSize:"10.5pt"}}>事業所名：</td>
                 <td colSpan={5} style={{...cellBase,textAlign:"center",borderTop:bDouble,borderBottom:bThin,whiteSpace:"normal"}}>{quote.site||""}</td>
                 <td colSpan={3}></td>
@@ -2844,7 +2865,7 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
               </tr>
 
               {/* ── ご担当者行 + TEL+FAX（2行）── 印鑑枠の幅(K-M)内に収める ── */}
-              <tr style={{height:"11mm"}}>
+              <tr style={{height:"9.5mm"}}>
                 <td colSpan={2} style={{...cellBase,textAlign:"center",borderTop:bThin,borderBottom:bThin,padding:"0 1mm",fontSize:"10.5pt"}}>ご担当者：</td>
                 <td colSpan={4} style={{...cellBase,textAlign:"center",borderTop:bThin,borderBottom:bThin,whiteSpace:"normal"}}>{quote.contactName||""}</td>
                 <td style={{...cellBase,borderTop:bThin,borderBottom:bThin,textAlign:"left",paddingLeft:"1mm"}}>{quote.contactName?"様":""}</td>
@@ -2918,7 +2939,7 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 const amount = it ? (Number(it.qty)||0)*(Number(it.price)||0) : 0;
                 const bottomBorder = isLast ? bDouble : bDotted;
                 return (
-                  <tr key={idx} style={{height:"7mm"}}>
+                  <tr key={idx} style={{height:"6.3mm"}}>
                     <td style={{...cellBase,textAlign:"center",fontSize:"10pt",padding:0,borderLeft:bThin,borderRight:bThin,borderBottom:bottomBorder}}>{idx+1}</td>
                     <td colSpan={5} style={{...cellBase,borderRight:bThin,borderBottom:bottomBorder}}>{it?.description||""}</td>
                     <td style={{...cellBase,textAlign:"right",borderRight:bThin,borderBottom:bottomBorder}}>{it?.qty||""}</td>
@@ -2999,7 +3020,7 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
               <tr style={{height:"7mm"}}>
                 <td colSpan={13} style={{...cellBase,letterSpacing:"0.5em",paddingLeft:"calc(2mm + 0.5em)",borderTop:bThin,borderLeft:bThin,borderRight:bThin}}>備　考</td>
               </tr>
-              <tr style={{height:"25mm"}}>
+              <tr style={{height:"20mm"}}>
                 <td colSpan={13} style={{...cellBase,fontSize:"10pt",verticalAlign:"top",whiteSpace:"pre-wrap",borderLeft:bThin,borderRight:bThin,borderBottom:bThin,padding:"1mm 4mm 2mm 4mm",lineHeight:1.5}}>
                   {quote.remarks || ""}
                 </td>
@@ -7666,30 +7687,44 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   const [bulkDone,     setBulkDone]     = useState(null);
   const [openRegions,  setOpenRegions]  = useState({});
   const [openPrefs,    setOpenPrefs]    = useState({});
-  const [compSearch,   setCompSearch]   = useState("");
-  const [debouncedCompSearch, setDebouncedCompSearch] = useState("");
+  const [compSearch,   setCompSearch]   = useState(()=>localStorage.getItem("md_compSearch")||"");
+  React.useEffect(()=>{ localStorage.setItem("md_compSearch", compSearch||""); }, [compSearch]);
+  const [debouncedCompSearch, setDebouncedCompSearch] = useState(compSearch);
   React.useEffect(() => {
     const timer = setTimeout(() => setDebouncedCompSearch(compSearch), 300);
     return () => clearTimeout(timer);
   }, [compSearch]);
-  const [compFilter,   setCompFilter]   = useState({status:"",assignee:""});
-  const [vendSearch,   setVendSearch]   = useState("");
-  const [debouncedVendSearch, setDebouncedVendSearch] = useState("");
+  const [compFilter,   setCompFilter]   = useState(()=>{
+    try { return JSON.parse(localStorage.getItem("md_compFilter")) || {status:"",assignee:""}; }
+    catch { return {status:"",assignee:""}; }
+  });
+  React.useEffect(()=>{ localStorage.setItem("md_compFilter", JSON.stringify(compFilter)); }, [compFilter]);
+  const [vendSearch,   setVendSearch]   = useState(()=>localStorage.getItem("md_vendSearch")||"");
+  React.useEffect(()=>{ localStorage.setItem("md_vendSearch", vendSearch||""); }, [vendSearch]);
+  const [debouncedVendSearch, setDebouncedVendSearch] = useState(vendSearch);
   // 業者名検索の debounce: 入力停止後 300ms で実際のフィルタ対象を更新
   React.useEffect(() => {
     const timer = setTimeout(() => setDebouncedVendSearch(vendSearch), 300);
     return () => clearTimeout(timer);
   }, [vendSearch]);
-  const [vendFilterPref, setVendFilterPref] = useState(""); // 都道府県フィルタ
-  const [vendFilterMuni, setVendFilterMuni] = useState(""); // 自治体フィルタ
-  const [vendFilterStatus, setVendFilterStatus] = useState(""); // ステータスフィルタ
-  const [vendFilterPermit, setVendFilterPermit] = useState("");
-  const [vendFilterBeeNet, setVendFilterBeeNet] = useState(""); // "" | "加入済み" | "未加入" // 許可種別フィルタ
-  const [vendFilterAssignee, setVendFilterAssignee] = useState(""); // 担当フィルタ
+  const [vendFilterPref, setVendFilterPref] = useState(()=>localStorage.getItem("md_vendFilterPref")||"");
+  React.useEffect(()=>{ localStorage.setItem("md_vendFilterPref", vendFilterPref||""); }, [vendFilterPref]);
+  const [vendFilterMuni, setVendFilterMuni] = useState(()=>localStorage.getItem("md_vendFilterMuni")||"");
+  React.useEffect(()=>{ localStorage.setItem("md_vendFilterMuni", vendFilterMuni||""); }, [vendFilterMuni]);
+  const [vendFilterStatus, setVendFilterStatus] = useState(()=>localStorage.getItem("md_vendFilterStatus")||"");
+  React.useEffect(()=>{ localStorage.setItem("md_vendFilterStatus", vendFilterStatus||""); }, [vendFilterStatus]);
+  const [vendFilterPermit, setVendFilterPermit] = useState(()=>localStorage.getItem("md_vendFilterPermit")||"");
+  React.useEffect(()=>{ localStorage.setItem("md_vendFilterPermit", vendFilterPermit||""); }, [vendFilterPermit]);
+  const [vendFilterBeeNet, setVendFilterBeeNet] = useState(()=>localStorage.getItem("md_vendFilterBeeNet")||"");
+  React.useEffect(()=>{ localStorage.setItem("md_vendFilterBeeNet", vendFilterBeeNet||""); }, [vendFilterBeeNet]);
+  const [vendFilterAssignee, setVendFilterAssignee] = useState(()=>localStorage.getItem("md_vendFilterAssignee")||"");
+  React.useEffect(()=>{ localStorage.setItem("md_vendFilterAssignee", vendFilterAssignee||""); }, [vendFilterAssignee]);
   const [openCompGrp,  setOpenCompGrp]  = useState(new Set());
   const [openVendGrp,  setOpenVendGrp]  = useState(new Set());
-  const [muniTopSearch,setMuniTopSearch]= useState("");
-  const [muniFilterAssignee, setMuniFilterAssignee] = useState(""); // 担当者フィルタ
+  const [muniTopSearch,setMuniTopSearch]= useState(()=>localStorage.getItem("md_muniTopSearch")||"");
+  React.useEffect(()=>{ localStorage.setItem("md_muniTopSearch", muniTopSearch||""); }, [muniTopSearch]);
+  const [muniFilterAssignee, setMuniFilterAssignee] = useState(()=>localStorage.getItem("md_muniFilterAssignee")||"");
+  React.useEffect(()=>{ localStorage.setItem("md_muniFilterAssignee", muniFilterAssignee||""); }, [muniFilterAssignee]);
   // フォロー中エリアの折りたたみ状態（デフォルト閉じる、localStorage で永続化）
   const [followCompOpen, setFollowCompOpen] = useState(()=>localStorage.getItem("md_followCompOpen")==="1");
   const [followVendOpen, setFollowVendOpen] = useState(()=>localStorage.getItem("md_followVendOpen")==="1");
@@ -10602,6 +10637,8 @@ ${orig}`})
             <button onClick={e=>{e.stopPropagation();openApproachModal("companies",comp.id,comp.name);}} style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#dbeafe",color:"#1d4ed8"}}>📞 アプローチ記録</button>
             <button onClick={e=>{e.stopPropagation();setMtgModal({entityKey:"companies",entityId:comp.id,entityName:comp.name});}} style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#f0fdf4",color:"#166534"}}>🎤 MTG記録</button>
             <button onClick={e=>{e.stopPropagation();openNextActionModal("companies",comp.id,comp.name,comp);}} style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#d1fae5",color:"#065f46"}}>📅 {comp.nextActionDate?"次回変更":"次回設定"}</button>
+            <div style={{flex:1}}/>
+            <button onClick={()=>{if(window.confirm(`${comp.name}を削除しますか？\nこの操作は元に戻せません。`))deleteCompany(comp.id);}} style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"1px solid #fca5a5",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#fef2f2",color:"#dc2626"}}>🗑 削除</button>
           </div>
           {/* Sub-tabs: 履歴・チャット・タスク・名刺・ファイル */}
           <div style={{display:"flex",background:"white",borderRadius:"6px",padding:"0.2rem",marginBottom:"1rem",border:`1px solid ${C.border}`}}>
@@ -10781,7 +10818,7 @@ ${orig}`})
                 renderItem={(c)=>{
                   const lastMemo=(c.memos||[]).slice(-1)[0];
                   return (
-                    <div onClick={()=>{setSalesTab("company");saveSalesScroll("company");setActiveCompany(c.id);setActiveDetail("timeline");setCompSearch("");}}
+                    <div onClick={()=>{setSalesTab("company");saveSalesScroll("company");setActiveCompany(c.id);setActiveDetail("timeline");}}
                       style={{background:"white",border:`1.5px solid ${C.border}`,borderRadius:"8px",padding:"0.875rem 1rem",cursor:"pointer",boxShadow:"0 1px 2px rgba(0,0,0,0.04)",margin:"0 0 0.5rem 0",height:"calc(100% - 0.5rem)",boxSizing:"border-box",overflow:"hidden"}}>
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"0.3rem"}}>
                         <span style={{fontWeight:700,fontSize:"0.93rem",color:C.text,flex:1}}>{c.name}</span>
@@ -10838,7 +10875,7 @@ ${orig}`})
                     const APPROACH_ICON_MAP={"電話":"📞","メール":"✉️","訪問":"🚶","MTG":"🤝","その他":"📝","メモ":"📝"};
                     const approachIcon=APPROACH_ICON_MAP[lastType]||"📝";
                     return (
-                      <div onClick={()=>{if(bulkMode){setBulkSelected(prev=>{const n=new Set(prev);n.has(c.id)?n.delete(c.id):n.add(c.id);return n;});return;}saveSalesScroll("company");setActiveCompany(c.id);setActiveDetail("timeline");setCompSearch("");}}
+                      <div onClick={()=>{if(bulkMode){setBulkSelected(prev=>{const n=new Set(prev);n.has(c.id)?n.delete(c.id):n.add(c.id);return n;});return;}saveSalesScroll("company");setActiveCompany(c.id);setActiveDetail("timeline");}}
                         style={{padding:"0.55rem 0.875rem",cursor:"pointer",borderTop:i>0?`1px solid ${C.borderLight}`:"none",background:bulkSelected.has(c.id)?"#eff6ff":"white",display:"flex",flexDirection:"column",gap:"0.3rem",transition:"background 0.1s",height:"100%",boxSizing:"border-box",overflow:"hidden",justifyContent:"center"}}
                         onMouseEnter={e=>{if(!bulkSelected.has(c.id))e.currentTarget.style.background=C.bg;}}
                         onMouseLeave={e=>{if(!bulkSelected.has(c.id))e.currentTarget.style.background="white";}}>
