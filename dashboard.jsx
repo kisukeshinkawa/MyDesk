@@ -2266,6 +2266,8 @@ function QuoteView({data, setData, users=[], currentUser=null, onNavigateToSales
 // 見積書エディタ
 function QuoteEditor({quote, users=[], currentUser, onUpdate, onDelete, onClose}) {
   const [showPreview, setShowPreview] = React.useState(false);
+  const [showHistory, setShowHistory] = React.useState(false);
+  const [saveLabel, setSaveLabel] = React.useState("");
   const author = users.find(u => u.id === quote.createdBy) || currentUser;
   const authorLastName = (author?.name || "").split(/\s+/)[0] || "";
   const company = COMPANY_INFO.find(c => c.id === quote.companyInfoId) || COMPANY_INFO[0];
@@ -2291,6 +2293,63 @@ function QuoteEditor({quote, users=[], currentUser, onUpdate, onDelete, onClose}
   const removeItem = (idx) => {
     onUpdate({items: (quote.items||[]).filter((_,i)=>i!==idx)});
   };
+
+  // ── バージョン保存・復元 ────────────────────────────────
+  const buildSnapshot = () => ({
+    issuedDate: quote.issuedDate,
+    companyInfoId: quote.companyInfoId,
+    to: quote.to, site: quote.site, workContent: quote.workContent,
+    contactName: quote.contactName, validUntil: quote.validUntil, months: quote.months,
+    items: JSON.parse(JSON.stringify(quote.items||[])),
+    misc: quote.misc, miscUnit: quote.miscUnit,
+    adjustment: quote.adjustment, adjustmentUnit: quote.adjustmentUnit,
+    taxRate: quote.taxRate, remarks: quote.remarks,
+    internalMemo: quote.internalMemo||"",
+  });
+  
+  const saveVersion = () => {
+    const now = new Date().toISOString();
+    const userName = currentUser?.name || "不明";
+    const newVersion = {
+      id: Date.now() + Math.random(),
+      savedAt: now,
+      savedById: currentUser?.id,
+      savedByName: userName,
+      label: saveLabel.trim() || `${userName} が保存`,
+      snapshot: buildSnapshot(),
+    };
+    const versions = [...(quote.versions||[]), newVersion];
+    onUpdate({versions, lastEditedAt: now, lastEditedById: currentUser?.id, lastEditedByName: userName});
+    setSaveLabel("");
+    window.alert(`バージョンを保存しました：\n${newVersion.label}`);
+  };
+  
+  const restoreVersion = (vid) => {
+    const v = (quote.versions||[]).find(x => x.id === vid);
+    if(!v) return;
+    const dt = new Date(v.savedAt).toLocaleString('ja-JP');
+    if(!window.confirm(`このバージョンに戻しますか？\n\n「${v.label}」\n${v.savedByName} - ${dt}\n\n（現在の状態は自動的に履歴へ保存されます）`)) return;
+    // 現在の状態を自動保存
+    const now = new Date().toISOString();
+    const userName = currentUser?.name || "不明";
+    const autoSave = {
+      id: Date.now() + Math.random(),
+      savedAt: now,
+      savedById: currentUser?.id,
+      savedByName: userName,
+      label: `自動保存（復元前）by ${userName}`,
+      snapshot: buildSnapshot(),
+    };
+    const versions = [...(quote.versions||[]), autoSave];
+    // 復元（versionsは保持）
+    onUpdate({...v.snapshot, versions, lastEditedAt: now, lastEditedById: currentUser?.id, lastEditedByName: userName});
+    setShowHistory(false);
+  };
+  
+  const deleteVersion = (vid) => {
+    if(!window.confirm("このバージョン履歴を削除しますか？")) return;
+    onUpdate({versions: (quote.versions||[]).filter(x => x.id !== vid)});
+  };
   
   if(showPreview) {
     return <QuotePreview quote={quote} company={company} authorLastName={authorLastName} onClose={() => setShowPreview(false)}/>;
@@ -2301,15 +2360,29 @@ function QuoteEditor({quote, users=[], currentUser, onUpdate, onDelete, onClose}
   const sectionStyle = {background:"white",border:"1px solid #e5e7eb",borderRadius:"0.625rem",padding:"1rem 1.1rem",marginBottom:"0.85rem",boxShadow:"0 1px 2px rgba(0,0,0,0.03)"};
   const sectionTitleStyle = {fontSize:"0.78rem",fontWeight:800,color:"#1f2937",marginBottom:"0.7rem",display:"flex",alignItems:"center",gap:"0.4rem",paddingBottom:"0.5rem",borderBottom:"1px solid #f3f4f6"};
   
+  const versionCount = (quote.versions||[]).length;
+  const fmtDt = iso => { try { return new Date(iso).toLocaleString('ja-JP', {year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}); } catch { return iso||""; } };
+  
   return (
     <div style={{padding:"1rem",maxWidth:920,margin:"0 auto"}}>
-      <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"1rem",flexWrap:"wrap"}}>
+      <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem",flexWrap:"wrap"}}>
         <button onClick={onClose} style={{padding:"0.4rem 0.7rem",borderRadius:"0.4rem",border:"1px solid #e5e7eb",background:"white",color:"#6b7280",fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit"}}>← 一覧へ</button>
         <span style={{fontSize:"0.85rem",color:"#6b7280",fontWeight:600}}>見積書 #{quote.no}</span>
         <div style={{flex:1}}/>
+        <button onClick={() => setShowHistory(true)} title="変更履歴を表示"
+          style={{padding:"0.5rem 0.85rem",borderRadius:"0.4rem",border:"1px solid #d1d5db",background:"white",color:"#374151",fontWeight:700,fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit"}}>📜 履歴 {versionCount>0?`(${versionCount})`:""}</button>
+        <button onClick={saveVersion} title="現在の状態をバージョンとして保存"
+          style={{padding:"0.5rem 0.95rem",borderRadius:"0.4rem",border:"none",background:"#059669",color:"white",fontWeight:700,fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit",boxShadow:"0 1px 2px rgba(5,150,105,0.2)"}}>💾 保存</button>
         <button onClick={() => setShowPreview(true)} style={{padding:"0.5rem 0.95rem",borderRadius:"0.4rem",border:"none",background:"#2563eb",color:"white",fontWeight:700,fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit",boxShadow:"0 1px 2px rgba(37,99,235,0.2)"}}>👁 プレビュー / PDF</button>
         <button onClick={onDelete} style={{padding:"0.5rem 0.7rem",borderRadius:"0.4rem",border:"1px solid #fca5a5",background:"#fef2f2",color:"#dc2626",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}}>🗑 削除</button>
       </div>
+      
+      {/* 最終編集情報 */}
+      {quote.lastEditedAt && (
+        <div style={{fontSize:"0.7rem",color:"#9ca3af",marginBottom:"1rem",paddingLeft:"0.25rem"}}>
+          最終編集: {fmtDt(quote.lastEditedAt)} by {quote.lastEditedByName || "不明"}
+        </div>
+      )}
       
       {/* 基本情報 */}
       <div style={sectionStyle}>
@@ -2468,10 +2541,83 @@ function QuoteEditor({quote, users=[], currentUser, onUpdate, onDelete, onClose}
       
       {/* 備考 */}
       <div style={sectionStyle}>
-        <div style={sectionTitleStyle}>📝 備考</div>
+        <div style={sectionTitleStyle}>📝 備考 <span style={{fontSize:"0.65rem",fontWeight:500,color:"#9ca3af",marginLeft:"0.3rem"}}>（見積書に印字されます）</span></div>
         <textarea value={quote.remarks||""} onChange={e => onUpdate({remarks: e.target.value})}
           style={{...inputStyle,minHeight:90,resize:"vertical"}} placeholder="補足事項があれば記入..."/>
       </div>
+      
+      {/* 内部メモ（社内共有用、見積書には反映されない） */}
+      <div style={{...sectionStyle,background:"#fffbeb",borderColor:"#fde68a"}}>
+        <div style={{...sectionTitleStyle,borderBottomColor:"#fde68a"}}>🗒️ 内部メモ <span style={{fontSize:"0.65rem",fontWeight:500,color:"#a16207",marginLeft:"0.3rem"}}>（社内共有用・見積書には印字されません）</span></div>
+        <textarea value={quote.internalMemo||""} onChange={e => onUpdate({internalMemo: e.target.value})}
+          style={{...inputStyle,minHeight:90,resize:"vertical",background:"white",borderColor:"#fde68a"}} placeholder="引き継ぎ事項、商談メモ、社内連絡、注意点など..."/>
+      </div>
+      
+      {/* 変更履歴モーダル */}
+      {showHistory && (
+        <div onClick={()=>setShowHistory(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:1100,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"white",borderRadius:"0.75rem",maxWidth:680,width:"100%",maxHeight:"85vh",display:"flex",flexDirection:"column",overflow:"hidden",boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
+            <div style={{padding:"1rem 1.25rem",borderBottom:"1px solid #e5e7eb",display:"flex",alignItems:"center",gap:"0.5rem"}}>
+              <span style={{fontSize:"1rem",fontWeight:800,color:"#1f2937"}}>📜 変更履歴</span>
+              <span style={{fontSize:"0.75rem",color:"#9ca3af"}}>({versionCount}件)</span>
+              <div style={{flex:1}}/>
+              <button onClick={()=>setShowHistory(false)} style={{padding:"0.35rem 0.7rem",borderRadius:"0.4rem",border:"1px solid #d1d5db",background:"white",color:"#6b7280",fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}}>✕ 閉じる</button>
+            </div>
+            
+            {/* 保存ラベル入力 + 保存ボタン */}
+            <div style={{padding:"0.85rem 1.25rem",borderBottom:"1px solid #e5e7eb",background:"#f9fafb",display:"flex",gap:"0.5rem",alignItems:"center"}}>
+              <input type="text" value={saveLabel} onChange={e=>setSaveLabel(e.target.value)}
+                placeholder="保存時のメモ（任意）例: 値引き案、初稿、最終版..."
+                style={{...inputStyle,flex:1,fontSize:"0.8rem"}}/>
+              <button onClick={()=>{saveVersion();}} 
+                style={{padding:"0.5rem 0.95rem",borderRadius:"0.4rem",border:"none",background:"#059669",color:"white",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>💾 現状を保存</button>
+            </div>
+            
+            {/* バージョン一覧 */}
+            <div style={{flex:1,overflowY:"auto",padding:"0.5rem 0"}}>
+              {versionCount === 0 ? (
+                <div style={{textAlign:"center",padding:"2.5rem 1rem",color:"#9ca3af",fontSize:"0.85rem"}}>
+                  まだバージョン履歴がありません<br/>
+                  <span style={{fontSize:"0.75rem"}}>上の「💾 現状を保存」で記録できます</span>
+                </div>
+              ) : (
+                [...(quote.versions||[])].reverse().map((v,idx) => (
+                  <div key={v.id} style={{padding:"0.75rem 1.25rem",borderBottom:"1px solid #f3f4f6",display:"flex",alignItems:"flex-start",gap:"0.75rem"}}>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:"0.85rem",fontWeight:700,color:"#1f2937",marginBottom:"0.2rem"}}>
+                        {idx===0 && <span style={{fontSize:"0.65rem",background:"#dbeafe",color:"#1d4ed8",padding:"0.1rem 0.4rem",borderRadius:"0.25rem",fontWeight:700,marginRight:"0.4rem"}}>最新</span>}
+                        {v.label}
+                      </div>
+                      <div style={{fontSize:"0.7rem",color:"#6b7280"}}>
+                        {fmtDt(v.savedAt)} ・ {v.savedByName||"不明"}
+                      </div>
+                      {/* 概要：宛先・金額・件数 */}
+                      <div style={{fontSize:"0.7rem",color:"#9ca3af",marginTop:"0.25rem",display:"flex",gap:"0.6rem",flexWrap:"wrap"}}>
+                        {v.snapshot?.to && <span>宛先: {v.snapshot.to.slice(0,20)}</span>}
+                        <span>明細: {(v.snapshot?.items||[]).filter(i=>i&&(i.description||i.price)).length}件</span>
+                        {v.snapshot?.items && (()=>{
+                          const sub = (v.snapshot.items||[]).reduce((s,i)=>s+(Number(i.qty)||0)*(Number(i.price)||0),0);
+                          const m = Number(v.snapshot.misc)||0;
+                          const my = v.snapshot.miscUnit==="percent" ? Math.round(sub*m/100) : m;
+                          const a = Number(v.snapshot.adjustment)||0;
+                          const ay = v.snapshot.adjustmentUnit==="percent" ? Math.round(sub*a/100) : a;
+                          const adj = sub+my+ay;
+                          const tx = Math.round(adj*(Number(v.snapshot.taxRate)||0)/100);
+                          return <span>合計: ¥{(adj+tx).toLocaleString()}</span>;
+                        })()}
+                      </div>
+                    </div>
+                    <button onClick={()=>restoreVersion(v.id)} 
+                      style={{padding:"0.35rem 0.7rem",borderRadius:"0.4rem",border:"1px solid #2563eb",background:"#eff6ff",color:"#1d4ed8",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>↩ 復元</button>
+                    <button onClick={()=>deleteVersion(v.id)}
+                      style={{padding:"0.35rem 0.55rem",borderRadius:"0.4rem",border:"1px solid #fca5a5",background:"#fef2f2",color:"#dc2626",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}}>🗑</button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2671,51 +2817,30 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 </td>
               </tr>
 
-              {/* ── 業務内容行 + 会社名 ── 印鑑枠の幅(K-M)内に収める ── */}
-              <tr style={{height:"11mm"}}>
+              {/* ── 業務内容行 + 会社名 ── 必ず1行で表示（小さくなってOK）── */}
+              <tr style={{height:"9mm"}}>
                 <td colSpan={2} style={{...cellBase,textAlign:"center",borderTop:bThin,padding:"0 1mm",fontSize:"10.5pt"}}>業務内容：</td>
                 <td colSpan={5} style={{...cellBase,textAlign:"center",borderTop:bThin,whiteSpace:"normal"}}>{quote.workContent||""}</td>
                 <td colSpan={3}></td>
-                <td colSpan={3} style={{...cellBase,padding:"0 1mm",verticalAlign:"middle"}}>
+                <td colSpan={3} style={{...cellBase,padding:"0 1mm",overflow:"hidden",whiteSpace:"nowrap",verticalAlign:"middle"}}>
                   {(()=>{
                     const nm = company.name||"";
                     const len = [...nm].length;
                     if(!nm) return null;
-                    // K-M(47mm)-padding(2mm)=利用可能45mm内に収める
-                    // 短い名前: distributed (両端揃え) - Excel本来の見た目
-                    if(len <= 8) {
-                      return <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:"14pt",fontFamily:SERIF,fontWeight:500}}>{[...nm].map((c,i)=><span key={i}>{c}</span>)}</div>;
+                    // 必ず1行で表示。文字数で自動サイズ調整（K-M=45mm内に収める）
+                    let fs, useFlex;
+                    if(len <= 8) { fs = "13pt"; useFlex = true; }       // 「株式会社西原商事」 distributed
+                    else if(len <= 9) { fs = "11.5pt"; useFlex = true; }
+                    else if(len <= 11) { fs = "9.5pt"; useFlex = false; }
+                    else if(len <= 13) { fs = "8.2pt"; useFlex = false; }
+                    else if(len <= 15) { fs = "7pt"; useFlex = false; }
+                    else if(len <= 17) { fs = "6.2pt"; useFlex = false; }   // 株式会社西原商事ホールディングス（16文字）
+                    else if(len <= 20) { fs = "5.3pt"; useFlex = false; }
+                    else { fs = "4.7pt"; useFlex = false; }
+                    if(useFlex) {
+                      return <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",height:"100%",fontSize:fs,fontFamily:SERIF,fontWeight:500,whiteSpace:"nowrap"}}>{[...nm].map((c,i)=><span key={i}>{c}</span>)}</div>;
                     }
-                    if(len <= 9) {
-                      return <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:"13pt",fontFamily:SERIF,fontWeight:500}}>{[...nm].map((c,i)=><span key={i}>{c}</span>)}</div>;
-                    }
-                    if(len <= 11) {
-                      return <div style={{textAlign:"center",fontSize:"11pt",fontFamily:SERIF,fontWeight:500,whiteSpace:"nowrap"}}>{nm}</div>;
-                    }
-                    // 12文字以上: 既知の接尾辞で2行分割を試みる
-                    const suffixes = ["ホールディングス","ホールディング","グループ","カンパニー","コーポレーション","コーポレート"];
-                    let lines = null;
-                    for (const sfx of suffixes) {
-                      if (nm.endsWith(sfx) && nm.length - sfx.length >= 3) {
-                        lines = [nm.slice(0, nm.length - sfx.length), sfx];
-                        break;
-                      }
-                    }
-                    if (!lines && len <= 13) {
-                      // 13文字までは1行で
-                      return <div style={{textAlign:"center",fontSize:"9.5pt",fontFamily:SERIF,fontWeight:500,whiteSpace:"nowrap"}}>{nm}</div>;
-                    }
-                    if (!lines) {
-                      // 接尾辞無しで14文字以上は中央分割
-                      const mid = Math.ceil(len / 2);
-                      lines = [[...nm].slice(0, mid).join(""), [...nm].slice(mid).join("")];
-                    }
-                    // 2行表示。最長行に基づくフォントサイズ決定（45mm内に収まるよう）
-                    const maxLine = Math.max([...lines[0]].length, [...lines[1]].length);
-                    const fs = maxLine <= 6 ? "13pt" : maxLine <= 7 ? "12pt" : maxLine <= 8 ? "11pt" : maxLine <= 9 ? "10pt" : maxLine <= 10 ? "9pt" : "8pt";
-                    return <div style={{textAlign:"center",fontSize:fs,fontFamily:SERIF,fontWeight:500,lineHeight:1.2}}>
-                      {lines[0]}<br/>{lines[1]}
-                    </div>;
+                    return <div style={{textAlign:"center",fontSize:fs,fontFamily:SERIF,fontWeight:500,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"clip"}}>{nm}</div>;
                   })()}
                 </td>
               </tr>
@@ -2796,7 +2921,7 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 const bottomBorder = isLast ? bDouble : bDotted;
                 return (
                   <tr key={idx} style={{height:"7mm"}}>
-                    <td style={{...cellBase,textAlign:"center",fontSize:"10pt",borderLeft:bThin,borderRight:bThin,borderBottom:bottomBorder}}>{idx+1}</td>
+                    <td style={{...cellBase,textAlign:"center",fontSize:"10pt",padding:0,borderLeft:bThin,borderRight:bThin,borderBottom:bottomBorder}}>{idx+1}</td>
                     <td colSpan={5} style={{...cellBase,borderRight:bThin,borderBottom:bottomBorder}}>{it?.description||""}</td>
                     <td style={{...cellBase,textAlign:"right",borderRight:bThin,borderBottom:bottomBorder}}>{it?.qty||""}</td>
                     <td style={{...cellBase,textAlign:"center",borderRight:bThin,borderBottom:bottomBorder}}>{it?.unit||""}</td>
