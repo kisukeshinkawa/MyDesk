@@ -502,6 +502,35 @@ function StatusPill({status,onChange}) {
 
 // ─── DUPLICATE DETECT MODAL ─────────────────────────────────────────────
 
+// ─── AI ファイル名生成 ───────────────────────────────────────────────
+// 見積書PDFや添付ファイルにAIで自然な日本語名を付ける
+async function generateSmartFileName(context, fallback) {
+  const safe = (s) => (s || "").replace(/[\\/:*?"<>|]/g, "_").replace(/\s+/g, "").slice(0, 80);
+  try {
+    const prompt = `次の情報からファイル名として適切な短い日本語タイトルを生成してください。
+- 形式: 「{文書種類}_{相手会社名・要点}_{年月日YYYYMMDD}」
+- 50文字以内、純粋な日本語と数字とアンダースコア「_」のみ
+- 拡張子・スラッシュ・特殊記号は不要
+- 説明文は不要、タイトルのみ出力
+
+【情報】
+${JSON.stringify(context, null, 2)}
+
+タイトル:`;
+    const res = await fetch(`${API_BASE}/api/generate-email`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-mydesk-secret": "mydesk2026" },
+      body: JSON.stringify({ prompt })
+    });
+    if (!res.ok) throw new Error("API failed");
+    const json = await res.json();
+    const text = (json.text || "").trim().split("\n")[0].trim();
+    return safe(text) || safe(fallback);
+  } catch (e) {
+    return safe(fallback);
+  }
+}
+
 // ─── FILE SECTION ─────────────────────────────────────────────────────────────
 // Supabase Storage を使ったファイルアップロード
 // 事前準備: Supabaseダッシュボード → Storage → New bucket → "mydesk-files" (Public)
@@ -558,7 +587,7 @@ async function deleteFileFromSupabase(path) {
   } catch {}
 }
 
-function FileSection({ files=[], onAdd, onDelete, currentUserId, entityType, entityId, readOnly=false }) {
+function FileSection({ files=[], onAdd, onDelete, currentUserId, entityType, entityId, entityName, readOnly=false }) {
   const [uploading, setUploading] = React.useState(false);
   const [error, setError] = React.useState("");
   const fileInputRef = React.useRef();
@@ -570,7 +599,24 @@ function FileSection({ files=[], onAdd, onDelete, currentUserId, entityType, ent
     setUploading(true); setError("");
     try {
       const result = await uploadFileToSupabase(file, entityType || "tasks", entityId || currentUserId || "shared");
-      onAdd({ ...result, uploadedBy: currentUserId });
+      // AI で良い感じのファイル名を自動生成（拡張子は元のを保持）
+      const ext = file.name.includes(".") ? "." + file.name.split(".").pop() : "";
+      const today = new Date().toISOString().slice(0,10).replace(/-/g,"");
+      const fallback = `${(entityName||"資料").slice(0,20)}_${file.name.replace(ext,"").slice(0,20)}_${today}`;
+      let displayName = file.name;
+      try {
+        const aiName = await generateSmartFileName({
+          original_filename: file.name,
+          entity_type: entityType,
+          entity_name: entityName || "",
+          file_type: file.type,
+          upload_date: new Date().toISOString().slice(0,10),
+        }, fallback);
+        if (aiName) displayName = aiName + ext;
+      } catch (aiErr) {
+        // AI生成失敗時は元のファイル名のまま
+      }
+      onAdd({ ...result, name: displayName, originalName: file.name, uploadedBy: currentUserId });
     } catch (err) {
       setError("アップロード失敗: " + (err?.message || String(err)));
     } finally { setUploading(false); if(fileInputRef.current) fileInputRef.current.value = ""; }
@@ -2049,7 +2095,7 @@ function DocumentSection({entityType, entityId, entityName, files, currentUserId
       
       {/* ファイルタブ */}
       {subTab === "files" && (
-        <FileSection files={files||[]} currentUserId={currentUserId} entityType={entityType} entityId={entityId} onSave={onSaveFiles}/>
+        <FileSection files={files||[]} currentUserId={currentUserId} entityType={entityType} entityId={entityId} entityName={entityName} onSave={onSaveFiles}/>
       )}
       
       {/* 見積書タブ */}
@@ -2530,7 +2576,23 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
           <button onClick={onClose} style={{padding:"0.4rem 0.75rem",borderRadius:"0.4rem",border:"1px solid #d1d5db",background:"white",fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit"}}>← 戻る</button>
           <span style={{fontSize:"0.85rem",color:"#6b7280",fontWeight:700}}>見積書プレビュー</span>
           <div style={{flex:1}}/>
-          <button onClick={() => window.print()} style={{padding:"0.5rem 1rem",borderRadius:"0.4rem",border:"none",background:"#2563eb",color:"white",fontWeight:700,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>🖨 印刷 / PDF保存</button>
+          <button onClick={async () => {
+            // AIで自動的に良い感じのファイル名を付けて印刷／PDF保存
+            const originalTitle = document.title;
+            const dateStr = (quote.issuedDate || "").replace(/-/g, "");
+            const fallback = `見積書_${(quote.to||"").slice(0,30)}_${dateStr}`;
+            const name = await generateSmartFileName({
+              type: "見積書",
+              to: quote.to,
+              site: quote.site,
+              workContent: quote.workContent,
+              date: quote.issuedDate,
+              total: grandTotal,
+              items: (quote.items||[]).map(i=>i.description).filter(Boolean).slice(0,5).join("、")
+            }, fallback);
+            document.title = name;
+            setTimeout(() => { window.print(); setTimeout(()=>{document.title = originalTitle;}, 1500); }, 50);
+          }} style={{padding:"0.5rem 1rem",borderRadius:"0.4rem",border:"none",background:"#2563eb",color:"white",fontWeight:700,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>🖨 印刷 / PDF保存</button>
         </div>
 
         <style>{`
@@ -2589,49 +2651,82 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 <td colSpan={6}></td>
               </tr>
 
-              {/* ── 事業所名行 + 〒+住所（2行）───────────── */}
+              {/* ── 事業所名行 + 〒+住所（2行）── 印鑑枠の幅(K-M)内に収める ── */}
               <tr style={{height:"11mm"}}>
                 <td colSpan={2} style={{...cellBase,textAlign:"center",borderTop:bDouble,borderBottom:bThin,padding:"0 1mm",fontSize:"10.5pt"}}>事業所名：</td>
                 <td colSpan={5} style={{...cellBase,textAlign:"center",borderTop:bDouble,borderBottom:bThin,whiteSpace:"normal"}}>{quote.site||""}</td>
                 <td colSpan={3}></td>
-                <td colSpan={3} style={{...cellBase,fontSize:"10pt",verticalAlign:"middle",whiteSpace:"normal",lineHeight:1.5,padding:"0 0.5mm"}}>
-                  {company.zip}<br/>
-                  {company.address}
-                </td>
-              </tr>
-
-              {/* ── 業務内容行 + 会社名 ───────────── */}
-              <tr style={{height:"9.5mm"}}>
-                <td colSpan={2} style={{...cellBase,textAlign:"center",borderTop:bThin,padding:"0 1mm",fontSize:"10.5pt"}}>業務内容：</td>
-                <td colSpan={5} style={{...cellBase,textAlign:"center",borderTop:bThin,whiteSpace:"normal"}}>{quote.workContent||""}</td>
-                <td colSpan={3}></td>
-                <td colSpan={3} style={{...cellBase,padding:0,overflow:"visible",position:"relative"}}>
+                <td colSpan={3} style={{...cellBase,verticalAlign:"middle",whiteSpace:"normal",lineHeight:1.4,padding:"0 1mm"}}>
                   {(()=>{
-                    const nm = company.name||"";
-                    const len = [...nm].length;
-                    if(!nm) return null;
-                    // 短い名前は K-M 範囲内で distributed (両端揃え) - Excel本来の見た目
-                    if(len <= 9) {
-                      return <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",height:"100%",fontSize:"15pt",fontFamily:SERIF,fontWeight:500,padding:"0 1mm"}}>{[...nm].map((c,i)=><span key={i}>{c}</span>)}</div>;
-                    }
-                    // 長い名前は M列右端に右寄せ、左方向にオーバーフロー（Excel風の見た目で大きく表示）
-                    const fs = len <= 13 ? "14pt" : len <= 16 ? "13pt" : len <= 18 ? "12pt" : "11pt";
-                    return (
-                      <div style={{position:"absolute",right:"1mm",top:0,bottom:0,display:"flex",alignItems:"center"}}>
-                        <span style={{whiteSpace:"nowrap",fontSize:fs,fontFamily:SERIF,fontWeight:500}}>{nm}</span>
-                      </div>
-                    );
+                    const zip = company.zip||"";
+                    const addr = company.address||"";
+                    const addrLen = [...addr].length;
+                    // 住所長さに応じてフォントサイズ自動調整 (K-M=45mm内)
+                    const addrFs = addrLen <= 18 ? "9.5pt" : addrLen <= 20 ? "9pt" : addrLen <= 22 ? "8.5pt" : "8pt";
+                    return <>
+                      <div style={{fontSize:"9.5pt"}}>{zip}</div>
+                      <div style={{fontSize:addrFs,whiteSpace:"nowrap"}}>{addr}</div>
+                    </>;
                   })()}
                 </td>
               </tr>
 
-              {/* ── ご担当者行 + TEL+FAX（2行）───────────── */}
+              {/* ── 業務内容行 + 会社名 ── 印鑑枠の幅(K-M)内に収める ── */}
+              <tr style={{height:"11mm"}}>
+                <td colSpan={2} style={{...cellBase,textAlign:"center",borderTop:bThin,padding:"0 1mm",fontSize:"10.5pt"}}>業務内容：</td>
+                <td colSpan={5} style={{...cellBase,textAlign:"center",borderTop:bThin,whiteSpace:"normal"}}>{quote.workContent||""}</td>
+                <td colSpan={3}></td>
+                <td colSpan={3} style={{...cellBase,padding:"0 1mm",verticalAlign:"middle"}}>
+                  {(()=>{
+                    const nm = company.name||"";
+                    const len = [...nm].length;
+                    if(!nm) return null;
+                    // K-M(47mm)-padding(2mm)=利用可能45mm内に収める
+                    // 短い名前: distributed (両端揃え) - Excel本来の見た目
+                    if(len <= 8) {
+                      return <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:"14pt",fontFamily:SERIF,fontWeight:500}}>{[...nm].map((c,i)=><span key={i}>{c}</span>)}</div>;
+                    }
+                    if(len <= 9) {
+                      return <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:"13pt",fontFamily:SERIF,fontWeight:500}}>{[...nm].map((c,i)=><span key={i}>{c}</span>)}</div>;
+                    }
+                    if(len <= 11) {
+                      return <div style={{textAlign:"center",fontSize:"11pt",fontFamily:SERIF,fontWeight:500,whiteSpace:"nowrap"}}>{nm}</div>;
+                    }
+                    // 12文字以上: 既知の接尾辞で2行分割を試みる
+                    const suffixes = ["ホールディングス","ホールディング","グループ","カンパニー","コーポレーション","コーポレート"];
+                    let lines = null;
+                    for (const sfx of suffixes) {
+                      if (nm.endsWith(sfx) && nm.length - sfx.length >= 3) {
+                        lines = [nm.slice(0, nm.length - sfx.length), sfx];
+                        break;
+                      }
+                    }
+                    if (!lines && len <= 13) {
+                      // 13文字までは1行で
+                      return <div style={{textAlign:"center",fontSize:"9.5pt",fontFamily:SERIF,fontWeight:500,whiteSpace:"nowrap"}}>{nm}</div>;
+                    }
+                    if (!lines) {
+                      // 接尾辞無しで14文字以上は中央分割
+                      const mid = Math.ceil(len / 2);
+                      lines = [[...nm].slice(0, mid).join(""), [...nm].slice(mid).join("")];
+                    }
+                    // 2行表示。最長行に基づくフォントサイズ決定（45mm内に収まるよう）
+                    const maxLine = Math.max([...lines[0]].length, [...lines[1]].length);
+                    const fs = maxLine <= 6 ? "13pt" : maxLine <= 7 ? "12pt" : maxLine <= 8 ? "11pt" : maxLine <= 9 ? "10pt" : maxLine <= 10 ? "9pt" : "8pt";
+                    return <div style={{textAlign:"center",fontSize:fs,fontFamily:SERIF,fontWeight:500,lineHeight:1.2}}>
+                      {lines[0]}<br/>{lines[1]}
+                    </div>;
+                  })()}
+                </td>
+              </tr>
+
+              {/* ── ご担当者行 + TEL+FAX（2行）── 印鑑枠の幅(K-M)内に収める ── */}
               <tr style={{height:"11mm"}}>
                 <td colSpan={2} style={{...cellBase,textAlign:"center",borderTop:bThin,borderBottom:bThin,padding:"0 1mm",fontSize:"10.5pt"}}>ご担当者：</td>
                 <td colSpan={4} style={{...cellBase,textAlign:"center",borderTop:bThin,borderBottom:bThin,whiteSpace:"normal"}}>{quote.contactName||""}</td>
                 <td style={{...cellBase,borderTop:bThin,borderBottom:bThin,textAlign:"left",paddingLeft:"1mm"}}>{quote.contactName?"様":""}</td>
                 <td colSpan={3}></td>
-                <td colSpan={3} style={{...cellBase,fontSize:"10.5pt",textAlign:"right",whiteSpace:"normal",lineHeight:1.5,verticalAlign:"middle"}}>
+                <td colSpan={3} style={{...cellBase,fontSize:"9pt",textAlign:"right",whiteSpace:"normal",lineHeight:1.5,verticalAlign:"middle",padding:"0 1mm"}}>
                   TEL　{company.tel}<br/>
                   FAX　{company.fax}
                 </td>
@@ -3439,7 +3534,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
         {/* ファイルタブ */}
         {taskTab==="files"&&<FileSection
           files={activeTask.files||[]} currentUserId={uid}
-          entityType="tasks" entityId={activeTask.id}
+          entityType="tasks" entityId={activeTask.id} entityName={activeTask.title}
           onAdd={f=>addFileToTask(activeTask.id,f)}
           onDelete={fid=>removeFileFromTask(activeTask.id,fid)}/>}
         {sheet==="editTask"&&<Sheet title="タスクを編集" onClose={()=>setSheet(null)}>
@@ -3570,7 +3665,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
         {pjTab==="chat"&&TChatSection({entityKey:"projects",entityId:activePj.id,chat:activePj.chat||[]})}
         {pjTab==="files"&&<FileSection
           files={activePj.files||[]} currentUserId={uid}
-          entityType="projects" entityId={activePj.id}
+          entityType="projects" entityId={activePj.id} entityName={activePj.name}
           onAdd={f=>addFileToPj(activePj.id,f)}
           onDelete={fid=>removeFileFromPj(activePj.id,fid)}/>}
         {sheet==="addPjTask"&&<Sheet title="タスクを追加" onClose={()=>setSheet(null)}>
@@ -10453,13 +10548,6 @@ ${orig}`})
                   <span style={{fontSize:"0.78rem",fontWeight:800,color:"#854d0e"}}>⭐ フォロー中 ({followComps.length}件)</span>
                   <span style={{fontSize:"0.7rem",color:"#854d0e",transition:"transform 0.2s",display:"inline-block",transform:followCompOpen?"rotate(0deg)":"rotate(-90deg)"}}>▼</span>
                 </button>
-                <div style={{flex:1}}/>
-                <select value={compFilter.assignee} onChange={e=>setCompFilter(p=>({...p,assignee:e.target.value}))} onClick={e=>e.stopPropagation()}
-                  style={{padding:"0.25rem 0.45rem",borderRadius:"0.4rem",border:`1.5px solid ${compFilter.assignee?C.accent:"#fde047"}`,fontSize:"0.7rem",background:compFilter.assignee?"#eff6ff":"white",color:compFilter.assignee?C.accent:"#854d0e",fontFamily:"inherit",fontWeight:compFilter.assignee?700:600,maxWidth:140,minWidth:80}}>
-                  <option value="">👤 担当者</option>
-                  <option value="__me__">自分</option>
-                  {users.map(u=><option key={u.id} value={String(u.id)}>{u.name}</option>)}
-                </select>
               </div>
               {followCompOpen && (
                 <div style={{padding:"0 0.85rem 0.7rem",display:"flex",flexDirection:"column",gap:"0.3rem",borderTop:"1px solid #fde047"}}>
@@ -10959,33 +11047,34 @@ ${orig}`})
                 {vmunis.length>8&&<span style={{fontSize:"0.62rem",color:C.textMuted}}>+{vmunis.length-8}</span>}
               </div>
             )}
-            {/* 許可別営業状況（コンパクトな4列グリッド） */}
-            <div style={{marginBottom:v.notes?"0.5rem":0}}>
-              <div style={{fontSize:"0.6rem",fontWeight:700,color:"#5b21b6",marginBottom:"0.3rem",letterSpacing:"0.04em"}}>📋 許可別営業状況</div>
-              <div style={{display:"grid",gridTemplateColumns:isPC?"repeat(4,1fr)":"repeat(2,1fr)",gap:"0.3rem"}}>
-                {PERMIT_TYPES.map(pt=>{
-                  const has=(v.permitTypes||[]).includes(pt);
-                  const salesStatus=(v.permitSales||{})[pt]||"未営業";
-                  const salesColors={"営業済":"#d1fae5","資料送付":"#dbeafe","商談中":"#fef3c7","加入済":"#d1fae5","未営業":"#f3f4f6"};
-                  const salesTextColors={"営業済":"#065f46","資料送付":"#1d4ed8","商談中":"#92400e","加入済":"#065f46","未営業":"#9ca3af"};
-                  return (
-                    <div key={pt} style={{background:has?salesColors[salesStatus]:"#fef2f2",border:`1px solid ${has?salesTextColors[salesStatus]+"30":"#fca5a5"}`,borderRadius:"0.4rem",padding:"0.35rem 0.45rem"}}>
-                      <div style={{fontSize:"0.62rem",fontWeight:700,color:has?"#374151":"#dc2626"}}>{has?"✓":"–"} {pt}</div>
-                      {has?(
-                        <select value={salesStatus} onClick={e=>e.stopPropagation()} onChange={e=>{
-                          const nd={...data,vendors:vendors.map(x=>x.id===v.id?{...x,permitSales:{...(x.permitSales||{}),[pt]:e.target.value}}:x)};
-                          save(nd);
-                        }} style={{fontSize:"0.6rem",border:"none",background:"transparent",color:salesTextColors[salesStatus],fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:"0.05rem 0",width:"100%",marginTop:"0.15rem",appearance:"none",WebkitAppearance:"none",MozAppearance:"none",lineHeight:"1.2",boxSizing:"border-box"}}>
-                          {["未営業","営業済","資料送付","商談中","加入済"].map(s=><option key={s} value={s}>{s}</option>)}
-                        </select>
-                      ):(
-                        <div style={{fontSize:"0.6rem",color:"#dc2626",marginTop:"0.15rem",lineHeight:"1.2"}}>未保有</div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+            {/* 許可別営業状況（保有している許可のみ表示） */}
+            {(()=>{
+              const heldPermits = PERMIT_TYPES.filter(pt=>(v.permitTypes||[]).includes(pt));
+              if(heldPermits.length === 0) return null;
+              return (
+                <div style={{marginBottom:v.notes?"0.5rem":0}}>
+                  <div style={{fontSize:"0.6rem",fontWeight:700,color:"#5b21b6",marginBottom:"0.3rem",letterSpacing:"0.04em"}}>📋 許可別営業状況</div>
+                  <div style={{display:"grid",gridTemplateColumns:isPC?`repeat(${Math.min(4,heldPermits.length)},1fr)`:`repeat(${Math.min(2,heldPermits.length)},1fr)`,gap:"0.3rem"}}>
+                    {heldPermits.map(pt=>{
+                      const salesStatus=(v.permitSales||{})[pt]||"未営業";
+                      const salesColors={"営業済":"#d1fae5","資料送付":"#dbeafe","商談中":"#fef3c7","加入済":"#d1fae5","未営業":"#f3f4f6"};
+                      const salesTextColors={"営業済":"#065f46","資料送付":"#1d4ed8","商談中":"#92400e","加入済":"#065f46","未営業":"#9ca3af"};
+                      return (
+                        <div key={pt} style={{background:salesColors[salesStatus],border:`1px solid ${salesTextColors[salesStatus]+"30"}`,borderRadius:"0.4rem",padding:"0.35rem 0.45rem"}}>
+                          <div style={{fontSize:"0.62rem",fontWeight:700,color:"#374151"}}>✓ {pt}</div>
+                          <select value={salesStatus} onClick={e=>e.stopPropagation()} onChange={e=>{
+                            const nd={...data,vendors:vendors.map(x=>x.id===v.id?{...x,permitSales:{...(x.permitSales||{}),[pt]:e.target.value}}:x)};
+                            save(nd);
+                          }} style={{fontSize:"0.6rem",border:"none",background:"transparent",color:salesTextColors[salesStatus],fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:"0.05rem 0",width:"100%",marginTop:"0.15rem",appearance:"none",WebkitAppearance:"none",MozAppearance:"none",lineHeight:"1.2",boxSizing:"border-box"}}>
+                            {["未営業","営業済","資料送付","商談中","加入済"].map(s=><option key={s} value={s}>{s}</option>)}
+                          </select>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
             {/* 備考 */}
             {v.notes&&(
               <div style={{fontSize:"0.75rem",color:C.text,background:"#f8fafc",borderRadius:6,padding:"0.5rem 0.7rem",borderLeft:"3px solid #cbd5e1",whiteSpace:"pre-wrap"}}>
@@ -11155,13 +11244,6 @@ ${orig}`})
                   <span style={{fontSize:"0.78rem",fontWeight:800,color:"#854d0e"}}>⭐ フォロー中 ({followVends.length}件)</span>
                   <span style={{fontSize:"0.7rem",color:"#854d0e",transition:"transform 0.2s",display:"inline-block",transform:followVendOpen?"rotate(0deg)":"rotate(-90deg)"}}>▼</span>
                 </button>
-                <div style={{flex:1}}/>
-                <select value={vendFilterAssignee} onChange={e=>setVendFilterAssignee(e.target.value)} onClick={e=>e.stopPropagation()}
-                  style={{padding:"0.25rem 0.45rem",borderRadius:"0.4rem",border:`1.5px solid ${vendFilterAssignee?C.accent:"#fde047"}`,fontSize:"0.7rem",background:vendFilterAssignee?"#eff6ff":"white",color:vendFilterAssignee?C.accent:"#854d0e",fontFamily:"inherit",fontWeight:vendFilterAssignee?700:600,maxWidth:140,minWidth:80}}>
-                  <option value="">👤 担当者</option>
-                  <option value="__me__">自分</option>
-                  {users.map(u=><option key={u.id} value={String(u.id)}>{u.name}</option>)}
-                </select>
               </div>
               {followVendOpen && (
               <div style={{padding:"0 0.85rem 0.7rem",display:"flex",flexDirection:"column",gap:"0.3rem",borderTop:"1px solid #fde047"}}>
@@ -12109,13 +12191,6 @@ ${orig}`})
                 <span style={{fontSize:"0.78rem",fontWeight:800,color:"#854d0e"}}>⭐ フォロー中 ({followMunis.length}件)</span>
                 <span style={{fontSize:"0.7rem",color:"#854d0e",transition:"transform 0.2s",display:"inline-block",transform:followMuniOpen?"rotate(0deg)":"rotate(-90deg)"}}>▼</span>
               </button>
-              <div style={{flex:1}}/>
-              <select value={muniFilterAssignee} onChange={e=>setMuniFilterAssignee(e.target.value)} onClick={e=>e.stopPropagation()}
-                style={{padding:"0.25rem 0.45rem",borderRadius:"0.4rem",border:`1.5px solid ${muniFilterAssignee?C.accent:"#fde047"}`,fontSize:"0.7rem",background:muniFilterAssignee?"#eff6ff":"white",color:muniFilterAssignee?C.accent:"#854d0e",fontFamily:"inherit",fontWeight:muniFilterAssignee?700:600,maxWidth:140,minWidth:80}}>
-                <option value="">👤 担当者</option>
-                <option value="__me__">自分</option>
-                {users.map(u=><option key={u.id} value={String(u.id)}>{u.name}</option>)}
-              </select>
             </div>
             {followMuniOpen && (
             <div style={{padding:"0 0.85rem 0.7rem",display:"flex",flexDirection:"column",gap:"0.3rem",borderTop:"1px solid #fde047"}}>
