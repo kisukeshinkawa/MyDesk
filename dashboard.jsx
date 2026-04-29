@@ -2380,7 +2380,9 @@ function QuoteEditor({quote, users=[], currentUser, onUpdate, onDelete, onClose}
 // 見積書プレビュー（PDF風表示・印刷可能）
 function QuotePreview({quote, company, authorLastName, onClose}) {
   const subtotal = (quote.items||[]).reduce((sum, it) => sum + (Number(it.qty)||0)*(Number(it.price)||0), 0);
-  const adjustedSub = subtotal + (Number(quote.misc)||0) + (Number(quote.adjustment)||0);
+  const misc = Number(quote.misc) || 0;
+  const adjustment = Number(quote.adjustment) || 0;
+  const adjustedSub = subtotal + misc + adjustment;
   const tax = Math.round(adjustedSub * (Number(quote.taxRate)||0) / 100);
   const grandTotal = adjustedSub + tax;
   const items = [...(quote.items||[])];
@@ -2393,15 +2395,15 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
     return `${m[1]}年${parseInt(m[2])}月${parseInt(m[3])}日`;
   };
   
-  // 共通セルスタイル
-  const td = {border:"1px solid #000",padding:"3px 5px",fontSize:"10pt",verticalAlign:"middle"};
+  // セルスタイル基本
+  const td = {border:"1px solid #000",padding:"3px 6px",fontSize:"10.5pt",verticalAlign:"middle"};
   const tdC = {...td,textAlign:"center"};
   const tdR = {...td,textAlign:"right"};
   
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:1000,overflow:"auto",padding:"1rem"}}>
       <div style={{maxWidth:920,margin:"0 auto",background:"white",borderRadius:"0.625rem",overflow:"hidden"}}>
-        {/* ヘッダー */}
+        {/* ヘッダー（操作ボタン） */}
         <div className="no-print" style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.85rem 1rem",borderBottom:"1px solid #e5e7eb",background:"#f9fafb"}}>
           <button onClick={onClose} style={{padding:"0.4rem 0.75rem",borderRadius:"0.4rem",border:"1px solid #e5e7eb",background:"white",fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit"}}>← 戻る</button>
           <span style={{fontSize:"0.85rem",color:"#6b7280",fontWeight:700}}>見積書プレビュー</span>
@@ -2417,72 +2419,101 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
             .no-print { display: none !important; }
             @page { size: A4; margin: 12mm 10mm; }
           }
-          .quote-print, .quote-print * { font-family: "Yu Mincho", "Hiragino Mincho ProN", "MS Mincho", serif; }
+          .quote-print, .quote-print * { font-family: "Yu Mincho", "Hiragino Mincho ProN", "MS Mincho", "MS PMincho", serif; }
+          .quote-print td, .quote-print th { font-family: "Yu Mincho", "Hiragino Mincho ProN", "MS Mincho", "MS PMincho", serif !important; }
         `}</style>
         
-        <div className="quote-print" style={{padding:"15mm 18mm",fontSize:"10pt",color:"#000",lineHeight:1.4,boxSizing:"border-box"}}>
+        <div className="quote-print" style={{padding:"15mm 15mm",fontSize:"10.5pt",color:"#000",lineHeight:1.5,boxSizing:"border-box"}}>
           
-          {/* タイトル */}
-          <div style={{textAlign:"center",marginBottom:"7mm"}}>
-            <div style={{display:"inline-block",fontSize:"22pt",fontWeight:700,letterSpacing:"0.6em",paddingBottom:"1mm",borderBottom:"1.5px solid #000",paddingLeft:"0.6em"}}>御　見　積　書</div>
+          {/* タイトル: 御 見 積 書 */}
+          <div style={{textAlign:"center",marginBottom:"6mm",paddingTop:"2mm"}}>
+            <span style={{fontSize:"24pt",fontWeight:400,letterSpacing:"0.7em",paddingLeft:"0.7em"}}>御　見　積　書</span>
           </div>
           
-          {/* 上部レイアウト：左に宛先（枠なし）、右に発行日+自社情報（枠なし） */}
-          <div style={{display:"flex",justifyContent:"space-between",marginBottom:"6mm",alignItems:"flex-start"}}>
-            {/* 左：宛先 */}
-            <div style={{width:"55%",paddingRight:"5mm"}}>
-              <div style={{borderBottom:"1px solid #000",paddingBottom:"1.2mm",marginBottom:"2mm",fontSize:"13pt",fontWeight:700}}>
-                {quote.to || ""} <span style={{fontSize:"11pt",fontWeight:700,marginLeft:"0.3em"}}>御中</span>
+          {/* 上部レイアウト: 6行のグリッド */}
+          {/* row5: 宛先 + 御中 / 日付 */}
+          {/* row6: 事業所名 / 〒+住所 (1行) */}
+          {/* row7: 業務内容 / 株式会社 西原商事 (16pt) */}
+          {/* row8: ご担当者 + 様 / TEL FAX (2行) */}
+          {/* row9: 有効期限: 御見積り後 + ケ月 / 承認 検印 担当者 */}
+          <div style={{display:"flex",marginBottom:"4mm"}}>
+            {/* 左ブロック (55%) */}
+            <div style={{width:"55%",paddingRight:"3mm"}}>
+              {/* 宛先 (row5) */}
+              <div style={{borderBottom:"1px solid #000",paddingBottom:"2mm",marginBottom:"3mm",fontSize:"14pt",fontWeight:400,minHeight:"9mm"}}>
+                {quote.to || ""}<span style={{fontSize:"11pt",marginLeft:"0.6em"}}>御中</span>
               </div>
-              {quote.contactName && (
-                <div style={{fontSize:"11pt",marginBottom:"3mm"}}>{quote.contactName} <span style={{marginLeft:"0.3em"}}>様</span></div>
-              )}
-              <div style={{fontSize:"10pt",lineHeight:1.85,marginTop:"3mm"}}>
-                <div>事業所名：　{quote.site || ""}</div>
-                <div>業務内容：　{quote.workContent || ""}</div>
-                <div>ご担当者：　{quote.contactName || ""}</div>
-                <div>有効期限：　{quote.validUntil || "御見積り後"}</div>
+              {/* 事業所名 (row6) */}
+              <div style={{fontSize:"11pt",lineHeight:"9mm",height:"9mm",display:"flex",alignItems:"center"}}>
+                <span style={{display:"inline-block",width:"5em"}}>事業所名：</span>
+                <span>{quote.site || ""}</span>
+              </div>
+              {/* 業務内容 (row7) */}
+              <div style={{fontSize:"11pt",lineHeight:"8mm",height:"8mm",display:"flex",alignItems:"center"}}>
+                <span style={{display:"inline-block",width:"5em"}}>業務内容：</span>
+                <span>{quote.workContent || ""}</span>
+              </div>
+              {/* ご担当者 (row8) */}
+              <div style={{fontSize:"11pt",lineHeight:"9mm",height:"9mm",display:"flex",alignItems:"center"}}>
+                <span style={{display:"inline-block",width:"5em"}}>ご担当者：</span>
+                <span>{quote.contactName || ""}</span>
+                {quote.contactName && <span style={{marginLeft:"0.5em"}}>様</span>}
+              </div>
+              {/* 有効期限 (row9) */}
+              <div style={{fontSize:"11pt",lineHeight:"9mm",height:"9mm",display:"flex",alignItems:"center"}}>
+                <span style={{display:"inline-block",width:"5em"}}>有効期限：</span>
+                <span>{quote.validUntil || "御見積り後"}</span>
               </div>
             </div>
-            {/* 右：発行日 + 自社情報 + 印影 */}
-            <div style={{width:"45%",position:"relative"}}>
-              <div style={{fontSize:"10pt",marginBottom:"3mm"}}>{fmt(quote.issuedDate)}</div>
-              <div style={{fontWeight:700,fontSize:"13pt",letterSpacing:"0.05em",marginBottom:"2mm"}}>{company.name}</div>
-              <div style={{fontSize:"10pt",lineHeight:1.7}}>
-                <div>{company.zip}</div>
-                <div>{company.address}</div>
+            
+            {/* 右ブロック (45%) */}
+            <div style={{width:"45%",paddingLeft:"3mm",position:"relative"}}>
+              {/* 日付 (row4) */}
+              <div style={{fontSize:"12pt",marginBottom:"3mm",textAlign:"left"}}>{fmt(quote.issuedDate)}</div>
+              {/* 〒+住所 1行 (row6) */}
+              <div style={{fontSize:"11pt",marginBottom:"3mm"}}>
+                {company.zip}　　　　　　{company.address}
+              </div>
+              {/* 自社名 (row7, 16pt) */}
+              <div style={{fontSize:"16pt",fontWeight:400,marginBottom:"3mm",letterSpacing:"0.05em"}}>
+                {company.name.replace("株式会社", "株式会社　")}
+              </div>
+              {/* TEL FAX (row8) */}
+              <div style={{fontSize:"12pt",lineHeight:1.6}}>
                 <div>TEL　{company.tel}</div>
                 <div>FAX　{company.fax}</div>
               </div>
-              {/* 担当者印（斜めなし、社名の右上に重ねる） */}
+              {/* 担当者印（社名の右に重ねる、斜めなし） */}
               {authorLastName && (
-                <div style={{position:"absolute",right:"4mm",top:"7mm",border:"2.5px solid #c8002a",width:"15mm",height:"15mm",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"12.5pt",fontWeight:900,color:"#c8002a",letterSpacing:"-0.05em",borderRadius:"1mm",background:"rgba(255,255,255,0.55)",pointerEvents:"none"}}>{authorLastName}</div>
+                <div style={{position:"absolute",right:"5mm",top:"15mm",border:"2.5px solid #c8002a",width:"15mm",height:"15mm",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"13pt",fontWeight:700,color:"#c8002a",letterSpacing:"-0.05em",borderRadius:"1mm",background:"rgba(255,255,255,0.5)",pointerEvents:"none"}}>{authorLastName}</div>
               )}
             </div>
           </div>
           
           {/* リード文 */}
-          <div style={{fontSize:"10.5pt",marginBottom:"1mm"}}>下記の通りお見積りさせていただきます。</div>
-          <div style={{fontSize:"10.5pt",marginBottom:"4mm"}}>ご検討のほど、お願い申し上げます。</div>
+          <div style={{fontSize:"10pt",lineHeight:1.6,marginBottom:"3mm"}}>
+            <div>下記の通りお見積りさせていただきます。</div>
+            <div>ご検討のほど、お願い申し上げます。</div>
+          </div>
           
-          {/* 見積金額バー */}
-          <table style={{width:"100%",borderCollapse:"collapse",marginBottom:"3mm",border:"2px solid #000",tableLayout:"fixed"}}>
+          {/* 見積金額バー (row12-13) */}
+          <table style={{width:"100%",borderCollapse:"collapse",marginBottom:"3mm",border:"1px solid #000",tableLayout:"fixed"}}>
             <tbody>
-              <tr>
-                <td style={{border:"1px solid #000",width:"15%",fontSize:"11pt",fontWeight:700,textAlign:"center",padding:"3mm 1mm",letterSpacing:"0.4em"}}>見積金額</td>
-                <td style={{border:"1px solid #000",width:"36%",textAlign:"center",fontSize:"15pt",fontWeight:800,padding:"3mm 1mm"}}>¥{grandTotal.toLocaleString()}-</td>
-                <td style={{border:"1px solid #000",width:"13%",textAlign:"center",fontSize:"9.5pt",padding:"3mm 1mm"}}>（税込）</td>
-                <td style={{border:"1px solid #000",width:"12%",textAlign:"center",fontSize:"9.5pt",padding:"3mm 1mm"}}>{quote.months || ""}{quote.months ? "ヶ月" : ""}</td>
-                <td style={{border:"1px solid #000",width:"24%",padding:"0",verticalAlign:"top"}}>
+              <tr style={{height:"15mm"}}>
+                <td style={{border:"1px solid #000",width:"15%",fontSize:"14pt",fontWeight:400,textAlign:"center",padding:"2mm",letterSpacing:"0.4em"}}>見積金額</td>
+                <td style={{border:"1px solid #000",width:"35%",textAlign:"center",fontSize:"20pt",fontWeight:400,padding:"2mm"}}>¥{grandTotal.toLocaleString()}-</td>
+                <td style={{border:"1px solid #000",width:"11%",textAlign:"center",fontSize:"11pt",padding:"2mm"}}>（税込）</td>
+                <td style={{border:"1px solid #000",width:"13%",textAlign:"center",fontSize:"11pt",padding:"2mm"}}>{quote.months || ""}{quote.months ? "ケ月" : ""}</td>
+                <td style={{border:"1px solid #000",width:"26%",padding:"0",verticalAlign:"top"}}>
                   <table style={{width:"100%",borderCollapse:"collapse",height:"100%"}}>
                     <tbody>
                       <tr>
-                        <td style={{border:"1px solid #000",padding:"0.5mm",fontSize:"7.5pt",textAlign:"center",width:"33.3%",height:"6mm"}}>承認</td>
-                        <td style={{border:"1px solid #000",padding:"0.5mm",fontSize:"7.5pt",textAlign:"center",width:"33.3%"}}>検印</td>
-                        <td style={{border:"1px solid #000",padding:"0.5mm",fontSize:"7.5pt",textAlign:"center",width:"33.4%"}}>担当者</td>
+                        <td style={{border:"1px solid #000",padding:"1mm",fontSize:"9pt",textAlign:"center",width:"33.33%",height:"6mm"}}>承認</td>
+                        <td style={{border:"1px solid #000",padding:"1mm",fontSize:"9pt",textAlign:"center",width:"33.33%"}}>検印</td>
+                        <td style={{border:"1px solid #000",padding:"1mm",fontSize:"9pt",textAlign:"center",width:"33.34%"}}>担当者</td>
                       </tr>
                       <tr>
-                        <td style={{border:"1px solid #000",padding:"0",height:"10mm"}}></td>
+                        <td style={{border:"1px solid #000",padding:"0",height:"9mm"}}></td>
                         <td style={{border:"1px solid #000",padding:"0"}}></td>
                         <td style={{border:"1px solid #000",padding:"0",fontSize:"11pt",textAlign:"center",fontWeight:700,color:"#c8002a"}}>{authorLastName || ""}</td>
                       </tr>
@@ -2493,81 +2524,97 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
             </tbody>
           </table>
           
-          {/* 明細表 */}
+          {/* 明細表 (row15-36) */}
           <table style={{width:"100%",borderCollapse:"collapse",marginBottom:"3mm",tableLayout:"fixed"}}>
+            <colgroup>
+              <col style={{width:"5%"}}/>
+              <col style={{width:"43%"}}/>
+              <col style={{width:"9%"}}/>
+              <col style={{width:"6%"}}/>
+              <col style={{width:"13%"}}/>
+              <col style={{width:"13%"}}/>
+              <col style={{width:"11%"}}/>
+            </colgroup>
             <thead>
-              <tr style={{height:"6mm"}}>
-                <th style={{...td,width:"7%",fontSize:"9pt",fontWeight:700,textAlign:"center"}}>＃</th>
-                <th style={{...td,width:"38%",fontSize:"9.5pt",fontWeight:700,textAlign:"center",letterSpacing:"0.5em"}}>内　容</th>
-                <th style={{...td,width:"9%",fontSize:"9pt",fontWeight:700,textAlign:"center",letterSpacing:"0.3em"}}>数 量</th>
-                <th style={{...td,width:"8%",fontSize:"9pt",fontWeight:700,textAlign:"center"}}>単位</th>
-                <th style={{...td,width:"13%",fontSize:"9pt",fontWeight:700,textAlign:"center",letterSpacing:"0.3em"}}>単 価</th>
-                <th style={{...td,width:"13%",fontSize:"9pt",fontWeight:700,textAlign:"center",letterSpacing:"0.3em"}}>金 額</th>
-                <th style={{...td,width:"12%",fontSize:"9pt",fontWeight:700,textAlign:"center"}}>備考欄</th>
+              <tr style={{height:"7mm"}}>
+                <th style={{...tdC,fontSize:"11pt",fontWeight:400}}></th>
+                <th style={{...tdC,fontSize:"11pt",fontWeight:400,letterSpacing:"0.5em"}}>内　容</th>
+                <th style={{...tdC,fontSize:"11pt",fontWeight:400,letterSpacing:"0.3em"}}>数 量</th>
+                <th style={{...tdC,fontSize:"11pt",fontWeight:400}}>単位</th>
+                <th style={{...tdC,fontSize:"11pt",fontWeight:400,letterSpacing:"0.3em"}}>単 価</th>
+                <th style={{...tdC,fontSize:"11pt",fontWeight:400,letterSpacing:"0.3em"}}>金 額</th>
+                <th style={{...tdC,fontSize:"11pt",fontWeight:400}}>備考欄</th>
               </tr>
             </thead>
             <tbody>
               {items.map((it, idx) => {
                 const amount = it ? (Number(it.qty)||0)*(Number(it.price)||0) : 0;
                 return (
-                  <tr key={idx} style={{height:"6.5mm"}}>
+                  <tr key={idx} style={{height:"7mm"}}>
                     <td style={tdC}>{idx+1}</td>
                     <td style={td}>{it?.description || ""}</td>
                     <td style={tdR}>{it?.qty || ""}</td>
                     <td style={tdC}>{it?.unit || ""}</td>
                     <td style={tdR}>{it?.price ? Number(it.price).toLocaleString() : ""}</td>
-                    <td style={{...tdR,fontWeight:it?700:400}}>{it ? amount.toLocaleString() : ""}</td>
-                    <td style={{...td,fontSize:"8.5pt"}}>{it?.remarks || ""}</td>
+                    <td style={tdR}>{it && (Number(it.qty)||0)*(Number(it.price)||0) > 0 ? amount.toLocaleString() : ""}</td>
+                    <td style={{...td,fontSize:"9pt"}}>{it?.remarks || ""}</td>
                   </tr>
                 );
               })}
-              {/* 集計行 */}
-              <tr style={{height:"6mm"}}>
-                <td colSpan="4" style={{...td,textAlign:"center",letterSpacing:"0.6em",fontSize:"10pt"}}>小　　計</td>
+              {/* 小計 (row31) */}
+              <tr style={{height:"7mm"}}>
+                <td colSpan="4" style={{...td,textAlign:"center",letterSpacing:"0.8em",fontSize:"11pt"}}>小　　　　計</td>
                 <td style={{...td,background:"#fafafa"}}></td>
-                <td style={{...tdR,fontWeight:700}}>{subtotal.toLocaleString()}</td>
+                <td style={{...tdR,fontWeight:400}}>{subtotal.toLocaleString()}</td>
                 <td style={td}></td>
               </tr>
-              <tr style={{height:"6mm"}}>
-                <td colSpan="4" style={{...td,textAlign:"center",letterSpacing:"0.4em",fontSize:"10pt"}}>諸　経　費</td>
-                <td style={{...td,background:"#fafafa"}}></td>
-                <td style={tdR}>{(Number(quote.misc)||0).toLocaleString()}</td>
+              {/* 諸経費 (row32) */}
+              <tr style={{height:"7mm"}}>
+                <td colSpan="4" style={{...td,textAlign:"center",letterSpacing:"0.5em",fontSize:"11pt"}}>諸　経　費</td>
+                <td style={{...tdC,fontSize:"10pt"}}>{quote.miscRate ? quote.miscRate + "%" : ""}</td>
+                <td style={tdR}>{misc.toLocaleString()}</td>
                 <td style={td}></td>
               </tr>
-              <tr style={{height:"6mm"}}>
-                <td colSpan="4" style={{...td,textAlign:"center",letterSpacing:"0.4em",fontSize:"10pt"}}>調　整　費</td>
+              {/* 調整費 (row33) */}
+              <tr style={{height:"7mm"}}>
+                <td colSpan="4" style={{...td,textAlign:"center",letterSpacing:"0.5em",fontSize:"11pt"}}>調　整　費</td>
                 <td style={{...td,background:"#fafafa"}}></td>
-                <td style={tdR}>{(Number(quote.adjustment)||0).toLocaleString()}</td>
+                <td style={tdR}>{adjustment.toLocaleString()}</td>
                 <td style={td}></td>
               </tr>
-              <tr style={{height:"6mm"}}>
-                <td colSpan="4" style={{...td,textAlign:"center",letterSpacing:"0.2em",fontSize:"10pt",fontWeight:700}}>小　計　(税抜)</td>
+              {/* 小計(税抜) (row34) */}
+              <tr style={{height:"7mm"}}>
+                <td colSpan="4" style={{...td,textAlign:"center",letterSpacing:"0.3em",fontSize:"11pt"}}>小　計　(税抜)</td>
                 <td style={{...td,background:"#fafafa"}}></td>
-                <td style={{...tdR,fontWeight:700}}>{adjustedSub.toLocaleString()}</td>
+                <td style={{...tdR,fontWeight:400}}>{adjustedSub.toLocaleString()}</td>
                 <td style={td}></td>
               </tr>
-              <tr style={{height:"6mm"}}>
-                <td colSpan="4" style={{...td,textAlign:"center",letterSpacing:"0.4em",fontSize:"10pt"}}>消　費　税</td>
-                <td style={{...tdC,fontSize:"9pt"}}>{quote.taxRate||10}%</td>
+              {/* 消費税 (row35) */}
+              <tr style={{height:"7mm"}}>
+                <td colSpan="4" style={{...td,textAlign:"center",letterSpacing:"0.5em",fontSize:"11pt"}}>消　費　税</td>
+                <td style={{...tdC,fontSize:"10pt"}}>{quote.taxRate||10}%</td>
                 <td style={tdR}>{tax.toLocaleString()}</td>
                 <td style={td}></td>
               </tr>
-              <tr style={{height:"7mm"}}>
-                <td colSpan="4" style={{...td,textAlign:"center",letterSpacing:"0.2em",fontSize:"10pt",fontWeight:800,background:"#f0f0f0"}}>合　計　(税込)</td>
+              {/* 合計(税込) (row36) */}
+              <tr style={{height:"10mm"}}>
+                <td colSpan="4" style={{...td,textAlign:"center",letterSpacing:"0.3em",fontSize:"11pt",fontWeight:700,background:"#f0f0f0"}}>合　計　(税込)</td>
                 <td style={{...td,background:"#f0f0f0"}}></td>
-                <td style={{...tdR,fontWeight:800,background:"#f0f0f0"}}>{grandTotal.toLocaleString()}</td>
+                <td style={{...tdR,fontWeight:700,background:"#f0f0f0",fontSize:"11pt"}}>{grandTotal.toLocaleString()}</td>
                 <td style={{...td,background:"#f0f0f0"}}></td>
               </tr>
             </tbody>
           </table>
           
-          {/* 備考欄 */}
+          {/* 備考欄 (row38-39) */}
           <table style={{width:"100%",borderCollapse:"collapse"}}>
             <tbody>
+              <tr style={{height:"7mm"}}>
+                <td style={{...td,padding:"2mm 4mm",letterSpacing:"0.5em",fontSize:"11pt"}}>備　考</td>
+              </tr>
               <tr>
-                <td style={{...td,height:"22mm",verticalAlign:"top",padding:"3mm 4mm",whiteSpace:"pre-wrap"}}>
-                  <div style={{fontWeight:700,marginBottom:"1.5mm",letterSpacing:"0.6em",fontSize:"10pt"}}>備　考</div>
-                  <div style={{fontSize:"9.5pt"}}>{quote.remarks || ""}</div>
+                <td style={{...td,height:"22mm",verticalAlign:"top",padding:"3mm 4mm",whiteSpace:"pre-wrap",fontSize:"10pt"}}>
+                  {quote.remarks || ""}
                 </td>
               </tr>
             </tbody>
@@ -5787,7 +5834,7 @@ function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach
                   <span style={{fontSize:"0.7rem",fontWeight:700,color:"#2563eb"}}>💬 チャット</span>
                   <span style={{fontSize:"0.66rem",color:C.textMuted}}>{(item.date||"").slice(0,16).replace("T"," ")}</span>
                   {u&&<span style={{fontSize:"0.66rem",color:C.textSub,fontWeight:600}}>👤 {u.name}</span>}
-                  {item.editedAt&&<span style={{fontSize:"0.6rem",color:"#9ca3af",fontStyle:"italic"}}>(編集済)</span>}
+                  {item.editedAt&&<span style={{fontSize:"0.6rem",color:"#9ca3af"}}>(編集済)</span>}
                   {isMe && !isEditingChat && (
                     <span style={{marginLeft:"auto",display:"flex",gap:"0.2rem"}}>
                       <button onClick={()=>{setEditChatId(item.id);setEditChatText(item.text||"");}} title="編集" style={{background:"none",border:"none",cursor:"pointer",color:C.textSub,padding:"0.1rem 0.3rem",fontSize:"0.78rem",fontFamily:"inherit"}}>✏️</button>
@@ -5847,7 +5894,7 @@ function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach
                       <span style={{fontSize:"0.72rem",fontWeight:700,color:isLoss?"#dc2626":C.accent}}>{item.type}</span>
                       <span style={{fontSize:"0.68rem",color:C.textMuted}}>{dateStr}</span>
                       {u&&<span style={{fontSize:"0.68rem",color:C.textSub}}>👤 {u.name}</span>}
-                      {item.updatedAt&&<span style={{fontSize:"0.62rem",color:"#9ca3af",fontStyle:"italic"}}>(編集済)</span>}
+                      {item.updatedAt&&<span style={{fontSize:"0.62rem",color:"#9ca3af"}}>(編集済)</span>}
                       {canEdit && (
                         <span style={{marginLeft:"auto",display:"flex",gap:"0.2rem"}}>
                           <button onClick={()=>startEdit(item)} title="編集" style={{background:"none",border:"none",cursor:"pointer",color:C.textSub,padding:"0.1rem 0.3rem",fontSize:"0.85rem",fontFamily:"inherit"}}>✏️</button>
@@ -5877,7 +5924,7 @@ function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach
                   <span style={{fontSize:"0.72rem",fontWeight:700,color:C.textSub}}>{item.isMtg?"🎤 MTGメモ":"メモ"}</span>
                   <span style={{fontSize:"0.68rem",color:C.textMuted}}>{dateStr}</span>
                   {u&&<span style={{fontSize:"0.68rem",color:C.textSub}}>👤 {u.name}</span>}
-                  {item.editedAt&&<span style={{fontSize:"0.62rem",color:"#9ca3af",fontStyle:"italic"}}>(編集済)</span>}
+                  {item.editedAt&&<span style={{fontSize:"0.62rem",color:"#9ca3af"}}>(編集済)</span>}
                   {canEditMemo && !isEditingMemo && onUpdateMemo && (
                     <span style={{marginLeft:"auto",display:"flex",gap:"0.2rem"}}>
                       <button onClick={()=>{setEditMemoId(item.id);setEditMemoText(item.text||"");}} title="編集" style={{background:"none",border:"none",cursor:"pointer",color:C.textSub,padding:"0.1rem 0.3rem",fontSize:"0.85rem",fontFamily:"inherit"}}>✏️</button>
@@ -6978,7 +7025,7 @@ function MtgRecordModal({entityKey,entityId,entityName,data,users,currentUser,on
                 ) : (
                   <span style={{color:"#94a3b8"}}>録音開始後に文字起こしが表示されます</span>
                 )}
-                {interimText&&<div style={{color:"#059669",fontStyle:"italic",marginTop:"0.35rem",paddingTop:"0.35rem",borderTop:"1px dashed #e2e8f0",fontSize:"0.78rem",fontWeight:600}}>{interimText}</div>}
+                {interimText&&<div style={{color:"#059669",marginTop:"0.35rem",paddingTop:"0.35rem",borderTop:"1px dashed #e2e8f0",fontSize:"0.78rem",fontWeight:600}}>{interimText}</div>}
               </div>
               {/* 音声レベルメーター（録音中常時表示） */}
               {recording && (
@@ -7184,7 +7231,7 @@ function ContactBadge({contact, color="#0369a1", bg="#dbeafe"}) {
             </a>
           )}
           {!contact.phone && !contact.email && (
-            <div style={{fontSize:"0.72rem", color:"#94a3b8", padding:"0.3rem 0", fontStyle:"italic"}}>連絡先未登録</div>
+            <div style={{fontSize:"0.72rem", color:"#94a3b8", padding:"0.3rem 0",}}>連絡先未登録</div>
           )}
         </div>
       )}
@@ -9162,7 +9209,7 @@ ${recentLogs}
     return (
       <div ref={ref} style={{position:"relative",display:"inline-flex",alignItems:"center",flexWrap:"wrap",gap:"0.25rem"}}>
         {list.length===0 ? (
-          <span style={{fontSize,color:C.textMuted,fontStyle:"italic"}}>担当者未設定</span>
+          <span style={{fontSize,color:C.textMuted}}>担当者未設定</span>
         ) : list.map(u=>(
           <span key={u.id} style={{display:"inline-flex",alignItems:"center",gap:"0.2rem",fontSize,background:C.accentBg,color:C.accent,padding,borderRadius:"4px",fontWeight:600,whiteSpace:"nowrap"}}>
             <span style={{width:14,height:14,borderRadius:"50%",background:C.accent,color:"white",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:"0.55rem",fontWeight:800,flexShrink:0}}>{(u.name||"?").charAt(0)}</span>
@@ -10198,7 +10245,7 @@ ${orig}`})
     return (
       <div style={{display:"flex",height:isPC?"calc(100vh - 60px)":"auto",overflow:isPC?"hidden":"visible",justifyContent:isPC&&!activeCompany?"center":"flex-start"}}>
         {/* List pane */}
-        <div style={{width:isPC?(activeCompany?440:"100%"):"100%",maxWidth:isPC&&!activeCompany?960:"none",flexShrink:isPC&&!activeCompany?1:0,overflowY:isPC?"auto":"visible",borderRight:isPC&&activeCompany?"1px solid #e5e5ea":"none",transition:"width 0.2s",minWidth:isPC&&activeCompany?440:undefined}}>
+        <div style={{width:isPC?(activeCompany?440:"100%"):"100%",maxWidth:isPC&&!activeCompany?960:"none",flexShrink:isPC&&!activeCompany?1:0,overflowY:isPC?"auto":"visible",borderRight:isPC&&activeCompany?"1px solid #e5e5ea":"none",transition:"width 0.2s",minWidth:isPC&&activeCompany?440:undefined,padding:isPC?"1rem 1.25rem":"0",boxSizing:"border-box"}}>
         <TopTabs/>
         <BulkBar statusMap={COMPANY_STATUS} applyFn={applyBulkComp} visibleIds={compVisibleIds} onDelete={deleteBulkComp}/>
         {/* 担当者絞り込み中の件数表示 */}
@@ -10423,7 +10470,7 @@ ${orig}`})
                                 <span style={{color:"#475569",fontWeight:600}}>{approachIcon} {lastDate}</span>
                                 {lastNote&&<span style={{color:C.textMuted,marginLeft:"0.3rem"}}>{lastNote.slice(0,40)}{lastNote.length>40?"…":""}</span>}
                               </span>
-                            ):<span style={{fontStyle:"italic",color:"#cbd5e0"}}>未接触</span>}
+                            ):<span style={{color:"#cbd5e0"}}>未接触</span>}
                           </div>
                         </div>
                       </div>
@@ -10469,7 +10516,7 @@ ${orig}`})
               {(()=>{
                 const list = form.contacts || [];
                 if(list.length===0) return (
-                  <div style={{fontSize:"0.7rem",color:"#0c4a6e",fontStyle:"italic",padding:"0.4rem"}}>「＋ 担当者を追加」をタップして登録してください</div>
+                  <div style={{fontSize:"0.7rem",color:"#0c4a6e",padding:"0.4rem"}}>「＋ 担当者を追加」をタップして登録してください</div>
                 );
                 const updateAt = (idx, key, val) => {
                   const next = list.map((c,i)=>i===idx?{...c,[key]:val}:c);
@@ -10842,7 +10889,7 @@ ${orig}`})
                 {(()=>{
                   const list = form.contacts || [];
                   if(list.length===0) return (
-                    <div style={{fontSize:"0.7rem",color:"#78350f",fontStyle:"italic",padding:"0.4rem"}}>「＋ 担当者を追加」をタップして登録してください</div>
+                    <div style={{fontSize:"0.7rem",color:"#78350f",padding:"0.4rem"}}>「＋ 担当者を追加」をタップして登録してください</div>
                   );
                   const updateAt = (idx, key, val) => {
                     const next = list.map((c,i)=>i===idx?{...c,[key]:val}:c);
@@ -10916,7 +10963,7 @@ ${orig}`})
     return (
       <div style={{display:"flex",height:isPC?"calc(100vh - 60px)":"auto",overflow:isPC?"hidden":"visible",justifyContent:isPC&&!activeVendor?"center":"flex-start"}}>
         {/* List pane */}
-        <div style={{width:isPC?(activeVendor?440:"100%"):"100%",maxWidth:isPC&&!activeVendor?960:"none",flexShrink:isPC&&!activeVendor?1:0,overflowY:isPC?"auto":"visible",borderRight:isPC&&activeVendor?"1px solid #e5e5ea":"none",transition:"width 0.2s",minWidth:isPC&&activeVendor?440:undefined}}>
+        <div style={{width:isPC?(activeVendor?440:"100%"):"100%",maxWidth:isPC&&!activeVendor?960:"none",flexShrink:isPC&&!activeVendor?1:0,overflowY:isPC?"auto":"visible",borderRight:isPC&&activeVendor?"1px solid #e5e5ea":"none",transition:"width 0.2s",minWidth:isPC&&activeVendor?440:undefined,padding:isPC?"1rem 1.25rem":"0",boxSizing:"border-box"}}>
         <TopTabs/>
         <BulkBar statusMap={VENDOR_STATUS} applyFn={applyBulkVend} visibleIds={vendVisibleIds} onDelete={deleteBulkVend}/>
         {/* フォロー中業者 */}
@@ -11215,7 +11262,7 @@ ${orig}`})
                                       <span style={{color:"#475569",fontWeight:600}}>{approachIcon} {lastDate}</span>
                                       {lastNote&&<span style={{color:C.textMuted,marginLeft:"0.3rem"}}>{lastNote.slice(0,40)}{lastNote.length>40?"…":""}</span>}
                                     </span>
-                                  ):<span style={{fontStyle:"italic",color:"#cbd5e0"}}>未接触</span>}
+                                  ):<span style={{color:"#cbd5e0"}}>未接触</span>}
                                 </div>
                               </div>
                             </div>
@@ -11692,7 +11739,7 @@ ${orig}`})
                   ? [{id:"_legacy_",name:form.contactName||"",email:form.contactEmail||"",phone:form.contactPhone||"",role:""}]
                   : contacts;
                 if(list.length===0) return (
-                  <div style={{fontSize:"0.7rem",color:"#0c4a6e",fontStyle:"italic",padding:"0.4rem"}}>「＋ 担当者を追加」をタップして登録してください</div>
+                  <div style={{fontSize:"0.7rem",color:"#0c4a6e",padding:"0.4rem"}}>「＋ 担当者を追加」をタップして登録してください</div>
                 );
                 const updateAt = (idx, key, val) => {
                   // 旧データのままならまず govContacts に移行
@@ -11869,7 +11916,7 @@ ${orig}`})
   return (
     <div style={{display:"flex",height:isPC&&activeMuni&&muniScreen==="muniDetail"?"calc(100vh - 60px)":"auto",overflow:isPC&&activeMuni&&muniScreen==="muniDetail"?"hidden":"visible",justifyContent:isPC&&!(activeMuni&&muniScreen==="muniDetail")?"center":"flex-start"}}>
       {/* List/main pane */}
-      <div style={{width:isPC&&activeMuni&&muniScreen==="muniDetail"?500:"100%",maxWidth:isPC&&!(activeMuni&&muniScreen==="muniDetail")?960:"none",minWidth:isPC&&activeMuni&&muniScreen==="muniDetail"?500:undefined,flexShrink:isPC&&!(activeMuni&&muniScreen==="muniDetail")?1:0,overflowY:isPC&&activeMuni&&muniScreen==="muniDetail"?"auto":"visible"}}>
+      <div style={{width:isPC&&activeMuni&&muniScreen==="muniDetail"?500:"100%",maxWidth:isPC&&!(activeMuni&&muniScreen==="muniDetail")?960:"none",minWidth:isPC&&activeMuni&&muniScreen==="muniDetail"?500:undefined,flexShrink:isPC&&!(activeMuni&&muniScreen==="muniDetail")?1:0,overflowY:isPC&&activeMuni&&muniScreen==="muniDetail"?"auto":"visible",padding:isPC?"1rem 1.25rem":"0",boxSizing:"border-box"}}>
       <TopTabs/>
       {/* ── 自治体タブ（トップビュー） ── */}
       {salesTab==="muni"&&<>
@@ -12926,7 +12973,7 @@ ${orig}`})
                           <span style={{fontSize:"0.85rem",fontWeight:700,color:C.text,flex:1}}>{match.name}</span>
                           <span style={{fontSize:"0.7rem",color:"#059669",fontWeight:700,flexShrink:0}}>🔗 紐付け →</span>
                         </button>
-                        <div style={{fontSize:"0.65rem",color:"#166534",marginTop:"0.3rem",fontStyle:"italic"}}>※ クリックすると自動で紐付けられます</div>
+                        <div style={{fontSize:"0.65rem",color:"#166534",marginTop:"0.3rem"}}>※ クリックすると自動で紐付けられます</div>
                       </div>
                     );
                   })()}
@@ -16041,7 +16088,7 @@ export default function App() {
       {/* Content */}
       <div ref={contentRef} className="mydesk-content" data-sales-scroll style={{flex:1,overflowY:isPC?"hidden":"auto",display:isPC?"flex":"block",
         paddingBottom:isPC?0:"calc(5rem + env(safe-area-inset-bottom,0px))"}}>
-        <div style={{maxWidth:isPC?"none":720,margin:isPC?0:"0 auto",width:"100%",flex:isPC?1:undefined,overflowY:isPC?"auto":"visible",padding:isPC?"1.75rem 2rem 1rem":"1.25rem 1rem 0.5rem",boxSizing:"border-box"}}>
+        <div style={{maxWidth:isPC?"none":720,margin:isPC?0:"0 auto",width:"100%",flex:isPC?1:undefined,overflowY:isPC?"auto":"visible",padding:isPC?(tab==="sales"?"0":"1.75rem 2rem 1rem"):"1.25rem 1rem 0.5rem",boxSizing:"border-box"}}>
           <ErrorBoundary>
             {tab==="tasks"     && <TaskView      data={data} setData={setData} users={users} currentUser={currentUser}
               taskTab={taskTab} setTaskTab={(v)=>persistTab('md_taskTab',v,setTaskTab)}
