@@ -5043,7 +5043,43 @@ function LinkedBizcardList({ cards=[], users=[], onUnlink, onNavigateToBizcard, 
 }
 
 // ─── APPROACH TIMELINE ────────────────────────────────────────────────────────
-function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach, onSave, data }) {
+function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach, onSave, data, currentUserId }) {
+  const [editingId, setEditingId] = React.useState(null);
+  const [editNote, setEditNote] = React.useState("");
+  const [editType, setEditType] = React.useState("");
+  const [editDate, setEditDate] = React.useState("");
+  
+  const startEdit = (log) => {
+    setEditingId(log.id);
+    setEditNote(log.note||"");
+    setEditType(log.type||"電話");
+    setEditDate((log.date||"").slice(0,10));
+  };
+  const cancelEdit = () => {
+    setEditingId(null); setEditNote(""); setEditType(""); setEditDate("");
+  };
+  const saveEdit = (logId) => {
+    const entities = data[entityKey] || [];
+    const updatedEntities = entities.map(e => {
+      if(e.id !== entityId) return e;
+      const updatedLogs = (e.approachLogs||[]).map(l =>
+        l.id === logId ? {...l, note: editNote, type: editType, date: editDate, updatedAt: new Date().toISOString()} : l
+      );
+      return {...e, approachLogs: updatedLogs, updatedAt: new Date().toISOString().slice(0,10)};
+    });
+    onSave({...data, [entityKey]: updatedEntities});
+    cancelEdit();
+  };
+  const deleteLog = (logId) => {
+    if(!window.confirm("このアプローチ記録を削除しますか？")) return;
+    const entities = data[entityKey] || [];
+    const updatedEntities = entities.map(e => {
+      if(e.id !== entityId) return e;
+      return {...e, approachLogs: (e.approachLogs||[]).filter(l => l.id !== logId)};
+    });
+    onSave({...data, [entityKey]: updatedEntities});
+  };
+  
   const logs = [...(entity?.approachLogs||[])].sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
   const memos = [...(entity?.memos||[])].sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
   // changeLogs for this entity
@@ -5070,19 +5106,47 @@ function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach
         if(item._kind==="approach") {
           const icon = APPROACH_ICON[item.type]||"📝";
           const isLoss = item.isLoss;
+          const canEdit = !isLoss && (!currentUserId || item.userId===currentUserId);
+          const isEditing = editingId === item.id;
           return (
             <div key={item.id||i} style={{display:"flex",gap:"0.6rem",marginBottom:"0.75rem"}}>
               <div style={{display:"flex",flexDirection:"column",alignItems:"center"}}>
                 <div style={{width:30,height:30,borderRadius:"50%",background:isLoss?"#fee2e2":"#dbeafe",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.85rem",flexShrink:0}}>{icon}</div>
                 {i<items.length-1&&<div style={{width:2,flex:1,background:C.borderLight,margin:"4px 0"}}/>}
               </div>
-              <div style={{flex:1,paddingBottom:"0.5rem"}}>
-                <div style={{display:"flex",gap:"0.5rem",alignItems:"center",marginBottom:"0.2rem"}}>
-                  <span style={{fontSize:"0.72rem",fontWeight:700,color:isLoss?"#dc2626":C.accent}}>{item.type}</span>
-                  <span style={{fontSize:"0.68rem",color:C.textMuted}}>{dateStr}</span>
-                  {u&&<span style={{fontSize:"0.68rem",color:C.textSub}}>👤 {u.name}</span>}
-                </div>
-                {item.note&&<div style={{fontSize:"0.82rem",color:C.text,background:isLoss?"#fff1f2":"#f8fafc",borderRadius:"0.5rem",padding:"0.4rem 0.6rem",border:`1px solid ${isLoss?"#fca5a5":C.borderLight}`}}>{item.note}</div>}
+              <div style={{flex:1,paddingBottom:"0.5rem",minWidth:0}}>
+                {isEditing ? (
+                  <div style={{background:"#fffbeb",border:"1.5px solid #fbbf24",borderRadius:"0.5rem",padding:"0.6rem"}}>
+                    <div style={{display:"flex",gap:"0.4rem",alignItems:"center",marginBottom:"0.4rem",flexWrap:"wrap"}}>
+                      <select value={editType} onChange={e=>setEditType(e.target.value)} style={{padding:"0.25rem 0.4rem",borderRadius:4,border:`1px solid ${C.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}>
+                        {Object.keys(APPROACH_ICON).map(t=><option key={t} value={t}>{APPROACH_ICON[t]} {t}</option>)}
+                      </select>
+                      <input type="date" value={editDate} onChange={e=>setEditDate(e.target.value)} style={{padding:"0.25rem 0.4rem",borderRadius:4,border:`1px solid ${C.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}/>
+                    </div>
+                    <textarea value={editNote} onChange={e=>setEditNote(e.target.value)} placeholder="記録内容..."
+                      style={{width:"100%",minHeight:60,padding:"0.45rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.82rem",boxSizing:"border-box",resize:"vertical"}}/>
+                    <div style={{display:"flex",gap:"0.4rem",marginTop:"0.4rem",justifyContent:"flex-end"}}>
+                      <button onClick={cancelEdit} style={{padding:"0.3rem 0.7rem",borderRadius:5,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.75rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>キャンセル</button>
+                      <button onClick={()=>saveEdit(item.id)} style={{padding:"0.3rem 0.85rem",borderRadius:5,border:"none",background:"#059669",color:"white",fontSize:"0.75rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>💾 保存</button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div style={{display:"flex",gap:"0.5rem",alignItems:"center",marginBottom:"0.2rem",flexWrap:"wrap"}}>
+                      <span style={{fontSize:"0.72rem",fontWeight:700,color:isLoss?"#dc2626":C.accent}}>{item.type}</span>
+                      <span style={{fontSize:"0.68rem",color:C.textMuted}}>{dateStr}</span>
+                      {u&&<span style={{fontSize:"0.68rem",color:C.textSub}}>👤 {u.name}</span>}
+                      {item.updatedAt&&<span style={{fontSize:"0.62rem",color:"#9ca3af",fontStyle:"italic"}}>(編集済)</span>}
+                      {canEdit && (
+                        <span style={{marginLeft:"auto",display:"flex",gap:"0.2rem"}}>
+                          <button onClick={()=>startEdit(item)} title="編集" style={{background:"none",border:"none",cursor:"pointer",color:C.textSub,padding:"0.1rem 0.3rem",fontSize:"0.85rem",fontFamily:"inherit"}}>✏️</button>
+                          <button onClick={()=>deleteLog(item.id)} title="削除" style={{background:"none",border:"none",cursor:"pointer",color:"#dc2626",padding:"0.1rem 0.3rem",fontSize:"0.8rem",fontFamily:"inherit"}}>🗑</button>
+                        </span>
+                      )}
+                    </div>
+                    {item.note&&<div style={{fontSize:"0.82rem",color:C.text,background:isLoss?"#fff1f2":"#f8fafc",borderRadius:"0.5rem",padding:"0.4rem 0.6rem",border:`1px solid ${isLoss?"#fca5a5":C.borderLight}`,whiteSpace:"pre-wrap"}}>{item.note}</div>}
+                  </>
+                )}
               </div>
             </div>
           );
@@ -7876,11 +7940,13 @@ ${recentLogs}
           setPrevTab(null);resetBulk();
           localStorage.setItem("md_salesTab",id);
         }}
-          style={{flex:1,padding:"0.55rem 0.15rem",borderRadius:"0.625rem",border:"none",cursor:"pointer",fontFamily:"inherit",
-            fontWeight:700,fontSize:"0.75rem",transition:"all 0.15s",position:"relative",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",
+          style={{flex:1,minWidth:0,padding:"0.5rem 0.15rem",borderRadius:"0.625rem",border:"none",cursor:"pointer",fontFamily:"inherit",
+            fontWeight:700,transition:"all 0.15s",position:"relative",
+            display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:"0.15rem",
             background:salesTab===id?C.accent:"transparent",color:salesTab===id?"white":C.textSub,
             boxShadow:salesTab===id?`0 2px 8px ${C.accent}44`:"none"}}>
-          {icon} {lbl}
+          <span style={{fontSize:"1.1rem",lineHeight:1}}>{icon}</span>
+          <span style={{fontSize:"0.7rem",fontWeight:700,whiteSpace:"nowrap",lineHeight:1}}>{lbl}</span>
         </button>
       ))}
     </div>
@@ -8889,7 +8955,7 @@ ${orig}`})
               </button>
             ))}
           </div>
-          {activeDetail==="timeline"&&<ApproachTimeline entity={comp} entityKey="companies" entityId={comp.id} users={users} onAddApproach={()=>openApproachModal("companies",comp.id,comp.name)} onSave={nd=>save(nd)} data={data}/>}
+          {activeDetail==="timeline"&&<ApproachTimeline entity={comp} entityKey="companies" entityId={comp.id} users={users} onAddApproach={()=>openApproachModal("companies",comp.id,comp.name)} onSave={nd=>save(nd)} data={data} currentUserId={currentUser?.id}/>}
           {activeDetail==="chat"&&ChatSection({chat:comp.chat,entityKey:"companies",entityId:comp.id})}
           {activeDetail==="tasks"&&<SalesTaskPanel entityType="企業" entityId={comp.id} entityName={comp.name} data={data} onSave={save} currentUser={currentUser} users={users} onNavigateToTask={onNavigateToTask} onNavigateToProject={onNavigateToProject}/>}
           {activeDetail==="bizcard"&&(()=>{
@@ -9489,7 +9555,7 @@ ${orig}`})
               </button>
             ))}
           </div>
-          {activeDetail==="timeline"&&<ApproachTimeline entity={v} entityKey="vendors" entityId={v.id} users={users} onAddApproach={()=>openApproachModal("vendors",v.id,v.name)} onSave={nd=>save(nd)} data={data}/>}
+          {activeDetail==="timeline"&&<ApproachTimeline entity={v} entityKey="vendors" entityId={v.id} users={users} onAddApproach={()=>openApproachModal("vendors",v.id,v.name)} onSave={nd=>save(nd)} data={data} currentUserId={currentUser?.id}/>}
           {activeDetail==="chat"&&ChatSection({chat:v.chat,entityKey:"vendors",entityId:v.id})}
           {activeDetail==="tasks"&&<SalesTaskPanel entityType="業者" entityId={v.id} entityName={v.name} data={data} onSave={save} currentUser={currentUser} users={users} onNavigateToTask={onNavigateToTask} onNavigateToProject={onNavigateToProject}/>}
           {activeDetail==="bizcard"&&(()=>{
@@ -10214,7 +10280,7 @@ ${orig}`})
             </button>
           ))}
         </div>
-        {activeDetail==="timeline"&&<div style={{marginBottom:"1rem"}}><ApproachTimeline entity={muni} entityKey="municipalities" entityId={muni.id} users={users} onAddApproach={()=>openApproachModal("municipalities",muni.id,muni.name)} onSave={nd=>save(nd)} data={data}/></div>}
+        {activeDetail==="timeline"&&<div style={{marginBottom:"1rem"}}><ApproachTimeline entity={muni} entityKey="municipalities" entityId={muni.id} users={users} onAddApproach={()=>openApproachModal("municipalities",muni.id,muni.name)} onSave={nd=>save(nd)} data={data} currentUserId={currentUser?.id}/></div>}
         {activeDetail==="chat"&&<div style={{marginBottom:"1rem"}}>{ChatSection({chat:muni.chat,entityKey:"municipalities",entityId:muni.id})}</div>}
         {activeDetail==="tasks"&&<div style={{marginBottom:"1rem"}}><SalesTaskPanel entityType="自治体" entityId={muni.id} entityName={muni.name} data={data} onSave={save} currentUser={currentUser} users={users} onNavigateToTask={onNavigateToTask} onNavigateToProject={onNavigateToProject}/></div>}
         {activeDetail==="bizcard"&&<div style={{marginBottom:"1rem"}}>{(()=>{
