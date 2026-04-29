@@ -8487,11 +8487,11 @@ ${recentLogs}
     const headers = [
       "業者名","ステータス","bee-net","代表電話","住所",
       "許可種別","対応自治体","自社担当","先方担当",
-      "最終接触日","最新アプローチ内容","アプローチ履歴(全件)",
+      "最終接触日","アプローチ履歴(全件)",
       "備考","登録日","最終更新"
     ];
     // 業者名は広く、アプローチ履歴は超広く、その他は中間
-    const colWidths = [22, 10, 8, 14, 28, 16, 24, 14, 28, 11, 30, 60, 24, 11, 11];
+    const colWidths = [22, 10, 8, 14, 28, 16, 24, 14, 28, 11, 60, 24, 11, 11];
     
     const rows = vendorList.map(v => {
       const vmunis2 = vendorMunis(v);
@@ -8512,12 +8512,11 @@ ${recentLogs}
       }).join("\n\n");
       const lastLog = sortedLogs[sortedLogs.length-1];
       const lastDate = lastLog ? (lastLog.date||lastLog.createdAt||"").slice(0,10) : "";
-      const lastNote = lastLog ? `${lastLog.type||""}: ${(lastLog.note||"").slice(0,80)}` : "";
       
       return [
         v.name||"", v.status||"", v.beeNet?"✓":"", v.phone||"", v.address||"",
         permits, muniNames, assignees, contacts,
-        lastDate, lastNote, approachHistory,
+        lastDate, approachHistory,
         v.notes||"", (v.createdAt||"").slice(0,10), v.updatedAt||"",
       ];
     });
