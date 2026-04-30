@@ -11275,8 +11275,8 @@ ${orig}`})
                       let nd={...data,companies:companies.map(x=>x.id===comp.id?{...x,status:s,updatedAt:today}:x)};
                       nd=addChangeLog(nd,{entityType:"企業",entityId:comp.id,entityName:comp.name,field:"ステータス",oldVal:comp.status,newVal:s});
                       save(nd);
-                      setCompStatusTab(s);
-                      localStorage.setItem("md_compStatusTab",s);
+                      // 一覧のフィルタータブは元のまま維持する
+                      // （ステータス変更した企業は自動的にそのタブの一覧から消えるだけ）
                     }
                   }}/>
                 </div>
@@ -11849,8 +11849,8 @@ ${orig}`})
                       let nd={...data,vendors:vendors.map(x=>x.id===v.id?{...x,status:s,updatedAt:today}:x)};
                       nd=addChangeLog(nd,{entityType:"業者",entityId:v.id,entityName:v.name,field:"ステータス",oldVal:v.status,newVal:s});
                       save(nd);
-                      setVendStatusTab(s);
-                      localStorage.setItem("md_vendStatusTab",s);
+                      // 一覧のフィルタータブは元のまま維持する
+                      // （ステータス変更した業者は自動的にそのタブの一覧から消えるだけ）
                     }
                   }}/>
                   {v.beeNet&&<span style={{fontSize:"0.62rem",background:"#eff6ff",color:"#1d4ed8",padding:"0.1rem 0.45rem",borderRadius:999,fontWeight:700,border:"1px solid #bfdbfe"}}>🔷 bee-net</span>}
