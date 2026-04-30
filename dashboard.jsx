@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-04-30-persistence-v3"; // ビルド識別子（永続化アーキテクチャ v3）
+const MYDESK_BUILD = "2026-04-30-persistence-v4-shrinkage-guard"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -110,7 +110,7 @@ if (typeof window !== "undefined") {
     console.log("=".repeat(60));
     console.log("現在時刻:", new Date().toISOString());
     console.log("最終保存:", window.__myDeskLastSaveAt || "なし");
-    console.log("ロード完了:", !!window.__myDeskLoadedComplete);
+    console.log("最終保存(timestamp):", window.__myDeskLastSave || "なし");
     console.log("\n--- AWS Lambda へのテスト接続 ---");
     try {
       const r = await fetch(`${DB_API_BASE}/data?id=main`, {
@@ -313,6 +313,8 @@ async function loadData() {
       // raw がオブジェクトで、INIT のキーを持つ本物のデータか確認
       if(raw && typeof raw === "object" && !Array.isArray(raw)) {
         const merged = {...INIT, ...raw};
+        // 縮退ガード用：ロード成功した「正常データ」を記憶
+        __myDeskLastKnownGoodData = merged;
         console.log(`[MyDesk] loadData OK — quotes: ${(merged.quotes||[]).length}件, companies: ${(merged.companies||[]).length}, vendors: ${(merged.vendors||[]).length}, munis: ${(merged.municipalities||[]).length}, tasks: ${(merged.tasks||[]).length}, updated_at: ${result._updatedAt}`);
         return { data: merged, updated_at: result._updatedAt };
       }
@@ -323,6 +325,9 @@ async function loadData() {
   }
   return { data: INIT, updated_at: null };
 }
+// 最後にロード/保存に成功した「正常データ」を記憶（縮退検知用）
+let __myDeskLastKnownGoodData = null;
+
 async function saveData(d) {
   // ── データ保護ガード ──────────────────────────────────────────────
   if (!d || typeof d !== "object" || Array.isArray(d)) {
@@ -335,21 +340,38 @@ async function saveData(d) {
     console.error("[MyDesk] saveData rejected — no INIT keys found", d); return;
   }
   // 配列フィールドがすべて空で、かつ現在のDBに保存済みデータがある場合は書き込まない
-  // （全消去を防ぐ強化ガード）
   const ARRAY_KEYS = ["tasks","projects","companies","vendors","municipalities","businessCards","quotes"];
   const allArraysEmpty = ARRAY_KEYS.every(k => !Array.isArray(d[k]) || d[k].length === 0);
-  // analyticsにデータがあれば配列が空でも保存を許可（分析データ専用保存の保護）
   const hasAnalyticsData = d.analytics && typeof d.analytics === "object" && Object.keys(d.analytics).length > 0;
   if (allArraysEmpty && !hasAnalyticsData) {
-    // 配列が全て空かつ分析データもない場合は保存しない（データ保護）
     console.warn("[MyDesk] saveData skipped — all arrays empty");
     return;
+  }
+  // ── 縮退ガード：個別配列の異常な減少を検知して拒否 ────────────────
+  // 過去の正常データと比較し、いずれかの配列が 50% 以上減少している場合は保存を拒否
+  // （誤操作・バグ・レース条件による全件消失を防ぐ）
+  if (__myDeskLastKnownGoodData) {
+    for (const key of ARRAY_KEYS) {
+      const prevLen = (__myDeskLastKnownGoodData[key] || []).length;
+      const nextLen = (d[key] || []).length;
+      // 5件以上 → 半数未満になった場合は怪しいので拒否
+      if (prevLen >= 5 && nextLen < Math.floor(prevLen / 2)) {
+        const msg = `${key} の件数が異常に減少しました (${prevLen}件→${nextLen}件)。保存を拒否しました。`;
+        console.error(`[MyDesk] saveData REJECTED — suspicious shrinkage: ${msg}`);
+        window.__myDeskSaveError = msg + "\nデータが壊れている可能性があります。ページを再読み込みしてください。";
+        window.dispatchEvent(new Event("mydesk-save-error"));
+        return;
+      }
+    }
   }
   console.log(`[MyDesk] saveData → quotes: ${(d.quotes||[]).length}件, companies: ${(d.companies||[]).length}, vendors: ${(d.vendors||[]).length}, munis: ${(d.municipalities||[]).length}, tasks: ${(d.tasks||[]).length}`);
   const ok = await sbSet("main", d);
   if(!ok) {
     window.__myDeskSaveError = "データの保存に失敗しました（3回リトライ済）。ネットワークを確認してください。";
     window.dispatchEvent(new Event("mydesk-save-error"));
+  } else {
+    // 保存成功時に「正常データ」を更新
+    __myDeskLastKnownGoodData = d;
   }
   // 自動スナップショット（3分に1回スロットリング、非同期・非ブロッキング）
   const now = Date.now();
@@ -15964,52 +15986,7 @@ function GlobalSearchModal({ query, onQueryChange, onClose, data, onNavigate, us
 
 
 export default function App() {
-  const [data, _setDataRaw] = useState(INIT);
-  const autoSaveTimerRef = React.useRef(null);
-  const lastAutoSavedRef = React.useRef(null);
-  const [globalSaveStatus, setGlobalSaveStatus] = useState(null); // null | "saving" | "saved" | "error"
-  
-  // ── 自動保存付き setData ──────────────────────────────────────────
-  // すべての setData 呼び出しを 500ms デバウンスして AWS RDS へ自動保存。
-  // setData(value) または setData(prev => next) のどちらの形式にも対応。
-  // 初回データ読み込み完了前はスキップ（INIT で上書きしないため）。
-  const setData = React.useCallback((newDataOrFn) => {
-    _setDataRaw(prev => {
-      const next = typeof newDataOrFn === 'function' ? newDataOrFn(prev) : newDataOrFn;
-      // データが実際に変わった場合のみ自動保存をスケジュール
-      if (next !== prev && next && typeof next === 'object') {
-        // 既存のタイマーをクリアしてデバウンス
-        if (autoSaveTimerRef.current) {
-          clearTimeout(autoSaveTimerRef.current);
-        }
-        autoSaveTimerRef.current = setTimeout(async () => {
-          autoSaveTimerRef.current = null;
-          // ロード前は保存しない（INIT で上書き防止）
-          if (!window.__myDeskLoadedComplete) return;
-          // 同じデータが既に保存済みならスキップ
-          if (lastAutoSavedRef.current === next) return;
-          // 直近1秒以内に明示的な保存があればスキップ（重複防止）
-          if (Date.now() - (window.__myDeskLastSave || 0) < 1000) {
-            lastAutoSavedRef.current = next;
-            return;
-          }
-          lastAutoSavedRef.current = next;
-          setGlobalSaveStatus("saving");
-          try {
-            await saveData(next);
-            setGlobalSaveStatus("saved");
-            setTimeout(() => setGlobalSaveStatus(s => s === "saved" ? null : s), 1500);
-          } catch(e) {
-            console.error("[MyDesk] auto-save failed:", e);
-            setGlobalSaveStatus("error");
-            setTimeout(() => setGlobalSaveStatus(s => s === "error" ? null : s), 5000);
-          }
-        }, 500);
-      }
-      return next;
-    });
-  }, []);
-  
+  const [data, setData] = useState(INIT);
   const [users,setUsers]     = useState([]);
   const [currentUser,setCurrentUser] = useState(null);
   // 通知フォールバック用にcurrentUserIdをwindowに保存
@@ -16052,13 +16029,6 @@ export default function App() {
     const goOffline = () => setIsOffline(true);
     const goOnline  = () => setIsOffline(false);
     const onBeforeUnload = (e) => {
-      // ペンディング中の自動保存を即座に実行（リロード前に確実に保存）
-      // saveData は fetch keepalive:true を使用するためページ離脱時も完了する
-      if (autoSaveTimerRef.current) {
-        clearTimeout(autoSaveTimerRef.current);
-        autoSaveTimerRef.current = null;
-        saveData(data); // fire-and-forget; sbSet 内部で keepalive:true 使用
-      }
       const timeSinceSave = Date.now() - (window.__myDeskLastSave || 0);
       if(timeSinceSave < 3000) { // 保存から3秒以内はリロード警告
         e.preventDefault();
@@ -16066,15 +16036,6 @@ export default function App() {
       }
     };
     window.addEventListener("beforeunload", onBeforeUnload);
-    // iOS Safari など mobile では beforeunload が発火しないので visibilitychange でも保存
-    const onVisibilityChange = () => {
-      if (document.visibilityState === "hidden" && autoSaveTimerRef.current) {
-        clearTimeout(autoSaveTimerRef.current);
-        autoSaveTimerRef.current = null;
-        saveData(data); // fire-and-forget; keepalive:true で完了する
-      }
-    };
-    document.addEventListener("visibilitychange", onVisibilityChange);
     const onSaveErr = () => {
       setSaveError(window.__myDeskSaveError || "保存に失敗しました");
       setTimeout(()=>setSaveError(""), 8000);
@@ -16087,7 +16048,6 @@ export default function App() {
       window.removeEventListener("online",goOnline);
       window.removeEventListener("mydesk-save-error",onSaveErr);
       window.removeEventListener("beforeunload",onBeforeUnload);
-      document.removeEventListener("visibilitychange",onVisibilityChange);
     };
   }, [data]);
   const [notifFilter,setNotifFilter] = useState("all");
@@ -16146,11 +16106,7 @@ export default function App() {
       });
       const fixed = (mChanged||vChanged) ? {...d,municipalities:fixedM,vendors:fixedV} : d;
       if(mChanged||vChanged) saveData(fixed);
-      // 初回ロードした data を lastAutoSaved に記録（直後の自動保存を抑止）
-      lastAutoSavedRef.current = fixed;
-      _setDataRaw(fixed); setUsers(u);
-      // ロード完了フラグ（自動保存有効化）
-      window.__myDeskLoadedComplete = true;
+      setData(fixed); setUsers(u);
       if (session) {
         const fresh = u.find(x=>x.id===session.id);
         if (fresh) { setCurrentUser(fresh); setSession(fresh); }
@@ -16159,8 +16115,7 @@ export default function App() {
       setLoaded(true);
     }).catch(err => {
       console.error("[MyDesk] 初期データ読み込みエラー:", err);
-      _setDataRaw(INIT);
-      window.__myDeskLoadedComplete = true;
+      setData(INIT);
       setLoaded(true);
     });
   },[]);
@@ -16892,19 +16847,6 @@ export default function App() {
           ⚠️ 保存に失敗しました
           <button onClick={()=>{setSaveError(""); window.__myDeskLastSave=0; window.location.reload();}} style={{background:"#dc2626",border:"none",cursor:"pointer",color:"white",fontWeight:700,fontSize:"0.7rem",padding:"0.2rem 0.5rem",borderRadius:"0.4rem"}}>再読み込み</button>
           <button onClick={()=>setSaveError("")} style={{background:"none",border:"none",cursor:"pointer",color:"#991b1b",fontWeight:800,fontSize:"1rem",padding:"0 0.1rem",lineHeight:1}}>✕</button>
-        </div>
-      )}
-      {/* グローバル保存ステータスインジケーター（右下） */}
-      {globalSaveStatus && (
-        <div style={{position:"fixed",bottom:isPC?"1rem":"5rem",right:"1rem",zIndex:999,padding:"0.4rem 0.85rem",borderRadius:"999px",fontSize:"0.78rem",fontWeight:700,boxShadow:"0 4px 12px rgba(0,0,0,0.15)",
-          background: globalSaveStatus==="saving"?"#dbeafe": globalSaveStatus==="saved"?"#d1fae5":"#fee2e2",
-          color: globalSaveStatus==="saving"?"#1d4ed8": globalSaveStatus==="saved"?"#065f46":"#991b1b",
-          border: `1.5px solid ${globalSaveStatus==="saving"?"#93c5fd":globalSaveStatus==="saved"?"#6ee7b7":"#fca5a5"}`,
-          transition:"opacity 0.3s",
-        }}>
-          {globalSaveStatus==="saving" && "💾 保存中..."}
-          {globalSaveStatus==="saved" && "✅ 保存しました"}
-          {globalSaveStatus==="error" && "⚠️ 保存に失敗しました"}
         </div>
       )}
       {/* ④ グローバル検索モーダル */}
