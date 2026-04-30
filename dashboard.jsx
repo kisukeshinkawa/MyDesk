@@ -3115,8 +3115,8 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
     whiteSpace: "nowrap"
   };
 
-  // Excel列幅 (合計108.45ユニット → %変換)。K/L/Mを均等にして印鑑枠のバランスを取る
-  const colW = [3.53, 6.60, 7.77, 4.91, 7.77, 7.77, 10.91, 4.76, 10.14, 10.91, 8.30, 8.30, 8.30];
+  // Excel列幅 (合計100ユニット)。K/L/Mを7.5に狭めて印鑑欄を縦長にする（縦横比 1:1.96）
+  const colW = [3.64, 6.81, 8.02, 5.07, 8.02, 8.02, 11.26, 4.91, 10.47, 11.26, 7.5, 7.5, 7.5];
 
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:1000,overflow:"auto",padding:"0.5rem"}}>
@@ -3282,11 +3282,11 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
               </tr>
 
               {/* ── ご担当者行 + TEL+FAX（2行）── 印鑑枠の幅(K-M)内に収める ── */}
+              {/* 「様」を contactName セルに統合して、罫線が A-F のみに揃うようにする */}
               <tr style={{height:"9.5mm"}}>
                 <td colSpan={2} style={{...cellBase,textAlign:"center",borderTop:bThin,borderBottom:bThin,padding:"0 1mm",fontSize:"10.5pt"}}>ご担当者：</td>
-                <td colSpan={4} style={{...cellBase,textAlign:"center",borderTop:bThin,borderBottom:bThin,whiteSpace:"normal"}}>{quote.contactName||""}</td>
-                <td style={{...cellBase,borderTop:bThin,borderBottom:bThin,textAlign:"left",paddingLeft:"1mm"}}>{quote.contactName?"様":""}</td>
-                <td colSpan={3}></td>
+                <td colSpan={4} style={{...cellBase,textAlign:"center",borderTop:bThin,borderBottom:bThin,whiteSpace:"normal"}}>{quote.contactName ? `${quote.contactName}　様` : ""}</td>
+                <td colSpan={4}></td>
                 <td colSpan={3} style={{...cellBase,fontSize:"9pt",textAlign:"right",whiteSpace:"normal",lineHeight:1.5,verticalAlign:"middle",padding:"0 1mm"}}>
                   TEL　{company.tel}<br/>
                   FAX　{company.fax}
@@ -3325,15 +3325,15 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
               </tr>
 
               {/* ── 見積金額行（印鑑枠は前行から延びてくる） ──────────────── */}
+              {/* (税込)を J 列に移動して印鑑枠と直接隣接させ、余分な縦線を解消 */}
               <tr style={{height:"6mm"}}>
                 <td colSpan={3} rowSpan={2} style={{...cellBase,background:GREY,fontSize:"13pt",textAlign:"center",verticalAlign:"middle",letterSpacing:"0.4em",paddingLeft:"calc(2mm + 0.4em)",border:bThin}}>見積金額</td>
-                <td colSpan={5} rowSpan={2} style={{...cellBase,fontSize:"19pt",textAlign:"center",verticalAlign:"middle",border:bThin,fontWeight:400}}>¥{grandTotal.toLocaleString()}-</td>
+                <td colSpan={6} rowSpan={2} style={{...cellBase,fontSize:"19pt",textAlign:"center",verticalAlign:"middle",border:bThin,fontWeight:400}}>¥{grandTotal.toLocaleString()}-</td>
                 <td rowSpan={2} style={{...cellBase,fontSize:"10pt",textAlign:"center",verticalAlign:"middle",border:bThin}}>（税込）</td>
-                <td></td>
                 {/* K-M セルは前のリード文行の rowSpan=4 で埋まる */}
               </tr>
               <tr style={{height:"6mm"}}>
-                <td></td>
+                {/* A-J: rowSpan=2 で埋まる、K-M: rowSpan=4 で埋まる */}
               </tr>
 
               {/* ── スペーサー ──────────────── */}
