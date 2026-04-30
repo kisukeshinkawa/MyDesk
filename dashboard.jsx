@@ -3117,8 +3117,9 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
 
   // Excel列幅 (仕様書: A=3.83, B=7.16, C=既定8.43, D=5.33, E=既定8.43, F=既定8.43,
   //                  G=11.83, H=5.16, I=11.00, J=11.83, K=10.16, L=既定8.43, M=既定8.43)
-  // 合計 108.45 → そのまま % として使う (テーブルの tableLayout:fixed なので比率で計算される)
-  const colW = [3.83, 7.16, 8.43, 5.33, 8.43, 8.43, 11.83, 5.16, 11.00, 11.83, 10.16, 8.43, 8.43];
+  // K/L/Mは仕様書では非対称(K=10.16,L=M=8.43)だが、印鑑欄の見栄えのため3列等幅にする
+  // K+L+M=27.02 を3等分 → 各 9.007
+  const colW = [3.83, 7.16, 8.43, 5.33, 8.43, 8.43, 11.83, 5.16, 11.00, 11.83, 9.007, 9.007, 9.007];
 
   // Excel 行高 (pt 単位、仕様書通り)
   const ROW_H = {
@@ -3131,8 +3132,8 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
     validUntil: "30.75pt",   // row 9 有効期限
     intro: "26.25pt",        // row 10 前置き文
     separator: "7pt",        // row 11 区切り
-    amount1: "12pt",         // row 12 見積金額1
-    amount2: "17.25pt",      // row 13 見積金額2
+    amount1: "16pt",         // row 12 見積金額1（仕様書12pt → PC版で見栄え確保のため拡大）
+    amount2: "20pt",         // row 13 見積金額2（仕様書17.25pt → 同上）
     beforeItems: "15pt",     // row 14 スペーサー
     itemHeader: "22pt",      // row 15 明細ヘッダ
     item: "21pt",            // row 16-30 明細
@@ -3281,7 +3282,7 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 </td>
               </tr>
 
-              {/* ── Row 7: 業務内容 A7:B7 / 記入欄 C7:G7 / 自社名 K7:M7（16pt 均等割付） ── */}
+              {/* ── Row 7: 業務内容 A7:B7 / 記入欄 C7:G7 / 自社名 K7:M7（文字数で動的に最適化） ── */}
               <tr style={{height: ROW_H.workType}}>
                 <td colSpan={2} style={{...cellBase,textAlign:"center",borderTop:bThin,borderBottom:bThin,padding:"0 1mm",fontSize:"11pt"}}>業務内容：</td>
                 <td colSpan={5} style={{...cellBase,textAlign:"left",borderTop:bThin,borderBottom:bThin,whiteSpace:"normal",paddingLeft:"4mm"}}>{quote.workContent||""}</td>
@@ -3289,8 +3290,19 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 <td colSpan={3} style={{...cellBase,padding:"0 1mm",verticalAlign:"middle"}}>
                   {(()=>{
                     const nm = company.name||"";
-                    const fs = [...nm].length <= 10 ? "16pt" : [...nm].length <= 13 ? "14pt" : "12pt";
-                    return <DistributedText text={nm} style={{fontSize:fs,fontFamily:SERIF}}/>;
+                    const len = [...nm].length;
+                    if (!nm) return null;
+                    // 仕様書: K7:M7 で「株式会社　西原商事」(10文字) を 16pt 均等割付
+                    // 10文字以下なら均等割付、それ以上は右揃えで全文表示を優先
+                    if (len <= 10) {
+                      return <DistributedText text={nm} style={{fontSize:"16pt",fontFamily:SERIF}}/>;
+                    } else if (len <= 13) {
+                      return <DistributedText text={nm} style={{fontSize:"13pt",fontFamily:SERIF}}/>;
+                    } else {
+                      // 14文字以上は右揃え + 文字数に応じてフォントサイズ自動調整（必ず全文表示）
+                      const fs = len <= 14 ? "12pt" : len <= 16 ? "10.5pt" : len <= 18 ? "9.5pt" : "8.5pt";
+                      return <div style={{textAlign:"right",fontSize:fs,fontFamily:SERIF,whiteSpace:"nowrap",overflow:"visible"}}>{nm}</div>;
+                    }
                   })()}
                 </td>
               </tr>
@@ -6202,58 +6214,51 @@ const BIZCARD_OCR_URL = "https://2tosyclyqeswer2d7q4p7f4qri0lpfca.lambda-url.ap-
 
 // HEIC/HEIF → JPEG 変換（iPhone のデフォルト撮影形式に対応）
 // ブラウザの Image オブジェクトと AWS Bedrock はどちらも HEIC を扱えないため、
-// HEIC ファイルが入力された場合は heic-to で JPEG に変換してから先に進む。
-// heic-to は新しい libheif を内蔵しており、iOS の最新 HEIF も処理できる。
+// HEIC ファイルが入力された場合は heic-to (新しい libheif) で JPEG に変換してから先に進む。
+// heic-to は ESM only なので 動的 import + esm.sh 経由でロードする。
 async function ensureBrowserCompatibleImage(file) {
   const isHeic = /heic|heif/i.test(file.type || "") || /\.(heic|heif)$/i.test(file.name || "");
   if (!isHeic) return file;
 
   console.log(`[BizCard OCR] HEIC検出 → JPEGに変換します: ${file.name}`);
 
-  // ライブラリを CDN から動的ロードするヘルパー
-  const loadScript = (src, marker) => new Promise((resolve, reject) => {
-    const existing = document.querySelector(`script[${marker}]`);
-    if (existing) {
-      existing.addEventListener("load", resolve);
-      existing.addEventListener("error", () => reject(new Error(`${marker} の読み込みに失敗しました`)));
-      // 既にロード済みかも
-      setTimeout(() => resolve(), 0);
-      return;
-    }
-    const s = document.createElement("script");
-    s.src = src;
-    s.async = true;
-    s.setAttribute(marker, "1");
-    s.onload = resolve;
-    s.onerror = () => reject(new Error(`${src} の読み込みに失敗しました`));
-    document.head.appendChild(s);
-  });
-
-  // 試行1: heic-to (新しい libheif、iOS 17+ HEIF も扱える)
+  // 試行1: heic-to (esm.sh 経由で動的 import、最新の libheif で iOS 17+ HEIF も処理可能)
   try {
-    if (typeof window.heicTo !== "function") {
-      await loadScript("https://cdn.jsdelivr.net/npm/heic-to@1.1.14/dist/heic-to.min.js", "data-heic-to");
-    }
-    // UMD ビルドで window に置かれる名前は環境依存：heicTo / heic-to / heicto.heicTo を全部チェック
-    const heicToFn = (typeof window.heicTo === "function" && window.heicTo)
-      || (window.heicTo && typeof window.heicTo.heicTo === "function" && window.heicTo.heicTo)
-      || (window["heic-to"] && typeof window["heic-to"].heicTo === "function" && window["heic-to"].heicTo)
-      || null;
-    if (heicToFn) {
-      const blob = await heicToFn({ blob: file, type: "image/jpeg", quality: 0.9 });
+    const url = "https://esm.sh/heic-to@1.1.14";
+    // /* @vite-ignore */ は Vite がビルド時に URL を解析しようとしないようにするヒント
+    const mod = await import(/* @vite-ignore */ url);
+    const heicTo = mod.heicTo || (mod.default && mod.default.heicTo) || mod.default;
+    if (typeof heicTo === "function") {
+      const blob = await heicTo({ blob: file, type: "image/jpeg", quality: 0.9 });
       const newName = (file.name || "image").replace(/\.(heic|heif)$/i, ".jpg");
       const result = new File([blob], newName, { type: "image/jpeg" });
       console.log(`[BizCard OCR] heic-to で変換完了: ${(file.size/1024).toFixed(1)}KB → ${(result.size/1024).toFixed(1)}KB`);
       return result;
     }
+    console.warn("[BizCard OCR] heic-to: 関数が見つかりません", Object.keys(mod || {}));
   } catch (e) {
-    console.warn("[BizCard OCR] heic-to 変換失敗、heic2any にフォールバック:", e.message || e);
+    console.warn("[BizCard OCR] heic-to (esm.sh) 失敗:", e?.message || e);
   }
 
-  // 試行2: heic2any (古い libheif、フォールバック)
+  // 試行2: heic2any (古いが、一部 HEIC は処理可能)
   try {
     if (typeof window.heic2any !== "function") {
-      await loadScript("https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js", "data-heic2any");
+      await new Promise((resolve, reject) => {
+        const existing = document.querySelector('script[data-heic2any]');
+        if (existing) {
+          existing.addEventListener("load", resolve);
+          existing.addEventListener("error", () => reject(new Error("heic2any 読み込み失敗")));
+          setTimeout(() => resolve(), 0);
+          return;
+        }
+        const s = document.createElement("script");
+        s.src = "https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js";
+        s.async = true;
+        s.setAttribute("data-heic2any", "1");
+        s.onload = resolve;
+        s.onerror = () => reject(new Error("heic2any 読み込み失敗"));
+        document.head.appendChild(s);
+      });
     }
     if (typeof window.heic2any === "function") {
       const converted = await window.heic2any({ blob: file, toType: "image/jpeg", quality: 0.9 });
@@ -6264,10 +6269,10 @@ async function ensureBrowserCompatibleImage(file) {
       return result;
     }
   } catch (e) {
-    console.error("[BizCard OCR] heic2any 変換も失敗:", e);
+    console.error("[BizCard OCR] heic2any 変換失敗:", e?.message || e);
   }
 
-  // どちらのライブラリでも変換失敗 → ユーザーに対応方法を案内
+  // どちらも失敗した場合の対処方法をユーザーに案内
   throw new Error("HEIC変換に失敗しました。iPhoneの「設定 → カメラ → フォーマット → 互換性優先」を選択してから、もう一度撮影してください（JPEGで保存されるようになります）。");
 }
 
