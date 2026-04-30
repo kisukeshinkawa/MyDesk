@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-04-30-v6-loading-spinners"; // ビルド識別子
+const MYDESK_BUILD = "2026-04-30-v7-mobile-redesign"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -2522,6 +2522,13 @@ function QuoteEditor({quote, users=[], currentUser, onUpdate, onDelete, onClose,
   const [showPreview, setShowPreview] = React.useState(false);
   const [showHistory, setShowHistory] = React.useState(false);
   const [saveLabel, setSaveLabel] = React.useState("");
+  // モバイル判定（自動レスポンシブ）
+  const [isMobile, setIsMobile] = React.useState(typeof window !== "undefined" ? window.innerWidth < 720 : false);
+  React.useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 720);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
   const author = users.find(u => u.id === quote.createdBy) || currentUser;
   const authorLastName = (author?.name || "").split(/\s+/)[0] || "";
   const company = COMPANY_INFO.find(c => c.id === quote.companyInfoId) || COMPANY_INFO[0];
@@ -2650,7 +2657,7 @@ function QuoteEditor({quote, users=[], currentUser, onUpdate, onDelete, onClose,
       {/* 基本情報 */}
       <div style={sectionStyle}>
         <div style={sectionTitleStyle}>📋 基本情報</div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.85rem"}}>
+        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:isMobile?"0.6rem":"0.85rem"}}>
           <div>
             <label style={labelStyle}>発行日</label>
             <input type="date" value={quote.issuedDate} onChange={e => onUpdate({issuedDate: e.target.value})} style={inputStyle}/>
@@ -2667,7 +2674,7 @@ function QuoteEditor({quote, users=[], currentUser, onUpdate, onDelete, onClose,
       {/* 宛先情報 */}
       <div style={sectionStyle}>
         <div style={sectionTitleStyle}>👤 宛先情報</div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.85rem",marginBottom:"0.75rem"}}>
+        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:isMobile?"0.6rem":"0.85rem",marginBottom:isMobile?"0.6rem":"0.75rem"}}>
           <div>
             <label style={labelStyle}>宛先（御中で表示） <span style={{color:"#dc2626"}}>*</span></label>
             <input value={quote.to||""} onChange={e => onUpdate({to: e.target.value})} placeholder="例: 株式会社○○" style={inputStyle}/>
@@ -2677,7 +2684,7 @@ function QuoteEditor({quote, users=[], currentUser, onUpdate, onDelete, onClose,
             <input value={quote.site||""} onChange={e => onUpdate({site: e.target.value})} placeholder="例: ○○本社" style={inputStyle}/>
           </div>
         </div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.85rem"}}>
+        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:isMobile?"0.6rem":"0.85rem"}}>
           <div>
             <label style={labelStyle}>業務内容</label>
             <input value={quote.workContent||""} onChange={e => onUpdate({workContent: e.target.value})} placeholder="例: 廃棄物収集運搬" style={inputStyle}/>
@@ -2692,7 +2699,7 @@ function QuoteEditor({quote, users=[], currentUser, onUpdate, onDelete, onClose,
       {/* 有効期限 */}
       <div style={sectionStyle}>
         <div style={sectionTitleStyle}>⏱ 有効期限</div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 160px",gap:"0.85rem"}}>
+        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr 100px":"1fr 160px",gap:isMobile?"0.5rem":"0.85rem"}}>
           <div>
             <label style={labelStyle}>有効期限</label>
             <input value={quote.validUntil||""} onChange={e => onUpdate({validUntil: e.target.value})} placeholder="例: 御見積り後30日" style={inputStyle}/>
@@ -2718,30 +2725,26 @@ function QuoteEditor({quote, users=[], currentUser, onUpdate, onDelete, onClose,
             {pastItems.map((p,i) => <option key={i} value={p.description}>{p.unit?`${p.unit} ・ `:""}¥{Number(p.price||0).toLocaleString()}{p.count>1?` (${p.count}回使用)`:""}</option>)}
           </datalist>
         )}
-        <div style={{overflowX:"auto"}}>
-          <table style={{width:"100%",borderCollapse:"collapse",fontSize:"0.82rem"}}>
-            <thead>
-              <tr style={{background:"#f9fafb",borderBottom:"1px solid #e5e7eb"}}>
-                <th style={{padding:"0.45rem",textAlign:"left",fontWeight:700,fontSize:"0.7rem",color:"#6b7280",width:30}}>#</th>
-                <th style={{padding:"0.45rem",textAlign:"left",fontWeight:700,fontSize:"0.7rem",color:"#6b7280"}}>内容</th>
-                <th style={{padding:"0.45rem",textAlign:"right",fontWeight:700,fontSize:"0.7rem",color:"#6b7280",width:70}}>数量</th>
-                <th style={{padding:"0.45rem",textAlign:"left",fontWeight:700,fontSize:"0.7rem",color:"#6b7280",width:65}}>単位</th>
-                <th style={{padding:"0.45rem",textAlign:"right",fontWeight:700,fontSize:"0.7rem",color:"#6b7280",width:100}}>単価</th>
-                <th style={{padding:"0.45rem",textAlign:"right",fontWeight:700,fontSize:"0.7rem",color:"#6b7280",width:110}}>金額</th>
-                <th style={{padding:"0.45rem",width:30}}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {(quote.items||[]).map((it, idx) => {
-                const amount = (Number(it.qty)||0)*(Number(it.price)||0);
-                return (
-                  <tr key={idx} style={{borderBottom:"1px solid #f3f4f6"}}>
-                    <td style={{padding:"0.4rem",color:"#9ca3af",fontSize:"0.75rem"}}>{idx+1}</td>
-                    <td style={{padding:"0.3rem"}}><input value={it.description||""} 
+        {isMobile ? (
+          /* ── モバイル用：カードレイアウト ─────────────────── */
+          <div style={{display:"flex",flexDirection:"column",gap:"0.6rem"}}>
+            {(quote.items||[]).length === 0 && (
+              <div style={{padding:"1.25rem",textAlign:"center",color:"#9ca3af",fontSize:"0.8rem",background:"#f9fafb",borderRadius:"0.5rem",border:"1px dashed #e5e7eb"}}>「＋ 行を追加」から明細を追加してください</div>
+            )}
+            {(quote.items||[]).map((it, idx) => {
+              const amount = (Number(it.qty)||0)*(Number(it.price)||0);
+              return (
+                <div key={idx} style={{background:"white",border:"1px solid #e5e7eb",borderRadius:"0.6rem",padding:"0.75rem",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.5rem"}}>
+                    <span style={{fontSize:"0.7rem",fontWeight:800,color:"#9ca3af"}}>明細 #{idx+1}</span>
+                    <button onClick={() => removeItem(idx)} style={{background:"#fef2f2",border:"1px solid #fca5a5",borderRadius:"0.35rem",cursor:"pointer",color:"#dc2626",fontSize:"0.72rem",padding:"0.25rem 0.5rem",fontWeight:700,fontFamily:"inherit"}}>🗑 削除</button>
+                  </div>
+                  <div style={{marginBottom:"0.5rem"}}>
+                    <label style={{...labelStyle,fontSize:"0.7rem"}}>内容</label>
+                    <input value={it.description||""}
                       list={pastItems.length>0 ? `quote-desc-suggestions` : undefined}
                       onChange={e => {
                         const v = e.target.value;
-                        // 過去の項目から完全一致したら、単位・単価も自動補完
                         const matched = pastItems.find(p => p.description === v);
                         if (matched) {
                           const newItems = [...(quote.items||[])];
@@ -2756,22 +2759,90 @@ function QuoteEditor({quote, users=[], currentUser, onUpdate, onDelete, onClose,
                           updateItem(idx,"description",v);
                         }
                       }}
-                      placeholder={pastItems.length>0?"品目（過去明細から候補）":"品目・サービス内容"} 
-                      style={{...inputStyle,padding:"0.3rem 0.45rem",fontSize:"0.82rem"}}/></td>
-                    <td style={{padding:"0.3rem"}}><input type="number" value={it.qty||""} onChange={e => updateItem(idx,"qty",e.target.value)} style={{...inputStyle,padding:"0.3rem 0.4rem",fontSize:"0.82rem",textAlign:"right"}}/></td>
-                    <td style={{padding:"0.3rem"}}><input value={it.unit||""} onChange={e => updateItem(idx,"unit",e.target.value)} placeholder="個" style={{...inputStyle,padding:"0.3rem 0.4rem",fontSize:"0.82rem"}}/></td>
-                    <td style={{padding:"0.3rem"}}><input type="number" value={it.price||""} onChange={e => updateItem(idx,"price",e.target.value)} style={{...inputStyle,padding:"0.3rem 0.4rem",fontSize:"0.82rem",textAlign:"right"}}/></td>
-                    <td style={{padding:"0.4rem",textAlign:"right",fontWeight:700,color:"#374151"}}>¥{amount.toLocaleString()}</td>
-                    <td style={{padding:"0.3rem",textAlign:"center"}}><button onClick={() => removeItem(idx)} style={{background:"none",border:"none",cursor:"pointer",color:"#dc2626",fontSize:"0.85rem",padding:"0.2rem"}}>🗑</button></td>
-                  </tr>
-                );
-              })}
-              {(quote.items||[]).length === 0 && (
-                <tr><td colSpan="7" style={{padding:"1.25rem",textAlign:"center",color:"#9ca3af",fontSize:"0.8rem"}}>「＋ 行を追加」から明細を追加してください</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+                      placeholder={pastItems.length>0?"品目（過去明細から候補）":"品目・サービス内容"}
+                      style={{...inputStyle,fontSize:"0.88rem",padding:"0.55rem 0.7rem"}}/>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"0.4rem",marginBottom:"0.4rem"}}>
+                    <div>
+                      <label style={{...labelStyle,fontSize:"0.68rem"}}>数量</label>
+                      <input type="number" inputMode="decimal" value={it.qty||""} onChange={e => updateItem(idx,"qty",e.target.value)}
+                        style={{...inputStyle,fontSize:"0.88rem",padding:"0.5rem 0.6rem",textAlign:"right"}}/>
+                    </div>
+                    <div>
+                      <label style={{...labelStyle,fontSize:"0.68rem"}}>単位</label>
+                      <input value={it.unit||""} onChange={e => updateItem(idx,"unit",e.target.value)} placeholder="個"
+                        style={{...inputStyle,fontSize:"0.88rem",padding:"0.5rem 0.6rem"}}/>
+                    </div>
+                    <div>
+                      <label style={{...labelStyle,fontSize:"0.68rem"}}>単価</label>
+                      <input type="number" inputMode="decimal" value={it.price||""} onChange={e => updateItem(idx,"price",e.target.value)}
+                        style={{...inputStyle,fontSize:"0.88rem",padding:"0.5rem 0.6rem",textAlign:"right"}}/>
+                    </div>
+                  </div>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",borderTop:"1px solid #f3f4f6",paddingTop:"0.5rem",marginTop:"0.3rem"}}>
+                    <span style={{fontSize:"0.72rem",color:"#9ca3af",fontWeight:700}}>金額</span>
+                    <span style={{fontSize:"1rem",fontWeight:800,color:"#0f172a"}}>¥{amount.toLocaleString()}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          /* ── PC用：従来のテーブルレイアウト ─────────────────── */
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:"0.82rem"}}>
+              <thead>
+                <tr style={{background:"#f9fafb",borderBottom:"1px solid #e5e7eb"}}>
+                  <th style={{padding:"0.45rem",textAlign:"left",fontWeight:700,fontSize:"0.7rem",color:"#6b7280",width:30}}>#</th>
+                  <th style={{padding:"0.45rem",textAlign:"left",fontWeight:700,fontSize:"0.7rem",color:"#6b7280"}}>内容</th>
+                  <th style={{padding:"0.45rem",textAlign:"right",fontWeight:700,fontSize:"0.7rem",color:"#6b7280",width:70}}>数量</th>
+                  <th style={{padding:"0.45rem",textAlign:"left",fontWeight:700,fontSize:"0.7rem",color:"#6b7280",width:65}}>単位</th>
+                  <th style={{padding:"0.45rem",textAlign:"right",fontWeight:700,fontSize:"0.7rem",color:"#6b7280",width:100}}>単価</th>
+                  <th style={{padding:"0.45rem",textAlign:"right",fontWeight:700,fontSize:"0.7rem",color:"#6b7280",width:110}}>金額</th>
+                  <th style={{padding:"0.45rem",width:30}}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {(quote.items||[]).map((it, idx) => {
+                  const amount = (Number(it.qty)||0)*(Number(it.price)||0);
+                  return (
+                    <tr key={idx} style={{borderBottom:"1px solid #f3f4f6"}}>
+                      <td style={{padding:"0.4rem",color:"#9ca3af",fontSize:"0.75rem"}}>{idx+1}</td>
+                      <td style={{padding:"0.3rem"}}><input value={it.description||""}
+                        list={pastItems.length>0 ? `quote-desc-suggestions` : undefined}
+                        onChange={e => {
+                          const v = e.target.value;
+                          const matched = pastItems.find(p => p.description === v);
+                          if (matched) {
+                            const newItems = [...(quote.items||[])];
+                            newItems[idx] = {
+                              ...newItems[idx],
+                              description: v,
+                              unit: newItems[idx]?.unit || matched.unit || "",
+                              price: (Number(newItems[idx]?.price)>0) ? newItems[idx].price : (matched.price || 0),
+                            };
+                            onUpdate({items: newItems});
+                          } else {
+                            updateItem(idx,"description",v);
+                          }
+                        }}
+                        placeholder={pastItems.length>0?"品目（過去明細から候補）":"品目・サービス内容"}
+                        style={{...inputStyle,padding:"0.3rem 0.45rem",fontSize:"0.82rem"}}/></td>
+                      <td style={{padding:"0.3rem"}}><input type="number" value={it.qty||""} onChange={e => updateItem(idx,"qty",e.target.value)} style={{...inputStyle,padding:"0.3rem 0.4rem",fontSize:"0.82rem",textAlign:"right"}}/></td>
+                      <td style={{padding:"0.3rem"}}><input value={it.unit||""} onChange={e => updateItem(idx,"unit",e.target.value)} placeholder="個" style={{...inputStyle,padding:"0.3rem 0.4rem",fontSize:"0.82rem"}}/></td>
+                      <td style={{padding:"0.3rem"}}><input type="number" value={it.price||""} onChange={e => updateItem(idx,"price",e.target.value)} style={{...inputStyle,padding:"0.3rem 0.4rem",fontSize:"0.82rem",textAlign:"right"}}/></td>
+                      <td style={{padding:"0.4rem",textAlign:"right",fontWeight:700,color:"#374151"}}>¥{amount.toLocaleString()}</td>
+                      <td style={{padding:"0.3rem",textAlign:"center"}}><button onClick={() => removeItem(idx)} style={{background:"none",border:"none",cursor:"pointer",color:"#dc2626",fontSize:"0.85rem",padding:"0.2rem"}}>🗑</button></td>
+                    </tr>
+                  );
+                })}
+                {(quote.items||[]).length === 0 && (
+                  <tr><td colSpan="7" style={{padding:"1.25rem",textAlign:"center",color:"#9ca3af",fontSize:"0.8rem"}}>「＋ 行を追加」から明細を追加してください</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
       
       {/* 計算サマリ */}
@@ -3229,10 +3300,10 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 <td style={{...cellBase,borderTop:bThin,borderBottom:bThin,textAlign:"center"}}>{quote.months||""}</td>
                 <td colSpan={2} style={{...cellBase,borderTop:bThin,borderBottom:bThin}}>ケ月</td>
                 <td colSpan={3}></td>
-                {/* 承認/検印/担当者 グレーヘッダー */}
-                <td style={{...cellBase,background:GREY,textAlign:"center",border:bThin,fontSize:"10pt"}}>承認</td>
-                <td style={{...cellBase,background:GREY,textAlign:"center",border:bThin,fontSize:"10pt"}}>検印</td>
-                <td style={{...cellBase,background:GREY,textAlign:"center",border:bThin,fontSize:"10pt"}}>担当者</td>
+                {/* 承認/検印/担当者 グレーヘッダー（下線なし=印鑑枠と一体化） */}
+                <td style={{...cellBase,background:GREY,textAlign:"center",borderTop:bThin,borderLeft:bThin,borderRight:bThin,fontSize:"10pt"}}>承認</td>
+                <td style={{...cellBase,background:GREY,textAlign:"center",borderTop:bThin,borderRight:bThin,fontSize:"10pt"}}>検印</td>
+                <td style={{...cellBase,background:GREY,textAlign:"center",borderTop:bThin,borderRight:bThin,fontSize:"10pt"}}>担当者</td>
               </tr>
 
               {/* ── リード文 + 承認等の枠（正方形 ~16mm×16mm） ──────────────── */}
@@ -3242,9 +3313,9 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                   ご検討のほど、お願い申し上げます。
                 </td>
                 <td colSpan={4} rowSpan={2}></td>
-                <td rowSpan={2} style={{...cellBase,border:bThin,textAlign:"center",verticalAlign:"middle",padding:0}}></td>
-                <td rowSpan={2} style={{...cellBase,border:bThin,textAlign:"center",verticalAlign:"middle",padding:0}}></td>
-                <td rowSpan={2} style={{...cellBase,border:bThin,textAlign:"center",verticalAlign:"middle",padding:0}}>
+                <td rowSpan={2} style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bThin,textAlign:"center",verticalAlign:"middle",padding:0}}></td>
+                <td rowSpan={2} style={{...cellBase,borderRight:bThin,borderBottom:bThin,textAlign:"center",verticalAlign:"middle",padding:0}}></td>
+                <td rowSpan={2} style={{...cellBase,borderRight:bThin,borderBottom:bThin,textAlign:"center",verticalAlign:"middle",padding:0}}>
                   <HankoStamp name={authorLastName}/>
                 </td>
               </tr>
@@ -6194,7 +6265,12 @@ const BizCardScanner = React.memo(function BizCardScannerInner({ onResult, curre
       }
     } catch(e) {
       console.error("[BizCard OCR] 診断失敗:", e);
-      setDiagInfo(`❌ ネットワーク接続失敗\n${e.message}\n→ Lambda Function URL が正しいか、CORS設定が "AllowOrigins":["*"] になっているか確認してください。`);
+      const msg = e.message || String(e);
+      if (msg.includes("Load failed") || msg.includes("Failed to fetch")) {
+        setDiagInfo(`❌ Lambda に接続できません\n${msg}\n\n考えられる原因:\n1. Function URL の CORS 重複（Lambda コードと両方で設定されている）\n2. Lambda の初回コールドスタート（30秒後再試行）\n3. Function URL が無効化されている\n\n→ Lambda マネジメントコンソールで CORS 設定を確認してください`);
+      } else {
+        setDiagInfo(`❌ ネットワーク接続失敗\n${msg}`);
+      }
     }
   };
 
@@ -6233,11 +6309,17 @@ const BizCardScanner = React.memo(function BizCardScannerInner({ onResult, curre
       if (e.name === "AbortError") {
         throw new Error("タイムアウト（60秒）— 画像が大きすぎるか、サーバーが応答していません");
       }
+      const msg = e.message || "";
+      const isNetErr = msg.includes("Failed to fetch") || msg.includes("Network") || msg.includes("Load failed") || msg.includes("NetworkError");
       // ネットワークエラーは1回だけリトライ
-      if (attempt < 2 && (e.message.includes("Failed to fetch") || e.message.includes("Network"))) {
-        console.log("[BizCard OCR] ネットワークエラー、2秒後にリトライします");
+      if (attempt < 2 && isNetErr) {
+        console.log("[BizCard OCR] ネットワークエラー、2秒後にリトライします:", msg);
         await new Promise(r => setTimeout(r, 2000));
         return performOcr(compressed, attempt + 1);
+      }
+      // Safari の "Load failed" は CORS or Lambda コールドスタートの可能性が高い
+      if (msg.includes("Load failed")) {
+        throw new Error("通信エラー（Load failed）— Lambda の CORS 設定または初回起動の可能性があります。🔧 ボタンで接続テストしてください");
       }
       throw e;
     }
@@ -11326,8 +11408,8 @@ ${orig}`})
               </div>
               <VirtualList
                 items={compFilteredBase}
-                itemHeight={76}
-                maxHeight={Math.min(compFilteredBase.length*76+8, 600)}
+                itemHeight={88}
+                maxHeight={Math.min(compFilteredBase.length*88+8, 600)}
                 getKey={c=>c.id}
                 renderItem={(c)=>{
                   const lastMemo=(c.memos||[]).slice(-1)[0];
@@ -11359,20 +11441,20 @@ ${orig}`})
             {searchedComps&&searchedComps.length>0?(
               <VirtualList
                 items={searchedComps}
-                itemHeight={94}
-                maxHeight={Math.min(searchedComps.length*94+8, 600)}
+                itemHeight={108}
+                maxHeight={Math.min(searchedComps.length*108+8, 600)}
                 getKey={c=>c.id}
                 renderItem={(c)=>{
                   const lastMemo=(c.memos||[]).slice(-1)[0];
                   return (
                     <div onClick={()=>{setSalesTab("company");saveSalesScroll("company");setActiveCompany(c.id);setActiveDetail("timeline");}}
-                      style={{background:"white",border:`1.5px solid ${C.border}`,borderRadius:"8px",padding:"0.875rem 1rem",cursor:"pointer",boxShadow:"0 1px 2px rgba(0,0,0,0.04)",margin:"0 0 0.5rem 0",height:"calc(100% - 0.5rem)",boxSizing:"border-box",overflow:"hidden"}}>
-                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"0.3rem"}}>
-                        <span style={{fontWeight:700,fontSize:"0.93rem",color:C.text,flex:1}}>{c.name}</span>
+                      style={{background:"white",border:`1.5px solid ${C.border}`,borderRadius:"8px",padding:"0.75rem 0.875rem",cursor:"pointer",boxShadow:"0 1px 2px rgba(0,0,0,0.04)",margin:"0 0 0.5rem 0",height:"calc(100% - 0.5rem)",boxSizing:"border-box",overflow:"hidden",display:"flex",flexDirection:"column",gap:"0.3rem"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:"0.4rem"}}>
+                        <span style={{fontWeight:700,fontSize:"0.92rem",color:C.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</span>
                         <SChip s={c.status} map={COMPANY_STATUS}/>
                       </div>
                       <AssigneeRow ids={c.assigneeIds}/>
-                      {lastMemo&&<div style={{fontSize:"0.72rem",color:C.textMuted,marginTop:"0.2rem",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📝 {lastMemo.text}</div>}
+                      {lastMemo&&<div style={{fontSize:"0.72rem",color:C.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📝 {lastMemo.text}</div>}
                     </div>
                   );
                 }}
@@ -11408,8 +11490,8 @@ ${orig}`})
               ):(
                 <VirtualList
                   items={items}
-                  itemHeight={76}
-                  maxHeight={Math.min(items.length*76, Math.max(420, (typeof window!=='undefined'?window.innerHeight:700)*0.75))}
+                  itemHeight={84}
+                  maxHeight={Math.min(items.length*84, Math.max(420, (typeof window!=='undefined'?window.innerHeight:700)*0.75))}
                   getKey={c=>c.id}
                   renderItem={(c,i)=>{
                     const sortedLogs = [...(c.approachLogs||[])].sort((a,b)=>
@@ -12094,8 +12176,8 @@ ${orig}`})
               </div>
               <VirtualList
                 items={filteredVendors}
-                itemHeight={80}
-                maxHeight={Math.min(filteredVendors.length*80+8, 600)}
+                itemHeight={92}
+                maxHeight={Math.min(filteredVendors.length*92+8, 600)}
                 getKey={v=>v.id}
                 renderItem={(v)=>{
                   const vmunis2=vendorMunis(v);
@@ -12131,20 +12213,20 @@ ${orig}`})
             {searchedVendors&&searchedVendors.length>0?(
               <VirtualList
                 items={searchedVendors}
-                itemHeight={94}
-                maxHeight={Math.min(searchedVendors.length*94+8, 600)}
+                itemHeight={108}
+                maxHeight={Math.min(searchedVendors.length*108+8, 600)}
                 getKey={v=>v.id}
                 renderItem={(v)=>{
                   const vmunis2=vendorMunis(v);
                   const lastMemo=(v.memos||[]).slice(-1)[0];
                   return (
                     <div onClick={()=>{saveSalesScroll("vendor");setActiveVendor(v.id);setActiveDetail("timeline");}}
-                      style={{background:"white",border:`1.5px solid ${C.border}`,borderRadius:"8px",padding:"0.875rem 1rem",cursor:"pointer",boxShadow:"0 1px 2px rgba(0,0,0,0.04)",margin:"0 0 0.5rem 0",height:"calc(100% - 0.5rem)",boxSizing:"border-box",overflow:"hidden"}}>
-                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"0.3rem"}}>
-                        <span style={{fontWeight:700,fontSize:"0.93rem",color:C.text,flex:1}}>{v.name}</span>
+                      style={{background:"white",border:`1.5px solid ${C.border}`,borderRadius:"8px",padding:"0.75rem 0.875rem",cursor:"pointer",boxShadow:"0 1px 2px rgba(0,0,0,0.04)",margin:"0 0 0.5rem 0",height:"calc(100% - 0.5rem)",boxSizing:"border-box",overflow:"hidden",display:"flex",flexDirection:"column",gap:"0.3rem"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:"0.4rem"}}>
+                        <span style={{fontWeight:700,fontSize:"0.92rem",color:C.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{v.name}</span>
                         <SChip s={v.status} map={VENDOR_STATUS}/>
                       </div>
-                      {vmunis2.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:"0.2rem",marginBottom:"0.2rem"}}>{vmunis2.slice(0,3).map(m=><span key={m.id} style={{fontSize:"0.62rem",background:C.accentBg,color:C.accentDark,padding:"0.05rem 0.35rem",borderRadius:999}}>{m.name}</span>)}{vmunis2.length>3&&<span style={{fontSize:"0.62rem",color:C.textMuted}}>+{vmunis2.length-3}</span>}</div>}
+                      {vmunis2.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:"0.2rem"}}>{vmunis2.slice(0,3).map(m=><span key={m.id} style={{fontSize:"0.62rem",background:C.accentBg,color:C.accentDark,padding:"0.05rem 0.35rem",borderRadius:999}}>{m.name}</span>)}{vmunis2.length>3&&<span style={{fontSize:"0.62rem",color:C.textMuted}}>+{vmunis2.length-3}</span>}</div>}
                       {lastMemo&&<div style={{fontSize:"0.7rem",color:C.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📝 {lastMemo.text}</div>}
                     </div>
                   );
@@ -12181,8 +12263,8 @@ ${orig}`})
               ):(
                 <VirtualList
                   items={items}
-                  itemHeight={76}
-                  maxHeight={Math.min(items.length*76, Math.max(420, (typeof window!=='undefined'?window.innerHeight:700)*0.75))}
+                  itemHeight={84}
+                  maxHeight={Math.min(items.length*84, Math.max(420, (typeof window!=='undefined'?window.innerHeight:700)*0.75))}
                   getKey={v=>v.id}
                   renderItem={(v,i)=>{
                           const vmunis2=vendorMunis(v);
