@@ -3120,6 +3120,29 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
   // 合計 108.45 → そのまま % として使う (テーブルの tableLayout:fixed なので比率で計算される)
   const colW = [3.83, 7.16, 8.43, 5.33, 8.43, 8.43, 11.83, 5.16, 11.00, 11.83, 10.16, 8.43, 8.43];
 
+  // Excel 行高 (pt 単位、仕様書通り)
+  const ROW_H = {
+    title: "54.75pt",        // rows 1-3 タイトル (15+15.75+24)
+    date: "15pt",            // row 4 発行日
+    to: "36.75pt",           // row 5 宛先
+    site: "30.75pt",         // row 6 事業所名
+    workType: "25.5pt",      // row 7 業務内容
+    contact: "30.75pt",      // row 8 ご担当者
+    validUntil: "30.75pt",   // row 9 有効期限
+    intro: "26.25pt",        // row 10 前置き文
+    separator: "7pt",        // row 11 区切り
+    amount1: "12pt",         // row 12 見積金額1
+    amount2: "17.25pt",      // row 13 見積金額2
+    beforeItems: "15pt",     // row 14 スペーサー
+    itemHeader: "22pt",      // row 15 明細ヘッダ
+    item: "21pt",            // row 16-30 明細
+    totalRow: "21pt",        // row 31-35 集計
+    grandTotal: "30pt",      // row 36 合計
+    spacer: "15pt",          // row 37 スペーサー
+    remarksLabel: "18.75pt", // row 38 備考見出し
+    remarksContent: "87.75pt", // row 39 備考記入欄
+  };
+
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:1000,overflow:"auto",padding:"0.5rem"}}>
       <div style={{maxWidth:"calc(210mm + 2rem)",margin:"0 auto"}}>
@@ -3172,7 +3195,8 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
           @media print {
             body * { visibility: hidden; }
             .quote-print, .quote-print * { visibility: visible; }
-            .quote-print { position: absolute; left: 0; top: 0; width: 210mm; box-shadow: none !important; padding: 8mm 8mm !important; transform: none !important; }
+            /* A4 297mm に確実に収める：行高合計 ~870pt = ~307mm を 0.94 倍で ~289mm に縮小 */
+            .quote-print { position: absolute; left: 0; top: 0; width: 210mm; box-shadow: none !important; padding: 5mm !important; transform: scale(0.94) !important; transform-origin: top left !important; }
             .quote-scale-outer { width: auto !important; height: auto !important; overflow: visible !important; position: static !important; }
             .quote-scale-inner { transform: none !important; position: static !important; width: auto !important; }
             .no-print { display: none !important; }
@@ -3200,7 +3224,7 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
         <div className="quote-print" style={{
           width:"210mm",
           minHeight:"297mm",
-          padding:"8mm 10mm",
+          padding:"5mm",
           fontFamily: SERIF,
           color:"#000",
           boxSizing:"border-box",
@@ -3209,113 +3233,99 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
           boxShadow:"0 4px 16px rgba(0,0,0,0.15)"
         }}>
 
-          {/* タイトル「御見積書」 */}
-          <div style={{textAlign:"center",fontSize:"22pt",fontWeight:400,letterSpacing:"0.7em",paddingLeft:"0.7em",marginBottom:"4mm",marginTop:"1mm",fontFamily:SERIF}}>
-            御見積書
-          </div>
-
-          {/* 日付（右寄せ） */}
-          <div style={{textAlign:"right",fontSize:"10.5pt",marginBottom:"2mm",fontFamily:SERIF}}>
-            {fmt(quote.issuedDate)}
-          </div>
-
-          {/* メインテーブル（13列構成・Excel準拠） */}
+          {/* メインテーブル（13列構成・Excel ひな形完全準拠 / 行高は仕様書のpt値そのまま） */}
           <table style={{width:"100%",borderCollapse:"collapse",tableLayout:"fixed",fontFamily:SERIF}}>
             <colgroup>
               {colW.map((w,i)=> <col key={i} style={{width: w+"%"}}/>)}
             </colgroup>
             <tbody>
-              
-              {/* ── 御中行（A5:F5 + G5、下に二重線）右側は空 ──────────────── */}
-              <tr style={{height:"9mm"}}>
+
+              {/* ── Row 1-3: タイトル A1:M3 結合（24pt 中央揃え） ── */}
+              <tr style={{height: ROW_H.title}}>
+                <td colSpan={13} style={{...cellBase,fontSize:"24pt",textAlign:"center",verticalAlign:"middle",letterSpacing:"0.7em",paddingLeft:"0.7em"}}>御見積書</td>
+              </tr>
+
+              {/* ── Row 4: 発行日 L4:M4（12pt 右揃え） ── */}
+              <tr style={{height: ROW_H.date}}>
+                <td colSpan={11}></td>
+                <td colSpan={2} style={{...cellBase,fontSize:"12pt",textAlign:"right",verticalAlign:"middle"}}>{fmt(quote.issuedDate)}</td>
+              </tr>
+
+              {/* ── Row 5: 宛先 A5:F5 結合 + G5「御中」（下に二重線） ── */}
+              <tr style={{height: ROW_H.to}}>
                 <td colSpan={6} style={{...cellBase,fontSize:"12pt",textAlign:"center",borderBottom:bDouble,verticalAlign:"bottom",paddingBottom:"1mm"}}>
                   {quote.to||""}
                 </td>
-                <td style={{...cellBase,fontSize:"11pt",textAlign:"center",borderBottom:bDouble,verticalAlign:"bottom",paddingBottom:"1mm"}}>
+                <td style={{...cellBase,fontSize:"12pt",textAlign:"center",borderBottom:bDouble,verticalAlign:"bottom",paddingBottom:"1mm"}}>
                   御中
                 </td>
                 <td colSpan={6}></td>
               </tr>
 
-              {/* ── 事業所名行 + 〒+住所（2行）── 印鑑枠の幅(K-M)内に収める ── */}
-              <tr style={{height:"9.5mm"}}>
-                <td colSpan={2} style={{...cellBase,textAlign:"center",borderTop:bDouble,borderBottom:bThin,padding:"0 1mm",fontSize:"10.5pt"}}>事業所名：</td>
-                <td colSpan={5} style={{...cellBase,textAlign:"center",borderTop:bDouble,borderBottom:bThin,whiteSpace:"normal"}}>{quote.site||""}</td>
+              {/* ── Row 6: 事業所名 A6:B6 / 記入欄 C6:G6 / 自社住所 K6:M6 ── */}
+              <tr style={{height: ROW_H.site}}>
+                <td colSpan={2} style={{...cellBase,textAlign:"center",borderTop:bDouble,borderBottom:bThin,padding:"0 1mm",fontSize:"11pt"}}>事業所名：</td>
+                <td colSpan={5} style={{...cellBase,textAlign:"left",borderTop:bDouble,borderBottom:bThin,whiteSpace:"normal",paddingLeft:"4mm"}}>{quote.site||""}</td>
                 <td colSpan={3}></td>
                 <td colSpan={3} style={{...cellBase,verticalAlign:"middle",whiteSpace:"normal",lineHeight:1.4,padding:"0 1mm"}}>
                   {(()=>{
                     const zip = company.zip||"";
                     const addr = company.address||"";
                     const addrLen = [...addr].length;
-                    // 住所長さに応じてフォントサイズ自動調整 (K-M=45mm内)
-                    const addrFs = addrLen <= 18 ? "9.5pt" : addrLen <= 20 ? "9pt" : addrLen <= 22 ? "8.5pt" : "8pt";
+                    const addrFs = addrLen <= 18 ? "10pt" : addrLen <= 20 ? "9.5pt" : addrLen <= 22 ? "9pt" : "8.5pt";
                     return <>
-                      <div style={{fontSize:"9.5pt"}}>{zip}</div>
+                      <div style={{fontSize:"10pt"}}>{zip}</div>
                       <div style={{fontSize:addrFs,whiteSpace:"nowrap"}}>{addr}</div>
                     </>;
                   })()}
                 </td>
               </tr>
 
-              {/* ── 業務内容行 + 会社名 ── 必ず1行で表示（小さくなってOK）── */}
-              <tr style={{height:"9mm"}}>
-                <td colSpan={2} style={{...cellBase,textAlign:"center",borderTop:bThin,padding:"0 1mm",fontSize:"10.5pt"}}>業務内容：</td>
-                <td colSpan={5} style={{...cellBase,textAlign:"center",borderTop:bThin,whiteSpace:"normal"}}>{quote.workContent||""}</td>
+              {/* ── Row 7: 業務内容 A7:B7 / 記入欄 C7:G7 / 自社名 K7:M7（16pt 均等割付） ── */}
+              <tr style={{height: ROW_H.workType}}>
+                <td colSpan={2} style={{...cellBase,textAlign:"center",borderTop:bThin,borderBottom:bThin,padding:"0 1mm",fontSize:"11pt"}}>業務内容：</td>
+                <td colSpan={5} style={{...cellBase,textAlign:"left",borderTop:bThin,borderBottom:bThin,whiteSpace:"normal",paddingLeft:"4mm"}}>{quote.workContent||""}</td>
                 <td colSpan={3}></td>
-                <td colSpan={3} style={{...cellBase,padding:0,overflow:"hidden",whiteSpace:"nowrap",verticalAlign:"middle"}}>
+                <td colSpan={3} style={{...cellBase,padding:"0 1mm",verticalAlign:"middle"}}>
                   {(()=>{
                     const nm = company.name||"";
-                    const len = [...nm].length;
-                    if(!nm) return null;
-                    // K-M列幅(47mm)を最大限活用、padding=0、中央揃え
-                    // 文字数で自動サイズ調整 + letter-spacing微調整で大きく見せる
-                    let fs, ls;
-                    if(len <= 8)       { fs = "14pt"; ls = "0";       }  // 「株式会社西原商事」
-                    else if(len <= 10) { fs = "12.5pt"; ls = "0";     }
-                    else if(len <= 12) { fs = "10.5pt"; ls = "0";     }
-                    else if(len <= 14) { fs = "9.5pt"; ls = "-0.02em";}
-                    else if(len <= 16) { fs = "8.5pt"; ls = "-0.04em";}  // 株式会社西原商事ホールディングス（16文字）
-                    else if(len <= 18) { fs = "7.5pt"; ls = "-0.04em";}
-                    else if(len <= 22) { fs = "6.2pt"; ls = "-0.03em";}
-                    else               { fs = "5.3pt"; ls = "-0.02em";}
-                    return <div style={{textAlign:"center",fontSize:fs,fontFamily:SERIF,fontWeight:500,whiteSpace:"nowrap",overflow:"hidden",letterSpacing:ls}}>{nm}</div>;
+                    const fs = [...nm].length <= 10 ? "16pt" : [...nm].length <= 13 ? "14pt" : "12pt";
+                    return <DistributedText text={nm} style={{fontSize:fs,fontFamily:SERIF}}/>;
                   })()}
                 </td>
               </tr>
 
-              {/* ── Row 8: ご担当者行 ── A:B「ご担当者：」｜C:F 記入欄｜G「様」｜H:J 空｜K:M TEL/FAX ── */}
-              <tr style={{height:"9.5mm"}}>
-                <td colSpan={2} style={{...cellBase,textAlign:"center",borderTop:bThin,borderBottom:bThin,padding:"0 1mm",fontSize:"10.5pt"}}>ご担当者：</td>
-                <td colSpan={4} style={{...cellBase,textAlign:"center",borderTop:bThin,borderBottom:bThin,whiteSpace:"normal"}}>{quote.contactName||""}</td>
-                <td style={{...cellBase,borderTop:bThin,borderBottom:bThin,textAlign:"left",paddingLeft:"1mm"}}>{quote.contactName?"様":""}</td>
+              {/* ── Row 8: ご担当者 A8:B8 / 記入欄 C8:F8 / G8「様」/ K8:M8 TEL/FAX ── */}
+              <tr style={{height: ROW_H.contact}}>
+                <td colSpan={2} style={{...cellBase,textAlign:"center",borderTop:bThin,borderBottom:bThin,padding:"0 1mm",fontSize:"11pt"}}>ご担当者：</td>
+                <td colSpan={4} style={{...cellBase,textAlign:"left",borderTop:bThin,borderBottom:bThin,whiteSpace:"normal",paddingLeft:"4mm"}}>{quote.contactName||""}</td>
+                <td style={{...cellBase,borderTop:bThin,borderBottom:bThin,textAlign:"left",paddingLeft:"1mm",fontSize:"11pt"}}>{quote.contactName?"様":""}</td>
                 <td colSpan={3}></td>
-                <td colSpan={3} style={{...cellBase,fontSize:"9pt",textAlign:"right",whiteSpace:"normal",lineHeight:1.5,verticalAlign:"middle",padding:"0 1mm"}}>
+                <td colSpan={3} style={{...cellBase,fontSize:"10pt",textAlign:"right",whiteSpace:"normal",lineHeight:1.5,verticalAlign:"middle",padding:"0 1mm"}}>
                   TEL　{company.tel}<br/>
                   FAX　{company.fax}
                 </td>
               </tr>
 
-              {/* ── Row 9: 有効期限行 + 承認/検印/担当者 ヘッダー（グレー背景） ── */}
-              <tr style={{height:"7.5mm"}}>
-                <td colSpan={2} style={{...cellBase,textAlign:"center",borderTop:bThin,borderBottom:bThin,padding:"0 1mm",fontSize:"10.5pt"}}>有効期限：</td>
-                <td colSpan={2} style={{...cellBase,borderTop:bThin,borderBottom:bThin}}>{quote.validUntil || "御見積り後"}</td>
+              {/* ── Row 9: 有効期限 + 承認/検印/担当者 ヘッダーラベル ── */}
+              <tr style={{height: ROW_H.validUntil}}>
+                <td colSpan={2} style={{...cellBase,textAlign:"center",borderTop:bThin,borderBottom:bThin,padding:"0 1mm",fontSize:"11pt"}}>有効期限：</td>
+                <td colSpan={2} style={{...cellBase,borderTop:bThin,borderBottom:bThin,textAlign:"left",paddingLeft:"2mm"}}>{quote.validUntil || "御見積り後"}</td>
                 <td style={{...cellBase,borderTop:bThin,borderBottom:bThin,textAlign:"center"}}>{quote.months||""}</td>
                 <td style={{...cellBase,borderTop:bThin,borderBottom:bThin,paddingLeft:"1mm"}}>ケ月</td>
                 <td colSpan={4}></td>
-                {/* K9/L9/M9: 承認/検印/担当者 ラベル */}
-                <td style={{...cellBase,background:GREY,textAlign:"center",borderTop:bThin,borderLeft:bThin,borderRight:bThin,fontSize:"10pt"}}>承認</td>
-                <td style={{...cellBase,background:GREY,textAlign:"center",borderTop:bThin,borderRight:bThin,fontSize:"10pt"}}>検印</td>
-                <td style={{...cellBase,background:GREY,textAlign:"center",borderTop:bThin,borderRight:bThin,fontSize:"10pt"}}>担当者</td>
+                <td style={{...cellBase,background:GREY,textAlign:"center",borderTop:bThin,borderLeft:bThin,borderRight:bThin,fontSize:"11pt"}}>承認</td>
+                <td style={{...cellBase,background:GREY,textAlign:"center",borderTop:bThin,borderRight:bThin,fontSize:"11pt"}}>検印</td>
+                <td style={{...cellBase,background:GREY,textAlign:"center",borderTop:bThin,borderRight:bThin,fontSize:"11pt"}}>担当者</td>
               </tr>
 
-              {/* ── Row 10: 前置き文 A10:F10（2行折返し） + 印鑑枠 K10:M13 開始（rowSpan=4）── */}
-              <tr style={{height:"8mm"}}>
-                <td colSpan={6} style={{...cellBase,fontSize:"10pt",verticalAlign:"top",lineHeight:1.6,paddingTop:"1.5mm",whiteSpace:"normal"}}>
+              {/* ── Row 10: 前置き文 A10:F10 + 印鑑枠 K10:M13（rowSpan=4 開始） ── */}
+              <tr style={{height: ROW_H.intro}}>
+                <td colSpan={6} style={{...cellBase,fontSize:"10pt",verticalAlign:"top",lineHeight:1.6,paddingTop:"2mm",whiteSpace:"normal"}}>
                   下記の通りお見積りさせていただきます。<br/>
                   ご検討のほど、お願い申し上げます。
                 </td>
                 <td colSpan={4}></td>
-                {/* 印鑑枠 K10:M13: 縦4行結合・四方を実線で囲む */}
                 <td rowSpan={4} style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bThin,textAlign:"center",verticalAlign:"middle",padding:0}}></td>
                 <td rowSpan={4} style={{...cellBase,borderRight:bThin,borderBottom:bThin,textAlign:"center",verticalAlign:"middle",padding:0}}></td>
                 <td rowSpan={4} style={{...cellBase,borderRight:bThin,borderBottom:bThin,textAlign:"center",verticalAlign:"middle",padding:0}}>
@@ -3323,31 +3333,29 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 </td>
               </tr>
 
-              {/* ── Row 11: 区切り用の薄い行（仕様書: 7.0pt = 約2.5mm）K-M は印鑑枠から rowSpan で延びる ── */}
-              <tr style={{height:"2.5mm"}}>
+              {/* ── Row 11: 区切り行（仕様書 7pt） K-M は印鑑枠 rowSpan で延びる ── */}
+              <tr style={{height: ROW_H.separator}}>
                 <td colSpan={10}></td>
               </tr>
 
-              {/* ── Row 12-13: 見積金額ブロック（A12:C13 見積金額 / D12:H13 金額 / I12:I13 (税込)）── */}
-              {/* J12-J13 は空白セル、K-M は前の行から rowSpan=4 で埋まる */}
-              <tr style={{height:"4.5mm"}}>
+              {/* ── Row 12-13: 見積金額 A12:C13 / 金額 D12:H13 / (税込) I12:I13 ── */}
+              <tr style={{height: ROW_H.amount1}}>
                 <td colSpan={3} rowSpan={2} style={{...cellBase,background:GREY,fontSize:"14pt",textAlign:"center",verticalAlign:"middle",letterSpacing:"0.4em",paddingLeft:"calc(2mm + 0.4em)",border:bThin}}>見積金額</td>
                 <td colSpan={5} rowSpan={2} style={{...cellBase,fontSize:"20pt",textAlign:"right",verticalAlign:"middle",border:bThin,fontWeight:400,paddingRight:"4mm"}}>¥{grandTotal.toLocaleString()}-</td>
                 <td rowSpan={2} style={{...cellBase,fontSize:"11pt",textAlign:"center",verticalAlign:"middle",border:bThin}}>（税込）</td>
                 <td></td>
-                {/* K-M セルは前のリード文行の rowSpan=4 で埋まる */}
               </tr>
-              <tr style={{height:"6.5mm"}}>
+              <tr style={{height: ROW_H.amount2}}>
                 <td></td>
               </tr>
 
-              {/* ── スペーサー ──────────────── */}
-              <tr style={{height:"3mm"}}>
+              {/* ── Row 14: スペーサー ── */}
+              <tr style={{height: ROW_H.beforeItems}}>
                 <td colSpan={13}></td>
               </tr>
 
-              {/* ── 明細ヘッダー行（全グレー背景） ──────────────── */}
-              <tr style={{height:"7mm"}}>
+              {/* ── Row 15: 明細ヘッダ（薄グレー背景・全セル中央揃え） ── */}
+              <tr style={{height: ROW_H.itemHeader}}>
                 <td style={{...cellBase,background:GREY,textAlign:"center",border:bThin,padding:0}}></td>
                 <td colSpan={5} style={{...cellBase,background:GREY,textAlign:"center",border:bThin,letterSpacing:"0.5em",paddingLeft:"calc(2mm + 0.5em)"}}>内　容</td>
                 <td style={{...cellBase,background:GREY,textAlign:"center",border:bThin,letterSpacing:"0.2em",padding:"0 0.5mm",paddingLeft:"calc(0.5mm + 0.2em)"}}>数 量</td>
@@ -3357,26 +3365,31 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 <td colSpan={3} style={{...cellBase,background:GREY,textAlign:"center",border:bThin}}>備考欄</td>
               </tr>
 
-              {/* ── 明細行（15行、間に点線） ──────────────── */}
+              {/* ── Row 16-30: 明細行（15行、間に点線、最終行は二重線） ── */}
+              {/* 幽霊行抑制：内容が空ならその行は数量・単価・金額も全て非表示にする */}
               {items.map((it, idx) => {
                 const isLast = idx === 14;
-                const amount = it ? (Number(it.qty)||0)*(Number(it.price)||0) : 0;
+                const desc = (it?.description || "").trim();
+                const hasContent = desc !== "";
+                const qty = Number(it?.qty)||0;
+                const price = Number(it?.price)||0;
+                const amount = (hasContent && qty > 0 && price > 0) ? qty * price : 0;
                 const bottomBorder = isLast ? bDouble : bDotted;
                 return (
-                  <tr key={idx} style={{height:"6.3mm"}}>
+                  <tr key={idx} style={{height: ROW_H.item}}>
                     <td style={{...cellBase,textAlign:"center",fontSize:"10pt",padding:0,borderLeft:bThin,borderRight:bThin,borderBottom:bottomBorder}}>{idx+1}</td>
-                    <td colSpan={5} style={{...cellBase,borderRight:bThin,borderBottom:bottomBorder}}>{it?.description||""}</td>
-                    <td style={{...cellBase,textAlign:"right",borderRight:bThin,borderBottom:bottomBorder}}>{it?.qty||""}</td>
-                    <td style={{...cellBase,textAlign:"center",borderRight:bThin,borderBottom:bottomBorder}}>{it?.unit||""}</td>
-                    <td style={{...cellBase,textAlign:"right",borderRight:bThin,borderBottom:bottomBorder}}>{it?.price?Number(it.price).toLocaleString():""}</td>
-                    <td style={{...cellBase,textAlign:"right",borderRight:bThin,borderBottom:bottomBorder}}>{it && amount>0 ? amount.toLocaleString() : ""}</td>
-                    <td colSpan={3} style={{...cellBase,fontSize:"9pt",borderRight:bThin,borderBottom:bottomBorder}}>{it?.remarks||""}</td>
+                    <td colSpan={5} style={{...cellBase,borderRight:bThin,borderBottom:bottomBorder}}>{hasContent ? it.description : ""}</td>
+                    <td style={{...cellBase,textAlign:"right",borderRight:bThin,borderBottom:bottomBorder}}>{hasContent && qty>0 ? qty.toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:1}) : ""}</td>
+                    <td style={{...cellBase,textAlign:"center",borderRight:bThin,borderBottom:bottomBorder}}>{hasContent ? (it?.unit||"") : ""}</td>
+                    <td style={{...cellBase,textAlign:"right",borderRight:bThin,borderBottom:bottomBorder}}>{hasContent && price>0 ? price.toLocaleString() : ""}</td>
+                    <td style={{...cellBase,textAlign:"right",borderRight:bThin,borderBottom:bottomBorder}}>{amount > 0 ? amount.toLocaleString() : ""}</td>
+                    <td colSpan={3} style={{...cellBase,fontSize:"9pt",borderRight:bThin,borderBottom:bottomBorder}}>{hasContent ? (it?.remarks||"") : ""}</td>
                   </tr>
                 );
               })}
 
-              {/* ── 小計（上に二重線） ──────────────── */}
-              <tr style={{height:"7mm"}}>
+              {/* ── Row 31: 小計 ── */}
+              <tr style={{height: ROW_H.totalRow}}>
                 <td colSpan={6} style={{...cellBase,textAlign:"center",letterSpacing:"0.6em",paddingLeft:"calc(2mm + 0.6em)",borderLeft:bThin,borderRight:bThin,borderBottom:bDotted}}>小　　　計</td>
                 <td style={{...cellBase,borderLeft:bThin,borderBottom:bDotted}}></td>
                 <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDotted}}></td>
@@ -3385,8 +3398,8 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 <td colSpan={3} style={{borderRight:bThin,borderBottom:bDotted}}></td>
               </tr>
 
-              {/* ── 諸経費（5%等） ──────────────── */}
-              <tr style={{height:"7mm"}}>
+              {/* ── Row 32: 諸経費 ── */}
+              <tr style={{height: ROW_H.totalRow}}>
                 <td colSpan={6} style={{...cellBase,textAlign:"center",letterSpacing:"0.5em",paddingLeft:"calc(2mm + 0.5em)",borderLeft:bThin,borderRight:bThin,borderBottom:bDotted}}>諸　経　費</td>
                 <td style={{...cellBase,borderLeft:bThin,borderBottom:bDotted}}></td>
                 <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDotted}}></td>
@@ -3395,8 +3408,8 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 <td colSpan={3} style={{borderRight:bThin,borderBottom:bDotted}}></td>
               </tr>
 
-              {/* ── 調整費（下に二重線、%設定時はレート表示） ──────────────── */}
-              <tr style={{height:"7mm"}}>
+              {/* ── Row 33: 調整費 ── */}
+              <tr style={{height: ROW_H.totalRow}}>
                 <td colSpan={6} style={{...cellBase,textAlign:"center",letterSpacing:"0.5em",paddingLeft:"calc(2mm + 0.5em)",borderLeft:bThin,borderRight:bThin,borderBottom:bDouble}}>調　整　費</td>
                 <td style={{...cellBase,borderLeft:bThin,borderBottom:bDouble}}></td>
                 <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDouble}}></td>
@@ -3405,8 +3418,8 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 <td colSpan={3} style={{borderRight:bThin,borderBottom:bDouble}}></td>
               </tr>
 
-              {/* ── 小計(税抜) ──────────────── */}
-              <tr style={{height:"7mm"}}>
+              {/* ── Row 34: 小計（税抜） ── */}
+              <tr style={{height: ROW_H.totalRow}}>
                 <td colSpan={6} style={{...cellBase,textAlign:"center",letterSpacing:"0.2em",paddingLeft:"calc(2mm + 0.2em)",borderLeft:bThin,borderRight:bThin,borderBottom:bDotted}}>小　計　(税抜)</td>
                 <td style={{...cellBase,borderLeft:bThin,borderBottom:bDotted}}></td>
                 <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDotted}}></td>
@@ -3415,8 +3428,8 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 <td colSpan={3} style={{borderRight:bThin,borderBottom:bDotted}}></td>
               </tr>
 
-              {/* ── 消費税（10%等、下に二重線） ──────────────── */}
-              <tr style={{height:"7mm"}}>
+              {/* ── Row 35: 消費税 ── */}
+              <tr style={{height: ROW_H.totalRow}}>
                 <td colSpan={6} style={{...cellBase,textAlign:"center",letterSpacing:"0.5em",paddingLeft:"calc(2mm + 0.5em)",borderLeft:bThin,borderRight:bThin,borderBottom:bDouble}}>消　費　税</td>
                 <td style={{...cellBase,borderLeft:bThin,borderBottom:bDouble}}></td>
                 <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDouble}}></td>
@@ -3425,8 +3438,8 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 <td colSpan={3} style={{borderRight:bThin,borderBottom:bDouble}}></td>
               </tr>
 
-              {/* ── 合計(税込)（最終行・少し背の高い） ──────────────── */}
-              <tr style={{height:"10mm"}}>
+              {/* ── Row 36: 合計（税込）── 仕様書 30pt 太字 ── */}
+              <tr style={{height: ROW_H.grandTotal}}>
                 <td colSpan={6} style={{...cellBase,textAlign:"center",letterSpacing:"0.2em",paddingLeft:"calc(2mm + 0.2em)",fontSize:"12pt",fontWeight:700,borderLeft:bThin,borderRight:bThin,borderBottom:bThin}}>合　計　(税込)</td>
                 <td style={{...cellBase,borderLeft:bThin,borderBottom:bThin}}></td>
                 <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bThin}}></td>
@@ -3435,16 +3448,18 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 <td colSpan={3} style={{borderRight:bThin,borderBottom:bThin}}></td>
               </tr>
 
-              {/* ── スペーサー ──────────────── */}
-              <tr style={{height:"3mm"}}>
+              {/* ── Row 37: スペーサー（既定 15pt）── */}
+              <tr style={{height: ROW_H.spacer}}>
                 <td colSpan={13}></td>
               </tr>
 
-              {/* ── 備考（シンプルな1つの枠、ラベルは枠内左上） ──────────────── */}
-              <tr style={{height:"7mm"}}>
+              {/* ── Row 38: 備考見出し A38:M38（18.75pt 左揃え）── */}
+              <tr style={{height: ROW_H.remarksLabel}}>
                 <td colSpan={13} style={{...cellBase,letterSpacing:"0.5em",paddingLeft:"calc(2mm + 0.5em)",borderTop:bThin,borderLeft:bThin,borderRight:bThin}}>備　考</td>
               </tr>
-              <tr style={{height:"20mm"}}>
+
+              {/* ── Row 39: 備考記入欄 A39:M39（87.75pt 折返し有効）── */}
+              <tr style={{height: ROW_H.remarksContent}}>
                 <td colSpan={13} style={{...cellBase,fontSize:"10pt",verticalAlign:"top",whiteSpace:"pre-wrap",borderLeft:bThin,borderRight:bThin,borderBottom:bThin,padding:"1mm 4mm 2mm 4mm",lineHeight:1.5}}>
                   {quote.remarks || ""}
                 </td>
@@ -6187,48 +6202,73 @@ const BIZCARD_OCR_URL = "https://2tosyclyqeswer2d7q4p7f4qri0lpfca.lambda-url.ap-
 
 // HEIC/HEIF → JPEG 変換（iPhone のデフォルト撮影形式に対応）
 // ブラウザの Image オブジェクトと AWS Bedrock はどちらも HEIC を扱えないため、
-// HEIC ファイルが入力された場合は heic2any で JPEG に変換してから先に進む
+// HEIC ファイルが入力された場合は heic-to で JPEG に変換してから先に進む。
+// heic-to は新しい libheif を内蔵しており、iOS の最新 HEIF も処理できる。
 async function ensureBrowserCompatibleImage(file) {
   const isHeic = /heic|heif/i.test(file.type || "") || /\.(heic|heif)$/i.test(file.name || "");
   if (!isHeic) return file;
 
   console.log(`[BizCard OCR] HEIC検出 → JPEGに変換します: ${file.name}`);
 
-  // heic2any ライブラリを CDN から動的ロード（一度だけ、global 変数にキャッシュ）
-  if (typeof window.heic2any !== "function") {
-    await new Promise((resolve, reject) => {
-      const existing = document.querySelector('script[data-mydesk-heic2any]');
-      if (existing) {
-        existing.addEventListener("load", resolve);
-        existing.addEventListener("error", () => reject(new Error("heic2any の読み込みに失敗しました")));
-        return;
-      }
-      const s = document.createElement("script");
-      s.src = "https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js";
-      s.async = true;
-      s.dataset.mydeskHeic2any = "1";
-      s.onload = resolve;
-      s.onerror = () => reject(new Error("heic2any の読み込みに失敗しました（ネットワーク確認）"));
-      document.head.appendChild(s);
-    });
-  }
-  if (typeof window.heic2any !== "function") {
-    throw new Error("HEIC変換ライブラリの初期化に失敗しました。JPEG/PNGの画像を選択してください。");
-  }
+  // ライブラリを CDN から動的ロードするヘルパー
+  const loadScript = (src, marker) => new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[${marker}]`);
+    if (existing) {
+      existing.addEventListener("load", resolve);
+      existing.addEventListener("error", () => reject(new Error(`${marker} の読み込みに失敗しました`)));
+      // 既にロード済みかも
+      setTimeout(() => resolve(), 0);
+      return;
+    }
+    const s = document.createElement("script");
+    s.src = src;
+    s.async = true;
+    s.setAttribute(marker, "1");
+    s.onload = resolve;
+    s.onerror = () => reject(new Error(`${src} の読み込みに失敗しました`));
+    document.head.appendChild(s);
+  });
 
-  let converted;
+  // 試行1: heic-to (新しい libheif、iOS 17+ HEIF も扱える)
   try {
-    converted = await window.heic2any({ blob: file, toType: "image/jpeg", quality: 0.9 });
+    if (typeof window.heicTo !== "function") {
+      await loadScript("https://cdn.jsdelivr.net/npm/heic-to@1.1.14/dist/heic-to.min.js", "data-heic-to");
+    }
+    // UMD ビルドで window に置かれる名前は環境依存：heicTo / heic-to / heicto.heicTo を全部チェック
+    const heicToFn = (typeof window.heicTo === "function" && window.heicTo)
+      || (window.heicTo && typeof window.heicTo.heicTo === "function" && window.heicTo.heicTo)
+      || (window["heic-to"] && typeof window["heic-to"].heicTo === "function" && window["heic-to"].heicTo)
+      || null;
+    if (heicToFn) {
+      const blob = await heicToFn({ blob: file, type: "image/jpeg", quality: 0.9 });
+      const newName = (file.name || "image").replace(/\.(heic|heif)$/i, ".jpg");
+      const result = new File([blob], newName, { type: "image/jpeg" });
+      console.log(`[BizCard OCR] heic-to で変換完了: ${(file.size/1024).toFixed(1)}KB → ${(result.size/1024).toFixed(1)}KB`);
+      return result;
+    }
   } catch (e) {
-    console.error("[BizCard OCR] heic2any 変換エラー:", e);
-    throw new Error(`HEIC変換に失敗しました: ${e.message || e}。 設定→カメラ→フォーマットで「互換性優先 (JPEG)」に変更すると確実です。`);
+    console.warn("[BizCard OCR] heic-to 変換失敗、heic2any にフォールバック:", e.message || e);
   }
 
-  const blob = Array.isArray(converted) ? converted[0] : converted;
-  const newName = (file.name || "image").replace(/\.(heic|heif)$/i, ".jpg");
-  const result = new File([blob], newName, { type: "image/jpeg" });
-  console.log(`[BizCard OCR] HEIC→JPEG 変換完了: ${(file.size/1024).toFixed(1)}KB → ${(result.size/1024).toFixed(1)}KB`);
-  return result;
+  // 試行2: heic2any (古い libheif、フォールバック)
+  try {
+    if (typeof window.heic2any !== "function") {
+      await loadScript("https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js", "data-heic2any");
+    }
+    if (typeof window.heic2any === "function") {
+      const converted = await window.heic2any({ blob: file, toType: "image/jpeg", quality: 0.9 });
+      const blob = Array.isArray(converted) ? converted[0] : converted;
+      const newName = (file.name || "image").replace(/\.(heic|heif)$/i, ".jpg");
+      const result = new File([blob], newName, { type: "image/jpeg" });
+      console.log(`[BizCard OCR] heic2any で変換完了: ${(file.size/1024).toFixed(1)}KB → ${(result.size/1024).toFixed(1)}KB`);
+      return result;
+    }
+  } catch (e) {
+    console.error("[BizCard OCR] heic2any 変換も失敗:", e);
+  }
+
+  // どちらのライブラリでも変換失敗 → ユーザーに対応方法を案内
+  throw new Error("HEIC変換に失敗しました。iPhoneの「設定 → カメラ → フォーマット → 互換性優先」を選択してから、もう一度撮影してください（JPEGで保存されるようになります）。");
 }
 
 // 画像を最大サイズに圧縮してBase64返す（iPhone 写真は 3-5MB なので圧縮必須）
