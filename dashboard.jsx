@@ -179,7 +179,7 @@ async function sbSet(id, data) {
   }
 }
 
-const INIT = { tasks:[], projects:[], emails:[], emailStyles:[], prefectures:[], municipalities:[], vendors:[], companies:[], businessCards:[], notifications:[], changeLogs:[], analytics:{}, emailTemplates:[] };
+const INIT = { tasks:[], projects:[], emails:[], emailStyles:[], prefectures:[], municipalities:[], vendors:[], companies:[], businessCards:[], notifications:[], changeLogs:[], analytics:{}, emailTemplates:[], quotes:[] };
 
 // ─── SALES CONSTANTS ──────────────────────────────────────────────────────────
 
@@ -2023,8 +2023,90 @@ function DocumentSection({entityType, entityId, entityName, files, currentUserId
     localStorage.setItem(`md_docTab_${entityType}_${entityId}`, t);
   };
   
-  // データの永続化：save が渡されていればそれを使い、なければ setData にフォールバック
-  const persist = save || setData;
+  // ── 保存ステータス管理 ─────────────────────────────────────────────
+  // null = 保存済み, "saving" = 保存中, "error" = 保存失敗
+  const [saveStatus, setSaveStatus] = React.useState(null);
+  
+  // データの永続化：必ず save (= setData + saveData) を経由してAWSに保存
+  // save が無ければ重大なバグ。コンソールに警告を出す
+  // 即時 setData して UI を更新、saveData は debounce で AWS への書き込みを集約
+  const pendingDataRef = React.useRef(null);
+  const saveTimerRef = React.useRef(null);
+  
+  const persist = React.useCallback((nd) => {
+    if (!save) {
+      console.error("[MyDesk] DocumentSection: save prop が未設定のため永続化できません！", nd);
+      window.alert("⚠️ 保存機能が初期化されていません。ページを再読み込みしてください。");
+      if (setData) setData(nd);
+      return;
+    }
+    setSaveStatus("saving");
+    pendingDataRef.current = nd;
+    // UI更新は即時（setData部分）
+    if (setData) setData(nd);
+    // AWSへの書き込みは200ms debounce で集約（タイピング中の連打を抑制、データロスリスク最小化）
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      try {
+        const latest = pendingDataRef.current;
+        save(latest); // setData(latest) + saveData(latest)
+        pendingDataRef.current = null;
+        saveTimerRef.current = null;
+        setTimeout(() => setSaveStatus(null), 500);
+      } catch(e) {
+        console.error("[MyDesk] persist failed:", e);
+        setSaveStatus("error");
+        setTimeout(() => setSaveStatus(null), 3000);
+      }
+    }, 200);
+  }, [save, setData]);
+  
+  // 削除や明示保存など重要操作は debounce せず即座に AWS へ書き込む
+  const persistNow = React.useCallback((nd) => {
+    if (!save) {
+      console.error("[MyDesk] DocumentSection: save prop が未設定！", nd);
+      window.alert("⚠️ 保存機能が初期化されていません。ページを再読み込みしてください。");
+      if (setData) setData(nd);
+      return;
+    }
+    if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
+    pendingDataRef.current = null;
+    setSaveStatus("saving");
+    try {
+      save(nd); // 即座に setData + saveData
+      setTimeout(() => setSaveStatus(null), 500);
+    } catch(e) {
+      console.error("[MyDesk] persistNow failed:", e);
+      setSaveStatus("error");
+      setTimeout(() => setSaveStatus(null), 3000);
+    }
+  }, [save, setData]);
+  
+  // ページを閉じる/リロード時に未保存の変更があれば警告
+  React.useEffect(() => {
+    const onBeforeUnload = (e) => {
+      if (pendingDataRef.current && save) {
+        // 同期的に最後の保存を試みる
+        try { save(pendingDataRef.current); pendingDataRef.current = null; } catch(_) {}
+        // ブラウザに警告を出す（モダンブラウザではメッセージは無視されるが警告は出る）
+        e.preventDefault();
+        e.returnValue = "未保存の変更があります。本当にページを離れますか？";
+        return e.returnValue;
+      }
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [save]);
+  
+  // コンポーネントがアンマウントされる時、保留中の保存を即座に flush
+  React.useEffect(() => {
+    return () => {
+      if (saveTimerRef.current && pendingDataRef.current && save) {
+        clearTimeout(saveTimerRef.current);
+        try { save(pendingDataRef.current); } catch(e) { console.error("flush save failed", e); }
+      }
+    };
+  }, [save]);
   
   // このエンティティに紐づく見積書のみ取得
   const linkedQuotes = (data?.quotes || []).filter(q => 
@@ -2052,25 +2134,36 @@ function DocumentSection({entityType, entityId, entityName, files, currentUserId
       taxRate: 10,
       months: "",
       remarks: "",
+      internalMemo: "",
+      versions: [],
       createdBy: currentUserId,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       salesRef: { type: entityType, id: String(entityId), name: entityName },
     };
     const nd = {...data, quotes: [newQuote, ...(data.quotes||[])]};
-    persist(nd);
+    persistNow(nd); // 新規作成は即時保存
     setActiveQuoteId(newQuote.id);
   };
   
   const updateQuote = (id, updates) => {
     const nd = {...data, quotes: (data.quotes||[]).map(q => q.id===id ? {...q, ...updates, updatedAt:new Date().toISOString()} : q)};
-    persist(nd);
+    // バージョン保存・復元・内部メモ以外の通常編集は debounce
+    // ただし versions に変更があるなら即時保存
+    if (updates.versions !== undefined) {
+      persistNow(nd);
+    } else {
+      persist(nd);
+    }
   };
   
   const deleteQuote = (id) => {
-    if (!window.confirm("この見積書を削除しますか？\nこの操作は元に戻せません。")) return;
+    const q = (data.quotes||[]).find(x => x.id === id);
+    if (!q) return;
+    const label = q.no ? `見積書 #${q.no}` : "この見積書";
+    if (!window.confirm(`${label} を削除しますか？\nこの操作は元に戻せません。\n（変更履歴も全て削除されます）`)) return;
     const nd = {...data, quotes: (data.quotes||[]).filter(q => q.id !== id)};
-    persist(nd);
+    persistNow(nd); // 削除は必ず即時保存
     if (activeQuoteId === id) setActiveQuoteId(null);
   };
   
@@ -2099,6 +2192,7 @@ function DocumentSection({entityType, entityId, entityName, files, currentUserId
   if (activeQuote) {
     return <QuoteEditor quote={activeQuote} users={users} currentUser={currentUser}
       pastItems={pastQuoteSuggestions}
+      saveStatus={saveStatus}
       onUpdate={(updates) => updateQuote(activeQuote.id, updates)}
       onDelete={() => deleteQuote(activeQuote.id)}
       onClose={() => setActiveQuoteId(null)}/>;
@@ -2289,7 +2383,7 @@ function QuoteView({data, setData, users=[], currentUser=null, onNavigateToSales
 }
 
 // 見積書エディタ
-function QuoteEditor({quote, users=[], currentUser, onUpdate, onDelete, onClose, pastItems=[]}) {
+function QuoteEditor({quote, users=[], currentUser, onUpdate, onDelete, onClose, pastItems=[], saveStatus=null}) {
   const [showPreview, setShowPreview] = React.useState(false);
   const [showHistory, setShowHistory] = React.useState(false);
   const [saveLabel, setSaveLabel] = React.useState("");
@@ -2392,7 +2486,11 @@ function QuoteEditor({quote, users=[], currentUser, onUpdate, onDelete, onClose,
     <div style={{padding:"0.75rem",maxWidth:920,margin:"0 auto"}}>
       <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginBottom:"0.5rem",flexWrap:"wrap"}}>
         <button onClick={onClose} style={{padding:"0.4rem 0.65rem",borderRadius:"0.4rem",border:"1px solid #e5e7eb",background:"white",color:"#6b7280",fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>← 一覧へ</button>
-        <span style={{fontSize:"0.78rem",color:"#6b7280",fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:"40%"}}>#{quote.no}</span>
+        <span style={{fontSize:"0.78rem",color:"#6b7280",fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:"30%"}}>#{quote.no}</span>
+        {/* 保存ステータス表示 */}
+        {saveStatus === "saving" && <span style={{fontSize:"0.7rem",color:"#0284c7",background:"#e0f2fe",padding:"0.2rem 0.5rem",borderRadius:"0.3rem",fontWeight:700,whiteSpace:"nowrap"}}>💾 保存中...</span>}
+        {saveStatus === "error" && <span style={{fontSize:"0.7rem",color:"#dc2626",background:"#fef2f2",padding:"0.2rem 0.5rem",borderRadius:"0.3rem",fontWeight:700,whiteSpace:"nowrap"}}>⚠️ 保存失敗</span>}
+        {saveStatus === null && quote.updatedAt && <span style={{fontSize:"0.7rem",color:"#059669",fontWeight:600,whiteSpace:"nowrap"}}>✓ 保存済み</span>}
         <div style={{flex:"1 1 auto",minWidth:0}}/>
         <div style={{display:"flex",gap:"0.35rem",flexWrap:"wrap",justifyContent:"flex-end"}}>
           <button onClick={() => setShowHistory(true)} title="変更履歴を表示"
@@ -15807,7 +15905,52 @@ function GlobalSearchModal({ query, onQueryChange, onClose, data, onNavigate, us
 
 
 export default function App() {
-  const [data,setData]       = useState(INIT);
+  const [data, _setDataRaw] = useState(INIT);
+  const autoSaveTimerRef = React.useRef(null);
+  const lastAutoSavedRef = React.useRef(null);
+  const [globalSaveStatus, setGlobalSaveStatus] = useState(null); // null | "saving" | "saved" | "error"
+  
+  // ── 自動保存付き setData ──────────────────────────────────────────
+  // すべての setData 呼び出しを 500ms デバウンスして AWS RDS へ自動保存。
+  // setData(value) または setData(prev => next) のどちらの形式にも対応。
+  // 初回データ読み込み完了前はスキップ（INIT で上書きしないため）。
+  const setData = React.useCallback((newDataOrFn) => {
+    _setDataRaw(prev => {
+      const next = typeof newDataOrFn === 'function' ? newDataOrFn(prev) : newDataOrFn;
+      // データが実際に変わった場合のみ自動保存をスケジュール
+      if (next !== prev && next && typeof next === 'object') {
+        // 既存のタイマーをクリアしてデバウンス
+        if (autoSaveTimerRef.current) {
+          clearTimeout(autoSaveTimerRef.current);
+        }
+        autoSaveTimerRef.current = setTimeout(async () => {
+          autoSaveTimerRef.current = null;
+          // ロード前は保存しない（INIT で上書き防止）
+          if (!window.__myDeskLoadedComplete) return;
+          // 同じデータが既に保存済みならスキップ
+          if (lastAutoSavedRef.current === next) return;
+          // 直近1秒以内に明示的な保存があればスキップ（重複防止）
+          if (Date.now() - (window.__myDeskLastSave || 0) < 1000) {
+            lastAutoSavedRef.current = next;
+            return;
+          }
+          lastAutoSavedRef.current = next;
+          setGlobalSaveStatus("saving");
+          try {
+            await saveData(next);
+            setGlobalSaveStatus("saved");
+            setTimeout(() => setGlobalSaveStatus(s => s === "saved" ? null : s), 1500);
+          } catch(e) {
+            console.error("[MyDesk] auto-save failed:", e);
+            setGlobalSaveStatus("error");
+            setTimeout(() => setGlobalSaveStatus(s => s === "error" ? null : s), 5000);
+          }
+        }, 500);
+      }
+      return next;
+    });
+  }, []);
+  
   const [users,setUsers]     = useState([]);
   const [currentUser,setCurrentUser] = useState(null);
   // 通知フォールバック用にcurrentUserIdをwindowに保存
@@ -15850,6 +15993,20 @@ export default function App() {
     const goOffline = () => setIsOffline(true);
     const goOnline  = () => setIsOffline(false);
     const onBeforeUnload = (e) => {
+      // ペンディング中の自動保存を即座に実行（リロード前に確実に保存）
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = null;
+        // sendBeacon で確実に送る（ページ離脱時でもリクエストが完了する）
+        try {
+          const jsonStr = JSON.stringify({ id: "main", data });
+          if (jsonStr.length < 60 * 1024) { // sendBeaconは64KB制限
+            navigator.sendBeacon(`${DB_API_BASE}/data`, new Blob([jsonStr], { type: "application/json" }));
+          } else {
+            saveData(data); // 大きすぎる場合は通常保存（fire-and-forget）
+          }
+        } catch(err) { /* ignore */ }
+      }
       const timeSinceSave = Date.now() - (window.__myDeskLastSave || 0);
       if(timeSinceSave < 3000) { // 保存から3秒以内はリロード警告
         e.preventDefault();
@@ -15857,6 +16014,22 @@ export default function App() {
       }
     };
     window.addEventListener("beforeunload", onBeforeUnload);
+    // iOS Safari など mobile では beforeunload が発火しないので visibilitychange でも保存
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden" && autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = null;
+        try {
+          const jsonStr = JSON.stringify({ id: "main", data });
+          if (jsonStr.length < 60 * 1024) {
+            navigator.sendBeacon(`${DB_API_BASE}/data`, new Blob([jsonStr], { type: "application/json" }));
+          } else {
+            saveData(data);
+          }
+        } catch(err) { /* ignore */ }
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
     const onSaveErr = () => {
       setSaveError(window.__myDeskSaveError || "保存に失敗しました");
       setTimeout(()=>setSaveError(""), 8000);
@@ -15869,8 +16042,9 @@ export default function App() {
       window.removeEventListener("online",goOnline);
       window.removeEventListener("mydesk-save-error",onSaveErr);
       window.removeEventListener("beforeunload",onBeforeUnload);
+      document.removeEventListener("visibilitychange",onVisibilityChange);
     };
-  }, []);
+  }, [data]);
   const [notifFilter,setNotifFilter] = useState("all");
   const contentRef = useRef(null);
   const scrollPos  = useRef({});   // tab → scrollY
@@ -15927,7 +16101,11 @@ export default function App() {
       });
       const fixed = (mChanged||vChanged) ? {...d,municipalities:fixedM,vendors:fixedV} : d;
       if(mChanged||vChanged) saveData(fixed);
-      setData(fixed); setUsers(u);
+      // 初回ロードした data を lastAutoSaved に記録（直後の自動保存を抑止）
+      lastAutoSavedRef.current = fixed;
+      _setDataRaw(fixed); setUsers(u);
+      // ロード完了フラグ（自動保存有効化）
+      window.__myDeskLoadedComplete = true;
       if (session) {
         const fresh = u.find(x=>x.id===session.id);
         if (fresh) { setCurrentUser(fresh); setSession(fresh); }
@@ -15936,7 +16114,8 @@ export default function App() {
       setLoaded(true);
     }).catch(err => {
       console.error("[MyDesk] 初期データ読み込みエラー:", err);
-      setData(INIT);
+      _setDataRaw(INIT);
+      window.__myDeskLoadedComplete = true;
       setLoaded(true);
     });
   },[]);
@@ -16668,6 +16847,19 @@ export default function App() {
           ⚠️ 保存に失敗しました
           <button onClick={()=>{setSaveError(""); window.__myDeskLastSave=0; window.location.reload();}} style={{background:"#dc2626",border:"none",cursor:"pointer",color:"white",fontWeight:700,fontSize:"0.7rem",padding:"0.2rem 0.5rem",borderRadius:"0.4rem"}}>再読み込み</button>
           <button onClick={()=>setSaveError("")} style={{background:"none",border:"none",cursor:"pointer",color:"#991b1b",fontWeight:800,fontSize:"1rem",padding:"0 0.1rem",lineHeight:1}}>✕</button>
+        </div>
+      )}
+      {/* グローバル保存ステータスインジケーター（右下） */}
+      {globalSaveStatus && (
+        <div style={{position:"fixed",bottom:isPC?"1rem":"5rem",right:"1rem",zIndex:999,padding:"0.4rem 0.85rem",borderRadius:"999px",fontSize:"0.78rem",fontWeight:700,boxShadow:"0 4px 12px rgba(0,0,0,0.15)",
+          background: globalSaveStatus==="saving"?"#dbeafe": globalSaveStatus==="saved"?"#d1fae5":"#fee2e2",
+          color: globalSaveStatus==="saving"?"#1d4ed8": globalSaveStatus==="saved"?"#065f46":"#991b1b",
+          border: `1.5px solid ${globalSaveStatus==="saving"?"#93c5fd":globalSaveStatus==="saved"?"#6ee7b7":"#fca5a5"}`,
+          transition:"opacity 0.3s",
+        }}>
+          {globalSaveStatus==="saving" && "💾 保存中..."}
+          {globalSaveStatus==="saved" && "✅ 保存しました"}
+          {globalSaveStatus==="error" && "⚠️ 保存に失敗しました"}
         </div>
       )}
       {/* ④ グローバル検索モーダル */}
