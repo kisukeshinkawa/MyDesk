@@ -3115,8 +3115,10 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
     whiteSpace: "nowrap"
   };
 
-  // Excel列幅 (合計100ユニット)。K/L/Mを7.5に狭めて印鑑欄を縦長にする（縦横比 1:1.96）
-  const colW = [3.64, 6.81, 8.02, 5.07, 8.02, 8.02, 11.26, 4.91, 10.47, 11.26, 7.5, 7.5, 7.5];
+  // Excel列幅 (仕様書: A=3.83, B=7.16, C=既定8.43, D=5.33, E=既定8.43, F=既定8.43,
+  //                  G=11.83, H=5.16, I=11.00, J=11.83, K=10.16, L=既定8.43, M=既定8.43)
+  // 合計 108.45 → そのまま % として使う (テーブルの tableLayout:fixed なので比率で計算される)
+  const colW = [3.83, 7.16, 8.43, 5.33, 8.43, 8.43, 11.83, 5.16, 11.00, 11.83, 10.16, 8.43, 8.43];
 
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:1000,overflow:"auto",padding:"0.5rem"}}>
@@ -3281,59 +3283,62 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 </td>
               </tr>
 
-              {/* ── ご担当者行 + TEL+FAX（2行）── 印鑑枠の幅(K-M)内に収める ── */}
-              {/* 「様」を contactName セルに統合して、罫線が A-F のみに揃うようにする */}
+              {/* ── Row 8: ご担当者行 ── A:B「ご担当者：」｜C:F 記入欄｜G「様」｜H:J 空｜K:M TEL/FAX ── */}
               <tr style={{height:"9.5mm"}}>
                 <td colSpan={2} style={{...cellBase,textAlign:"center",borderTop:bThin,borderBottom:bThin,padding:"0 1mm",fontSize:"10.5pt"}}>ご担当者：</td>
-                <td colSpan={4} style={{...cellBase,textAlign:"center",borderTop:bThin,borderBottom:bThin,whiteSpace:"normal"}}>{quote.contactName ? `${quote.contactName}　様` : ""}</td>
-                <td colSpan={4}></td>
+                <td colSpan={4} style={{...cellBase,textAlign:"center",borderTop:bThin,borderBottom:bThin,whiteSpace:"normal"}}>{quote.contactName||""}</td>
+                <td style={{...cellBase,borderTop:bThin,borderBottom:bThin,textAlign:"left",paddingLeft:"1mm"}}>{quote.contactName?"様":""}</td>
+                <td colSpan={3}></td>
                 <td colSpan={3} style={{...cellBase,fontSize:"9pt",textAlign:"right",whiteSpace:"normal",lineHeight:1.5,verticalAlign:"middle",padding:"0 1mm"}}>
                   TEL　{company.tel}<br/>
                   FAX　{company.fax}
                 </td>
               </tr>
 
-              {/* ── 有効期限行 + 承認/検印/担当者 ヘッダー（グレー背景）───────────── */}
+              {/* ── Row 9: 有効期限行 + 承認/検印/担当者 ヘッダー（グレー背景） ── */}
               <tr style={{height:"7.5mm"}}>
                 <td colSpan={2} style={{...cellBase,textAlign:"center",borderTop:bThin,borderBottom:bThin,padding:"0 1mm",fontSize:"10.5pt"}}>有効期限：</td>
                 <td colSpan={2} style={{...cellBase,borderTop:bThin,borderBottom:bThin}}>{quote.validUntil || "御見積り後"}</td>
                 <td style={{...cellBase,borderTop:bThin,borderBottom:bThin,textAlign:"center"}}>{quote.months||""}</td>
                 <td style={{...cellBase,borderTop:bThin,borderBottom:bThin,paddingLeft:"1mm"}}>ケ月</td>
                 <td colSpan={4}></td>
-                {/* 承認/検印/担当者 グレーヘッダー（下線なし=印鑑枠と一体化） */}
+                {/* K9/L9/M9: 承認/検印/担当者 ラベル */}
                 <td style={{...cellBase,background:GREY,textAlign:"center",borderTop:bThin,borderLeft:bThin,borderRight:bThin,fontSize:"10pt"}}>承認</td>
                 <td style={{...cellBase,background:GREY,textAlign:"center",borderTop:bThin,borderRight:bThin,fontSize:"10pt"}}>検印</td>
                 <td style={{...cellBase,background:GREY,textAlign:"center",borderTop:bThin,borderRight:bThin,fontSize:"10pt"}}>担当者</td>
               </tr>
 
-              {/* ── リード文 + 印鑑枠（rowSpan=4で見積金額の高さまで延びる） ───── */}
+              {/* ── Row 10: 前置き文 A10:F10（2行折返し） + 印鑑枠 K10:M13 開始（rowSpan=4）── */}
               <tr style={{height:"8mm"}}>
-                <td colSpan={6} rowSpan={2} style={{...cellBase,fontSize:"10pt",verticalAlign:"top",lineHeight:1.6,paddingTop:"2mm",whiteSpace:"normal"}}>
+                <td colSpan={6} style={{...cellBase,fontSize:"10pt",verticalAlign:"top",lineHeight:1.6,paddingTop:"1.5mm",whiteSpace:"normal"}}>
                   下記の通りお見積りさせていただきます。<br/>
                   ご検討のほど、お願い申し上げます。
                 </td>
-                <td colSpan={4} rowSpan={2}></td>
-                {/* 印鑑枠：4行分の高さで一体化（Excelと同じデザイン） */}
+                <td colSpan={4}></td>
+                {/* 印鑑枠 K10:M13: 縦4行結合・四方を実線で囲む */}
                 <td rowSpan={4} style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bThin,textAlign:"center",verticalAlign:"middle",padding:0}}></td>
                 <td rowSpan={4} style={{...cellBase,borderRight:bThin,borderBottom:bThin,textAlign:"center",verticalAlign:"middle",padding:0}}></td>
                 <td rowSpan={4} style={{...cellBase,borderRight:bThin,borderBottom:bThin,textAlign:"center",verticalAlign:"middle",padding:0}}>
                   <HankoStamp name={authorLastName}/>
                 </td>
               </tr>
-              <tr style={{height:"8mm"}}>
-                {/* A-J: rowSpan=2 で埋まる、K-M: rowSpan=4 で埋まる */}
+
+              {/* ── Row 11: 区切り用の薄い行（仕様書: 7.0pt = 約2.5mm）K-M は印鑑枠から rowSpan で延びる ── */}
+              <tr style={{height:"2.5mm"}}>
+                <td colSpan={10}></td>
               </tr>
 
-              {/* ── 見積金額行（印鑑枠は前行から延びてくる） ──────────────── */}
-              {/* (税込)を J 列に移動して印鑑枠と直接隣接させ、余分な縦線を解消 */}
-              <tr style={{height:"6mm"}}>
-                <td colSpan={3} rowSpan={2} style={{...cellBase,background:GREY,fontSize:"13pt",textAlign:"center",verticalAlign:"middle",letterSpacing:"0.4em",paddingLeft:"calc(2mm + 0.4em)",border:bThin}}>見積金額</td>
-                <td colSpan={6} rowSpan={2} style={{...cellBase,fontSize:"19pt",textAlign:"center",verticalAlign:"middle",border:bThin,fontWeight:400}}>¥{grandTotal.toLocaleString()}-</td>
-                <td rowSpan={2} style={{...cellBase,fontSize:"10pt",textAlign:"center",verticalAlign:"middle",border:bThin}}>（税込）</td>
+              {/* ── Row 12-13: 見積金額ブロック（A12:C13 見積金額 / D12:H13 金額 / I12:I13 (税込)）── */}
+              {/* J12-J13 は空白セル、K-M は前の行から rowSpan=4 で埋まる */}
+              <tr style={{height:"4.5mm"}}>
+                <td colSpan={3} rowSpan={2} style={{...cellBase,background:GREY,fontSize:"14pt",textAlign:"center",verticalAlign:"middle",letterSpacing:"0.4em",paddingLeft:"calc(2mm + 0.4em)",border:bThin}}>見積金額</td>
+                <td colSpan={5} rowSpan={2} style={{...cellBase,fontSize:"20pt",textAlign:"right",verticalAlign:"middle",border:bThin,fontWeight:400,paddingRight:"4mm"}}>¥{grandTotal.toLocaleString()}-</td>
+                <td rowSpan={2} style={{...cellBase,fontSize:"11pt",textAlign:"center",verticalAlign:"middle",border:bThin}}>（税込）</td>
+                <td></td>
                 {/* K-M セルは前のリード文行の rowSpan=4 で埋まる */}
               </tr>
-              <tr style={{height:"6mm"}}>
-                {/* A-J: rowSpan=2 で埋まる、K-M: rowSpan=4 で埋まる */}
+              <tr style={{height:"6.5mm"}}>
+                <td></td>
               </tr>
 
               {/* ── スペーサー ──────────────── */}
@@ -6180,8 +6185,57 @@ ${userSummary||"（活動なし）"}
 // 完全な再設計：画像圧縮・詳細ログ・リトライ・エラー処理を実装
 const BIZCARD_OCR_URL = "https://2tosyclyqeswer2d7q4p7f4qri0lpfca.lambda-url.ap-northeast-1.on.aws/";
 
+// HEIC/HEIF → JPEG 変換（iPhone のデフォルト撮影形式に対応）
+// ブラウザの Image オブジェクトと AWS Bedrock はどちらも HEIC を扱えないため、
+// HEIC ファイルが入力された場合は heic2any で JPEG に変換してから先に進む
+async function ensureBrowserCompatibleImage(file) {
+  const isHeic = /heic|heif/i.test(file.type || "") || /\.(heic|heif)$/i.test(file.name || "");
+  if (!isHeic) return file;
+
+  console.log(`[BizCard OCR] HEIC検出 → JPEGに変換します: ${file.name}`);
+
+  // heic2any ライブラリを CDN から動的ロード（一度だけ、global 変数にキャッシュ）
+  if (typeof window.heic2any !== "function") {
+    await new Promise((resolve, reject) => {
+      const existing = document.querySelector('script[data-mydesk-heic2any]');
+      if (existing) {
+        existing.addEventListener("load", resolve);
+        existing.addEventListener("error", () => reject(new Error("heic2any の読み込みに失敗しました")));
+        return;
+      }
+      const s = document.createElement("script");
+      s.src = "https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js";
+      s.async = true;
+      s.dataset.mydeskHeic2any = "1";
+      s.onload = resolve;
+      s.onerror = () => reject(new Error("heic2any の読み込みに失敗しました（ネットワーク確認）"));
+      document.head.appendChild(s);
+    });
+  }
+  if (typeof window.heic2any !== "function") {
+    throw new Error("HEIC変換ライブラリの初期化に失敗しました。JPEG/PNGの画像を選択してください。");
+  }
+
+  let converted;
+  try {
+    converted = await window.heic2any({ blob: file, toType: "image/jpeg", quality: 0.9 });
+  } catch (e) {
+    console.error("[BizCard OCR] heic2any 変換エラー:", e);
+    throw new Error(`HEIC変換に失敗しました: ${e.message || e}。 設定→カメラ→フォーマットで「互換性優先 (JPEG)」に変更すると確実です。`);
+  }
+
+  const blob = Array.isArray(converted) ? converted[0] : converted;
+  const newName = (file.name || "image").replace(/\.(heic|heif)$/i, ".jpg");
+  const result = new File([blob], newName, { type: "image/jpeg" });
+  console.log(`[BizCard OCR] HEIC→JPEG 変換完了: ${(file.size/1024).toFixed(1)}KB → ${(result.size/1024).toFixed(1)}KB`);
+  return result;
+}
+
 // 画像を最大サイズに圧縮してBase64返す（iPhone 写真は 3-5MB なので圧縮必須）
 async function compressImage(file, maxDim = 1600, quality = 0.85) {
+  // HEIC は事前に JPEG に変換しておく
+  const safeFile = await ensureBrowserCompatibleImage(file);
+
   return new Promise((resolve, reject) => {
     const img = new Image();
     const reader = new FileReader();
@@ -6208,16 +6262,16 @@ async function compressImage(file, maxDim = 1600, quality = 0.85) {
           r2.onload = () => {
             const dataUrl = r2.result;
             const base64 = dataUrl.split(",")[1];
-            resolve({ base64, mediaType: "image/jpeg", originalSize: file.size, compressedSize: blob.size, width: nw, height: nh });
+            resolve({ base64, mediaType: "image/jpeg", originalSize: safeFile.size, compressedSize: blob.size, width: nw, height: nh });
           };
           r2.readAsDataURL(blob);
         }, "image/jpeg", quality);
       };
-      img.onerror = () => reject(new Error("画像の読み込みに失敗しました"));
+      img.onerror = () => reject(new Error(`画像の読み込みに失敗しました（${safeFile.type || "形式不明"}）`));
       img.src = ev.target.result;
     };
     reader.onerror = () => reject(new Error("ファイルの読み込みに失敗しました"));
-    reader.readAsDataURL(file);
+    reader.readAsDataURL(safeFile);
   });
 }
 
@@ -6352,11 +6406,13 @@ const BizCardScanner = React.memo(function BizCardScannerInner({ onResult, curre
 
   const handleFile = async (file) => {
     if (!file) return;
-    if (!file.type.startsWith("image/")) {
+    // HEIC は file.type が空文字または "image/heic" になる場合がある
+    const isImage = (file.type && file.type.startsWith("image/")) || /\.(heic|heif|jpe?g|png|webp|gif)$/i.test(file.name || "");
+    if (!isImage) {
       setError("⚠️ 画像ファイルを選択してください");
       return;
     }
-    console.log(`[BizCard OCR] file selected: ${file.name}, ${file.type}, ${(file.size/1024).toFixed(1)}KB`);
+    console.log(`[BizCard OCR] file selected: ${file.name}, ${file.type || "(type unknown)"}, ${(file.size/1024).toFixed(1)}KB`);
     setError("");
     setLastResult(null);
     setScanning(true);
@@ -6403,7 +6459,7 @@ const BizCardScanner = React.memo(function BizCardScannerInner({ onResult, curre
 
   return (
     <div style={{marginBottom:"1rem"}}>
-      <input ref={fileRef} type="file" accept="image/*" capture="environment"
+      <input ref={fileRef} type="file" accept="image/*,.heic,.heif" capture="environment"
         style={{display:"none"}} onChange={e=>{handleFile(e.target.files[0]); e.target.value="";}}/>
       <div style={{display:"flex",gap:"0.4rem"}}>
         <button type="button"
