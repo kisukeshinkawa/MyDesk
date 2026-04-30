@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-04-30-v7-mobile-redesign"; // ビルド識別子
+const MYDESK_BUILD = "2026-04-30-v8-stamp-fix"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -3298,40 +3298,42 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 <td colSpan={2} style={{...cellBase,textAlign:"center",borderTop:bThin,borderBottom:bThin,padding:"0 1mm",fontSize:"10.5pt"}}>有効期限：</td>
                 <td colSpan={2} style={{...cellBase,borderTop:bThin,borderBottom:bThin}}>{quote.validUntil || "御見積り後"}</td>
                 <td style={{...cellBase,borderTop:bThin,borderBottom:bThin,textAlign:"center"}}>{quote.months||""}</td>
-                <td colSpan={2} style={{...cellBase,borderTop:bThin,borderBottom:bThin}}>ケ月</td>
-                <td colSpan={3}></td>
+                <td style={{...cellBase,borderTop:bThin,borderBottom:bThin,paddingLeft:"1mm"}}>ケ月</td>
+                <td colSpan={4}></td>
                 {/* 承認/検印/担当者 グレーヘッダー（下線なし=印鑑枠と一体化） */}
                 <td style={{...cellBase,background:GREY,textAlign:"center",borderTop:bThin,borderLeft:bThin,borderRight:bThin,fontSize:"10pt"}}>承認</td>
                 <td style={{...cellBase,background:GREY,textAlign:"center",borderTop:bThin,borderRight:bThin,fontSize:"10pt"}}>検印</td>
                 <td style={{...cellBase,background:GREY,textAlign:"center",borderTop:bThin,borderRight:bThin,fontSize:"10pt"}}>担当者</td>
               </tr>
 
-              {/* ── リード文 + 承認等の枠（正方形 ~16mm×16mm） ──────────────── */}
+              {/* ── リード文 + 印鑑枠（rowSpan=4で見積金額の高さまで延びる） ───── */}
               <tr style={{height:"8mm"}}>
                 <td colSpan={6} rowSpan={2} style={{...cellBase,fontSize:"10pt",verticalAlign:"top",lineHeight:1.6,paddingTop:"2mm",whiteSpace:"normal"}}>
                   下記の通りお見積りさせていただきます。<br/>
                   ご検討のほど、お願い申し上げます。
                 </td>
                 <td colSpan={4} rowSpan={2}></td>
-                <td rowSpan={2} style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bThin,textAlign:"center",verticalAlign:"middle",padding:0}}></td>
-                <td rowSpan={2} style={{...cellBase,borderRight:bThin,borderBottom:bThin,textAlign:"center",verticalAlign:"middle",padding:0}}></td>
-                <td rowSpan={2} style={{...cellBase,borderRight:bThin,borderBottom:bThin,textAlign:"center",verticalAlign:"middle",padding:0}}>
+                {/* 印鑑枠：4行分の高さで一体化（Excelと同じデザイン） */}
+                <td rowSpan={4} style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bThin,textAlign:"center",verticalAlign:"middle",padding:0}}></td>
+                <td rowSpan={4} style={{...cellBase,borderRight:bThin,borderBottom:bThin,textAlign:"center",verticalAlign:"middle",padding:0}}></td>
+                <td rowSpan={4} style={{...cellBase,borderRight:bThin,borderBottom:bThin,textAlign:"center",verticalAlign:"middle",padding:0}}>
                   <HankoStamp name={authorLastName}/>
                 </td>
               </tr>
               <tr style={{height:"8mm"}}>
-                {/* セルは前行のrowSpanで埋まる */}
+                {/* A-J: rowSpan=2 で埋まる、K-M: rowSpan=4 で埋まる */}
               </tr>
 
-              {/* ── 見積金額行（A12:I13、左半分のみ） ──────────────── */}
+              {/* ── 見積金額行（印鑑枠は前行から延びてくる） ──────────────── */}
               <tr style={{height:"6mm"}}>
                 <td colSpan={3} rowSpan={2} style={{...cellBase,background:GREY,fontSize:"13pt",textAlign:"center",verticalAlign:"middle",letterSpacing:"0.4em",paddingLeft:"calc(2mm + 0.4em)",border:bThin}}>見積金額</td>
                 <td colSpan={5} rowSpan={2} style={{...cellBase,fontSize:"19pt",textAlign:"center",verticalAlign:"middle",border:bThin,fontWeight:400}}>¥{grandTotal.toLocaleString()}-</td>
                 <td rowSpan={2} style={{...cellBase,fontSize:"10pt",textAlign:"center",verticalAlign:"middle",border:bThin}}>（税込）</td>
-                <td colSpan={4}></td>
+                <td></td>
+                {/* K-M セルは前のリード文行の rowSpan=4 で埋まる */}
               </tr>
               <tr style={{height:"6mm"}}>
-                <td colSpan={4}></td>
+                <td></td>
               </tr>
 
               {/* ── スペーサー ──────────────── */}
