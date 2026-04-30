@@ -99,6 +99,41 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
+const MYDESK_BUILD = "2026-04-30-persistence-v3"; // ビルド識別子（永続化アーキテクチャ v3）
+if (typeof window !== "undefined") {
+  window.__MYDESK_BUILD = MYDESK_BUILD;
+  console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
+  // 診断関数（コンソールから window.__myDeskDiag() で実行可能）
+  window.__myDeskDiag = async () => {
+    console.log("=".repeat(60));
+    console.log(`MyDesk 診断レポート (build: ${MYDESK_BUILD})`);
+    console.log("=".repeat(60));
+    console.log("現在時刻:", new Date().toISOString());
+    console.log("最終保存:", window.__myDeskLastSaveAt || "なし");
+    console.log("ロード完了:", !!window.__myDeskLoadedComplete);
+    console.log("\n--- AWS Lambda へのテスト接続 ---");
+    try {
+      const r = await fetch(`${DB_API_BASE}/data?id=main`, {
+        headers: { "Content-Type": "application/json", "x-mydesk-secret": "mydesk2026secret" },
+      });
+      const txt = await r.text();
+      const obj = JSON.parse(txt);
+      console.log(`GET status: ${r.status}, data size: ${txt.length}B`);
+      if (obj && obj.data) {
+        const d = obj.data;
+        console.log(`データ内容: quotes=${(d.quotes||[]).length}件, companies=${(d.companies||[]).length}, vendors=${(d.vendors||[]).length}, munis=${(d.municipalities||[]).length}, tasks=${(d.tasks||[]).length}`);
+        console.log("updated_at:", obj.updated_at);
+        console.log("✓ AWS接続OK - データはAWSに保存されています");
+      } else {
+        console.warn("⚠️ データ構造が異常:", obj);
+      }
+    } catch(e) {
+      console.error("✗ AWS接続失敗:", e);
+    }
+    console.log("=".repeat(60));
+  };
+  console.log("[MyDesk] 診断: コンソールで __myDeskDiag() を実行してください");
+}
 const DB_API_BASE   = "https://zv3hlppejxw32cjxhn2mnsdgqq0sxeqa.lambda-url.ap-northeast-1.on.aws";
 const DB_API_SECRET = "mydesk2026secret";
 const DB_API_HEADERS = {
@@ -153,17 +188,20 @@ async function sbSet(id, data) {
   } else {
     body = jsonStr;
   }
+  console.log(`[MyDesk] sbSet POST → ${DB_API_BASE}/data (id=${id}, size=${jsonStr.length}B${jsonStr.length>100*1024?', gzipped':''})`);
   for(let attempt = 1; attempt <= MAX_RETRY; attempt++) {
     try {
       const res = await fetch(`${DB_API_BASE}/data`, {
         method: "POST",
         headers: { ...DB_API_HEADERS, ...extraHeaders },
         body,
+        keepalive: jsonStr.length < 60 * 1024, // 64KB制限内ならkeepalive有効（リロード/離脱でも完了）
       });
       if(!res.ok) {
         const errText = await res.text().catch(()=>"");
         throw new Error(`${res.status} ${errText}`);
       }
+      console.log(`[MyDesk] sbSet OK (attempt ${attempt})`);
       return true;
     } catch(e) {
       console.warn(`[MyDesk] sbSet attempt ${attempt}/${MAX_RETRY} failed: ${e.message}`);
@@ -274,22 +312,27 @@ async function loadData() {
       const raw = result._rawData;
       // raw がオブジェクトで、INIT のキーを持つ本物のデータか確認
       if(raw && typeof raw === "object" && !Array.isArray(raw)) {
-        return { data: {...INIT, ...raw}, updated_at: result._updatedAt };
+        const merged = {...INIT, ...raw};
+        console.log(`[MyDesk] loadData OK — quotes: ${(merged.quotes||[]).length}件, companies: ${(merged.companies||[]).length}, vendors: ${(merged.vendors||[]).length}, munis: ${(merged.municipalities||[]).length}, tasks: ${(merged.tasks||[]).length}, updated_at: ${result._updatedAt}`);
+        return { data: merged, updated_at: result._updatedAt };
       }
     }
-  } catch{}
+    console.warn("[MyDesk] loadData: no valid data in response, using INIT");
+  } catch(e) {
+    console.error("[MyDesk] loadData failed:", e);
+  }
   return { data: INIT, updated_at: null };
 }
 async function saveData(d) {
   // ── データ保護ガード ──────────────────────────────────────────────
   if (!d || typeof d !== "object" || Array.isArray(d)) {
-    console.error("MyDesk: saveData rejected invalid data", d); return;
+    console.error("[MyDesk] saveData rejected invalid data", d); return;
   }
   // INIT のキーを一つも持たない場合は書き込まない（構造破壊を防ぐ）
   const initKeys = Object.keys(INIT);
   const hasAnyKey = initKeys.some(k => k in d);
   if (!hasAnyKey) {
-    console.error("MyDesk: saveData rejected — no INIT keys found", d); return;
+    console.error("[MyDesk] saveData rejected — no INIT keys found", d); return;
   }
   // 配列フィールドがすべて空で、かつ現在のDBに保存済みデータがある場合は書き込まない
   // （全消去を防ぐ強化ガード）
@@ -299,9 +342,10 @@ async function saveData(d) {
   const hasAnalyticsData = d.analytics && typeof d.analytics === "object" && Object.keys(d.analytics).length > 0;
   if (allArraysEmpty && !hasAnalyticsData) {
     // 配列が全て空かつ分析データもない場合は保存しない（データ保護）
-    console.warn("MyDesk: saveData skipped — all arrays empty and no analytics");
+    console.warn("[MyDesk] saveData skipped — all arrays empty");
     return;
   }
+  console.log(`[MyDesk] saveData → quotes: ${(d.quotes||[]).length}件, companies: ${(d.companies||[]).length}, vendors: ${(d.vendors||[]).length}, munis: ${(d.municipalities||[]).length}, tasks: ${(d.tasks||[]).length}`);
   const ok = await sbSet("main", d);
   if(!ok) {
     window.__myDeskSaveError = "データの保存に失敗しました（3回リトライ済）。ネットワークを確認してください。";
