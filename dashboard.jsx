@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-04-30-persistence-v5-save-queue"; // ビルド識別子
+const MYDESK_BUILD = "2026-04-30-v6-loading-spinners"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -521,6 +521,47 @@ const FieldLbl = ({label,required,children}) => (
   </div>
 );
 
+// 共通ローディング表示コンポーネント
+// size: "sm" (16px) | "md" (24px) | "lg" (40px)
+// inline: true なら横並び, false なら中央寄せ
+// label: 表示するメッセージ（省略時はスピナーのみ）
+// color: スピナー色（既定: アクセント色）
+const Spinner = React.memo(function Spinner({size="md",inline=false,label,color}) {
+  const px = size==="sm"?16:size==="lg"?40:24;
+  const bw = size==="sm"?2:size==="lg"?3:2.5;
+  const col = color || C.accent;
+  const spin = (
+    <div style={{width:px,height:px,borderRadius:"50%",border:`${bw}px solid ${col}`,borderTopColor:"transparent",animation:"spin 0.8s linear infinite",flexShrink:0}}/>
+  );
+  if(inline) {
+    return (
+      <span style={{display:"inline-flex",alignItems:"center",gap:label?"0.5rem":0,fontSize:size==="sm"?"0.78rem":"0.85rem",color:C.textSub,fontWeight:600}}>
+        {spin}
+        {label && <span>{label}</span>}
+      </span>
+    );
+  }
+  return (
+    <div style={{display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:"0.6rem",padding:"1.5rem"}}>
+      {spin}
+      {label && <div style={{color:C.textSub,fontSize:size==="sm"?"0.78rem":"0.88rem",fontWeight:600,textAlign:"center"}}>{label}</div>}
+    </div>
+  );
+});
+
+// オーバーレイ表示（処理中の画面ブロック）
+const LoadingOverlay = React.memo(function LoadingOverlay({label="処理中...",show=true}) {
+  if(!show) return null;
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(2px)"}}>
+      <div style={{background:"white",padding:"1.75rem 2.25rem",borderRadius:"1rem",boxShadow:"0 10px 30px rgba(0,0,0,0.2)",display:"flex",flexDirection:"column",alignItems:"center",gap:"1rem",minWidth:200}}>
+        <div style={{width:36,height:36,borderRadius:"50%",border:`3px solid ${C.accent}`,borderTopColor:"transparent",animation:"spin 0.8s linear infinite"}}/>
+        <div style={{color:C.text,fontSize:"0.9rem",fontWeight:700,textAlign:"center"}}>{label}</div>
+      </div>
+    </div>
+  );
+});
+
 function Sheet({title,onClose,children}) {
   return (
     <div style={{position:"fixed",inset:0,zIndex:300,display:"flex",flexDirection:"column",justifyContent:"flex-end"}}>
@@ -725,7 +766,12 @@ function FileSection({ files=[], onAdd, onDelete, currentUserId, entityType, ent
       {error && <div style={{color:"#dc2626",fontSize:"0.75rem",marginBottom:"0.5rem",padding:"0.5rem",background:"#fee2e2",borderRadius:"0.5rem"}}>{error}</div>}
       {!readOnly && (
         <label style={{display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem",border:`2px dashed ${uploading?C.accent:C.border}`,borderRadius:"8px",padding:"0.875rem",cursor:"pointer",background:uploading?C.accentBg:C.bg,color:uploading?C.accentDark:C.textSub,fontWeight:700,fontSize:"0.82rem"}}>
-          {uploading ? "⏳ アップロード中..." : "📎 ファイルを追加（最大20MB）"}
+          {uploading
+            ? <span style={{display:"inline-flex",alignItems:"center",gap:"0.5rem"}}>
+                <span style={{width:14,height:14,borderRadius:"50%",border:`2px solid ${C.accentDark}`,borderTopColor:"transparent",animation:"spin 0.8s linear infinite",display:"inline-block"}}/>
+                ファイルをアップロード中...
+              </span>
+            : "📎 ファイルを追加（最大20MB）"}
           <input ref={fileInputRef} type="file" onChange={handleFile} disabled={uploading} style={{display:"none"}}/>
         </label>
       )}
@@ -1598,7 +1644,12 @@ function AuthScreen({onLogin}) {
         <label style={lbl}>メールアドレス</label>
         <input type="email" inputMode="email" value={resetEmail} onChange={e=>setResetEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&sendResetCode()} placeholder="登録済みのメールアドレスを入力" style={is()}/>
       </div>
-      <AuthBigBtn onClick={sendResetCode} disabled={loading||!resetEmail.trim()}>{loading?"送信中...":"確認コードを送信"}</AuthBigBtn>
+      <AuthBigBtn onClick={sendResetCode} disabled={loading||!resetEmail.trim()}>{loading
+        ? <span style={{display:"inline-flex",alignItems:"center",gap:"0.5rem"}}>
+            <span style={{width:14,height:14,borderRadius:"50%",border:"2px solid white",borderTopColor:"transparent",animation:"spin 0.8s linear infinite",display:"inline-block"}}/>
+            送信中...
+          </span>
+        :"確認コードを送信"}</AuthBigBtn>
     </AuthWrap>
   );
 
@@ -1681,7 +1732,12 @@ function AuthScreen({onLogin}) {
           {touched.confirm&&f.confirm&&f.password!==f.confirm&&ferr("パスワードが一致しません")}
         </div>
       )}
-      <AuthBigBtn onClick={submit} disabled={loading}>{loading?"処理中...":mode==="login"?"ログイン":"アカウントを作成"}</AuthBigBtn>
+      <AuthBigBtn onClick={submit} disabled={loading}>{loading
+        ? <span style={{display:"inline-flex",alignItems:"center",gap:"0.5rem"}}>
+            <span style={{width:14,height:14,borderRadius:"50%",border:"2px solid white",borderTopColor:"transparent",animation:"spin 0.8s linear infinite",display:"inline-block"}}/>
+            処理中...
+          </span>
+        : mode==="login"?"ログイン":"アカウントを作成"}</AuthBigBtn>
       {mode==="login"&&(
         <button onClick={()=>goMode("forgot")} style={{width:"100%",marginTop:"1rem",padding:"0.5rem",background:"none",border:"none",color:C.textSub,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
           パスワードを忘れた方はこちら
@@ -2567,7 +2623,10 @@ function QuoteEditor({quote, users=[], currentUser, onUpdate, onDelete, onClose,
         <button onClick={onClose} style={{padding:"0.4rem 0.65rem",borderRadius:"0.4rem",border:"1px solid #e5e7eb",background:"white",color:"#6b7280",fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>← 一覧へ</button>
         <span style={{fontSize:"0.78rem",color:"#6b7280",fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:"30%"}}>#{quote.no}</span>
         {/* 保存ステータス表示 */}
-        {saveStatus === "saving" && <span style={{fontSize:"0.7rem",color:"#0284c7",background:"#e0f2fe",padding:"0.2rem 0.5rem",borderRadius:"0.3rem",fontWeight:700,whiteSpace:"nowrap"}}>💾 保存中...</span>}
+        {saveStatus === "saving" && <span style={{fontSize:"0.7rem",color:"#0284c7",background:"#e0f2fe",padding:"0.2rem 0.5rem",borderRadius:"0.3rem",fontWeight:700,whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:"0.3rem"}}>
+          <span style={{width:10,height:10,borderRadius:"50%",border:"1.5px solid #0284c7",borderTopColor:"transparent",animation:"spin 0.8s linear infinite",display:"inline-block"}}/>
+          保存中...
+        </span>}
         {saveStatus === "error" && <span style={{fontSize:"0.7rem",color:"#dc2626",background:"#fef2f2",padding:"0.2rem 0.5rem",borderRadius:"0.3rem",fontWeight:700,whiteSpace:"nowrap"}}>⚠️ 保存失敗</span>}
         {saveStatus === null && quote.updatedAt && <span style={{fontSize:"0.7rem",color:"#059669",fontWeight:600,whiteSpace:"nowrap"}}>✓ 保存済み</span>}
         <div style={{flex:"1 1 auto",minWidth:0}}/>
@@ -4869,7 +4928,12 @@ function EmailView({data,setData,currentUser=null}) {
 
           <Btn onClick={generate} size="lg" style={{width:"100%"}}
             disabled={loading||(mode==="follow"?(!toName&&!toCompany&&!followMemo&&!inputText.trim()):(!inputText.trim()||!instruction.trim()))}>
-            {loading?"🤖 生成中...":mode==="reply"?"🤖 返信文を生成":mode==="follow"?"🤝 フォローメールを生成":"🤖 メール文を生成"}
+            {loading
+              ? <span style={{display:"inline-flex",alignItems:"center",gap:"0.5rem",justifyContent:"center"}}>
+                  <span style={{width:14,height:14,borderRadius:"50%",border:"2px solid white",borderTopColor:"transparent",animation:"spin 0.8s linear infinite",display:"inline-block"}}/>
+                  🤖 AI が文章を生成中...
+                </span>
+              : mode==="reply"?"🤖 返信文を生成":mode==="follow"?"🤝 フォローメールを生成":"🤖 メール文を生成"}
           </Btn>
 
           {/* Past emails */}
@@ -6007,7 +6071,7 @@ ${userSummary||"（活動なし）"}
         <button onClick={generateReport} disabled={generating}
           style={{width:"100%",padding:"0.65rem",borderRadius:"8px",border:"none",background:generating?"#e2e8f0":C.accent,color:generating?"#94a3b8":"white",fontWeight:700,fontSize:"0.88rem",cursor:generating?"not-allowed":"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
           {generating
-            ? <><span style={{fontSize:"1rem",display:"inline-block",animation:"spin 1s linear infinite"}}>⚙️</span> レポート生成中...</>
+            ? <><span style={{width:14,height:14,borderRadius:"50%",border:"2px solid #94a3b8",borderTopColor:"transparent",animation:"spin 0.8s linear infinite",display:"inline-block"}}/> AI がレポートを生成中...</>
             : <><span>✨</span> AIで{period==="week"?"週次":"月次"}レポートを生成</>}
         </button>
       )}
@@ -6039,71 +6103,260 @@ ${userSummary||"（活動なし）"}
 
 
 // ─── BIZCARD SCANNER (名刺写真→自動入力) ────────────────────────────────────
+// AWS Bedrock Claude Opus 4.7 (Lambda Function URL) を使用した OCR。
+// 完全な再設計：画像圧縮・詳細ログ・リトライ・エラー処理を実装
+const BIZCARD_OCR_URL = "https://2tosyclyqeswer2d7q4p7f4qri0lpfca.lambda-url.ap-northeast-1.on.aws/";
+
+// 画像を最大サイズに圧縮してBase64返す（iPhone 写真は 3-5MB なので圧縮必須）
+async function compressImage(file, maxDim = 1600, quality = 0.85) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      img.onload = () => {
+        const w = img.width, h = img.height;
+        let nw = w, nh = h;
+        if (Math.max(w, h) > maxDim) {
+          if (w >= h) {
+            nw = maxDim;
+            nh = Math.round(h * (maxDim / w));
+          } else {
+            nh = maxDim;
+            nw = Math.round(w * (maxDim / h));
+          }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = nw; canvas.height = nh;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, nw, nh);
+        canvas.toBlob((blob) => {
+          if (!blob) return reject(new Error("圧縮に失敗しました"));
+          const r2 = new FileReader();
+          r2.onload = () => {
+            const dataUrl = r2.result;
+            const base64 = dataUrl.split(",")[1];
+            resolve({ base64, mediaType: "image/jpeg", originalSize: file.size, compressedSize: blob.size, width: nw, height: nh });
+          };
+          r2.readAsDataURL(blob);
+        }, "image/jpeg", quality);
+      };
+      img.onerror = () => reject(new Error("画像の読み込みに失敗しました"));
+      img.src = ev.target.result;
+    };
+    reader.onerror = () => reject(new Error("ファイルの読み込みに失敗しました"));
+    reader.readAsDataURL(file);
+  });
+}
+
 const BizCardScanner = React.memo(function BizCardScannerInner({ onResult, currentUser }) {
   const [scanning, setScanning] = React.useState(false);
-  const [preview, setPreview]   = React.useState(null);
-  const [error, setError]       = React.useState("");
+  const [stage, setStage] = React.useState(""); // "compressing" | "uploading" | "analyzing" | "applying"
+  const [preview, setPreview] = React.useState(null);
+  const [error, setError] = React.useState("");
+  const [lastResult, setLastResult] = React.useState(null); // 直近の解析結果（再適用用）
+  const [diagInfo, setDiagInfo] = React.useState(""); // 診断情報
   const fileRef = React.useRef();
 
-  const handleFile = async (file) => {
-    if(!file || !file.type.startsWith("image/")) return;
+  // Lambda 接続テスト（GET リクエストでヘルスチェック）
+  const testConnection = async () => {
     setError("");
-    // プレビュー
-    const reader = new FileReader();
-    reader.onload = e => setPreview(e.target.result);
-    reader.readAsDataURL(file);
-    // base64変換してAPI送信
-    const b64 = await new Promise(res => {
-      const r = new FileReader();
-      r.onload = () => res(r.result.split(",")[1]);
-      r.readAsDataURL(file);
-    });
-    setScanning(true);
+    setDiagInfo("🔍 Lambda 接続をテスト中...");
+    const url = (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_OCR_API_URL) || BIZCARD_OCR_URL;
+    console.log(`[BizCard OCR] 診断テスト → ${url}`);
     try {
-      // OCR用Lambda Function URL（AWS Bedrock + Claude Sonnet 4）
-      // 環境変数 VITE_OCR_API_URL で指定。未設定時はエラー表示。
-      const ocrUrl = import.meta.env.VITE_OCR_API_URL;
-      if (!ocrUrl) {
-        throw new Error("OCR APIのURLが未設定です（VITE_OCR_API_URL）");
-      }
-      const resp = await fetch(ocrUrl, {
+      // 1. GET でヘルスチェック
+      const r1 = await fetch(url, { method: "GET", headers: { "x-mydesk-secret": "mydesk2026secret" } });
+      const t1 = await r1.text();
+      console.log("[BizCard OCR] GET response:", r1.status, t1);
+      let healthInfo = "";
+      try {
+        const j = JSON.parse(t1);
+        healthInfo = `\nモデル: ${j.model || "?"}, ステータス: ${j.status || "?"}`;
+      } catch {}
+      // 2. POST で 1x1 ダミー画像を送信して認証・Bedrock 動作をチェック
+      // 1x1 透明 PNG (43バイト)
+      const dummyB64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==";
+      const r2 = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-mydesk-secret": "mydesk2026secret" },
-        body: JSON.stringify({ imageBase64: b64, mediaType: file.type }),
+        body: JSON.stringify({ imageBase64: dummyB64, mediaType: "image/png" }),
       });
-      const json = await resp.json();
-      if(!resp.ok) throw new Error(json.error || "読み取り失敗");
-      // フォームに反映（所有者は現在ユーザー）
-      const fields = json.fields || {};
-      if(currentUser?.name && !fields.owners?.length) {
+      const t2 = await r2.text();
+      console.log("[BizCard OCR] POST response:", r2.status, t2);
+      if (r1.ok && (r2.ok || r2.status === 400)) {
+        setDiagInfo(`✅ Lambda 接続OK${healthInfo}\nGET: ${r1.status}, POST: ${r2.status}`);
+      } else if (r1.status === 401 || r2.status === 401) {
+        setDiagInfo(`⚠️ 認証エラー (401)\nx-mydesk-secret ヘッダーが不正です。Lambda側のAPI_SECRET環境変数を確認してください。`);
+      } else if (r1.status === 0 || r2.status === 0) {
+        setDiagInfo(`⚠️ CORS エラー\nLambda の CORS 設定を確認してください。AllowOrigins: ["*"], AllowHeaders: ["*"] が必要です。`);
+      } else {
+        setDiagInfo(`⚠️ 異常レスポンス\nGET: ${r1.status} → ${t1.slice(0,150)}\nPOST: ${r2.status} → ${t2.slice(0,150)}`);
+      }
+    } catch(e) {
+      console.error("[BizCard OCR] 診断失敗:", e);
+      setDiagInfo(`❌ ネットワーク接続失敗\n${e.message}\n→ Lambda Function URL が正しいか、CORS設定が "AllowOrigins":["*"] になっているか確認してください。`);
+    }
+  };
+
+  const performOcr = async (compressed, attempt = 1) => {
+    const url = (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_OCR_API_URL) || BIZCARD_OCR_URL;
+    console.log(`[BizCard OCR] POST → ${url} (size=${compressed.compressedSize}B, ${compressed.width}x${compressed.height})`);
+    const ctrl = new AbortController();
+    const timeoutId = setTimeout(() => ctrl.abort(), 60000); // 60秒タイムアウト
+    try {
+      const resp = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-mydesk-secret": "mydesk2026secret" },
+        body: JSON.stringify({ imageBase64: compressed.base64, mediaType: compressed.mediaType }),
+        signal: ctrl.signal,
+      });
+      clearTimeout(timeoutId);
+      const text = await resp.text();
+      let json = null;
+      try { json = JSON.parse(text); } catch { /* not JSON */ }
+      if (!resp.ok) {
+        const msg = json?.error || text || `HTTP ${resp.status}`;
+        console.error(`[BizCard OCR] HTTP error: ${resp.status}`, msg);
+        // 5xx エラーは1回だけリトライ
+        if (resp.status >= 500 && attempt < 2) {
+          console.log("[BizCard OCR] サーバーエラー、1秒後にリトライします");
+          await new Promise(r => setTimeout(r, 1000));
+          return performOcr(compressed, attempt + 1);
+        }
+        throw new Error(`OCR失敗: ${msg}`);
+      }
+      if (!json) throw new Error("レスポンスの解析に失敗しました");
+      console.log("[BizCard OCR] response:", json);
+      return json;
+    } catch (e) {
+      clearTimeout(timeoutId);
+      if (e.name === "AbortError") {
+        throw new Error("タイムアウト（60秒）— 画像が大きすぎるか、サーバーが応答していません");
+      }
+      // ネットワークエラーは1回だけリトライ
+      if (attempt < 2 && (e.message.includes("Failed to fetch") || e.message.includes("Network"))) {
+        console.log("[BizCard OCR] ネットワークエラー、2秒後にリトライします");
+        await new Promise(r => setTimeout(r, 2000));
+        return performOcr(compressed, attempt + 1);
+      }
+      throw e;
+    }
+  };
+
+  // 電話番号などのフィールドを正規化
+  const normalizeFields = (raw) => {
+    const cleaned = {};
+    const phoneClean = (s) => (s || "").replace(/[‐－―ー]/g, "-").replace(/\s+/g, "").trim();
+    const stringClean = (s) => (s || "").trim();
+    if (raw.company) cleaned.company = stringClean(raw.company);
+    if (raw.department) cleaned.department = stringClean(raw.department);
+    if (raw.title) cleaned.title = stringClean(raw.title);
+    if (raw.lastName) cleaned.lastName = stringClean(raw.lastName);
+    if (raw.firstName) cleaned.firstName = stringClean(raw.firstName);
+    if (raw.email) cleaned.email = stringClean(raw.email).toLowerCase();
+    if (raw.zip) cleaned.zip = stringClean(raw.zip).replace(/[‐－―]/g, "-");
+    if (raw.address) cleaned.address = stringClean(raw.address);
+    if (raw.telCompany) cleaned.telCompany = phoneClean(raw.telCompany);
+    if (raw.telDept) cleaned.telDept = phoneClean(raw.telDept);
+    if (raw.telDirect) cleaned.telDirect = phoneClean(raw.telDirect);
+    if (raw.fax) cleaned.fax = phoneClean(raw.fax);
+    if (raw.mobile) cleaned.mobile = phoneClean(raw.mobile);
+    if (raw.url) cleaned.url = stringClean(raw.url);
+    if (Array.isArray(raw.owners)) cleaned.owners = raw.owners;
+    return cleaned;
+  };
+
+  const handleFile = async (file) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setError("⚠️ 画像ファイルを選択してください");
+      return;
+    }
+    console.log(`[BizCard OCR] file selected: ${file.name}, ${file.type}, ${(file.size/1024).toFixed(1)}KB`);
+    setError("");
+    setLastResult(null);
+    setScanning(true);
+    setStage("compressing");
+    try {
+      // Step 1: 画像を圧縮
+      const compressed = await compressImage(file, 1600, 0.85);
+      console.log(`[BizCard OCR] compressed: ${(compressed.originalSize/1024).toFixed(1)}KB → ${(compressed.compressedSize/1024).toFixed(1)}KB (${compressed.width}x${compressed.height})`);
+      // 圧縮後のプレビューを設定
+      setPreview(`data:${compressed.mediaType};base64,${compressed.base64}`);
+      // Step 2: OCR API へ送信
+      setStage("analyzing");
+      const json = await performOcr(compressed);
+      // Step 3: フィールド抽出
+      setStage("applying");
+      const rawFields = json.fields || json.data || json; // Lambda の応答形式に柔軟対応
+      if (!rawFields || typeof rawFields !== "object") {
+        throw new Error("OCRから有効なデータが返されませんでした");
+      }
+      const fields = normalizeFields(rawFields);
+      // 所有者を現在のユーザーで補完
+      if (currentUser?.name && (!fields.owners || fields.owners.length === 0)) {
         fields.owners = [currentUser.name];
       }
+      console.log("[BizCard OCR] extracted fields:", fields);
+      setLastResult(fields);
       onResult(fields);
-      setPreview(null);
-    } catch(e) {
-      setError("⚠️ " + e.message);
+      setStage("");
+      // 3秒後にプレビューを消す（ユーザーが結果を確認する時間）
+      setTimeout(() => setPreview(null), 3000);
+    } catch (e) {
+      console.error("[BizCard OCR] failed:", e);
+      setError("⚠️ " + (e.message || "OCR処理に失敗しました"));
+      setStage("");
     }
     setScanning(false);
+  };
+
+  const stageLabel = {
+    compressing: "📦 画像を準備中...",
+    analyzing: "🤖 AI が解析中... (最大60秒)",
+    applying: "✏️ フィールドに反映中...",
   };
 
   return (
     <div style={{marginBottom:"1rem"}}>
       <input ref={fileRef} type="file" accept="image/*" capture="environment"
-        style={{display:"none"}} onChange={e=>handleFile(e.target.files[0])}/>
-      <button type="button"
-        onClick={()=>fileRef.current?.click()}
-        disabled={scanning}
-        style={{width:"100%",padding:"0.75rem",borderRadius:"8px",border:"2px dashed #2563eb",background:scanning?"#eff6ff":"white",color:scanning?"#93c5fd":"#2563eb",fontWeight:700,fontSize:"0.88rem",cursor:scanning?"not-allowed":"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
-        {scanning
-          ? <><span style={{fontSize:"1.2rem",animation:"spin 1s linear infinite"}}>🔄</span> 読み取り中...</>
-          : <><span style={{fontSize:"1.2rem"}}>📷</span> 名刺を撮影して自動入力</>}
-      </button>
-      {preview&&!scanning&&(
-        <div style={{marginTop:"0.5rem",borderRadius:"0.625rem",overflow:"hidden",maxHeight:120,textAlign:"center"}}>
+        style={{display:"none"}} onChange={e=>{handleFile(e.target.files[0]); e.target.value="";}}/>
+      <div style={{display:"flex",gap:"0.4rem"}}>
+        <button type="button"
+          onClick={()=>fileRef.current?.click()}
+          disabled={scanning}
+          style={{flex:1,padding:"0.75rem",borderRadius:"8px",border:"2px dashed #2563eb",background:scanning?"#eff6ff":"white",color:scanning?"#1d4ed8":"#2563eb",fontWeight:700,fontSize:"0.88rem",cursor:scanning?"not-allowed":"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
+          {scanning
+            ? <><span style={{width:18,height:18,borderRadius:"50%",border:"2.5px solid #2563eb",borderTopColor:"transparent",animation:"spin 0.8s linear infinite",display:"inline-block"}}/> {stageLabel[stage] || "処理中..."}</>
+            : <><span style={{fontSize:"1.2rem"}}>📷</span> 名刺を撮影して自動入力</>}
+        </button>
+        <button type="button" onClick={testConnection} disabled={scanning} title="Lambda 接続をテスト"
+          style={{padding:"0.75rem 0.6rem",borderRadius:"8px",border:"1.5px solid #6b7280",background:"white",color:"#6b7280",fontWeight:700,fontSize:"0.85rem",cursor:scanning?"not-allowed":"pointer",fontFamily:"inherit"}}>
+          🔧
+        </button>
+      </div>
+      {diagInfo && (
+        <div style={{marginTop:"0.4rem",fontSize:"0.72rem",color:"#374151",background:"#f3f4f6",padding:"0.5rem 0.6rem",borderRadius:"0.4rem",border:"1px solid #d1d5db",whiteSpace:"pre-wrap",fontFamily:"monospace",lineHeight:1.5}}>
+          {diagInfo}
+          <button onClick={()=>setDiagInfo("")} style={{marginLeft:"0.5rem",background:"none",border:"none",color:"#374151",fontWeight:700,cursor:"pointer",textDecoration:"underline",fontSize:"0.7rem"}}>閉じる</button>
+        </div>
+      )}
+      {preview && (
+        <div style={{marginTop:"0.5rem",borderRadius:"0.625rem",overflow:"hidden",maxHeight:140,textAlign:"center",background:"#f9fafb",padding:"0.4rem"}}>
           <img src={preview} style={{maxHeight:120,maxWidth:"100%",objectFit:"contain",borderRadius:"0.5rem"}} alt="名刺プレビュー"/>
         </div>
       )}
-      {error&&<div style={{marginTop:"0.35rem",fontSize:"0.78rem",color:"#dc2626"}}>{error}</div>}
+      {lastResult && !scanning && !error && (
+        <div style={{marginTop:"0.4rem",fontSize:"0.75rem",color:"#059669",background:"#d1fae5",padding:"0.4rem 0.6rem",borderRadius:"0.4rem",fontWeight:700}}>
+          ✅ 読み取り成功：{Object.keys(lastResult).filter(k=>k!=="owners"&&lastResult[k]).length}項目を入力しました
+        </div>
+      )}
+      {error && (
+        <div style={{marginTop:"0.4rem",fontSize:"0.78rem",color:"#dc2626",background:"#fef2f2",padding:"0.5rem 0.6rem",borderRadius:"0.4rem",border:"1px solid #fca5a5"}}>
+          {error}
+          <button onClick={()=>{setError("");setPreview(null);}} style={{marginLeft:"0.5rem",background:"none",border:"none",color:"#dc2626",fontWeight:700,cursor:"pointer",textDecoration:"underline",fontSize:"0.75rem"}}>閉じる</button>
+        </div>
+      )}
       <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
     </div>
   );
@@ -7832,7 +8085,12 @@ function MtgRecordModal({entityKey,entityId,entityName,data,users,currentUser,on
               <button onClick={processWithAI}
                 disabled={!finalText.trim()||aiLoading||recording||whisperProcessing}
                 style={{flex:2,padding:"0.75rem",borderRadius:"6px",background:(finalText.trim()&&!recording&&!whisperProcessing)?"#7c3aed":"#e2e8f0",color:(finalText.trim()&&!recording&&!whisperProcessing)?"white":"#94a3b8",fontWeight:800,border:"none",cursor:(finalText.trim()&&!recording&&!whisperProcessing)?"pointer":"default",fontFamily:"inherit",fontSize:"0.9rem"}}>
-                {aiLoading?"🤖 AI処理中...":"🤖 AIで議事録・タスク生成"}
+                {aiLoading
+                  ? <span style={{display:"inline-flex",alignItems:"center",gap:"0.5rem",justifyContent:"center"}}>
+                      <span style={{width:14,height:14,borderRadius:"50%",border:"2px solid white",borderTopColor:"transparent",animation:"spin 0.8s linear infinite",display:"inline-block"}}/>
+                      🤖 AI が解析中...
+                    </span>
+                  : "🤖 AIで議事録・タスク生成"}
               </button>
             </div>
           )}
@@ -13876,7 +14134,12 @@ function PushTestPanel({ currentUser, users }) {
         </button>
         <button onClick={sendTestPush} disabled={sending}
           style={{flex:1, minWidth:120, padding:'0.5rem 0.75rem', borderRadius:8, border:'none', background: sending ? '#94a3b8' : '#2563eb', color:'white', cursor: sending ? 'default':'pointer', fontSize:'0.78rem', fontWeight:700, fontFamily:'inherit'}}>
-          {sending ? '送信中...' : '🔔 テスト送信'}
+          {sending
+            ? <span style={{display:"inline-flex",alignItems:"center",gap:"0.4rem"}}>
+                <span style={{width:12,height:12,borderRadius:"50%",border:"2px solid white",borderTopColor:"transparent",animation:"spin 0.8s linear infinite",display:"inline-block"}}/>
+                送信中...
+              </span>
+            : '🔔 テスト送信'}
         </button>
       </div>
 
