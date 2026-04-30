@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-04-30-persistence-v4-shrinkage-guard"; // ビルド識別子
+const MYDESK_BUILD = "2026-04-30-persistence-v5-save-queue"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -2093,11 +2093,13 @@ function DocumentSection({entityType, entityId, entityName, files, currentUserId
   // null = 保存済み, "saving" = 保存中, "error" = 保存失敗
   const [saveStatus, setSaveStatus] = React.useState(null);
   
-  // データの永続化：必ず save (= setData + saveData) を経由してAWSに保存
-  // save が無ければ重大なバグ。コンソールに警告を出す
-  // 即時 setData して UI を更新、saveData は debounce で AWS への書き込みを集約
-  const pendingDataRef = React.useRef(null);
-  const saveTimerRef = React.useRef(null);
+  // データの永続化アーキテクチャ：
+  // 1. setData で即時 UI 更新
+  // 2. saveData をキュー化して順次実行（並列に飛ばさず、最新データだけ保存）
+  // これにより out-of-order race を完全防止
+  const pendingDataRef = React.useRef(null);   // 次に保存する最新データ
+  const savingPromiseRef = React.useRef(null); // 進行中の保存ループ
+  const saveTimerRef = React.useRef(null);     // 互換性用（旧コードからの参照）
   
   const persist = React.useCallback((nd) => {
     if (!save) {
@@ -2107,56 +2109,43 @@ function DocumentSection({entityType, entityId, entityName, files, currentUserId
       return;
     }
     setSaveStatus("saving");
-    pendingDataRef.current = nd;
-    // UI更新は即時（setData部分）
+    // UI 更新は即時（setData は同期的）
     if (setData) setData(nd);
-    // AWSへの書き込みは50ms debounce で集約（ほぼ即時）
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => {
-      try {
-        const latest = pendingDataRef.current;
-        save(latest); // setData(latest) + saveData(latest)
-        pendingDataRef.current = null;
-        saveTimerRef.current = null;
-        setTimeout(() => setSaveStatus(null), 500);
-      } catch(e) {
-        console.error("[MyDesk] persist failed:", e);
-        setSaveStatus("error");
-        setTimeout(() => setSaveStatus(null), 3000);
-      }
-    }, 50);
+    // 保存対象を更新
+    pendingDataRef.current = nd;
+    // すでに保存ループが走っていれば追記するだけ。なければ新規ループを開始
+    if (!savingPromiseRef.current) {
+      savingPromiseRef.current = (async () => {
+        // pendingDataRef が空になるまでループ。途中で新しいデータが来たら最新を保存
+        while (pendingDataRef.current) {
+          const toSave = pendingDataRef.current;
+          pendingDataRef.current = null; // claim this batch
+          try {
+            await saveData(toSave); // AWS に書き込み完了まで待つ
+          } catch(e) {
+            console.error("[MyDesk] queued save failed:", e);
+            setSaveStatus("error");
+            setTimeout(() => setSaveStatus(null), 3000);
+          }
+        }
+        savingPromiseRef.current = null;
+        setSaveStatus(null);
+      })();
+    }
   }, [save, setData]);
   
-  // 削除や明示保存など重要操作は debounce せず即座に AWS へ書き込む
-  const persistNow = React.useCallback((nd) => {
-    if (!save) {
-      console.error("[MyDesk] DocumentSection: save prop が未設定！", nd);
-      window.alert("⚠️ 保存機能が初期化されていません。ページを再読み込みしてください。");
-      if (setData) setData(nd);
-      return;
-    }
-    if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
-    pendingDataRef.current = null;
-    setSaveStatus("saving");
-    try {
-      save(nd); // 即座に setData + saveData
-      setTimeout(() => setSaveStatus(null), 500);
-    } catch(e) {
-      console.error("[MyDesk] persistNow failed:", e);
-      setSaveStatus("error");
-      setTimeout(() => setSaveStatus(null), 3000);
-    }
-  }, [save, setData]);
+  // 削除や明示保存も同じロジック（即時+キュー）
+  const persistNow = persist;
   
   // ページを閉じる/リロード時に未保存の変更があれば警告 + 強制保存
   React.useEffect(() => {
     const flushPending = () => {
-      if (pendingDataRef.current && save) {
+      if (pendingDataRef.current) {
         // 同期的に最後の保存を試みる（saveData 内部で keepalive:true 使用）
         try { 
-          save(pendingDataRef.current); 
-          pendingDataRef.current = null; 
-          if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
+          const toSave = pendingDataRef.current;
+          pendingDataRef.current = null;
+          saveData(toSave); // fire-and-forget; keepalive:true で完了する
         } catch(_) {}
       }
     };
@@ -2177,17 +2166,20 @@ function DocumentSection({entityType, entityId, entityName, files, currentUserId
       window.removeEventListener("beforeunload", onBeforeUnload);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [save]);
+  }, []);
   
   // コンポーネントがアンマウントされる時、保留中の保存を即座に flush
   React.useEffect(() => {
     return () => {
-      if (saveTimerRef.current && pendingDataRef.current && save) {
-        clearTimeout(saveTimerRef.current);
-        try { save(pendingDataRef.current); } catch(e) { console.error("flush save failed", e); }
+      if (pendingDataRef.current) {
+        try { 
+          const toSave = pendingDataRef.current;
+          pendingDataRef.current = null;
+          saveData(toSave);
+        } catch(e) { console.error("unmount flush save failed", e); }
       }
     };
-  }, [save]);
+  }, []);
   
   // このエンティティに紐づく見積書のみ取得
   const linkedQuotes = (data?.quotes || []).filter(q => 
@@ -2222,13 +2214,18 @@ function DocumentSection({entityType, entityId, entityName, files, currentUserId
       updatedAt: new Date().toISOString(),
       salesRef: { type: entityType, id: String(entityId), name: entityName },
     };
-    const nd = {...data, quotes: [newQuote, ...(data.quotes||[])]};
+    // pending変更がある場合、それを基準にする（typing中の値を失わない）
+    const baseData = pendingDataRef.current || data;
+    const nd = {...baseData, quotes: [newQuote, ...(baseData.quotes||[])]};
     persistNow(nd); // 新規作成は即時保存
     setActiveQuoteId(newQuote.id);
   };
   
   const updateQuote = (id, updates) => {
-    const nd = {...data, quotes: (data.quotes||[]).map(q => q.id===id ? {...q, ...updates, updatedAt:new Date().toISOString()} : q)};
+    // pending変更がある場合、それを基準にする（typing中の値を失わない）
+    // 例：misc=1000 を typing 中に「保存」ボタンが押されても misc=1000 が保持される
+    const baseData = pendingDataRef.current || data;
+    const nd = {...baseData, quotes: (baseData.quotes||[]).map(q => q.id===id ? {...q, ...updates, updatedAt:new Date().toISOString()} : q)};
     // バージョン保存・復元・内部メモ以外の通常編集は debounce
     // ただし versions に変更があるなら即時保存
     if (updates.versions !== undefined) {
@@ -2239,11 +2236,12 @@ function DocumentSection({entityType, entityId, entityName, files, currentUserId
   };
   
   const deleteQuote = (id) => {
-    const q = (data.quotes||[]).find(x => x.id === id);
+    const baseData = pendingDataRef.current || data;
+    const q = (baseData.quotes||[]).find(x => x.id === id);
     if (!q) return;
     const label = q.no ? `見積書 #${q.no}` : "この見積書";
     if (!window.confirm(`${label} を削除しますか？\nこの操作は元に戻せません。\n（変更履歴も全て削除されます）`)) return;
-    const nd = {...data, quotes: (data.quotes||[]).filter(q => q.id !== id)};
+    const nd = {...baseData, quotes: (baseData.quotes||[]).filter(q => q.id !== id)};
     persistNow(nd); // 削除は必ず即時保存
     if (activeQuoteId === id) setActiveQuoteId(null);
   };
