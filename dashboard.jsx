@@ -2088,7 +2088,7 @@ function DocumentSection({entityType, entityId, entityName, files, currentUserId
     pendingDataRef.current = nd;
     // UI更新は即時（setData部分）
     if (setData) setData(nd);
-    // AWSへの書き込みは200ms debounce で集約（タイピング中の連打を抑制、データロスリスク最小化）
+    // AWSへの書き込みは50ms debounce で集約（ほぼ即時）
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
       try {
@@ -2102,7 +2102,7 @@ function DocumentSection({entityType, entityId, entityName, files, currentUserId
         setSaveStatus("error");
         setTimeout(() => setSaveStatus(null), 3000);
       }
-    }, 200);
+    }, 50);
   }, [save, setData]);
   
   // 削除や明示保存など重要操作は debounce せず即座に AWS へ書き込む
@@ -2126,20 +2126,35 @@ function DocumentSection({entityType, entityId, entityName, files, currentUserId
     }
   }, [save, setData]);
   
-  // ページを閉じる/リロード時に未保存の変更があれば警告
+  // ページを閉じる/リロード時に未保存の変更があれば警告 + 強制保存
   React.useEffect(() => {
-    const onBeforeUnload = (e) => {
+    const flushPending = () => {
       if (pendingDataRef.current && save) {
-        // 同期的に最後の保存を試みる
-        try { save(pendingDataRef.current); pendingDataRef.current = null; } catch(_) {}
-        // ブラウザに警告を出す（モダンブラウザではメッセージは無視されるが警告は出る）
+        // 同期的に最後の保存を試みる（saveData 内部で keepalive:true 使用）
+        try { 
+          save(pendingDataRef.current); 
+          pendingDataRef.current = null; 
+          if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
+        } catch(_) {}
+      }
+    };
+    const onBeforeUnload = (e) => {
+      if (pendingDataRef.current) {
+        flushPending();
         e.preventDefault();
         e.returnValue = "未保存の変更があります。本当にページを離れますか？";
         return e.returnValue;
       }
     };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") flushPending();
+    };
     window.addEventListener("beforeunload", onBeforeUnload);
-    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [save]);
   
   // コンポーネントがアンマウントされる時、保留中の保存を即座に flush
@@ -16038,18 +16053,11 @@ export default function App() {
     const goOnline  = () => setIsOffline(false);
     const onBeforeUnload = (e) => {
       // ペンディング中の自動保存を即座に実行（リロード前に確実に保存）
+      // saveData は fetch keepalive:true を使用するためページ離脱時も完了する
       if (autoSaveTimerRef.current) {
         clearTimeout(autoSaveTimerRef.current);
         autoSaveTimerRef.current = null;
-        // sendBeacon で確実に送る（ページ離脱時でもリクエストが完了する）
-        try {
-          const jsonStr = JSON.stringify({ id: "main", data });
-          if (jsonStr.length < 60 * 1024) { // sendBeaconは64KB制限
-            navigator.sendBeacon(`${DB_API_BASE}/data`, new Blob([jsonStr], { type: "application/json" }));
-          } else {
-            saveData(data); // 大きすぎる場合は通常保存（fire-and-forget）
-          }
-        } catch(err) { /* ignore */ }
+        saveData(data); // fire-and-forget; sbSet 内部で keepalive:true 使用
       }
       const timeSinceSave = Date.now() - (window.__myDeskLastSave || 0);
       if(timeSinceSave < 3000) { // 保存から3秒以内はリロード警告
@@ -16063,14 +16071,7 @@ export default function App() {
       if (document.visibilityState === "hidden" && autoSaveTimerRef.current) {
         clearTimeout(autoSaveTimerRef.current);
         autoSaveTimerRef.current = null;
-        try {
-          const jsonStr = JSON.stringify({ id: "main", data });
-          if (jsonStr.length < 60 * 1024) {
-            navigator.sendBeacon(`${DB_API_BASE}/data`, new Blob([jsonStr], { type: "application/json" }));
-          } else {
-            saveData(data);
-          }
-        } catch(err) { /* ignore */ }
+        saveData(data); // fire-and-forget; keepalive:true で完了する
       }
     };
     document.addEventListener("visibilitychange", onVisibilityChange);
