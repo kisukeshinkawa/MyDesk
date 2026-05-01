@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-01-v16-stamp-square"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-01-v18-remarks-fix"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -3121,11 +3121,12 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
     whiteSpace: "nowrap"
   };
 
-  // Excel列幅 (Excel本来は K=10.16, L=M=8.43 の非対称設計だが、
-  //   Excel本物のレンダリングでは印鑑3マスがほぼ等幅で表示されるので等幅化:
-  //   K=L=M=9.007 (3列合計27.02はExcel仕様と同じ、全合計108.45を維持))
-  // J列(金額列) は明細表で「9,999,999」を表示するため Excel仕様 11.83 を厳守
-  const colW = [3.83, 7.16, 8.43, 5.33, 8.43, 8.43, 11.83, 5.16, 11.00, 11.83, 9.007, 9.007, 9.007];
+  // Excel本物のレンダリングに合わせ印鑑欄を「ほぼ正方形」に：
+  //   印鑑欄高さ = 16.68mm（Row10=20, Row11=0, Row12=12, Row13=17.25）
+  //   K=L=M=11.0 で印鑑1マス幅 18.27mm → 18.27×16.68 = 0.91:1（ほぼ正方形）
+  // J=11.83（Excel仕様）維持で金額列「9,999,999」も完全表示
+  // 合計 120.43 → colgroup の % 正規化で全幅 200mm に
+  const colW = [3.83, 7.16, 8.43, 5.33, 8.43, 8.43, 11.83, 5.16, 11.00, 11.83, 11.0, 11.0, 11.0];
 
   // Excel 行高 (印鑑欄を正方形に近づけるため Row 10/11 を縮小)
   // 印鑑欄合計: 20+0+12+17.25 = 49.25pt = 17.38mm、印鑑1マス幅 16.61mm → 1.046:1（ほぼ正方形）
@@ -3138,17 +3139,17 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
     contact: "30.75pt",      // row 8 ご担当者
     validUntil: "30.75pt",   // row 9 有効期限
     intro: "20pt",           // row 10 前置き文（仕様 26.25pt → 印鑑欄正方形化のため縮小）
-    separator: "0pt",        // row 11 区切り（仕様 7pt → 削除して印鑑欄正方形化）
+    separator: "0pt",        // row 11 区切り（削除済み）
     amount1: "12pt",         // row 12 見積金額1（仕様書通り）
     amount2: "17.25pt",      // row 13 見積金額2（仕様書通り）
-    beforeItems: "22pt",     // row 14 スペーサー（縮小分を吸収して 15pt → 22pt）
+    beforeItems: "15pt",     // row 14 スペーサー（Excel仕様通り）
     itemHeader: "22pt",      // row 15 明細ヘッダ
     item: "21pt",            // row 16-30 明細
     totalRow: "21pt",        // row 31-35 集計
     grandTotal: "30pt",      // row 36 合計
-    spacer: "15pt",          // row 37 スペーサー
+    spacer: "15pt",          // row 37 スペーサー（Excel仕様通り）
     remarksLabel: "18.75pt", // row 38 備考見出し
-    remarksContent: "87.75pt", // row 39 備考記入欄
+    remarksContent: "87.75pt", // row 39 備考記入欄（minHeightで強制確保）
   };
 
   return (
@@ -3478,10 +3479,10 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 <td colSpan={13} style={{...cellBase,letterSpacing:"0.5em",paddingLeft:"calc(2mm + 0.5em)",borderTop:bThin,borderLeft:bThin,borderRight:bThin}}>備　考</td>
               </tr>
 
-              {/* ── Row 39: 備考記入欄 A39:M39（87.75pt 折返し有効、11pt）── */}
+              {/* ── Row 39: 備考記入欄 A39:M39（87.75pt 折返し有効、11pt）── 内部divでminHeight強制確保 ── */}
               <tr style={{height: ROW_H.remarksContent}}>
-                <td colSpan={13} style={{...cellBase,fontSize:"11pt",verticalAlign:"top",whiteSpace:"pre-wrap",borderLeft:bThin,borderRight:bThin,borderBottom:bThin,padding:"1mm 4mm 2mm 4mm",lineHeight:1.5}}>
-                  {quote.remarks || ""}
+                <td colSpan={13} style={{...cellBase,fontSize:"11pt",verticalAlign:"top",whiteSpace:"pre-wrap",borderLeft:bThin,borderRight:bThin,borderBottom:bThin,padding:"2mm 4mm",lineHeight:1.5,height:"87.75pt"}}>
+                  <div style={{minHeight:"82pt",height:"82pt",overflow:"hidden"}}>{quote.remarks || ""}</div>
                 </td>
               </tr>
 
