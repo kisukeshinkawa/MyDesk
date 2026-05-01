@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-01-v12-stamp-square"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-01-v13-fix-amount"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -3121,14 +3121,12 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
     whiteSpace: "nowrap"
   };
 
-  // Excel列幅 (Excel本来は K=10.16, L=M=8.43 の非対称設計だが、
-  // 印鑑欄が縦長 1.42:1 になってしまう。
-  // ユーザー要望でほぼ正方形にするため K=L=M=12.5 に等幅化、J列を 4 に狭めて空白維持)
-  //   A=3.83, B=7.16, C=8.43, D=5.33, E=8.43, F=8.43, G=11.83, H=5.16, I=11.0 (Excel仕様)
-  //   J=4 (狭い空白), K=L=M=12.5 (印鑑欄を正方形に)
-  // 合計 111.1 → colgroup の % 正規化で 100% に変換
-  // 各印鑑マス: 22.5mm × 22mm → ほぼ正方形 (0.98:1)
-  const colW = [3.83, 7.16, 8.43, 5.33, 8.43, 8.43, 11.83, 5.16, 11.00, 4.0, 12.5, 12.5, 12.5];
+  // Excel列幅 (Excel本来は K=10.16, L=M=8.43 の非対称設計):
+  //   A=3.83, B=7.16, C=8.43, D=5.33, E=8.43, F=8.43, G=11.83, H=5.16, I=11.0, J=11.83
+  //   K=10.16, L=M=8.43 → 印鑑3列を等幅化 K=L=M=9.007 (合計27.02を3等分)
+  // J列(金額列) は明細表で「9,999,999」(7-9字)を表示するため Excel 仕様の 11.83 を厳守
+  // 印鑑1マス: 16.6mm × 22mm = 1.32:1（Excel本来1.42:1より正方形に近い）
+  const colW = [3.83, 7.16, 8.43, 5.33, 8.43, 8.43, 11.83, 5.16, 11.00, 11.83, 9.007, 9.007, 9.007];
 
   // Excel 行高 (pt 単位、仕様書通り)
   const ROW_H = {
