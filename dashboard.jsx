@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-01-v23-safe-fit"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-01-v24-scale-08"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -3128,9 +3128,9 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
   // 合計 120.43 → colgroup の % 正規化で全幅 200mm に
   const colW = [3.83, 7.16, 8.43, 5.33, 8.43, 8.43, 11.83, 5.16, 11.00, 11.83, 11.0, 11.0, 11.0];
 
-  // Excel 行高 (印刷時 A4 縦 297mm に余裕で収めるため 0.90倍に縮小済み)
-  // 元の合計 882pt × 0.90 = 793.8pt = 280mm < A4 297mm（17mm余裕）
-  const SC = 0.90;
+  // Excel 行高 (Excel仕様の pt値そのまま、印刷時は @media print で scale(0.8) で縮小)
+  // 元の合計 882pt = 311.4mm（A4縦297mmを超えるが、印刷時 scale(0.8)で 249mm に縮小）
+  const SC = 1.0;
   const sc = (n) => (n * SC).toFixed(2) + "pt";
   const ROW_H = {
     title: sc(54.75),        // rows 1-3 タイトル
@@ -3207,9 +3207,20 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
             body { margin: 0 !important; padding: 0 !important; }
             body * { visibility: hidden; }
             .quote-print, .quote-print * { visibility: visible; }
-            /* A4 (210x297mm) 内に上下左右の余白で中央配置:
-               width:200mm × 高さ280mm（行高×0.90済）+ 上下8.5mm余白 */
-            .quote-print { width: 200mm !important; box-shadow: none !important; padding: 0 !important; margin: 8.5mm auto !important; transform: none !important; position: static !important; }
+            /* A4 (210x297mm) 内に scale(0.8) で全体0.8倍縮小し、中央配置:
+               width:200mm × scale(0.8) = 160mm（左右25mm余白）
+               縦合計 311.4mm × scale(0.8) = 249.1mm（上24mm + 下約24mm余白） */
+            .quote-print { 
+              position: absolute !important;
+              left: 25mm !important;
+              top: 24mm !important;
+              width: 200mm !important; 
+              box-shadow: none !important; 
+              padding: 0 !important; 
+              margin: 0 !important;
+              transform: scale(0.8) !important; 
+              transform-origin: top left !important; 
+            }
             .quote-scale-outer { width: auto !important; height: auto !important; overflow: visible !important; position: static !important; }
             .quote-scale-inner { transform: none !important; position: static !important; width: auto !important; }
             .no-print { display: none !important; }
@@ -3217,19 +3228,19 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
           }
         `}</style>
 
-        {/* スケールラッパー（モバイル時に縮小して画面に収める） */}
+        {/* スケールラッパー（プレビュー画面で常に0.8倍縮小して余白確保。モバイル時はさらに縮小） */}
         <div className="quote-scale-outer" style={{
-          width: scale < 1 ? `${755.9 * scale}px` : "200mm",
-          height: scale < 1 ? `${docHeight * scale}px` : "auto",
-          margin: "0 auto",
+          width: scale < 1 ? `${755.9 * 0.8 * scale}px` : `${755.9 * 0.8}px`,
+          height: scale < 1 ? `${docHeight * 0.8 * scale}px` : `${docHeight * 0.8}px`,
+          margin: "20px auto",
           overflow: "hidden",
           position: "relative",
         }}>
           <div className="quote-scale-inner" ref={innerRef} style={{
-            transform: scale < 1 ? `scale(${scale})` : "none",
+            transform: scale < 1 ? `scale(${scale * 0.8})` : "scale(0.8)",
             transformOrigin: "top left",
             width: "200mm",
-            position: scale < 1 ? "absolute" : "relative",
+            position: "absolute",
             top: 0, left: 0,
           }}>
 
