@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-01-v19-summary-flex"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-01-v20-fullwidth"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -3204,8 +3204,10 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
           @media print {
             body * { visibility: hidden; }
             .quote-print, .quote-print * { visibility: visible; }
-            /* A4 297mm に確実に収める: 行高合計 894.65pt=315.81mm × 0.92 = 290.5mm + padding 1mm×2 = 292.5mm（4.5mm余裕） */
-            .quote-print { position: absolute; left: 0; top: 0; width: 210mm; box-shadow: none !important; padding: 1mm !important; transform: scale(0.92) !important; transform-origin: top left !important; }
+            /* A4 一杯に広げて表示するためのトリック:
+               width:228.3mm × scale(0.92) = 210mm（A4横幅一杯）
+               高さ: Excel全行高 894.65pt=315.81mm × scale(0.92) = 290.5mm < A4 297mm（6.5mm余裕） */
+            .quote-print { position: absolute; left: 0; top: 0; width: 228.3mm; box-shadow: none !important; padding: 0 !important; transform: scale(0.92) !important; transform-origin: top left !important; }
             .quote-scale-outer { width: auto !important; height: auto !important; overflow: visible !important; position: static !important; }
             .quote-scale-inner { transform: none !important; position: static !important; width: auto !important; }
             .no-print { display: none !important; }
