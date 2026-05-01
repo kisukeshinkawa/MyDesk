@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-01-v21-bigger-name"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-01-v22-margin-center"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -3128,28 +3128,31 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
   // 合計 120.43 → colgroup の % 正規化で全幅 200mm に
   const colW = [3.83, 7.16, 8.43, 5.33, 8.43, 8.43, 11.83, 5.16, 11.00, 11.83, 11.0, 11.0, 11.0];
 
-  // Excel 行高 (印鑑欄を正方形に近づけるため Row 10/11 を縮小)
-  // 印鑑欄合計: 20+0+12+17.25 = 49.25pt = 17.38mm、印鑑1マス幅 16.61mm → 1.046:1（ほぼ正方形）
+  // Excel 行高 (印刷時 A4 縦 297mm に収めるため 0.92倍に縮小済み)
+  // 元の合計 882pt × 0.92 = 811.44pt = 286.4mm < A4 297mm（10.6mm余裕）
+  // 印鑑欄合計: (20+0+12+17.25) × 0.92 = 45.31pt = 16mm、印鑑1マス幅 18.27 × 0.92 = 16.81mm → ほぼ正方形
+  const SC = 0.92;
+  const sc = (n) => (n * SC).toFixed(2) + "pt";
   const ROW_H = {
-    title: "54.75pt",        // rows 1-3 タイトル (15+15.75+24)
-    date: "15pt",            // row 4 発行日
-    to: "36.75pt",           // row 5 宛先
-    site: "30.75pt",         // row 6 事業所名
-    workType: "25.5pt",      // row 7 業務内容
-    contact: "30.75pt",      // row 8 ご担当者
-    validUntil: "30.75pt",   // row 9 有効期限
-    intro: "20pt",           // row 10 前置き文（仕様 26.25pt → 印鑑欄正方形化のため縮小）
-    separator: "0pt",        // row 11 区切り（削除済み）
-    amount1: "12pt",         // row 12 見積金額1（仕様書通り）
-    amount2: "17.25pt",      // row 13 見積金額2（仕様書通り）
-    beforeItems: "15pt",     // row 14 スペーサー（Excel仕様通り）
-    itemHeader: "22pt",      // row 15 明細ヘッダ
-    item: "21pt",            // row 16-30 明細
-    totalRow: "21pt",        // row 31-35 集計
-    grandTotal: "30pt",      // row 36 合計
-    spacer: "15pt",          // row 37 スペーサー（Excel仕様通り）
-    remarksLabel: "18.75pt", // row 38 備考見出し
-    remarksContent: "87.75pt", // row 39 備考記入欄（minHeightで強制確保）
+    title: sc(54.75),        // rows 1-3 タイトル
+    date: sc(15),            // row 4 発行日
+    to: sc(36.75),           // row 5 宛先
+    site: sc(30.75),         // row 6 事業所名
+    workType: sc(25.5),      // row 7 業務内容
+    contact: sc(30.75),      // row 8 ご担当者
+    validUntil: sc(30.75),   // row 9 有効期限
+    intro: sc(20),           // row 10 前置き文
+    separator: sc(0),        // row 11 区切り（削除済み）
+    amount1: sc(12),         // row 12 見積金額1
+    amount2: sc(17.25),      // row 13 見積金額2
+    beforeItems: sc(15),     // row 14 スペーサー
+    itemHeader: sc(22),      // row 15 明細ヘッダ
+    item: sc(21),            // row 16-30 明細
+    totalRow: sc(21),        // row 31-35 集計
+    grandTotal: sc(30),      // row 36 合計
+    spacer: sc(15),          // row 37 スペーサー
+    remarksLabel: sc(18.75), // row 38 備考見出し
+    remarksContent: sc(87.75), // row 39 備考記入欄
   };
 
   return (
@@ -3204,10 +3207,9 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
           @media print {
             body * { visibility: hidden; }
             .quote-print, .quote-print * { visibility: visible; }
-            /* A4 一杯に広げて表示するためのトリック:
-               width:228.3mm × scale(0.92) = 210mm（A4横幅一杯）
-               高さ: Excel全行高 894.65pt=315.81mm × scale(0.92) = 290.5mm < A4 297mm（6.5mm余裕） */
-            .quote-print { position: absolute; left: 0; top: 0; width: 228.3mm; box-shadow: none !important; padding: 0 !important; transform: scale(0.92) !important; transform-origin: top left !important; }
+            /* A4 (210x297mm) 内に上下左右 5mm の余白を作って中央配置:
+               width:200mm × 高さ287mm, 行高合計 286.4mm（行高×0.92済）でぴったり */
+            .quote-print { position: absolute; left: 5mm; top: 5mm; width: 200mm; box-shadow: none !important; padding: 0 !important; transform: none !important; }
             .quote-scale-outer { width: auto !important; height: auto !important; overflow: visible !important; position: static !important; }
             .quote-scale-inner { transform: none !important; position: static !important; width: auto !important; }
             .no-print { display: none !important; }
@@ -3217,7 +3219,7 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
 
         {/* スケールラッパー（モバイル時に縮小して画面に収める） */}
         <div className="quote-scale-outer" style={{
-          width: scale < 1 ? `${793.7 * scale}px` : "210mm",
+          width: scale < 1 ? `${755.9 * scale}px` : "200mm",
           height: scale < 1 ? `${docHeight * scale}px` : "auto",
           margin: "0 auto",
           overflow: "hidden",
@@ -3226,21 +3228,21 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
           <div className="quote-scale-inner" ref={innerRef} style={{
             transform: scale < 1 ? `scale(${scale})` : "none",
             transformOrigin: "top left",
-            width: "210mm",
+            width: "200mm",
             position: scale < 1 ? "absolute" : "relative",
             top: 0, left: 0,
           }}>
 
-        {/* A4 ページ本体 */}
+        {/* A4 ページ本体 (200mm 幅、印刷時は A4 内中央配置で余白5mm) */}
         <div className="quote-print" style={{
-          width:"210mm",
-          minHeight:"297mm",
-          padding:"1mm",
+          width:"200mm",
+          minHeight:"287mm",
+          padding:"0",
           fontFamily: SERIF,
           color:"#000",
           boxSizing:"border-box",
           background:"white",
-          margin:"0 auto",
+          margin:"5mm auto",
           boxShadow:"0 4px 16px rgba(0,0,0,0.15)"
         }}>
 
@@ -3512,10 +3514,10 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 <td colSpan={13} style={{...cellBase,letterSpacing:"0.5em",paddingLeft:"calc(2mm + 0.5em)",borderTop:bThin,borderLeft:bThin,borderRight:bThin}}>備　考</td>
               </tr>
 
-              {/* ── Row 39: 備考記入欄 A39:M39（87.75pt 折返し有効、11pt）── 内部divでminHeight強制確保 ── */}
+              {/* ── Row 39: 備考記入欄 A39:M39（87.75×0.92=80.73pt 折返し有効、11pt）── 内部divでminHeight強制確保 ── */}
               <tr style={{height: ROW_H.remarksContent}}>
-                <td colSpan={13} style={{...cellBase,fontSize:"11pt",verticalAlign:"top",whiteSpace:"pre-wrap",borderLeft:bThin,borderRight:bThin,borderBottom:bThin,padding:"2mm 4mm",lineHeight:1.5,height:"87.75pt"}}>
-                  <div style={{minHeight:"82pt",height:"82pt",overflow:"hidden"}}>{quote.remarks || ""}</div>
+                <td colSpan={13} style={{...cellBase,fontSize:"11pt",verticalAlign:"top",whiteSpace:"pre-wrap",borderLeft:bThin,borderRight:bThin,borderBottom:bThin,padding:"2mm 4mm",lineHeight:1.5,height:sc(87.75)}}>
+                  <div style={{minHeight:sc(75),height:sc(75),overflow:"hidden"}}>{quote.remarks || ""}</div>
                 </td>
               </tr>
 
