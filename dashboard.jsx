@@ -3052,21 +3052,25 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
   
   React.useEffect(() => {
     const docW = 793.7; // 210mm at 96dpi
+    const docH = 1123;  // 297mm at 96dpi
     const calc = () => {
       const winW = window.innerWidth;
-      const padding = 24;
-      if (winW < docW + padding) {
-        setScale(Math.max(0.25, (winW - padding) / docW));
-      } else {
-        setScale(1);
-      }
-      // 実際のコンテンツ高さを取得（A4高=1123pxを下限とする）
-      if (innerRef.current) {
-        setDocHeight(Math.max(1123, innerRef.current.scrollHeight));
-      }
+      const winH = window.innerHeight;
+      const paddingW = 24;  // モーダル左右padding
+      const paddingH = 80;  // モーダル上下padding（ヘッダー含む）
+      // 実際のコンテンツ高さ（A4高=1123pxが下限）
+      const actualH = innerRef.current ? Math.max(docH, innerRef.current.scrollHeight) : docH;
+      // 横と縦の両方の制約から、より小さい方を採用
+      const scaleW = (winW - paddingW) / docW;
+      const scaleH = (winH - paddingH) / actualH;
+      const newScale = Math.min(1, Math.max(0.25, Math.min(scaleW, scaleH)));
+      setScale(newScale);
+      setDocHeight(actualH);
     };
     calc();
     window.addEventListener('resize', calc);
+    // コンテンツのサイズが変わったときも再計算
+    const t = setTimeout(calc, 100);
     
     // 印刷時はスケールを1に戻す
     const onBefore = () => setScale(1);
@@ -3078,6 +3082,7 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
       window.removeEventListener('resize', calc);
       window.removeEventListener('beforeprint', onBefore);
       window.removeEventListener('afterprint', onAfter);
+      clearTimeout(t);
     };
   }, []);
 
@@ -3132,8 +3137,8 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
     validUntil: "30.75pt",   // row 9 有効期限
     intro: "26.25pt",        // row 10 前置き文
     separator: "7pt",        // row 11 区切り
-    amount1: "16pt",         // row 12 見積金額1（仕様書12pt → PC版で見栄え確保のため拡大）
-    amount2: "20pt",         // row 13 見積金額2（仕様書17.25pt → 同上）
+    amount1: "12pt",         // row 12 見積金額1（仕様書通り）
+    amount2: "17.25pt",      // row 13 見積金額2（仕様書通り）
     beforeItems: "15pt",     // row 14 スペーサー
     itemHeader: "22pt",      // row 15 明細ヘッダ
     item: "21pt",            // row 16-30 明細
@@ -3263,11 +3268,11 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 <td colSpan={6}></td>
               </tr>
 
-              {/* ── Row 6: 事業所名 A6:B6 / 記入欄 C6:G6 / 自社住所 K6:M6 ── */}
+              {/* ── Row 6: 事業所名 A6:B6 / 記入欄 C6:F6 / 自社住所 K6:M6 ── 罫線は A-F のみ ── */}
               <tr style={{height: ROW_H.site}}>
                 <td colSpan={2} style={{...cellBase,textAlign:"center",borderTop:bDouble,borderBottom:bThin,padding:"0 1mm",fontSize:"11pt"}}>事業所名：</td>
-                <td colSpan={5} style={{...cellBase,textAlign:"left",borderTop:bDouble,borderBottom:bThin,whiteSpace:"normal",paddingLeft:"4mm"}}>{quote.site||""}</td>
-                <td colSpan={3}></td>
+                <td colSpan={4} style={{...cellBase,textAlign:"left",borderTop:bDouble,borderBottom:bThin,whiteSpace:"normal",paddingLeft:"4mm"}}>{quote.site||""}</td>
+                <td colSpan={4}></td>
                 <td colSpan={3} style={{...cellBase,verticalAlign:"middle",whiteSpace:"normal",lineHeight:1.4,padding:"0 1mm"}}>
                   {(()=>{
                     const zip = company.zip||"";
@@ -3282,53 +3287,63 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 </td>
               </tr>
 
-              {/* ── Row 7: 業務内容 A7:B7 / 記入欄 C7:G7 / 自社名 K7:M7（文字数で動的に最適化） ── */}
+              {/* ── Row 7: 業務内容 A7:B7 / 記入欄 C7:F7 / 自社名 K7:M7（14文字でも全文表示） ── */}
               <tr style={{height: ROW_H.workType}}>
                 <td colSpan={2} style={{...cellBase,textAlign:"center",borderTop:bThin,borderBottom:bThin,padding:"0 1mm",fontSize:"11pt"}}>業務内容：</td>
-                <td colSpan={5} style={{...cellBase,textAlign:"left",borderTop:bThin,borderBottom:bThin,whiteSpace:"normal",paddingLeft:"4mm"}}>{quote.workContent||""}</td>
-                <td colSpan={3}></td>
-                <td colSpan={3} style={{...cellBase,padding:"0 1mm",verticalAlign:"middle"}}>
+                <td colSpan={4} style={{...cellBase,textAlign:"left",borderTop:bThin,borderBottom:bThin,whiteSpace:"normal",paddingLeft:"4mm"}}>{quote.workContent||""}</td>
+                <td colSpan={4}></td>
+                <td colSpan={3} style={{...cellBase,padding:"0 1mm",verticalAlign:"middle",overflow:"visible"}}>
                   {(()=>{
                     const nm = company.name||"";
                     const len = [...nm].length;
                     if (!nm) return null;
-                    // 仕様書: K7:M7 で「株式会社　西原商事」(10文字) を 16pt 均等割付
-                    // 10文字以下なら均等割付、それ以上は右揃えで全文表示を優先
+                    // K-M結合幅 ≈ 54mm。全角文字幅は fontSize × 0.353mm が必要。
+                    // 余裕をもって len × fs × 0.353 ≤ 50mm → fs ≤ 50/(len×0.353)
+                    // 10文字: ≤14.2pt → 14pt 均等割付
+                    // 12文字: ≤11.8pt → 11pt 均等割付
+                    // 14文字「ビートルマネージメント」: ≤10.1pt → 10pt 右揃え
+                    // 16文字: ≤8.9pt → 9pt 右揃え
+                    let fs;
                     if (len <= 10) {
-                      return <DistributedText text={nm} style={{fontSize:"16pt",fontFamily:SERIF}}/>;
-                    } else if (len <= 13) {
-                      return <DistributedText text={nm} style={{fontSize:"13pt",fontFamily:SERIF}}/>;
+                      // 仕様書通り「株式会社　西原商事」級は均等割付
+                      return <DistributedText text={nm} style={{fontSize:"14pt",fontFamily:SERIF}}/>;
+                    } else if (len <= 12) {
+                      return <DistributedText text={nm} style={{fontSize:"11pt",fontFamily:SERIF}}/>;
                     } else {
-                      // 14文字以上は右揃え + 文字数に応じてフォントサイズ自動調整（必ず全文表示）
-                      const fs = len <= 14 ? "12pt" : len <= 16 ? "10.5pt" : len <= 18 ? "9.5pt" : "8.5pt";
-                      return <div style={{textAlign:"right",fontSize:fs,fontFamily:SERIF,whiteSpace:"nowrap",overflow:"visible"}}>{nm}</div>;
+                      // 13文字以上は右揃え固定 + サイズ自動調整で必ず全文表示
+                      if (len <= 14) fs = "10pt";
+                      else if (len <= 16) fs = "9pt";
+                      else if (len <= 18) fs = "8pt";
+                      else fs = "7pt";
+                      return <div style={{textAlign:"right",fontSize:fs,fontFamily:SERIF,whiteSpace:"nowrap",overflow:"visible",letterSpacing:"-0.01em"}}>{nm}</div>;
                     }
                   })()}
                 </td>
               </tr>
 
-              {/* ── Row 8: ご担当者 A8:B8 / 記入欄 C8:F8 / G8「様」/ K8:M8 TEL/FAX ── */}
+              {/* ── Row 8: ご担当者 A8:B8 / 記入欄 C8:F8 / G8「様」（罫線なし）/ K8:M8 TEL/FAX ── */}
               <tr style={{height: ROW_H.contact}}>
                 <td colSpan={2} style={{...cellBase,textAlign:"center",borderTop:bThin,borderBottom:bThin,padding:"0 1mm",fontSize:"11pt"}}>ご担当者：</td>
                 <td colSpan={4} style={{...cellBase,textAlign:"left",borderTop:bThin,borderBottom:bThin,whiteSpace:"normal",paddingLeft:"4mm"}}>{quote.contactName||""}</td>
-                <td style={{...cellBase,borderTop:bThin,borderBottom:bThin,textAlign:"left",paddingLeft:"1mm",fontSize:"11pt"}}>{quote.contactName?"様":""}</td>
+                <td style={{...cellBase,textAlign:"left",paddingLeft:"1mm",fontSize:"11pt"}}>{quote.contactName?"様":""}</td>
                 <td colSpan={3}></td>
-                <td colSpan={3} style={{...cellBase,fontSize:"10pt",textAlign:"right",whiteSpace:"normal",lineHeight:1.5,verticalAlign:"middle",padding:"0 1mm"}}>
+                <td colSpan={3} style={{...cellBase,fontSize:"12pt",textAlign:"right",whiteSpace:"normal",lineHeight:1.5,verticalAlign:"middle",padding:"0 1mm"}}>
                   TEL　{company.tel}<br/>
                   FAX　{company.fax}
                 </td>
               </tr>
 
-              {/* ── Row 9: 有効期限 + 承認/検印/担当者 ヘッダーラベル ── */}
+              {/* ── Row 9: 有効期限 A9:B9 / C9:D9 御見積り後 / E9 数 / F9 ケ月 / K-M 承認/検印/担当者ラベル ── */}
+              {/* 罫線は A-F のみ（仕様書通り）。G9-J9 は罫線なし。 K-M は印鑑エリアの上端ラベル */}
               <tr style={{height: ROW_H.validUntil}}>
                 <td colSpan={2} style={{...cellBase,textAlign:"center",borderTop:bThin,borderBottom:bThin,padding:"0 1mm",fontSize:"11pt"}}>有効期限：</td>
                 <td colSpan={2} style={{...cellBase,borderTop:bThin,borderBottom:bThin,textAlign:"left",paddingLeft:"2mm"}}>{quote.validUntil || "御見積り後"}</td>
                 <td style={{...cellBase,borderTop:bThin,borderBottom:bThin,textAlign:"center"}}>{quote.months||""}</td>
                 <td style={{...cellBase,borderTop:bThin,borderBottom:bThin,paddingLeft:"1mm"}}>ケ月</td>
                 <td colSpan={4}></td>
-                <td style={{...cellBase,background:GREY,textAlign:"center",borderTop:bThin,borderLeft:bThin,borderRight:bThin,fontSize:"11pt"}}>承認</td>
-                <td style={{...cellBase,background:GREY,textAlign:"center",borderTop:bThin,borderRight:bThin,fontSize:"11pt"}}>検印</td>
-                <td style={{...cellBase,background:GREY,textAlign:"center",borderTop:bThin,borderRight:bThin,fontSize:"11pt"}}>担当者</td>
+                <td style={{...cellBase,background:GREY,textAlign:"center",borderTop:bThin,borderLeft:bThin,borderRight:bThin,borderBottom:bThin,fontSize:"11pt"}}>承認</td>
+                <td style={{...cellBase,background:GREY,textAlign:"center",borderTop:bThin,borderRight:bThin,borderBottom:bThin,fontSize:"11pt"}}>検印</td>
+                <td style={{...cellBase,background:GREY,textAlign:"center",borderTop:bThin,borderRight:bThin,borderBottom:bThin,fontSize:"11pt"}}>担当者</td>
               </tr>
 
               {/* ── Row 10: 前置き文 A10:F10 + 印鑑枠 K10:M13（rowSpan=4 開始） ── */}
@@ -3350,15 +3365,15 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 <td colSpan={10}></td>
               </tr>
 
-              {/* ── Row 12-13: 見積金額 A12:C13 / 金額 D12:H13 / (税込) I12:I13 ── */}
+              {/* ── Row 12-13: 見積金額 A12:C13 / 金額 D12:H13 / (税込) I12:J13（J列吸収で余分な縦線解消） ── */}
               <tr style={{height: ROW_H.amount1}}>
                 <td colSpan={3} rowSpan={2} style={{...cellBase,background:GREY,fontSize:"14pt",textAlign:"center",verticalAlign:"middle",letterSpacing:"0.4em",paddingLeft:"calc(2mm + 0.4em)",border:bThin}}>見積金額</td>
                 <td colSpan={5} rowSpan={2} style={{...cellBase,fontSize:"20pt",textAlign:"right",verticalAlign:"middle",border:bThin,fontWeight:400,paddingRight:"4mm"}}>¥{grandTotal.toLocaleString()}-</td>
-                <td rowSpan={2} style={{...cellBase,fontSize:"11pt",textAlign:"center",verticalAlign:"middle",border:bThin}}>（税込）</td>
-                <td></td>
+                <td colSpan={2} rowSpan={2} style={{...cellBase,fontSize:"11pt",textAlign:"center",verticalAlign:"middle",border:bThin}}>（税込）</td>
+                {/* K, L, M は前の行から rowSpan=4 で延びる */}
               </tr>
               <tr style={{height: ROW_H.amount2}}>
-                <td></td>
+                {/* A-J: rowSpan=2 で延びてくる、 K-M: rowSpan=4 で延びてくる */}
               </tr>
 
               {/* ── Row 14: スペーサー ── */}
@@ -6393,7 +6408,14 @@ const BizCardScanner = React.memo(function BizCardScannerInner({ onResult, curre
       try { json = JSON.parse(text); } catch { /* not JSON */ }
       if (!resp.ok) {
         const msg = json?.error || text || `HTTP ${resp.status}`;
+        // Lambda が返した詳細情報を全て表示（モデル別エラー、IAM 案内など）
         console.error(`[BizCard OCR] HTTP error: ${resp.status}`, msg);
+        if (json?.actionable) console.error(`[BizCard OCR] 対処方法:\n${json.actionable}`);
+        if (json?.errors && Array.isArray(json.errors)) {
+          console.error(`[BizCard OCR] 試行モデル別エラー:`);
+          json.errors.forEach(e => console.error(`  - ${e.modelId}: ${e.name} - ${e.message}`));
+        }
+        if (json?.triedModels) console.error(`[BizCard OCR] 試行したモデル:`, json.triedModels);
         // 5xx エラーは1回だけリトライ
         if (resp.status >= 500 && attempt < 2) {
           console.log("[BizCard OCR] サーバーエラー、1秒後にリトライします");
