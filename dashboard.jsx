@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-01-v20-fullwidth"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-01-v21-bigger-name"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -3307,12 +3307,19 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                     const nm = company.name||"";
                     const len = [...nm].length;
                     if (!nm) return null;
-                    // K-M結合幅 ≈ 27.02/108.45 × 200mm = 49.83mm
-                    // 文字数から「幅一杯に入る」最大フォントサイズを計算
-                    //   理論最大: fs = 141.2 / n（pt、1文字幅×文字数=セル幅）
-                    //   安全値（字間20%確保）: fs = 120 / n
-                    //   上限 16pt（Excel仕様 K7:M7 の最大）、下限 6pt（最小可読）
-                    const fs = Math.max(6, Math.min(16, Math.floor(120 / len * 10) / 10));
+                    // K-M結合幅 = 33/120.43 × 210mm = 57.5mm（印刷時 scale 0.92 後 53mm）
+                    // 雛形「株式会社　西原商事」(10字) 16pt の見た目を再現するため、文字数別に段階的調整
+                    // distributed text なのでフォントサイズが大きいほど目立つ
+                    let fs;
+                    if (len <= 9) fs = 16;          // 9文字以下: 16pt（最大、目立つ）
+                    else if (len === 10) fs = 14;   // 「株式会社○○商事」級
+                    else if (len === 11) fs = 12;
+                    else if (len === 12) fs = 11;
+                    else if (len === 13) fs = 10.5;
+                    else if (len === 14) fs = 10;   // 「株式会社ビートルマネージメント」
+                    else if (len <= 16) fs = 9;
+                    else if (len <= 18) fs = 8;
+                    else fs = 7;                     // 19文字以上: 7pt（最小可読）
                     return <DistributedText text={nm} style={{fontSize:fs+"pt",fontFamily:SERIF}}/>;
                   })()}
                 </td>
