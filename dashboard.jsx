@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-04-30-v8-stamp-fix"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-01-v9-mobile-fix"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -2548,7 +2548,8 @@ function QuoteEditor({quote, users=[], currentUser, onUpdate, onDelete, onClose,
     onUpdate({items: newItems});
   };
   const addItem = () => {
-    const newItems = [...(quote.items||[]), {description:"", qty:1, unit:"", price:0, remarks:""}];
+    // 数量初期値を null（空欄）にして、内容入力前に幽霊行が表示されないようにする
+    const newItems = [...(quote.items||[]), {description:"", qty:null, unit:"", price:null, remarks:""}];
     onUpdate({items: newItems});
   };
   const removeItem = (idx) => {
@@ -3240,9 +3241,13 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
         }}>
 
           {/* メインテーブル（13列構成・Excel ひな形完全準拠 / 行高は仕様書のpt値そのまま） */}
-          <table style={{width:"100%",borderCollapse:"collapse",tableLayout:"fixed",fontFamily:SERIF}}>
+          <table style={{width:"100%",borderCollapse:"collapse",tableLayout:"fixed",fontFamily:SERIF,WebkitTextSizeAdjust:"100%"}}>
             <colgroup>
-              {colW.map((w,i)=> <col key={i} style={{width: w+"%"}}/>)}
+              {/* % を 100% に正規化（iOS Safari でも確実に列幅固定） */}
+              {(()=>{
+                const total = colW.reduce((s,w)=>s+w, 0);
+                return colW.map((w,i)=> <col key={i} style={{width: (w*100/total)+"%"}}/>);
+              })()}
             </colgroup>
             <tbody>
 
@@ -3297,25 +3302,21 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                     const nm = company.name||"";
                     const len = [...nm].length;
                     if (!nm) return null;
-                    // K-M結合幅 ≈ 54mm。全角文字幅は fontSize × 0.353mm が必要。
-                    // 余裕をもって len × fs × 0.353 ≤ 50mm → fs ≤ 50/(len×0.353)
-                    // 10文字: ≤14.2pt → 14pt 均等割付
-                    // 12文字: ≤11.8pt → 11pt 均等割付
-                    // 14文字「ビートルマネージメント」: ≤10.1pt → 10pt 右揃え
-                    // 16文字: ≤8.9pt → 9pt 右揃え
-                    let fs;
+                    // K-M結合幅 ≈ 54mm。全角文字幅は fontSize × 0.353mm。
+                    // iOS Safari の文字レンダリングは Chrome より若干広いので余裕を持たせる
                     if (len <= 10) {
-                      // 仕様書通り「株式会社　西原商事」級は均等割付
                       return <DistributedText text={nm} style={{fontSize:"14pt",fontFamily:SERIF}}/>;
                     } else if (len <= 12) {
                       return <DistributedText text={nm} style={{fontSize:"11pt",fontFamily:SERIF}}/>;
                     } else {
-                      // 13文字以上は右揃え固定 + サイズ自動調整で必ず全文表示
-                      if (len <= 14) fs = "10pt";
-                      else if (len <= 16) fs = "9pt";
-                      else if (len <= 18) fs = "8pt";
+                      // 13文字以上は右揃え固定 + サイズ自動調整 (iOS Safari でも余裕で全文表示)
+                      let fs;
+                      if (len <= 13) fs = "10pt";
+                      else if (len <= 14) fs = "9pt";  // 「ビートルマネージメント」14文字
+                      else if (len <= 16) fs = "8pt";
+                      else if (len <= 18) fs = "7.5pt";
                       else fs = "7pt";
-                      return <div style={{textAlign:"right",fontSize:fs,fontFamily:SERIF,whiteSpace:"nowrap",overflow:"visible",letterSpacing:"-0.01em"}}>{nm}</div>;
+                      return <div style={{textAlign:"right",fontSize:fs,fontFamily:SERIF,whiteSpace:"nowrap",overflow:"visible",letterSpacing:"-0.02em"}}>{nm}</div>;
                     }
                   })()}
                 </td>
