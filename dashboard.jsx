@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-01-v22-margin-center"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-01-v23-safe-fit"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -3128,10 +3128,9 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
   // 合計 120.43 → colgroup の % 正規化で全幅 200mm に
   const colW = [3.83, 7.16, 8.43, 5.33, 8.43, 8.43, 11.83, 5.16, 11.00, 11.83, 11.0, 11.0, 11.0];
 
-  // Excel 行高 (印刷時 A4 縦 297mm に収めるため 0.92倍に縮小済み)
-  // 元の合計 882pt × 0.92 = 811.44pt = 286.4mm < A4 297mm（10.6mm余裕）
-  // 印鑑欄合計: (20+0+12+17.25) × 0.92 = 45.31pt = 16mm、印鑑1マス幅 18.27 × 0.92 = 16.81mm → ほぼ正方形
-  const SC = 0.92;
+  // Excel 行高 (印刷時 A4 縦 297mm に余裕で収めるため 0.90倍に縮小済み)
+  // 元の合計 882pt × 0.90 = 793.8pt = 280mm < A4 297mm（17mm余裕）
+  const SC = 0.90;
   const sc = (n) => (n * SC).toFixed(2) + "pt";
   const ROW_H = {
     title: sc(54.75),        // rows 1-3 タイトル
@@ -3205,11 +3204,12 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
             color-adjust: exact !important;
           }
           @media print {
+            body { margin: 0 !important; padding: 0 !important; }
             body * { visibility: hidden; }
             .quote-print, .quote-print * { visibility: visible; }
-            /* A4 (210x297mm) 内に上下左右 5mm の余白を作って中央配置:
-               width:200mm × 高さ287mm, 行高合計 286.4mm（行高×0.92済）でぴったり */
-            .quote-print { position: absolute; left: 5mm; top: 5mm; width: 200mm; box-shadow: none !important; padding: 0 !important; transform: none !important; }
+            /* A4 (210x297mm) 内に上下左右の余白で中央配置:
+               width:200mm × 高さ280mm（行高×0.90済）+ 上下8.5mm余白 */
+            .quote-print { width: 200mm !important; box-shadow: none !important; padding: 0 !important; margin: 8.5mm auto !important; transform: none !important; position: static !important; }
             .quote-scale-outer { width: auto !important; height: auto !important; overflow: visible !important; position: static !important; }
             .quote-scale-inner { transform: none !important; position: static !important; width: auto !important; }
             .no-print { display: none !important; }
