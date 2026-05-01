@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-01-v18-remarks-fix"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-01-v19-summary-flex"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -3409,9 +3409,13 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 );
               })}
 
-              {/* ── Row 31: 小計 A31:F31 ── Excel本物の全角空白パターンを完全再現 ── */}
+              {/* ── Row 31: 小計 A31:F31 ── flex で「小」と「計」を配置 ── */}
               <tr style={{height: ROW_H.totalRow}}>
-                <td colSpan={6} style={{...cellBase,textAlign:"left",borderLeft:bThin,borderRight:bThin,borderBottom:bDotted,paddingLeft:"2mm"}}>{"\u3000\u3000\u3000小\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000 計 \u3000\u3000\u3000\u3000\u3000\u3000"}</td>
+                <td colSpan={6} style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDotted,padding:0}}>
+                  <div style={{display:"flex",alignItems:"center",height:"100%",fontSize:"11pt",fontFamily:SERIF,paddingLeft:"6mm",paddingRight:"30%"}}>
+                    <span>小</span><span style={{flex:1}}/><span>計</span>
+                  </div>
+                </td>
                 <td style={{...cellBase,borderLeft:bThin,borderBottom:bDotted}}></td>
                 <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDotted}}></td>
                 <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDotted}}></td>
@@ -3419,9 +3423,13 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 <td colSpan={3} style={{borderRight:bThin,borderBottom:bDotted}}></td>
               </tr>
 
-              {/* ── Row 32: 諸経費 A32:F32 ── */}
+              {/* ── Row 32: 諸経費 A32:F32 ── flex で3文字均等配置 ── */}
               <tr style={{height: ROW_H.totalRow}}>
-                <td colSpan={6} style={{...cellBase,textAlign:"left",borderLeft:bThin,borderRight:bThin,borderBottom:bDotted,paddingLeft:"2mm"}}>{"\u3000\u3000\u3000諸\u3000 \u3000   \u3000経\u3000\u3000 \u3000   費 "}</td>
+                <td colSpan={6} style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDotted,padding:0}}>
+                  <div style={{display:"flex",alignItems:"center",height:"100%",fontSize:"11pt",fontFamily:SERIF,paddingLeft:"8mm",paddingRight:"35%"}}>
+                    <span>諸</span><span style={{flex:1}}/><span>経</span><span style={{flex:1}}/><span>費</span>
+                  </div>
+                </td>
                 <td style={{...cellBase,borderLeft:bThin,borderBottom:bDotted}}></td>
                 <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDotted}}></td>
                 <td style={{...cellBase,textAlign:"center",fontSize:"11pt",borderLeft:bThin,borderRight:bThin,borderBottom:bDotted,padding:0}}>{miscRateLabel}</td>
@@ -3431,7 +3439,11 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
 
               {/* ── Row 33: 調整費 A33:F33（下に二重線：明細ブロックの区切り）── */}
               <tr style={{height: ROW_H.totalRow}}>
-                <td colSpan={6} style={{...cellBase,textAlign:"left",borderLeft:bThin,borderRight:bThin,borderBottom:bDouble,paddingLeft:"2mm"}}>{"\u3000\u3000\u3000調\u3000\u3000\u3000 \u3000 整\u3000\u3000 \u3000 \u3000費\u3000 \u3000    \u3000\u3000"}</td>
+                <td colSpan={6} style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDouble,padding:0}}>
+                  <div style={{display:"flex",alignItems:"center",height:"100%",fontSize:"11pt",fontFamily:SERIF,paddingLeft:"8mm",paddingRight:"35%"}}>
+                    <span>調</span><span style={{flex:1}}/><span>整</span><span style={{flex:1}}/><span>費</span>
+                  </div>
+                </td>
                 <td style={{...cellBase,borderLeft:bThin,borderBottom:bDouble}}></td>
                 <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDouble}}></td>
                 <td style={{...cellBase,textAlign:"center",fontSize:"11pt",borderLeft:bThin,borderRight:bThin,borderBottom:bDouble,padding:0}}>{adjRateLabel}</td>
@@ -3439,9 +3451,13 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 <td colSpan={3} style={{borderRight:bThin,borderBottom:bDouble}}></td>
               </tr>
 
-              {/* ── Row 34: 小計（税抜） A34:F34 ── */}
+              {/* ── Row 34: 小計（税抜） A34:F34 ── flex で「小」と「計 (税抜)」配置 ── */}
               <tr style={{height: ROW_H.totalRow}}>
-                <td colSpan={6} style={{...cellBase,textAlign:"left",borderLeft:bThin,borderRight:bThin,borderBottom:bDotted,paddingLeft:"2mm"}}>{"\u3000\u3000\u3000小\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000 \u3000計 (税抜)"}</td>
+                <td colSpan={6} style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDotted,padding:0}}>
+                  <div style={{display:"flex",alignItems:"center",height:"100%",fontSize:"11pt",fontFamily:SERIF,paddingLeft:"6mm",paddingRight:"15%"}}>
+                    <span>小</span><span style={{flex:1}}/><span style={{whiteSpace:"nowrap"}}>計 (税抜)</span>
+                  </div>
+                </td>
                 <td style={{...cellBase,borderLeft:bThin,borderBottom:bDotted}}></td>
                 <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDotted}}></td>
                 <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDotted}}></td>
@@ -3449,9 +3465,13 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 <td colSpan={3} style={{borderRight:bThin,borderBottom:bDotted}}></td>
               </tr>
 
-              {/* ── Row 35: 消費税 A35:F35 ── */}
+              {/* ── Row 35: 消費税 A35:F35 ── flex で3文字均等配置 ── */}
               <tr style={{height: ROW_H.totalRow}}>
-                <td colSpan={6} style={{...cellBase,textAlign:"left",borderLeft:bThin,borderRight:bThin,borderBottom:bDouble,paddingLeft:"2mm"}}>{"\u3000\u3000\u3000消\u3000\u3000\u3000 \u3000 費\u3000 \u3000  \u3000 税\u3000  "}</td>
+                <td colSpan={6} style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDouble,padding:0}}>
+                  <div style={{display:"flex",alignItems:"center",height:"100%",fontSize:"11pt",fontFamily:SERIF,paddingLeft:"8mm",paddingRight:"35%"}}>
+                    <span>消</span><span style={{flex:1}}/><span>費</span><span style={{flex:1}}/><span>税</span>
+                  </div>
+                </td>
                 <td style={{...cellBase,borderLeft:bThin,borderBottom:bDouble}}></td>
                 <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDouble}}></td>
                 <td style={{...cellBase,textAlign:"center",fontSize:"11pt",borderLeft:bThin,borderRight:bThin,borderBottom:bDouble,padding:0}}>{(quote.taxRate||10)}%</td>
@@ -3459,9 +3479,13 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 <td colSpan={3} style={{borderRight:bThin,borderBottom:bDouble}}></td>
               </tr>
 
-              {/* ── Row 36: 合計（税込）A36:F36 ── 仕様書 30pt 11pt太字 上罫線double 下罫線thin ── */}
+              {/* ── Row 36: 合計（税込）A36:F36 ── flex で「合」と「計 (税込)」配置（太字）── */}
               <tr style={{height: ROW_H.grandTotal}}>
-                <td colSpan={6} style={{...cellBase,textAlign:"left",fontSize:"11pt",fontWeight:700,borderLeft:bThin,borderRight:bThin,borderBottom:bThin,paddingLeft:"2mm"}}>{"\u3000\u3000\u3000合\u3000\u3000\u3000\u3000      \u3000      \u3000計 (税込)\u3000\u3000\u3000\u3000"}</td>
+                <td colSpan={6} style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bThin,padding:0}}>
+                  <div style={{display:"flex",alignItems:"center",height:"100%",fontSize:"11pt",fontFamily:SERIF,fontWeight:700,paddingLeft:"6mm",paddingRight:"15%"}}>
+                    <span>合</span><span style={{flex:1}}/><span style={{whiteSpace:"nowrap"}}>計 (税込)</span>
+                  </div>
+                </td>
                 <td style={{...cellBase,borderLeft:bThin,borderBottom:bThin}}></td>
                 <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bThin}}></td>
                 <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bThin}}></td>
