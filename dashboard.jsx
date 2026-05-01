@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-01-v13-fix-amount"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-01-v14-excel-pixel-perfect"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -3121,12 +3121,11 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
     whiteSpace: "nowrap"
   };
 
-  // Excel列幅 (Excel本来は K=10.16, L=M=8.43 の非対称設計):
-  //   A=3.83, B=7.16, C=8.43, D=5.33, E=8.43, F=8.43, G=11.83, H=5.16, I=11.0, J=11.83
-  //   K=10.16, L=M=8.43 → 印鑑3列を等幅化 K=L=M=9.007 (合計27.02を3等分)
-  // J列(金額列) は明細表で「9,999,999」(7-9字)を表示するため Excel 仕様の 11.83 を厳守
-  // 印鑑1マス: 16.6mm × 22mm = 1.32:1（Excel本来1.42:1より正方形に近い）
-  const colW = [3.83, 7.16, 8.43, 5.33, 8.43, 8.43, 11.83, 5.16, 11.00, 11.83, 9.007, 9.007, 9.007];
+  // Excel列幅 (Excelファイル完全準拠):
+  //   A=3.83, B=7.16, C=8.43, D=5.33, E=8.43, F=8.43,
+  //   G=11.83, H=5.16, I=11.0, J=11.83, K=10.16, L=8.43, M=8.43
+  // 合計 108.45 を colgroup の % 正規化で 100% に変換
+  const colW = [3.83, 7.16, 8.43, 5.33, 8.43, 8.43, 11.83, 5.16, 11.00, 11.83, 10.16, 8.43, 8.43];
 
   // Excel 行高 (pt 単位、仕様書通り)
   const ROW_H = {
@@ -3304,23 +3303,13 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                     const nm = company.name||"";
                     const len = [...nm].length;
                     if (!nm) return null;
-                    // K-M 結合幅 ≈ 27.02/108.45 × 200mm = 49.8mm
-                    // Excel仕様 K7:M7 は16pt distributed だが、文字数が多いと収まらないため文字数で動的調整
-                    if (len <= 10) {
-                      // 仕様書通り「株式会社　西原商事」級は 16pt 均等割付
-                      return <DistributedText text={nm} style={{fontSize:"16pt",fontFamily:SERIF}}/>;
-                    } else if (len <= 12) {
-                      return <DistributedText text={nm} style={{fontSize:"13pt",fontFamily:SERIF}}/>;
-                    } else {
-                      // 13文字以上は右揃え固定 + 文字数別フォントサイズ
-                      let fs;
-                      if (len <= 13) fs = "12pt";
-                      else if (len <= 14) fs = "11pt";  // 「ビートルマネージメント」14文字
-                      else if (len <= 16) fs = "10pt";
-                      else if (len <= 18) fs = "9pt";
-                      else fs = "8pt";
-                      return <div style={{textAlign:"right",fontSize:fs,fontFamily:SERIF,whiteSpace:"nowrap",overflow:"visible",letterSpacing:"-0.01em"}}>{nm}</div>;
-                    }
+                    // K-M結合幅 ≈ 27.02/108.45 × 200mm = 49.83mm
+                    // 文字数から「幅一杯に入る」最大フォントサイズを計算
+                    //   理論最大: fs = 141.2 / n（pt、1文字幅×文字数=セル幅）
+                    //   安全値（字間20%確保）: fs = 120 / n
+                    //   上限 16pt（Excel仕様 K7:M7 の最大）、下限 6pt（最小可読）
+                    const fs = Math.max(6, Math.min(16, Math.floor(120 / len * 10) / 10));
+                    return <DistributedText text={nm} style={{fontSize:fs+"pt",fontFamily:SERIF}}/>;
                   })()}
                 </td>
               </tr>
@@ -3421,9 +3410,9 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 );
               })}
 
-              {/* ── Row 31: 小計 A31:F31「小　　　計」── */}
+              {/* ── Row 31: 小計 A31:F31 ── Excel本物の全角空白パターンを完全再現 ── */}
               <tr style={{height: ROW_H.totalRow}}>
-                <td colSpan={6} style={{...cellBase,textAlign:"center",letterSpacing:"0.6em",paddingLeft:"calc(2mm + 0.6em)",borderLeft:bThin,borderRight:bThin,borderBottom:bDotted}}>小　　　計</td>
+                <td colSpan={6} style={{...cellBase,textAlign:"left",borderLeft:bThin,borderRight:bThin,borderBottom:bDotted,paddingLeft:"2mm"}}>{"\u3000\u3000\u3000小\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000 計 \u3000\u3000\u3000\u3000\u3000\u3000"}</td>
                 <td style={{...cellBase,borderLeft:bThin,borderBottom:bDotted}}></td>
                 <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDotted}}></td>
                 <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDotted}}></td>
@@ -3431,9 +3420,9 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 <td colSpan={3} style={{borderRight:bThin,borderBottom:bDotted}}></td>
               </tr>
 
-              {/* ── Row 32: 諸経費 A32:F32「諸　経　費」── */}
+              {/* ── Row 32: 諸経費 A32:F32 ── */}
               <tr style={{height: ROW_H.totalRow}}>
-                <td colSpan={6} style={{...cellBase,textAlign:"center",letterSpacing:"0.5em",paddingLeft:"calc(2mm + 0.5em)",borderLeft:bThin,borderRight:bThin,borderBottom:bDotted}}>諸　経　費</td>
+                <td colSpan={6} style={{...cellBase,textAlign:"left",borderLeft:bThin,borderRight:bThin,borderBottom:bDotted,paddingLeft:"2mm"}}>{"\u3000\u3000\u3000諸\u3000 \u3000   \u3000経\u3000\u3000 \u3000   費 "}</td>
                 <td style={{...cellBase,borderLeft:bThin,borderBottom:bDotted}}></td>
                 <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDotted}}></td>
                 <td style={{...cellBase,textAlign:"center",fontSize:"11pt",borderLeft:bThin,borderRight:bThin,borderBottom:bDotted,padding:0}}>{miscRateLabel}</td>
@@ -3441,9 +3430,9 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 <td colSpan={3} style={{borderRight:bThin,borderBottom:bDotted}}></td>
               </tr>
 
-              {/* ── Row 33: 調整費 A33:F33「調　整　費」（下に二重線：明細ブロックの区切り）── */}
+              {/* ── Row 33: 調整費 A33:F33（下に二重線：明細ブロックの区切り）── */}
               <tr style={{height: ROW_H.totalRow}}>
-                <td colSpan={6} style={{...cellBase,textAlign:"center",letterSpacing:"0.5em",paddingLeft:"calc(2mm + 0.5em)",borderLeft:bThin,borderRight:bThin,borderBottom:bDouble}}>調　整　費</td>
+                <td colSpan={6} style={{...cellBase,textAlign:"left",borderLeft:bThin,borderRight:bThin,borderBottom:bDouble,paddingLeft:"2mm"}}>{"\u3000\u3000\u3000調\u3000\u3000\u3000 \u3000 整\u3000\u3000 \u3000 \u3000費\u3000 \u3000    \u3000\u3000"}</td>
                 <td style={{...cellBase,borderLeft:bThin,borderBottom:bDouble}}></td>
                 <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDouble}}></td>
                 <td style={{...cellBase,textAlign:"center",fontSize:"11pt",borderLeft:bThin,borderRight:bThin,borderBottom:bDouble,padding:0}}>{adjRateLabel}</td>
@@ -3451,9 +3440,9 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 <td colSpan={3} style={{borderRight:bThin,borderBottom:bDouble}}></td>
               </tr>
 
-              {/* ── Row 34: 小計（税抜） A34:F34「小　計　(税抜)」── */}
+              {/* ── Row 34: 小計（税抜） A34:F34 ── */}
               <tr style={{height: ROW_H.totalRow}}>
-                <td colSpan={6} style={{...cellBase,textAlign:"center",letterSpacing:"0.2em",paddingLeft:"calc(2mm + 0.2em)",borderLeft:bThin,borderRight:bThin,borderBottom:bDotted}}>小　計　(税抜)</td>
+                <td colSpan={6} style={{...cellBase,textAlign:"left",borderLeft:bThin,borderRight:bThin,borderBottom:bDotted,paddingLeft:"2mm"}}>{"\u3000\u3000\u3000小\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000 \u3000計 (税抜)"}</td>
                 <td style={{...cellBase,borderLeft:bThin,borderBottom:bDotted}}></td>
                 <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDotted}}></td>
                 <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDotted}}></td>
@@ -3461,9 +3450,9 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 <td colSpan={3} style={{borderRight:bThin,borderBottom:bDotted}}></td>
               </tr>
 
-              {/* ── Row 35: 消費税 A35:F35「消　費　税」── */}
+              {/* ── Row 35: 消費税 A35:F35 ── */}
               <tr style={{height: ROW_H.totalRow}}>
-                <td colSpan={6} style={{...cellBase,textAlign:"center",letterSpacing:"0.5em",paddingLeft:"calc(2mm + 0.5em)",borderLeft:bThin,borderRight:bThin,borderBottom:bDouble}}>消　費　税</td>
+                <td colSpan={6} style={{...cellBase,textAlign:"left",borderLeft:bThin,borderRight:bThin,borderBottom:bDouble,paddingLeft:"2mm"}}>{"\u3000\u3000\u3000消\u3000\u3000\u3000 \u3000 費\u3000 \u3000  \u3000 税\u3000  "}</td>
                 <td style={{...cellBase,borderLeft:bThin,borderBottom:bDouble}}></td>
                 <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDouble}}></td>
                 <td style={{...cellBase,textAlign:"center",fontSize:"11pt",borderLeft:bThin,borderRight:bThin,borderBottom:bDouble,padding:0}}>{(quote.taxRate||10)}%</td>
@@ -3471,9 +3460,9 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 <td colSpan={3} style={{borderRight:bThin,borderBottom:bDouble}}></td>
               </tr>
 
-              {/* ── Row 36: 合計（税込）A36:F36「合　計　(税込)」── 仕様書 30pt 11pt太字 上罫線double 下罫線thin ── */}
+              {/* ── Row 36: 合計（税込）A36:F36 ── 仕様書 30pt 11pt太字 上罫線double 下罫線thin ── */}
               <tr style={{height: ROW_H.grandTotal}}>
-                <td colSpan={6} style={{...cellBase,textAlign:"center",letterSpacing:"0.2em",paddingLeft:"calc(2mm + 0.2em)",fontSize:"11pt",fontWeight:700,borderLeft:bThin,borderRight:bThin,borderBottom:bThin}}>合　計　(税込)</td>
+                <td colSpan={6} style={{...cellBase,textAlign:"left",fontSize:"11pt",fontWeight:700,borderLeft:bThin,borderRight:bThin,borderBottom:bThin,paddingLeft:"2mm"}}>{"\u3000\u3000\u3000合\u3000\u3000\u3000\u3000      \u3000      \u3000計 (税込)\u3000\u3000\u3000\u3000"}</td>
                 <td style={{...cellBase,borderLeft:bThin,borderBottom:bThin}}></td>
                 <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bThin}}></td>
                 <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bThin}}></td>
