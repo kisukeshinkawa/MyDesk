@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-01-v15-fit-a4"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-01-v16-stamp-square"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -3127,7 +3127,8 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
   // J列(金額列) は明細表で「9,999,999」を表示するため Excel仕様 11.83 を厳守
   const colW = [3.83, 7.16, 8.43, 5.33, 8.43, 8.43, 11.83, 5.16, 11.00, 11.83, 9.007, 9.007, 9.007];
 
-  // Excel 行高 (pt 単位、仕様書通り)
+  // Excel 行高 (印鑑欄を正方形に近づけるため Row 10/11 を縮小)
+  // 印鑑欄合計: 20+0+12+17.25 = 49.25pt = 17.38mm、印鑑1マス幅 16.61mm → 1.046:1（ほぼ正方形）
   const ROW_H = {
     title: "54.75pt",        // rows 1-3 タイトル (15+15.75+24)
     date: "15pt",            // row 4 発行日
@@ -3136,11 +3137,11 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
     workType: "25.5pt",      // row 7 業務内容
     contact: "30.75pt",      // row 8 ご担当者
     validUntil: "30.75pt",   // row 9 有効期限
-    intro: "26.25pt",        // row 10 前置き文
-    separator: "7pt",        // row 11 区切り
+    intro: "20pt",           // row 10 前置き文（仕様 26.25pt → 印鑑欄正方形化のため縮小）
+    separator: "0pt",        // row 11 区切り（仕様 7pt → 削除して印鑑欄正方形化）
     amount1: "12pt",         // row 12 見積金額1（仕様書通り）
     amount2: "17.25pt",      // row 13 見積金額2（仕様書通り）
-    beforeItems: "15pt",     // row 14 スペーサー
+    beforeItems: "22pt",     // row 14 スペーサー（縮小分を吸収して 15pt → 22pt）
     itemHeader: "22pt",      // row 15 明細ヘッダ
     item: "21pt",            // row 16-30 明細
     totalRow: "21pt",        // row 31-35 集計
@@ -3340,24 +3341,21 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 <td style={{...cellBase,background:GREY,textAlign:"center",borderTop:bThin,borderRight:bThin,borderBottom:bThin,fontSize:"11pt"}}>担当者</td>
               </tr>
 
-              {/* ── Row 10: 前置き文 A10:F10 + 印鑑枠 K10:M13（rowSpan=4 開始） ── */}
+              {/* ── Row 10: 前置き文 A10:F10 + 印鑑枠 K10:M13（rowSpan=3、Row11削除済み） ── */}
               <tr style={{height: ROW_H.intro}}>
-                <td colSpan={6} style={{...cellBase,fontSize:"10pt",verticalAlign:"top",lineHeight:1.6,paddingTop:"2mm",whiteSpace:"normal"}}>
+                <td colSpan={6} style={{...cellBase,fontSize:"10pt",verticalAlign:"middle",lineHeight:1.0,padding:"1mm 0 0 2mm",whiteSpace:"normal"}}>
                   下記の通りお見積りさせていただきます。<br/>
                   ご検討のほど、お願い申し上げます。
                 </td>
                 <td colSpan={4}></td>
-                <td rowSpan={4} style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bThin,textAlign:"center",verticalAlign:"middle",padding:0}}></td>
-                <td rowSpan={4} style={{...cellBase,borderRight:bThin,borderBottom:bThin,textAlign:"center",verticalAlign:"middle",padding:0}}></td>
-                <td rowSpan={4} style={{...cellBase,borderRight:bThin,borderBottom:bThin,textAlign:"center",verticalAlign:"middle",padding:0}}>
+                <td rowSpan={3} style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bThin,textAlign:"center",verticalAlign:"middle",padding:0}}></td>
+                <td rowSpan={3} style={{...cellBase,borderRight:bThin,borderBottom:bThin,textAlign:"center",verticalAlign:"middle",padding:0}}></td>
+                <td rowSpan={3} style={{...cellBase,borderRight:bThin,borderBottom:bThin,textAlign:"center",verticalAlign:"middle",padding:0}}>
                   <HankoStamp name={authorLastName}/>
                 </td>
               </tr>
 
-              {/* ── Row 11: 区切り行（仕様書 7pt） K-M は印鑑枠 rowSpan で延びる ── */}
-              <tr style={{height: ROW_H.separator}}>
-                <td colSpan={10}></td>
-              </tr>
+              {/* ── Row 11: separator (削除済み、印鑑欄正方形化のため) ── */}
 
               {/* ── Row 12-13: 見積金額 A12:C13 (grayfill 14pt) / 金額 D12:H13 (20pt) / (税込) I12:I13 (11pt) ── J列は罫線なし完全空白 ── */}
               <tr style={{height: ROW_H.amount1}}>
