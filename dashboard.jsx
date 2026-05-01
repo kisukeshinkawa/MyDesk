@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-01-v10-excel-perfect"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-01-v11-excel-100"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -3264,7 +3264,7 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
 
               {/* ── Row 5: 宛先 A5:F5（11pt 左揃え 下罫線double） + G5「御中」（12pt 中央） ── */}
               <tr style={{height: ROW_H.to}}>
-                <td colSpan={6} style={{...cellBase,fontSize:"12pt",textAlign:"left",borderBottom:bDouble,verticalAlign:"bottom",paddingBottom:"1mm",paddingLeft:"8mm"}}>
+                <td colSpan={6} style={{...cellBase,fontSize:"12pt",textAlign:"left",borderBottom:bDouble,verticalAlign:"bottom",paddingBottom:"1mm",paddingLeft:"4mm"}}>
                   {quote.to||""}
                 </td>
                 <td style={{...cellBase,fontSize:"12pt",textAlign:"center",borderBottom:bDouble,verticalAlign:"bottom",paddingBottom:"1mm"}}>
@@ -3283,9 +3283,10 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                     const zip = company.zip||"";
                     const addr = company.address||"";
                     const addrLen = [...addr].length;
-                    const addrFs = addrLen <= 18 ? "10pt" : addrLen <= 20 ? "9.5pt" : addrLen <= 22 ? "9pt" : "8.5pt";
+                    // Excel仕様: 11pt left middle wrap。文字数が多いと収まらないので自動縮小
+                    const addrFs = addrLen <= 17 ? "11pt" : addrLen <= 19 ? "10pt" : addrLen <= 21 ? "9.5pt" : "9pt";
                     return <>
-                      <div style={{fontSize:"10pt"}}>{zip}</div>
+                      <div style={{fontSize:"11pt"}}>{zip}</div>
                       <div style={{fontSize:addrFs,whiteSpace:"nowrap"}}>{addr}</div>
                     </>;
                   })()}
@@ -3390,7 +3391,7 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 <td style={{...cellBase,background:GREY,textAlign:"center",border:bThin,padding:0}}></td>
                 <td colSpan={5} style={{...cellBase,background:GREY,textAlign:"center",border:bThin,fontSize:"11pt"}}>内　容</td>
                 <td style={{...cellBase,background:GREY,textAlign:"center",border:bThin,fontSize:"11pt"}}>数　量</td>
-                <td style={{...cellBase,background:GREY,textAlign:"center",border:bThin,fontSize:"10pt",padding:0}}>単位</td>
+                <td style={{...cellBase,background:GREY,textAlign:"center",border:bThin,fontSize:"11pt",padding:0}}>単位</td>
                 <td style={{...cellBase,background:GREY,textAlign:"center",border:bThin,fontSize:"11pt"}}>単　価</td>
                 <td style={{...cellBase,background:GREY,textAlign:"center",border:bThin,fontSize:"11pt"}}>金　額</td>
                 <td colSpan={3} style={{...cellBase,background:GREY,textAlign:"center",border:bThin,fontSize:"11pt"}}>備考欄</td>
@@ -3408,13 +3409,13 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 const bottomBorder = isLast ? bDouble : bDotted;
                 return (
                   <tr key={idx} style={{height: ROW_H.item}}>
-                    <td style={{...cellBase,textAlign:"center",fontSize:"10pt",padding:0,borderLeft:bThin,borderRight:bThin,borderBottom:bottomBorder}}>{idx+1}</td>
+                    <td style={{...cellBase,textAlign:"center",fontSize:"11pt",padding:0,borderLeft:bThin,borderRight:bThin,borderBottom:bottomBorder}}>{idx+1}</td>
                     <td colSpan={5} style={{...cellBase,borderRight:bThin,borderBottom:bottomBorder}}>{hasContent ? it.description : ""}</td>
                     <td style={{...cellBase,textAlign:"right",borderRight:bThin,borderBottom:bottomBorder}}>{hasContent && qty>0 ? qty.toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:1}) : ""}</td>
                     <td style={{...cellBase,textAlign:"center",borderRight:bThin,borderBottom:bottomBorder}}>{hasContent ? (it?.unit||"") : ""}</td>
                     <td style={{...cellBase,textAlign:"right",borderRight:bThin,borderBottom:bottomBorder}}>{hasContent && price>0 ? price.toLocaleString() : ""}</td>
                     <td style={{...cellBase,textAlign:"right",borderRight:bThin,borderBottom:bottomBorder}}>{amount > 0 ? amount.toLocaleString() : ""}</td>
-                    <td colSpan={3} style={{...cellBase,fontSize:"9pt",borderRight:bThin,borderBottom:bottomBorder}}>{hasContent ? (it?.remarks||"") : ""}</td>
+                    <td colSpan={3} style={{...cellBase,fontSize:"11pt",borderRight:bThin,borderBottom:bottomBorder}}>{hasContent ? (it?.remarks||"") : ""}</td>
                   </tr>
                 );
               })}
@@ -3434,7 +3435,7 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 <td colSpan={6} style={{...cellBase,textAlign:"center",letterSpacing:"0.5em",paddingLeft:"calc(2mm + 0.5em)",borderLeft:bThin,borderRight:bThin,borderBottom:bDotted}}>諸　経　費</td>
                 <td style={{...cellBase,borderLeft:bThin,borderBottom:bDotted}}></td>
                 <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDotted}}></td>
-                <td style={{...cellBase,textAlign:"center",fontSize:"10pt",borderLeft:bThin,borderRight:bThin,borderBottom:bDotted,padding:0}}>{miscRateLabel}</td>
+                <td style={{...cellBase,textAlign:"center",fontSize:"11pt",borderLeft:bThin,borderRight:bThin,borderBottom:bDotted,padding:0}}>{miscRateLabel}</td>
                 <td style={{...cellBase,textAlign:"right",borderRight:bThin,borderBottom:bDotted,padding:"0 1mm"}}>{miscYen ? miscYen.toLocaleString() : "0"}</td>
                 <td colSpan={3} style={{borderRight:bThin,borderBottom:bDotted}}></td>
               </tr>
@@ -3444,7 +3445,7 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 <td colSpan={6} style={{...cellBase,textAlign:"center",letterSpacing:"0.5em",paddingLeft:"calc(2mm + 0.5em)",borderLeft:bThin,borderRight:bThin,borderBottom:bDouble}}>調　整　費</td>
                 <td style={{...cellBase,borderLeft:bThin,borderBottom:bDouble}}></td>
                 <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDouble}}></td>
-                <td style={{...cellBase,textAlign:"center",fontSize:"10pt",borderLeft:bThin,borderRight:bThin,borderBottom:bDouble,padding:0}}>{adjRateLabel}</td>
+                <td style={{...cellBase,textAlign:"center",fontSize:"11pt",borderLeft:bThin,borderRight:bThin,borderBottom:bDouble,padding:0}}>{adjRateLabel}</td>
                 <td style={{...cellBase,textAlign:"right",borderRight:bThin,borderBottom:bDouble,padding:"0 1mm"}}>{adjYen ? adjYen.toLocaleString() : "0"}</td>
                 <td colSpan={3} style={{borderRight:bThin,borderBottom:bDouble}}></td>
               </tr>
@@ -3464,7 +3465,7 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 <td colSpan={6} style={{...cellBase,textAlign:"center",letterSpacing:"0.5em",paddingLeft:"calc(2mm + 0.5em)",borderLeft:bThin,borderRight:bThin,borderBottom:bDouble}}>消　費　税</td>
                 <td style={{...cellBase,borderLeft:bThin,borderBottom:bDouble}}></td>
                 <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDouble}}></td>
-                <td style={{...cellBase,textAlign:"center",fontSize:"10pt",borderLeft:bThin,borderRight:bThin,borderBottom:bDouble,padding:0}}>{(quote.taxRate||10)}%</td>
+                <td style={{...cellBase,textAlign:"center",fontSize:"11pt",borderLeft:bThin,borderRight:bThin,borderBottom:bDouble,padding:0}}>{(quote.taxRate||10)}%</td>
                 <td style={{...cellBase,textAlign:"right",borderRight:bThin,borderBottom:bDouble,padding:"0 1mm"}}>{tax.toLocaleString()}</td>
                 <td colSpan={3} style={{borderRight:bThin,borderBottom:bDouble}}></td>
               </tr>
@@ -3489,9 +3490,9 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 <td colSpan={13} style={{...cellBase,letterSpacing:"0.5em",paddingLeft:"calc(2mm + 0.5em)",borderTop:bThin,borderLeft:bThin,borderRight:bThin}}>備　考</td>
               </tr>
 
-              {/* ── Row 39: 備考記入欄 A39:M39（87.75pt 折返し有効）── */}
+              {/* ── Row 39: 備考記入欄 A39:M39（87.75pt 折返し有効、11pt）── */}
               <tr style={{height: ROW_H.remarksContent}}>
-                <td colSpan={13} style={{...cellBase,fontSize:"10pt",verticalAlign:"top",whiteSpace:"pre-wrap",borderLeft:bThin,borderRight:bThin,borderBottom:bThin,padding:"1mm 4mm 2mm 4mm",lineHeight:1.5}}>
+                <td colSpan={13} style={{...cellBase,fontSize:"11pt",verticalAlign:"top",whiteSpace:"pre-wrap",borderLeft:bThin,borderRight:bThin,borderBottom:bThin,padding:"1mm 4mm 2mm 4mm",lineHeight:1.5}}>
                   {quote.remarks || ""}
                 </td>
               </tr>
