@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-01-v14-excel-pixel-perfect"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-01-v15-fit-a4"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -3121,11 +3121,11 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
     whiteSpace: "nowrap"
   };
 
-  // Excel列幅 (Excelファイル完全準拠):
-  //   A=3.83, B=7.16, C=8.43, D=5.33, E=8.43, F=8.43,
-  //   G=11.83, H=5.16, I=11.0, J=11.83, K=10.16, L=8.43, M=8.43
-  // 合計 108.45 を colgroup の % 正規化で 100% に変換
-  const colW = [3.83, 7.16, 8.43, 5.33, 8.43, 8.43, 11.83, 5.16, 11.00, 11.83, 10.16, 8.43, 8.43];
+  // Excel列幅 (Excel本来は K=10.16, L=M=8.43 の非対称設計だが、
+  //   Excel本物のレンダリングでは印鑑3マスがほぼ等幅で表示されるので等幅化:
+  //   K=L=M=9.007 (3列合計27.02はExcel仕様と同じ、全合計108.45を維持))
+  // J列(金額列) は明細表で「9,999,999」を表示するため Excel仕様 11.83 を厳守
+  const colW = [3.83, 7.16, 8.43, 5.33, 8.43, 8.43, 11.83, 5.16, 11.00, 11.83, 9.007, 9.007, 9.007];
 
   // Excel 行高 (pt 単位、仕様書通り)
   const ROW_H = {
@@ -3202,8 +3202,8 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
           @media print {
             body * { visibility: hidden; }
             .quote-print, .quote-print * { visibility: visible; }
-            /* A4 297mm に確実に収める：行高合計 ~870pt = ~307mm を 0.94 倍で ~289mm に縮小 */
-            .quote-print { position: absolute; left: 0; top: 0; width: 210mm; box-shadow: none !important; padding: 5mm !important; transform: scale(0.94) !important; transform-origin: top left !important; }
+            /* A4 297mm に確実に収める: 行高合計 894.65pt=315.81mm × 0.92 = 290.5mm + padding 1mm×2 = 292.5mm（4.5mm余裕） */
+            .quote-print { position: absolute; left: 0; top: 0; width: 210mm; box-shadow: none !important; padding: 1mm !important; transform: scale(0.92) !important; transform-origin: top left !important; }
             .quote-scale-outer { width: auto !important; height: auto !important; overflow: visible !important; position: static !important; }
             .quote-scale-inner { transform: none !important; position: static !important; width: auto !important; }
             .no-print { display: none !important; }
@@ -3231,7 +3231,7 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
         <div className="quote-print" style={{
           width:"210mm",
           minHeight:"297mm",
-          padding:"5mm",
+          padding:"1mm",
           fontFamily: SERIF,
           color:"#000",
           boxSizing:"border-box",
