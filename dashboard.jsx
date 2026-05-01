@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-01-v25-print-0875"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-01-v26-print-09"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -3207,33 +3207,36 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
             body { margin: 0 !important; padding: 0 !important; }
             body * { visibility: hidden; }
             .quote-print, .quote-print * { visibility: visible; }
-            /* A4 (210x297mm) 内に scale(0.875) で全体縮小し、中央配置:
-               width:200mm × scale(0.875) = 175mm（左右17.5mm余白）
-               縦合計 311.4mm × scale(0.875) = 272.5mm（上下約12.3mm余白） */
+            /* A4 (210x297mm) 内に scale(0.9) で全体縮小し、中央配置:
+               width:200mm × scale(0.9) = 180mm（左右15mm余白）
+               縦合計 311.4mm × scale(0.9) = 280.2mm（上下約8.4mm余白） */
             .quote-print { 
               position: absolute !important;
-              left: 17.5mm !important;
-              top: 12.3mm !important;
+              left: 15mm !important;
+              top: 8.4mm !important;
               width: 200mm !important; 
               box-shadow: none !important; 
               padding: 0 !important; 
               margin: 0 !important;
-              transform: scale(0.875) !important; 
+              transform: scale(0.9) !important; 
               transform-origin: top left !important; 
             }
-            .quote-scale-outer { width: auto !important; height: auto !important; overflow: visible !important; position: static !important; }
+            .quote-scale-outer { width: auto !important; height: auto !important; overflow: visible !important; position: static !important; padding: 0 !important; margin: 0 !important; }
             .quote-scale-inner { transform: none !important; position: static !important; width: auto !important; }
+            .quote-preview-wrapper { padding: 0 !important; margin: 0 !important; }
             .no-print { display: none !important; }
             @page { size: A4; margin: 0; }
           }
         `}</style>
 
-        {/* スケールラッパー（プレビュー画面は等倍表示、周りに余白あり。モバイル時のみ縮小） */}
+        {/* 余白確保用の外側ラッパー（プレビュー時のみ） */}
+        <div className="quote-preview-wrapper" style={{padding: "30px 30px", boxSizing: "border-box"}}>
+
+        {/* スケールラッパー（モバイル時に縮小して画面に収める） */}
         <div className="quote-scale-outer" style={{
           width: scale < 1 ? `${755.9 * scale}px` : "200mm",
           height: scale < 1 ? `${docHeight * scale}px` : "auto",
-          margin: "20px auto",
-          padding: "0 20px",
+          margin: "0 auto",
           overflow: "hidden",
           position: "relative",
         }}>
@@ -3538,6 +3541,7 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
         </div>
           </div>{/* /quote-scale-inner */}
         </div>{/* /quote-scale-outer */}
+        </div>{/* /quote-preview-wrapper */}
       </div>
     </div>
   );
