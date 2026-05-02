@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-01-v26-print-09"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-01-v27-excel-pdf"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -3195,6 +3195,91 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
               restore();
             }
           }} style={{padding:"0.4rem 0.85rem",borderRadius:"0.4rem",border:"none",background:"#2563eb",color:"white",fontWeight:700,fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>🖨 印刷 / PDF保存</button>
+
+          {/* Excel 雛形完全再現 PDF 生成ボタン（Lambda経由） */}
+          <button onClick={async () => {
+            const QUOTE_GEN_URL = import.meta.env.VITE_QUOTE_GEN_URL || "";
+            if (!QUOTE_GEN_URL) {
+              window.alert("見積書PDF生成URLが設定されていません。\nVITE_QUOTE_GEN_URL を環境変数に設定してください。");
+              return;
+            }
+            // ローディング表示
+            const btn = window.event?.currentTarget;
+            const originalText = btn ? btn.textContent : null;
+            if (btn) {
+              btn.disabled = true;
+              btn.textContent = "⏳ PDF生成中...";
+            }
+            try {
+              const payload = {
+                quote: {
+                  companyName: quote.to || "",
+                  siteName: quote.site || "",
+                  workType: quote.workContent || "",
+                  contactName: quote.contact || "",
+                  validityMonths: quote.validityMonths || 3,
+                  issuedAt: quote.issuedDate || new Date().toISOString().slice(0,10),
+                  items: (quote.items||[]).map(it => ({
+                    name: it.description || "",
+                    qty: it.qty,
+                    unit: it.unit || "",
+                    price: it.price,
+                    remark: it.remark || "",
+                  })),
+                  miscRate: quote.miscUnit === "percent" ? Number(quote.misc)||0 : 0,
+                  adjustmentRate: quote.adjustmentUnit === "percent" ? Number(quote.adjustment)||0 : 0,
+                  taxRate: Number(quote.taxRate) || 10,
+                  remarks: quote.remarks || "",
+                },
+                company: {
+                  name: company.name || "",
+                  zip: company.zip || "",
+                  address: company.address || "",
+                  tel: company.tel || "",
+                  fax: company.fax || "",
+                },
+              };
+              const res = await fetch(QUOTE_GEN_URL, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "x-mydesk-secret": "mydesk2026secret",
+                },
+                body: JSON.stringify(payload),
+              });
+              if (!res.ok) throw new Error(`HTTP ${res.status}`);
+              const data = await res.json();
+              if (!data.success) throw new Error(data.error || "PDF生成失敗");
+              // base64 → Blob → 新しいタブで開く（プレビュー or 保存）
+              const byteChars = atob(data.pdfBase64);
+              const byteNumbers = new Array(byteChars.length);
+              for (let i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i);
+              const byteArray = new Uint8Array(byteNumbers);
+              const blob = new Blob([byteArray], { type: "application/pdf" });
+              const url = URL.createObjectURL(blob);
+              // 新しいタブで開く
+              const win = window.open(url, "_blank");
+              if (!win) {
+                // ポップアップブロック時はダウンロード
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = data.filename || "見積書.pdf";
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+              }
+              // URL は 60秒後に解放
+              setTimeout(() => URL.revokeObjectURL(url), 60000);
+            } catch (err) {
+              console.error("[QuotePDF]", err);
+              window.alert(`PDF生成に失敗しました:\n${err.message}`);
+            } finally {
+              if (btn) {
+                btn.disabled = false;
+                btn.textContent = originalText || "📄 完璧PDF（Excel雛形）";
+              }
+            }
+          }} style={{padding:"0.4rem 0.85rem",borderRadius:"0.4rem",border:"none",background:"#059669",color:"white",fontWeight:700,fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>📄 完璧PDF（Excel雛形）</button>
         </div>
 
         <style>{`
