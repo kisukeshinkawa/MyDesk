@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-03-v29-no-excel-btn"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-03-v30-preview-09"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -3233,19 +3233,19 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
         {/* 余白確保用の外側ラッパー（プレビュー時のみ） */}
         <div className="quote-preview-wrapper" style={{padding: "30px 30px", boxSizing: "border-box"}}>
 
-        {/* スケールラッパー（モバイル時に縮小して画面に収める） */}
+        {/* スケールラッパー（プレビュー画面で印刷時と同じ scale 0.9 で表示、モバイル時はさらに縮小） */}
         <div className="quote-scale-outer" style={{
-          width: scale < 1 ? `${755.9 * scale}px` : "200mm",
-          height: scale < 1 ? `${docHeight * scale}px` : "auto",
+          width: scale < 1 ? `${755.9 * 0.9 * scale}px` : `${755.9 * 0.9}px`,
+          height: scale < 1 ? `${docHeight * 0.9 * scale}px` : `${docHeight * 0.9}px`,
           margin: "0 auto",
           overflow: "hidden",
           position: "relative",
         }}>
           <div className="quote-scale-inner" ref={innerRef} style={{
-            transform: scale < 1 ? `scale(${scale})` : "none",
+            transform: scale < 1 ? `scale(${scale * 0.9})` : "scale(0.9)",
             transformOrigin: "top left",
             width: "200mm",
-            position: scale < 1 ? "absolute" : "relative",
+            position: "absolute",
             top: 0, left: 0,
           }}>
 
