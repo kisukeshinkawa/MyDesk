@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-03-v30-preview-09"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-03-v31-a4-container"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -3233,33 +3233,35 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
         {/* 余白確保用の外側ラッパー（プレビュー時のみ） */}
         <div className="quote-preview-wrapper" style={{padding: "30px 30px", boxSizing: "border-box"}}>
 
-        {/* スケールラッパー（プレビュー画面で印刷時と同じ scale 0.9 で表示、モバイル時はさらに縮小） */}
+        {/* A4 サイズのコンテナ（印刷時と同じ比率を維持、内部で scale 0.9 で配置して余白を確保） */}
         <div className="quote-scale-outer" style={{
-          width: scale < 1 ? `${755.9 * 0.9 * scale}px` : `${755.9 * 0.9}px`,
-          height: scale < 1 ? `${docHeight * 0.9 * scale}px` : `${docHeight * 0.9}px`,
+          width: scale < 1 ? `${793.7 * scale}px` : "210mm",
+          height: scale < 1 ? `${1123 * scale}px` : "297mm",
           margin: "0 auto",
           overflow: "hidden",
           position: "relative",
+          background: "white",
+          boxShadow: "0 4px 16px rgba(0,0,0,0.15)",
         }}>
           <div className="quote-scale-inner" ref={innerRef} style={{
             transform: scale < 1 ? `scale(${scale * 0.9})` : "scale(0.9)",
             transformOrigin: "top left",
             width: "200mm",
             position: "absolute",
-            top: 0, left: 0,
+            top: scale < 1 ? `${8.4 * 3.7795 * scale}px` : "8.4mm",
+            left: scale < 1 ? `${15 * 3.7795 * scale}px` : "15mm",
           }}>
 
-        {/* A4 ページ本体 (200mm 幅、印刷時は A4 内中央配置で余白5mm) */}
+        {/* A4 ページ本体 (200mm 幅、印刷時は A4 内中央配置で余白) */}
         <div className="quote-print" style={{
           width:"200mm",
-          minHeight:"287mm",
+          minHeight:"280mm",
           padding:"0",
           fontFamily: SERIF,
           color:"#000",
           boxSizing:"border-box",
           background:"white",
-          margin:"5mm auto",
-          boxShadow:"0 4px 16px rgba(0,0,0,0.15)"
+          margin:"0",
         }}>
 
           {/* メインテーブル（13列構成・Excel ひな形完全準拠 / 行高は仕様書のpt値そのまま） */}
