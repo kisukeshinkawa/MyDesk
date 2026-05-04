@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-04-v32-licenses-mvp"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-04-v33-vendor-detail-tabs"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -266,6 +266,37 @@ async function licensesDelete(id) {
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   const obj = await r.json();
   return obj?.ok || false;
+}
+
+// ─── DUSTALK INFO (ダストーク登録情報) API CLIENT ──────────────────────────────
+
+async function dustalkInfoGet(vendorId) {
+  try {
+    const r = await fetch(`${DB_API_BASE}/dustalk_info?vendor_id=${encodeURIComponent(vendorId)}`, {
+      headers: DB_API_HEADERS,
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const obj = await r.json();
+    return obj?.item || null;
+  } catch (e) {
+    console.warn("[dustalkInfoGet] failed:", e);
+    return null;
+  }
+}
+
+async function dustalkInfoSave(vendorId, vendorName, data) {
+  const r = await fetch(`${DB_API_BASE}/dustalk_info`, {
+    method: "POST",
+    headers: DB_API_HEADERS,
+    body: JSON.stringify({
+      vendor_id: String(vendorId),
+      vendor_name: vendorName,
+      data: data || {},
+    }),
+  });
+  if (!r.ok) throw new Error(`HTTP ${r.status}: ${await r.text()}`);
+  const obj = await r.json();
+  return obj?.item || null;
 }
 
 // ─── LICENSE (許可証) CONSTANTS ───────────────────────────────────────────────
@@ -1075,6 +1106,326 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
               {saving ? "保存中..." : "💾 保存"}
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ─── DUSTALK INFO SECTION (ダストーク登録情報) ─────────────────────────────
+function DustalkInfoSection({ vendorId, vendorName }) {
+  const [info, setInfo] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(false);
+
+  useEffect(() => {
+    if (!vendorId) return;
+    setLoading(true);
+    dustalkInfoGet(vendorId).then(item => {
+      setInfo(item);
+      setLoading(false);
+    });
+  }, [vendorId]);
+
+  const reload = async () => {
+    const item = await dustalkInfoGet(vendorId);
+    setInfo(item);
+  };
+
+  const handleSave = async (data) => {
+    try {
+      await dustalkInfoSave(vendorId, vendorName, data);
+      setEditing(false);
+      await reload();
+    } catch (e) {
+      window.alert(`保存失敗: ${e.message}`);
+    }
+  };
+
+  const data = info?.data || {};
+
+  if (loading) {
+    return <div style={{padding:"1rem",color:"#6b7280",fontSize:"0.85rem"}}>読み込み中...</div>;
+  }
+
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.75rem"}}>
+        <h4 style={{margin:0,fontSize:"0.95rem",fontWeight:800,color:"#111827"}}>🚚 ダストーク登録情報</h4>
+        <button onClick={() => setEditing(true)}
+          style={{padding:"0.35rem 0.75rem",fontSize:"0.78rem",fontWeight:700,background:"#2563eb",color:"white",border:"none",borderRadius:"6px",cursor:"pointer"}}>
+          ✏️ {info ? "編集" : "登録"}
+        </button>
+      </div>
+
+      {!info && (
+        <div style={{padding:"1.5rem",background:"#f9fafb",border:"1px dashed #d1d5db",borderRadius:"8px",textAlign:"center",color:"#6b7280",fontSize:"0.85rem"}}>
+          ダストーク登録情報は未登録です。<br/>
+          上の「登録」ボタンから情報を追加してください。
+        </div>
+      )}
+
+      {info && (
+        <div style={{display:"flex",flexDirection:"column",gap:"0.75rem"}}>
+          {/* 基本情報 */}
+          <DustalkInfoBlock title="基本情報" color="#2563eb">
+            <DustalkInfoRow label="業者名" value={data.business_name || vendorName}/>
+            <DustalkInfoRow label="ウェブサイトURL" value={data.website_url}/>
+            <DustalkInfoRow label="車両台数" value={data.vehicle_count}/>
+            <DustalkInfoRow label="従業員数" value={data.employee_count}/>
+            <DustalkInfoRow label="定休日" value={data.regular_holiday}/>
+            <DustalkInfoRow label="営業時間" value={data.business_hours}/>
+            <DustalkInfoRow label="ユーザーへの領収書" value={data.issue_receipt === false ? "使用しない" : (data.issue_receipt ? "使用する" : null)}/>
+            <DustalkInfoRow label="住所" value={data.full_address}/>
+          </DustalkInfoBlock>
+
+          {/* 銀行口座情報 */}
+          <DustalkInfoBlock title="銀行口座情報" color="#059669">
+            <DustalkInfoRow label="金融機関名" value={data.bank_name}/>
+            <DustalkInfoRow label="支店名" value={data.bank_branch}/>
+            <DustalkInfoRow label="預金種別" value={data.bank_account_type}/>
+            <DustalkInfoRow label="口座番号" value={data.bank_account_number}/>
+            <DustalkInfoRow label="口座名義人" value={data.bank_account_holder}/>
+            <DustalkInfoRow label="振込手数料の負担" value={data.fee_burden}/>
+            <DustalkInfoRow label="適格請求書事業者登録番号" value={data.invoice_number}/>
+          </DustalkInfoBlock>
+
+          {/* その他の設定 */}
+          <DustalkInfoBlock title="その他の設定" color="#7c3aed">
+            <DustalkInfoRow label="回収時の現金支払い (粗大ゴミ)" value={data.cash_payment === true ? "許可する" : (data.cash_payment === false ? "許可しない" : null)}/>
+          </DustalkInfoBlock>
+
+          {/* 代表者情報 */}
+          <DustalkInfoBlock title="代表者情報" color="#dc2626" subtitle="契約書や請求書発行時に記載する情報として利用します">
+            <DustalkInfoRow label="代表者名" value={data.rep_name}/>
+            <DustalkInfoRow label="代表者電話番号" value={data.rep_phone}/>
+            <DustalkInfoRow label="メールアドレス" value={data.rep_email}/>
+          </DustalkInfoBlock>
+
+          {/* 担当者情報 */}
+          <DustalkInfoBlock title="担当者情報" color="#d97706" subtitle="連絡窓口となる担当者の情報">
+            <DustalkInfoRow label="担当者名" value={data.contact_name}/>
+            <DustalkInfoRow label="担当者電話番号" value={data.contact_phone}/>
+            <DustalkInfoRow label="メールアドレス" value={data.contact_email}/>
+          </DustalkInfoBlock>
+
+          {info.updated_at && (
+            <div style={{fontSize:"0.7rem",color:"#9ca3af",textAlign:"right"}}>
+              最終更新: {new Date(info.updated_at).toLocaleString("ja-JP")}
+            </div>
+          )}
+        </div>
+      )}
+
+      {editing && (
+        <DustalkInfoEditModal
+          data={data}
+          vendorName={vendorName}
+          onClose={() => setEditing(false)}
+          onSave={handleSave}
+        />
+      )}
+    </div>
+  );
+}
+
+// ダストーク情報ブロック（セクション枠）
+function DustalkInfoBlock({ title, color, subtitle, children }) {
+  return (
+    <div style={{background:"white",border:"1px solid #e5e7eb",borderRadius:"8px",padding:"0.75rem 1rem"}}>
+      <h5 style={{margin:"0 0 0.5rem 0",fontSize:"0.85rem",fontWeight:700,color}}>{title}</h5>
+      {subtitle && <div style={{fontSize:"0.7rem",color:"#dc2626",marginBottom:"0.5rem"}}>{subtitle}</div>}
+      <div style={{display:"flex",flexDirection:"column",gap:"0.3rem"}}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// ダストーク情報の1行表示
+function DustalkInfoRow({ label, value }) {
+  return (
+    <div style={{display:"flex",alignItems:"flex-start",gap:"0.5rem",fontSize:"0.78rem",borderBottom:"1px dashed #e5e7eb",paddingBottom:"0.25rem"}}>
+      <div style={{flexShrink:0,width:"180px",color:"#6b7280",fontWeight:500}}>{label}</div>
+      <div style={{flex:1,color:value ? "#111827" : "#9ca3af",fontWeight:value?500:400}}>
+        {value || "未記入"}
+      </div>
+    </div>
+  );
+}
+
+// ダストーク情報 編集モーダル
+function DustalkInfoEditModal({ data, vendorName, onClose, onSave }) {
+  const [form, setForm] = useState({...(data || {})});
+  const [saving, setSaving] = useState(false);
+  const [tab, setTab] = useState("basic");
+
+  const handleSubmit = async () => {
+    setSaving(true);
+    try {
+      await onSave(form);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const F = ({label, k, type = "text", placeholder = "", options = null, multiline = false}) => (
+    <div style={{marginBottom:"0.6rem"}}>
+      <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.25rem"}}>{label}</label>
+      {options ? (
+        <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap"}}>
+          {options.map(opt => (
+            <label key={String(opt.val)} style={{display:"flex",alignItems:"center",gap:"0.3rem",cursor:"pointer",padding:"0.3rem 0.6rem",borderRadius:"4px",background:form[k]===opt.val?"#dbeafe":"white",border:`1.5px solid ${form[k]===opt.val?"#2563eb":"#e5e7eb"}`}}>
+              <input type="radio" checked={form[k]===opt.val} onChange={()=>setForm({...form,[k]:opt.val})} style={{accentColor:"#2563eb"}}/>
+              <span style={{fontSize:"0.78rem"}}>{opt.label}</span>
+            </label>
+          ))}
+        </div>
+      ) : multiline ? (
+        <textarea value={form[k]||""} onChange={e=>setForm({...form,[k]:e.target.value})} placeholder={placeholder}
+          style={{width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #d1d5db",borderRadius:"4px",fontSize:"0.85rem",boxSizing:"border-box",fontFamily:"inherit",height:60,resize:"vertical"}}/>
+      ) : (
+        <input type={type} value={form[k]==null?"":form[k]} onChange={e=>setForm({...form,[k]:type==="number"?(e.target.value===""?"":Number(e.target.value)):e.target.value})} placeholder={placeholder}
+          style={{width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #d1d5db",borderRadius:"4px",fontSize:"0.85rem",boxSizing:"border-box"}}/>
+      )}
+    </div>
+  );
+
+  const tabs = [
+    {id:"basic", label:"基本情報", color:"#2563eb"},
+    {id:"bank", label:"銀行口座", color:"#059669"},
+    {id:"other", label:"その他", color:"#7c3aed"},
+    {id:"rep", label:"代表者", color:"#dc2626"},
+    {id:"contact", label:"担当者", color:"#d97706"},
+  ];
+
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:9999,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
+      <div style={{background:"white",borderRadius:"12px",maxWidth:700,width:"100%",maxHeight:"90vh",display:"flex",flexDirection:"column"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"1rem 1.25rem",borderBottom:"1px solid #e5e7eb"}}>
+          <h3 style={{margin:0,fontSize:"1.05rem",fontWeight:800}}>🚚 ダストーク登録情報の編集</h3>
+          <button onClick={onClose} style={{background:"none",border:"none",fontSize:"1.4rem",cursor:"pointer",color:"#6b7280"}}>×</button>
+        </div>
+
+        {/* タブ */}
+        <div style={{display:"flex",gap:"0.25rem",padding:"0.5rem 1rem 0",borderBottom:"1px solid #e5e7eb",overflowX:"auto"}}>
+          {tabs.map(t => (
+            <button key={t.id} onClick={()=>setTab(t.id)}
+              style={{padding:"0.5rem 0.875rem",fontSize:"0.78rem",fontWeight:700,background:tab===t.id?"white":"transparent",color:tab===t.id?t.color:"#6b7280",border:"none",borderBottom:`3px solid ${tab===t.id?t.color:"transparent"}`,cursor:"pointer",whiteSpace:"nowrap"}}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* コンテンツ */}
+        <div style={{flex:1,overflowY:"auto",padding:"1rem 1.25rem"}}>
+          {tab === "basic" && (
+            <>
+              <F label="業者名" k="business_name" placeholder={vendorName}/>
+              <F label="ウェブサイトURL" k="website_url" placeholder="https://..."/>
+              <F label="車両台数" k="vehicle_count" type="number" placeholder="例: 5"/>
+              <F label="従業員数" k="employee_count" type="number" placeholder="例: 10"/>
+              <F label="定休日" k="regular_holiday" placeholder="例: 日曜・祝日"/>
+              <F label="営業時間" k="business_hours" placeholder="例: 8:00〜17:00"/>
+              <F label="ユーザーへの領収書" k="issue_receipt" options={[{val:true,label:"使用する"},{val:false,label:"使用しない"}]}/>
+              <F label="住所" k="full_address" placeholder="〒xxx-xxxx 福岡県..." multiline/>
+            </>
+          )}
+          {tab === "bank" && (
+            <>
+              <F label="金融機関名" k="bank_name" placeholder="例: 西日本シティ銀行 (0190)"/>
+              <F label="支店名" k="bank_branch" placeholder="例: 黒崎支店 (245)"/>
+              <F label="預金種別" k="bank_account_type" options={[{val:"普通預金",label:"普通預金"},{val:"当座預金",label:"当座預金"}]}/>
+              <F label="口座番号" k="bank_account_number" placeholder="例: 1234567"/>
+              <F label="口座名義人" k="bank_account_holder" placeholder="例: ユウ)イケダショウテン"/>
+              <F label="振込手数料の負担" k="fee_burden" options={[{val:"運営負担",label:"運営負担"},{val:"業者負担",label:"業者負担"}]}/>
+              <F label="適格請求書事業者登録番号" k="invoice_number" placeholder="例: T1234567890123"/>
+            </>
+          )}
+          {tab === "other" && (
+            <>
+              <F label="回収時の現金支払い (粗大ゴミ)" k="cash_payment" options={[{val:true,label:"許可する"},{val:false,label:"許可しない"}]}/>
+              <div style={{fontSize:"0.7rem",color:"#6b7280",lineHeight:1.5,padding:"0.5rem",background:"#f9fafb",borderRadius:"4px"}}>
+                💡 「許可する」に設定すると、依頼者が支払い方法として現金を選択できます。<br/>
+                現金支払いが選択された場合は、回収時に料金を直接お受け取りください。
+              </div>
+            </>
+          )}
+          {tab === "rep" && (
+            <>
+              <div style={{fontSize:"0.72rem",color:"#dc2626",marginBottom:"0.6rem"}}>※ 契約書や請求書発行時に記載する情報として利用します</div>
+              <F label="代表者名" k="rep_name" placeholder="例: 池田 富雄"/>
+              <F label="代表者電話番号" k="rep_phone" type="tel" placeholder="例: 0936037888"/>
+              <F label="メールアドレス" k="rep_email" type="email" placeholder="例: rep@example.com"/>
+            </>
+          )}
+          {tab === "contact" && (
+            <>
+              <div style={{fontSize:"0.72rem",color:"#dc2626",marginBottom:"0.6rem"}}>※ 連絡窓口となる担当者の情報</div>
+              <F label="担当者名" k="contact_name" placeholder="例: 池田 昌隆"/>
+              <F label="担当者電話番号" k="contact_phone" type="tel" placeholder="例: 09036060488"/>
+              <F label="メールアドレス" k="contact_email" type="email" placeholder="例: contact@example.com"/>
+            </>
+          )}
+        </div>
+
+        {/* フッター */}
+        <div style={{display:"flex",gap:"0.5rem",padding:"0.875rem 1.25rem",borderTop:"1px solid #e5e7eb"}}>
+          <button onClick={onClose} disabled={saving}
+            style={{flex:1,padding:"0.6rem",fontSize:"0.85rem",fontWeight:700,background:"#f3f4f6",border:"1px solid #d1d5db",borderRadius:"4px",cursor:"pointer"}}>
+            キャンセル
+          </button>
+          <button onClick={handleSubmit} disabled={saving}
+            style={{flex:2,padding:"0.6rem",fontSize:"0.85rem",fontWeight:700,background:saving?"#9ca3af":"#2563eb",color:"white",border:"none",borderRadius:"4px",cursor:saving?"wait":"pointer"}}>
+            {saving ? "保存中..." : "💾 保存"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ─── 業者 詳細情報モーダル（許可証/ダストーク登録情報のタブ切り替え） ────────
+function VendorDetailTabsModal({ vendorId, vendorName, initialTab = "licenses", currentUserId, onClose }) {
+  const [tab, setTab] = useState(initialTab);
+
+  const tabs = [
+    { id: "licenses", label: "🪪 許可証", color: "#16a34a" },
+    { id: "dustalk", label: "🚚 ダストーク登録情報", color: "#2563eb" },
+  ];
+
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:9000,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
+      <div style={{background:"white",borderRadius:"12px",maxWidth:900,width:"100%",maxHeight:"92vh",display:"flex",flexDirection:"column",boxShadow:"0 20px 50px rgba(0,0,0,0.3)"}}>
+        {/* ヘッダ */}
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"1rem 1.25rem",borderBottom:"1px solid #e5e7eb"}}>
+          <div>
+            <div style={{fontSize:"0.7rem",color:"#6b7280",fontWeight:600,marginBottom:"0.15rem"}}>業者詳細情報</div>
+            <h3 style={{margin:0,fontSize:"1.05rem",fontWeight:800,color:"#111827"}}>{vendorName}</h3>
+          </div>
+          <button onClick={onClose} style={{background:"none",border:"none",fontSize:"1.5rem",cursor:"pointer",color:"#6b7280",padding:"0.25rem 0.5rem"}}>×</button>
+        </div>
+
+        {/* タブ */}
+        <div style={{display:"flex",gap:"0.25rem",padding:"0.5rem 1rem 0",borderBottom:"1px solid #e5e7eb",overflowX:"auto",flexShrink:0}}>
+          {tabs.map(t => (
+            <button key={t.id} onClick={()=>setTab(t.id)}
+              style={{padding:"0.65rem 1.1rem",fontSize:"0.85rem",fontWeight:700,background:tab===t.id?"white":"transparent",color:tab===t.id?t.color:"#6b7280",border:"none",borderBottom:`3px solid ${tab===t.id?t.color:"transparent"}`,cursor:"pointer",whiteSpace:"nowrap",fontFamily:"inherit"}}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* コンテンツ */}
+        <div style={{flex:1,overflowY:"auto",padding:"1rem 1.25rem",background:"#fafafa"}}>
+          {tab === "licenses" && (
+            <LicenseSection vendorId={vendorId} vendorName={vendorName} currentUserId={currentUserId}/>
+          )}
+          {tab === "dustalk" && (
+            <DustalkInfoSection vendorId={vendorId} vendorName={vendorName}/>
+          )}
         </div>
       </div>
     </div>
@@ -8936,6 +9287,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   const [muniPickerPref, setMuniPickerPref] = useState(""); // stable state for MuniPicker
   const [activeVendor, setActiveVendor] = useState(null);
   const [activeCompany,setActiveCompany]= useState(null);
+  const [vendorDetailModal, setVendorDetailModal] = useState(null); // {vendorId, vendorName, tab}
 
   // Handle navigation from notifications (company/vendor/muni)
   React.useEffect(()=>{
@@ -11527,6 +11879,16 @@ ${recentLogs}
 
   const renderModals = () => (
     <>
+      {/* ════ 業者 詳細情報モーダル（許可証 / ダストーク登録情報） ════ */}
+      {vendorDetailModal && (
+        <VendorDetailTabsModal
+          vendorId={vendorDetailModal.vendorId}
+          vendorName={vendorDetailModal.vendorName}
+          initialTab={vendorDetailModal.tab || "licenses"}
+          currentUserId={currentUser?.id}
+          onClose={()=>setVendorDetailModal(null)}
+        />
+      )}
       {/* ════ 失注・見送りモーダル ════ */}
 {lossModal&&(
   <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.5)",padding:"1rem"}}>
@@ -12512,8 +12874,15 @@ ${orig}`})
                 </div>
               );
             })()}
-            {/* 許可証セクション（DB連携、複数許可証対応） */}
-            <LicenseSection vendorId={v.id} vendorName={v.name} currentUserId={currentUser?.id} />
+            {/* 許可証 + ダストーク登録情報 → 詳細モーダル（タブ切り替え式） */}
+            <button onClick={()=>setVendorDetailModal({vendorId:v.id, vendorName:v.name, tab:"licenses"})}
+              style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"0.6rem 0.85rem",marginBottom:"0.5rem",background:"linear-gradient(to right, #f0fdf4, #eff6ff)",border:"1px solid #bbf7d0",borderRadius:"8px",cursor:"pointer",fontFamily:"inherit"}}>
+              <div style={{display:"flex",alignItems:"center",gap:"0.5rem"}}>
+                <span style={{fontSize:"0.85rem",fontWeight:700,color:"#166534"}}>📋 詳細情報</span>
+                <span style={{fontSize:"0.7rem",color:"#6b7280"}}>(許可証 / ダストーク登録)</span>
+              </div>
+              <span style={{fontSize:"1rem",color:"#6b7280"}}>›</span>
+            </button>
             {/* 備考 */}
             {v.notes&&(
               <div style={{fontSize:"0.75rem",color:C.text,background:"#f8fafc",borderRadius:6,padding:"0.5rem 0.7rem",borderLeft:"3px solid #cbd5e1",whiteSpace:"pre-wrap"}}>
