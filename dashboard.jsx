@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-03-v31-a4-container"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-04-v32-licenses-mvp"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -218,6 +218,102 @@ async function sbSet(id, data) {
 }
 
 const INIT = { tasks:[], projects:[], emails:[], emailStyles:[], prefectures:[], municipalities:[], vendors:[], companies:[], businessCards:[], notifications:[], changeLogs:[], analytics:{}, emailTemplates:[], quotes:[] };
+
+// ─── LICENSE (許可証) API CLIENT ──────────────────────────────────────────────
+
+async function licensesList(vendorId) {
+  try {
+    const url = vendorId
+      ? `${DB_API_BASE}/licenses?vendor_id=${encodeURIComponent(vendorId)}`
+      : `${DB_API_BASE}/licenses`;
+    const r = await fetch(url, { headers: DB_API_HEADERS });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const obj = await r.json();
+    return obj?.items || [];
+  } catch (e) {
+    console.warn("[licensesList] failed:", e);
+    return [];
+  }
+}
+
+async function licensesCreate(data) {
+  const r = await fetch(`${DB_API_BASE}/licenses`, {
+    method: "POST",
+    headers: DB_API_HEADERS,
+    body: JSON.stringify(data),
+  });
+  if (!r.ok) throw new Error(`HTTP ${r.status}: ${await r.text()}`);
+  const obj = await r.json();
+  return obj?.item || null;
+}
+
+async function licensesUpdate(id, data) {
+  const r = await fetch(`${DB_API_BASE}/licenses/${id}`, {
+    method: "PUT",
+    headers: DB_API_HEADERS,
+    body: JSON.stringify(data),
+  });
+  if (!r.ok) throw new Error(`HTTP ${r.status}: ${await r.text()}`);
+  const obj = await r.json();
+  return obj?.item || null;
+}
+
+async function licensesDelete(id) {
+  const r = await fetch(`${DB_API_BASE}/licenses/${id}`, {
+    method: "DELETE",
+    headers: DB_API_HEADERS,
+  });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const obj = await r.json();
+  return obj?.ok || false;
+}
+
+// ─── LICENSE (許可証) CONSTANTS ───────────────────────────────────────────────
+
+const WASTE_CATEGORIES = ["一般廃棄物", "産業廃棄物", "特別管理産業廃棄物"];
+
+// 業務区分: 廃棄区分により選択肢が異なる
+const BUSINESS_TYPES_IPPAI = ["運搬", "再生運搬", "処分", "再生処分"];
+const BUSINESS_TYPES_SANPAI = [
+  "運搬(積保無し)",
+  "運搬(積保あり)",
+  "処分(中間のみ)",
+  "処分(最終のみ)",
+  "処分(中間・最終)"
+];
+
+// 産廃・特管 許可品目（標準的な品目リスト、入力でも追加可）
+const SANPAI_ITEMS = [
+  "燃え殻", "汚泥", "廃油", "廃酸", "廃アルカリ",
+  "廃プラスチック類", "紙くず", "木くず", "繊維くず", "動植物性残さ",
+  "動物系固形不要物", "ゴムくず", "金属くず", "ガラスくず・コンクリートくず・陶磁器くず",
+  "鉱さい", "がれき類", "動物のふん尿", "動物の死体", "ばいじん",
+  "13号廃棄物（処分）"
+];
+
+// 業務区分が「処分」を含むかチェック
+function businessTypeIsDisposal(bt) {
+  return /処分/.test(bt || "");
+}
+// 業務区分が「運搬(積保あり)」かチェック
+function businessTypeHasStorage(bt) {
+  return bt === "運搬(積保あり)";
+}
+// 廃棄区分が産廃系かチェック
+function isSanpaiCategory(cat) {
+  return cat === "産業廃棄物" || cat === "特別管理産業廃棄物";
+}
+// 期限切れチェック（30日以内警告、過ぎたら警告）
+function licenseExpiryStatus(expiryDate) {
+  if (!expiryDate) return null;
+  const expiry = new Date(expiryDate);
+  const now = new Date();
+  const diffDays = Math.floor((expiry - now) / (1000 * 60 * 60 * 24));
+  if (diffDays < 0) return { status: "expired", daysLeft: diffDays, label: "期限切れ" };
+  if (diffDays < 30) return { status: "warning", daysLeft: diffDays, label: `あと${diffDays}日` };
+  if (diffDays < 90) return { status: "soon", daysLeft: diffDays, label: `あと${diffDays}日` };
+  return { status: "ok", daysLeft: diffDays, label: `${expiryDate}` };
+}
 
 // ─── SALES CONSTANTS ──────────────────────────────────────────────────────────
 
@@ -603,6 +699,385 @@ function StatusPill({status,onChange}) {
         </div>
       </>}
     </>
+  );
+}
+
+
+// ─── LICENSE SECTION (許可証セクション) ─────────────────────────────────────
+// 業者詳細画面に組み込む許可証管理 UI
+function LicenseSection({ vendorId, vendorName, currentUserId }) {
+  const [licenses, setLicenses] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(null); // null | "new" | {...license}
+
+  // 初回ロード
+  useEffect(() => {
+    if (!vendorId) return;
+    setLoading(true);
+    licensesList(vendorId).then(items => {
+      setLicenses(items);
+      setLoading(false);
+    });
+  }, [vendorId]);
+
+  const reload = async () => {
+    const items = await licensesList(vendorId);
+    setLicenses(items);
+  };
+
+  const handleSave = async (form) => {
+    try {
+      const payload = {
+        ...form,
+        vendor_id: String(vendorId),
+        vendor_name: vendorName || form.vendor_name,
+        created_by: currentUserId || null,
+      };
+      if (editing && editing.id) {
+        await licensesUpdate(editing.id, payload);
+      } else {
+        await licensesCreate(payload);
+      }
+      setEditing(null);
+      await reload();
+    } catch (e) {
+      window.alert(`保存失敗: ${e.message}`);
+    }
+  };
+
+  const handleDelete = async (license) => {
+    if (!window.confirm(`許可証「${license.license_number || license.waste_category}」を削除しますか？`)) return;
+    try {
+      await licensesDelete(license.id);
+      await reload();
+    } catch (e) {
+      window.alert(`削除失敗: ${e.message}`);
+    }
+  };
+
+  return (
+    <div style={{marginTop:"0.5rem",marginBottom:"0.5rem",padding:"0.5rem 0.625rem",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:"0.5rem"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.4rem"}}>
+        <div style={{fontSize:"0.62rem",fontWeight:700,color:"#166534",letterSpacing:"0.04em"}}>
+          🪪 許可証 {licenses.length > 0 && `(${licenses.length}件)`}
+        </div>
+        <button onClick={() => setEditing("new")}
+          style={{padding:"0.2rem 0.6rem",fontSize:"0.7rem",fontWeight:700,background:"#16a34a",color:"white",border:"none",borderRadius:"4px",cursor:"pointer"}}>
+          + 追加
+        </button>
+      </div>
+
+      {loading && <div style={{fontSize:"0.7rem",color:"#6b7280",padding:"0.3rem 0"}}>読み込み中...</div>}
+      {!loading && licenses.length === 0 && (
+        <div style={{fontSize:"0.72rem",color:"#9ca3af",padding:"0.3rem 0",fontStyle:"italic"}}>許可証情報なし</div>
+      )}
+      {!loading && licenses.map(lic => (
+        <LicenseCard key={lic.id} license={lic} onEdit={() => setEditing(lic)} onDelete={() => handleDelete(lic)} />
+      ))}
+
+      {editing && (
+        <LicenseEditModal
+          license={editing === "new" ? null : editing}
+          vendorName={vendorName}
+          onClose={() => setEditing(null)}
+          onSave={handleSave}
+        />
+      )}
+    </div>
+  );
+}
+
+// 許可証カード（一覧表示用）
+function LicenseCard({ license, onEdit, onDelete }) {
+  const expiry = licenseExpiryStatus(license.expiry_date);
+  const items = Array.isArray(license.permitted_items) ? license.permitted_items
+    : (typeof license.permitted_items === "string" ? (JSON.parse(license.permitted_items || "[]") || []) : []);
+  const expColors = expiry?.status === "expired" ? {bg:"#fee2e2",fg:"#b91c1c"}
+    : expiry?.status === "warning" ? {bg:"#fef3c7",fg:"#92400e"}
+    : expiry?.status === "soon" ? {bg:"#fef9c3",fg:"#854d0e"}
+    : {bg:"#dcfce7",fg:"#166534"};
+  return (
+    <div style={{background:"white",border:"1px solid #d1fae5",borderRadius:"6px",padding:"0.5rem 0.6rem",marginBottom:"0.35rem"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:"0.4rem",marginBottom:"0.3rem"}}>
+        <div style={{display:"flex",alignItems:"center",gap:"0.3rem",flexWrap:"wrap",flex:1,minWidth:0}}>
+          <span style={{fontSize:"0.68rem",fontWeight:700,color:"#166534",background:"#dcfce7",padding:"0.1rem 0.4rem",borderRadius:"4px"}}>
+            {license.waste_category || "未分類"}
+          </span>
+          {license.business_type && (
+            <span style={{fontSize:"0.68rem",fontWeight:600,color:"#1e40af",background:"#dbeafe",padding:"0.1rem 0.4rem",borderRadius:"4px"}}>
+              {license.business_type}
+            </span>
+          )}
+          {license.is_excellent_certified && (
+            <span style={{fontSize:"0.62rem",fontWeight:700,color:"#a16207",background:"#fef3c7",padding:"0.1rem 0.4rem",borderRadius:"4px"}}>
+              ⭐ 優良
+            </span>
+          )}
+        </div>
+        <div style={{display:"flex",gap:"0.25rem"}}>
+          <button onClick={onEdit} title="編集"
+            style={{padding:"0.15rem 0.4rem",fontSize:"0.7rem",background:"white",border:"1px solid #d1d5db",borderRadius:"3px",cursor:"pointer"}}>✏️</button>
+          <button onClick={onDelete} title="削除"
+            style={{padding:"0.15rem 0.4rem",fontSize:"0.7rem",background:"white",border:"1px solid #fecaca",color:"#dc2626",borderRadius:"3px",cursor:"pointer"}}>🗑</button>
+        </div>
+      </div>
+      <div style={{fontSize:"0.7rem",color:"#374151",lineHeight:1.5}}>
+        {license.region && <div>📍 {license.region}</div>}
+        {license.license_number && <div>📋 許可番号: <strong>{license.license_number}</strong></div>}
+        {license.license_date && <div>📅 許可日: {license.license_date}</div>}
+        {license.expiry_date && (
+          <div style={{display:"flex",alignItems:"center",gap:"0.3rem"}}>
+            <span>⏰ 有効期限:</span>
+            <span style={{padding:"0.05rem 0.35rem",borderRadius:"3px",background:expColors.bg,color:expColors.fg,fontWeight:700}}>
+              {license.expiry_date} {expiry && expiry.status !== "ok" ? `(${expiry.label})` : ""}
+            </span>
+          </div>
+        )}
+        {items.length > 0 && (
+          <div>📦 品目: <span style={{color:"#6b7280"}}>{items.slice(0, 5).join(", ")}{items.length > 5 ? ` 他${items.length - 5}件` : ""}</span></div>
+        )}
+        {license.treatment_method && <div>⚙️ 処理方法: {license.treatment_method}</div>}
+        {license.storage_facility_address && <div>🏭 積替保管所在地: {license.storage_facility_address}</div>}
+        {license.treatment_facility_address && <div>🏭 処分施設所在地: {license.treatment_facility_address}</div>}
+        {license.notes && <div style={{color:"#6b7280",fontStyle:"italic",marginTop:"0.2rem"}}>💬 {license.notes}</div>}
+      </div>
+    </div>
+  );
+}
+
+// 許可証 編集/追加モーダル
+function LicenseEditModal({ license, vendorName, onClose, onSave }) {
+  const isNew = !license;
+  const [form, setForm] = useState(() => {
+    if (!license) return {
+      waste_category: "産業廃棄物",
+      vendor_name: vendorName,
+      permitted_items: [],
+      storage_permitted_items: [],
+    };
+    return {
+      ...license,
+      permitted_items: Array.isArray(license.permitted_items) ? license.permitted_items
+        : (typeof license.permitted_items === "string" ? (JSON.parse(license.permitted_items || "[]") || []) : []),
+      storage_permitted_items: Array.isArray(license.storage_permitted_items) ? license.storage_permitted_items
+        : (typeof license.storage_permitted_items === "string" ? (JSON.parse(license.storage_permitted_items || "[]") || []) : []),
+    };
+  });
+  const [saving, setSaving] = useState(false);
+  const [showItemPicker, setShowItemPicker] = useState(false);
+
+  const isSanpai = isSanpaiCategory(form.waste_category);
+  const businessTypes = isSanpai ? BUSINESS_TYPES_SANPAI : BUSINESS_TYPES_IPPAI;
+  const isDisposal = businessTypeIsDisposal(form.business_type);
+  const hasStorage = businessTypeHasStorage(form.business_type);
+
+  // 廃棄区分が変わると業務区分をリセット（区分により選択肢が違うため）
+  const setCategory = (cat) => {
+    setForm(prev => ({ ...prev, waste_category: cat, business_type: "" }));
+  };
+
+  const handleSubmit = async () => {
+    if (!form.waste_category) {
+      window.alert("廃棄区分は必須です");
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSave(form);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggleItem = (item) => {
+    const cur = form.permitted_items || [];
+    setForm({...form, permitted_items: cur.includes(item) ? cur.filter(x => x !== item) : [...cur, item]});
+  };
+
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:9999,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
+      <div style={{background:"white",borderRadius:"12px",maxWidth:600,width:"100%",maxHeight:"90vh",overflowY:"auto",padding:"1.25rem"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1rem"}}>
+          <h3 style={{margin:0,fontSize:"1.05rem",fontWeight:800}}>{isNew ? "🪪 許可証を追加" : "🪪 許可証を編集"}</h3>
+          <button onClick={onClose} style={{background:"none",border:"none",fontSize:"1.4rem",cursor:"pointer",color:"#6b7280"}}>×</button>
+        </div>
+
+        <div style={{display:"flex",flexDirection:"column",gap:"0.7rem"}}>
+          {/* 廃棄区分 */}
+          <div>
+            <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.3rem"}}>廃棄区分 <span style={{color:"#dc2626"}}>*</span></label>
+            <div style={{display:"flex",flexWrap:"wrap",gap:"0.4rem"}}>
+              {WASTE_CATEGORIES.map(cat => (
+                <label key={cat} style={{display:"flex",alignItems:"center",gap:"0.3rem",cursor:"pointer",padding:"0.3rem 0.6rem",borderRadius:"4px",background:form.waste_category===cat?"#dcfce7":"white",border:`1.5px solid ${form.waste_category===cat?"#16a34a":"#e5e7eb"}`}}>
+                  <input type="radio" checked={form.waste_category===cat} onChange={()=>setCategory(cat)} style={{accentColor:"#16a34a"}}/>
+                  <span style={{fontSize:"0.78rem",fontWeight:form.waste_category===cat?700:500}}>{cat}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* 業者名 */}
+          <div>
+            <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.3rem"}}>業者名</label>
+            <input type="text" value={form.vendor_name||""} onChange={e=>setForm({...form,vendor_name:e.target.value})}
+              style={{width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #d1d5db",borderRadius:"4px",fontSize:"0.85rem",boxSizing:"border-box"}}/>
+          </div>
+
+          {/* 行政区 */}
+          <div>
+            <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.3rem"}}>行政区</label>
+            <input type="text" value={form.region||""} onChange={e=>setForm({...form,region:e.target.value})} placeholder="例: 福岡市"
+              style={{width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #d1d5db",borderRadius:"4px",fontSize:"0.85rem",boxSizing:"border-box"}}/>
+          </div>
+
+          {/* 許可番号 */}
+          <div>
+            <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.3rem"}}>許可番号</label>
+            <input type="text" value={form.license_number||""} onChange={e=>setForm({...form,license_number:e.target.value})} placeholder="例: 第04000123456号"
+              style={{width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #d1d5db",borderRadius:"4px",fontSize:"0.85rem",boxSizing:"border-box"}}/>
+          </div>
+
+          {/* 許可日・有効期限 */}
+          <div style={{display:"flex",gap:"0.5rem"}}>
+            <div style={{flex:1}}>
+              <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.3rem"}}>許可日</label>
+              <input type="date" value={form.license_date||""} onChange={e=>setForm({...form,license_date:e.target.value})}
+                style={{width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #d1d5db",borderRadius:"4px",fontSize:"0.85rem",boxSizing:"border-box"}}/>
+            </div>
+            <div style={{flex:1}}>
+              <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.3rem"}}>有効期限</label>
+              <input type="date" value={form.expiry_date||""} onChange={e=>setForm({...form,expiry_date:e.target.value})}
+                style={{width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #d1d5db",borderRadius:"4px",fontSize:"0.85rem",boxSizing:"border-box"}}/>
+            </div>
+          </div>
+
+          {/* 業務区分 */}
+          <div>
+            <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.3rem"}}>業務区分</label>
+            <div style={{display:"flex",flexWrap:"wrap",gap:"0.3rem"}}>
+              {businessTypes.map(bt => (
+                <label key={bt} style={{display:"flex",alignItems:"center",gap:"0.3rem",cursor:"pointer",padding:"0.25rem 0.5rem",borderRadius:"4px",background:form.business_type===bt?"#dbeafe":"white",border:`1.5px solid ${form.business_type===bt?"#2563eb":"#e5e7eb"}`}}>
+                  <input type="radio" checked={form.business_type===bt} onChange={()=>setForm({...form,business_type:bt})} style={{accentColor:"#2563eb"}}/>
+                  <span style={{fontSize:"0.74rem",fontWeight:form.business_type===bt?700:500}}>{bt}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* 優良認定（産廃・特管のみ） */}
+          {isSanpai && (
+            <div>
+              <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.3rem"}}>優良認定</label>
+              <div style={{display:"flex",gap:"0.4rem"}}>
+                {[{val:true,label:"あり"},{val:false,label:"なし"}].map(o => (
+                  <label key={String(o.val)} style={{display:"flex",alignItems:"center",gap:"0.3rem",cursor:"pointer",padding:"0.3rem 0.6rem",borderRadius:"4px",background:form.is_excellent_certified===o.val?"#fef3c7":"white",border:`1.5px solid ${form.is_excellent_certified===o.val?"#a16207":"#e5e7eb"}`}}>
+                    <input type="radio" checked={form.is_excellent_certified===o.val} onChange={()=>setForm({...form,is_excellent_certified:o.val})} style={{accentColor:"#a16207"}}/>
+                    <span style={{fontSize:"0.78rem"}}>{o.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 許可品目 */}
+          <div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.3rem"}}>
+              <label style={{fontSize:"0.72rem",fontWeight:700,color:"#374151"}}>許可品目</label>
+              {isSanpai && (
+                <button onClick={()=>setShowItemPicker(!showItemPicker)} type="button"
+                  style={{padding:"0.2rem 0.5rem",fontSize:"0.7rem",background:"#f3f4f6",border:"1px solid #d1d5db",borderRadius:"3px",cursor:"pointer"}}>
+                  {showItemPicker ? "閉じる" : "+ 標準品目から選択"}
+                </button>
+              )}
+            </div>
+            {/* 既選択リスト */}
+            {(form.permitted_items || []).length > 0 && (
+              <div style={{display:"flex",flexWrap:"wrap",gap:"0.25rem",marginBottom:"0.3rem"}}>
+                {form.permitted_items.map(item => (
+                  <span key={item} style={{fontSize:"0.7rem",background:"#dbeafe",color:"#1e40af",padding:"0.15rem 0.4rem",borderRadius:"3px",display:"inline-flex",alignItems:"center",gap:"0.25rem"}}>
+                    {item}
+                    <button onClick={()=>toggleItem(item)} type="button" style={{background:"none",border:"none",cursor:"pointer",padding:0,color:"#1e40af"}}>×</button>
+                  </span>
+                ))}
+              </div>
+            )}
+            {/* 標準品目チェックボックス */}
+            {isSanpai && showItemPicker && (
+              <div style={{padding:"0.5rem",background:"#f8fafc",border:"1px solid #e5e7eb",borderRadius:"4px",marginBottom:"0.3rem",display:"flex",flexWrap:"wrap",gap:"0.3rem"}}>
+                {SANPAI_ITEMS.map(item => {
+                  const checked = (form.permitted_items||[]).includes(item);
+                  return (
+                    <label key={item} style={{display:"flex",alignItems:"center",gap:"0.2rem",cursor:"pointer",fontSize:"0.7rem",padding:"0.2rem 0.4rem",borderRadius:"3px",background:checked?"#dbeafe":"white",border:`1px solid ${checked?"#2563eb":"#e5e7eb"}`}}>
+                      <input type="checkbox" checked={checked} onChange={()=>toggleItem(item)} style={{margin:0,accentColor:"#2563eb"}}/>
+                      <span>{item}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+            {/* 自由入力 */}
+            <input type="text" placeholder="品目を入力してEnter" 
+              onKeyDown={e=>{
+                if(e.key==="Enter" && e.target.value.trim()) {
+                  e.preventDefault();
+                  const v = e.target.value.trim();
+                  if(!(form.permitted_items||[]).includes(v)) {
+                    setForm({...form,permitted_items:[...(form.permitted_items||[]),v]});
+                  }
+                  e.target.value = "";
+                }
+              }}
+              style={{width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #d1d5db",borderRadius:"4px",fontSize:"0.8rem",boxSizing:"border-box"}}/>
+          </div>
+
+          {/* 処理方法（処分の場合） */}
+          {isDisposal && (
+            <div>
+              <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.3rem"}}>処理方法</label>
+              <input type="text" value={form.treatment_method||""} onChange={e=>setForm({...form,treatment_method:e.target.value})} placeholder="例: 焼却、破砕、選別など"
+                style={{width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #d1d5db",borderRadius:"4px",fontSize:"0.85rem",boxSizing:"border-box"}}/>
+            </div>
+          )}
+
+          {/* 積替保管（運搬(積保あり)） */}
+          {hasStorage && (
+            <>
+              <div>
+                <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.3rem"}}>積替保管 施設所在地</label>
+                <input type="text" value={form.storage_facility_address||""} onChange={e=>setForm({...form,storage_facility_address:e.target.value})}
+                  style={{width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #d1d5db",borderRadius:"4px",fontSize:"0.85rem",boxSizing:"border-box"}}/>
+              </div>
+            </>
+          )}
+
+          {/* 処分 施設所在地 */}
+          {isDisposal && isSanpai && (
+            <div>
+              <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.3rem"}}>処分 施設所在地</label>
+              <input type="text" value={form.treatment_facility_address||""} onChange={e=>setForm({...form,treatment_facility_address:e.target.value})}
+                style={{width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #d1d5db",borderRadius:"4px",fontSize:"0.85rem",boxSizing:"border-box"}}/>
+            </div>
+          )}
+
+          {/* 備考 */}
+          <div>
+            <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.3rem"}}>備考</label>
+            <textarea value={form.notes||""} onChange={e=>setForm({...form,notes:e.target.value})}
+              style={{width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #d1d5db",borderRadius:"4px",fontSize:"0.85rem",height:60,boxSizing:"border-box",fontFamily:"inherit",resize:"vertical"}}/>
+          </div>
+
+          {/* 保存ボタン */}
+          <div style={{display:"flex",gap:"0.5rem",marginTop:"0.5rem"}}>
+            <button onClick={onClose} disabled={saving}
+              style={{flex:1,padding:"0.6rem",fontSize:"0.85rem",fontWeight:700,background:"#f3f4f6",border:"1px solid #d1d5db",borderRadius:"4px",cursor:"pointer"}}>キャンセル</button>
+            <button onClick={handleSubmit} disabled={saving || !form.waste_category}
+              style={{flex:2,padding:"0.6rem",fontSize:"0.85rem",fontWeight:700,background:saving?"#9ca3af":"#16a34a",color:"white",border:"none",borderRadius:"4px",cursor:saving?"wait":"pointer"}}>
+              {saving ? "保存中..." : "💾 保存"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -12037,6 +12512,8 @@ ${orig}`})
                 </div>
               );
             })()}
+            {/* 許可証セクション（DB連携、複数許可証対応） */}
+            <LicenseSection vendorId={v.id} vendorName={v.name} currentUserId={currentUser?.id} />
             {/* 備考 */}
             {v.notes&&(
               <div style={{fontSize:"0.75rem",color:C.text,background:"#f8fafc",borderRadius:6,padding:"0.5rem 0.7rem",borderLeft:"3px solid #cbd5e1",whiteSpace:"pre-wrap"}}>
