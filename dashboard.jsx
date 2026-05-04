@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-04-v33-vendor-detail-tabs"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-05-v34-license-ocr"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -896,6 +896,9 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
   });
   const [saving, setSaving] = useState(false);
   const [showItemPicker, setShowItemPicker] = useState(false);
+  const [ocrLoading, setOcrLoading] = useState(false);
+  const [ocrError, setOcrError] = useState("");
+  const fileInputRef = useRef(null);
 
   const isSanpai = isSanpaiCategory(form.waste_category);
   const businessTypes = isSanpai ? BUSINESS_TYPES_SANPAI : BUSINESS_TYPES_IPPAI;
@@ -905,6 +908,115 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
   // 廃棄区分が変わると業務区分をリセット（区分により選択肢が違うため）
   const setCategory = (cat) => {
     setForm(prev => ({ ...prev, waste_category: cat, business_type: "" }));
+  };
+
+  // ─── OCR スキャン処理 ───────────────────────────────────────
+  const handleOcrFile = async (file) => {
+    if (!file) return;
+    setOcrError("");
+    setOcrLoading(true);
+    try {
+      // 1. HEIC ファイルの場合は JPEG に変換
+      let processedFile = file;
+      const fileName = (file.name || "").toLowerCase();
+      const isHeic = fileName.endsWith(".heic") || fileName.endsWith(".heif") || file.type === "image/heic" || file.type === "image/heif";
+      if (isHeic) {
+        try {
+          const heicTo = await import("https://esm.sh/heic-to@1.1.13");
+          const blob = await heicTo.heicTo({ blob: file, type: "image/jpeg", quality: 0.85 });
+          processedFile = new File([blob], "converted.jpg", { type: "image/jpeg" });
+        } catch (e) {
+          throw new Error(`HEIC 変換失敗: ${e.message}`);
+        }
+      }
+
+      // 2. 画像をリサイズ＆base64化（Bedrock の 5MB 制限を回避）
+      const compressed = await new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onerror = () => reject(new Error("画像の読み込みに失敗しました"));
+        img.onload = () => {
+          try {
+            const MAX_DIM = 1568;
+            let w = img.width, h = img.height;
+            if (w > MAX_DIM || h > MAX_DIM) {
+              if (w > h) { h = Math.round(h * MAX_DIM / w); w = MAX_DIM; }
+              else { w = Math.round(w * MAX_DIM / h); h = MAX_DIM; }
+            }
+            const canvas = document.createElement("canvas");
+            canvas.width = w; canvas.height = h;
+            const ctx = canvas.getContext("2d");
+            ctx.drawImage(img, 0, 0, w, h);
+            const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+            const base64 = dataUrl.split(",")[1];
+            resolve({ base64, mediaType: "image/jpeg", width: w, height: h });
+          } catch (e) {
+            reject(e);
+          }
+        };
+        img.src = URL.createObjectURL(processedFile);
+      });
+
+      // 3. OCR Lambda を呼び出し（type: "license"）
+      const ocrUrl = (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_OCR_API_URL) || BIZCARD_OCR_URL;
+      const ctrl = new AbortController();
+      const timeoutId = setTimeout(() => ctrl.abort(), 90000);
+      const resp = await fetch(ocrUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-mydesk-secret": "mydesk2026secret" },
+        body: JSON.stringify({
+          type: "license",
+          imageBase64: compressed.base64,
+          mediaType: compressed.mediaType,
+        }),
+        signal: ctrl.signal,
+      });
+      clearTimeout(timeoutId);
+      const text = await resp.text();
+      let json = null;
+      try { json = JSON.parse(text); } catch { /* not JSON */ }
+      if (!resp.ok) {
+        throw new Error(json?.error || text || `HTTP ${resp.status}`);
+      }
+      const fields = json?.fields || {};
+      console.log("[License OCR] 抽出結果:", fields);
+
+      // 4. フォームに自動入力（既存の値は上書き、null/undefinedはスキップ）
+      setForm(prev => {
+        const merged = { ...prev };
+        const cleanedItems = Array.isArray(fields.permitted_items) ? fields.permitted_items.filter(x => x && typeof x === "string") : null;
+        const fieldMap = {
+          vendor_name: fields.vendor_name,
+          waste_category: fields.waste_category,
+          region: fields.region,
+          license_number: fields.license_number,
+          license_date: fields.license_date,
+          expiry_date: fields.expiry_date,
+          business_type: fields.business_type,
+          is_excellent_certified: fields.is_excellent_certified,
+          treatment_method: fields.treatment_method,
+          storage_facility_address: fields.storage_facility_address,
+          treatment_facility_address: fields.treatment_facility_address,
+          notes: fields.notes,
+        };
+        for (const [k, v] of Object.entries(fieldMap)) {
+          if (v !== null && v !== undefined && v !== "") {
+            merged[k] = v;
+          }
+        }
+        if (cleanedItems && cleanedItems.length > 0) {
+          merged.permitted_items = cleanedItems;
+        }
+        return merged;
+      });
+      setOcrError(""); // 成功時はエラークリア
+    } catch (e) {
+      console.error("[License OCR] エラー:", e);
+      setOcrError(`OCR失敗: ${e.message}`);
+    } finally {
+      setOcrLoading(false);
+      // input 値をリセット（同じファイルを再選択可能に）
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
   };
 
   const handleSubmit = async () => {
@@ -931,6 +1043,36 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1rem"}}>
           <h3 style={{margin:0,fontSize:"1.05rem",fontWeight:800}}>{isNew ? "🪪 許可証を追加" : "🪪 許可証を編集"}</h3>
           <button onClick={onClose} style={{background:"none",border:"none",fontSize:"1.4rem",cursor:"pointer",color:"#6b7280"}}>×</button>
+        </div>
+
+        {/* OCR スキャンボタン */}
+        <div style={{marginBottom:"0.8rem",padding:"0.6rem 0.8rem",background:"linear-gradient(to right, #fef3c7, #fef9c3)",border:"1px solid #fde68a",borderRadius:"8px"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:"0.5rem",flexWrap:"wrap"}}>
+            <div style={{flex:1,minWidth:180}}>
+              <div style={{fontSize:"0.78rem",fontWeight:700,color:"#92400e"}}>📷 OCR スキャン</div>
+              <div style={{fontSize:"0.7rem",color:"#78716c",marginTop:"0.15rem"}}>許可証の写真から自動入力（AI読み取り）</div>
+            </div>
+            <button
+              type="button"
+              onClick={()=>fileInputRef.current?.click()}
+              disabled={ocrLoading}
+              style={{padding:"0.45rem 0.9rem",fontSize:"0.78rem",fontWeight:700,background:ocrLoading?"#9ca3af":"#d97706",color:"white",border:"none",borderRadius:"6px",cursor:ocrLoading?"wait":"pointer",whiteSpace:"nowrap"}}>
+              {ocrLoading ? "⏳ 解析中..." : "📂 画像を選択"}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,.heic,.heif"
+              capture="environment"
+              onChange={(e)=>handleOcrFile(e.target.files?.[0])}
+              style={{display:"none"}}
+            />
+          </div>
+          {ocrError && (
+            <div style={{marginTop:"0.4rem",fontSize:"0.7rem",color:"#b91c1c",background:"#fee2e2",padding:"0.3rem 0.5rem",borderRadius:"4px"}}>
+              {ocrError}
+            </div>
+          )}
         </div>
 
         <div style={{display:"flex",flexDirection:"column",gap:"0.7rem"}}>
@@ -12876,12 +13018,14 @@ ${orig}`})
             })()}
             {/* 許可証 + ダストーク登録情報 → 詳細モーダル（タブ切り替え式） */}
             <button onClick={()=>setVendorDetailModal({vendorId:v.id, vendorName:v.name, tab:"licenses"})}
-              style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"0.6rem 0.85rem",marginBottom:"0.5rem",background:"linear-gradient(to right, #f0fdf4, #eff6ff)",border:"1px solid #bbf7d0",borderRadius:"8px",cursor:"pointer",fontFamily:"inherit"}}>
+              style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"0.6rem 0.85rem",marginTop:"0.5rem",marginBottom:"0.5rem",background:"white",border:`1px solid ${C.border}`,borderRadius:"8px",cursor:"pointer",fontFamily:"inherit",transition:"all 0.15s"}}
+              onMouseEnter={e=>{e.currentTarget.style.background="#f8fafc"; e.currentTarget.style.borderColor="#94a3b8";}}
+              onMouseLeave={e=>{e.currentTarget.style.background="white"; e.currentTarget.style.borderColor=C.border;}}>
               <div style={{display:"flex",alignItems:"center",gap:"0.5rem"}}>
-                <span style={{fontSize:"0.85rem",fontWeight:700,color:"#166534"}}>📋 詳細情報</span>
-                <span style={{fontSize:"0.7rem",color:"#6b7280"}}>(許可証 / ダストーク登録)</span>
+                <span style={{fontSize:"0.85rem",fontWeight:700,color:C.text}}>📋 詳細情報</span>
+                <span style={{fontSize:"0.7rem",color:C.textMuted}}>許可証 / ダストーク登録</span>
               </div>
-              <span style={{fontSize:"1rem",color:"#6b7280"}}>›</span>
+              <span style={{fontSize:"1rem",color:C.textMuted}}>›</span>
             </button>
             {/* 備考 */}
             {v.notes&&(
