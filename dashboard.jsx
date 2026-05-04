@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-05-v34-license-ocr"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-05-v35-license-pdf-validate"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -341,8 +341,8 @@ function licenseExpiryStatus(expiryDate) {
   const now = new Date();
   const diffDays = Math.floor((expiry - now) / (1000 * 60 * 60 * 24));
   if (diffDays < 0) return { status: "expired", daysLeft: diffDays, label: "期限切れ" };
-  if (diffDays < 30) return { status: "warning", daysLeft: diffDays, label: `あと${diffDays}日` };
-  if (diffDays < 90) return { status: "soon", daysLeft: diffDays, label: `あと${diffDays}日` };
+  if (diffDays < 60) return { status: "warning", daysLeft: diffDays, label: `あと${diffDays}日` }; // 2ヶ月以内 = 警告（赤）
+  if (diffDays < 120) return { status: "soon", daysLeft: diffDays, label: `あと${diffDays}日` }; // 4ヶ月以内 = 注意（黄）
   return { status: "ok", daysLeft: diffDays, label: `${expiryDate}` };
 }
 
@@ -757,6 +757,20 @@ function LicenseSection({ vendorId, vendorName, currentUserId }) {
   };
 
   const handleSave = async (form) => {
+    // 会社名一致バリデーション（業者名と許可証上の業者名が大きく違う場合は警告）
+    const normalize = s => (s||"").replace(/[\s　\-ー－（）()「」『』\[\]【】．・,、。]/g,"").toLowerCase();
+    const vendorN = normalize(vendorName);
+    const formN = normalize(form.vendor_name);
+    if (vendorN && formN && vendorN !== formN) {
+      // 部分一致なら警告（株式会社の有無など軽微な差はOK）
+      const containsOk = vendorN.includes(formN) || formN.includes(vendorN);
+      if (!containsOk) {
+        const ok = window.confirm(
+          `⚠️ 業者名が一致しません。\n\n登録業者: ${vendorName}\n許可証上の業者: ${form.vendor_name || "(空)"}\n\n本当にこの許可証を登録しますか？\n（同じ業者の許可証のみ登録できます。誤って違う業者の許可証を登録しないでください）`
+        );
+        if (!ok) return;
+      }
+    }
     try {
       const payload = {
         ...form,
@@ -786,6 +800,12 @@ function LicenseSection({ vendorId, vendorName, currentUserId }) {
     }
   };
 
+  // 期限アラート集計（60日以内 or 期限切れ）
+  const expiringLicenses = licenses.filter(lic => {
+    const exp = licenseExpiryStatus(lic.expiry_date);
+    return exp && (exp.status === "expired" || exp.status === "warning" || (exp.daysLeft >= 0 && exp.daysLeft <= 60));
+  });
+
   return (
     <div style={{marginTop:"0.5rem",marginBottom:"0.5rem",padding:"0.5rem 0.625rem",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:"0.5rem"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.4rem"}}>
@@ -799,6 +819,28 @@ function LicenseSection({ vendorId, vendorName, currentUserId }) {
       </div>
 
       {loading && <div style={{fontSize:"0.7rem",color:"#6b7280",padding:"0.3rem 0"}}>読み込み中...</div>}
+
+      {/* 期限アラートバナー（2ヶ月以内 or 期限切れ） */}
+      {!loading && expiringLicenses.length > 0 && (
+        <div style={{marginBottom:"0.5rem",padding:"0.5rem 0.7rem",background:"#fef2f2",border:"1.5px solid #fecaca",borderRadius:"6px"}}>
+          <div style={{fontSize:"0.78rem",fontWeight:700,color:"#b91c1c",marginBottom:"0.25rem"}}>
+            ⚠️ 期限が迫っている許可証 ({expiringLicenses.length}件)
+          </div>
+          {expiringLicenses.map(lic => {
+            const exp = licenseExpiryStatus(lic.expiry_date);
+            const isExpired = exp.status === "expired";
+            return (
+              <div key={lic.id} style={{fontSize:"0.72rem",color:isExpired?"#991b1b":"#92400e",lineHeight:1.6}}>
+                ・{lic.waste_category} {lic.business_type ? `(${lic.business_type})` : ""}
+                {lic.license_number ? ` ${lic.license_number}` : ""}
+                {" → "}
+                <strong>{isExpired ? `${Math.abs(exp.daysLeft)}日 期限切れ` : `あと${exp.daysLeft}日 (${lic.expiry_date})`}</strong>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {!loading && licenses.length === 0 && (
         <div style={{fontSize:"0.72rem",color:"#9ca3af",padding:"0.3rem 0",fontStyle:"italic"}}>許可証情報なし</div>
       )}
@@ -916,10 +958,50 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
     setOcrError("");
     setOcrLoading(true);
     try {
-      // 1. HEIC ファイルの場合は JPEG に変換
+      // 1. PDF ファイルの場合は最初のページを画像化
       let processedFile = file;
       const fileName = (file.name || "").toLowerCase();
-      const isHeic = fileName.endsWith(".heic") || fileName.endsWith(".heif") || file.type === "image/heic" || file.type === "image/heif";
+      const isPdf = fileName.endsWith(".pdf") || file.type === "application/pdf";
+      if (isPdf) {
+        try {
+          // pdf.js を CDN から動的ロード
+          if (!window.pdfjsLib) {
+            const script = document.createElement("script");
+            script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs";
+            script.type = "module";
+            await new Promise((resolve, reject) => {
+              script.onload = resolve;
+              script.onerror = () => reject(new Error("pdf.js のロードに失敗"));
+              document.head.appendChild(script);
+            });
+            // import() で読み込む方式に切替（CDN 公式推奨）
+            const pdfjs = await import("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs");
+            pdfjs.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs";
+            window.pdfjsLib = pdfjs;
+          }
+          const pdfjsLib = window.pdfjsLib;
+          const arrayBuffer = await file.arrayBuffer();
+          const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+          const page = await pdf.getPage(1); // 1ページ目のみ
+          const scale = 2.0; // 高解像度（OCR精度向上）
+          const viewport = page.getViewport({ scale });
+          const canvas = document.createElement("canvas");
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          const ctx = canvas.getContext("2d");
+          ctx.fillStyle = "white";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          await page.render({ canvasContext: ctx, viewport }).promise;
+          // 画像化した PDF を File に
+          const blob = await new Promise(res => canvas.toBlob(res, "image/jpeg", 0.92));
+          processedFile = new File([blob], "pdf-page1.jpg", { type: "image/jpeg" });
+        } catch (e) {
+          throw new Error(`PDF 変換失敗: ${e.message}`);
+        }
+      }
+
+      // 2. HEIC ファイルの場合は JPEG に変換
+      const isHeic = !isPdf && (fileName.endsWith(".heic") || fileName.endsWith(".heif") || file.type === "image/heic" || file.type === "image/heif");
       if (isHeic) {
         try {
           const heicTo = await import("https://esm.sh/heic-to@1.1.13");
@@ -930,7 +1012,7 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
         }
       }
 
-      // 2. 画像をリサイズ＆base64化（Bedrock の 5MB 制限を回避）
+      // 3. 画像をリサイズ＆base64化（Bedrock の 5MB 制限を回避）
       const compressed = await new Promise((resolve, reject) => {
         const img = new Image();
         img.onerror = () => reject(new Error("画像の読み込みに失敗しました"));
@@ -1057,16 +1139,18 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
               onClick={()=>fileInputRef.current?.click()}
               disabled={ocrLoading}
               style={{padding:"0.45rem 0.9rem",fontSize:"0.78rem",fontWeight:700,background:ocrLoading?"#9ca3af":"#d97706",color:"white",border:"none",borderRadius:"6px",cursor:ocrLoading?"wait":"pointer",whiteSpace:"nowrap"}}>
-              {ocrLoading ? "⏳ 解析中..." : "📂 画像を選択"}
+              {ocrLoading ? "⏳ 解析中..." : "📂 画像/PDFを選択"}
             </button>
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*,.heic,.heif"
-              capture="environment"
+              accept="image/*,.heic,.heif,.pdf,application/pdf"
               onChange={(e)=>handleOcrFile(e.target.files?.[0])}
               style={{display:"none"}}
             />
+          </div>
+          <div style={{marginTop:"0.3rem",fontSize:"0.66rem",color:"#78716c"}}>
+            📄 対応: JPEG / PNG / HEIC / PDF（PDFは1ページ目のみ）
           </div>
           {ocrError && (
             <div style={{marginTop:"0.4rem",fontSize:"0.7rem",color:"#b91c1c",background:"#fee2e2",padding:"0.3rem 0.5rem",borderRadius:"4px"}}>
