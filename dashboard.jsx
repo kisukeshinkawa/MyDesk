@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-05-v35-license-pdf-validate"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-05-v36-license-pdf-renew-history"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -266,6 +266,31 @@ async function licensesDelete(id) {
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   const obj = await r.json();
   return obj?.ok || false;
+}
+
+// 許可証の履歴取得（parent_license_id で紐づく古い許可証群）
+async function licensesHistory(parentId) {
+  try {
+    const r = await fetch(`${DB_API_BASE}/licenses/history?parent_id=${parentId}`, { headers: DB_API_HEADERS });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const obj = await r.json();
+    return obj?.items || [];
+  } catch (e) {
+    console.warn("[licensesHistory] failed:", e);
+    return [];
+  }
+}
+
+// 許可証の更新（古い方を archive、新規挿入、parent_license_id で紐付け）
+async function licensesRenew(oldId, newData) {
+  const r = await fetch(`${DB_API_BASE}/licenses/renew`, {
+    method: "POST",
+    headers: DB_API_HEADERS,
+    body: JSON.stringify({ old_id: oldId, data: newData }),
+  });
+  if (!r.ok) throw new Error(`HTTP ${r.status}: ${await r.text()}`);
+  const obj = await r.json();
+  return obj?.item || null;
 }
 
 // ─── DUSTALK INFO (ダストーク登録情報) API CLIENT ──────────────────────────────
@@ -740,6 +765,8 @@ function LicenseSection({ vendorId, vendorName, currentUserId }) {
   const [licenses, setLicenses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(null); // null | "new" | {...license}
+  const [renewModal, setRenewModal] = useState(null); // {existing, newForm}
+  const [historyModal, setHistoryModal] = useState(null); // {parentId, items}
 
   // 初回ロード
   useEffect(() => {
@@ -762,15 +789,33 @@ function LicenseSection({ vendorId, vendorName, currentUserId }) {
     const vendorN = normalize(vendorName);
     const formN = normalize(form.vendor_name);
     if (vendorN && formN && vendorN !== formN) {
-      // 部分一致なら警告（株式会社の有無など軽微な差はOK）
       const containsOk = vendorN.includes(formN) || formN.includes(vendorN);
       if (!containsOk) {
         const ok = window.confirm(
-          `⚠️ 業者名が一致しません。\n\n登録業者: ${vendorName}\n許可証上の業者: ${form.vendor_name || "(空)"}\n\n本当にこの許可証を登録しますか？\n（同じ業者の許可証のみ登録できます。誤って違う業者の許可証を登録しないでください）`
+          `⚠️ 業者名が一致しません。\n\n登録業者: ${vendorName}\n許可証上の業者: ${form.vendor_name || "(空)"}\n\n本当にこの許可証を登録しますか？`
         );
         if (!ok) return;
       }
     }
+
+    // 新規追加時: 同条件の既存許可証を検出（業者ID + 廃棄区分 + 業務区分 + 行政区）
+    const isEditing = editing && editing.id;
+    if (!isEditing && form.waste_category && form.business_type && form.region) {
+      const sameMatch = licenses.find(lic =>
+        lic.waste_category === form.waste_category &&
+        lic.business_type === form.business_type &&
+        normalize(lic.region || "") === normalize(form.region || "")
+      );
+      if (sameMatch) {
+        // 確認ダイアログを表示する
+        setRenewModal({
+          existing: sameMatch,
+          newForm: form,
+        });
+        return;
+      }
+    }
+
     try {
       const payload = {
         ...form,
@@ -778,11 +823,52 @@ function LicenseSection({ vendorId, vendorName, currentUserId }) {
         vendor_name: vendorName || form.vendor_name,
         created_by: currentUserId || null,
       };
-      if (editing && editing.id) {
+      if (isEditing) {
         await licensesUpdate(editing.id, payload);
       } else {
         await licensesCreate(payload);
       }
+      setEditing(null);
+      await reload();
+    } catch (e) {
+      window.alert(`保存失敗: ${e.message}`);
+    }
+  };
+
+  // 更新として保存（renew）
+  const handleRenewConfirm = async () => {
+    if (!renewModal) return;
+    const form = renewModal.newForm;
+    const oldId = renewModal.existing.id;
+    try {
+      const payload = {
+        ...form,
+        vendor_id: String(vendorId),
+        vendor_name: vendorName || form.vendor_name,
+        created_by: currentUserId || null,
+      };
+      await licensesRenew(oldId, payload);
+      setRenewModal(null);
+      setEditing(null);
+      await reload();
+    } catch (e) {
+      window.alert(`更新失敗: ${e.message}`);
+    }
+  };
+
+  // 新規として保存（renewせず通常 create）
+  const handleRenewAsNew = async () => {
+    if (!renewModal) return;
+    const form = renewModal.newForm;
+    try {
+      const payload = {
+        ...form,
+        vendor_id: String(vendorId),
+        vendor_name: vendorName || form.vendor_name,
+        created_by: currentUserId || null,
+      };
+      await licensesCreate(payload);
+      setRenewModal(null);
       setEditing(null);
       await reload();
     } catch (e) {
@@ -797,6 +883,17 @@ function LicenseSection({ vendorId, vendorName, currentUserId }) {
       await reload();
     } catch (e) {
       window.alert(`削除失敗: ${e.message}`);
+    }
+  };
+
+  // 履歴を開く（parent_license_id または id 経由で過去の許可証を取得）
+  const handleHistory = async (license) => {
+    const parentId = license.parent_license_id || license.id;
+    try {
+      const items = await licensesHistory(parentId);
+      setHistoryModal({ parentId, items, currentLicense: license });
+    } catch (e) {
+      window.alert(`履歴取得失敗: ${e.message}`);
     }
   };
 
@@ -845,7 +942,13 @@ function LicenseSection({ vendorId, vendorName, currentUserId }) {
         <div style={{fontSize:"0.72rem",color:"#9ca3af",padding:"0.3rem 0",fontStyle:"italic"}}>許可証情報なし</div>
       )}
       {!loading && licenses.map(lic => (
-        <LicenseCard key={lic.id} license={lic} onEdit={() => setEditing(lic)} onDelete={() => handleDelete(lic)} />
+        <LicenseCard
+          key={lic.id}
+          license={lic}
+          onEdit={() => setEditing(lic)}
+          onDelete={() => handleDelete(lic)}
+          onHistory={() => handleHistory(lic)}
+        />
       ))}
 
       {editing && (
@@ -856,12 +959,133 @@ function LicenseSection({ vendorId, vendorName, currentUserId }) {
           onSave={handleSave}
         />
       )}
+
+      {/* 更新確認モーダル */}
+      {renewModal && (
+        <RenewConfirmModal
+          existing={renewModal.existing}
+          newForm={renewModal.newForm}
+          onRenew={handleRenewConfirm}
+          onAsNew={handleRenewAsNew}
+          onCancel={() => setRenewModal(null)}
+        />
+      )}
+
+      {/* 履歴モーダル */}
+      {historyModal && (
+        <LicenseHistoryModal
+          items={historyModal.items}
+          currentLicense={historyModal.currentLicense}
+          onClose={() => setHistoryModal(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// 更新確認モーダル: 同条件の既存許可証あり
+function RenewConfirmModal({ existing, newForm, onRenew, onAsNew, onCancel }) {
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:10000,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
+      <div style={{background:"white",borderRadius:"12px",maxWidth:520,width:"100%",padding:"1.25rem"}}>
+        <h3 style={{margin:0,marginBottom:"0.6rem",fontSize:"1rem",fontWeight:800,color:"#1f2937"}}>📜 同じ条件の許可証があります</h3>
+        <div style={{fontSize:"0.78rem",color:"#374151",lineHeight:1.6,marginBottom:"0.8rem"}}>
+          以下の条件が一致する既存の許可証が見つかりました：
+          <div style={{padding:"0.5rem 0.7rem",background:"#f3f4f6",borderRadius:"6px",marginTop:"0.4rem"}}>
+            <div>🏷️ 廃棄区分: <strong>{existing.waste_category}</strong></div>
+            <div>📋 業務区分: <strong>{existing.business_type}</strong></div>
+            <div>📍 行政区: <strong>{existing.region}</strong></div>
+          </div>
+          <div style={{marginTop:"0.5rem"}}>
+            <strong>既存の許可証:</strong> {existing.license_number || "(番号なし)"}（有効期限: {existing.expiry_date || "未設定"}）
+          </div>
+          <div>
+            <strong>新しい許可証:</strong> {newForm.license_number || "(番号なし)"}（有効期限: {newForm.expiry_date || "未設定"}）
+          </div>
+        </div>
+        <div style={{fontSize:"0.78rem",color:"#374151",marginBottom:"0.8rem"}}>
+          これは <strong>更新</strong> ですか？ <strong>新規</strong> ですか？
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:"0.4rem"}}>
+          <button onClick={onRenew}
+            style={{padding:"0.55rem 0.8rem",fontSize:"0.85rem",fontWeight:700,background:"#16a34a",color:"white",border:"none",borderRadius:"6px",cursor:"pointer"}}>
+            🔄 更新（既存を履歴へ移し、新しい許可証で置き換える）
+          </button>
+          <button onClick={onAsNew}
+            style={{padding:"0.55rem 0.8rem",fontSize:"0.85rem",fontWeight:700,background:"#3b82f6",color:"white",border:"none",borderRadius:"6px",cursor:"pointer"}}>
+            ➕ 新規（既存はそのまま、別の許可証として追加）
+          </button>
+          <button onClick={onCancel}
+            style={{padding:"0.5rem 0.8rem",fontSize:"0.8rem",fontWeight:600,background:"white",color:"#6b7280",border:"1px solid #d1d5db",borderRadius:"6px",cursor:"pointer"}}>
+            キャンセル
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// 履歴モーダル: 過去の許可証を時系列表示
+function LicenseHistoryModal({ items, currentLicense, onClose }) {
+  const sortedItems = [...(items || [])].sort((a, b) => {
+    const da = a.license_date || "0000-00-00";
+    const db = b.license_date || "0000-00-00";
+    return db.localeCompare(da);
+  });
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:10000,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
+      <div style={{background:"white",borderRadius:"12px",maxWidth:600,width:"100%",maxHeight:"85vh",overflowY:"auto",padding:"1.25rem"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.8rem"}}>
+          <h3 style={{margin:0,fontSize:"1rem",fontWeight:800,color:"#1f2937"}}>📜 許可証 更新履歴</h3>
+          <button onClick={onClose} style={{background:"none",border:"none",fontSize:"1.4rem",cursor:"pointer",color:"#6b7280"}}>×</button>
+        </div>
+        <div style={{fontSize:"0.78rem",color:"#374151",marginBottom:"0.6rem"}}>
+          🏷️ {currentLicense?.waste_category} / {currentLicense?.business_type} / 📍 {currentLicense?.region}
+        </div>
+        {sortedItems.length === 0 && (
+          <div style={{padding:"1rem",textAlign:"center",fontSize:"0.8rem",color:"#9ca3af"}}>
+            履歴はまだありません。<br/>
+            この許可証を「🔄 更新」した場合、過去の情報がここに表示されます。
+          </div>
+        )}
+        {sortedItems.map((lic, idx) => {
+          const isLatest = !lic.is_archived;
+          return (
+            <div key={lic.id} style={{
+              border: isLatest ? "2px solid #16a34a" : "1px solid #e5e7eb",
+              background: isLatest ? "#f0fdf4" : "#f9fafb",
+              borderRadius:"6px",
+              padding:"0.6rem 0.75rem",
+              marginBottom:"0.4rem"
+            }}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.3rem"}}>
+                <div style={{display:"flex",alignItems:"center",gap:"0.4rem"}}>
+                  {isLatest && <span style={{fontSize:"0.62rem",fontWeight:700,color:"white",background:"#16a34a",padding:"0.1rem 0.4rem",borderRadius:"4px"}}>現在</span>}
+                  {!isLatest && <span style={{fontSize:"0.62rem",fontWeight:700,color:"#6b7280",background:"#e5e7eb",padding:"0.1rem 0.4rem",borderRadius:"4px"}}>履歴</span>}
+                  <span style={{fontSize:"0.78rem",fontWeight:700}}>
+                    {lic.license_number || "(番号なし)"}
+                  </span>
+                </div>
+                <span style={{fontSize:"0.7rem",color:"#6b7280"}}>#{lic.id}</span>
+              </div>
+              <div style={{fontSize:"0.72rem",color:"#374151",lineHeight:1.6}}>
+                <div>📅 許可日: {lic.license_date || "-"}</div>
+                <div>⏰ 有効期限: {lic.expiry_date || "-"}</div>
+                {lic.notes && <div style={{marginTop:"0.25rem",color:"#6b7280",fontSize:"0.7rem"}}>💬 {lic.notes}</div>}
+              </div>
+            </div>
+          );
+        })}
+        <div style={{marginTop:"0.6rem",padding:"0.5rem 0.7rem",fontSize:"0.7rem",color:"#6b7280",background:"#f9fafb",borderRadius:"4px"}}>
+          💡 「🔄 更新」で許可証を更新すると、古い情報がここに自動的に保存されます。
+        </div>
+      </div>
     </div>
   );
 }
 
 // 許可証カード（一覧表示用）
-function LicenseCard({ license, onEdit, onDelete }) {
+function LicenseCard({ license, onEdit, onDelete, onHistory }) {
   const expiry = licenseExpiryStatus(license.expiry_date);
   const items = Array.isArray(license.permitted_items) ? license.permitted_items
     : (typeof license.permitted_items === "string" ? (JSON.parse(license.permitted_items || "[]") || []) : []);
@@ -869,6 +1093,29 @@ function LicenseCard({ license, onEdit, onDelete }) {
     : expiry?.status === "warning" ? {bg:"#fef3c7",fg:"#92400e"}
     : expiry?.status === "soon" ? {bg:"#fef9c3",fg:"#854d0e"}
     : {bg:"#dcfce7",fg:"#166534"};
+
+  // 備考欄を構造化表示（「・」改行を箇条書きに）
+  const renderNotes = (notes) => {
+    if (!notes) return null;
+    const lines = String(notes).split(/\\n|\n/).map(l => l.trim()).filter(Boolean);
+    if (lines.length === 0) return null;
+    // 全行が「・」で始まっていれば箇条書きとして表示
+    const allBullets = lines.every(l => l.startsWith("・") || l.startsWith("-"));
+    if (allBullets && lines.length > 1) {
+      return (
+        <div style={{marginTop:"0.25rem",padding:"0.35rem 0.5rem",background:"#f9fafb",borderLeft:"3px solid #d1d5db",borderRadius:"3px"}}>
+          <div style={{fontSize:"0.62rem",color:"#6b7280",fontWeight:700,marginBottom:"0.15rem"}}>💬 備考</div>
+          {lines.map((line, idx) => (
+            <div key={idx} style={{fontSize:"0.7rem",color:"#374151",lineHeight:1.5}}>
+              {line}
+            </div>
+          ))}
+        </div>
+      );
+    }
+    return <div style={{color:"#6b7280",fontStyle:"italic",marginTop:"0.2rem"}}>💬 {notes}</div>;
+  };
+
   return (
     <div style={{background:"white",border:"1px solid #d1fae5",borderRadius:"6px",padding:"0.5rem 0.6rem",marginBottom:"0.35rem"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:"0.4rem",marginBottom:"0.3rem"}}>
@@ -888,6 +1135,8 @@ function LicenseCard({ license, onEdit, onDelete }) {
           )}
         </div>
         <div style={{display:"flex",gap:"0.25rem"}}>
+          <button onClick={onHistory} title="更新履歴"
+            style={{padding:"0.15rem 0.4rem",fontSize:"0.7rem",background:"white",border:"1px solid #d1d5db",borderRadius:"3px",cursor:"pointer"}}>📜</button>
           <button onClick={onEdit} title="編集"
             style={{padding:"0.15rem 0.4rem",fontSize:"0.7rem",background:"white",border:"1px solid #d1d5db",borderRadius:"3px",cursor:"pointer"}}>✏️</button>
           <button onClick={onDelete} title="削除"
@@ -912,7 +1161,7 @@ function LicenseCard({ license, onEdit, onDelete }) {
         {license.treatment_method && <div>⚙️ 処理方法: {license.treatment_method}</div>}
         {license.storage_facility_address && <div>🏭 積替保管所在地: {license.storage_facility_address}</div>}
         {license.treatment_facility_address && <div>🏭 処分施設所在地: {license.treatment_facility_address}</div>}
-        {license.notes && <div style={{color:"#6b7280",fontStyle:"italic",marginTop:"0.2rem"}}>💬 {license.notes}</div>}
+        {renderNotes(license.notes)}
       </div>
     </div>
   );
@@ -952,104 +1201,84 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
     setForm(prev => ({ ...prev, waste_category: cat, business_type: "" }));
   };
 
-  // ─── OCR スキャン処理 ───────────────────────────────────────
+  // ─── OCR スキャン処理（PDF直接送信対応） ───────────────────────────────────────
   const handleOcrFile = async (file) => {
     if (!file) return;
     setOcrError("");
     setOcrLoading(true);
     try {
-      // 1. PDF ファイルの場合は最初のページを画像化
-      let processedFile = file;
       const fileName = (file.name || "").toLowerCase();
       const isPdf = fileName.endsWith(".pdf") || file.type === "application/pdf";
+      const isHeic = fileName.endsWith(".heic") || fileName.endsWith(".heif") || file.type === "image/heic" || file.type === "image/heif";
+
+      let dataB64, mediaType;
+
       if (isPdf) {
-        try {
-          // pdf.js を CDN から動的ロード
-          if (!window.pdfjsLib) {
-            const script = document.createElement("script");
-            script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs";
-            script.type = "module";
-            await new Promise((resolve, reject) => {
-              script.onload = resolve;
-              script.onerror = () => reject(new Error("pdf.js のロードに失敗"));
-              document.head.appendChild(script);
-            });
-            // import() で読み込む方式に切替（CDN 公式推奨）
-            const pdfjs = await import("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.min.mjs");
-            pdfjs.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.mjs";
-            window.pdfjsLib = pdfjs;
-          }
-          const pdfjsLib = window.pdfjsLib;
-          const arrayBuffer = await file.arrayBuffer();
-          const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-          const page = await pdf.getPage(1); // 1ページ目のみ
-          const scale = 2.0; // 高解像度（OCR精度向上）
-          const viewport = page.getViewport({ scale });
-          const canvas = document.createElement("canvas");
-          canvas.width = viewport.width;
-          canvas.height = viewport.height;
-          const ctx = canvas.getContext("2d");
-          ctx.fillStyle = "white";
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-          await page.render({ canvasContext: ctx, viewport }).promise;
-          // 画像化した PDF を File に
-          const blob = await new Promise(res => canvas.toBlob(res, "image/jpeg", 0.92));
-          processedFile = new File([blob], "pdf-page1.jpg", { type: "image/jpeg" });
-        } catch (e) {
-          throw new Error(`PDF 変換失敗: ${e.message}`);
+        // PDF はそのまま base64 化して送信（Anthropic API が PDF直接対応）
+        const arrayBuffer = await file.arrayBuffer();
+        const bytes = new Uint8Array(arrayBuffer);
+        let binary = "";
+        const CHUNK = 0x8000;
+        for (let i = 0; i < bytes.length; i += CHUNK) {
+          binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
         }
-      }
-
-      // 2. HEIC ファイルの場合は JPEG に変換
-      const isHeic = !isPdf && (fileName.endsWith(".heic") || fileName.endsWith(".heif") || file.type === "image/heic" || file.type === "image/heif");
-      if (isHeic) {
-        try {
-          const heicTo = await import("https://esm.sh/heic-to@1.1.13");
-          const blob = await heicTo.heicTo({ blob: file, type: "image/jpeg", quality: 0.85 });
-          processedFile = new File([blob], "converted.jpg", { type: "image/jpeg" });
-        } catch (e) {
-          throw new Error(`HEIC 変換失敗: ${e.message}`);
+        dataB64 = btoa(binary);
+        mediaType = "application/pdf";
+        // PDF サイズチェック（32MB上限）
+        const sizeMB = bytes.length / 1024 / 1024;
+        if (sizeMB > 32) {
+          throw new Error(`PDFが大きすぎます (${sizeMB.toFixed(1)}MB > 32MB)`);
         }
-      }
-
-      // 3. 画像をリサイズ＆base64化（Bedrock の 5MB 制限を回避）
-      const compressed = await new Promise((resolve, reject) => {
-        const img = new Image();
-        img.onerror = () => reject(new Error("画像の読み込みに失敗しました"));
-        img.onload = () => {
+        console.log(`[License OCR] PDF直接送信: ${sizeMB.toFixed(2)}MB`);
+      } else {
+        // 画像系: HEIC変換 → リサイズ → base64
+        let processedFile = file;
+        if (isHeic) {
           try {
-            const MAX_DIM = 1568;
-            let w = img.width, h = img.height;
-            if (w > MAX_DIM || h > MAX_DIM) {
-              if (w > h) { h = Math.round(h * MAX_DIM / w); w = MAX_DIM; }
-              else { w = Math.round(w * MAX_DIM / h); h = MAX_DIM; }
-            }
-            const canvas = document.createElement("canvas");
-            canvas.width = w; canvas.height = h;
-            const ctx = canvas.getContext("2d");
-            ctx.drawImage(img, 0, 0, w, h);
-            const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
-            const base64 = dataUrl.split(",")[1];
-            resolve({ base64, mediaType: "image/jpeg", width: w, height: h });
+            const heicTo = await import("https://esm.sh/heic-to@1.1.13");
+            const blob = await heicTo.heicTo({ blob: file, type: "image/jpeg", quality: 0.85 });
+            processedFile = new File([blob], "converted.jpg", { type: "image/jpeg" });
           } catch (e) {
-            reject(e);
+            throw new Error(`HEIC 変換失敗: ${e.message}`);
           }
-        };
-        img.src = URL.createObjectURL(processedFile);
-      });
+        }
+        const compressed = await new Promise((resolve, reject) => {
+          const img = new Image();
+          img.onerror = () => reject(new Error("画像の読み込みに失敗しました"));
+          img.onload = () => {
+            try {
+              const MAX_DIM = 1568;
+              let w = img.width, h = img.height;
+              if (w > MAX_DIM || h > MAX_DIM) {
+                if (w > h) { h = Math.round(h * MAX_DIM / w); w = MAX_DIM; }
+                else { w = Math.round(w * MAX_DIM / h); h = MAX_DIM; }
+              }
+              const canvas = document.createElement("canvas");
+              canvas.width = w; canvas.height = h;
+              const ctx = canvas.getContext("2d");
+              ctx.drawImage(img, 0, 0, w, h);
+              const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+              const base64 = dataUrl.split(",")[1];
+              resolve({ base64, mediaType: "image/jpeg" });
+            } catch (e) { reject(e); }
+          };
+          img.src = URL.createObjectURL(processedFile);
+        });
+        dataB64 = compressed.base64;
+        mediaType = compressed.mediaType;
+      }
 
-      // 3. OCR Lambda を呼び出し（type: "license"）
+      // OCR Lambda を呼び出し
       const ocrUrl = (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_OCR_API_URL) || BIZCARD_OCR_URL;
       const ctrl = new AbortController();
-      const timeoutId = setTimeout(() => ctrl.abort(), 90000);
+      const timeoutId = setTimeout(() => ctrl.abort(), 120000); // 120秒（PDFは時間がかかる）
+      const requestBody = isPdf
+        ? { type: "license", pdfBase64: dataB64, mediaType: "application/pdf" }
+        : { type: "license", imageBase64: dataB64, mediaType };
       const resp = await fetch(ocrUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-mydesk-secret": "mydesk2026secret" },
-        body: JSON.stringify({
-          type: "license",
-          imageBase64: compressed.base64,
-          mediaType: compressed.mediaType,
-        }),
+        body: JSON.stringify(requestBody),
         signal: ctrl.signal,
       });
       clearTimeout(timeoutId);
@@ -1062,7 +1291,7 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
       const fields = json?.fields || {};
       console.log("[License OCR] 抽出結果:", fields);
 
-      // 4. フォームに自動入力（既存の値は上書き、null/undefinedはスキップ）
+      // フォームに自動入力
       setForm(prev => {
         const merged = { ...prev };
         const cleanedItems = Array.isArray(fields.permitted_items) ? fields.permitted_items.filter(x => x && typeof x === "string") : null;
