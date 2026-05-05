@@ -8494,12 +8494,18 @@ const BIZCARD_OCR_URL = "https://2tosyclyqeswer2d7q4p7f4qri0lpfca.lambda-url.ap-
 
 // ─── メール送信 (Resend経由) ────────────────────────────────────────────
 // 環境変数 VITE_MAIL_SENDER_URL があればそちらを優先（デプロイ時に切替可能）
-const MAIL_SENDER_URL = (typeof import.meta !== "undefined" && import.meta.env?.VITE_MAIL_SENDER_URL)
-  || "https://MAIL_SENDER_PLACEHOLDER.lambda-url.ap-northeast-1.on.aws/";
+// .replace(/[\s\u00A0\u200B-\u200D\uFEFF]+$/g, "") で末尾の不可視スペース・NBSP・ゼロ幅文字を除去
+const cleanUrl = (s) => String(s || "").replace(/[\s\u00A0\u200B-\u200D\uFEFF]+/g, "").trim();
+const MAIL_SENDER_URL = cleanUrl(
+  (typeof import.meta !== "undefined" && import.meta.env?.VITE_MAIL_SENDER_URL)
+  || "https://MAIL_SENDER_PLACEHOLDER.lambda-url.ap-northeast-1.on.aws/"
+);
 
 // ─── 朝のタスク通知Lambda URL ──────────────────────────────────────
-const DAILY_TASK_NOTIFY_URL = (typeof import.meta !== "undefined" && import.meta.env?.VITE_DAILY_TASK_NOTIFY_URL)
-  || "https://DAILY_TASK_NOTIFY_PLACEHOLDER.lambda-url.ap-northeast-1.on.aws/";
+const DAILY_TASK_NOTIFY_URL = cleanUrl(
+  (typeof import.meta !== "undefined" && import.meta.env?.VITE_DAILY_TASK_NOTIFY_URL)
+  || "https://DAILY_TASK_NOTIFY_PLACEHOLDER.lambda-url.ap-northeast-1.on.aws/"
+);
 
 /**
  * メール送信ヘルパー (Resend経由)
