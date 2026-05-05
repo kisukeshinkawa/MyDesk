@@ -293,6 +293,132 @@ async function licensesRenew(oldId, newData) {
   return obj?.item || null;
 }
 
+// ─── BIZCARD MATCHING HELPERS (ダストーク担当者⇄名刺の照合) ──────────────
+// 電話番号を正規化（ハイフン・スペース除去）
+const normalizePhoneForMatch = (p) => {
+  if (!p) return "";
+  return String(p).replace(/[\s\-－‐ー（）()]/g, "");
+};
+// 氏名を正規化（全角/半角スペース除去）
+const normalizeNameForMatch = (n) => {
+  if (!n) return "";
+  return String(n).replace(/[\s\u3000]/g, "");
+};
+// メールアドレスを正規化
+const normalizeEmailForMatch = (e) => {
+  if (!e) return "";
+  return String(e).trim().toLowerCase();
+};
+// 会社名を正規化（法人格・スペース除去）
+const normalizeCompanyForMatch = (c) => {
+  if (!c) return "";
+  return String(c)
+    .replace(/[\s\u3000]/g, "")
+    .replace(/^(株式会社|有限会社|合同会社|合資会社|合名会社|一般社団法人|一般財団法人|公益社団法人|公益財団法人|学校法人|医療法人|社会福祉法人|宗教法人|特定非営利活動法人|NPO法人)/, "")
+    .replace(/(株式会社|有限会社|合同会社|合資会社|合名会社)$/, "");
+};
+
+// 単一担当者を名刺と照合
+function matchContactToBizcard(contact, bizcards, vendorCompanyName) {
+  if (!contact || !Array.isArray(bizcards) || bizcards.length === 0) return null;
+
+  // 1. メール完全一致 (信頼度: 高)
+  const cEmail = normalizeEmailForMatch(contact.email);
+  if (cEmail) {
+    const m = bizcards.find((bc) => normalizeEmailForMatch(bc.email) === cEmail);
+    if (m) return { bizcard: m, matchType: "email", confidence: "high", label: "メールで一致" };
+  }
+
+  // 2. 電話番号一致 (信頼度: 高)
+  const cPhone = normalizePhoneForMatch(contact.phone);
+  if (cPhone && cPhone.length >= 10) {
+    const m = bizcards.find((bc) => {
+      const phones = [bc.mobile, bc.telDirect, bc.telCompany, bc.telDept].filter(Boolean).map(normalizePhoneForMatch);
+      return phones.includes(cPhone);
+    });
+    if (m) {
+      let label = "電話番号で一致";
+      if (normalizePhoneForMatch(m.mobile) === cPhone) label = "携帯で一致";
+      else if (normalizePhoneForMatch(m.telDirect) === cPhone) label = "直通で一致";
+      else if (normalizePhoneForMatch(m.telCompany) === cPhone) label = "代表電話で一致";
+      return { bizcard: m, matchType: "phone", confidence: "high", label };
+    }
+  }
+
+  // 3. 氏名 + 会社名で一致
+  const cName = normalizeNameForMatch(contact.name);
+  const cCompany = normalizeCompanyForMatch(vendorCompanyName);
+  if (cName) {
+    const nameMatches = bizcards.filter((bc) => {
+      const fullName = normalizeNameForMatch((bc.lastName || "") + (bc.firstName || ""));
+      return fullName === cName;
+    });
+    if (nameMatches.length === 0) return null;
+    if (cCompany) {
+      const withCompany = nameMatches.find((bc) => {
+        const bcCompany = normalizeCompanyForMatch(bc.company);
+        return bcCompany && (bcCompany.includes(cCompany) || cCompany.includes(bcCompany));
+      });
+      if (withCompany) return { bizcard: withCompany, matchType: "name+company", confidence: "high", label: "氏名・会社で一致" };
+    }
+    if (nameMatches.length === 1) {
+      const bc = nameMatches[0];
+      const bcCompany = normalizeCompanyForMatch(bc.company);
+      if (cCompany && bcCompany && !bcCompany.includes(cCompany) && !cCompany.includes(bcCompany)) {
+        return null;
+      }
+      return { bizcard: bc, matchType: "name", confidence: "medium", label: "氏名のみ一致（要確認）" };
+    }
+  }
+  return null;
+}
+
+// 名刺マッチングバッジコンポーネント
+const BizcardMatchBadge = React.memo(function BizcardMatchBadge({ match, onClick, onCreate, size = "sm" }) {
+  const fontSize = size === "sm" ? "0.65rem" : "0.72rem";
+  const padding = size === "sm" ? "2px 8px" : "3px 10px";
+
+  if (match && match.bizcard) {
+    const { confidence, label } = match;
+    const bgColor = confidence === "high" ? "#d1fae5" : "#fef3c7";
+    const textColor = confidence === "high" ? "#065f46" : "#92400e";
+    return (
+      <span
+        title={label || "名刺と一致"}
+        onClick={onClick}
+        style={{
+          display: "inline-flex", alignItems: "center", gap: 4,
+          background: bgColor, color: textColor,
+          fontSize, padding, borderRadius: 999,
+          fontWeight: 700, cursor: onClick ? "pointer" : "default", flexShrink: 0,
+        }}
+      >
+        <svg width="11" height="11" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
+          <rect x="1.5" y="3.5" width="13" height="9" rx="1.5" stroke={textColor} strokeWidth="1.2" />
+          <circle cx="5" cy="7.5" r="1.5" stroke={textColor} strokeWidth="1.2" />
+          <line x1="9" y1="6.5" x2="12.5" y2="6.5" stroke={textColor} strokeWidth="1.2" strokeLinecap="round" />
+          <line x1="9" y1="9" x2="12.5" y2="9" stroke={textColor} strokeWidth="1.2" strokeLinecap="round" />
+        </svg>
+        名刺{confidence === "medium" ? "?" : ""}
+      </span>
+    );
+  }
+  return (
+    <span
+      onClick={onCreate}
+      title={onCreate ? "クリックして名刺を作成" : "名刺なし"}
+      style={{
+        display: "inline-flex", alignItems: "center", gap: 4,
+        background: "#f3f4f6", color: "#6b7280",
+        fontSize, padding, borderRadius: 999,
+        cursor: onCreate ? "pointer" : "default", flexShrink: 0, fontWeight: 600,
+      }}
+    >
+      名刺なし{onCreate ? " +" : ""}
+    </span>
+  );
+});
+
 // ─── DUSTALK INFO (ダストーク登録情報) API CLIENT ──────────────────────────────
 
 async function dustalkInfoGet(vendorId) {
@@ -1659,7 +1785,7 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
 
 
 // ─── DUSTALK INFO SECTION (ダストーク登録情報) ─────────────────────────────
-function DustalkInfoSection({ vendorId, vendorName }) {
+function DustalkInfoSection({ vendorId, vendorName, bizCards = [], onAddBizCard }) {
   const [info, setInfo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -1717,6 +1843,9 @@ function DustalkInfoSection({ vendorId, vendorName }) {
           <DustalkInfoBlock title="基本情報" color="#2563eb">
             <DustalkInfoRow label="業者名" value={data.business_name || vendorName}/>
             <DustalkInfoRow label="ウェブサイトURL" value={data.website_url}/>
+            <DustalkInfoRow label="代表電話番号" value={data.company_phone}/>
+            <DustalkInfoRow label="FAX番号" value={data.company_fax}/>
+            <DustalkInfoRow label="代表メール" value={data.company_email}/>
             <DustalkInfoRow label="車両台数" value={data.vehicle_count}/>
             <DustalkInfoRow label="従業員数" value={data.employee_count}/>
             <DustalkInfoRow label="定休日" value={data.regular_holiday}/>
@@ -1724,6 +1853,19 @@ function DustalkInfoSection({ vendorId, vendorName }) {
             <DustalkInfoRow label="ユーザーへの領収書" value={data.issue_receipt === false ? "使用しない" : (data.issue_receipt ? "使用する" : null)}/>
             <DustalkInfoRow label="住所" value={data.full_address}/>
           </DustalkInfoBlock>
+
+          {/* ダストーク事業 行政区 */}
+          {Array.isArray(data.service_areas_household) && data.service_areas_household.length > 0 && (
+            <DustalkInfoBlock title="🚛 ダストーク事業（家庭系）" color="#7c3aed">
+              <div style={{display:"flex",flexWrap:"wrap",gap:"0.4rem",padding:"0.25rem 0"}}>
+                {data.service_areas_household.filter(Boolean).map((area, idx) => (
+                  <span key={idx} style={{background:"#ede9fe",color:"#5b21b6",fontSize:"0.78rem",padding:"0.25rem 0.65rem",borderRadius:"999px",fontWeight:700}}>
+                    {area}
+                  </span>
+                ))}
+              </div>
+            </DustalkInfoBlock>
+          )}
 
           {/* 銀行口座情報 */}
           <DustalkInfoBlock title="銀行口座情報" color="#059669">
@@ -1744,6 +1886,7 @@ function DustalkInfoSection({ vendorId, vendorName }) {
           {/* 代表者情報 */}
           <DustalkInfoBlock title="代表者情報" color="#dc2626" subtitle="契約書や請求書発行時に記載する情報として利用します">
             <DustalkInfoRow label="代表者名" value={data.rep_name}/>
+            <DustalkInfoRow label="代表者ふりがな" value={data.rep_furigana}/>
             <DustalkInfoRow label="代表者電話番号" value={data.rep_phone}/>
             <DustalkInfoRow label="メールアドレス" value={data.rep_email}/>
           </DustalkInfoBlock>
@@ -1751,9 +1894,43 @@ function DustalkInfoSection({ vendorId, vendorName }) {
           {/* 担当者情報 */}
           <DustalkInfoBlock title="担当者情報" color="#d97706" subtitle="連絡窓口となる担当者の情報">
             <DustalkInfoRow label="担当者名" value={data.contact_name}/>
+            <DustalkInfoRow label="担当者ふりがな" value={data.contact_furigana}/>
             <DustalkInfoRow label="担当者電話番号" value={data.contact_phone}/>
             <DustalkInfoRow label="メールアドレス" value={data.contact_email}/>
+            {/* 主担当者の名刺マッチング表示 */}
+            {(data.contact_name || data.contact_phone || data.contact_email) && (() => {
+              const contact = { name: data.contact_name, phone: data.contact_phone, email: data.contact_email };
+              const m = matchContactToBizcard(contact, bizCards, data.business_name || vendorName);
+              return (
+                <div style={{display:"flex",alignItems:"center",gap:"0.5rem",fontSize:"0.78rem",paddingTop:"0.4rem"}}>
+                  <div style={{flexShrink:0,width:"180px",color:"#6b7280",fontWeight:500}}>名刺照合</div>
+                  <div style={{flex:1}}>
+                    <BizcardMatchBadge match={m}/>
+                    {m && <span style={{marginLeft:"0.5rem",fontSize:"0.7rem",color:"#6b7280"}}>{m.label}: {m.bizcard.lastName}{m.bizcard.firstName ? " " + m.bizcard.firstName : ""}</span>}
+                  </div>
+                </div>
+              );
+            })()}
           </DustalkInfoBlock>
+
+          {/* 追加担当者一覧 */}
+          {Array.isArray(data.additional_contacts) && data.additional_contacts.length > 0 && (
+            <DustalkInfoBlock title="👥 追加担当者" color="#ea580c" subtitle={`${data.additional_contacts.length}名`}>
+              <div style={{display:"flex",flexDirection:"column",gap:"0.35rem"}}>
+                {data.additional_contacts.map((c, idx) => {
+                  const m = matchContactToBizcard(c, bizCards, data.business_name || vendorName);
+                  return (
+                    <div key={idx} style={{display:"flex",alignItems:"center",gap:"0.5rem",fontSize:"0.78rem",padding:"0.4rem 0.5rem",background:"#fff7ed",borderRadius:"6px",border:"1px solid #fed7aa"}}>
+                      <span style={{fontSize:"0.66rem",fontWeight:700,color:"#9a3412",background:"#fed7aa",padding:"0.1rem 0.4rem",borderRadius:"4px"}}>担当者{idx+2}</span>
+                      <span style={{fontWeight:600,color:"#111827"}}>{c?.name || "（無記名）"}</span>
+                      {c?.email && <span style={{color:"#6b7280",fontSize:"0.72rem"}}>{c.email}</span>}
+                      <BizcardMatchBadge match={m}/>
+                    </div>
+                  );
+                })}
+              </div>
+            </DustalkInfoBlock>
+          )}
 
           {info.updated_at && (
             <div style={{fontSize:"0.7rem",color:"#9ca3af",textAlign:"right"}}>
@@ -1767,6 +1944,8 @@ function DustalkInfoSection({ vendorId, vendorName }) {
         <DustalkInfoEditModal
           data={data}
           vendorName={vendorName}
+          bizCards={bizCards}
+          onAddBizCard={onAddBizCard}
           onClose={() => setEditing(false)}
           onSave={handleSave}
         />
@@ -1801,10 +1980,167 @@ function DustalkInfoRow({ label, value }) {
 }
 
 // ダストーク情報 編集モーダル
-function DustalkInfoEditModal({ data, vendorName, onClose, onSave }) {
+function DustalkInfoEditModal({ data, vendorName, bizCards = [], onAddBizCard, onClose, onSave }) {
   const [form, setForm] = useState({...(data || {})});
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState("basic");
+  const [ocrLoading, setOcrLoading] = useState(false);
+  const [ocrError, setOcrError] = useState("");
+  const [ocrSuccess, setOcrSuccess] = useState("");
+  const fileInputRef = useRef(null);
+
+  // ─── OCR スキャン処理（ダストーク登録シート） ───────────────────────────
+  const handleOcrFile = async (file) => {
+    if (!file) return;
+    setOcrError("");
+    setOcrSuccess("");
+    setOcrLoading(true);
+    try {
+      const fileName = (file.name || "").toLowerCase();
+      const isPdf = fileName.endsWith(".pdf") || file.type === "application/pdf";
+      const isHeic = fileName.endsWith(".heic") || fileName.endsWith(".heif") || file.type === "image/heic" || file.type === "image/heif";
+
+      let dataB64, mediaType;
+
+      if (isPdf) {
+        const arrayBuffer = await file.arrayBuffer();
+        const bytes = new Uint8Array(arrayBuffer);
+        let binary = "";
+        const CHUNK = 0x8000;
+        for (let i = 0; i < bytes.length; i += CHUNK) {
+          binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+        }
+        dataB64 = btoa(binary);
+        mediaType = "application/pdf";
+        const sizeMB = bytes.length / 1024 / 1024;
+        if (sizeMB > 32) {
+          throw new Error(`PDFが大きすぎます (${sizeMB.toFixed(1)}MB > 32MB)`);
+        }
+        console.log(`[Dustalk OCR] PDF直接送信: ${sizeMB.toFixed(2)}MB`);
+      } else {
+        let processedFile = file;
+        if (isHeic) {
+          try {
+            const heicTo = await import("https://esm.sh/heic-to@1.1.13");
+            const blob = await heicTo.heicTo({ blob: file, type: "image/jpeg", quality: 0.85 });
+            processedFile = new File([blob], "converted.jpg", { type: "image/jpeg" });
+          } catch (e) {
+            throw new Error(`HEIC 変換失敗: ${e.message}`);
+          }
+        }
+        const compressed = await new Promise((resolve, reject) => {
+          const img = new Image();
+          img.onerror = () => reject(new Error("画像の読み込みに失敗しました"));
+          img.onload = () => {
+            try {
+              const MAX_DIM = 1568;
+              let w = img.width, h = img.height;
+              if (w > MAX_DIM || h > MAX_DIM) {
+                if (w > h) { h = Math.round(h * MAX_DIM / w); w = MAX_DIM; }
+                else { w = Math.round(w * MAX_DIM / h); h = MAX_DIM; }
+              }
+              const canvas = document.createElement("canvas");
+              canvas.width = w; canvas.height = h;
+              const ctx = canvas.getContext("2d");
+              ctx.drawImage(img, 0, 0, w, h);
+              const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+              const base64 = dataUrl.split(",")[1];
+              resolve({ base64, mediaType: "image/jpeg" });
+            } catch (e) { reject(e); }
+          };
+          img.src = URL.createObjectURL(processedFile);
+        });
+        dataB64 = compressed.base64;
+        mediaType = compressed.mediaType;
+      }
+
+      const ocrUrl = (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_OCR_API_URL) || BIZCARD_OCR_URL;
+      const ctrl = new AbortController();
+      const timeoutId = setTimeout(() => ctrl.abort(), 120000);
+      const requestBody = isPdf
+        ? { type: "dustalk_registration", pdfBase64: dataB64, mediaType: "application/pdf" }
+        : { type: "dustalk_registration", imageBase64: dataB64, mediaType };
+      const resp = await fetch(ocrUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-mydesk-secret": "mydesk2026secret" },
+        body: JSON.stringify(requestBody),
+        signal: ctrl.signal,
+      });
+      clearTimeout(timeoutId);
+      const text = await resp.text();
+      let json = null;
+      try { json = JSON.parse(text); } catch { /* not JSON */ }
+      if (!resp.ok) {
+        throw new Error(json?.error || text || `HTTP ${resp.status}`);
+      }
+      const fields = json?.fields || {};
+      console.log("[Dustalk OCR] 抽出結果:", fields);
+
+      // フォームへのマッピング
+      setForm(prev => {
+        const merged = { ...prev };
+        // 基本情報
+        if (fields.company_name) merged.business_name = fields.company_name;
+        if (fields.company_website) merged.website_url = fields.company_website;
+        if (fields.vehicle_count != null) merged.vehicle_count = fields.vehicle_count;
+        if (fields.employee_count != null) merged.employee_count = fields.employee_count;
+        if (fields.company_holidays) merged.regular_holiday = fields.company_holidays;
+        if (fields.company_business_hours) merged.business_hours = fields.company_business_hours;
+        // 住所: 郵便番号 + 住所をまとめる
+        if (fields.company_address) {
+          merged.full_address = fields.company_postal_code
+            ? `〒${fields.company_postal_code} ${fields.company_address}`
+            : fields.company_address;
+        }
+        // 銀行
+        if (fields.bank_name) merged.bank_name = fields.bank_name;
+        if (fields.bank_branch) merged.bank_branch = fields.bank_branch;
+        if (fields.bank_account_type) merged.bank_account_type = fields.bank_account_type;
+        if (fields.bank_account_number) merged.bank_account_number = fields.bank_account_number;
+        if (fields.bank_account_holder) merged.bank_account_holder = fields.bank_account_holder;
+        // 制度
+        if (fields.invoice_registration_number) merged.invoice_number = fields.invoice_registration_number;
+        if (typeof fields.cash_payment_supported === "boolean") merged.cash_payment = fields.cash_payment_supported;
+        // 代表者
+        if (fields.representative_name) merged.rep_name = fields.representative_name;
+        if (fields.representative_furigana) merged.rep_furigana = fields.representative_furigana;
+        // 主担当者
+        if (fields.primary_contact) {
+          if (fields.primary_contact.name) merged.contact_name = fields.primary_contact.name;
+          if (fields.primary_contact.furigana) merged.contact_furigana = fields.primary_contact.furigana;
+          if (fields.primary_contact.phone) merged.contact_phone = fields.primary_contact.phone;
+          if (fields.primary_contact.email) merged.contact_email = fields.primary_contact.email;
+        }
+        // 追加担当者・行政区・電話・FAX・メール
+        if (Array.isArray(fields.additional_contacts) && fields.additional_contacts.length > 0) {
+          merged.additional_contacts = fields.additional_contacts;
+        }
+        if (Array.isArray(fields.service_areas_household) && fields.service_areas_household.length > 0) {
+          merged.service_areas_household = fields.service_areas_household;
+        }
+        if (fields.company_phone) merged.company_phone = fields.company_phone;
+        if (fields.company_fax) merged.company_fax = fields.company_fax;
+        if (fields.company_email) merged.company_email = fields.company_email;
+        return merged;
+      });
+
+      // 成功サマリ
+      const summary = [];
+      if (fields.company_name) summary.push("会社情報");
+      if (fields.bank_name) summary.push("銀行口座");
+      if (fields.invoice_registration_number) summary.push("インボイス番号");
+      if (fields.primary_contact?.name) summary.push("主担当者");
+      if (fields.additional_contacts?.length) summary.push(`追加担当者${fields.additional_contacts.length}名`);
+      if (fields.service_areas_household?.length) summary.push(`行政区${fields.service_areas_household.length}件`);
+      setOcrSuccess(`✅ 自動入力完了: ${summary.join(" / ") || "情報なし"}`);
+    } catch (e) {
+      console.error("[Dustalk OCR] エラー:", e);
+      setOcrError(`OCR失敗: ${e.message}`);
+    } finally {
+      setOcrLoading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
 
   const handleSubmit = async () => {
     setSaving(true);
@@ -1837,6 +2173,79 @@ function DustalkInfoEditModal({ data, vendorName, onClose, onSave }) {
     </div>
   );
 
+  // 名刺マッチング: 主担当者
+  const primaryContactObj = (form.contact_name || form.contact_phone || form.contact_email) ? {
+    name: form.contact_name,
+    phone: form.contact_phone,
+    email: form.contact_email,
+  } : null;
+  const primaryContactMatch = primaryContactObj ? matchContactToBizcard(primaryContactObj, bizCards, form.business_name || vendorName) : null;
+
+  // 名刺新規作成のヘルパー
+  const handleCreateBizcard = async (contact) => {
+    if (!onAddBizCard) {
+      window.alert("名刺の作成機能が利用できません");
+      return;
+    }
+    const name = contact.name || "";
+    const parts = name.split(/[\s\u3000]+/);
+    const lastName = parts[0] || "";
+    const firstName = parts.slice(1).join(" ") || "";
+    try {
+      const newCard = {
+        company: form.business_name || vendorName || "",
+        lastName,
+        firstName,
+        email: contact.email || "",
+        mobile: contact.phone || "",
+        department: "",
+        title: "",
+      };
+      await onAddBizCard(newCard);
+      window.alert(`名刺を作成しました: ${name}`);
+    } catch (e) {
+      window.alert(`名刺の作成に失敗: ${e.message}`);
+    }
+  };
+
+  // 追加担当者の操作
+  const updateAdditionalContact = (idx, key, value) => {
+    setForm(prev => {
+      const list = [...(prev.additional_contacts || [])];
+      list[idx] = { ...(list[idx] || {}), [key]: value };
+      return { ...prev, additional_contacts: list };
+    });
+  };
+  const addAdditionalContact = () => {
+    setForm(prev => ({ ...prev, additional_contacts: [...(prev.additional_contacts || []), { name: "", email: "" }] }));
+  };
+  const removeAdditionalContact = (idx) => {
+    setForm(prev => {
+      const list = [...(prev.additional_contacts || [])];
+      list.splice(idx, 1);
+      return { ...prev, additional_contacts: list };
+    });
+  };
+
+  // ダストーク行政区の操作
+  const updateServiceArea = (idx, value) => {
+    setForm(prev => {
+      const list = [...(prev.service_areas_household || [])];
+      list[idx] = value;
+      return { ...prev, service_areas_household: list };
+    });
+  };
+  const addServiceArea = () => {
+    setForm(prev => ({ ...prev, service_areas_household: [...(prev.service_areas_household || []), ""] }));
+  };
+  const removeServiceArea = (idx) => {
+    setForm(prev => {
+      const list = [...(prev.service_areas_household || [])];
+      list.splice(idx, 1);
+      return { ...prev, service_areas_household: list };
+    });
+  };
+
   const tabs = [
     {id:"basic", label:"基本情報", color:"#2563eb"},
     {id:"bank", label:"銀行口座", color:"#059669"},
@@ -1853,8 +2262,45 @@ function DustalkInfoEditModal({ data, vendorName, onClose, onSave }) {
           <button onClick={onClose} style={{background:"none",border:"none",fontSize:"1.4rem",cursor:"pointer",color:"#6b7280"}}>×</button>
         </div>
 
+        {/* OCR スキャンバナー */}
+        <div style={{margin:"0.875rem 1.25rem 0",padding:"0.6rem 0.8rem",background:"linear-gradient(to right, #fef3c7, #fef9c3)",border:"1px solid #fde68a",borderRadius:"8px"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:"0.5rem",flexWrap:"wrap"}}>
+            <div style={{flex:1,minWidth:180}}>
+              <div style={{fontSize:"0.78rem",fontWeight:700,color:"#92400e"}}>📷 OCR スキャン</div>
+              <div style={{fontSize:"0.7rem",color:"#78716c",marginTop:"0.15rem"}}>ダストーク登録シートから自動入力（AI読み取り）</div>
+            </div>
+            <button
+              type="button"
+              onClick={()=>fileInputRef.current?.click()}
+              disabled={ocrLoading}
+              style={{padding:"0.45rem 0.9rem",fontSize:"0.78rem",fontWeight:700,background:ocrLoading?"#9ca3af":"#d97706",color:"white",border:"none",borderRadius:"6px",cursor:ocrLoading?"wait":"pointer",whiteSpace:"nowrap"}}>
+              {ocrLoading ? "⏳ 解析中..." : "📂 画像/PDFを選択"}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,.heic,.heif,.pdf,application/pdf"
+              onChange={(e)=>handleOcrFile(e.target.files?.[0])}
+              style={{display:"none"}}
+            />
+          </div>
+          <div style={{marginTop:"0.3rem",fontSize:"0.66rem",color:"#78716c"}}>
+            📄 対応: JPEG / PNG / HEIC / PDF（Excelの場合はPDF保存後に読込）
+          </div>
+          {ocrError && (
+            <div style={{marginTop:"0.4rem",fontSize:"0.7rem",color:"#b91c1c",background:"#fee2e2",padding:"0.3rem 0.5rem",borderRadius:"4px"}}>
+              {ocrError}
+            </div>
+          )}
+          {ocrSuccess && (
+            <div style={{marginTop:"0.4rem",fontSize:"0.7rem",color:"#065f46",background:"#d1fae5",padding:"0.3rem 0.5rem",borderRadius:"4px"}}>
+              {ocrSuccess}
+            </div>
+          )}
+        </div>
+
         {/* タブ */}
-        <div style={{display:"flex",gap:"0.25rem",padding:"0.5rem 1rem 0",borderBottom:"1px solid #e5e7eb",overflowX:"auto"}}>
+        <div style={{display:"flex",gap:"0.25rem",padding:"0.75rem 1rem 0",borderBottom:"1px solid #e5e7eb",overflowX:"auto"}}>
           {tabs.map(t => (
             <button key={t.id} onClick={()=>setTab(t.id)}
               style={{padding:"0.5rem 0.875rem",fontSize:"0.78rem",fontWeight:700,background:tab===t.id?"white":"transparent",color:tab===t.id?t.color:"#6b7280",border:"none",borderBottom:`3px solid ${tab===t.id?t.color:"transparent"}`,cursor:"pointer",whiteSpace:"nowrap"}}>
@@ -1869,12 +2315,43 @@ function DustalkInfoEditModal({ data, vendorName, onClose, onSave }) {
             <>
               <F label="業者名" k="business_name" placeholder={vendorName}/>
               <F label="ウェブサイトURL" k="website_url" placeholder="https://..."/>
+              <F label="代表電話番号" k="company_phone" type="tel" placeholder="例: 0936037888"/>
+              <F label="FAX番号" k="company_fax" type="tel" placeholder="例: 0936037889"/>
+              <F label="代表メール" k="company_email" type="email" placeholder="例: info@example.com"/>
               <F label="車両台数" k="vehicle_count" type="number" placeholder="例: 5"/>
               <F label="従業員数" k="employee_count" type="number" placeholder="例: 10"/>
               <F label="定休日" k="regular_holiday" placeholder="例: 日曜・祝日"/>
               <F label="営業時間" k="business_hours" placeholder="例: 8:00〜17:00"/>
               <F label="ユーザーへの領収書" k="issue_receipt" options={[{val:true,label:"使用する"},{val:false,label:"使用しない"}]}/>
               <F label="住所" k="full_address" placeholder="〒xxx-xxxx 福岡県..." multiline/>
+
+              {/* ダストーク事業 行政区 */}
+              <div style={{marginTop:"1rem",padding:"0.75rem",background:"#f5f3ff",border:"1px solid #ddd6fe",borderRadius:"6px"}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.5rem"}}>
+                  <label style={{fontSize:"0.75rem",fontWeight:700,color:"#5b21b6"}}>🚛 ダストーク事業を行う行政区（家庭系）</label>
+                  <button type="button" onClick={addServiceArea}
+                    style={{padding:"0.2rem 0.5rem",fontSize:"0.68rem",fontWeight:700,background:"#7c3aed",color:"white",border:"none",borderRadius:"4px",cursor:"pointer"}}>
+                    + 追加
+                  </button>
+                </div>
+                {(form.service_areas_household || []).length === 0 && (
+                  <div style={{fontSize:"0.7rem",color:"#9ca3af",padding:"0.4rem"}}>未設定（OCRで自動入力されます）</div>
+                )}
+                <div style={{display:"flex",flexWrap:"wrap",gap:"0.4rem"}}>
+                  {(form.service_areas_household || []).map((area, idx) => (
+                    <div key={idx} style={{display:"flex",alignItems:"center",gap:"0.25rem",background:"white",border:"1px solid #ddd6fe",borderRadius:"6px",padding:"0.2rem 0.4rem"}}>
+                      <input
+                        value={area || ""}
+                        onChange={(e)=>updateServiceArea(idx, e.target.value)}
+                        placeholder="例: 御殿場市"
+                        style={{border:"none",fontSize:"0.78rem",padding:"0.2rem",width:"110px",outline:"none",fontFamily:"inherit"}}
+                      />
+                      <button type="button" onClick={()=>removeServiceArea(idx)}
+                        style={{background:"none",border:"none",color:"#dc2626",cursor:"pointer",fontSize:"0.85rem",padding:"0 0.25rem"}}>×</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </>
           )}
           {tab === "bank" && (
@@ -1901,16 +2378,96 @@ function DustalkInfoEditModal({ data, vendorName, onClose, onSave }) {
             <>
               <div style={{fontSize:"0.72rem",color:"#dc2626",marginBottom:"0.6rem"}}>※ 契約書や請求書発行時に記載する情報として利用します</div>
               <F label="代表者名" k="rep_name" placeholder="例: 池田 富雄"/>
+              <F label="代表者ふりがな" k="rep_furigana" placeholder="例: イケダ トミオ"/>
               <F label="代表者電話番号" k="rep_phone" type="tel" placeholder="例: 0936037888"/>
               <F label="メールアドレス" k="rep_email" type="email" placeholder="例: rep@example.com"/>
             </>
           )}
           {tab === "contact" && (
             <>
+              {/* 主担当者 */}
+              <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.6rem"}}>
+                <div style={{fontSize:"0.85rem",fontWeight:700,color:"#d97706"}}>👤 主担当者</div>
+                {primaryContactObj && (
+                  <BizcardMatchBadge
+                    match={primaryContactMatch}
+                    onClick={primaryContactMatch ? () => {
+                      window.alert(`一致した名刺:\n${primaryContactMatch.bizcard.company || ""}\n${primaryContactMatch.bizcard.lastName || ""} ${primaryContactMatch.bizcard.firstName || ""}\n${primaryContactMatch.bizcard.email || ""}\n${primaryContactMatch.label}`);
+                    } : null}
+                    onCreate={!primaryContactMatch && primaryContactObj.name ? () => handleCreateBizcard(primaryContactObj) : null}
+                  />
+                )}
+              </div>
               <div style={{fontSize:"0.72rem",color:"#dc2626",marginBottom:"0.6rem"}}>※ 連絡窓口となる担当者の情報</div>
               <F label="担当者名" k="contact_name" placeholder="例: 池田 昌隆"/>
+              <F label="担当者ふりがな" k="contact_furigana" placeholder="例: イケダ マサタカ"/>
               <F label="担当者電話番号" k="contact_phone" type="tel" placeholder="例: 09036060488"/>
               <F label="メールアドレス" k="contact_email" type="email" placeholder="例: contact@example.com"/>
+
+              {/* 追加担当者リスト */}
+              <div style={{marginTop:"1rem",padding:"0.75rem",background:"#fff7ed",border:"1px solid #fed7aa",borderRadius:"6px"}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.5rem"}}>
+                  <label style={{fontSize:"0.78rem",fontWeight:700,color:"#9a3412"}}>👥 追加担当者（複数登録可）</label>
+                  <button type="button" onClick={addAdditionalContact}
+                    style={{padding:"0.25rem 0.6rem",fontSize:"0.7rem",fontWeight:700,background:"#ea580c",color:"white",border:"none",borderRadius:"4px",cursor:"pointer"}}>
+                    + 担当者を追加
+                  </button>
+                </div>
+                {(form.additional_contacts || []).length === 0 && (
+                  <div style={{fontSize:"0.7rem",color:"#9ca3af",padding:"0.4rem"}}>追加担当者なし（OCRで複数担当者がいる場合に自動追加されます）</div>
+                )}
+                {(form.additional_contacts || []).map((c, idx) => {
+                  const cMatch = matchContactToBizcard(c, bizCards, form.business_name || vendorName);
+                  return (
+                    <div key={idx} style={{background:"white",border:"1px solid #fed7aa",borderRadius:"6px",padding:"0.5rem 0.75rem",marginBottom:"0.5rem"}}>
+                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.4rem"}}>
+                        <div style={{display:"flex",alignItems:"center",gap:"0.4rem",flexWrap:"wrap"}}>
+                          <span style={{fontSize:"0.72rem",fontWeight:700,color:"#9a3412"}}>担当者{idx+2}</span>
+                          {(c?.name || c?.email) && (
+                            <BizcardMatchBadge
+                              match={cMatch}
+                              onClick={cMatch ? () => {
+                                window.alert(`一致した名刺:\n${cMatch.bizcard.company || ""}\n${cMatch.bizcard.lastName || ""} ${cMatch.bizcard.firstName || ""}\n${cMatch.bizcard.email || ""}\n${cMatch.label}`);
+                              } : null}
+                              onCreate={!cMatch && c?.name ? () => handleCreateBizcard({ name: c.name, email: c.email, phone: c.phone }) : null}
+                            />
+                          )}
+                        </div>
+                        <button type="button" onClick={()=>removeAdditionalContact(idx)}
+                          style={{background:"none",border:"none",color:"#dc2626",cursor:"pointer",fontSize:"0.85rem"}}>削除</button>
+                      </div>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.4rem"}}>
+                        <input
+                          value={c?.name || ""}
+                          onChange={(e)=>updateAdditionalContact(idx, "name", e.target.value)}
+                          placeholder="氏名"
+                          style={{padding:"0.35rem 0.5rem",border:"1px solid #d1d5db",borderRadius:"4px",fontSize:"0.78rem",fontFamily:"inherit"}}
+                        />
+                        <input
+                          value={c?.furigana || ""}
+                          onChange={(e)=>updateAdditionalContact(idx, "furigana", e.target.value)}
+                          placeholder="ふりがな"
+                          style={{padding:"0.35rem 0.5rem",border:"1px solid #d1d5db",borderRadius:"4px",fontSize:"0.78rem",fontFamily:"inherit"}}
+                        />
+                        <input
+                          value={c?.email || ""}
+                          onChange={(e)=>updateAdditionalContact(idx, "email", e.target.value)}
+                          placeholder="メールアドレス"
+                          type="email"
+                          style={{padding:"0.35rem 0.5rem",border:"1px solid #d1d5db",borderRadius:"4px",fontSize:"0.78rem",fontFamily:"inherit"}}
+                        />
+                        <input
+                          value={c?.phone || ""}
+                          onChange={(e)=>updateAdditionalContact(idx, "phone", e.target.value)}
+                          placeholder="電話番号"
+                          type="tel"
+                          style={{padding:"0.35rem 0.5rem",border:"1px solid #d1d5db",borderRadius:"4px",fontSize:"0.78rem",fontFamily:"inherit"}}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </>
           )}
         </div>
@@ -1933,7 +2490,7 @@ function DustalkInfoEditModal({ data, vendorName, onClose, onSave }) {
 
 
 // ─── 業者 詳細情報モーダル（許可証/ダストーク登録情報のタブ切り替え） ────────
-function VendorDetailTabsModal({ vendorId, vendorName, initialTab = "licenses", currentUserId, onClose }) {
+function VendorDetailTabsModal({ vendorId, vendorName, initialTab = "licenses", currentUserId, bizCards = [], onAddBizCard, onClose }) {
   const [tab, setTab] = useState(initialTab);
 
   const tabs = [
@@ -1969,7 +2526,7 @@ function VendorDetailTabsModal({ vendorId, vendorName, initialTab = "licenses", 
             <LicenseSection vendorId={vendorId} vendorName={vendorName} currentUserId={currentUserId}/>
           )}
           {tab === "dustalk" && (
-            <DustalkInfoSection vendorId={vendorId} vendorName={vendorName}/>
+            <DustalkInfoSection vendorId={vendorId} vendorName={vendorName} bizCards={bizCards} onAddBizCard={onAddBizCard}/>
           )}
         </div>
       </div>
@@ -12431,6 +12988,8 @@ ${recentLogs}
           vendorName={vendorDetailModal.vendorName}
           initialTab={vendorDetailModal.tab || "licenses"}
           currentUserId={currentUser?.id}
+          bizCards={bizCards}
+          onAddBizCard={addBizCard}
           onClose={()=>setVendorDetailModal(null)}
         />
       )}
