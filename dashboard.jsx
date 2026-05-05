@@ -8492,6 +8492,172 @@ ${userSummary||"（活動なし）"}
 // 完全な再設計：画像圧縮・詳細ログ・リトライ・エラー処理を実装
 const BIZCARD_OCR_URL = "https://2tosyclyqeswer2d7q4p7f4qri0lpfca.lambda-url.ap-northeast-1.on.aws/";
 
+// ─── メール送信 (Resend経由) ────────────────────────────────────────────
+// 環境変数 VITE_MAIL_SENDER_URL があればそちらを優先（デプロイ時に切替可能）
+const MAIL_SENDER_URL = (typeof import.meta !== "undefined" && import.meta.env?.VITE_MAIL_SENDER_URL)
+  || "https://MAIL_SENDER_PLACEHOLDER.lambda-url.ap-northeast-1.on.aws/";
+
+// ─── 朝のタスク通知Lambda URL ──────────────────────────────────────
+const DAILY_TASK_NOTIFY_URL = (typeof import.meta !== "undefined" && import.meta.env?.VITE_DAILY_TASK_NOTIFY_URL)
+  || "https://DAILY_TASK_NOTIFY_PLACEHOLDER.lambda-url.ap-northeast-1.on.aws/";
+
+/**
+ * メール送信ヘルパー (Resend経由)
+ * @param {Object} params - { to, cc, bcc, subject, body, html, replyTo, fromAddress, fromName }
+ *   to: string | string[] (必須)
+ *   cc, bcc: string | string[] (任意)
+ *   subject: string (必須)
+ *   body: string (テキスト本文、必須 もしくは html)
+ *   html: string (HTML本文、任意)
+ *   replyTo: string (任意)
+ *   fromAddress, fromName: 送信元上書き (任意・通常は環境変数のデフォルト使用)
+ * @returns {Promise<{success: boolean, id?: string, error?: string}>}
+ */
+async function sendMail(params) {
+  try {
+    const ctrl = new AbortController();
+    const timeoutId = setTimeout(() => ctrl.abort(), 30000);
+    const resp = await fetch(MAIL_SENDER_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-mydesk-secret": "mydesk2026secret",
+      },
+      body: JSON.stringify(params),
+      signal: ctrl.signal,
+    });
+    clearTimeout(timeoutId);
+    const text = await resp.text();
+    let json;
+    try { json = JSON.parse(text); } catch { /* not JSON */ }
+    if (!resp.ok) {
+      const errMsg = json?.error || text || `HTTP ${resp.status}`;
+      console.error(`[sendMail] エラー (${resp.status}):`, errMsg);
+      return { success: false, error: errMsg };
+    }
+    console.log(`[sendMail] ✅ 送信成功: id=${json?.id} to=${params.to}`);
+    return { success: true, id: json?.id, ...json };
+  } catch (e) {
+    console.error("[sendMail] 例外:", e);
+    return { success: false, error: e.name === "AbortError" ? "タイムアウト (30秒)" : e.message };
+  }
+}
+
+/**
+ * 朝のタスク通知 - テスト送信コンポーネント
+ * 設定 → メール送信セクションで使う
+ */
+function DailyTaskNotifyTest({ currentUser }) {
+  const [sending, setSending] = useState(false);
+  const [result, setResult] = useState(null);
+  const [mode, setMode] = useState("self"); // "self" | "all"
+
+  const handleSend = async () => {
+    setResult(null);
+    setSending(true);
+    try {
+      // mode==="self" の場合は TARGET_EMAIL を渡してそのユーザーだけに送信
+      // mode==="all" は通常モード（全ユーザーに送信）
+      const payload = mode === "self" && currentUser?.email
+        ? { targetEmail: currentUser.email }
+        : {};
+      const ctrl = new AbortController();
+      const tid = setTimeout(() => ctrl.abort(), 60000);
+      const resp = await fetch(DAILY_TASK_NOTIFY_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-mydesk-secret": "mydesk2026secret",
+        },
+        body: JSON.stringify(payload),
+        signal: ctrl.signal,
+      });
+      clearTimeout(tid);
+      const text = await resp.text();
+      let json;
+      try { json = JSON.parse(text); } catch {}
+      if (!resp.ok) {
+        setResult({ ok: false, msg: `❌ エラー (${resp.status}):\n${json?.error || text.slice(0, 300)}` });
+      } else {
+        const sent = json?.sent || 0;
+        const failed = json?.failed || 0;
+        const total = json?.total || 0;
+        let msg = `✅ 送信完了\n対象: ${total}人 / 成功: ${sent}件`;
+        if (failed > 0) msg += ` / 失敗: ${failed}件`;
+        if (json?.results) {
+          const detail = json.results.map(r => r.success ? `  ✓ ${r.to}` : `  ✗ ${r.to}: ${r.error}`).join("\n");
+          msg += `\n\n${detail}`;
+        }
+        setResult({ ok: true, msg });
+      }
+    } catch (e) {
+      setResult({ ok: false, msg: `❌ 例外: ${e.name === "AbortError" ? "タイムアウト" : e.message}` });
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div style={{marginTop:"1.5rem",background:"white",borderRadius:"1rem",padding:"1.25rem",border:"1px solid #e5e7eb",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
+      <div style={{fontWeight:800,fontSize:"0.9rem",color:"#111827",marginBottom:"0.4rem"}}>
+        ☀️ 朝のタスク通知 - テスト送信
+      </div>
+      <div style={{fontSize:"0.72rem",color:"#6b7280",marginBottom:"1rem",lineHeight:1.6}}>
+        毎朝8時に自動送信されるメールを、いま試しに送信します。<br/>
+        本番では EventBridge により自動送信されます。
+      </div>
+
+      {/* モード選択 */}
+      <div style={{display:"flex",gap:"0.5rem",marginBottom:"1rem"}}>
+        <button onClick={()=>setMode("self")}
+          style={{flex:1,padding:"0.5rem",fontSize:"0.78rem",fontWeight:700,
+            background:mode==="self"?"#2563eb":"white",
+            color:mode==="self"?"white":"#374151",
+            border:`1px solid ${mode==="self"?"#2563eb":"#d1d5db"}`,
+            borderRadius:"6px",cursor:"pointer"}}>
+          自分にだけ送信（テスト）
+        </button>
+        <button onClick={()=>setMode("all")}
+          style={{flex:1,padding:"0.5rem",fontSize:"0.78rem",fontWeight:700,
+            background:mode==="all"?"#dc2626":"white",
+            color:mode==="all"?"white":"#374151",
+            border:`1px solid ${mode==="all"?"#dc2626":"#d1d5db"}`,
+            borderRadius:"6px",cursor:"pointer"}}>
+          全員に送信（本番モード）
+        </button>
+      </div>
+
+      {/* 説明 */}
+      <div style={{fontSize:"0.72rem",color:"#6b7280",marginBottom:"0.75rem",padding:"0.5rem 0.75rem",background:"#f9fafb",borderRadius:"6px",lineHeight:1.5}}>
+        {mode === "self"
+          ? <>📧 <strong>{currentUser?.email || "ログインユーザー"}</strong> にだけ送信します</>
+          : <>⚠️ <strong style={{color:"#dc2626"}}>登録されている全ユーザー</strong>に送信します</>
+        }
+      </div>
+
+      {/* 送信ボタン */}
+      <button onClick={handleSend} disabled={sending}
+        style={{width:"100%",padding:"0.7rem",fontSize:"0.85rem",fontWeight:700,
+          background:sending?"#9ca3af":(mode==="all"?"#dc2626":"#2563eb"),
+          color:"white",border:"none",borderRadius:"6px",
+          cursor:sending?"wait":"pointer"}}>
+        {sending ? "⏳ 送信中..." : `☀️ 朝のタスク通知を送信`}
+      </button>
+
+      {/* 結果表示 */}
+      {result && (
+        <div style={{marginTop:"0.75rem",padding:"0.75rem",borderRadius:"6px",fontSize:"0.75rem",whiteSpace:"pre-wrap",fontFamily:"monospace",
+          background: result.ok ? "#d1fae5" : "#fee2e2",
+          color: result.ok ? "#065f46" : "#b91c1c",
+          border: `1px solid ${result.ok ? "#a7f3d0" : "#fecaca"}`,
+        }}>
+          {result.msg}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // HEIC/HEIF → JPEG 変換（iPhone のデフォルト撮影形式に対応）
 // ブラウザの Image オブジェクトと AWS Bedrock はどちらも HEIC を扱えないため、
 // HEIC ファイルが入力された場合は heic-to (新しい libheif) で JPEG に変換してから先に進む。
@@ -16757,6 +16923,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
     {id:"contract", icon:"📜", label:"契約書"},
     {id:"account",  icon:"🔑", label:"パスワード"},
     {id:"template", icon:"✉️", label:"テンプレート"},
+    {id:"mailtest", icon:"📧", label:"メール送信"},
     {id:"backup",   icon:"💾", label:"バックアップ"},
     {id:"actlog",   icon:"📋", label:"活動ログ"},
   ];
@@ -17188,6 +17355,135 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
             })}
           </div>
         );
+      })()}
+
+      {/* ── メールテスト送信 ── */}
+      {section==="mailtest"&&(()=>{
+        const MailTestSection = () => {
+          const [to, setTo] = useState("");
+          const [cc, setCc] = useState("");
+          const [bcc, setBcc] = useState("");
+          const [subject, setSubject] = useState("【MyDesk テスト】メール送信テスト");
+          const [body, setBody] = useState("これは MyDesk からのテスト送信です。\n\nこのメールが届いていれば、メール送信機能は正常に動作しています。\n\n---\n株式会社西原商事ホールディングス\n新川");
+          const [sending, setSending] = useState(false);
+          const [result, setResult] = useState(null);
+
+          const handleSend = async () => {
+            setResult(null);
+            const toList = to.split(/[,\s\n]+/).map(s=>s.trim()).filter(Boolean);
+            const ccList = cc.split(/[,\s\n]+/).map(s=>s.trim()).filter(Boolean);
+            const bccList = bcc.split(/[,\s\n]+/).map(s=>s.trim()).filter(Boolean);
+
+            if (toList.length === 0) {
+              setResult({ ok: false, msg: "宛先 (To) を入力してください" });
+              return;
+            }
+            if (!subject.trim()) {
+              setResult({ ok: false, msg: "件名を入力してください" });
+              return;
+            }
+            if (!body.trim()) {
+              setResult({ ok: false, msg: "本文を入力してください" });
+              return;
+            }
+
+            setSending(true);
+            try {
+              const r = await sendMail({
+                to: toList,
+                cc: ccList.length > 0 ? ccList : undefined,
+                bcc: bccList.length > 0 ? bccList : undefined,
+                subject: subject.trim(),
+                body: body,
+              });
+              if (r.success) {
+                setResult({
+                  ok: true,
+                  msg: `✅ 送信成功！\nメッセージID: ${r.id}\n\n宛先 ${toList.length}件${ccList.length>0?` / CC ${ccList.length}件`:""}${bccList.length>0?` / BCC ${bccList.length}件`:""} に送信されました。`,
+                });
+              } else {
+                setResult({ ok: false, msg: `❌ 送信失敗:\n${r.error}` });
+              }
+            } catch (e) {
+              setResult({ ok: false, msg: `❌ 例外: ${e.message}` });
+            } finally {
+              setSending(false);
+            }
+          };
+
+          return (
+            <div style={{display:"flex",flexDirection:"column",gap:"1rem"}}>
+              {/* ヘッダー */}
+              <div style={{background:"linear-gradient(135deg,#7c3aed,#9333ea)",borderRadius:"1rem",padding:"1.25rem",color:"white"}}>
+                <div style={{fontWeight:800,fontSize:"0.95rem",marginBottom:"0.35rem"}}>📧 メールテスト送信</div>
+                <div style={{fontSize:"0.75rem",opacity:0.95,lineHeight:1.6}}>
+                  Resend 経由でテストメールを送信します。<br/>
+                  送信元: <strong style={{fontFamily:"monospace"}}>企画部 DX推進課 &lt;info@dustalk.com&gt;</strong>
+                </div>
+              </div>
+
+              {/* 送信フォーム */}
+              <div style={{background:"white",borderRadius:"1rem",padding:"1.25rem",border:"1px solid "+C.border,boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
+                <div style={{display:"flex",flexDirection:"column",gap:"0.75rem"}}>
+                  <div>
+                    <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.25rem"}}>宛先 (To) <span style={{color:"#dc2626"}}>*</span></label>
+                    <textarea value={to} onChange={e=>setTo(e.target.value)} placeholder="example@example.com&#10;複数の場合はカンマまたは改行で区切る"
+                      style={{width:"100%",padding:"0.5rem 0.7rem",border:"1px solid #d1d5db",borderRadius:"6px",fontSize:"0.85rem",boxSizing:"border-box",fontFamily:"inherit",height:60,resize:"vertical"}}/>
+                  </div>
+                  <div>
+                    <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.25rem"}}>CC (任意)</label>
+                    <textarea value={cc} onChange={e=>setCc(e.target.value)} placeholder="複数の場合はカンマまたは改行で区切る"
+                      style={{width:"100%",padding:"0.5rem 0.7rem",border:"1px solid #d1d5db",borderRadius:"6px",fontSize:"0.85rem",boxSizing:"border-box",fontFamily:"inherit",height:50,resize:"vertical"}}/>
+                  </div>
+                  <div>
+                    <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.25rem"}}>BCC (任意)</label>
+                    <textarea value={bcc} onChange={e=>setBcc(e.target.value)} placeholder="複数の場合はカンマまたは改行で区切る"
+                      style={{width:"100%",padding:"0.5rem 0.7rem",border:"1px solid #d1d5db",borderRadius:"6px",fontSize:"0.85rem",boxSizing:"border-box",fontFamily:"inherit",height:50,resize:"vertical"}}/>
+                  </div>
+                  <div>
+                    <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.25rem"}}>件名 <span style={{color:"#dc2626"}}>*</span></label>
+                    <input type="text" value={subject} onChange={e=>setSubject(e.target.value)}
+                      style={{width:"100%",padding:"0.5rem 0.7rem",border:"1px solid #d1d5db",borderRadius:"6px",fontSize:"0.85rem",boxSizing:"border-box",fontFamily:"inherit"}}/>
+                  </div>
+                  <div>
+                    <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.25rem"}}>本文 <span style={{color:"#dc2626"}}>*</span></label>
+                    <textarea value={body} onChange={e=>setBody(e.target.value)}
+                      style={{width:"100%",padding:"0.5rem 0.7rem",border:"1px solid #d1d5db",borderRadius:"6px",fontSize:"0.85rem",boxSizing:"border-box",fontFamily:"inherit",height:160,resize:"vertical"}}/>
+                  </div>
+
+                  {/* 送信ボタン */}
+                  <button onClick={handleSend} disabled={sending}
+                    style={{padding:"0.7rem",fontSize:"0.85rem",fontWeight:700,background:sending?"#9ca3af":"#7c3aed",color:"white",border:"none",borderRadius:"6px",cursor:sending?"wait":"pointer",marginTop:"0.5rem"}}>
+                    {sending ? "⏳ 送信中..." : "📨 送信する"}
+                  </button>
+
+                  {/* 結果表示 */}
+                  {result && (
+                    <div style={{padding:"0.75rem",borderRadius:"6px",fontSize:"0.78rem",whiteSpace:"pre-wrap",
+                      background: result.ok ? "#d1fae5" : "#fee2e2",
+                      color: result.ok ? "#065f46" : "#b91c1c",
+                      border: `1px solid ${result.ok ? "#a7f3d0" : "#fecaca"}`,
+                    }}>
+                      {result.msg}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* ヒント */}
+              <div style={{background:"#fefce8",border:"1px solid #fde68a",borderRadius:"8px",padding:"0.75rem 1rem",fontSize:"0.72rem",color:"#78350f",lineHeight:1.6}}>
+                <strong>💡 ヒント:</strong><br/>
+                ・送信元 <code style={{background:"#fde68a",padding:"0 4px",borderRadius:"3px"}}>info@dustalk.com</code> は Resend で認証済みです<br/>
+                ・自分のメールアドレスを宛先に入れて、まず自分宛で動作確認することをお勧めします<br/>
+                ・到達しない場合は迷惑メールフォルダもチェックしてください
+              </div>
+
+              {/* 朝のタスク通知テスト */}
+              <DailyTaskNotifyTest currentUser={currentUser}/>
+            </div>
+          );
+        };
+        return <MailTestSection/>;
       })()}
 
       {/* ── バックアップ・復元 ── */}
