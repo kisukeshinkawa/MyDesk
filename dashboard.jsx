@@ -19388,7 +19388,7 @@ export default function App() {
 
   // __all__ notifications are shown to every logged-in user
   const appNotifs = React.useMemo(
-    () => (data.notifications||[]).filter(n=>n.toUserId===currentUser?.id||n.toUserId==="__all__"),
+    () => (data.notifications||[]).filter(n=>(n.toUserId===currentUser?.id||n.toUserId==="__all__") && !n.dismissed),
     [data.notifications, currentUser?.id]
   );
   const appUnread = React.useMemo(() => appNotifs.filter(n=>!n.read), [appNotifs]);
@@ -19499,6 +19499,46 @@ export default function App() {
             const localOnly = (localArr||[]).filter(x=>!serverIds.has(String(x.id)));
             return localOnly.length > 0 ? [...(serverArr||[]), ...localOnly] : (serverArr||[]);
           };
+          // 通知のマージ：既読状態と削除状態を競合なく統合する
+          // - 両方にある: 既読フラグはOR (どちらかで読んでいたら既読)、ローカルでdismissedなら除外
+          // - サーバーにあるがローカルにない: ローカルで削除済みとみなして除外（最近削除した通知の復活を防ぐ）
+          // - ローカルにあるがサーバーにない: 新規作成（追加）
+          const mergeNotifs = (serverArr, localArr) => {
+            const serverList = serverArr || [];
+            const localList  = localArr || [];
+            const localById  = new Map(localList.map(n => [String(n.id), n]));
+            const serverIds  = new Set(serverList.map(n => String(n.id)));
+            // 直近の削除を検知するため、ローカルがサーバーから取得済みデータを含んでいるかチェック
+            // （ローカルがほぼ空の場合は初回ロードと判定し、サーバー優先）
+            const localHasNotifs = localList.length > 0 || (localData2.notifications && localData2.notifications.length > 0);
+            const result = [];
+            for (const sn of serverList) {
+              const ln = localById.get(String(sn.id));
+              if (ln) {
+                // 両方にある: ローカル側のreadステータスを優先（マージ）
+                if (ln.dismissed) continue; // ローカルで削除済み → 除外
+                result.push({ ...sn, read: sn.read || ln.read });
+              } else if (!localHasNotifs) {
+                // ローカルが初期状態 → サーバーをそのまま反映
+                result.push(sn);
+              } else {
+                // ローカルにはなく、サーバーにある = ローカルで削除された可能性が高いため除外
+                // ただし作成時刻が10分以内の場合は新着の可能性があるので残す
+                const ageMs = Date.now() - (sn.createdTs || new Date(sn.date || 0).getTime() || 0);
+                if (ageMs < 10 * 60 * 1000) {
+                  result.push(sn); // 10分以内の通知は新着とみなす
+                }
+                // 10分以上前の通知は削除されたとみなして除外
+              }
+            }
+            // ローカル独自（サーバーにない）の通知を追加
+            for (const ln of localList) {
+              if (!serverIds.has(String(ln.id)) && !ln.dismissed) {
+                result.push(ln);
+              }
+            }
+            return result;
+          };
           const merged = {
             ...d,
             tasks:          mergeArrays(d.tasks,          localData2.tasks),
@@ -19507,6 +19547,7 @@ export default function App() {
             vendors:        mergeArrays(d.vendors,        localData2.vendors),
             municipalities: mergeArrays(d.municipalities, localData2.municipalities),
             businessCards:  mergeArrays(d.businessCards,  localData2.businessCards),
+            notifications:  mergeNotifs(d.notifications,  localData2.notifications),
             // analytics: サーバー優先だがローカルが充実していればマージ
             analytics: (()=>{
               const sysKeys = new Set([...Object.keys(d.analytics||{}), ...Object.keys(localData2.analytics||{})]);
@@ -19971,7 +20012,7 @@ export default function App() {
                 {appUnread.length>0&&<span style={{background:"#dc2626",color:"white",borderRadius:999,fontSize:"0.62rem",fontWeight:800,padding:"0.15rem 0.5rem"}}>{appUnread.length}</span>}
                 <div style={{marginLeft:"auto",display:"flex",gap:"0.35rem"}}>
                   {appUnread.length>0&&<button onClick={markAllRead} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:"0.5rem",color:C.accent,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",padding:"0.2rem 0.5rem"}}>全既読</button>}
-                  <button onClick={()=>{const nd={...data,notifications:(data.notifications||[]).filter(n=>n.toUserId!==currentUser?.id||!n.read)};setData(nd);saveData(nd);}}
+                  <button onClick={()=>{const nd={...data,notifications:(data.notifications||[]).map(n=>(n.toUserId===currentUser?.id&&n.read)?{...n,dismissed:true}:n)};setData(nd);saveData(nd);}}
                     style={{background:"none",border:`1px solid ${C.border}`,borderRadius:"0.5rem",color:C.textMuted,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",padding:"0.2rem 0.5rem"}}>既読削除</button>
                 </div>
               </div>
@@ -20059,7 +20100,7 @@ export default function App() {
                     </div>
                     <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:"0.3rem",flexShrink:0}}>
                       <span style={{width:7,height:7,borderRadius:"50%",background:n.read?"transparent":C.accent,display:"block"}}/>
-                      <button onClick={e=>{e.stopPropagation();const nd={...data,notifications:(data.notifications||[]).filter(x=>x.id!==n.id)};setData(nd);saveData(nd);}}
+                      <button onClick={e=>{e.stopPropagation();const nd={...data,notifications:(data.notifications||[]).map(x=>x.id===n.id?{...x,read:true,dismissed:true}:x)};setData(nd);saveData(nd);}}
                         style={{background:"none",border:"none",color:C.textMuted,cursor:"pointer",fontSize:"0.75rem",padding:0,lineHeight:1}}>✕</button>
                     </div>
                   </div>
