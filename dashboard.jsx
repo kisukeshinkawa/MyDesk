@@ -293,6 +293,50 @@ async function licensesRenew(oldId, newData) {
   return obj?.item || null;
 }
 
+// ─── DUSTALK SERVICE AREA TYPES (ダストーク事業 行政区の4区分) ────────────
+// 家庭系一廃 / 事業系一廃 / 産廃 / 特別管理産廃
+const DUSTALK_AREA_TYPES = [
+  { key: "household_ippai",   label: "家庭系一廃", icon: "🏠", color: "#ea580c", bg: "#fff7ed", border: "#fed7aa" },
+  { key: "business_ippai",    label: "事業系一廃", icon: "🏢", color: "#16a34a", bg: "#f0fdf4", border: "#bbf7d0" },
+  { key: "sanpai",            label: "産廃",       icon: "🏭", color: "#2563eb", bg: "#eff6ff", border: "#bfdbfe" },
+  { key: "tokukan_sanpai",    label: "特管産廃",   icon: "⚠️", color: "#dc2626", bg: "#fef2f2", border: "#fecaca" },
+];
+
+// 旧フィールドを新スキーマに移行
+function migrateServiceAreas(data) {
+  if (!data) return data;
+  let out = { ...data };
+
+  // 1. service_areas: 旧 (配列) → 新 (4区分オブジェクト)
+  if (!(out.service_areas && typeof out.service_areas === "object" && !Array.isArray(out.service_areas))) {
+    if (Array.isArray(out.service_areas_household) && out.service_areas_household.length > 0) {
+      out.service_areas = { household_ippai: out.service_areas_household };
+    }
+  }
+  // 旧フィールドを削除
+  delete out.service_areas_household;
+
+  // 2. full_address → postal_code + address に分離
+  if (out.full_address && (!out.postal_code || !out.address)) {
+    const fa = String(out.full_address).trim();
+    // "〒xxx-xxxx 住所..." の形式から郵便番号を抽出
+    const m = fa.match(/^[〒]?\s*(\d{3}[-\s]?\d{4})\s*(.*)$/s);
+    if (m) {
+      if (!out.postal_code) out.postal_code = m[1].replace(/\s/g, "");
+      if (!out.address) out.address = m[2].trim();
+    } else if (!out.address) {
+      out.address = fa;
+    }
+  }
+  delete out.full_address;
+
+  // 3. 廃止フィールドを削除（保存時にも消す）
+  delete out.issue_receipt;
+  delete out.fee_burden;
+
+  return out;
+}
+
 // ─── BIZCARD MATCHING HELPERS (ダストーク担当者⇄名刺の照合) ──────────────
 // 電話番号を正規化（ハイフン・スペース除去）
 const normalizePhoneForMatch = (p) => {
@@ -1814,7 +1858,7 @@ function DustalkInfoSection({ vendorId, vendorName, bizCards = [], onAddBizCard 
     }
   };
 
-  const data = info?.data || {};
+  const data = migrateServiceAreas(info?.data || {});
 
   if (loading) {
     return <div style={{padding:"1rem",color:"#6b7280",fontSize:"0.85rem"}}>読み込み中...</div>;
@@ -1850,22 +1894,40 @@ function DustalkInfoSection({ vendorId, vendorName, bizCards = [], onAddBizCard 
             <DustalkInfoRow label="従業員数" value={data.employee_count}/>
             <DustalkInfoRow label="定休日" value={data.regular_holiday}/>
             <DustalkInfoRow label="営業時間" value={data.business_hours}/>
-            <DustalkInfoRow label="ユーザーへの領収書" value={data.issue_receipt === false ? "使用しない" : (data.issue_receipt ? "使用する" : null)}/>
-            <DustalkInfoRow label="住所" value={data.full_address}/>
+            <DustalkInfoRow label="郵便番号" value={data.postal_code}/>
+            <DustalkInfoRow label="住所" value={data.address}/>
           </DustalkInfoBlock>
 
-          {/* ダストーク事業 行政区 */}
-          {Array.isArray(data.service_areas_household) && data.service_areas_household.length > 0 && (
-            <DustalkInfoBlock title="🚛 ダストーク事業（家庭系）" color="#7c3aed">
-              <div style={{display:"flex",flexWrap:"wrap",gap:"0.4rem",padding:"0.25rem 0"}}>
-                {data.service_areas_household.filter(Boolean).map((area, idx) => (
-                  <span key={idx} style={{background:"#ede9fe",color:"#5b21b6",fontSize:"0.78rem",padding:"0.25rem 0.65rem",borderRadius:"999px",fontWeight:700}}>
-                    {area}
-                  </span>
-                ))}
-              </div>
-            </DustalkInfoBlock>
-          )}
+          {/* ダストーク事業 行政区（4区分） */}
+          {(() => {
+            const areas = data.service_areas || {};
+            const hasAny = DUSTALK_AREA_TYPES.some(t => Array.isArray(areas[t.key]) && areas[t.key].length > 0);
+            if (!hasAny) return null;
+            return (
+              <DustalkInfoBlock title="🚛 ダストーク事業を行う行政区" color="#7c3aed">
+                <div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
+                  {DUSTALK_AREA_TYPES.map(t => {
+                    const list = (areas[t.key] || []).filter(Boolean);
+                    if (list.length === 0) return null;
+                    return (
+                      <div key={t.key} style={{display:"flex",alignItems:"flex-start",gap:"0.5rem"}}>
+                        <span style={{flexShrink:0,fontSize:"0.7rem",fontWeight:700,color:t.color,background:t.bg,border:`1px solid ${t.border}`,padding:"0.2rem 0.5rem",borderRadius:"6px",whiteSpace:"nowrap"}}>
+                          {t.icon} {t.label}
+                        </span>
+                        <div style={{display:"flex",flexWrap:"wrap",gap:"0.3rem"}}>
+                          {list.map((area, idx) => (
+                            <span key={idx} style={{background:t.bg,color:t.color,fontSize:"0.74rem",padding:"0.2rem 0.55rem",borderRadius:"999px",fontWeight:600,border:`1px solid ${t.border}`}}>
+                              {area}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </DustalkInfoBlock>
+            );
+          })()}
 
           {/* 銀行口座情報 */}
           <DustalkInfoBlock title="銀行口座情報" color="#059669">
@@ -1874,8 +1936,10 @@ function DustalkInfoSection({ vendorId, vendorName, bizCards = [], onAddBizCard 
             <DustalkInfoRow label="預金種別" value={data.bank_account_type}/>
             <DustalkInfoRow label="口座番号" value={data.bank_account_number}/>
             <DustalkInfoRow label="口座名義人" value={data.bank_account_holder}/>
-            <DustalkInfoRow label="振込手数料の負担" value={data.fee_burden}/>
             <DustalkInfoRow label="適格請求書事業者登録番号" value={data.invoice_number}/>
+            <div style={{fontSize:"0.7rem",color:"#9ca3af",fontStyle:"italic",marginTop:"0.25rem"}}>
+              ※ 振込手数料は弊社負担
+            </div>
           </DustalkInfoBlock>
 
           {/* その他の設定 */}
@@ -1981,7 +2045,7 @@ function DustalkInfoRow({ label, value }) {
 
 // ダストーク情報 編集モーダル
 function DustalkInfoEditModal({ data, vendorName, bizCards = [], onAddBizCard, onClose, onSave }) {
-  const [form, setForm] = useState({...(data || {})});
+  const [form, setForm] = useState(() => migrateServiceAreas({...(data || {})}));
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState("basic");
   const [ocrLoading, setOcrLoading] = useState(false);
@@ -2000,11 +2064,9 @@ function DustalkInfoEditModal({ data, vendorName, bizCards = [], onAddBizCard, o
       if (fields.employee_count != null) merged.employee_count = fields.employee_count;
       if (fields.company_holidays) merged.regular_holiday = fields.company_holidays;
       if (fields.company_business_hours) merged.business_hours = fields.company_business_hours;
-      if (fields.company_address) {
-        merged.full_address = fields.company_postal_code
-          ? `〒${fields.company_postal_code} ${fields.company_address}`
-          : fields.company_address;
-      }
+      // 住所: 郵便番号と住所を別フィールドで保持
+      if (fields.company_postal_code) merged.postal_code = fields.company_postal_code;
+      if (fields.company_address) merged.address = fields.company_address;
       // 銀行
       if (fields.bank_name) merged.bank_name = fields.bank_name;
       if (fields.bank_branch) merged.bank_branch = fields.bank_branch;
@@ -2024,13 +2086,19 @@ function DustalkInfoEditModal({ data, vendorName, bizCards = [], onAddBizCard, o
         if (fields.primary_contact.phone) merged.contact_phone = fields.primary_contact.phone;
         if (fields.primary_contact.email) merged.contact_email = fields.primary_contact.email;
       }
-      // 追加担当者・行政区・電話・FAX・メール
+      // 追加担当者
       if (Array.isArray(fields.additional_contacts) && fields.additional_contacts.length > 0) {
         merged.additional_contacts = fields.additional_contacts;
       }
+      // 行政区: OCRからの service_areas_household は household_ippai にマップ
       if (Array.isArray(fields.service_areas_household) && fields.service_areas_household.length > 0) {
-        merged.service_areas_household = fields.service_areas_household;
+        const cur = merged.service_areas || {};
+        merged.service_areas = {
+          ...cur,
+          household_ippai: fields.service_areas_household,
+        };
       }
+      // 連絡先
       if (fields.company_phone) merged.company_phone = fields.company_phone;
       if (fields.company_fax) merged.company_fax = fields.company_fax;
       if (fields.company_email) merged.company_email = fields.company_email;
@@ -2044,7 +2112,7 @@ function DustalkInfoEditModal({ data, vendorName, bizCards = [], onAddBizCard, o
     if (fields.invoice_registration_number) summary.push("インボイス番号");
     if (fields.primary_contact?.name) summary.push("主担当者");
     if (fields.additional_contacts?.length) summary.push(`追加担当者${fields.additional_contacts.length}名`);
-    if (fields.service_areas_household?.length) summary.push(`行政区${fields.service_areas_household.length}件`);
+    if (fields.service_areas_household?.length) summary.push(`家庭系一廃${fields.service_areas_household.length}件`);
     return summary;
   };
 
@@ -2382,22 +2450,27 @@ function DustalkInfoEditModal({ data, vendorName, bizCards = [], onAddBizCard, o
     });
   };
 
-  // ダストーク行政区の操作
-  const updateServiceArea = (idx, value) => {
+  // ダストーク行政区の操作（4区分対応）
+  const updateAreaItem = (typeKey, idx, value) => {
     setForm(prev => {
-      const list = [...(prev.service_areas_household || [])];
+      const cur = prev.service_areas || {};
+      const list = [...(cur[typeKey] || [])];
       list[idx] = value;
-      return { ...prev, service_areas_household: list };
+      return { ...prev, service_areas: { ...cur, [typeKey]: list } };
     });
   };
-  const addServiceArea = () => {
-    setForm(prev => ({ ...prev, service_areas_household: [...(prev.service_areas_household || []), ""] }));
-  };
-  const removeServiceArea = (idx) => {
+  const addAreaItem = (typeKey) => {
     setForm(prev => {
-      const list = [...(prev.service_areas_household || [])];
+      const cur = prev.service_areas || {};
+      return { ...prev, service_areas: { ...cur, [typeKey]: [...(cur[typeKey] || []), ""] } };
+    });
+  };
+  const removeAreaItem = (typeKey, idx) => {
+    setForm(prev => {
+      const cur = prev.service_areas || {};
+      const list = [...(cur[typeKey] || [])];
       list.splice(idx, 1);
-      return { ...prev, service_areas_household: list };
+      return { ...prev, service_areas: { ...cur, [typeKey]: list } };
     });
   };
 
@@ -2478,34 +2551,47 @@ function DustalkInfoEditModal({ data, vendorName, bizCards = [], onAddBizCard, o
               <F label="従業員数" k="employee_count" type="number" placeholder="例: 10"/>
               <F label="定休日" k="regular_holiday" placeholder="例: 日曜・祝日"/>
               <F label="営業時間" k="business_hours" placeholder="例: 8:00〜17:00"/>
-              <F label="ユーザーへの領収書" k="issue_receipt" options={[{val:true,label:"使用する"},{val:false,label:"使用しない"}]}/>
-              <F label="住所" k="full_address" placeholder="〒xxx-xxxx 福岡県..." multiline/>
+              <F label="郵便番号" k="postal_code" placeholder="例: 412-0008"/>
+              <F label="住所" k="address" placeholder="例: 静岡県御殿場市印野1435-6" multiline/>
 
-              {/* ダストーク事業 行政区 */}
+              {/* ダストーク事業 行政区（4区分） */}
               <div style={{marginTop:"1rem",padding:"0.75rem",background:"#f5f3ff",border:"1px solid #ddd6fe",borderRadius:"6px"}}>
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.5rem"}}>
-                  <label style={{fontSize:"0.75rem",fontWeight:700,color:"#5b21b6"}}>🚛 ダストーク事業を行う行政区（家庭系）</label>
-                  <button type="button" onClick={addServiceArea}
-                    style={{padding:"0.2rem 0.5rem",fontSize:"0.68rem",fontWeight:700,background:"#7c3aed",color:"white",border:"none",borderRadius:"4px",cursor:"pointer"}}>
-                    + 追加
-                  </button>
-                </div>
-                {(form.service_areas_household || []).length === 0 && (
-                  <div style={{fontSize:"0.7rem",color:"#9ca3af",padding:"0.4rem"}}>未設定（OCRで自動入力されます）</div>
-                )}
-                <div style={{display:"flex",flexWrap:"wrap",gap:"0.4rem"}}>
-                  {(form.service_areas_household || []).map((area, idx) => (
-                    <div key={idx} style={{display:"flex",alignItems:"center",gap:"0.25rem",background:"white",border:"1px solid #ddd6fe",borderRadius:"6px",padding:"0.2rem 0.4rem"}}>
-                      <input
-                        value={area || ""}
-                        onChange={(e)=>updateServiceArea(idx, e.target.value)}
-                        placeholder="例: 御殿場市"
-                        style={{border:"none",fontSize:"0.78rem",padding:"0.2rem",width:"110px",outline:"none",fontFamily:"inherit"}}
-                      />
-                      <button type="button" onClick={()=>removeServiceArea(idx)}
-                        style={{background:"none",border:"none",color:"#dc2626",cursor:"pointer",fontSize:"0.85rem",padding:"0 0.25rem"}}>×</button>
-                    </div>
-                  ))}
+                <label style={{fontSize:"0.78rem",fontWeight:700,color:"#5b21b6",display:"block",marginBottom:"0.6rem"}}>🚛 ダストーク事業を行う行政区</label>
+                <div style={{display:"flex",flexDirection:"column",gap:"0.7rem"}}>
+                  {DUSTALK_AREA_TYPES.map(t => {
+                    const list = (form.service_areas?.[t.key]) || [];
+                    return (
+                      <div key={t.key} style={{background:"white",border:`1px solid ${t.border}`,borderRadius:"6px",padding:"0.5rem 0.6rem"}}>
+                        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.4rem"}}>
+                          <span style={{fontSize:"0.74rem",fontWeight:700,color:t.color,display:"inline-flex",alignItems:"center",gap:"0.25rem"}}>
+                            {t.icon} {t.label}
+                          </span>
+                          <button type="button" onClick={()=>addAreaItem(t.key)}
+                            style={{padding:"0.18rem 0.5rem",fontSize:"0.66rem",fontWeight:700,background:t.color,color:"white",border:"none",borderRadius:"4px",cursor:"pointer"}}>
+                            + 追加
+                          </button>
+                        </div>
+                        {list.length === 0 ? (
+                          <div style={{fontSize:"0.68rem",color:"#9ca3af",padding:"0.2rem 0.1rem"}}>未設定</div>
+                        ) : (
+                          <div style={{display:"flex",flexWrap:"wrap",gap:"0.35rem"}}>
+                            {list.map((area, idx) => (
+                              <div key={idx} style={{display:"flex",alignItems:"center",gap:"0.2rem",background:t.bg,border:`1px solid ${t.border}`,borderRadius:"6px",padding:"0.15rem 0.35rem"}}>
+                                <input
+                                  value={area || ""}
+                                  onChange={(e)=>updateAreaItem(t.key, idx, e.target.value)}
+                                  placeholder="例: 御殿場市"
+                                  style={{border:"none",fontSize:"0.74rem",padding:"0.15rem",width:"100px",outline:"none",fontFamily:"inherit",background:"transparent",color:t.color,fontWeight:600}}
+                                />
+                                <button type="button" onClick={()=>removeAreaItem(t.key, idx)}
+                                  style={{background:"none",border:"none",color:t.color,cursor:"pointer",fontSize:"0.8rem",padding:"0 0.15rem",fontWeight:700}}>×</button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </>
@@ -2517,8 +2603,10 @@ function DustalkInfoEditModal({ data, vendorName, bizCards = [], onAddBizCard, o
               <F label="預金種別" k="bank_account_type" options={[{val:"普通預金",label:"普通預金"},{val:"当座預金",label:"当座預金"}]}/>
               <F label="口座番号" k="bank_account_number" placeholder="例: 1234567"/>
               <F label="口座名義人" k="bank_account_holder" placeholder="例: ユウ)イケダショウテン"/>
-              <F label="振込手数料の負担" k="fee_burden" options={[{val:"運営負担",label:"運営負担"},{val:"業者負担",label:"業者負担"}]}/>
               <F label="適格請求書事業者登録番号" k="invoice_number" placeholder="例: T1234567890123"/>
+              <div style={{fontSize:"0.7rem",color:"#6b7280",lineHeight:1.5,padding:"0.5rem",background:"#f9fafb",borderRadius:"4px",marginTop:"0.4rem"}}>
+                💡 <strong>振込手数料は弊社（西原商事ホールディングス）が負担します。</strong>
+              </div>
             </>
           )}
           {tab === "other" && (
