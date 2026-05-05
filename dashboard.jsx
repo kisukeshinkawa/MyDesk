@@ -1989,7 +1989,200 @@ function DustalkInfoEditModal({ data, vendorName, bizCards = [], onAddBizCard, o
   const [ocrSuccess, setOcrSuccess] = useState("");
   const fileInputRef = useRef(null);
 
-  // ─── OCR スキャン処理（ダストーク登録シート） ───────────────────────────
+  // ─── OCR スキャンに使うフィールド適用ロジック（Excel/PDF/画像で共通） ─────
+  const applyDustalkFields = (fields) => {
+    setForm(prev => {
+      const merged = { ...prev };
+      // 基本情報
+      if (fields.company_name) merged.business_name = fields.company_name;
+      if (fields.company_website) merged.website_url = fields.company_website;
+      if (fields.vehicle_count != null) merged.vehicle_count = fields.vehicle_count;
+      if (fields.employee_count != null) merged.employee_count = fields.employee_count;
+      if (fields.company_holidays) merged.regular_holiday = fields.company_holidays;
+      if (fields.company_business_hours) merged.business_hours = fields.company_business_hours;
+      if (fields.company_address) {
+        merged.full_address = fields.company_postal_code
+          ? `〒${fields.company_postal_code} ${fields.company_address}`
+          : fields.company_address;
+      }
+      // 銀行
+      if (fields.bank_name) merged.bank_name = fields.bank_name;
+      if (fields.bank_branch) merged.bank_branch = fields.bank_branch;
+      if (fields.bank_account_type) merged.bank_account_type = fields.bank_account_type;
+      if (fields.bank_account_number) merged.bank_account_number = fields.bank_account_number;
+      if (fields.bank_account_holder) merged.bank_account_holder = fields.bank_account_holder;
+      // 制度
+      if (fields.invoice_registration_number) merged.invoice_number = fields.invoice_registration_number;
+      if (typeof fields.cash_payment_supported === "boolean") merged.cash_payment = fields.cash_payment_supported;
+      // 代表者
+      if (fields.representative_name) merged.rep_name = fields.representative_name;
+      if (fields.representative_furigana) merged.rep_furigana = fields.representative_furigana;
+      // 主担当者
+      if (fields.primary_contact) {
+        if (fields.primary_contact.name) merged.contact_name = fields.primary_contact.name;
+        if (fields.primary_contact.furigana) merged.contact_furigana = fields.primary_contact.furigana;
+        if (fields.primary_contact.phone) merged.contact_phone = fields.primary_contact.phone;
+        if (fields.primary_contact.email) merged.contact_email = fields.primary_contact.email;
+      }
+      // 追加担当者・行政区・電話・FAX・メール
+      if (Array.isArray(fields.additional_contacts) && fields.additional_contacts.length > 0) {
+        merged.additional_contacts = fields.additional_contacts;
+      }
+      if (Array.isArray(fields.service_areas_household) && fields.service_areas_household.length > 0) {
+        merged.service_areas_household = fields.service_areas_household;
+      }
+      if (fields.company_phone) merged.company_phone = fields.company_phone;
+      if (fields.company_fax) merged.company_fax = fields.company_fax;
+      if (fields.company_email) merged.company_email = fields.company_email;
+      return merged;
+    });
+
+    // 成功サマリ生成
+    const summary = [];
+    if (fields.company_name) summary.push("会社情報");
+    if (fields.bank_name) summary.push("銀行口座");
+    if (fields.invoice_registration_number) summary.push("インボイス番号");
+    if (fields.primary_contact?.name) summary.push("主担当者");
+    if (fields.additional_contacts?.length) summary.push(`追加担当者${fields.additional_contacts.length}名`);
+    if (fields.service_areas_household?.length) summary.push(`行政区${fields.service_areas_household.length}件`);
+    return summary;
+  };
+
+  // ─── Excel 直接パース（標準テンプレート） ──────────────────────────────
+  const parseExcelDirectly = async (file) => {
+    const xlsxMod = await import("https://esm.sh/xlsx@0.18.5");
+    const xlsx = xlsxMod.default || xlsxMod;
+    const arrayBuffer = await file.arrayBuffer();
+    const wb = xlsx.read(arrayBuffer, { type: "array" });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    if (!ws) throw new Error("シートが読み取れません");
+
+    // セル値を取得（マージセル考慮）
+    const cellVal = (addr) => {
+      const cell = ws[addr];
+      if (!cell) return null;
+      const v = cell.v;
+      if (v == null || v === "") return null;
+      if (typeof v === "string") {
+        const s = v.trim().replace(/\u3000/g, " ");
+        return s || null;
+      }
+      return v;
+    };
+    const cleanInt = (v) => {
+      if (v == null) return null;
+      const n = parseInt(v, 10);
+      return isNaN(n) ? null : n;
+    };
+    const concatStr = (a, b) => {
+      const va = cellVal(a) || "";
+      const vb = cellVal(b) || "";
+      const s = (String(va) + String(vb)).trim().replace(/\s+/g, "");
+      return s || null;
+    };
+
+    // ダストーク登録シートの標準テンプレートに基づくセルマッピング
+    // C2: 会社名 / C3: 代表者ふりがな / C4: 代表者氏名 / C5: 会社電話 / C6: 車両台数 / C7: 郵便番号
+    // F8: 行政区 / G3: 担当者ふりがな / G4: 担当者氏名 / G5: 担当者電話 / G6: 従業員数 / G7: 会社住所
+    // J4: メールアドレス / K2: webサイト / K5: FAX / K6: 営業時間 / L6: 休業日
+    // D10+H10: 銀行名 / J10: 支店名 / M10: 預金種別 / D11: 口座番号 / J11: 口座名義
+    // E12+F12: インボイス番号 / E13: 現金対応可否
+    const fields = {
+      company_name: cellVal("C2"),
+      representative_furigana: cellVal("C3"),
+      representative_name: cellVal("C4"),
+      company_phone: cellVal("C5") ? String(cellVal("C5")) : null,
+      vehicle_count: cleanInt(cellVal("C6")),
+      company_postal_code: cellVal("C7"),
+
+      employee_count: cleanInt(cellVal("G6")),
+      company_address: cellVal("G7"),
+      company_email: cellVal("J4"),
+      company_website: cellVal("K2"),
+      company_fax: cellVal("K5") ? String(cellVal("K5")) : null,
+      company_business_hours: cellVal("K6") ? String(cellVal("K6")) : null,
+      company_holidays: cellVal("M6"),
+
+      service_areas_household: (() => {
+        const v = cellVal("F8");
+        if (!v) return null;
+        const arr = String(v).split(/[\s\u3000、,／・]+/).map(s => s.trim()).filter(Boolean);
+        return arr.length > 0 ? arr : null;
+      })(),
+
+      bank_name: (() => {
+        const a = cellVal("D10");
+        const b = cellVal("H10");
+        if (!a) return null;
+        return (String(a) + (b ? String(b) : "")).trim();
+      })(),
+      bank_branch: cellVal("J10"),
+      bank_account_type: cellVal("M10"),
+      bank_account_number: cellVal("D11") != null ? String(cellVal("D11")) : null,
+      bank_account_holder: cellVal("J11"),
+
+      invoice_registration_number: (() => {
+        const t = cellVal("E12");
+        const num = cellVal("F12");
+        if (!t && !num) return null;
+        let s = ((t ? String(t) : "") + (num ? String(num) : "")).replace(/\s/g, "").toUpperCase();
+        if (!s.startsWith("T") && /^\d{13}$/.test(s)) s = "T" + s;
+        return s || null;
+      })(),
+      cash_payment_supported: (() => {
+        const v = cellVal("E13");
+        if (v === "可" || v === "○" || v === "✓" || v === true) return true;
+        if (v === "不可" || v === "×" || v === false) return false;
+        return null;
+      })(),
+
+      primary_contact: (() => {
+        const name = cellVal("G4");
+        const fur = cellVal("G3");
+        const phone = cellVal("G5");
+        if (!name && !fur && !phone) return null;
+        return {
+          name: name || null,
+          furigana: fur || null,
+          phone: phone ? String(phone) : null,
+          email: null,
+        };
+      })(),
+
+      // 追加担当者② 〜 ⑤
+      additional_contacts: (() => {
+        // 各担当者の値セル位置:
+        // 担当者②: ふりがな=P3, 氏名=P4, メール=S4
+        // 担当者③: ふりがな=P6, 氏名=P7, メール=S7
+        // 担当者④: ふりがな=P9, 氏名=P10, メール=S10
+        // 担当者⑤: ふりがな=P12, 氏名=P13, メール=S13
+        const slots = [
+          { fur: "P3", name: "P4", email: "S4" },
+          { fur: "P6", name: "P7", email: "S7" },
+          { fur: "P9", name: "P10", email: "S10" },
+          { fur: "P12", name: "P13", email: "S13" },
+        ];
+        const list = [];
+        for (const s of slots) {
+          const name = cellVal(s.name);
+          const fur = cellVal(s.fur);
+          const email = cellVal(s.email);
+          if (name || email) {
+            list.push({
+              name: name || null,
+              furigana: fur || null,
+              email: email || null,
+            });
+          }
+        }
+        return list.length > 0 ? list : null;
+      })(),
+    };
+
+    return fields;
+  };
+
+  // ─── OCR スキャン処理（ダストーク登録シート: Excel/PDF/画像 対応） ─────
   const handleOcrFile = async (file) => {
     if (!file) return;
     setOcrError("");
@@ -1997,8 +2190,24 @@ function DustalkInfoEditModal({ data, vendorName, bizCards = [], onAddBizCard, o
     setOcrLoading(true);
     try {
       const fileName = (file.name || "").toLowerCase();
+      const isExcel = fileName.endsWith(".xlsx") || fileName.endsWith(".xls") ||
+        file.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+        file.type === "application/vnd.ms-excel";
       const isPdf = fileName.endsWith(".pdf") || file.type === "application/pdf";
       const isHeic = fileName.endsWith(".heic") || fileName.endsWith(".heif") || file.type === "image/heic" || file.type === "image/heif";
+
+      // ─── Excel: ブラウザで直接パース（OCR不要・正確・高速） ───
+      if (isExcel) {
+        console.log(`[Dustalk Excel] 直接パース開始: ${file.name}`);
+        const fields = await parseExcelDirectly(file);
+        console.log("[Dustalk Excel] 抽出結果:", fields);
+        if (!fields.company_name && !fields.bank_name && !fields.primary_contact) {
+          throw new Error("Excelテンプレートが認識できません。標準のダストーク登録シートをご使用ください");
+        }
+        const summary = applyDustalkFields(fields);
+        setOcrSuccess(`✅ Excel 自動入力完了: ${summary.join(" / ") || "情報なし"}`);
+        return;
+      }
 
       let dataB64, mediaType;
 
@@ -2076,66 +2285,12 @@ function DustalkInfoEditModal({ data, vendorName, bizCards = [], onAddBizCard, o
       const fields = json?.fields || {};
       console.log("[Dustalk OCR] 抽出結果:", fields);
 
-      // フォームへのマッピング
-      setForm(prev => {
-        const merged = { ...prev };
-        // 基本情報
-        if (fields.company_name) merged.business_name = fields.company_name;
-        if (fields.company_website) merged.website_url = fields.company_website;
-        if (fields.vehicle_count != null) merged.vehicle_count = fields.vehicle_count;
-        if (fields.employee_count != null) merged.employee_count = fields.employee_count;
-        if (fields.company_holidays) merged.regular_holiday = fields.company_holidays;
-        if (fields.company_business_hours) merged.business_hours = fields.company_business_hours;
-        // 住所: 郵便番号 + 住所をまとめる
-        if (fields.company_address) {
-          merged.full_address = fields.company_postal_code
-            ? `〒${fields.company_postal_code} ${fields.company_address}`
-            : fields.company_address;
-        }
-        // 銀行
-        if (fields.bank_name) merged.bank_name = fields.bank_name;
-        if (fields.bank_branch) merged.bank_branch = fields.bank_branch;
-        if (fields.bank_account_type) merged.bank_account_type = fields.bank_account_type;
-        if (fields.bank_account_number) merged.bank_account_number = fields.bank_account_number;
-        if (fields.bank_account_holder) merged.bank_account_holder = fields.bank_account_holder;
-        // 制度
-        if (fields.invoice_registration_number) merged.invoice_number = fields.invoice_registration_number;
-        if (typeof fields.cash_payment_supported === "boolean") merged.cash_payment = fields.cash_payment_supported;
-        // 代表者
-        if (fields.representative_name) merged.rep_name = fields.representative_name;
-        if (fields.representative_furigana) merged.rep_furigana = fields.representative_furigana;
-        // 主担当者
-        if (fields.primary_contact) {
-          if (fields.primary_contact.name) merged.contact_name = fields.primary_contact.name;
-          if (fields.primary_contact.furigana) merged.contact_furigana = fields.primary_contact.furigana;
-          if (fields.primary_contact.phone) merged.contact_phone = fields.primary_contact.phone;
-          if (fields.primary_contact.email) merged.contact_email = fields.primary_contact.email;
-        }
-        // 追加担当者・行政区・電話・FAX・メール
-        if (Array.isArray(fields.additional_contacts) && fields.additional_contacts.length > 0) {
-          merged.additional_contacts = fields.additional_contacts;
-        }
-        if (Array.isArray(fields.service_areas_household) && fields.service_areas_household.length > 0) {
-          merged.service_areas_household = fields.service_areas_household;
-        }
-        if (fields.company_phone) merged.company_phone = fields.company_phone;
-        if (fields.company_fax) merged.company_fax = fields.company_fax;
-        if (fields.company_email) merged.company_email = fields.company_email;
-        return merged;
-      });
-
-      // 成功サマリ
-      const summary = [];
-      if (fields.company_name) summary.push("会社情報");
-      if (fields.bank_name) summary.push("銀行口座");
-      if (fields.invoice_registration_number) summary.push("インボイス番号");
-      if (fields.primary_contact?.name) summary.push("主担当者");
-      if (fields.additional_contacts?.length) summary.push(`追加担当者${fields.additional_contacts.length}名`);
-      if (fields.service_areas_household?.length) summary.push(`行政区${fields.service_areas_household.length}件`);
-      setOcrSuccess(`✅ 自動入力完了: ${summary.join(" / ") || "情報なし"}`);
+      // フォームへのマッピング（共通関数）
+      const summary = applyDustalkFields(fields);
+      setOcrSuccess(`✅ OCR 自動入力完了: ${summary.join(" / ") || "情報なし"}`);
     } catch (e) {
       console.error("[Dustalk OCR] エラー:", e);
-      setOcrError(`OCR失敗: ${e.message}`);
+      setOcrError(`読取失敗: ${e.message}`);
     } finally {
       setOcrLoading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -2266,26 +2421,27 @@ function DustalkInfoEditModal({ data, vendorName, bizCards = [], onAddBizCard, o
         <div style={{margin:"0.875rem 1.25rem 0",padding:"0.6rem 0.8rem",background:"linear-gradient(to right, #fef3c7, #fef9c3)",border:"1px solid #fde68a",borderRadius:"8px"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:"0.5rem",flexWrap:"wrap"}}>
             <div style={{flex:1,minWidth:180}}>
-              <div style={{fontSize:"0.78rem",fontWeight:700,color:"#92400e"}}>📷 OCR スキャン</div>
-              <div style={{fontSize:"0.7rem",color:"#78716c",marginTop:"0.15rem"}}>ダストーク登録シートから自動入力（AI読み取り）</div>
+              <div style={{fontSize:"0.78rem",fontWeight:700,color:"#92400e"}}>📊 ダストーク登録シート 自動入力</div>
+              <div style={{fontSize:"0.7rem",color:"#78716c",marginTop:"0.15rem"}}>Excel をそのまま読込、または PDF/画像から OCR で自動入力</div>
             </div>
             <button
               type="button"
               onClick={()=>fileInputRef.current?.click()}
               disabled={ocrLoading}
               style={{padding:"0.45rem 0.9rem",fontSize:"0.78rem",fontWeight:700,background:ocrLoading?"#9ca3af":"#d97706",color:"white",border:"none",borderRadius:"6px",cursor:ocrLoading?"wait":"pointer",whiteSpace:"nowrap"}}>
-              {ocrLoading ? "⏳ 解析中..." : "📂 画像/PDFを選択"}
+              {ocrLoading ? "⏳ 解析中..." : "📂 Excel/PDF/画像を選択"}
             </button>
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*,.heic,.heif,.pdf,application/pdf"
+              accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,image/*,.heic,.heif,.pdf,application/pdf"
               onChange={(e)=>handleOcrFile(e.target.files?.[0])}
               style={{display:"none"}}
             />
           </div>
           <div style={{marginTop:"0.3rem",fontSize:"0.66rem",color:"#78716c"}}>
-            📄 対応: JPEG / PNG / HEIC / PDF（Excelの場合はPDF保存後に読込）
+            📄 対応: <strong>Excel (.xlsx/.xls)</strong> / JPEG / PNG / HEIC / PDF<br/>
+            💡 Excel は標準テンプレートを直接読込（OCR不要・高精度）
           </div>
           {ocrError && (
             <div style={{marginTop:"0.4rem",fontSize:"0.7rem",color:"#b91c1c",background:"#fee2e2",padding:"0.3rem 0.5rem",borderRadius:"4px"}}>
