@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-05-v36-license-pdf-renew-history"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-05-v37-vendor-info-storage-detail"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -1159,8 +1159,42 @@ function LicenseCard({ license, onEdit, onDelete, onHistory }) {
           <div>📦 品目: <span style={{color:"#6b7280"}}>{items.slice(0, 5).join(", ")}{items.length > 5 ? ` 他${items.length - 5}件` : ""}</span></div>
         )}
         {license.treatment_method && <div>⚙️ 処理方法: {license.treatment_method}</div>}
-        {license.storage_facility_address && <div>🏭 積替保管所在地: {license.storage_facility_address}</div>}
-        {license.treatment_facility_address && <div>🏭 処分施設所在地: {license.treatment_facility_address}</div>}
+
+        {/* 業者情報セクション（住所・代表者があれば表示） */}
+        {(license.vendor_address || license.vendor_representative) && (
+          <div style={{marginTop:"0.4rem",padding:"0.35rem 0.5rem",background:"#eff6ff",borderLeft:"3px solid #93c5fd",borderRadius:"3px"}}>
+            <div style={{fontSize:"0.62rem",color:"#1e40af",fontWeight:700,marginBottom:"0.15rem"}}>🏢 業者情報</div>
+            {license.vendor_address && <div style={{fontSize:"0.7rem"}}>📍 住所: {license.vendor_address}</div>}
+            {license.vendor_representative && <div style={{fontSize:"0.7rem"}}>👤 代表者: {license.vendor_representative}</div>}
+          </div>
+        )}
+
+        {/* 積替保管 施設情報セクション */}
+        {(license.storage_facility_address || license.storage_facility_area || (Array.isArray(license.storage_permitted_items) && license.storage_permitted_items.length > 0) || (typeof license.storage_permitted_items === "string" && license.storage_permitted_items.length > 2)) && (
+          <div style={{marginTop:"0.4rem",padding:"0.35rem 0.5rem",background:"#fef3c7",borderLeft:"3px solid #fbbf24",borderRadius:"3px"}}>
+            <div style={{fontSize:"0.62rem",color:"#92400e",fontWeight:700,marginBottom:"0.15rem"}}>🏭 積替保管 施設情報</div>
+            {license.storage_facility_address && <div style={{fontSize:"0.7rem"}}>📍 所在地: {license.storage_facility_address}</div>}
+            {license.storage_facility_area && <div style={{fontSize:"0.7rem"}}>📐 面積: {license.storage_facility_area}</div>}
+            {(() => {
+              const sItems = Array.isArray(license.storage_permitted_items) ? license.storage_permitted_items
+                : (typeof license.storage_permitted_items === "string" ? (JSON.parse(license.storage_permitted_items || "[]") || []) : []);
+              if (sItems.length === 0) return null;
+              return (
+                <div style={{fontSize:"0.7rem"}}>
+                  📦 取扱品目: <span style={{color:"#78716c"}}>{sItems.join(", ")}</span>
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
+        {license.treatment_facility_address && (
+          <div style={{marginTop:"0.4rem",padding:"0.35rem 0.5rem",background:"#f3e8ff",borderLeft:"3px solid #c084fc",borderRadius:"3px"}}>
+            <div style={{fontSize:"0.62rem",color:"#6b21a8",fontWeight:700,marginBottom:"0.15rem"}}>🏭 処分施設情報</div>
+            <div style={{fontSize:"0.7rem"}}>📍 所在地: {license.treatment_facility_address}</div>
+          </div>
+        )}
+
         {renderNotes(license.notes)}
       </div>
     </div>
@@ -1295,8 +1329,11 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
       setForm(prev => {
         const merged = { ...prev };
         const cleanedItems = Array.isArray(fields.permitted_items) ? fields.permitted_items.filter(x => x && typeof x === "string") : null;
+        const cleanedStorageItems = Array.isArray(fields.storage_permitted_items) ? fields.storage_permitted_items.filter(x => x && typeof x === "string") : null;
         const fieldMap = {
           vendor_name: fields.vendor_name,
+          vendor_address: fields.vendor_address,
+          vendor_representative: fields.vendor_representative,
           waste_category: fields.waste_category,
           region: fields.region,
           license_number: fields.license_number,
@@ -1306,6 +1343,7 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
           is_excellent_certified: fields.is_excellent_certified,
           treatment_method: fields.treatment_method,
           storage_facility_address: fields.storage_facility_address,
+          storage_facility_area: fields.storage_facility_area,
           treatment_facility_address: fields.treatment_facility_address,
           notes: fields.notes,
         };
@@ -1316,6 +1354,9 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
         }
         if (cleanedItems && cleanedItems.length > 0) {
           merged.permitted_items = cleanedItems;
+        }
+        if (cleanedStorageItems && cleanedStorageItems.length > 0) {
+          merged.storage_permitted_items = cleanedStorageItems;
         }
         return merged;
       });
@@ -1406,6 +1447,22 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
           <div>
             <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.3rem"}}>業者名</label>
             <input type="text" value={form.vendor_name||""} onChange={e=>setForm({...form,vendor_name:e.target.value})}
+              style={{width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #d1d5db",borderRadius:"4px",fontSize:"0.85rem",boxSizing:"border-box"}}/>
+          </div>
+
+          {/* 業者の住所 */}
+          <div>
+            <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.3rem"}}>業者の住所（許可証記載の本社住所）</label>
+            <input type="text" value={form.vendor_address||""} onChange={e=>setForm({...form,vendor_address:e.target.value})}
+              placeholder="例: 北九州市八幡西区陣原二丁目2番21号"
+              style={{width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #d1d5db",borderRadius:"4px",fontSize:"0.85rem",boxSizing:"border-box"}}/>
+          </div>
+
+          {/* 代表者 */}
+          <div>
+            <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.3rem"}}>代表者</label>
+            <input type="text" value={form.vendor_representative||""} onChange={e=>setForm({...form,vendor_representative:e.target.value})}
+              placeholder="例: 代表取締役 西原 靖博"
               style={{width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #d1d5db",borderRadius:"4px",fontSize:"0.85rem",boxSizing:"border-box"}}/>
           </div>
 
@@ -1527,13 +1584,46 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
 
           {/* 積替保管（運搬(積保あり)） */}
           {hasStorage && (
-            <>
+            <div style={{padding:"0.6rem 0.7rem",background:"#fef3c7",border:"1px solid #fde68a",borderRadius:"6px",display:"flex",flexDirection:"column",gap:"0.5rem"}}>
+              <div style={{fontSize:"0.7rem",color:"#92400e",fontWeight:700}}>🏭 積替保管 施設情報</div>
               <div>
-                <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.3rem"}}>積替保管 施設所在地</label>
+                <label style={{display:"block",fontSize:"0.7rem",fontWeight:600,color:"#374151",marginBottom:"0.25rem"}}>所在地</label>
                 <input type="text" value={form.storage_facility_address||""} onChange={e=>setForm({...form,storage_facility_address:e.target.value})}
-                  style={{width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #d1d5db",borderRadius:"4px",fontSize:"0.85rem",boxSizing:"border-box"}}/>
+                  placeholder="例: 北九州市八幡西区陣原二丁目8番3"
+                  style={{width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #fcd34d",borderRadius:"4px",fontSize:"0.85rem",boxSizing:"border-box",background:"white"}}/>
               </div>
-            </>
+              <div>
+                <label style={{display:"block",fontSize:"0.7rem",fontWeight:600,color:"#374151",marginBottom:"0.25rem"}}>面積</label>
+                <input type="text" value={form.storage_facility_area||""} onChange={e=>setForm({...form,storage_facility_area:e.target.value})}
+                  placeholder="例: 55.1平方メートル"
+                  style={{width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #fcd34d",borderRadius:"4px",fontSize:"0.85rem",boxSizing:"border-box",background:"white"}}/>
+              </div>
+              <div>
+                <label style={{display:"block",fontSize:"0.7rem",fontWeight:600,color:"#374151",marginBottom:"0.25rem"}}>取扱品目（積替保管）</label>
+                <div style={{display:"flex",flexWrap:"wrap",gap:"0.25rem",marginBottom:"0.3rem"}}>
+                  {(form.storage_permitted_items || []).map((item, idx) => (
+                    <span key={idx} style={{display:"inline-flex",alignItems:"center",gap:"0.2rem",padding:"0.15rem 0.45rem",background:"#fbbf24",color:"#7c2d12",fontSize:"0.72rem",borderRadius:"3px",fontWeight:600}}>
+                      {item}
+                      <button type="button" onClick={()=>setForm({...form, storage_permitted_items: form.storage_permitted_items.filter((_,i)=>i!==idx)})}
+                        style={{background:"none",border:"none",cursor:"pointer",fontWeight:700,padding:0,fontSize:"0.85rem",color:"#7c2d12"}}>×</button>
+                    </span>
+                  ))}
+                </div>
+                <input type="text" placeholder="品目を入力してEnter"
+                  style={{width:"100%",padding:"0.35rem 0.5rem",border:"1px solid #fcd34d",borderRadius:"4px",fontSize:"0.78rem",boxSizing:"border-box",background:"white"}}
+                  onKeyDown={e=>{
+                    if(e.key==="Enter" && e.target.value.trim()){
+                      e.preventDefault();
+                      const v = e.target.value.trim();
+                      const cur = form.storage_permitted_items || [];
+                      if(!cur.includes(v)){
+                        setForm({...form, storage_permitted_items:[...cur, v]});
+                      }
+                      e.target.value = "";
+                    }
+                  }}/>
+              </div>
+            </div>
           )}
 
           {/* 処分 施設所在地 */}
