@@ -2053,6 +2053,40 @@ function DustalkInfoEditModal({ data, vendorName, bizCards = [], onAddBizCard, o
   const [ocrSuccess, setOcrSuccess] = useState("");
   const fileInputRef = useRef(null);
 
+  // ─── 会社名チェック（取り込みシートの会社名と業者名が一致するか確認） ─────
+  // 戻り値: true = 続行, false = 中止
+  const verifyCompanyMatch = (extractedName) => {
+    if (!extractedName) {
+      // 会社名が読み取れなかった場合 → 警告のみで続行確認
+      return window.confirm(
+        "⚠️ シートから会社名が読み取れませんでした。\n\n" +
+        "このまま続行すると、誤った業者の情報が登録される可能性があります。\n" +
+        "続行しますか？"
+      );
+    }
+    const normExtracted = normalizeCompanyForMatch(extractedName);
+    const normVendor = normalizeCompanyForMatch(form.business_name || vendorName);
+    if (!normVendor) {
+      // 業者名が無い場合は通常ありえないが、続行
+      return true;
+    }
+    // 部分一致（双方向）でチェック - "株式会社マルコー" と "マルコー" を同一視
+    if (normExtracted === normVendor ||
+        normExtracted.includes(normVendor) ||
+        normVendor.includes(normExtracted)) {
+      return true;
+    }
+    // 不一致 → 警告ダイアログ
+    return window.confirm(
+      `⚠️ 会社名が一致しません！\n\n` +
+      `現在の業者: ${form.business_name || vendorName}\n` +
+      `シートの会社名: ${extractedName}\n\n` +
+      `間違ったシートをアップロードしている可能性があります。\n` +
+      `このまま強制的に取り込むと、誤った情報が登録されます。\n\n` +
+      `本当に取り込みますか？`
+    );
+  };
+
   // ─── OCR スキャンに使うフィールド適用ロジック（Excel/PDF/画像で共通） ─────
   const applyDustalkFields = (fields) => {
     setForm(prev => {
@@ -2272,6 +2306,11 @@ function DustalkInfoEditModal({ data, vendorName, bizCards = [], onAddBizCard, o
         if (!fields.company_name && !fields.bank_name && !fields.primary_contact) {
           throw new Error("Excelテンプレートが認識できません。標準のダストーク登録シートをご使用ください");
         }
+        // 会社名チェック
+        if (!verifyCompanyMatch(fields.company_name)) {
+          setOcrError("⛔ 取り込みをキャンセルしました（会社名が一致しないため）");
+          return;
+        }
         const summary = applyDustalkFields(fields);
         setOcrSuccess(`✅ Excel 自動入力完了: ${summary.join(" / ") || "情報なし"}`);
         return;
@@ -2352,6 +2391,12 @@ function DustalkInfoEditModal({ data, vendorName, bizCards = [], onAddBizCard, o
       }
       const fields = json?.fields || {};
       console.log("[Dustalk OCR] 抽出結果:", fields);
+
+      // 会社名チェック
+      if (!verifyCompanyMatch(fields.company_name)) {
+        setOcrError("⛔ 取り込みをキャンセルしました（会社名が一致しないため）");
+        return;
+      }
 
       // フォームへのマッピング（共通関数）
       const summary = applyDustalkFields(fields);
