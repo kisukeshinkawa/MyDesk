@@ -5537,7 +5537,8 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
 
   // ─── スタイル定義 ─────────────────────────────────────────────────
   const GREY = "#D9D9D9"; // Excel theme0 tint -0.15
-  const SERIF = '"Yu Mincho","Hiragino Mincho ProN","MS PMincho","MS Mincho",serif';
+  // フォント順序：Excel ひな形と同じ「ＭＳ Ｐ明朝」を最優先、なければ Yu Mincho などにフォールバック
+  const SERIF = '"ＭＳ Ｐ明朝","MS PMincho","MS Mincho","Yu Mincho","Hiragino Mincho ProN",serif';
   
   // ボーダー（Excel完全準拠）
   const bThin   = "1px solid #000";
@@ -5556,27 +5557,24 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
     whiteSpace: "nowrap"
   };
 
-  // Excel本物のレンダリングに合わせ印鑑欄を「ほぼ正方形」に：
-  //   印鑑欄高さ = 16.68mm（Row10=20, Row11=0, Row12=12, Row13=17.25）
-  //   K=L=M=11.0 で印鑑1マス幅 18.27mm → 18.27×16.68 = 0.91:1（ほぼ正方形）
-  // J=11.83（Excel仕様）維持で金額列「9,999,999」も完全表示
-  // 合計 120.43 → colgroup の % 正規化で全幅 200mm に
-  const colW = [3.83, 7.16, 8.43, 5.33, 8.43, 8.43, 11.83, 5.16, 11.00, 11.83, 11.0, 11.0, 11.0];
+  // Excel ひな形完全準拠の列幅 (Excel char width 単位)
+  // 合計 108.45 → colgroup の % 正規化で全幅 200mm に
+  const colW = [3.83, 7.16, 8.43, 5.33, 8.43, 8.43, 11.83, 5.16, 11.00, 11.83, 10.16, 8.43, 8.43];
 
   // Excel 行高 (Excel仕様の pt値そのまま、印刷時は @media print で scale(0.8) で縮小)
-  // 元の合計 882pt = 311.4mm（A4縦297mmを超えるが、印刷時 scale(0.8)で 249mm に縮小）
+  // 合計 854pt = 301.4mm（A4縦297mmを1.4mm超過、印刷時 scale(0.9) で 271mm に収める）
   const SC = 1.0;
   const sc = (n) => (n * SC).toFixed(2) + "pt";
   const ROW_H = {
-    title: sc(54.75),        // rows 1-3 タイトル
+    title: sc(54.75),        // rows 1-3 タイトル（15+15.75+24）
     date: sc(15),            // row 4 発行日
     to: sc(36.75),           // row 5 宛先
     site: sc(30.75),         // row 6 事業所名
     workType: sc(25.5),      // row 7 業務内容
     contact: sc(30.75),      // row 8 ご担当者
     validUntil: sc(30.75),   // row 9 有効期限
-    intro: sc(20),           // row 10 前置き文
-    separator: sc(0),        // row 11 区切り（削除済み）
+    intro: sc(26.25),        // row 10 前置き文（Excel:26.25）
+    separator: sc(7.0),      // row 11 区切り（Excel:7.0）
     amount1: sc(12),         // row 12 見積金額1
     amount2: sc(17.25),      // row 13 見積金額2
     beforeItems: sc(15),     // row 14 スペーサー
@@ -5710,9 +5708,9 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
             </colgroup>
             <tbody>
 
-              {/* ── Row 1-3: タイトル A1:M3 結合（24pt 中央揃え） ── */}
+              {/* ── Row 1-3: タイトル A1:M3 結合（24pt MS P明朝 中央揃え、Excel仕様：全角スペース区切り） ── */}
               <tr style={{height: ROW_H.title}}>
-                <td colSpan={13} style={{...cellBase,fontSize:"24pt",textAlign:"center",verticalAlign:"middle",letterSpacing:"0.7em",paddingLeft:"0.7em"}}>御見積書</td>
+                <td colSpan={13} style={{...cellBase,fontSize:"24pt",textAlign:"center",verticalAlign:"middle",letterSpacing:"0.05em"}}>御　見　積　書</td>
               </tr>
 
               {/* ── Row 4: 発行日 L4:M4（12pt 右揃え） ── */}
@@ -5806,25 +5804,29 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 <td style={{...cellBase,background:GREY,textAlign:"center",borderTop:bThin,borderRight:bThin,borderBottom:bThin,fontSize:"11pt"}}>担当者</td>
               </tr>
 
-              {/* ── Row 10: 前置き文 A10:F10 + 印鑑枠 K10:M13（rowSpan=3、Row11削除済み） ── */}
+              {/* ── Row 10: 前置き文 A10:F10 + 印鑑枠 K10:M13（rowSpan=4、Row11は7pt隙間） ── */}
               <tr style={{height: ROW_H.intro}}>
                 <td colSpan={6} style={{...cellBase,fontSize:"10pt",verticalAlign:"middle",lineHeight:1.0,padding:"1mm 0 0 2mm",whiteSpace:"normal"}}>
                   下記の通りお見積りさせていただきます。<br/>
                   ご検討のほど、お願い申し上げます。
                 </td>
                 <td colSpan={4}></td>
-                <td rowSpan={3} style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bThin,textAlign:"center",verticalAlign:"middle",padding:0}}></td>
-                <td rowSpan={3} style={{...cellBase,borderRight:bThin,borderBottom:bThin,textAlign:"center",verticalAlign:"middle",padding:0}}></td>
-                <td rowSpan={3} style={{...cellBase,borderRight:bThin,borderBottom:bThin,textAlign:"center",verticalAlign:"middle",padding:0}}>
+                <td rowSpan={4} style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bThin,textAlign:"center",verticalAlign:"middle",padding:0}}></td>
+                <td rowSpan={4} style={{...cellBase,borderRight:bThin,borderBottom:bThin,textAlign:"center",verticalAlign:"middle",padding:0}}></td>
+                <td rowSpan={4} style={{...cellBase,borderRight:bThin,borderBottom:bThin,textAlign:"center",verticalAlign:"middle",padding:0}}>
                   <HankoStamp name={authorLastName}/>
                 </td>
               </tr>
 
-              {/* ── Row 11: separator (削除済み、印鑑欄正方形化のため) ── */}
+              {/* ── Row 11: 区切り行（7pt の小さな隙間、Excel仕様準拠） ── */}
+              <tr style={{height: ROW_H.separator}}>
+                <td colSpan={10}></td>
+                {/* K, L, M は前の行から rowSpan=4 で延びる */}
+              </tr>
 
               {/* ── Row 12-13: 見積金額 A12:C13 (grayfill 14pt) / 金額 D12:H13 (20pt) / (税込) I12:I13 (11pt) ── J列は罫線なし完全空白 ── */}
               <tr style={{height: ROW_H.amount1}}>
-                <td colSpan={3} rowSpan={2} style={{...cellBase,background:GREY,fontSize:"14pt",textAlign:"center",verticalAlign:"middle",letterSpacing:"0.4em",paddingLeft:"calc(2mm + 0.4em)",border:bThin}}>見積金額</td>
+                <td colSpan={3} rowSpan={2} style={{...cellBase,background:GREY,fontSize:"14pt",textAlign:"center",verticalAlign:"middle",letterSpacing:"0.05em",border:bThin}}>見　積　金　額</td>
                 <td colSpan={5} rowSpan={2} style={{...cellBase,fontSize:"20pt",textAlign:"right",verticalAlign:"middle",border:bThin,fontWeight:400,paddingRight:"4mm"}}>¥{grandTotal.toLocaleString()}-</td>
                 <td rowSpan={2} style={{...cellBase,fontSize:"11pt",textAlign:"center",verticalAlign:"middle",border:bThin}}>（税込）</td>
                 <td rowSpan={2}></td>
@@ -5962,9 +5964,9 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 <td colSpan={13}></td>
               </tr>
 
-              {/* ── Row 38: 備考見出し A38:M38（18.75pt 左揃え）── */}
+              {/* ── Row 38: 備考見出し A38:M38（18.75pt 左揃え、Excel仕様：'備\u3000考' そのまま）── */}
               <tr style={{height: ROW_H.remarksLabel}}>
-                <td colSpan={13} style={{...cellBase,letterSpacing:"0.5em",paddingLeft:"calc(2mm + 0.5em)",borderTop:bThin,borderLeft:bThin,borderRight:bThin}}>備　考</td>
+                <td colSpan={13} style={{...cellBase,fontSize:"11pt",paddingLeft:"3mm",borderTop:bThin,borderLeft:bThin,borderRight:bThin,letterSpacing:"0.05em"}}>備　考</td>
               </tr>
 
               {/* ── Row 39: 備考記入欄 A39:M39（87.75×0.92=80.73pt 折返し有効、11pt）── 内部divでminHeight強制確保 ── */}
