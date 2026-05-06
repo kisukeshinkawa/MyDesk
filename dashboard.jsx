@@ -5708,9 +5708,16 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
             </colgroup>
             <tbody>
 
-              {/* ── Row 1-3: タイトル A1:M3 結合（24pt MS P明朝 中央揃え、Excel仕様：全角スペース区切り） ── */}
+              {/* ── Row 1-3: タイトル A1:M3 結合（24pt MS P明朝、Excel「分散」alignment相当：左右マージンを取って均等分散） ── */}
               <tr style={{height: ROW_H.title}}>
-                <td colSpan={13} style={{...cellBase,fontSize:"24pt",textAlign:"center",verticalAlign:"middle",letterSpacing:"0.05em"}}>御　見　積　書</td>
+                <td colSpan={13} style={{...cellBase,fontSize:"24pt",verticalAlign:"middle",padding:0}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",height:"100%",margin:"0 38mm",fontFamily:SERIF}}>
+                    <span>御</span>
+                    <span>見</span>
+                    <span>積</span>
+                    <span>書</span>
+                  </div>
+                </td>
               </tr>
 
               {/* ── Row 4: 発行日 L4:M4（12pt 右揃え） ── */}
@@ -5826,8 +5833,15 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
 
               {/* ── Row 12-13: 見積金額 A12:C13 (grayfill 14pt) / 金額 D12:H13 (20pt) / (税込) I12:I13 (11pt) ── J列は罫線なし完全空白 ── */}
               <tr style={{height: ROW_H.amount1}}>
-                <td colSpan={3} rowSpan={2} style={{...cellBase,background:GREY,fontSize:"14pt",textAlign:"center",verticalAlign:"middle",letterSpacing:"0.05em",border:bThin}}>見　積　金　額</td>
-                <td colSpan={5} rowSpan={2} style={{...cellBase,fontSize:"20pt",textAlign:"right",verticalAlign:"middle",border:bThin,fontWeight:400,paddingRight:"4mm"}}>¥{grandTotal.toLocaleString()}-</td>
+                <td colSpan={3} rowSpan={2} style={{...cellBase,background:GREY,fontSize:"14pt",verticalAlign:"middle",border:bThin,padding:0}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",height:"100%",margin:"0 5mm",fontFamily:SERIF}}>
+                    <span>見</span>
+                    <span>積</span>
+                    <span>金</span>
+                    <span>額</span>
+                  </div>
+                </td>
+                <td colSpan={5} rowSpan={2} style={{...cellBase,fontSize:"20pt",textAlign:"center",verticalAlign:"middle",border:bThin,fontWeight:400}}>¥{grandTotal.toLocaleString()}-</td>
                 <td rowSpan={2} style={{...cellBase,fontSize:"11pt",textAlign:"center",verticalAlign:"middle",border:bThin}}>（税込）</td>
                 <td rowSpan={2}></td>
                 {/* K, L, M は前の行から rowSpan=4 で延びる */}
@@ -5841,14 +5855,30 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 <td colSpan={13}></td>
               </tr>
 
-              {/* ── Row 15: 明細ヘッダ（A15+B15:F15+G15+H15+I15+J15+K15:M15、全セル grayfill 中央揃え 11pt）── */}
+              {/* ── Row 15: 明細ヘッダ（A15+B15:F15+G15+H15+I15+J15+K15:M15、全セル grayfill 中央揃え 11pt、ラベルは均等分散） ── */}
               <tr style={{height: ROW_H.itemHeader}}>
                 <td style={{...cellBase,background:GREY,textAlign:"center",border:bThin,padding:0}}></td>
-                <td colSpan={5} style={{...cellBase,background:GREY,textAlign:"center",border:bThin,fontSize:"11pt"}}>内　容</td>
-                <td style={{...cellBase,background:GREY,textAlign:"center",border:bThin,fontSize:"11pt"}}>数　量</td>
+                <td colSpan={5} style={{...cellBase,background:GREY,border:bThin,fontSize:"11pt",padding:0}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",height:"100%",margin:"0 30mm",fontFamily:SERIF}}>
+                    <span>内</span><span>容</span>
+                  </div>
+                </td>
+                <td style={{...cellBase,background:GREY,border:bThin,fontSize:"11pt",padding:0}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",height:"100%",margin:"0 4mm",fontFamily:SERIF}}>
+                    <span>数</span><span>量</span>
+                  </div>
+                </td>
                 <td style={{...cellBase,background:GREY,textAlign:"center",border:bThin,fontSize:"11pt",padding:0}}>単位</td>
-                <td style={{...cellBase,background:GREY,textAlign:"center",border:bThin,fontSize:"11pt"}}>単　価</td>
-                <td style={{...cellBase,background:GREY,textAlign:"center",border:bThin,fontSize:"11pt"}}>金　額</td>
+                <td style={{...cellBase,background:GREY,border:bThin,fontSize:"11pt",padding:0}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",height:"100%",margin:"0 5mm",fontFamily:SERIF}}>
+                    <span>単</span><span>価</span>
+                  </div>
+                </td>
+                <td style={{...cellBase,background:GREY,border:bThin,fontSize:"11pt",padding:0}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",height:"100%",margin:"0 5mm",fontFamily:SERIF}}>
+                    <span>金</span><span>額</span>
+                  </div>
+                </td>
                 <td colSpan={3} style={{...cellBase,background:GREY,textAlign:"center",border:bThin,fontSize:"11pt"}}>備考欄</td>
               </tr>
 
@@ -5964,9 +5994,13 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
                 <td colSpan={13}></td>
               </tr>
 
-              {/* ── Row 38: 備考見出し A38:M38（18.75pt 左揃え、Excel仕様：'備\u3000考' そのまま）── */}
+              {/* ── Row 38: 備考見出し A38:M38（18.75pt 左揃え、Excel仕様：'備\u3000考' 均等分散） ── */}
               <tr style={{height: ROW_H.remarksLabel}}>
-                <td colSpan={13} style={{...cellBase,fontSize:"11pt",paddingLeft:"3mm",borderTop:bThin,borderLeft:bThin,borderRight:bThin,letterSpacing:"0.05em"}}>備　考</td>
+                <td colSpan={13} style={{...cellBase,fontSize:"11pt",borderTop:bThin,borderLeft:bThin,borderRight:bThin,padding:0}}>
+                  <div style={{display:"flex",alignItems:"center",height:"100%",fontFamily:SERIF,paddingLeft:"3mm",gap:"2mm"}}>
+                    <span>備</span><span>考</span>
+                  </div>
+                </td>
               </tr>
 
               {/* ── Row 39: 備考記入欄 A39:M39（87.75×0.92=80.73pt 折返し有効、11pt）── 内部divでminHeight強制確保 ── */}
