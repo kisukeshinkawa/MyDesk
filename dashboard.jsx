@@ -5587,6 +5587,25 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
     remarksContent: sc(87.75), // row 39 備考記入欄
   };
 
+  // ─── Excel完全準拠版PDF（Lambda経由） ──────────────────────
+  const [pdfState, setPdfState] = React.useState({status: "idle", url: "", error: ""});
+  const openExcelPdf = async () => {
+    setPdfState({status: "loading", url: "", error: ""});
+    try {
+      const {pdfUrl} = await generateQuotePdf(quote, company, authorLastName);
+      setPdfState({status: "ready", url: pdfUrl, error: ""});
+    } catch (e) {
+      setPdfState({status: "error", url: "", error: String(e?.message || e)});
+    }
+  };
+  const closeExcelPdf = () => {
+    if (pdfState.url) { try { URL.revokeObjectURL(pdfState.url); } catch(e){} }
+    setPdfState({status: "idle", url: "", error: ""});
+  };
+  React.useEffect(() => {
+    return () => { if (pdfState.url) { try { URL.revokeObjectURL(pdfState.url); } catch(e){} } };
+  }, []);
+
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:1000,overflow:"auto",padding:"0.5rem"}}>
       <div style={{maxWidth:"calc(210mm + 2rem)",margin:"0 auto"}}>
@@ -5595,6 +5614,7 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
           <button onClick={onClose} style={{padding:"0.4rem 0.7rem",borderRadius:"0.4rem",border:"1px solid #d1d5db",background:"white",fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>← 戻る</button>
           <span style={{fontSize:"0.78rem",color:"#6b7280",fontWeight:700,whiteSpace:"nowrap"}}>見積書プレビュー</span>
           <div style={{flex:"1 1 auto",minWidth:0}}/>
+          <button onClick={openExcelPdf} disabled={pdfState.status==="loading"} style={{padding:"0.4rem 0.85rem",borderRadius:"0.4rem",border:"1px solid #059669",background:"white",color:"#059669",fontWeight:700,fontSize:"0.8rem",cursor:pdfState.status==="loading"?"wait":"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>{pdfState.status==="loading" ? "⏳ 生成中..." : "📄 Excel完全準拠PDF"}</button>
           <button onClick={() => {
             // モバイル対応：window.print()を同期的に呼ぶ（ジェスチャーコンテキスト保持）
             const originalTitle = document.title;
@@ -6017,6 +6037,47 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
         </div>{/* /quote-scale-outer */}
         </div>{/* /quote-preview-wrapper */}
       </div>
+
+      {/* ─── Excel完全準拠版PDFモーダル ─────────────────────── */}
+      {pdfState.status !== "idle" && (
+        <div className="no-print" style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:1100,display:"flex",flexDirection:"column"}} onClick={(e)=>{ if(e.target===e.currentTarget) closeExcelPdf(); }}>
+          <div style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.5rem 0.75rem",background:"#f9fafb",borderBottom:"1px solid #e5e7eb",flexWrap:"wrap"}}>
+            <button onClick={closeExcelPdf} style={{padding:"0.4rem 0.7rem",borderRadius:"0.4rem",border:"1px solid #d1d5db",background:"white",fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}}>← 戻る</button>
+            <span style={{fontSize:"0.78rem",color:"#059669",fontWeight:700}}>📄 Excel完全準拠PDF</span>
+            <span style={{fontSize:"0.7rem",color:"#6b7280"}}>※ Excelひな形を直接PDF化（フォント・余白・印鑑欄まで完全再現）</span>
+            <div style={{flex:"1 1 auto",minWidth:0}}/>
+            {pdfState.status === "ready" && (
+              <>
+                <a href={pdfState.url} download={`見積書_${(quote.to||"").replace(/[\\/:*?"<>|]/g,"_").slice(0,30)}_${(quote.issuedDate||"").replace(/-/g,"")}.pdf`} style={{padding:"0.4rem 0.85rem",borderRadius:"0.4rem",border:"1px solid #2563eb",background:"white",color:"#2563eb",fontWeight:700,fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit",textDecoration:"none"}}>⬇ ダウンロード</a>
+                <button onClick={()=>{ const w=window.open(pdfState.url,"_blank"); if(w) setTimeout(()=>{ try{w.print();}catch(e){} }, 600); }} style={{padding:"0.4rem 0.85rem",borderRadius:"0.4rem",border:"none",background:"#2563eb",color:"white",fontWeight:700,fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit"}}>🖨 印刷</button>
+              </>
+            )}
+          </div>
+          <div style={{flex:1,overflow:"auto",padding:"0.5rem",display:"flex",alignItems:"flex-start",justifyContent:"center"}}>
+            {pdfState.status === "loading" && (
+              <div style={{padding:"3rem",textAlign:"center",color:"white"}}>
+                <div style={{fontSize:"3rem",marginBottom:"1rem"}}>⏳</div>
+                <div style={{fontSize:"1rem",fontWeight:700,marginBottom:"0.5rem"}}>PDF生成中...</div>
+                <div style={{fontSize:"0.85rem",opacity:0.8}}>初回は5〜10秒程度かかります（LibreOfficeコールドスタート）</div>
+              </div>
+            )}
+            {pdfState.status === "error" && (
+              <div style={{padding:"2rem",background:"white",borderRadius:"0.5rem",maxWidth:"600px",width:"100%"}}>
+                <div style={{fontSize:"2rem",marginBottom:"1rem",color:"#dc2626"}}>❌</div>
+                <div style={{fontWeight:700,marginBottom:"0.5rem"}}>PDF生成に失敗しました</div>
+                <div style={{fontSize:"0.85rem",color:"#6b7280",fontFamily:"monospace",background:"#f9fafb",padding:"0.5rem",borderRadius:"0.25rem",whiteSpace:"pre-wrap",wordBreak:"break-all"}}>{pdfState.error}</div>
+                <div style={{marginTop:"1rem",display:"flex",gap:"0.5rem"}}>
+                  <button onClick={openExcelPdf} style={{padding:"0.4rem 0.85rem",borderRadius:"0.4rem",border:"1px solid #2563eb",background:"white",color:"#2563eb",fontWeight:700,fontSize:"0.8rem",cursor:"pointer"}}>🔄 再試行</button>
+                  <button onClick={closeExcelPdf} style={{padding:"0.4rem 0.85rem",borderRadius:"0.4rem",border:"1px solid #d1d5db",background:"white",fontSize:"0.8rem",cursor:"pointer"}}>閉じる</button>
+                </div>
+              </div>
+            )}
+            {pdfState.status === "ready" && (
+              <iframe src={pdfState.url} style={{width:"100%",maxWidth:"calc(210mm + 4rem)",height:"calc(100vh - 80px)",border:"none",background:"white",boxShadow:"0 4px 20px rgba(0,0,0,0.3)"}} title="見積書PDF"/>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -8760,6 +8821,46 @@ const DAILY_TASK_NOTIFY_URL = cleanUrl(
   (typeof import.meta !== "undefined" && import.meta.env?.VITE_DAILY_TASK_NOTIFY_URL)
   || "https://DAILY_TASK_NOTIFY_PLACEHOLDER.lambda-url.ap-northeast-1.on.aws/"
 );
+
+// ─── 見積書PDF生成Lambda URL（Excel完全準拠）───────────────────────
+const QUOTE_PDF_URL = cleanUrl(
+  (typeof import.meta !== "undefined" && import.meta.env?.VITE_QUOTE_PDF_URL)
+  || "https://QUOTE_PDF_PLACEHOLDER.lambda-url.ap-northeast-1.on.aws/"
+);
+
+/**
+ * 見積書PDF生成（Lambda + LibreOffice + Excelテンプレート）
+ * Excelひな形をそのままPDF化するので、本物と完全一致
+ * @returns Promise<{pdfBlob: Blob, pdfUrl: string}>
+ */
+async function generateQuotePdf(quote, company, authorLastName) {
+  const url = QUOTE_PDF_URL;
+  if (!url || url.includes("PLACEHOLDER")) {
+    throw new Error("VITE_QUOTE_PDF_URL が未設定です。Amplify環境変数を設定してください。");
+  }
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-mydesk-secret": "mydesk2026secret",
+    },
+    body: JSON.stringify({ quote, company, authorLastName }),
+  });
+  if (!resp.ok) {
+    let msg = `HTTP ${resp.status}`;
+    try { const j = await resp.json(); msg += ": " + (j.error || JSON.stringify(j).slice(0,200)); } catch(e){}
+    throw new Error(msg);
+  }
+  const data = await resp.json();
+  if (!data.pdf_base64) throw new Error("PDFデータが返却されませんでした");
+  // base64 → Blob
+  const bin = atob(data.pdf_base64);
+  const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  const pdfBlob = new Blob([arr], { type: "application/pdf" });
+  const pdfUrl = URL.createObjectURL(pdfBlob);
+  return { pdfBlob, pdfUrl };
+}
 
 /**
  * メール送信ヘルパー (Resend経由)
