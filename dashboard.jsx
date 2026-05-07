@@ -5606,6 +5606,11 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
     return () => { if (pdfState.url) { try { URL.revokeObjectURL(pdfState.url); } catch(e){} } };
   }, []);
 
+  // ★ プレビューを開いた瞬間に自動でExcel完全準拠PDFを生成して表示
+  React.useEffect(() => {
+    openExcelPdf();
+  }, []); // eslint-disable-line
+
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:1000,overflow:"auto",padding:"0.5rem"}}>
       <div style={{maxWidth:"calc(210mm + 2rem)",margin:"0 auto"}}>
