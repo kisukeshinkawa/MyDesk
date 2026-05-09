@@ -9396,25 +9396,36 @@ function LinkBizcardModal({ allCards=[], entityType, entityId, entityName, users
     });
 
     // Step2: 検索ワードがあればスコアリングしてソート
+    //   - ヒットしたカードを最上部に出す
+    //   - ヒットしない他のカードもその下に表示する（件数の混乱防止）
     if(searchQ) {
       const norm = s => (s||"").replace(/[ 　	]/g,"").toLowerCase();
       const scored = list.map(card => {
         const fullName = norm(`${card.lastName||""}${card.firstName||""}`);
+        const lastName = norm(card.lastName||"");
+        const firstName= norm(card.firstName||"");
         const company  = norm(card.company||"");
         const title    = norm(card.title||"");
         const dept     = norm(card.department||"");
         const email    = norm(card.email||"");
-        // スコア: 低いほど上位 (0=名前完全一致, 1=名前部分一致, 2=会社一致, 3=役職/部署, 99=ヒットなし)
+        const phone    = norm((card.telDirect||"")+(card.mobile||"")+(card.telCompany||""));
+        // スコア: 低いほど上位
         let score = 99;
         if(fullName === searchQ)             score = 0;
-        else if(fullName.includes(searchQ))  score = 1;
-        else if(company.includes(searchQ))   score = 2;
-        else if(title.includes(searchQ) || dept.includes(searchQ)) score = 3;
-        else if(email.includes(searchQ))     score = 4;
+        else if(lastName === searchQ || firstName === searchQ) score = 1;
+        else if(fullName.includes(searchQ))  score = 2;
+        else if(lastName.includes(searchQ) || firstName.includes(searchQ)) score = 3;
+        else if(company.includes(searchQ))   score = 4;
+        else if(title.includes(searchQ) || dept.includes(searchQ)) score = 5;
+        else if(email.includes(searchQ))     score = 6;
+        else if(phone.includes(searchQ))     score = 7;
         return { card, score };
       });
-      // スコア99（ヒットなし）を除外
-      return scored.filter(x=>x.score<99).sort((a,b)=>a.score-b.score).map(x=>x.card);
+      // ヒットしたものを最上部、ヒットしないものはその下に並べる
+      const hits = scored.filter(x=>x.score<99).sort((a,b)=>a.score-b.score).map(x=>x.card);
+      const misses = scored.filter(x=>x.score===99).map(x=>x.card)
+        .sort((a,b)=>(a.company||"").localeCompare(b.company||"","ja")||(`${a.lastName||""}${a.firstName||""}`).localeCompare(`${b.lastName||""}${b.firstName||""}`,"ja"));
+      return [...hits, ...misses];
     }
 
     // 検索なし：会社名→姓の五十音順
@@ -9463,7 +9474,18 @@ function LinkBizcardModal({ allCards=[], entityType, entityId, entityName, users
         {/* リスト */}
         <div style={{overflowY:"auto",flex:1,padding:"0.4rem 0.75rem"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0.3rem 0.25rem 0.4rem"}}>
-            <span style={{fontSize:"0.72rem",color:C.textMuted}}>{candidates.length}件{searchQ&&` (「${search}」で絞り込み中)`}</span>
+            <span style={{fontSize:"0.72rem",color:C.textMuted}}>
+              {(()=>{
+                if(!searchQ) return `${candidates.length}件`;
+                // 検索中: ヒット件数 / 全件
+                const norm = s => (s||"").replace(/[ 　	]/g,"").toLowerCase();
+                const hitCount = candidates.filter(c=>{
+                  const fields=[c.lastName,c.firstName,`${c.lastName||""}${c.firstName||""}`,c.company,c.title,c.department,c.email,c.telDirect,c.mobile,c.telCompany];
+                  return fields.some(v=>norm(v).includes(searchQ));
+                }).length;
+                return `${hitCount}件ヒット / 全${candidates.length}件中（「${search}」）`;
+              })()}
+            </span>
             {candidates.length>0&&<button onClick={toggleAll} style={{fontSize:"0.75rem",fontWeight:700,color:typeColor,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit"}}>{selected.size===candidates.length?"全解除":"全選択"}</button>}
           </div>
           {candidates.length===0&&(
@@ -11291,6 +11313,21 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   const [memoEdit,     setMemoEdit]     = useState(null); // {entityId, memoId, text}
   const [chatEdit,     setChatEdit]     = useState(null); // {entityId, chatId, text}
   const [activeDetail, setActiveDetail] = useState("timeline"); // memo|chat
+
+  // ★ 自治体/企業/業者の詳細画面に入った瞬間、画面を最上部にリセット
+  //   iOS Safari は画面遷移時に scrollTop が自動初期化されないため、
+  //   「タップしたら途中の画面から始まる」現象を防ぐ
+  React.useEffect(() => {
+    if ((activeMuni && muniScreen === "muniDetail") || activeCompany || activeVendor) {
+      try {
+        window.scrollTo(0, 0);
+        // iOS で遅延発火のレイアウトに備え、念のため二度実行
+        setTimeout(() => { try { window.scrollTo(0, 0); } catch(e){} }, 50);
+        setTimeout(() => { try { window.scrollTo(0, 0); } catch(e){} }, 200);
+      } catch(e) { /* noop */ }
+    }
+  }, [activeMuni, activeCompany, activeVendor, muniScreen]);
+
   // bulk select
   const [bulkMode,     setBulkMode]     = useState(false);
   const [bulkSelected, setBulkSelected] = useState(new Set());
@@ -11381,9 +11418,9 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     const dup = bizCards.find(bc=>bc.company===card.company&&bc.lastName===card.lastName&&bc.firstName===card.firstName);
     const newOwner = (card.owners||[card.owner||""]).filter(Boolean)[0] || "";
     if(dup){
-      const existOwners = dup.owners || (dup.owner ? [dup.owner] : []);
+      const existOwners = [...new Set((dup.owners || (dup.owner ? [dup.owner] : [])).filter(Boolean))];
       if(newOwner && !existOwners.includes(newOwner)){
-        // 同一人物の別所有者 → ownersに追加して統合
+        // 同一人物の別所有者 → ownersに追加して統合（重複なし）
         const merged = {...dup, owners:[...existOwners, newOwner], owner:undefined};
         const nd = {...data, businessCards: bizCards.map(bc=>bc.id===dup.id ? merged : bc)};
         save(nd);
@@ -11398,7 +11435,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
         setBcDupModal({
           existing:dup,
           incoming:`${card.lastName} ${card.firstName}（${card.company}）`,
-          onAdd:()=>{ _commitBizCard({...card,owners:[newOwner],owner:undefined}); setBcDupModal(null); setSheet(null); },
+          onAdd:()=>{ _commitBizCard({...card,owners:newOwner?[newOwner]:[],owner:undefined}); setBcDupModal(null); setSheet(null); },
           onSkip:()=>{ setBcDupModal(null); setBcActiveId(dup.id); setBcScreen("detail"); setSheet(null); },
           onCancel:()=>setBcDupModal(null),
         });
@@ -12035,7 +12072,130 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       window.alert(r.updated > 0 ? `✅ ${r.updated}件のエンティティの担当者を補完しました` : "補完対象はありませんでした");
       return r;
     };
-  }, [performBackfill]);
+
+    // ★ 既存の重複企業/業者/自治体をマージするクリーンアップユーティリティ
+    //   コンソールで window.MyDeskMergeDuplicates() を実行すると、
+    //   normBizName が同一の企業/業者/自治体を1つに統合する（最古の方を残す）
+    //   関連する名刺の salesRef も新IDに張り直す
+    window.MyDeskMergeDuplicates = (dryRun=false) => {
+      const norm = (s) => (s||"")
+        .replace(/\s*(株式会社|有限会社|合同会社|一般社団法人|一般財団法人|公益社団法人|公益財団法人|特定非営利活動法人|NPO法人|社会福祉法人|学校法人|宗教法人|医療法人)\s*/gi,"")
+        .replace(/[（(]株[)）]|[（(]有[)）]|[（(]合[)）]|[（(]社[)）]/g,"")
+        .replace(/[Ａ-Ｚａ-ｚ０-９]/g, ch=>String.fromCharCode(ch.charCodeAt(0)-0xFEE0))
+        .replace(/[ァ-ン]/g, ch=>String.fromCharCode(ch.charCodeAt(0)-0x60))
+        .replace(/[\s\u3000・　]/g,"")
+        .replace(/[-－ー〜～、。・]/g,"")
+        .toLowerCase();
+      const summary = { companies:[], vendors:[], municipalities:[] };
+      let nd = JSON.parse(JSON.stringify(data));
+      const remap = {}; // {entityType: {oldId: newId}}
+
+      const mergeGroup = (key, label) => {
+        const list = nd[key] || [];
+        const groups = {};
+        list.forEach(e => {
+          const k = norm(e.name);
+          if(!k) return;
+          if(!groups[k]) groups[k] = [];
+          groups[k].push(e);
+        });
+        const merged = [];
+        const dropIds = new Set();
+        const localRemap = {};
+        Object.values(groups).forEach(g => {
+          if(g.length === 1) { merged.push(g[0]); return; }
+          // 最古（createdAt 昇順、無ければidの数値）を残し、他をマージ
+          g.sort((a,b)=>{
+            const ta = new Date(a.createdAt||0).getTime();
+            const tb = new Date(b.createdAt||0).getTime();
+            return ta - tb;
+          });
+          const keep = {...g[0]};
+          for(let i=1;i<g.length;i++){
+            const dup = g[i];
+            // assigneeIds をマージ
+            const merged2 = [...new Set([...(keep.assigneeIds||[]), ...(dup.assigneeIds||[])])];
+            keep.assigneeIds = merged2;
+            // contacts(先方担当者)もマージ
+            if(Array.isArray(dup.contacts) && dup.contacts.length){
+              keep.contacts = [...(keep.contacts||[]), ...dup.contacts];
+            }
+            // memos / chat / approachLogs もマージ
+            ["memos","chat","approachLogs","files"].forEach(f=>{
+              if(Array.isArray(dup[f]) && dup[f].length){
+                keep[f] = [...(keep[f]||[]), ...dup[f]];
+              }
+            });
+            // 自治体IDsもマージ
+            if(key==="vendors" && Array.isArray(dup.municipalityIds)){
+              keep.municipalityIds = [...new Set([...(keep.municipalityIds||[]), ...dup.municipalityIds])];
+            }
+            // phone/address は keep が空なら dup の値を使う
+            if(!keep.phone && dup.phone) keep.phone = dup.phone;
+            if(!keep.address && dup.address) keep.address = dup.address;
+            if(!keep.email && dup.email) keep.email = dup.email;
+
+            dropIds.add(String(dup.id));
+            localRemap[String(dup.id)] = String(keep.id);
+            summary[key].push({merged: dup.name, keptId: keep.id, droppedId: dup.id});
+          }
+          merged.push(keep);
+        });
+        if(Object.keys(localRemap).length){
+          remap[key] = localRemap;
+          nd[key] = merged;
+        }
+      };
+
+      mergeGroup("companies","企業");
+      mergeGroup("vendors","業者");
+      mergeGroup("municipalities","自治体");
+
+      // 名刺の salesRef を新IDに張り直す
+      const refTypeMap = { "企業":"companies", "業者":"vendors", "自治体":"municipalities" };
+      nd.businessCards = (nd.businessCards||[]).map(bc => {
+        if(!bc.salesRef) return bc;
+        const refKey = refTypeMap[bc.salesRef.type];
+        if(!refKey) return bc;
+        const m = remap[refKey];
+        if(!m) return bc;
+        const newId = m[String(bc.salesRef.id)];
+        if(!newId) return bc;
+        return {...bc, salesRef: {...bc.salesRef, id: newId}};
+      });
+
+      // タスク・プロジェクトの salesRef も張り直す
+      ["tasks","projects"].forEach(tkey=>{
+        if(!Array.isArray(nd[tkey])) return;
+        nd[tkey] = nd[tkey].map(t => {
+          if(!t.salesRef) return t;
+          const refKey = refTypeMap[t.salesRef.type];
+          if(!refKey) return t;
+          const m = remap[refKey];
+          if(!m) return t;
+          const newId = m[String(t.salesRef.id)];
+          if(!newId) return t;
+          return {...t, salesRef: {...t.salesRef, id: newId}};
+        });
+      });
+
+      const totalMerged = summary.companies.length + summary.vendors.length + summary.municipalities.length;
+      console.log("[MyDeskMergeDuplicates] 統合結果:", summary);
+      if(dryRun){
+        console.log(`[DryRun] ${totalMerged}件をマージ予定（保存はしません）`);
+        return {dryRun:true, totalMerged, summary};
+      }
+      if(totalMerged === 0){
+        window.alert("マージ対象の重複は見つかりませんでした");
+        return {totalMerged:0};
+      }
+      const ok = window.confirm(`重複を統合します:\n  企業: ${summary.companies.length}件\n  業者: ${summary.vendors.length}件\n  自治体: ${summary.municipalities.length}件\n\n実行しますか？（最古のレコードを残し、他をマージ）`);
+      if(!ok){ return {cancelled:true}; }
+      save(nd);
+      window.alert(`✅ ${totalMerged}件の重複を統合しました`);
+      return {totalMerged, summary};
+    };
+  }, [performBackfill, data]);
 
     // ── アプローチ履歴を追加 ────────────────────────────────────────────────
   // ── 過去のアプローチログから担当者を一括補完（既存データ修復用）─────
@@ -16560,14 +16720,7 @@ ${orig}`})
                 </div>
                 {(card.owners||[card.owner]).filter(Boolean).length>0&&(
                 <div style={{marginTop:"0.4rem",display:"flex",flexWrap:"wrap",gap:"0.3rem"}}>
-                  {(card.owners||[card.owner]).filter(Boolean).map(o=>(
-                    <span key={o} style={{fontSize:"0.75rem",fontWeight:700,color:"#7c3aed",background:"#ede9fe",borderRadius:"0.4rem",padding:"0.2rem 0.5rem"}}>👤 {o}</span>
-                  ))}
-                </div>
-              )}
-                {(card.owners||[card.owner]).filter(Boolean).length>0&&(
-                <div style={{marginTop:"0.4rem",display:"flex",flexWrap:"wrap",gap:"0.3rem"}}>
-                  {(card.owners||[card.owner]).filter(Boolean).map(o=>(
+                  {[...new Set((card.owners||[card.owner]).filter(Boolean))].map(o=>(
                     <span key={o} style={{fontSize:"0.75rem",fontWeight:700,color:"#7c3aed",background:"#ede9fe",borderRadius:"0.4rem",padding:"0.2rem 0.5rem"}}>👤 {o}</span>
                   ))}
                 </div>
