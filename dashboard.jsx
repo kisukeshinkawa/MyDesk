@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-05-v37-vendor-info-storage-detail"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-09-v38-dup-fix-preview-modal"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -14831,7 +14831,7 @@ ${orig}`})
             <FieldLbl label="備考"><Textarea value={form.notes||""} onChange={e=>setForm({...form,notes:e.target.value})} style={{height:70}} placeholder="メモ、特記事項など"/></FieldLbl>
             <div style={{display:"flex",gap:"0.625rem"}}>
               <Btn variant="secondary" style={{flex:1}} onClick={()=>setSheet(null)}>キャンセル</Btn>
-              <Btn style={{flex:2}} onClick={saveCompany} disabled={!form.name?.trim()}>追加する</Btn>
+              <Btn style={{flex:2}} onClick={()=>saveCompany()} disabled={!form.name?.trim()}>追加する</Btn>
             </div>
           </Sheet>
         )}
@@ -15295,7 +15295,7 @@ ${orig}`})
               <FieldLbl label="備考"><Textarea value={form.notes||""} onChange={e=>setForm({...form,notes:e.target.value})} style={{height:70}}/></FieldLbl>
               <div style={{display:"flex",gap:"0.625rem"}}>
                 <Btn variant="secondary" style={{flex:1}} onClick={()=>setSheet(null)}>キャンセル</Btn>
-                <Btn style={{flex:2}} onClick={saveVendor} disabled={!form.name?.trim()}>保存</Btn>
+                <Btn style={{flex:2}} onClick={()=>saveVendor()} disabled={!form.name?.trim()}>保存</Btn>
               </div>
             </Sheet>
           )}
@@ -15682,7 +15682,7 @@ ${orig}`})
             <FieldLbl label="備考"><Textarea value={form.notes||""} onChange={e=>setForm({...form,notes:e.target.value})} style={{height:60}}/></FieldLbl>
             <div style={{display:"flex",gap:"0.625rem"}}>
               <Btn variant="secondary" style={{flex:1}} onClick={()=>setSheet(null)}>キャンセル</Btn>
-              <Btn style={{flex:2}} onClick={saveVendor} disabled={!form.name?.trim()}>追加する</Btn>
+              <Btn style={{flex:2}} onClick={()=>saveVendor()} disabled={!form.name?.trim()}>追加する</Btn>
             </div>
           </Sheet>
         )}
@@ -16160,7 +16160,7 @@ ${orig}`})
             <FieldLbl label="備考"><Textarea value={form.notes||""} onChange={e=>setForm({...form,notes:e.target.value})} style={{height:70}} placeholder="メモ、特記事項など"/></FieldLbl>
             <div style={{display:"flex",gap:"0.625rem"}}>
               <Btn variant="secondary" style={{flex:1}} onClick={()=>setSheet(null)}>キャンセル</Btn>
-              <Btn style={{flex:2}} onClick={saveMuni} disabled={!form.name?.trim()}>保存</Btn>
+              <Btn style={{flex:2}} onClick={()=>saveMuni()} disabled={!form.name?.trim()}>保存</Btn>
             </div>
           </Sheet>
         )}
@@ -16650,7 +16650,7 @@ ${orig}`})
                               <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
                               <div style={{display:"flex",gap:"0.625rem"}}>
                                 <Btn variant="secondary" style={{flex:1}} onClick={()=>setSheet(null)}>キャンセル</Btn>
-                                <Btn style={{flex:2}} onClick={saveMuni} disabled={!form.name?.trim()}>追加する</Btn>
+                                <Btn style={{flex:2}} onClick={()=>saveMuni()} disabled={!form.name?.trim()}>追加する</Btn>
                               </div>
                             </Sheet>
                           );
@@ -16832,6 +16832,11 @@ ${orig}`})
         {/* 重複検出モーダル */}
         {dupModal&&<DupModal existing={dupModal.existing} incoming={dupModal.incoming} dupReason={dupModal.dupReason} onKeepBoth={dupModal.onKeepBoth} onUseExisting={dupModal.onUseExisting} onCancel={()=>setDupModal(null)}/>}
 
+      </>}{/* end salesTab==="muni" */}
+
+      {/* ── 削除モーダル（全タブ共通） ── */}
+      {DeleteModal}
+
         {/* ★ 重複統合プレビューモーダル */}
         {mergePreview && (()=>{
           const userName = (uid)=> (users||[]).find(u=>String(u.id)===String(uid))?.name || "";
@@ -16967,10 +16972,7 @@ ${orig}`})
             </div>
           );
         })()}
-      </>}{/* end salesTab==="muni" */}
 
-      {/* ── 削除モーダル（全タブ共通） ── */}
-      {DeleteModal}
 
       {/* ── 名刺タブ ── */}
       {salesTab==="bizcard"&&(()=>{
