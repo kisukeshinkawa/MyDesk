@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-09-v39-stale-closure-fix"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-09-v40-debug-overlay"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -16858,6 +16858,27 @@ ${orig}`})
       {DeleteModal}
 
         {/* ★ 重複統合プレビューモーダル */}
+        {/* ★★ DEBUG: シンプルな overlay。これが見えなければJSX構造に問題あり */}
+        {mergePreview && (
+          <div style={{
+            position:"fixed",
+            top:"50%", left:"50%",
+            transform:"translate(-50%,-50%)",
+            zIndex:99999,
+            background:"#dc2626",
+            color:"white",
+            padding:"2rem 3rem",
+            borderRadius:"12px",
+            fontSize:"1.5rem",
+            fontWeight:800,
+            boxShadow:"0 0 0 9999px rgba(0,0,0,0.7)",
+            cursor:"pointer",
+            fontFamily:"inherit",
+          }} onClick={()=>setMergePreview(null)}>
+            ✅ MODAL OPEN (groups: {mergePreview.groups?.length||0})
+            <div style={{fontSize:"0.85rem",marginTop:"0.75rem",opacity:0.9}}>クリックで閉じる</div>
+          </div>
+        )}
         {mergePreview && (()=>{
           const userName = (uid)=> (users||[]).find(u=>String(u.id)===String(uid))?.name || "";
           const TYPE_COLOR = {"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"};
