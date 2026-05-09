@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-09-v42-savecompany-debug"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-09-v43-dupmodal-in-renderModals"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -14593,6 +14593,8 @@ ${orig}`})
           onClose={()=>setMtgModal(null)}
         />
       )}
+      {/* ★ 重複検出モーダル — 全タブ共通（企業/業者/自治体追加時の重複警告） */}
+      {dupModal&&<DupModal existing={dupModal.existing} incoming={dupModal.incoming} dupReason={dupModal.dupReason} onKeepBoth={dupModal.onKeepBoth} onUseExisting={dupModal.onUseExisting} onCancel={()=>setDupModal(null)}/>}
       {/* ★ 重複統合プレビューモーダル — 全タブ共通 */}
       {renderMergeModal()}
     </>
@@ -16997,8 +16999,6 @@ ${orig}`})
           <Btn style={{width:"100%"}} onClick={()=>setSheet(null)}>閉じる</Btn>
         </Sheet>
       )}
-        {/* 重複検出モーダル */}
-        {dupModal&&<DupModal existing={dupModal.existing} incoming={dupModal.incoming} dupReason={dupModal.dupReason} onKeepBoth={dupModal.onKeepBoth} onUseExisting={dupModal.onUseExisting} onCancel={()=>setDupModal(null)}/>}
 
       </>}{/* end salesTab==="muni" */}
 
