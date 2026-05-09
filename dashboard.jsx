@@ -12966,11 +12966,12 @@ ${recentLogs}
   // ── CRUD ──────────────────────────────────────────────────────────────────
   const saveCompany=(skipDupCheck=false)=>{
     if(!form.name?.trim())return;
-    // 新規追加時の重複チェック（法人格・表記揺れも吸収）— バイパス不可
+    // 新規追加時の重複チェック（法人格・表記揺れも吸収）
+    // 重複検出時はポップアップを出し、「既存を開く / それでも新規追加 / キャンセル」をユーザーに選択させる
     if(!form.id && !skipDupCheck){
       const dup=companies.find(c=>normBizName(c.name)===normBizName(form.name));
       if(dup){setDupModal({existing:dup,incoming:form.name.trim(),
-        // ★ onKeepBoth を渡さない → 「それでも新規追加する」ボタンが出ない
+        onKeepBoth:()=>{setDupModal(null);saveCompany(true);},
         onUseExisting:()=>{setActiveCompany(dup.id);setDupModal(null);setSheet(null);},
         onCancel:()=>setDupModal(null),
       });return;}
@@ -13005,7 +13006,7 @@ ${recentLogs}
     if(!form.id && !skipDupCheck){
       const dup=munis.find(m=>String(m.prefectureId)===String(activePref)&&normBizName(m.name)===normBizName(form.name));
       if(dup){setDupModal({existing:dup,incoming:form.name.trim(),
-        // ★ onKeepBoth を渡さない → 「それでも新規追加する」ボタンが出ない
+        onKeepBoth:()=>{setDupModal(null);saveMuni(true);},
         onUseExisting:()=>{setActiveMuni(dup.id);setMuniScreen("detail");setDupModal(null);setSheet(null);},
         onCancel:()=>setDupModal(null),
       });return;}
@@ -13063,7 +13064,7 @@ ${recentLogs}
         const reason = dupByName?"会社名が一致":dupByPhone?"電話番号が一致":"住所が一致";
         setDupModal({existing:dup,incoming:form.name.trim(),
           dupReason: reason,
-          // ★ onKeepBoth を渡さない → 「それでも新規追加する」ボタンが出ない
+          onKeepBoth:()=>{setDupModal(null);saveVendor(true);},
           onUseExisting:()=>{setActiveVendor(dup.id);setDupModal(null);setSheet(null);},
           onCancel:()=>setDupModal(null),
         });return;}
@@ -14482,6 +14483,37 @@ ${orig}`})
             </div>
           );
         })()}
+        {/* ★ 重複検出バナー：normBizName 一致の企業を検出して統合ボタンを表示 */}
+        {(()=>{
+          const groups = {};
+          (companies||[]).forEach(c=>{
+            const k = normBizName(c.name);
+            if(!k) return;
+            if(!groups[k]) groups[k] = [];
+            groups[k].push(c);
+          });
+          const dupGroups = Object.entries(groups).filter(([_,arr])=>arr.length>1);
+          if(!dupGroups.length) return null;
+          const dupCount = dupGroups.reduce((sum,[_,arr])=>sum+arr.length-1, 0); // 統合対象（残す1件以外）の総数
+          return (
+            <div style={{background:"#fef2f2",border:"1.5px solid #fca5a5",borderRadius:"8px",padding:"0.6rem 0.85rem",marginBottom:"0.75rem",display:"flex",alignItems:"center",gap:"0.6rem",flexWrap:"wrap"}}>
+              <span style={{fontSize:"1.1rem",flexShrink:0}}>⚠️</span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:"0.78rem",fontWeight:800,color:"#dc2626"}}>重複が検出されました（{dupGroups.length}グループ・{dupCount}件削減可能）</div>
+                <div style={{fontSize:"0.7rem",color:"#991b1b",marginTop:"0.15rem"}}>
+                  例: {dupGroups.slice(0,2).map(([_,arr])=>arr[0].name).join("、")}{dupGroups.length>2?"…":""}
+                </div>
+              </div>
+              <button onClick={()=>{
+                if(typeof window.MyDeskMergeDuplicates === "function"){
+                  window.MyDeskMergeDuplicates();
+                } else {
+                  window.alert("統合機能が未初期化です。ページを再読み込みして再度お試しください。");
+                }
+              }} style={{padding:"0.4rem 0.75rem",borderRadius:"6px",border:"none",background:"#dc2626",color:"white",fontWeight:800,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🔧 統合する</button>
+            </div>
+          );
+        })()}
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.75rem",gap:"0.5rem"}}>
           <div style={{position:"relative",flex:1}}>
             <span style={{position:"absolute",left:"0.625rem",top:"50%",transform:"translateY(-50%)",color:C.textMuted,fontSize:"0.85rem",pointerEvents:"none"}}>🔍</span>
@@ -15254,6 +15286,37 @@ ${orig}`})
                   ))}
                 </div>
               )}
+            </div>
+          );
+        })()}
+        {/* ★ 重複検出バナー（業者）*/}
+        {(()=>{
+          const groups = {};
+          (vendors||[]).forEach(v=>{
+            const k = normBizName(v.name);
+            if(!k) return;
+            if(!groups[k]) groups[k] = [];
+            groups[k].push(v);
+          });
+          const dupGroups = Object.entries(groups).filter(([_,arr])=>arr.length>1);
+          if(!dupGroups.length) return null;
+          const dupCount = dupGroups.reduce((sum,[_,arr])=>sum+arr.length-1, 0);
+          return (
+            <div style={{background:"#fef2f2",border:"1.5px solid #fca5a5",borderRadius:"8px",padding:"0.6rem 0.85rem",marginBottom:"0.75rem",display:"flex",alignItems:"center",gap:"0.6rem",flexWrap:"wrap"}}>
+              <span style={{fontSize:"1.1rem",flexShrink:0}}>⚠️</span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:"0.78rem",fontWeight:800,color:"#dc2626"}}>業者の重複が検出されました（{dupGroups.length}グループ・{dupCount}件削減可能）</div>
+                <div style={{fontSize:"0.7rem",color:"#991b1b",marginTop:"0.15rem"}}>
+                  例: {dupGroups.slice(0,2).map(([_,arr])=>arr[0].name).join("、")}{dupGroups.length>2?"…":""}
+                </div>
+              </div>
+              <button onClick={()=>{
+                if(typeof window.MyDeskMergeDuplicates === "function"){
+                  window.MyDeskMergeDuplicates();
+                } else {
+                  window.alert("統合機能が未初期化です。ページを再読み込みして再度お試しください。");
+                }
+              }} style={{padding:"0.4rem 0.75rem",borderRadius:"6px",border:"none",background:"#dc2626",color:"white",fontWeight:800,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🔧 統合する</button>
             </div>
           );
         })()}
@@ -16132,6 +16195,37 @@ ${orig}`})
               })}
             </div>
             )}
+          </div>
+        );
+      })()}
+      {/* ★ 重複検出バナー（自治体）*/}
+      {(()=>{
+        const groups = {};
+        (munis||[]).forEach(m=>{
+          const k = `${m.prefectureId||""}__${normBizName(m.name)}`;
+          if(!normBizName(m.name)) return;
+          if(!groups[k]) groups[k] = [];
+          groups[k].push(m);
+        });
+        const dupGroups = Object.entries(groups).filter(([_,arr])=>arr.length>1);
+        if(!dupGroups.length) return null;
+        const dupCount = dupGroups.reduce((sum,[_,arr])=>sum+arr.length-1, 0);
+        return (
+          <div style={{background:"#fef2f2",border:"1.5px solid #fca5a5",borderRadius:"8px",padding:"0.6rem 0.85rem",marginBottom:"0.75rem",display:"flex",alignItems:"center",gap:"0.6rem",flexWrap:"wrap"}}>
+            <span style={{fontSize:"1.1rem",flexShrink:0}}>⚠️</span>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:"0.78rem",fontWeight:800,color:"#dc2626"}}>自治体の重複が検出されました（{dupGroups.length}グループ・{dupCount}件削減可能）</div>
+              <div style={{fontSize:"0.7rem",color:"#991b1b",marginTop:"0.15rem"}}>
+                例: {dupGroups.slice(0,2).map(([_,arr])=>arr[0].name).join("、")}{dupGroups.length>2?"…":""}
+              </div>
+            </div>
+            <button onClick={()=>{
+              if(typeof window.MyDeskMergeDuplicates === "function"){
+                window.MyDeskMergeDuplicates();
+              } else {
+                window.alert("統合機能が未初期化です。ページを再読み込みして再度お試しください。");
+              }
+            }} style={{padding:"0.4rem 0.75rem",borderRadius:"6px",border:"none",background:"#dc2626",color:"white",fontWeight:800,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🔧 統合する</button>
           </div>
         );
       })()}
