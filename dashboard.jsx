@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-09-v43-dupmodal-in-renderModals"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-09-v44-license-ocr-10items"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -516,6 +516,152 @@ const SANPAI_ITEMS = [
   "鉱さい", "がれき類", "動物のふん尿", "動物の死体", "ばいじん",
   "13号廃棄物（処分）"
 ];
+
+// ★ 特別管理産業廃棄物 標準品目リスト（#6 改善）
+const SANPAI_TOKKAN_ITEMS = [
+  "廃油（引火性）",
+  "廃酸（pH2.0以下）",
+  "廃アルカリ（pH12.5以上）",
+  "感染性産業廃棄物",
+  "廃PCB等",
+  "PCB汚染物",
+  "PCB処理物",
+  "廃石綿等",
+  "ばいじん（特定有害）",
+  "燃え殻（特定有害）",
+  "汚泥（特定有害）",
+  "廃酸（特定有害）",
+  "廃アルカリ（特定有害）",
+  "鉱さい（特定有害）",
+  "13号廃棄物（特管）"
+];
+
+// ★ 品目エイリアス表（#2 改善）— OCRや手入力の表記揺れを標準名に統一
+const ITEM_ALIAS_MAP = {
+  // ガラスくず・コンクリートくず・陶磁器くず のバリエーション
+  "ガラスくず・コンクリートくず及び陶磁器くず": "ガラスくず・コンクリートくず・陶磁器くず",
+  "ガラスくず、コンクリートくず及び陶磁器くず": "ガラスくず・コンクリートくず・陶磁器くず",
+  "ガラスくず・コンクリートくず・陶磁器くず": "ガラスくず・コンクリートくず・陶磁器くず",
+  "ガラスくず等": "ガラスくず・コンクリートくず・陶磁器くず",
+  "ガラスくず・陶磁器くず": "ガラスくず・コンクリートくず・陶磁器くず",
+  "ガラス・コンクリート・陶磁器くず": "ガラスくず・コンクリートくず・陶磁器くず",
+  // 動植物性残さ
+  "動植物性残渣": "動植物性残さ",
+  // 一般的な表記揺れ
+  "廃プラ": "廃プラスチック類",
+  "廃プラスチック": "廃プラスチック類",
+  "がれき": "がれき類",
+  "金属": "金属くず",
+  "紙": "紙くず",
+  "木": "木くず",
+  "繊維": "繊維くず",
+};
+
+// ★ 品目名を標準名に正規化（#2 改善）
+function normalizeItemName(name) {
+  if (!name) return name;
+  const trimmed = String(name).trim();
+  return ITEM_ALIAS_MAP[trimmed] || trimmed;
+}
+
+// ★ 品目配列を正規化＋重複排除
+function normalizeItemsArray(arr) {
+  if (!Array.isArray(arr)) return arr;
+  const seen = new Set();
+  const result = [];
+  for (const item of arr) {
+    const normalized = normalizeItemName(item);
+    if (normalized && !seen.has(normalized)) {
+      seen.add(normalized);
+      result.push(normalized);
+    }
+  }
+  return result;
+}
+
+// ★ 許可番号フォーマット統一（#5 改善）
+//   「第00000000000号」形式に統一する
+//   入力例: "00000000000" / "第00000000000号" / "第 0123456 号" → "第00000000000号"
+function normalizePermitNumber(s) {
+  if (!s) return s;
+  // 全角→半角、空白除去
+  const normalized = String(s)
+    .replace(/[０-９]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0))
+    .replace(/[\s\u3000]/g, "");
+  // 数字部分を抽出
+  const match = normalized.match(/\d+/);
+  if (!match) return s; // 数字が見つからなければそのまま
+  return `第${match[0]}号`;
+}
+
+// ★ 面積単位の正規化（#10 改善）
+//   「平方メートル」「平米」「ｍ2」「m2」「m²」「㎡」 → すべて「㎡」に統一
+//   入力例: "55.1平方メートル" / "55.1平米" / "55.1m2" / "55.1㎡" → "55.1㎡"
+function normalizeAreaUnit(s) {
+  if (!s) return s;
+  let normalized = String(s);
+  // 全角数字→半角
+  normalized = normalized.replace(/[０-９．]/g, ch => {
+    const code = ch.charCodeAt(0);
+    if (code === 0xFF0E) return "."; // ．→.
+    return String.fromCharCode(code - 0xFEE0);
+  });
+  // 単位部分を統一
+  normalized = normalized
+    .replace(/平方メートル/g, "㎡")
+    .replace(/平米/g, "㎡")
+    .replace(/ｍ2|m2|M2|ｍ²|m²|M²/g, "㎡")
+    .replace(/\s+/g, ""); // 余分な空白除去
+  return normalized;
+}
+
+// ★ 優良認定の自動判定（#8 改善）
+//   許可期間が7年（許可日〜有効期限）なら優良認定あり
+//   2557 ≤ days ≤ 2566 (7年 ± 数日の誤差) を優良判定とする
+function inferExcellentCertified(licenseDate, expiryDate) {
+  if (!licenseDate || !expiryDate) return null; // 不明
+  try {
+    const start = new Date(licenseDate);
+    const end = new Date(expiryDate);
+    const diffDays = Math.round((end - start) / (1000 * 60 * 60 * 24));
+    // 7年 = 約 2557日（うるう年込みで 2557〜2559日）
+    // 5年 = 約 1825〜1827日
+    if (diffDays >= 2540 && diffDays <= 2580) return true;  // ≒7年 → 優良
+    if (diffDays >= 1800 && diffDays <= 1850) return false; // ≒5年 → 通常
+    return null; // どちらでもない場合は判定不能
+  } catch {
+    return null;
+  }
+}
+
+// ★ 旧形式（単一施設）→ 新形式（複数施設配列）への移行（#1, #7 改善）
+//   旧: storage_facility_address / storage_facility_area / storage_permitted_items
+//   新: storage_facilities = [{address, area, items[]}]
+function migrateStorageFacilities(license) {
+  if (Array.isArray(license.storage_facilities) && license.storage_facilities.length > 0) {
+    return license.storage_facilities;
+  }
+  // 旧形式から自動マイグレーション
+  if (license.storage_facility_address || license.storage_facility_area || (Array.isArray(license.storage_permitted_items) && license.storage_permitted_items.length > 0)) {
+    return [{
+      address: license.storage_facility_address || "",
+      area: license.storage_facility_area || "",
+      items: Array.isArray(license.storage_permitted_items) ? license.storage_permitted_items
+        : (typeof license.storage_permitted_items === "string" ? (JSON.parse(license.storage_permitted_items || "[]") || []) : []),
+    }];
+  }
+  return [];
+}
+
+function migrateTreatmentFacilities(license) {
+  if (Array.isArray(license.treatment_facilities) && license.treatment_facilities.length > 0) {
+    return license.treatment_facilities;
+  }
+  if (license.treatment_facility_address) {
+    return [{ address: license.treatment_facility_address }];
+  }
+  return [];
+}
 
 // 業務区分が「処分」を含むかチェック
 function businessTypeIsDisposal(bt) {
@@ -1548,40 +1694,52 @@ function LicenseCard({ license, onEdit, onDelete, onHistory }) {
         )}
         {license.treatment_method && <div>⚙️ 処理方法: {license.treatment_method}</div>}
 
-        {/* 業者情報セクション（住所・代表者があれば表示） */}
-        {(license.vendor_address || license.vendor_representative) && (
-          <div style={{marginTop:"0.4rem",padding:"0.35rem 0.5rem",background:"#eff6ff",borderLeft:"3px solid #93c5fd",borderRadius:"3px"}}>
-            <div style={{fontSize:"0.62rem",color:"#1e40af",fontWeight:700,marginBottom:"0.15rem"}}>🏢 業者情報</div>
-            {license.vendor_address && <div style={{fontSize:"0.7rem"}}>📍 住所: {license.vendor_address}</div>}
-            {license.vendor_representative && <div style={{fontSize:"0.7rem"}}>👤 代表者: {license.vendor_representative}</div>}
+        {/* ★ 業者情報は #4 改善で削除（旧データの場合は表示しない） */}
+
+        {/* ★ 特管品目（#6 改善） */}
+        {Array.isArray(license.tokkan_items) && license.tokkan_items.length > 0 && (
+          <div style={{marginTop:"0.4rem",padding:"0.35rem 0.5rem",background:"#fef2f2",borderLeft:"3px solid #fca5a5",borderRadius:"3px"}}>
+            <div style={{fontSize:"0.62rem",color:"#991b1b",fontWeight:700,marginBottom:"0.15rem"}}>⚠️ 特管品目</div>
+            <div style={{fontSize:"0.7rem",color:"#78716c"}}>{license.tokkan_items.join(", ")}</div>
           </div>
         )}
 
-        {/* 積替保管 施設情報セクション */}
-        {(license.storage_facility_address || license.storage_facility_area || (Array.isArray(license.storage_permitted_items) && license.storage_permitted_items.length > 0) || (typeof license.storage_permitted_items === "string" && license.storage_permitted_items.length > 2)) && (
-          <div style={{marginTop:"0.4rem",padding:"0.35rem 0.5rem",background:"#fef3c7",borderLeft:"3px solid #fbbf24",borderRadius:"3px"}}>
-            <div style={{fontSize:"0.62rem",color:"#92400e",fontWeight:700,marginBottom:"0.15rem"}}>🏭 積替保管 施設情報</div>
-            {license.storage_facility_address && <div style={{fontSize:"0.7rem"}}>📍 所在地: {license.storage_facility_address}</div>}
-            {license.storage_facility_area && <div style={{fontSize:"0.7rem"}}>📐 面積: {license.storage_facility_area}</div>}
-            {(() => {
-              const sItems = Array.isArray(license.storage_permitted_items) ? license.storage_permitted_items
-                : (typeof license.storage_permitted_items === "string" ? (JSON.parse(license.storage_permitted_items || "[]") || []) : []);
-              if (sItems.length === 0) return null;
-              return (
-                <div style={{fontSize:"0.7rem"}}>
-                  📦 取扱品目: <span style={{color:"#78716c"}}>{sItems.join(", ")}</span>
+        {/* ★ 積替保管 施設情報セクション（複数対応 #1） */}
+        {(() => {
+          const facilities = migrateStorageFacilities(license);
+          if (facilities.length === 0) return null;
+          return (
+            <div style={{marginTop:"0.4rem",padding:"0.35rem 0.5rem",background:"#fef3c7",borderLeft:"3px solid #fbbf24",borderRadius:"3px"}}>
+              <div style={{fontSize:"0.62rem",color:"#92400e",fontWeight:700,marginBottom:"0.2rem"}}>🏭 積替保管 施設情報 ({facilities.length}件)</div>
+              {facilities.map((fac, idx) => (
+                <div key={idx} style={{marginTop: idx > 0 ? "0.3rem" : 0, paddingTop: idx > 0 ? "0.3rem" : 0, borderTop: idx > 0 ? "1px dashed #fde68a" : "none"}}>
+                  {facilities.length > 1 && <div style={{fontSize:"0.65rem",fontWeight:700,color:"#92400e",marginBottom:"0.1rem"}}>施設 {idx + 1}</div>}
+                  {fac.address && <div style={{fontSize:"0.7rem"}}>📍 所在地: {fac.address}</div>}
+                  {fac.area && <div style={{fontSize:"0.7rem"}}>📐 面積: {fac.area}</div>}
+                  {Array.isArray(fac.items) && fac.items.length > 0 && (
+                    <div style={{fontSize:"0.7rem"}}>📦 取扱品目: <span style={{color:"#78716c"}}>{fac.items.join(", ")}</span></div>
+                  )}
                 </div>
-              );
-            })()}
-          </div>
-        )}
+              ))}
+            </div>
+          );
+        })()}
 
-        {license.treatment_facility_address && (
-          <div style={{marginTop:"0.4rem",padding:"0.35rem 0.5rem",background:"#f3e8ff",borderLeft:"3px solid #c084fc",borderRadius:"3px"}}>
-            <div style={{fontSize:"0.62rem",color:"#6b21a8",fontWeight:700,marginBottom:"0.15rem"}}>🏭 処分施設情報</div>
-            <div style={{fontSize:"0.7rem"}}>📍 所在地: {license.treatment_facility_address}</div>
-          </div>
-        )}
+        {/* ★ 処分施設情報セクション（複数対応 #7） */}
+        {(() => {
+          const facilities = migrateTreatmentFacilities(license);
+          if (facilities.length === 0) return null;
+          return (
+            <div style={{marginTop:"0.4rem",padding:"0.35rem 0.5rem",background:"#f3e8ff",borderLeft:"3px solid #c084fc",borderRadius:"3px"}}>
+              <div style={{fontSize:"0.62rem",color:"#6b21a8",fontWeight:700,marginBottom:"0.2rem"}}>🏭 処分施設情報 ({facilities.length}件)</div>
+              {facilities.map((fac, idx) => (
+                <div key={idx} style={{fontSize:"0.7rem", marginTop: idx > 0 ? "0.15rem" : 0}}>
+                  📍 {facilities.length > 1 && <span style={{fontWeight:700,color:"#6b21a8"}}>{idx + 1}.</span>} {fac.address}
+                </div>
+              ))}
+            </div>
+          );
+        })()}
 
         {renderNotes(license.notes)}
       </div>
@@ -1597,23 +1755,31 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
       waste_category: "産業廃棄物",
       vendor_name: vendorName,
       permitted_items: [],
-      storage_permitted_items: [],
+      tokkan_items: [],            // ★ 特管品目（#6）
+      storage_facilities: [],      // ★ 積替保管施設配列（#1）
+      treatment_facilities: [],    // ★ 処分施設配列（#7）
     };
     return {
       ...license,
       permitted_items: Array.isArray(license.permitted_items) ? license.permitted_items
         : (typeof license.permitted_items === "string" ? (JSON.parse(license.permitted_items || "[]") || []) : []),
-      storage_permitted_items: Array.isArray(license.storage_permitted_items) ? license.storage_permitted_items
-        : (typeof license.storage_permitted_items === "string" ? (JSON.parse(license.storage_permitted_items || "[]") || []) : []),
+      tokkan_items: Array.isArray(license.tokkan_items) ? license.tokkan_items
+        : (typeof license.tokkan_items === "string" ? (JSON.parse(license.tokkan_items || "[]") || []) : []),
+      // ★ 旧形式 → 新形式に自動マイグレーション
+      storage_facilities: migrateStorageFacilities(license),
+      treatment_facilities: migrateTreatmentFacilities(license),
     };
   });
   const [saving, setSaving] = useState(false);
   const [showItemPicker, setShowItemPicker] = useState(false);
+  const [showTokkanPicker, setShowTokkanPicker] = useState(false); // ★ 特管品目ピッカー（#6）
+  const [storagePickerOpen, setStoragePickerOpen] = useState({}); // ★ 積替保管施設の品目ピッカー（#3）— {facilityIdx: bool}
   const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrError, setOcrError] = useState("");
   const fileInputRef = useRef(null);
 
   const isSanpai = isSanpaiCategory(form.waste_category);
+  const isTokkan = form.waste_category === "特別管理産業廃棄物"; // ★ 特管かどうか（#6）
   const businessTypes = isSanpai ? BUSINESS_TYPES_SANPAI : BUSINESS_TYPES_IPPAI;
   const isDisposal = businessTypeIsDisposal(form.business_type);
   const hasStorage = businessTypeHasStorage(form.business_type);
@@ -1716,12 +1882,15 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
       // フォームに自動入力
       setForm(prev => {
         const merged = { ...prev };
+        // 普通産廃の品目（マスタ正規化を適用 #2）
         const cleanedItems = Array.isArray(fields.permitted_items) ? fields.permitted_items.filter(x => x && typeof x === "string") : null;
+        // 特管品目（#6 — Lambda が出力するなら使う）
+        const cleanedTokkanItems = Array.isArray(fields.tokkan_items) ? fields.tokkan_items.filter(x => x && typeof x === "string") : null;
+        // 旧形式: storage_permitted_items
         const cleanedStorageItems = Array.isArray(fields.storage_permitted_items) ? fields.storage_permitted_items.filter(x => x && typeof x === "string") : null;
         const fieldMap = {
           vendor_name: fields.vendor_name,
-          vendor_address: fields.vendor_address,
-          vendor_representative: fields.vendor_representative,
+          // #4 vendor_address / vendor_representative は意図的に取り込まない（フォームから削除）
           waste_category: fields.waste_category,
           region: fields.region,
           license_number: fields.license_number,
@@ -1730,9 +1899,6 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
           business_type: fields.business_type,
           is_excellent_certified: fields.is_excellent_certified,
           treatment_method: fields.treatment_method,
-          storage_facility_address: fields.storage_facility_address,
-          storage_facility_area: fields.storage_facility_area,
-          treatment_facility_address: fields.treatment_facility_address,
           notes: fields.notes,
         };
         for (const [k, v] of Object.entries(fieldMap)) {
@@ -1741,10 +1907,41 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
           }
         }
         if (cleanedItems && cleanedItems.length > 0) {
-          merged.permitted_items = cleanedItems;
+          merged.permitted_items = normalizeItemsArray(cleanedItems); // #2 マスタ正規化
         }
-        if (cleanedStorageItems && cleanedStorageItems.length > 0) {
-          merged.storage_permitted_items = cleanedStorageItems;
+        if (cleanedTokkanItems && cleanedTokkanItems.length > 0) {
+          merged.tokkan_items = normalizeItemsArray(cleanedTokkanItems);
+        }
+        // ★ 積替保管施設配列（#1 — Lambda が新形式で出力する場合）
+        if (Array.isArray(fields.storage_facilities) && fields.storage_facilities.length > 0) {
+          merged.storage_facilities = fields.storage_facilities.map(f => ({
+            address: f.address || "",
+            area: f.area || "",
+            items: normalizeItemsArray(f.items || []),
+          }));
+        } else if (fields.storage_facility_address || fields.storage_facility_area || (cleanedStorageItems && cleanedStorageItems.length > 0)) {
+          // ★ 旧形式（後方互換）— 1件だけ
+          merged.storage_facilities = [{
+            address: fields.storage_facility_address || "",
+            area: fields.storage_facility_area || "",
+            items: cleanedStorageItems ? normalizeItemsArray(cleanedStorageItems) : [],
+          }];
+        }
+        // ★ 処分施設配列（#7 — Lambda が新形式で出力する場合）
+        if (Array.isArray(fields.treatment_facilities) && fields.treatment_facilities.length > 0) {
+          merged.treatment_facilities = fields.treatment_facilities.map(f => ({
+            address: f.address || "",
+          }));
+        } else if (fields.treatment_facility_address) {
+          // ★ 旧形式（後方互換）— 1件だけ
+          merged.treatment_facilities = [{ address: fields.treatment_facility_address }];
+        }
+        // ★ 優良認定の自動判定（#8 — 明示指定がない場合のみ）
+        if (merged.is_excellent_certified === undefined || merged.is_excellent_certified === null) {
+          const inferred = inferExcellentCertified(merged.license_date, merged.expiry_date);
+          if (inferred !== null) {
+            merged.is_excellent_certified = inferred;
+          }
         }
         return merged;
       });
@@ -1766,7 +1963,44 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
     }
     setSaving(true);
     try {
-      await onSave(form);
+      // ★ 保存時の正規化処理 ────────────────────────────────────────────
+      const normalized = { ...form };
+      // #5 許可番号フォーマット統一
+      if (normalized.license_number) {
+        normalized.license_number = normalizePermitNumber(normalized.license_number);
+      }
+      // #10 面積単位の統一
+      if (Array.isArray(normalized.storage_facilities)) {
+        normalized.storage_facilities = normalized.storage_facilities.map(f => ({
+          ...f,
+          area: normalizeAreaUnit(f.area),
+          items: normalizeItemsArray(f.items || []), // #2 品目正規化
+        }));
+      }
+      // #2 許可品目の正規化＋重複除去
+      if (Array.isArray(normalized.permitted_items)) {
+        normalized.permitted_items = normalizeItemsArray(normalized.permitted_items);
+      }
+      if (Array.isArray(normalized.tokkan_items)) {
+        normalized.tokkan_items = normalizeItemsArray(normalized.tokkan_items);
+      }
+      // #8 優良認定の自動判定（明示的に設定されていない場合のみ）
+      if (normalized.is_excellent_certified === undefined || normalized.is_excellent_certified === null) {
+        const inferred = inferExcellentCertified(normalized.license_date, normalized.expiry_date);
+        if (inferred !== null) {
+          normalized.is_excellent_certified = inferred;
+        }
+      }
+      // 旧フィールドは保存しない（マイグレーション後）
+      delete normalized.storage_facility_address;
+      delete normalized.storage_facility_area;
+      delete normalized.storage_permitted_items;
+      delete normalized.treatment_facility_address;
+      // #4 業者の住所・代表者は許可証フォームでは保存しない（混乱回避のため削除）
+      delete normalized.vendor_address;
+      delete normalized.vendor_representative;
+      // ─────────────────────────────────────────────────────────────────
+      await onSave(normalized);
     } finally {
       setSaving(false);
     }
@@ -1838,21 +2072,7 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
               style={{width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #d1d5db",borderRadius:"4px",fontSize:"0.85rem",boxSizing:"border-box"}}/>
           </div>
 
-          {/* 業者の住所 */}
-          <div>
-            <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.3rem"}}>業者の住所（許可証記載の本社住所）</label>
-            <input type="text" value={form.vendor_address||""} onChange={e=>setForm({...form,vendor_address:e.target.value})}
-              placeholder="例: 北九州市八幡西区陣原二丁目2番21号"
-              style={{width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #d1d5db",borderRadius:"4px",fontSize:"0.85rem",boxSizing:"border-box"}}/>
-          </div>
-
-          {/* 代表者 */}
-          <div>
-            <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.3rem"}}>代表者</label>
-            <input type="text" value={form.vendor_representative||""} onChange={e=>setForm({...form,vendor_representative:e.target.value})}
-              placeholder="例: 代表取締役 西原 靖博"
-              style={{width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #d1d5db",borderRadius:"4px",fontSize:"0.85rem",boxSizing:"border-box"}}/>
-          </div>
+          {/* ★ 業者の住所・代表者は #4 改善で削除（企業情報側で管理） */}
 
           {/* 行政区 */}
           <div>
@@ -1863,7 +2083,9 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
 
           {/* 許可番号 */}
           <div>
-            <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.3rem"}}>許可番号</label>
+            <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.3rem"}}>
+              許可番号 <span style={{fontSize:"0.65rem",color:"#9ca3af",fontWeight:500}}>（保存時に「第00000000000号」形式に統一されます）</span>
+            </label>
             <input type="text" value={form.license_number||""} onChange={e=>setForm({...form,license_number:e.target.value})} placeholder="例: 第04000123456号"
               style={{width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #d1d5db",borderRadius:"4px",fontSize:"0.85rem",boxSizing:"border-box"}}/>
           </div>
@@ -1898,7 +2120,16 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
           {/* 優良認定（産廃・特管のみ） */}
           {isSanpai && (
             <div>
-              <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.3rem"}}>優良認定</label>
+              <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.3rem"}}>
+                優良認定
+                {(() => {
+                  // ★ 自動判定の表示（#8 改善）
+                  const inferred = inferExcellentCertified(form.license_date, form.expiry_date);
+                  if (inferred === true) return <span style={{fontSize:"0.65rem",color:"#059669",marginLeft:"0.4rem",fontWeight:600}}>（許可期間 7年 → 優良認定の可能性あり）</span>;
+                  if (inferred === false) return <span style={{fontSize:"0.65rem",color:"#6b7280",marginLeft:"0.4rem"}}>（許可期間 5年 → 通常）</span>;
+                  return null;
+                })()}
+              </label>
               <div style={{display:"flex",gap:"0.4rem"}}>
                 {[{val:true,label:"あり"},{val:false,label:"なし"}].map(o => (
                   <label key={String(o.val)} style={{display:"flex",alignItems:"center",gap:"0.3rem",cursor:"pointer",padding:"0.3rem 0.6rem",borderRadius:"4px",background:form.is_excellent_certified===o.val?"#fef3c7":"white",border:`1.5px solid ${form.is_excellent_certified===o.val?"#a16207":"#e5e7eb"}`}}>
@@ -1961,6 +2192,59 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
               style={{width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #d1d5db",borderRadius:"4px",fontSize:"0.8rem",boxSizing:"border-box"}}/>
           </div>
 
+          {/* ★ 特管品目（特管産廃の場合のみ）#6 改善 */}
+          {isTokkan && (
+            <div style={{padding:"0.6rem 0.7rem",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:"6px"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.3rem"}}>
+                <label style={{fontSize:"0.72rem",fontWeight:700,color:"#991b1b"}}>⚠️ 特別管理産業廃棄物 品目</label>
+                <button onClick={()=>setShowTokkanPicker(!showTokkanPicker)} type="button"
+                  style={{padding:"0.2rem 0.5rem",fontSize:"0.7rem",background:"#fee2e2",border:"1px solid #fca5a5",color:"#991b1b",borderRadius:"3px",cursor:"pointer"}}>
+                  {showTokkanPicker ? "閉じる" : "+ 特管標準品目から選択"}
+                </button>
+              </div>
+              {/* 既選択リスト */}
+              {(form.tokkan_items || []).length > 0 && (
+                <div style={{display:"flex",flexWrap:"wrap",gap:"0.25rem",marginBottom:"0.3rem"}}>
+                  {form.tokkan_items.map(item => (
+                    <span key={item} style={{fontSize:"0.7rem",background:"#fee2e2",color:"#991b1b",padding:"0.15rem 0.4rem",borderRadius:"3px",display:"inline-flex",alignItems:"center",gap:"0.25rem",fontWeight:600}}>
+                      {item}
+                      <button onClick={()=>setForm({...form,tokkan_items:form.tokkan_items.filter(x=>x!==item)})} type="button" style={{background:"none",border:"none",cursor:"pointer",padding:0,color:"#991b1b"}}>×</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              {/* 標準特管品目チェックボックス */}
+              {showTokkanPicker && (
+                <div style={{padding:"0.5rem",background:"white",border:"1px solid #fca5a5",borderRadius:"4px",marginBottom:"0.3rem",display:"flex",flexWrap:"wrap",gap:"0.3rem"}}>
+                  {SANPAI_TOKKAN_ITEMS.map(item => {
+                    const checked = (form.tokkan_items||[]).includes(item);
+                    return (
+                      <label key={item} style={{display:"flex",alignItems:"center",gap:"0.2rem",cursor:"pointer",fontSize:"0.7rem",padding:"0.2rem 0.4rem",borderRadius:"3px",background:checked?"#fee2e2":"white",border:`1px solid ${checked?"#dc2626":"#e5e7eb"}`}}>
+                        <input type="checkbox" checked={checked} onChange={()=>{
+                          const cur = form.tokkan_items||[];
+                          setForm({...form,tokkan_items:cur.includes(item)?cur.filter(x=>x!==item):[...cur,item]});
+                        }} style={{margin:0,accentColor:"#dc2626"}}/>
+                        <span>{item}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+              {/* 自由入力 */}
+              <input type="text" placeholder="特管品目を入力してEnter（例: 汚泥(水銀又はその化合物含むもの)）"
+                onKeyDown={e=>{
+                  if(e.key==="Enter" && e.target.value.trim()){
+                    e.preventDefault();
+                    const v = e.target.value.trim();
+                    const cur = form.tokkan_items||[];
+                    if(!cur.includes(v)) setForm({...form,tokkan_items:[...cur,v]});
+                    e.target.value = "";
+                  }
+                }}
+                style={{width:"100%",padding:"0.35rem 0.5rem",border:"1px solid #fca5a5",borderRadius:"4px",fontSize:"0.78rem",boxSizing:"border-box",background:"white"}}/>
+            </div>
+          )}
+
           {/* 処理方法（処分の場合） */}
           {isDisposal && (
             <div>
@@ -1970,56 +2254,153 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
             </div>
           )}
 
-          {/* 積替保管（運搬(積保あり)） */}
+          {/* ★ 積替保管施設（複数登録可）— #1, #3 改善 */}
           {hasStorage && (
             <div style={{padding:"0.6rem 0.7rem",background:"#fef3c7",border:"1px solid #fde68a",borderRadius:"6px",display:"flex",flexDirection:"column",gap:"0.5rem"}}>
-              <div style={{fontSize:"0.7rem",color:"#92400e",fontWeight:700}}>🏭 積替保管 施設情報</div>
-              <div>
-                <label style={{display:"block",fontSize:"0.7rem",fontWeight:600,color:"#374151",marginBottom:"0.25rem"}}>所在地</label>
-                <input type="text" value={form.storage_facility_address||""} onChange={e=>setForm({...form,storage_facility_address:e.target.value})}
-                  placeholder="例: 北九州市八幡西区陣原二丁目8番3"
-                  style={{width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #fcd34d",borderRadius:"4px",fontSize:"0.85rem",boxSizing:"border-box",background:"white"}}/>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div style={{fontSize:"0.7rem",color:"#92400e",fontWeight:700}}>🏭 積替保管 施設情報 ({(form.storage_facilities||[]).length}件)</div>
+                <button type="button" onClick={()=>{
+                  const cur = form.storage_facilities || [];
+                  setForm({...form, storage_facilities:[...cur, {address:"", area:"", items:[]}]});
+                }} style={{padding:"0.2rem 0.55rem",fontSize:"0.7rem",fontWeight:700,background:"#d97706",color:"white",border:"none",borderRadius:"4px",cursor:"pointer"}}>+ 施設を追加</button>
               </div>
-              <div>
-                <label style={{display:"block",fontSize:"0.7rem",fontWeight:600,color:"#374151",marginBottom:"0.25rem"}}>面積</label>
-                <input type="text" value={form.storage_facility_area||""} onChange={e=>setForm({...form,storage_facility_area:e.target.value})}
-                  placeholder="例: 55.1平方メートル"
-                  style={{width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #fcd34d",borderRadius:"4px",fontSize:"0.85rem",boxSizing:"border-box",background:"white"}}/>
-              </div>
-              <div>
-                <label style={{display:"block",fontSize:"0.7rem",fontWeight:600,color:"#374151",marginBottom:"0.25rem"}}>取扱品目（積替保管）</label>
-                <div style={{display:"flex",flexWrap:"wrap",gap:"0.25rem",marginBottom:"0.3rem"}}>
-                  {(form.storage_permitted_items || []).map((item, idx) => (
-                    <span key={idx} style={{display:"inline-flex",alignItems:"center",gap:"0.2rem",padding:"0.15rem 0.45rem",background:"#fbbf24",color:"#7c2d12",fontSize:"0.72rem",borderRadius:"3px",fontWeight:600}}>
-                      {item}
-                      <button type="button" onClick={()=>setForm({...form, storage_permitted_items: form.storage_permitted_items.filter((_,i)=>i!==idx)})}
-                        style={{background:"none",border:"none",cursor:"pointer",fontWeight:700,padding:0,fontSize:"0.85rem",color:"#7c2d12"}}>×</button>
-                    </span>
-                  ))}
+              {(form.storage_facilities||[]).length === 0 && (
+                <div style={{fontSize:"0.72rem",color:"#92400e",fontStyle:"italic",padding:"0.3rem 0",textAlign:"center"}}>
+                  「+ 施設を追加」ボタンから施設情報を登録してください
                 </div>
-                <input type="text" placeholder="品目を入力してEnter"
-                  style={{width:"100%",padding:"0.35rem 0.5rem",border:"1px solid #fcd34d",borderRadius:"4px",fontSize:"0.78rem",boxSizing:"border-box",background:"white"}}
-                  onKeyDown={e=>{
-                    if(e.key==="Enter" && e.target.value.trim()){
-                      e.preventDefault();
-                      const v = e.target.value.trim();
-                      const cur = form.storage_permitted_items || [];
-                      if(!cur.includes(v)){
-                        setForm({...form, storage_permitted_items:[...cur, v]});
-                      }
-                      e.target.value = "";
-                    }
-                  }}/>
-              </div>
+              )}
+              {(form.storage_facilities||[]).map((fac, idx) => (
+                <div key={idx} style={{padding:"0.5rem 0.6rem",background:"white",border:"1px solid #fcd34d",borderRadius:"5px",display:"flex",flexDirection:"column",gap:"0.4rem"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <span style={{fontSize:"0.7rem",fontWeight:700,color:"#92400e"}}>施設 {idx + 1}</span>
+                    <button type="button" onClick={()=>{
+                      const newList = form.storage_facilities.filter((_,i)=>i!==idx);
+                      setForm({...form, storage_facilities:newList});
+                    }} style={{background:"none",border:"none",color:"#dc2626",cursor:"pointer",fontSize:"0.78rem",fontWeight:700,padding:"0.1rem 0.4rem"}}>🗑 削除</button>
+                  </div>
+                  <div>
+                    <label style={{display:"block",fontSize:"0.66rem",fontWeight:600,color:"#374151",marginBottom:"0.2rem"}}>所在地</label>
+                    <input type="text" value={fac.address||""}
+                      onChange={e=>{
+                        const newList = [...form.storage_facilities];
+                        newList[idx] = {...newList[idx], address:e.target.value};
+                        setForm({...form, storage_facilities:newList});
+                      }}
+                      placeholder="例: 北九州市八幡西区陣原二丁目8番3"
+                      style={{width:"100%",padding:"0.35rem 0.55rem",border:"1px solid #fcd34d",borderRadius:"4px",fontSize:"0.82rem",boxSizing:"border-box",background:"white"}}/>
+                  </div>
+                  <div>
+                    <label style={{display:"block",fontSize:"0.66rem",fontWeight:600,color:"#374151",marginBottom:"0.2rem"}}>
+                      面積 <span style={{fontSize:"0.62rem",color:"#9ca3af",fontWeight:500}}>（保存時に「㎡」に統一）</span>
+                    </label>
+                    <input type="text" value={fac.area||""}
+                      onChange={e=>{
+                        const newList = [...form.storage_facilities];
+                        newList[idx] = {...newList[idx], area:e.target.value};
+                        setForm({...form, storage_facilities:newList});
+                      }}
+                      placeholder="例: 55.1㎡（平米/平方メートル/m2 でも可）"
+                      style={{width:"100%",padding:"0.35rem 0.55rem",border:"1px solid #fcd34d",borderRadius:"4px",fontSize:"0.82rem",boxSizing:"border-box",background:"white"}}/>
+                  </div>
+                  <div>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.2rem"}}>
+                      <label style={{fontSize:"0.66rem",fontWeight:600,color:"#374151"}}>取扱品目</label>
+                      {isSanpai && (
+                        <button type="button" onClick={()=>{
+                          setStoragePickerOpen(prev=>({...prev, [idx]:!prev[idx]}));
+                        }} style={{padding:"0.15rem 0.45rem",fontSize:"0.65rem",background:"#f3f4f6",border:"1px solid #d1d5db",borderRadius:"3px",cursor:"pointer"}}>
+                          {storagePickerOpen[idx] ? "閉じる" : "+ 標準品目から選択"}
+                        </button>
+                      )}
+                    </div>
+                    {/* 既選択 */}
+                    {(fac.items||[]).length > 0 && (
+                      <div style={{display:"flex",flexWrap:"wrap",gap:"0.2rem",marginBottom:"0.25rem"}}>
+                        {fac.items.map((item, itemIdx) => (
+                          <span key={itemIdx} style={{display:"inline-flex",alignItems:"center",gap:"0.2rem",padding:"0.12rem 0.4rem",background:"#fbbf24",color:"#7c2d12",fontSize:"0.7rem",borderRadius:"3px",fontWeight:600}}>
+                            {item}
+                            <button type="button" onClick={()=>{
+                              const newList = [...form.storage_facilities];
+                              newList[idx] = {...newList[idx], items: newList[idx].items.filter((_,i)=>i!==itemIdx)};
+                              setForm({...form, storage_facilities:newList});
+                            }} style={{background:"none",border:"none",cursor:"pointer",fontWeight:700,padding:0,fontSize:"0.78rem",color:"#7c2d12"}}>×</button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {/* 標準品目チェックボックス（#3 改善） */}
+                    {isSanpai && storagePickerOpen[idx] && (
+                      <div style={{padding:"0.4rem",background:"#fef9c3",border:"1px solid #fde68a",borderRadius:"4px",marginBottom:"0.25rem",display:"flex",flexWrap:"wrap",gap:"0.25rem"}}>
+                        {(isTokkan ? SANPAI_TOKKAN_ITEMS : SANPAI_ITEMS).map(item => {
+                          const checked = (fac.items||[]).includes(item);
+                          return (
+                            <label key={item} style={{display:"flex",alignItems:"center",gap:"0.18rem",cursor:"pointer",fontSize:"0.65rem",padding:"0.15rem 0.35rem",borderRadius:"3px",background:checked?"#fbbf24":"white",border:`1px solid ${checked?"#d97706":"#e5e7eb"}`}}>
+                              <input type="checkbox" checked={checked} onChange={()=>{
+                                const newList = [...form.storage_facilities];
+                                const curItems = newList[idx].items || [];
+                                newList[idx] = {...newList[idx], items: curItems.includes(item) ? curItems.filter(x=>x!==item) : [...curItems, item]};
+                                setForm({...form, storage_facilities:newList});
+                              }} style={{margin:0,accentColor:"#d97706"}}/>
+                              <span>{item}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {/* 自由入力 */}
+                    <input type="text" placeholder="品目を入力してEnter"
+                      style={{width:"100%",padding:"0.3rem 0.45rem",border:"1px solid #fcd34d",borderRadius:"4px",fontSize:"0.74rem",boxSizing:"border-box",background:"white"}}
+                      onKeyDown={e=>{
+                        if(e.key==="Enter" && e.target.value.trim()){
+                          e.preventDefault();
+                          const v = e.target.value.trim();
+                          const newList = [...form.storage_facilities];
+                          const curItems = newList[idx].items || [];
+                          if(!curItems.includes(v)){
+                            newList[idx] = {...newList[idx], items:[...curItems, v]};
+                            setForm({...form, storage_facilities:newList});
+                          }
+                          e.target.value = "";
+                        }
+                      }}/>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
 
-          {/* 処分 施設所在地 */}
+          {/* ★ 処分施設所在地（複数登録可）— #7 改善 */}
           {isDisposal && isSanpai && (
-            <div>
-              <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.3rem"}}>処分 施設所在地</label>
-              <input type="text" value={form.treatment_facility_address||""} onChange={e=>setForm({...form,treatment_facility_address:e.target.value})}
-                style={{width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #d1d5db",borderRadius:"4px",fontSize:"0.85rem",boxSizing:"border-box"}}/>
+            <div style={{padding:"0.6rem 0.7rem",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:"6px",display:"flex",flexDirection:"column",gap:"0.4rem"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div style={{fontSize:"0.7rem",color:"#1e40af",fontWeight:700}}>⚙️ 処分 施設所在地 ({(form.treatment_facilities||[]).length}件)</div>
+                <button type="button" onClick={()=>{
+                  const cur = form.treatment_facilities || [];
+                  setForm({...form, treatment_facilities:[...cur, {address:""}]});
+                }} style={{padding:"0.2rem 0.55rem",fontSize:"0.7rem",fontWeight:700,background:"#2563eb",color:"white",border:"none",borderRadius:"4px",cursor:"pointer"}}>+ 施設を追加</button>
+              </div>
+              {(form.treatment_facilities||[]).length === 0 && (
+                <div style={{fontSize:"0.72rem",color:"#1e40af",fontStyle:"italic",padding:"0.3rem 0",textAlign:"center"}}>
+                  「+ 施設を追加」ボタンから施設情報を登録してください
+                </div>
+              )}
+              {(form.treatment_facilities||[]).map((fac, idx) => (
+                <div key={idx} style={{padding:"0.4rem 0.55rem",background:"white",border:"1px solid #bfdbfe",borderRadius:"5px",display:"flex",alignItems:"center",gap:"0.5rem"}}>
+                  <span style={{fontSize:"0.66rem",fontWeight:700,color:"#1e40af",flexShrink:0}}>{idx + 1}.</span>
+                  <input type="text" value={fac.address||""}
+                    onChange={e=>{
+                      const newList = [...form.treatment_facilities];
+                      newList[idx] = {...newList[idx], address:e.target.value};
+                      setForm({...form, treatment_facilities:newList});
+                    }}
+                    placeholder="例: 北九州市八幡西区陣原二丁目8番3"
+                    style={{flex:1,padding:"0.3rem 0.5rem",border:"1px solid #bfdbfe",borderRadius:"4px",fontSize:"0.8rem",boxSizing:"border-box",background:"white"}}/>
+                  <button type="button" onClick={()=>{
+                    const newList = form.treatment_facilities.filter((_,i)=>i!==idx);
+                    setForm({...form, treatment_facilities:newList});
+                  }} style={{background:"none",border:"none",color:"#dc2626",cursor:"pointer",fontSize:"0.85rem",padding:"0.1rem 0.3rem",flexShrink:0}}>🗑</button>
+                </div>
+              ))}
             </div>
           )}
 
