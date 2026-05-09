@@ -3827,9 +3827,11 @@ function DupModal({existing, incoming, onKeepBoth, onUseExisting, onCancel, dupR
               既存のものを開く
             </button>
           )}
-          <button onClick={onKeepBoth} style={{padding:"0.75rem",borderRadius:"6px",border:`1.5px solid ${C.accent}`,background:"white",color:C.accent,fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.9rem"}}>
-            それでも新規追加する
-          </button>
+          {onKeepBoth&&(
+            <button onClick={onKeepBoth} style={{padding:"0.75rem",borderRadius:"6px",border:`1.5px solid ${C.accent}`,background:"white",color:C.accent,fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.9rem"}}>
+              それでも新規追加する
+            </button>
+          )}
           <button onClick={onCancel} style={{padding:"0.625rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:600,cursor:"pointer",fontFamily:"inherit",fontSize:"0.85rem"}}>
             キャンセル（入力に戻る）
           </button>
@@ -12964,12 +12966,13 @@ ${recentLogs}
   // ── CRUD ──────────────────────────────────────────────────────────────────
   const saveCompany=(skipDupCheck=false)=>{
     if(!form.name?.trim())return;
-    // 新規追加時の重複チェック（法人格・表記揺れも吸収）
+    // 新規追加時の重複チェック（法人格・表記揺れも吸収）— バイパス不可
     if(!form.id && !skipDupCheck){
       const dup=companies.find(c=>normBizName(c.name)===normBizName(form.name));
       if(dup){setDupModal({existing:dup,incoming:form.name.trim(),
-        onKeepBoth:()=>{setDupModal(null);saveCompany(true);},
-        onUseExisting:()=>{setActiveCompany(dup.id);setDupModal(null);setSheet(null);}
+        // ★ onKeepBoth を渡さない → 「それでも新規追加する」ボタンが出ない
+        onUseExisting:()=>{setActiveCompany(dup.id);setDupModal(null);setSheet(null);},
+        onCancel:()=>setDupModal(null),
       });return;}
     }
     const today = new Date().toISOString().slice(0,10);
@@ -13002,8 +13005,9 @@ ${recentLogs}
     if(!form.id && !skipDupCheck){
       const dup=munis.find(m=>String(m.prefectureId)===String(activePref)&&normBizName(m.name)===normBizName(form.name));
       if(dup){setDupModal({existing:dup,incoming:form.name.trim(),
-        onKeepBoth:()=>{setDupModal(null);saveMuni(true);},
-        onUseExisting:()=>{setActiveMuni(dup.id);setMuniScreen("detail");setDupModal(null);setSheet(null);}
+        // ★ onKeepBoth を渡さない → 「それでも新規追加する」ボタンが出ない
+        onUseExisting:()=>{setActiveMuni(dup.id);setMuniScreen("detail");setDupModal(null);setSheet(null);},
+        onCancel:()=>setDupModal(null),
       });return;}
     }
     const today = new Date().toISOString().slice(0,10);
@@ -13059,8 +13063,9 @@ ${recentLogs}
         const reason = dupByName?"会社名が一致":dupByPhone?"電話番号が一致":"住所が一致";
         setDupModal({existing:dup,incoming:form.name.trim(),
           dupReason: reason,
-          onKeepBoth:()=>{setDupModal(null);saveVendor(true);},
-          onUseExisting:()=>{setActiveVendor(dup.id);setDupModal(null);setSheet(null);}
+          // ★ onKeepBoth を渡さない → 「それでも新規追加する」ボタンが出ない
+          onUseExisting:()=>{setActiveVendor(dup.id);setDupModal(null);setSheet(null);},
+          onCancel:()=>setDupModal(null),
         });return;}
     }
     const today = new Date().toISOString().slice(0,10);
