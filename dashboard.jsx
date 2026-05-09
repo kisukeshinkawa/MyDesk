@@ -11315,6 +11315,9 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   const [memoEdit,     setMemoEdit]     = useState(null); // {entityId, memoId, text}
   const [chatEdit,     setChatEdit]     = useState(null); // {entityId, chatId, text}
   const [activeDetail, setActiveDetail] = useState("timeline"); // memo|chat
+  // 重複統合プレビューモーダル（{groups: [...], focusType?: "company"|"vendor"|"muni"}）
+  const [mergePreview, setMergePreview] = useState(null);
+  const [mergeSelected, setMergeSelected] = useState(new Set()); // 選択された group key
 
   // ★ 自治体/企業/業者の詳細画面に入った瞬間、画面を最上部にリセット
   //   iOS Safari は画面遷移時に scrollTop が自動初期化されないため、
@@ -12079,6 +12082,131 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     //   コンソールで window.MyDeskMergeDuplicates() を実行すると、
     //   normBizName が同一の企業/業者/自治体を1つに統合する（最古の方を残す）
     //   関連する名刺の salesRef も新IDに張り直す
+    // ★ 重複統合プレビュー用ヘルパー：データから重複グループを抽出
+    //   focusType を指定すると、その種類だけを返す（"company"|"vendor"|"muni"）
+    window.__myDeskComputeDupGroups = (focusType=null) => {
+      const norm = (s) => (s||"")
+        .replace(/\s*(株式会社|有限会社|合同会社|一般社団法人|一般財団法人|公益社団法人|公益財団法人|特定非営利活動法人|NPO法人|社会福祉法人|学校法人|宗教法人|医療法人)\s*/gi,"")
+        .replace(/[（(]株[)）]|[（(]有[)）]|[（(]合[)）]|[（(]社[)）]/g,"")
+        .replace(/[Ａ-Ｚａ-ｚ０-９]/g, ch=>String.fromCharCode(ch.charCodeAt(0)-0xFEE0))
+        .replace(/[ァ-ン]/g, ch=>String.fromCharCode(ch.charCodeAt(0)-0x60))
+        .replace(/[\s\u3000・　]/g,"")
+        .replace(/[-－ー〜～、。・]/g,"")
+        .toLowerCase();
+      const result = [];
+      const sources = [
+        ["companies",      "企業",   "company"],
+        ["vendors",        "業者",   "vendor"],
+        ["municipalities", "自治体", "muni"],
+      ];
+      sources.forEach(([key, label, ftype]) => {
+        if(focusType && focusType !== ftype) return;
+        const list = data[key] || [];
+        const groups = {};
+        list.forEach(e => {
+          // 自治体は同一都道府県内でのみ重複判定
+          const baseKey = norm(e.name);
+          if(!baseKey) return;
+          const k = key==="municipalities" ? `${e.prefectureId||""}__${baseKey}` : baseKey;
+          if(!groups[k]) groups[k] = [];
+          groups[k].push(e);
+        });
+        Object.entries(groups).forEach(([k, arr]) => {
+          if(arr.length < 2) return;
+          // 最古を keep、他を drop
+          const sorted = [...arr].sort((a,b)=>{
+            const ta = new Date(a.createdAt||0).getTime();
+            const tb = new Date(b.createdAt||0).getTime();
+            return ta - tb;
+          });
+          result.push({
+            groupKey: `${key}__${k}`,
+            entityKey: key,
+            entityLabel: label,
+            keep: sorted[0],
+            drops: sorted.slice(1),
+            displayName: sorted[0].name,
+          });
+        });
+      });
+      return result;
+    };
+
+    // ★ 選択された group のみを統合する（プレビューモーダルから呼ばれる）
+    window.__myDeskApplySelectedMerges = (selectedGroupKeys) => {
+      if(!selectedGroupKeys || !selectedGroupKeys.length) return {merged:0};
+      const groups = window.__myDeskComputeDupGroups();
+      const targetGroups = groups.filter(g=>selectedGroupKeys.includes(g.groupKey));
+      if(!targetGroups.length) return {merged:0};
+
+      let nd = JSON.parse(JSON.stringify(data));
+      const remap = { companies:{}, vendors:{}, municipalities:{} };
+
+      targetGroups.forEach(grp => {
+        const { entityKey, keep:keepRef, drops } = grp;
+        const list = nd[entityKey] || [];
+        let keep = list.find(e=>String(e.id)===String(keepRef.id));
+        if(!keep) return;
+        keep = {...keep};
+        const dropIds = new Set();
+        drops.forEach(d => {
+          const dup = list.find(e=>String(e.id)===String(d.id));
+          if(!dup) return;
+          // assigneeIds をマージ
+          keep.assigneeIds = [...new Set([...(keep.assigneeIds||[]), ...(dup.assigneeIds||[])])];
+          // contacts をマージ
+          if(Array.isArray(dup.contacts) && dup.contacts.length){
+            keep.contacts = [...(keep.contacts||[]), ...dup.contacts];
+          }
+          // memos / chat / approachLogs / files をマージ
+          ["memos","chat","approachLogs","files"].forEach(f=>{
+            if(Array.isArray(dup[f]) && dup[f].length){
+              keep[f] = [...(keep[f]||[]), ...dup[f]];
+            }
+          });
+          if(entityKey==="vendors" && Array.isArray(dup.municipalityIds)){
+            keep.municipalityIds = [...new Set([...(keep.municipalityIds||[]), ...dup.municipalityIds])];
+          }
+          if(!keep.phone && dup.phone) keep.phone = dup.phone;
+          if(!keep.address && dup.address) keep.address = dup.address;
+          if(!keep.email && dup.email) keep.email = dup.email;
+          if(!keep.url && dup.url) keep.url = dup.url;
+
+          dropIds.add(String(dup.id));
+          remap[entityKey][String(dup.id)] = String(keep.id);
+        });
+        // リスト更新：drop を除外、keep を更新
+        nd[entityKey] = list.filter(e=>!dropIds.has(String(e.id)))
+                            .map(e=>String(e.id)===String(keep.id) ? keep : e);
+      });
+
+      // 名刺・タスク・プロジェクトの salesRef を新IDに張り直す
+      const refTypeMap = { "企業":"companies", "業者":"vendors", "自治体":"municipalities" };
+      nd.businessCards = (nd.businessCards||[]).map(bc => {
+        if(!bc.salesRef) return bc;
+        const refKey = refTypeMap[bc.salesRef.type];
+        if(!refKey) return bc;
+        const newId = remap[refKey]?.[String(bc.salesRef.id)];
+        if(!newId) return bc;
+        return {...bc, salesRef: {...bc.salesRef, id: newId}};
+      });
+      ["tasks","projects"].forEach(tkey=>{
+        if(!Array.isArray(nd[tkey])) return;
+        nd[tkey] = nd[tkey].map(t => {
+          if(!t.salesRef) return t;
+          const refKey = refTypeMap[t.salesRef.type];
+          if(!refKey) return t;
+          const newId = remap[refKey]?.[String(t.salesRef.id)];
+          if(!newId) return t;
+          return {...t, salesRef: {...t.salesRef, id: newId}};
+        });
+      });
+      save(nd);
+      const merged = targetGroups.reduce((sum,g)=>sum+g.drops.length, 0);
+      return {merged, groupCount: targetGroups.length};
+    };
+
+    // ★ 既存の console 用（DryRun + 全件統合）— 後方互換
     window.MyDeskMergeDuplicates = (dryRun=false) => {
       const norm = (s) => (s||"")
         .replace(/\s*(株式会社|有限会社|合同会社|一般社団法人|一般財団法人|公益社団法人|公益財団法人|特定非営利活動法人|NPO法人|社会福祉法人|学校法人|宗教法人|医療法人)\s*/gi,"")
@@ -14505,12 +14633,15 @@ ${orig}`})
                 </div>
               </div>
               <button onClick={()=>{
-                if(typeof window.MyDeskMergeDuplicates === "function"){
-                  window.MyDeskMergeDuplicates();
-                } else {
+                if(typeof window.__myDeskComputeDupGroups !== "function"){
                   window.alert("統合機能が未初期化です。ページを再読み込みして再度お試しください。");
+                  return;
                 }
-              }} style={{padding:"0.4rem 0.75rem",borderRadius:"6px",border:"none",background:"#dc2626",color:"white",fontWeight:800,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🔧 統合する</button>
+                const groups = window.__myDeskComputeDupGroups("company");
+                if(!groups.length){ window.alert("重複は見つかりませんでした"); return; }
+                setMergeSelected(new Set(groups.map(g=>g.groupKey)));
+                setMergePreview({groups, focusType:"company"});
+              }} style={{padding:"0.4rem 0.75rem",borderRadius:"6px",border:"none",background:"#dc2626",color:"white",fontWeight:800,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🔍 確認して統合</button>
             </div>
           );
         })()}
@@ -15311,12 +15442,15 @@ ${orig}`})
                 </div>
               </div>
               <button onClick={()=>{
-                if(typeof window.MyDeskMergeDuplicates === "function"){
-                  window.MyDeskMergeDuplicates();
-                } else {
+                if(typeof window.__myDeskComputeDupGroups !== "function"){
                   window.alert("統合機能が未初期化です。ページを再読み込みして再度お試しください。");
+                  return;
                 }
-              }} style={{padding:"0.4rem 0.75rem",borderRadius:"6px",border:"none",background:"#dc2626",color:"white",fontWeight:800,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🔧 統合する</button>
+                const groups = window.__myDeskComputeDupGroups("vendor");
+                if(!groups.length){ window.alert("重複は見つかりませんでした"); return; }
+                setMergeSelected(new Set(groups.map(g=>g.groupKey)));
+                setMergePreview({groups, focusType:"vendor"});
+              }} style={{padding:"0.4rem 0.75rem",borderRadius:"6px",border:"none",background:"#dc2626",color:"white",fontWeight:800,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🔍 確認して統合</button>
             </div>
           );
         })()}
@@ -16220,12 +16354,15 @@ ${orig}`})
               </div>
             </div>
             <button onClick={()=>{
-              if(typeof window.MyDeskMergeDuplicates === "function"){
-                window.MyDeskMergeDuplicates();
-              } else {
+              if(typeof window.__myDeskComputeDupGroups !== "function"){
                 window.alert("統合機能が未初期化です。ページを再読み込みして再度お試しください。");
+                return;
               }
-            }} style={{padding:"0.4rem 0.75rem",borderRadius:"6px",border:"none",background:"#dc2626",color:"white",fontWeight:800,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🔧 統合する</button>
+              const groups = window.__myDeskComputeDupGroups("muni");
+              if(!groups.length){ window.alert("重複は見つかりませんでした"); return; }
+              setMergeSelected(new Set(groups.map(g=>g.groupKey)));
+              setMergePreview({groups, focusType:"muni"});
+            }} style={{padding:"0.4rem 0.75rem",borderRadius:"6px",border:"none",background:"#dc2626",color:"white",fontWeight:800,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🔍 確認して統合</button>
           </div>
         );
       })()}
@@ -16694,6 +16831,142 @@ ${orig}`})
       )}
         {/* 重複検出モーダル */}
         {dupModal&&<DupModal existing={dupModal.existing} incoming={dupModal.incoming} dupReason={dupModal.dupReason} onKeepBoth={dupModal.onKeepBoth} onUseExisting={dupModal.onUseExisting} onCancel={()=>setDupModal(null)}/>}
+
+        {/* ★ 重複統合プレビューモーダル */}
+        {mergePreview && (()=>{
+          const userName = (uid)=> (users||[]).find(u=>String(u.id)===String(uid))?.name || "";
+          const TYPE_COLOR = {"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"};
+          const fmtDate = (s)=> s ? String(s).slice(0,10) : "";
+          const groupsByType = {};
+          (mergePreview.groups||[]).forEach(g=>{
+            if(!groupsByType[g.entityLabel]) groupsByType[g.entityLabel]=[];
+            groupsByType[g.entityLabel].push(g);
+          });
+          const totalDrops = (mergePreview.groups||[]).reduce((s,g)=>s+g.drops.length,0);
+          const selectedDrops = (mergePreview.groups||[])
+            .filter(g=>mergeSelected.has(g.groupKey))
+            .reduce((s,g)=>s+g.drops.length,0);
+          const allSelected = mergeSelected.size === (mergePreview.groups||[]).length;
+          return (
+            <div style={{position:"fixed",inset:0,zIndex:700,display:"flex",alignItems:"flex-end",justifyContent:"center",background:"rgba(0,0,0,0.6)",padding:0}}
+              onClick={e=>{ if(e.target===e.currentTarget) setMergePreview(null); }}>
+              <div style={{background:"white",borderRadius:"12px 12px 0 0",width:"100%",maxWidth:680,maxHeight:"92dvh",display:"flex",flexDirection:"column",boxShadow:"0 -8px 40px rgba(0,0,0,0.25)",boxSizing:"border-box"}}>
+                {/* ヘッダー */}
+                <div style={{padding:"1rem 1.25rem 0.65rem",borderBottom:`1px solid ${C.borderLight}`,flexShrink:0}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                    <span style={{fontWeight:800,fontSize:"1.02rem",color:C.text}}>🔍 重複の確認 ({mergePreview.groups.length}グループ)</span>
+                    <button onClick={()=>setMergePreview(null)} style={{background:"none",border:"none",cursor:"pointer",fontSize:"1.3rem",color:C.textMuted,lineHeight:1,padding:"0.2rem 0.4rem"}}>✕</button>
+                  </div>
+                  <div style={{fontSize:"0.72rem",color:C.textMuted,marginTop:"0.2rem"}}>
+                    左の「残す」を維持し、右の項目をマージします。チェックを外せばそのグループは統合されません。
+                  </div>
+                  <div style={{marginTop:"0.5rem",display:"flex",alignItems:"center",gap:"0.5rem",flexWrap:"wrap"}}>
+                    <button onClick={()=>{
+                      if(allSelected) setMergeSelected(new Set());
+                      else setMergeSelected(new Set(mergePreview.groups.map(g=>g.groupKey)));
+                    }} style={{padding:"0.25rem 0.65rem",borderRadius:"6px",border:`1.5px solid ${C.accent}`,background:"white",color:C.accent,fontWeight:700,fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit"}}>
+                      {allSelected ? "全解除" : "全選択"}
+                    </button>
+                    <span style={{fontSize:"0.72rem",color:C.textSub}}>{mergeSelected.size}グループ選択中 / 全{mergePreview.groups.length}グループ ({selectedDrops}/{totalDrops}件削減)</span>
+                  </div>
+                </div>
+                {/* リスト */}
+                <div style={{overflowY:"auto",flex:1,padding:"0.75rem 1rem"}}>
+                  {Object.entries(groupsByType).map(([typeLabel, groups])=>(
+                    <div key={typeLabel} style={{marginBottom:"1rem"}}>
+                      <div style={{fontSize:"0.72rem",fontWeight:800,color:TYPE_COLOR[typeLabel]||C.textSub,marginBottom:"0.4rem",letterSpacing:"0.03em"}}>
+                        {typeLabel}（{groups.length}グループ）
+                      </div>
+                      {groups.map(grp=>{
+                        const isSelected = mergeSelected.has(grp.groupKey);
+                        const keep = grp.keep;
+                        const drops = grp.drops;
+                        const keepAssignees = (keep.assigneeIds||[]).map(userName).filter(Boolean);
+                        return (
+                          <div key={grp.groupKey} style={{border:`1.5px solid ${isSelected?TYPE_COLOR[typeLabel]:C.border}`,borderRadius:"8px",marginBottom:"0.5rem",overflow:"hidden",background:isSelected?`${TYPE_COLOR[typeLabel]}08`:"#fafafa"}}>
+                            {/* グループヘッダー（チェックボックス + 名前） */}
+                            <div onClick={()=>setMergeSelected(prev=>{const n=new Set(prev);n.has(grp.groupKey)?n.delete(grp.groupKey):n.add(grp.groupKey);return n;})}
+                              style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.6rem 0.75rem",cursor:"pointer",borderBottom:isSelected?`1px solid ${TYPE_COLOR[typeLabel]}33`:"none"}}>
+                              <div style={{width:18,height:18,borderRadius:"4px",border:`2px solid ${isSelected?TYPE_COLOR[typeLabel]:"#cbd5e1"}`,background:isSelected?TYPE_COLOR[typeLabel]:"white",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,color:"white",fontSize:"0.7rem",fontWeight:800}}>
+                                {isSelected&&"✓"}
+                              </div>
+                              <span style={{fontSize:"0.88rem",fontWeight:700,color:C.text,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{grp.displayName}</span>
+                              <span style={{fontSize:"0.65rem",fontWeight:700,color:TYPE_COLOR[typeLabel],background:`${TYPE_COLOR[typeLabel]}22`,borderRadius:999,padding:"0.1rem 0.4rem",flexShrink:0}}>{drops.length+1}件 → 1件</span>
+                            </div>
+                            {/* 詳細（展開時のみ表示） */}
+                            {isSelected && (
+                              <div style={{padding:"0.5rem 0.75rem",fontSize:"0.72rem",display:"flex",flexDirection:"column",gap:"0.4rem"}}>
+                                {/* 残すレコード */}
+                                <div style={{background:"#ecfdf5",border:"1px solid #86efac",borderRadius:"6px",padding:"0.5rem 0.65rem"}}>
+                                  <div style={{display:"flex",alignItems:"center",gap:"0.35rem",marginBottom:"0.3rem"}}>
+                                    <span style={{fontSize:"0.65rem",fontWeight:800,color:"white",background:"#059669",borderRadius:999,padding:"0.05rem 0.4rem"}}>✅ 残す</span>
+                                    {keep.status && <span style={{fontSize:"0.65rem",color:C.textSub}}>● {keep.status}</span>}
+                                    {keep.createdAt && <span style={{fontSize:"0.62rem",color:C.textMuted,marginLeft:"auto"}}>{fmtDate(keep.createdAt)}〜</span>}
+                                  </div>
+                                  <div style={{color:C.text,fontWeight:600,marginBottom:"0.15rem"}}>{keep.name}</div>
+                                  <div style={{color:C.textSub,fontSize:"0.7rem",lineHeight:1.5}}>
+                                    {keepAssignees.length>0 && <div>👤 {keepAssignees.join("・")}</div>}
+                                    {keep.phone && <div>📞 {keep.phone}</div>}
+                                    {keep.address && <div style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>📍 {keep.address}</div>}
+                                    {(keep.memos||keep.chat||keep.approachLogs||keep.files)&&(
+                                      <div style={{color:C.textMuted,marginTop:"0.15rem"}}>
+                                        💬 {(keep.chat||[]).length}件 / 📋 {(keep.memos||[]).length+(keep.approachLogs||[]).length}件 / 📂 {(keep.files||[]).length}件
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                                {/* マージするレコード */}
+                                {drops.map(d=>{
+                                  const dAssignees = (d.assigneeIds||[]).map(userName).filter(Boolean);
+                                  return (
+                                    <div key={d.id} style={{background:"#fef2f2",border:"1px solid #fca5a5",borderRadius:"6px",padding:"0.5rem 0.65rem"}}>
+                                      <div style={{display:"flex",alignItems:"center",gap:"0.35rem",marginBottom:"0.3rem"}}>
+                                        <span style={{fontSize:"0.65rem",fontWeight:800,color:"white",background:"#dc2626",borderRadius:999,padding:"0.05rem 0.4rem"}}>🔄 マージ→削除</span>
+                                        {d.status && <span style={{fontSize:"0.65rem",color:C.textSub}}>● {d.status}</span>}
+                                        {d.createdAt && <span style={{fontSize:"0.62rem",color:C.textMuted,marginLeft:"auto"}}>{fmtDate(d.createdAt)}〜</span>}
+                                      </div>
+                                      <div style={{color:C.text,fontWeight:600,marginBottom:"0.15rem"}}>{d.name}</div>
+                                      <div style={{color:C.textSub,fontSize:"0.7rem",lineHeight:1.5}}>
+                                        {dAssignees.length>0 && <div>👤 {dAssignees.join("・")}</div>}
+                                        {!dAssignees.length && <div style={{color:C.textMuted}}>👤 担当者未設定</div>}
+                                        {d.phone && <div>📞 {d.phone}</div>}
+                                        {d.address && <div style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>📍 {d.address}</div>}
+                                        {(d.memos||d.chat||d.approachLogs||d.files)&&(
+                                          <div style={{color:C.textMuted,marginTop:"0.15rem"}}>
+                                            💬 {(d.chat||[]).length}件 / 📋 {(d.memos||[]).length+(d.approachLogs||[]).length}件 / 📂 {(d.files||[]).length}件
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+                {/* フッター */}
+                <div style={{padding:"0.75rem 1rem",borderTop:`1px solid ${C.borderLight}`,flexShrink:0,display:"flex",gap:"0.5rem"}}>
+                  <Btn variant="secondary" style={{flex:1}} onClick={()=>setMergePreview(null)}>キャンセル</Btn>
+                  <Btn style={{flex:2,background:mergeSelected.size>0?"#dc2626":"#cbd5e1",border:"none"}} disabled={mergeSelected.size===0} onClick={()=>{
+                    if(typeof window.__myDeskApplySelectedMerges !== "function"){
+                      window.alert("統合機能が未初期化です");
+                      return;
+                    }
+                    const sel = [...mergeSelected];
+                    const r = window.__myDeskApplySelectedMerges(sel);
+                    setMergePreview(null);
+                    setMergeSelected(new Set());
+                    window.alert(`✅ ${r.groupCount||0}グループ・${r.merged||0}件を統合しました`);
+                  }}>{mergeSelected.size>0 ? `🔧 選択した ${mergeSelected.size}グループを統合` : "グループを選択してください"}</Btn>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </>}{/* end salesTab==="muni" */}
 
       {/* ── 削除モーダル（全タブ共通） ── */}
