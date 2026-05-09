@@ -1104,12 +1104,12 @@ const LoadingOverlay = React.memo(function LoadingOverlay({label="処理中...",
 
 function Sheet({title,onClose,children}) {
   return (
-    <div style={{position:"fixed",inset:0,zIndex:300,display:"flex",flexDirection:"column",justifyContent:"flex-end"}}>
+    <div style={{position:"fixed",inset:0,zIndex:300,display:"flex",flexDirection:"column",justifyContent:"flex-end",overflowX:"hidden"}}>
       <div onClick={onClose} style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.45)"}}/>
-      <div style={{position:"relative",background:"white",borderRadius:"12px 12px 0 0",padding:"1.5rem 1.25rem calc(5rem + env(safe-area-inset-bottom,16px))",maxHeight:"90vh",overflowY:"auto",boxShadow:"0 -4px 20px rgba(0,0,0,0.1)"}}>
+      <div style={{position:"relative",background:"white",borderRadius:"12px 12px 0 0",padding:"1.5rem 1.25rem calc(5rem + env(safe-area-inset-bottom,16px))",maxHeight:"90vh",overflowY:"auto",overflowX:"hidden",boxShadow:"0 -4px 20px rgba(0,0,0,0.1)",boxSizing:"border-box",wordBreak:"break-word",overflowWrap:"break-word"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1.5rem"}}>
-          <h3 style={{margin:0,fontSize:"1.05rem",fontWeight:800,color:C.text}}>{title}</h3>
-          <button onClick={onClose} style={{background:"none",border:"none",fontSize:"1.4rem",color:C.textMuted,cursor:"pointer",lineHeight:1}}>×</button>
+          <h3 style={{margin:0,fontSize:"1.05rem",fontWeight:800,color:C.text,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{title}</h3>
+          <button onClick={onClose} style={{background:"none",border:"none",fontSize:"1.4rem",color:C.textMuted,cursor:"pointer",lineHeight:1,flexShrink:0}}>×</button>
         </div>
         {children}
       </div>
@@ -11762,10 +11762,10 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     addIfMatch(data.companies||[], "企業");
     addIfMatch(data.municipalities||[], "自治体");
     addIfMatch(data.vendors||[], "業者");
-    // スコア降順でソート、重複IDを除外
+    // スコア降順でソート、重複(type+id)を除外
     const seen = new Set();
     return results
-      .filter(r=>{ if(seen.has(r.id)) return false; seen.add(r.id); return true; })
+      .filter(r=>{ const k=`${r.type}_${r.id}`; if(seen.has(k)) return false; seen.add(k); return true; })
       .sort((a,b)=>b.score-a.score)
       .slice(0,5);
   };
@@ -11824,12 +11824,23 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
 
   // 名刺1枚登録後のマッチチェック → モーダル表示
   const checkMatchAfterBizCard = (newCard, savedData) => {
+    // 既に紐付け済みなら確認ポップアップは出さない（重複表示防止）
+    if(newCard.salesRef && newCard.salesRef.id) return;
     const matches = findMatchingEntities(newCard.company);
     if(!matches.length) return;
+    // normBizName で重複排除
+    const seen = new Set();
+    const uniqMatches = matches.filter(m=>{
+      const k = `${m.type}_${normBizName(m.name)}`;
+      if(seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+    if(!uniqMatches.length) return;
     setMatchModal({
       mode: "card_to_entity",
       cards: [newCard],
-      entities: matches,
+      entities: uniqMatches,
       savedData,
     });
   };
@@ -11931,6 +11942,19 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
         c.id===cardId ? {...c, salesRef:{type:entityType,id:String(entityId),name:entityName}} : c
       )};
     });
+    // ★ 複数担当者保持：紐付け先 entity の assigneeIds に現ユーザーを追加
+    //   既存担当者は維持したまま、自分も追加（重複なし）
+    if(uid) {
+      const addAssignee = (arr) => (arr||[]).map(e=>{
+        if(String(e.id) !== String(entityId)) return e;
+        const cur = Array.isArray(e.assigneeIds) ? e.assigneeIds : [];
+        if(cur.includes(uid)) return e;
+        return {...e, assigneeIds:[...cur, uid]};
+      });
+      if(entityType === "企業")     nd = {...nd, companies:      addAssignee(nd.companies)};
+      else if(entityType === "業者") nd = {...nd, vendors:        addAssignee(nd.vendors)};
+      else if(entityType === "自治体") nd = {...nd, municipalities: addAssignee(nd.municipalities)};
+    }
     // 通知：紐付け実行者以外の登録者に通知
     const linkedCards = (nd.businessCards||[]).filter(c=>selectedIds.includes(c.id));
     const notifyIds = [...new Set(linkedCards.map(c=>c.createdBy).filter(id=>id&&id!==uid))];
@@ -12780,10 +12804,9 @@ ${recentLogs}
   // ── CRUD ──────────────────────────────────────────────────────────────────
   const saveCompany=(skipDupCheck=false)=>{
     if(!form.name?.trim())return;
-    // 新規追加時の重複チェック
+    // 新規追加時の重複チェック（法人格・表記揺れも吸収）
     if(!form.id && !skipDupCheck){
-      const normName = s => (s||"").replace(/[\s　]/g,"").toLowerCase();
-      const dup=companies.find(c=>normName(c.name)===normName(form.name));
+      const dup=companies.find(c=>normBizName(c.name)===normBizName(form.name));
       if(dup){setDupModal({existing:dup,incoming:form.name.trim(),
         onKeepBoth:()=>{setDupModal(null);saveCompany(true);},
         onUseExisting:()=>{setActiveCompany(dup.id);setDupModal(null);setSheet(null);}
@@ -12817,8 +12840,7 @@ ${recentLogs}
   const saveMuni=(skipDupCheck=false)=>{
     if(!form.name?.trim())return;
     if(!form.id && !skipDupCheck){
-      const normName = s => (s||"").replace(/[\s　]/g,"").toLowerCase();
-      const dup=munis.find(m=>String(m.prefectureId)===String(activePref)&&normName(m.name)===normName(form.name));
+      const dup=munis.find(m=>String(m.prefectureId)===String(activePref)&&normBizName(m.name)===normBizName(form.name));
       if(dup){setDupModal({existing:dup,incoming:form.name.trim(),
         onKeepBoth:()=>{setDupModal(null);saveMuni(true);},
         onUseExisting:()=>{setActiveMuni(dup.id);setMuniScreen("detail");setDupModal(null);setSheet(null);}
@@ -12862,12 +12884,11 @@ ${recentLogs}
     if(!form.id && !skipDupCheck){
       const normStr = s => (s||"").replace(/[\s　\-ー－]/g,"").toLowerCase();
       const normPhone = s => (s||"").replace(/[^0-9]/g,"");
-      const formName  = normStr(form.name);
       const formAddr  = normStr(form.address||"");
       const formPhone = normPhone(form.phone||"");
 
-      // 会社名が一致する重複チェック
-      const dupByName = vendors.find(v=>normStr(v.name)===formName);
+      // 会社名が一致する重複チェック（normBizName で法人格・表記揺れも吸収）
+      const dupByName = vendors.find(v=>normBizName(v.name)===normBizName(form.name));
       // 電話番号が一致（7桁以上の場合のみ）
       const dupByPhone = formPhone.length>=7 ? vendors.find(v=>normPhone(v.phone||"")===formPhone && normPhone(v.phone||"").length>=7) : null;
       // 住所が一致（10文字以上の場合のみ）
@@ -13926,18 +13947,18 @@ ${orig}`})
   if(matchModal.mode==="card_to_entity") {
     const card = matchModal.cards[0];
     return (
-      <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.5)",padding:"1rem"}} onClick={e=>{if(e.target===e.currentTarget)setMatchModal(null);}}>
-        <div style={{background:"white",borderRadius:"10px",padding:"1.5rem",maxWidth:380,width:"100%",boxShadow:"0 12px 50px rgba(0,0,0,0.25)"}}>
+      <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.5)",padding:"1rem",overflowX:"hidden"}} onClick={e=>{if(e.target===e.currentTarget)setMatchModal(null);}}>
+        <div style={{background:"white",borderRadius:"10px",padding:"1.5rem",maxWidth:380,width:"100%",boxShadow:"0 12px 50px rgba(0,0,0,0.25)",overflowX:"hidden",boxSizing:"border-box",wordBreak:"break-word",overflowWrap:"break-word"}}>
           <div style={{fontSize:"1rem",fontWeight:800,color:C.text,marginBottom:"0.5rem"}}>🔗 営業先と一致しました</div>
-          <div style={{fontSize:"0.82rem",color:C.textSub,marginBottom:"1rem"}}>
+          <div style={{fontSize:"0.82rem",color:C.textSub,marginBottom:"1rem",wordBreak:"break-word",overflowWrap:"break-word"}}>
             「{card.lastName}{card.firstName}」({card.company}) を以下に紐づけますか？
           </div>
           {matchModal.entities.map(ent=>(
-            <div key={ent.id} style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.6rem 0.75rem",marginBottom:"0.5rem",background:`${COLOR[ent.type]}15`,border:`1.5px solid ${COLOR[ent.type]}44`,borderRadius:"6px"}}>
+            <div key={`${ent.type}_${ent.id}`} style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.6rem 0.75rem",marginBottom:"0.5rem",background:`${COLOR[ent.type]}15`,border:`1.5px solid ${COLOR[ent.type]}44`,borderRadius:"6px",minWidth:0,boxSizing:"border-box"}}>
               <span style={{fontSize:"0.7rem",fontWeight:800,color:"white",background:COLOR[ent.type],borderRadius:999,padding:"0.1rem 0.5rem",flexShrink:0}}>{ent.type}</span>
-              <span style={{fontSize:"0.88rem",fontWeight:700,color:COLOR[ent.type],flex:1}}>{ent.name}</span>
+              <span style={{fontSize:"0.88rem",fontWeight:700,color:COLOR[ent.type],flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ent.name}</span>
               {card.salesRef ? (
-                <Btn size="sm" onClick={()=>applyBizCardLinks([card.id],ent.type,ent.id,ent.name,matchModal.savedData)}>上書き</Btn>
+                <Btn size="sm" onClick={()=>applyBizCardLinks([card.id],ent.type,ent.id,ent.name,matchModal.savedData)}>変更</Btn>
               ) : (
                 <Btn size="sm" onClick={()=>applyBizCardLinks([card.id],ent.type,ent.id,ent.name,matchModal.savedData)}>紐づける</Btn>
               )}
@@ -13953,16 +13974,16 @@ ${orig}`})
     const groupKey = (entity, cardId) => `${entity.type}_${entity.id}_${cardId}`;
     const isCheckedFor = (entity, cardId) => matchChecked[groupKey(entity,cardId)] !== false;
     return (
-      <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"flex-end",justifyContent:"center",background:"rgba(0,0,0,0.5)",padding:"0"}} onClick={e=>{if(e.target===e.currentTarget)setMatchModal(null);}}>
-        <div style={{background:"white",borderRadius:"1.25rem 1.25rem 0 0",padding:"1.5rem",maxWidth:480,width:"100%",maxHeight:"80vh",overflowY:"auto",boxShadow:"0 -8px 40px rgba(0,0,0,0.2)"}}>
+      <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"flex-end",justifyContent:"center",background:"rgba(0,0,0,0.5)",padding:"0",overflowX:"hidden"}} onClick={e=>{if(e.target===e.currentTarget)setMatchModal(null);}}>
+        <div style={{background:"white",borderRadius:"1.25rem 1.25rem 0 0",padding:"1.5rem",maxWidth:480,width:"100%",maxHeight:"80vh",overflowY:"auto",overflowX:"hidden",boxShadow:"0 -8px 40px rgba(0,0,0,0.2)",boxSizing:"border-box",wordBreak:"break-word",overflowWrap:"break-word"}}>
           <div style={{fontSize:"1rem",fontWeight:800,color:C.text,marginBottom:"0.5rem"}}>🔗 営業先との一致が見つかりました</div>
           <div style={{fontSize:"0.82rem",color:C.textSub,marginBottom:"1rem"}}>紐づける名刺を選択してください</div>
           {matchModal.groups.map(({entity, cards})=>(
-            <div key={`${entity.type}_${entity.id}`} style={{marginBottom:"1rem",background:"#f8fafc",borderRadius:"6px",padding:"0.75rem"}}>
-              <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginBottom:"0.5rem"}}>
-                <span style={{fontSize:"0.7rem",fontWeight:800,color:"white",background:COLOR[entity.type],borderRadius:999,padding:"0.1rem 0.45rem"}}>{entity.type}</span>
-                <span style={{fontSize:"0.88rem",fontWeight:700}}>{entity.name}</span>
-                <span style={{fontSize:"0.72rem",color:C.textMuted,marginLeft:"auto"}}>{cards.length}件一致</span>
+            <div key={`${entity.type}_${entity.id}`} style={{marginBottom:"1rem",background:"#f8fafc",borderRadius:"6px",padding:"0.75rem",minWidth:0}}>
+              <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginBottom:"0.5rem",minWidth:0}}>
+                <span style={{fontSize:"0.7rem",fontWeight:800,color:"white",background:COLOR[entity.type],borderRadius:999,padding:"0.1rem 0.45rem",flexShrink:0}}>{entity.type}</span>
+                <span style={{fontSize:"0.88rem",fontWeight:700,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{entity.name}</span>
+                <span style={{fontSize:"0.72rem",color:C.textMuted,flexShrink:0}}>{cards.length}件一致</span>
               </div>
               {cards.map(card=>{
                 const ck = groupKey(entity, card.id);
@@ -13970,10 +13991,10 @@ ${orig}`})
                 const hasExisting = !!card.salesRef;
                 return (
                   <div key={card.id} onClick={()=>setMatchChecked(p=>({...p,[ck]:!isChecked}))}
-                    style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.4rem 0.5rem",background:"white",borderRadius:"0.5rem",marginBottom:"0.25rem",cursor:"pointer",border:`1px solid ${isChecked?C.accent:C.borderLight}`}}>
-                    <span style={{fontSize:"1rem"}}>{isChecked?"☑":"☐"}</span>
-                    <span style={{fontSize:"0.82rem",fontWeight:600,flex:1}}>{card.lastName}{card.firstName}</span>
-                    {card.title&&<span style={{fontSize:"0.7rem",color:C.textSub}}>{card.title}</span>}
+                    style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.4rem 0.5rem",background:"white",borderRadius:"0.5rem",marginBottom:"0.25rem",cursor:"pointer",border:`1px solid ${isChecked?C.accent:C.borderLight}`,minWidth:0}}>
+                    <span style={{fontSize:"1rem",flexShrink:0}}>{isChecked?"☑":"☐"}</span>
+                    <span style={{fontSize:"0.82rem",fontWeight:600,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{card.lastName}{card.firstName}</span>
+                    {card.title&&<span style={{fontSize:"0.7rem",color:C.textSub,flexShrink:0,maxWidth:80,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{card.title}</span>}
                     {hasExisting&&<span style={{fontSize:"0.65rem",background:"#fef3c7",color:"#d97706",borderRadius:999,padding:"0.05rem 0.35rem",flexShrink:0}}>紐付済</span>}
                   </div>
                 );
@@ -13995,24 +14016,24 @@ ${orig}`})
   }
   // entity_to_cards
   return (
-    <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.5)",padding:"1rem"}} onClick={e=>{if(e.target===e.currentTarget)setMatchModal(null);}}>
-      <div style={{background:"white",borderRadius:"10px",padding:"1.5rem",maxWidth:400,width:"100%",maxHeight:"80vh",overflowY:"auto",boxShadow:"0 12px 50px rgba(0,0,0,0.25)"}}>
+    <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.5)",padding:"1rem",overflowX:"hidden"}} onClick={e=>{if(e.target===e.currentTarget)setMatchModal(null);}}>
+      <div style={{background:"white",borderRadius:"10px",padding:"1.5rem",maxWidth:400,width:"100%",maxHeight:"80vh",overflowY:"auto",overflowX:"hidden",boxShadow:"0 12px 50px rgba(0,0,0,0.25)",boxSizing:"border-box",wordBreak:"break-word",overflowWrap:"break-word"}}>
         <div style={{fontSize:"1rem",fontWeight:800,color:C.text,marginBottom:"0.5rem"}}>🔗 一致する名刺が見つかりました</div>
-        <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginBottom:"1rem"}}>
-          <span style={{fontSize:"0.7rem",fontWeight:800,color:"white",background:COLOR[matchModal.entity.type]||C.accent,borderRadius:999,padding:"0.1rem 0.45rem"}}>{matchModal.entity.type}</span>
-          <span style={{fontSize:"0.88rem",fontWeight:700}}>{matchModal.entity.name}</span>
+        <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginBottom:"1rem",minWidth:0}}>
+          <span style={{fontSize:"0.7rem",fontWeight:800,color:"white",background:COLOR[matchModal.entity.type]||C.accent,borderRadius:999,padding:"0.1rem 0.45rem",flexShrink:0}}>{matchModal.entity.type}</span>
+          <span style={{fontSize:"0.88rem",fontWeight:700,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{matchModal.entity.name}</span>
         </div>
         {matchModal.cards.map(card=>{
           const isChecked = matchChecked[card.id]!==false;
           return (
             <div key={card.id} onClick={()=>setMatchChecked(p=>({...p,[card.id]:!isChecked}))}
-              style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.5rem 0.75rem",background:"#f8fafc",borderRadius:"0.625rem",marginBottom:"0.4rem",cursor:"pointer",border:`1.5px solid ${isChecked?C.accent:C.borderLight}`}}>
-              <span style={{fontSize:"1rem"}}>{isChecked?"☑":"☐"}</span>
-              <div style={{flex:1}}>
-                <div style={{fontSize:"0.85rem",fontWeight:600}}>{card.lastName}{card.firstName}</div>
-                {card.title&&<div style={{fontSize:"0.7rem",color:C.textSub}}>{card.title}</div>}
+              style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.5rem 0.75rem",background:"#f8fafc",borderRadius:"0.625rem",marginBottom:"0.4rem",cursor:"pointer",border:`1.5px solid ${isChecked?C.accent:C.borderLight}`,minWidth:0}}>
+              <span style={{fontSize:"1rem",flexShrink:0}}>{isChecked?"☑":"☐"}</span>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:"0.85rem",fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{card.lastName}{card.firstName}</div>
+                {card.title&&<div style={{fontSize:"0.7rem",color:C.textSub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{card.title}</div>}
               </div>
-              {card.salesRef&&<span style={{fontSize:"0.65rem",background:"#fef3c7",color:"#d97706",borderRadius:999,padding:"0.05rem 0.35rem"}}>紐付済</span>}
+              {card.salesRef&&<span style={{fontSize:"0.65rem",background:"#fef3c7",color:"#d97706",borderRadius:999,padding:"0.05rem 0.35rem",flexShrink:0}}>紐付済</span>}
             </div>
           );
         })}
@@ -16658,21 +16679,55 @@ ${orig}`})
 
         // フィルター適用
         const q=norm(bcSearch);
-        const filtered=bizCards.filter(c=>{
+        const isSearching = !!q;
+        // 検索ヒット度合いをスコア化（前方一致 > 部分一致、姓名一致を優先）
+        const scoreCard = (c) => {
+          if(!q) return 0;
+          const fields = [
+            {v:`${c.lastName||""}${c.firstName||""}`, w:120}, // 氏名（連結）
+            {v:c.lastName,   w:100},
+            {v:c.firstName,  w:100},
+            {v:c.email,      w: 80},
+            {v:c.mobile,     w: 80},
+            {v:c.telDirect,  w: 80},
+            {v:c.telCompany, w: 60},
+            {v:c.title,      w: 50},
+            {v:c.department, w: 50},
+            {v:c.company,    w: 40},
+            {v:c.address,    w: 20},
+          ];
+          let best = 0;
+          for(const {v,w} of fields){
+            const nv = norm(v);
+            if(!nv) continue;
+            if(nv === q)        best = Math.max(best, w*2);
+            else if(nv.startsWith(q)) best = Math.max(best, w*1.5);
+            else if(nv.includes(q))   best = Math.max(best, w);
+          }
+          return best;
+        };
+        const filtered = bizCards.filter(c=>{
           if(bcCompanyFilter&&c.company!==bcCompanyFilter) return false;
           if(!q) return true;
           return [c.company,c.lastName,c.firstName,c.title,c.department,c.email,c.mobile,c.telDirect,c.address].some(v=>norm(v).includes(q));
         }).sort((a,b)=>{
+          // 検索中はヒットスコア降順 → 同点は会社名 → 姓
+          if(isSearching){
+            const sa = scoreCard(a), sb = scoreCard(b);
+            if(sa !== sb) return sb - sa;
+          }
           const cmp=(a.company||"").localeCompare(b.company||"","ja");
           if(cmp!==0)return cmp;
           return (a.lastName||"").localeCompare(b.lastName||"","ja");
         });
         const bcVisibleIds=filtered.map(c=>c.id);
 
-        // 会社別グループ
+        // 会社別グループ（検索中はグルーピングせず平坦表示）
         const groups={};
-        filtered.forEach(c=>{const k=c.company||"（会社名なし）";if(!groups[k])groups[k]=[];groups[k].push(c);});
-        const groupKeys=Object.keys(groups).sort((a,b)=>a.localeCompare(b,"ja"));
+        if(!isSearching) {
+          filtered.forEach(c=>{const k=c.company||"（会社名なし）";if(!groups[k])groups[k]=[];groups[k].push(c);});
+        }
+        const groupKeys=isSearching ? [] : Object.keys(groups).sort((a,b)=>a.localeCompare(b,"ja"));
 
         return (
           <div>
@@ -16740,6 +16795,46 @@ ${orig}`})
               </Card>
             ):filtered.length===0?(
               <div style={{textAlign:"center",color:C.textMuted,padding:"2rem",fontSize:"0.85rem"}}>該当する名刺がありません</div>
+            ):isSearching?(
+              // ── 検索中：ヒットしたカードを上から並べる（グルーピングなし）──
+              <Card style={{overflow:"hidden"}}>
+                <div style={{padding:"0.5rem 1rem",background:"#fef3c7",borderBottom:`1px solid ${C.borderLight}`,display:"flex",alignItems:"center",gap:"0.5rem"}}>
+                  <span style={{fontSize:"0.75rem",fontWeight:800,color:"#92400e",flex:1}}>🔍 検索結果（{filtered.length}件）</span>
+                  <button onClick={()=>setBcSearch("")} style={{fontSize:"0.7rem",color:"#92400e",background:"none",border:"none",cursor:"pointer",fontWeight:700,fontFamily:"inherit"}}>✕ クリア</button>
+                </div>
+                {filtered.map(card=>{
+                  const name=`${card.lastName||""} ${card.firstName||""}`.trim()||"（名前なし）";
+                  const phone=card.telDirect||card.mobile||card.telCompany||"";
+                  const isSelected=bulkSelected.has(card.id);
+                  return (
+                    <div key={card.id} onClick={()=>{
+                      if(bulkMode){setBulkSelected(prev=>{const n=new Set(prev);n.has(card.id)?n.delete(card.id):n.add(card.id);return n;});return;}
+                      setBcActiveId(card.id);setBcScreen("detail");
+                    }}
+                      style={{display:"flex",alignItems:"center",gap:"0.75rem",padding:"0.75rem 1rem",borderBottom:`1px solid ${C.borderLight}`,cursor:"pointer",background:isSelected?"#eff6ff":"white"}}>
+                      {bulkMode&&<input type="checkbox" checked={isSelected} readOnly style={{width:15,height:15,accentColor:C.accent,flexShrink:0}}/>}
+                      <div style={{width:38,height:38,borderRadius:"50%",background:C.accent,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                        <span style={{fontSize:"1rem",fontWeight:800,color:"white"}}>{(card.lastName||card.company||"?")[0]}</span>
+                      </div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{display:"flex",alignItems:"center",gap:"0.35rem",flexWrap:"wrap"}}>
+                          <span style={{fontSize:"0.88rem",fontWeight:700,color:C.text}}>{name}</span>
+                          {card.salesRef
+                            ? <span style={{fontSize:"0.62rem",fontWeight:700,color:"white",background:{"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"}[card.salesRef.type]||"#64748b",borderRadius:999,padding:"0.05rem 0.35rem"}}>{card.salesRef.type}</span>
+                            : <span style={{fontSize:"0.62rem",fontWeight:700,color:"#d97706",background:"#fef3c7",borderRadius:999,padding:"0.05rem 0.35rem",border:"1px solid #fde68a"}}>未登録</span>}
+                        </div>
+                        <div style={{fontSize:"0.72rem",color:C.accent,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>🏢 {card.company||"（会社名なし）"}</div>
+                        <div style={{fontSize:"0.72rem",color:C.textSub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{[card.title,card.department].filter(Boolean).join("　")}</div>
+                        <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap"}}>
+                          {phone&&<span style={{fontSize:"0.7rem",color:C.textMuted}}>📞 {phone}</span>}
+                          {(card.owners||[card.owner]).filter(Boolean).length>0&&<span style={{fontSize:"0.68rem",color:"#7c3aed",fontWeight:600}}>👤 {(card.owners||[card.owner]).filter(Boolean).join("・")}</span>}
+                        </div>
+                      </div>
+                      {!bulkMode&&<span style={{color:C.textMuted,fontSize:"0.85rem",flexShrink:0}}>›</span>}
+                    </div>
+                  );
+                })}
+              </Card>
             ):(
               <div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
                 {groupKeys.map(company=>(
@@ -16945,21 +17040,32 @@ ${orig}`})
                   
                   {/* 会社名一致の自動候補表示（_salesRef未設定時のみ） */}
                   {!bcAddForm._salesRef && bcAddForm.company.trim() && (() => {
-                    const match = findExactMatchEntity(bcAddForm.company);
-                    if(!match) return null;
+                    // findMatchingEntities (fuzzy) で複数候補を取得 — 企業/業者/自治体すべて含む
+                    const candidates = findMatchingEntities(bcAddForm.company);
+                    if(!candidates.length) return null;
                     const TYPE_COLOR = {"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"};
-                    const TYPE_ICON = {"企業":"🏢","業者":"🔧","自治体":"🏛️"};
+                    const TYPE_ICON  = {"企業":"🏢","業者":"🔧","自治体":"🏛️"};
+                    // 重複排除（normBizName + type で一意化）
+                    const seen = new Set();
+                    const uniq = candidates.filter(m=>{
+                      const k = `${m.type}_${normBizName(m.name)}`;
+                      if(seen.has(k)) return false;
+                      seen.add(k);
+                      return true;
+                    }).slice(0,4); // 最大4件
                     return (
                       <div style={{background:"#ecfdf5",border:"1.5px solid #86efac",borderRadius:"0.5rem",padding:"0.6rem 0.75rem",marginBottom:"0.5rem"}}>
                         <div style={{fontSize:"0.7rem",fontWeight:700,color:"#059669",marginBottom:"0.4rem",display:"flex",alignItems:"center",gap:"0.35rem"}}>
-                          <span>✨ 同じ会社名が見つかりました</span>
+                          <span>✨ 同じ会社名が見つかりました（{uniq.length}件）</span>
                         </div>
-                        <button onClick={()=>setBcAddForm(p=>({...p,_salesRef:{type:match.type,id:match.id,name:match.name}}))}
-                          style={{display:"flex",alignItems:"center",gap:"0.5rem",width:"100%",padding:"0.5rem 0.75rem",background:"white",border:`1.5px solid ${TYPE_COLOR[match.type]}`,borderRadius:"0.4rem",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
-                          <span style={{fontSize:"0.65rem",fontWeight:800,color:"white",background:TYPE_COLOR[match.type],borderRadius:999,padding:"0.1rem 0.45rem",flexShrink:0}}>{TYPE_ICON[match.type]} {match.type}</span>
-                          <span style={{fontSize:"0.85rem",fontWeight:700,color:C.text,flex:1}}>{match.name}</span>
-                          <span style={{fontSize:"0.7rem",color:"#059669",fontWeight:700,flexShrink:0}}>🔗 紐付け →</span>
-                        </button>
+                        {uniq.map(match=>(
+                          <button key={`${match.type}_${match.id}`} onClick={()=>setBcAddForm(p=>({...p,_salesRef:{type:match.type,id:match.id,name:match.name}}))}
+                            style={{display:"flex",alignItems:"center",gap:"0.5rem",width:"100%",padding:"0.5rem 0.75rem",background:"white",border:`1.5px solid ${TYPE_COLOR[match.type]}`,borderRadius:"0.4rem",cursor:"pointer",fontFamily:"inherit",textAlign:"left",marginBottom:"0.35rem",minWidth:0,boxSizing:"border-box"}}>
+                            <span style={{fontSize:"0.65rem",fontWeight:800,color:"white",background:TYPE_COLOR[match.type],borderRadius:999,padding:"0.1rem 0.45rem",flexShrink:0}}>{TYPE_ICON[match.type]} {match.type}</span>
+                            <span style={{fontSize:"0.85rem",fontWeight:700,color:C.text,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{match.name}</span>
+                            <span style={{fontSize:"0.7rem",color:"#059669",fontWeight:700,flexShrink:0}}>🔗 紐付け →</span>
+                          </button>
+                        ))}
                         <div style={{fontSize:"0.65rem",color:"#166534",marginTop:"0.3rem"}}>※ クリックすると自動で紐付けられます</div>
                       </div>
                     );
@@ -16975,21 +17081,34 @@ ${orig}`})
                     const cardData={...bcAddForm,owners,owner:undefined,exchangedAt:bcAddForm.exchangedAt||today};
                     let ref=bcAddForm._salesRef||null;
                     // 新規登録フラグがあれば企業/業者/自治体を自動作成
+                    // ★ 重複防止：同名(normBizName一致)が既に存在すれば既存を再利用
                     if(ref?._isNew){
-                      const newId=Date.now()+"_"+Math.random().toString(36).substr(2,6);
-                      const phone=bcAddForm.telDirect||bcAddForm.mobile||bcAddForm.telCompany||"";
-                      if(ref.type==="企業"){
-                        const newEnt={id:newId,name:ref.name,status:"未接触",phone,address:bcAddForm.address||"",assigneeIds:[],memos:[],chat:[],createdAt:today};
-                        save({...data,companies:[...(data.companies||[]),newEnt]});
-                        ref={type:"企業",id:newId,name:ref.name};
-                      } else if(ref.type==="業者"){
-                        const newEnt={id:"v_"+newId,name:ref.name,status:"未接触",phone,address:bcAddForm.address||"",municipalityIds:[],assigneeIds:[],memos:[],chat:[],approachLogs:[],createdAt:today};
-                        save({...data,vendors:[...(data.vendors||[]),newEnt]});
-                        ref={type:"業者",id:"v_"+newId,name:ref.name};
-                      } else if(ref.type==="自治体"){
-                        const newEnt={id:"m_"+newId,name:ref.name,status:"未接触",address:bcAddForm.address||"",assigneeIds:[],dustalk:"未展開",treatyStatus:"未接触",artBranch:"",memos:[],chat:[],approachLogs:[],createdAt:today};
-                        save({...data,municipalities:[...(data.municipalities||[]),newEnt]});
-                        ref={type:"自治体",id:"m_"+newId,name:ref.name};
+                      const refNorm = normBizName(ref.name);
+                      let existing = null;
+                      if(ref.type==="企業")     existing = (data.companies||[]).find(e=>normBizName(e.name)===refNorm);
+                      else if(ref.type==="業者") existing = (data.vendors||[]).find(e=>normBizName(e.name)===refNorm);
+                      else if(ref.type==="自治体") existing = (data.municipalities||[]).find(e=>normBizName(e.name)===refNorm);
+                      if(existing){
+                        // 既存があれば、それを使う（重複作成しない）
+                        ref={type:ref.type, id:existing.id, name:existing.name};
+                      } else {
+                        const newId=Date.now()+"_"+Math.random().toString(36).substr(2,6);
+                        const phone=bcAddForm.telDirect||bcAddForm.mobile||bcAddForm.telCompany||"";
+                        const myUid = currentUser?.id;
+                        const initAssignees = myUid ? [myUid] : [];
+                        if(ref.type==="企業"){
+                          const newEnt={id:newId,name:ref.name,status:"未接触",phone,address:bcAddForm.address||"",assigneeIds:initAssignees,memos:[],chat:[],createdAt:today};
+                          save({...data,companies:[...(data.companies||[]),newEnt]});
+                          ref={type:"企業",id:newId,name:ref.name};
+                        } else if(ref.type==="業者"){
+                          const newEnt={id:"v_"+newId,name:ref.name,status:"未接触",phone,address:bcAddForm.address||"",municipalityIds:[],assigneeIds:initAssignees,memos:[],chat:[],approachLogs:[],createdAt:today};
+                          save({...data,vendors:[...(data.vendors||[]),newEnt]});
+                          ref={type:"業者",id:"v_"+newId,name:ref.name};
+                        } else if(ref.type==="自治体"){
+                          const newEnt={id:"m_"+newId,name:ref.name,status:"未接触",address:bcAddForm.address||"",assigneeIds:initAssignees,dustalk:"未展開",treatyStatus:"未接触",artBranch:"",memos:[],chat:[],approachLogs:[],createdAt:today};
+                          save({...data,municipalities:[...(data.municipalities||[]),newEnt]});
+                          ref={type:"自治体",id:"m_"+newId,name:ref.name};
+                        }
                       }
                     }
                     if(ref) cardData.salesRef=ref;
