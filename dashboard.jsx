@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-09-v40-debug-overlay"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-09-v41-modal-via-renderModals"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -11319,6 +11319,141 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   const [mergePreview, setMergePreview] = useState(null);
   const [mergeSelected, setMergeSelected] = useState(new Set()); // 選択された group key
 
+  // ★ 重複統合プレビューモーダル — 関数として定義し、各 return 内で {renderMergeModal()} で呼び出す
+  //   SalesView は salesTab に応じて複数の早期 return をするため、
+  //   モーダル JSX を1箇所に置くと表示されないタブが出る。各 return で呼ぶことで全タブ対応。
+  const renderMergeModal = () => {
+    if(!mergePreview) return null;
+    const userName = (uid)=> (users||[]).find(u=>String(u.id)===String(uid))?.name || "";
+    const TYPE_COLOR = {"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"};
+    const fmtDate = (s)=> s ? String(s).slice(0,10) : "";
+    const groupsByType = {};
+    (mergePreview.groups||[]).forEach(g=>{
+      if(!groupsByType[g.entityLabel]) groupsByType[g.entityLabel]=[];
+      groupsByType[g.entityLabel].push(g);
+    });
+    const totalDrops = (mergePreview.groups||[]).reduce((s,g)=>s+g.drops.length,0);
+    const selectedDrops = (mergePreview.groups||[])
+      .filter(g=>mergeSelected.has(g.groupKey))
+      .reduce((s,g)=>s+g.drops.length,0);
+    const allSelected = mergeSelected.size === (mergePreview.groups||[]).length;
+    return (
+      <div style={{position:"fixed",inset:0,zIndex:99999,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.65)",padding:"1rem"}}
+        onClick={e=>{ if(e.target===e.currentTarget) setMergePreview(null); }}>
+        <div style={{background:"white",borderRadius:"12px",width:"100%",maxWidth:680,maxHeight:"90vh",display:"flex",flexDirection:"column",boxShadow:"0 12px 50px rgba(0,0,0,0.4)",boxSizing:"border-box"}}>
+          {/* ヘッダー */}
+          <div style={{padding:"1rem 1.25rem 0.65rem",borderBottom:`1px solid ${C.borderLight}`,flexShrink:0}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <span style={{fontWeight:800,fontSize:"1.02rem",color:C.text}}>🔍 重複の確認 ({mergePreview.groups.length}グループ)</span>
+              <button onClick={()=>setMergePreview(null)} style={{background:"none",border:"none",cursor:"pointer",fontSize:"1.3rem",color:C.textMuted,lineHeight:1,padding:"0.2rem 0.4rem"}}>✕</button>
+            </div>
+            <div style={{fontSize:"0.72rem",color:C.textMuted,marginTop:"0.2rem"}}>
+              左の「残す」を維持し、右の項目をマージします。チェックを外せばそのグループは統合されません。
+            </div>
+            <div style={{marginTop:"0.5rem",display:"flex",alignItems:"center",gap:"0.5rem",flexWrap:"wrap"}}>
+              <button onClick={()=>{
+                if(allSelected) setMergeSelected(new Set());
+                else setMergeSelected(new Set(mergePreview.groups.map(g=>g.groupKey)));
+              }} style={{padding:"0.25rem 0.65rem",borderRadius:"6px",border:`1.5px solid ${C.accent}`,background:"white",color:C.accent,fontWeight:700,fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit"}}>
+                {allSelected ? "全解除" : "全選択"}
+              </button>
+              <span style={{fontSize:"0.72rem",color:C.textSub}}>{mergeSelected.size}グループ選択中 / 全{mergePreview.groups.length}グループ ({selectedDrops}/{totalDrops}件削減)</span>
+            </div>
+          </div>
+          {/* リスト */}
+          <div style={{overflowY:"auto",flex:1,padding:"0.75rem 1rem"}}>
+            {Object.entries(groupsByType).map(([typeLabel, groups])=>(
+              <div key={typeLabel} style={{marginBottom:"1rem"}}>
+                <div style={{fontSize:"0.72rem",fontWeight:800,color:TYPE_COLOR[typeLabel]||C.textSub,marginBottom:"0.4rem",letterSpacing:"0.03em"}}>
+                  {typeLabel}（{groups.length}グループ）
+                </div>
+                {groups.map(grp=>{
+                  const isSelected = mergeSelected.has(grp.groupKey);
+                  const keep = grp.keep;
+                  const drops = grp.drops;
+                  const keepAssignees = (keep.assigneeIds||[]).map(userName).filter(Boolean);
+                  return (
+                    <div key={grp.groupKey} style={{border:`1.5px solid ${isSelected?TYPE_COLOR[typeLabel]:C.border}`,borderRadius:"8px",marginBottom:"0.5rem",overflow:"hidden",background:isSelected?`${TYPE_COLOR[typeLabel]}08`:"#fafafa"}}>
+                      <div onClick={()=>setMergeSelected(prev=>{const n=new Set(prev);n.has(grp.groupKey)?n.delete(grp.groupKey):n.add(grp.groupKey);return n;})}
+                        style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.6rem 0.75rem",cursor:"pointer",borderBottom:isSelected?`1px solid ${TYPE_COLOR[typeLabel]}33`:"none"}}>
+                        <div style={{width:18,height:18,borderRadius:"4px",border:`2px solid ${isSelected?TYPE_COLOR[typeLabel]:"#cbd5e1"}`,background:isSelected?TYPE_COLOR[typeLabel]:"white",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,color:"white",fontSize:"0.7rem",fontWeight:800}}>
+                          {isSelected&&"✓"}
+                        </div>
+                        <span style={{fontSize:"0.88rem",fontWeight:700,color:C.text,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{grp.displayName}</span>
+                        <span style={{fontSize:"0.65rem",fontWeight:700,color:TYPE_COLOR[typeLabel],background:`${TYPE_COLOR[typeLabel]}22`,borderRadius:999,padding:"0.1rem 0.4rem",flexShrink:0}}>{drops.length+1}件 → 1件</span>
+                      </div>
+                      {isSelected && (
+                        <div style={{padding:"0.5rem 0.75rem",fontSize:"0.72rem",display:"flex",flexDirection:"column",gap:"0.4rem"}}>
+                          <div style={{background:"#ecfdf5",border:"1px solid #86efac",borderRadius:"6px",padding:"0.5rem 0.65rem"}}>
+                            <div style={{display:"flex",alignItems:"center",gap:"0.35rem",marginBottom:"0.3rem"}}>
+                              <span style={{fontSize:"0.65rem",fontWeight:800,color:"white",background:"#059669",borderRadius:999,padding:"0.05rem 0.4rem"}}>✅ 残す</span>
+                              {keep.status && <span style={{fontSize:"0.65rem",color:C.textSub}}>● {keep.status}</span>}
+                              {keep.createdAt && <span style={{fontSize:"0.62rem",color:C.textMuted,marginLeft:"auto"}}>{fmtDate(keep.createdAt)}〜</span>}
+                            </div>
+                            <div style={{color:C.text,fontWeight:600,marginBottom:"0.15rem"}}>{keep.name}</div>
+                            <div style={{color:C.textSub,fontSize:"0.7rem",lineHeight:1.5}}>
+                              {keepAssignees.length>0 && <div>👤 {keepAssignees.join("・")}</div>}
+                              {keep.phone && <div>📞 {keep.phone}</div>}
+                              {keep.address && <div style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>📍 {keep.address}</div>}
+                              {(keep.memos||keep.chat||keep.approachLogs||keep.files)&&(
+                                <div style={{color:C.textMuted,marginTop:"0.15rem"}}>
+                                  💬 {(keep.chat||[]).length}件 / 📋 {(keep.memos||[]).length+(keep.approachLogs||[]).length}件 / 📂 {(keep.files||[]).length}件
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          {drops.map(d=>{
+                            const dAssignees = (d.assigneeIds||[]).map(userName).filter(Boolean);
+                            return (
+                              <div key={d.id} style={{background:"#fef2f2",border:"1px solid #fca5a5",borderRadius:"6px",padding:"0.5rem 0.65rem"}}>
+                                <div style={{display:"flex",alignItems:"center",gap:"0.35rem",marginBottom:"0.3rem"}}>
+                                  <span style={{fontSize:"0.65rem",fontWeight:800,color:"white",background:"#dc2626",borderRadius:999,padding:"0.05rem 0.4rem"}}>🔄 マージ→削除</span>
+                                  {d.status && <span style={{fontSize:"0.65rem",color:C.textSub}}>● {d.status}</span>}
+                                  {d.createdAt && <span style={{fontSize:"0.62rem",color:C.textMuted,marginLeft:"auto"}}>{fmtDate(d.createdAt)}〜</span>}
+                                </div>
+                                <div style={{color:C.text,fontWeight:600,marginBottom:"0.15rem"}}>{d.name}</div>
+                                <div style={{color:C.textSub,fontSize:"0.7rem",lineHeight:1.5}}>
+                                  {dAssignees.length>0 && <div>👤 {dAssignees.join("・")}</div>}
+                                  {!dAssignees.length && <div style={{color:C.textMuted}}>👤 担当者未設定</div>}
+                                  {d.phone && <div>📞 {d.phone}</div>}
+                                  {d.address && <div style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>📍 {d.address}</div>}
+                                  {(d.memos||d.chat||d.approachLogs||d.files)&&(
+                                    <div style={{color:C.textMuted,marginTop:"0.15rem"}}>
+                                      💬 {(d.chat||[]).length}件 / 📋 {(d.memos||[]).length+(d.approachLogs||[]).length}件 / 📂 {(d.files||[]).length}件
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+          {/* フッター */}
+          <div style={{padding:"0.75rem 1rem",borderTop:`1px solid ${C.borderLight}`,flexShrink:0,display:"flex",gap:"0.5rem"}}>
+            <Btn variant="secondary" style={{flex:1}} onClick={()=>setMergePreview(null)}>キャンセル</Btn>
+            <Btn style={{flex:2,background:mergeSelected.size>0?"#dc2626":"#cbd5e1",border:"none"}} disabled={mergeSelected.size===0} onClick={()=>{
+              if(typeof window.__myDeskApplySelectedMerges !== "function"){
+                window.alert("統合機能が未初期化です");
+                return;
+              }
+              const sel = [...mergeSelected];
+              const r = window.__myDeskApplySelectedMerges(sel);
+              setMergePreview(null);
+              setMergeSelected(new Set());
+              window.alert(`✅ ${r.groupCount||0}グループ・${r.merged||0}件を統合しました`);
+            }}>{mergeSelected.size>0 ? `🔧 選択した ${mergeSelected.size}グループを統合` : "グループを選択してください"}</Btn>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // ★ 自治体/企業/業者の詳細画面に入った瞬間、画面を最上部にリセット
   //   iOS Safari は画面遷移時に scrollTop が自動初期化されないため、
   //   「タップしたら途中の画面から始まる」現象を防ぐ
@@ -14447,6 +14582,8 @@ ${orig}`})
           onClose={()=>setMtgModal(null)}
         />
       )}
+      {/* ★ 重複統合プレビューモーダル — 全タブ共通 */}
+      {renderMergeModal()}
     </>
   );
 
@@ -16857,162 +16994,6 @@ ${orig}`})
       {/* ── 削除モーダル（全タブ共通） ── */}
       {DeleteModal}
 
-        {/* ★ 重複統合プレビューモーダル */}
-        {/* ★★ DEBUG: シンプルな overlay。これが見えなければJSX構造に問題あり */}
-        {mergePreview && (
-          <div style={{
-            position:"fixed",
-            top:"50%", left:"50%",
-            transform:"translate(-50%,-50%)",
-            zIndex:99999,
-            background:"#dc2626",
-            color:"white",
-            padding:"2rem 3rem",
-            borderRadius:"12px",
-            fontSize:"1.5rem",
-            fontWeight:800,
-            boxShadow:"0 0 0 9999px rgba(0,0,0,0.7)",
-            cursor:"pointer",
-            fontFamily:"inherit",
-          }} onClick={()=>setMergePreview(null)}>
-            ✅ MODAL OPEN (groups: {mergePreview.groups?.length||0})
-            <div style={{fontSize:"0.85rem",marginTop:"0.75rem",opacity:0.9}}>クリックで閉じる</div>
-          </div>
-        )}
-        {mergePreview && (()=>{
-          const userName = (uid)=> (users||[]).find(u=>String(u.id)===String(uid))?.name || "";
-          const TYPE_COLOR = {"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"};
-          const fmtDate = (s)=> s ? String(s).slice(0,10) : "";
-          const groupsByType = {};
-          (mergePreview.groups||[]).forEach(g=>{
-            if(!groupsByType[g.entityLabel]) groupsByType[g.entityLabel]=[];
-            groupsByType[g.entityLabel].push(g);
-          });
-          const totalDrops = (mergePreview.groups||[]).reduce((s,g)=>s+g.drops.length,0);
-          const selectedDrops = (mergePreview.groups||[])
-            .filter(g=>mergeSelected.has(g.groupKey))
-            .reduce((s,g)=>s+g.drops.length,0);
-          const allSelected = mergeSelected.size === (mergePreview.groups||[]).length;
-          return (
-            <div style={{position:"fixed",inset:0,zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.65)",padding:"1rem"}}
-              onClick={e=>{ if(e.target===e.currentTarget) setMergePreview(null); }}>
-              <div style={{background:"white",borderRadius:"12px",width:"100%",maxWidth:680,maxHeight:"90vh",display:"flex",flexDirection:"column",boxShadow:"0 12px 50px rgba(0,0,0,0.4)",boxSizing:"border-box"}}>
-                {/* ヘッダー */}
-                <div style={{padding:"1rem 1.25rem 0.65rem",borderBottom:`1px solid ${C.borderLight}`,flexShrink:0}}>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                    <span style={{fontWeight:800,fontSize:"1.02rem",color:C.text}}>🔍 重複の確認 ({mergePreview.groups.length}グループ)</span>
-                    <button onClick={()=>setMergePreview(null)} style={{background:"none",border:"none",cursor:"pointer",fontSize:"1.3rem",color:C.textMuted,lineHeight:1,padding:"0.2rem 0.4rem"}}>✕</button>
-                  </div>
-                  <div style={{fontSize:"0.72rem",color:C.textMuted,marginTop:"0.2rem"}}>
-                    左の「残す」を維持し、右の項目をマージします。チェックを外せばそのグループは統合されません。
-                  </div>
-                  <div style={{marginTop:"0.5rem",display:"flex",alignItems:"center",gap:"0.5rem",flexWrap:"wrap"}}>
-                    <button onClick={()=>{
-                      if(allSelected) setMergeSelected(new Set());
-                      else setMergeSelected(new Set(mergePreview.groups.map(g=>g.groupKey)));
-                    }} style={{padding:"0.25rem 0.65rem",borderRadius:"6px",border:`1.5px solid ${C.accent}`,background:"white",color:C.accent,fontWeight:700,fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit"}}>
-                      {allSelected ? "全解除" : "全選択"}
-                    </button>
-                    <span style={{fontSize:"0.72rem",color:C.textSub}}>{mergeSelected.size}グループ選択中 / 全{mergePreview.groups.length}グループ ({selectedDrops}/{totalDrops}件削減)</span>
-                  </div>
-                </div>
-                {/* リスト */}
-                <div style={{overflowY:"auto",flex:1,padding:"0.75rem 1rem"}}>
-                  {Object.entries(groupsByType).map(([typeLabel, groups])=>(
-                    <div key={typeLabel} style={{marginBottom:"1rem"}}>
-                      <div style={{fontSize:"0.72rem",fontWeight:800,color:TYPE_COLOR[typeLabel]||C.textSub,marginBottom:"0.4rem",letterSpacing:"0.03em"}}>
-                        {typeLabel}（{groups.length}グループ）
-                      </div>
-                      {groups.map(grp=>{
-                        const isSelected = mergeSelected.has(grp.groupKey);
-                        const keep = grp.keep;
-                        const drops = grp.drops;
-                        const keepAssignees = (keep.assigneeIds||[]).map(userName).filter(Boolean);
-                        return (
-                          <div key={grp.groupKey} style={{border:`1.5px solid ${isSelected?TYPE_COLOR[typeLabel]:C.border}`,borderRadius:"8px",marginBottom:"0.5rem",overflow:"hidden",background:isSelected?`${TYPE_COLOR[typeLabel]}08`:"#fafafa"}}>
-                            {/* グループヘッダー（チェックボックス + 名前） */}
-                            <div onClick={()=>setMergeSelected(prev=>{const n=new Set(prev);n.has(grp.groupKey)?n.delete(grp.groupKey):n.add(grp.groupKey);return n;})}
-                              style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.6rem 0.75rem",cursor:"pointer",borderBottom:isSelected?`1px solid ${TYPE_COLOR[typeLabel]}33`:"none"}}>
-                              <div style={{width:18,height:18,borderRadius:"4px",border:`2px solid ${isSelected?TYPE_COLOR[typeLabel]:"#cbd5e1"}`,background:isSelected?TYPE_COLOR[typeLabel]:"white",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,color:"white",fontSize:"0.7rem",fontWeight:800}}>
-                                {isSelected&&"✓"}
-                              </div>
-                              <span style={{fontSize:"0.88rem",fontWeight:700,color:C.text,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{grp.displayName}</span>
-                              <span style={{fontSize:"0.65rem",fontWeight:700,color:TYPE_COLOR[typeLabel],background:`${TYPE_COLOR[typeLabel]}22`,borderRadius:999,padding:"0.1rem 0.4rem",flexShrink:0}}>{drops.length+1}件 → 1件</span>
-                            </div>
-                            {/* 詳細（展開時のみ表示） */}
-                            {isSelected && (
-                              <div style={{padding:"0.5rem 0.75rem",fontSize:"0.72rem",display:"flex",flexDirection:"column",gap:"0.4rem"}}>
-                                {/* 残すレコード */}
-                                <div style={{background:"#ecfdf5",border:"1px solid #86efac",borderRadius:"6px",padding:"0.5rem 0.65rem"}}>
-                                  <div style={{display:"flex",alignItems:"center",gap:"0.35rem",marginBottom:"0.3rem"}}>
-                                    <span style={{fontSize:"0.65rem",fontWeight:800,color:"white",background:"#059669",borderRadius:999,padding:"0.05rem 0.4rem"}}>✅ 残す</span>
-                                    {keep.status && <span style={{fontSize:"0.65rem",color:C.textSub}}>● {keep.status}</span>}
-                                    {keep.createdAt && <span style={{fontSize:"0.62rem",color:C.textMuted,marginLeft:"auto"}}>{fmtDate(keep.createdAt)}〜</span>}
-                                  </div>
-                                  <div style={{color:C.text,fontWeight:600,marginBottom:"0.15rem"}}>{keep.name}</div>
-                                  <div style={{color:C.textSub,fontSize:"0.7rem",lineHeight:1.5}}>
-                                    {keepAssignees.length>0 && <div>👤 {keepAssignees.join("・")}</div>}
-                                    {keep.phone && <div>📞 {keep.phone}</div>}
-                                    {keep.address && <div style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>📍 {keep.address}</div>}
-                                    {(keep.memos||keep.chat||keep.approachLogs||keep.files)&&(
-                                      <div style={{color:C.textMuted,marginTop:"0.15rem"}}>
-                                        💬 {(keep.chat||[]).length}件 / 📋 {(keep.memos||[]).length+(keep.approachLogs||[]).length}件 / 📂 {(keep.files||[]).length}件
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                                {/* マージするレコード */}
-                                {drops.map(d=>{
-                                  const dAssignees = (d.assigneeIds||[]).map(userName).filter(Boolean);
-                                  return (
-                                    <div key={d.id} style={{background:"#fef2f2",border:"1px solid #fca5a5",borderRadius:"6px",padding:"0.5rem 0.65rem"}}>
-                                      <div style={{display:"flex",alignItems:"center",gap:"0.35rem",marginBottom:"0.3rem"}}>
-                                        <span style={{fontSize:"0.65rem",fontWeight:800,color:"white",background:"#dc2626",borderRadius:999,padding:"0.05rem 0.4rem"}}>🔄 マージ→削除</span>
-                                        {d.status && <span style={{fontSize:"0.65rem",color:C.textSub}}>● {d.status}</span>}
-                                        {d.createdAt && <span style={{fontSize:"0.62rem",color:C.textMuted,marginLeft:"auto"}}>{fmtDate(d.createdAt)}〜</span>}
-                                      </div>
-                                      <div style={{color:C.text,fontWeight:600,marginBottom:"0.15rem"}}>{d.name}</div>
-                                      <div style={{color:C.textSub,fontSize:"0.7rem",lineHeight:1.5}}>
-                                        {dAssignees.length>0 && <div>👤 {dAssignees.join("・")}</div>}
-                                        {!dAssignees.length && <div style={{color:C.textMuted}}>👤 担当者未設定</div>}
-                                        {d.phone && <div>📞 {d.phone}</div>}
-                                        {d.address && <div style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>📍 {d.address}</div>}
-                                        {(d.memos||d.chat||d.approachLogs||d.files)&&(
-                                          <div style={{color:C.textMuted,marginTop:"0.15rem"}}>
-                                            💬 {(d.chat||[]).length}件 / 📋 {(d.memos||[]).length+(d.approachLogs||[]).length}件 / 📂 {(d.files||[]).length}件
-                                          </div>
-                                        )}
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ))}
-                </div>
-                {/* フッター */}
-                <div style={{padding:"0.75rem 1rem",borderTop:`1px solid ${C.borderLight}`,flexShrink:0,display:"flex",gap:"0.5rem"}}>
-                  <Btn variant="secondary" style={{flex:1}} onClick={()=>setMergePreview(null)}>キャンセル</Btn>
-                  <Btn style={{flex:2,background:mergeSelected.size>0?"#dc2626":"#cbd5e1",border:"none"}} disabled={mergeSelected.size===0} onClick={()=>{
-                    if(typeof window.__myDeskApplySelectedMerges !== "function"){
-                      window.alert("統合機能が未初期化です");
-                      return;
-                    }
-                    const sel = [...mergeSelected];
-                    const r = window.__myDeskApplySelectedMerges(sel);
-                    setMergePreview(null);
-                    setMergeSelected(new Set());
-                    window.alert(`✅ ${r.groupCount||0}グループ・${r.merged||0}件を統合しました`);
-                  }}>{mergeSelected.size>0 ? `🔧 選択した ${mergeSelected.size}グループを統合` : "グループを選択してください"}</Btn>
-                </div>
-              </div>
-            </div>
-          );
-        })()}
 
 
       {/* ── 名刺タブ ── */}
