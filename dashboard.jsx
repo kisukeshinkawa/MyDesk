@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-09-v41-modal-via-renderModals"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-09-v42-savecompany-debug"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -13236,17 +13236,26 @@ ${recentLogs}
 
   // ── CRUD ──────────────────────────────────────────────────────────────────
   const saveCompany=(skipDupCheck=false)=>{
-    if(!form.name?.trim())return;
+    console.log("[MyDesk] saveCompany called", {formName:form.name, formId:form.id, skipDupCheck});
+    if(!form.name?.trim()){
+      console.warn("[MyDesk] saveCompany aborted: form.name is empty");
+      return;
+    }
     // 新規追加時の重複チェック（法人格・表記揺れも吸収）
     // 重複検出時はポップアップを出し、「既存を開く / それでも新規追加 / キャンセル」をユーザーに選択させる
     if(!form.id && !skipDupCheck){
       const dup=companies.find(c=>normBizName(c.name)===normBizName(form.name));
-      if(dup){setDupModal({existing:dup,incoming:form.name.trim(),
-        onKeepBoth:()=>{setDupModal(null);saveCompany(true);},
-        onUseExisting:()=>{setActiveCompany(dup.id);setDupModal(null);setSheet(null);},
-        onCancel:()=>setDupModal(null),
-      });return;}
+      if(dup){
+        console.log("[MyDesk] saveCompany dup detected:", dup.name, "→ opening DupModal");
+        setDupModal({existing:dup,incoming:form.name.trim(),
+          onKeepBoth:()=>{console.log("[MyDesk] DupModal onKeepBoth"); setDupModal(null);saveCompany(true);},
+          onUseExisting:()=>{console.log("[MyDesk] DupModal onUseExisting"); setActiveCompany(dup.id);setDupModal(null);setSheet(null);},
+          onCancel:()=>{console.log("[MyDesk] DupModal onCancel"); setDupModal(null);},
+        });
+        return;
+      }
     }
+    console.log("[MyDesk] saveCompany proceeding to save");
     const today = new Date().toISOString().slice(0,10);
     let nd={...data};
     if(form.id){
@@ -13265,10 +13274,12 @@ ${recentLogs}
       const newComp={id:Date.now(),...form,status:form.status||"未接触",assigneeIds:form.assigneeIds||[],memos:[],chat:[],createdAt:new Date().toISOString(),updatedAt:today};
       nd={...nd,companies:[...companies,newComp]};
       nd=addChangeLog(nd,{entityType:"企業",entityId:newComp.id,entityName:newComp.name,field:"登録",oldVal:"",newVal:"新規登録"});
+      console.log("[MyDesk] saveCompany NEW: calling save() with", nd.companies.length, "companies");
       save(nd); setSheet(null);
       setTimeout(()=>{setMatchChecked({});checkMatchAfterEntity("企業",newComp.id,newComp.name,nd);},100);
       return;
     }
+    console.log("[MyDesk] saveCompany EDIT: calling save() with", nd.companies.length, "companies");
     save(nd); setSheet(null);
   };
   const deleteCompany=id=>{save({...data,companies:companies.filter(c=>c.id!==id)});setActiveCompany(null);};
@@ -14820,7 +14831,7 @@ ${orig}`})
             style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:"1.5px solid #f59e0b",background:"#fffbeb",color:"#92400e",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🔄</button>
           <button onClick={()=>{setDeleteModal({type:"company"});setDmSearch("");setDmFilter("");setDmSelected(new Set());}}
             style={{padding:"0.45rem 0.75rem",borderRadius:"6px",border:"1.5px solid #fca5a5",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🗑 削除</button>
-          <Btn size="sm" onClick={()=>{setForm({status:"未接触",assigneeIds:[]});setSheet("addCompany");}}>＋</Btn>
+          <Btn size="sm" onClick={()=>{console.log("[MyDesk] +追加 clicked → opening addCompany sheet");setForm({status:"未接触",assigneeIds:[]});setSheet("addCompany");}}>＋</Btn>
         </div>
         {companies.length===0&&(
           <div style={{textAlign:"center",padding:"3rem 1rem",color:C.textMuted,background:"white",borderRadius:"8px",border:`1.5px dashed ${C.border}`}}>
