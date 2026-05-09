@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-09-v38-dup-fix-preview-modal"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-09-v39-stale-closure-fix"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -12070,6 +12070,10 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   }, [currentUser?.id, data?._assigneeBackfillDoneV4]);
   
   // ブラウザコンソールから手動実行できるようにグローバル関数を公開
+  // ★ data の ref を作って常に最新値を参照（ステイルクロージャ対策）
+  const _myDeskDataRef = React.useRef(data);
+  React.useEffect(() => { _myDeskDataRef.current = data; }, [data]);
+
   React.useEffect(() => {
     if(!data) return;
     window.MyDeskBackfillAssignees = () => {
@@ -12085,6 +12089,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     // ★ 重複統合プレビュー用ヘルパー：データから重複グループを抽出
     //   focusType を指定すると、その種類だけを返す（"company"|"vendor"|"muni"）
     window.__myDeskComputeDupGroups = (focusType=null) => {
+      const currentData = _myDeskDataRef.current; // ← 常に最新の data
+      if(!currentData) return [];
       const norm = (s) => (s||"")
         .replace(/\s*(株式会社|有限会社|合同会社|一般社団法人|一般財団法人|公益社団法人|公益財団法人|特定非営利活動法人|NPO法人|社会福祉法人|学校法人|宗教法人|医療法人)\s*/gi,"")
         .replace(/[（(]株[)）]|[（(]有[)）]|[（(]合[)）]|[（(]社[)）]/g,"")
@@ -12101,7 +12107,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       ];
       sources.forEach(([key, label, ftype]) => {
         if(focusType && focusType !== ftype) return;
-        const list = data[key] || [];
+        const list = currentData[key] || [];
         const groups = {};
         list.forEach(e => {
           // 自治体は同一都道府県内でのみ重複判定
@@ -12139,7 +12145,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       const targetGroups = groups.filter(g=>selectedGroupKeys.includes(g.groupKey));
       if(!targetGroups.length) return {merged:0};
 
-      let nd = JSON.parse(JSON.stringify(data));
+      const currentData = _myDeskDataRef.current;
+      let nd = JSON.parse(JSON.stringify(currentData));
       const remap = { companies:{}, vendors:{}, municipalities:{} };
 
       targetGroups.forEach(grp => {
@@ -12217,7 +12224,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
         .replace(/[-－ー〜～、。・]/g,"")
         .toLowerCase();
       const summary = { companies:[], vendors:[], municipalities:[] };
-      let nd = JSON.parse(JSON.stringify(data));
+      const currentData = _myDeskDataRef.current;
+      let nd = JSON.parse(JSON.stringify(currentData));
       const remap = {}; // {entityType: {oldId: newId}}
 
       const mergeGroup = (key, label) => {
@@ -14633,14 +14641,18 @@ ${orig}`})
                 </div>
               </div>
               <button onClick={()=>{
+                console.log("[MyDesk] 確認して統合 clicked (company)");
                 if(typeof window.__myDeskComputeDupGroups !== "function"){
                   window.alert("統合機能が未初期化です。ページを再読み込みして再度お試しください。");
+                  console.warn("[MyDesk] __myDeskComputeDupGroups is not defined");
                   return;
                 }
                 const groups = window.__myDeskComputeDupGroups("company");
+                console.log("[MyDesk] computed groups:", groups.length);
                 if(!groups.length){ window.alert("重複は見つかりませんでした"); return; }
                 setMergeSelected(new Set(groups.map(g=>g.groupKey)));
                 setMergePreview({groups, focusType:"company"});
+                console.log("[MyDesk] state updated; modal should appear");
               }} style={{padding:"0.4rem 0.75rem",borderRadius:"6px",border:"none",background:"#dc2626",color:"white",fontWeight:800,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🔍 確認して統合</button>
             </div>
           );
@@ -15442,14 +15454,18 @@ ${orig}`})
                 </div>
               </div>
               <button onClick={()=>{
+                console.log("[MyDesk] 確認して統合 clicked (vendor)");
                 if(typeof window.__myDeskComputeDupGroups !== "function"){
                   window.alert("統合機能が未初期化です。ページを再読み込みして再度お試しください。");
+                  console.warn("[MyDesk] __myDeskComputeDupGroups is not defined");
                   return;
                 }
                 const groups = window.__myDeskComputeDupGroups("vendor");
+                console.log("[MyDesk] computed groups:", groups.length);
                 if(!groups.length){ window.alert("重複は見つかりませんでした"); return; }
                 setMergeSelected(new Set(groups.map(g=>g.groupKey)));
                 setMergePreview({groups, focusType:"vendor"});
+                console.log("[MyDesk] state updated; modal should appear");
               }} style={{padding:"0.4rem 0.75rem",borderRadius:"6px",border:"none",background:"#dc2626",color:"white",fontWeight:800,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🔍 確認して統合</button>
             </div>
           );
@@ -16354,14 +16370,18 @@ ${orig}`})
               </div>
             </div>
             <button onClick={()=>{
+              console.log("[MyDesk] 確認して統合 clicked (muni)");
               if(typeof window.__myDeskComputeDupGroups !== "function"){
                 window.alert("統合機能が未初期化です。ページを再読み込みして再度お試しください。");
+                console.warn("[MyDesk] __myDeskComputeDupGroups is not defined");
                 return;
               }
               const groups = window.__myDeskComputeDupGroups("muni");
+              console.log("[MyDesk] computed groups:", groups.length);
               if(!groups.length){ window.alert("重複は見つかりませんでした"); return; }
               setMergeSelected(new Set(groups.map(g=>g.groupKey)));
               setMergePreview({groups, focusType:"muni"});
+              console.log("[MyDesk] state updated; modal should appear");
             }} style={{padding:"0.4rem 0.75rem",borderRadius:"6px",border:"none",background:"#dc2626",color:"white",fontWeight:800,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🔍 確認して統合</button>
           </div>
         );
@@ -16853,9 +16873,9 @@ ${orig}`})
             .reduce((s,g)=>s+g.drops.length,0);
           const allSelected = mergeSelected.size === (mergePreview.groups||[]).length;
           return (
-            <div style={{position:"fixed",inset:0,zIndex:700,display:"flex",alignItems:"flex-end",justifyContent:"center",background:"rgba(0,0,0,0.6)",padding:0}}
+            <div style={{position:"fixed",inset:0,zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.65)",padding:"1rem"}}
               onClick={e=>{ if(e.target===e.currentTarget) setMergePreview(null); }}>
-              <div style={{background:"white",borderRadius:"12px 12px 0 0",width:"100%",maxWidth:680,maxHeight:"92dvh",display:"flex",flexDirection:"column",boxShadow:"0 -8px 40px rgba(0,0,0,0.25)",boxSizing:"border-box"}}>
+              <div style={{background:"white",borderRadius:"12px",width:"100%",maxWidth:680,maxHeight:"90vh",display:"flex",flexDirection:"column",boxShadow:"0 12px 50px rgba(0,0,0,0.4)",boxSizing:"border-box"}}>
                 {/* ヘッダー */}
                 <div style={{padding:"1rem 1.25rem 0.65rem",borderBottom:`1px solid ${C.borderLight}`,flexShrink:0}}>
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
