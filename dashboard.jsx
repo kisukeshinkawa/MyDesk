@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v47-smart-filename-vision"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v48-vocab-expanded"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -3439,7 +3439,13 @@ async function generateSmartFileName(context, fallback, fileBlob = null) {
 - 50文字以内、1行のみ。説明文不要
 
 【文書種類の語彙】（このリストから1つ選ぶ）
-見積書 / 注文書 / 請求書 / 領収書 / 契約書 / 議事録 / 報告書 / 提案書 / 仕様書 / 名刺 / 許可証 / マニフェスト / 写真 / 図面 / 申請書 / 案内書 / パンフレット / 一覧表 / 資料
+見積書 / 注文書 / 請求書 / 領収書 / 契約書 / 協定書 / 覚書 / 議事録 / 報告書 / 提案書 / 仕様書 / 名刺 / 許可証 / マニフェスト / 写真 / 図面 / 申請書 / 案内書 / パンフレット / 一覧表 / 資料
+
+【文書種類の判別ルール】
+- 取引・売買・サービス提供の契約（業務委託、売買、賃貸借など） → 「契約書」
+- 自治体・団体との連携・協力の協定（連携協定、パートナーシップ協定など） → 「協定書」
+- 軽い合意・確認の文書 → 「覚書」
+- 上記以外は語彙リストから最適なものを選ぶ
 
 【相手名の決め方】
 - entity_name があればそれを優先
@@ -3453,6 +3459,7 @@ async function generateSmartFileName(context, fallback, fileBlob = null) {
 
 【例】
 - 見積書_株式会社新川商事_20260512
+- 協定書_坂戸市_20260512
 - 名刺_田中様_20260510
 - 許可証_鈴木建設_20260415
 - 議事録_福岡市環境課_20260508`;
