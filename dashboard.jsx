@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v46-fix-file-upload"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v47-smart-filename-vision"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -3427,19 +3427,99 @@ function VendorDetailTabsModal({ vendorId, vendorName, initialTab = "licenses", 
 
 // ─── AI ファイル名生成 ───────────────────────────────────────────────
 // 見積書PDFや添付ファイルにAIで自然な日本語名を付ける
-async function generateSmartFileName(context, fallback) {
+async function generateSmartFileName(context, fallback, fileBlob = null) {
   const safe = (s) => (s || "").replace(/[\\/:*?"<>|]/g, "_").replace(/\s+/g, "").slice(0, 80);
-  try {
-    const prompt = `次の情報からファイル名として適切な短い日本語タイトルを生成してください。
-- 形式: 「{文書種類}_{相手会社名・要点}_{年月日YYYYMMDD}」
-- 50文字以内、純粋な日本語と数字とアンダースコア「_」のみ
-- 拡張子・スラッシュ・特殊記号は不要
-- 説明文は不要、タイトルのみ出力
+  
+  // ─── 統一フォーマット: {種類}_{相手名}_{YYYYMMDD} ─────────
+  const FILENAME_PROMPT_INSTRUCTIONS = `あなたは営業ファイルの命名係です。アップロードされたファイルに、統一感のある日本語ファイル名を付けてください。
 
-【情報】
+【命名規則】（必ず守る）
+- 形式: 「{文書種類}_{相手名}_{YYYYMMDD}」 半角アンダースコア区切り
+- 文字: 日本語・数字・アンダースコア「_」のみ。拡張子・スラッシュ・記号は不要
+- 50文字以内、1行のみ。説明文不要
+
+【文書種類の語彙】（このリストから1つ選ぶ）
+見積書 / 注文書 / 請求書 / 領収書 / 契約書 / 議事録 / 報告書 / 提案書 / 仕様書 / 名刺 / 許可証 / マニフェスト / 写真 / 図面 / 申請書 / 案内書 / パンフレット / 一覧表 / 資料
+
+【相手名の決め方】
+- entity_name があればそれを優先
+- 名刺の場合は「{苗字}様」（個人）。複数なら entity_name
+- 個人名が不明なら entity_name または「相手不明」
+
+【日付】
+- 画像/PDFに発行日・撮影日が見えればそれを優先
+- なければ upload_date を使う
+- YYYYMMDD 形式（例: 20260512）
+
+【例】
+- 見積書_株式会社新川商事_20260512
+- 名刺_田中様_20260510
+- 許可証_鈴木建設_20260415
+- 議事録_福岡市環境課_20260508`;
+
+  // ─── 画像/PDFの場合: bizcard-ocr Lambda (Bedrock Claude Opus 4.7) で vision 命名 ──
+  const isImage = fileBlob && fileBlob.type && fileBlob.type.startsWith("image/");
+  const isPdf = fileBlob && fileBlob.type === "application/pdf";
+  
+  if ((isImage || isPdf) && fileBlob.size < 10 * 1024 * 1024) {
+    try {
+      let dataB64, mediaType;
+      if (isImage) {
+        // 画像は圧縮してから送る
+        const compressed = await compressImage(fileBlob, 1600, 0.85);
+        dataB64 = compressed.base64;
+        mediaType = compressed.mediaType;
+      } else {
+        // PDF は base64 だけ
+        dataB64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result).split(",")[1] || "");
+          reader.onerror = () => reject(reader.error);
+          reader.readAsDataURL(fileBlob);
+        });
+        mediaType = "application/pdf";
+      }
+      
+      const ocrUrl = (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_OCR_API_URL) || BIZCARD_OCR_URL;
+      const ctrl = new AbortController();
+      const timeoutId = setTimeout(() => ctrl.abort(), 60000); // 60秒
+      
+      const requestBody = isPdf
+        ? { type: "filename", pdfBase64: dataB64, mediaType, context, prompt_instructions: FILENAME_PROMPT_INSTRUCTIONS }
+        : { type: "filename", imageBase64: dataB64, mediaType, context, prompt_instructions: FILENAME_PROMPT_INSTRUCTIONS };
+      
+      const resp = await fetch(ocrUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-mydesk-secret": "mydesk2026secret" },
+        body: JSON.stringify(requestBody),
+        signal: ctrl.signal,
+      });
+      clearTimeout(timeoutId);
+      
+      if (resp.ok) {
+        const json = await resp.json();
+        const name = (json?.filename || json?.fields?.filename || "").trim().split("\n")[0].trim();
+        if (name) {
+          console.log("[FileName] Vision生成:", name);
+          return safe(name) || safe(fallback);
+        }
+      } else {
+        console.warn("[FileName] Vision Lambda HTTP", resp.status);
+      }
+      // 失敗時は下のテキストフォールバックへ
+    } catch (e) {
+      console.warn("[FileName] Vision生成失敗、テキスト命名にフォールバック:", e?.message || e);
+    }
+  }
+  
+  // ─── テキストのみ命名（画像/PDF以外、または vision 失敗時のフォールバック）──
+  try {
+    const prompt = `${FILENAME_PROMPT_INSTRUCTIONS}
+
+【今回の情報】
 ${JSON.stringify(context, null, 2)}
 
-タイトル:`;
+ファイル名（1行のみ）:`;
     const res = await fetch(`${API_BASE}/api/generate-email`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-mydesk-secret": "mydesk2026" },
@@ -3534,7 +3614,7 @@ function FileSection({ files=[], onAdd, onDelete, currentUserId, entityType, ent
           entity_name: entityName || "",
           file_type: file.type,
           upload_date: new Date().toISOString().slice(0,10),
-        }, fallback);
+        }, fallback, file);  // ★ file 自体を渡して vision 命名を有効化
         if (aiName) displayName = aiName + ext;
       } catch (aiErr) {
         // AI生成失敗時は元のファイル名のまま
