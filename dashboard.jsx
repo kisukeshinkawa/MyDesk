@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-09-v44-license-ocr-10items"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-10-v45-quote-pdf-s3-saved"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -5099,7 +5099,12 @@ function DocumentSection({entityType, entityId, entityName, files, currentUserId
     // pending変更がある場合、それを基準にする（typing中の値を失わない）
     // 例：misc=1000 を typing 中に「保存」ボタンが押されても misc=1000 が保持される
     const baseData = pendingDataRef.current || data;
-    const nd = {...baseData, quotes: (baseData.quotes||[]).map(q => q.id===id ? {...q, ...updates, updatedAt:new Date().toISOString()} : q)};
+    // ★ PDF自動再生成: 見積内容更新時は pdfStale=true をマーク
+    const PDF_META_KEYS = new Set(['pdfUrl', 'pdfS3Key', 'pdfGeneratedAt', 'pdfStale']);
+    const updateKeys = Object.keys(updates);
+    const isPdfMetaOnlyUpdate = updateKeys.length > 0 && updateKeys.every(k => PDF_META_KEYS.has(k));
+    const finalUpdates = isPdfMetaOnlyUpdate ? updates : {...updates, pdfStale: true};
+    const nd = {...baseData, quotes: (baseData.quotes||[]).map(q => q.id===id ? {...q, ...finalUpdates, updatedAt:new Date().toISOString()} : q)};
     // バージョン保存・復元・内部メモ以外の通常編集は debounce
     // ただし versions に変更があるなら即時保存
     if (updates.versions !== undefined) {
@@ -5259,7 +5264,13 @@ function QuoteView({data, setData, users=[], currentUser=null, onNavigateToSales
   };
   
   const updateQuote = (id, updates) => {
-    const nd = {...data, quotes: quotes.map(q => q.id===id ? {...q, ...updates, updatedAt:new Date().toISOString()} : q)};
+    // ★ PDF自動再生成: 見積内容を更新した場合は pdfStale=true を付ける
+    //   PDFメタデータの更新（pdfUrl/pdfS3Key/pdfGeneratedAt/pdfStale）だけの場合は stale を付けない
+    const PDF_META_KEYS = new Set(['pdfUrl', 'pdfS3Key', 'pdfGeneratedAt', 'pdfStale']);
+    const updateKeys = Object.keys(updates);
+    const isPdfMetaOnlyUpdate = updateKeys.length > 0 && updateKeys.every(k => PDF_META_KEYS.has(k));
+    const finalUpdates = isPdfMetaOnlyUpdate ? updates : {...updates, pdfStale: true};
+    const nd = {...data, quotes: quotes.map(q => q.id===id ? {...q, ...finalUpdates, updatedAt:new Date().toISOString()} : q)};
     setData(nd);
   };
   
@@ -5432,7 +5443,13 @@ function QuoteEditor({quote, users=[], currentUser, onUpdate, onDelete, onClose,
   };
   
   if(showPreview) {
-    return <QuotePreview quote={quote} company={company} authorLastName={authorLastName} onClose={() => setShowPreview(false)}/>;
+    return <QuotePreview 
+      quote={quote} 
+      company={company} 
+      authorLastName={authorLastName} 
+      onClose={() => setShowPreview(false)}
+      onSavePdfMeta={(meta) => onUpdate({...meta})}
+    />;
   }
   
   const inputStyle = {width:"100%",padding:"0.45rem 0.65rem",border:"1px solid #d1d5db",borderRadius:"0.4rem",fontSize:"0.85rem",fontFamily:"inherit",boxSizing:"border-box",background:"white",outline:"none"};
@@ -5854,7 +5871,7 @@ function DistributedText({text, style}) {
 }
 
 // 見積書プレビュー（Excelテンプレート完全準拠・PDF出力可能）
-function QuotePreview({quote, company, authorLastName, onClose}) {
+function QuotePreview({quote, company, authorLastName, onClose, onSavePdfMeta}) {
   const subtotal = (quote.items||[]).reduce((sum, it) => sum + (Number(it.qty)||0)*(Number(it.price)||0), 0);
   const miscVal = Number(quote.misc) || 0;
   const miscYen = quote.miscUnit === "percent" ? Math.round(subtotal * miscVal / 100) : miscVal;
@@ -5970,504 +5987,175 @@ function QuotePreview({quote, company, authorLastName, onClose}) {
     remarksContent: sc(87.75), // row 39 備考記入欄
   };
 
-  // ─── Excel完全準拠版PDF（Lambda経由） ──────────────────────
-  const [pdfState, setPdfState] = React.useState({status: "idle", url: "", error: ""});
+  // ─── Excel完全準拠版PDF（Lambda経由）─ S3保存版 ──────────────────────
+  // pdfState.status: idle | loading | ready | error
+  // 初期状態: 
+  //   - 保存PDF があり、stale でない → 即表示（保存PDF）
+  //   - 保存PDF があるが stale → 自動再生成（loading）
+  //   - 保存PDF なし → idle（生成ボタン待機）
+  const [pdfState, setPdfState] = React.useState(() => {
+    if (quote.pdfUrl && !quote.pdfStale) {
+      return {status: "ready", url: quote.pdfUrl, error: "", isS3: true};
+    }
+    if (quote.pdfUrl && quote.pdfStale) {
+      // staleの場合、loadingで開始（useEffectで自動再生成）
+      return {status: "loading", url: "", error: "", isS3: false};
+    }
+    return {status: "idle", url: "", error: "", isS3: false};
+  });
+  
   const openExcelPdf = async () => {
-    setPdfState({status: "loading", url: "", error: ""});
+    setPdfState({status: "loading", url: "", error: "", isS3: false});
     try {
-      const {pdfUrl} = await generateQuotePdf(quote, company, authorLastName);
-      setPdfState({status: "ready", url: pdfUrl, error: ""});
+      const {pdfUrl, s3Url, s3Key, s3Error} = await generateQuotePdf(quote, company, authorLastName);
+      // S3 保存成功時は S3 URL を quote に保存（永続化）+ stale クリア
+      if (s3Url && s3Key && typeof onSavePdfMeta === "function") {
+        try {
+          onSavePdfMeta({
+            pdfUrl: s3Url, 
+            pdfS3Key: s3Key, 
+            pdfGeneratedAt: new Date().toISOString(),
+            pdfStale: false,  // ★ stale フラグをクリア
+          });
+        } catch(e) { console.warn("[Quote] pdf meta save failed:", e); }
+      }
+      // 表示用 URL: S3 があれば S3、なければ blob
+      const displayUrl = s3Url || pdfUrl;
+      setPdfState({status: "ready", url: displayUrl, error: s3Error || "", isS3: !!s3Url});
     } catch (e) {
-      setPdfState({status: "error", url: "", error: String(e?.message || e)});
+      setPdfState({status: "error", url: "", error: String(e?.message || e), isS3: false});
     }
   };
-  const closeExcelPdf = () => {
-    if (pdfState.url) { try { URL.revokeObjectURL(pdfState.url); } catch(e){} }
-    setPdfState({status: "idle", url: "", error: ""});
-  };
+  
   React.useEffect(() => {
-    return () => { if (pdfState.url) { try { URL.revokeObjectURL(pdfState.url); } catch(e){} } };
+    return () => { 
+      if (pdfState.url && !pdfState.isS3) { 
+        try { URL.revokeObjectURL(pdfState.url); } catch(e){} 
+      }
+    };
   }, []);
 
-  // ★ プレビューを開いた瞬間に自動でExcel完全準拠PDFを生成して表示
+  // ★ stale な PDF があれば、開いた瞬間に自動再生成
   React.useEffect(() => {
-    openExcelPdf();
+    if (quote.pdfUrl && quote.pdfStale) {
+      console.log("[Quote] PDF is stale, auto-regenerating...");
+      openExcelPdf();
+    }
   }, []); // eslint-disable-line
+
+  // ファイル名生成（印刷時のタイトル用）
+  const safeName = (s) => (s||"").replace(/[\\/:*?"<>|]/g,"_").replace(/\s+/g,"").slice(0,80);
+  const dateStr = (quote.issuedDate || "").replace(/-/g, "");
+  const fallbackName = `見積書_${safeName(quote.to).slice(0,30)}_${dateStr}`;
+
+  // 印刷ハンドラ（保存PDFを新タブ表示してブラウザ印刷を促す）
+  const handlePrint = () => {
+    if (pdfState.status === "ready" && pdfState.url) {
+      try {
+        // S3 URL の場合は新タブで開く（Cookie/印刷ダイアログがブラウザネイティブで動く）
+        if (pdfState.isS3) {
+          window.open(pdfState.url, "_blank", "noopener,noreferrer");
+        } else {
+          // blob URL の場合は iframe を使った印刷
+          const iframe = document.querySelector("#mydesk-pdf-iframe");
+          if (iframe && iframe.contentWindow) {
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+          } else {
+            window.open(pdfState.url, "_blank", "noopener,noreferrer");
+          }
+        }
+      } catch(e) {
+        window.alert("印刷の起動に失敗しました。新タブでPDFを開きます。");
+        window.open(pdfState.url, "_blank", "noopener,noreferrer");
+      }
+    }
+  };
 
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:1000,overflow:"auto",padding:"0.5rem"}}>
       <div style={{maxWidth:"calc(210mm + 2rem)",margin:"0 auto"}}>
         {/* ヘッダー（操作ボタン） */}
-        <div className="no-print" style={{display:"flex",alignItems:"center",gap:"0.4rem",padding:"0.5rem 0.75rem",borderRadius:"0.5rem 0.5rem 0 0",background:"#f9fafb",border:"1px solid #e5e7eb",borderBottom:"none",flexWrap:"wrap"}}>
+        <div style={{display:"flex",alignItems:"center",gap:"0.4rem",padding:"0.5rem 0.75rem",borderRadius:"0.5rem 0.5rem 0 0",background:"#f9fafb",border:"1px solid #e5e7eb",borderBottom:"none",flexWrap:"wrap"}}>
           <button onClick={onClose} style={{padding:"0.4rem 0.7rem",borderRadius:"0.4rem",border:"1px solid #d1d5db",background:"white",fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>← 戻る</button>
-          <span style={{fontSize:"0.78rem",color:"#6b7280",fontWeight:700,whiteSpace:"nowrap"}}>見積書プレビュー</span>
+          <span style={{fontSize:"0.78rem",color:"#6b7280",fontWeight:700,whiteSpace:"nowrap"}}>見積書PDF</span>
+          {quote.pdfGeneratedAt && (
+            <span style={{fontSize:"0.7rem",color:"#9ca3af",whiteSpace:"nowrap"}}>
+              生成日: {(() => { try { return new Date(quote.pdfGeneratedAt).toLocaleString("ja-JP", {year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"}); } catch(e) { return ""; } })()}
+            </span>
+          )}
+          {quote.pdfStale && pdfState.status === "loading" && (
+            <span style={{fontSize:"0.7rem",color:"#d97706",fontWeight:700,whiteSpace:"nowrap",background:"#fef3c7",padding:"0.15rem 0.5rem",borderRadius:"3px"}}>
+              ⚠ 見積変更あり → 再生成中
+            </span>
+          )}
           <div style={{flex:"1 1 auto",minWidth:0}}/>
-          <button onClick={openExcelPdf} disabled={pdfState.status==="loading"} style={{padding:"0.4rem 0.85rem",borderRadius:"0.4rem",border:"1px solid #059669",background:"white",color:"#059669",fontWeight:700,fontSize:"0.8rem",cursor:pdfState.status==="loading"?"wait":"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>{pdfState.status==="loading" ? "⏳ 生成中..." : "📄 Excel完全準拠PDF"}</button>
-          <button onClick={() => {
-            // モバイル対応：window.print()を同期的に呼ぶ（ジェスチャーコンテキスト保持）
-            const originalTitle = document.title;
-            const safeName = (s) => (s||"").replace(/[\\/:*?"<>|]/g,"_").replace(/\s+/g,"").slice(0,80);
-            const dateStr = (quote.issuedDate || "").replace(/-/g, "");
-            const fallback = `見積書_${safeName(quote.to).slice(0,30)}_${dateStr}`;
-            // タイトルを即座に設定（印刷ダイアログのファイル名候補に使われる）
-            document.title = fallback;
-            // AI命名はバックグラウンドで実行（印刷をブロックしない）
-            try {
-              generateSmartFileName({
-                type: "見積書", to: quote.to, site: quote.site,
-                workContent: quote.workContent, date: quote.issuedDate, total: grandTotal,
-                items: (quote.items||[]).map(i=>i.description).filter(Boolean).slice(0,5).join("、")
-              }, fallback).then(name => {
-                if (name && document.title === fallback) document.title = name;
-              }).catch(()=>{});
-            } catch(e) {}
-            // タイトル復元処理
-            const restore = () => {
-              document.title = originalTitle;
-              window.removeEventListener('afterprint', restore);
-            };
-            window.addEventListener('afterprint', restore);
-            setTimeout(restore, 8000);
-            // 同期的に印刷ダイアログを開く（iOSでもジェスチャーコンテキストが保たれる）
-            try {
-              window.print();
-            } catch(e) {
-              window.alert("印刷の起動に失敗しました。\nブラウザの印刷機能をご確認ください。");
-              restore();
-            }
-          }} style={{padding:"0.4rem 0.85rem",borderRadius:"0.4rem",border:"none",background:"#2563eb",color:"white",fontWeight:700,fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>🖨 印刷 / PDF保存</button>
-
+          <button 
+            onClick={openExcelPdf} 
+            disabled={pdfState.status==="loading"} 
+            style={{padding:"0.4rem 0.85rem",borderRadius:"0.4rem",border:"1px solid #059669",background:"white",color:"#059669",fontWeight:700,fontSize:"0.8rem",cursor:pdfState.status==="loading"?"wait":"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}
+          >
+            {pdfState.status === "loading" ? "⏳ 生成中..." : (pdfState.status === "ready" ? "🔄 PDF再生成" : "📄 PDF生成")}
+          </button>
+          {pdfState.status === "ready" && pdfState.url && (
+            <a 
+              href={pdfState.url} 
+              download={`${fallbackName}.pdf`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{padding:"0.4rem 0.85rem",borderRadius:"0.4rem",border:"none",background:"#2563eb",color:"white",fontWeight:700,fontSize:"0.8rem",fontFamily:"inherit",whiteSpace:"nowrap",textDecoration:"none",display:"inline-block"}}
+            >
+              ⬇ ダウンロード
+            </a>
+          )}
+          {pdfState.status === "ready" && pdfState.url && (
+            <button 
+              onClick={handlePrint}
+              style={{padding:"0.4rem 0.85rem",borderRadius:"0.4rem",border:"none",background:"#374151",color:"white",fontWeight:700,fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}
+            >
+              🖨 印刷
+            </button>
+          )}
         </div>
 
-        <style>{`
-          .quote-print, .quote-print * {
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-            color-adjust: exact !important;
-          }
-          @media print {
-            body { margin: 0 !important; padding: 0 !important; }
-            body * { visibility: hidden; }
-            .quote-print, .quote-print * { visibility: visible; }
-            /* A4 (210x297mm) 内に scale(0.9) で全体縮小し、中央配置:
-               width:200mm × scale(0.9) = 180mm（左右15mm余白）
-               縦合計 311.4mm × scale(0.9) = 280.2mm（上下約8.4mm余白） */
-            .quote-print { 
-              position: absolute !important;
-              left: 15mm !important;
-              top: 8.4mm !important;
-              width: 200mm !important; 
-              box-shadow: none !important; 
-              padding: 0 !important; 
-              margin: 0 !important;
-              transform: scale(0.9) !important; 
-              transform-origin: top left !important; 
-            }
-            .quote-scale-outer { width: auto !important; height: auto !important; overflow: visible !important; position: static !important; padding: 0 !important; margin: 0 !important; }
-            .quote-scale-inner { transform: none !important; position: static !important; width: auto !important; }
-            .quote-preview-wrapper { padding: 0 !important; margin: 0 !important; }
-            .no-print { display: none !important; }
-            @page { size: A4; margin: 0; }
-          }
-        `}</style>
-
-        {/* 余白確保用の外側ラッパー（プレビュー時のみ） */}
-        <div className="quote-preview-wrapper" style={{padding: "30px 30px", boxSizing: "border-box"}}>
-
-        {/* A4 サイズのコンテナ（印刷時と同じ比率を維持、内部で scale 0.9 で配置して余白を確保） */}
-        <div className="quote-scale-outer" style={{
-          width: scale < 1 ? `${793.7 * scale}px` : "210mm",
-          height: scale < 1 ? `${1123 * scale}px` : "297mm",
-          margin: "0 auto",
-          overflow: "hidden",
-          position: "relative",
-          background: "white",
-          boxShadow: "0 4px 16px rgba(0,0,0,0.15)",
-        }}>
-          <div className="quote-scale-inner" ref={innerRef} style={{
-            transform: scale < 1 ? `scale(${scale * 0.9})` : "scale(0.9)",
-            transformOrigin: "top left",
-            width: "200mm",
-            position: "absolute",
-            top: scale < 1 ? `${8.4 * 3.7795 * scale}px` : "8.4mm",
-            left: scale < 1 ? `${15 * 3.7795 * scale}px` : "15mm",
-          }}>
-
-        {/* A4 ページ本体 (200mm 幅、印刷時は A4 内中央配置で余白) */}
-        <div className="quote-print" style={{
-          width:"200mm",
-          minHeight:"280mm",
-          padding:"0",
-          fontFamily: SERIF,
-          color:"#000",
-          boxSizing:"border-box",
-          background:"white",
-          margin:"0",
-        }}>
-
-          {/* メインテーブル（13列構成・Excel ひな形完全準拠 / 行高は仕様書のpt値そのまま） */}
-          <table style={{width:"100%",borderCollapse:"collapse",tableLayout:"fixed",fontFamily:SERIF,WebkitTextSizeAdjust:"100%"}}>
-            <colgroup>
-              {/* % を 100% に正規化（iOS Safari でも確実に列幅固定） */}
-              {(()=>{
-                const total = colW.reduce((s,w)=>s+w, 0);
-                return colW.map((w,i)=> <col key={i} style={{width: (w*100/total)+"%"}}/>);
-              })()}
-            </colgroup>
-            <tbody>
-
-              {/* ── Row 1-3: タイトル A1:M3 結合（24pt MS P明朝、Excel「分散」alignment相当：左右マージンを取って均等分散） ── */}
-              <tr style={{height: ROW_H.title}}>
-                <td colSpan={13} style={{...cellBase,fontSize:"24pt",verticalAlign:"middle",padding:0}}>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",height:"100%",margin:"0 38mm",fontFamily:SERIF}}>
-                    <span>御</span>
-                    <span>見</span>
-                    <span>積</span>
-                    <span>書</span>
-                  </div>
-                </td>
-              </tr>
-
-              {/* ── Row 4: 発行日 L4:M4（12pt 右揃え） ── */}
-              <tr style={{height: ROW_H.date}}>
-                <td colSpan={11}></td>
-                <td colSpan={2} style={{...cellBase,fontSize:"12pt",textAlign:"right",verticalAlign:"middle"}}>{fmt(quote.issuedDate)}</td>
-              </tr>
-
-              {/* ── Row 5: 宛先 A5:F5（11pt 左揃え 下罫線double） + G5「御中」（12pt 中央） ── */}
-              <tr style={{height: ROW_H.to}}>
-                <td colSpan={6} style={{...cellBase,fontSize:"12pt",textAlign:"left",borderBottom:bDouble,verticalAlign:"bottom",paddingBottom:"1mm",paddingLeft:"4mm"}}>
-                  {quote.to||""}
-                </td>
-                <td style={{...cellBase,fontSize:"12pt",textAlign:"center",borderBottom:bDouble,verticalAlign:"bottom",paddingBottom:"1mm"}}>
-                  御中
-                </td>
-                <td colSpan={6}></td>
-              </tr>
-
-              {/* ── Row 6: 事業所名 A6:B6 / 記入欄 C6:G6 (colSpan=5) / 自社住所 K6:M6 ── 罫線 T:double B:thin (A-G) ── */}
-              <tr style={{height: ROW_H.site}}>
-                <td colSpan={2} style={{...cellBase,textAlign:"center",borderTop:bDouble,borderBottom:bThin,padding:"0 1mm",fontSize:"11pt"}}>事業所名：</td>
-                <td colSpan={5} style={{...cellBase,textAlign:"left",borderTop:bDouble,borderBottom:bThin,whiteSpace:"normal",paddingLeft:"4mm"}}>{quote.site||""}</td>
-                <td colSpan={3}></td>
-                <td colSpan={3} style={{...cellBase,verticalAlign:"middle",whiteSpace:"normal",lineHeight:1.4,padding:"0 1mm"}}>
-                  {(()=>{
-                    const zip = company.zip||"";
-                    const addr = company.address||"";
-                    const addrLen = [...addr].length;
-                    // Excel仕様: 11pt left middle wrap。文字数が多いと収まらないので自動縮小
-                    const addrFs = addrLen <= 17 ? "11pt" : addrLen <= 19 ? "10pt" : addrLen <= 21 ? "9.5pt" : "9pt";
-                    return <>
-                      <div style={{fontSize:"11pt"}}>{zip}</div>
-                      <div style={{fontSize:addrFs,whiteSpace:"nowrap"}}>{addr}</div>
-                    </>;
-                  })()}
-                </td>
-              </tr>
-
-              {/* ── Row 7: 業務内容 A7:B7 / 記入欄 C7:G7 (colSpan=5) / 自社名 K7:M7 ── 罫線 T:thin (A-G) ── */}
-              <tr style={{height: ROW_H.workType}}>
-                <td colSpan={2} style={{...cellBase,textAlign:"center",borderTop:bThin,padding:"0 1mm",fontSize:"11pt"}}>業務内容：</td>
-                <td colSpan={5} style={{...cellBase,textAlign:"left",borderTop:bThin,whiteSpace:"normal",paddingLeft:"4mm"}}>{quote.workContent||""}</td>
-                <td colSpan={3}></td>
-                <td colSpan={3} style={{...cellBase,padding:"0 1mm",verticalAlign:"middle",overflow:"visible"}}>
-                  {(()=>{
-                    const nm = company.name||"";
-                    const len = [...nm].length;
-                    if (!nm) return null;
-                    // K-M結合幅 = 33/120.43 × 210mm = 57.5mm（印刷時 scale 0.92 後 53mm）
-                    // 雛形「株式会社　西原商事」(10字) 16pt の見た目を再現するため、文字数別に段階的調整
-                    // distributed text なのでフォントサイズが大きいほど目立つ
-                    let fs;
-                    if (len <= 9) fs = 16;          // 9文字以下: 16pt（最大、目立つ）
-                    else if (len === 10) fs = 14;   // 「株式会社○○商事」級
-                    else if (len === 11) fs = 12;
-                    else if (len === 12) fs = 11;
-                    else if (len === 13) fs = 10.5;
-                    else if (len === 14) fs = 10;   // 「株式会社ビートルマネージメント」
-                    else if (len <= 16) fs = 9;
-                    else if (len <= 18) fs = 8;
-                    else fs = 7;                     // 19文字以上: 7pt（最小可読）
-                    return <DistributedText text={nm} style={{fontSize:fs+"pt",fontFamily:SERIF}}/>;
-                  })()}
-                </td>
-              </tr>
-
-              {/* ── Row 8: ご担当者 A8:B8 / 記入欄 C8:F8 / G8「様」/ K8:M8 TEL/FAX ── 罫線 T:thin B:thin (A-G) ── */}
-              <tr style={{height: ROW_H.contact}}>
-                <td colSpan={2} style={{...cellBase,textAlign:"center",borderTop:bThin,borderBottom:bThin,padding:"0 1mm",fontSize:"11pt"}}>ご担当者：</td>
-                <td colSpan={4} style={{...cellBase,textAlign:"left",borderTop:bThin,borderBottom:bThin,whiteSpace:"normal",paddingLeft:"4mm"}}>{quote.contactName||""}</td>
-                <td style={{...cellBase,borderTop:bThin,borderBottom:bThin,textAlign:"left",paddingLeft:"1mm",fontSize:"11pt"}}>{quote.contactName?"様":""}</td>
-                <td colSpan={3}></td>
-                <td colSpan={3} style={{...cellBase,fontSize:"12pt",textAlign:"right",whiteSpace:"normal",lineHeight:1.5,verticalAlign:"middle",padding:"0 1mm"}}>
-                  TEL　{company.tel}<br/>
-                  FAX　{company.fax}
-                </td>
-              </tr>
-
-              {/* ── Row 9: 有効期限 A9:B9 / C9:D9 御見積り後 / E9 数 / F9 ケ月 / G9 空 / K-M 承認/検印/担当者ラベル(grayfill) ── */}
-              {/* 罫線 T:thin B:thin (A-G)、K-M は印鑑エリアの上端ラベル */}
-              <tr style={{height: ROW_H.validUntil}}>
-                <td colSpan={2} style={{...cellBase,textAlign:"center",borderTop:bThin,borderBottom:bThin,padding:"0 1mm",fontSize:"11pt"}}>有効期限：</td>
-                <td colSpan={2} style={{...cellBase,borderTop:bThin,borderBottom:bThin,textAlign:"left",paddingLeft:"2mm"}}>{quote.validUntil || "御見積り後"}</td>
-                <td style={{...cellBase,borderTop:bThin,borderBottom:bThin,textAlign:"center"}}>{quote.months||""}</td>
-                <td style={{...cellBase,borderTop:bThin,borderBottom:bThin,paddingLeft:"1mm"}}>ケ月</td>
-                <td style={{...cellBase,borderTop:bThin,borderBottom:bThin}}></td>
-                <td colSpan={3}></td>
-                <td style={{...cellBase,background:GREY,textAlign:"center",borderTop:bThin,borderLeft:bThin,borderRight:bThin,borderBottom:bThin,fontSize:"11pt"}}>承認</td>
-                <td style={{...cellBase,background:GREY,textAlign:"center",borderTop:bThin,borderRight:bThin,borderBottom:bThin,fontSize:"11pt"}}>検印</td>
-                <td style={{...cellBase,background:GREY,textAlign:"center",borderTop:bThin,borderRight:bThin,borderBottom:bThin,fontSize:"11pt"}}>担当者</td>
-              </tr>
-
-              {/* ── Row 10: 前置き文 A10:F10 + 印鑑枠 K10:M13（rowSpan=4、Row11は7pt隙間） ── */}
-              <tr style={{height: ROW_H.intro}}>
-                <td colSpan={6} style={{...cellBase,fontSize:"10pt",verticalAlign:"middle",lineHeight:1.0,padding:"1mm 0 0 2mm",whiteSpace:"normal"}}>
-                  下記の通りお見積りさせていただきます。<br/>
-                  ご検討のほど、お願い申し上げます。
-                </td>
-                <td colSpan={4}></td>
-                <td rowSpan={4} style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bThin,textAlign:"center",verticalAlign:"middle",padding:0}}></td>
-                <td rowSpan={4} style={{...cellBase,borderRight:bThin,borderBottom:bThin,textAlign:"center",verticalAlign:"middle",padding:0}}></td>
-                <td rowSpan={4} style={{...cellBase,borderRight:bThin,borderBottom:bThin,textAlign:"center",verticalAlign:"middle",padding:0}}>
-                  <HankoStamp name={authorLastName}/>
-                </td>
-              </tr>
-
-              {/* ── Row 11: 区切り行（7pt の小さな隙間、Excel仕様準拠） ── */}
-              <tr style={{height: ROW_H.separator}}>
-                <td colSpan={10}></td>
-                {/* K, L, M は前の行から rowSpan=4 で延びる */}
-              </tr>
-
-              {/* ── Row 12-13: 見積金額 A12:C13 (grayfill 14pt) / 金額 D12:H13 (20pt) / (税込) I12:I13 (11pt) ── J列は罫線なし完全空白 ── */}
-              <tr style={{height: ROW_H.amount1}}>
-                <td colSpan={3} rowSpan={2} style={{...cellBase,background:GREY,fontSize:"14pt",verticalAlign:"middle",border:bThin,padding:0}}>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",height:"100%",margin:"0 5mm",fontFamily:SERIF}}>
-                    <span>見</span>
-                    <span>積</span>
-                    <span>金</span>
-                    <span>額</span>
-                  </div>
-                </td>
-                <td colSpan={5} rowSpan={2} style={{...cellBase,fontSize:"20pt",textAlign:"center",verticalAlign:"middle",border:bThin,fontWeight:400}}>¥{grandTotal.toLocaleString()}-</td>
-                <td rowSpan={2} style={{...cellBase,fontSize:"11pt",textAlign:"center",verticalAlign:"middle",border:bThin}}>（税込）</td>
-                <td rowSpan={2}></td>
-                {/* K, L, M は前の行から rowSpan=4 で延びる */}
-              </tr>
-              <tr style={{height: ROW_H.amount2}}>
-                {/* A-J: rowSpan=2 で延びてくる、 K-M: rowSpan=4 で延びてくる */}
-              </tr>
-
-              {/* ── Row 14: スペーサー ── */}
-              <tr style={{height: ROW_H.beforeItems}}>
-                <td colSpan={13}></td>
-              </tr>
-
-              {/* ── Row 15: 明細ヘッダ（A15+B15:F15+G15+H15+I15+J15+K15:M15、全セル grayfill 中央揃え 11pt、ラベルは均等分散） ── */}
-              <tr style={{height: ROW_H.itemHeader}}>
-                <td style={{...cellBase,background:GREY,textAlign:"center",border:bThin,padding:0}}></td>
-                <td colSpan={5} style={{...cellBase,background:GREY,border:bThin,fontSize:"11pt",padding:0}}>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",height:"100%",margin:"0 30mm",fontFamily:SERIF}}>
-                    <span>内</span><span>容</span>
-                  </div>
-                </td>
-                <td style={{...cellBase,background:GREY,border:bThin,fontSize:"11pt",padding:0}}>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",height:"100%",margin:"0 4mm",fontFamily:SERIF}}>
-                    <span>数</span><span>量</span>
-                  </div>
-                </td>
-                <td style={{...cellBase,background:GREY,textAlign:"center",border:bThin,fontSize:"11pt",padding:0}}>単位</td>
-                <td style={{...cellBase,background:GREY,border:bThin,fontSize:"11pt",padding:0}}>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",height:"100%",margin:"0 5mm",fontFamily:SERIF}}>
-                    <span>単</span><span>価</span>
-                  </div>
-                </td>
-                <td style={{...cellBase,background:GREY,border:bThin,fontSize:"11pt",padding:0}}>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",height:"100%",margin:"0 5mm",fontFamily:SERIF}}>
-                    <span>金</span><span>額</span>
-                  </div>
-                </td>
-                <td colSpan={3} style={{...cellBase,background:GREY,textAlign:"center",border:bThin,fontSize:"11pt"}}>備考欄</td>
-              </tr>
-
-              {/* ── Row 16-30: 明細行（15行、間に点線、最終行は二重線） ── */}
-              {/* 幽霊行抑制：内容が空ならその行は数量・単価・金額も全て非表示にする */}
-              {items.map((it, idx) => {
-                const isLast = idx === 14;
-                const desc = (it?.description || "").trim();
-                const hasContent = desc !== "";
-                const qty = Number(it?.qty)||0;
-                const price = Number(it?.price)||0;
-                const amount = (hasContent && qty > 0 && price > 0) ? qty * price : 0;
-                const bottomBorder = isLast ? bDouble : bDotted;
-                return (
-                  <tr key={idx} style={{height: ROW_H.item}}>
-                    <td style={{...cellBase,textAlign:"center",fontSize:"11pt",padding:0,borderLeft:bThin,borderRight:bThin,borderBottom:bottomBorder}}>{idx+1}</td>
-                    <td colSpan={5} style={{...cellBase,borderRight:bThin,borderBottom:bottomBorder}}>{hasContent ? it.description : ""}</td>
-                    <td style={{...cellBase,textAlign:"right",borderRight:bThin,borderBottom:bottomBorder}}>{hasContent && qty>0 ? qty.toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:1}) : ""}</td>
-                    <td style={{...cellBase,textAlign:"center",borderRight:bThin,borderBottom:bottomBorder}}>{hasContent ? (it?.unit||"") : ""}</td>
-                    <td style={{...cellBase,textAlign:"right",borderRight:bThin,borderBottom:bottomBorder}}>{hasContent && price>0 ? price.toLocaleString() : ""}</td>
-                    <td style={{...cellBase,textAlign:"right",borderRight:bThin,borderBottom:bottomBorder}}>{amount > 0 ? amount.toLocaleString() : ""}</td>
-                    <td colSpan={3} style={{...cellBase,fontSize:"11pt",borderRight:bThin,borderBottom:bottomBorder}}>{hasContent ? (it?.remarks||"") : ""}</td>
-                  </tr>
-                );
-              })}
-
-              {/* ── Row 31: 小計 A31:F31 ── flex で「小」と「計」を配置 ── */}
-              <tr style={{height: ROW_H.totalRow}}>
-                <td colSpan={6} style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDotted,padding:0}}>
-                  <div style={{display:"flex",alignItems:"center",height:"100%",fontSize:"11pt",fontFamily:SERIF,paddingLeft:"6mm",paddingRight:"30%"}}>
-                    <span>小</span><span style={{flex:1}}/><span>計</span>
-                  </div>
-                </td>
-                <td style={{...cellBase,borderLeft:bThin,borderBottom:bDotted}}></td>
-                <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDotted}}></td>
-                <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDotted}}></td>
-                <td style={{...cellBase,textAlign:"right",borderRight:bThin,borderBottom:bDotted,padding:"0 1mm"}}>{subtotal.toLocaleString()}</td>
-                <td colSpan={3} style={{borderRight:bThin,borderBottom:bDotted}}></td>
-              </tr>
-
-              {/* ── Row 32: 諸経費 A32:F32 ── flex で3文字均等配置 ── */}
-              <tr style={{height: ROW_H.totalRow}}>
-                <td colSpan={6} style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDotted,padding:0}}>
-                  <div style={{display:"flex",alignItems:"center",height:"100%",fontSize:"11pt",fontFamily:SERIF,paddingLeft:"8mm",paddingRight:"35%"}}>
-                    <span>諸</span><span style={{flex:1}}/><span>経</span><span style={{flex:1}}/><span>費</span>
-                  </div>
-                </td>
-                <td style={{...cellBase,borderLeft:bThin,borderBottom:bDotted}}></td>
-                <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDotted}}></td>
-                <td style={{...cellBase,textAlign:"center",fontSize:"11pt",borderLeft:bThin,borderRight:bThin,borderBottom:bDotted,padding:0}}>{miscRateLabel}</td>
-                <td style={{...cellBase,textAlign:"right",borderRight:bThin,borderBottom:bDotted,padding:"0 1mm"}}>{miscYen ? miscYen.toLocaleString() : "0"}</td>
-                <td colSpan={3} style={{borderRight:bThin,borderBottom:bDotted}}></td>
-              </tr>
-
-              {/* ── Row 33: 調整費 A33:F33（下に二重線：明細ブロックの区切り）── */}
-              <tr style={{height: ROW_H.totalRow}}>
-                <td colSpan={6} style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDouble,padding:0}}>
-                  <div style={{display:"flex",alignItems:"center",height:"100%",fontSize:"11pt",fontFamily:SERIF,paddingLeft:"8mm",paddingRight:"35%"}}>
-                    <span>調</span><span style={{flex:1}}/><span>整</span><span style={{flex:1}}/><span>費</span>
-                  </div>
-                </td>
-                <td style={{...cellBase,borderLeft:bThin,borderBottom:bDouble}}></td>
-                <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDouble}}></td>
-                <td style={{...cellBase,textAlign:"center",fontSize:"11pt",borderLeft:bThin,borderRight:bThin,borderBottom:bDouble,padding:0}}>{adjRateLabel}</td>
-                <td style={{...cellBase,textAlign:"right",borderRight:bThin,borderBottom:bDouble,padding:"0 1mm"}}>{adjYen ? adjYen.toLocaleString() : "0"}</td>
-                <td colSpan={3} style={{borderRight:bThin,borderBottom:bDouble}}></td>
-              </tr>
-
-              {/* ── Row 34: 小計（税抜） A34:F34 ── flex で「小」と「計 (税抜)」配置 ── */}
-              <tr style={{height: ROW_H.totalRow}}>
-                <td colSpan={6} style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDotted,padding:0}}>
-                  <div style={{display:"flex",alignItems:"center",height:"100%",fontSize:"11pt",fontFamily:SERIF,paddingLeft:"6mm",paddingRight:"15%"}}>
-                    <span>小</span><span style={{flex:1}}/><span style={{whiteSpace:"nowrap"}}>計 (税抜)</span>
-                  </div>
-                </td>
-                <td style={{...cellBase,borderLeft:bThin,borderBottom:bDotted}}></td>
-                <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDotted}}></td>
-                <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDotted}}></td>
-                <td style={{...cellBase,textAlign:"right",borderRight:bThin,borderBottom:bDotted,padding:"0 1mm"}}>{adjustedSub.toLocaleString()}</td>
-                <td colSpan={3} style={{borderRight:bThin,borderBottom:bDotted}}></td>
-              </tr>
-
-              {/* ── Row 35: 消費税 A35:F35 ── flex で3文字均等配置 ── */}
-              <tr style={{height: ROW_H.totalRow}}>
-                <td colSpan={6} style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDouble,padding:0}}>
-                  <div style={{display:"flex",alignItems:"center",height:"100%",fontSize:"11pt",fontFamily:SERIF,paddingLeft:"8mm",paddingRight:"35%"}}>
-                    <span>消</span><span style={{flex:1}}/><span>費</span><span style={{flex:1}}/><span>税</span>
-                  </div>
-                </td>
-                <td style={{...cellBase,borderLeft:bThin,borderBottom:bDouble}}></td>
-                <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bDouble}}></td>
-                <td style={{...cellBase,textAlign:"center",fontSize:"11pt",borderLeft:bThin,borderRight:bThin,borderBottom:bDouble,padding:0}}>{(quote.taxRate||10)}%</td>
-                <td style={{...cellBase,textAlign:"right",borderRight:bThin,borderBottom:bDouble,padding:"0 1mm"}}>{tax.toLocaleString()}</td>
-                <td colSpan={3} style={{borderRight:bThin,borderBottom:bDouble}}></td>
-              </tr>
-
-              {/* ── Row 36: 合計（税込）A36:F36 ── flex で「合」と「計 (税込)」配置（太字）── */}
-              <tr style={{height: ROW_H.grandTotal}}>
-                <td colSpan={6} style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bThin,padding:0}}>
-                  <div style={{display:"flex",alignItems:"center",height:"100%",fontSize:"11pt",fontFamily:SERIF,fontWeight:700,paddingLeft:"6mm",paddingRight:"15%"}}>
-                    <span>合</span><span style={{flex:1}}/><span style={{whiteSpace:"nowrap"}}>計 (税込)</span>
-                  </div>
-                </td>
-                <td style={{...cellBase,borderLeft:bThin,borderBottom:bThin}}></td>
-                <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bThin}}></td>
-                <td style={{...cellBase,borderLeft:bThin,borderRight:bThin,borderBottom:bThin}}></td>
-                <td style={{...cellBase,textAlign:"right",fontSize:"11pt",fontWeight:700,borderRight:bThin,borderBottom:bThin,padding:"0 1mm"}}>{grandTotal.toLocaleString()}</td>
-                <td colSpan={3} style={{borderRight:bThin,borderBottom:bThin}}></td>
-              </tr>
-
-              {/* ── Row 37: スペーサー（既定 15pt）── */}
-              <tr style={{height: ROW_H.spacer}}>
-                <td colSpan={13}></td>
-              </tr>
-
-              {/* ── Row 38: 備考見出し A38:M38（18.75pt 左揃え、Excel仕様：'備\u3000考' 均等分散） ── */}
-              <tr style={{height: ROW_H.remarksLabel}}>
-                <td colSpan={13} style={{...cellBase,fontSize:"11pt",borderTop:bThin,borderLeft:bThin,borderRight:bThin,padding:0}}>
-                  <div style={{display:"flex",alignItems:"center",height:"100%",fontFamily:SERIF,paddingLeft:"3mm",gap:"2mm"}}>
-                    <span>備</span><span>考</span>
-                  </div>
-                </td>
-              </tr>
-
-              {/* ── Row 39: 備考記入欄 A39:M39（87.75×0.92=80.73pt 折返し有効、11pt）── 内部divでminHeight強制確保 ── */}
-              <tr style={{height: ROW_H.remarksContent}}>
-                <td colSpan={13} style={{...cellBase,fontSize:"11pt",verticalAlign:"top",whiteSpace:"pre-wrap",borderLeft:bThin,borderRight:bThin,borderBottom:bThin,padding:"2mm 4mm",lineHeight:1.5,height:sc(87.75)}}>
-                  <div style={{minHeight:sc(75),height:sc(75),overflow:"hidden"}}>{quote.remarks || ""}</div>
-                </td>
-              </tr>
-
-            </tbody>
-          </table>
+        {/* PDF表示エリア */}
+        <div style={{background:"white",border:"1px solid #e5e7eb",borderTop:"none",borderRadius:"0 0 0.5rem 0.5rem",minHeight:"calc(100vh - 100px)",display:"flex",alignItems:"center",justifyContent:"center",padding:"0.5rem"}}>
+          {pdfState.status === "idle" && (
+            <div style={{textAlign:"center",padding:"2rem"}}>
+              <div style={{fontSize:"3rem",marginBottom:"0.75rem"}}>📄</div>
+              <div style={{fontSize:"0.95rem",color:"#6b7280",marginBottom:"1rem",fontWeight:600}}>まだPDFが生成されていません</div>
+              <div style={{fontSize:"0.78rem",color:"#9ca3af",marginBottom:"1.25rem"}}>下のボタンからPDFを生成してください<br/>(以降はこの見積書を開いた時に自動表示されます)</div>
+              <button onClick={openExcelPdf} style={{padding:"0.7rem 1.5rem",borderRadius:"0.5rem",border:"none",background:"#059669",color:"white",fontWeight:700,fontSize:"0.95rem",cursor:"pointer",fontFamily:"inherit"}}>📄 PDFを生成する</button>
+            </div>
+          )}
+          {pdfState.status === "loading" && (
+            <div style={{textAlign:"center",padding:"2rem"}}>
+              <div style={{fontSize:"2.5rem",marginBottom:"0.75rem"}}>⏳</div>
+              <div style={{fontSize:"0.9rem",color:"#6b7280",fontWeight:600}}>PDFを生成しています...</div>
+              <div style={{fontSize:"0.75rem",color:"#9ca3af",marginTop:"0.5rem"}}>5〜10秒ほどかかります</div>
+            </div>
+          )}
+          {pdfState.status === "error" && (
+            <div style={{textAlign:"center",padding:"2rem",maxWidth:"500px"}}>
+              <div style={{fontSize:"2.5rem",marginBottom:"0.75rem"}}>⚠️</div>
+              <div style={{fontSize:"0.95rem",color:"#dc2626",fontWeight:700,marginBottom:"0.75rem"}}>PDF生成に失敗しました</div>
+              <div style={{fontSize:"0.78rem",color:"#6b7280",fontFamily:"monospace",background:"#f9fafb",padding:"0.5rem",borderRadius:"0.3rem",whiteSpace:"pre-wrap",wordBreak:"break-all",marginBottom:"1rem",textAlign:"left"}}>{pdfState.error}</div>
+              <button onClick={openExcelPdf} style={{padding:"0.5rem 1rem",borderRadius:"0.4rem",border:"1px solid #2563eb",background:"white",color:"#2563eb",fontWeight:700,fontSize:"0.85rem",cursor:"pointer"}}>🔄 再試行</button>
+            </div>
+          )}
+          {pdfState.status === "ready" && pdfState.url && (
+            <iframe 
+              id="mydesk-pdf-iframe"
+              src={pdfState.url} 
+              style={{width:"100%",maxWidth:"calc(210mm + 4rem)",height:"calc(100vh - 100px)",border:"none",background:"white",boxShadow:"0 2px 8px rgba(0,0,0,0.1)"}} 
+              title="見積書PDF"
+            />
+          )}
         </div>
-          </div>{/* /quote-scale-inner */}
-        </div>{/* /quote-scale-outer */}
-        </div>{/* /quote-preview-wrapper */}
       </div>
-
-      {/* ─── Excel完全準拠版PDFモーダル ─────────────────────── */}
-      {pdfState.status !== "idle" && (
-        <div className="no-print" style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:1100,display:"flex",flexDirection:"column"}} onClick={(e)=>{ if(e.target===e.currentTarget) closeExcelPdf(); }}>
-          <div style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.5rem 0.75rem",background:"#f9fafb",borderBottom:"1px solid #e5e7eb",flexWrap:"wrap"}}>
-            <button onClick={closeExcelPdf} style={{padding:"0.4rem 0.7rem",borderRadius:"0.4rem",border:"1px solid #d1d5db",background:"white",fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}}>← 戻る</button>
-            <span style={{fontSize:"0.78rem",color:"#059669",fontWeight:700}}>📄 Excel完全準拠PDF</span>
-            <span style={{fontSize:"0.7rem",color:"#6b7280"}}>※ Excelひな形を直接PDF化（フォント・余白・印鑑欄まで完全再現）</span>
-            <div style={{flex:"1 1 auto",minWidth:0}}/>
-            {pdfState.status === "ready" && (
-              <>
-                <a href={pdfState.url} download={`見積書_${(quote.to||"").replace(/[\\/:*?"<>|]/g,"_").slice(0,30)}_${(quote.issuedDate||"").replace(/-/g,"")}.pdf`} style={{padding:"0.4rem 0.85rem",borderRadius:"0.4rem",border:"1px solid #2563eb",background:"white",color:"#2563eb",fontWeight:700,fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit",textDecoration:"none"}}>⬇ ダウンロード</a>
-                <button onClick={()=>{ const w=window.open(pdfState.url,"_blank"); if(w) setTimeout(()=>{ try{w.print();}catch(e){} }, 600); }} style={{padding:"0.4rem 0.85rem",borderRadius:"0.4rem",border:"none",background:"#2563eb",color:"white",fontWeight:700,fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit"}}>🖨 印刷</button>
-              </>
-            )}
-          </div>
-          <div style={{flex:1,overflow:"auto",padding:"0.5rem",display:"flex",alignItems:"flex-start",justifyContent:"center"}}>
-            {pdfState.status === "loading" && (
-              <div style={{padding:"3rem",textAlign:"center",color:"white"}}>
-                <div style={{fontSize:"3rem",marginBottom:"1rem"}}>⏳</div>
-                <div style={{fontSize:"1rem",fontWeight:700,marginBottom:"0.5rem"}}>PDF生成中...</div>
-                <div style={{fontSize:"0.85rem",opacity:0.8}}>初回は5〜10秒程度かかります（LibreOfficeコールドスタート）</div>
-              </div>
-            )}
-            {pdfState.status === "error" && (
-              <div style={{padding:"2rem",background:"white",borderRadius:"0.5rem",maxWidth:"600px",width:"100%"}}>
-                <div style={{fontSize:"2rem",marginBottom:"1rem",color:"#dc2626"}}>❌</div>
-                <div style={{fontWeight:700,marginBottom:"0.5rem"}}>PDF生成に失敗しました</div>
-                <div style={{fontSize:"0.85rem",color:"#6b7280",fontFamily:"monospace",background:"#f9fafb",padding:"0.5rem",borderRadius:"0.25rem",whiteSpace:"pre-wrap",wordBreak:"break-all"}}>{pdfState.error}</div>
-                <div style={{marginTop:"1rem",display:"flex",gap:"0.5rem"}}>
-                  <button onClick={openExcelPdf} style={{padding:"0.4rem 0.85rem",borderRadius:"0.4rem",border:"1px solid #2563eb",background:"white",color:"#2563eb",fontWeight:700,fontSize:"0.8rem",cursor:"pointer"}}>🔄 再試行</button>
-                  <button onClick={closeExcelPdf} style={{padding:"0.4rem 0.85rem",borderRadius:"0.4rem",border:"1px solid #d1d5db",background:"white",fontSize:"0.8rem",cursor:"pointer"}}>閉じる</button>
-                </div>
-              </div>
-            )}
-            {pdfState.status === "ready" && (
-              <iframe src={pdfState.url} style={{width:"100%",maxWidth:"calc(210mm + 4rem)",height:"calc(100vh - 80px)",border:"none",background:"white",boxShadow:"0 4px 20px rgba(0,0,0,0.3)"}} title="見積書PDF"/>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
+
 }
 
 function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjTab,setPjTab,navTarget,clearNavTarget,onNavigateToSales}) {
@@ -9219,9 +8907,10 @@ const QUOTE_PDF_URL = cleanUrl(
 /**
  * 見積書PDF生成（Lambda + LibreOffice + Excelテンプレート）
  * Excelひな形をそのままPDF化するので、本物と完全一致
- * @returns Promise<{pdfBlob: Blob, pdfUrl: string}>
+ * 副作用: quoteId が指定されていれば、Lambdaが S3 にPDFをアップロードする
+ * @returns Promise<{pdfBlob: Blob, pdfUrl: string, s3Url: string|null, s3Key: string|null}>
  */
-async function generateQuotePdf(quote, company, authorLastName) {
+async function generateQuotePdf(quote, company, authorLastName, options={}) {
   const url = QUOTE_PDF_URL;
   if (!url || url.includes("PLACEHOLDER")) {
     throw new Error("VITE_QUOTE_PDF_URL が未設定です。Amplify環境変数を設定してください。");
@@ -9232,7 +8921,12 @@ async function generateQuotePdf(quote, company, authorLastName) {
       "Content-Type": "application/json",
       "x-mydesk-secret": "mydesk2026secret",
     },
-    body: JSON.stringify({ quote, company, authorLastName }),
+    body: JSON.stringify({
+      quote,
+      company,
+      authorLastName,
+      uploadToS3: options.uploadToS3 !== false, // デフォルト true
+    }),
   });
   if (!resp.ok) {
     let msg = `HTTP ${resp.status}`;
@@ -9247,7 +8941,13 @@ async function generateQuotePdf(quote, company, authorLastName) {
   for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
   const pdfBlob = new Blob([arr], { type: "application/pdf" });
   const pdfUrl = URL.createObjectURL(pdfBlob);
-  return { pdfBlob, pdfUrl };
+  return {
+    pdfBlob,
+    pdfUrl,
+    s3Url: data.pdf_url || null,
+    s3Key: data.pdf_s3_key || null,
+    s3Error: data.s3_error || null,
+  };
 }
 
 /**
