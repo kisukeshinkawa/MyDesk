@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v48-vocab-expanded"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v49-perf-debounce"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -215,6 +215,82 @@ async function sbSet(id, data) {
       }
     }
   }
+}
+
+// ─── デバウンス付き保存 ───────────────────────────────────────────────────────
+// 短時間に複数回の変更があっても、1.5秒間操作が止まってから1回だけ保存する。
+// 保存中に新たな変更があれば、保存完了後に再度保存（最新データのみ）。
+// 前回と同じデータならスキップ。
+let __saveTimer = null;
+let __pendingSaveData = null;
+let __isCurrentlySaving = false;
+let __lastSavedHash = "";
+const SAVE_DEBOUNCE_MS = 1500;
+
+function _quickHash(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+  }
+  return h.toString(36);
+}
+
+async function _processSaveQueue() {
+  if (__isCurrentlySaving) return;
+  while (__pendingSaveData) {
+    const toSave = __pendingSaveData;
+    __pendingSaveData = null;
+    __isCurrentlySaving = true;
+    try {
+      const jsonStr = JSON.stringify(toSave);
+      const hash = _quickHash(jsonStr);
+      if (hash === __lastSavedHash) {
+        console.log("[MyDesk] scheduleSaveData skipped — no changes since last save");
+      } else {
+        await saveData(toSave);
+        __lastSavedHash = hash;
+      }
+    } catch (e) {
+      console.error("[MyDesk] queued save failed:", e);
+    } finally {
+      __isCurrentlySaving = false;
+    }
+  }
+}
+
+function scheduleSaveData(d) {
+  if (!d || typeof d !== "object") return;
+  __pendingSaveData = d;
+  if (__saveTimer) clearTimeout(__saveTimer);
+  __saveTimer = setTimeout(() => {
+    __saveTimer = null;
+    _processSaveQueue();
+  }, SAVE_DEBOUNCE_MS);
+}
+
+// ページ離脱時に未保存があれば即時保存
+if (typeof window !== "undefined" && !window.__myDeskFlushListenerAdded) {
+  window.__myDeskFlushListenerAdded = true;
+  const flush = () => {
+    if (__saveTimer) { clearTimeout(__saveTimer); __saveTimer = null; }
+    if (__pendingSaveData) {
+      try {
+        saveData(__pendingSaveData); // fire-and-forget; keepaliveで完了
+        __pendingSaveData = null;
+      } catch (_) {}
+    }
+  };
+  window.addEventListener("beforeunload", (e) => {
+    if (__pendingSaveData || __isCurrentlySaving) {
+      flush();
+      e.preventDefault();
+      e.returnValue = "未保存の変更があります。本当にページを離れますか？";
+      return e.returnValue;
+    }
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") flush();
+  });
 }
 
 const INIT = { tasks:[], projects:[], emails:[], emailStyles:[], prefectures:[], municipalities:[], vendors:[], companies:[], businessCards:[], notifications:[], changeLogs:[], analytics:{}, emailTemplates:[], quotes:[] };
@@ -1062,7 +1138,7 @@ async function saveData(d) {
   // 自動スナップショット（3分に1回スロットリング、非同期・非ブロッキング）
   const now = Date.now();
   const last = window.__lastAutoSnap || 0;
-  if (now - last > 10 * 60 * 1000) { // 10分に1回（Supabase負荷軽減）
+  if (now - last > 30 * 60 * 1000) { // 30分に1回（パフォーマンス改善）
     window.__lastAutoSnap = now;
     autoSnapshot(d).catch(() => {});
   }
@@ -4492,7 +4568,7 @@ function AuthScreen({onLogin}) {
       const existingData = existingResult?.data || INIT; // ← .data を正しく取り出す
       const notif={id:Date.now()+Math.random(),type:"new_user",title:`👋 新規ユーザーが登録されました：${nu.name}`,body:nu.email,toUserId:"__all__",read:false,date:new Date().toISOString()};
       const ndWithNotif={...existingData,notifications:[...(existingData.notifications||[]),notif]};
-      saveData(ndWithNotif);
+      scheduleSaveData(ndWithNotif);
       await sendEmail({
         toEmail: f.email.trim(), toName: f.name.trim(),
         subject: "【MyDesk】登録が完了しました",
@@ -4883,7 +4959,7 @@ function TaskCommentInput({taskId, data, setData, users=[], uid}) {
     const toIds = [...new Set([...(task.assignees||[]), task.createdBy].filter(i=>i&&i!==uid))];
     if(toIds.length) nd = addNotif(nd,{type:"task_comment",entityId:task.id,entityType:"task",title:`「${task.title}」にコメントが追加されました`,body:text.slice(0,60),toUserIds:toIds,fromUserId:uid});
     // 自己完結保存+プッシュ
-    setData(nd); saveData(nd);
+    setData(nd); scheduleSaveData(nd);
     // Push通知は addNotif の集約処理で自動送信されるため、ここでは送信しない
     setText("");
   };
@@ -6302,7 +6378,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     setData(nd);
     window.__myDeskLastSave = Date.now();
     window.__myDeskLastSaveAt = new Date().toISOString(); // 競合防止タグ
-    saveData(nd); // グローバル関数
+    saveData(nd); // グローバル関数（即時）— 通知絡みは即時保存維持
     // 新着通知を検出してWeb Push送信
     const newNotifs = (nd.notifications||[]).filter(n=>
       !(notifsBefore||[]).some(o=>o.id===n.id)
@@ -6474,22 +6550,22 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
   const addFileToTask = (taskId, file) => {
     const nd = { ...data, tasks: allTasks.map(t => t.id === taskId ? { ...t, files: [...(t.files||[]), file] } : t) };
     window.__myDeskLastSave = Date.now();
-    setData(nd); saveData(nd);
+    setData(nd); scheduleSaveData(nd);
   };
   const removeFileFromTask = (taskId, fileIdOrUrl) => {
     const nd = { ...data, tasks: allTasks.map(t => t.id === taskId ? { ...t, files: (t.files||[]).filter(f=>(f.id||f.url)!==fileIdOrUrl) } : t) };
     window.__myDeskLastSave = Date.now();
-    setData(nd); saveData(nd);
+    setData(nd); scheduleSaveData(nd);
   };
   const addFileToPj = (pjId, file) => {
     const nd = { ...data, projects: allProjects.map(p => p.id === pjId ? { ...p, files: [...(p.files||[]), file] } : p) };
     window.__myDeskLastSave = Date.now();
-    setData(nd); saveData(nd);
+    setData(nd); scheduleSaveData(nd);
   };
   const removeFileFromPj = (pjId, fileIdOrUrl) => {
     const nd = { ...data, projects: allProjects.map(p => p.id === pjId ? { ...p, files: (p.files||[]).filter(f=>(f.id||f.url)!==fileIdOrUrl) } : p) };
     window.__myDeskLastSave = Date.now();
-    setData(nd); saveData(nd);
+    setData(nd); scheduleSaveData(nd);
   };
 
   const updateTask = (id,ch) => {
@@ -6568,7 +6644,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     const t=allTasks.find(x=>x.id===id);
     let u={...data,tasks:allTasks.filter(t=>t.id!==id)};
     u=globalAddChangeLog(u,{entityType:"タスク",entityId:id,entityName:t?.title||"",field:"削除",oldVal:t?.title||"",newVal:"",userId:uid});
-    setData(u); saveData(u);
+    setData(u); scheduleSaveData(u);
   };
   const _doAddProject = (f) => {
     const item={id:Date.now(),...f,createdBy:uid,memos:[],chat:[],createdAt:new Date().toISOString()};
@@ -6608,13 +6684,13 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     if(ch.salesRef!==undefined && JSON.stringify(prev?.salesRef||null)!==JSON.stringify(ch.salesRef||null)) {
       u=globalAddChangeLog(u,{entityType:"プロジェクト",entityId:id,entityName:ch.name||prev?.name||"",field:"営業紐付け",oldVal:prev?.salesRef?.name||"なし",newVal:ch.salesRef?.name||"なし",userId:uid});
     }
-    setData(u); saveData(u);
+    setData(u); scheduleSaveData(u);
   };
   const deleteProject = id => {
     const pj=allProjects.find(p=>p.id===id);
     let u={...data,projects:allProjects.filter(p=>p.id!==id),tasks:allTasks.filter(t=>t.projectId!==id)};
     u=globalAddChangeLog(u,{entityType:"プロジェクト",entityId:id,entityName:pj?.name||"",field:"削除",oldVal:pj?.name||"",newVal:"",userId:uid});
-    setData(u); saveData(u);
+    setData(u); scheduleSaveData(u);
   };
 
   // ── Memo / Chat for tasks & projects ────────────────────────────────────
@@ -6965,7 +7041,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
                     tasks: allTasks.map(t=>t.projectId===activePj.id?{...t,status:"完了"}:t)
                   };
                   u = globalAddChangeLog(u,{entityType:"プロジェクト",entityId:activePj.id,entityName:activePj.name,field:"ステータス",oldVal:activePj.status||"",newVal:"完了",userId:uid});
-                  setData(u); saveData(u);
+                  setData(u); scheduleSaveData(u);
                 }}
                 style={{width:"100%",padding:"0.7rem",borderRadius:"6px",border:"none",background:"#059669",color:"white",fontWeight:800,fontSize:"0.88rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
                 ✅ プロジェクトを完了にする
@@ -7609,7 +7685,7 @@ function EmailView({data,setData,currentUser=null}) {
   const save = () => {
     const rec={id:Date.now(),mode,inputText,instruction,generated,userId:uid,savedAt:new Date().toISOString()};
     const u={...data,emails:[...allEmails,rec]};
-    setData(u); saveData(u);
+    setData(u); scheduleSaveData(u);
     alert("保存しました！\n※送信はメールアプリで行ってください。");
   };
 
@@ -7617,7 +7693,7 @@ function EmailView({data,setData,currentUser=null}) {
     if (!styleInput.trim()) return;
     const item={id:Date.now(),text:styleInput.trim(),userId:uid,savedAt:new Date().toISOString()};
     const u={...data,emailStyles:[...allStyles,item]};
-    setData(u); saveData(u); setStyleInput(""); setStyleSheet(false);
+    setData(u); scheduleSaveData(u); setStyleInput(""); setStyleSheet(false);
   };
 
   return (
@@ -7877,7 +7953,7 @@ function EmailView({data,setData,currentUser=null}) {
               {myStyles.map(s=>(
                 <div key={s.id} style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:"0.625rem 0.875rem",background:C.bg,borderRadius:"0.625rem",marginBottom:"0.35rem"}}>
                   <div style={{fontSize:"0.78rem",color:C.textSub,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.text.slice(0,60)}...</div>
-                  <button onClick={()=>{const u={...data,emailStyles:allStyles.filter(x=>x.id!==s.id)};setData(u);saveData(u);}} style={{background:"none",border:"none",color:"#dc2626",cursor:"pointer",fontSize:"0.8rem",flexShrink:0,marginLeft:"0.5rem"}}>×</button>
+                  <button onClick={()=>{const u={...data,emailStyles:allStyles.filter(x=>x.id!==s.id)};setData(u);scheduleSaveData(u);}} style={{background:"none",border:"none",color:"#dc2626",cursor:"pointer",fontSize:"0.8rem",flexShrink:0,marginLeft:"0.5rem"}}>×</button>
                 </div>
               ))}
             </div>
@@ -11974,10 +12050,10 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     let ndPrefs = [...prefs];
     if(prefs.length===0){
       ndPrefs = JAPAN_PREFS_SEED.map((p,i)=>({id:i+10000,name:p.name,region:p.region,createdAt:new Date().toISOString()}));
-      const u={...data,prefectures:ndPrefs};setData(u);saveData(u);
+      const u={...data,prefectures:ndPrefs};setData(u);scheduleSaveData(u);
     } else if(prefs.some(p=>!p.region)){
       ndPrefs = prefs.map(p=>{if(p.region)return p;const s=JAPAN_PREFS_SEED.find(x=>x.name===p.name);return s?{...p,region:s.region}:p;});
-      if(JSON.stringify(ndPrefs)!==JSON.stringify(prefs)){const u={...data,prefectures:ndPrefs};setData(u);saveData(u);}
+      if(JSON.stringify(ndPrefs)!==JSON.stringify(prefs)){const u={...data,prefectures:ndPrefs};setData(u);scheduleSaveData(u);}
     }
   },[]);
 
@@ -12021,7 +12097,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     // 新しく追加された通知を検出してWeb Push送信
     const notifsBefore = data.notifications || [];
     const newNotifs = (d.notifications||[]).filter(n=>!notifsBefore.some(o=>o.id===n.id));
-    setData(d); saveData(d);
+    setData(d); scheduleSaveData(d);
     // ブラウザ内通知（Webプッシュが届かない場合のフォールバック）
     if(newNotifs.length>0 && window.Notification && Notification.permission==="granted"){
       newNotifs.forEach(n=>{
@@ -18499,13 +18575,13 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
           } else {
             nd = {...data, emailTemplates: [...templates, {...tplForm, id:Date.now()+Math.random(), createdAt:new Date().toISOString()}]};
           }
-          setData(nd); saveData(nd);
+          setData(nd); scheduleSaveData(nd);
           setTplForm({name:"",targetType:"共通",subject:"",body:""}); setTplEditId(null); setShowTplForm(false);
         };
         const deleteTpl = (id) => {
           if(!window.confirm("削除しますか？")) return;
           const nd = {...data, emailTemplates: templates.filter(t=>t.id!==id)};
-          setData(nd); saveData(nd);
+          setData(nd); scheduleSaveData(nd);
         };
         const startEdit = (t) => {
           setTplForm({name:t.name,targetType:t.targetType||"共通",subject:t.subject||"",body:t.body||""});
@@ -19436,7 +19512,7 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
   if(!saveWithPush) saveWithPush=(nd)=>{
     window.__myDeskLastSave = Date.now();
     window.__myDeskLastSaveAt = new Date().toISOString();
-    setData(nd); saveData(nd);
+    setData(nd); scheduleSaveData(nd);
   };
   const [sys,      setSys]      = useState("dustalk");
   const [mk,       setMk]       = useState(getMonthKey());
@@ -20392,11 +20468,11 @@ export default function App() {
   const markAllRead = () => {
     const uid=currentUser?.id;
     const nd={...data,notifications:(data.notifications||[]).map(n=>(n.toUserId===uid||n.toUserId==="__all__")?{...n,read:true}:n)};
-    setData(nd); saveData(nd);
+    setData(nd); scheduleSaveData(nd);
   };
   const markOneRead = (id) => {
     const nd={...data,notifications:(data.notifications||[]).map(n=>n.id===id?{...n,read:true}:n)};
-    setData(nd); saveData(nd);
+    setData(nd); scheduleSaveData(nd);
   };
   const NOTIF_ICON = {task_assign:"👤",task_status:"🔄",task_comment:"💬",mention:"💬",memo:"📝",deadline:"⏰",sales_assign:"🏛️",new_user:"👋",analytics_update:"📊"};
 
@@ -20424,7 +20500,7 @@ export default function App() {
         seenV.add(String(v.id)); return v;
       });
       const fixed = (mChanged||vChanged) ? {...d,municipalities:fixedM,vendors:fixedV} : d;
-      if(mChanged||vChanged) saveData(fixed);
+      if(mChanged||vChanged) scheduleSaveData(fixed);
       setData(fixed); setUsers(u);
       if (session) {
         const fresh = u.find(x=>x.id===session.id);
@@ -20598,8 +20674,8 @@ export default function App() {
     };
     // 初回実行
     poll();
-    // 20秒間隔に短縮（多端末間での反映を高速化）
-    const id = setInterval(poll, 20000);
+    // 60秒間隔（パフォーマンス改善: 12MBダウンロードを抑制）
+    const id = setInterval(poll, 60000);
     // タブ復帰時 / フォーカス時に即座にポーリング（即時反映）
     const onVisible = () => { if(document.visibilityState==="visible") poll(); };
     const onFocus = () => poll();
@@ -20647,7 +20723,7 @@ export default function App() {
         entityId:t.id,
       });
     });
-    if(nd!==data){setData(nd);saveData(nd);}
+    if(nd!==data){setData(nd);scheduleSaveData(nd);}
   },[currentUser]);
 
   // ── プッシュ通知送信ラッパー（addNotifと連動）─────────────────────────────
@@ -20659,7 +20735,7 @@ export default function App() {
     // 保存タイムスタンプを先に設定（ポーリング上書き防止）
     window.__myDeskLastSave = Date.now();
     window.__myDeskLastSaveAt = new Date().toISOString();
-    setData(nd); saveData(nd);
+    setData(nd); scheduleSaveData(nd);
     // 新しく追加された通知を検出
     const newNotifs = (nd.notifications||[]).filter(n=>
       !(notifsBefore||[]).some(o=>o.id===n.id)
@@ -21009,7 +21085,7 @@ export default function App() {
                 {appUnread.length>0&&<span style={{background:"#dc2626",color:"white",borderRadius:999,fontSize:"0.62rem",fontWeight:800,padding:"0.15rem 0.5rem"}}>{appUnread.length}</span>}
                 <div style={{marginLeft:"auto",display:"flex",gap:"0.35rem"}}>
                   {appUnread.length>0&&<button onClick={markAllRead} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:"0.5rem",color:C.accent,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",padding:"0.2rem 0.5rem"}}>全既読</button>}
-                  <button onClick={()=>{const nd={...data,notifications:(data.notifications||[]).map(n=>(n.toUserId===currentUser?.id&&n.read)?{...n,dismissed:true}:n)};setData(nd);saveData(nd);}}
+                  <button onClick={()=>{const nd={...data,notifications:(data.notifications||[]).map(n=>(n.toUserId===currentUser?.id&&n.read)?{...n,dismissed:true}:n)};setData(nd);scheduleSaveData(nd);}}
                     style={{background:"none",border:`1px solid ${C.border}`,borderRadius:"0.5rem",color:C.textMuted,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",padding:"0.2rem 0.5rem"}}>既読削除</button>
                 </div>
               </div>
@@ -21065,7 +21141,7 @@ export default function App() {
                   const hasNav = !!(resolvedEntityId && resolvedEType);
                   const handleNotifClick = () => {
                     // 既読にする
-                    if(!n.read){const nd={...data,notifications:(data.notifications||[]).map(x=>x.id===n.id?{...x,read:true}:x)};setData(nd);saveData(nd);}
+                    if(!n.read){const nd={...data,notifications:(data.notifications||[]).map(x=>x.id===n.id?{...x,read:true}:x)};setData(nd);scheduleSaveData(nd);}
                     if(!resolvedEntityId || !resolvedEType) return;
                     setShowNotifPanel(false);
                     const ts = Date.now();
@@ -21097,7 +21173,7 @@ export default function App() {
                     </div>
                     <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:"0.3rem",flexShrink:0}}>
                       <span style={{width:7,height:7,borderRadius:"50%",background:n.read?"transparent":C.accent,display:"block"}}/>
-                      <button onClick={e=>{e.stopPropagation();const nd={...data,notifications:(data.notifications||[]).map(x=>x.id===n.id?{...x,read:true,dismissed:true}:x)};setData(nd);saveData(nd);}}
+                      <button onClick={e=>{e.stopPropagation();const nd={...data,notifications:(data.notifications||[]).map(x=>x.id===n.id?{...x,read:true,dismissed:true}:x)};setData(nd);scheduleSaveData(nd);}}
                         style={{background:"none",border:"none",color:C.textMuted,cursor:"pointer",fontSize:"0.75rem",padding:0,lineHeight:1}}>✕</button>
                     </div>
                   </div>
