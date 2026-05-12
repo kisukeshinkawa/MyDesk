@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v49-perf-debounce"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v50-license-ocr-fixes"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -603,6 +603,8 @@ const SANPAI_TOKKAN_ITEMS = [
   "PCB汚染物",
   "PCB処理物",
   "廃石綿等",
+  "廃水銀等",
+  "指定下水汚泥",
   "ばいじん（特定有害）",
   "燃え殻（特定有害）",
   "汚泥（特定有害）",
@@ -631,12 +633,43 @@ const ITEM_ALIAS_MAP = {
   "紙": "紙くず",
   "木": "木くず",
   "繊維": "繊維くず",
+  // ★ がれき類の正式名称（No.14）
+  "工作物の新築、改築又は除去に伴って生じたコンクリートの破片その他これに類する不要物": "がれき類",
+  "工作物の新築、改築又は除去に伴って生じたコンクリートの破片": "がれき類",
+  "工作物の新築・改築又は除去に伴って生じたコンクリートの破片その他これに類する不要物": "がれき類",
+  // ★ 13号廃棄物（No.13）
+  "13号廃棄物(処分)": "13号廃棄物（処分）",
+  "13号廃棄物": "13号廃棄物（処分）",
+  "十三号廃棄物": "13号廃棄物（処分）",
+  "13号廃棄物(運搬)": "13号廃棄物（処分）",
 };
+
+// ★ 品目末尾のカッコ書き（注釈）を削除（No.12 改善）
+// 例: 「燃え殻(水銀含有ばいじん等を含む。)」 → 「燃え殻」
+// 注釈系のカッコ書き（含む/除く/該当 等を含む）のみ削除
+// 「廃石綿等」「ばいじん（特定有害）」等の品目種別カッコは保持
+function stripItemAnnotation(name) {
+  if (!name) return name;
+  const s = String(name).trim();
+  // 末尾のカッコ書きを抽出
+  const m = s.match(/^(.+?)\s*[（(]([^()（）]*?)[)）]\s*$/);
+  if (!m) return s;
+  const base = m[1].trim();
+  const paren = m[2].trim();
+  // カッコ内に注釈キーワードが含まれていたら削除
+  if (/含む|含まれる|除く|を除|該当|に限|の場合|その他|これに類|を含めない|含めない/.test(paren)) {
+    return base;
+  }
+  // それ以外（品目種別カッコ）は保持
+  return s;
+}
 
 // ★ 品目名を標準名に正規化（#2 改善）
 function normalizeItemName(name) {
   if (!name) return name;
-  const trimmed = String(name).trim();
+  // まず注釈カッコを削除（No.12）
+  let trimmed = stripItemAnnotation(String(name).trim());
+  // エイリアスマップで標準名に
   return ITEM_ALIAS_MAP[trimmed] || trimmed;
 }
 
@@ -655,18 +688,22 @@ function normalizeItemsArray(arr) {
   return result;
 }
 
-// ★ 許可番号フォーマット統一（#5 改善）
+// ★ 許可番号フォーマット統一（#5 改善 + No.20）
 //   「第00000000000号」形式に統一する
 //   入力例: "00000000000" / "第00000000000号" / "第 0123456 号" → "第00000000000号"
-function normalizePermitNumber(s) {
+//   No.20: ハイフン入りの番号（一廃に多い「第8-6号」など）はハイフン保持
+//   wasteCategory が指定されていれば、一廃のときのみハイフン保持。それ以外も保持（安全側）。
+function normalizePermitNumber(s, wasteCategory) {
   if (!s) return s;
   // 全角→半角、空白除去
-  const normalized = String(s)
+  let normalized = String(s)
     .replace(/[０-９]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0))
-    .replace(/[\s\u3000]/g, "");
-  // 数字部分を抽出
-  const match = normalized.match(/\d+/);
-  if (!match) return s; // 数字が見つからなければそのまま
+    .replace(/[\s\u3000]/g, "")
+    .replace(/[ー－—]/g, "-"); // 全角ハイフン類を半角に統一
+  // 数字とハイフンの組み合わせを抽出（連続する数字＋ハイフン部分）
+  // 例: "埼環許第8-6号" → "8-6", "第3456号" → "3456"
+  const match = normalized.match(/[\d]+(?:-[\d]+)*/);
+  if (!match) return s;
   return `第${match[0]}号`;
 }
 
@@ -1433,11 +1470,15 @@ function LicenseSection({ vendorId, vendorName, currentUserId }) {
         vendor_name: vendorName || form.vendor_name,
         created_by: currentUserId || null,
       };
+      // No.22 診断ログ: 保存内容を確認
+      console.log("[License] saving payload, storage_facilities=", JSON.stringify(payload.storage_facilities));
+      let result;
       if (isEditing) {
-        await licensesUpdate(editing.id, payload);
+        result = await licensesUpdate(editing.id, payload);
       } else {
-        await licensesCreate(payload);
+        result = await licensesCreate(payload);
       }
+      console.log("[License] saved result, storage_facilities=", result ? JSON.stringify(result.storage_facilities) : "(no result)");
       setEditing(null);
       await reload();
     } catch (e) {
@@ -2043,7 +2084,7 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
       const normalized = { ...form };
       // #5 許可番号フォーマット統一
       if (normalized.license_number) {
-        normalized.license_number = normalizePermitNumber(normalized.license_number);
+        normalized.license_number = normalizePermitNumber(normalized.license_number, normalized.waste_category);
       }
       // #10 面積単位の統一
       if (Array.isArray(normalized.storage_facilities)) {
@@ -2367,12 +2408,17 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
                   </div>
                   <div>
                     <label style={{display:"block",fontSize:"0.66rem",fontWeight:600,color:"#374151",marginBottom:"0.2rem"}}>
-                      面積 <span style={{fontSize:"0.62rem",color:"#9ca3af",fontWeight:500}}>（保存時に「㎡」に統一）</span>
+                      面積 <span style={{fontSize:"0.62rem",color:"#9ca3af",fontWeight:500}}>（入力欄を離れると「㎡」に自動変換）</span>
                     </label>
                     <input type="text" value={fac.area||""}
                       onChange={e=>{
                         const newList = [...form.storage_facilities];
                         newList[idx] = {...newList[idx], area:e.target.value};
+                        setForm({...form, storage_facilities:newList});
+                      }}
+                      onBlur={e=>{
+                        const newList = [...form.storage_facilities];
+                        newList[idx] = {...newList[idx], area:normalizeAreaUnit(e.target.value)};
                         setForm({...form, storage_facilities:newList});
                       }}
                       placeholder="例: 55.1㎡（平米/平方メートル/m2 でも可）"
@@ -2404,23 +2450,51 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
                         ))}
                       </div>
                     )}
-                    {/* 標準品目チェックボックス（#3 改善） */}
+                    {/* 標準品目チェックボックス（#3 改善 + No.17 特管対応） */}
                     {isSanpai && storagePickerOpen[idx] && (
-                      <div style={{padding:"0.4rem",background:"#fef9c3",border:"1px solid #fde68a",borderRadius:"4px",marginBottom:"0.25rem",display:"flex",flexWrap:"wrap",gap:"0.25rem"}}>
-                        {(isTokkan ? SANPAI_TOKKAN_ITEMS : SANPAI_ITEMS).map(item => {
-                          const checked = (fac.items||[]).includes(item);
-                          return (
-                            <label key={item} style={{display:"flex",alignItems:"center",gap:"0.18rem",cursor:"pointer",fontSize:"0.65rem",padding:"0.15rem 0.35rem",borderRadius:"3px",background:checked?"#fbbf24":"white",border:`1px solid ${checked?"#d97706":"#e5e7eb"}`}}>
-                              <input type="checkbox" checked={checked} onChange={()=>{
-                                const newList = [...form.storage_facilities];
-                                const curItems = newList[idx].items || [];
-                                newList[idx] = {...newList[idx], items: curItems.includes(item) ? curItems.filter(x=>x!==item) : [...curItems, item]};
-                                setForm({...form, storage_facilities:newList});
-                              }} style={{margin:0,accentColor:"#d97706"}}/>
-                              <span>{item}</span>
-                            </label>
-                          );
-                        })}
+                      <div style={{padding:"0.4rem",background:"#fef9c3",border:"1px solid #fde68a",borderRadius:"4px",marginBottom:"0.25rem",display:"flex",flexDirection:"column",gap:"0.35rem"}}>
+                        {/* 普通産廃品目 */}
+                        <div>
+                          <div style={{fontSize:"0.62rem",fontWeight:700,color:"#78350f",marginBottom:"0.2rem"}}>📦 普通産廃品目</div>
+                          <div style={{display:"flex",flexWrap:"wrap",gap:"0.25rem"}}>
+                            {SANPAI_ITEMS.map(item => {
+                              const checked = (fac.items||[]).includes(item);
+                              return (
+                                <label key={item} style={{display:"flex",alignItems:"center",gap:"0.18rem",cursor:"pointer",fontSize:"0.65rem",padding:"0.15rem 0.35rem",borderRadius:"3px",background:checked?"#fbbf24":"white",border:`1px solid ${checked?"#d97706":"#e5e7eb"}`}}>
+                                  <input type="checkbox" checked={checked} onChange={()=>{
+                                    const newList = [...form.storage_facilities];
+                                    const curItems = newList[idx].items || [];
+                                    newList[idx] = {...newList[idx], items: curItems.includes(item) ? curItems.filter(x=>x!==item) : [...curItems, item]};
+                                    setForm({...form, storage_facilities:newList});
+                                  }} style={{margin:0,accentColor:"#d97706"}}/>
+                                  <span>{item}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+                        {/* 特管産廃品目（特管許可証のときのみ表示） */}
+                        {isTokkan && (
+                          <div style={{paddingTop:"0.35rem",borderTop:"1px dashed #f59e0b"}}>
+                            <div style={{fontSize:"0.62rem",fontWeight:700,color:"#991b1b",marginBottom:"0.2rem"}}>⚠️ 特管産廃品目</div>
+                            <div style={{display:"flex",flexWrap:"wrap",gap:"0.25rem"}}>
+                              {SANPAI_TOKKAN_ITEMS.map(item => {
+                                const checked = (fac.items||[]).includes(item);
+                                return (
+                                  <label key={item} style={{display:"flex",alignItems:"center",gap:"0.18rem",cursor:"pointer",fontSize:"0.65rem",padding:"0.15rem 0.35rem",borderRadius:"3px",background:checked?"#fca5a5":"white",border:`1px solid ${checked?"#dc2626":"#e5e7eb"}`}}>
+                                    <input type="checkbox" checked={checked} onChange={()=>{
+                                      const newList = [...form.storage_facilities];
+                                      const curItems = newList[idx].items || [];
+                                      newList[idx] = {...newList[idx], items: curItems.includes(item) ? curItems.filter(x=>x!==item) : [...curItems, item]};
+                                      setForm({...form, storage_facilities:newList});
+                                    }} style={{margin:0,accentColor:"#dc2626"}}/>
+                                    <span>{item}</span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                     {/* 自由入力 */}
