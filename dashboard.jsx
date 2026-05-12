@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-10-v45-quote-pdf-s3-saved"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v46-fix-file-upload"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -5172,7 +5172,15 @@ function DocumentSection({entityType, entityId, entityName, files, currentUserId
       
       {/* ファイルタブ */}
       {subTab === "files" && (
-        <FileSection files={files||[]} currentUserId={currentUserId} entityType={entityType} entityId={entityId} entityName={entityName} onSave={onSaveFiles}/>
+        <FileSection 
+          files={files||[]} 
+          currentUserId={currentUserId} 
+          entityType={entityType} 
+          entityId={entityId} 
+          entityName={entityName} 
+          onAdd={(newFile) => onSaveFiles([...(files||[]), newFile])}
+          onDelete={(fileIdOrUrl) => onSaveFiles((files||[]).filter(f => (f.id||f.url) !== fileIdOrUrl))}
+        />
       )}
       
       {/* 見積書タブ */}
