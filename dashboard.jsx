@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v50-license-ocr-fixes"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v52-vendor-dedup-2of3"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -11812,6 +11812,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   const [importPreview,setImportPreview]=useState(null);
   const [importErr,setImportErr]=useState("");
   const [impMode,setImpMode]=useState("csv");
+  const [vendorDedup,setVendorDedup]=useState(true); // 業者インポート: 重複チェックON/OFF
   const [textInput,setTextInput]=useState("");
   // duplicate detection modal
   const [dupModal,setDupModal]=useState(null); // {existing, incoming, onKeepBoth, onSave}
@@ -16207,29 +16208,38 @@ ${orig}`})
             if(!preview?.length)return;
             const normStr2 = s => (s||"").replace(/[\s　\-ー－]/g,"").toLowerCase();
             const normPhone2 = s => (s||"").replace(/[^0-9]/g,"");
+            // ★修正: 名前・電話・住所のうち「2つ以上」が一致したときだけ重複とみなす。
+            //   社名だけの一致では重複扱いにしない（同名の別業者を取りこぼさないため）。
+            //   vendorDedup が false なら重複チェックを完全に無効化して全件追加する。
             const isDupVendor = r => {
+              if(!vendorDedup) return false; // チェックOFF → 全件追加
               const rName = normStr2(r.name);
               const rPhone = normPhone2(r.phone||"");
               const rAddr = normStr2(r.address||"");
-              return vendors.some(v=>
-                normStr2(v.name)===rName ||
-                (rPhone.length>=7 && normPhone2(v.phone||"")===rPhone && normPhone2(v.phone||"").length>=7) ||
-                (rAddr.length>=10 && normStr2(v.address||"")===rAddr)
-              );
+              return vendors.some(v=>{
+                const vName = normStr2(v.name);
+                const vPhone = normPhone2(v.phone||"");
+                const vAddr = normStr2(v.address||"");
+                let hits = 0;
+                if(rName && vName && vName===rName) hits++;
+                if(rPhone.length>=7 && vPhone===rPhone) hits++;
+                if(rAddr.length>=10 && vAddr===rAddr) hits++;
+                return hits>=2; // 2項目以上一致で重複
+              });
             };
-            const existNames=new Set(vendors.map(v=>(v.name||"").trim()));
-            const toAdd=preview.filter(r=>!isDupVendor(r)).map(r=>{
+            const toAdd=preview.filter(r=>!isDupVendor(r)).map((r,idx)=>{
               // Resolve municipality IDs from names
               const mids=r.muniNames.map(mn=>munis.find(m=>m.name===mn)?.id).filter(Boolean);
+              const uid = "v_"+Date.now()+"_"+idx+"_"+Math.random().toString(36).slice(2,11);
               return {
-                id:"v_"+Date.now()+"_"+Math.random().toString(36).substr(2,9),
+                id:uid,
                 name:r.name, status:r.status||"未接触",
                 phone:r.phone||"",
                 municipalityIds:mids, assigneeIds:[],
                 address:r.address||"",
                 permitTypes:(r.permitTypeNames||[]).filter(pt=>["家庭収運","事業収運","一廃収運","産廃収運","産廃処分","産廃収運処分"].includes(pt)),
                 beeNet:!!r.beeNet,
-                memos:r.notes?[{id:"mn_"+Date.now()+"_"+Math.random().toString(36).substr(2,9),text:r.notes,userId:currentUser?.id,date:new Date().toISOString()}]:[],
+                memos:r.notes?[{id:"mn_"+Date.now()+"_"+idx+"_"+Math.random().toString(36).slice(2,11),text:r.notes,userId:currentUser?.id,date:new Date().toISOString()}]:[],
                 chat:[], createdAt:new Date().toISOString()
               };
             });
@@ -16237,6 +16247,26 @@ ${orig}`})
             setBulkDone({added:toAdd.length,dupes:preview.length-toAdd.length});
             setSheet("importDone");
           };
+          // プレビューと実インポートで同じ重複判定を使う（表示と件数のズレを解消）
+          const previewIsDup = r => {
+            if(!vendorDedup) return false;
+            const normStr2 = s => (s||"").replace(/[\s　\-ー－]/g,"").toLowerCase();
+            const normPhone2 = s => (s||"").replace(/[^0-9]/g,"");
+            const rName = normStr2(r.name);
+            const rPhone = normPhone2(r.phone||"");
+            const rAddr = normStr2(r.address||"");
+            return vendors.some(v=>{
+              const vName = normStr2(v.name);
+              const vPhone = normPhone2(v.phone||"");
+              const vAddr = normStr2(v.address||"");
+              let hits = 0;
+              if(rName && vName && vName===rName) hits++;
+              if(rPhone.length>=7 && vPhone===rPhone) hits++;
+              if(rAddr.length>=10 && vAddr===rAddr) hits++;
+              return hits>=2;
+            });
+          };
+          const addCount = preview ? preview.filter(r=>!previewIsDup(r)).length : 0;
           return (
             <Sheet title="業者をインポート" onClose={()=>{setSheet(null);setImportPreview(null);setImportErr("");}}>
               <div style={{background:"#f5f3ff",border:"1px solid #ddd6fe",borderRadius:"8px",padding:"0.875rem",marginBottom:"1rem"}}>
@@ -16262,13 +16292,25 @@ ${orig}`})
               </div>
               {preview&&(
                 <div>
-                  <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem",flexWrap:"wrap"}}>
                     <span style={{fontWeight:700,fontSize:"0.82rem",color:C.text}}>プレビュー</span>
-                    <span style={{background:"#d1fae5",color:"#065f46",borderRadius:999,fontSize:"0.7rem",fontWeight:700,padding:"0.1rem 0.5rem"}}>{preview.length}件</span>
+                    <span style={{background:"#d1fae5",color:"#065f46",borderRadius:999,fontSize:"0.7rem",fontWeight:700,padding:"0.1rem 0.5rem"}}>全{preview.length}件</span>
+                    <span style={{background:"#dbeafe",color:"#1e40af",borderRadius:999,fontSize:"0.7rem",fontWeight:700,padding:"0.1rem 0.5rem"}}>追加{addCount}件</span>
+                    {preview.length-addCount>0&&<span style={{background:"#fef3c7",color:"#92400e",borderRadius:999,fontSize:"0.7rem",fontWeight:700,padding:"0.1rem 0.5rem"}}>重複{preview.length-addCount}件</span>}
                   </div>
+                  {/* 重複チェックON/OFFトグル */}
+                  <label style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.625rem",cursor:"pointer",fontSize:"0.76rem",color:C.textSub,background:vendorDedup?"#f8fafc":"#fef2f2",border:`1px solid ${vendorDedup?C.borderLight:"#fecaca"}`,borderRadius:"0.5rem",padding:"0.5rem 0.7rem"}}>
+                    <input type="checkbox" checked={vendorDedup} onChange={e=>setVendorDedup(e.target.checked)} style={{width:16,height:16,cursor:"pointer"}}/>
+                    <span>
+                      <span style={{fontWeight:700,color:vendorDedup?C.text:"#dc2626"}}>{vendorDedup?"重複チェックON":"重複チェックOFF（全件追加）"}</span>
+                      <span style={{display:"block",fontSize:"0.68rem",color:C.textMuted,marginTop:"0.1rem"}}>
+                        {vendorDedup?"名前・電話・住所のうち2つ以上が一致する業者のみスキップします":"既存と重複していても全て追加します"}
+                      </span>
+                    </span>
+                  </label>
                   <div style={{maxHeight:200,overflowY:"auto",border:`1px solid ${C.border}`,borderRadius:"6px",overflow:"hidden"}}>
                     {preview.slice(0,20).map((r,i)=>{
-                      const dup=vendors.some(v=>v.name===r.name);
+                      const dup=previewIsDup(r);
                       return (
                         <div key={i} style={{display:"flex",alignItems:"center",padding:"0.5rem 0.75rem",borderBottom:`1px solid ${C.borderLight}`,background:dup?"#fef9c3":"white",gap:"0.5rem"}}>
                           <span style={{flex:1,fontSize:"0.82rem",fontWeight:600}}>{r.name}</span>
@@ -16278,11 +16320,12 @@ ${orig}`})
                         </div>
                       );
                     })}
+                    {preview.length>20&&<div style={{padding:"0.4rem 0.75rem",fontSize:"0.7rem",color:C.textMuted,textAlign:"center"}}>…他{preview.length-20}件</div>}
                   </div>
                   <div style={{display:"flex",gap:"0.625rem",marginTop:"0.75rem"}}>
                     <Btn variant="secondary" style={{flex:1}} onClick={()=>setPreview(null)}>クリア</Btn>
-                    <Btn style={{flex:2}} onClick={doImport} disabled={!preview.filter(r=>!vendors.some(v=>v.name===r.name)).length}>
-                      {preview.filter(r=>!vendors.some(v=>v.name===r.name)).length}件をインポート
+                    <Btn style={{flex:2}} onClick={doImport} disabled={!addCount}>
+                      {addCount}件をインポート
                     </Btn>
                   </div>
                 </div>
