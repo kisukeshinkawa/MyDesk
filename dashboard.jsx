@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v52-vendor-dedup-2of3"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v53-vendor-import-bulk-save"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -1179,6 +1179,7 @@ async function saveData(d) {
     window.__lastAutoSnap = now;
     autoSnapshot(d).catch(() => {});
   }
+  return ok; // 保存成否を返す（大量インポートの即時保存判定に使用）
 }
 
 // ─── AUTO SNAPSHOT ────────────────────────────────────────────────────────────
@@ -11813,6 +11814,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   const [importErr,setImportErr]=useState("");
   const [impMode,setImpMode]=useState("csv");
   const [vendorDedup,setVendorDedup]=useState(true); // 業者インポート: 重複チェックON/OFF
+  const [importing,setImporting]=useState(false); // 大量インポート保存中フラグ
   const [textInput,setTextInput]=useState("");
   // duplicate detection modal
   const [dupModal,setDupModal]=useState(null); // {existing, incoming, onKeepBoth, onSave}
@@ -16243,9 +16245,24 @@ ${orig}`})
                 chat:[], createdAt:new Date().toISOString()
               };
             });
-            save({...data,vendors:[...vendors,...toAdd]});
-            setBulkDone({added:toAdd.length,dupes:preview.length-toAdd.length});
-            setSheet("importDone");
+            // ★大量インポート対策: デバウンス保存ではなく即座に awaited 保存し、
+            //   保存の成否を確認する。失敗時はデータを巻き戻し、明確なエラーを出す。
+            const newData={...data,vendors:[...vendors,...toAdd]};
+            setImporting(true);
+            setData(newData); // 画面即時反映
+            (async()=>{
+              const ok = await saveData(newData);
+              setImporting(false);
+              if(ok===false){
+                // 保存失敗（おそらくデータ量過大）→ ロールバック
+                setData(data);
+                setErr(`保存に失敗しました（${toAdd.length}件）。一度に追加する件数を減らすか、時間をおいて再試行してください。`);
+                return;
+              }
+              setBulkDone({added:toAdd.length,dupes:preview.length-toAdd.length});
+              setPreview(null);
+              setSheet("importDone");
+            })();
           };
           // プレビューと実インポートで同じ重複判定を使う（表示と件数のズレを解消）
           const previewIsDup = r => {
@@ -16323,11 +16340,12 @@ ${orig}`})
                     {preview.length>20&&<div style={{padding:"0.4rem 0.75rem",fontSize:"0.7rem",color:C.textMuted,textAlign:"center"}}>…他{preview.length-20}件</div>}
                   </div>
                   <div style={{display:"flex",gap:"0.625rem",marginTop:"0.75rem"}}>
-                    <Btn variant="secondary" style={{flex:1}} onClick={()=>setPreview(null)}>クリア</Btn>
-                    <Btn style={{flex:2}} onClick={doImport} disabled={!addCount}>
-                      {addCount}件をインポート
+                    <Btn variant="secondary" style={{flex:1}} onClick={()=>setPreview(null)} disabled={importing}>クリア</Btn>
+                    <Btn style={{flex:2}} onClick={doImport} disabled={!addCount||importing}>
+                      {importing?`保存中… (${addCount}件)`:`${addCount}件をインポート`}
                     </Btn>
                   </div>
+                  {importing&&<div style={{marginTop:"0.5rem",fontSize:"0.72rem",color:C.textMuted,textAlign:"center"}}>件数が多いと保存に数十秒かかることがあります。画面を閉じずにお待ちください。</div>}
                 </div>
               )}
             </Sheet>
