@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v53-vendor-import-bulk-save"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v54-vendor-import-perf-fix"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -16186,8 +16186,11 @@ ${orig}`})
           const err=importErr; const setErr=setImportErr;
           const handleFile=async(e)=>{
             const file=e.target.files?.[0]; if(!file)return;
+            setErr("");
             try{
               const text=await readFileAsText(file);
+              // 重い処理の前に1フレーム譲ってUIをブロックしない
+              await new Promise(r=>setTimeout(r,0));
               const rows=parseCSV(text);
               const skip=["業者名","名前","name","vendor","業者名 *","business"];
               const dataRows=rows.filter(r=>r[0]&&!skip.some(k=>r[0].toLowerCase().includes(k.toLowerCase())));
@@ -16203,32 +16206,45 @@ ${orig}`})
                 permitTypeNames:(r[8]?.trim()||"").replace(/\n/g,",").split(/[,，]/).map(s=>s.trim()).filter(Boolean),
                 beeNet:!!(r[9]?.trim()),
               })).filter(r=>r.name);
-              setPreview(mapped); setErr("");
-            }catch(e){setErr("ファイルの読み込みに失敗しました。");}
+              // ★高速重複判定: 既存業者を索引化して O(行数×候補) に。
+              //   名前・電話・住所のうち2つ以上一致で重複（doImport と同じルール）。
+              const normStr2 = s => (s||"").replace(/[\s　\-ー－]/g,"").toLowerCase();
+              const normPhone2 = s => (s||"").replace(/[^0-9]/g,"");
+              const nameMap=new Map(), phoneMap=new Map(), addrMap=new Map();
+              const pushMap=(m,k,i)=>{ if(!k)return; const a=m.get(k); if(a)a.push(i); else m.set(k,[i]); };
+              vendors.forEach((v,i)=>{
+                pushMap(nameMap, normStr2(v.name), i);
+                const p=normPhone2(v.phone||""); if(p.length>=7) pushMap(phoneMap,p,i);
+                const a=normStr2(v.address||""); if(a.length>=10) pushMap(addrMap,a,i);
+              });
+              await new Promise(r=>setTimeout(r,0));
+              mapped.forEach(row=>{
+                const rName=normStr2(row.name);
+                const rPhone=normPhone2(row.phone||"");
+                const rAddr=normStr2(row.address||"");
+                // 候補となる既存業者インデックスを集める
+                const cand=new Set();
+                (nameMap.get(rName)||[]).forEach(i=>cand.add(i));
+                if(rPhone.length>=7)(phoneMap.get(rPhone)||[]).forEach(i=>cand.add(i));
+                if(rAddr.length>=10)(addrMap.get(rAddr)||[]).forEach(i=>cand.add(i));
+                let dup=false;
+                for(const i of cand){
+                  const v=vendors[i];
+                  let hits=0;
+                  if(rName && normStr2(v.name)===rName) hits++;
+                  if(rPhone.length>=7 && normPhone2(v.phone||"")===rPhone) hits++;
+                  if(rAddr.length>=10 && normStr2(v.address||"")===rAddr) hits++;
+                  if(hits>=2){ dup=true; break; }
+                }
+                row._dup=dup; // 計算結果を行に保存（再描画では再計算しない）
+              });
+              setPreview(mapped);
+            }catch(e){console.error("[MyDesk] vendor import parse error:",e);setErr("ファイルの読み込みに失敗しました。CSV形式・文字コードをご確認ください。");}
           };
           const doImport=()=>{
             if(!preview?.length)return;
-            const normStr2 = s => (s||"").replace(/[\s　\-ー－]/g,"").toLowerCase();
-            const normPhone2 = s => (s||"").replace(/[^0-9]/g,"");
-            // ★修正: 名前・電話・住所のうち「2つ以上」が一致したときだけ重複とみなす。
-            //   社名だけの一致では重複扱いにしない（同名の別業者を取りこぼさないため）。
-            //   vendorDedup が false なら重複チェックを完全に無効化して全件追加する。
-            const isDupVendor = r => {
-              if(!vendorDedup) return false; // チェックOFF → 全件追加
-              const rName = normStr2(r.name);
-              const rPhone = normPhone2(r.phone||"");
-              const rAddr = normStr2(r.address||"");
-              return vendors.some(v=>{
-                const vName = normStr2(v.name);
-                const vPhone = normPhone2(v.phone||"");
-                const vAddr = normStr2(v.address||"");
-                let hits = 0;
-                if(rName && vName && vName===rName) hits++;
-                if(rPhone.length>=7 && vPhone===rPhone) hits++;
-                if(rAddr.length>=10 && vAddr===rAddr) hits++;
-                return hits>=2; // 2項目以上一致で重複
-              });
-            };
+            // ★重複判定はファイル読込時に計算済み（row._dup）。ここでは再計算しない（フリーズ防止）。
+            const isDupVendor = r => vendorDedup && !!r._dup;
             const toAdd=preview.filter(r=>!isDupVendor(r)).map((r,idx)=>{
               // Resolve municipality IDs from names
               const mids=r.muniNames.map(mn=>munis.find(m=>m.name===mn)?.id).filter(Boolean);
@@ -16264,25 +16280,8 @@ ${orig}`})
               setSheet("importDone");
             })();
           };
-          // プレビューと実インポートで同じ重複判定を使う（表示と件数のズレを解消）
-          const previewIsDup = r => {
-            if(!vendorDedup) return false;
-            const normStr2 = s => (s||"").replace(/[\s　\-ー－]/g,"").toLowerCase();
-            const normPhone2 = s => (s||"").replace(/[^0-9]/g,"");
-            const rName = normStr2(r.name);
-            const rPhone = normPhone2(r.phone||"");
-            const rAddr = normStr2(r.address||"");
-            return vendors.some(v=>{
-              const vName = normStr2(v.name);
-              const vPhone = normPhone2(v.phone||"");
-              const vAddr = normStr2(v.address||"");
-              let hits = 0;
-              if(rName && vName && vName===rName) hits++;
-              if(rPhone.length>=7 && vPhone===rPhone) hits++;
-              if(rAddr.length>=10 && vAddr===rAddr) hits++;
-              return hits>=2;
-            });
-          };
+          // 重複判定は計算済みフラグを参照するだけ（O(1)）
+          const previewIsDup = r => vendorDedup && !!r._dup;
           const addCount = preview ? preview.filter(r=>!previewIsDup(r)).length : 0;
           return (
             <Sheet title="業者をインポート" onClose={()=>{setSheet(null);setImportPreview(null);setImportErr("");}}>
