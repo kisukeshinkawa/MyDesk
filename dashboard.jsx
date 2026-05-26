@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v54-vendor-import-perf-fix"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v55-notif-dedup-fix"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -20789,20 +20789,39 @@ export default function App() {
         };
 
         // ── 新着通知をブラウザ通知で表示 ──────────────────────────────────
+        // 一度ブラウザ通知で出したIDは localStorage に記録し、二度と再表示しない。
+        // （ページを開くたびに未読通知が再表示される問題を防ぐ）
+        const SHOWN_KEY = "md_shown_notif_ids";
+        const getShownIds = () => {
+          try { return new Set(JSON.parse(localStorage.getItem(SHOWN_KEY)||"[]")); }
+          catch { return new Set(); }
+        };
+        const addShownIds = (ids) => {
+          try {
+            const cur = getShownIds();
+            ids.forEach(id=>cur.add(String(id)));
+            // 上限500件にローリング（古い順に切り捨て）
+            const arr = Array.from(cur).slice(-500);
+            localStorage.setItem(SHOWN_KEY, JSON.stringify(arr));
+          } catch {}
+        };
+        const shownIds = getShownIds();
         const myNotifs = (d.notifications||[]).filter(n=>
           n.toUserId===currentUser.id || n.toUserId==='__all__'
         );
 
+        // 未読 かつ まだブラウザ通知で出していない ものだけを対象にする
+        const toShow = myNotifs.filter(n => !n.read && !shownIds.has(String(n.id)));
         if(lastNotifIdsRef.current === null) {
-          // 初回: ページロード時点の未読通知を最大3件表示
-          const unread = myNotifs.filter(n => !n.read).slice(0, 3);
-          unread.forEach(showNotif);
+          // 初回ロード: 未表示の未読を最大3件
+          toShow.slice(0, 3).forEach(showNotif);
         } else {
-          // 2回目以降: 前回から新しく追加された未読通知を表示
+          // 2回目以降: 前回から新しく増えた未表示の未読
           const prevIds = lastNotifIdsRef.current;
-          const brandNew = myNotifs.filter(n => !prevIds.has(n.id) && !n.read);
-          brandNew.slice(0, 3).forEach(showNotif);
+          toShow.filter(n => !prevIds.has(n.id)).slice(0, 3).forEach(showNotif);
         }
+        // 表示対象を「表示済み」として記録（次回以降は出さない）
+        if(toShow.length) addShownIds(toShow.map(n=>n.id));
         lastNotifIdsRef.current = new Set(myNotifs.map(n => n.id));
       } catch {}
     };
