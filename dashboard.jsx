@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v60-sheet-repaint-fix"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v61-edit-diag"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -15592,6 +15592,7 @@ ${orig}`})
   // ── 業者タブ ──────────────────────────────────────────────────────────────
   if(salesTab==="vendor"){
   function renderVendorDetail(v){
+      console.log("[EDIT-DIAG] renderVendorDetail 実行 sheet=",sheet);
       const vmunis=vendorMunis(v);
       const vendChatUnread=(data.notifications||[]).filter(n=>n.toUserId===currentUser?.id&&!n.read&&n.type==="mention"&&n.entityId===v.id).length;
       return (
@@ -15627,7 +15628,7 @@ ${orig}`})
                   {v.beeNet&&<span style={{fontSize:"0.62rem",background:"#eff6ff",color:"#1d4ed8",padding:"0.1rem 0.45rem",borderRadius:999,fontWeight:700,border:"1px solid #bfdbfe"}}>🔷 bee-net</span>}
                 </div>
               </div>
-              <button onClick={()=>{setForm({...v});setSheet("editVendor");}} title="編集"
+              <button onClick={()=>{console.log("[EDIT-DIAG] 業者編集ボタン押下 vendor=",v.id,"現在のsheet=",sheet);setForm({...v});setSheet("editVendor");console.log("[EDIT-DIAG] setSheet(editVendor) 呼び出し完了");}} title="編集"
                 style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"6px",padding:"0.3rem 0.55rem",cursor:"pointer",fontSize:"0.8rem",color:C.textSub,flexShrink:0}}>✏️</button>
             </div>
             {/* 担当者 + 電話 */}
