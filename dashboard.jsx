@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v58-notif-no-replay"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v59-timeline-jst-edit"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -1390,6 +1390,15 @@ const LoadingOverlay = React.memo(function LoadingOverlay({label="処理中...",
 });
 
 function Sheet({title,onClose,children}) {
+  // 一部環境（iOS Safari等）で fixed オーバーレイがマウント直後に描画されず、
+  // 別操作をするまで表示されない問題の回避。マウント直後に強制リフローを促す。
+  React.useEffect(()=>{
+    const id = requestAnimationFrame(()=>{
+      document.body.style.transform = "translateZ(0)";
+      requestAnimationFrame(()=>{ document.body.style.transform = ""; });
+    });
+    return ()=>cancelAnimationFrame(id);
+  },[]);
   return (
     <div style={{position:"fixed",inset:0,zIndex:300,display:"flex",flexDirection:"column",justifyContent:"flex-end",overflowX:"hidden"}}>
       <div onClick={onClose} style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.45)"}}/>
@@ -10073,6 +10082,15 @@ function LinkedBizcardList({ cards=[], users=[], onUnlink, onNavigateToBizcard, 
 // ─── APPROACH TIMELINE ────────────────────────────────────────────────────────
 function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach, onSave, data, currentUserId, onSendChat, onUpdateChat, onDeleteChat, onUpdateMemo, onDeleteMemo }) {
   const [editingId, setEditingId] = React.useState(null);
+  // 日本時間（JST, UTC+9）で「YYYY-MM-DD HH:MM」表示する。保存値はUTC ISO。
+  const fmtJst = (iso) => {
+    if(!iso) return "";
+    const d = new Date(iso);
+    if(isNaN(d.getTime())) return String(iso).slice(0,16).replace("T"," ");
+    const j = new Date(d.getTime() + 9*3600*1000);
+    const p = n => String(n).padStart(2,"0");
+    return `${j.getUTCFullYear()}-${p(j.getUTCMonth()+1)}-${p(j.getUTCDate())} ${p(j.getUTCHours())}:${p(j.getUTCMinutes())}`;
+  };
   const [editNote, setEditNote] = React.useState("");
   const [editType, setEditType] = React.useState("");
   const [editDate, setEditDate] = React.useState("");
@@ -10113,18 +10131,19 @@ function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach
     onSave({...data, [entityKey]: updatedEntities});
   };
   
-  const logs = [...(entity?.approachLogs||[])].sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
-  const memos = [...(entity?.memos||[])].sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+  const logs = [...(entity?.approachLogs||[])];
+  const memos = [...(entity?.memos||[])];
   const chats = [...(entity?.chat||[])];
   // changeLogs for this entity
-  const changeLogs = [...(data?.changeLogs||[])].filter(l=>String(l.entityId)===String(entityId)).sort((a,b)=>new Date(b.date)-new Date(a.date));
-  // Merge all into single timeline
+  const changeLogs = [...(data?.changeLogs||[])].filter(l=>String(l.entityId)===String(entityId));
+  // Merge all into single timeline（メモ・チャット・アプローチ・変更履歴を時刻で統一ソート）
+  const tsOf = (v) => { const t = new Date(v||0).getTime(); return isNaN(t) ? 0 : t; };
   const items = [
-    ...logs.map(l=>({...l, _kind:"approach", _ts:l.createdAt})),
-    ...memos.map(m=>({...m, _kind:"memo", _ts:m.createdAt})),
-    ...chats.map(c=>({...c, _kind:"chat", _ts:c.date})),
-    ...changeLogs.map(c=>({...c, _kind:"change", _ts:c.date})),
-  ].sort((a,b)=>new Date(b._ts)-new Date(a._ts));
+    ...logs.map(l=>({...l, _kind:"approach", _ts:l.createdAt||l.date})),
+    ...memos.map(m=>({...m, _kind:"memo", _ts:m.createdAt||m.date})),
+    ...chats.map(c=>({...c, _kind:"chat", _ts:c.date||c.createdAt})),
+    ...changeLogs.map(c=>({...c, _kind:"change", _ts:c.date||c.createdAt})),
+  ].sort((a,b)=>tsOf(b._ts)-tsOf(a._ts)); // 新しい順（上が最新）
 
   return (
     <div>
@@ -10154,7 +10173,7 @@ function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach
       )}
       {items.map((item,i)=>{
         const u = users.find(x=>x.id===(item.userId||item.createdBy));
-        const dateStr = (item._ts||"").slice(0,10);
+        const dateStr = fmtJst(item._ts);
         if(item._kind==="chat") {
           // チャットメッセージ
           const u = users.find(uu=>uu.id===item.userId);
@@ -10174,7 +10193,7 @@ function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach
               <div style={{flex:1,paddingBottom:"0.4rem",minWidth:0}}>
                 <div style={{display:"flex",gap:"0.5rem",alignItems:"center",marginBottom:"0.2rem",flexWrap:"wrap"}}>
                   <span style={{fontSize:"0.7rem",fontWeight:700,color:"#2563eb"}}>💬 チャット</span>
-                  <span style={{fontSize:"0.66rem",color:C.textMuted}}>{(item.date||"").slice(0,16).replace("T"," ")}</span>
+                  <span style={{fontSize:"0.66rem",color:C.textMuted}}>{fmtJst(item.date||item._ts)}</span>
                   {u&&<span style={{fontSize:"0.66rem",color:C.textSub,fontWeight:600}}>👤 {u.name}</span>}
                   {item.editedAt&&<span style={{fontSize:"0.6rem",color:"#9ca3af"}}>(編集済)</span>}
                   {isMe && !isEditingChat && (
