@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v56-vendor-import-chunked"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v57-user-name-split"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -294,6 +294,33 @@ if (typeof window !== "undefined" && !window.__myDeskFlushListenerAdded) {
 }
 
 const INIT = { tasks:[], projects:[], emails:[], emailStyles:[], prefectures:[], municipalities:[], vendors:[], companies:[], businessCards:[], notifications:[], changeLogs:[], analytics:{}, emailTemplates:[], quotes:[] };
+
+// ─── ユーザー氏名ヘルパー（姓・名の分割／合成）────────────────────────────────
+// 既存ユーザーは name（例「新川 希亮」または「新川希亮」）のみ持つため、
+// lastName / firstName が無ければ name から推定する。
+// スペース区切りがあれば「姓 名」として分割。無ければ全体を姓に入れ名は空（誤分割回避）。
+function splitJpName(name) {
+  const s = (name || "").trim();
+  if (!s) return { lastName: "", firstName: "" };
+  const parts = s.split(/[\s\u3000]+/).filter(Boolean);
+  if (parts.length >= 2) return { lastName: parts[0], firstName: parts.slice(1).join("") };
+  return { lastName: s, firstName: "" };
+}
+function composeJpName(lastName, firstName) {
+  const l = (lastName || "").trim(), f = (firstName || "").trim();
+  if (l && f) return l + " " + f;
+  return l || f || "";
+}
+// ユーザーから姓・名・フルネームを安定的に取得（lastName/firstName 優先、無ければ name から推定）
+function userNameParts(u) {
+  if (!u) return { lastName: "", firstName: "", full: "" };
+  if (u.lastName || u.firstName) {
+    return { lastName: u.lastName || "", firstName: u.firstName || "", full: composeJpName(u.lastName, u.firstName) || (u.name || "") };
+  }
+  const sp = splitJpName(u.name);
+  return { lastName: sp.lastName, firstName: sp.firstName, full: u.name || composeJpName(sp.lastName, sp.firstName) };
+}
+
 
 // ─── LICENSE (許可証) API CLIENT ──────────────────────────────────────────────
 
@@ -4601,7 +4628,7 @@ function AuthBigBtn({onClick,disabled,children}) {
 // ─── AUTH SCREEN ──────────────────────────────────────────────────────────────
 function AuthScreen({onLogin}) {
   const [mode,       setMode]       = useState("login");
-  const [f,          setF]          = useState({name:"",email:"",phone:"",password:"",confirm:""});
+  const [f,          setF]          = useState({name:"",lastName:"",firstName:"",email:"",phone:"",password:"",confirm:""});
   const [touched,    setTouched]    = useState({});   // which fields were attempted
   const [resetEmail, setResetEmail] = useState("");
   const [resetCode,  setResetCode]  = useState("");
@@ -4632,10 +4659,11 @@ function AuthScreen({onLogin}) {
       if (!u) { setError("メールアドレスまたはパスワードが違います"); setLoading(false); return; }
       setSession(u); onLogin(u);
     } else {
-      if (!f.name.trim()||!f.email.trim()||!f.password) { setLoading(false); return; }
+      if (!f.lastName?.trim()||!f.email.trim()||!f.password) { setLoading(false); return; }
       if (f.password!==f.confirm) { setLoading(false); return; }
       if (users.find(u=>u.email===f.email.trim())) { setError("このメールはすでに登録されています"); setLoading(false); return; }
-      const nu={id:Date.now(),name:f.name.trim(),email:f.email.trim(),phone:f.phone.trim(),passwordHash:hashPass(f.password),createdAt:new Date().toISOString()};
+      const composedName = composeJpName(f.lastName, f.firstName);
+      const nu={id:Date.now(),name:composedName,lastName:(f.lastName||"").trim(),firstName:(f.firstName||"").trim(),email:f.email.trim(),phone:f.phone.trim(),passwordHash:hashPass(f.password),createdAt:new Date().toISOString()};
       const newUsers=[...users,nu];
       await saveUsers(newUsers);
       // 全ユーザーに新規登録通知を送信（データ上）
@@ -4645,9 +4673,9 @@ function AuthScreen({onLogin}) {
       const ndWithNotif={...existingData,notifications:[...(existingData.notifications||[]),notif]};
       scheduleSaveData(ndWithNotif);
       await sendEmail({
-        toEmail: f.email.trim(), toName: f.name.trim(),
+        toEmail: f.email.trim(), toName: composedName,
         subject: "【MyDesk】登録が完了しました",
-        body: `${f.name.trim()} さん、MyDeskへの登録が完了しました。\n\nメールアドレス：${f.email.trim()}\n\nこのメールに心当たりがない場合は無視してください。`,
+        body: `${composedName} さん、MyDeskへの登録が完了しました。\n\nメールアドレス：${f.email.trim()}\n\nこのメールに心当たりがない場合は無視してください。`,
       });
       setSession(nu); onLogin(nu);
     }
@@ -4755,9 +4783,17 @@ function AuthScreen({onLogin}) {
       {mode==="register"&&(
         <div style={fw}>
           <label style={lbl}>氏名</label>
-          <input type="text" value={f.name} onChange={e=>setF({...f,name:e.target.value})} onKeyDown={e=>e.key==="Enter"&&submit()} placeholder="氏名を入力してください（必須）"
-            style={is(touched.name&&!f.name.trim()?{border:"1.5px solid #fca5a5"}:{})}/>
-          {touched.name&&!f.name.trim()&&ferr("氏名を入力してください")}
+          <div style={{display:"flex",gap:"0.5rem"}}>
+            <div style={{flex:1}}>
+              <input type="text" value={f.lastName} onChange={e=>setF({...f,lastName:e.target.value})} onKeyDown={e=>e.key==="Enter"&&submit()} placeholder="姓（必須）"
+                style={is(touched.name&&!f.lastName?.trim()?{border:"1.5px solid #fca5a5"}:{})}/>
+            </div>
+            <div style={{flex:1}}>
+              <input type="text" value={f.firstName} onChange={e=>setF({...f,firstName:e.target.value})} onKeyDown={e=>e.key==="Enter"&&submit()} placeholder="名"
+                style={is()}/>
+            </div>
+          </div>
+          {touched.name&&!f.lastName?.trim()&&ferr("姓を入力してください")}
         </div>
       )}
       <div style={fw}>
@@ -18287,12 +18323,16 @@ function PushTestPanel({ currentUser, users }) {
 
 // ─── MYPAGE VIEW ─────────────────────────────────────────────────────────────
 function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pushEnabled, setPushEnabled, subscribePush, unsubscribePush, data, setData}) {
-  const [profileForm, setProfileForm] = useState({name:currentUser?.name||"",email:currentUser?.email||"",phone:currentUser?.phone||""});
+  const [profileForm, setProfileForm] = useState(()=>{ const np=userNameParts(currentUser); return {name:currentUser?.name||"",lastName:np.lastName,firstName:np.firstName,email:currentUser?.email||"",phone:currentUser?.phone||""}; });
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileMsg, setProfileMsg] = useState("");
   const [pwForm, setPwForm] = useState({cur:"",next:"",next2:""});
   const [pwMsg, setPwMsg] = useState("");
   const [section, setSection] = useState("profile");
+  // メンバー一括編集（姓・名）
+  const [memberEdits, setMemberEdits] = useState({}); // {userId: {lastName, firstName}}
+  const [memberMsg, setMemberMsg] = useState("");
+  const [memberSaving, setMemberSaving] = useState(false);
   const [contractModal, setContractModal] = useState(null);
   // template states (top-level to avoid hooks-in-IIFE)
   const [tplForm,    setTplForm]    = useState({name:"",targetType:"共通",subject:"",body:""});
@@ -18354,9 +18394,10 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
   };
 
   const saveProfile = async () => {
-    if(!profileForm.name.trim()) return;
+    if(!profileForm.lastName.trim()) return;
     setProfileSaving(true);
-    const updated = {...currentUser, name:profileForm.name.trim(), email:profileForm.email.trim(), phone:profileForm.phone.trim()};
+    const composed = composeJpName(profileForm.lastName, profileForm.firstName);
+    const updated = {...currentUser, name:composed, lastName:profileForm.lastName.trim(), firstName:profileForm.firstName.trim(), email:profileForm.email.trim(), phone:profileForm.phone.trim()};
     const newUsers = users.map(u=>u.id===currentUser.id?updated:u);
     await saveUsers(newUsers);
     setCurrentUser(updated);
@@ -18365,6 +18406,27 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
     setProfileMsg("✅ 保存しました");
     setProfileSaving(false);
     setTimeout(()=>setProfileMsg(""),3000);
+  };
+
+  const saveMembers = async () => {
+    setMemberSaving(true);
+    const newUsers = users.map(u=>{
+      const np = userNameParts(u);
+      const e = memberEdits[u.id] || {};
+      const lastName = (e.lastName!==undefined ? e.lastName : np.lastName).trim();
+      const firstName = (e.firstName!==undefined ? e.firstName : np.firstName).trim();
+      if(!lastName && !firstName) return u; // 両方空はスキップ
+      return {...u, lastName, firstName, name: composeJpName(lastName, firstName) || u.name};
+    });
+    await saveUsers(newUsers);
+    setUsers(newUsers);
+    // 自分自身が含まれていれば currentUser も更新
+    const me = newUsers.find(u=>u.id===currentUser?.id);
+    if(me){ setCurrentUser(me); setSession(me); }
+    setMemberEdits({});
+    setMemberSaving(false);
+    setMemberMsg("✅ メンバー情報を保存しました");
+    setTimeout(()=>setMemberMsg(""),3000);
   };
 
   const changePassword = async () => {
@@ -18384,6 +18446,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
 
   const menuItems = [
     {id:"profile",  icon:"👤", label:"プロフィール"},
+    {id:"members",  icon:"👥", label:"メンバー"},
     {id:"links",    icon:"🔗", label:"外部連携"},
     {id:"contract", icon:"📜", label:"契約書"},
     {id:"account",  icon:"🔑", label:"パスワード"},
@@ -18400,12 +18463,12 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
       <div style={{fontWeight:800,fontSize:"1.1rem",color:C.text,marginBottom:"1.25rem"}}>⚙️ 設定</div>
 
       {/* Section Tabs */}
-      <div style={{display:"flex",gap:"0.375rem",marginBottom:"1.25rem",background:"white",borderRadius:"8px",padding:"0.25rem",border:"1px solid "+C.border}}>
+      <div style={{display:"flex",gap:"0.375rem",marginBottom:"1.25rem",background:"white",borderRadius:"8px",padding:"0.25rem",border:"1px solid "+C.border,overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
         {menuItems.map(m=>(
           <button key={m.id} onClick={()=>setSection(m.id)}
-            style={{flex:1,padding:"0.5rem 0.25rem",borderRadius:"0.625rem",border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:"0.72rem",fontWeight:section===m.id?800:500,background:section===m.id?C.accent:"transparent",color:section===m.id?"white":C.textSub,display:"flex",flexDirection:"column",alignItems:"center",gap:"0.2rem"}}>
+            style={{flexShrink:0,minWidth:"62px",padding:"0.5rem 0.4rem",borderRadius:"0.625rem",border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:"0.72rem",fontWeight:section===m.id?800:500,background:section===m.id?C.accent:"transparent",color:section===m.id?"white":C.textSub,display:"flex",flexDirection:"column",alignItems:"center",gap:"0.2rem"}}>
             <span style={{fontSize:"1.1rem",lineHeight:1}}>{m.icon}</span>
-            <span>{m.label}</span>
+            <span style={{whiteSpace:"nowrap"}}>{m.label}</span>
           </button>
         ))}
       </div>
@@ -18423,7 +18486,16 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
               <div style={{fontSize:"0.75rem",color:C.textMuted}}>{currentUser?.email}</div>
             </div>
           </div>
-          {[["氏名 *","name","田中太郎","text"],["メールアドレス *（通知受信に必要）","email","example@mail.com","email"],["電話番号","phone","090-0000-0000","tel"]].map(([label,field,ph,type])=>(
+          <div style={{marginBottom:"0.875rem"}}>
+            <div style={{fontSize:"0.78rem",fontWeight:700,color:C.textSub,marginBottom:"0.3rem"}}>氏名 *</div>
+            <div style={{display:"flex",gap:"0.5rem"}}>
+              <input type="text" value={profileForm.lastName||""} onChange={e=>setProfileForm(p=>({...p,lastName:e.target.value}))} placeholder="姓（例：新川）"
+                style={{flex:1,padding:"0.625rem 0.75rem",borderRadius:"0.625rem",border:`1.5px solid ${!profileForm.lastName?.trim()?"#fca5a5":C.border}`,fontSize:"0.9rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
+              <input type="text" value={profileForm.firstName||""} onChange={e=>setProfileForm(p=>({...p,firstName:e.target.value}))} placeholder="名（例：希亮）"
+                style={{flex:1,padding:"0.625rem 0.75rem",borderRadius:"0.625rem",border:`1.5px solid ${C.border}`,fontSize:"0.9rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
+            </div>
+          </div>
+          {[["メールアドレス *（通知受信に必要）","email","example@mail.com","email"],["電話番号","phone","090-0000-0000","tel"]].map(([label,field,ph,type])=>(
             <div key={field} style={{marginBottom:"0.875rem"}}>
               <div style={{fontSize:"0.78rem",fontWeight:700,color:field==="email"&&!profileForm.email?"#dc2626":C.textSub,marginBottom:"0.3rem"}}>{label}</div>
               <input type={type} value={profileForm[field]||""} onChange={e=>setProfileForm(p=>({...p,[field]:e.target.value}))} placeholder={ph}
@@ -18434,7 +18506,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
             </div>
           ))}
           {profileMsg&&<div style={{marginBottom:"0.75rem",fontSize:"0.82rem",color:profileMsg.startsWith("✅")?"#059669":"#dc2626"}}>{profileMsg}</div>}
-          <button onClick={saveProfile} disabled={profileSaving||!profileForm.name.trim()}
+          <button onClick={saveProfile} disabled={profileSaving||!profileForm.lastName.trim()}
             style={{width:"100%",padding:"0.75rem",borderRadius:"6px",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.9rem",cursor:"pointer",fontFamily:"inherit",opacity:profileSaving?0.6:1}}>
             {profileSaving?"保存中...":"保存する"}
           </button>
@@ -18552,6 +18624,47 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
           <button onClick={onLogout}
             style={{width:"100%",marginTop:"1rem",padding:"0.75rem",borderRadius:"6px",border:"1.5px solid #fee2e2",background:"white",color:"#dc2626",fontWeight:700,fontSize:"0.87rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
             🚪 ログアウト
+          </button>
+        </div>
+      )}
+
+      {/* ── メンバー管理（姓・名の一括編集）── */}
+      {section==="members"&&(
+        <div style={{background:"white",borderRadius:"1rem",padding:"1.25rem",border:"1px solid "+C.border,boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
+          <div style={{fontWeight:800,fontSize:"0.9rem",color:C.text,marginBottom:"0.5rem"}}>👥 メンバーの姓・名</div>
+          <div style={{fontSize:"0.74rem",color:C.textMuted,marginBottom:"1rem",lineHeight:1.6}}>
+            各メンバーの姓と名を編集できます。空欄の場合は登録名から自動推定した値が入っています。保存すると表示名（姓 名）も自動で更新されます。
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:"0.5rem",maxHeight:420,overflowY:"auto"}}>
+            {users.map(u=>{
+              const np = userNameParts(u);
+              const e = memberEdits[u.id] || {};
+              const ln = e.lastName!==undefined ? e.lastName : np.lastName;
+              const fn = e.firstName!==undefined ? e.firstName : np.firstName;
+              const setLn = v => setMemberEdits(m=>({...m,[u.id]:{...m[u.id],lastName:v}}));
+              const setFn = v => setMemberEdits(m=>({...m,[u.id]:{...m[u.id],firstName:v}}));
+              return (
+                <div key={u.id} style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.5rem",borderRadius:"0.625rem",background:C.bg,border:"1px solid "+C.borderLight}}>
+                  <div style={{width:32,height:32,borderRadius:"50%",background:"linear-gradient(135deg,"+C.accent+","+C.accentDark+")",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.85rem",fontWeight:800,color:"white",flexShrink:0}}>
+                    {(ln||u.name||"?").charAt(0)}
+                  </div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{display:"flex",gap:"0.4rem"}}>
+                      <input type="text" value={ln} onChange={ev=>setLn(ev.target.value)} placeholder="姓"
+                        style={{flex:1,minWidth:0,padding:"0.45rem 0.55rem",borderRadius:"0.5rem",border:`1px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
+                      <input type="text" value={fn} onChange={ev=>setFn(ev.target.value)} placeholder="名"
+                        style={{flex:1,minWidth:0,padding:"0.45rem 0.55rem",borderRadius:"0.5rem",border:`1px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
+                    </div>
+                    <div style={{fontSize:"0.66rem",color:C.textMuted,marginTop:"0.2rem",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.email}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {memberMsg&&<div style={{marginTop:"0.75rem",fontSize:"0.82rem",color:memberMsg.startsWith("✅")?"#059669":"#dc2626"}}>{memberMsg}</div>}
+          <button onClick={saveMembers} disabled={memberSaving||Object.keys(memberEdits).length===0}
+            style={{width:"100%",marginTop:"0.875rem",padding:"0.75rem",borderRadius:"6px",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.9rem",cursor:"pointer",fontFamily:"inherit",opacity:(memberSaving||Object.keys(memberEdits).length===0)?0.5:1}}>
+            {memberSaving?"保存中...":Object.keys(memberEdits).length>0?`変更を保存（${Object.keys(memberEdits).length}名）`:"変更なし"}
           </button>
         </div>
       )}
