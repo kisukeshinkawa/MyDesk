@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v62-click-diag"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v63-edit-fix"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -15082,6 +15082,66 @@ ${orig}`})
             files={comp.files||[]} currentUserId={currentUser?.id} currentUser={currentUser} users={users}
             data={data} setData={setData} save={save}
             onSaveFiles={fs => save({...data, companies: companies.map(c => c.id===comp.id ? {...c, files:fs} : c)})}/>}
+        {sheet==="editCompany"&&(
+          <Sheet title="企業を編集" onClose={()=>setSheet(null)}>
+            <FieldLbl label="企業名 *"><Input value={form.name||""} onChange={e=>setForm({...form,name:e.target.value})} autoFocus/></FieldLbl>
+            <FieldLbl label="ステータス"><StatusPicker map={COMPANY_STATUS} value={form.status||"未接触"} onChange={s=>setForm({...form,status:s})}/></FieldLbl>
+            <FieldLbl label="担当者">{AssigneePicker({ids:form.assigneeIds||[],onChange:ids=>setForm({...form,assigneeIds:ids})})}</FieldLbl>
+            <FieldLbl label="代表電話番号（任意）"><Input value={form.phone||""} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="092-xxx-xxxx" type="tel"/></FieldLbl>
+            <FieldLbl label="代表メールアドレス（任意）"><Input value={form.email||""} onChange={e=>setForm({...form,email:e.target.value})} placeholder="example@mail.com"/></FieldLbl>
+            {/* 先方担当者リスト */}
+            <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:"0.625rem",padding:"0.625rem 0.75rem",marginBottom:"0.5rem"}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.4rem"}}>
+                <div style={{fontSize:"0.75rem",fontWeight:700,color:"#0369a1"}}>👤 先方担当者（複数登録可）</div>
+                <button onClick={()=>{
+                  const cur = form.contacts || [];
+                  setForm({...form, contacts:[...cur, {id:Date.now()+Math.random(),name:"",role:"",phone:"",email:""}]});
+                }} style={{background:"#0369a1",color:"white",border:"none",borderRadius:"0.4rem",padding:"0.3rem 0.7rem",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>＋ 担当者を追加</button>
+              </div>
+              {(()=>{
+                const list = form.contacts || [];
+                if(list.length===0) return (
+                  <div style={{fontSize:"0.7rem",color:"#0c4a6e",padding:"0.4rem"}}>「＋ 担当者を追加」をタップして登録してください</div>
+                );
+                const updateAt = (idx, key, val) => {
+                  const next = list.map((c,i)=>i===idx?{...c,[key]:val}:c);
+                  setForm({...form, contacts:next});
+                };
+                const removeAt = (idx) => {
+                  setForm({...form, contacts:list.filter((_,i)=>i!==idx)});
+                };
+                return (
+                  <div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
+                    {list.map((c,idx)=>(
+                      <div key={c.id} style={{background:"white",border:"1px solid #bae6fd",borderRadius:"0.5rem",padding:"0.5rem 0.625rem"}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.35rem"}}>
+                          <div style={{fontSize:"0.7rem",fontWeight:700,color:"#0369a1"}}>担当者 #{idx+1}</div>
+                          <button onClick={()=>removeAt(idx)} style={{background:"none",border:"none",color:"#dc2626",cursor:"pointer",fontSize:"0.7rem",fontWeight:700,padding:"0.1rem 0.3rem",fontFamily:"inherit"}}>🗑 削除</button>
+                        </div>
+                        <div style={{display:"flex",flexDirection:"column",gap:"0.35rem"}}>
+                          <input value={c.name||""} onChange={e=>updateAt(idx,"name",e.target.value)} placeholder="名前（例：山田 太郎）"
+                            style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
+                          <input value={c.role||""} onChange={e=>updateAt(idx,"role",e.target.value)} placeholder="役職・部署（例：営業部長）"
+                            style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
+                          <input value={c.phone||""} onChange={e=>updateAt(idx,"phone",formatPhone(e.target.value))} placeholder="電話番号（半角に自動変換）" type="tel"
+                            style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
+                          <input value={c.email||""} onChange={e=>updateAt(idx,"email",e.target.value)} placeholder="メールアドレス"
+                            style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
+            <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
+            <FieldLbl label="備考"><Textarea value={form.notes||""} onChange={e=>setForm({...form,notes:e.target.value})} style={{height:70}} placeholder="メモ、特記事項など"/></FieldLbl>
+            <div style={{display:"flex",gap:"0.625rem"}}>
+              <Btn variant="secondary" style={{flex:1}} onClick={()=>setSheet(null)}>キャンセル</Btn>
+              <Btn style={{flex:2}} onClick={()=>saveCompany()} disabled={!form.name?.trim()}>保存</Btn>
+            </div>
+          </Sheet>
+        )}
         </div>
       );
     }
@@ -15380,66 +15440,6 @@ ${orig}`})
             </div>
           </Sheet>
         )}
-        {sheet==="editCompany"&&(
-          <Sheet title="企業を編集" onClose={()=>setSheet(null)}>
-            <FieldLbl label="企業名 *"><Input value={form.name||""} onChange={e=>setForm({...form,name:e.target.value})} autoFocus/></FieldLbl>
-            <FieldLbl label="ステータス"><StatusPicker map={COMPANY_STATUS} value={form.status||"未接触"} onChange={s=>setForm({...form,status:s})}/></FieldLbl>
-            <FieldLbl label="担当者">{AssigneePicker({ids:form.assigneeIds||[],onChange:ids=>setForm({...form,assigneeIds:ids})})}</FieldLbl>
-            <FieldLbl label="代表電話番号（任意）"><Input value={form.phone||""} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="092-xxx-xxxx" type="tel"/></FieldLbl>
-            <FieldLbl label="代表メールアドレス（任意）"><Input value={form.email||""} onChange={e=>setForm({...form,email:e.target.value})} placeholder="example@mail.com"/></FieldLbl>
-            {/* 先方担当者リスト */}
-            <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:"0.625rem",padding:"0.625rem 0.75rem",marginBottom:"0.5rem"}}>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.4rem"}}>
-                <div style={{fontSize:"0.75rem",fontWeight:700,color:"#0369a1"}}>👤 先方担当者（複数登録可）</div>
-                <button onClick={()=>{
-                  const cur = form.contacts || [];
-                  setForm({...form, contacts:[...cur, {id:Date.now()+Math.random(),name:"",role:"",phone:"",email:""}]});
-                }} style={{background:"#0369a1",color:"white",border:"none",borderRadius:"0.4rem",padding:"0.3rem 0.7rem",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>＋ 担当者を追加</button>
-              </div>
-              {(()=>{
-                const list = form.contacts || [];
-                if(list.length===0) return (
-                  <div style={{fontSize:"0.7rem",color:"#0c4a6e",padding:"0.4rem"}}>「＋ 担当者を追加」をタップして登録してください</div>
-                );
-                const updateAt = (idx, key, val) => {
-                  const next = list.map((c,i)=>i===idx?{...c,[key]:val}:c);
-                  setForm({...form, contacts:next});
-                };
-                const removeAt = (idx) => {
-                  setForm({...form, contacts:list.filter((_,i)=>i!==idx)});
-                };
-                return (
-                  <div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
-                    {list.map((c,idx)=>(
-                      <div key={c.id} style={{background:"white",border:"1px solid #bae6fd",borderRadius:"0.5rem",padding:"0.5rem 0.625rem"}}>
-                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.35rem"}}>
-                          <div style={{fontSize:"0.7rem",fontWeight:700,color:"#0369a1"}}>担当者 #{idx+1}</div>
-                          <button onClick={()=>removeAt(idx)} style={{background:"none",border:"none",color:"#dc2626",cursor:"pointer",fontSize:"0.7rem",fontWeight:700,padding:"0.1rem 0.3rem",fontFamily:"inherit"}}>🗑 削除</button>
-                        </div>
-                        <div style={{display:"flex",flexDirection:"column",gap:"0.35rem"}}>
-                          <input value={c.name||""} onChange={e=>updateAt(idx,"name",e.target.value)} placeholder="名前（例：山田 太郎）"
-                            style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
-                          <input value={c.role||""} onChange={e=>updateAt(idx,"role",e.target.value)} placeholder="役職・部署（例：営業部長）"
-                            style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
-                          <input value={c.phone||""} onChange={e=>updateAt(idx,"phone",formatPhone(e.target.value))} placeholder="電話番号（半角に自動変換）" type="tel"
-                            style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
-                          <input value={c.email||""} onChange={e=>updateAt(idx,"email",e.target.value)} placeholder="メールアドレス"
-                            style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                );
-              })()}
-            </div>
-            <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
-            <FieldLbl label="備考"><Textarea value={form.notes||""} onChange={e=>setForm({...form,notes:e.target.value})} style={{height:70}} placeholder="メモ、特記事項など"/></FieldLbl>
-            <div style={{display:"flex",gap:"0.625rem"}}>
-              <Btn variant="secondary" style={{flex:1}} onClick={()=>setSheet(null)}>キャンセル</Btn>
-              <Btn style={{flex:2}} onClick={()=>saveCompany()} disabled={!form.name?.trim()}>保存</Btn>
-            </div>
-          </Sheet>
-        )}
         {sheet==="importCompany"&&(()=>{
           const preview=importPreview; const setPreview=setImportPreview;
           const err=importErr; const setErr=setImportErr;
@@ -15592,7 +15592,6 @@ ${orig}`})
   // ── 業者タブ ──────────────────────────────────────────────────────────────
   if(salesTab==="vendor"){
   function renderVendorDetail(v){
-      console.log("[EDIT-DIAG] renderVendorDetail 実行 sheet=",sheet);
       const vmunis=vendorMunis(v);
       const vendChatUnread=(data.notifications||[]).filter(n=>n.toUserId===currentUser?.id&&!n.read&&n.type==="mention"&&n.entityId===v.id).length;
       return (
@@ -15628,7 +15627,7 @@ ${orig}`})
                   {v.beeNet&&<span style={{fontSize:"0.62rem",background:"#eff6ff",color:"#1d4ed8",padding:"0.1rem 0.45rem",borderRadius:999,fontWeight:700,border:"1px solid #bfdbfe"}}>🔷 bee-net</span>}
                 </div>
               </div>
-              <button onClick={()=>{console.log("[EDIT-DIAG] 業者編集ボタン押下 vendor=",v.id,"現在のsheet=",sheet);setForm({...v});setSheet("editVendor");console.log("[EDIT-DIAG] setSheet(editVendor) 呼び出し完了");}} title="編集"
+              <button onClick={()=>{setForm({...v});setSheet("editVendor");}} title="編集"
                 style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"6px",padding:"0.3rem 0.55rem",cursor:"pointer",fontSize:"0.8rem",color:C.textSub,flexShrink:0}}>✏️</button>
             </div>
             {/* 担当者 + 電話 */}
@@ -20774,21 +20773,6 @@ export default function App() {
     setData(nd); scheduleSaveData(nd);
   };
   const NOTIF_ICON = {task_assign:"👤",task_status:"🔄",task_comment:"💬",mention:"💬",memo:"📝",deadline:"⏰",sales_assign:"🏛️",new_user:"👋",analytics_update:"📊"};
-
-  useEffect(()=>{
-    // ── [EDIT-DIAG] 一時診断: 全タップが実際にどの要素に当たっているかを記録 ──
-    const diagClick = (e) => {
-      const t = e.target;
-      const desc = t ? `<${t.tagName?.toLowerCase()} title="${t.getAttribute?.("title")||""}" class="${t.className||""}"> "${(t.textContent||"").slice(0,20)}"` : "(null)";
-      console.log(`[EDIT-DIAG] ${e.type} → target=`, desc);
-    };
-    document.addEventListener("pointerdown", diagClick, true);
-    document.addEventListener("click", diagClick, true);
-    return ()=>{
-      document.removeEventListener("pointerdown", diagClick, true);
-      document.removeEventListener("click", diagClick, true);
-    };
-  },[]);
 
   useEffect(()=>{
     // ── Service Worker 登録（バックグラウンドプッシュ通知に必須）──
