@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v61-edit-diag"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v62-click-diag"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -20774,6 +20774,21 @@ export default function App() {
     setData(nd); scheduleSaveData(nd);
   };
   const NOTIF_ICON = {task_assign:"👤",task_status:"🔄",task_comment:"💬",mention:"💬",memo:"📝",deadline:"⏰",sales_assign:"🏛️",new_user:"👋",analytics_update:"📊"};
+
+  useEffect(()=>{
+    // ── [EDIT-DIAG] 一時診断: 全タップが実際にどの要素に当たっているかを記録 ──
+    const diagClick = (e) => {
+      const t = e.target;
+      const desc = t ? `<${t.tagName?.toLowerCase()} title="${t.getAttribute?.("title")||""}" class="${t.className||""}"> "${(t.textContent||"").slice(0,20)}"` : "(null)";
+      console.log(`[EDIT-DIAG] ${e.type} → target=`, desc);
+    };
+    document.addEventListener("pointerdown", diagClick, true);
+    document.addEventListener("click", diagClick, true);
+    return ()=>{
+      document.removeEventListener("pointerdown", diagClick, true);
+      document.removeEventListener("click", diagClick, true);
+    };
+  },[]);
 
   useEffect(()=>{
     // ── Service Worker 登録（バックグラウンドプッシュ通知に必須）──
