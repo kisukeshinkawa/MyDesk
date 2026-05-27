@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v55-notif-dedup-fix"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v56-vendor-import-chunked"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -11815,6 +11815,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   const [impMode,setImpMode]=useState("csv");
   const [vendorDedup,setVendorDedup]=useState(true); // 業者インポート: 重複チェックON/OFF
   const [importing,setImporting]=useState(false); // 大量インポート保存中フラグ
+  const [importProgress,setImportProgress]=useState(""); // 読み込み進捗表示
   const [textInput,setTextInput]=useState("");
   // duplicate detection modal
   const [dupModal,setDupModal]=useState(null); // {existing, incoming, onKeepBoth, onSave}
@@ -16185,61 +16186,93 @@ ${orig}`})
           const preview=importPreview; const setPreview=setImportPreview;
           const err=importErr; const setErr=setImportErr;
           const handleFile=async(e)=>{
-            const file=e.target.files?.[0]; if(!file)return;
-            setErr("");
+            const file=e.target.files?.[0];
+            if(e.target) e.target.value=""; // 同じファイル再選択を可能に
+            if(!file)return;
+            setErr(""); setPreview(null);
+            const yield_=()=>new Promise(r=>setTimeout(r,0));
             try{
+              setImportProgress("ファイルを読み込み中…");
+              await yield_();
               const text=await readFileAsText(file);
-              // 重い処理の前に1フレーム譲ってUIをブロックしない
-              await new Promise(r=>setTimeout(r,0));
+              await yield_();
+              setImportProgress("CSVを解析中…");
+              await yield_();
               const rows=parseCSV(text);
               const skip=["業者名","名前","name","vendor","業者名 *","business"];
               const dataRows=rows.filter(r=>r[0]&&!skip.some(k=>r[0].toLowerCase().includes(k.toLowerCase())));
-              const mapped=dataRows.map(r=>({
-                name:normalizeImport(r[0]||""),
-                status:Object.keys(VENDOR_STATUS).includes(r[1]?.trim())?r[1].trim():"未接触",
-                prefName:normalizeImport(r[2]||""),
-                muniNames:(r[3]?.trim()||"").replace(/\n/g,",").split(/[,，]/).map(s=>normalizeImport(s)).filter(Boolean),
-                assigneeName:(r[4]||"").trim(),
-                phone:normalizeImport(r[5]||""),
-                notes:(r[6]||"").trim(),
-                address:normalizeImport(r[7]||""),
-                permitTypeNames:(r[8]?.trim()||"").replace(/\n/g,",").split(/[,，]/).map(s=>s.trim()).filter(Boolean),
-                beeNet:!!(r[9]?.trim()),
-              })).filter(r=>r.name);
-              // ★高速重複判定: 既存業者を索引化して O(行数×候補) に。
-              //   名前・電話・住所のうち2つ以上一致で重複（doImport と同じルール）。
+              // 行のマッピングを500件ずつチャンク処理（UIを固めない）
               const normStr2 = s => (s||"").replace(/[\s　\-ー－]/g,"").toLowerCase();
               const normPhone2 = s => (s||"").replace(/[^0-9]/g,"");
+              const mapped=[];
+              for(let i=0;i<dataRows.length;i+=500){
+                const slice=dataRows.slice(i,i+500);
+                for(const r of slice){
+                  const name=normalizeImport(r[0]||"");
+                  if(!name) continue;
+                  mapped.push({
+                    name,
+                    status:Object.keys(VENDOR_STATUS).includes(r[1]?.trim())?r[1].trim():"未接触",
+                    prefName:normalizeImport(r[2]||""),
+                    muniNames:(r[3]?.trim()||"").replace(/\n/g,",").split(/[,，]/).map(s=>normalizeImport(s)).filter(Boolean),
+                    assigneeName:(r[4]||"").trim(),
+                    phone:normalizeImport(r[5]||""),
+                    notes:(r[6]||"").trim(),
+                    address:normalizeImport(r[7]||""),
+                    permitTypeNames:(r[8]?.trim()||"").replace(/\n/g,",").split(/[,，]/).map(s=>s.trim()).filter(Boolean),
+                    beeNet:!!(r[9]?.trim()),
+                  });
+                }
+                setImportProgress(`データ整形中… ${Math.min(i+500,dataRows.length)}/${dataRows.length}`);
+                await yield_();
+              }
+              // ★既存業者を索引化（O(行数×候補)で重複判定）
+              setImportProgress("既存データと照合中…");
+              await yield_();
               const nameMap=new Map(), phoneMap=new Map(), addrMap=new Map();
               const pushMap=(m,k,i)=>{ if(!k)return; const a=m.get(k); if(a)a.push(i); else m.set(k,[i]); };
-              vendors.forEach((v,i)=>{
-                pushMap(nameMap, normStr2(v.name), i);
-                const p=normPhone2(v.phone||""); if(p.length>=7) pushMap(phoneMap,p,i);
-                const a=normStr2(v.address||""); if(a.length>=10) pushMap(addrMap,a,i);
-              });
-              await new Promise(r=>setTimeout(r,0));
-              mapped.forEach(row=>{
-                const rName=normStr2(row.name);
-                const rPhone=normPhone2(row.phone||"");
-                const rAddr=normStr2(row.address||"");
-                // 候補となる既存業者インデックスを集める
-                const cand=new Set();
-                (nameMap.get(rName)||[]).forEach(i=>cand.add(i));
-                if(rPhone.length>=7)(phoneMap.get(rPhone)||[]).forEach(i=>cand.add(i));
-                if(rAddr.length>=10)(addrMap.get(rAddr)||[]).forEach(i=>cand.add(i));
-                let dup=false;
-                for(const i of cand){
-                  const v=vendors[i];
-                  let hits=0;
-                  if(rName && normStr2(v.name)===rName) hits++;
-                  if(rPhone.length>=7 && normPhone2(v.phone||"")===rPhone) hits++;
-                  if(rAddr.length>=10 && normStr2(v.address||"")===rAddr) hits++;
-                  if(hits>=2){ dup=true; break; }
+              for(let i=0;i<vendors.length;i+=2000){
+                const slice=vendors.slice(i,i+2000);
+                slice.forEach((v,j)=>{
+                  const idx=i+j;
+                  pushMap(nameMap, normStr2(v.name), idx);
+                  const p=normPhone2(v.phone||""); if(p.length>=7) pushMap(phoneMap,p,idx);
+                  const a=normStr2(v.address||""); if(a.length>=10) pushMap(addrMap,a,idx);
+                });
+                await yield_();
+              }
+              // 重複判定を500件ずつチャンク処理
+              for(let i=0;i<mapped.length;i+=500){
+                const slice=mapped.slice(i,i+500);
+                for(const row of slice){
+                  const rName=normStr2(row.name);
+                  const rPhone=normPhone2(row.phone||"");
+                  const rAddr=normStr2(row.address||"");
+                  const cand=new Set();
+                  (nameMap.get(rName)||[]).forEach(i2=>cand.add(i2));
+                  if(rPhone.length>=7)(phoneMap.get(rPhone)||[]).forEach(i2=>cand.add(i2));
+                  if(rAddr.length>=10)(addrMap.get(rAddr)||[]).forEach(i2=>cand.add(i2));
+                  let dup=false;
+                  for(const ci of cand){
+                    const v=vendors[ci];
+                    let hits=0;
+                    if(rName && normStr2(v.name)===rName) hits++;
+                    if(rPhone.length>=7 && normPhone2(v.phone||"")===rPhone) hits++;
+                    if(rAddr.length>=10 && normStr2(v.address||"")===rAddr) hits++;
+                    if(hits>=2){ dup=true; break; }
+                  }
+                  row._dup=dup;
                 }
-                row._dup=dup; // 計算結果を行に保存（再描画では再計算しない）
-              });
+                setImportProgress(`重複チェック中… ${Math.min(i+500,mapped.length)}/${mapped.length}`);
+                await yield_();
+              }
+              setImportProgress("");
               setPreview(mapped);
-            }catch(e){console.error("[MyDesk] vendor import parse error:",e);setErr("ファイルの読み込みに失敗しました。CSV形式・文字コードをご確認ください。");}
+            }catch(e){
+              console.error("[MyDesk] vendor import parse error:",e);
+              setImportProgress("");
+              setErr("ファイルの読み込みに失敗しました。CSV形式・文字コードをご確認ください。");
+            }
           };
           const doImport=()=>{
             if(!preview?.length)return;
@@ -16299,11 +16332,12 @@ ${orig}`})
               </div>
               <div style={{marginBottom:"1rem"}}>
                 <div style={{fontWeight:700,fontSize:"0.82rem",color:C.text,marginBottom:"0.5rem"}}>📤 CSVファイルをアップロード</div>
-                <label style={{display:"block",border:`2px dashed ${C.border}`,borderRadius:"8px",padding:"1.25rem",textAlign:"center",cursor:"pointer",background:C.bg}}>
+                <label style={{display:"block",border:`2px dashed ${C.border}`,borderRadius:"8px",padding:"1.25rem",textAlign:"center",cursor:importProgress?"wait":"pointer",background:C.bg,opacity:importProgress?0.6:1}}>
                   <div style={{fontSize:"1.5rem",marginBottom:"0.35rem"}}>📂</div>
-                  <div style={{fontSize:"0.8rem",fontWeight:600,color:C.textSub}}>クリックしてCSVを選択</div>
-                  <input type="file" accept=".csv,.txt" onChange={handleFile} style={{display:"none"}}/>
+                  <div style={{fontSize:"0.8rem",fontWeight:600,color:C.textSub}}>{importProgress?"処理中…":"クリックしてCSVを選択"}</div>
+                  <input type="file" accept=".csv,.txt" onChange={handleFile} disabled={!!importProgress} style={{display:"none"}}/>
                 </label>
+                {importProgress&&<div style={{marginTop:"0.5rem",fontSize:"0.78rem",color:C.accent,background:"#eff6ff",borderRadius:"0.5rem",padding:"0.5rem 0.75rem",display:"flex",alignItems:"center",gap:"0.5rem"}}><span style={{display:"inline-block",width:14,height:14,border:`2px solid ${C.accent}`,borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.7s linear infinite"}}/>{importProgress}</div>}
                 {err&&<div style={{marginTop:"0.5rem",fontSize:"0.78rem",color:"#dc2626",background:"#fff1f2",borderRadius:"0.5rem",padding:"0.5rem 0.75rem"}}>{err}</div>}
               </div>
               {preview&&(
