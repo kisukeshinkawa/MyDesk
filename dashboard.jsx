@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v57-user-name-split"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v58-notif-no-replay"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -20957,19 +20957,29 @@ export default function App() {
           n.toUserId===currentUser.id || n.toUserId==='__all__'
         );
 
-        // 未読 かつ まだブラウザ通知で出していない ものだけを対象にする
-        const toShow = myNotifs.filter(n => !n.read && !shownIds.has(String(n.id)));
         if(lastNotifIdsRef.current === null) {
-          // 初回ロード: 未表示の未読を最大3件
-          toShow.slice(0, 3).forEach(showNotif);
+          // ★初回ロード（アプリを開いた瞬間）: 過去の通知はブラウザ通知で出さない。
+          //   （閉じている間の通知はサーバープッシュで既に届いているため、開くたびの再表示を防ぐ）
+          //   現在の通知IDを基準として記録するだけ。
+          lastNotifIdsRef.current = new Set(myNotifs.map(n => n.id));
+          // 既存の未読も「表示済み」扱いにして、今後も再表示しない
+          addShownIds(myNotifs.filter(n=>!n.read).map(n=>n.id));
         } else {
-          // 2回目以降: 前回から新しく増えた未表示の未読
+          // 2回目以降のポーリング: このセッション中に新しく来た未読のみ表示
           const prevIds = lastNotifIdsRef.current;
-          toShow.filter(n => !prevIds.has(n.id)).slice(0, 3).forEach(showNotif);
+          const brandNew = myNotifs.filter(n =>
+            !prevIds.has(n.id) && !n.read && !shownIds.has(String(n.id))
+          );
+          // さらに念のため作成2分以内のものに限定（古い通知の混入を防ぐ）
+          const now = Date.now();
+          const fresh = brandNew.filter(n=>{
+            const ts = n.createdTs || new Date(n.date||0).getTime() || 0;
+            return ts===0 || (now - ts) < 5*60*1000;
+          });
+          fresh.slice(0, 3).forEach(showNotif);
+          if(brandNew.length) addShownIds(brandNew.map(n=>n.id));
+          lastNotifIdsRef.current = new Set(myNotifs.map(n => n.id));
         }
-        // 表示対象を「表示済み」として記録（次回以降は出さない）
-        if(toShow.length) addShownIds(toShow.map(n=>n.id));
-        lastNotifIdsRef.current = new Set(myNotifs.map(n => n.id));
       } catch {}
     };
     // 初回実行
