@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v59-timeline-jst-edit"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v60-sheet-repaint-fix"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -1390,19 +1390,17 @@ const LoadingOverlay = React.memo(function LoadingOverlay({label="処理中...",
 });
 
 function Sheet({title,onClose,children}) {
-  // 一部環境（iOS Safari等）で fixed オーバーレイがマウント直後に描画されず、
-  // 別操作をするまで表示されない問題の回避。マウント直後に強制リフローを促す。
+  // 一部環境で fixed オーバーレイがマウント直後に描画されず、別操作をするまで
+  // 表示されない問題の回避。マウント直後に opacity を変化させて強制再描画させる。
+  const [shown,setShown] = React.useState(false);
   React.useEffect(()=>{
-    const id = requestAnimationFrame(()=>{
-      document.body.style.transform = "translateZ(0)";
-      requestAnimationFrame(()=>{ document.body.style.transform = ""; });
-    });
+    const id = requestAnimationFrame(()=>setShown(true));
     return ()=>cancelAnimationFrame(id);
   },[]);
   return (
-    <div style={{position:"fixed",inset:0,zIndex:300,display:"flex",flexDirection:"column",justifyContent:"flex-end",overflowX:"hidden"}}>
+    <div style={{position:"fixed",inset:0,zIndex:300,display:"flex",flexDirection:"column",justifyContent:"flex-end",overflowX:"hidden",opacity:shown?1:0,transition:"opacity 0.12s ease-out"}}>
       <div onClick={onClose} style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.45)"}}/>
-      <div style={{position:"relative",background:"white",borderRadius:"12px 12px 0 0",padding:"1.5rem 1.25rem calc(5rem + env(safe-area-inset-bottom,16px))",maxHeight:"90vh",overflowY:"auto",overflowX:"hidden",boxShadow:"0 -4px 20px rgba(0,0,0,0.1)",boxSizing:"border-box",wordBreak:"break-word",overflowWrap:"break-word"}}>
+      <div style={{position:"relative",background:"white",borderRadius:"12px 12px 0 0",padding:"1.5rem 1.25rem calc(5rem + env(safe-area-inset-bottom,16px))",maxHeight:"90vh",overflowY:"auto",overflowX:"hidden",boxShadow:"0 -4px 20px rgba(0,0,0,0.1)",boxSizing:"border-box",wordBreak:"break-word",overflowWrap:"break-word",transform:shown?"translateY(0)":"translateY(8px)",transition:"transform 0.15s ease-out"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1.5rem"}}>
           <h3 style={{margin:0,fontSize:"1.05rem",fontWeight:800,color:C.text,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{title}</h3>
           <button onClick={onClose} style={{background:"none",border:"none",fontSize:"1.4rem",color:C.textMuted,cursor:"pointer",lineHeight:1,flexShrink:0}}>×</button>
