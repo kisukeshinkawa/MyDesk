@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v63-edit-fix"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v64-analytics-dashboard"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -19821,6 +19821,7 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
   const [chart,    setChart]    = useState(null);
   // expanded sections for collapsible partner stores
   const [openSects,setOpenSects]= useState({serviceLog:false,requests:false,contracts:false,revenue:false});
+  const [kpiMetric, setKpiMetric] = useState("revenue"); // 上部ダッシュボードのグラフ表示指標
 
   const ana     = data.analytics || {};
   const sysData = ana[sys] || {};
@@ -20187,7 +20188,102 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
         )}
       </div>
 
-      {/* bee-net placeholder */}
+      {/* ════ DUSTALK KPI ダッシュボード（実績サマリー＋月次推移） ════ */}
+      {sys==="dustalk" && (()=>{
+        const curYear = mk.split("-")[0];
+        const months = Array.from({length:12},(_,i)=>`${curYear}-${String(i+1).padStart(2,"0")}`);
+        const md = months.map(m=>mergeDustalk(sysData[m]||{}));
+        const curIdx = parseInt(mk.split("-")[1],10)-1;
+        // 指標定義: monthly=その月の値 / cumulative=累計（顧客数は累計成約）
+        const metrics = [
+          {id:"revenue",  label:"売上",  icon:"💰", color:"#059669", get:d=>d.revenue||0,  unit:"円", money:true},
+          {id:"customers",label:"顧客数",icon:"🏢", color:"#2563eb", get:d=>d.contracts||0, unit:"社", cumulative:true},
+          {id:"requests", label:"依頼数",icon:"📋", color:"#d97706", get:d=>d.requests||0,  unit:"件"},
+          {id:"contracts",label:"成約数",icon:"✅", color:"#7c3aed", get:d=>d.contracts||0, unit:"件"},
+        ];
+        const fmtNum = (v,money)=>{
+          const n=Math.round(Number(v)||0);
+          if(money){ if(n>=100000000)return "¥"+(n/100000000).toFixed(2)+"億"; if(n>=10000)return "¥"+(n/10000).toFixed(1)+"万"; return "¥"+n.toLocaleString(); }
+          return n.toLocaleString();
+        };
+        const fmtDelta = (v,money)=>{ const n=Math.round(Number(v)||0); const s=n>=0?"+":"−"; const a=Math.abs(n); if(money){ if(a>=10000)return s+(a/10000).toFixed(1)+"万"; return s+a.toLocaleString(); } return s+a.toLocaleString(); };
+        // 各指標の当月値・前月比・年間累計
+        const kpiVals = metrics.map(mt=>{
+          const monthlyArr = md.map(mt.get);
+          let curVal, delta;
+          if(mt.cumulative){
+            const cum = monthlyArr.slice(0,curIdx+1).reduce((s,v)=>s+v,0);
+            curVal = cum; delta = monthlyArr[curIdx]||0; // 当月の新規＝増加分
+          } else {
+            curVal = monthlyArr[curIdx]||0;
+            delta  = curVal - (curIdx>0?(monthlyArr[curIdx-1]||0):0);
+          }
+          return {...mt, curVal, delta, monthlyArr};
+        });
+        // 選択中の指標でグラフ用データ（棒=月次, 線=累計）
+        const sel = kpiVals.find(m=>m.id===kpiMetric) || kpiVals[0];
+        let running=0;
+        const series = sel.monthlyArr.map((v,i)=>{ running+=v; return {label:`${i+1}`, monthly:v, cumulative:running, isCur:i===curIdx, isFuture:i>curIdx}; });
+        // chart geometry
+        const W=680, H=240, PL=8, PR=8, PT=16, PB=28, innerW=W-PL-PR, innerH=H-PT-PB;
+        const maxMonthly = Math.max(...series.map(p=>p.monthly), 1);
+        const maxCum = Math.max(...series.map(p=>p.cumulative), 1);
+        const barSlot = innerW/12;
+        const linePts = series.map((p,i)=>{ const x=PL+i*barSlot+barSlot/2; const y=PT+innerH-(p.cumulative/maxCum)*innerH; return {x,y,...p}; });
+        const linePath = linePts.filter(p=>!p.isFuture).map((p,i)=>`${i===0?"M":"L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+        return (
+          <div style={{background:"white",borderRadius:"1rem",padding:"1.25rem",border:`1px solid ${C.border}`,boxShadow:"0 1px 2px rgba(0,0,0,0.04)",marginBottom:"1rem"}}>
+            <div style={{fontWeight:800,fontSize:"0.9rem",color:C.text,marginBottom:"0.25rem"}}>📊 {curYear}年 実績サマリー</div>
+            <div style={{fontSize:"0.7rem",color:C.textMuted,marginBottom:"1rem"}}>（）内は前月比 · 当月 {monthLabel(mk)}</div>
+            {/* KPIカード */}
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:"0.625rem",marginBottom:"1.25rem"}}>
+              {kpiVals.map(k=>{
+                const active=k.id===kpiMetric;
+                return (
+                  <button key={k.id} onClick={()=>setKpiMetric(k.id)}
+                    style={{textAlign:"left",cursor:"pointer",fontFamily:"inherit",background:active?k.color+"0f":C.bg,border:`1.5px solid ${active?k.color:C.border}`,borderRadius:"0.75rem",padding:"0.875rem 1rem",transition:"all 0.15s"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginBottom:"0.5rem"}}>
+                      <span style={{fontSize:"1rem"}}>{k.icon}</span>
+                      <span style={{fontSize:"0.78rem",fontWeight:700,color:C.textSub}}>{k.label}{k.cumulative&&<span style={{fontSize:"0.62rem",color:C.textMuted,marginLeft:"0.2rem"}}>累計</span>}</span>
+                    </div>
+                    <div style={{fontSize:"1.4rem",fontWeight:800,color:k.color,lineHeight:1.1,letterSpacing:"-0.02em"}}>{fmtNum(k.curVal,k.money)}<span style={{fontSize:"0.7rem",fontWeight:600,color:C.textMuted,marginLeft:"0.15rem"}}>{k.money?"":k.unit}</span></div>
+                    <div style={{fontSize:"0.72rem",fontWeight:700,marginTop:"0.3rem",color:k.delta>0?"#059669":k.delta<0?"#dc2626":C.textMuted}}>
+                      {fmtDelta(k.delta,k.money)} {k.cumulative?"(今月新規)":"(前月比)"}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            {/* 月次推移グラフ（棒=月次, 線=累計） */}
+            <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem"}}>
+              <span style={{fontSize:"0.8rem",fontWeight:800,color:sel.color}}>{sel.icon} {sel.label}の月次推移</span>
+              <span style={{fontSize:"0.66rem",color:C.textMuted}}>■ 月次　— 累計</span>
+            </div>
+            <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{overflow:"visible"}}>
+              {[0,0.25,0.5,0.75,1].map(r=>{ const y=PT+innerH*(1-r); return <line key={r} x1={PL} y1={y} x2={W-PR} y2={y} stroke={C.borderLight} strokeWidth={1}/>; })}
+              {series.map((p,i)=>{
+                const bh=Math.max(0,(p.monthly/maxMonthly)*innerH);
+                const x=PL+i*barSlot+barSlot*0.2, bw=barSlot*0.6, y=PT+innerH-bh;
+                const fill=p.isFuture?C.borderLight:p.isCur?sel.color:sel.color+"66";
+                return (
+                  <g key={i}>
+                    {bh>0&&<rect x={x} y={y} width={bw} height={bh} fill={fill} rx={2}/>}
+                    <text x={PL+i*barSlot+barSlot/2} y={H-10} textAnchor="middle" fontSize={9} fill={p.isCur?sel.color:C.textMuted} fontWeight={p.isCur?800:400}>{p.label}月</text>
+                  </g>
+                );
+              })}
+              {linePath&&<path d={linePath} fill="none" stroke={sel.color} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round"/>}
+              {linePts.filter(p=>!p.isFuture).map((p,i)=>(
+                <circle key={i} cx={p.x} cy={p.y} r={p.isCur?4:2.5} fill="white" stroke={sel.color} strokeWidth={2}/>
+              ))}
+              {/* 当月の累計値ラベル */}
+              {(()=>{ const cp=linePts[curIdx]; if(!cp)return null; return <text x={cp.x} y={cp.y-9} textAnchor="middle" fontSize={9} fontWeight={800} fill={sel.color}>{fmtNum(cp.cumulative,sel.money)}</text>; })()}
+            </svg>
+            <div style={{textAlign:"right",fontSize:"0.66rem",color:C.textMuted,marginTop:"0.3rem"}}>年間累計（当月まで）: <b style={{color:sel.color}}>{fmtNum(series[curIdx]?.cumulative||0,sel.money)}{sel.money?"":sel.unit}</b></div>
+          </div>
+        );
+      })()}
+
       {sys==="beenet" && (
         <div style={{textAlign:"center",padding:"4rem 1rem",color:C.textMuted,background:"white",borderRadius:"8px",border:`1.5px dashed ${C.border}`}}>
           <div style={{fontSize:"2.5rem",marginBottom:"0.75rem"}}>🚧</div>
