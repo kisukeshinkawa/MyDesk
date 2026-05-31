@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v67-readable-dashboard"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v68-ai-better-context"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -19333,6 +19333,47 @@ function buildAssistantContext(data, currentUser, users, question) {
     const dt = (e.date||"").slice(0,16).replace("T"," ");
     ctx += `- ${dt} [${e.type}/${e.name}] ${userNameOf(e.userId)}: ${e.kind}${e.subtype?`(${e.subtype})`:""} "${(e.content||"").slice(0,80)}"\n`;
   }
+
+  // ── アクティブな営業対象（未接触/未設定/失注を除く＝商談中・提案中・成約等）の具体名リスト ──
+  // 「成約しそうな企業は？」「商談中の業者は？」など名前を答えるための情報源
+  const isActive = e => {
+    const s = (e.status||"").trim();
+    if (!s) return false;
+    if (s==="未接触"||s==="未設定"||s==="未着手"||s==="失注"||s==="見送り"||s==="断り"||s==="休眠") return false;
+    return true;
+  };
+  const lastActOf = e => {
+    let m = 0;
+    for (const l of (e.approachLogs||[])) { const t=new Date(l.createdAt||l.date||0).getTime(); if(t>m) m=t; }
+    for (const c of (e.chat||[]))         { const t=new Date(c.date||c.createdAt||0).getTime(); if(t>m) m=t; }
+    return m;
+  };
+  const pickActive = (arr, n) => arr.filter(isActive).map(e=>[e, lastActOf(e)]).sort((a,b)=>b[1]-a[1]).slice(0,n).map(x=>x[0]);
+  const fmtEntity = e => {
+    const parts = [];
+    if (e.status) parts.push(e.status);
+    const aa = (e.assigneeIds||[]).map(userNameOf).filter(Boolean);
+    if (aa.length) parts.push("担当:"+aa.join("、"));
+    const lastA = (e.approachLogs||[]).slice(-1)[0];
+    if (lastA) parts.push("最終:"+(lastA.createdAt||"").slice(0,10));
+    return `- ${e.name}${parts.length?" ("+parts.join(", ")+")":""}`;
+  };
+  const actCos = pickActive(companies, 40);
+  const actVnd = pickActive(vendors, 30);
+  const actMni = pickActive(munis, 20);
+  if (actCos.length) {
+    ctx += `\n【アクティブな企業（${actCos.length}社・最終活動順）】\n`;
+    for (const e of actCos) ctx += fmtEntity(e)+"\n";
+  }
+  if (actVnd.length) {
+    ctx += `\n【アクティブな業者（${actVnd.length}社・最終活動順）】\n`;
+    for (const e of actVnd) ctx += fmtEntity(e)+"\n";
+  }
+  if (actMni.length) {
+    ctx += `\n【アクティブな自治体（${actMni.length}・最終活動順）】\n`;
+    for (const e of actMni) ctx += fmtEntity(e)+"\n";
+  }
+
   // マッチしたエンティティの詳細
   if (mc.length+mv.length+mm.length > 0) {
     ctx += `\n【質問で言及された関連先の詳細】\n`;
@@ -19358,6 +19399,59 @@ function buildAssistantContext(data, currentUser, users, question) {
 }
 
 // ─── AI ASSISTANT FAB: アプリ右下に常駐するチャット起動ボタン＋パネル ──────
+
+// AI回答内の簡易Markdownを整形して表示する（## ### **太字** - 箇条書き --- など）
+function renderInlineMd(text) {
+  if(!text) return null;
+  // **bold** を <b> に
+  const parts = String(text).split(/(\*\*[^*\n]+\*\*)/g);
+  return parts.map((p, i) => {
+    if (p.startsWith("**") && p.endsWith("**")) return <b key={i}>{p.slice(2,-2)}</b>;
+    return <React.Fragment key={i}>{p}</React.Fragment>;
+  });
+}
+function renderMarkdown(text, C) {
+  if(!text) return null;
+  const lines = String(text).split("\n");
+  const out = [];
+  let listBuf = null;
+  const flushList = () => {
+    if (listBuf && listBuf.length) {
+      out.push(<ul key={"ul"+out.length} style={{margin:"0.3rem 0 0.5rem",paddingLeft:"1.1rem",listStyle:"none"}}>{listBuf.map((item,i)=>(
+        <li key={i} style={{position:"relative",marginBottom:"0.25rem",paddingLeft:"0.7rem"}}>
+          <span style={{position:"absolute",left:0,top:"0.45rem",width:5,height:5,borderRadius:"50%",background:C.accent,display:"inline-block"}}/>
+          {renderInlineMd(item)}
+        </li>
+      ))}</ul>);
+      listBuf = null;
+    }
+  };
+  lines.forEach((line, i) => {
+    const t = line.trim();
+    if (/^[-*]\s+/.test(t)) {
+      listBuf = listBuf || [];
+      listBuf.push(t.replace(/^[-*]\s+/, ""));
+      return;
+    }
+    flushList();
+    if (t.startsWith("### ")) {
+      out.push(<div key={i} style={{fontSize:"0.92rem",fontWeight:700,color:C.text,marginTop:"0.7rem",marginBottom:"0.25rem"}}>{renderInlineMd(t.slice(4))}</div>);
+    } else if (t.startsWith("## ")) {
+      out.push(<div key={i} style={{fontSize:"1rem",fontWeight:800,color:C.text,marginTop:i?"0.8rem":0,marginBottom:"0.35rem",letterSpacing:"-0.01em"}}>{renderInlineMd(t.slice(3))}</div>);
+    } else if (t.startsWith("# ")) {
+      out.push(<div key={i} style={{fontSize:"1.05rem",fontWeight:800,color:C.text,marginTop:i?"0.8rem":0,marginBottom:"0.4rem",letterSpacing:"-0.01em"}}>{renderInlineMd(t.slice(2))}</div>);
+    } else if (t === "---" || t === "***") {
+      out.push(<hr key={i} style={{border:"none",borderTop:`1px solid ${C.borderLight}`,margin:"0.6rem 0"}}/>);
+    } else if (!t) {
+      out.push(<div key={i} style={{height:"0.45rem"}}/>);
+    } else {
+      out.push(<div key={i} style={{marginBottom:"0.25rem",lineHeight:1.65}}>{renderInlineMd(t)}</div>);
+    }
+  });
+  flushList();
+  return out;
+}
+
 function AssistantFab({data, currentUser, users}) {
   const [open, setOpen] = React.useState(false);
   const [input, setInput] = React.useState("");
@@ -19384,20 +19478,21 @@ function AssistantFab({data, currentUser, users}) {
       const histText = history.slice(-3).map(h=>`【過去の質問】${h.q}\n【過去の回答】${h.a}\n`).join("");
       const prompt = `あなたは営業管理ツール「MyDesk」に組み込まれた日本語AIアシスタントです。提供されたデータをもとに、営業スタッフの質問に簡潔・正確に答えてください。
 
-【回答のルール】
-- 必ず日本語で答える
-- 関連する企業名・担当者名・日付・数字を必ず含める
-- 該当データが提供されていない場合は「該当する記録は見つかりませんでした」と答え、推測しない
-- 長くなりすぎないよう、3〜8行を目安にまとめる
-- 重要な情報は箇条書きで整理する
-- 「あの資料が欲しい」「○○の画面に行きたい」と聞かれたら、該当する企業・業者・自治体の名前を案内する
+【絶対のルール】
+- **必ず3〜6行で簡潔に**回答する。長文は禁止。
+- 関連する企業名・担当者名・日付・数字を必ず**太字**で含める
+- 該当データが提供されていない場合は「該当する記録は見つかりませんでした」とだけ答える。推測しない
+- 企業名・業者名のリストを聞かれたら、提供データの「アクティブな企業」「アクティブな業者」セクションから具体名を最大5件まで挙げる
+- 「## 見出し」は使わない。必要なら「**太字**」で強調するだけ
+- 箇条書きが必要なときのみ「- 項目」を使う（最大5項目）
+- 「[企業名]の画面で確認できます」のような案内が役立つ場合は最後に1行で添える
 
 ${histText}===== MyDeskの現在のデータ =====
 ${ctx}
 ===== ユーザーの質問 =====
 ${q}
 
-上記のデータだけを根拠に、日本語で回答してください。`;
+上記のデータだけを根拠に、3〜6行の日本語で簡潔に回答してください。`;
 
       const res = await fetch(`${API_BASE}/api/generate-email`, {
         method:"POST",
@@ -19478,7 +19573,7 @@ ${q}
                     <div style={{maxWidth:"85%",padding:"0.55rem 0.85rem",borderRadius:"14px 14px 4px 14px",background:ACC,color:"white",fontSize:"0.85rem",lineHeight:1.5,wordBreak:"break-word"}}>{h.q}</div>
                   </div>
                   <div style={{display:"flex"}}>
-                    <div style={{maxWidth:"95%",padding:"0.75rem 0.95rem",borderRadius:"4px 14px 14px 14px",background:C.bg,color:C.text,fontSize:"0.85rem",lineHeight:1.65,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{h.a}</div>
+                    <div style={{maxWidth:"95%",padding:"0.75rem 0.95rem",borderRadius:"4px 14px 14px 14px",background:C.bg,color:C.text,fontSize:"0.85rem",lineHeight:1.65,wordBreak:"break-word"}}>{renderMarkdown(h.a, C)}</div>
                   </div>
                 </div>
               ))}
