@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v64-analytics-dashboard"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v65-ai-assistant-redesign"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -19271,6 +19271,91 @@ const BIZCON_DEF = {hpByMonth:{},applicants:0,fullApplicants:0};
 
 function getMonthKey(d=new Date()){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;}
 function getYearKey(d=new Date()){return `${d.getFullYear()}`;}
+
+// ─── AI ASSISTANT: MyDesk 全体データから質問への文脈を生成 ─────────────────
+function buildAssistantContext(data, currentUser, users, question) {
+  const companies  = data?.companies||[];
+  const vendors    = data?.vendors||[];
+  const munis      = data?.municipalities||[];
+  const tasks      = data?.tasks||[];
+  const quotes     = data?.quotes||[];
+  const NOW = Date.now(), WEEK_MS = 7*24*60*60*1000;
+  const userNameOf = id => { const u=(users||[]).find(u=>u.id===id); return u?(u.lastName||u.name||"不明"):""; };
+  const countByStatus = arr => { const m={}; for(const x of arr){const s=x.status||"未設定"; m[s]=(m[s]||0)+1;} return m; };
+
+  // 全エンティティから活動イベントを収集
+  const events = [];
+  const collect = (arr, type) => {
+    for (const e of arr) {
+      for (const l of (e.approachLogs||[])) events.push({date:l.createdAt, kind:"approach", subtype:l.type||"", type, name:e.name, eid:e.id, userId:l.createdBy, content:l.note||l.content||""});
+      for (const c of (e.chat||[]))         events.push({date:c.date,      kind:"chat",     type, name:e.name, eid:e.id, userId:c.userId,  content:c.text||c.content||""});
+      for (const m of (e.memos||[]))        events.push({date:m.createdAt, kind:"memo",     type, name:e.name, eid:e.id, userId:m.createdBy, content:m.content||""});
+    }
+  };
+  collect(companies,"企業"); collect(vendors,"業者"); collect(munis,"自治体");
+  events.sort((a,b)=>new Date(b.date||0)-new Date(a.date||0));
+
+  // メンバー別週次活動
+  const ua = {}; for (const u of (users||[])) ua[u.id] = {name:u.lastName||u.name||"不明", calls:0, approaches:0, memos:0, chats:0};
+  for (const ev of events) {
+    const ts = new Date(ev.date||0).getTime(); if (!ts || NOW-ts > WEEK_MS) continue;
+    const r = ua[ev.userId]; if(!r) continue;
+    if (ev.kind==="approach") { r.approaches++; if((ev.subtype+"").match(/電話|call/i)) r.calls++; }
+    else if (ev.kind==="memo") r.memos++;
+    else if (ev.kind==="chat") r.chats++;
+  }
+
+  // 質問内のエンティティ名マッチ（3文字以上の名前を含むか）
+  const norm = s => (s||"").replace(/[\s\u3000・株式会社有限会社]/g,"").toLowerCase();
+  const qN = norm(question);
+  const findMatches = arr => arr.filter(e=>{ const n=norm(e.name); return n.length>=3 && qN.includes(n); }).slice(0,4);
+  const mc = findMatches(companies), mv = findMatches(vendors), mm = findMatches(munis);
+
+  // 文脈文字列を組み立て
+  let ctx = "";
+  ctx += `【現在のユーザー】${currentUser?.lastName||currentUser?.name||"不明"}（id:${currentUser?.id||""}）\n`;
+  ctx += `【今日の日付】${new Date().toISOString().slice(0,10)}\n\n`;
+  ctx += `【データ全体】\n`;
+  ctx += `企業: ${companies.length}社 / 内訳: ${JSON.stringify(countByStatus(companies))}\n`;
+  ctx += `業者: ${vendors.length}社 / 内訳: ${JSON.stringify(countByStatus(vendors))}\n`;
+  ctx += `自治体: ${munis.length} / 内訳: ${JSON.stringify(countByStatus(munis))}\n`;
+  ctx += `タスク: ${tasks.length}件（進行中 ${tasks.filter(t=>t.status&&t.status!=="完了"&&t.status!=="done").length}件）\n`;
+  ctx += `見積: ${quotes.length}件\n\n`;
+  ctx += `【メンバー別 過去7日の活動】\n`;
+  for (const u of Object.values(ua)) ctx += `- ${u.name}: 電話${u.calls}件, アプローチ${u.approaches}件, メモ${u.memos}件, チャット${u.chats}件\n`;
+  ctx += `\n【進行中タスク（最新10件）】\n`;
+  for (const t of tasks.filter(t=>t.status!=="完了"&&t.status!=="done").slice(0,10)) {
+    const assignee = t.assigneeIds?.map(userNameOf).join("、")||"";
+    ctx += `- ${t.title||"無題"}${t.dueDate?` (期限:${t.dueDate})`:""}${assignee?` 担当:${assignee}`:""}\n`;
+  }
+  ctx += `\n【最近のアクティビティ（最新40件）】\n`;
+  for (const e of events.slice(0,40)) {
+    const dt = (e.date||"").slice(0,16).replace("T"," ");
+    ctx += `- ${dt} [${e.type}/${e.name}] ${userNameOf(e.userId)}: ${e.kind}${e.subtype?`(${e.subtype})`:""} "${(e.content||"").slice(0,80)}"\n`;
+  }
+  // マッチしたエンティティの詳細
+  if (mc.length+mv.length+mm.length > 0) {
+    ctx += `\n【質問で言及された関連先の詳細】\n`;
+    const dump = (e, type) => {
+      let s = `\n■${type}: ${e.name}\n`;
+      s += `  ステータス: ${e.status||"未設定"}\n`;
+      if (e.assigneeIds?.length) s += `  担当者: ${e.assigneeIds.map(userNameOf).join("、")}\n`;
+      if (e.phone) s += `  電話: ${e.phone}\n`;
+      if (e.address||e.prefecture) s += `  所在: ${e.prefecture||""}${e.address||""}\n`;
+      const lastA = (e.approachLogs||[]).slice(-1)[0];
+      if (lastA) s += `  最終アプローチ: ${(lastA.createdAt||"").slice(0,10)} ${lastA.type||""} "${(lastA.note||"").slice(0,120)}"\n`;
+      const recentMemos = (e.memos||[]).slice(-2);
+      for (const m of recentMemos) s += `  メモ: "${(m.content||"").slice(0,200)}"\n`;
+      const recentChats = (e.chat||[]).slice(-4);
+      if (recentChats.length) { s+=`  チャット履歴:\n`; for (const c of recentChats) s += `    ${(c.date||"").slice(0,16)} ${userNameOf(c.userId)}: ${(c.text||c.content||"").slice(0,120)}\n`; }
+      return s;
+    };
+    for (const e of mc) ctx += dump(e,"企業");
+    for (const e of mv) ctx += dump(e,"業者");
+    for (const e of mm) ctx += dump(e,"自治体");
+  }
+  return ctx;
+}
 function monthLabel(k){const[y,m]=k.split("-");return `${y}年${parseInt(m)}月`;}
 function yearLabel(k){return `${k}年`;}
 function shiftMonth(k,delta){const[y,m]=k.split("-");const d=new Date(+y,+m-1+delta,1);return getMonthKey(d);}
@@ -19822,6 +19907,55 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
   // expanded sections for collapsible partner stores
   const [openSects,setOpenSects]= useState({serviceLog:false,requests:false,contracts:false,revenue:false});
   const [kpiMetric, setKpiMetric] = useState("revenue"); // 上部ダッシュボードのグラフ表示指標
+  // AI Assistant
+  const [aiInput,   setAiInput]   = useState("");
+  const [aiAnswer,  setAiAnswer]  = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiHistory, setAiHistory] = useState([]); // [{q,a},...] 最新5件まで保持
+  const [aiError,   setAiError]   = useState("");
+
+  const askAi = async (qOverride) => {
+    const q = (qOverride||aiInput).trim();
+    if (!q || aiLoading) return;
+    setAiLoading(true); setAiError(""); setAiAnswer("");
+    try {
+      const ctx = buildAssistantContext(data, currentUser, users||data?.users||[], q);
+      // 直近のやりとり3往復をコンテキストに含める
+      const histText = aiHistory.slice(-3).map(h=>`【過去の質問】${h.q}\n【過去の回答】${h.a}\n`).join("");
+      const prompt = `あなたは営業管理ツール「MyDesk」に組み込まれた日本語AIアシスタントです。提供されたデータをもとに、営業スタッフの質問に簡潔・正確に答えてください。
+
+【回答のルール】
+- 必ず日本語で答える
+- 関連する企業名・担当者名・日付・数字を必ず含める
+- 該当データが提供されていない場合は「該当する記録は見つかりませんでした」と答え、推測しない
+- 長くなりすぎないよう、3〜8行を目安にまとめる
+- 重要な情報は箇条書きで整理する
+- 「あの資料が欲しい」「○○の画面に行きたい」と聞かれたら、該当する企業・業者・自治体の名前を案内する（「[企業名]の詳細画面で確認できます」など）
+
+${histText}===== MyDeskの現在のデータ =====
+${ctx}
+===== ユーザーの質問 =====
+${q}
+
+上記のデータだけを根拠に、日本語で回答してください。`;
+
+      const res = await fetch(`${API_BASE}/api/generate-email`, {
+        method:"POST",
+        headers:{"Content-Type":"application/json","x-mydesk-secret":"mydesk2026"},
+        body: JSON.stringify({prompt})
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error||`HTTP ${res.status}`);
+      const ans = (json.text||"").trim() || "回答が空でした。";
+      setAiAnswer(ans);
+      setAiHistory(h => [...h, {q, a:ans}].slice(-5));
+      setAiInput("");
+    } catch (e) {
+      setAiError("⚠️ " + (e.message||"エラー"));
+    }
+    setAiLoading(false);
+  };
+
 
   const ana     = data.analytics || {};
   const sysData = ana[sys] || {};
@@ -20188,99 +20322,166 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
         )}
       </div>
 
-      {/* ════ DUSTALK KPI ダッシュボード（実績サマリー＋月次推移） ════ */}
+      {/* ════ AIアシスタント ＋ KPI ダッシュボード ════ */}
       {sys==="dustalk" && (()=>{
         const curYear = mk.split("-")[0];
         const months = Array.from({length:12},(_,i)=>`${curYear}-${String(i+1).padStart(2,"0")}`);
         const md = months.map(m=>mergeDustalk(sysData[m]||{}));
         const curIdx = parseInt(mk.split("-")[1],10)-1;
-        // 指標定義: monthly=その月の値 / cumulative=累計（顧客数は累計成約）
+        const ACC = C.accent;
+        const POS = "#10b981", NEG = "#ef4444";
         const metrics = [
-          {id:"revenue",  label:"売上",  icon:"💰", color:"#059669", get:d=>d.revenue||0,  unit:"円", money:true},
-          {id:"customers",label:"顧客数",icon:"🏢", color:"#2563eb", get:d=>d.contracts||0, unit:"社", cumulative:true},
-          {id:"requests", label:"依頼数",icon:"📋", color:"#d97706", get:d=>d.requests||0,  unit:"件"},
-          {id:"contracts",label:"成約数",icon:"✅", color:"#7c3aed", get:d=>d.contracts||0, unit:"件"},
+          {id:"revenue",  label:"売上",   sub:"Revenue",   get:d=>d.revenue||0,  money:true,  cumulative:false},
+          {id:"customers",label:"顧客数", sub:"Customers", get:d=>d.contracts||0,             cumulative:true},
+          {id:"requests", label:"依頼数", sub:"Requests",  get:d=>d.requests||0,              cumulative:false},
+          {id:"contracts",label:"成約数", sub:"Closed",    get:d=>d.contracts||0,             cumulative:false},
         ];
         const fmtNum = (v,money)=>{
           const n=Math.round(Number(v)||0);
           if(money){ if(n>=100000000)return "¥"+(n/100000000).toFixed(2)+"億"; if(n>=10000)return "¥"+(n/10000).toFixed(1)+"万"; return "¥"+n.toLocaleString(); }
           return n.toLocaleString();
         };
-        const fmtDelta = (v,money)=>{ const n=Math.round(Number(v)||0); const s=n>=0?"+":"−"; const a=Math.abs(n); if(money){ if(a>=10000)return s+(a/10000).toFixed(1)+"万"; return s+a.toLocaleString(); } return s+a.toLocaleString(); };
-        // 各指標の当月値・前月比・年間累計
+        const fmtDelta = (v,money)=>{ const n=Math.round(Number(v)||0); const a=Math.abs(n); if(money){ if(a>=10000)return (a/10000).toFixed(1)+"万"; return a.toLocaleString(); } return a.toLocaleString(); };
         const kpiVals = metrics.map(mt=>{
           const monthlyArr = md.map(mt.get);
           let curVal, delta;
-          if(mt.cumulative){
-            const cum = monthlyArr.slice(0,curIdx+1).reduce((s,v)=>s+v,0);
-            curVal = cum; delta = monthlyArr[curIdx]||0; // 当月の新規＝増加分
-          } else {
-            curVal = monthlyArr[curIdx]||0;
-            delta  = curVal - (curIdx>0?(monthlyArr[curIdx-1]||0):0);
-          }
+          if(mt.cumulative){ curVal = monthlyArr.slice(0,curIdx+1).reduce((s,v)=>s+v,0); delta = monthlyArr[curIdx]||0; }
+          else { curVal = monthlyArr[curIdx]||0; delta = curVal - (curIdx>0?(monthlyArr[curIdx-1]||0):0); }
           return {...mt, curVal, delta, monthlyArr};
         });
-        // 選択中の指標でグラフ用データ（棒=月次, 線=累計）
         const sel = kpiVals.find(m=>m.id===kpiMetric) || kpiVals[0];
         let running=0;
         const series = sel.monthlyArr.map((v,i)=>{ running+=v; return {label:`${i+1}`, monthly:v, cumulative:running, isCur:i===curIdx, isFuture:i>curIdx}; });
-        // chart geometry
-        const W=680, H=240, PL=8, PR=8, PT=16, PB=28, innerW=W-PL-PR, innerH=H-PT-PB;
+        const sparkPath = (arr,w=120,h=28)=>{ const max=Math.max(...arr,1); return arr.map((v,i)=>{ const x=(i/(arr.length-1))*w; const y=h-(v/max)*(h-2)-1; return `${i===0?"M":"L"}${x.toFixed(1)},${y.toFixed(1)}`; }).join(" "); };
+        const W=720, H=240, PL=42, PR=14, PT=14, PB=30, innerW=W-PL-PR, innerH=H-PT-PB;
         const maxMonthly = Math.max(...series.map(p=>p.monthly), 1);
         const maxCum = Math.max(...series.map(p=>p.cumulative), 1);
         const barSlot = innerW/12;
         const linePts = series.map((p,i)=>{ const x=PL+i*barSlot+barSlot/2; const y=PT+innerH-(p.cumulative/maxCum)*innerH; return {x,y,...p}; });
         const linePath = linePts.filter(p=>!p.isFuture).map((p,i)=>`${i===0?"M":"L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+        const suggestions = ["今週の活動を教えて","進行中のタスクは？","直近で動きがあった案件は？","成約しそうな企業はある？"];
         return (
-          <div style={{background:"white",borderRadius:"1rem",padding:"1.25rem",border:`1px solid ${C.border}`,boxShadow:"0 1px 2px rgba(0,0,0,0.04)",marginBottom:"1rem"}}>
-            <div style={{fontWeight:800,fontSize:"0.9rem",color:C.text,marginBottom:"0.25rem"}}>📊 {curYear}年 実績サマリー</div>
-            <div style={{fontSize:"0.7rem",color:C.textMuted,marginBottom:"1rem"}}>（）内は前月比 · 当月 {monthLabel(mk)}</div>
-            {/* KPIカード */}
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:"0.625rem",marginBottom:"1.25rem"}}>
-              {kpiVals.map(k=>{
-                const active=k.id===kpiMetric;
-                return (
-                  <button key={k.id} onClick={()=>setKpiMetric(k.id)}
-                    style={{textAlign:"left",cursor:"pointer",fontFamily:"inherit",background:active?k.color+"0f":C.bg,border:`1.5px solid ${active?k.color:C.border}`,borderRadius:"0.75rem",padding:"0.875rem 1rem",transition:"all 0.15s"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginBottom:"0.5rem"}}>
-                      <span style={{fontSize:"1rem"}}>{k.icon}</span>
-                      <span style={{fontSize:"0.78rem",fontWeight:700,color:C.textSub}}>{k.label}{k.cumulative&&<span style={{fontSize:"0.62rem",color:C.textMuted,marginLeft:"0.2rem"}}>累計</span>}</span>
-                    </div>
-                    <div style={{fontSize:"1.4rem",fontWeight:800,color:k.color,lineHeight:1.1,letterSpacing:"-0.02em"}}>{fmtNum(k.curVal,k.money)}<span style={{fontSize:"0.7rem",fontWeight:600,color:C.textMuted,marginLeft:"0.15rem"}}>{k.money?"":k.unit}</span></div>
-                    <div style={{fontSize:"0.72rem",fontWeight:700,marginTop:"0.3rem",color:k.delta>0?"#059669":k.delta<0?"#dc2626":C.textMuted}}>
-                      {fmtDelta(k.delta,k.money)} {k.cumulative?"(今月新規)":"(前月比)"}
-                    </div>
-                  </button>
-                );
-              })}
+          <>
+            {/* AIアシスタント */}
+            <div style={{background:"white",borderRadius:"14px",padding:"1.15rem 1.25rem 1.1rem",border:`1px solid ${C.border}`,boxShadow:"0 1px 2px rgba(0,0,0,0.03)",marginBottom:"1rem",position:"relative",overflow:"hidden"}}>
+              <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:`linear-gradient(90deg, ${ACC}, ${ACC}aa 50%, transparent)`}}/>
+              <div style={{display:"flex",alignItems:"center",gap:"0.55rem",marginBottom:"0.75rem"}}>
+                <div style={{width:26,height:26,borderRadius:"7px",background:`linear-gradient(135deg, ${ACC}, ${ACC}cc)`,display:"flex",alignItems:"center",justifyContent:"center",color:"white",fontSize:"0.65rem",fontWeight:800,letterSpacing:"0.05em"}}>AI</div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:"0.85rem",fontWeight:700,color:C.text,letterSpacing:"-0.005em"}}>MyDesk アシスタント</div>
+                  <div style={{fontSize:"0.66rem",color:C.textMuted,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>案件状況・タスク・担当者の活動など、MyDesk内の情報を質問できます</div>
+                </div>
+              </div>
+              <div style={{display:"flex",gap:"0.5rem"}}>
+                <input type="text" value={aiInput} onChange={e=>setAiInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();askAi();}}}
+                  placeholder="質問を入力…（例: あの案件どうなってる？）"
+                  style={{flex:1,padding:"0.7rem 0.9rem",borderRadius:"10px",border:`1px solid ${C.border}`,fontSize:"0.88rem",fontFamily:"inherit",outline:"none",background:C.bg,boxSizing:"border-box",minWidth:0}}/>
+                <button onClick={()=>askAi()} disabled={aiLoading||!aiInput.trim()}
+                  style={{padding:"0 1.1rem",borderRadius:"10px",border:"none",background:aiLoading||!aiInput.trim()?C.borderLight:ACC,color:aiLoading||!aiInput.trim()?C.textMuted:"white",fontSize:"0.84rem",fontWeight:700,cursor:aiLoading||!aiInput.trim()?"default":"pointer",fontFamily:"inherit",transition:"all 0.15s",minWidth:60,letterSpacing:"-0.005em",flexShrink:0}}>
+                  {aiLoading?"…":"送信"}
+                </button>
+              </div>
+              {!aiAnswer && !aiLoading && !aiError && (
+                <div style={{display:"flex",flexWrap:"wrap",gap:"0.4rem",marginTop:"0.7rem"}}>
+                  {suggestions.map(s=>(
+                    <button key={s} onClick={()=>{setAiInput(s);askAi(s);}}
+                      style={{padding:"0.32rem 0.75rem",borderRadius:999,border:`1px solid ${C.border}`,background:"white",fontSize:"0.7rem",fontWeight:600,color:C.textSub,cursor:"pointer",fontFamily:"inherit",transition:"all 0.15s"}}>
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {aiLoading && <div style={{marginTop:"0.85rem",fontSize:"0.78rem",color:C.textMuted,display:"flex",alignItems:"center",gap:"0.4rem"}}><span style={{display:"inline-block",width:6,height:6,borderRadius:"50%",background:ACC}}/><span>考えています…</span></div>}
+              {aiError && <div style={{marginTop:"0.75rem",fontSize:"0.78rem",color:NEG,padding:"0.6rem 0.8rem",background:"#fef2f2",border:"1px solid #fee2e2",borderRadius:"8px"}}>{aiError}</div>}
+              {aiAnswer && !aiLoading && (
+                <div style={{marginTop:"0.85rem",padding:"0.9rem 1rem",background:C.bg,borderLeft:`3px solid ${ACC}`,borderRadius:"0 8px 8px 0",fontSize:"0.85rem",lineHeight:1.65,color:C.text,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{aiAnswer}</div>
+              )}
+              {aiHistory.length>1 && (
+                <details style={{marginTop:"0.55rem"}}>
+                  <summary style={{fontSize:"0.7rem",color:C.textMuted,cursor:"pointer",userSelect:"none",listStyle:"none"}}>▸ 過去のやりとり ({aiHistory.length-1}件)</summary>
+                  <div style={{marginTop:"0.4rem",display:"flex",flexDirection:"column",gap:"0.4rem"}}>
+                    {aiHistory.slice(0,-1).reverse().map((h,i)=>(
+                      <div key={i} style={{fontSize:"0.72rem",color:C.textSub,padding:"0.5rem 0.7rem",background:C.bg,borderRadius:"6px"}}><b style={{color:C.text}}>Q:</b> {h.q}<div style={{color:C.textMuted,marginTop:"0.2rem"}}>{h.a.slice(0,180)}{h.a.length>180?"…":""}</div></div>
+                    ))}
+                  </div>
+                </details>
+              )}
             </div>
-            {/* 月次推移グラフ（棒=月次, 線=累計） */}
-            <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem"}}>
-              <span style={{fontSize:"0.8rem",fontWeight:800,color:sel.color}}>{sel.icon} {sel.label}の月次推移</span>
-              <span style={{fontSize:"0.66rem",color:C.textMuted}}>■ 月次　— 累計</span>
-            </div>
-            <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{overflow:"visible"}}>
-              {[0,0.25,0.5,0.75,1].map(r=>{ const y=PT+innerH*(1-r); return <line key={r} x1={PL} y1={y} x2={W-PR} y2={y} stroke={C.borderLight} strokeWidth={1}/>; })}
-              {series.map((p,i)=>{
-                const bh=Math.max(0,(p.monthly/maxMonthly)*innerH);
-                const x=PL+i*barSlot+barSlot*0.2, bw=barSlot*0.6, y=PT+innerH-bh;
-                const fill=p.isFuture?C.borderLight:p.isCur?sel.color:sel.color+"66";
-                return (
-                  <g key={i}>
-                    {bh>0&&<rect x={x} y={y} width={bw} height={bh} fill={fill} rx={2}/>}
-                    <text x={PL+i*barSlot+barSlot/2} y={H-10} textAnchor="middle" fontSize={9} fill={p.isCur?sel.color:C.textMuted} fontWeight={p.isCur?800:400}>{p.label}月</text>
+
+            {/* KPIダッシュボード（洋風） */}
+            <div style={{background:"white",borderRadius:"14px",padding:"1.5rem",border:`1px solid ${C.border}`,boxShadow:"0 1px 2px rgba(0,0,0,0.03)",marginBottom:"1rem"}}>
+              <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginBottom:"1.5rem",flexWrap:"wrap",gap:"0.5rem"}}>
+                <div>
+                  <div style={{fontSize:"0.6rem",fontWeight:700,letterSpacing:"0.12em",color:C.textMuted,textTransform:"uppercase",marginBottom:"0.25rem"}}>Performance overview</div>
+                  <div style={{fontSize:"1.7rem",fontWeight:300,color:C.text,letterSpacing:"-0.03em",lineHeight:1}}>{curYear}<span style={{fontSize:"0.72rem",fontWeight:400,color:C.textMuted,marginLeft:"0.5rem"}}>年間実績</span></div>
+                </div>
+                <div style={{fontSize:"0.7rem",color:C.textMuted,fontWeight:600,letterSpacing:"0.02em"}}>当月 · {monthLabel(mk)}</div>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:0,marginBottom:"1.75rem",border:`1px solid ${C.borderLight}`,borderRadius:"10px",overflow:"hidden"}}>
+                {kpiVals.map((k,idx)=>{
+                  const active=k.id===kpiMetric;
+                  const isPos = k.delta>0, isNeg = k.delta<0;
+                  return (
+                    <button key={k.id} onClick={()=>setKpiMetric(k.id)}
+                      style={{textAlign:"left",cursor:"pointer",fontFamily:"inherit",background:active?ACC+"08":"white",border:"none",borderRight:idx<kpiVals.length-1?`1px solid ${C.borderLight}`:"none",padding:"1.1rem 1.15rem 0.85rem",position:"relative",transition:"background 0.15s",overflow:"hidden"}}>
+                      {active && <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:ACC}}/>}
+                      <div style={{display:"flex",alignItems:"center",gap:"0.35rem",marginBottom:"0.55rem"}}>
+                        <span style={{width:5,height:5,borderRadius:"50%",background:active?ACC:C.borderLight,display:"inline-block"}}/>
+                        <span style={{fontSize:"0.6rem",fontWeight:700,letterSpacing:"0.1em",color:active?ACC:C.textMuted,textTransform:"uppercase"}}>{k.sub}</span>
+                      </div>
+                      <div style={{fontSize:"1.7rem",fontWeight:500,color:C.text,lineHeight:1,letterSpacing:"-0.035em",fontVariantNumeric:"tabular-nums",marginBottom:"0.4rem"}}>{fmtNum(k.curVal,k.money)}</div>
+                      <div style={{display:"flex",alignItems:"center",gap:"0.4rem",fontSize:"0.7rem",fontVariantNumeric:"tabular-nums"}}>
+                        <span style={{display:"inline-flex",alignItems:"center",gap:"0.1rem",fontWeight:700,color:isPos?POS:isNeg?NEG:C.textMuted}}>
+                          <span style={{fontSize:"0.75rem"}}>{isPos?"↑":isNeg?"↓":"−"}</span>
+                          {fmtDelta(k.delta,k.money)}
+                        </span>
+                        <span style={{color:C.textMuted,fontSize:"0.64rem",fontWeight:500}}>{k.cumulative?"今月新規":"前月比"}</span>
+                      </div>
+                      <svg viewBox="0 0 120 28" preserveAspectRatio="none" style={{width:"100%",height:24,marginTop:"0.55rem",display:"block"}}>
+                        <path d={sparkPath(k.monthlyArr,120,28)} fill="none" stroke={active?ACC:C.textMuted+"99"} strokeWidth={1.3} strokeLinejoin="round" strokeLinecap="round"/>
+                        {(()=>{ const max=Math.max(...k.monthlyArr,1); const v=k.monthlyArr[curIdx]||0; const x=(curIdx/11)*120; const y=28-(v/max)*(28-2)-1; return <circle cx={x} cy={y} r={2.5} fill={active?ACC:C.text}/>; })()}
+                      </svg>
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.85rem",flexWrap:"wrap",gap:"0.5rem"}}>
+                <div>
+                  <div style={{fontSize:"0.6rem",fontWeight:700,letterSpacing:"0.12em",color:C.textMuted,textTransform:"uppercase",marginBottom:"0.2rem"}}>Monthly trend</div>
+                  <div style={{fontSize:"0.95rem",fontWeight:600,color:C.text,letterSpacing:"-0.01em"}}>{sel.label}<span style={{fontSize:"0.7rem",fontWeight:400,color:C.textMuted,marginLeft:"0.5rem"}}>月次推移 ＋ 年間累計</span></div>
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:"0.85rem",fontSize:"0.66rem",color:C.textMuted,fontWeight:600,letterSpacing:"0.02em"}}>
+                  <span style={{display:"flex",alignItems:"center",gap:"0.3rem"}}><span style={{display:"inline-block",width:10,height:10,background:ACC+"66",borderRadius:2}}/>月次</span>
+                  <span style={{display:"flex",alignItems:"center",gap:"0.3rem"}}><span style={{display:"inline-block",width:14,height:2,background:ACC,borderRadius:2}}/>累計</span>
+                </div>
+              </div>
+              <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{overflow:"visible",display:"block"}}>
+                {[0,0.25,0.5,0.75,1].map(r=>{ const y=PT+innerH*(1-r); return <line key={r} x1={PL} y1={y} x2={W-PR} y2={y} stroke={C.borderLight} strokeWidth={r===0||r===1?1:0.6} strokeDasharray={r===0||r===1?"":"2 3"}/>; })}
+                {[0,0.5,1].map(r=>{ const y=PT+innerH*(1-r); const val = Math.round(maxCum*r); return <text key={r} x={PL-7} y={y+3} textAnchor="end" fontSize={9} fill={C.textMuted} fontVariantNumeric="tabular-nums">{(sel.money?"":"")+fmtNum(val,sel.money).replace("¥","")}</text>; })}
+                {series.map((p,i)=>{
+                  const bh=Math.max(0,(p.monthly/maxMonthly)*innerH*0.78);
+                  const x=PL+i*barSlot+barSlot*0.28, bw=barSlot*0.44, y=PT+innerH-bh;
+                  const fill=p.isFuture?C.borderLight:p.isCur?ACC:ACC+"55";
+                  return (
+                    <g key={i}>
+                      {bh>0&&<rect x={x} y={y} width={bw} height={bh} fill={fill} rx={2}/>}
+                      <text x={PL+i*barSlot+barSlot/2} y={H-10} textAnchor="middle" fontSize={9.5} fill={p.isCur?ACC:C.textMuted} fontWeight={p.isCur?700:500} fontVariantNumeric="tabular-nums">{p.label}</text>
+                    </g>
+                  );
+                })}
+                {linePath&&<path d={linePath} fill="none" stroke={ACC} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round"/>}
+                {linePts.filter(p=>!p.isFuture).map((p,i)=>(
+                  <circle key={i} cx={p.x} cy={p.y} r={p.isCur?4:2} fill="white" stroke={ACC} strokeWidth={p.isCur?2.5:1.5}/>
+                ))}
+                {(()=>{ const cp=linePts[curIdx]; if(!cp)return null; const txt=fmtNum(cp.cumulative,sel.money); const w=Math.max(40,txt.length*6.5); return (
+                  <g>
+                    <rect x={cp.x-w/2} y={cp.y-22} width={w} height={16} rx={3} fill={ACC}/>
+                    <text x={cp.x} y={cp.y-11} textAnchor="middle" fontSize={9} fontWeight={700} fill="white" fontVariantNumeric="tabular-nums">{txt}</text>
                   </g>
-                );
-              })}
-              {linePath&&<path d={linePath} fill="none" stroke={sel.color} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round"/>}
-              {linePts.filter(p=>!p.isFuture).map((p,i)=>(
-                <circle key={i} cx={p.x} cy={p.y} r={p.isCur?4:2.5} fill="white" stroke={sel.color} strokeWidth={2}/>
-              ))}
-              {/* 当月の累計値ラベル */}
-              {(()=>{ const cp=linePts[curIdx]; if(!cp)return null; return <text x={cp.x} y={cp.y-9} textAnchor="middle" fontSize={9} fontWeight={800} fill={sel.color}>{fmtNum(cp.cumulative,sel.money)}</text>; })()}
-            </svg>
-            <div style={{textAlign:"right",fontSize:"0.66rem",color:C.textMuted,marginTop:"0.3rem"}}>年間累計（当月まで）: <b style={{color:sel.color}}>{fmtNum(series[curIdx]?.cumulative||0,sel.money)}{sel.money?"":sel.unit}</b></div>
-          </div>
+                ); })()}
+              </svg>
+            </div>
+          </>
         );
       })()}
 
