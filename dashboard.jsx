@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v68-ai-better-context"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v69-terms-management"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -18350,6 +18350,8 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
   const [memberEdits, setMemberEdits] = useState({}); // {userId: {lastName, firstName}}
   const [memberMsg, setMemberMsg] = useState("");
   const [memberSaving, setMemberSaving] = useState(false);
+  const [termExpanded, setTermExpanded] = useState(null); // 規約管理: 展開中のテンプレートID
+  const [termUploading, setTermUploading] = useState(null); // アップロード中のテンプレートID
   const [contractModal, setContractModal] = useState(null);
   // template states (top-level to avoid hooks-in-IIFE)
   const [tplForm,    setTplForm]    = useState({name:"",targetType:"共通",subject:"",body:""});
@@ -18464,6 +18466,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
   const menuItems = [
     {id:"profile",  icon:"👤", label:"プロフィール"},
     {id:"members",  icon:"👥", label:"メンバー"},
+    {id:"terms",    icon:"📜", label:"規約"},
     {id:"links",    icon:"🔗", label:"外部連携"},
     {id:"contract", icon:"📜", label:"契約書"},
     {id:"account",  icon:"🔑", label:"パスワード"},
@@ -18683,6 +18686,109 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
             style={{width:"100%",marginTop:"0.875rem",padding:"0.75rem",borderRadius:"6px",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.9rem",cursor:"pointer",fontFamily:"inherit",opacity:(memberSaving||Object.keys(memberEdits).length===0)?0.5:1}}>
             {memberSaving?"保存中...":Object.keys(memberEdits).length>0?`変更を保存（${Object.keys(memberEdits).length}名）`:"変更なし"}
           </button>
+        </div>
+      )}
+
+      {/* ── 規約・法定文書の管理 ── */}
+      {section==="terms"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:"0.6rem"}}>
+          <div style={{background:"white",borderRadius:"1rem",padding:"1.15rem 1.25rem",border:`1px solid ${C.border}`,boxShadow:"0 1px 2px rgba(0,0,0,0.03)"}}>
+            <div style={{fontWeight:800,fontSize:"0.95rem",color:C.text,marginBottom:"0.4rem"}}>📜 規約・法定文書の管理</div>
+            <div style={{fontSize:"0.74rem",color:C.textMuted,lineHeight:1.65}}>サービスで使用する各種規約・プライバシーポリシー・法定表示を一元管理します。バージョンごとにファイルを保管でき、関連する法律の概要も確認できます。AIアシスタントもこの情報を参照して回答します。</div>
+          </div>
+
+          {TERMS_REGISTRY.map(template => {
+            const versions = (data.termVersions?.[template.id]) || [];
+            const sorted = [...versions].sort((a,b)=>new Date(b.uploadedAt||0)-new Date(a.uploadedAt||0));
+            const latest = sorted[0];
+            const isExpanded = termExpanded===template.id;
+            const isUploading = termUploading===template.id;
+            return (
+              <div key={template.id} style={{background:"white",borderRadius:"0.875rem",border:`1px solid ${C.border}`,overflow:"hidden",boxShadow:"0 1px 2px rgba(0,0,0,0.03)"}}>
+                <button onClick={()=>setTermExpanded(isExpanded?null:template.id)}
+                  style={{width:"100%",textAlign:"left",border:"none",background:"transparent",padding:"1rem 1.15rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"0.75rem"}}>
+                  <div style={{fontSize:"1.5rem",flexShrink:0}}>{template.icon}</div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{display:"flex",alignItems:"center",gap:"0.4rem",flexWrap:"wrap",marginBottom:"0.2rem"}}>
+                      <span style={{fontWeight:700,fontSize:"0.92rem",color:C.text,letterSpacing:"-0.005em"}}>{template.name}</span>
+                      <span style={{fontSize:"0.62rem",fontWeight:700,padding:"0.15rem 0.45rem",background:C.bg,color:C.textSub,borderRadius:4,letterSpacing:"0.03em"}}>{template.category}</span>
+                      {latest
+                        ? <span style={{fontSize:"0.7rem",fontWeight:800,color:"#059669",padding:"0.1rem 0.4rem",background:"#05966915",borderRadius:4}}>v{latest.version}</span>
+                        : <span style={{fontSize:"0.66rem",fontWeight:700,color:"#a16207",padding:"0.1rem 0.4rem",background:"#fef3c7",borderRadius:4}}>未登録</span>}
+                    </div>
+                    <div style={{fontSize:"0.68rem",color:C.textMuted,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>関連法律: {template.relatedLaws.map(lid=>LAWS_REGISTRY[lid]?.name).filter(Boolean).join(" / ")}</div>
+                  </div>
+                  <span style={{fontSize:"0.85rem",color:C.textMuted,display:"inline-block",transform:isExpanded?"rotate(90deg)":"none",transition:"transform 0.15s",flexShrink:0}}>▸</span>
+                </button>
+
+                {isExpanded && (
+                  <div style={{borderTop:`1px solid ${C.borderLight}`,padding:"1rem 1.15rem 1.15rem",background:C.bg}}>
+                    <div style={{fontSize:"0.62rem",fontWeight:700,color:C.textMuted,marginBottom:"0.3rem",letterSpacing:"0.1em",textTransform:"uppercase"}}>概要</div>
+                    <div style={{fontSize:"0.82rem",color:C.text,lineHeight:1.65,marginBottom:"1rem"}}>{template.description}</div>
+
+                    <div style={{fontSize:"0.62rem",fontWeight:700,color:C.textMuted,marginBottom:"0.4rem",letterSpacing:"0.1em",textTransform:"uppercase"}}>関連する法律</div>
+                    <div style={{display:"flex",flexDirection:"column",gap:"0.45rem",marginBottom:"1.15rem"}}>
+                      {template.relatedLaws.map(lid=>{
+                        const law = LAWS_REGISTRY[lid]; if(!law) return null;
+                        return (
+                          <div key={lid} style={{padding:"0.65rem 0.85rem",background:"white",borderRadius:"0.55rem",border:`1px solid ${C.borderLight}`}}>
+                            <div style={{fontSize:"0.82rem",fontWeight:700,color:C.text,marginBottom:"0.15rem"}}>📖 {law.name}<span style={{fontSize:"0.66rem",fontWeight:500,color:C.textMuted,marginLeft:"0.4rem"}}>{law.short}</span></div>
+                            <div style={{fontSize:"0.72rem",color:C.textSub,lineHeight:1.6}}>{law.summary}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.5rem"}}>
+                      <div style={{fontSize:"0.62rem",fontWeight:700,color:C.textMuted,letterSpacing:"0.1em",textTransform:"uppercase"}}>バージョン履歴</div>
+                      <label style={{fontSize:"0.72rem",fontWeight:700,color:C.accent,cursor:isUploading?"default":"pointer",padding:"0.35rem 0.75rem",borderRadius:6,border:`1px solid ${C.accent}33`,background:C.accent+"08",opacity:isUploading?0.5:1}}>
+                        {isUploading?"アップロード中…":"＋ 新版アップロード"}
+                        <input type="file" accept=".docx,.pdf,.doc,.txt" disabled={isUploading} style={{display:"none"}}
+                          onChange={async e=>{
+                            const f = e.target.files?.[0]; if(!f) return;
+                            e.target.value = "";
+                            const nextVer = sorted[0]?.version ? incrementVersion(sorted[0].version) : "1.0";
+                            const verInput = window.prompt(`新バージョン番号:`, nextVer);
+                            if (!verInput) return;
+                            const verNote = window.prompt("更新内容（任意・例: 料金体系の改定）:", "") || "";
+                            setTermUploading(template.id);
+                            try {
+                              const upload = await uploadFileToSupabase(f, "terms", template.id);
+                              const newVersion = { version:verInput, fileUrl:upload.url, filePath:upload.path, fileName:f.name, fileSize:f.size, uploadedAt:new Date().toISOString(), uploadedBy:currentUser?.id, notes:verNote };
+                              const newData = {...data, termVersions:{...(data.termVersions||{}), [template.id]:[...versions, newVersion]}};
+                              await save(newData);
+                            } catch(err) { alert("アップロード失敗: "+(err.message||err)); }
+                            setTermUploading(null);
+                          }}/>
+                      </label>
+                    </div>
+                    {sorted.length===0 ? (
+                      <div style={{fontSize:"0.74rem",color:C.textMuted,padding:"0.85rem",background:"white",borderRadius:"0.5rem",border:`1px dashed ${C.border}`,textAlign:"center"}}>まだファイルが登録されていません。「＋ 新版アップロード」から登録してください。</div>
+                    ) : (
+                      <div style={{display:"flex",flexDirection:"column",gap:"0.4rem"}}>
+                        {sorted.map((v,i)=>{
+                          const uploader = (users||[]).find(u=>u.id===v.uploadedBy);
+                          const isLatest = i===0;
+                          return (
+                            <div key={(v.uploadedAt||"")+v.version} style={{display:"flex",alignItems:"center",gap:"0.55rem",padding:"0.65rem 0.85rem",background:"white",borderRadius:"0.5rem",border:`1px solid ${isLatest?C.accent+"44":C.borderLight}`}}>
+                              <span style={{fontSize:"0.76rem",fontWeight:800,color:isLatest?C.accent:C.textSub,minWidth:42,fontVariantNumeric:"tabular-nums"}}>v{v.version}</span>
+                              <div style={{flex:1,minWidth:0}}>
+                                <div style={{fontSize:"0.76rem",color:C.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontWeight:600}}>{v.fileName||"ファイル"}</div>
+                                <div style={{fontSize:"0.65rem",color:C.textMuted,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{(v.uploadedAt||"").slice(0,10)}{uploader?` · ${uploader.lastName||uploader.name||""}`:""}{v.notes?` · ${v.notes}`:""}</div>
+                              </div>
+                              {v.fileUrl && (
+                                <a href={v.fileUrl} target="_blank" rel="noopener noreferrer" style={{fontSize:"0.7rem",fontWeight:700,color:C.accent,textDecoration:"none",padding:"0.3rem 0.65rem",borderRadius:5,background:C.accent+"0d",flexShrink:0}}>📥 表示</a>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -19261,6 +19367,37 @@ const DUSTALK_EXIT_STEPS = [
 ];
 const PAY_KEYS = [["cc","クレジットカード"],["paypay","ペイペイ"],["merpay","メルペイ"],["cash","現金"]];
 
+// ─── 法律レジストリ: 各法律の概要・要点 ─────────────────────────────────────
+const LAWS_REGISTRY = {
+  civil:               { name:"民法", short:"私人間の権利義務関係を定める基本法", summary:"契約・不法行為・財産権など、私人間の基本的な権利義務関係を定める。契約自由の原則、信義誠実の原則、公序良俗違反の無効などが重要。" },
+  consumer_contract:   { name:"消費者契約法", short:"消費者を保護する契約ルール", summary:"事業者と消費者の契約において、消費者の利益を擁護する。不実告知・断定的判断の提供・不利益事実の不告知による契約取消、不当条項の無効などを規定。" },
+  tokutei_shotorihiki: { name:"特定商取引法", short:"通信販売・訪問販売など特定取引の規制", summary:"訪問販売・通信販売・電話勧誘販売・連鎖販売取引等について、表示義務、クーリング・オフ、不当勧誘の禁止などを規定。" },
+  haikibutsu_shori:    { name:"廃棄物処理法（廃掃法）", short:"廃棄物の適正処理を定める法律", summary:"廃棄物の収集・運搬・処分について規制。一般廃棄物・産業廃棄物の処理業の許可、委託基準、マニフェスト制度などを定める。" },
+  kojin_jouhou:        { name:"個人情報保護法 (APPI)", short:"個人情報の取扱いルール", summary:"個人情報取扱事業者に対し、利用目的の特定・通知、安全管理措置、第三者提供の制限、開示・訂正・利用停止請求への対応などを義務付ける。" },
+  shitauke:            { name:"下請法", short:"下請取引における親事業者の規制", summary:"親事業者が下請事業者に対し、不当な代金減額・支払遅延・返品・買いたたきなどを行うことを禁止する。" },
+  keiyaku_hyoji:       { name:"景品表示法", short:"不当な表示・景品の規制", summary:"商品・サービスの品質や内容、価格について実際と異なる表示や過大な景品類の提供を規制し、消費者の利益を保護。" },
+  denki_tsushin:       { name:"電気通信事業法", short:"電気通信事業の規制と通信の秘密保護", summary:"電気通信事業の業務、利用者の保護、通信の秘密の保護、迷惑メールの規制等を定める。" },
+};
+
+// ─── 規約テンプレートレジストリ: 標準で管理する規約ドキュメント ─────────────
+const TERMS_REGISTRY = [
+  { id:"01_partner_agreement",      icon:"🤝", name:"パートナー規約",                 category:"事業者間契約", description:"サービスのパートナー事業者（廃棄物収集運搬業者等）との契約条件を定める規約。委託業務範囲、報酬、責任、契約期間、解除条件などを規定する。", relatedLaws:["civil","haikibutsu_shori","shitauke"] },
+  { id:"03_terms_business_waste",   icon:"🏢", name:"利用規約 (事業ごみ回収サービス)",   category:"利用規約",     description:"事業者向けのごみ回収サービスの利用規約。料金体系、契約期間、サービス内容、責任範囲などを定める。", relatedLaws:["civil","consumer_contract","haikibutsu_shori"] },
+  { id:"05_terms_bulk_waste",       icon:"🛋️", name:"利用規約 (粗大ごみ回収サービス)",   category:"利用規約",     description:"個人向けの粗大ごみ回収サービスの利用規約。回収対象、料金、申込み・キャンセル方法、責任範囲などを定める。",     relatedLaws:["civil","consumer_contract","tokutei_shotorihiki","haikibutsu_shori"] },
+  { id:"07_privacy_policy",         icon:"🔒", name:"プライバシーポリシー",             category:"個人情報",     description:"個人情報の取扱方針。取得する情報の種類、利用目的、第三者提供、安全管理措置、開示等請求への対応を定める。", relatedLaws:["kojin_jouhou","denki_tsushin"] },
+  { id:"09A_tokushou_individual",   icon:"📋", name:"特定商取引法表記 (個人向け)",       category:"法定表示",     description:"個人顧客向けの通信販売における特定商取引法に基づく表示。事業者情報、料金、支払方法、契約解除等を明示する。", relatedLaws:["tokutei_shotorihiki","consumer_contract"] },
+  { id:"09B_tokushou_partner",      icon:"📋", name:"特定商取引法表記 (パートナー向け)", category:"法定表示",     description:"パートナー事業者向けの通信販売における特定商取引法に基づく表示。事業者情報、料金、支払方法、契約解除等を明示する。", relatedLaws:["tokutei_shotorihiki"] },
+];
+
+// バージョン番号をインクリメント（例: "1.0" -> "1.1"）
+function incrementVersion(v) {
+  if (!v) return "1.0";
+  const m = String(v).match(/^(\d+)\.(\d+)(?:\.(\d+))?$/);
+  if (!m) return v + ".1";
+  const minor = parseInt(m[2], 10) + 1;
+  return `${m[1]}.${minor}`;
+}
+
 const DUSTALK_DEF = {hp:0,serviceLog:0,requests:0,contracts:0,revenue:0,lineFriends:0,
   requestsKatei:0,requestsJigyo:0,contractsKatei:0,contractsJigyo:0,
   pay:{cc:0,paypay:0,merpay:0,cash:0},
@@ -19372,6 +19509,26 @@ function buildAssistantContext(data, currentUser, users, question) {
   if (actMni.length) {
     ctx += `\n【アクティブな自治体（${actMni.length}・最終活動順）】\n`;
     for (const e of actMni) ctx += fmtEntity(e)+"\n";
+  }
+
+  // ── 規約・法定文書の登録状況 ──
+  if (typeof TERMS_REGISTRY !== "undefined") {
+    ctx += `\n【規約・法定文書（社内管理）】\n`;
+    for (const tpl of TERMS_REGISTRY) {
+      const versions = (data?.termVersions||{})[tpl.id] || [];
+      const sorted = [...versions].sort((a,b)=>new Date(b.uploadedAt||0)-new Date(a.uploadedAt||0));
+      const latest = sorted[0];
+      const lawNames = tpl.relatedLaws.map(lid=>LAWS_REGISTRY[lid]?.name).filter(Boolean).join("、");
+      ctx += `- ${tpl.name} [${tpl.category}] 関連法律:${lawNames} / 現行版:${latest?`v${latest.version} (${(latest.uploadedAt||"").slice(0,10)}更新)`:"未登録"}\n`;
+      ctx += `  概要: ${tpl.description}\n`;
+    }
+    ctx += `\n【関連法律の概要】\n`;
+    const usedLaws = new Set();
+    for (const tpl of TERMS_REGISTRY) for (const lid of tpl.relatedLaws) usedLaws.add(lid);
+    for (const lid of usedLaws) {
+      const law = LAWS_REGISTRY[lid]; if (!law) continue;
+      ctx += `- ${law.name}: ${law.summary}\n`;
+    }
   }
 
   // マッチしたエンティティの詳細
@@ -19519,7 +19676,7 @@ ${q}
       {/* FAB: floating button (closed state) */}
       {!open && (
         <button onClick={()=>setOpen(true)} title="MyDeskアシスタント"
-          style={{position:"fixed",right:"1.1rem",bottom:"calc(82px + env(safe-area-inset-bottom, 0px))",zIndex:250,width:58,height:58,borderRadius:"50%",background:`linear-gradient(135deg, ${ACC}, ${ACC}dd)`,border:"none",boxShadow:`0 8px 24px ${ACC}66, 0 2px 6px rgba(0,0,0,0.12)`,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:"white",fontFamily:"inherit",transition:"transform 0.15s, box-shadow 0.15s"}}
+          style={{position:"fixed",right:"1.1rem",bottom:"calc(82px + env(safe-area-inset-bottom, 0px))",zIndex:9998,width:58,height:58,borderRadius:"50%",background:`linear-gradient(135deg, ${ACC}, ${ACC}dd)`,border:"none",boxShadow:`0 8px 24px ${ACC}66, 0 2px 6px rgba(0,0,0,0.12)`,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:"white",fontFamily:"inherit",transition:"transform 0.15s, box-shadow 0.15s",WebkitTapHighlightColor:"transparent"}}
           onMouseEnter={e=>{e.currentTarget.style.transform="scale(1.06)";}}
           onMouseLeave={e=>{e.currentTarget.style.transform="scale(1)";}}>
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -19531,7 +19688,7 @@ ${q}
 
       {/* Chat panel (open state) */}
       {open && (
-        <div style={{position:"fixed",inset:0,zIndex:400,display:"flex",justifyContent:"flex-end",alignItems:"flex-end"}}>
+        <div style={{position:"fixed",inset:0,zIndex:9999,display:"flex",justifyContent:"flex-end",alignItems:"flex-end"}}>
           <div onClick={()=>setOpen(false)} style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.4)"}}/>
           <div style={{position:"relative",background:"white",borderRadius:"16px 16px 0 0",width:"100%",maxWidth:440,height:"min(85vh, 720px)",display:"flex",flexDirection:"column",boxShadow:"0 -10px 40px rgba(0,0,0,0.18)",margin:"0 auto",marginRight:"max(0px, calc((100% - 440px) / 2))",overflow:"hidden"}}>
             {/* Header */}
