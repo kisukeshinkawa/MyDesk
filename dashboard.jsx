@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v66-assistant-fab"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v67-readable-dashboard"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -19424,10 +19424,13 @@ ${q}
       {/* FAB: floating button (closed state) */}
       {!open && (
         <button onClick={()=>setOpen(true)} title="MyDeskアシスタント"
-          style={{position:"fixed",right:"1.1rem",bottom:"calc(82px + env(safe-area-inset-bottom, 0px))",zIndex:250,width:56,height:56,borderRadius:"50%",background:`linear-gradient(135deg, ${ACC}, ${ACC}dd)`,border:"none",boxShadow:`0 8px 24px ${ACC}66, 0 2px 6px rgba(0,0,0,0.12)`,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:"white",fontWeight:800,fontSize:"0.78rem",letterSpacing:"0.05em",fontFamily:"inherit",transition:"transform 0.15s, box-shadow 0.15s"}}
+          style={{position:"fixed",right:"1.1rem",bottom:"calc(82px + env(safe-area-inset-bottom, 0px))",zIndex:250,width:58,height:58,borderRadius:"50%",background:`linear-gradient(135deg, ${ACC}, ${ACC}dd)`,border:"none",boxShadow:`0 8px 24px ${ACC}66, 0 2px 6px rgba(0,0,0,0.12)`,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:"white",fontFamily:"inherit",transition:"transform 0.15s, box-shadow 0.15s"}}
           onMouseEnter={e=>{e.currentTarget.style.transform="scale(1.06)";}}
           onMouseLeave={e=>{e.currentTarget.style.transform="scale(1)";}}>
-          AI
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z" fill="currentColor" fillOpacity="0.95"/>
+            <path d="M19 14.5l.9 2.1L22 17.5l-2.1.9L19 20.5l-.9-2.1L16 17.5l2.1-.9L19 14.5z" fill="currentColor" fillOpacity="0.75"/>
+          </svg>
         </button>
       )}
 
@@ -19438,7 +19441,12 @@ ${q}
           <div style={{position:"relative",background:"white",borderRadius:"16px 16px 0 0",width:"100%",maxWidth:440,height:"min(85vh, 720px)",display:"flex",flexDirection:"column",boxShadow:"0 -10px 40px rgba(0,0,0,0.18)",margin:"0 auto",marginRight:"max(0px, calc((100% - 440px) / 2))",overflow:"hidden"}}>
             {/* Header */}
             <div style={{padding:"0.85rem 1rem 0.85rem 1rem",borderBottom:`1px solid ${C.borderLight}`,display:"flex",alignItems:"center",gap:"0.55rem",flexShrink:0}}>
-              <div style={{width:28,height:28,borderRadius:"7px",background:`linear-gradient(135deg, ${ACC}, ${ACC}cc)`,display:"flex",alignItems:"center",justifyContent:"center",color:"white",fontSize:"0.66rem",fontWeight:800,letterSpacing:"0.05em",flexShrink:0}}>AI</div>
+              <div style={{width:30,height:30,borderRadius:"8px",background:`linear-gradient(135deg, ${ACC}, ${ACC}cc)`,display:"flex",alignItems:"center",justifyContent:"center",color:"white",flexShrink:0}}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z" fill="currentColor" fillOpacity="0.95"/>
+                  <path d="M19 14.5l.9 2.1L22 17.5l-2.1.9L19 20.5l-.9-2.1L16 17.5l2.1-.9L19 14.5z" fill="currentColor" fillOpacity="0.75"/>
+                </svg>
+              </div>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontSize:"0.88rem",fontWeight:700,color:C.text,letterSpacing:"-0.005em"}}>MyDesk アシスタント</div>
                 <div style={{fontSize:"0.64rem",color:C.textMuted,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>案件・タスク・活動など何でも聞いてください</div>
@@ -20452,7 +20460,7 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
         let running=0;
         const series = sel.monthlyArr.map((v,i)=>{ running+=v; return {label:`${i+1}`, monthly:v, cumulative:running, isCur:i===curIdx, isFuture:i>curIdx}; });
         const sparkPath = (arr,w=120,h=28)=>{ const max=Math.max(...arr,1); return arr.map((v,i)=>{ const x=(i/(arr.length-1))*w; const y=h-(v/max)*(h-2)-1; return `${i===0?"M":"L"}${x.toFixed(1)},${y.toFixed(1)}`; }).join(" "); };
-        const W=720, H=240, PL=42, PR=14, PT=14, PB=30, innerW=W-PL-PR, innerH=H-PT-PB;
+        const W=720, H=320, PL=58, PR=18, PT=22, PB=48, innerW=W-PL-PR, innerH=H-PT-PB;
         const maxMonthly = Math.max(...series.map(p=>p.monthly), 1);
         const maxCum = Math.max(...series.map(p=>p.cumulative), 1);
         const barSlot = innerW/12;
@@ -20460,75 +20468,80 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
         const linePath = linePts.filter(p=>!p.isFuture).map((p,i)=>`${i===0?"M":"L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
         return (
           <>
-            {/* KPIダッシュボード（洋風） */}
-            <div style={{background:"white",borderRadius:"14px",padding:"1.5rem",border:`1px solid ${C.border}`,boxShadow:"0 1px 2px rgba(0,0,0,0.03)",marginBottom:"1rem"}}>
-              <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginBottom:"1.5rem",flexWrap:"wrap",gap:"0.5rem"}}>
+            {/* KPIダッシュボード（洋風・可読性重視） */}
+            <div style={{background:"white",borderRadius:"14px",padding:"1.5rem 1.25rem 1.5rem",border:`1px solid ${C.border}`,boxShadow:"0 1px 2px rgba(0,0,0,0.03)",marginBottom:"1rem"}}>
+              <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginBottom:"1.25rem",flexWrap:"wrap",gap:"0.5rem"}}>
                 <div>
-                  <div style={{fontSize:"0.6rem",fontWeight:700,letterSpacing:"0.12em",color:C.textMuted,textTransform:"uppercase",marginBottom:"0.25rem"}}>Performance overview</div>
-                  <div style={{fontSize:"1.7rem",fontWeight:300,color:C.text,letterSpacing:"-0.03em",lineHeight:1}}>{curYear}<span style={{fontSize:"0.72rem",fontWeight:400,color:C.textMuted,marginLeft:"0.5rem"}}>年間実績</span></div>
+                  <div style={{fontSize:"0.68rem",fontWeight:700,letterSpacing:"0.12em",color:C.textMuted,textTransform:"uppercase",marginBottom:"0.3rem"}}>Performance overview</div>
+                  <div style={{fontSize:"1.55rem",fontWeight:700,color:C.text,letterSpacing:"-0.02em",lineHeight:1}}>{curYear}<span style={{fontSize:"0.85rem",fontWeight:500,color:C.textSub,marginLeft:"0.5rem"}}>年間実績</span></div>
                 </div>
-                <div style={{fontSize:"0.7rem",color:C.textMuted,fontWeight:600,letterSpacing:"0.02em"}}>当月 · {monthLabel(mk)}</div>
+                <div style={{fontSize:"0.78rem",color:C.textSub,fontWeight:700,padding:"0.35rem 0.7rem",background:ACC+"0d",borderRadius:"6px"}}>当月 · {monthLabel(mk)}</div>
               </div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:0,marginBottom:"1.75rem",border:`1px solid ${C.borderLight}`,borderRadius:"10px",overflow:"hidden"}}>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:0,marginBottom:"1.75rem",border:`1px solid ${C.borderLight}`,borderRadius:"12px",overflow:"hidden"}}>
                 {kpiVals.map((k,idx)=>{
                   const active=k.id===kpiMetric;
                   const isPos = k.delta>0, isNeg = k.delta<0;
                   return (
                     <button key={k.id} onClick={()=>setKpiMetric(k.id)}
-                      style={{textAlign:"left",cursor:"pointer",fontFamily:"inherit",background:active?ACC+"08":"white",border:"none",borderRight:idx<kpiVals.length-1?`1px solid ${C.borderLight}`:"none",padding:"1.1rem 1.15rem 0.85rem",position:"relative",transition:"background 0.15s",overflow:"hidden"}}>
-                      {active && <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:ACC}}/>}
-                      <div style={{display:"flex",alignItems:"center",gap:"0.35rem",marginBottom:"0.55rem"}}>
-                        <span style={{width:5,height:5,borderRadius:"50%",background:active?ACC:C.borderLight,display:"inline-block"}}/>
-                        <span style={{fontSize:"0.6rem",fontWeight:700,letterSpacing:"0.1em",color:active?ACC:C.textMuted,textTransform:"uppercase"}}>{k.sub}</span>
+                      style={{textAlign:"left",cursor:"pointer",fontFamily:"inherit",background:active?ACC+"0d":"white",border:"none",borderRight:idx<kpiVals.length-1?`1px solid ${C.borderLight}`:"none",padding:"1.15rem 1.2rem 1rem",position:"relative",transition:"background 0.15s",overflow:"hidden"}}>
+                      {active && <div style={{position:"absolute",top:0,left:0,right:0,height:3,background:ACC}}/>}
+                      <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginBottom:"0.7rem"}}>
+                        <span style={{width:7,height:7,borderRadius:"50%",background:active?ACC:C.borderLight,display:"inline-block"}}/>
+                        <span style={{fontSize:"0.7rem",fontWeight:700,letterSpacing:"0.04em",color:active?ACC:C.textSub}}>{k.label}</span>
                       </div>
-                      <div style={{fontSize:"1.7rem",fontWeight:500,color:C.text,lineHeight:1,letterSpacing:"-0.035em",fontVariantNumeric:"tabular-nums",marginBottom:"0.4rem"}}>{fmtNum(k.curVal,k.money)}</div>
-                      <div style={{display:"flex",alignItems:"center",gap:"0.4rem",fontSize:"0.7rem",fontVariantNumeric:"tabular-nums"}}>
-                        <span style={{display:"inline-flex",alignItems:"center",gap:"0.1rem",fontWeight:700,color:isPos?POS:isNeg?NEG:C.textMuted}}>
-                          <span style={{fontSize:"0.75rem"}}>{isPos?"↑":isNeg?"↓":"−"}</span>
+                      <div style={{fontSize:"1.85rem",fontWeight:800,color:C.text,lineHeight:1,letterSpacing:"-0.035em",fontVariantNumeric:"tabular-nums",marginBottom:"0.5rem"}}>{fmtNum(k.curVal,k.money)}</div>
+                      <div style={{display:"flex",alignItems:"center",gap:"0.45rem",fontSize:"0.78rem",fontVariantNumeric:"tabular-nums"}}>
+                        <span style={{display:"inline-flex",alignItems:"center",gap:"0.15rem",fontWeight:800,color:isPos?POS:isNeg?NEG:C.textMuted,padding:"0.15rem 0.4rem",borderRadius:"5px",background:isPos?POS+"15":isNeg?NEG+"15":C.bg,fontSize:"0.75rem"}}>
+                          <span style={{fontSize:"0.85rem",lineHeight:1}}>{isPos?"↑":isNeg?"↓":"−"}</span>
                           {fmtDelta(k.delta,k.money)}
                         </span>
-                        <span style={{color:C.textMuted,fontSize:"0.64rem",fontWeight:500}}>{k.cumulative?"今月新規":"前月比"}</span>
+                        <span style={{color:C.textMuted,fontSize:"0.7rem",fontWeight:600}}>{k.cumulative?"今月新規":"前月比"}</span>
                       </div>
-                      <svg viewBox="0 0 120 28" preserveAspectRatio="none" style={{width:"100%",height:24,marginTop:"0.55rem",display:"block"}}>
-                        <path d={sparkPath(k.monthlyArr,120,28)} fill="none" stroke={active?ACC:C.textMuted+"99"} strokeWidth={1.3} strokeLinejoin="round" strokeLinecap="round"/>
-                        {(()=>{ const max=Math.max(...k.monthlyArr,1); const v=k.monthlyArr[curIdx]||0; const x=(curIdx/11)*120; const y=28-(v/max)*(28-2)-1; return <circle cx={x} cy={y} r={2.5} fill={active?ACC:C.text}/>; })()}
+                      <svg viewBox="0 0 120 32" preserveAspectRatio="none" style={{width:"100%",height:30,marginTop:"0.7rem",display:"block"}}>
+                        <path d={sparkPath(k.monthlyArr,120,32)} fill="none" stroke={active?ACC:C.textMuted+"cc"} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round"/>
+                        {(()=>{ const max=Math.max(...k.monthlyArr,1); const v=k.monthlyArr[curIdx]||0; const x=(curIdx/11)*120; const y=32-(v/max)*(32-2)-1; return <circle cx={x} cy={y} r={3.5} fill={active?ACC:C.text}/>; })()}
                       </svg>
                     </button>
                   );
                 })}
               </div>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.85rem",flexWrap:"wrap",gap:"0.5rem"}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"1rem",flexWrap:"wrap",gap:"0.5rem"}}>
                 <div>
-                  <div style={{fontSize:"0.6rem",fontWeight:700,letterSpacing:"0.12em",color:C.textMuted,textTransform:"uppercase",marginBottom:"0.2rem"}}>Monthly trend</div>
-                  <div style={{fontSize:"0.95rem",fontWeight:600,color:C.text,letterSpacing:"-0.01em"}}>{sel.label}<span style={{fontSize:"0.7rem",fontWeight:400,color:C.textMuted,marginLeft:"0.5rem"}}>月次推移 ＋ 年間累計</span></div>
+                  <div style={{fontSize:"0.68rem",fontWeight:700,letterSpacing:"0.12em",color:C.textMuted,textTransform:"uppercase",marginBottom:"0.25rem"}}>Monthly trend</div>
+                  <div style={{fontSize:"1.05rem",fontWeight:700,color:C.text,letterSpacing:"-0.01em"}}>{sel.label}<span style={{fontSize:"0.78rem",fontWeight:500,color:C.textSub,marginLeft:"0.55rem"}}>月次推移 ＋ 年間累計</span></div>
                 </div>
-                <div style={{display:"flex",alignItems:"center",gap:"0.85rem",fontSize:"0.66rem",color:C.textMuted,fontWeight:600,letterSpacing:"0.02em"}}>
-                  <span style={{display:"flex",alignItems:"center",gap:"0.3rem"}}><span style={{display:"inline-block",width:10,height:10,background:ACC+"66",borderRadius:2}}/>月次</span>
-                  <span style={{display:"flex",alignItems:"center",gap:"0.3rem"}}><span style={{display:"inline-block",width:14,height:2,background:ACC,borderRadius:2}}/>累計</span>
+                <div style={{display:"flex",alignItems:"center",gap:"0.9rem",fontSize:"0.75rem",color:C.textSub,fontWeight:700}}>
+                  <span style={{display:"flex",alignItems:"center",gap:"0.35rem"}}><span style={{display:"inline-block",width:12,height:12,background:ACC,borderRadius:3}}/>月次</span>
+                  <span style={{display:"flex",alignItems:"center",gap:"0.35rem"}}><span style={{display:"inline-block",width:16,height:3,background:ACC,borderRadius:2}}/>累計</span>
                 </div>
               </div>
               <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{overflow:"visible",display:"block"}}>
-                {[0,0.25,0.5,0.75,1].map(r=>{ const y=PT+innerH*(1-r); return <line key={r} x1={PL} y1={y} x2={W-PR} y2={y} stroke={C.borderLight} strokeWidth={r===0||r===1?1:0.6} strokeDasharray={r===0||r===1?"":"2 3"}/>; })}
-                {[0,0.5,1].map(r=>{ const y=PT+innerH*(1-r); const val = Math.round(maxCum*r); return <text key={r} x={PL-7} y={y+3} textAnchor="end" fontSize={9} fill={C.textMuted} fontVariantNumeric="tabular-nums">{(sel.money?"":"")+fmtNum(val,sel.money).replace("¥","")}</text>; })}
+                {[0,0.25,0.5,0.75,1].map(r=>{ const y=PT+innerH*(1-r); return <line key={r} x1={PL} y1={y} x2={W-PR} y2={y} stroke={r===0||r===1?C.border:C.borderLight} strokeWidth={r===0||r===1?1.5:1} strokeDasharray={r===0||r===1?"":"3 4"}/>; })}
+                {[0,0.25,0.5,0.75,1].map(r=>{ const y=PT+innerH*(1-r); const val = Math.round(maxCum*r); return <text key={r} x={PL-10} y={y+4} textAnchor="end" fontSize={13} fill={C.textSub} fontWeight={500} fontVariantNumeric="tabular-nums">{fmtNum(val,sel.money).replace("¥","")}</text>; })}
                 {series.map((p,i)=>{
-                  const bh=Math.max(0,(p.monthly/maxMonthly)*innerH*0.78);
-                  const x=PL+i*barSlot+barSlot*0.28, bw=barSlot*0.44, y=PT+innerH-bh;
-                  const fill=p.isFuture?C.borderLight:p.isCur?ACC:ACC+"55";
+                  const bh=Math.max(0,(p.monthly/maxMonthly)*innerH*0.82);
+                  const x=PL+i*barSlot+barSlot*0.18, bw=barSlot*0.64, y=PT+innerH-bh;
+                  const fill=p.isFuture?C.borderLight:p.isCur?ACC:ACC+"99";
                   return (
                     <g key={i}>
-                      {bh>0&&<rect x={x} y={y} width={bw} height={bh} fill={fill} rx={2}/>}
-                      <text x={PL+i*barSlot+barSlot/2} y={H-10} textAnchor="middle" fontSize={9.5} fill={p.isCur?ACC:C.textMuted} fontWeight={p.isCur?700:500} fontVariantNumeric="tabular-nums">{p.label}</text>
+                      {bh>0&&<rect x={x} y={y} width={bw} height={bh} fill={fill} rx={3}/>}
+                      {/* 棒の上に月次の値を小さく表示 */}
+                      {bh>16 && !p.isFuture && (
+                        <text x={PL+i*barSlot+barSlot/2} y={y-6} textAnchor="middle" fontSize={11} fill={p.isCur?ACC:C.textSub} fontWeight={p.isCur?800:600} fontVariantNumeric="tabular-nums">{fmtNum(p.monthly,sel.money).replace("¥","")}</text>
+                      )}
+                      <rect x={PL+i*barSlot+1} y={H-PB+6} width={barSlot-2} height={20} fill={p.isCur?ACC+"15":"transparent"} rx={4}/>
+                      <text x={PL+i*barSlot+barSlot/2} y={H-PB+21} textAnchor="middle" fontSize={13} fill={p.isCur?ACC:C.textSub} fontWeight={p.isCur?800:600} fontVariantNumeric="tabular-nums">{p.label}月</text>
                     </g>
                   );
                 })}
-                {linePath&&<path d={linePath} fill="none" stroke={ACC} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round"/>}
+                {linePath&&<path d={linePath} fill="none" stroke={ACC} strokeWidth={2.8} strokeLinejoin="round" strokeLinecap="round"/>}
                 {linePts.filter(p=>!p.isFuture).map((p,i)=>(
-                  <circle key={i} cx={p.x} cy={p.y} r={p.isCur?4:2} fill="white" stroke={ACC} strokeWidth={p.isCur?2.5:1.5}/>
+                  <circle key={i} cx={p.x} cy={p.y} r={p.isCur?5.5:3.2} fill="white" stroke={ACC} strokeWidth={p.isCur?3:2}/>
                 ))}
-                {(()=>{ const cp=linePts[curIdx]; if(!cp)return null; const txt=fmtNum(cp.cumulative,sel.money); const w=Math.max(40,txt.length*6.5); return (
+                {(()=>{ const cp=linePts[curIdx]; if(!cp)return null; const txt=fmtNum(cp.cumulative,sel.money); const w=Math.max(60,txt.length*9.5); return (
                   <g>
-                    <rect x={cp.x-w/2} y={cp.y-22} width={w} height={16} rx={3} fill={ACC}/>
-                    <text x={cp.x} y={cp.y-11} textAnchor="middle" fontSize={9} fontWeight={700} fill="white" fontVariantNumeric="tabular-nums">{txt}</text>
+                    <rect x={cp.x-w/2} y={cp.y-30} width={w} height={22} rx={5} fill={ACC}/>
+                    <text x={cp.x} y={cp.y-15} textAnchor="middle" fontSize={13} fontWeight={800} fill="white" fontVariantNumeric="tabular-nums">{txt}</text>
                   </g>
                 ); })()}
               </svg>
