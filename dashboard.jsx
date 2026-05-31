@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v65-ai-assistant-redesign"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v66-assistant-fab"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -19356,6 +19356,154 @@ function buildAssistantContext(data, currentUser, users, question) {
   }
   return ctx;
 }
+
+// ─── AI ASSISTANT FAB: アプリ右下に常駐するチャット起動ボタン＋パネル ──────
+function AssistantFab({data, currentUser, users}) {
+  const [open, setOpen] = React.useState(false);
+  const [input, setInput] = React.useState("");
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState("");
+  const [history, setHistory] = React.useState([]); // [{q,a},...]
+  const scrollRef = React.useRef(null);
+  const ACC = C.accent;
+  const POS = "#10b981", NEG = "#ef4444";
+
+  // 新しいやりとりが追加されたらスクロールを最下部へ
+  React.useEffect(()=>{
+    if (!scrollRef.current) return;
+    const id = requestAnimationFrame(()=>{ scrollRef.current.scrollTop = scrollRef.current.scrollHeight; });
+    return ()=>cancelAnimationFrame(id);
+  },[history.length, loading]);
+
+  const ask = async (qOverride) => {
+    const q = (qOverride||input).trim();
+    if (!q || loading) return;
+    setLoading(true); setError("");
+    try {
+      const ctx = buildAssistantContext(data, currentUser, users||[], q);
+      const histText = history.slice(-3).map(h=>`【過去の質問】${h.q}\n【過去の回答】${h.a}\n`).join("");
+      const prompt = `あなたは営業管理ツール「MyDesk」に組み込まれた日本語AIアシスタントです。提供されたデータをもとに、営業スタッフの質問に簡潔・正確に答えてください。
+
+【回答のルール】
+- 必ず日本語で答える
+- 関連する企業名・担当者名・日付・数字を必ず含める
+- 該当データが提供されていない場合は「該当する記録は見つかりませんでした」と答え、推測しない
+- 長くなりすぎないよう、3〜8行を目安にまとめる
+- 重要な情報は箇条書きで整理する
+- 「あの資料が欲しい」「○○の画面に行きたい」と聞かれたら、該当する企業・業者・自治体の名前を案内する
+
+${histText}===== MyDeskの現在のデータ =====
+${ctx}
+===== ユーザーの質問 =====
+${q}
+
+上記のデータだけを根拠に、日本語で回答してください。`;
+
+      const res = await fetch(`${API_BASE}/api/generate-email`, {
+        method:"POST",
+        headers:{"Content-Type":"application/json","x-mydesk-secret":"mydesk2026"},
+        body: JSON.stringify({prompt})
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error||`HTTP ${res.status}`);
+      const ans = (json.text||"").trim() || "回答が空でした。";
+      setHistory(h => [...h, {q, a:ans}].slice(-20));
+      setInput("");
+    } catch (e) {
+      setError("⚠️ " + (e.message||"エラー"));
+    }
+    setLoading(false);
+  };
+
+  const clearHistory = () => { setHistory([]); setInput(""); setError(""); };
+
+  const suggestions = ["今週の活動を教えて","進行中のタスクは？","直近で動きがあった案件は？","成約しそうな企業は？"];
+
+  return (
+    <>
+      {/* FAB: floating button (closed state) */}
+      {!open && (
+        <button onClick={()=>setOpen(true)} title="MyDeskアシスタント"
+          style={{position:"fixed",right:"1.1rem",bottom:"calc(82px + env(safe-area-inset-bottom, 0px))",zIndex:250,width:56,height:56,borderRadius:"50%",background:`linear-gradient(135deg, ${ACC}, ${ACC}dd)`,border:"none",boxShadow:`0 8px 24px ${ACC}66, 0 2px 6px rgba(0,0,0,0.12)`,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:"white",fontWeight:800,fontSize:"0.78rem",letterSpacing:"0.05em",fontFamily:"inherit",transition:"transform 0.15s, box-shadow 0.15s"}}
+          onMouseEnter={e=>{e.currentTarget.style.transform="scale(1.06)";}}
+          onMouseLeave={e=>{e.currentTarget.style.transform="scale(1)";}}>
+          AI
+        </button>
+      )}
+
+      {/* Chat panel (open state) */}
+      {open && (
+        <div style={{position:"fixed",inset:0,zIndex:400,display:"flex",justifyContent:"flex-end",alignItems:"flex-end"}}>
+          <div onClick={()=>setOpen(false)} style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.4)"}}/>
+          <div style={{position:"relative",background:"white",borderRadius:"16px 16px 0 0",width:"100%",maxWidth:440,height:"min(85vh, 720px)",display:"flex",flexDirection:"column",boxShadow:"0 -10px 40px rgba(0,0,0,0.18)",margin:"0 auto",marginRight:"max(0px, calc((100% - 440px) / 2))",overflow:"hidden"}}>
+            {/* Header */}
+            <div style={{padding:"0.85rem 1rem 0.85rem 1rem",borderBottom:`1px solid ${C.borderLight}`,display:"flex",alignItems:"center",gap:"0.55rem",flexShrink:0}}>
+              <div style={{width:28,height:28,borderRadius:"7px",background:`linear-gradient(135deg, ${ACC}, ${ACC}cc)`,display:"flex",alignItems:"center",justifyContent:"center",color:"white",fontSize:"0.66rem",fontWeight:800,letterSpacing:"0.05em",flexShrink:0}}>AI</div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:"0.88rem",fontWeight:700,color:C.text,letterSpacing:"-0.005em"}}>MyDesk アシスタント</div>
+                <div style={{fontSize:"0.64rem",color:C.textMuted,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>案件・タスク・活動など何でも聞いてください</div>
+              </div>
+              {history.length>0 && (
+                <button onClick={clearHistory} title="新しい会話" style={{background:"none",border:`1px solid ${C.border}`,fontSize:"0.65rem",fontWeight:600,color:C.textSub,cursor:"pointer",padding:"0.3rem 0.55rem",borderRadius:"6px",fontFamily:"inherit"}}>新しい会話</button>
+              )}
+              <button onClick={()=>setOpen(false)} style={{background:"none",border:"none",fontSize:"1.4rem",color:C.textMuted,cursor:"pointer",padding:"0 0.3rem",lineHeight:1,flexShrink:0}}>×</button>
+            </div>
+            {/* Scrollable content */}
+            <div ref={scrollRef} style={{flex:1,overflowY:"auto",padding:"1rem 1rem 0.5rem"}}>
+              {history.length===0 && !loading && (
+                <div style={{padding:"0.5rem 0"}}>
+                  <div style={{fontSize:"0.75rem",color:C.textMuted,marginBottom:"0.65rem",fontWeight:600}}>例えばこんな質問:</div>
+                  <div style={{display:"flex",flexDirection:"column",gap:"0.45rem"}}>
+                    {suggestions.map(s=>(
+                      <button key={s} onClick={()=>{ask(s);}} style={{textAlign:"left",padding:"0.65rem 0.85rem",borderRadius:"10px",border:`1px solid ${C.border}`,background:"white",fontSize:"0.83rem",color:C.text,cursor:"pointer",fontFamily:"inherit",transition:"all 0.15s"}}
+                        onMouseEnter={e=>{e.currentTarget.style.borderColor=ACC; e.currentTarget.style.background=ACC+"08";}}
+                        onMouseLeave={e=>{e.currentTarget.style.borderColor=C.border; e.currentTarget.style.background="white";}}>
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {history.map((h,i)=>(
+                <div key={i} style={{marginBottom:"1.1rem"}}>
+                  <div style={{display:"flex",justifyContent:"flex-end",marginBottom:"0.45rem"}}>
+                    <div style={{maxWidth:"85%",padding:"0.55rem 0.85rem",borderRadius:"14px 14px 4px 14px",background:ACC,color:"white",fontSize:"0.85rem",lineHeight:1.5,wordBreak:"break-word"}}>{h.q}</div>
+                  </div>
+                  <div style={{display:"flex"}}>
+                    <div style={{maxWidth:"95%",padding:"0.75rem 0.95rem",borderRadius:"4px 14px 14px 14px",background:C.bg,color:C.text,fontSize:"0.85rem",lineHeight:1.65,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{h.a}</div>
+                  </div>
+                </div>
+              ))}
+              {loading && (
+                <div style={{display:"flex",marginBottom:"0.5rem"}}>
+                  <div style={{padding:"0.7rem 0.95rem",borderRadius:"4px 14px 14px 14px",background:C.bg,color:C.textMuted,fontSize:"0.82rem",display:"flex",alignItems:"center",gap:"0.4rem"}}>
+                    <span style={{display:"inline-block",width:6,height:6,borderRadius:"50%",background:ACC,opacity:0.6}}/>
+                    <span style={{display:"inline-block",width:6,height:6,borderRadius:"50%",background:ACC,opacity:0.8}}/>
+                    <span style={{display:"inline-block",width:6,height:6,borderRadius:"50%",background:ACC}}/>
+                    <span style={{marginLeft:"0.35rem"}}>考えています…</span>
+                  </div>
+                </div>
+              )}
+              {error && <div style={{margin:"0.5rem 0",fontSize:"0.78rem",color:NEG,padding:"0.6rem 0.8rem",background:"#fef2f2",border:"1px solid #fee2e2",borderRadius:"8px"}}>{error}</div>}
+            </div>
+            {/* Input bar */}
+            <div style={{padding:"0.8rem 0.9rem calc(0.8rem + env(safe-area-inset-bottom, 0px))",borderTop:`1px solid ${C.borderLight}`,display:"flex",gap:"0.5rem",flexShrink:0,background:"white"}}>
+              <input type="text" value={input} onChange={e=>setInput(e.target.value)}
+                onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();ask();}}}
+                placeholder="質問を入力…"
+                style={{flex:1,padding:"0.7rem 0.9rem",borderRadius:"10px",border:`1px solid ${C.border}`,fontSize:"0.88rem",fontFamily:"inherit",outline:"none",background:C.bg,boxSizing:"border-box",minWidth:0}}/>
+              <button onClick={()=>ask()} disabled={loading||!input.trim()}
+                style={{padding:"0 1rem",borderRadius:"10px",border:"none",background:loading||!input.trim()?C.borderLight:ACC,color:loading||!input.trim()?C.textMuted:"white",fontSize:"0.84rem",fontWeight:700,cursor:loading||!input.trim()?"default":"pointer",fontFamily:"inherit",minWidth:56,flexShrink:0,letterSpacing:"-0.005em"}}>
+                {loading?"…":"送信"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 function monthLabel(k){const[y,m]=k.split("-");return `${y}年${parseInt(m)}月`;}
 function yearLabel(k){return `${k}年`;}
 function shiftMonth(k,delta){const[y,m]=k.split("-");const d=new Date(+y,+m-1+delta,1);return getMonthKey(d);}
@@ -19907,55 +20055,6 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
   // expanded sections for collapsible partner stores
   const [openSects,setOpenSects]= useState({serviceLog:false,requests:false,contracts:false,revenue:false});
   const [kpiMetric, setKpiMetric] = useState("revenue"); // 上部ダッシュボードのグラフ表示指標
-  // AI Assistant
-  const [aiInput,   setAiInput]   = useState("");
-  const [aiAnswer,  setAiAnswer]  = useState("");
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiHistory, setAiHistory] = useState([]); // [{q,a},...] 最新5件まで保持
-  const [aiError,   setAiError]   = useState("");
-
-  const askAi = async (qOverride) => {
-    const q = (qOverride||aiInput).trim();
-    if (!q || aiLoading) return;
-    setAiLoading(true); setAiError(""); setAiAnswer("");
-    try {
-      const ctx = buildAssistantContext(data, currentUser, users||data?.users||[], q);
-      // 直近のやりとり3往復をコンテキストに含める
-      const histText = aiHistory.slice(-3).map(h=>`【過去の質問】${h.q}\n【過去の回答】${h.a}\n`).join("");
-      const prompt = `あなたは営業管理ツール「MyDesk」に組み込まれた日本語AIアシスタントです。提供されたデータをもとに、営業スタッフの質問に簡潔・正確に答えてください。
-
-【回答のルール】
-- 必ず日本語で答える
-- 関連する企業名・担当者名・日付・数字を必ず含める
-- 該当データが提供されていない場合は「該当する記録は見つかりませんでした」と答え、推測しない
-- 長くなりすぎないよう、3〜8行を目安にまとめる
-- 重要な情報は箇条書きで整理する
-- 「あの資料が欲しい」「○○の画面に行きたい」と聞かれたら、該当する企業・業者・自治体の名前を案内する（「[企業名]の詳細画面で確認できます」など）
-
-${histText}===== MyDeskの現在のデータ =====
-${ctx}
-===== ユーザーの質問 =====
-${q}
-
-上記のデータだけを根拠に、日本語で回答してください。`;
-
-      const res = await fetch(`${API_BASE}/api/generate-email`, {
-        method:"POST",
-        headers:{"Content-Type":"application/json","x-mydesk-secret":"mydesk2026"},
-        body: JSON.stringify({prompt})
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error||`HTTP ${res.status}`);
-      const ans = (json.text||"").trim() || "回答が空でした。";
-      setAiAnswer(ans);
-      setAiHistory(h => [...h, {q, a:ans}].slice(-5));
-      setAiInput("");
-    } catch (e) {
-      setAiError("⚠️ " + (e.message||"エラー"));
-    }
-    setAiLoading(false);
-  };
-
 
   const ana     = data.analytics || {};
   const sysData = ana[sys] || {};
@@ -20359,55 +20458,8 @@ ${q}
         const barSlot = innerW/12;
         const linePts = series.map((p,i)=>{ const x=PL+i*barSlot+barSlot/2; const y=PT+innerH-(p.cumulative/maxCum)*innerH; return {x,y,...p}; });
         const linePath = linePts.filter(p=>!p.isFuture).map((p,i)=>`${i===0?"M":"L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
-        const suggestions = ["今週の活動を教えて","進行中のタスクは？","直近で動きがあった案件は？","成約しそうな企業はある？"];
         return (
           <>
-            {/* AIアシスタント */}
-            <div style={{background:"white",borderRadius:"14px",padding:"1.15rem 1.25rem 1.1rem",border:`1px solid ${C.border}`,boxShadow:"0 1px 2px rgba(0,0,0,0.03)",marginBottom:"1rem",position:"relative",overflow:"hidden"}}>
-              <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:`linear-gradient(90deg, ${ACC}, ${ACC}aa 50%, transparent)`}}/>
-              <div style={{display:"flex",alignItems:"center",gap:"0.55rem",marginBottom:"0.75rem"}}>
-                <div style={{width:26,height:26,borderRadius:"7px",background:`linear-gradient(135deg, ${ACC}, ${ACC}cc)`,display:"flex",alignItems:"center",justifyContent:"center",color:"white",fontSize:"0.65rem",fontWeight:800,letterSpacing:"0.05em"}}>AI</div>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:"0.85rem",fontWeight:700,color:C.text,letterSpacing:"-0.005em"}}>MyDesk アシスタント</div>
-                  <div style={{fontSize:"0.66rem",color:C.textMuted,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>案件状況・タスク・担当者の活動など、MyDesk内の情報を質問できます</div>
-                </div>
-              </div>
-              <div style={{display:"flex",gap:"0.5rem"}}>
-                <input type="text" value={aiInput} onChange={e=>setAiInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();askAi();}}}
-                  placeholder="質問を入力…（例: あの案件どうなってる？）"
-                  style={{flex:1,padding:"0.7rem 0.9rem",borderRadius:"10px",border:`1px solid ${C.border}`,fontSize:"0.88rem",fontFamily:"inherit",outline:"none",background:C.bg,boxSizing:"border-box",minWidth:0}}/>
-                <button onClick={()=>askAi()} disabled={aiLoading||!aiInput.trim()}
-                  style={{padding:"0 1.1rem",borderRadius:"10px",border:"none",background:aiLoading||!aiInput.trim()?C.borderLight:ACC,color:aiLoading||!aiInput.trim()?C.textMuted:"white",fontSize:"0.84rem",fontWeight:700,cursor:aiLoading||!aiInput.trim()?"default":"pointer",fontFamily:"inherit",transition:"all 0.15s",minWidth:60,letterSpacing:"-0.005em",flexShrink:0}}>
-                  {aiLoading?"…":"送信"}
-                </button>
-              </div>
-              {!aiAnswer && !aiLoading && !aiError && (
-                <div style={{display:"flex",flexWrap:"wrap",gap:"0.4rem",marginTop:"0.7rem"}}>
-                  {suggestions.map(s=>(
-                    <button key={s} onClick={()=>{setAiInput(s);askAi(s);}}
-                      style={{padding:"0.32rem 0.75rem",borderRadius:999,border:`1px solid ${C.border}`,background:"white",fontSize:"0.7rem",fontWeight:600,color:C.textSub,cursor:"pointer",fontFamily:"inherit",transition:"all 0.15s"}}>
-                      {s}
-                    </button>
-                  ))}
-                </div>
-              )}
-              {aiLoading && <div style={{marginTop:"0.85rem",fontSize:"0.78rem",color:C.textMuted,display:"flex",alignItems:"center",gap:"0.4rem"}}><span style={{display:"inline-block",width:6,height:6,borderRadius:"50%",background:ACC}}/><span>考えています…</span></div>}
-              {aiError && <div style={{marginTop:"0.75rem",fontSize:"0.78rem",color:NEG,padding:"0.6rem 0.8rem",background:"#fef2f2",border:"1px solid #fee2e2",borderRadius:"8px"}}>{aiError}</div>}
-              {aiAnswer && !aiLoading && (
-                <div style={{marginTop:"0.85rem",padding:"0.9rem 1rem",background:C.bg,borderLeft:`3px solid ${ACC}`,borderRadius:"0 8px 8px 0",fontSize:"0.85rem",lineHeight:1.65,color:C.text,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{aiAnswer}</div>
-              )}
-              {aiHistory.length>1 && (
-                <details style={{marginTop:"0.55rem"}}>
-                  <summary style={{fontSize:"0.7rem",color:C.textMuted,cursor:"pointer",userSelect:"none",listStyle:"none"}}>▸ 過去のやりとり ({aiHistory.length-1}件)</summary>
-                  <div style={{marginTop:"0.4rem",display:"flex",flexDirection:"column",gap:"0.4rem"}}>
-                    {aiHistory.slice(0,-1).reverse().map((h,i)=>(
-                      <div key={i} style={{fontSize:"0.72rem",color:C.textSub,padding:"0.5rem 0.7rem",background:C.bg,borderRadius:"6px"}}><b style={{color:C.text}}>Q:</b> {h.q}<div style={{color:C.textMuted,marginTop:"0.2rem"}}>{h.a.slice(0,180)}{h.a.length>180?"…":""}</div></div>
-                    ))}
-                  </div>
-                </details>
-              )}
-            </div>
-
             {/* KPIダッシュボード（洋風） */}
             <div style={{background:"white",borderRadius:"14px",padding:"1.5rem",border:`1px solid ${C.border}`,boxShadow:"0 1px 2px rgba(0,0,0,0.03)",marginBottom:"1rem"}}>
               <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginBottom:"1.5rem",flexWrap:"wrap",gap:"0.5rem"}}>
@@ -21895,6 +21947,8 @@ export default function App() {
         </div>
       </div>
       </div>{/* end content+bottomNav wrapper */}
+      {/* MyDesk AIアシスタント（右下常駐） */}
+      {currentUser && <AssistantFab data={data} currentUser={currentUser} users={users}/>}
       {/* ① オフラインバナー */}
       {isOffline&&(
         <div style={{position:"fixed",top:0,left:0,right:0,zIndex:1000,background:"#fef3c7",borderBottom:"2px solid #f59e0b",padding:"0.5rem 1rem",textAlign:"center",fontSize:"0.82rem",fontWeight:700,color:"#92400e"}}>
