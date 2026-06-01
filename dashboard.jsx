@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v75-claude-mode"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v76-fab-always-on-top"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -20132,7 +20132,7 @@ ${q || "（添付ファイルのみ。中身を確認して、適切な提案を
       {/* FAB: floating button (closed state) */}
       {!open && (
         <button onClick={()=>setOpen(true)} title="MyDeskアシスタント"
-          style={{position:"fixed",right:"1.1rem",bottom:"calc(82px + env(safe-area-inset-bottom, 0px))",zIndex:9998,width:58,height:58,borderRadius:"50%",background:`linear-gradient(135deg, ${ACC}, ${ACC}dd)`,border:"none",boxShadow:`0 8px 24px ${ACC}66, 0 2px 6px rgba(0,0,0,0.12)`,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:"white",fontFamily:"inherit",transition:"transform 0.15s, box-shadow 0.15s",WebkitTapHighlightColor:"transparent"}}
+          style={{position:"fixed",right:"1.1rem",bottom:"calc(82px + env(safe-area-inset-bottom, 0px))",zIndex:2147483000,width:58,height:58,borderRadius:"50%",background:`linear-gradient(135deg, ${ACC}, ${ACC}dd)`,border:"none",boxShadow:`0 8px 24px ${ACC}66, 0 2px 6px rgba(0,0,0,0.12)`,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:"white",fontFamily:"inherit",transition:"transform 0.15s, box-shadow 0.15s",WebkitTapHighlightColor:"transparent"}}
           onMouseEnter={e=>{e.currentTarget.style.transform="scale(1.06)";}}
           onMouseLeave={e=>{e.currentTarget.style.transform="scale(1)";}}>
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -20144,7 +20144,7 @@ ${q || "（添付ファイルのみ。中身を確認して、適切な提案を
 
       {/* Chat panel (open state) */}
       {open && (
-        <div style={{position:"fixed",inset:0,zIndex:9999,display:"flex",justifyContent:"flex-end",alignItems:"flex-end"}}>
+        <div style={{position:"fixed",inset:0,zIndex:2147483001,display:"flex",justifyContent:"flex-end",alignItems:"flex-end"}}>
           <div onClick={()=>setOpen(false)} style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.4)"}}/>
           <div style={{position:"relative",background:"white",borderRadius:"16px 16px 0 0",width:"100%",maxWidth:440,height:"min(85vh, 720px)",display:"flex",flexDirection:"column",boxShadow:"0 -10px 40px rgba(0,0,0,0.18)",margin:"0 auto",marginRight:"max(0px, calc((100% - 440px) / 2))",overflow:"hidden"}}>
             {/* Header */}
