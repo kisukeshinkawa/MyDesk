@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v69-terms-management"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v71-terms-save-fix"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -18640,6 +18640,19 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
             <PushTestPanel currentUser={currentUser} users={users}/>
           )}
 
+          {/* アプリ強制更新 */}
+          <div style={{marginTop:"1.5rem",padding:"0.85rem 1rem",background:C.bg,borderRadius:"0.625rem",border:`1px solid ${C.borderLight}`}}>
+            <div style={{fontWeight:700,fontSize:"0.8rem",color:C.text,marginBottom:"0.3rem",display:"flex",alignItems:"center",gap:"0.4rem"}}>🔄 アプリを最新版に更新</div>
+            <div style={{fontSize:"0.7rem",color:C.textMuted,lineHeight:1.55,marginBottom:"0.6rem"}}>
+              iPhoneのホーム画面から開いたときなどに古いバージョンが残ることがあります。表示がおかしい・新機能が見えないときは、これでキャッシュをクリアして最新版を取得できます。データはサーバー保存なので消えません。
+            </div>
+            <div style={{fontSize:"0.66rem",color:C.textMuted,marginBottom:"0.55rem",fontFamily:"ui-monospace, monospace"}}>現在のビルド: {(typeof MYDESK_BUILD!=="undefined"?MYDESK_BUILD:"-")}</div>
+            <button onClick={()=>{ if(window.confirm("キャッシュをクリアして最新版に更新します。よろしいですか？")) forceAppUpdate(); }}
+              style={{width:"100%",padding:"0.65rem",borderRadius:"6px",border:`1.5px solid ${C.accent}`,background:"white",color:C.accent,fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
+              キャッシュをクリアして最新版に更新
+            </button>
+          </div>
+
           {/* ログアウト */}
           <button onClick={onLogout}
             style={{width:"100%",marginTop:"1rem",padding:"0.75rem",borderRadius:"6px",border:"1.5px solid #fee2e2",background:"white",color:"#dc2626",fontWeight:700,fontSize:"0.87rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
@@ -18756,7 +18769,12 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
                               const upload = await uploadFileToSupabase(f, "terms", template.id);
                               const newVersion = { version:verInput, fileUrl:upload.url, filePath:upload.path, fileName:f.name, fileSize:f.size, uploadedAt:new Date().toISOString(), uploadedBy:currentUser?.id, notes:verNote };
                               const newData = {...data, termVersions:{...(data.termVersions||{}), [template.id]:[...versions, newVersion]}};
-                              await save(newData);
+                              setData(newData); // 画面即時反映
+                              const ok = await saveData(newData);
+                              if (ok === false) {
+                                setData(data); // ロールバック
+                                throw new Error("DBへの保存に失敗しました");
+                              }
                             } catch(err) { alert("アップロード失敗: "+(err.message||err)); }
                             setTermUploading(null);
                           }}/>
@@ -19388,6 +19406,51 @@ const TERMS_REGISTRY = [
   { id:"09A_tokushou_individual",   icon:"📋", name:"特定商取引法表記 (個人向け)",       category:"法定表示",     description:"個人顧客向けの通信販売における特定商取引法に基づく表示。事業者情報、料金、支払方法、契約解除等を明示する。", relatedLaws:["tokutei_shotorihiki","consumer_contract"] },
   { id:"09B_tokushou_partner",      icon:"📋", name:"特定商取引法表記 (パートナー向け)", category:"法定表示",     description:"パートナー事業者向けの通信販売における特定商取引法に基づく表示。事業者情報、料金、支払方法、契約解除等を明示する。", relatedLaws:["tokutei_shotorihiki"] },
 ];
+
+// PWAの強制更新（SW登録解除＋全キャッシュ削除＋ハードリロード）
+let __mdForcingUpdate = false;
+async function forceAppUpdate() {
+  if (__mdForcingUpdate) return;
+  __mdForcingUpdate = true;
+  console.log("[MyDesk] forceAppUpdate: 開始");
+  try {
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      console.log(`[MyDesk] SW登録解除: ${regs.length}件`);
+      await Promise.all(regs.map(r => r.unregister()));
+    }
+    if ('caches' in window) {
+      const keys = await caches.keys();
+      console.log(`[MyDesk] キャッシュ削除: ${keys.length}件`, keys);
+      await Promise.all(keys.map(k => caches.delete(k)));
+    }
+  } catch (e) {
+    console.warn("[MyDesk] forceUpdate cleanup error", e);
+  }
+  // クエリ付きで強制リロード（ブラウザキャッシュも回避）
+  const u = new URL(location.href);
+  u.searchParams.delete("forceupdate");
+  u.searchParams.set("_v", Date.now());
+  location.replace(u.toString());
+}
+
+// 緊急用: コンソールから window.__forceUpdate() で呼べる
+if (typeof window !== "undefined") {
+  window.__forceUpdate = forceAppUpdate;
+  window.__myDeskForceUpdate = forceAppUpdate;
+  // URL に ?forceupdate=1 が付いていたら起動時に強制更新
+  try {
+    if (location.search.includes("forceupdate=1")) {
+      console.log("[MyDesk] ?forceupdate=1 を検知 → 強制更新を実行");
+      // セッション全体で1回だけ実行
+      if (!sessionStorage.getItem("__mdForcedThisSession")) {
+        sessionStorage.setItem("__mdForcedThisSession", "1");
+        // 非同期で実行（モジュール読み込みをブロックしない）
+        setTimeout(() => forceAppUpdate(), 0);
+      }
+    }
+  } catch (e) {}
+}
 
 // バージョン番号をインクリメント（例: "1.0" -> "1.1"）
 function incrementVersion(v) {
@@ -21330,6 +21393,8 @@ export default function App() {
   const [globalSearch, setGlobalSearch] = useState(null); // null=閉じ, ""=開く
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [saveError, setSaveError] = useState("");
+  // PWAの自動更新検知
+  const [updateAvailable, setUpdateAvailable] = useState(false);
   const [pendingSave, setPendingSave] = useState(false);
   // ① オフライン検知 + 保存中リロード防止
   React.useEffect(()=>{
@@ -21389,14 +21454,61 @@ export default function App() {
   const NOTIF_ICON = {task_assign:"👤",task_status:"🔄",task_comment:"💬",mention:"💬",memo:"📝",deadline:"⏰",sales_assign:"🏛️",new_user:"👋",analytics_update:"📊"};
 
   useEffect(()=>{
-    // ── Service Worker 登録（バックグラウンドプッシュ通知に必須）──
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js')
-        .then(reg => console.log('[MyDesk] SW registered:', reg.scope))
-        .catch(err => console.warn('[MyDesk] SW registration failed:', err));
-    }
+    // ── Service Worker 登録（バックグラウンドプッシュ通知＋自動更新検知）──
+    if (!('serviceWorker' in navigator)) return;
+    let registration = null;
+    let pollId = null;
+    let reloading = false;
 
-    const session = getSession();
+    // 新しいSWがインストール完了したとき、更新通知バナーを出す
+    const onUpdateFound = (reg) => {
+      const nw = reg.installing;
+      if (!nw) return;
+      nw.addEventListener('statechange', () => {
+        if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+          console.log('[MyDesk] 新バージョン検知');
+          setUpdateAvailable(true);
+        }
+      });
+    };
+
+    navigator.serviceWorker.register('/sw.js')
+      .then(reg => {
+        registration = reg;
+        console.log('[MyDesk] SW registered:', reg.scope);
+        // 起動時にすでに待機中のSWがあれば「更新あり」状態
+        if (reg.waiting && navigator.serviceWorker.controller) {
+          setUpdateAvailable(true);
+        }
+        reg.addEventListener('updatefound', () => onUpdateFound(reg));
+        // 起動直後に1回チェック、その後60秒ごとにチェック
+        reg.update().catch(()=>{});
+        pollId = setInterval(() => { reg.update().catch(()=>{}); }, 60000);
+      })
+      .catch(err => console.warn('[MyDesk] SW registration failed:', err));
+
+    // タブがアクティブに戻ったとき更新チェック（iPhoneでアプリを再度開いたとき等）
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && registration) {
+        registration.update().catch(()=>{});
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+
+    // 新しいSWがコントローラーに切り替わったらリロード（updateボタン経由）
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (reloading) return;
+      reloading = true;
+      location.reload();
+    });
+
+    return () => {
+      if (pollId) clearInterval(pollId);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  },[]);
+
+  useEffect(()=>{const session = getSession();
     Promise.all([loadData(), loadUsers()]).then(([result,u])=>{
       const d = (result && result.data) ? result.data : INIT;
       if(result?.updated_at) window.__myDeskLastSaveAt = result.updated_at;
@@ -22214,6 +22326,15 @@ export default function App() {
       </div>{/* end content+bottomNav wrapper */}
       {/* MyDesk AIアシスタント（右下常駐） */}
       {currentUser && <AssistantFab data={data} currentUser={currentUser} users={users}/>}
+      {/* ⓪ 新バージョン更新バナー（最優先表示） */}
+      {updateAvailable&&(
+        <div style={{position:"fixed",top:0,left:0,right:0,zIndex:1002,background:"linear-gradient(90deg, #5b5bd6, #7c7cf0)",padding:"0.6rem 1rem",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.65rem",color:"white",boxShadow:"0 2px 8px rgba(91,91,214,0.3)"}}>
+          <span style={{fontSize:"0.95rem"}}>✨</span>
+          <span style={{fontSize:"0.82rem",fontWeight:700,letterSpacing:"-0.005em"}}>新しいバージョンがあります</span>
+          <button onClick={forceAppUpdate} style={{background:"white",border:"none",cursor:"pointer",color:"#5b5bd6",fontWeight:800,fontSize:"0.78rem",padding:"0.3rem 0.85rem",borderRadius:"0.4rem",fontFamily:"inherit"}}>今すぐ更新</button>
+          <button onClick={()=>setUpdateAvailable(false)} title="後で" style={{background:"none",border:"none",cursor:"pointer",color:"white",opacity:0.7,fontSize:"1rem",padding:"0 0.2rem",lineHeight:1}}>✕</button>
+        </div>
+      )}
       {/* ① オフラインバナー */}
       {isOffline&&(
         <div style={{position:"fixed",top:0,left:0,right:0,zIndex:1000,background:"#fef3c7",borderBottom:"2px solid #f59e0b",padding:"0.5rem 1rem",textAlign:"center",fontSize:"0.82rem",fontWeight:700,color:"#92400e"}}>
