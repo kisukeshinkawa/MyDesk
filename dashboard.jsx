@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v72-comprehensive-laws"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v75-claude-mode"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -19525,6 +19525,17 @@ function buildAssistantContext(data, currentUser, users, question) {
   const userNameOf = id => { const u=(users||[]).find(u=>u.id===id); return u?(u.lastName||u.name||"不明"):""; };
   const countByStatus = arr => { const m={}; for(const x of arr){const s=x.status||"未設定"; m[s]=(m[s]||0)+1;} return m; };
 
+  // ── チームメンバー一覧（タスク担当者指定で参照） ──
+  let ctx = `【現在のユーザー】${currentUser?.lastName||""}${currentUser?.firstName||""} (${currentUser?.name||""})\n`;
+  if (users && users.length) {
+    ctx += `\n【チームメンバー一覧（タスク担当者として指定可能）】\n`;
+    for (const u of users) {
+      const fullName = `${u.lastName||""}${u.firstName||""}`.trim() || u.name || "";
+      ctx += `- ${fullName}${u.role?` (${u.role})`:""}\n`;
+    }
+    ctx += `※「私」「自分」は ${currentUser?.lastName||""}${currentUser?.firstName||""} を指す\n`;
+  }
+
   // 全エンティティから活動イベントを収集
   const events = [];
   const collect = (arr, type) => {
@@ -19553,9 +19564,7 @@ function buildAssistantContext(data, currentUser, users, question) {
   const findMatches = arr => arr.filter(e=>{ const n=norm(e.name); return n.length>=3 && qN.includes(n); }).slice(0,4);
   const mc = findMatches(companies), mv = findMatches(vendors), mm = findMatches(munis);
 
-  // 文脈文字列を組み立て
-  let ctx = "";
-  ctx += `【現在のユーザー】${currentUser?.lastName||currentUser?.name||"不明"}（id:${currentUser?.id||""}）\n`;
+  // 文脈文字列を組み立て（ctxは上で定義済み）
   ctx += `【今日の日付】${new Date().toISOString().slice(0,10)}\n\n`;
   ctx += `【データ全体】\n`;
   ctx += `企業: ${companies.length}社 / 内訳: ${JSON.stringify(countByStatus(companies))}\n`;
@@ -19667,15 +19676,76 @@ function buildAssistantContext(data, currentUser, users, question) {
   return ctx;
 }
 
+// ─── ファイルテキスト抽出ヘルパー: PDF/DOCXの中身をAIに渡せる形にする ─────
+const __mdLoadedScripts = {};
+function __loadScript(url) {
+  if (__mdLoadedScripts[url]) return __mdLoadedScripts[url];
+  __mdLoadedScripts[url] = new Promise((res, rej) => {
+    const s = document.createElement("script");
+    s.src = url; s.async = true;
+    s.onload = () => res();
+    s.onerror = () => rej(new Error("script load failed: "+url));
+    document.head.appendChild(s);
+  });
+  return __mdLoadedScripts[url];
+}
+async function extractTextFromFile(file) {
+  const name = (file.name||"").toLowerCase();
+  const ext = name.split(".").pop()||"";
+  try {
+    if (ext === "pdf") {
+      // pdf.js を CDN から動的読み込み
+      if (!window.pdfjsLib) {
+        await __loadScript("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js");
+        if (window.pdfjsLib) window.pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+      }
+      if (!window.pdfjsLib) throw new Error("PDF.jsの読み込み失敗");
+      const buf = await file.arrayBuffer();
+      const pdf = await window.pdfjsLib.getDocument({data: buf}).promise;
+      let text = "";
+      const maxPages = Math.min(pdf.numPages, 30); // 安全策で最大30ページ
+      for (let p = 1; p <= maxPages; p++) {
+        const page = await pdf.getPage(p);
+        const content = await page.getTextContent();
+        text += `[ページ${p}] ` + content.items.map(i => i.str).join(" ") + "\n";
+      }
+      return { ok: true, text: text.slice(0, 100000), pages: pdf.numPages };
+    }
+    if (ext === "docx") {
+      if (!window.mammoth) {
+        await __loadScript("https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js");
+      }
+      if (!window.mammoth) throw new Error("mammoth.jsの読み込み失敗");
+      const buf = await file.arrayBuffer();
+      const result = await window.mammoth.extractRawText({arrayBuffer: buf});
+      return { ok: true, text: (result.value||"").slice(0, 100000) };
+    }
+  } catch(e) {
+    return { ok: false, error: e.message||String(e) };
+  }
+  return { ok: false, error: "対応していない形式" };
+}
+
+// AI生成ファイルのダウンロード（content + filename → Blobダウンロード）
+function downloadGeneratedFile(filename, content, mime) {
+  const blob = new Blob([content], { type: mime || "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename || "file.txt";
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 100);
+}
+
 // ─── AI ASSISTANT FAB: アプリ右下に常駐するチャット起動ボタン＋パネル ──────
 
 // AI回答内の簡易Markdownを整形して表示する（## ### **太字** - 箇条書き --- など）
 function renderInlineMd(text) {
   if(!text) return null;
-  // **bold** を <b> に
-  const parts = String(text).split(/(\*\*[^*\n]+\*\*)/g);
+  // **bold** と `inline code` を処理
+  const parts = String(text).split(/(\*\*[^*\n]+\*\*|`[^`\n]+`)/g);
   return parts.map((p, i) => {
     if (p.startsWith("**") && p.endsWith("**")) return <b key={i}>{p.slice(2,-2)}</b>;
+    if (p.startsWith("`") && p.endsWith("`") && p.length>1) return <code key={i} style={{fontFamily:"ui-monospace, 'SF Mono', Menlo, monospace",fontSize:"0.85em",background:"rgba(91,91,214,0.08)",color:"#5b5bd6",padding:"0.1em 0.35em",borderRadius:"4px"}}>{p.slice(1,-1)}</code>;
     return <React.Fragment key={i}>{p}</React.Fragment>;
   });
 }
@@ -19684,6 +19754,7 @@ function renderMarkdown(text, C) {
   const lines = String(text).split("\n");
   const out = [];
   let listBuf = null;
+  let codeBuf = null; // {lang, lines}
   const flushList = () => {
     if (listBuf && listBuf.length) {
       out.push(<ul key={"ul"+out.length} style={{margin:"0.3rem 0 0.5rem",paddingLeft:"1.1rem",listStyle:"none"}}>{listBuf.map((item,i)=>(
@@ -19695,7 +19766,40 @@ function renderMarkdown(text, C) {
       listBuf = null;
     }
   };
+  const flushCode = () => {
+    if (codeBuf) {
+      const code = codeBuf.lines.join("\n");
+      const lang = codeBuf.lang || "";
+      const k = "code"+out.length;
+      out.push(
+        <div key={k} style={{margin:"0.55rem 0",background:"#0e0e0d",borderRadius:"8px",overflow:"hidden",border:"1px solid #1f1f1e"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0.35rem 0.7rem",background:"#1a1a18",borderBottom:"1px solid #2a2a28"}}>
+            <span style={{fontSize:"0.66rem",color:"#a8a29e",fontWeight:700,letterSpacing:"0.04em",fontFamily:"ui-monospace, monospace"}}>{lang||"text"}</span>
+            <button onClick={(e)=>{ try{ navigator.clipboard.writeText(code); const b=e.currentTarget; const old=b.innerText; b.innerText="✓ コピー済"; setTimeout(()=>{ if(b) b.innerText=old; },1200); }catch(_){} }}
+              style={{background:"transparent",border:"1px solid #3a3a38",cursor:"pointer",color:"#d6d3d1",fontSize:"0.65rem",fontWeight:600,padding:"0.2rem 0.5rem",borderRadius:"4px",fontFamily:"inherit"}}>コピー</button>
+          </div>
+          <pre style={{margin:0,padding:"0.7rem 0.85rem",color:"#e7e5e4",fontSize:"0.78rem",fontFamily:"ui-monospace, 'SF Mono', Menlo, monospace",lineHeight:1.55,overflowX:"auto",whiteSpace:"pre"}}>{code}</pre>
+        </div>
+      );
+      codeBuf = null;
+    }
+  };
   lines.forEach((line, i) => {
+    // コードブロック検知 ``` ... ```
+    const codeFence = line.match(/^\s*```\s*([a-zA-Z0-9_+-]*)\s*$/);
+    if (codeFence) {
+      if (codeBuf) {
+        // 閉じる
+        flushCode();
+      } else {
+        // 開く
+        flushList();
+        codeBuf = { lang: codeFence[1]||"", lines: [] };
+      }
+      return;
+    }
+    if (codeBuf) { codeBuf.lines.push(line); return; }
+
     const t = line.trim();
     if (/^[-*]\s+/.test(t)) {
       listBuf = listBuf || [];
@@ -19718,18 +19822,57 @@ function renderMarkdown(text, C) {
     }
   });
   flushList();
+  flushCode();
   return out;
 }
 
-function AssistantFab({data, currentUser, users}) {
+function AssistantFab({data, setData, currentUser, users}) {
   const [open, setOpen] = React.useState(false);
   const [input, setInput] = React.useState("");
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState("");
-  const [history, setHistory] = React.useState([]); // [{q,a},...]
+  const [history, setHistory] = React.useState([]); // [{q,a,actions?,attachments?}]
+  const [pendingFiles, setPendingFiles] = React.useState([]); // 添付ファイル候補
+  const [busyAction, setBusyAction] = React.useState(null); // 実行中アクションのID
   const scrollRef = React.useRef(null);
+  const fileInputRef = React.useRef(null);
   const ACC = C.accent;
   const POS = "#10b981", NEG = "#ef4444";
+
+  // テキスト系ファイルは中身を読み取り、PDF/DOCXは抽出、それ以外はS3にアップしてURLだけ渡す
+  const TEXT_EXT = ["txt","md","csv","json","html","htm","log","tsv","yaml","yml","xml"];
+  const EXTRACTABLE_EXT = ["pdf","docx"]; // 中身抽出可能
+  const fileKind = (f) => {
+    const ext = (f.name.split(".").pop()||"").toLowerCase();
+    if (TEXT_EXT.includes(ext) || (f.type||"").startsWith("text/")) return "text";
+    if (EXTRACTABLE_EXT.includes(ext)) return "extractable";
+    return "binary";
+  };
+  const readAsText = f => new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=()=>rej(r.error); r.readAsText(f); });
+
+  const handleFilePick = async (e) => {
+    const files = Array.from(e.target.files||[]);
+    e.target.value = "";
+    if (!files.length) return;
+    const prepared = await Promise.all(files.map(async f => {
+      const kind = fileKind(f);
+      const item = { id: Date.now()+Math.random(), file: f, name: f.name, size: f.size, type: f.type, kind };
+      try {
+        if (kind === "text") {
+          item.textContent = (await readAsText(f)).slice(0, 100000);
+        } else if (kind === "extractable") {
+          item.extracting = true;
+          const ex = await extractTextFromFile(f);
+          item.extracting = false;
+          if (ex.ok) { item.textContent = ex.text; item.extracted = true; }
+          else { item.extractError = ex.error; }
+        }
+      } catch(e) { item.extractError = e.message; }
+      return item;
+    }));
+    setPendingFiles(prev => [...prev, ...prepared]);
+  };
+  const removePending = (id) => setPendingFiles(prev => prev.filter(f => f.id !== id));
 
   // 新しいやりとりが追加されたらスクロールを最下部へ
   React.useEffect(()=>{
@@ -19740,33 +19883,87 @@ function AssistantFab({data, currentUser, users}) {
 
   const ask = async (qOverride) => {
     const q = (qOverride||input).trim();
-    if (!q || loading) return;
+    if ((!q && pendingFiles.length===0) || loading) return;
     setLoading(true); setError("");
+    // 添付ファイルをS3にアップロード（バイナリ）／テキストは中身読み込み済み
+    const attachments = [];
+    try {
+      for (const pf of pendingFiles) {
+        if (pf.kind === "text" || (pf.kind === "extractable" && pf.textContent)) {
+          attachments.push({ name: pf.name, kind: pf.kind, size: pf.size, textContent: pf.textContent||"", extracted: !!pf.extracted });
+        } else {
+          // S3に一旦保存（assistant/{userId}/...）
+          const up = await uploadFileToSupabase(pf.file, "assistant", currentUser?.id || "shared");
+          attachments.push({ name: pf.name, kind: "binary", size: pf.size, mime: pf.type, url: up.url, path: up.path, extractError: pf.extractError });
+        }
+      }
+    } catch(e) {
+      setError("⚠️ 添付ファイルのアップロードに失敗: "+(e.message||e));
+      setLoading(false); return;
+    }
     try {
       const ctx = buildAssistantContext(data, currentUser, users||[], q);
       const histText = history.slice(-3).map(h=>`【過去の質問】${h.q}\n【過去の回答】${h.a}\n`).join("");
-      const prompt = `あなたは営業管理ツール「MyDesk」に組み込まれた日本語AIアシスタントです。提供されたデータをもとに、営業スタッフの質問に簡潔・正確に答えてください。
+      let attachText = "";
+      if (attachments.length) {
+        attachText += `\n===== ユーザーが添付したファイル（${attachments.length}件）=====\n`;
+        attachments.forEach((a,i)=>{
+          attachText += `[#${i+1}] ${a.name} (${Math.round(a.size/1024)}KB${a.mime?", "+a.mime:""})${a.url?" URL:"+a.url:""}${a.extracted?" ★PDF/Wordから本文抽出済み":""}\n`;
+          if (a.textContent) attachText += `--- 内容 ---\n${a.textContent}\n--- ファイル終わり ---\n`;
+          else if (a.kind==="binary") attachText += `（バイナリファイル。中身を読めない${a.extractError?` (抽出失敗: ${a.extractError})`:""}）\n`;
+        });
+      }
+      const prompt = `あなたは営業管理ツール「MyDesk」に組み込まれたAIアシスタントです。
+本質的には Anthropic の Claude そのものであり、ユーザーの相談相手として **何でも自由に答える**ことができます。
+加えて、MyDesk の業務データに基づく質問に答えたり、タスク・メモ・ファイル・資料の作成といったアクションを提案する能力があります。
 
-【絶対のルール】
-- **必ず3〜6行で簡潔に**回答する。長文は禁止。
-- 関連する企業名・担当者名・日付・数字を必ず**太字**で含める
-- 該当データが提供されていない場合は「該当する記録は見つかりませんでした」とだけ答える。推測しない
-- 企業名・業者名のリストを聞かれたら、提供データの「アクティブな企業」「アクティブな業者」セクションから具体名を最大5件まで挙げる
-- 「## 見出し」は使わない。必要なら「**太字**」で強調するだけ
-- 箇条書きが必要なときのみ「- 項目」を使う（最大5項目）
-- 「[企業名]の画面で確認できます」のような案内が役立つ場合は最後に1行で添える
+【質問の種類を見極める】
+質問は大きく2タイプ:
 
-【法律に関する質問への対応】
-- 「○○法って何？」「△△規約はどの法律？」など法律関連の質問には、提供データの「関連法律の概要」セクションを根拠に答える
-- 該当法律が知識ベースにない場合は「現在の知識ベースには登録されていません」と答え、推測で説明しない
-- 法律名は正式名称を**太字**で示し、3〜5行で要点を伝える
+(A) MyDesk業務に関する質問
+- 例: 「今週の活動は？」「成約しそうな企業は？」「マルエドラッグの担当は？」
+- → 提供データ（下記「MyDeskのデータ」）だけを根拠に、簡潔（3〜8行）に答える
+- データにないことは「該当する記録は見つかりませんでした」とだけ答え、絶対に推測しない
+- 関連する企業名・人名・日付・数字は**太字**で示す
+
+(B) それ以外の相談・依頼（プログラミング、文章作成、要約、翻訳、人生相談、雑談、知識の質問、添付ファイルの分析、資料・コード・メールの作成 等）
+- → 制約なく自由に、丁寧に答えてよい。普段の Claude のように振る舞う
+- 長さは必要なだけ。コードは省略せず完全に書く（\`\`\`言語 \`\`\`で囲む）
+- 段階的に思考過程を示しながら説明してよい
+- 添付ファイル（PDFやWord等から抽出された本文を含む）について聞かれたら、内容を踏まえて深く分析・提案する
+
+両方が混ざる依頼もOK。例:「この契約書（添付PDF）のリスクを挙げて、要点メモを株式会社○○に追加して」
+→ まず文書を分析して回答し、最後にアクションJSONブロックを出す。
+
+【アクション提案ルール】
+ユーザーが明示的に何かを「作って」「追加して」「保存して」「ダウンロードしたい」等と依頼したときのみ、回答末尾に\`\`\`json で囲んだアクションJSONブロックを1個だけ追加する（必ず "actions" 配列の形）。
+※ コード例示用の \`\`\`json コードブロックとは異なる。アクション用は必ず {"actions":[...]} の形式。
+
+【サポートされるアクション】
+1. タスク作成（他人もアサイン可・複数人可）:
+   {"type":"create_task","title":"...","dueDate":"YYYY-MM-DD","description":"任意","assigneeNames":["新川 希亮","佐藤"],"linkedEntityName":"任意"}
+   ※ assigneeNames は「チームメンバー一覧」から正確な名前を使う。「私」「自分」は現在のユーザー名。
+2. メモ追加: {"type":"add_memo","entityType":"company"|"vendor"|"muni","entityName":"...","content":"..."}
+3. ファイル保存: {"type":"save_file","attachmentIndex":0,"entityType":"company"|"vendor"|"muni","entityName":"..."}
+4. プロジェクト作成: {"type":"create_project","title":"...","description":"任意","members":["..."]}
+5. 資料作成（ダウンロード可）: {"type":"create_file","filename":"提案書.md","format":"markdown"|"text"|"csv"|"html"|"json"|"code","content":"全文をここに"}
+
+アクション例:
+\`\`\`json
+{"actions":[{"type":"create_task","title":"見積書送付","dueDate":"2026-06-10","assigneeNames":["佐藤 太郎"]}]}
+\`\`\`
+
+普通の相談・質問の時はアクションJSONを出さなくてよい。
+
+【法律質問】
+- 「○○法って何？」等は「関連法律の概要」を根拠に答える。知識にない法律は推測しない。
 
 ${histText}===== MyDeskの現在のデータ =====
-${ctx}
-===== ユーザーの質問 =====
-${q}
+${ctx}${attachText}
+===== ユーザーの質問・依頼 =====
+${q || "（添付ファイルのみ。中身を確認して、適切な提案をしてください）"}
 
-上記のデータだけを根拠に、3〜6行の日本語で簡潔に回答してください。`;
+上記をふまえて回答してください。`;
 
       const res = await fetch(`${API_BASE}/api/generate-email`, {
         method:"POST",
@@ -19775,18 +19972,160 @@ ${q}
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error||`HTTP ${res.status}`);
-      const ans = (json.text||"").trim() || "回答が空でした。";
-      setHistory(h => [...h, {q, a:ans}].slice(-20));
+      let ans = (json.text||"").trim() || "回答が空でした。";
+      let actions = [];
+      // ```json で囲まれたブロックを全て探し、"actions" キーを持つものだけアクションとして抽出（コード片の```jsonと区別）
+      const jsonBlockRe = /```json\s*([\s\S]*?)```/g;
+      let m;
+      let actionBlockMatch = null;
+      while ((m = jsonBlockRe.exec(ans)) !== null) {
+        try {
+          const parsed = JSON.parse(m[1].trim());
+          if (Array.isArray(parsed.actions)) {
+            actions = parsed.actions;
+            actionBlockMatch = m[0];
+            break;
+          }
+        } catch(e) { /* not actions JSON */ }
+      }
+      if (actionBlockMatch) {
+        ans = ans.replace(actionBlockMatch, "").trim();
+      }
+      setHistory(h => [...h, {q, a:ans, actions, attachments}].slice(-20));
       setInput("");
+      setPendingFiles([]);
     } catch (e) {
       setError("⚠️ " + (e.message||"エラー"));
     }
     setLoading(false);
   };
 
-  const clearHistory = () => { setHistory([]); setInput(""); setError(""); };
+  // ── アクション実行ハンドラー ──
+  const findEntity = (entityType, name) => {
+    const key = entityType==="company"?"companies":entityType==="vendor"?"vendors":entityType==="muni"?"municipalities":null;
+    if (!key) return null;
+    const arr = data?.[key] || [];
+    const lname = String(name||"").toLowerCase().trim();
+    return arr.find(e => (e.name||"").toLowerCase().trim() === lname)
+        || arr.find(e => (e.name||"").toLowerCase().includes(lname))
+        || null;
+  };
+  const findUserIdByName = (name) => {
+    const ln = String(name||"").replace(/\s/g,"").toLowerCase();
+    const u = (users||[]).find(u => {
+      const full = ((u.lastName||"")+(u.firstName||"")+ (u.name||"")).replace(/\s/g,"").toLowerCase();
+      return full === ln || full.includes(ln);
+    });
+    return u?.id || null;
+  };
 
-  const suggestions = ["今週の活動を教えて","進行中のタスクは？","直近で動きがあった案件は？","成約しそうな企業は？"];
+  const executeAction = async (action, turnIdx, actionIdx, turn) => {
+    const actionKey = `${turnIdx}-${actionIdx}`;
+    setBusyAction(actionKey);
+    try {
+      let newData = data;
+      const uid = currentUser?.id;
+      const now = new Date().toISOString();
+
+      if (action.type === "create_task") {
+        const assignees = (action.assigneeNames||[]).map(findUserIdByName).filter(Boolean);
+        // linkedEntity を companyIds/vendorIds/muniIds に反映（自動推定: 企業→業者→自治体の順で検索）
+        const linkObj = {};
+        if (action.linkedEntityName) {
+          const co = findEntity("company", action.linkedEntityName);
+          const vn = !co && findEntity("vendor", action.linkedEntityName);
+          const mn = !co && !vn && findEntity("muni", action.linkedEntityName);
+          if (co) linkObj.companyIds = [co.id];
+          else if (vn) linkObj.vendorIds = [vn.id];
+          else if (mn) linkObj.muniIds = [mn.id];
+        }
+        const task = {
+          id: Date.now(),
+          title: action.title || "新規タスク",
+          description: action.description || "",
+          dueDate: action.dueDate || "",
+          assignees: assignees.length ? assignees : (uid ? [uid] : []),
+          status: "未着手",
+          priority: "中",
+          ...linkObj,
+          createdBy: uid,
+          comments: [], memos: [], chat: [], files: [],
+          createdAt: now,
+        };
+        newData = { ...data, tasks: [...(data.tasks||[]), task] };
+      }
+      else if (action.type === "add_memo") {
+        const ent = findEntity(action.entityType, action.entityName);
+        if (!ent) throw new Error(`「${action.entityName}」が見つかりません`);
+        const key = action.entityType==="company"?"companies":action.entityType==="vendor"?"vendors":"municipalities";
+        const memo = { id: Date.now(), content: action.content||"", createdBy: uid, createdAt: now };
+        newData = { ...data, [key]: data[key].map(e => e.id===ent.id ? {...e, memos:[...(e.memos||[]), memo]} : e) };
+      }
+      else if (action.type === "save_file") {
+        const ent = findEntity(action.entityType, action.entityName);
+        if (!ent) throw new Error(`「${action.entityName}」が見つかりません`);
+        const att = (turn.attachments||[])[action.attachmentIndex];
+        if (!att) throw new Error("添付ファイルが見つかりません");
+        const key = action.entityType==="company"?"companies":action.entityType==="vendor"?"vendors":"municipalities";
+        let fileEntry;
+        if (att.url) {
+          fileEntry = { id: Date.now()+Math.random(), name: att.name, url: att.url, path: att.path, size: att.size, type: att.mime||"", uploadedAt: now };
+        } else {
+          // テキストファイルだった場合: 再度Blob化してアップロード
+          const blob = new Blob([att.textContent||""], { type: "text/plain" });
+          const fileObj = new File([blob], att.name, { type: "text/plain" });
+          const up = await uploadFileToSupabase(fileObj, action.entityType==="company"?"companies":action.entityType==="vendor"?"vendors":"munis", ent.id);
+          fileEntry = up;
+        }
+        newData = { ...data, [key]: data[key].map(e => e.id===ent.id ? {...e, files:[...(e.files||[]), fileEntry]} : e) };
+      }
+      else if (action.type === "create_project") {
+        const members = (action.members||[]).map(findUserIdByName).filter(Boolean);
+        const project = {
+          id: Date.now(),
+          title: action.title || "新規プロジェクト",
+          description: action.description || "",
+          members: members.length ? members : (uid ? [uid] : []),
+          status: "進行中",
+          createdBy: uid,
+          memos: [], chat: [], files: [],
+          createdAt: now,
+        };
+        newData = { ...data, projects: [...(data.projects||[]), project] };
+      }
+      else if (action.type === "create_file") {
+        // AI生成ファイルをダウンロード（DBは変更しない）
+        const fmt = action.format || "text";
+        const mimeMap = { markdown:"text/markdown", text:"text/plain", csv:"text/csv", html:"text/html", json:"application/json", code:"text/plain" };
+        const mime = mimeMap[fmt] || "text/plain";
+        downloadGeneratedFile(action.filename || "file.txt", action.content || "", mime);
+        // newData は変更しない
+      } else {
+        throw new Error("未対応のアクション: "+action.type);
+      }
+
+      if (action.type !== "create_file") {
+        setData(newData);
+        const ok = await saveData(newData);
+        if (ok === false) {
+          setData(data);
+          throw new Error("DBへの保存に失敗しました");
+        }
+      }
+      // アクションを成功マークに更新
+      setHistory(h => h.map((t,i) => i===turnIdx ? {...t, actions: t.actions.map((a,j)=>j===actionIdx?{...a,_done:true}:a)} : t));
+    } catch (e) {
+      alert("実行失敗: "+(e.message||e));
+    }
+    setBusyAction(null);
+  };
+  const dismissAction = (turnIdx, actionIdx) => {
+    setHistory(h => h.map((t,i) => i===turnIdx ? {...t, actions: t.actions.map((a,j)=>j===actionIdx?{...a,_dismissed:true}:a)} : t));
+  };
+
+  const clearHistory = () => { setHistory([]); setInput(""); setError(""); setPendingFiles([]); };
+
+  const suggestions = ["来週月曜に佐藤さんへ電話タスクを作成","この資料を要約して","○○社向けの提案書を作って","廃棄物処理法って何？"];
 
   return (
     <>
@@ -19818,7 +20157,7 @@ ${q}
               </div>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontSize:"0.88rem",fontWeight:700,color:C.text,letterSpacing:"-0.005em"}}>MyDesk アシスタント</div>
-                <div style={{fontSize:"0.64rem",color:C.textMuted,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>案件・タスク・活動など何でも聞いてください</div>
+                <div style={{fontSize:"0.64rem",color:C.textMuted,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>質問・タスク作成・ファイル保管など何でも</div>
               </div>
               {history.length>0 && (
                 <button onClick={clearHistory} title="新しい会話" style={{background:"none",border:`1px solid ${C.border}`,fontSize:"0.65rem",fontWeight:600,color:C.textSub,cursor:"pointer",padding:"0.3rem 0.55rem",borderRadius:"6px",fontFamily:"inherit"}}>新しい会話</button>
@@ -19844,11 +20183,61 @@ ${q}
               {history.map((h,i)=>(
                 <div key={i} style={{marginBottom:"1.1rem"}}>
                   <div style={{display:"flex",justifyContent:"flex-end",marginBottom:"0.45rem"}}>
-                    <div style={{maxWidth:"85%",padding:"0.55rem 0.85rem",borderRadius:"14px 14px 4px 14px",background:ACC,color:"white",fontSize:"0.85rem",lineHeight:1.5,wordBreak:"break-word"}}>{h.q}</div>
+                    <div style={{maxWidth:"85%",padding:"0.55rem 0.85rem",borderRadius:"14px 14px 4px 14px",background:ACC,color:"white",fontSize:"0.85rem",lineHeight:1.5,wordBreak:"break-word"}}>{h.q || "（添付ファイル送信）"}</div>
                   </div>
+                  {/* 添付ファイル表示 */}
+                  {h.attachments && h.attachments.length>0 && (
+                    <div style={{display:"flex",justifyContent:"flex-end",flexWrap:"wrap",gap:"0.3rem",marginBottom:"0.45rem"}}>
+                      {h.attachments.map((a,j)=>(
+                        <span key={j} style={{display:"inline-flex",alignItems:"center",gap:"0.3rem",padding:"0.25rem 0.5rem",background:"white",borderRadius:"6px",border:`1px solid ${C.borderLight}`,fontSize:"0.68rem",color:C.textSub}}>
+                          <span>{a.kind==="text"?"📄":"📎"}</span>{a.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   <div style={{display:"flex"}}>
                     <div style={{maxWidth:"95%",padding:"0.75rem 0.95rem",borderRadius:"4px 14px 14px 14px",background:C.bg,color:C.text,fontSize:"0.85rem",lineHeight:1.65,wordBreak:"break-word"}}>{renderMarkdown(h.a, C)}</div>
                   </div>
+                  {/* アクション提案カード */}
+                  {h.actions && h.actions.length>0 && (
+                    <div style={{marginTop:"0.55rem",display:"flex",flexDirection:"column",gap:"0.45rem"}}>
+                      {h.actions.map((act,j)=>{
+                        if (act._dismissed) return null;
+                        const actionKey = `${i}-${j}`;
+                        const isBusy = busyAction===actionKey;
+                        const isDone = act._done;
+                        const labelMap = {create_task:"📋 タスク作成",add_memo:"📝 メモ追加",save_file:"💾 ファイル保存",create_project:"📁 プロジェクト作成",create_file:"📄 資料作成"};
+                        const summaryMap = {
+                          create_task: `${act.title||"タスク"}${act.dueDate?` (期限: ${act.dueDate})`:""}${act.assigneeNames?.length?` (担当: ${act.assigneeNames.join("、")})`:""}${act.linkedEntityName?` ＠${act.linkedEntityName}`:""}`,
+                          add_memo: `${act.entityName||""} に「${(act.content||"").slice(0,40)}${(act.content||"").length>40?"…":""}」を追加`,
+                          save_file: `添付#${(act.attachmentIndex||0)+1} を ${act.entityName||""} に保存`,
+                          create_project: `${act.title||"プロジェクト"}${act.members?.length?` (メンバー: ${act.members.join("、")})`:""}`,
+                          create_file: `${act.filename||"file.txt"} (${act.format||"text"}, ${(act.content||"").length}文字)`,
+                        };
+                        return (
+                          <div key={j} style={{padding:"0.7rem 0.85rem",background:isDone?"#ecfdf5":"white",borderRadius:"10px",border:`1.5px solid ${isDone?"#10b98155":ACC+"33"}`,boxShadow:"0 1px 2px rgba(0,0,0,0.03)"}}>
+                            <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginBottom:"0.35rem"}}>
+                              <span style={{fontSize:"0.78rem",fontWeight:800,color:isDone?"#059669":ACC,letterSpacing:"-0.005em"}}>{labelMap[act.type]||act.type}</span>
+                              {isDone && <span style={{fontSize:"0.66rem",fontWeight:700,color:"#059669",padding:"0.1rem 0.4rem",background:"#05966915",borderRadius:4}}>{act.type==="create_file"?"✓ ダウンロード済み":"✓ 実行済み"}</span>}
+                            </div>
+                            <div style={{fontSize:"0.78rem",color:C.text,lineHeight:1.55,marginBottom:isDone?0:"0.55rem"}}>{summaryMap[act.type]||JSON.stringify(act)}</div>
+                            {!isDone && (
+                              <div style={{display:"flex",gap:"0.4rem"}}>
+                                <button onClick={()=>executeAction(act, i, j, h)} disabled={isBusy}
+                                  style={{flex:1,padding:"0.45rem",borderRadius:6,border:"none",background:isBusy?C.borderLight:ACC,color:isBusy?C.textMuted:"white",fontSize:"0.76rem",fontWeight:700,cursor:isBusy?"default":"pointer",fontFamily:"inherit"}}>
+                                  {isBusy?"実行中…":act.type==="create_file"?"ダウンロード":"承認して実行"}
+                                </button>
+                                <button onClick={()=>dismissAction(i,j)} disabled={isBusy}
+                                  style={{padding:"0.45rem 0.85rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.76rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                                  却下
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               ))}
               {loading && (
@@ -19863,16 +20252,42 @@ ${q}
               )}
               {error && <div style={{margin:"0.5rem 0",fontSize:"0.78rem",color:NEG,padding:"0.6rem 0.8rem",background:"#fef2f2",border:"1px solid #fee2e2",borderRadius:"8px"}}>{error}</div>}
             </div>
-            {/* Input bar */}
-            <div style={{padding:"0.8rem 0.9rem calc(0.8rem + env(safe-area-inset-bottom, 0px))",borderTop:`1px solid ${C.borderLight}`,display:"flex",gap:"0.5rem",flexShrink:0,background:"white"}}>
-              <input type="text" value={input} onChange={e=>setInput(e.target.value)}
-                onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();ask();}}}
-                placeholder="質問を入力…"
-                style={{flex:1,padding:"0.7rem 0.9rem",borderRadius:"10px",border:`1px solid ${C.border}`,fontSize:"0.88rem",fontFamily:"inherit",outline:"none",background:C.bg,boxSizing:"border-box",minWidth:0}}/>
-              <button onClick={()=>ask()} disabled={loading||!input.trim()}
-                style={{padding:"0 1rem",borderRadius:"10px",border:"none",background:loading||!input.trim()?C.borderLight:ACC,color:loading||!input.trim()?C.textMuted:"white",fontSize:"0.84rem",fontWeight:700,cursor:loading||!input.trim()?"default":"pointer",fontFamily:"inherit",minWidth:56,flexShrink:0,letterSpacing:"-0.005em"}}>
-                {loading?"…":"送信"}
-              </button>
+            {/* Input bar (with file attachments) */}
+            <div style={{borderTop:`1px solid ${C.borderLight}`,flexShrink:0,background:"white"}}>
+              {/* 添付ファイル候補のチップ表示 */}
+              {pendingFiles.length>0 && (
+                <div style={{padding:"0.6rem 0.9rem 0",display:"flex",flexWrap:"wrap",gap:"0.4rem"}}>
+                  {pendingFiles.map(pf=>{
+                    const ext = (pf.name.split(".").pop()||"").toLowerCase();
+                    const icon = pf.kind==="text"?"📄":ext==="pdf"?"📕":ext==="docx"?"📘":pf.type?.startsWith("image/")?"🖼️":"📎";
+                    return (
+                      <div key={pf.id} style={{display:"inline-flex",alignItems:"center",gap:"0.35rem",padding:"0.3rem 0.55rem",background:ACC+"10",borderRadius:"6px",border:`1px solid ${ACC}33`,fontSize:"0.72rem",color:C.text,fontWeight:600,maxWidth:"100%",minWidth:0}}>
+                        <span style={{flexShrink:0}}>{icon}</span>
+                        <span style={{flex:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",minWidth:0}}>{pf.name}</span>
+                        {pf.extracting && <span style={{fontSize:"0.62rem",color:ACC,flexShrink:0}}>抽出中…</span>}
+                        {pf.extracted && <span style={{fontSize:"0.62rem",color:"#059669",flexShrink:0}}>✓読込済</span>}
+                        {pf.extractError && <span style={{fontSize:"0.62rem",color:"#dc2626",flexShrink:0}}>読込失敗</span>}
+                        <span style={{fontSize:"0.62rem",color:C.textMuted,flexShrink:0}}>{Math.round(pf.size/1024)}KB</span>
+                        <button onClick={()=>removePending(pf.id)} style={{background:"none",border:"none",cursor:"pointer",color:C.textMuted,fontSize:"0.95rem",lineHeight:1,padding:0,flexShrink:0}}>×</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              <div style={{padding:"0.7rem 0.7rem calc(0.7rem + env(safe-area-inset-bottom, 0px)) 0.7rem",display:"flex",gap:"0.4rem",alignItems:"center"}}>
+                <input ref={fileInputRef} type="file" multiple style={{display:"none"}} onChange={handleFilePick}
+                  accept=".txt,.md,.csv,.json,.html,.log,.tsv,.yml,.yaml,.xml,.pdf,.docx,.doc,.xlsx,.xls,.png,.jpg,.jpeg,.gif,.webp,.heic"/>
+                <button onClick={()=>fileInputRef.current?.click()} disabled={loading} title="ファイルを添付"
+                  style={{padding:"0.55rem 0.65rem",borderRadius:"10px",border:`1px solid ${C.border}`,background:"white",color:C.textSub,cursor:loading?"default":"pointer",fontSize:"1.05rem",fontFamily:"inherit",flexShrink:0,lineHeight:1}}>📎</button>
+                <input type="text" value={input} onChange={e=>setInput(e.target.value)}
+                  onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();ask();}}}
+                  placeholder={pendingFiles.length>0?"何をするか伝えてください…":"質問・依頼を入力…"}
+                  style={{flex:1,padding:"0.7rem 0.9rem",borderRadius:"10px",border:`1px solid ${C.border}`,fontSize:"0.88rem",fontFamily:"inherit",outline:"none",background:C.bg,boxSizing:"border-box",minWidth:0}}/>
+                <button onClick={()=>ask()} disabled={loading||(!input.trim()&&pendingFiles.length===0)}
+                  style={{padding:"0 1rem",borderRadius:"10px",border:"none",background:loading||(!input.trim()&&pendingFiles.length===0)?C.borderLight:ACC,color:loading||(!input.trim()&&pendingFiles.length===0)?C.textMuted:"white",fontSize:"0.84rem",fontWeight:700,cursor:loading||(!input.trim()&&pendingFiles.length===0)?"default":"pointer",fontFamily:"inherit",minWidth:52,flexShrink:0,letterSpacing:"-0.005em"}}>
+                  {loading?"…":"送信"}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -22379,7 +22794,7 @@ export default function App() {
       </div>
       </div>{/* end content+bottomNav wrapper */}
       {/* MyDesk AIアシスタント（右下常駐） */}
-      {currentUser && <AssistantFab data={data} currentUser={currentUser} users={users}/>}
+      {currentUser && <AssistantFab data={data} setData={setData} currentUser={currentUser} users={users}/>}
       {/* ⓪ 新バージョン更新バナー（最優先表示） */}
       {updateAvailable&&(
         <div style={{position:"fixed",top:0,left:0,right:0,zIndex:1002,background:"linear-gradient(90deg, #5b5bd6, #7c7cf0)",padding:"0.6rem 1rem",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.65rem",color:"white",boxShadow:"0 2px 8px rgba(91,91,214,0.3)"}}>
