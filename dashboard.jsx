@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v77-unified-timeline"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v79-timeline-history-bizcard"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -1274,19 +1274,40 @@ function globalAddChangeLog(nd, {entityType,entityId,entityName,field,oldVal,new
 function buildGlobalActivities(data) {
   if (!data) return [];
   const events = [];
-  const tsOf = (d) => { const t=new Date(d||0).getTime(); return Number.isFinite(t)?t:0; };
-  const push = (ev) => { if (ev.ts > 0) events.push(ev); };
+  // タイムスタンプ抽出: 明示日付 → idがDate.now風の数値 → 0
+  const tsOf = (...candidates) => {
+    for (const c of candidates) {
+      if (c == null) continue;
+      // 日付文字列の場合
+      if (typeof c === "string" && c) {
+        const t = new Date(c).getTime();
+        if (Number.isFinite(t) && t > 0) return t;
+      }
+      // 数値の場合（Date.now風 IDも対応）
+      if (typeof c === "number" && Number.isFinite(c) && c > 1500000000000 && c < 4000000000000) return c;
+      // string-numeric IDの場合
+      if (typeof c === "string") {
+        const n = Number(c.split(".")[0]);
+        if (Number.isFinite(n) && n > 1500000000000 && n < 4000000000000) return n;
+      }
+    }
+    return 0;
+  };
+  const push = (ev) => { events.push(ev); }; // ts=0でも含める（末尾表示）
 
   // 1. changeLogs（フィールド変更）
   for (const log of (data.changeLogs||[])) {
     const tc = ({"タスク":"#1d4ed8","プロジェクト":"#7c3aed","企業":"#059669","業者":"#d97706","自治体":"#db2777"})[log.entityType] || "#475569";
+    const isLink = log.field === "名刺紐付け";
+    const isUnlink = log.field === "名刺紐付け解除";
     push({
-      id: "cl_"+log.id, ts: tsOf(log.date), date: log.date,
-      userId: log.userId, category: log.entityType||"その他", action: "edit",
-      icon: "✏️", color: tc,
+      id: "cl_"+log.id, ts: tsOf(log.date, log.id), date: log.date,
+      userId: log.userId, category: log.entityType||"その他",
+      action: isLink ? "bizcard_link" : isUnlink ? "bizcard_unlink" : "edit",
+      icon: isLink ? "🔗" : isUnlink ? "🔓" : "✏️", color: tc,
       entityType: log.entityType, entityId: log.entityId, entityName: log.entityName,
-      title: `${log.field||"項目"}を変更`,
-      detail: log.oldVal ? `${log.oldVal} → ${log.newVal||"—"}` : (log.newVal||""),
+      title: isLink ? `名刺を紐付け` : isUnlink ? `名刺の紐付けを解除` : `${log.field||"項目"}を変更`,
+      detail: isLink || isUnlink ? (log.newVal || log.oldVal || "") : (log.oldVal ? `${log.oldVal} → ${log.newVal||"—"}` : (log.newVal||"")),
     });
   }
 
@@ -1298,42 +1319,39 @@ function buildGlobalActivities(data) {
   ];
   for (const {key,label,icon,color} of collections) {
     for (const e of (data[key]||[])) {
-      // エンティティ作成
-      if (e.createdAt) push({
-        id: `${key}_${e.id}_new`, ts: tsOf(e.createdAt), date: e.createdAt,
+      // エンティティ作成（createdAt 無くても id から推定）
+      const entTs = tsOf(e.createdAt, e.id);
+      if (entTs > 0) push({
+        id: `${key}_${e.id}_new`, ts: entTs, date: e.createdAt || new Date(entTs).toISOString(),
         userId: e.createdBy, category: label, action: "create",
         icon, color,
         entityType: label, entityId: e.id, entityName: e.name,
         title: `${label}を登録`, detail: e.name||"",
       });
-      // アプローチログ
       for (const a of (e.approachLogs||[])) push({
-        id: `${key}_${e.id}_a_${a.id||a.createdAt}`, ts: tsOf(a.createdAt||a.date), date: a.createdAt||a.date,
+        id: `${key}_${e.id}_a_${a.id||a.createdAt||a.date}`, ts: tsOf(a.createdAt, a.date, a.id), date: a.createdAt||a.date,
         userId: a.userId||a.createdBy, category: label, action: "approach",
         icon: "📞", color,
         entityType: label, entityId: e.id, entityName: e.name,
-        title: `アプローチ${a.subtype?`（${a.subtype}）`:""}`,
+        title: `アプローチ${a.subtype?`（${a.subtype}）`:a.type?`（${a.type}）`:""}`,
         detail: (a.content||a.note||"").slice(0,120),
       });
-      // メモ
       for (const m of (e.memos||[])) push({
-        id: `${key}_${e.id}_m_${m.id||m.createdAt}`, ts: tsOf(m.createdAt||m.date), date: m.createdAt||m.date,
+        id: `${key}_${e.id}_m_${m.id||m.createdAt}`, ts: tsOf(m.createdAt, m.date, m.id), date: m.createdAt||m.date,
         userId: m.createdBy||m.userId, category: label, action: "memo",
         icon: "📝", color,
         entityType: label, entityId: e.id, entityName: e.name,
         title: "メモを追加", detail: (m.content||"").slice(0,120),
       });
-      // チャット
       for (const c of (e.chat||[])) push({
-        id: `${key}_${e.id}_c_${c.id||c.date}`, ts: tsOf(c.date||c.createdAt), date: c.date||c.createdAt,
+        id: `${key}_${e.id}_c_${c.id||c.date}`, ts: tsOf(c.date, c.createdAt, c.id), date: c.date||c.createdAt,
         userId: c.userId, category: label, action: "chat",
         icon: "💬", color,
         entityType: label, entityId: e.id, entityName: e.name,
         title: "チャット投稿", detail: (c.content||c.text||"").slice(0,120),
       });
-      // ファイル
       for (const f of (e.files||[])) push({
-        id: `${key}_${e.id}_f_${f.id||f.uploadedAt}`, ts: tsOf(f.uploadedAt||f.createdAt), date: f.uploadedAt||f.createdAt,
+        id: `${key}_${e.id}_f_${f.id||f.uploadedAt}`, ts: tsOf(f.uploadedAt, f.createdAt, f.id), date: f.uploadedAt||f.createdAt,
         userId: f.uploadedBy||f.createdBy, category: label, action: "file_add",
         icon: "📎", color,
         entityType: label, entityId: e.id, entityName: e.name,
@@ -1344,29 +1362,30 @@ function buildGlobalActivities(data) {
 
   // 3. タスク: 作成・コメント・メモ・ファイル
   for (const t of (data.tasks||[])) {
-    if (t.createdAt) push({
-      id: `task_${t.id}_new`, ts: tsOf(t.createdAt), date: t.createdAt,
+    const tTs = tsOf(t.createdAt, t.id);
+    if (tTs > 0) push({
+      id: `task_${t.id}_new`, ts: tTs, date: t.createdAt || new Date(tTs).toISOString(),
       userId: t.createdBy, category: "タスク", action: "create",
       icon: "📋", color: "#1d4ed8",
       entityType: "タスク", entityId: t.id, entityName: t.title,
       title: "タスクを作成", detail: t.title||"",
     });
     for (const c of (t.comments||[])) push({
-      id: `task_${t.id}_c_${c.id||c.createdAt}`, ts: tsOf(c.createdAt||c.date), date: c.createdAt||c.date,
+      id: `task_${t.id}_c_${c.id||c.createdAt}`, ts: tsOf(c.createdAt, c.date, c.id), date: c.createdAt||c.date,
       userId: c.userId||c.createdBy, category: "タスク", action: "comment",
       icon: "💭", color: "#1d4ed8",
       entityType: "タスク", entityId: t.id, entityName: t.title,
       title: "コメントを追加", detail: (c.content||c.text||"").slice(0,120),
     });
     for (const m of (t.memos||[])) push({
-      id: `task_${t.id}_m_${m.id||m.createdAt}`, ts: tsOf(m.createdAt||m.date), date: m.createdAt||m.date,
+      id: `task_${t.id}_m_${m.id||m.createdAt}`, ts: tsOf(m.createdAt, m.date, m.id), date: m.createdAt||m.date,
       userId: m.createdBy, category: "タスク", action: "memo",
       icon: "📝", color: "#1d4ed8",
       entityType: "タスク", entityId: t.id, entityName: t.title,
       title: "メモを追加", detail: (m.content||"").slice(0,120),
     });
     for (const f of (t.files||[])) push({
-      id: `task_${t.id}_f_${f.id||f.uploadedAt}`, ts: tsOf(f.uploadedAt||f.createdAt), date: f.uploadedAt||f.createdAt,
+      id: `task_${t.id}_f_${f.id||f.uploadedAt}`, ts: tsOf(f.uploadedAt, f.createdAt, f.id), date: f.uploadedAt||f.createdAt,
       userId: f.uploadedBy||f.createdBy, category: "タスク", action: "file_add",
       icon: "📎", color: "#1d4ed8",
       entityType: "タスク", entityId: t.id, entityName: t.title,
@@ -1376,22 +1395,23 @@ function buildGlobalActivities(data) {
 
   // 4. プロジェクト
   for (const p of (data.projects||[])) {
-    if (p.createdAt) push({
-      id: `proj_${p.id}_new`, ts: tsOf(p.createdAt), date: p.createdAt,
+    const pTs = tsOf(p.createdAt, p.id);
+    if (pTs > 0) push({
+      id: `proj_${p.id}_new`, ts: pTs, date: p.createdAt || new Date(pTs).toISOString(),
       userId: p.createdBy, category: "プロジェクト", action: "create",
       icon: "📁", color: "#7c3aed",
       entityType: "プロジェクト", entityId: p.id, entityName: p.title,
       title: "プロジェクトを作成", detail: p.title||"",
     });
     for (const m of (p.memos||[])) push({
-      id: `proj_${p.id}_m_${m.id||m.createdAt}`, ts: tsOf(m.createdAt||m.date), date: m.createdAt||m.date,
+      id: `proj_${p.id}_m_${m.id||m.createdAt}`, ts: tsOf(m.createdAt, m.date, m.id), date: m.createdAt||m.date,
       userId: m.createdBy, category: "プロジェクト", action: "memo",
       icon: "📝", color: "#7c3aed",
       entityType: "プロジェクト", entityId: p.id, entityName: p.title,
       title: "メモを追加", detail: (m.content||"").slice(0,120),
     });
     for (const f of (p.files||[])) push({
-      id: `proj_${p.id}_f_${f.id||f.uploadedAt}`, ts: tsOf(f.uploadedAt||f.createdAt), date: f.uploadedAt||f.createdAt,
+      id: `proj_${p.id}_f_${f.id||f.uploadedAt}`, ts: tsOf(f.uploadedAt, f.createdAt, f.id), date: f.uploadedAt||f.createdAt,
       userId: f.uploadedBy||f.createdBy, category: "プロジェクト", action: "file_add",
       icon: "📎", color: "#7c3aed",
       entityType: "プロジェクト", entityId: p.id, entityName: p.title,
@@ -1402,15 +1422,17 @@ function buildGlobalActivities(data) {
   // 5. 見積もり
   for (const q of (data.quotes||[])) {
     const customerName = q.customerName||q.companyName||q.customer||q.title||"見積";
-    if (q.createdAt) push({
-      id: `quote_${q.id}_new`, ts: tsOf(q.createdAt), date: q.createdAt,
+    const qTs = tsOf(q.createdAt, q.id);
+    if (qTs > 0) push({
+      id: `quote_${q.id}_new`, ts: qTs, date: q.createdAt || new Date(qTs).toISOString(),
       userId: q.createdBy, category: "見積", action: "create",
       icon: "🧾", color: "#0891b2",
       entityType: "見積", entityId: q.id, entityName: customerName,
       title: "見積もりを作成", detail: `${customerName}${q.total?` / 合計 ¥${(q.total||0).toLocaleString()}`:""}`,
     });
-    if (q.updatedAt && q.updatedAt !== q.createdAt) push({
-      id: `quote_${q.id}_upd`, ts: tsOf(q.updatedAt), date: q.updatedAt,
+    const uTs = tsOf(q.updatedAt);
+    if (uTs > 0 && uTs !== qTs) push({
+      id: `quote_${q.id}_upd`, ts: uTs, date: q.updatedAt,
       userId: q.updatedBy||q.createdBy, category: "見積", action: "edit",
       icon: "✏️", color: "#0891b2",
       entityType: "見積", entityId: q.id, entityName: customerName,
@@ -1431,8 +1453,35 @@ function buildGlobalActivities(data) {
     });
   }
 
-  // 新しい順にソート
-  events.sort((a,b) => b.ts - a.ts);
+  // 7. 名刺: 作成・紐付け（紐付け済みのカードはこちらでも表示）
+  for (const bc of (data.businessCards||[])) {
+    const cardName = bc.name || bc.email || bc.phone || bc.company || "名刺";
+    const cTs = tsOf(bc.createdAt, bc.id);
+    if (cTs > 0) push({
+      id: `bc_${bc.id}_new`, ts: cTs, date: bc.createdAt || new Date(cTs).toISOString(),
+      userId: bc.createdBy, category: "名刺", action: "create",
+      icon: "💳", color: "#0e7490",
+      entityType: "名刺", entityId: bc.id, entityName: cardName,
+      title: "名刺を登録", detail: `${cardName}${bc.company?` / ${bc.company}`:""}${bc.title?` / ${bc.title}`:""}`,
+    });
+    // 紐付けイベント（linkedAt があれば、changeLog の他にも表示しない＝重複防止のため省く。changeLogで既に出る）
+    // ただし linkedAt はあるけど changeLog が無い古いカードのために、別IDで保険的に出す
+    if (bc.salesRef && bc.linkedAt) {
+      const linkTs = tsOf(bc.linkedAt);
+      const cat = bc.salesRef.type;
+      const col = ({"企業":"#059669","業者":"#d97706","自治体":"#db2777"})[cat] || "#0e7490";
+      push({
+        id: `bc_${bc.id}_link`, ts: linkTs, date: bc.linkedAt,
+        userId: bc.linkedBy, category: cat, action: "bizcard_link",
+        icon: "🔗", color: col,
+        entityType: cat, entityId: bc.salesRef.id, entityName: bc.salesRef.name||"",
+        title: "名刺を紐付け", detail: `${cardName}${bc.company?`（${bc.company}）`:""}`,
+      });
+    }
+  }
+
+  // 新しい順にソート（ts=0は末尾へ）
+  events.sort((a,b) => { if(a.ts===0&&b.ts===0) return 0; if(a.ts===0) return 1; if(b.ts===0) return -1; return b.ts - a.ts; });
   return events;
 }
 
@@ -12653,11 +12702,21 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       String(bc.salesRef?.id)===String(entityId) && bc.salesRef?.type===entityType
     );
   const unlinkBizCard = (cardId) => {
-    const nd = {...data, businessCards:(data.businessCards||[]).map(bc=>bc.id===cardId?{...bc,salesRef:null}:bc)};
+    const card = (data.businessCards||[]).find(bc=>bc.id===cardId);
+    const oldRef = card?.salesRef;
+    let nd = {...data, businessCards:(data.businessCards||[]).map(bc=>bc.id===cardId?{...bc,salesRef:null,linkedAt:null,linkedBy:null}:bc)};
+    if (oldRef && card) {
+      const cardName = card.name || card.email || card.phone || "名刺";
+      nd = globalAddChangeLog(nd, {
+        entityType: oldRef.type, entityId: String(oldRef.id), entityName: oldRef.name||"",
+        field: "名刺紐付け解除", oldVal: cardName, newVal: "", userId: currentUser?.id||null,
+      });
+    }
     save(nd);
   };
   const applyBizCardLinks = (selectedIds, entityType, entityId, entityName, baseData) => {
     const uid = currentUser?.id;
+    const now = new Date().toISOString();
     // 最新のdataを使い、baseDataのbusinessCardsをマージ（新規追加カードを含む）
     const mergedCards = [
       ...(data.businessCards||[]),
@@ -12666,8 +12725,18 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     let nd = {...data, businessCards: mergedCards};
     selectedIds.forEach(cardId=>{
       nd = {...nd, businessCards:(nd.businessCards||[]).map(c=>
-        c.id===cardId ? {...c, salesRef:{type:entityType,id:String(entityId),name:entityName}} : c
+        c.id===cardId ? {...c, salesRef:{type:entityType,id:String(entityId),name:entityName}, linkedAt: now, linkedBy: uid||null} : c
       )};
+    });
+    // ★ 紐付けを履歴に追加（タイムライン表示用）
+    selectedIds.forEach(cardId=>{
+      const card = (nd.businessCards||[]).find(c=>c.id===cardId);
+      if (!card) return;
+      const cardName = card.name || card.email || card.phone || "名刺";
+      nd = globalAddChangeLog(nd, {
+        entityType, entityId: String(entityId), entityName,
+        field: "名刺紐付け", oldVal: "", newVal: cardName, userId: uid||null,
+      });
     });
     // ★ 複数担当者保持：紐付け先 entity の assigneeIds に現ユーザーを追加
     //   既存担当者は維持したまま、自分も追加（重複なし）
@@ -18531,10 +18600,17 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
   const [restoreConfirm, setRestoreConfirm] = useState(null); // snapshot object to restore
   // activity log state
   const [logFilter, setLogFilter] = useState("all"); // all | タスク | プロジェクト | 企業 | 業者 | 自治体 | 見積 | 規約
-  const [logActionFilter, setLogActionFilter] = useState("all"); // all | create | edit | approach | memo | chat | file_add | comment | file_upload
-  const [logUserFilter, setLogUserFilter] = useState("all"); // all | userId
+  const [logActionFilter, setLogActionFilter] = useState("all");
+  const [logUserFilter, setLogUserFilter] = useState("all");
   const [logSearch, setLogSearch] = useState("");
   const [logLimit, setLogLimit] = useState(100);
+  const [logViewMode, setLogViewMode] = useState("timeline"); // timeline | calendar
+  const [logDateRange, setLogDateRange] = useState("all"); // all | today | week | month | lastweek | lastmonth | custom
+  const [logCustomFrom, setLogCustomFrom] = useState("");
+  const [logCustomTo, setLogCustomTo] = useState("");
+  const [logCalDate, setLogCalDate] = useState(new Date()); // カレンダー月
+  const [logSelectedDay, setLogSelectedDay] = useState(""); // カレンダーで選択した日
+  const [logShowPinnedOnly, setLogShowPinnedOnly] = useState(false);
 
   const loadSnaps = async () => {
     setSnapLoading(true);
@@ -19485,56 +19561,193 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
         );
       })()}
 
-      {/* ── 統合アクティビティタイムライン ── */}
+      {/* ── 統合アクティビティタイムライン（フル機能） ── */}
       {section==="actlog"&&(()=>{
-        // 全ソースからイベント収集
         const allEvents = buildGlobalActivities(data);
-        const cats = ["all","企業","業者","自治体","タスク","プロジェクト","見積","規約"];
+        const pinnedIds = new Set(data?.pinnedActivities||[]);
+        const cats = ["all","企業","業者","自治体","タスク","プロジェクト","見積","規約","名刺"];
         const actions = [
-          {id:"all",label:"すべて"},
-          {id:"create",label:"作成"},
-          {id:"edit",label:"編集/変更"},
-          {id:"approach",label:"アプローチ"},
-          {id:"memo",label:"メモ"},
-          {id:"chat",label:"チャット"},
-          {id:"comment",label:"コメント"},
-          {id:"file_add",label:"資料追加"},
-          {id:"file_upload",label:"規約アップ"},
+          {id:"all",label:"すべて"},{id:"create",label:"作成"},{id:"edit",label:"編集"},
+          {id:"approach",label:"アプローチ"},{id:"memo",label:"メモ"},{id:"chat",label:"チャット"},
+          {id:"comment",label:"コメント"},{id:"file_add",label:"資料追加"},{id:"file_upload",label:"規約アップ"},
+          {id:"bizcard_link",label:"名刺紐付け"},{id:"bizcard_unlink",label:"紐付け解除"},
         ];
+        const ranges = [
+          {id:"all",label:"全期間"},{id:"today",label:"今日"},{id:"week",label:"今週"},
+          {id:"month",label:"今月"},{id:"lastweek",label:"先週"},{id:"lastmonth",label:"先月"},
+          {id:"custom",label:"カスタム"},
+        ];
+
+        // 日付範囲の計算
+        const now = new Date();
+        const startOfDay = (d) => { const x=new Date(d); x.setHours(0,0,0,0); return x.getTime(); };
+        const endOfDay   = (d) => { const x=new Date(d); x.setHours(23,59,59,999); return x.getTime(); };
+        const startOfWeek = (d) => { const x=new Date(d); const dow=x.getDay(); x.setDate(x.getDate()-dow); x.setHours(0,0,0,0); return x.getTime(); };
+        let rangeFrom = -Infinity, rangeTo = Infinity;
+        if (logDateRange === "today") { rangeFrom = startOfDay(now); rangeTo = endOfDay(now); }
+        else if (logDateRange === "week") { rangeFrom = startOfWeek(now); rangeTo = endOfDay(now); }
+        else if (logDateRange === "month") { const x=new Date(now.getFullYear(),now.getMonth(),1); rangeFrom = x.getTime(); rangeTo = endOfDay(now); }
+        else if (logDateRange === "lastweek") { const s = startOfWeek(now)-7*86400000; rangeFrom = s; rangeTo = startOfWeek(now)-1; }
+        else if (logDateRange === "lastmonth") { const x=new Date(now.getFullYear(),now.getMonth()-1,1); const y=new Date(now.getFullYear(),now.getMonth(),0); rangeFrom = x.getTime(); rangeTo = endOfDay(y); }
+        else if (logDateRange === "custom") {
+          if (logCustomFrom) rangeFrom = startOfDay(new Date(logCustomFrom));
+          if (logCustomTo)   rangeTo   = endOfDay(new Date(logCustomTo));
+        }
+
         // 絞り込み
         const ql = (logSearch||"").trim().toLowerCase();
         const filtered = allEvents.filter(e => {
+          if (logShowPinnedOnly && !pinnedIds.has(e.id)) return false;
           if (logFilter !== "all" && e.category !== logFilter) return false;
           if (logActionFilter !== "all" && e.action !== logActionFilter) return false;
           if (logUserFilter !== "all" && e.userId !== logUserFilter) return false;
+          if (e.ts < rangeFrom || e.ts > rangeTo) return false;
+          if (logSelectedDay) {
+            const d = new Date(e.ts); d.setHours(0,0,0,0);
+            const sel = new Date(logSelectedDay); sel.setHours(0,0,0,0);
+            if (d.getTime() !== sel.getTime()) return false;
+          }
           if (ql) {
             const hay = `${e.entityName||""} ${e.title||""} ${e.detail||""}`.toLowerCase();
             if (!hay.includes(ql)) return false;
           }
           return true;
         });
-        // 日付グループ化
-        const fmtJst = (iso) => { try{ const d=new Date(iso); const o=new Date(d.getTime()+9*3600*1000); return o.toISOString().slice(0,10);}catch{return"";} };
-        const fmtTime = (iso) => { try{ const d=new Date(iso); const o=new Date(d.getTime()+9*3600*1000); return o.toISOString().slice(11,16);}catch{return"";} };
-        const today = fmtJst(new Date().toISOString());
-        const yesterday = fmtJst(new Date(Date.now()-86400000).toISOString());
-        const dayLabel = (d) => d===today?"今日":d===yesterday?"昨日":d;
+        // ピン留めを上に
+        filtered.sort((a,b)=>{ const pa=pinnedIds.has(a.id)?1:0, pb=pinnedIds.has(b.id)?1:0; if(pa!==pb) return pb-pa; return b.ts-a.ts; });
+
+        const fmtJst = (iso, ts) => { try{ if(!ts||ts<=0) return "日付不明"; const d=new Date(iso||ts); const o=new Date(d.getTime()+9*3600*1000); return o.toISOString().slice(0,10);}catch{return"日付不明";} };
+        const fmtTime = (iso, ts) => { try{ if(!ts||ts<=0) return ""; const d=new Date(iso||ts); const o=new Date(d.getTime()+9*3600*1000); return o.toISOString().slice(11,16);}catch{return"";} };
+        const today = fmtJst(new Date().toISOString(), Date.now());
+        const yesterday = fmtJst(new Date(Date.now()-86400000).toISOString(), Date.now()-86400000);
+        const dayLabel = (d) => d==="日付不明"?"📭 日付不明":d===today?"今日":d===yesterday?"昨日":d;
         const visible = filtered.slice(0, logLimit);
+
+        // ピン操作
+        const togglePin = (eventId) => {
+          const cur = new Set(data?.pinnedActivities||[]);
+          if (cur.has(eventId)) cur.delete(eventId); else cur.add(eventId);
+          const newData = { ...data, pinnedActivities: Array.from(cur) };
+          setData(newData);
+          saveData(newData);
+        };
+
+        // AI フォローアップ依頼
+        const askAiFollowUp = (ev) => {
+          const userName = (()=>{ const u = users.find(u=>u.id===ev.userId); return u ? `${u.lastName||""}${u.firstName||""}`.trim()||u.name||"" : ""; })();
+          const ymd = fmtJst(ev.date, ev.ts);
+          const prompt = `次のアクティビティについてフォローアップを提案してください。次に取るべき行動・送るメール文案・タスク化候補など、実務に直結する内容で。\n\n【アクティビティ】\n日時: ${ymd} ${fmtTime(ev.date, ev.ts)}\nカテゴリ: ${ev.category}\nアクション: ${ev.title}\nエンティティ: ${ev.entityName||""}\n詳細: ${ev.detail||""}${userName?`\n実行者: ${userName}`:""}`;
+          try { window.dispatchEvent(new CustomEvent("md-assist-followup", { detail: { prompt } })); }
+          catch(e) { console.warn(e); }
+        };
+
+        // CSVエクスポート
+        const exportCSV = () => {
+          const headers = ["日時(JST)","カテゴリ","アクション","エンティティ","詳細","担当者","ピン"];
+          const csvEscape = (v) => { const s=String(v==null?"":v); return /[",\n]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s; };
+          const rows = filtered.map(e => {
+            const u = users.find(u=>u.id===e.userId);
+            const userName = u ? `${u.lastName||""}${u.firstName||""}`.trim()||u.name||"" : "";
+            return [`${fmtJst(e.date, e.ts)} ${fmtTime(e.date, e.ts)}`, e.category, e.title, e.entityName||"", e.detail||"", userName, pinnedIds.has(e.id)?"★":""].map(csvEscape).join(",");
+          });
+          const csv = "\uFEFF" + headers.join(",") + "\n" + rows.join("\n"); // BOM for Excel
+          const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url; a.download = `MyDesk_履歴_${today}.csv`;
+          document.body.appendChild(a); a.click();
+          setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 100);
+        };
+        // 印刷ビュー（ブラウザの「PDFとして保存」を使う）
+        const exportPDF = () => {
+          const win = window.open("", "_blank");
+          if (!win) { alert("ポップアップが拒否されました"); return; }
+          const rows = filtered.map(e => {
+            const u = users.find(u=>u.id===e.userId);
+            const userName = u ? `${u.lastName||""}${u.firstName||""}`.trim()||u.name||"" : "";
+            return `<tr><td>${fmtJst(e.date, e.ts)} ${fmtTime(e.date, e.ts)}</td><td>${e.category}</td><td>${e.title}</td><td>${(e.entityName||"").replace(/</g,"&lt;")}</td><td>${(e.detail||"").replace(/</g,"&lt;")}</td><td>${userName}</td></tr>`;
+          }).join("");
+          win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>MyDesk 履歴 ${today}</title>
+            <style>body{font-family:'Noto Sans JP',sans-serif;margin:2rem;color:#0e0e0d;}h1{font-size:1.2rem;margin-bottom:0.5rem;}table{width:100%;border-collapse:collapse;font-size:11px;}th{background:#fafaf9;text-align:left;padding:6px 8px;border-bottom:2px solid #e7e5e4;font-weight:700;}td{padding:5px 8px;border-bottom:1px solid #ededeb;vertical-align:top;}.meta{font-size:10px;color:#a8a29e;margin-bottom:1rem;}@media print{body{margin:1rem;}}</style></head><body>
+            <h1>MyDesk アクティビティ履歴</h1>
+            <div class="meta">出力日: ${today} / 件数: ${filtered.length}件</div>
+            <table><thead><tr><th>日時</th><th>カテゴリ</th><th>アクション</th><th>エンティティ</th><th>詳細</th><th>担当者</th></tr></thead><tbody>${rows}</tbody></table>
+            <script>setTimeout(()=>window.print(), 300);</script></body></html>`);
+          win.document.close();
+        };
+
+        // カレンダー用: 月の各日のイベント数を集計
+        const calMonth = logCalDate.getMonth();
+        const calYear = logCalDate.getFullYear();
+        const firstDay = new Date(calYear, calMonth, 1);
+        const lastDay = new Date(calYear, calMonth+1, 0);
+        const startCal = new Date(firstDay); startCal.setDate(startCal.getDate() - firstDay.getDay()); // grid start (日曜始まり)
+        const calDays = [];
+        for (let i=0;i<42;i++){ const d=new Date(startCal); d.setDate(d.getDate()+i); calDays.push(d); }
+        const dayKey = (d) => d.toISOString().slice(0,10);
+        const eventsByDay = {};
+        for (const e of filtered) {
+          const k = fmtJst(e.date, e.ts);
+          (eventsByDay[k] = eventsByDay[k] || []).push(e);
+        }
+
         const grouped = [];
         let lastDate = null;
         for (const ev of visible) {
-          const d = fmtJst(ev.date);
+          const d = fmtJst(ev.date, ev.ts);
           if (d !== lastDate) { grouped.push({type:"date", date:d}); lastDate = d; }
           grouped.push({type:"event", ev});
         }
+
         return (
           <div style={{display:"flex",flexDirection:"column",gap:"0.75rem"}}>
+            {/* 上部ツールバー */}
+            <div style={{display:"flex",alignItems:"center",gap:"0.4rem",flexWrap:"wrap"}}>
+              <div style={{display:"inline-flex",background:C.bg,borderRadius:8,padding:"0.15rem",border:`1px solid ${C.borderLight}`}}>
+                {[{id:"timeline",label:"📜 タイムライン"},{id:"calendar",label:"📅 カレンダー"}].map(v=>(
+                  <button key={v.id} onClick={()=>{setLogViewMode(v.id); if(v.id==="timeline") setLogSelectedDay("");}}
+                    style={{padding:"0.35rem 0.75rem",borderRadius:6,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:"0.74rem",fontWeight:logViewMode===v.id?800:500,background:logViewMode===v.id?"white":"transparent",color:logViewMode===v.id?C.accent:C.textSub,boxShadow:logViewMode===v.id?"0 1px 2px rgba(0,0,0,0.06)":"none"}}>
+                    {v.label}
+                  </button>
+                ))}
+              </div>
+              <button onClick={()=>setLogShowPinnedOnly(p=>!p)}
+                style={{padding:"0.4rem 0.75rem",borderRadius:8,border:`1px solid ${logShowPinnedOnly?"#eab308":C.border}`,background:logShowPinnedOnly?"#fef9c3":"white",color:logShowPinnedOnly?"#a16207":C.textSub,fontSize:"0.74rem",fontWeight:logShowPinnedOnly?800:600,cursor:"pointer",fontFamily:"inherit"}}>
+                {logShowPinnedOnly?"⭐ ピンのみ":"☆ ピン留め表示"}
+              </button>
+              <div style={{flex:1}}/>
+              <button onClick={exportCSV} title="CSVをダウンロード"
+                style={{padding:"0.4rem 0.7rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.74rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>📤 CSV</button>
+              <button onClick={exportPDF} title="印刷/PDFで保存"
+                style={{padding:"0.4rem 0.7rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.74rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🖨️ PDF</button>
+            </div>
+
             {/* 検索 */}
             <div style={{position:"relative"}}>
               <input type="text" value={logSearch} onChange={e=>setLogSearch(e.target.value)}
                 placeholder="🔍 名前・キーワードで検索…"
                 style={{width:"100%",padding:"0.6rem 0.8rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.84rem",background:"white",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
             </div>
+
+            {/* 日付範囲 */}
+            <div style={{display:"flex",gap:"0.3rem",flexWrap:"wrap"}}>
+              {ranges.map(r=>(
+                <button key={r.id} onClick={()=>setLogDateRange(r.id)}
+                  style={{padding:"0.3rem 0.65rem",borderRadius:999,border:`1px solid ${logDateRange===r.id?C.accent:C.borderLight}`,cursor:"pointer",fontFamily:"inherit",fontSize:"0.7rem",fontWeight:logDateRange===r.id?800:500,background:logDateRange===r.id?C.accent:"white",color:logDateRange===r.id?"white":C.textSub}}>
+                  {r.label}
+                </button>
+              ))}
+            </div>
+            {logDateRange==="custom" && (
+              <div style={{display:"flex",alignItems:"center",gap:"0.4rem",flexWrap:"wrap",fontSize:"0.74rem",color:C.textSub}}>
+                <input type="date" value={logCustomFrom} onChange={e=>setLogCustomFrom(e.target.value)}
+                  style={{padding:"0.35rem 0.5rem",borderRadius:6,border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.74rem"}}/>
+                <span>〜</span>
+                <input type="date" value={logCustomTo} onChange={e=>setLogCustomTo(e.target.value)}
+                  style={{padding:"0.35rem 0.5rem",borderRadius:6,border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.74rem"}}/>
+              </div>
+            )}
+
             {/* カテゴリフィルタ */}
             <div style={{display:"flex",gap:"0.3rem",flexWrap:"wrap"}}>
               {cats.map(t=>(
@@ -19553,7 +19766,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
                 </button>
               ))}
             </div>
-            {/* メンバーフィルタ */}
+            {/* メンバー */}
             <div style={{display:"flex",alignItems:"center",gap:"0.4rem",flexWrap:"wrap"}}>
               <span style={{fontSize:"0.7rem",color:C.textMuted,fontWeight:600}}>メンバー:</span>
               <select value={logUserFilter} onChange={e=>setLogUserFilter(e.target.value)}
@@ -19561,41 +19774,89 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
                 <option value="all">すべて</option>
                 {users.map(u=>(<option key={u.id} value={u.id}>{u.lastName||u.name||""}{u.firstName||""}</option>))}
               </select>
-              <div style={{flex:1,textAlign:"right",fontSize:"0.7rem",color:C.textMuted}}>{filtered.length}件 / 全{allEvents.length}件</div>
+              <div style={{flex:1,textAlign:"right",fontSize:"0.7rem",color:C.textMuted}}>{filtered.length}件 / 全{allEvents.length}件{logSelectedDay?` / ${logSelectedDay}のみ`:""}</div>
+              {logSelectedDay && <button onClick={()=>setLogSelectedDay("")} style={{fontSize:"0.66rem",fontWeight:700,padding:"0.2rem 0.5rem",borderRadius:6,border:"none",background:C.bg,color:C.textSub,cursor:"pointer",fontFamily:"inherit"}}>日付選択を解除</button>}
             </div>
+
+            {/* カレンダー表示 */}
+            {logViewMode === "calendar" && (
+              <div style={{background:"white",borderRadius:"10px",border:`1px solid ${C.borderLight}`,padding:"0.85rem",marginTop:"0.25rem"}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.75rem"}}>
+                  <button onClick={()=>setLogCalDate(new Date(calYear, calMonth-1, 1))}
+                    style={{padding:"0.3rem 0.7rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>‹</button>
+                  <div style={{fontSize:"0.95rem",fontWeight:800,color:C.text}}>{calYear}年 {calMonth+1}月</div>
+                  <button onClick={()=>setLogCalDate(new Date(calYear, calMonth+1, 1))}
+                    style={{padding:"0.3rem 0.7rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>›</button>
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(7, 1fr)",gap:2,marginBottom:"0.35rem"}}>
+                  {["日","月","火","水","木","金","土"].map((w,i)=>(
+                    <div key={w} style={{textAlign:"center",fontSize:"0.65rem",fontWeight:700,color:i===0?"#dc2626":i===6?"#2563eb":C.textMuted,padding:"0.2rem 0"}}>{w}</div>
+                  ))}
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(7, 1fr)",gap:2}}>
+                  {calDays.map((d,i)=>{
+                    const k = dayKey(d);
+                    const inMonth = d.getMonth() === calMonth;
+                    const isToday = k === today;
+                    const isSel = logSelectedDay === k;
+                    const dayEvents = eventsByDay[k]||[];
+                    const cats3 = [...new Set(dayEvents.map(e=>e.color))].slice(0,3);
+                    return (
+                      <button key={i} onClick={()=>{ setLogSelectedDay(isSel?"":k); }}
+                        style={{aspectRatio:"1/1.1",padding:"0.3rem 0.2rem",borderRadius:6,border:`1.5px solid ${isSel?C.accent:isToday?C.accent+"55":"transparent"}`,background:isSel?C.accent+"12":isToday?C.accent+"08":inMonth?"transparent":"transparent",color:inMonth?C.text:C.borderLight,fontSize:"0.7rem",fontWeight:isToday?800:500,cursor:"pointer",fontFamily:"inherit",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-start",gap:2,opacity:inMonth?1:0.4,minHeight:42}}>
+                        <span>{d.getDate()}</span>
+                        {dayEvents.length>0 && (
+                          <div style={{display:"flex",gap:1.5,marginTop:"auto",flexWrap:"wrap",justifyContent:"center"}}>
+                            {cats3.map((c,j)=>(<span key={j} style={{width:5,height:5,borderRadius:"50%",background:c,display:"inline-block"}}/>))}
+                            {dayEvents.length>3 && <span style={{fontSize:"0.55rem",color:C.textMuted,fontWeight:700,lineHeight:1}}>+{dayEvents.length-3}</span>}
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div style={{fontSize:"0.66rem",color:C.textMuted,marginTop:"0.75rem",textAlign:"center"}}>日付をタップで絞り込み。ドット色はカテゴリ別。</div>
+              </div>
+            )}
 
             {/* タイムライン本体 */}
             {!visible.length && <div style={{textAlign:"center",padding:"2.5rem 1rem",color:C.textMuted,fontSize:"0.82rem"}}>該当する活動はありません</div>}
             <div style={{position:"relative"}}>
-              {/* 縦線 */}
               {visible.length>0 && <div style={{position:"absolute",left:18,top:8,bottom:8,width:2,background:C.borderLight}}/>}
               <div style={{display:"flex",flexDirection:"column",gap:"0.45rem"}}>
                 {grouped.map((g,i)=>{
                   if (g.type==="date") return (
-                    <div key={"d"+i} style={{padding:"0.65rem 0 0.25rem 0.55rem",fontSize:"0.66rem",fontWeight:800,color:C.textMuted,letterSpacing:"0.08em",textTransform:"uppercase",position:"relative",zIndex:1,background:"transparent"}}>
+                    <div key={"d"+i} style={{padding:"0.65rem 0 0.25rem 0.55rem",fontSize:"0.66rem",fontWeight:800,color:C.textMuted,letterSpacing:"0.08em",textTransform:"uppercase",position:"relative",zIndex:1}}>
                       {dayLabel(g.date)}
                     </div>
                   );
                   const ev = g.ev;
                   const user = users.find(u=>u.id===ev.userId);
                   const userName = user ? `${user.lastName||""}${user.firstName||""}`.trim()||user.name||"" : "";
+                  const isPinned = pinnedIds.has(ev.id);
                   return (
                     <div key={ev.id} style={{position:"relative",paddingLeft:"3rem"}}>
-                      {/* タイムラインドット */}
                       <div style={{position:"absolute",left:8,top:"0.6rem",width:22,height:22,borderRadius:"50%",background:ev.color+"22",border:`2px solid ${ev.color}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.78rem",zIndex:2}}>
                         {ev.icon}
                       </div>
-                      <div style={{background:"white",borderRadius:"10px",padding:"0.6rem 0.85rem",border:`1px solid ${C.borderLight}`,boxShadow:"0 1px 2px rgba(0,0,0,0.03)"}}>
+                      <div style={{background:isPinned?"#fef9c3":"white",borderRadius:"10px",padding:"0.6rem 0.85rem",border:`1px solid ${isPinned?"#eab308":C.borderLight}`,boxShadow:"0 1px 2px rgba(0,0,0,0.03)"}}>
                         <div style={{display:"flex",alignItems:"center",gap:"0.45rem",marginBottom:"0.25rem",flexWrap:"wrap"}}>
                           <span style={{fontSize:"0.62rem",padding:"0.1rem 0.4rem",borderRadius:4,background:ev.color+"18",color:ev.color,fontWeight:700,letterSpacing:"0.02em",flexShrink:0}}>{ev.category}</span>
                           <span style={{fontSize:"0.78rem",fontWeight:700,color:C.text,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ev.title}</span>
-                          <span style={{fontSize:"0.62rem",color:C.textMuted,flexShrink:0,fontVariantNumeric:"tabular-nums"}}>{fmtTime(ev.date)}</span>
+                          <span style={{fontSize:"0.62rem",color:C.textMuted,flexShrink:0,fontVariantNumeric:"tabular-nums"}}>{fmtTime(ev.date, ev.ts)}</span>
                         </div>
                         <div style={{display:"flex",alignItems:"baseline",gap:"0.45rem",flexWrap:"wrap"}}>
                           {ev.entityName && <span style={{fontSize:"0.74rem",color:C.textSub,fontWeight:600,maxWidth:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ev.entityName}</span>}
                           {ev.detail && <span style={{fontSize:"0.72rem",color:C.textMuted,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>— {ev.detail}</span>}
                         </div>
-                        {userName && <div style={{fontSize:"0.64rem",color:C.textMuted,marginTop:"0.3rem"}}>👤 {userName}</div>}
+                        <div style={{display:"flex",alignItems:"center",gap:"0.55rem",marginTop:"0.4rem",flexWrap:"wrap"}}>
+                          {userName && <span style={{fontSize:"0.64rem",color:C.textMuted}}>👤 {userName}</span>}
+                          <div style={{flex:1}}/>
+                          <button onClick={()=>askAiFollowUp(ev)} title="AIにフォローアップを相談"
+                            style={{fontSize:"0.65rem",fontWeight:700,padding:"0.2rem 0.5rem",borderRadius:5,border:`1px solid ${C.accent}33`,background:C.accent+"0d",color:C.accent,cursor:"pointer",fontFamily:"inherit"}}>🔔 AIに相談</button>
+                          <button onClick={()=>togglePin(ev.id)} title={isPinned?"ピン留め解除":"ピン留め"}
+                            style={{fontSize:"0.95rem",lineHeight:1,padding:"0.15rem 0.35rem",border:"none",background:"transparent",cursor:"pointer",color:isPinned?"#eab308":C.textMuted,fontFamily:"inherit"}}>{isPinned?"⭐":"☆"}</button>
+                        </div>
                       </div>
                     </div>
                   );
@@ -20132,6 +20393,18 @@ function AssistantFab({data, setData, currentUser, users}) {
     const id = requestAnimationFrame(()=>{ scrollRef.current.scrollTop = scrollRef.current.scrollHeight; });
     return ()=>cancelAnimationFrame(id);
   },[history.length, loading]);
+
+  // タイムライン等から「AIに相談」を受信したら、パネルを開いて質問を投入
+  React.useEffect(()=>{
+    const onFollowUp = (e) => {
+      const p = e?.detail?.prompt;
+      if (!p) return;
+      setOpen(true);
+      setInput(p);
+    };
+    window.addEventListener("md-assist-followup", onFollowUp);
+    return () => window.removeEventListener("md-assist-followup", onFollowUp);
+  },[]);
 
   const ask = async (qOverride) => {
     const q = (qOverride||input).trim();
