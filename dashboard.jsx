@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v79-timeline-history-bizcard"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v80-entity-timeline-files-bizcard"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -10348,15 +10348,38 @@ function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach
   const logs = [...(entity?.approachLogs||[])];
   const memos = [...(entity?.memos||[])];
   const chats = [...(entity?.chat||[])];
-  // changeLogs for this entity
-  const changeLogs = [...(data?.changeLogs||[])].filter(l=>String(l.entityId)===String(entityId));
-  // Merge all into single timeline（メモ・チャット・アプローチ・変更履歴を時刻で統一ソート）
+  const files = [...(entity?.files||[])];
+  // changeLogs for this entity（資料追加は entity.files で出すので除外、名刺紐付け系は linkedCards で出すので除外）
+  const changeLogs = [...(data?.changeLogs||[])].filter(l=>
+    String(l.entityId)===String(entityId) &&
+    l.field !== "資料追加" &&
+    l.field !== "名刺紐付け" &&
+    l.field !== "名刺紐付け解除"
+  );
+  // 名刺紐付け（このエンティティに紐付けられた名刺）
+  const entityTypeJa = entityKey==="companies"?"企業":entityKey==="vendors"?"業者":entityKey==="municipalities"?"自治体":"";
+  const linkedCards = (data?.businessCards||[]).filter(bc=>
+    bc.salesRef && bc.salesRef.type===entityTypeJa && String(bc.salesRef.id)===String(entityId)
+  );
+  // ts抽出ヘルパー（id-fallback付き）
+  const robustTs = (...vals) => {
+    for(const v of vals) {
+      if (v == null) continue;
+      if (typeof v === "string" && v) { const t=new Date(v).getTime(); if(Number.isFinite(t)&&t>0) return v; }
+      if (typeof v === "number" && v > 1500000000000 && v < 4000000000000) return new Date(v).toISOString();
+      if (typeof v === "string") { const n=Number(v.split(".")[0]); if(Number.isFinite(n)&&n>1500000000000&&n<4000000000000) return new Date(n).toISOString(); }
+    }
+    return null;
+  };
+  // Merge all into single timeline（メモ・チャット・アプローチ・変更履歴・ファイル・名刺を時刻で統一ソート）
   const tsOf = (v) => { const t = new Date(v||0).getTime(); return isNaN(t) ? 0 : t; };
   const items = [
-    ...logs.map(l=>({...l, _kind:"approach", _ts:l.createdAt||l.date})),
-    ...memos.map(m=>({...m, _kind:"memo", _ts:m.createdAt||m.date})),
-    ...chats.map(c=>({...c, _kind:"chat", _ts:c.date||c.createdAt})),
-    ...changeLogs.map(c=>({...c, _kind:"change", _ts:c.date||c.createdAt})),
+    ...logs.map(l=>({...l, _kind:"approach", _ts:robustTs(l.createdAt, l.date, l.id)})),
+    ...memos.map(m=>({...m, _kind:"memo", _ts:robustTs(m.createdAt, m.date, m.id)})),
+    ...chats.map(c=>({...c, _kind:"chat", _ts:robustTs(c.date, c.createdAt, c.id)})),
+    ...changeLogs.map(c=>({...c, _kind:"change", _ts:robustTs(c.date, c.createdAt, c.id)})),
+    ...files.map(f=>({...f, _kind:"file", _ts:robustTs(f.uploadedAt, f.createdAt, f.id)})),
+    ...linkedCards.map(bc=>({...bc, _kind:"bizcard", _ts:robustTs(bc.linkedAt, bc.createdAt, bc.id)})),
   ].sort((a,b)=>tsOf(b._ts)-tsOf(a._ts)); // 新しい順（上が最新）
 
   return (
@@ -10523,18 +10546,76 @@ function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach
             </div>
           );
         }
+        // file (資料追加)
+        if(item._kind==="file") {
+          const userName = users.find(u=>u.id===(item.uploadedBy||item.createdBy))?.lastName || users.find(u=>u.id===(item.uploadedBy||item.createdBy))?.name || "";
+          const sz = item.size ? `${Math.round(item.size/1024).toLocaleString()}KB` : "";
+          return (
+            <div key={item.id||i} style={{display:"flex",gap:"0.6rem",marginBottom:"0.75rem"}}>
+              <div style={{display:"flex",flexDirection:"column",alignItems:"center"}}>
+                <div style={{width:30,height:30,borderRadius:"50%",background:"#dbeafe",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.85rem",flexShrink:0}}>📎</div>
+                {i<items.length-1&&<div style={{width:2,flex:1,background:C.borderLight,margin:"4px 0"}}/>}
+              </div>
+              <div style={{flex:1,paddingBottom:"0.5rem"}}>
+                <div style={{display:"flex",gap:"0.5rem",alignItems:"center",flexWrap:"wrap",marginBottom:"0.2rem"}}>
+                  <span style={{fontSize:"0.7rem",fontWeight:700,color:"#1d4ed8"}}>資料を追加</span>
+                  {userName && <span style={{fontSize:"0.65rem",color:C.textMuted}}>by {userName}</span>}
+                  <span style={{fontSize:"0.65rem",color:C.textMuted,marginLeft:"auto"}}>{dateStr}</span>
+                </div>
+                <div style={{fontSize:"0.78rem",color:C.text,background:"#eff6ff",borderRadius:"0.5rem",padding:"0.4rem 0.6rem",border:`1px solid #bfdbfe`,display:"flex",alignItems:"center",gap:"0.4rem"}}>
+                  {item.url ? <a href={item.url} target="_blank" rel="noopener noreferrer" style={{color:"#1d4ed8",textDecoration:"none",fontWeight:600,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.name||"ファイル"}</a> : <span style={{flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.name||"ファイル"}</span>}
+                  {sz && <span style={{fontSize:"0.66rem",color:C.textMuted,flexShrink:0}}>{sz}</span>}
+                </div>
+              </div>
+            </div>
+          );
+        }
+        // bizcard (名刺紐付け)
+        if(item._kind==="bizcard") {
+          const userName = users.find(u=>u.id===(item.linkedBy||item.createdBy))?.lastName || users.find(u=>u.id===(item.linkedBy||item.createdBy))?.name || "";
+          const cardName = item.name || item.email || item.phone || "名刺";
+          return (
+            <div key={item.id||i} style={{display:"flex",gap:"0.6rem",marginBottom:"0.75rem"}}>
+              <div style={{display:"flex",flexDirection:"column",alignItems:"center"}}>
+                <div style={{width:30,height:30,borderRadius:"50%",background:"#cffafe",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.85rem",flexShrink:0}}>🔗</div>
+                {i<items.length-1&&<div style={{width:2,flex:1,background:C.borderLight,margin:"4px 0"}}/>}
+              </div>
+              <div style={{flex:1,paddingBottom:"0.5rem"}}>
+                <div style={{display:"flex",gap:"0.5rem",alignItems:"center",flexWrap:"wrap",marginBottom:"0.2rem"}}>
+                  <span style={{fontSize:"0.7rem",fontWeight:700,color:"#0e7490"}}>名刺を紐付け</span>
+                  {userName && <span style={{fontSize:"0.65rem",color:C.textMuted}}>by {userName}</span>}
+                  <span style={{fontSize:"0.65rem",color:C.textMuted,marginLeft:"auto"}}>{dateStr}</span>
+                </div>
+                <div style={{fontSize:"0.78rem",color:C.text,background:"#ecfeff",borderRadius:"0.5rem",padding:"0.4rem 0.6rem",border:`1px solid #a5f3fc`}}>
+                  <div style={{fontWeight:700}}>{cardName}</div>
+                  {(item.company||item.title) && <div style={{fontSize:"0.7rem",color:C.textMuted,marginTop:"0.15rem"}}>{[item.company,item.title].filter(Boolean).join(" / ")}</div>}
+                </div>
+              </div>
+            </div>
+          );
+        }
         // change log
+        const isCardLink = item.field === "名刺紐付け";
+        const isCardUnlink = item.field === "名刺紐付け解除";
+        const changeIcon = isCardLink ? "🔗" : isCardUnlink ? "🔓" : "🔄";
+        const changeBg = isCardLink ? "#cffafe" : isCardUnlink ? "#fee2e2" : "#ede9fe";
+        const changeColor = isCardLink ? "#0e7490" : isCardUnlink ? "#b91c1c" : "#7c3aed";
+        const changeLabel = isCardLink ? "名刺を紐付け" : isCardUnlink ? "名刺の紐付けを解除" : item.field;
         return (
           <div key={item.id||i} style={{display:"flex",gap:"0.6rem",marginBottom:"0.75rem"}}>
             <div style={{display:"flex",flexDirection:"column",alignItems:"center"}}>
-              <div style={{width:30,height:30,borderRadius:"50%",background:"#ede9fe",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.75rem",flexShrink:0}}>🔄</div>
+              <div style={{width:30,height:30,borderRadius:"50%",background:changeBg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.75rem",flexShrink:0}}>{changeIcon}</div>
               {i<items.length-1&&<div style={{width:2,flex:1,background:C.borderLight,margin:"4px 0"}}/>}
             </div>
             <div style={{flex:1,paddingBottom:"0.5rem"}}>
               <div style={{display:"flex",gap:"0.5rem",alignItems:"center",flexWrap:"wrap"}}>
-                <span style={{fontSize:"0.7rem",fontWeight:700,color:"#7c3aed"}}>{item.field}</span>
-                {item.oldVal&&<><span style={{fontSize:"0.68rem",color:"#dc2626",textDecoration:"line-through"}}>{item.oldVal}</span><span style={{fontSize:"0.65rem",color:C.textMuted}}>→</span></>}
-                {item.newVal&&<span style={{fontSize:"0.68rem",color:"#059669",fontWeight:700}}>{item.newVal}</span>}
+                <span style={{fontSize:"0.7rem",fontWeight:700,color:changeColor}}>{changeLabel}</span>
+                {(isCardLink||isCardUnlink) ? (
+                  <span style={{fontSize:"0.7rem",color:C.text,fontWeight:600}}>{item.newVal||item.oldVal||""}</span>
+                ) : (<>
+                  {item.oldVal&&<><span style={{fontSize:"0.68rem",color:"#dc2626",textDecoration:"line-through"}}>{item.oldVal}</span><span style={{fontSize:"0.65rem",color:C.textMuted}}>→</span></>}
+                  {item.newVal&&<span style={{fontSize:"0.68rem",color:"#059669",fontWeight:700}}>{item.newVal}</span>}
+                </>)}
                 <span style={{fontSize:"0.65rem",color:C.textMuted,marginLeft:"auto"}}>{dateStr}</span>
               </div>
             </div>
@@ -12407,6 +12488,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   const addFileToEntity = (entityKey, entityId, file) => {
     const entity = (data[entityKey]||[]).find(e=>e.id===entityId);
     const eType = entityKey==="companies"?"company":entityKey==="vendors"?"vendor":entityKey==="municipalities"?"muni":entityKey;
+    const eLabelJa = entityKey==="companies"?"企業":entityKey==="vendors"?"業者":entityKey==="municipalities"?"自治体":"";
     const uid = currentUser?.id;
     // 記録者（アップロード者）を担当者に自動追加
     const currentAssigneeIds = entity?.assigneeIds || [];
@@ -12414,7 +12496,13 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       ? [...currentAssigneeIds, uid]
       : currentAssigneeIds;
     const today = new Date().toISOString().slice(0,10);
-    let nd = { ...data, [entityKey]: (data[entityKey]||[]).map(e => e.id===entityId ? {...e, files:[...(e.files||[]),file], assigneeIds:newAssigneeIds, updatedAt:today} : e) };
+    const fileWithMeta = { ...file, uploadedBy: file.uploadedBy || uid || null, uploadedAt: file.uploadedAt || new Date().toISOString() };
+    let nd = { ...data, [entityKey]: (data[entityKey]||[]).map(e => e.id===entityId ? {...e, files:[...(e.files||[]),fileWithMeta], assigneeIds:newAssigneeIds, updatedAt:today} : e) };
+    // 履歴に追加（タイムライン表示用）
+    if (eLabelJa) nd = globalAddChangeLog(nd, {
+      entityType: eLabelJa, entityId: String(entityId), entityName: entity?.name||"",
+      field: "資料追加", oldVal: "", newVal: file.name||"ファイル", userId: uid||null,
+    });
     // 担当者全員に通知
     const assignees=newAssigneeIds.filter(id=>id!==uid);
     if(assignees.length) nd=addNotif(nd,{type:"task_assign",entityId,entityType:eType,title:`「${entity?.name||""}」にファイルが追加されました`,body:file.name||"ファイル",toUserIds:assignees,fromUserId:uid});
