@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v76-fab-always-on-top"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v77-unified-timeline"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -1267,6 +1267,173 @@ async function loadSnapshot(key) {
 function globalAddChangeLog(nd, {entityType,entityId,entityName,field,oldVal,newVal,userId}) {
   const log = {id:Date.now()+Math.random(),entityType,entityId,entityName,field,oldVal:oldVal||"",newVal:newVal||"",userId:userId||null,date:new Date().toISOString()};
   return {...nd,changeLogs:[...(nd.changeLogs||[]),log]};
+}
+
+// ─── 全アクション統合タイムライン: data全体からイベントを集めて時系列で返す ──
+// 戻り値: [{id, ts, date, userId, category, action, icon, title, detail, entityType, entityId, entityName, color}]
+function buildGlobalActivities(data) {
+  if (!data) return [];
+  const events = [];
+  const tsOf = (d) => { const t=new Date(d||0).getTime(); return Number.isFinite(t)?t:0; };
+  const push = (ev) => { if (ev.ts > 0) events.push(ev); };
+
+  // 1. changeLogs（フィールド変更）
+  for (const log of (data.changeLogs||[])) {
+    const tc = ({"タスク":"#1d4ed8","プロジェクト":"#7c3aed","企業":"#059669","業者":"#d97706","自治体":"#db2777"})[log.entityType] || "#475569";
+    push({
+      id: "cl_"+log.id, ts: tsOf(log.date), date: log.date,
+      userId: log.userId, category: log.entityType||"その他", action: "edit",
+      icon: "✏️", color: tc,
+      entityType: log.entityType, entityId: log.entityId, entityName: log.entityName,
+      title: `${log.field||"項目"}を変更`,
+      detail: log.oldVal ? `${log.oldVal} → ${log.newVal||"—"}` : (log.newVal||""),
+    });
+  }
+
+  // 2. 企業/業者/自治体: 作成・アプローチ・メモ・チャット・ファイル
+  const collections = [
+    {key:"companies",     label:"企業",   icon:"🏢", color:"#059669"},
+    {key:"vendors",       label:"業者",   icon:"🚚", color:"#d97706"},
+    {key:"municipalities",label:"自治体", icon:"🏛️", color:"#db2777"},
+  ];
+  for (const {key,label,icon,color} of collections) {
+    for (const e of (data[key]||[])) {
+      // エンティティ作成
+      if (e.createdAt) push({
+        id: `${key}_${e.id}_new`, ts: tsOf(e.createdAt), date: e.createdAt,
+        userId: e.createdBy, category: label, action: "create",
+        icon, color,
+        entityType: label, entityId: e.id, entityName: e.name,
+        title: `${label}を登録`, detail: e.name||"",
+      });
+      // アプローチログ
+      for (const a of (e.approachLogs||[])) push({
+        id: `${key}_${e.id}_a_${a.id||a.createdAt}`, ts: tsOf(a.createdAt||a.date), date: a.createdAt||a.date,
+        userId: a.userId||a.createdBy, category: label, action: "approach",
+        icon: "📞", color,
+        entityType: label, entityId: e.id, entityName: e.name,
+        title: `アプローチ${a.subtype?`（${a.subtype}）`:""}`,
+        detail: (a.content||a.note||"").slice(0,120),
+      });
+      // メモ
+      for (const m of (e.memos||[])) push({
+        id: `${key}_${e.id}_m_${m.id||m.createdAt}`, ts: tsOf(m.createdAt||m.date), date: m.createdAt||m.date,
+        userId: m.createdBy||m.userId, category: label, action: "memo",
+        icon: "📝", color,
+        entityType: label, entityId: e.id, entityName: e.name,
+        title: "メモを追加", detail: (m.content||"").slice(0,120),
+      });
+      // チャット
+      for (const c of (e.chat||[])) push({
+        id: `${key}_${e.id}_c_${c.id||c.date}`, ts: tsOf(c.date||c.createdAt), date: c.date||c.createdAt,
+        userId: c.userId, category: label, action: "chat",
+        icon: "💬", color,
+        entityType: label, entityId: e.id, entityName: e.name,
+        title: "チャット投稿", detail: (c.content||c.text||"").slice(0,120),
+      });
+      // ファイル
+      for (const f of (e.files||[])) push({
+        id: `${key}_${e.id}_f_${f.id||f.uploadedAt}`, ts: tsOf(f.uploadedAt||f.createdAt), date: f.uploadedAt||f.createdAt,
+        userId: f.uploadedBy||f.createdBy, category: label, action: "file_add",
+        icon: "📎", color,
+        entityType: label, entityId: e.id, entityName: e.name,
+        title: "資料を追加", detail: f.name||"ファイル",
+      });
+    }
+  }
+
+  // 3. タスク: 作成・コメント・メモ・ファイル
+  for (const t of (data.tasks||[])) {
+    if (t.createdAt) push({
+      id: `task_${t.id}_new`, ts: tsOf(t.createdAt), date: t.createdAt,
+      userId: t.createdBy, category: "タスク", action: "create",
+      icon: "📋", color: "#1d4ed8",
+      entityType: "タスク", entityId: t.id, entityName: t.title,
+      title: "タスクを作成", detail: t.title||"",
+    });
+    for (const c of (t.comments||[])) push({
+      id: `task_${t.id}_c_${c.id||c.createdAt}`, ts: tsOf(c.createdAt||c.date), date: c.createdAt||c.date,
+      userId: c.userId||c.createdBy, category: "タスク", action: "comment",
+      icon: "💭", color: "#1d4ed8",
+      entityType: "タスク", entityId: t.id, entityName: t.title,
+      title: "コメントを追加", detail: (c.content||c.text||"").slice(0,120),
+    });
+    for (const m of (t.memos||[])) push({
+      id: `task_${t.id}_m_${m.id||m.createdAt}`, ts: tsOf(m.createdAt||m.date), date: m.createdAt||m.date,
+      userId: m.createdBy, category: "タスク", action: "memo",
+      icon: "📝", color: "#1d4ed8",
+      entityType: "タスク", entityId: t.id, entityName: t.title,
+      title: "メモを追加", detail: (m.content||"").slice(0,120),
+    });
+    for (const f of (t.files||[])) push({
+      id: `task_${t.id}_f_${f.id||f.uploadedAt}`, ts: tsOf(f.uploadedAt||f.createdAt), date: f.uploadedAt||f.createdAt,
+      userId: f.uploadedBy||f.createdBy, category: "タスク", action: "file_add",
+      icon: "📎", color: "#1d4ed8",
+      entityType: "タスク", entityId: t.id, entityName: t.title,
+      title: "資料を追加", detail: f.name||"ファイル",
+    });
+  }
+
+  // 4. プロジェクト
+  for (const p of (data.projects||[])) {
+    if (p.createdAt) push({
+      id: `proj_${p.id}_new`, ts: tsOf(p.createdAt), date: p.createdAt,
+      userId: p.createdBy, category: "プロジェクト", action: "create",
+      icon: "📁", color: "#7c3aed",
+      entityType: "プロジェクト", entityId: p.id, entityName: p.title,
+      title: "プロジェクトを作成", detail: p.title||"",
+    });
+    for (const m of (p.memos||[])) push({
+      id: `proj_${p.id}_m_${m.id||m.createdAt}`, ts: tsOf(m.createdAt||m.date), date: m.createdAt||m.date,
+      userId: m.createdBy, category: "プロジェクト", action: "memo",
+      icon: "📝", color: "#7c3aed",
+      entityType: "プロジェクト", entityId: p.id, entityName: p.title,
+      title: "メモを追加", detail: (m.content||"").slice(0,120),
+    });
+    for (const f of (p.files||[])) push({
+      id: `proj_${p.id}_f_${f.id||f.uploadedAt}`, ts: tsOf(f.uploadedAt||f.createdAt), date: f.uploadedAt||f.createdAt,
+      userId: f.uploadedBy||f.createdBy, category: "プロジェクト", action: "file_add",
+      icon: "📎", color: "#7c3aed",
+      entityType: "プロジェクト", entityId: p.id, entityName: p.title,
+      title: "資料を追加", detail: f.name||"ファイル",
+    });
+  }
+
+  // 5. 見積もり
+  for (const q of (data.quotes||[])) {
+    const customerName = q.customerName||q.companyName||q.customer||q.title||"見積";
+    if (q.createdAt) push({
+      id: `quote_${q.id}_new`, ts: tsOf(q.createdAt), date: q.createdAt,
+      userId: q.createdBy, category: "見積", action: "create",
+      icon: "🧾", color: "#0891b2",
+      entityType: "見積", entityId: q.id, entityName: customerName,
+      title: "見積もりを作成", detail: `${customerName}${q.total?` / 合計 ¥${(q.total||0).toLocaleString()}`:""}`,
+    });
+    if (q.updatedAt && q.updatedAt !== q.createdAt) push({
+      id: `quote_${q.id}_upd`, ts: tsOf(q.updatedAt), date: q.updatedAt,
+      userId: q.updatedBy||q.createdBy, category: "見積", action: "edit",
+      icon: "✏️", color: "#0891b2",
+      entityType: "見積", entityId: q.id, entityName: customerName,
+      title: "見積もりを更新", detail: customerName,
+    });
+  }
+
+  // 6. 規約バージョンアップロード
+  const tv = data.termVersions||{};
+  for (const [tplId, versions] of Object.entries(tv)) {
+    for (const v of (versions||[])) push({
+      id: `term_${tplId}_${v.version}`, ts: tsOf(v.uploadedAt), date: v.uploadedAt,
+      userId: v.uploadedBy, category: "規約", action: "file_upload",
+      icon: "📜", color: "#475569",
+      entityType: "規約", entityId: tplId, entityName: tplId,
+      title: `規約 v${v.version} をアップロード`,
+      detail: `${v.fileName||"ファイル"}${v.notes?` — ${v.notes}`:""}`,
+    });
+  }
+
+  // 新しい順にソート
+  events.sort((a,b) => b.ts - a.ts);
+  return events;
 }
 
 async function loadUsers() {
@@ -18363,7 +18530,11 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
   const [snapMsg, setSnapMsg] = useState("");
   const [restoreConfirm, setRestoreConfirm] = useState(null); // snapshot object to restore
   // activity log state
-  const [logFilter, setLogFilter] = useState("all"); // all | タスク | プロジェクト | 企業 | 業者 | 自治体
+  const [logFilter, setLogFilter] = useState("all"); // all | タスク | プロジェクト | 企業 | 業者 | 自治体 | 見積 | 規約
+  const [logActionFilter, setLogActionFilter] = useState("all"); // all | create | edit | approach | memo | chat | file_add | comment | file_upload
+  const [logUserFilter, setLogUserFilter] = useState("all"); // all | userId
+  const [logSearch, setLogSearch] = useState("");
+  const [logLimit, setLogLimit] = useState(100);
 
   const loadSnaps = async () => {
     setSnapLoading(true);
@@ -18473,7 +18644,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
     {id:"template", icon:"✉️", label:"テンプレート"},
     {id:"mailtest", icon:"📧", label:"メール送信"},
     {id:"backup",   icon:"💾", label:"バックアップ"},
-    {id:"actlog",   icon:"📋", label:"活動ログ"},
+    {id:"actlog",   icon:"📋", label:"履歴"},
   ];
 
   const isIosMobile = typeof navigator !== "undefined" && /iphone|ipad|ipod/i.test(navigator.userAgent);
@@ -19314,49 +19485,130 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
         );
       })()}
 
-      {/* ── 活動ログ ── */}
+      {/* ── 統合アクティビティタイムライン ── */}
       {section==="actlog"&&(()=>{
-        const logs = [...(data?.changeLogs||[])].sort((a,b)=>new Date(b.date)-new Date(a.date));
-        const types = ["all","タスク","プロジェクト","企業","業者","自治体"];
-        const filtered = logFilter==="all" ? logs : logs.filter(l=>l.entityType===logFilter);
-        const typeColor = {
-          "タスク":{bg:"#e8f0fe",color:"#1d4ed8"},
-          "プロジェクト":{bg:"#ede9fe",color:"#7c3aed"},
-          "企業":{bg:"#d1fae5",color:"#059669"},
-          "業者":{bg:"#fef3c7",color:"#d97706"},
-          "自治体":{bg:"#fce7f3",color:"#db2777"},
-        };
+        // 全ソースからイベント収集
+        const allEvents = buildGlobalActivities(data);
+        const cats = ["all","企業","業者","自治体","タスク","プロジェクト","見積","規約"];
+        const actions = [
+          {id:"all",label:"すべて"},
+          {id:"create",label:"作成"},
+          {id:"edit",label:"編集/変更"},
+          {id:"approach",label:"アプローチ"},
+          {id:"memo",label:"メモ"},
+          {id:"chat",label:"チャット"},
+          {id:"comment",label:"コメント"},
+          {id:"file_add",label:"資料追加"},
+          {id:"file_upload",label:"規約アップ"},
+        ];
+        // 絞り込み
+        const ql = (logSearch||"").trim().toLowerCase();
+        const filtered = allEvents.filter(e => {
+          if (logFilter !== "all" && e.category !== logFilter) return false;
+          if (logActionFilter !== "all" && e.action !== logActionFilter) return false;
+          if (logUserFilter !== "all" && e.userId !== logUserFilter) return false;
+          if (ql) {
+            const hay = `${e.entityName||""} ${e.title||""} ${e.detail||""}`.toLowerCase();
+            if (!hay.includes(ql)) return false;
+          }
+          return true;
+        });
+        // 日付グループ化
+        const fmtJst = (iso) => { try{ const d=new Date(iso); const o=new Date(d.getTime()+9*3600*1000); return o.toISOString().slice(0,10);}catch{return"";} };
+        const fmtTime = (iso) => { try{ const d=new Date(iso); const o=new Date(d.getTime()+9*3600*1000); return o.toISOString().slice(11,16);}catch{return"";} };
+        const today = fmtJst(new Date().toISOString());
+        const yesterday = fmtJst(new Date(Date.now()-86400000).toISOString());
+        const dayLabel = (d) => d===today?"今日":d===yesterday?"昨日":d;
+        const visible = filtered.slice(0, logLimit);
+        const grouped = [];
+        let lastDate = null;
+        for (const ev of visible) {
+          const d = fmtJst(ev.date);
+          if (d !== lastDate) { grouped.push({type:"date", date:d}); lastDate = d; }
+          grouped.push({type:"event", ev});
+        }
         return (
           <div style={{display:"flex",flexDirection:"column",gap:"0.75rem"}}>
-            <div style={{display:"flex",gap:"0.375rem",flexWrap:"wrap"}}>
-              {types.map(t=>(
+            {/* 検索 */}
+            <div style={{position:"relative"}}>
+              <input type="text" value={logSearch} onChange={e=>setLogSearch(e.target.value)}
+                placeholder="🔍 名前・キーワードで検索…"
+                style={{width:"100%",padding:"0.6rem 0.8rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.84rem",background:"white",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+            </div>
+            {/* カテゴリフィルタ */}
+            <div style={{display:"flex",gap:"0.3rem",flexWrap:"wrap"}}>
+              {cats.map(t=>(
                 <button key={t} onClick={()=>setLogFilter(t)}
-                  style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:"0.73rem",fontWeight:logFilter===t?800:500,background:logFilter===t?C.accent:"white",color:logFilter===t?"white":C.textSub,boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
+                  style={{padding:"0.3rem 0.7rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:"0.72rem",fontWeight:logFilter===t?800:500,background:logFilter===t?C.accent:"white",color:logFilter===t?"white":C.textSub,boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
                   {t==="all"?"すべて":t}
                 </button>
               ))}
             </div>
-            <div style={{fontSize:"0.72rem",color:C.textMuted}}>{filtered.length}件のログ</div>
-            {!filtered.length&&<div style={{textAlign:"center",padding:"2rem",color:C.textMuted,fontSize:"0.82rem"}}>ログがありません</div>}
-            {filtered.slice(0,200).map((log,i)=>{
-              const user = users.find(u=>u.id===log.userId);
-              const tc = typeColor[log.entityType]||{bg:"#f1f5f9",color:"#475569"};
-              return (
-                <div key={log.id||i} style={{background:"white",borderRadius:"8px",padding:"0.75rem 1rem",border:"1px solid "+C.borderLight,boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
-                  <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.3rem",flexWrap:"wrap"}}>
-                    <span style={{fontSize:"0.68rem",background:tc.bg,color:tc.color,borderRadius:999,padding:"0.1rem 0.5rem",fontWeight:700,flexShrink:0}}>{log.entityType}</span>
-                    <span style={{fontSize:"0.8rem",fontWeight:700,color:C.text,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{log.entityName||"—"}</span>
-                    <span style={{fontSize:"0.65rem",color:C.textMuted,flexShrink:0}}>{log.date?new Date(log.date).toLocaleString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"}):""}</span>
-                  </div>
-                  <div style={{display:"flex",alignItems:"center",gap:"0.375rem",flexWrap:"wrap"}}>
-                    <span style={{fontSize:"0.72rem",color:C.textMuted,background:C.bg,borderRadius:"0.375rem",padding:"0.15rem 0.5rem"}}>{log.field}</span>
-                    {log.oldVal&&<><span style={{fontSize:"0.72rem",color:"#dc2626",textDecoration:"line-through",maxWidth:100,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{log.oldVal}</span><span style={{fontSize:"0.72rem",color:C.textMuted}}>→</span></>}
-                    <span style={{fontSize:"0.72rem",color:"#059669",fontWeight:600,maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{log.newVal||"—"}</span>
-                    {user&&<span style={{fontSize:"0.65rem",color:C.textMuted,marginLeft:"auto"}}>👤 {user.name}</span>}
-                  </div>
-                </div>
-              );
-            })}
+            {/* アクションフィルタ */}
+            <div style={{display:"flex",gap:"0.3rem",flexWrap:"wrap"}}>
+              {actions.map(t=>(
+                <button key={t.id} onClick={()=>setLogActionFilter(t.id)}
+                  style={{padding:"0.25rem 0.6rem",borderRadius:6,border:`1px solid ${logActionFilter===t.id?C.accent:C.borderLight}`,cursor:"pointer",fontFamily:"inherit",fontSize:"0.68rem",fontWeight:logActionFilter===t.id?700:500,background:logActionFilter===t.id?C.accent+"15":"white",color:logActionFilter===t.id?C.accent:C.textSub}}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+            {/* メンバーフィルタ */}
+            <div style={{display:"flex",alignItems:"center",gap:"0.4rem",flexWrap:"wrap"}}>
+              <span style={{fontSize:"0.7rem",color:C.textMuted,fontWeight:600}}>メンバー:</span>
+              <select value={logUserFilter} onChange={e=>setLogUserFilter(e.target.value)}
+                style={{padding:"0.25rem 0.5rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.74rem",fontFamily:"inherit",background:"white",color:C.text,cursor:"pointer"}}>
+                <option value="all">すべて</option>
+                {users.map(u=>(<option key={u.id} value={u.id}>{u.lastName||u.name||""}{u.firstName||""}</option>))}
+              </select>
+              <div style={{flex:1,textAlign:"right",fontSize:"0.7rem",color:C.textMuted}}>{filtered.length}件 / 全{allEvents.length}件</div>
+            </div>
+
+            {/* タイムライン本体 */}
+            {!visible.length && <div style={{textAlign:"center",padding:"2.5rem 1rem",color:C.textMuted,fontSize:"0.82rem"}}>該当する活動はありません</div>}
+            <div style={{position:"relative"}}>
+              {/* 縦線 */}
+              {visible.length>0 && <div style={{position:"absolute",left:18,top:8,bottom:8,width:2,background:C.borderLight}}/>}
+              <div style={{display:"flex",flexDirection:"column",gap:"0.45rem"}}>
+                {grouped.map((g,i)=>{
+                  if (g.type==="date") return (
+                    <div key={"d"+i} style={{padding:"0.65rem 0 0.25rem 0.55rem",fontSize:"0.66rem",fontWeight:800,color:C.textMuted,letterSpacing:"0.08em",textTransform:"uppercase",position:"relative",zIndex:1,background:"transparent"}}>
+                      {dayLabel(g.date)}
+                    </div>
+                  );
+                  const ev = g.ev;
+                  const user = users.find(u=>u.id===ev.userId);
+                  const userName = user ? `${user.lastName||""}${user.firstName||""}`.trim()||user.name||"" : "";
+                  return (
+                    <div key={ev.id} style={{position:"relative",paddingLeft:"3rem"}}>
+                      {/* タイムラインドット */}
+                      <div style={{position:"absolute",left:8,top:"0.6rem",width:22,height:22,borderRadius:"50%",background:ev.color+"22",border:`2px solid ${ev.color}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.78rem",zIndex:2}}>
+                        {ev.icon}
+                      </div>
+                      <div style={{background:"white",borderRadius:"10px",padding:"0.6rem 0.85rem",border:`1px solid ${C.borderLight}`,boxShadow:"0 1px 2px rgba(0,0,0,0.03)"}}>
+                        <div style={{display:"flex",alignItems:"center",gap:"0.45rem",marginBottom:"0.25rem",flexWrap:"wrap"}}>
+                          <span style={{fontSize:"0.62rem",padding:"0.1rem 0.4rem",borderRadius:4,background:ev.color+"18",color:ev.color,fontWeight:700,letterSpacing:"0.02em",flexShrink:0}}>{ev.category}</span>
+                          <span style={{fontSize:"0.78rem",fontWeight:700,color:C.text,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ev.title}</span>
+                          <span style={{fontSize:"0.62rem",color:C.textMuted,flexShrink:0,fontVariantNumeric:"tabular-nums"}}>{fmtTime(ev.date)}</span>
+                        </div>
+                        <div style={{display:"flex",alignItems:"baseline",gap:"0.45rem",flexWrap:"wrap"}}>
+                          {ev.entityName && <span style={{fontSize:"0.74rem",color:C.textSub,fontWeight:600,maxWidth:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ev.entityName}</span>}
+                          {ev.detail && <span style={{fontSize:"0.72rem",color:C.textMuted,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>— {ev.detail}</span>}
+                        </div>
+                        {userName && <div style={{fontSize:"0.64rem",color:C.textMuted,marginTop:"0.3rem"}}>👤 {userName}</div>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {filtered.length > visible.length && (
+              <button onClick={()=>setLogLimit(l=>l+100)}
+                style={{marginTop:"0.5rem",padding:"0.6rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.78rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                さらに{Math.min(100, filtered.length-visible.length)}件表示
+              </button>
+            )}
           </div>
         );
       })()}
