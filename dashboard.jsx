@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v80-entity-timeline-files-bizcard"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v83-search-normalize"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -5128,16 +5128,38 @@ function SalesRefPicker({value, onChange, salesData={}}) {
   const btnRef = useRef(null);
   const TABS = [["企業","🏢","companies"],["業者","🔧","vendors"],["自治体","🏛️","municipalities"]];
   const COLOR = {"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"};
+  // 検索文字列の正規化（全角→半角、大文字→小文字、カナ統一）
+  const normalize = (s) => {
+    if (!s) return "";
+    let r = String(s);
+    // 全角英数記号 → 半角
+    r = r.replace(/[！-～]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+    // 全角スペース → 半角
+    r = r.replace(/\u3000/g, " ");
+    // 小文字化
+    r = r.toLowerCase();
+    // カタカナ → ひらがな（あ＝ア の検索を統一）
+    r = r.replace(/[\u30A1-\u30F6]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60));
+    return r.trim();
+  };
   // tab/q/salesDataの変化に確実に反応するため useMemo で計算
   const items = React.useMemo(() => {
     const tabKey = TABS.find(t=>t[0]===tab)?.[2];
     const baseList = salesData[tabKey] || [];
-    // デバッグ: tab切替時にどのデータを参照しているかコンソールに出力
     if(typeof window !== "undefined" && window.__myDeskDebugSalesRef) {
-      console.log("[SalesRefPicker]", {tab, tabKey, count: baseList.length, sample: baseList.slice(0,2).map(x=>x.name)});
+      console.log("[SalesRefPicker]", {tab, tabKey, count: baseList.length, q, sample: baseList.slice(0,2).map(x=>x.name)});
     }
-    if(!q) return baseList;
-    return baseList.filter(x=>(x.name||"").includes(q));
+    if(!q?.trim()) return baseList;
+    const nq = normalize(q);
+    return baseList.filter(x => {
+      // 複数フィールドを正規化検索
+      const hay = normalize([
+        x.name, x.nameKana, x.alt, x.shortName,
+        x.address, x.email, x.phone,
+        ...(Array.isArray(x.contacts) ? x.contacts.map(c => c.name + " " + (c.email||"") + " " + (c.phone||"")) : [])
+      ].filter(Boolean).join(" "));
+      return hay.includes(nq);
+    });
   }, [tab, q, salesData]);
 
   const handleOpen = () => {
@@ -7081,6 +7103,146 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     setTChatIn(p=>({...p,[entityId]:""}));
   };
 
+  // ── 議事録（タスク・プロジェクト用）─────────────────────────────
+  const [tMtgSheet, setTMtgSheet] = useState(null); // {entityKey,entityId} | null
+  const [tMtgTitle, setTMtgTitle] = useState("");
+  const [tMtgBody, setTMtgBody] = useState("");
+  const addTMtg = (entityKey, entityId, title, body) => {
+    if(!title?.trim() && !body?.trim()) return;
+    const mtg = {id:Date.now(), userId:uid, title:title?.trim()||"議事録", content:body||"", date:new Date().toISOString()};
+    const arr = (data[entityKey]||[]).map(x=>x.id===entityId?{...x,mtgLogs:[...(x.mtgLogs||[]),mtg]}:x);
+    const entity = (data[entityKey]||[]).find(x=>x.id===entityId);
+    let nd = {...data,[entityKey]:arr};
+    const eType = entityKey==="tasks"?"task":entityKey==="projects"?"project":entityKey;
+    const targetIds=[...(entity?.assignees||[]),entity?.createdBy,(entity?.members||[])].flat().filter(Boolean);
+    const toUsers=[...new Set(targetIds)].filter(i=>i!==uid);
+    if(toUsers.length) nd = addNotif(nd,{type:"memo",entityId,entityType:eType,title:`「${entity?.title||entity?.name||""}」に議事録が追加されました`,body:(title||"議事録").slice(0,60),toUserIds:toUsers,fromUserId:uid});
+    saveWithPush(nd, data.notifications);
+    setTMtgSheet(null); setTMtgTitle(""); setTMtgBody("");
+  };
+  const deleteTMtg = (entityKey, entityId, mtgId) => {
+    const nd = {...data,[entityKey]:(data[entityKey]||[]).map(x=>x.id===entityId?{...x,mtgLogs:(x.mtgLogs||[]).filter(m=>m.id!==mtgId)}:x)};
+    saveWithPush(nd, data.notifications);
+  };
+
+  // ── 統合履歴セクション（メモ+チャット+議事録を時系列で）─────────
+  const THistorySection = ({entityKey, entityId, entity}) => {
+    const memos = (entity?.memos||[]).map(m=>({...m,_kind:"memo",_ts:new Date(m.date||0).getTime()}));
+    const chats = (entity?.chat||[]).map(c=>({...c,_kind:"chat",_ts:new Date(c.date||0).getTime()}));
+    const mtgs  = (entity?.mtgLogs||[]).map(m=>({...m,_kind:"mtg",_ts:new Date(m.date||0).getTime()}));
+    // 関連 changeLogs
+    const changes = (data?.changeLogs||[]).filter(l=>String(l.entityId)===String(entityId)).map(c=>({...c,_kind:"change",_ts:new Date(c.date||0).getTime()}));
+    const items = [...memos,...chats,...mtgs,...changes].sort((a,b)=>b._ts-a._ts);
+    const fmt = (iso)=>{ try{const d=new Date(iso);return d.toLocaleString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"});}catch{return"";} };
+
+    return (
+      <div>
+        {/* MTG記録ボタン */}
+        <div style={{display:"flex",gap:"0.4rem",marginBottom:"0.75rem",flexWrap:"wrap"}}>
+          <button onClick={()=>{setTMtgSheet({entityKey,entityId}); setTMtgTitle(""); setTMtgBody("");}}
+            style={{padding:"0.4rem 0.85rem",borderRadius:8,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.78rem",background:"#f0fdf4",color:"#166534"}}>🎤 議事録を追加</button>
+        </div>
+
+        {/* タイムライン本体 */}
+        <div style={{display:"flex",flexDirection:"column",gap:"0.5rem",marginBottom:"0.625rem"}}>
+          {items.length===0 && <div style={{textAlign:"center",padding:"1.5rem",color:C.textMuted,background:C.bg,borderRadius:"6px",fontSize:"0.82rem"}}>履歴なし</div>}
+          {items.map((it,i)=>{
+            const user = users.find(u=>u.id===it.userId);
+            const userName = user?.name || "不明";
+            const isMe = it.userId===uid;
+            if (it._kind==="mtg") {
+              return (
+                <div key={`mtg-${it.id||i}`} style={{background:"#f0fdf4",border:"1px solid #86efac",borderRadius:"8px",padding:"0.75rem 1rem"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.3rem"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:"0.4rem"}}>
+                      <span style={{fontSize:"0.7rem",fontWeight:800,color:"#166534",background:"white",padding:"0.1rem 0.45rem",borderRadius:4}}>🎤 議事録</span>
+                      <span style={{fontSize:"0.78rem",fontWeight:700,color:"#166534"}}>{it.title||"議事録"}</span>
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:"0.3rem"}}>
+                      <span style={{fontSize:"0.64rem",color:C.textMuted}}>{userName} · {fmt(it.date)}</span>
+                      {isMe && <button onClick={()=>{if(window.confirm("この議事録を削除しますか？"))deleteTMtg(entityKey,entityId,it.id);}} style={{background:"none",border:"none",cursor:"pointer",padding:"0 0.2rem",fontSize:"0.72rem",color:"#dc2626"}}>🗑</button>}
+                    </div>
+                  </div>
+                  {it.content && <div style={{fontSize:"0.83rem",color:C.text,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{it.content}</div>}
+                </div>
+              );
+            }
+            if (it._kind==="change") {
+              return (
+                <div key={`ch-${it.id||i}`} style={{background:"#faf5ff",border:"1px solid #d8b4fe",borderRadius:"8px",padding:"0.55rem 0.85rem",fontSize:"0.74rem"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:"0.4rem",flexWrap:"wrap"}}>
+                    <span style={{fontWeight:700,color:"#7c3aed"}}>🔄 {it.field}</span>
+                    {it.oldVal && <span style={{color:"#dc2626",textDecoration:"line-through",fontSize:"0.7rem"}}>{it.oldVal}</span>}
+                    {it.oldVal && <span style={{color:C.textMuted}}>→</span>}
+                    {it.newVal && <span style={{color:"#059669",fontWeight:700,fontSize:"0.72rem"}}>{it.newVal}</span>}
+                    <span style={{marginLeft:"auto",fontSize:"0.62rem",color:C.textMuted}}>{userName} · {fmt(it.date)}</span>
+                  </div>
+                </div>
+              );
+            }
+            const isChat = it._kind==="chat";
+            const bgCol = isChat ? "white" : "#fefce8";
+            const borderCol = isChat ? C.border : "#fde047";
+            const labelText = isChat ? "💬 チャット" : "📝 メモ";
+            const labelColor = isChat ? C.textSub : "#a16207";
+            const isEditingMemo = !isChat && tMemoEdit?.entityId===entityId && tMemoEdit?.memoId===it.id;
+            const isEditingChat = isChat && tChatEdit?.entityId===entityId && tChatEdit?.chatId===it.id;
+            return (
+              <div key={`${it._kind}-${it.id||i}`} style={{background:bgCol,border:`1px solid ${borderCol}`,borderRadius:"8px",padding:"0.65rem 0.85rem",boxShadow:"0 1px 2px rgba(0,0,0,0.03)"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.3rem"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:"0.35rem"}}>
+                    <span style={{fontSize:"0.62rem",fontWeight:700,color:labelColor}}>{labelText}</span>
+                    <span style={{fontSize:"0.72rem",fontWeight:700,color:C.accentDark}}>{userName}</span>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:"0.25rem"}}>
+                    <span style={{fontSize:"0.62rem",color:C.textMuted}}>{fmt(it.date)}</span>
+                    {it.editedAt && <span style={{fontSize:"0.56rem",color:C.textMuted}}>(編集済)</span>}
+                    {isMe && !isEditingMemo && !isEditingChat && <>
+                      <button onClick={()=>isChat?setTChatEdit({entityId,chatId:it.id,text:it.text}):setTMemoEdit({entityId,memoId:it.id,text:it.text})} style={{background:"none",border:"none",cursor:"pointer",padding:"0 0.2rem",fontSize:"0.72rem",color:C.textMuted}}>✏️</button>
+                      <button onClick={()=>{if(window.confirm(`この${isChat?"チャット":"メモ"}を削除しますか？`)) isChat?deleteTChat(entityKey,entityId,it.id):deleteTMemo(entityKey,entityId,it.id);}} style={{background:"none",border:"none",cursor:"pointer",padding:"0 0.2rem",fontSize:"0.72rem",color:"#dc2626"}}>🗑</button>
+                    </>}
+                  </div>
+                </div>
+                {isEditingMemo || isEditingChat ? (
+                  <div style={{display:"flex",flexDirection:"column",gap:"0.4rem"}}>
+                    <textarea value={isChat?tChatEdit.text:tMemoEdit.text}
+                      onChange={e=>isChat?setTChatEdit(p=>({...p,text:e.target.value})):setTMemoEdit(p=>({...p,text:e.target.value}))}
+                      style={{width:"100%",padding:"0.5rem",borderRadius:"0.5rem",border:`1.5px solid ${C.accent}`,fontSize:"0.85rem",fontFamily:"inherit",resize:"vertical",minHeight:60,outline:"none",boxSizing:"border-box",lineHeight:1.5}}/>
+                    <div style={{display:"flex",gap:"0.4rem",justifyContent:"flex-end"}}>
+                      <button onClick={()=>isChat?setTChatEdit(null):setTMemoEdit(null)} style={{padding:"0.3rem 0.75rem",borderRadius:"0.5rem",border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>キャンセル</button>
+                      <button onClick={()=>isChat?updateTChat(entityKey,entityId,it.id,tChatEdit.text):updateTMemo(entityKey,entityId,it.id,tMemoEdit.text)} style={{padding:"0.3rem 0.75rem",borderRadius:"0.5rem",border:"none",background:C.accent,color:"white",fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>保存</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{fontSize:"0.84rem",color:C.text,lineHeight:1.55,whiteSpace:"pre-wrap"}}>{it.text}</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* 入力欄: メモ／チャット */}
+        <div style={{display:"flex",flexDirection:"column",gap:"0.4rem"}}>
+          <div style={{display:"flex",gap:"0.4rem"}}>
+            <textarea value={tMemoIn[entityId]||""} onChange={e=>{setTMemoIn(p=>({...p,[entityId]:e.target.value}));e.target.style.height="auto";e.target.style.height=e.target.scrollHeight+"px";}}
+              placeholder="📝 メモを追加（自分用・通知あり）"
+              style={{flex:1,padding:"0.5rem 0.75rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none",resize:"none",minHeight:42,lineHeight:1.5,overflow:"hidden"}}/>
+            <button onClick={()=>addTMemo(entityKey,entityId,tMemoIn[entityId]||"")} disabled={!(tMemoIn[entityId]||"").trim()}
+              style={{padding:"0.5rem 0.875rem",borderRadius:"6px",border:"none",background:"#eab308",color:"white",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",alignSelf:"flex-end",opacity:(tMemoIn[entityId]||"").trim()?1:0.4,minWidth:60}}>メモ</button>
+          </div>
+          <div style={{display:"flex",gap:"0.4rem"}}>
+            <textarea value={tChatIn[entityId]||""} onChange={e=>{setTChatIn(p=>({...p,[entityId]:e.target.value}));e.target.style.height="auto";e.target.style.height=e.target.scrollHeight+"px";}}
+              placeholder="💬 チャットを投稿（@で担当者にメンション）"
+              onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();addTChat(entityKey,entityId,tChatIn[entityId]||"");}}}
+              style={{flex:1,padding:"0.5rem 0.75rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none",resize:"none",minHeight:42,lineHeight:1.5,overflow:"hidden"}}/>
+            <button onClick={()=>addTChat(entityKey,entityId,tChatIn[entityId]||"")} disabled={!(tChatIn[entityId]||"").trim()}
+              style={{padding:"0.5rem 0.875rem",borderRadius:"6px",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",alignSelf:"flex-end",opacity:(tChatIn[entityId]||"").trim()?1:0.4,minWidth:60}}>送信</button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // ── Shared sub-components (task/project) ─────────────────────────────────
   const TMemoSection = ({entityKey,entityId,memos=[]}) => (
     <div>
@@ -7226,7 +7388,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     const parentPj = activeTask.projectId ? allProjects.find(p=>p.id===activeTask.projectId) : null;
     const assignedNames = (activeTask.assignees||[]).map(id=>users.find(u=>u.id===id)?.name).filter(Boolean);
     const taskChatUnread=(data.notifications||[]).filter(n=>n.toUserId===uid&&!n.read&&n.type==="mention"&&n.entityId===activeTask.id).length;
-    const TASK_TABS=[["info","📋","情報"],["memo","📝","メモ"],["chat","💬","チャット"],["review","📨","確認依頼"],["files","📎","ファイル"]];
+    const TASK_TABS=[["info","📋","情報"],["history","💬","履歴・チャット"],["review","📨","確認依頼"],["files","📎","ファイル"]];
     return (
       <div>
         <button onClick={()=>{setScreen(fromProject?"projectDetail":"list");setTaskTab("info");if(!fromProject)setActiveTaskId(null);}}
@@ -7294,10 +7456,8 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
             </div>
           </div>
         )}
-        {/* メモタブ */}
-        {taskTab==="memo"&&TMemoSection({entityKey:"tasks",entityId:activeTask.id,memos:activeTask.memos||[]})}
-        {/* チャットタブ */}
-        {taskTab==="chat"&&TChatSection({entityKey:"tasks",entityId:activeTask.id,chat:activeTask.chat||[]})}
+        {/* 履歴・チャットタブ（メモ+チャット+議事録+変更履歴 統合） */}
+        {taskTab==="history"&&<THistorySection entityKey="tasks" entityId={activeTask.id} entity={activeTask}/>}
         {/* 確認依頼タブ */}
         {taskTab==="review"&&<ReviewRequestSection
           task={activeTask} users={users} uid={uid} allTasks={allTasks}
@@ -7322,7 +7482,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
   if (screen==="projectDetail" && activePj) {
     const memberNames = (activePj.members||[]).map(id=>users.find(u=>u.id===id)?.name).filter(Boolean);
     const pjChatUnread=(data.notifications||[]).filter(n=>n.toUserId===uid&&!n.read&&n.type==="mention"&&n.entityId===activePj.id).length;
-    const PJ_TABS=[["tasks","📋","タスク"],["memo","📝","メモ"],["chat","💬","チャット"],["files","📎","ファイル"]];
+    const PJ_TABS=[["tasks","📋","タスク"],["history","💬","履歴・チャット"],["files","📎","ファイル"]];
     return (
       <div>
         <button onClick={()=>{setScreen("list");setPjTab("tasks");setActivePjId(null);}}
@@ -7432,10 +7592,8 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
             <Btn variant="danger" size="sm" onClick={()=>{if(window.confirm("プロジェクトとタスクをすべて削除しますか？")){deleteProject(activePj.id);setScreen("list");}}}>🗑 プロジェクトを削除</Btn>
           </div>
         )}
-        {/* メモタブ */}
-        {pjTab==="memo"&&TMemoSection({entityKey:"projects",entityId:activePj.id,memos:activePj.memos||[]})}
-        {/* チャットタブ */}
-        {pjTab==="chat"&&TChatSection({entityKey:"projects",entityId:activePj.id,chat:activePj.chat||[]})}
+        {/* 履歴・チャットタブ（メモ+チャット+議事録+変更履歴 統合） */}
+        {pjTab==="history"&&<THistorySection entityKey="projects" entityId={activePj.id} entity={activePj}/>}
         {pjTab==="files"&&<FileSection
           files={activePj.files||[]} currentUserId={uid}
           entityType="projects" entityId={activePj.id} entityName={activePj.name}
@@ -7444,6 +7602,21 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
         {sheet==="addPjTask"&&<Sheet title="タスクを追加" onClose={()=>setSheet(null)}>
           <TaskForm initial={{status:"未着手"}} salesData={data} users={users} currentUserId={uid} onClose={()=>setSheet(null)}
             onSave={f=>{addTask(f,activePjId);}}/>
+        </Sheet>}
+        {tMtgSheet?.entityKey==="projects"&&tMtgSheet?.entityId===activePj.id&&<Sheet title="🎤 議事録を追加" onClose={()=>setTMtgSheet(null)}>
+          <div style={{display:"flex",flexDirection:"column",gap:"0.7rem"}}>
+            <input type="text" value={tMtgTitle} onChange={e=>setTMtgTitle(e.target.value)}
+              placeholder="議題（例: 6/4 進捗MTG）"
+              style={{padding:"0.55rem 0.75rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.88rem",fontFamily:"inherit",outline:"none"}}/>
+            <textarea value={tMtgBody} onChange={e=>setTMtgBody(e.target.value)}
+              placeholder="議事内容（決定事項・宿題・次回確認事項など）"
+              rows={10}
+              style={{padding:"0.55rem 0.75rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.84rem",fontFamily:"inherit",outline:"none",resize:"vertical",lineHeight:1.6}}/>
+            <div style={{display:"flex",gap:"0.5rem"}}>
+              <Btn variant="secondary" style={{flex:1}} onClick={()=>setTMtgSheet(null)}>キャンセル</Btn>
+              <Btn style={{flex:2}} size="lg" onClick={()=>addTMtg("projects",activePj.id,tMtgTitle,tMtgBody)} disabled={!tMtgTitle.trim()&&!tMtgBody.trim()}>保存</Btn>
+            </div>
+          </div>
         </Sheet>}
         {sheet==="editProject"&&<Sheet title="プロジェクトを編集" onClose={()=>setSheet(null)}>
           <ProjectForm initial={activePj} salesData={data} users={users} currentUserId={uid} onClose={()=>setSheet(null)}
@@ -7705,6 +7878,21 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
         <ProjectForm salesData={data} users={users} currentUserId={uid} onClose={()=>setSheet(null)}
           onSave={f=>{addProject(f);}}/>
       </Sheet>}
+      {tMtgSheet?.entityKey==="tasks"&&<Sheet title="🎤 議事録を追加" onClose={()=>setTMtgSheet(null)}>
+        <div style={{display:"flex",flexDirection:"column",gap:"0.7rem"}}>
+          <input type="text" value={tMtgTitle} onChange={e=>setTMtgTitle(e.target.value)}
+            placeholder="議題（例: 6/4 進捗MTG）"
+            style={{padding:"0.55rem 0.75rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.88rem",fontFamily:"inherit",outline:"none"}}/>
+          <textarea value={tMtgBody} onChange={e=>setTMtgBody(e.target.value)}
+            placeholder="議事内容（決定事項・宿題・次回確認事項など）"
+            rows={10}
+            style={{padding:"0.55rem 0.75rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.84rem",fontFamily:"inherit",outline:"none",resize:"vertical",lineHeight:1.6}}/>
+          <div style={{display:"flex",gap:"0.5rem"}}>
+            <Btn variant="secondary" style={{flex:1}} onClick={()=>setTMtgSheet(null)}>キャンセル</Btn>
+            <Btn style={{flex:2}} size="lg" onClick={()=>addTMtg("tasks",tMtgSheet.entityId,tMtgTitle,tMtgBody)} disabled={!tMtgTitle.trim()&&!tMtgBody.trim()}>保存</Btn>
+          </div>
+        </div>
+      </Sheet>}
       {taskDupModal&&<DupModal
         existing={taskDupModal.existing}
         incoming={taskDupModal.incoming}
@@ -7738,8 +7926,154 @@ function ScheduleView() {
 }
 
 // ─── EMAIL VIEW ───────────────────────────────────────────────────────────────
+// ─── EMAIL DETAIL PANE: メール詳細＋AI返信＋エンティティ連携 ──────────────
+function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onGenerateReply, aiBusy, onLink, onUnlink, data, currentUser, fmtFull, onSend, sendBusy }) {
+  const [linkType, setLinkType] = React.useState(null); // 企業/業者/自治体/タスク/プロジェクト/名刺
+  const [linkSearch, setLinkSearch] = React.useState("");
+  const [replyMode, setReplyMode] = React.useState(false);
+  const [replyBody, setReplyBody] = React.useState("");
+  const [replySubject, setReplySubject] = React.useState("");
+  const [replyDraftGenerated, setReplyDraftGenerated] = React.useState(false);
+
+  const isInbound = email.direction === "inbound";
+
+  // エンティティ候補
+  const sources = {
+    "企業": data.companies||[], "業者": data.vendors||[], "自治体": data.municipalities||[],
+    "タスク": (data.tasks||[]).map(t=>({...t, name:t.title})),
+    "プロジェクト": (data.projects||[]).map(p=>({...p, name:p.title})),
+    "名刺": (data.businessCards||[]).map(b=>({...b, name:b.name||b.email||b.phone||"名刺"})),
+  };
+  const candidates = linkType ? (sources[linkType]||[]).filter(e => {
+    if (!linkSearch.trim()) return true;
+    return (e.name||"").toLowerCase().includes(linkSearch.trim().toLowerCase());
+  }).slice(0, 30) : [];
+
+  const handleReplyClick = async () => {
+    setReplyMode(true);
+    setReplySubject(`Re: ${(email.subject||"").replace(/^(Re:\s*)+/i,"")}`);
+    if (!replyDraftGenerated && isInbound) {
+      const txt = await onGenerateReply();
+      if (txt) { setReplyBody(txt); setReplyDraftGenerated(true); }
+    }
+  };
+
+  const handleSend = async () => {
+    if (!replyBody.trim()) { alert("本文を入力してください"); return; }
+    const payload = {
+      to: isInbound ? [email.from] : (email.to||[]),
+      subject: replySubject || email.subject,
+      body: replyBody,
+      replyToId: email.id,
+      linkedDisplay: email.linkedDisplay||[],
+    };
+    await onSend(payload);
+  };
+
+  return (
+    <div style={{background:"white",borderRadius:"10px",padding:"0.9rem",border:`1px solid ${C.borderLight}`,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+      {/* ヘッダー */}
+      <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.65rem"}}>
+        <button onClick={onClose} style={{padding:"0.3rem 0.55rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.74rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>← 戻る</button>
+        <div style={{flex:1}}/>
+        <button onClick={onToggleStar} style={{padding:"0.15rem 0.4rem",border:"none",background:"transparent",cursor:"pointer",fontSize:"1.1rem",lineHeight:1,color:email.isStarred?"#eab308":C.borderLight}}>{email.isStarred?"⭐":"☆"}</button>
+      </div>
+      {/* 件名 */}
+      <div style={{fontSize:"1rem",fontWeight:800,color:C.text,marginBottom:"0.45rem",letterSpacing:"-0.01em"}}>{email.subject||"(件名なし)"}</div>
+      {/* メタ情報 */}
+      <div style={{fontSize:"0.74rem",color:C.textSub,marginBottom:"0.65rem",lineHeight:1.6}}>
+        <div><b style={{fontWeight:700,color:C.text}}>{isInbound?"From:":"To:"}</b> {isInbound ? `${email.from?.name||""} <${email.from?.email||""}>` : (email.to||[]).map(t=>`${t.name||""} <${t.email||""}>`).join(", ")}</div>
+        <div><b style={{fontWeight:700,color:C.text}}>{isInbound?"To:":"From:"}</b> {isInbound ? (email.to||[]).map(t=>t.email).join(", ") : `${email.from?.name||""} <${email.from?.email||""}>`}</div>
+        <div><b style={{fontWeight:700,color:C.text}}>日時:</b> {fmtFull(email.sentAt||email.receivedAt||email.createdAt)}</div>
+        {email.status==="failed" && <div style={{color:"#b91c1c",fontWeight:700,marginTop:"0.2rem"}}>⚠️ 送信失敗: {email.errorReason||"不明"}</div>}
+      </div>
+      {/* リンク済みエンティティ */}
+      {(email.linkedDisplay||[]).length>0 && (
+        <div style={{display:"flex",gap:"0.3rem",flexWrap:"wrap",marginBottom:"0.65rem"}}>
+          {(email.linkedDisplay||[]).map((l,i)=>(
+            <span key={i} style={{display:"inline-flex",alignItems:"center",gap:"0.3rem",fontSize:"0.7rem",padding:"0.2rem 0.55rem",borderRadius:999,background:C.accent+"15",color:C.accent,fontWeight:700}}>
+              <span>{l.type}: {l.name}</span>
+              <button onClick={()=>onUnlink(l.type,l.id)} style={{padding:0,border:"none",background:"none",cursor:"pointer",color:C.accent,fontSize:"0.85rem",lineHeight:1}}>×</button>
+            </span>
+          ))}
+        </div>
+      )}
+      {/* 本文 */}
+      <div style={{padding:"0.75rem 0.9rem",background:C.bg,borderRadius:8,border:`1px solid ${C.borderLight}`,fontSize:"0.83rem",lineHeight:1.7,color:C.text,whiteSpace:"pre-wrap",marginBottom:"0.85rem",wordBreak:"break-word"}}>{email.body||"(本文なし)"}</div>
+
+      {/* アクションボタン */}
+      {!replyMode && (
+        <div style={{display:"flex",gap:"0.45rem",flexWrap:"wrap",marginBottom:"0.5rem"}}>
+          {isInbound && <button onClick={handleReplyClick} disabled={aiBusy}
+            style={{flex:1,minWidth:140,padding:"0.55rem",borderRadius:7,border:"none",background:aiBusy?C.borderLight:C.accent,color:aiBusy?C.textMuted:"white",fontSize:"0.82rem",fontWeight:800,cursor:aiBusy?"default":"pointer",fontFamily:"inherit"}}>
+            {aiBusy?"AI生成中…":"🤖 AIで返信"}
+          </button>}
+          {!isInbound && <button onClick={()=>{setReplyMode(true);setReplyBody(email.body||"");setReplySubject(email.subject||"");}} 
+            style={{flex:1,minWidth:140,padding:"0.55rem",borderRadius:7,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.82rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>↻ 再送</button>}
+          <button onClick={()=>setLinkType(linkType?null:"企業")} 
+            style={{padding:"0.55rem 0.85rem",borderRadius:7,border:`1px solid ${C.border}`,background:linkType?"#fff7ed":"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🔗 連携</button>
+        </div>
+      )}
+
+      {/* エンティティ連携 UI */}
+      {linkType && (
+        <div style={{background:"#fff7ed",borderRadius:8,padding:"0.7rem",border:"1px solid #fed7aa",marginBottom:"0.65rem"}}>
+          <div style={{display:"flex",gap:"0.25rem",flexWrap:"wrap",marginBottom:"0.5rem"}}>
+            {["企業","業者","自治体","タスク","プロジェクト","名刺"].map(t=>(
+              <button key={t} onClick={()=>setLinkType(t)}
+                style={{padding:"0.2rem 0.5rem",borderRadius:5,border:"none",background:linkType===t?C.accent:"white",color:linkType===t?"white":C.textSub,fontSize:"0.68rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{t}</button>
+            ))}
+            <div style={{flex:1}}/>
+            <button onClick={()=>setLinkType(null)} style={{padding:"0.2rem 0.5rem",borderRadius:5,border:"none",background:"transparent",color:C.textMuted,fontSize:"0.74rem",cursor:"pointer",fontFamily:"inherit"}}>閉じる</button>
+          </div>
+          <input type="text" value={linkSearch} onChange={e=>setLinkSearch(e.target.value)} placeholder={`${linkType}を検索…`}
+            style={{width:"100%",padding:"0.4rem 0.6rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"inherit",boxSizing:"border-box",marginBottom:"0.4rem"}}/>
+          <div style={{maxHeight:200,overflow:"auto",display:"flex",flexDirection:"column",gap:"0.2rem"}}>
+            {candidates.length===0 && <div style={{fontSize:"0.72rem",color:C.textMuted,padding:"0.3rem"}}>該当なし</div>}
+            {candidates.map(c=>(
+              <button key={c.id} onClick={()=>{onLink(linkType, c.id, c.name); setLinkSearch("");}}
+                style={{padding:"0.4rem 0.55rem",borderRadius:5,border:`1px solid ${C.borderLight}`,background:"white",color:C.text,fontSize:"0.76rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>{c.name}</button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 返信モード */}
+      {replyMode && (
+        <div style={{background:"#f0fdf4",borderRadius:8,padding:"0.7rem",border:"1px solid #86efac"}}>
+          <div style={{fontSize:"0.72rem",fontWeight:800,color:"#059669",marginBottom:"0.45rem"}}>{isInbound?"📤 返信を送信":"📤 メールを送信"}</div>
+          <input type="text" value={replySubject} onChange={e=>setReplySubject(e.target.value)} placeholder="件名"
+            style={{width:"100%",padding:"0.5rem 0.65rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.82rem",fontFamily:"inherit",boxSizing:"border-box",marginBottom:"0.4rem"}}/>
+          <textarea value={replyBody} onChange={e=>setReplyBody(e.target.value)} rows={10} placeholder={aiBusy?"AIが生成中…":"本文を入力"}
+            style={{width:"100%",padding:"0.55rem 0.7rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.84rem",fontFamily:"inherit",lineHeight:1.6,resize:"vertical",boxSizing:"border-box",marginBottom:"0.5rem"}}/>
+          <div style={{display:"flex",gap:"0.4rem"}}>
+            <button onClick={()=>{setReplyMode(false);setReplyBody("");setReplyDraftGenerated(false);}}
+              style={{padding:"0.55rem 0.85rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.8rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>キャンセル</button>
+            {isInbound && <button onClick={async()=>{ const txt=await onGenerateReply(); if(txt){setReplyBody(txt);setReplyDraftGenerated(true);}}} disabled={aiBusy}
+              style={{padding:"0.55rem 0.85rem",borderRadius:6,border:`1px solid ${C.accent}55`,background:"white",color:C.accent,fontSize:"0.8rem",fontWeight:700,cursor:aiBusy?"default":"pointer",fontFamily:"inherit"}}>{aiBusy?"…":"🔄 AI再生成"}</button>}
+            <button onClick={handleSend} disabled={sendBusy||!replyBody.trim()}
+              style={{flex:1,padding:"0.55rem",borderRadius:6,border:"none",background:sendBusy||!replyBody.trim()?C.borderLight:"#059669",color:sendBusy||!replyBody.trim()?C.textMuted:"white",fontSize:"0.84rem",fontWeight:800,cursor:sendBusy||!replyBody.trim()?"default":"pointer",fontFamily:"inherit"}}>
+              {sendBusy?"送信中…":"📤 送信"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EmailView({data,setData,currentUser=null}) {
   const uid = currentUser?.id;
+
+  // ───── メールボックス: ビュー切替 ─────
+  const [mbView, setMbView] = useState("inbox"); // inbox | sent | drafts | compose
+  const [mbSearch, setMbSearch] = useState("");
+  const [mbFilter, setMbFilter] = useState("all"); // all | unread | needsReply | starred
+  const [mbSelectedId, setMbSelectedId] = useState(null);
+  const [mbLinkPicker, setMbLinkPicker] = useState(null); // {emailId, type} or null
+  const [mbSendBusy, setMbSendBusy] = useState(false);
+  const [mbAiBusy, setMbAiBusy] = useState(false);
+  const [mbTestOpen, setMbTestOpen] = useState(false);
 
   // "reply" = 受信メールへの返信, "compose" = 新規メール作成, "follow" = フォローメール
   const [mode,setMode]           = useState("reply");
@@ -8030,8 +8364,294 @@ function EmailView({data,setData,currentUser=null}) {
     setData(u); scheduleSaveData(u); setStyleInput(""); setStyleSheet(false);
   };
 
+  // ─── メールボックス: ヘルパー関数 ─────────────────────────────────────────
+  const allMailbox = (data.emails||[]).filter(e=>e.direction); // direction を持つメールのみ
+  const fmtMbDate = (iso) => { if(!iso) return ""; try{ const d=new Date(iso); const j=new Date(d.getTime()+9*3600*1000); const pad=n=>String(n).padStart(2,"0"); const today=new Date(Date.now()+9*3600*1000).toISOString().slice(0,10); const ymd=j.toISOString().slice(0,10); if(ymd===today) return `${pad(j.getUTCHours())}:${pad(j.getUTCMinutes())}`; return `${j.getUTCMonth()+1}/${j.getUTCDate()}`; }catch{return"";} };
+  const fmtMbFullDate = (iso) => { if(!iso) return ""; try{ const d=new Date(iso); const j=new Date(d.getTime()+9*3600*1000); const pad=n=>String(n).padStart(2,"0"); return `${j.getUTCFullYear()}-${pad(j.getUTCMonth()+1)}-${pad(j.getUTCDate())} ${pad(j.getUTCHours())}:${pad(j.getUTCMinutes())}`; }catch{return"";} };
+  // メールアドレスから企業/業者/自治体/名刺を自動検出
+  const findEntityByEmail = (emailAddr) => {
+    if (!emailAddr) return null;
+    const lc = emailAddr.toLowerCase().trim();
+    const bc = (data.businessCards||[]).find(b => (b.email||"").toLowerCase().trim()===lc);
+    if (bc && bc.salesRef) return { type: bc.salesRef.type, id: bc.salesRef.id, name: bc.salesRef.name, bizcardId: bc.id };
+    const cols = [{arr:data.companies||[],type:"企業"},{arr:data.vendors||[],type:"業者"},{arr:data.municipalities||[],type:"自治体"}];
+    for (const {arr,type} of cols) {
+      for (const e of arr) {
+        if ((e.email||"").toLowerCase().trim()===lc) return { type, id:e.id, name:e.name };
+        if (Array.isArray(e.contacts)) for (const c of e.contacts) if ((c.email||"").toLowerCase().trim()===lc) return { type, id:e.id, name:e.name };
+      }
+    }
+    return null;
+  };
+  const daysSince = (iso) => { if(!iso) return 0; const d=new Date(iso); return Math.floor((Date.now()-d.getTime())/86400000); };
+  const needsReplySoon = (email) => email.direction==="inbound" && !email.isReplied && daysSince(email.receivedAt||email.createdAt)>=2;
+
+  const updateEmailField = (id, patch) => {
+    const nd = { ...data, emails: (data.emails||[]).map(e=>e.id===id?{...e,...patch}:e) };
+    setData(nd); saveData(nd);
+  };
+  const linkEmailToEntity = (emailId, entityType, entityId, entityName) => {
+    const fmap = { "企業":"linkedCompanyIds","業者":"linkedVendorIds","自治体":"linkedMuniIds","タスク":"linkedTaskIds","プロジェクト":"linkedProjectIds","名刺":"linkedBizcardIds" };
+    const field = fmap[entityType]; if(!field) return;
+    const nd = { ...data, emails: (data.emails||[]).map(e=>{
+      if (e.id!==emailId) return e;
+      const cur = Array.isArray(e[field])?e[field]:[];
+      if (cur.includes(entityId)) return e;
+      return {...e, [field]:[...cur, entityId], linkedDisplay:[...(e.linkedDisplay||[]).filter(l=>!(l.type===entityType&&l.id===entityId)), {type:entityType,id:entityId,name:entityName}]};
+    }) };
+    setData(nd); saveData(nd);
+  };
+  const unlinkEmailFromEntity = (emailId, entityType, entityId) => {
+    const fmap = { "企業":"linkedCompanyIds","業者":"linkedVendorIds","自治体":"linkedMuniIds","タスク":"linkedTaskIds","プロジェクト":"linkedProjectIds","名刺":"linkedBizcardIds" };
+    const field = fmap[entityType]; if(!field) return;
+    const nd = { ...data, emails: (data.emails||[]).map(e=>{
+      if (e.id!==emailId) return e;
+      return {...e, [field]:(e[field]||[]).filter(x=>x!==entityId), linkedDisplay:(e.linkedDisplay||[]).filter(l=>!(l.type===entityType&&l.id===entityId))};
+    }) };
+    setData(nd); saveData(nd);
+  };
+
+  // 送信処理: API経由
+  const sendEmailNow = async ({to, cc, bcc, subject, body, replyToId, linkedDisplay}) => {
+    setMbSendBusy(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/send-email`, {
+        method: "POST",
+        headers: {"Content-Type":"application/json","x-mydesk-secret":"mydesk2026"},
+        body: JSON.stringify({ to, cc, bcc, subject, body, replyToId, fromName: currentUser?.name||"" })
+      });
+      let result = null;
+      try { result = await res.json(); } catch(e){}
+      const newEmail = {
+        id: Date.now()+Math.random(),
+        threadId: replyToId || Date.now(),
+        from: { email: currentUser?.email||"", name: currentUser?.name||"" },
+        to: Array.isArray(to) ? to : [{ email: to, name: "" }],
+        cc: cc || [], bcc: bcc || [],
+        subject: subject || "(件名なし)",
+        body: body || "",
+        direction: "outbound",
+        status: res.ok ? "sent" : "failed",
+        errorReason: !res.ok ? (result?.error || `HTTP ${res.status}`) : null,
+        sentAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        createdBy: uid,
+        inReplyTo: replyToId,
+        linkedCompanyIds: linkedDisplay?.filter(l=>l.type==="企業").map(l=>l.id) || [],
+        linkedVendorIds: linkedDisplay?.filter(l=>l.type==="業者").map(l=>l.id) || [],
+        linkedMuniIds: linkedDisplay?.filter(l=>l.type==="自治体").map(l=>l.id) || [],
+        linkedTaskIds: linkedDisplay?.filter(l=>l.type==="タスク").map(l=>l.id) || [],
+        linkedProjectIds: linkedDisplay?.filter(l=>l.type==="プロジェクト").map(l=>l.id) || [],
+        linkedBizcardIds: linkedDisplay?.filter(l=>l.type==="名刺").map(l=>l.id) || [],
+        linkedDisplay: linkedDisplay || [],
+      };
+      let nd = { ...data, emails: [...(data.emails||[]), newEmail] };
+      if (replyToId) nd = { ...nd, emails: nd.emails.map(e=>e.id===replyToId?{...e,isReplied:true,repliedAt:new Date().toISOString()}:e) };
+      setData(nd); await saveData(nd);
+      if (!res.ok) alert(`送信API失敗: ${result?.error||`HTTP ${res.status}`}\n（記録は保存しました。バックエンドのSES設定を確認してください）`);
+      return res.ok;
+    } catch (e) {
+      alert("送信エラー: " + (e.message||e));
+      return false;
+    } finally { setMbSendBusy(false); }
+  };
+
+  // テスト用: 受信メールを手動追加
+  const addTestInboundEmail = (from, subject, body) => {
+    const auto = findEntityByEmail(from);
+    const newEmail = {
+      id: Date.now()+Math.random(),
+      threadId: Date.now(),
+      from: { email: from, name: from.split("@")[0] },
+      to: [{ email: currentUser?.email||"me@example.com", name: currentUser?.name||"" }],
+      subject: subject || "(件名なし)",
+      body: body || "",
+      direction: "inbound", status: "received",
+      receivedAt: new Date().toISOString(), createdAt: new Date().toISOString(),
+      isRead: false, isReplied: false,
+      linkedCompanyIds: auto?.type==="企業"?[auto.id]:[],
+      linkedVendorIds: auto?.type==="業者"?[auto.id]:[],
+      linkedMuniIds: auto?.type==="自治体"?[auto.id]:[],
+      linkedTaskIds: [], linkedProjectIds: [],
+      linkedBizcardIds: auto?.bizcardId?[auto.bizcardId]:[],
+      linkedDisplay: auto?[{type:auto.type,id:auto.id,name:auto.name}]:[],
+    };
+    const nd = { ...data, emails: [...(data.emails||[]), newEmail] };
+    setData(nd); saveData(nd);
+    setMbTestOpen(false); setMbView("inbox"); setMbSelectedId(newEmail.id);
+  };
+
+  // AI返信ドラフト生成
+  const generateAiReply = async (email) => {
+    setMbAiBusy(true);
+    try {
+      const linkedContext = (email.linkedDisplay||[]).map(l=>`- ${l.type}: ${l.name}`).join("\n");
+      const prompt = `次の受信メールに対する自然で丁寧な日本語の返信文を作成してください。本文のみを出力し、件名や前置きは出さないでください。\n\n【受信メール】\n差出人: ${email.from?.name||""} <${email.from?.email||""}>\n件名: ${email.subject||""}\n本文:\n${email.body||""}\n\n${linkedContext?`【MyDesk上の関連情報】\n${linkedContext}\n\n`:""}【私の名前】${currentUser?.name||""}\n\n返信本文:`;
+      const res = await fetch(`${API_BASE}/api/generate-email`, {
+        method:"POST",
+        headers:{"Content-Type":"application/json","x-mydesk-secret":"mydesk2026"},
+        body: JSON.stringify({ prompt })
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error||`HTTP ${res.status}`);
+      return (json.text||"").trim();
+    } catch(e) {
+      alert("AI返信生成エラー: "+(e.message||e));
+      return "";
+    } finally { setMbAiBusy(false); }
+  };
+
   return (
     <div>
+      {/* ───── メールボックスタブ（受信/送信/下書き/AI作成） ───── */}
+      <div style={{display:"flex",background:C.bg,borderRadius:"8px",padding:"0.25rem",marginBottom:"1rem",border:`1px solid ${C.border}`}}>
+        {[
+          {id:"inbox",lbl:"📥 受信",count:allMailbox.filter(e=>e.direction==="inbound"&&!e.isRead).length},
+          {id:"sent",lbl:"📤 送信",count:0},
+          {id:"drafts",lbl:"📝 下書き",count:allMailbox.filter(e=>e.status==="draft").length},
+          {id:"compose",lbl:"✏️ AI作成",count:0},
+        ].map(t=>(
+          <button key={t.id} onClick={()=>{setMbView(t.id);setMbSelectedId(null);}}
+            style={{flex:1,padding:"0.55rem 0.25rem",borderRadius:6,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:mbView===t.id?800:600,fontSize:"0.74rem",background:mbView===t.id?"white":"transparent",color:mbView===t.id?C.accent:C.textSub,boxShadow:mbView===t.id?"0 1px 3px rgba(0,0,0,0.06)":"none",position:"relative"}}>
+            {t.lbl}
+            {t.count>0 && <span style={{marginLeft:4,background:"#dc2626",color:"white",fontSize:"0.6rem",padding:"0.05rem 0.35rem",borderRadius:999,fontWeight:800}}>{t.count}</span>}
+          </button>
+        ))}
+      </div>
+
+      {/* ───── 受信箱・送信箱・下書き ビュー ───── */}
+      {(mbView==="inbox"||mbView==="sent"||mbView==="drafts") && (()=>{
+        const dirFilter = mbView==="inbox"?"inbound":mbView==="sent"?"outbound":null;
+        const statusFilter = mbView==="drafts"?"draft":null;
+        let list = allMailbox.filter(e => {
+          if (dirFilter && e.direction!==dirFilter) return false;
+          if (statusFilter && e.status!==statusFilter) return false;
+          if (mbView!=="drafts" && e.status==="draft") return false;
+          return true;
+        });
+        if (mbFilter==="unread") list = list.filter(e=>!e.isRead);
+        else if (mbFilter==="needsReply") list = list.filter(needsReplySoon);
+        else if (mbFilter==="starred") list = list.filter(e=>e.isStarred);
+        const ql = mbSearch.trim().toLowerCase();
+        if (ql) list = list.filter(e => `${e.from?.email||""} ${e.from?.name||""} ${(e.to||[]).map(t=>t.email+t.name).join(" ")} ${e.subject||""} ${e.body||""}`.toLowerCase().includes(ql));
+        list.sort((a,b)=> (new Date(b.sentAt||b.receivedAt||b.createdAt).getTime()) - (new Date(a.sentAt||a.receivedAt||a.createdAt).getTime()));
+        const selected = list.find(e=>e.id===mbSelectedId);
+
+        return (
+          <div style={{display:"flex",flexDirection:"column",gap:"0.6rem"}}>
+            {/* 検索 */}
+            <div style={{position:"relative"}}>
+              <input type="text" value={mbSearch} onChange={e=>setMbSearch(e.target.value)}
+                placeholder="🔍 件名・本文・宛先で検索…"
+                style={{width:"100%",padding:"0.55rem 0.75rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.82rem",background:"white",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+            </div>
+            {/* フィルタ + テスト追加 */}
+            <div style={{display:"flex",gap:"0.3rem",flexWrap:"wrap",alignItems:"center"}}>
+              {[["all","すべて"],["unread","未読"],["needsReply","要返信"],["starred","⭐"]].map(([id,lbl])=>(
+                <button key={id} onClick={()=>setMbFilter(id)}
+                  style={{padding:"0.28rem 0.65rem",borderRadius:999,border:`1px solid ${mbFilter===id?C.accent:C.borderLight}`,background:mbFilter===id?C.accent:"white",color:mbFilter===id?"white":C.textSub,fontSize:"0.7rem",fontWeight:mbFilter===id?800:600,cursor:"pointer",fontFamily:"inherit"}}>{lbl}</button>
+              ))}
+              <div style={{flex:1}}/>
+              {mbView==="inbox" && <button onClick={()=>setMbTestOpen(true)}
+                style={{padding:"0.28rem 0.6rem",borderRadius:6,border:`1px dashed ${C.border}`,background:"white",color:C.textMuted,fontSize:"0.68rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}} title="バックエンド未実装中の手動テスト">＋ テスト受信</button>}
+            </div>
+
+            {selected ? (
+              // ── 詳細ビュー ──
+              <EmailDetailPane email={selected} onClose={()=>setMbSelectedId(null)}
+                onMarkRead={()=>updateEmailField(selected.id,{isRead:true})}
+                onToggleStar={()=>updateEmailField(selected.id,{isStarred:!selected.isStarred})}
+                onGenerateReply={async()=>{
+                  if(!selected.isRead) updateEmailField(selected.id,{isRead:true});
+                  const txt = await generateAiReply(selected);
+                  if(!txt) return;
+                  // 返信内容を編集する compose に移行
+                  window.__myDeskReplyDraft = {to:[selected.from], subject:`Re: ${selected.subject||""}`.replace(/^(Re: )+/i,"Re: "), body:txt, replyToId:selected.id, linkedDisplay:selected.linkedDisplay||[]};
+                  setMbView("compose");
+                  setMode("reply");
+                  setInputText(selected.body||"");
+                  setGenerated(txt);
+                  setPhase("edit");
+                  setToName(selected.from?.name||"");
+                }}
+                aiBusy={mbAiBusy}
+                onLink={(type,id,name)=>linkEmailToEntity(selected.id,type,id,name)}
+                onUnlink={(type,id)=>unlinkEmailFromEntity(selected.id,type,id)}
+                data={data} currentUser={currentUser}
+                fmtFull={fmtMbFullDate}
+                onSend={async(payload)=>{ const ok=await sendEmailNow(payload); if(ok) setMbSelectedId(null); return ok; }}
+                sendBusy={mbSendBusy}
+              />
+            ) : !list.length ? (
+              <div style={{textAlign:"center",padding:"2.5rem 1rem",color:C.textMuted,fontSize:"0.85rem"}}>
+                {mbView==="inbox"?"受信メールはありません":mbView==="sent"?"送信済みメールはありません":"下書きはありません"}
+              </div>
+            ) : (
+              // ── リストビュー ──
+              <div style={{display:"flex",flexDirection:"column",gap:"0.35rem"}}>
+                {list.map(e=>{
+                  const isUnread = e.direction==="inbound" && !e.isRead;
+                  const peer = e.direction==="inbound" ? `${e.from?.name||e.from?.email||"差出人不明"}` : `${(e.to||[])[0]?.name||(e.to||[])[0]?.email||"宛先不明"}`;
+                  const needsRep = needsReplySoon(e);
+                  return (
+                    <div key={e.id} onClick={()=>{setMbSelectedId(e.id); if(isUnread) updateEmailField(e.id,{isRead:true});}}
+                      style={{display:"flex",alignItems:"flex-start",gap:"0.6rem",padding:"0.65rem 0.8rem",background:isUnread?"#fff7ed":"white",borderRadius:"8px",border:`1px solid ${needsRep?"#fca5a5":C.borderLight}`,cursor:"pointer",boxShadow:"0 1px 2px rgba(0,0,0,0.03)",transition:"all 0.1s"}}>
+                      <button onClick={ev=>{ev.stopPropagation();updateEmailField(e.id,{isStarred:!e.isStarred});}}
+                        style={{padding:0,border:"none",background:"none",cursor:"pointer",fontSize:"1rem",lineHeight:1,flexShrink:0,color:e.isStarred?"#eab308":C.borderLight}}>{e.isStarred?"⭐":"☆"}</button>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{display:"flex",alignItems:"center",gap:"0.4rem"}}>
+                          {isUnread && <span style={{width:7,height:7,borderRadius:"50%",background:"#ea580c",flexShrink:0}}/>}
+                          <span style={{fontSize:"0.82rem",fontWeight:isUnread?800:600,color:C.text,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{peer}</span>
+                          {needsRep && <span style={{fontSize:"0.62rem",fontWeight:700,padding:"0.1rem 0.4rem",borderRadius:4,background:"#fee2e2",color:"#b91c1c",flexShrink:0}}>要返信 {daysSince(e.receivedAt||e.createdAt)}日</span>}
+                          {e.status==="failed" && <span style={{fontSize:"0.62rem",fontWeight:700,padding:"0.1rem 0.4rem",borderRadius:4,background:"#fee2e2",color:"#b91c1c",flexShrink:0}}>送信失敗</span>}
+                          <span style={{fontSize:"0.66rem",color:C.textMuted,flexShrink:0,fontVariantNumeric:"tabular-nums"}}>{fmtMbDate(e.sentAt||e.receivedAt||e.createdAt)}</span>
+                        </div>
+                        <div style={{fontSize:"0.78rem",fontWeight:isUnread?700:500,color:C.text,marginTop:"0.15rem",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.subject||"(件名なし)"}</div>
+                        <div style={{fontSize:"0.7rem",color:C.textMuted,marginTop:"0.1rem",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{(e.body||"").slice(0,100)}</div>
+                        {(e.linkedDisplay||[]).length>0 && (
+                          <div style={{display:"flex",gap:"0.25rem",marginTop:"0.3rem",flexWrap:"wrap"}}>
+                            {(e.linkedDisplay||[]).slice(0,3).map((l,i)=>(
+                              <span key={i} style={{fontSize:"0.6rem",padding:"0.1rem 0.4rem",borderRadius:4,background:C.accent+"15",color:C.accent,fontWeight:700}}>{l.type}: {l.name}</span>
+                            ))}
+                            {(e.linkedDisplay||[]).length>3 && <span style={{fontSize:"0.6rem",color:C.textMuted}}>+{(e.linkedDisplay||[]).length-3}</span>}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* ───── テスト用受信メール追加モーダル ───── */}
+      {mbTestOpen && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:10000,padding:"1rem"}} onClick={()=>setMbTestOpen(false)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"white",borderRadius:12,padding:"1.25rem",maxWidth:520,width:"100%",maxHeight:"86vh",overflow:"auto"}}>
+            <div style={{fontSize:"0.95rem",fontWeight:800,marginBottom:"0.4rem"}}>📥 テスト受信メールを追加</div>
+            <div style={{fontSize:"0.72rem",color:C.textMuted,marginBottom:"0.9rem"}}>バックエンドのSES受信が稼働するまでの手動テスト用</div>
+            {(()=>{
+              let tFrom,tSub,tBody;
+              return <>
+                <div style={{display:"flex",flexDirection:"column",gap:"0.55rem"}}>
+                  <input ref={el=>{tFrom=el;}} placeholder="差出人メールアドレス" defaultValue="customer@example.com" style={{padding:"0.5rem 0.7rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.82rem",fontFamily:"inherit"}}/>
+                  <input ref={el=>{tSub=el;}} placeholder="件名" defaultValue="ご相談の件" style={{padding:"0.5rem 0.7rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.82rem",fontFamily:"inherit"}}/>
+                  <textarea ref={el=>{tBody=el;}} placeholder="本文" defaultValue="お世話になっております。〇〇です。\n見積もりの件でご相談がございます。\nお手数ですがお時間あるときにご連絡ください。" rows={6} style={{padding:"0.5rem 0.7rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.82rem",fontFamily:"inherit",resize:"vertical"}}/>
+                </div>
+                <div style={{display:"flex",gap:"0.5rem",marginTop:"0.9rem"}}>
+                  <button onClick={()=>setMbTestOpen(false)} style={{flex:1,padding:"0.55rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:600,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>キャンセル</button>
+                  <button onClick={()=>addTestInboundEmail(tFrom?.value||"",tSub?.value||"",tBody?.value||"")} style={{flex:2,padding:"0.55rem",borderRadius:6,border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>追加</button>
+                </div>
+              </>;
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* ───── AI作成 ビュー（既存のコンポーズ機能） ───── */}
+      {mbView==="compose" && (<div>
       {/* Mode selector */}
       <div style={{display:"flex",background:C.bg,borderRadius:"8px",padding:"0.25rem",marginBottom:"1.25rem",border:`1px solid ${C.border}`}}>
         {[["reply","↩️ 返信"],["compose","✉️ 新規"],["follow","🤝 フォロー"]].map(([id,lbl])=>(
@@ -8298,6 +8918,7 @@ function EmailView({data,setData,currentUser=null}) {
           </div>
         </Sheet>
       )}
+      </div>)}{/* end mbView==="compose" */}
     </div>
   );
 }
@@ -10371,15 +10992,39 @@ function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach
     }
     return null;
   };
-  // Merge all into single timeline（メモ・チャット・アプローチ・変更履歴・ファイル・名刺を時刻で統一ソート）
+  // 関連タスク・プロジェクトのイベントを集める
+  const linkedTasks    = (data?.tasks||[]).filter(t=>String(t.salesRef?.id)===String(entityId));
+  const linkedProjects = (data?.projects||[]).filter(p=>String(p.salesRef?.id)===String(entityId));
+  const taskProjectEvents = [];
+  for (const t of linkedTasks) {
+    // タスク作成
+    taskProjectEvents.push({_kind:"task_create",_ts:robustTs(t.createdAt,t.id),task:t,id:`tc-${t.id}`,userId:t.createdBy,title:t.title,status:t.status});
+    // タスクのメモ
+    for (const m of (t.memos||[])) taskProjectEvents.push({_kind:"task_memo",_ts:robustTs(m.date,m.id),id:`tm-${t.id}-${m.id}`,userId:m.userId,text:m.text,parentTitle:t.title,parentId:t.id,parentKind:"task"});
+    // タスクのチャット
+    for (const c of (t.chat||[])) taskProjectEvents.push({_kind:"task_chat",_ts:robustTs(c.date,c.id),id:`tch-${t.id}-${c.id}`,userId:c.userId,text:c.text,parentTitle:t.title,parentId:t.id,parentKind:"task"});
+    // タスクの議事録
+    for (const mt of (t.mtgLogs||[])) taskProjectEvents.push({_kind:"task_mtg",_ts:robustTs(mt.date,mt.id),id:`tmt-${t.id}-${mt.id}`,userId:mt.userId,title:mt.title,content:mt.content,parentTitle:t.title,parentId:t.id,parentKind:"task"});
+  }
+  for (const p of linkedProjects) {
+    taskProjectEvents.push({_kind:"project_create",_ts:robustTs(p.createdAt,p.id),project:p,id:`pc-${p.id}`,userId:p.createdBy,title:p.name||p.title});
+    for (const m of (p.memos||[])) taskProjectEvents.push({_kind:"project_memo",_ts:robustTs(m.date,m.id),id:`pm-${p.id}-${m.id}`,userId:m.userId,text:m.text,parentTitle:p.name||p.title,parentId:p.id,parentKind:"project"});
+    for (const c of (p.chat||[])) taskProjectEvents.push({_kind:"project_chat",_ts:robustTs(c.date,c.id),id:`pch-${p.id}-${c.id}`,userId:c.userId,text:c.text,parentTitle:p.name||p.title,parentId:p.id,parentKind:"project"});
+    for (const mt of (p.mtgLogs||[])) taskProjectEvents.push({_kind:"project_mtg",_ts:robustTs(mt.date,mt.id),id:`pmt-${p.id}-${mt.id}`,userId:mt.userId,title:mt.title,content:mt.content,parentTitle:p.name||p.title,parentId:p.id,parentKind:"project"});
+  }
+  // 議事録（このエンティティ自身に紐付けられている場合 — 自治体/企業/業者に議事録を持たせる場合用）
+  const mtgs = [...(entity?.mtgLogs||[])];
+  // Merge all into single timeline（メモ・チャット・アプローチ・変更履歴・ファイル・名刺・関連タスク/プロジェクトを時刻で統一ソート）
   const tsOf = (v) => { const t = new Date(v||0).getTime(); return isNaN(t) ? 0 : t; };
   const items = [
     ...logs.map(l=>({...l, _kind:"approach", _ts:robustTs(l.createdAt, l.date, l.id)})),
     ...memos.map(m=>({...m, _kind:"memo", _ts:robustTs(m.createdAt, m.date, m.id)})),
     ...chats.map(c=>({...c, _kind:"chat", _ts:robustTs(c.date, c.createdAt, c.id)})),
+    ...mtgs.map(mt=>({...mt, _kind:"mtg", _ts:robustTs(mt.date, mt.createdAt, mt.id)})),
     ...changeLogs.map(c=>({...c, _kind:"change", _ts:robustTs(c.date, c.createdAt, c.id)})),
     ...files.map(f=>({...f, _kind:"file", _ts:robustTs(f.uploadedAt, f.createdAt, f.id)})),
     ...linkedCards.map(bc=>({...bc, _kind:"bizcard", _ts:robustTs(bc.linkedAt, bc.createdAt, bc.id)})),
+    ...taskProjectEvents,
   ].sort((a,b)=>tsOf(b._ts)-tsOf(a._ts)); // 新しい順（上が最新）
 
   return (
@@ -10590,6 +11235,73 @@ function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach
                   <div style={{fontWeight:700}}>{cardName}</div>
                   {(item.company||item.title) && <div style={{fontSize:"0.7rem",color:C.textMuted,marginTop:"0.15rem"}}>{[item.company,item.title].filter(Boolean).join(" / ")}</div>}
                 </div>
+              </div>
+            </div>
+          );
+        }
+        // mtg (このエンティティ直属の議事録)
+        if(item._kind==="mtg") {
+          const userName = users.find(u=>u.id===item.userId)?.name || "";
+          return (
+            <div key={item.id||i} style={{display:"flex",gap:"0.6rem",marginBottom:"0.75rem"}}>
+              <div style={{display:"flex",flexDirection:"column",alignItems:"center"}}>
+                <div style={{width:30,height:30,borderRadius:"50%",background:"#dcfce7",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.85rem",flexShrink:0}}>🎤</div>
+                {i<items.length-1&&<div style={{width:2,flex:1,background:C.borderLight,margin:"4px 0"}}/>}
+              </div>
+              <div style={{flex:1,paddingBottom:"0.5rem"}}>
+                <div style={{display:"flex",gap:"0.5rem",alignItems:"center",flexWrap:"wrap",marginBottom:"0.2rem"}}>
+                  <span style={{fontSize:"0.7rem",fontWeight:700,color:"#166534"}}>議事録</span>
+                  {userName && <span style={{fontSize:"0.65rem",color:C.textMuted}}>by {userName}</span>}
+                  <span style={{fontSize:"0.65rem",color:C.textMuted,marginLeft:"auto"}}>{dateStr}</span>
+                </div>
+                <div style={{fontSize:"0.83rem",color:C.text,background:"#f0fdf4",borderRadius:"0.5rem",padding:"0.5rem 0.7rem",border:`1px solid #86efac`}}>
+                  {item.title && <div style={{fontWeight:700,marginBottom:item.content?"0.25rem":0}}>{item.title}</div>}
+                  {item.content && <div style={{whiteSpace:"pre-wrap",fontSize:"0.78rem",lineHeight:1.55}}>{item.content}</div>}
+                </div>
+              </div>
+            </div>
+          );
+        }
+        // 関連タスク/プロジェクトのイベント（汎用カード）
+        if(item._kind && (item._kind.startsWith("task_") || item._kind.startsWith("project_"))) {
+          const isTask = item._kind.startsWith("task_");
+          const kindSuffix = item._kind.replace(/^task_|^project_/, "");
+          const userName = users.find(u=>u.id===item.userId)?.name || "";
+          const baseColor = isTask ? "#1d4ed8" : "#7c3aed";
+          const baseBg = isTask ? "#dbeafe" : "#ede9fe";
+          const parentLbl = isTask ? "タスク" : "プロジェクト";
+          const iconMap = {create:"🆕", memo:"📝", chat:"💬", mtg:"🎤"};
+          const labelMap = {create:"作成", memo:"メモ", chat:"チャット", mtg:"議事録"};
+          const icon = iconMap[kindSuffix] || "•";
+          const label = labelMap[kindSuffix] || kindSuffix;
+          return (
+            <div key={item.id||i} style={{display:"flex",gap:"0.6rem",marginBottom:"0.75rem"}}>
+              <div style={{display:"flex",flexDirection:"column",alignItems:"center"}}>
+                <div style={{width:30,height:30,borderRadius:"50%",background:baseBg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.85rem",flexShrink:0}}>{icon}</div>
+                {i<items.length-1&&<div style={{width:2,flex:1,background:C.borderLight,margin:"4px 0"}}/>}
+              </div>
+              <div style={{flex:1,paddingBottom:"0.5rem"}}>
+                <div style={{display:"flex",gap:"0.4rem",alignItems:"center",flexWrap:"wrap",marginBottom:"0.2rem"}}>
+                  <span style={{fontSize:"0.6rem",fontWeight:700,padding:"0.1rem 0.4rem",borderRadius:4,background:baseBg,color:baseColor,letterSpacing:"0.02em"}}>{parentLbl}</span>
+                  <span style={{fontSize:"0.74rem",fontWeight:700,color:baseColor}}>{label}</span>
+                  <span style={{fontSize:"0.72rem",fontWeight:600,color:C.text}}>― {(item.parentTitle||item.title||"").slice(0,40)}</span>
+                  {userName && <span style={{fontSize:"0.65rem",color:C.textMuted}}>by {userName}</span>}
+                  <span style={{fontSize:"0.65rem",color:C.textMuted,marginLeft:"auto"}}>{dateStr}</span>
+                </div>
+                {kindSuffix==="create" && (
+                  <div style={{fontSize:"0.78rem",color:C.text,background:baseBg+"55",borderRadius:"0.5rem",padding:"0.4rem 0.6rem"}}>
+                    「{item.title}」を作成{item.status?` (${item.status})`:""}
+                  </div>
+                )}
+                {(kindSuffix==="memo"||kindSuffix==="chat") && (
+                  <div style={{fontSize:"0.8rem",color:C.text,whiteSpace:"pre-wrap",background:baseBg+"55",borderRadius:"0.5rem",padding:"0.4rem 0.6rem",lineHeight:1.5}}>{item.text}</div>
+                )}
+                {kindSuffix==="mtg" && (
+                  <div style={{fontSize:"0.8rem",color:C.text,background:baseBg+"55",borderRadius:"0.5rem",padding:"0.4rem 0.6rem",lineHeight:1.5}}>
+                    {item.title && <div style={{fontWeight:700,marginBottom:item.content?"0.2rem":0}}>{item.title}</div>}
+                    {item.content && <div style={{whiteSpace:"pre-wrap",fontSize:"0.76rem"}}>{item.content}</div>}
+                  </div>
+                )}
               </div>
             </div>
           );
