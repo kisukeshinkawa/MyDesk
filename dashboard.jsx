@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v83-search-normalize"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v84-unified-composer"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -4058,11 +4058,19 @@ function FileSection({ files=[], onAdd, onDelete, currentUserId, entityType, ent
                 {f.size?fmt(f.size):""}
                 {f.uploadedAt?" · "+new Date(f.uploadedAt).toLocaleDateString("ja-JP"):""}
                 {!f.url&&<span style={{color:"#dc2626",marginLeft:4}}>⚠ URL未取得</span>}
+                {f._source && (
+                  <span style={{marginLeft:6,padding:"0.05rem 0.35rem",borderRadius:4,background:f._source.kind==="task"?"#dbeafe":"#ede9fe",color:f._source.kind==="task"?"#1d4ed8":"#7c3aed",fontWeight:700,fontSize:"0.6rem"}}>
+                    {f._source.kind==="task"?"📋 タスク":"📁 プロジェクト"}: {(f._source.title||"").slice(0,20)}
+                  </span>
+                )}
               </div>
             </div>
-            {!readOnly && (
+            {!readOnly && !f._source && (
               <button onClick={async()=>{if(!window.confirm("削除しますか？"))return; if(f.path){try{await deleteFileFromSupabase(f.path);}catch(e){}} onDelete(f.id||f.url);}}
                 style={{background:"none",border:"none",color:"#dc2626",cursor:"pointer",fontSize:"0.85rem",padding:"0.2rem",flexShrink:0}}>✕</button>
+            )}
+            {f._source && (
+              <span style={{fontSize:"0.62rem",color:C.textMuted,flexShrink:0}} title="このファイルは関連先で管理されています">🔗</span>
             )}
           </div>
         ))}
@@ -5690,17 +5698,25 @@ function DocumentSection({entityType, entityId, entityName, files, currentUserId
       </div>
       
       {/* ファイルタブ */}
-      {subTab === "files" && (
-        <FileSection 
-          files={files||[]} 
+      {subTab === "files" && (()=>{
+        // 関連タスク/プロジェクトの資料を集める
+        const linkedTaskFiles = (data?.tasks||[])
+          .filter(t => String(t.salesRef?.id)===String(entityId))
+          .flatMap(t => (t.files||[]).map(f => ({...f, _source:{kind:"task", title:t.title, id:t.id}})));
+        const linkedProjectFiles = (data?.projects||[])
+          .filter(p => String(p.salesRef?.id)===String(entityId))
+          .flatMap(p => (p.files||[]).map(f => ({...f, _source:{kind:"project", title:p.name||p.title, id:p.id}})));
+        const aggregatedFiles = [...(files||[]), ...linkedTaskFiles, ...linkedProjectFiles];
+        return <FileSection 
+          files={aggregatedFiles} 
           currentUserId={currentUserId} 
           entityType={entityType} 
           entityId={entityId} 
           entityName={entityName} 
           onAdd={(newFile) => onSaveFiles([...(files||[]), newFile])}
           onDelete={(fileIdOrUrl) => onSaveFiles((files||[]).filter(f => (f.id||f.url) !== fileIdOrUrl))}
-        />
-      )}
+        />;
+      })()}
       
       {/* 見積書タブ */}
       {subTab === "quotes" && (
@@ -7137,14 +7153,20 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
 
     return (
       <div>
-        {/* MTG記録ボタン */}
-        <div style={{display:"flex",gap:"0.4rem",marginBottom:"0.75rem",flexWrap:"wrap"}}>
-          <button onClick={()=>{setTMtgSheet({entityKey,entityId}); setTMtgTitle(""); setTMtgBody("");}}
-            style={{padding:"0.4rem 0.85rem",borderRadius:8,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.78rem",background:"#f0fdf4",color:"#166534"}}>🎤 議事録を追加</button>
+        {/* 統一入力ボックス（メモ・チャット・議事録） */}
+        <div style={{marginBottom:"0.85rem"}}>
+          <UnifiedComposer
+            entityKey={entityKey}
+            entityId={entityId}
+            hasApproach={false}
+            onSubmitMemo={(text)=>addTMemo(entityKey,entityId,text)}
+            onSubmitChat={(text)=>addTChat(entityKey,entityId,text)}
+            onSubmitMtg={(title,content)=>addTMtg(entityKey,entityId,title,content)}
+          />
         </div>
 
         {/* タイムライン本体 */}
-        <div style={{display:"flex",flexDirection:"column",gap:"0.5rem",marginBottom:"0.625rem"}}>
+        <div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
           {items.length===0 && <div style={{textAlign:"center",padding:"1.5rem",color:C.textMuted,background:C.bg,borderRadius:"6px",fontSize:"0.82rem"}}>履歴なし</div>}
           {items.map((it,i)=>{
             const user = users.find(u=>u.id===it.userId);
@@ -7219,25 +7241,6 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
               </div>
             );
           })}
-        </div>
-
-        {/* 入力欄: メモ／チャット */}
-        <div style={{display:"flex",flexDirection:"column",gap:"0.4rem"}}>
-          <div style={{display:"flex",gap:"0.4rem"}}>
-            <textarea value={tMemoIn[entityId]||""} onChange={e=>{setTMemoIn(p=>({...p,[entityId]:e.target.value}));e.target.style.height="auto";e.target.style.height=e.target.scrollHeight+"px";}}
-              placeholder="📝 メモを追加（自分用・通知あり）"
-              style={{flex:1,padding:"0.5rem 0.75rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none",resize:"none",minHeight:42,lineHeight:1.5,overflow:"hidden"}}/>
-            <button onClick={()=>addTMemo(entityKey,entityId,tMemoIn[entityId]||"")} disabled={!(tMemoIn[entityId]||"").trim()}
-              style={{padding:"0.5rem 0.875rem",borderRadius:"6px",border:"none",background:"#eab308",color:"white",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",alignSelf:"flex-end",opacity:(tMemoIn[entityId]||"").trim()?1:0.4,minWidth:60}}>メモ</button>
-          </div>
-          <div style={{display:"flex",gap:"0.4rem"}}>
-            <textarea value={tChatIn[entityId]||""} onChange={e=>{setTChatIn(p=>({...p,[entityId]:e.target.value}));e.target.style.height="auto";e.target.style.height=e.target.scrollHeight+"px";}}
-              placeholder="💬 チャットを投稿（@で担当者にメンション）"
-              onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();addTChat(entityKey,entityId,tChatIn[entityId]||"");}}}
-              style={{flex:1,padding:"0.5rem 0.75rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none",resize:"none",minHeight:42,lineHeight:1.5,overflow:"hidden"}}/>
-            <button onClick={()=>addTChat(entityKey,entityId,tChatIn[entityId]||"")} disabled={!(tChatIn[entityId]||"").trim()}
-              style={{padding:"0.5rem 0.875rem",borderRadius:"6px",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",alignSelf:"flex-end",opacity:(tChatIn[entityId]||"").trim()?1:0.4,minWidth:60}}>送信</button>
-          </div>
         </div>
       </div>
     );
@@ -10915,6 +10918,113 @@ function LinkedBizcardList({ cards=[], users=[], onUnlink, onNavigateToBizcard, 
 }
 
 // ─── APPROACH TIMELINE ────────────────────────────────────────────────────────
+// ─── UNIFIED COMPOSER: メモ/チャット/議事録/アプローチを1つの入力で ─────
+// すべてのエンティティ（企業/業者/自治体/タスク/プロジェクト）で使える共通投稿UI
+function UnifiedComposer({
+  entityKey,       // "companies"|"vendors"|"municipalities"|"tasks"|"projects"
+  entityId,
+  entityName,
+  hasApproach=false,    // 営業エンティティのみ true
+  onSubmitMemo,         // (text) => void
+  onSubmitChat,         // (text) => void
+  onSubmitMtg,          // (title, content) => void
+  onSubmitApproach,     // (type, note, date) => void (営業のみ)
+}) {
+  const isSales = hasApproach;
+  const [mode, setMode] = React.useState(isSales ? "chat" : "chat"); // memo | chat | mtg | approach
+  const [text, setText] = React.useState("");
+  const [mtgTitle, setMtgTitle] = React.useState("");
+  const [appType, setAppType] = React.useState("電話");
+  const [appDate, setAppDate] = React.useState(()=>new Date().toISOString().slice(0,10));
+
+  const modes = [
+    {id:"chat", label:"💬 チャット", color:"#5b5bd6"},
+    {id:"memo", label:"📝 メモ", color:"#a16207"},
+    {id:"mtg", label:"🎤 議事録", color:"#166534"},
+    ...(isSales ? [{id:"approach", label:"📞 アプローチ", color:"#1d4ed8"}] : []),
+  ];
+  const cur = modes.find(m=>m.id===mode) || modes[0];
+
+  const reset = () => { setText(""); setMtgTitle(""); };
+  const submit = () => {
+    if (mode==="mtg") {
+      if (!mtgTitle.trim() && !text.trim()) return;
+      onSubmitMtg && onSubmitMtg(mtgTitle.trim(), text);
+      reset();
+    } else if (mode==="approach") {
+      if (!text.trim()) return;
+      onSubmitApproach && onSubmitApproach(appType, text, appDate);
+      reset();
+    } else if (mode==="memo") {
+      if (!text.trim()) return;
+      onSubmitMemo && onSubmitMemo(text);
+      reset();
+    } else {
+      if (!text.trim()) return;
+      onSubmitChat && onSubmitChat(text);
+      reset();
+    }
+  };
+
+  // 入力欄のプレースホルダ
+  const placeholder = {
+    chat: "💬 チャットを投稿（@で担当者にメンション、Cmd/Ctrl+Enterで送信）",
+    memo: "📝 メモを追加（自分用・通知あり）",
+    mtg: "🎤 議事内容（決定事項・宿題・次回確認など）",
+    approach: `📞 ${appType}の内容を記録...`,
+  }[mode];
+
+  return (
+    <div style={{background:"white",border:`1.5px solid ${cur.color}33`,borderRadius:10,padding:"0.65rem 0.75rem",boxShadow:`0 1px 3px ${cur.color}15`}}>
+      {/* モード選択ピル */}
+      <div style={{display:"flex",gap:"0.35rem",flexWrap:"wrap",marginBottom:"0.55rem"}}>
+        {modes.map(m=>(
+          <button key={m.id} onClick={()=>setMode(m.id)}
+            style={{padding:"0.3rem 0.7rem",borderRadius:999,border:`1px solid ${mode===m.id?m.color:"#e5e7eb"}`,background:mode===m.id?m.color+"15":"white",color:mode===m.id?m.color:"#6b7280",fontSize:"0.72rem",fontWeight:mode===m.id?800:600,cursor:"pointer",fontFamily:"inherit"}}>
+            {m.label}
+          </button>
+        ))}
+      </div>
+
+      {/* 議事録の場合: タイトル入力 */}
+      {mode==="mtg" && (
+        <input type="text" value={mtgTitle} onChange={e=>setMtgTitle(e.target.value)}
+          placeholder="議題（例: 6/4 進捗MTG）"
+          style={{width:"100%",padding:"0.45rem 0.65rem",borderRadius:6,border:`1px solid ${cur.color}44`,fontSize:"0.84rem",fontFamily:"inherit",outline:"none",marginBottom:"0.45rem",boxSizing:"border-box"}}/>
+      )}
+
+      {/* アプローチの場合: 種別 + 日付 */}
+      {mode==="approach" && (
+        <div style={{display:"flex",gap:"0.4rem",marginBottom:"0.45rem",flexWrap:"wrap"}}>
+          <select value={appType} onChange={e=>setAppType(e.target.value)}
+            style={{padding:"0.35rem 0.55rem",borderRadius:6,border:`1px solid ${cur.color}44`,fontSize:"0.78rem",fontFamily:"inherit",cursor:"pointer",background:"white"}}>
+            {APPROACH_TYPES.map(t=><option key={t} value={t}>{APPROACH_ICON[t]||""} {t}</option>)}
+          </select>
+          <input type="date" value={appDate} onChange={e=>setAppDate(e.target.value)}
+            style={{padding:"0.35rem 0.55rem",borderRadius:6,border:`1px solid ${cur.color}44`,fontSize:"0.78rem",fontFamily:"inherit"}}/>
+        </div>
+      )}
+
+      {/* メイン入力（textarea） */}
+      <textarea value={text} onChange={e=>{setText(e.target.value);e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,300)+"px";}}
+        onKeyDown={e=>{
+          if (mode==="chat" && e.key==="Enter" && (e.metaKey||e.ctrlKey)) { e.preventDefault(); submit(); }
+        }}
+        placeholder={placeholder}
+        style={{width:"100%",padding:"0.55rem 0.7rem",borderRadius:6,border:`1px solid ${cur.color}33`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none",resize:"none",minHeight:60,maxHeight:300,lineHeight:1.55,boxSizing:"border-box"}}/>
+
+      {/* 送信ボタン */}
+      <div style={{display:"flex",justifyContent:"flex-end",marginTop:"0.45rem"}}>
+        <button onClick={submit}
+          disabled={mode==="mtg" ? (!mtgTitle.trim()&&!text.trim()) : !text.trim()}
+          style={{padding:"0.4rem 1rem",borderRadius:6,border:"none",cursor:(mode==="mtg" ? (mtgTitle.trim()||text.trim()) : text.trim())?"pointer":"default",fontFamily:"inherit",fontSize:"0.8rem",fontWeight:700,background:(mode==="mtg" ? (mtgTitle.trim()||text.trim()) : text.trim())?cur.color:"#e5e7eb",color:(mode==="mtg" ? (mtgTitle.trim()||text.trim()) : text.trim())?"white":"#9ca3af",minWidth:80}}>
+          {mode==="mtg"?"議事録を保存":mode==="approach"?"アプローチ記録":mode==="memo"?"メモを追加":"送信"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach, onSave, data, currentUserId, onSendChat, onUpdateChat, onDeleteChat, onUpdateMemo, onDeleteMemo }) {
   const [editingId, setEditingId] = React.useState(null);
   // 日本時間（JST, UTC+9）で「YYYY-MM-DD HH:MM」表示する。保存値はUTC ISO。
@@ -11005,12 +11115,16 @@ function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach
     for (const c of (t.chat||[])) taskProjectEvents.push({_kind:"task_chat",_ts:robustTs(c.date,c.id),id:`tch-${t.id}-${c.id}`,userId:c.userId,text:c.text,parentTitle:t.title,parentId:t.id,parentKind:"task"});
     // タスクの議事録
     for (const mt of (t.mtgLogs||[])) taskProjectEvents.push({_kind:"task_mtg",_ts:robustTs(mt.date,mt.id),id:`tmt-${t.id}-${mt.id}`,userId:mt.userId,title:mt.title,content:mt.content,parentTitle:t.title,parentId:t.id,parentKind:"task"});
+    // タスクの資料
+    for (const f of (t.files||[])) taskProjectEvents.push({_kind:"task_file",_ts:robustTs(f.uploadedAt,f.createdAt,f.id),id:`tf-${t.id}-${f.id}`,userId:f.uploadedBy||f.createdBy,name:f.name,url:f.url,size:f.size,parentTitle:t.title,parentId:t.id,parentKind:"task"});
   }
   for (const p of linkedProjects) {
     taskProjectEvents.push({_kind:"project_create",_ts:robustTs(p.createdAt,p.id),project:p,id:`pc-${p.id}`,userId:p.createdBy,title:p.name||p.title});
     for (const m of (p.memos||[])) taskProjectEvents.push({_kind:"project_memo",_ts:robustTs(m.date,m.id),id:`pm-${p.id}-${m.id}`,userId:m.userId,text:m.text,parentTitle:p.name||p.title,parentId:p.id,parentKind:"project"});
     for (const c of (p.chat||[])) taskProjectEvents.push({_kind:"project_chat",_ts:robustTs(c.date,c.id),id:`pch-${p.id}-${c.id}`,userId:c.userId,text:c.text,parentTitle:p.name||p.title,parentId:p.id,parentKind:"project"});
     for (const mt of (p.mtgLogs||[])) taskProjectEvents.push({_kind:"project_mtg",_ts:robustTs(mt.date,mt.id),id:`pmt-${p.id}-${mt.id}`,userId:mt.userId,title:mt.title,content:mt.content,parentTitle:p.name||p.title,parentId:p.id,parentKind:"project"});
+    // プロジェクトの資料
+    for (const f of (p.files||[])) taskProjectEvents.push({_kind:"project_file",_ts:robustTs(f.uploadedAt,f.createdAt,f.id),id:`pf-${p.id}-${f.id}`,userId:f.uploadedBy||f.createdBy,name:f.name,url:f.url,size:f.size,parentTitle:p.name||p.title,parentId:p.id,parentKind:"project"});
   }
   // 議事録（このエンティティ自身に紐付けられている場合 — 自治体/企業/業者に議事録を持たせる場合用）
   const mtgs = [...(entity?.mtgLogs||[])];
@@ -11029,27 +11143,32 @@ function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach
 
   return (
     <div>
-      {/* アクションボタン群 */}
-      <button onClick={e=>{e.stopPropagation();onAddApproach();}}
-        style={{width:"100%",marginBottom:"0.5rem",padding:"0.55rem",borderRadius:"6px",border:`1.5px dashed ${C.accent}`,background:"#e8f0fe",color:C.accent,fontWeight:600,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
-        ＋ アプローチを記録
-      </button>
-      
-      {/* チャット入力欄 */}
-      {onSendChat && (
-        <div style={{background:"#f0fdf4",border:"1px solid #86efac",borderRadius:"0.5rem",padding:"0.5rem",marginBottom:"0.75rem"}}>
-          <div style={{fontSize:"0.62rem",fontWeight:700,color:"#059669",marginBottom:"0.3rem"}}>💬 チャット投稿（@で担当者にメンション）</div>
-          <div style={{display:"flex",gap:"0.4rem",alignItems:"flex-end"}}>
-            <textarea value={chatText} onChange={e=>{setChatText(e.target.value);e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,120)+"px";}}
-              onKeyDown={e=>{if(e.key==="Enter"&&(e.metaKey||e.ctrlKey)&&chatText.trim()){onSendChat(chatText);setChatText("");}}}
-              placeholder="メッセージを入力（Cmd/Ctrl + Enter で送信）..."
-              style={{flex:1,padding:"0.4rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.82rem",resize:"none",minHeight:36,maxHeight:120,outline:"none",lineHeight:1.5,boxSizing:"border-box"}}/>
-            <button onClick={()=>{if(chatText.trim()){onSendChat(chatText);setChatText("");}}} disabled={!chatText.trim()}
-              style={{padding:"0.45rem 0.85rem",borderRadius:"0.4rem",border:"none",background:chatText.trim()?"#059669":"#cbd5e1",color:"white",fontWeight:700,fontSize:"0.78rem",cursor:chatText.trim()?"pointer":"not-allowed",fontFamily:"inherit",flexShrink:0}}>送信</button>
-          </div>
-        </div>
-      )}
-      
+      {/* 統一入力ボックス（チャット・メモ・議事録・アプローチ） */}
+      <div style={{marginBottom:"0.85rem"}}>
+        <UnifiedComposer
+          entityKey={entityKey}
+          entityId={entityId}
+          hasApproach={true}
+          onSubmitChat={(text)=>{ if(onSendChat) onSendChat(text); }}
+          onSubmitMemo={(text)=>{
+            const memo = {id:Date.now(), userId:currentUserId, text, date:new Date().toISOString()};
+            const updated = (data[entityKey]||[]).map(e=>e.id===entityId?{...e, memos:[...(e.memos||[]),memo]}:e);
+            onSave({...data, [entityKey]:updated});
+          }}
+          onSubmitMtg={(title,content)=>{
+            const mtg = {id:Date.now(), userId:currentUserId, title:title||"議事録", content:content||"", date:new Date().toISOString()};
+            const updated = (data[entityKey]||[]).map(e=>e.id===entityId?{...e, mtgLogs:[...(e.mtgLogs||[]),mtg]}:e);
+            onSave({...data, [entityKey]:updated});
+          }}
+          onSubmitApproach={(type,note,dateStr)=>{
+            const dt = (dateStr||new Date().toISOString().slice(0,10)) + "T" + new Date().toTimeString().slice(0,8);
+            const log = {id:Date.now(), userId:currentUserId, type, note, date:dt, createdAt:new Date().toISOString()};
+            const updated = (data[entityKey]||[]).map(e=>e.id===entityId?{...e, approachLogs:[...(e.approachLogs||[]),log], updatedAt:new Date().toISOString().slice(0,10)}:e);
+            onSave({...data, [entityKey]:updated});
+          }}
+        />
+      </div>
+
       {items.length===0&&(
         <div style={{textAlign:"center",padding:"2rem",color:C.textMuted,fontSize:"0.82rem"}}>記録がありません</div>
       )}
@@ -11270,8 +11389,8 @@ function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach
           const baseColor = isTask ? "#1d4ed8" : "#7c3aed";
           const baseBg = isTask ? "#dbeafe" : "#ede9fe";
           const parentLbl = isTask ? "タスク" : "プロジェクト";
-          const iconMap = {create:"🆕", memo:"📝", chat:"💬", mtg:"🎤"};
-          const labelMap = {create:"作成", memo:"メモ", chat:"チャット", mtg:"議事録"};
+          const iconMap = {create:"🆕", memo:"📝", chat:"💬", mtg:"🎤", file:"📎"};
+          const labelMap = {create:"作成", memo:"メモ", chat:"チャット", mtg:"議事録", file:"資料"};
           const icon = iconMap[kindSuffix] || "•";
           const label = labelMap[kindSuffix] || kindSuffix;
           return (
@@ -11300,6 +11419,12 @@ function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach
                   <div style={{fontSize:"0.8rem",color:C.text,background:baseBg+"55",borderRadius:"0.5rem",padding:"0.4rem 0.6rem",lineHeight:1.5}}>
                     {item.title && <div style={{fontWeight:700,marginBottom:item.content?"0.2rem":0}}>{item.title}</div>}
                     {item.content && <div style={{whiteSpace:"pre-wrap",fontSize:"0.76rem"}}>{item.content}</div>}
+                  </div>
+                )}
+                {kindSuffix==="file" && (
+                  <div style={{fontSize:"0.78rem",color:C.text,background:baseBg+"55",borderRadius:"0.5rem",padding:"0.4rem 0.6rem",display:"flex",alignItems:"center",gap:"0.4rem"}}>
+                    {item.url ? <a href={item.url} target="_blank" rel="noopener noreferrer" style={{color:baseColor,textDecoration:"none",fontWeight:700,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.name||"ファイル"}</a> : <span style={{flex:1,fontWeight:700,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.name||"ファイル"}</span>}
+                    {item.size && <span style={{fontSize:"0.66rem",color:C.textMuted,flexShrink:0}}>{Math.round(item.size/1024)}KB</span>}
                   </div>
                 )}
               </div>
