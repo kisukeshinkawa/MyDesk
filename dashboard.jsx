@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v84-unified-composer"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v86-no-enter-send"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -7153,6 +7153,28 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
 
     return (
       <div>
+        {/* AI 提案ボタン（履歴からタスク・プロジェクト生成提案） */}
+        <button onClick={()=>{
+          const recentItems = items.slice(0, 30).map(it => {
+            const u = users.find(uu=>uu.id===it.userId);
+            const userName = u?.name || "";
+            const when = (it.date||"").slice(0,10);
+            if (it._kind==="memo")   return `[${when}] メモ: ${(it.text||"").slice(0,200)} - ${userName}`;
+            if (it._kind==="chat")   return `[${when}] チャット: ${(it.text||"").slice(0,200)} - ${userName}`;
+            if (it._kind==="mtg")    return `[${when}] 議事録${it.title?`(${it.title})`:""}: ${(it.content||"").slice(0,200)} - ${userName}`;
+            if (it._kind==="change") return `[${when}] 変更: ${it.field||""} ${it.oldVal?`${it.oldVal}→`:""}${it.newVal||""} - ${userName}`;
+            return "";
+          }).filter(Boolean).join("\n");
+          const entityLabelJa = entityKey==="tasks"?"タスク":entityKey==="projects"?"プロジェクト":"";
+          const entityTitle = entity?.title || entity?.name || "";
+          const prompt = `「${entityTitle}」（${entityLabelJa}）の以下の活動履歴を分析して、次に取るべきサブタスクや関連プロジェクトを提案してください。\n\n【活動履歴（最新30件）】\n${recentItems||"（記録なし）"}\n\n以下の観点で具体的に提案してください:\n1. 直近で対応すべきフォローアップタスク（期限・担当者付き）\n2. 関連する別タスクやプロジェクト化候補\n3. 注意点・懸念事項\n\n提案するタスク/プロジェクトはアクションJSONで提示してください（承認後に MyDesk に自動登録されます）。`;
+          try { window.dispatchEvent(new CustomEvent("md-assist-followup", { detail: { prompt } })); }
+          catch(e) { console.warn(e); }
+        }}
+          style={{width:"100%",marginBottom:"0.55rem",padding:"0.55rem 0.85rem",borderRadius:8,border:"1.5px solid #a855f733",background:"linear-gradient(135deg, #faf5ff 0%, #ede9fe 100%)",color:"#7c3aed",fontWeight:800,fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.4rem"}}>
+          🤖 AIに次のタスク・プロジェクトを提案させる
+        </button>
+
         {/* 統一入力ボックス（メモ・チャット・議事録） */}
         <div style={{marginBottom:"0.85rem"}}>
           <UnifiedComposer
@@ -11143,6 +11165,36 @@ function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach
 
   return (
     <div>
+      {/* AI 提案ボタン（履歴からタスク・プロジェクト生成提案） */}
+      <button onClick={()=>{
+        // 最新の活動を要約してチャットbotに投げる
+        const recentItems = items.slice(0, 30).map(it => {
+          const userName = users.find(u=>u.id===(it.userId||it.createdBy))?.name || "";
+          const when = (it._ts||"").slice(0,10);
+          if (it._kind==="approach") return `[${when}] アプローチ(${it.type||""}): ${(it.note||it.content||"").slice(0,200)} - ${userName}`;
+          if (it._kind==="memo")     return `[${when}] メモ: ${(it.text||"").slice(0,200)} - ${userName}`;
+          if (it._kind==="chat")     return `[${when}] チャット: ${(it.text||"").slice(0,200)} - ${userName}`;
+          if (it._kind==="mtg")      return `[${when}] 議事録${it.title?`(${it.title})`:""}: ${(it.content||"").slice(0,200)} - ${userName}`;
+          if (it._kind==="file")     return `[${when}] 資料追加: ${it.name||""} - ${userName}`;
+          if (it._kind==="change")   return `[${when}] 変更: ${it.field||""} ${it.oldVal?`${it.oldVal}→`:""}${it.newVal||""} - ${userName}`;
+          if (it._kind==="bizcard")  return `[${when}] 名刺紐付け: ${it.name||""}`;
+          if (it._kind && (it._kind.startsWith("task_")||it._kind.startsWith("project_"))) {
+            const parent = it._kind.startsWith("task_")?"タスク":"プロジェクト";
+            const sub = it._kind.replace(/^task_|^project_/,"");
+            return `[${when}] ${parent}「${it.parentTitle||""}」${sub}: ${(it.text||it.content||it.title||"").slice(0,200)} - ${userName}`;
+          }
+          return "";
+        }).filter(Boolean).join("\n");
+        const entityTypeJa = entityKey==="companies"?"企業":entityKey==="vendors"?"業者":entityKey==="municipalities"?"自治体":"";
+        const entityName = entity?.name || "";
+        const prompt = `「${entityName}」（${entityTypeJa}）の以下の活動履歴を分析して、次に取るべきタスクやプロジェクトを提案してください。\n\n【活動履歴（最新30件）】\n${recentItems||"（記録なし）"}\n\n以下の観点で具体的に提案してください:\n1. 直近で対応すべきフォローアップタスク（期限・担当者付き）\n2. 中長期的なプロジェクト化候補\n3. 注意点・懸念事項\n\n提案するタスク/プロジェクトはアクションJSONで提示してください（承認後に MyDesk に自動登録されます）。linkedEntityName には必ず「${entityName}」を入れてください。`;
+        try { window.dispatchEvent(new CustomEvent("md-assist-followup", { detail: { prompt } })); }
+        catch(e) { console.warn(e); }
+      }}
+        style={{width:"100%",marginBottom:"0.55rem",padding:"0.55rem 0.85rem",borderRadius:8,border:"1.5px solid #a855f733",background:"linear-gradient(135deg, #faf5ff 0%, #ede9fe 100%)",color:"#7c3aed",fontWeight:800,fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.4rem"}}>
+        🤖 AIに次のタスク・プロジェクトを提案させる
+      </button>
+
       {/* 統一入力ボックス（チャット・メモ・議事録・アプローチ） */}
       <div style={{marginBottom:"0.85rem"}}>
         <UnifiedComposer
@@ -20981,9 +21033,21 @@ function buildAssistantContext(data, currentUser, users, question) {
       for (const l of (e.approachLogs||[])) events.push({date:l.createdAt, kind:"approach", subtype:l.type||"", type, name:e.name, eid:e.id, userId:l.createdBy, content:l.note||l.content||""});
       for (const c of (e.chat||[]))         events.push({date:c.date,      kind:"chat",     type, name:e.name, eid:e.id, userId:c.userId,  content:c.text||c.content||""});
       for (const m of (e.memos||[]))        events.push({date:m.createdAt, kind:"memo",     type, name:e.name, eid:e.id, userId:m.createdBy, content:m.content||""});
+      for (const mt of (e.mtgLogs||[]))     events.push({date:mt.date,     kind:"mtg",      type, name:e.name, eid:e.id, userId:mt.userId, content:(mt.title?`【${mt.title}】 `:"")+(mt.content||"")});
     }
   };
   collect(companies,"企業"); collect(vendors,"業者"); collect(munis,"自治体");
+  // タスク・プロジェクトの会話も含める
+  for (const t of tasks) {
+    for (const c of (t.chat||[]))     events.push({date:c.date,    kind:"chat", type:"タスク", name:t.title, eid:t.id, userId:c.userId, content:c.text||""});
+    for (const m of (t.memos||[]))    events.push({date:m.date,    kind:"memo", type:"タスク", name:t.title, eid:t.id, userId:m.userId, content:m.text||""});
+    for (const mt of (t.mtgLogs||[])) events.push({date:mt.date,   kind:"mtg",  type:"タスク", name:t.title, eid:t.id, userId:mt.userId, content:(mt.title?`【${mt.title}】 `:"")+(mt.content||"")});
+  }
+  for (const p of (data?.projects||[])) {
+    for (const c of (p.chat||[]))     events.push({date:c.date,    kind:"chat", type:"プロジェクト", name:p.name||p.title, eid:p.id, userId:c.userId, content:c.text||""});
+    for (const m of (p.memos||[]))    events.push({date:m.date,    kind:"memo", type:"プロジェクト", name:p.name||p.title, eid:p.id, userId:m.userId, content:m.text||""});
+    for (const mt of (p.mtgLogs||[])) events.push({date:mt.date,   kind:"mtg",  type:"プロジェクト", name:p.name||p.title, eid:p.id, userId:mt.userId, content:(mt.title?`【${mt.title}】 `:"")+(mt.content||"")});
+  }
   events.sort((a,b)=>new Date(b.date||0)-new Date(a.date||0));
 
   // メンバー別週次活動
@@ -21017,10 +21081,10 @@ function buildAssistantContext(data, currentUser, users, question) {
     const assignee = t.assigneeIds?.map(userNameOf).join("、")||"";
     ctx += `- ${t.title||"無題"}${t.dueDate?` (期限:${t.dueDate})`:""}${assignee?` 担当:${assignee}`:""}\n`;
   }
-  ctx += `\n【最近のアクティビティ（最新40件）】\n`;
-  for (const e of events.slice(0,40)) {
+  ctx += `\n【最近のアクティビティ（最新80件・メモ/チャット/議事録/アプローチを含む）】\n`;
+  for (const e of events.slice(0,80)) {
     const dt = (e.date||"").slice(0,16).replace("T"," ");
-    ctx += `- ${dt} [${e.type}/${e.name}] ${userNameOf(e.userId)}: ${e.kind}${e.subtype?`(${e.subtype})`:""} "${(e.content||"").slice(0,80)}"\n`;
+    ctx += `- ${dt} [${e.type}/${e.name}] ${userNameOf(e.userId)}: ${e.kind}${e.subtype?`(${e.subtype})`:""} "${(e.content||"").slice(0,160)}"\n`;
   }
 
   // ── アクティブな営業対象（未接触/未設定/失注を除く＝商談中・提案中・成約等）の具体名リスト ──
@@ -21730,8 +21794,7 @@ ${q || "（添付ファイルのみ。中身を確認して、適切な提案を
                 <button onClick={()=>fileInputRef.current?.click()} disabled={loading} title="ファイルを添付"
                   style={{padding:"0.55rem 0.65rem",borderRadius:"10px",border:`1px solid ${C.border}`,background:"white",color:C.textSub,cursor:loading?"default":"pointer",fontSize:"1.05rem",fontFamily:"inherit",flexShrink:0,lineHeight:1}}>📎</button>
                 <input type="text" value={input} onChange={e=>setInput(e.target.value)}
-                  onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();ask();}}}
-                  placeholder={pendingFiles.length>0?"何をするか伝えてください…":"質問・依頼を入力…"}
+                  placeholder={pendingFiles.length>0?"何をするか伝えてください…":"質問・依頼を入力…（送信ボタンで送信）"}
                   style={{flex:1,padding:"0.7rem 0.9rem",borderRadius:"10px",border:`1px solid ${C.border}`,fontSize:"0.88rem",fontFamily:"inherit",outline:"none",background:C.bg,boxSizing:"border-box",minWidth:0}}/>
                 <button onClick={()=>ask()} disabled={loading||(!input.trim()&&pendingFiles.length===0)}
                   style={{padding:"0 1rem",borderRadius:"10px",border:"none",background:loading||(!input.trim()&&pendingFiles.length===0)?C.borderLight:ACC,color:loading||(!input.trim()&&pendingFiles.length===0)?C.textMuted:"white",fontSize:"0.84rem",fontWeight:700,cursor:loading||(!input.trim()&&pendingFiles.length===0)?"default":"pointer",fontFamily:"inherit",minWidth:52,flexShrink:0,letterSpacing:"-0.005em"}}>
