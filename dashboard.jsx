@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v87-email-send-lambda"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v88-send-button-ai-compose"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -8121,6 +8121,10 @@ function EmailView({data,setData,currentUser=null}) {
   const [generated,setGenerated] = useState("");
   const [loading,setLoading]     = useState(false);
   const [phase,setPhase]         = useState("input"); // "input" | "edit"
+  // SES 直接送信用
+  const [sendToEmail, setSendToEmail] = useState("");
+  const [sendSubject, setSendSubject] = useState("");
+  const [sendBusy, setSendBusy]       = useState(false);
   const [copyState,setCopyState] = useState("idle");
   const [styleSheet,setStyleSheet]=useState(false);
   const [styleInput,setStyleInput]=useState("");
@@ -8919,8 +8923,86 @@ function EmailView({data,setData,currentUser=null}) {
               {copyState==="ok"?"✓ コピー完了！":copyState==="fail"?"✗ 失敗":"📋 コピー"}
             </Btn>
           </div>
+
+          {/* ── SES 直接送信セクション ── */}
+          <div style={{marginTop:"1rem",padding:"0.875rem",background:"#f0fdf4",border:"1.5px solid #86efac",borderRadius:"10px"}}>
+            <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginBottom:"0.6rem"}}>
+              <span style={{fontSize:"0.84rem",fontWeight:800,color:"#166534"}}>📤 メールを直接送信（SES経由）</span>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:"0.5rem",marginBottom:"0.7rem"}}>
+              <div>
+                <div style={{fontSize:"0.7rem",fontWeight:700,color:"#166534",marginBottom:"0.2rem"}}>📧 宛先メールアドレス</div>
+                <input value={sendToEmail||""} onChange={e=>setSendToEmail(e.target.value)}
+                  placeholder="例: tanaka@example.co.jp"
+                  style={{width:"100%",padding:"0.5rem 0.75rem",borderRadius:"6px",border:"1px solid #86efac",fontSize:"0.84rem",fontFamily:"inherit",boxSizing:"border-box",background:"white"}}/>
+              </div>
+              <div>
+                <div style={{fontSize:"0.7rem",fontWeight:700,color:"#166534",marginBottom:"0.2rem"}}>📝 件名</div>
+                <input value={sendSubject||""} onChange={e=>setSendSubject(e.target.value)}
+                  placeholder="例: ご相談の件"
+                  style={{width:"100%",padding:"0.5rem 0.75rem",borderRadius:"6px",border:"1px solid #86efac",fontSize:"0.84rem",fontFamily:"inherit",boxSizing:"border-box",background:"white"}}/>
+              </div>
+            </div>
+            <Btn size="lg" disabled={sendBusy||!sendToEmail?.trim()||!sendSubject?.trim()||!generated?.trim()}
+              style={{width:"100%",background:(sendBusy||!sendToEmail?.trim()||!sendSubject?.trim()||!generated?.trim())?C.borderLight:"#059669",color:"white",fontWeight:800}}
+              onClick={async()=>{
+                if(!sendToEmail?.trim()||!sendSubject?.trim()||!generated?.trim()) return;
+                if(!window.confirm(`このメールを送信しますか？\n\n宛先: ${sendToEmail}\n件名: ${sendSubject}`)) return;
+                setSendBusy(true);
+                try {
+                  const fromEmail = currentUser?.email || "noreply@beetle-ems.com";
+                  const res = await fetch(`${DB_API_BASE}/send-email`, {
+                    method: "POST",
+                    headers: DB_API_HEADERS,
+                    body: JSON.stringify({
+                      to: [{name: toName||"", email: sendToEmail.trim()}],
+                      subject: sendSubject.trim(),
+                      body: generated,
+                      fromEmail,
+                      fromName: currentUser?.name||""
+                    })
+                  });
+                  const result = await res.json();
+                  if (res.ok && result.ok) {
+                    // 送信履歴を data.emails に保存
+                    const newEmail = {
+                      id: Date.now()+Math.random(),
+                      threadId: Date.now(),
+                      from: { email: fromEmail, name: currentUser?.name||"" },
+                      to: [{ name: toName||"", email: sendToEmail.trim() }],
+                      subject: sendSubject.trim(),
+                      body: generated,
+                      direction: "outbound",
+                      status: "sent",
+                      sentAt: new Date().toISOString(),
+                      createdAt: new Date().toISOString(),
+                      createdBy: uid,
+                      messageId: result.messageId,
+                    };
+                    const nd = { ...data, emails: [...(data.emails||[]), newEmail] };
+                    setData(nd); await saveData(nd);
+                    alert(`✅ 送信成功！\n\n宛先: ${sendToEmail}\nMessage ID: ${result.messageId}`);
+                    // 状態リセット
+                    setSendToEmail(""); setSendSubject(""); setGenerated(""); setPhase("input");
+                  } else {
+                    alert(`❌ 送信失敗\n\n${result.error||"不明なエラー"}\n${result.detail||""}`);
+                  }
+                } catch(e) {
+                  alert("送信エラー: " + (e.message||e));
+                } finally {
+                  setSendBusy(false);
+                }
+              }}>
+              {sendBusy?"📤 送信中…":"📤 SES経由で送信"}
+            </Btn>
+            <div style={{marginTop:"0.5rem",fontSize:"0.68rem",color:"#166534",lineHeight:1.5}}>
+              💡 送信元: <b>{currentUser?.email||"（未設定）"}</b>
+              {!currentUser?.email && <span style={{color:"#dc2626"}}> → 設定でメアド登録してください</span>}
+            </div>
+          </div>
+
           <div style={{marginTop:"0.75rem",padding:"0.75rem",background:C.bg,borderRadius:"6px",fontSize:"0.78rem",color:C.textSub}}>
-            💡 「コピー」してメールアプリに貼り付けてください。「保存」すると次回の文体学習に活用されます。
+            💡 「コピー」してメールアプリに貼り付け、または「📤 送信」で直接送信できます。「保存」すると次回の文体学習に活用されます。
           </div>
         </div>
       )}
