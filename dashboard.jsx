@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v88-send-button-ai-compose"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v89-fix-email-list-crash"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -8133,7 +8133,8 @@ function EmailView({data,setData,currentUser=null}) {
   const allStyles = data.emailStyles || [];
   const allEmails = data.emails      || [];
   const myStyles  = allStyles.filter(s=>!s.userId||s.userId===uid);
-  const myEmails  = allEmails.filter(e=>!e.userId||e.userId===uid);
+  // 旧形式の保存ドラフトのみ（generatedフィールドを持つもの）。新しい送受信メール(direction有)は除外
+  const myEmails  = allEmails.filter(e=>(!e.userId||e.userId===uid) && e.generated && !e.direction);
 
   // 名刺等から「メール作成」で遷移してきたとき：window.__myDeskEmailDraft を取り込む
   React.useEffect(()=>{
@@ -8276,7 +8277,7 @@ function EmailView({data,setData,currentUser=null}) {
       const styleRef = myStyles.length>0
         ? "【私の文体サンプル（この語調・トーンで書いてください）】\n"+myStyles.map(s=>s.text).join("\n---\n")+"\n\n" : "";
       const pastRef = myEmails.length>0
-        ? "【過去に私が書いたメール参考】\n"+myEmails.slice(-2).map(e=>e.generated.slice(0,300)).join("\n---\n")+"\n\n" : "";
+        ? "【過去に私が書いたメール参考】\n"+myEmails.slice(-2).map(e=>(e.generated||"").slice(0,300)).join("\n---\n")+"\n\n" : "";
 
       const myFullName = currentUser?.name || "";
       // 苗字だけ使う（スペース前を取得）
@@ -8890,7 +8891,7 @@ function EmailView({data,setData,currentUser=null}) {
                       </span>
                       <span style={{fontSize:"0.68rem",color:C.textMuted}}>{new Date(e.savedAt).toLocaleDateString("ja-JP")}</span>
                     </div>
-                    <div style={{fontSize:"0.83rem",color:C.textSub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.generated.slice(0,70)}...</div>
+                    <div style={{fontSize:"0.83rem",color:C.textSub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{(e.generated||"").slice(0,70)}...</div>
                   </Card>
                 ))}
               </div>
