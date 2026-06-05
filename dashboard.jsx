@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v86-no-enter-send"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v87-email-send-lambda"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -6782,14 +6782,20 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
       emailTargets.forEach(id=>{
         const u = users.find(x=>x.id===id);
         if(!u?.email) return;
-        const emailBody = `【MyDesk通知】${u?.name||'メンバー'}さん\n\n${title}\n\n${body}\n\n──\nMyDesk チーム業務管理\nhttps://my-desk-theta.vercel.app`;
-        fetch(`${API_BASE}/api/send-email`,{
+        const emailBody = `【MyDesk通知】${u?.name||'メンバー'}さん\n\n${title}\n\n${body}\n\n──\nMyDesk チーム業務管理\nhttps://main.d13ehj6n3bh94.amplifyapp.com`;
+        const senderEmail = (currentUser?.email || 'noreply@beetle-ems.com');
+        fetch(`${DB_API_BASE}/send-email`,{
           method:'POST',
-          headers:{'Content-Type':'application/json','x-mydesk-secret':'mydesk2026'},
-          body:JSON.stringify({to:u.email, toName:u?.name||'', subject:`[MyDesk] ${title}`, body:emailBody}),
+          headers: DB_API_HEADERS,
+          body:JSON.stringify({
+            to:[{name:u?.name||'', email:u.email}],
+            subject:`[MyDesk] ${title}`,
+            body:emailBody,
+            fromEmail: senderEmail,
+            fromName: 'MyDesk通知',
+          }),
         }).catch(()=>{
           // フォールバック: コンソールにログ
-          // メール送信失敗: logged
         });
       });
     });
@@ -8440,10 +8446,12 @@ function EmailView({data,setData,currentUser=null}) {
   const sendEmailNow = async ({to, cc, bcc, subject, body, replyToId, linkedDisplay}) => {
     setMbSendBusy(true);
     try {
-      const res = await fetch(`${API_BASE}/api/send-email`, {
+      // 送信元: 現在のユーザーのメアドを使う（同一ドメイン内の任意のアドレスから送信可能）
+      const fromEmail = currentUser?.email || "noreply@beetle-ems.com";
+      const res = await fetch(`${DB_API_BASE}/send-email`, {
         method: "POST",
-        headers: {"Content-Type":"application/json","x-mydesk-secret":"mydesk2026"},
-        body: JSON.stringify({ to, cc, bcc, subject, body, replyToId, fromName: currentUser?.name||"" })
+        headers: DB_API_HEADERS,
+        body: JSON.stringify({ to, cc, bcc, subject, body, replyToId, fromName: currentUser?.name||"", fromEmail })
       });
       let result = null;
       try { result = await res.json(); } catch(e){}
