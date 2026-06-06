@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v100a-email-ai-suite"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v101-ai-prefetch"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -8873,6 +8873,13 @@ function EmailView({data,setData,currentUser=null}) {
         linkedProjectIds: r.linked_project_ids || [],
         linkedBizcardIds: r.linked_bizcard_ids || [],
         linkedDisplay:    r.linked_display     || [],
+        // AI 分析フィールド
+        ai_summary:      r.ai_summary,
+        ai_priority:     r.ai_priority,
+        ai_category:     r.ai_category,
+        ai_suggestions:  r.ai_suggestions || [],
+        ai_draft_reply:  r.ai_draft_reply,
+        ai_analyzed_at:  r.ai_analyzed_at,
         _fromDb: true,  // DB由来マーク
         _accountEmail: r.account_email,
       }));
@@ -8887,6 +8894,99 @@ function EmailView({data,setData,currentUser=null}) {
 
   // 初回マウント時にDB読み込み
   React.useEffect(()=>{ reloadDbEmails(); }, [reloadDbEmails]);
+
+  // ───── AI 事前分析（バックグラウンド） ─────
+  // 未分析の受信メールをバックグラウンドでAI分析する
+  const [prefetchProgress, setPrefetchProgress] = React.useState({ done: 0, total: 0, active: false });
+  const prefetchAbortRef = React.useRef(false);
+  
+  React.useEffect(() => {
+    if (!emailIntegrationEnabled || !EMAIL_AI_API_URL || dbEmails.length === 0) return;
+    
+    // 未分析の受信メールを抽出（最新50件まで、メルマガっぽいものを後回し）
+    const unanalyzed = dbEmails
+      .filter(e => e.direction === "inbound" && !e.ai_analyzed_at)
+      .slice(0, 50); // 最新50件のみ自動分析
+    
+    if (unanalyzed.length === 0) {
+      setPrefetchProgress({ done: 0, total: 0, active: false });
+      return;
+    }
+    
+    console.log(`[AI prefetch] 未分析メール ${unanalyzed.length}通を順次バックグラウンド分析開始`);
+    prefetchAbortRef.current = false;
+    setPrefetchProgress({ done: 0, total: unanalyzed.length, active: true });
+    
+    // 5件ずつバッチで処理
+    const BATCH_SIZE = 5;
+    const runBatch = async () => {
+      try {
+        for (let i = 0; i < unanalyzed.length; i += BATCH_SIZE) {
+          if (prefetchAbortRef.current) {
+            console.log("[AI prefetch] 中断");
+            break;
+          }
+          const batch = unanalyzed.slice(i, i + BATCH_SIZE);
+          const emailIds = batch.map(e => e.id);
+          
+          try {
+            const res = await fetch(EMAIL_AI_API_URL, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "x-mydesk-secret": DB_API_SECRET },
+              body: JSON.stringify({ emailIds }),
+            });
+            if (res.ok) {
+              const json = await res.json();
+              // 分析済みになったメールの最新情報を取得して setDbEmails に反映
+              const updates = (json.results || []).filter(r => r.ok);
+              if (updates.length > 0) {
+                // DBから最新の AI フィールドを取得
+                for (const u of updates) {
+                  try {
+                    const er = await fetch(`${DB_API_BASE}/emails/${u.emailId}`, { headers: DB_API_HEADERS });
+                    if (er.ok) {
+                      const ej = await er.json();
+                      const item = ej.item;
+                      setDbEmails(prev => prev.map(e => e.id === u.emailId ? {
+                        ...e,
+                        ai_summary: item.ai_summary,
+                        ai_priority: item.ai_priority,
+                        ai_category: item.ai_category,
+                        ai_suggestions: item.ai_suggestions || [],
+                        ai_draft_reply: item.ai_draft_reply,
+                        ai_analyzed_at: item.ai_analyzed_at,
+                      } : e));
+                    }
+                  } catch {}
+                }
+              }
+            }
+          } catch (e) {
+            console.warn("[AI prefetch] バッチ失敗:", e.message);
+          }
+          
+          setPrefetchProgress(p => ({ ...p, done: Math.min(p.done + BATCH_SIZE, p.total) }));
+          // 次のバッチまで少し待つ（過負荷防止）
+          if (i + BATCH_SIZE < unanalyzed.length) {
+            await new Promise(r => setTimeout(r, 1500));
+          }
+        }
+        console.log("[AI prefetch] 完了");
+        setPrefetchProgress(p => ({ ...p, active: false }));
+      } catch (e) {
+        console.error("[AI prefetch] エラー:", e);
+        setPrefetchProgress(p => ({ ...p, active: false }));
+      }
+    };
+    
+    // 1秒後に開始（メール一覧表示の邪魔をしない）
+    const timer = setTimeout(runBatch, 1000);
+    return () => {
+      clearTimeout(timer);
+      prefetchAbortRef.current = true;
+    };
+  }, [dbEmails.length, emailIntegrationEnabled]); // dbEmails.length が変わった時のみ再実行
+
 
   // 統合: data.emails (古い形式) + DB(新形式)
   const localMailbox = (data.emails||[]).filter(e=>e.direction);
@@ -9139,10 +9239,17 @@ function EmailView({data,setData,currentUser=null}) {
       {/* ───── 同期ステータスバー（メール統合ON時のみ） ───── */}
       {emailIntegrationEnabled && (
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:"0.75rem",padding:"0.55rem 0.75rem",background:dbEmailsError?"#fef2f2":"#f0f9ff",border:`1px solid ${dbEmailsError?"#fca5a5":"#bae6fd"}`,borderRadius:"8px"}}>
-        <div style={{fontSize:"0.78rem",color:dbEmailsError?"#991b1b":"#0c4a6e",fontWeight:600}}>
-          {dbEmailsLoading ? "🔄 読み込み中..." :
-           dbEmailsError ? `❌ エラー: ${dbEmailsError}` :
-           `📬 サーバー: ${dbEmailsTotal}通 / 表示中: ${dbEmails.length}通${localMailbox.length>0?` + ローカル ${localMailbox.length}通`:""}`}
+        <div style={{fontSize:"0.78rem",color:dbEmailsError?"#991b1b":"#0c4a6e",fontWeight:600,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+          <span>
+            {dbEmailsLoading ? "🔄 読み込み中..." :
+             dbEmailsError ? `❌ エラー: ${dbEmailsError}` :
+             `📬 サーバー: ${dbEmailsTotal}通 / 表示中: ${dbEmails.length}通${localMailbox.length>0?` + ローカル ${localMailbox.length}通`:""}`}
+          </span>
+          {prefetchProgress.active && (
+            <span style={{fontSize:"0.7rem",color:"#1e40af",background:"#dbeafe",padding:"0.15rem 0.5rem",borderRadius:999,fontWeight:600}}>
+              🤖 AI 事前分析中 {prefetchProgress.done}/{prefetchProgress.total}
+            </span>
+          )}
         </div>
         <div style={{display:"flex",gap:6}}>
           <button onClick={reloadDbEmails} disabled={dbEmailsLoading}
@@ -9236,8 +9343,19 @@ function EmailView({data,setData,currentUser=null}) {
                             <span style={{fontSize:"0.78rem",fontWeight:isUnread?800:600,color:C.text,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{peer}</span>
                             <span style={{fontSize:"0.62rem",color:C.textMuted,flexShrink:0,fontVariantNumeric:"tabular-nums"}}>{fmtMbDate(e.sentAt||e.receivedAt||e.createdAt)}</span>
                           </div>
-                          <div style={{fontSize:"0.74rem",fontWeight:isUnread?700:500,color:C.text,marginTop:"0.1rem",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.subject||"(件名なし)"}</div>
-                          <div style={{fontSize:"0.66rem",color:C.textMuted,marginTop:"0.05rem",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{(e.body||"").slice(0,80)}</div>
+                          <div style={{display:"flex",alignItems:"center",gap:6,marginTop:"0.1rem"}}>
+                            {e.ai_priority && (
+                              <span style={{fontSize:"0.55rem",fontWeight:800,padding:"0.05rem 0.4rem",borderRadius:3,whiteSpace:"nowrap",flexShrink:0,
+                                background:e.ai_priority==="至急"?"#fee2e2":e.ai_priority==="依頼"?"#fef3c7":e.ai_priority==="メルマガ"?"#f1f5f9":"#dbeafe",
+                                color:e.ai_priority==="至急"?"#991b1b":e.ai_priority==="依頼"?"#92400e":e.ai_priority==="メルマガ"?"#64748b":"#1e40af"}}>
+                                {e.ai_priority}
+                              </span>
+                            )}
+                            <div style={{fontSize:"0.74rem",fontWeight:isUnread?700:500,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,minWidth:0}}>{e.subject||"(件名なし)"}</div>
+                          </div>
+                          <div style={{fontSize:"0.66rem",color:e.ai_summary?"#1e40af":C.textMuted,marginTop:"0.05rem",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontWeight:e.ai_summary?500:400}}>
+                            {e.ai_summary || (e.body||"").slice(0,80)}
+                          </div>
                           {(needsRep || e.status==="failed") && (
                             <div style={{display:"flex",gap:4,marginTop:"0.25rem"}}>
                               {needsRep && <span style={{fontSize:"0.58rem",fontWeight:700,padding:"0.05rem 0.35rem",borderRadius:4,background:"#fee2e2",color:"#b91c1c"}}>要返信 {daysSince(e.receivedAt||e.createdAt)}日</span>}
