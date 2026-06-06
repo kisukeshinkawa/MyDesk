@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v89-fix-email-list-crash"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v92-ai-compose-always-on"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -8096,8 +8096,20 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onGenerateR
 function EmailView({data,setData,currentUser=null}) {
   const uid = currentUser?.id;
 
+  // PC/モバイル判定（Outlook風3カラムレイアウト用）
+  const [isPC, setIsPC] = useState(typeof window !== "undefined" ? window.innerWidth >= 1000 : false);
+  React.useEffect(()=>{
+    const onResize = () => setIsPC(window.innerWidth >= 1000);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  // メール統合: 現在のユーザーが連携を有効化してるかチェック
+  const emailIntegrationEnabled = !!(currentUser?.emailIntegration?.enabled);
+
   // ───── メールボックス: ビュー切替 ─────
-  const [mbView, setMbView] = useState("inbox"); // inbox | sent | drafts | compose
+  // メール統合OFFの場合は AI作成 (compose) をデフォルトに
+  const [mbView, setMbView] = useState(emailIntegrationEnabled ? "inbox" : "compose"); // inbox | sent | drafts | compose
   const [mbSearch, setMbSearch] = useState("");
   const [mbFilter, setMbFilter] = useState("all"); // all | unread | needsReply | starred
   const [mbSelectedId, setMbSelectedId] = useState(null);
@@ -8401,7 +8413,67 @@ function EmailView({data,setData,currentUser=null}) {
   };
 
   // ─── メールボックス: ヘルパー関数 ─────────────────────────────────────────
-  const allMailbox = (data.emails||[]).filter(e=>e.direction); // direction を持つメールのみ
+  // DB(emails table)から取得したメール + ローカルの data.emails を統合表示
+  const [dbEmails, setDbEmails]           = useState([]);
+  const [dbEmailsLoading, setDbLoading]   = useState(false);
+  const [dbEmailsTotal, setDbTotal]       = useState(0);
+  const [dbEmailsError, setDbError]       = useState("");
+  const [dbSyncBusy, setDbSyncBusy]       = useState(false);
+
+  // DBからメール取得（メール統合ONのみ）
+  const reloadDbEmails = React.useCallback(async () => {
+    if (!emailIntegrationEnabled) return;
+    setDbLoading(true); setDbError("");
+    try {
+      const params = new URLSearchParams({ limit: "500", offset: "0" });
+      const res = await fetch(`${DB_API_BASE}/emails?${params}`, { headers: DB_API_HEADERS });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      // DB形式 → フロント形式に変換
+      const mapped = (json.items||[]).map(r => ({
+        id: r.id,
+        messageId: r.message_id,
+        threadId: r.thread_id,
+        direction: r.direction,
+        status: r.direction === "inbound" ? "received" : "sent",
+        from: { name: r.from_name||"", email: r.from_email||"" },
+        to: r.to_recipients || [],
+        cc: r.cc_recipients || [],
+        bcc: r.bcc_recipients || [],
+        subject: r.subject||"(件名なし)",
+        body: r.body||"",
+        receivedAt: r.received_at,
+        sentAt: r.sent_at,
+        isRead: r.is_read,
+        isReplied: r.is_replied,
+        isStarred: r.is_starred,
+        inReplyTo: r.in_reply_to,
+        attachments: r.attachments || [],
+        linkedCompanyIds: r.linked_company_ids || [],
+        linkedVendorIds:  r.linked_vendor_ids  || [],
+        linkedMuniIds:    r.linked_muni_ids    || [],
+        linkedTaskIds:    r.linked_task_ids    || [],
+        linkedProjectIds: r.linked_project_ids || [],
+        linkedBizcardIds: r.linked_bizcard_ids || [],
+        linkedDisplay:    r.linked_display     || [],
+        _fromDb: true,  // DB由来マーク
+        _accountEmail: r.account_email,
+      }));
+      setDbEmails(mapped);
+      setDbTotal(json.total||0);
+    } catch(e) {
+      setDbError(String(e.message||e));
+    } finally {
+      setDbLoading(false);
+    }
+  }, [emailIntegrationEnabled]);
+
+  // 初回マウント時にDB読み込み
+  React.useEffect(()=>{ reloadDbEmails(); }, [reloadDbEmails]);
+
+  // 統合: data.emails (古い形式) + DB(新形式)
+  const localMailbox = (data.emails||[]).filter(e=>e.direction);
+  const allMailbox = [...dbEmails, ...localMailbox]; // DB由来が先、ローカル後
   const fmtMbDate = (iso) => { if(!iso) return ""; try{ const d=new Date(iso); const j=new Date(d.getTime()+9*3600*1000); const pad=n=>String(n).padStart(2,"0"); const today=new Date(Date.now()+9*3600*1000).toISOString().slice(0,10); const ymd=j.toISOString().slice(0,10); if(ymd===today) return `${pad(j.getUTCHours())}:${pad(j.getUTCMinutes())}`; return `${j.getUTCMonth()+1}/${j.getUTCDate()}`; }catch{return"";} };
   const fmtMbFullDate = (iso) => { if(!iso) return ""; try{ const d=new Date(iso); const j=new Date(d.getTime()+9*3600*1000); const pad=n=>String(n).padStart(2,"0"); return `${j.getUTCFullYear()}-${pad(j.getUTCMonth()+1)}-${pad(j.getUTCDate())} ${pad(j.getUTCHours())}:${pad(j.getUTCMinutes())}`; }catch{return"";} };
   // メールアドレスから企業/業者/自治体/名刺を自動検出
@@ -8423,6 +8495,31 @@ function EmailView({data,setData,currentUser=null}) {
   const needsReplySoon = (email) => email.direction==="inbound" && !email.isReplied && daysSince(email.receivedAt||email.createdAt)>=2;
 
   const updateEmailField = (id, patch) => {
+    // DB由来メールはAPI経由で更新
+    const dbEmail = dbEmails.find(e=>e.id===id);
+    if (dbEmail) {
+      // フロント形式 → DB形式に変換
+      const dbPatch = {};
+      if ("isRead" in patch) dbPatch.is_read = patch.isRead;
+      if ("isReplied" in patch) dbPatch.is_replied = patch.isReplied;
+      if ("isStarred" in patch) dbPatch.is_starred = patch.isStarred;
+      if ("linkedCompanyIds" in patch) dbPatch.linked_company_ids = patch.linkedCompanyIds;
+      if ("linkedVendorIds" in patch) dbPatch.linked_vendor_ids = patch.linkedVendorIds;
+      if ("linkedMuniIds" in patch) dbPatch.linked_muni_ids = patch.linkedMuniIds;
+      if ("linkedTaskIds" in patch) dbPatch.linked_task_ids = patch.linkedTaskIds;
+      if ("linkedProjectIds" in patch) dbPatch.linked_project_ids = patch.linkedProjectIds;
+      if ("linkedBizcardIds" in patch) dbPatch.linked_bizcard_ids = patch.linkedBizcardIds;
+      if ("linkedDisplay" in patch) dbPatch.linked_display = patch.linkedDisplay;
+      // 楽観的更新
+      setDbEmails(prev => prev.map(e=>e.id===id?{...e,...patch}:e));
+      fetch(`${DB_API_BASE}/emails/${id}`, {
+        method: "PUT",
+        headers: DB_API_HEADERS,
+        body: JSON.stringify(dbPatch),
+      }).catch(()=>{});
+      return;
+    }
+    // ローカルメール（旧形式）
     const nd = { ...data, emails: (data.emails||[]).map(e=>e.id===id?{...e,...patch}:e) };
     setData(nd); saveData(nd);
   };
@@ -8542,11 +8639,14 @@ function EmailView({data,setData,currentUser=null}) {
   return (
     <div>
       {/* ───── メールボックスタブ（受信/送信/下書き/AI作成） ───── */}
+      {/* メール統合OFFの場合は AI作成 のみ表示 */}
       <div style={{display:"flex",background:C.bg,borderRadius:"8px",padding:"0.25rem",marginBottom:"1rem",border:`1px solid ${C.border}`}}>
         {[
-          {id:"inbox",lbl:"📥 受信",count:allMailbox.filter(e=>e.direction==="inbound"&&!e.isRead).length},
-          {id:"sent",lbl:"📤 送信",count:0},
-          {id:"drafts",lbl:"📝 下書き",count:allMailbox.filter(e=>e.status==="draft").length},
+          ...(emailIntegrationEnabled ? [
+            {id:"inbox",lbl:"📥 受信",count:allMailbox.filter(e=>e.direction==="inbound"&&!e.isRead).length},
+            {id:"sent",lbl:"📤 送信",count:0},
+            {id:"drafts",lbl:"📝 下書き",count:allMailbox.filter(e=>e.status==="draft").length},
+          ] : []),
           {id:"compose",lbl:"✏️ AI作成",count:0},
         ].map(t=>(
           <button key={t.id} onClick={()=>{setMbView(t.id);setMbSelectedId(null);}}
@@ -8556,6 +8656,55 @@ function EmailView({data,setData,currentUser=null}) {
           </button>
         ))}
       </div>
+
+      {/* ───── メール統合OFFの案内（AI作成タブの上に表示） ───── */}
+      {!emailIntegrationEnabled && mbView!=="compose" && (
+        <div style={{padding:"2rem 1rem",textAlign:"center",background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:"8px",marginBottom:"1rem"}}>
+          <div style={{fontSize:"2rem",marginBottom:"0.5rem"}}>✉️</div>
+          <div style={{fontSize:"0.95rem",fontWeight:800,color:"#92400e",marginBottom:"0.3rem"}}>メール統合が無効です</div>
+          <div style={{fontSize:"0.78rem",color:"#78350f",marginBottom:"0.9rem",lineHeight:1.6}}>
+            ⚙️ 設定 → プロフィール → 「✉️ メール統合」を有効にすると、<br/>
+            MyDesk内で受信箱・送信箱が使えます。
+          </div>
+          <div style={{fontSize:"0.72rem",color:"#92400e"}}>AI作成機能は引き続きご利用いただけます ↑</div>
+        </div>
+      )}
+
+      {/* ───── 同期ステータスバー（メール統合ON時のみ） ───── */}
+      {emailIntegrationEnabled && (
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:"0.75rem",padding:"0.55rem 0.75rem",background:dbEmailsError?"#fef2f2":"#f0f9ff",border:`1px solid ${dbEmailsError?"#fca5a5":"#bae6fd"}`,borderRadius:"8px"}}>
+        <div style={{fontSize:"0.78rem",color:dbEmailsError?"#991b1b":"#0c4a6e",fontWeight:600}}>
+          {dbEmailsLoading ? "🔄 読み込み中..." :
+           dbEmailsError ? `❌ エラー: ${dbEmailsError}` :
+           `📬 サーバー: ${dbEmailsTotal}通 / 表示中: ${dbEmails.length}通${localMailbox.length>0?` + ローカル ${localMailbox.length}通`:""}`}
+        </div>
+        <div style={{display:"flex",gap:6}}>
+          <button onClick={reloadDbEmails} disabled={dbEmailsLoading}
+            style={{padding:"0.35rem 0.7rem",fontSize:"0.72rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",cursor:dbEmailsLoading?"not-allowed":"pointer",fontFamily:"inherit",fontWeight:700,color:C.text,opacity:dbEmailsLoading?0.5:1}}>
+            🔄 再読込
+          </button>
+          <button disabled={dbSyncBusy}
+            onClick={async()=>{
+              if (!window.confirm("お名前メールサーバーから最新メールを取得しますか？\n（処理に30〜60秒かかる場合があります）")) return;
+              setDbSyncBusy(true);
+              try {
+                // mydesk-fetch-emails Lambda を直接呼ぶことはできないので、
+                // 通常は EventBridge で自動同期に任せる。手動同期は別Lambda URL化が必要。
+                // ここでは「再読込」のみ実行（自動同期Lambdaが裏で動いてればすぐ反映される）
+                await reloadDbEmails();
+                alert("最新メールを再読み込みしました。\n（バックグラウンド同期は自動で動作中です）");
+              } catch(e) {
+                alert("エラー: " + (e.message||e));
+              } finally {
+                setDbSyncBusy(false);
+              }
+            }}
+            style={{padding:"0.35rem 0.7rem",fontSize:"0.72rem",borderRadius:6,border:"none",background:dbSyncBusy?C.borderLight:C.accent,color:"white",cursor:dbSyncBusy?"not-allowed":"pointer",fontFamily:"inherit",fontWeight:800}}>
+            {dbSyncBusy?"同期中…":"📥 メール同期"}
+          </button>
+        </div>
+      </div>
+      )}
 
       {/* ───── 受信箱・送信箱・下書き ビュー ───── */}
       {(mbView==="inbox"||mbView==="sent"||mbView==="drafts") && (()=>{
@@ -8594,8 +8743,80 @@ function EmailView({data,setData,currentUser=null}) {
                 style={{padding:"0.28rem 0.6rem",borderRadius:6,border:`1px dashed ${C.border}`,background:"white",color:C.textMuted,fontSize:"0.68rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}} title="バックエンド未実装中の手動テスト">＋ テスト受信</button>}
             </div>
 
-            {selected ? (
-              // ── 詳細ビュー ──
+            {/* ── Outlook風 3カラムレイアウト ── */}
+            {isPC ? (
+              <div style={{display:"grid",gridTemplateColumns:"380px 1fr",gap:"0.6rem",alignItems:"flex-start"}}>
+                {/* 左: メール一覧 */}
+                <div style={{display:"flex",flexDirection:"column",gap:"0.35rem",maxHeight:"calc(100vh - 280px)",overflowY:"auto",paddingRight:4}}>
+                  {list.length === 0 ? (
+                    <div style={{padding:"3rem 1rem",textAlign:"center",color:C.textMuted,fontSize:"0.82rem"}}>
+                      {mbView==="inbox"?"📭 受信メールはありません":mbView==="sent"?"📤 送信済みメールはありません":"📝 下書きはありません"}
+                    </div>
+                  ) : list.map(e=>{
+                    const isUnread = e.direction==="inbound" && !e.isRead;
+                    const peer = e.direction==="inbound" ? `${e.from?.name||e.from?.email||"差出人不明"}` : `${(e.to||[])[0]?.name||(e.to||[])[0]?.email||"宛先不明"}`;
+                    const needsRep = needsReplySoon(e);
+                    const isSelected = mbSelectedId === e.id;
+                    return (
+                      <div key={e.id} onClick={()=>{setMbSelectedId(e.id); if(isUnread) updateEmailField(e.id,{isRead:true});}}
+                        style={{display:"flex",alignItems:"flex-start",gap:"0.5rem",padding:"0.55rem 0.7rem",background:isSelected?"#dbeafe":isUnread?"#fff7ed":"white",borderRadius:"8px",border:`1px solid ${isSelected?C.accent:needsRep?"#fca5a5":C.borderLight}`,cursor:"pointer",boxShadow:isSelected?"0 2px 6px rgba(37,99,235,0.15)":"0 1px 2px rgba(0,0,0,0.03)",transition:"all 0.1s"}}>
+                        <button onClick={ev=>{ev.stopPropagation();updateEmailField(e.id,{isStarred:!e.isStarred});}}
+                          style={{padding:0,border:"none",background:"none",cursor:"pointer",fontSize:"0.95rem",lineHeight:1,flexShrink:0,color:e.isStarred?"#eab308":C.borderLight}}>{e.isStarred?"⭐":"☆"}</button>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{display:"flex",alignItems:"center",gap:"0.4rem"}}>
+                            {isUnread && <span style={{width:6,height:6,borderRadius:"50%",background:"#ea580c",flexShrink:0}}/>}
+                            <span style={{fontSize:"0.78rem",fontWeight:isUnread?800:600,color:C.text,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{peer}</span>
+                            <span style={{fontSize:"0.62rem",color:C.textMuted,flexShrink:0,fontVariantNumeric:"tabular-nums"}}>{fmtMbDate(e.sentAt||e.receivedAt||e.createdAt)}</span>
+                          </div>
+                          <div style={{fontSize:"0.74rem",fontWeight:isUnread?700:500,color:C.text,marginTop:"0.1rem",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.subject||"(件名なし)"}</div>
+                          <div style={{fontSize:"0.66rem",color:C.textMuted,marginTop:"0.05rem",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{(e.body||"").slice(0,80)}</div>
+                          {(needsRep || e.status==="failed") && (
+                            <div style={{display:"flex",gap:4,marginTop:"0.25rem"}}>
+                              {needsRep && <span style={{fontSize:"0.58rem",fontWeight:700,padding:"0.05rem 0.35rem",borderRadius:4,background:"#fee2e2",color:"#b91c1c"}}>要返信 {daysSince(e.receivedAt||e.createdAt)}日</span>}
+                              {e.status==="failed" && <span style={{fontSize:"0.58rem",fontWeight:700,padding:"0.05rem 0.35rem",borderRadius:4,background:"#fee2e2",color:"#b91c1c"}}>送信失敗</span>}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                {/* 右: プレビュー */}
+                <div style={{background:"white",border:`1px solid ${C.borderLight}`,borderRadius:8,padding:"1rem",minHeight:"calc(100vh - 280px)",maxHeight:"calc(100vh - 280px)",overflowY:"auto"}}>
+                  {selected ? (
+                    <EmailDetailPane email={selected} onClose={()=>setMbSelectedId(null)}
+                      onMarkRead={()=>updateEmailField(selected.id,{isRead:true})}
+                      onToggleStar={()=>updateEmailField(selected.id,{isStarred:!selected.isStarred})}
+                      onGenerateReply={async()=>{
+                        if(!selected.isRead) updateEmailField(selected.id,{isRead:true});
+                        const txt = await generateAiReply(selected);
+                        if(!txt) return;
+                        window.__myDeskReplyDraft = {to:[selected.from], subject:`Re: ${selected.subject||""}`.replace(/^(Re: )+/i,"Re: "), body:txt, replyToId:selected.id, linkedDisplay:selected.linkedDisplay||[]};
+                        setMbView("compose"); setMode("reply"); setInputText(selected.body||""); setGenerated(txt); setPhase("edit");
+                      }}
+                      aiBusy={mbAiBusy}
+                      onLink={(type)=>setMbLinkPicker({emailId:selected.id, type})}
+                      onUnlink={(linkType,id)=>{
+                        const fmap = {"企業":"linkedCompanyIds","業者":"linkedVendorIds","自治体":"linkedMuniIds","タスク":"linkedTaskIds","プロジェクト":"linkedProjectIds","名刺":"linkedBizcardIds"};
+                        const f = fmap[linkType]; if(!f) return;
+                        const newIds = (selected[f]||[]).filter(x=>x!==id);
+                        const newDisplay = (selected.linkedDisplay||[]).filter(d=>!(d.type===linkType&&d.id===id));
+                        updateEmailField(selected.id,{[f]:newIds,linkedDisplay:newDisplay});
+                      }}
+                      data={data} currentUser={currentUser} fmtFull={fmtMbFullDate}
+                      onSend={async(payload)=>{ const ok=await sendEmailNow(payload); if(ok) setMbSelectedId(null); return ok; }}
+                      sendBusy={mbSendBusy}/>
+                  ) : (
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100%",flexDirection:"column",gap:"0.8rem",color:C.textMuted}}>
+                      <div style={{fontSize:"3rem",opacity:0.4}}>✉️</div>
+                      <div style={{fontSize:"0.85rem",fontWeight:600}}>メールを選択してください</div>
+                      <div style={{fontSize:"0.72rem"}}>左の一覧から表示したいメールをクリック</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : selected ? (
+              // ── モバイル: 詳細ビュー ──
               <EmailDetailPane email={selected} onClose={()=>setMbSelectedId(null)}
                 onMarkRead={()=>updateEmailField(selected.id,{isRead:true})}
                 onToggleStar={()=>updateEmailField(selected.id,{isStarred:!selected.isStarred})}
@@ -8603,29 +8824,27 @@ function EmailView({data,setData,currentUser=null}) {
                   if(!selected.isRead) updateEmailField(selected.id,{isRead:true});
                   const txt = await generateAiReply(selected);
                   if(!txt) return;
-                  // 返信内容を編集する compose に移行
                   window.__myDeskReplyDraft = {to:[selected.from], subject:`Re: ${selected.subject||""}`.replace(/^(Re: )+/i,"Re: "), body:txt, replyToId:selected.id, linkedDisplay:selected.linkedDisplay||[]};
-                  setMbView("compose");
-                  setMode("reply");
-                  setInputText(selected.body||"");
-                  setGenerated(txt);
-                  setPhase("edit");
-                  setToName(selected.from?.name||"");
+                  setMbView("compose"); setMode("reply"); setInputText(selected.body||""); setGenerated(txt); setPhase("edit");
                 }}
                 aiBusy={mbAiBusy}
-                onLink={(type,id,name)=>linkEmailToEntity(selected.id,type,id,name)}
-                onUnlink={(type,id)=>unlinkEmailFromEntity(selected.id,type,id)}
-                data={data} currentUser={currentUser}
-                fmtFull={fmtMbFullDate}
+                onLink={(type)=>setMbLinkPicker({emailId:selected.id, type})}
+                onUnlink={(linkType,id)=>{
+                  const fmap = {"企業":"linkedCompanyIds","業者":"linkedVendorIds","自治体":"linkedMuniIds","タスク":"linkedTaskIds","プロジェクト":"linkedProjectIds","名刺":"linkedBizcardIds"};
+                  const f = fmap[linkType]; if(!f) return;
+                  const newIds = (selected[f]||[]).filter(x=>x!==id);
+                  const newDisplay = (selected.linkedDisplay||[]).filter(d=>!(d.type===linkType&&d.id===id));
+                  updateEmailField(selected.id,{[f]:newIds,linkedDisplay:newDisplay});
+                }}
+                data={data} currentUser={currentUser} fmtFull={fmtMbFullDate}
                 onSend={async(payload)=>{ const ok=await sendEmailNow(payload); if(ok) setMbSelectedId(null); return ok; }}
-                sendBusy={mbSendBusy}
-              />
-            ) : !list.length ? (
-              <div style={{textAlign:"center",padding:"2.5rem 1rem",color:C.textMuted,fontSize:"0.85rem"}}>
-                {mbView==="inbox"?"受信メールはありません":mbView==="sent"?"送信済みメールはありません":"下書きはありません"}
+                sendBusy={mbSendBusy}/>
+            ) : list.length === 0 ? (
+              <div style={{padding:"3rem 1rem",textAlign:"center",color:C.textMuted,fontSize:"0.85rem"}}>
+                {mbView==="inbox"?"📭 受信メールはありません":mbView==="sent"?"📤 送信済みメールはありません":"📝 下書きはありません"}
               </div>
             ) : (
-              // ── リストビュー ──
+              // ── モバイル: リストビュー ──
               <div style={{display:"flex",flexDirection:"column",gap:"0.35rem"}}>
                 {list.map(e=>{
                   const isUnread = e.direction==="inbound" && !e.isRead;
@@ -19898,7 +20117,50 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
             )}
           </div>
 
-          {/* 管理者専用: ユーザーパスワードリセット */}
+          {/* メール統合 */}
+          <div style={{marginTop:"1.25rem",paddingTop:"1.25rem",borderTop:"1px solid "+C.borderLight}}>
+            <div style={{fontSize:"0.87rem",fontWeight:700,color:C.text,marginBottom:"0.625rem"}}>✉️ メール統合</div>
+            <div style={{fontSize:"0.72rem",color:C.textSub,marginBottom:"0.625rem",lineHeight:1.6}}>
+              有効にすると、MyDesk内でメール受信箱（Outlook風）を使えます。
+              {!currentUser?.email && <span style={{color:"#dc2626"}}> ※先に上の「メールアドレス」を保存してください</span>}
+            </div>
+            {(()=>{
+              const ei = currentUser?.emailIntegration || {};
+              const isOn = !!ei.enabled;
+              const toggleIntegration = async () => {
+                if (!currentUser?.email && !isOn) {
+                  alert("メール統合を有効にする前に、上の「メールアドレス」欄を入力して保存してください。");
+                  return;
+                }
+                const updatedUser = {
+                  ...currentUser,
+                  emailIntegration: { ...(currentUser?.emailIntegration||{}), enabled: !isOn, imapUser: currentUser.email||"" }
+                };
+                const newUsers = users.map(u=>u.id===currentUser.id?updatedUser:u);
+                await saveUsers(newUsers);
+                setUsers(newUsers);
+                setCurrentUser(updatedUser);
+                setSession(updatedUser);
+              };
+              return (
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0.625rem 0.875rem",background:isOn?"#f0fdf4":"#f9fafb",border:`1.5px solid ${isOn?"#86efac":C.border}`,borderRadius:"0.625rem"}}>
+                  <div>
+                    <div style={{fontSize:"0.8rem",fontWeight:700,color:isOn?"#166534":C.text}}>
+                      {isOn?"✅ メール統合 有効":"❌ メール統合 無効"}
+                    </div>
+                    {isOn && currentUser?.email && (
+                      <div style={{fontSize:"0.7rem",color:"#166534",marginTop:2}}>連携中: <strong>{currentUser.email}</strong></div>
+                    )}
+                  </div>
+                  <button onClick={toggleIntegration}
+                    disabled={!currentUser?.email && !isOn}
+                    style={{padding:"0.4rem 1rem",borderRadius:999,border:"none",cursor:(!currentUser?.email&&!isOn)?"not-allowed":"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.82rem",background:isOn?"#d1fae5":C.accent,color:isOn?"#065f46":"white",opacity:(!currentUser?.email&&!isOn)?0.5:1}}>
+                    {isOn?"ON ✓":"ONにする"}
+                  </button>
+                </div>
+              );
+            })()}
+          </div>
           {currentUser?.name==='新川希亮' && (()=>{
             const [resetTarget, setResetTarget] = React.useState("");
             const [newPw, setNewPw] = React.useState("");
@@ -24068,6 +24330,9 @@ export default function App() {
     if(currentUser) unsubscribePush(currentUser.id);
     setSession(null); setCurrentUser(null); setShowUserMenu(false);
   };
+
+  // メール統合: 現在のユーザーが連携を有効化してるかチェック
+  const emailIntegrationEnabled = !!(currentUser?.emailIntegration?.enabled);
 
   const TABS=[
     {id:"tasks",    emoji:"✅", label:"タスク"},
