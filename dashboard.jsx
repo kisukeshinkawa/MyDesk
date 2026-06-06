@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v93-email-nav-and-read"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v94-mail-fixes"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -8121,17 +8121,32 @@ function EmailView({data,setData,currentUser=null}) {
   // 現在表示中のメール一覧（↑↓キー移動用にref保持）
   const currentListRef = React.useRef([]);
 
+  // 既読化タイマー（クリック即読ではなく 2秒選択後に既読化する）
+  const readTimerRef = React.useRef(null);
+  const selectEmailWithDelayedRead = React.useCallback((emailId, isUnread) => {
+    // 前回のタイマーをキャンセル
+    if (readTimerRef.current) {
+      clearTimeout(readTimerRef.current);
+      readTimerRef.current = null;
+    }
+    setMbSelectedId(emailId);
+    if (isUnread) {
+      readTimerRef.current = setTimeout(()=>{
+        updateEmailFieldRef.current?.(emailId, {isRead:true});
+        readTimerRef.current = null;
+      }, 2000);
+    }
+  }, []);
+  // unmountでタイマークリア
+  React.useEffect(()=>{ return ()=>{ if(readTimerRef.current) clearTimeout(readTimerRef.current); }; }, []);
+
   // 隣のメールに移動（dir: +1 = 次、-1 = 前）
   const selectAdjacent = React.useCallback((dir) => {
     const lst = currentListRef.current;
     if (!lst || lst.length === 0) return;
     if (!mbSelectedId) {
-      // 未選択 → 最初を選ぶ
       const target = lst[0];
-      if (target) {
-        setMbSelectedId(target.id);
-        if (target.direction === "inbound" && !target.isRead) updateEmailFieldRef.current?.(target.id, {isRead:true});
-      }
+      if (target) selectEmailWithDelayedRead(target.id, target.direction === "inbound" && !target.isRead);
       return;
     }
     const idx = lst.findIndex(e => e.id === mbSelectedId);
@@ -8139,9 +8154,8 @@ function EmailView({data,setData,currentUser=null}) {
     const nextIdx = Math.max(0, Math.min(lst.length-1, idx + dir));
     if (nextIdx === idx) return;
     const target = lst[nextIdx];
-    setMbSelectedId(target.id);
-    if (target.direction === "inbound" && !target.isRead) updateEmailFieldRef.current?.(target.id, {isRead:true});
-  }, [mbSelectedId]);
+    selectEmailWithDelayedRead(target.id, target.direction === "inbound" && !target.isRead);
+  }, [mbSelectedId, selectEmailWithDelayedRead]);
 
   // updateEmailField を ref で保持（selectAdjacent から呼ぶため）
   const updateEmailFieldRef = React.useRef(null);
@@ -8516,7 +8530,53 @@ function EmailView({data,setData,currentUser=null}) {
 
   // 統合: data.emails (古い形式) + DB(新形式)
   const localMailbox = (data.emails||[]).filter(e=>e.direction);
-  const allMailbox = [...dbEmails, ...localMailbox]; // DB由来が先、ローカル後
+
+  // メールアドレス → エンティティ の高速ルックアップ Map を構築（useMemo でデータ変更時のみ再構築）
+  const emailEntityMap = React.useMemo(()=>{
+    const map = new Map();
+    // 名刺（最優先）
+    for (const bc of (data.businessCards||[])) {
+      const em = (bc.email||"").toLowerCase().trim();
+      if (!em) continue;
+      const ref = bc.salesRef;
+      if (ref) map.set(em, { type: ref.type, id: ref.id, name: ref.name, bizcardId: bc.id });
+      else if (!map.has(em)) map.set(em, { type: "名刺", id: bc.id, name: bc.name||bc.email, bizcardId: bc.id });
+    }
+    // 企業・業者・自治体（代表メール + コンタクトメール）
+    for (const {arr,type} of [{arr:data.companies||[],type:"企業"},{arr:data.vendors||[],type:"業者"},{arr:data.municipalities||[],type:"自治体"}]) {
+      for (const ent of arr) {
+        const em = (ent.email||"").toLowerCase().trim();
+        if (em && !map.has(em)) map.set(em, { type, id: ent.id, name: ent.name });
+        if (Array.isArray(ent.contacts)) {
+          for (const c of ent.contacts) {
+            const cem = (c.email||"").toLowerCase().trim();
+            if (cem && !map.has(cem)) map.set(cem, { type, id: ent.id, name: ent.name });
+          }
+        }
+      }
+    }
+    return map;
+  }, [data.businessCards, data.companies, data.vendors, data.municipalities]);
+
+  // 自動紐付け（DB由来メールに linkedDisplay が空の場合、from_email でマッチング）
+  const enrichWithAutoLink = (emails) => emails.map(e=>{
+    if ((e.linkedDisplay||[]).length > 0) return e; // 既に紐付け済み
+    const fromEmail = (e.from?.email||"").toLowerCase().trim();
+    if (!fromEmail) return e;
+    const match = emailEntityMap.get(fromEmail);
+    if (!match) return e;
+    return {
+      ...e,
+      _autoLinked: true, // フロント側で紐付けた一時的マーク
+      linkedDisplay: [{ type: match.type, id: match.id, name: match.name }],
+      ...(match.type==="企業" ? {linkedCompanyIds:[match.id]} : {}),
+      ...(match.type==="業者" ? {linkedVendorIds:[match.id]} : {}),
+      ...(match.type==="自治体" ? {linkedMuniIds:[match.id]} : {}),
+      ...(match.bizcardId ? {linkedBizcardIds:[match.bizcardId]} : {}),
+    };
+  });
+
+  const allMailbox = [...enrichWithAutoLink(dbEmails), ...localMailbox]; // DB由来が先、ローカル後
   const fmtMbDate = (iso) => { if(!iso) return ""; try{ const d=new Date(iso); const j=new Date(d.getTime()+9*3600*1000); const pad=n=>String(n).padStart(2,"0"); const today=new Date(Date.now()+9*3600*1000).toISOString().slice(0,10); const ymd=j.toISOString().slice(0,10); if(ymd===today) return `${pad(j.getUTCHours())}:${pad(j.getUTCMinutes())}`; return `${j.getUTCMonth()+1}/${j.getUTCDate()}`; }catch{return"";} };
   const fmtMbFullDate = (iso) => { if(!iso) return ""; try{ const d=new Date(iso); const j=new Date(d.getTime()+9*3600*1000); const pad=n=>String(n).padStart(2,"0"); return `${j.getUTCFullYear()}-${pad(j.getUTCMonth()+1)}-${pad(j.getUTCDate())} ${pad(j.getUTCHours())}:${pad(j.getUTCMinutes())}`; }catch{return"";} };
   // メールアドレスから企業/業者/自治体/名刺を自動検出
@@ -8535,7 +8595,8 @@ function EmailView({data,setData,currentUser=null}) {
     return null;
   };
   const daysSince = (iso) => { if(!iso) return 0; const d=new Date(iso); return Math.floor((Date.now()-d.getTime())/86400000); };
-  const needsReplySoon = (email) => email.direction==="inbound" && !email.isReplied && daysSince(email.receivedAt||email.createdAt)>=2;
+  // 「要返信」は手動でスター付けたメールのみ（メルマガ等の誤判定を防ぐ）
+  const needsReplySoon = (email) => email.direction==="inbound" && !email.isReplied && email.isStarred;
 
   const updateEmailField = (id, patch) => {
     // DB由来メールはAPI経由で更新
@@ -8805,7 +8866,7 @@ function EmailView({data,setData,currentUser=null}) {
                     const needsRep = needsReplySoon(e);
                     const isSelected = mbSelectedId === e.id;
                     return (
-                      <div key={e.id} onClick={()=>{setMbSelectedId(e.id); if(isUnread) updateEmailField(e.id,{isRead:true});}}
+                      <div key={e.id} onClick={()=>selectEmailWithDelayedRead(e.id, isUnread)}
                         style={{display:"flex",alignItems:"flex-start",gap:"0.5rem",padding:"0.55rem 0.7rem",background:isSelected?"#dbeafe":isUnread?"#fff7ed":"white",borderRadius:"8px",border:`1px solid ${isSelected?C.accent:needsRep?"#fca5a5":C.borderLight}`,cursor:"pointer",boxShadow:isSelected?"0 2px 6px rgba(37,99,235,0.15)":"0 1px 2px rgba(0,0,0,0.03)",transition:"all 0.1s"}}>
                         <button onClick={ev=>{ev.stopPropagation();updateEmailField(e.id,{isStarred:!e.isStarred});}}
                           style={{padding:0,border:"none",background:"none",cursor:"pointer",fontSize:"0.95rem",lineHeight:1,flexShrink:0,color:e.isStarred?"#eab308":C.borderLight}}>{e.isStarred?"⭐":"☆"}</button>
@@ -8946,7 +9007,7 @@ function EmailView({data,setData,currentUser=null}) {
                   const peer = e.direction==="inbound" ? `${e.from?.name||e.from?.email||"差出人不明"}` : `${(e.to||[])[0]?.name||(e.to||[])[0]?.email||"宛先不明"}`;
                   const needsRep = needsReplySoon(e);
                   return (
-                    <div key={e.id} onClick={()=>{setMbSelectedId(e.id); if(isUnread) updateEmailField(e.id,{isRead:true});}}
+                    <div key={e.id} onClick={()=>selectEmailWithDelayedRead(e.id, isUnread)}
                       style={{display:"flex",alignItems:"flex-start",gap:"0.6rem",padding:"0.65rem 0.8rem",background:isUnread?"#fff7ed":"white",borderRadius:"8px",border:`1px solid ${needsRep?"#fca5a5":C.borderLight}`,cursor:"pointer",boxShadow:"0 1px 2px rgba(0,0,0,0.03)",transition:"all 0.1s"}}>
                       <button onClick={ev=>{ev.stopPropagation();updateEmailField(e.id,{isStarred:!e.isStarred});}}
                         style={{padding:0,border:"none",background:"none",cursor:"pointer",fontSize:"1rem",lineHeight:1,flexShrink:0,color:e.isStarred?"#eab308":C.borderLight}}>{e.isStarred?"⭐":"☆"}</button>
