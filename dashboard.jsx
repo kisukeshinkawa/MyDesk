@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v102-name-card-display"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v104-should-reply"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -8900,6 +8900,8 @@ function EmailView({data,setData,currentUser=null}) {
         ai_suggestions:  r.ai_suggestions || [],
         ai_draft_reply:  r.ai_draft_reply,
         ai_analyzed_at:  r.ai_analyzed_at,
+        ai_should_reply: r.ai_should_reply,
+        ai_should_reply_reason: r.ai_should_reply_reason,
         _fromDb: true,  // DB由来マーク
         _accountEmail: r.account_email,
       }));
@@ -9102,15 +9104,22 @@ function EmailView({data,setData,currentUser=null}) {
     return null;
   };
   const daysSince = (iso) => { if(!iso) return 0; const d=new Date(iso); return Math.floor((Date.now()-d.getTime())/86400000); };
-  // 「要返信」判定: AI が「至急」「依頼」と判定したメール、または手動でスターを付けたメール
-  // 返信済みなら自動で外れる
+  // 「要返信」判定: AI が「返信すべき」と判断したメール（メルマガ除外）
+  // 返信したら自動で外れる
   const needsReplySoon = (email) => {
     if (email.direction !== "inbound") return false;
     if (email.isReplied) return false; // 返信済みなら外す
-    // AI 判定優先
-    if (email.ai_priority === "至急" || email.ai_priority === "依頼") return true;
-    // 手動スターでも対象（フォールバック）
-    if (email.isStarred) return true;
+    // メルマガは除外
+    if (email.ai_priority === "メルマガ") return false;
+    // AI が「返信すべき」と判定したもの
+    if (email.ai_should_reply === true) return true;
+    // ai_should_reply が null（古い分析 or 未分析）の場合のフォールバック
+    if (email.ai_should_reply === undefined || email.ai_should_reply === null) {
+      // 至急・依頼は要返信
+      if (email.ai_priority === "至急" || email.ai_priority === "依頼") return true;
+      // 手動スター
+      if (email.isStarred) return true;
+    }
     return false;
   };
 
