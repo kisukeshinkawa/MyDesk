@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v94-mail-fixes"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v95-reply-cc-bcc"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -7961,12 +7961,20 @@ function ScheduleView() {
 function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onGenerateReply, aiBusy, onLink, onUnlink, data, currentUser, fmtFull, onSend, sendBusy }) {
   const [linkType, setLinkType] = React.useState(null); // 企業/業者/自治体/タスク/プロジェクト/名刺
   const [linkSearch, setLinkSearch] = React.useState("");
-  const [replyMode, setReplyMode] = React.useState(false);
-  const [replyBody, setReplyBody] = React.useState("");
+  const [replyMode, setReplyMode] = React.useState(null); // null | "reply" | "replyAll" | "forward"
+  const [replyTo, setReplyTo]       = React.useState([]); // [{name,email}]
+  const [replyCc, setReplyCc]       = React.useState([]); // [{name,email}]
+  const [replyBcc, setReplyBcc]     = React.useState([]); // [{name,email}]
+  const [showCc, setShowCc]         = React.useState(false);
+  const [showBcc, setShowBcc]       = React.useState(false);
+  const [replyBody, setReplyBody]   = React.useState("");
   const [replySubject, setReplySubject] = React.useState("");
-  const [replyDraftGenerated, setReplyDraftGenerated] = React.useState(false);
+  const [aiBusyLocal, setAiBusyLocal] = React.useState(false);
 
   const isInbound = email.direction === "inbound";
+
+  // 自分のメアド（CC/BCCから除外するため）
+  const myEmail = (currentUser?.email||"").toLowerCase().trim();
 
   // エンティティ候補
   const sources = {
@@ -7980,25 +7988,104 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onGenerateR
     return (e.name||"").toLowerCase().includes(linkSearch.trim().toLowerCase());
   }).slice(0, 30) : [];
 
-  const handleReplyClick = async () => {
-    setReplyMode(true);
-    setReplySubject(`Re: ${(email.subject||"").replace(/^(Re:\s*)+/i,"")}`);
-    if (!replyDraftGenerated && isInbound) {
-      const txt = await onGenerateReply();
-      if (txt) { setReplyBody(txt); setReplyDraftGenerated(true); }
+  // 返信フォームを開く（mode: reply | replyAll | forward）
+  const openReplyForm = (mode) => {
+    setReplyMode(mode);
+    const subj = (email.subject||"").replace(/^(Re:\s*|Fwd:\s*)+/gi,"");
+    if (mode === "forward") {
+      setReplySubject(`Fwd: ${subj}`);
+      setReplyTo([]); setReplyCc([]); setReplyBcc([]);
+      // 転送本文に引用つける
+      const quoted = `\n\n---------- 転送メッセージ ----------\nFrom: ${email.from?.name||""} <${email.from?.email||""}>\nDate: ${fmtFull(email.sentAt||email.receivedAt||email.createdAt)}\nSubject: ${email.subject||""}\nTo: ${(email.to||[]).map(t=>t.email).join(", ")}\n\n${email.body||""}`;
+      setReplyBody(quoted);
+    } else {
+      setReplySubject(`Re: ${subj}`);
+      // 返信先: 送信元
+      const fromAddr = email.from || {};
+      setReplyTo(fromAddr.email ? [{name:fromAddr.name||"", email:fromAddr.email}] : []);
+      // 全員に返信: 元の To/CC を CC に（自分のアドレスは除外）
+      if (mode === "replyAll") {
+        const origTo = (email.to||[]).filter(t => (t.email||"").toLowerCase().trim() !== myEmail && (t.email||"").toLowerCase().trim() !== (fromAddr.email||"").toLowerCase().trim());
+        const origCc = (email.cc||[]).filter(t => (t.email||"").toLowerCase().trim() !== myEmail);
+        const allCc = [...origTo, ...origCc];
+        // 重複除外
+        const seen = new Set();
+        const uniqCc = allCc.filter(t => {
+          const k = (t.email||"").toLowerCase().trim();
+          if (!k || seen.has(k)) return false;
+          seen.add(k); return true;
+        });
+        setReplyCc(uniqCc);
+        if (uniqCc.length > 0) setShowCc(true);
+      } else {
+        setReplyCc([]);
+      }
+      setReplyBcc([]);
+      // 引用付き本文
+      const quoted = `\n\n--- 元のメッセージ ---\nFrom: ${email.from?.name||""} <${email.from?.email||""}>\nDate: ${fmtFull(email.sentAt||email.receivedAt||email.createdAt)}\n\n${(email.body||"").split("\n").map(l=>"> "+l).join("\n")}`;
+      setReplyBody(quoted);
     }
   };
 
+  const closeReplyForm = () => {
+    setReplyMode(null);
+    setReplyTo([]); setReplyCc([]); setReplyBcc([]);
+    setReplySubject(""); setReplyBody("");
+    setShowCc(false); setShowBcc(false);
+  };
+
+  const generateAiDraft = async () => {
+    if (!isInbound || replyMode === "forward") return;
+    setAiBusyLocal(true);
+    try {
+      const txt = await onGenerateReply();
+      if (txt) {
+        // 引用部分の前に AI 生成テキストを差し込む
+        const quoteIdx = replyBody.indexOf("--- 元のメッセージ ---");
+        if (quoteIdx > 0) setReplyBody(txt + "\n" + replyBody.slice(quoteIdx-2));
+        else setReplyBody(txt + replyBody);
+      }
+    } finally { setAiBusyLocal(false); }
+  };
+
   const handleSend = async () => {
+    if (replyTo.length === 0) { alert("宛先 (To) を入力してください"); return; }
     if (!replyBody.trim()) { alert("本文を入力してください"); return; }
     const payload = {
-      to: isInbound ? [email.from] : (email.to||[]),
+      to: replyTo,
+      cc: replyCc,
+      bcc: replyBcc,
       subject: replySubject || email.subject,
       body: replyBody,
-      replyToId: email.id,
+      replyToId: replyMode !== "forward" ? email.id : null,
       linkedDisplay: email.linkedDisplay||[],
     };
-    await onSend(payload);
+    const ok = await onSend(payload);
+    if (ok) closeReplyForm();
+  };
+
+  // メアド入力フィールド（chips式: 「name <email>, email2」をパース）
+  const RecipientInput = ({label, value, onChange, placeholder}) => {
+    const [text, setText] = React.useState(value.map(t=>t.name?`${t.name} <${t.email}>`:t.email).join(", "));
+    React.useEffect(()=>{
+      setText(value.map(t=>t.name?`${t.name} <${t.email}>`:t.email).join(", "));
+    }, [value.length]);
+    const commit = () => {
+      const parts = text.split(/[,;\n]+/).map(s=>s.trim()).filter(Boolean);
+      const parsed = parts.map(p=>{
+        const m = p.match(/^(.*?)\s*<([^>]+)>$/);
+        if (m) return { name: m[1].trim(), email: m[2].trim() };
+        return { name:"", email: p };
+      }).filter(t=>/.+@.+/.test(t.email));
+      onChange(parsed);
+    };
+    return (
+      <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.35rem"}}>
+        <span style={{fontSize:"0.72rem",fontWeight:700,color:"#059669",minWidth:36}}>{label}</span>
+        <input type="text" value={text} onChange={e=>setText(e.target.value)} onBlur={commit} placeholder={placeholder}
+          style={{flex:1,padding:"0.4rem 0.55rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"inherit",boxSizing:"border-box"}}/>
+      </div>
+    );
   };
 
   return (
@@ -8015,6 +8102,7 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onGenerateR
       <div style={{fontSize:"0.74rem",color:C.textSub,marginBottom:"0.65rem",lineHeight:1.6}}>
         <div><b style={{fontWeight:700,color:C.text}}>{isInbound?"From:":"To:"}</b> {isInbound ? `${email.from?.name||""} <${email.from?.email||""}>` : (email.to||[]).map(t=>`${t.name||""} <${t.email||""}>`).join(", ")}</div>
         <div><b style={{fontWeight:700,color:C.text}}>{isInbound?"To:":"From:"}</b> {isInbound ? (email.to||[]).map(t=>t.email).join(", ") : `${email.from?.name||""} <${email.from?.email||""}>`}</div>
+        {(email.cc||[]).length>0 && <div><b style={{fontWeight:700,color:C.text}}>CC:</b> {(email.cc||[]).map(t=>t.email).join(", ")}</div>}
         <div><b style={{fontWeight:700,color:C.text}}>日時:</b> {fmtFull(email.sentAt||email.receivedAt||email.createdAt)}</div>
         {email.status==="failed" && <div style={{color:"#b91c1c",fontWeight:700,marginTop:"0.2rem"}}>⚠️ 送信失敗: {email.errorReason||"不明"}</div>}
       </div>
@@ -8035,13 +8123,29 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onGenerateR
       {/* アクションボタン */}
       {!replyMode && (
         <div style={{display:"flex",gap:"0.45rem",flexWrap:"wrap",marginBottom:"0.5rem"}}>
-          {isInbound && <button onClick={handleReplyClick} disabled={aiBusy}
-            style={{flex:1,minWidth:140,padding:"0.55rem",borderRadius:7,border:"none",background:aiBusy?C.borderLight:C.accent,color:aiBusy?C.textMuted:"white",fontSize:"0.82rem",fontWeight:800,cursor:aiBusy?"default":"pointer",fontFamily:"inherit"}}>
-            {aiBusy?"AI生成中…":"🤖 AIで返信"}
-          </button>}
-          {!isInbound && <button onClick={()=>{setReplyMode(true);setReplyBody(email.body||"");setReplySubject(email.subject||"");}} 
-            style={{flex:1,minWidth:140,padding:"0.55rem",borderRadius:7,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.82rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>↻ 再送</button>}
-          <button onClick={()=>setLinkType(linkType?null:"企業")} 
+          {isInbound && (
+            <>
+              <button onClick={()=>openReplyForm("reply")}
+                style={{flex:"1 1 120px",padding:"0.55rem",borderRadius:7,border:"none",background:C.accent,color:"white",fontSize:"0.82rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+                ↩️ 返信
+              </button>
+              {((email.to||[]).length + (email.cc||[]).length) > 1 && (
+                <button onClick={()=>openReplyForm("replyAll")}
+                  style={{flex:"1 1 120px",padding:"0.55rem",borderRadius:7,border:`1px solid ${C.accent}`,background:"white",color:C.accent,fontSize:"0.82rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+                  ↩️ 全員に返信
+                </button>
+              )}
+              <button onClick={()=>openReplyForm("forward")}
+                style={{padding:"0.55rem 0.85rem",borderRadius:7,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                → 転送
+              </button>
+            </>
+          )}
+          {!isInbound && (
+            <button onClick={()=>openReplyForm("forward")}
+              style={{flex:1,minWidth:140,padding:"0.55rem",borderRadius:7,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.82rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>→ 転送</button>
+          )}
+          <button onClick={()=>setLinkType(linkType?null:"企業")}
             style={{padding:"0.55rem 0.85rem",borderRadius:7,border:`1px solid ${C.border}`,background:linkType?"#fff7ed":"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🔗 連携</button>
         </div>
       )}
@@ -8071,19 +8175,58 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onGenerateR
 
       {/* 返信モード */}
       {replyMode && (
-        <div style={{background:"#f0fdf4",borderRadius:8,padding:"0.7rem",border:"1px solid #86efac"}}>
-          <div style={{fontSize:"0.72rem",fontWeight:800,color:"#059669",marginBottom:"0.45rem"}}>{isInbound?"📤 返信を送信":"📤 メールを送信"}</div>
-          <input type="text" value={replySubject} onChange={e=>setReplySubject(e.target.value)} placeholder="件名"
-            style={{width:"100%",padding:"0.5rem 0.65rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.82rem",fontFamily:"inherit",boxSizing:"border-box",marginBottom:"0.4rem"}}/>
-          <textarea value={replyBody} onChange={e=>setReplyBody(e.target.value)} rows={10} placeholder={aiBusy?"AIが生成中…":"本文を入力"}
+        <div style={{background:"#f0fdf4",borderRadius:8,padding:"0.75rem",border:"1px solid #86efac"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.5rem"}}>
+            <div style={{fontSize:"0.78rem",fontWeight:800,color:"#059669"}}>
+              {replyMode==="reply"?"↩️ 返信":replyMode==="replyAll"?"↩️ 全員に返信":"→ 転送"}
+            </div>
+            <button onClick={closeReplyForm} style={{padding:"0.2rem 0.5rem",border:"none",background:"transparent",cursor:"pointer",color:C.textMuted,fontSize:"0.72rem",fontFamily:"inherit"}}>× 閉じる</button>
+          </div>
+          {/* From 表示 */}
+          <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.3rem"}}>
+            <span style={{fontSize:"0.72rem",fontWeight:700,color:"#059669",minWidth:36}}>From</span>
+            <div style={{flex:1,padding:"0.4rem 0.55rem",fontSize:"0.78rem",color:C.textSub,background:"white",border:`1px solid ${C.borderLight}`,borderRadius:5}}>
+              {currentUser?.name||""} &lt;{currentUser?.email||"未設定"}&gt;
+            </div>
+          </div>
+          {/* To */}
+          <RecipientInput label="To" value={replyTo} onChange={setReplyTo} placeholder="メールアドレス (カンマ区切りで複数可)" />
+          {/* CC 切替 */}
+          {!showCc && !showBcc && (
+            <div style={{display:"flex",gap:"0.4rem",marginBottom:"0.4rem"}}>
+              <button onClick={()=>setShowCc(true)} style={{padding:"0.25rem 0.55rem",borderRadius:4,border:"none",background:"transparent",color:"#059669",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>+ CC</button>
+              <button onClick={()=>setShowBcc(true)} style={{padding:"0.25rem 0.55rem",borderRadius:4,border:"none",background:"transparent",color:"#059669",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>+ BCC</button>
+            </div>
+          )}
+          {showCc && <RecipientInput label="CC" value={replyCc} onChange={setReplyCc} placeholder="CC のメールアドレス" />}
+          {!showBcc && showCc && (
+            <div style={{marginBottom:"0.4rem"}}>
+              <button onClick={()=>setShowBcc(true)} style={{padding:"0.2rem 0.5rem",borderRadius:4,border:"none",background:"transparent",color:"#059669",fontSize:"0.7rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>+ BCC</button>
+            </div>
+          )}
+          {showBcc && <RecipientInput label="BCC" value={replyBcc} onChange={setReplyBcc} placeholder="BCC のメールアドレス" />}
+          {/* Subject */}
+          <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.4rem"}}>
+            <span style={{fontSize:"0.72rem",fontWeight:700,color:"#059669",minWidth:36}}>件名</span>
+            <input type="text" value={replySubject} onChange={e=>setReplySubject(e.target.value)} placeholder="件名"
+              style={{flex:1,padding:"0.4rem 0.55rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.8rem",fontFamily:"inherit",boxSizing:"border-box"}}/>
+          </div>
+          {/* 本文 */}
+          <textarea value={replyBody} onChange={e=>setReplyBody(e.target.value)} rows={12} placeholder={aiBusyLocal?"AIが生成中…":"本文を入力"}
             style={{width:"100%",padding:"0.55rem 0.7rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.84rem",fontFamily:"inherit",lineHeight:1.6,resize:"vertical",boxSizing:"border-box",marginBottom:"0.5rem"}}/>
-          <div style={{display:"flex",gap:"0.4rem"}}>
-            <button onClick={()=>{setReplyMode(false);setReplyBody("");setReplyDraftGenerated(false);}}
+          {/* アクション */}
+          <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap"}}>
+            {isInbound && replyMode !== "forward" && (
+              <button onClick={generateAiDraft} disabled={aiBusyLocal||aiBusy}
+                style={{padding:"0.55rem 0.85rem",borderRadius:6,border:`1px solid ${C.accent}55`,background:"white",color:C.accent,fontSize:"0.8rem",fontWeight:700,cursor:(aiBusyLocal||aiBusy)?"default":"pointer",fontFamily:"inherit"}}>
+                {aiBusyLocal?"AI生成中…":"✨ AI下書き"}
+              </button>
+            )}
+            <div style={{flex:1}}/>
+            <button onClick={closeReplyForm}
               style={{padding:"0.55rem 0.85rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.8rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>キャンセル</button>
-            {isInbound && <button onClick={async()=>{ const txt=await onGenerateReply(); if(txt){setReplyBody(txt);setReplyDraftGenerated(true);}}} disabled={aiBusy}
-              style={{padding:"0.55rem 0.85rem",borderRadius:6,border:`1px solid ${C.accent}55`,background:"white",color:C.accent,fontSize:"0.8rem",fontWeight:700,cursor:aiBusy?"default":"pointer",fontFamily:"inherit"}}>{aiBusy?"…":"🔄 AI再生成"}</button>}
-            <button onClick={handleSend} disabled={sendBusy||!replyBody.trim()}
-              style={{flex:1,padding:"0.55rem",borderRadius:6,border:"none",background:sendBusy||!replyBody.trim()?C.borderLight:"#059669",color:sendBusy||!replyBody.trim()?C.textMuted:"white",fontSize:"0.84rem",fontWeight:800,cursor:sendBusy||!replyBody.trim()?"default":"pointer",fontFamily:"inherit"}}>
+            <button onClick={handleSend} disabled={sendBusy||!replyBody.trim()||replyTo.length===0}
+              style={{padding:"0.55rem 1.1rem",borderRadius:6,border:"none",background:(sendBusy||!replyBody.trim()||replyTo.length===0)?C.borderLight:"#059669",color:(sendBusy||!replyBody.trim()||replyTo.length===0)?C.textMuted:"white",fontSize:"0.84rem",fontWeight:800,cursor:(sendBusy||!replyBody.trim()||replyTo.length===0)?"default":"pointer",fontFamily:"inherit"}}>
               {sendBusy?"送信中…":"📤 送信"}
             </button>
           </div>
