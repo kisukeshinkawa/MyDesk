@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v92-ai-compose-always-on"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v93-email-nav-and-read"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -8118,6 +8118,49 @@ function EmailView({data,setData,currentUser=null}) {
   const [mbAiBusy, setMbAiBusy] = useState(false);
   const [mbTestOpen, setMbTestOpen] = useState(false);
 
+  // 現在表示中のメール一覧（↑↓キー移動用にref保持）
+  const currentListRef = React.useRef([]);
+
+  // 隣のメールに移動（dir: +1 = 次、-1 = 前）
+  const selectAdjacent = React.useCallback((dir) => {
+    const lst = currentListRef.current;
+    if (!lst || lst.length === 0) return;
+    if (!mbSelectedId) {
+      // 未選択 → 最初を選ぶ
+      const target = lst[0];
+      if (target) {
+        setMbSelectedId(target.id);
+        if (target.direction === "inbound" && !target.isRead) updateEmailFieldRef.current?.(target.id, {isRead:true});
+      }
+      return;
+    }
+    const idx = lst.findIndex(e => e.id === mbSelectedId);
+    if (idx < 0) return;
+    const nextIdx = Math.max(0, Math.min(lst.length-1, idx + dir));
+    if (nextIdx === idx) return;
+    const target = lst[nextIdx];
+    setMbSelectedId(target.id);
+    if (target.direction === "inbound" && !target.isRead) updateEmailFieldRef.current?.(target.id, {isRead:true});
+  }, [mbSelectedId]);
+
+  // updateEmailField を ref で保持（selectAdjacent から呼ぶため）
+  const updateEmailFieldRef = React.useRef(null);
+
+  // キーボードショートカット（↑↓キー）
+  React.useEffect(() => {
+    if (mbView !== "inbox" && mbView !== "sent" && mbView !== "drafts") return;
+    const onKey = (ev) => {
+      // input/textarea/contenteditable にフォーカスがある時は無視
+      const tag = (ev.target?.tagName || "").toLowerCase();
+      if (tag === "input" || tag === "textarea" || ev.target?.isContentEditable) return;
+      if (ev.key === "ArrowDown" || ev.key === "j") { ev.preventDefault(); selectAdjacent(1); }
+      else if (ev.key === "ArrowUp" || ev.key === "k") { ev.preventDefault(); selectAdjacent(-1); }
+      else if (ev.key === "Escape") { setMbSelectedId(null); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [mbView, selectAdjacent]);
+
   // "reply" = 受信メールへの返信, "compose" = 新規メール作成, "follow" = フォローメール
   const [mode,setMode]           = useState("reply");
   const [inputText,setInputText] = useState(""); // 受信メール(reply) or 目的・内容(compose)
@@ -8523,6 +8566,8 @@ function EmailView({data,setData,currentUser=null}) {
     const nd = { ...data, emails: (data.emails||[]).map(e=>e.id===id?{...e,...patch}:e) };
     setData(nd); saveData(nd);
   };
+  // ref に最新の updateEmailField を入れる（selectAdjacent から呼ぶため）
+  updateEmailFieldRef.current = updateEmailField;
   const linkEmailToEntity = (emailId, entityType, entityId, entityName) => {
     const fmap = { "企業":"linkedCompanyIds","業者":"linkedVendorIds","自治体":"linkedMuniIds","タスク":"linkedTaskIds","プロジェクト":"linkedProjectIds","名刺":"linkedBizcardIds" };
     const field = fmap[entityType]; if(!field) return;
@@ -8722,6 +8767,8 @@ function EmailView({data,setData,currentUser=null}) {
         const ql = mbSearch.trim().toLowerCase();
         if (ql) list = list.filter(e => `${e.from?.email||""} ${e.from?.name||""} ${(e.to||[]).map(t=>t.email+t.name).join(" ")} ${e.subject||""} ${e.body||""}`.toLowerCase().includes(ql));
         list.sort((a,b)=> (new Date(b.sentAt||b.receivedAt||b.createdAt).getTime()) - (new Date(a.sentAt||a.receivedAt||a.createdAt).getTime()));
+        // ↑↓キーで隣のメールに移動できるよう、現在の表示中リストを ref に保存
+        currentListRef.current = list;
         const selected = list.find(e=>e.id===mbSelectedId);
 
         return (
@@ -8782,7 +8829,31 @@ function EmailView({data,setData,currentUser=null}) {
                   })}
                 </div>
                 {/* 右: プレビュー */}
-                <div style={{background:"white",border:`1px solid ${C.borderLight}`,borderRadius:8,padding:"1rem",minHeight:"calc(100vh - 280px)",maxHeight:"calc(100vh - 280px)",overflowY:"auto"}}>
+                <div style={{background:"white",border:`1px solid ${C.borderLight}`,borderRadius:8,padding:"1rem",minHeight:"calc(100vh - 280px)",maxHeight:"calc(100vh - 280px)",overflowY:"auto",position:"relative"}}>
+                  {selected && (()=>{
+                    const idx = list.findIndex(e=>e.id===selected.id);
+                    const canPrev = idx > 0;
+                    const canNext = idx >= 0 && idx < list.length-1;
+                    return (
+                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:"0.75rem",padding:"0.4rem 0.6rem",background:C.bg,border:`1px solid ${C.borderLight}`,borderRadius:6}}>
+                        <div style={{fontSize:"0.72rem",color:C.textSub,fontWeight:600}}>
+                          {idx+1} / {list.length}
+                        </div>
+                        <div style={{display:"flex",gap:6}}>
+                          <button onClick={()=>selectAdjacent(-1)} disabled={!canPrev}
+                            title="前のメール (↑)"
+                            style={{padding:"0.3rem 0.65rem",fontSize:"0.75rem",borderRadius:5,border:`1px solid ${C.border}`,background:canPrev?"white":"#f3f4f6",color:canPrev?C.text:C.textMuted,cursor:canPrev?"pointer":"not-allowed",fontFamily:"inherit",fontWeight:700}}>
+                            ↑ 前
+                          </button>
+                          <button onClick={()=>selectAdjacent(1)} disabled={!canNext}
+                            title="次のメール (↓)"
+                            style={{padding:"0.3rem 0.65rem",fontSize:"0.75rem",borderRadius:5,border:`1px solid ${C.border}`,background:canNext?"white":"#f3f4f6",color:canNext?C.text:C.textMuted,cursor:canNext?"pointer":"not-allowed",fontFamily:"inherit",fontWeight:700}}>
+                            ↓ 次
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
                   {selected ? (
                     <EmailDetailPane email={selected} onClose={()=>setMbSelectedId(null)}
                       onMarkRead={()=>updateEmailField(selected.id,{isRead:true})}
@@ -8817,6 +8888,29 @@ function EmailView({data,setData,currentUser=null}) {
               </div>
             ) : selected ? (
               // ── モバイル: 詳細ビュー ──
+              <>
+              {(()=>{
+                const idx = list.findIndex(e=>e.id===selected.id);
+                const canPrev = idx > 0;
+                const canNext = idx >= 0 && idx < list.length-1;
+                return (
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:"0.5rem",padding:"0.4rem 0.6rem",background:C.bg,border:`1px solid ${C.borderLight}`,borderRadius:6}}>
+                    <div style={{fontSize:"0.72rem",color:C.textSub,fontWeight:600}}>
+                      {idx+1} / {list.length}
+                    </div>
+                    <div style={{display:"flex",gap:6}}>
+                      <button onClick={()=>selectAdjacent(-1)} disabled={!canPrev}
+                        style={{padding:"0.3rem 0.65rem",fontSize:"0.75rem",borderRadius:5,border:`1px solid ${C.border}`,background:canPrev?"white":"#f3f4f6",color:canPrev?C.text:C.textMuted,cursor:canPrev?"pointer":"not-allowed",fontFamily:"inherit",fontWeight:700}}>
+                        ↑ 前
+                      </button>
+                      <button onClick={()=>selectAdjacent(1)} disabled={!canNext}
+                        style={{padding:"0.3rem 0.65rem",fontSize:"0.75rem",borderRadius:5,border:`1px solid ${C.border}`,background:canNext?"white":"#f3f4f6",color:canNext?C.text:C.textMuted,cursor:canNext?"pointer":"not-allowed",fontFamily:"inherit",fontWeight:700}}>
+                        ↓ 次
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
               <EmailDetailPane email={selected} onClose={()=>setMbSelectedId(null)}
                 onMarkRead={()=>updateEmailField(selected.id,{isRead:true})}
                 onToggleStar={()=>updateEmailField(selected.id,{isStarred:!selected.isStarred})}
@@ -8839,6 +8933,7 @@ function EmailView({data,setData,currentUser=null}) {
                 data={data} currentUser={currentUser} fmtFull={fmtMbFullDate}
                 onSend={async(payload)=>{ const ok=await sendEmailNow(payload); if(ok) setMbSelectedId(null); return ok; }}
                 sendBusy={mbSendBusy}/>
+              </>
             ) : list.length === 0 ? (
               <div style={{padding:"3rem 1rem",textAlign:"center",color:C.textMuted,fontSize:"0.85rem"}}>
                 {mbView==="inbox"?"📭 受信メールはありません":mbView==="sent"?"📤 送信済みメールはありません":"📝 下書きはありません"}
