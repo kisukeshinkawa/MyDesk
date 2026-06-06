@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v99-card-style-status"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v100-email-ai-suite"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -140,6 +140,8 @@ const DB_API_HEADERS = {
   "Content-Type": "application/json",
   "x-mydesk-secret": DB_API_SECRET,
 };
+// AI メール分析 Lambda URL（環境変数優先、なければ将来のデプロイ後に設定）
+const EMAIL_AI_API_URL = (typeof import.meta !== "undefined" && import.meta.env?.VITE_EMAIL_AI_API_URL) || "";
 const S3_BUCKET = "mydesk-files-dustalk-1777302196";
 const S3_REGION = "ap-northeast-1";
 const S3_PUBLIC_BASE = `https://${S3_BUCKET}.s3.${S3_REGION}.amazonaws.com`;
@@ -8044,6 +8046,28 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onGenerateR
   const [replyBody, setReplyBody]   = React.useState("");
   const [replySubject, setReplySubject] = React.useState("");
   const [aiBusyLocal, setAiBusyLocal] = React.useState(false);
+  
+  // AI 分析データ（要約・優先度・提案・返信案）
+  const [aiAnalyzing, setAiAnalyzing] = React.useState(false);
+  const [aiData, setAiData] = React.useState({
+    ai_summary: email.ai_summary,
+    ai_priority: email.ai_priority,
+    ai_category: email.ai_category,
+    ai_suggestions: email.ai_suggestions || [],
+    ai_draft_reply: email.ai_draft_reply,
+    ai_analyzed_at: email.ai_analyzed_at,
+  });
+  // email が変わったら aiData も更新
+  React.useEffect(()=>{
+    setAiData({
+      ai_summary: email.ai_summary,
+      ai_priority: email.ai_priority,
+      ai_category: email.ai_category,
+      ai_suggestions: email.ai_suggestions || [],
+      ai_draft_reply: email.ai_draft_reply,
+      ai_analyzed_at: email.ai_analyzed_at,
+    });
+  }, [email.id]);
 
   const isInbound = email.direction === "inbound";
 
@@ -8193,6 +8217,31 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onGenerateR
             )}
             <button onClick={()=>setLinkType(linkType?null:"企業")}
               style={{padding:"0.4rem 0.75rem",borderRadius:6,border:`1px solid ${C.border}`,background:linkType?"#fff7ed":"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🔗 連携</button>
+            <button onClick={async()=>{
+              if (!EMAIL_AI_API_URL) {
+                alert("AI 分析 Lambda の URL が設定されていません。\n環境変数 VITE_EMAIL_AI_API_URL を設定してください。");
+                return;
+              }
+              if (aiAnalyzing) return;
+              setAiAnalyzing(true);
+              try {
+                const res = await fetch(EMAIL_AI_API_URL, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", "x-mydesk-secret": DB_API_SECRET },
+                  body: JSON.stringify({ emailId: email.id, force: true }),
+                });
+                const j = await res.json();
+                if (!res.ok) { alert("AI 分析失敗: " + (j.error || res.status)); return; }
+                // 更新後のメールを再取得
+                const er = await fetch(`${DB_API_BASE}/emails/${email.id}`, { headers: DB_API_HEADERS });
+                if (er.ok) { const ej = await er.json(); setAiData(ej.item || {}); }
+              } catch(e) {
+                alert("AI 分析エラー: " + (e.message||e));
+              } finally { setAiAnalyzing(false); }
+            }} disabled={aiAnalyzing}
+              style={{padding:"0.4rem 0.75rem",borderRadius:6,border:`1px solid ${C.accent}`,background:aiAnalyzing?C.borderLight:"#eff6ff",color:aiAnalyzing?C.textMuted:C.accent,fontSize:"0.78rem",fontWeight:700,cursor:aiAnalyzing?"default":"pointer",fontFamily:"inherit"}}>
+              {aiAnalyzing?"🤖 分析中…":"✨ AI 分析"}
+            </button>
           </>
         )}
         <div style={{flex:1}}/>
@@ -8217,6 +8266,102 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onGenerateR
               <button onClick={()=>onUnlink(l.type,l.id)} style={{padding:0,border:"none",background:"none",cursor:"pointer",color:C.accent,fontSize:"0.85rem",lineHeight:1}}>×</button>
             </span>
           ))}
+        </div>
+      )}
+      {/* ✨ AI 分析パネル */}
+      {(aiData.ai_summary || aiData.ai_priority || (aiData.ai_suggestions||[]).length > 0 || aiData.ai_draft_reply) && (
+        <div style={{background:"linear-gradient(135deg, #eff6ff 0%, #f0f9ff 100%)",borderRadius:8,padding:"0.7rem 0.85rem",border:"1px solid #bfdbfe",marginBottom:"0.65rem"}}>
+          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:"0.5rem"}}>
+            <span style={{fontSize:"0.78rem",fontWeight:800,color:"#1e40af"}}>✨ AI 分析</span>
+            {aiData.ai_priority && (
+              <span style={{fontSize:"0.65rem",fontWeight:700,padding:"0.15rem 0.55rem",borderRadius:999,
+                background:aiData.ai_priority==="至急"?"#fee2e2":aiData.ai_priority==="依頼"?"#fef3c7":aiData.ai_priority==="メルマガ"?"#f1f5f9":"#dbeafe",
+                color:aiData.ai_priority==="至急"?"#991b1b":aiData.ai_priority==="依頼"?"#92400e":aiData.ai_priority==="メルマガ"?"#475569":"#1e40af"}}>
+                {aiData.ai_priority}
+              </span>
+            )}
+            {aiData.ai_category && (
+              <span style={{fontSize:"0.62rem",fontWeight:700,padding:"0.1rem 0.45rem",borderRadius:4,background:"#f1f5f9",color:"#475569"}}>
+                {aiData.ai_category}
+              </span>
+            )}
+            {aiData.ai_analyzed_at && (
+              <span style={{fontSize:"0.6rem",color:C.textMuted,marginLeft:"auto"}}>
+                {(()=>{ try { const d=new Date(aiData.ai_analyzed_at); return `分析: ${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`; } catch { return ""; }})()}
+              </span>
+            )}
+          </div>
+          {aiData.ai_summary && (
+            <div style={{fontSize:"0.8rem",color:"#1e40af",fontWeight:600,marginBottom:"0.5rem",lineHeight:1.5,padding:"0.4rem 0.6rem",background:"white",borderRadius:5,borderLeft:"3px solid #2563eb"}}>
+              {aiData.ai_summary}
+            </div>
+          )}
+          {/* 提案 */}
+          {(aiData.ai_suggestions||[]).length > 0 && (
+            <div style={{display:"flex",flexDirection:"column",gap:5,marginBottom:aiData.ai_draft_reply?"0.5rem":0}}>
+              {(aiData.ai_suggestions||[]).map((s, i) => {
+                const icon = s.type==="task" ? "📝" : s.type==="project_link" ? "📁" : s.type==="company_link" ? "🏢" : "💡";
+                const label = s.type==="task" ? "タスク化" : s.type==="project_link" ? "プロジェクト紐付け" : s.type==="company_link" ? "企業紐付け" : "提案";
+                return (
+                  <div key={i} style={{background:"white",borderRadius:5,padding:"0.45rem 0.6rem",fontSize:"0.74rem",display:"flex",alignItems:"center",gap:6,border:"1px solid #dbeafe"}}>
+                    <span style={{fontSize:"0.9rem"}}>{icon}</span>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontWeight:600,color:C.text}}>
+                        <span style={{fontSize:"0.62rem",fontWeight:700,padding:"0.05rem 0.35rem",borderRadius:3,background:"#dbeafe",color:"#1e40af",marginRight:4}}>{label}</span>
+                        {s.title || s.projectName || s.companyName || "—"}
+                      </div>
+                      {s.reason && <div style={{fontSize:"0.65rem",color:C.textMuted,marginTop:2}}>{s.reason}</div>}
+                      {s.due && <div style={{fontSize:"0.65rem",color:"#dc2626",marginTop:2}}>期限: {s.due}</div>}
+                    </div>
+                    <button onClick={()=>{
+                      // 提案を承諾するアクション（タスク作成・PJ紐付け・企業紐付け）
+                      if (s.type === "task") {
+                        const t = window.confirm(`タスクを作成しますか？\n\n${s.title}${s.due?` (期限: ${s.due})`:""}`);
+                        if (!t) return;
+                        // ローカルのデータにタスクを追加
+                        const newTask = {
+                          id: Date.now()+Math.random(),
+                          title: s.title,
+                          status: "未着手",
+                          dueDate: s.due || null,
+                          assignees: currentUser?.id ? [currentUser.id] : [],
+                          createdBy: currentUser?.id,
+                          createdAt: new Date().toISOString(),
+                        };
+                        const nd = { ...data, tasks: [...(data.tasks||[]), newTask] };
+                        if (typeof window.__myDeskSetData === "function") window.__myDeskSetData(nd);
+                        alert("タスクを作成しました: " + s.title);
+                      } else if (s.type === "project_link" && s.projectId) {
+                        onLink && onLink("プロジェクト", s.projectId, s.projectName);
+                      } else if (s.type === "company_link" && s.companyId) {
+                        onLink && onLink("企業", s.companyId, s.companyName);
+                      }
+                    }}
+                      style={{padding:"0.25rem 0.6rem",borderRadius:4,border:"none",background:"#2563eb",color:"white",fontSize:"0.68rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
+                      ✓ 採用
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {/* AI 返信下書き */}
+          {aiData.ai_draft_reply && isInbound && (
+            <div style={{background:"white",borderRadius:5,padding:"0.5rem 0.65rem",fontSize:"0.74rem",border:"1px solid #bbf7d0"}}>
+              <div style={{fontSize:"0.66rem",fontWeight:700,color:"#059669",marginBottom:4}}>📝 AI 返信案</div>
+              <div style={{whiteSpace:"pre-wrap",color:C.text,lineHeight:1.6,marginBottom:"0.4rem",maxHeight:120,overflow:"auto"}}>
+                {aiData.ai_draft_reply}
+              </div>
+              <button onClick={()=>{
+                // 返信フォームを開いて AI 案を入れる
+                openReplyForm("reply");
+                setReplyBody(aiData.ai_draft_reply + "\n\n");
+              }}
+                style={{padding:"0.25rem 0.7rem",borderRadius:4,border:"none",background:"#059669",color:"white",fontSize:"0.68rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                ↩️ この案で返信
+              </button>
+            </div>
+          )}
         </div>
       )}
       {/* 本文 */}
@@ -24018,6 +24163,8 @@ function GlobalSearchModal({ query, onQueryChange, onClose, data, onNavigate, us
 
 export default function App() {
   const [data, setData] = useState(INIT);
+  // AI 提案からのタスク追加用に setData をグローバル公開
+  React.useEffect(()=>{ window.__myDeskSetData = setData; }, []);
   const [users,setUsers]     = useState([]);
   const [currentUser,setCurrentUser] = useState(null);
   // 通知フォールバック用にcurrentUserIdをwindowに保存
