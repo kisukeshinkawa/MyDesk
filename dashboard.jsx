@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v96-actions-on-top"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v97-project-card-tasks"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -7782,28 +7782,93 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
                 const pjTasks = visibleTasks.filter(t=>t.projectId===pj.id);
                 const done = pjTasks.filter(t=>t.status==="完了").length;
                 const pct  = pjTasks.length>0?Math.round((done/pjTasks.length)*100):0;
+                // タスクは「期限切れ・未完了優先＋期限昇順」でソート、最大3件表示
+                const sortedTasks = [...pjTasks].sort((a,b)=>{
+                  const aDone = a.status==="完了" ? 1 : 0;
+                  const bDone = b.status==="完了" ? 1 : 0;
+                  if (aDone !== bDone) return aDone - bDone; // 未完了が先
+                  const aDate = a.dueDate ? new Date(a.dueDate).getTime() : Infinity;
+                  const bDate = b.dueDate ? new Date(b.dueDate).getTime() : Infinity;
+                  return aDate - bDate; // 期限が早い順
+                });
+                const visibleTaskList = sortedTasks.slice(0, 3);
+                const moreCount = sortedTasks.length - visibleTaskList.length;
+                // 担当者の表示用ヘルパ
+                const assigneeLabel = (assignees) => {
+                  if (!assignees || assignees.length === 0) return "";
+                  const first = users.find(u=>u.id===assignees[0]);
+                  const firstName = first ? (first.name||"").split(/[ \u3000]/)[0] : "";
+                  if (assignees.length === 1) return firstName;
+                  return `${firstName}他${assignees.length-1}`;
+                };
+                // 日付表示（MM/DD）
+                const fmtDue = (iso) => {
+                  if (!iso) return "";
+                  try { const d=new Date(iso); return `${d.getMonth()+1}/${String(d.getDate()).padStart(2,"0")}`; } catch { return ""; }
+                };
+                const isOverdue = (iso) => {
+                  if (!iso) return false;
+                  try { return new Date(iso).getTime() < new Date(new Date().toDateString()).getTime(); } catch { return false; }
+                };
+                // ステータス色（タスク）
+                const taskDotColor = (status) => ({"進行中":"#2563eb","未着手":"#94a3b8","保留":"#f59e0b","完了":"#059669"})[status] || "#94a3b8";
+                // ラベルバッジ色（企業/業者/自治体）
+                const labelBgColor = pj.salesRef ? ({"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"})[pj.salesRef.type] || "#64748b" : "#64748b";
                 return (
                   <div key={pj.id}
                     onClick={()=>{setActivePjId(pj.id);setScreen("projectDetail");}}
-                    style={{display:"flex",alignItems:"center",gap:"0.75rem",padding:"0.75rem 1rem",borderBottom:`1px solid ${C.borderLight}`,background:"white",cursor:"pointer",transition:"background 0.12s"}}
+                    style={{padding:"0.75rem 1rem",borderBottom:`1px solid ${C.borderLight}`,background:"white",cursor:"pointer",transition:"background 0.12s"}}
                     onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
                     onMouseLeave={e=>e.currentTarget.style.background="white"}>
-                    {pj.isPrivate&&<span style={{fontSize:"0.65rem",color:"#dc2626",flexShrink:0}}>🔒</span>}
-                    <span style={{fontSize:"1rem",flexShrink:0}}>🗂</span>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{display:"flex",alignItems:"center",gap:"0.4rem",minWidth:0}}>
-                        <span style={{fontSize:"0.88rem",fontWeight:700,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,minWidth:0}}>{pj.name}</span>
-                        {pj.status==="完了"&&<span style={{fontSize:"0.62rem",background:"#d1fae5",color:"#059669",borderRadius:999,padding:"0.05rem 0.4rem",fontWeight:700,flexShrink:0}}>完了</span>}
+                    {/* 1. ラベル（最上部） */}
+                    {pj.salesRef && (
+                      <div style={{marginBottom:"0.3rem"}}>
+                        <span style={{fontSize:"0.62rem",fontWeight:700,color:"white",background:labelBgColor,borderRadius:999,padding:"0.1rem 0.55rem"}}>
+                          {pj.salesRef.type}・{pj.salesRef.name}
+                        </span>
                       </div>
-                      <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginTop:"0.3rem",flexWrap:"wrap"}}>
-                        {pj.salesRef&&(()=>{const col={"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"}[pj.salesRef.type]||"#64748b";return <span style={{fontSize:"0.62rem",fontWeight:700,color:"white",background:col,borderRadius:999,padding:"0.05rem 0.4rem",flexShrink:0}}>{pj.salesRef.type} · {pj.salesRef.name}</span>;})()}
-                        <div style={{flex:1,maxWidth:120,height:3,background:C.borderLight,borderRadius:999,overflow:"hidden"}}>
-                          <div style={{height:"100%",width:`${pct}%`,background:pct===100?"#059669":C.accent,borderRadius:999,transition:"width 0.3s"}}/>
-                        </div>
-                        <span style={{fontSize:"0.65rem",color:C.textMuted,flexShrink:0}}>{done}/{pjTasks.length}件</span>
-                      </div>
+                    )}
+                    {/* 2. プロジェクト名 */}
+                    <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginBottom:"0.45rem"}}>
+                      {pj.isPrivate&&<span style={{fontSize:"0.65rem",color:"#dc2626",flexShrink:0}}>🔒</span>}
+                      <span style={{fontSize:"0.92rem",fontWeight:700,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,minWidth:0}}>{pj.name}</span>
+                      {pj.status==="完了"&&<span style={{fontSize:"0.62rem",background:"#d1fae5",color:"#059669",borderRadius:999,padding:"0.05rem 0.4rem",fontWeight:700,flexShrink:0}}>完了</span>}
+                      <span style={{color:C.textMuted,fontSize:"0.9rem",flexShrink:0}}>›</span>
                     </div>
-                    <span style={{color:C.textMuted,fontSize:"0.9rem",flexShrink:0}}>›</span>
+                    {/* 3. 進捗バー + 件数 */}
+                    <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:visibleTaskList.length>0?"0.5rem":0}}>
+                      <div style={{flex:1,height:3,background:C.borderLight,borderRadius:999,overflow:"hidden"}}>
+                        <div style={{height:"100%",width:`${pct}%`,background:pct===100?"#059669":C.accent,borderRadius:999,transition:"width 0.3s"}}/>
+                      </div>
+                      <span style={{fontSize:"0.65rem",color:C.textMuted,flexShrink:0,fontVariantNumeric:"tabular-nums"}}>{done}/{pjTasks.length}件</span>
+                    </div>
+                    {/* 4. タスク一覧（最大3件、未完了優先） */}
+                    {visibleTaskList.length>0 && (
+                      <div style={{display:"flex",flexDirection:"column",gap:3}}>
+                        {visibleTaskList.map(t=>{
+                          const tDone = t.status==="完了";
+                          const overdue = !tDone && isOverdue(t.dueDate);
+                          return (
+                            <div key={t.id}
+                              onClick={(e)=>{e.stopPropagation(); setActivePjId(pj.id); setActiveTaskId(t.id); setScreen("taskDetail"); setFromProject(true);}}
+                              style={{display:"flex",alignItems:"center",gap:6,padding:"0.25rem 0.5rem",background:tDone?"transparent":"#f8fafc",borderRadius:4,opacity:tDone?0.5:1,cursor:"pointer"}}
+                              onMouseEnter={e=>e.currentTarget.style.background=tDone?"#f8fafc":"#f1f5f9"}
+                              onMouseLeave={e=>e.currentTarget.style.background=tDone?"transparent":"#f8fafc"}>
+                              {tDone
+                                ? <span style={{fontSize:"0.65rem",color:"#059669",flexShrink:0,lineHeight:1}}>✓</span>
+                                : <span style={{width:6,height:6,borderRadius:"50%",background:taskDotColor(t.status),flexShrink:0}}/>
+                              }
+                              <span style={{fontSize:"0.74rem",flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",textDecoration:tDone?"line-through":"none",color:C.text}}>{t.title}</span>
+                              {t.dueDate && <span style={{fontSize:"0.62rem",color:overdue?"#dc2626":C.textMuted,flexShrink:0,whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums",fontWeight:overdue?700:400}}>{overdue?"⚠️ ":""}{fmtDue(t.dueDate)}</span>}
+                              {(t.assignees||[]).length>0 && <span style={{fontSize:"0.62rem",color:C.textMuted,flexShrink:0,whiteSpace:"nowrap"}}>{assigneeLabel(t.assignees)}</span>}
+                            </div>
+                          );
+                        })}
+                        {moreCount>0 && (
+                          <div style={{fontSize:"0.62rem",color:C.textMuted,paddingLeft:"0.5rem"}}>+ 他 {moreCount}件</div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })}
