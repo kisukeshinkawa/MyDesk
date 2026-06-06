@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v95-reply-cc-bcc"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v96-actions-on-top"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -8090,9 +8090,37 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onGenerateR
 
   return (
     <div style={{background:"white",borderRadius:"10px",padding:"0.9rem",border:`1px solid ${C.borderLight}`,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
-      {/* ヘッダー */}
-      <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.65rem"}}>
+      {/* ヘッダー（ツールバー: 戻る + 返信系アクション + スター） */}
+      <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginBottom:"0.65rem",flexWrap:"wrap"}}>
         <button onClick={onClose} style={{padding:"0.3rem 0.55rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.74rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>← 戻る</button>
+        {!replyMode && (
+          <>
+            {isInbound && (
+              <>
+                <button onClick={()=>openReplyForm("reply")}
+                  style={{padding:"0.4rem 0.85rem",borderRadius:6,border:"none",background:C.accent,color:"white",fontSize:"0.78rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+                  ↩️ 返信
+                </button>
+                {((email.to||[]).length + (email.cc||[]).length) > 1 && (
+                  <button onClick={()=>openReplyForm("replyAll")}
+                    style={{padding:"0.4rem 0.75rem",borderRadius:6,border:`1px solid ${C.accent}`,background:"white",color:C.accent,fontSize:"0.78rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+                    ↩️ 全員に返信
+                  </button>
+                )}
+                <button onClick={()=>openReplyForm("forward")}
+                  style={{padding:"0.4rem 0.75rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                  → 転送
+                </button>
+              </>
+            )}
+            {!isInbound && (
+              <button onClick={()=>openReplyForm("forward")}
+                style={{padding:"0.4rem 0.75rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>→ 転送</button>
+            )}
+            <button onClick={()=>setLinkType(linkType?null:"企業")}
+              style={{padding:"0.4rem 0.75rem",borderRadius:6,border:`1px solid ${C.border}`,background:linkType?"#fff7ed":"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🔗 連携</button>
+          </>
+        )}
         <div style={{flex:1}}/>
         <button onClick={onToggleStar} style={{padding:"0.15rem 0.4rem",border:"none",background:"transparent",cursor:"pointer",fontSize:"1.1rem",lineHeight:1,color:email.isStarred?"#eab308":C.borderLight}}>{email.isStarred?"⭐":"☆"}</button>
       </div>
@@ -8119,36 +8147,6 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onGenerateR
       )}
       {/* 本文 */}
       <div style={{padding:"0.75rem 0.9rem",background:C.bg,borderRadius:8,border:`1px solid ${C.borderLight}`,fontSize:"0.83rem",lineHeight:1.7,color:C.text,whiteSpace:"pre-wrap",marginBottom:"0.85rem",wordBreak:"break-word"}}>{email.body||"(本文なし)"}</div>
-
-      {/* アクションボタン */}
-      {!replyMode && (
-        <div style={{display:"flex",gap:"0.45rem",flexWrap:"wrap",marginBottom:"0.5rem"}}>
-          {isInbound && (
-            <>
-              <button onClick={()=>openReplyForm("reply")}
-                style={{flex:"1 1 120px",padding:"0.55rem",borderRadius:7,border:"none",background:C.accent,color:"white",fontSize:"0.82rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
-                ↩️ 返信
-              </button>
-              {((email.to||[]).length + (email.cc||[]).length) > 1 && (
-                <button onClick={()=>openReplyForm("replyAll")}
-                  style={{flex:"1 1 120px",padding:"0.55rem",borderRadius:7,border:`1px solid ${C.accent}`,background:"white",color:C.accent,fontSize:"0.82rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
-                  ↩️ 全員に返信
-                </button>
-              )}
-              <button onClick={()=>openReplyForm("forward")}
-                style={{padding:"0.55rem 0.85rem",borderRadius:7,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                → 転送
-              </button>
-            </>
-          )}
-          {!isInbound && (
-            <button onClick={()=>openReplyForm("forward")}
-              style={{flex:1,minWidth:140,padding:"0.55rem",borderRadius:7,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.82rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>→ 転送</button>
-          )}
-          <button onClick={()=>setLinkType(linkType?null:"企業")}
-            style={{padding:"0.55rem 0.85rem",borderRadius:7,border:`1px solid ${C.border}`,background:linkType?"#fff7ed":"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🔗 連携</button>
-        </div>
-      )}
 
       {/* エンティティ連携 UI */}
       {linkType && (
