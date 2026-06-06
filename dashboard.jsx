@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v101-ai-prefetch"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v102-name-card-display"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -8067,6 +8067,26 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onGenerateR
       ai_draft_reply: email.ai_draft_reply,
       ai_analyzed_at: email.ai_analyzed_at,
     });
+    // 未分析メールを開いた瞬間に自動で AI 分析を発火
+    if (email.direction === "inbound" && !email.ai_analyzed_at && EMAIL_AI_API_URL && !aiAnalyzing) {
+      console.log(`[AI auto] 未分析メール ${email.id} を即時分析`);
+      setAiAnalyzing(true);
+      (async ()=>{
+        try {
+          const res = await fetch(EMAIL_AI_API_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-mydesk-secret": DB_API_SECRET },
+            body: JSON.stringify({ emailId: email.id }),
+          });
+          if (res.ok) {
+            const er = await fetch(`${DB_API_BASE}/emails/${email.id}`, { headers: DB_API_HEADERS });
+            if (er.ok) { const ej = await er.json(); setAiData(ej.item || {}); }
+          }
+        } catch(e) {
+          console.warn("[AI auto] エラー:", e.message);
+        } finally { setAiAnalyzing(false); }
+      })();
+    }
   }, [email.id]);
 
   const isInbound = email.direction === "inbound";
@@ -9018,6 +9038,33 @@ function EmailView({data,setData,currentUser=null}) {
     return map;
   }, [data.businessCards, data.companies, data.vendors, data.municipalities]);
 
+  // 名刺マップ: メアド → 名刺オブジェクト
+  const bizcardByEmail = React.useMemo(()=>{
+    const map = new Map();
+    for (const bc of (data.businessCards||[])) {
+      const em = (bc.email||"").toLowerCase().trim();
+      if (em && !map.has(em)) map.set(em, bc);
+    }
+    return map;
+  }, [data.businessCards]);
+
+  // 表示用送信者名を取得（会社名 + 氏名 形式、なければメアド）
+  const getDisplayName = React.useCallback((email, fallbackName) => {
+    if (!email) return fallbackName || "不明";
+    const lc = email.toLowerCase().trim();
+    const bc = bizcardByEmail.get(lc);
+    if (bc) {
+      const companyName = bc.salesRef?.name || bc.companyName || "";
+      const personName = bc.name || "";
+      if (companyName && personName) return `${companyName} ${personName}`;
+      if (personName) return personName;
+      if (companyName) return companyName;
+    }
+    // 名刺なし → ヘッダー名 → メアド
+    if (fallbackName && fallbackName.trim()) return fallbackName.trim();
+    return email;
+  }, [bizcardByEmail]);
+
   // 自動紐付け（DB由来メールに linkedDisplay が空の場合、from_email でマッチング）
   const enrichWithAutoLink = (emails) => emails.map(e=>{
     if ((e.linkedDisplay||[]).length > 0) return e; // 既に紐付け済み
@@ -9055,8 +9102,17 @@ function EmailView({data,setData,currentUser=null}) {
     return null;
   };
   const daysSince = (iso) => { if(!iso) return 0; const d=new Date(iso); return Math.floor((Date.now()-d.getTime())/86400000); };
-  // 「要返信」は手動でスター付けたメールのみ（メルマガ等の誤判定を防ぐ）
-  const needsReplySoon = (email) => email.direction==="inbound" && !email.isReplied && email.isStarred;
+  // 「要返信」判定: AI が「至急」「依頼」と判定したメール、または手動でスターを付けたメール
+  // 返信済みなら自動で外れる
+  const needsReplySoon = (email) => {
+    if (email.direction !== "inbound") return false;
+    if (email.isReplied) return false; // 返信済みなら外す
+    // AI 判定優先
+    if (email.ai_priority === "至急" || email.ai_priority === "依頼") return true;
+    // 手動スターでも対象（フォールバック）
+    if (email.isStarred) return true;
+    return false;
+  };
 
   const updateEmailField = (id, patch) => {
     // DB由来メールはAPI経由で更新
@@ -9147,7 +9203,24 @@ function EmailView({data,setData,currentUser=null}) {
         linkedDisplay: linkedDisplay || [],
       };
       let nd = { ...data, emails: [...(data.emails||[]), newEmail] };
-      if (replyToId) nd = { ...nd, emails: nd.emails.map(e=>e.id===replyToId?{...e,isReplied:true,repliedAt:new Date().toISOString()}:e) };
+      if (replyToId) {
+        nd = { ...nd, emails: nd.emails.map(e=>e.id===replyToId?{...e,isReplied:true,repliedAt:new Date().toISOString()}:e) };
+        // DB のメールも is_replied=true に更新
+        const numericId = typeof replyToId === "number" ? replyToId : parseInt(replyToId, 10);
+        if (!isNaN(numericId)) {
+          (async () => {
+            try {
+              await fetch(`${DB_API_BASE}/emails/${numericId}`, {
+                method: "PUT",
+                headers: DB_API_HEADERS,
+                body: JSON.stringify({ isReplied: true }),
+              });
+              // フロントの DB メールリストも更新
+              setDbEmails(prev => prev.map(e=>e.id===numericId?{...e, isReplied:true}:e));
+            } catch(e) { console.warn("DB isReplied 更新失敗:", e.message); }
+          })();
+        }
+      }
       setData(nd); await saveData(nd);
       if (!res.ok) alert(`送信API失敗: ${result?.error||`HTTP ${res.status}`}\n（記録は保存しました。バックエンドのSES設定を確認してください）`);
       return res.ok;
@@ -9329,7 +9402,7 @@ function EmailView({data,setData,currentUser=null}) {
                     </div>
                   ) : list.map(e=>{
                     const isUnread = e.direction==="inbound" && !e.isRead;
-                    const peer = e.direction==="inbound" ? `${e.from?.name||e.from?.email||"差出人不明"}` : `${(e.to||[])[0]?.name||(e.to||[])[0]?.email||"宛先不明"}`;
+                    const peer = e.direction==="inbound" ? getDisplayName(e.from?.email, e.from?.name) : getDisplayName((e.to||[])[0]?.email, (e.to||[])[0]?.name);
                     const needsRep = needsReplySoon(e);
                     const isSelected = mbSelectedId === e.id;
                     return (
@@ -9482,7 +9555,7 @@ function EmailView({data,setData,currentUser=null}) {
               <div style={{display:"flex",flexDirection:"column",gap:"0.35rem"}}>
                 {list.map(e=>{
                   const isUnread = e.direction==="inbound" && !e.isRead;
-                  const peer = e.direction==="inbound" ? `${e.from?.name||e.from?.email||"差出人不明"}` : `${(e.to||[])[0]?.name||(e.to||[])[0]?.email||"宛先不明"}`;
+                  const peer = e.direction==="inbound" ? getDisplayName(e.from?.email, e.from?.name) : getDisplayName((e.to||[])[0]?.email, (e.to||[])[0]?.name);
                   const needsRep = needsReplySoon(e);
                   return (
                     <div key={e.id} onClick={()=>selectEmailWithDelayedRead(e.id, isUnread)}
