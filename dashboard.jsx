@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v107b-new-fetch-url"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v107c-proxy-sync"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -9697,7 +9697,7 @@ function EmailView({data,setData,currentUser=null}) {
               try {
                 // mydesk-fetch-emails Lambda を Function URL 経由で呼び出し
                 const startTime = Date.now();
-                const res = await fetch(FETCH_EMAILS_URL, {
+                const res = await fetch(`${DB_API_BASE}/emails/sync`, {
                   method: "POST",
                   headers: {
                     "Content-Type": "application/json",
