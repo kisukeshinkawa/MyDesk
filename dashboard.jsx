@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v110-task-email-detail"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v111-collapsible-email-source"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -5267,6 +5267,101 @@ function SalesRefPicker({value, onChange, salesData={}}) {
 }
 
 // ─── TASK FORM ────────────────────────────────────────────────────────────────
+// ─── EMAIL SOURCE CARD: メール由来タスクの情報表示（折りたたみ可能）───
+function EmailSourceCard({ task, onOpenEmail }) {
+  const [expanded, setExpanded] = React.useState(false);
+  const sourceDate = task.sourceEmailDate ? new Date(task.sourceEmailDate) : null;
+  return (
+    <Card style={{padding:"0.65rem 0.85rem",marginBottom:"0.875rem",background:"#eff6ff",border:"1px solid #bfdbfe"}}>
+      {/* ヘッダー（クリックで折りたたみ） */}
+      <div 
+        onClick={()=>setExpanded(!expanded)}
+        style={{display:"flex",alignItems:"center",gap:"0.4rem",cursor:"pointer",userSelect:"none"}}
+      >
+        <span style={{
+          fontSize:"0.7rem",
+          color:"#1e40af",
+          transition:"transform 0.15s",
+          transform:expanded?"rotate(90deg)":"rotate(0deg)",
+          display:"inline-block",
+        }}>▶</span>
+        <div style={{fontWeight:800,color:"#1e40af",fontSize:"0.78rem",display:"flex",alignItems:"center",gap:"0.3rem",flex:1,minWidth:0}}>
+          📧 元メール情報
+          {task.aiGenerated && <span style={{fontSize:"0.6rem",padding:"0.05rem 0.4rem",borderRadius:3,background:"#dbeafe",color:"#1e40af",fontWeight:700}}>AI生成</span>}
+          <span style={{fontSize:"0.7rem",fontWeight:600,color:"#3b82f6",marginLeft:"0.4rem",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,minWidth:0}}>
+            {task.sourceEmailSubject || "(件名なし)"}
+          </span>
+        </div>
+        {!expanded && (
+          <button onClick={(e)=>{e.stopPropagation();onOpenEmail();}}
+            style={{
+              padding:"0.25rem 0.65rem",
+              borderRadius:5,
+              border:"none",
+              background:"#2563eb",
+              color:"white",
+              fontSize:"0.7rem",
+              fontWeight:700,
+              cursor:"pointer",
+              fontFamily:"inherit",
+              flexShrink:0,
+            }}>
+            📧 開く
+          </button>
+        )}
+      </div>
+      {/* 展開時の詳細 */}
+      {expanded && (
+        <div style={{fontSize:"0.78rem",color:"#1e3a8a",lineHeight:1.6,marginTop:"0.6rem",paddingTop:"0.6rem",borderTop:"1px solid #bfdbfe"}}>
+          <div><b>件名:</b> {task.sourceEmailSubject || "(件名なし)"}</div>
+          <div><b>差出人:</b> {task.sourceEmailFromName ? `${task.sourceEmailFromName} <${task.sourceEmailFrom}>` : task.sourceEmailFrom}</div>
+          {sourceDate && <div><b>受信:</b> {sourceDate.toLocaleString("ja-JP")}</div>}
+          {task.sourceEmailSnippet && (
+            <div style={{marginTop:"0.4rem",padding:"0.55rem 0.7rem",background:"white",borderRadius:5,border:"1px solid #dbeafe",fontSize:"0.75rem",color:"#374151",whiteSpace:"pre-wrap",wordBreak:"break-word",maxHeight:200,overflowY:"auto"}}>
+              {task.sourceEmailSnippet}{task.sourceEmailSnippet.length >= 500 ? "..." : ""}
+            </div>
+          )}
+          {task.aiReason && (
+            <div style={{marginTop:"0.4rem",fontSize:"0.72rem",color:"#1e40af",fontStyle:"italic"}}>
+              💡 AI判断理由: {task.aiReason}
+            </div>
+          )}
+          <div style={{display:"flex",gap:"0.4rem",marginTop:"0.5rem"}}>
+            <button onClick={onOpenEmail}
+              style={{
+                padding:"0.35rem 0.8rem",
+                borderRadius:5,
+                border:"none",
+                background:"#2563eb",
+                color:"white",
+                fontSize:"0.74rem",
+                fontWeight:700,
+                cursor:"pointer",
+                fontFamily:"inherit",
+              }}>
+              📧 元メールを開く
+            </button>
+            <button onClick={()=>setExpanded(false)}
+              style={{
+                padding:"0.35rem 0.7rem",
+                borderRadius:5,
+                border:"1px solid #bfdbfe",
+                background:"white",
+                color:"#1e40af",
+                fontSize:"0.72rem",
+                fontWeight:700,
+                cursor:"pointer",
+                fontFamily:"inherit",
+              }}>
+              閉じる
+            </button>
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function TaskForm({initial={},onSave,onClose,users=[],currentUserId=null,salesData={}}) {
   const [f,setF]=useState({
     title:initial.title||"",status:initial.status||"未着手",
@@ -5310,12 +5405,12 @@ function TaskForm({initial={},onSave,onClose,users=[],currentUserId=null,salesDa
             )}
             <button onClick={()=>{
               // タブをメールに切替 + 該当メールを開くよう localStorage に保存
-              localStorage.setItem("md_tab", "mail");
+              localStorage.setItem("md_tab", "email");
               localStorage.setItem("md_navigate_to_email", String(initial.sourceEmailId));
               if (typeof onClose === "function") onClose();
               // タブ切替（複数のフォールバック）
               if (typeof window.__myDeskSetTab === "function") {
-                window.__myDeskSetTab("mail");
+                window.__myDeskSetTab("email");
               } else {
                 window.location.reload();
               }
@@ -7529,50 +7624,26 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
         </Card>
         {/* メール由来タスクの場合、元メール情報を表示 */}
         {activeTask.sourceType === "email" && activeTask.sourceEmailId && (
-          <Card style={{padding:"0.75rem 1rem",marginBottom:"0.875rem",background:"#eff6ff",border:"1px solid #bfdbfe"}}>
-            <div style={{fontWeight:800,color:"#1e40af",marginBottom:"0.4rem",display:"flex",alignItems:"center",gap:"0.3rem",fontSize:"0.78rem"}}>
-              📧 元メール情報
-              {activeTask.aiGenerated && <span style={{fontSize:"0.62rem",padding:"0.05rem 0.4rem",borderRadius:3,background:"#dbeafe",color:"#1e40af",fontWeight:700}}>AI生成</span>}
-            </div>
-            <div style={{fontSize:"0.78rem",color:"#1e3a8a",lineHeight:1.6}}>
-              <div><b>件名:</b> {activeTask.sourceEmailSubject || "(件名なし)"}</div>
-              <div><b>差出人:</b> {activeTask.sourceEmailFromName ? `${activeTask.sourceEmailFromName} <${activeTask.sourceEmailFrom}>` : activeTask.sourceEmailFrom}</div>
-              {activeTask.sourceEmailDate && <div><b>受信:</b> {new Date(activeTask.sourceEmailDate).toLocaleString("ja-JP")}</div>}
-              {activeTask.sourceEmailSnippet && (
-                <div style={{marginTop:"0.4rem",padding:"0.5rem 0.65rem",background:"white",borderRadius:5,border:"1px solid #dbeafe",fontStyle:"italic",fontSize:"0.75rem",color:"#374151"}}>
-                  "{activeTask.sourceEmailSnippet}{activeTask.sourceEmailSnippet.length >= 200 ? "..." : ""}"
-                </div>
-              )}
-              {activeTask.aiReason && (
-                <div style={{marginTop:"0.4rem",fontSize:"0.72rem",color:"#1e40af",fontStyle:"italic"}}>
-                  💡 AI判断理由: {activeTask.aiReason}
-                </div>
-              )}
-              <button onClick={()=>{
-                localStorage.setItem("md_tab", "mail");
-                localStorage.setItem("md_navigate_to_email", String(activeTask.sourceEmailId));
+          <EmailSourceCard 
+            task={activeTask}
+            onOpenEmail={() => {
+              // タスク詳細画面をリセットしてからメールタブへ遷移
+              setScreen(fromProject?"projectDetail":"list");
+              setTaskTab("info");
+              if (!fromProject) setActiveTaskId(null);
+              // localStorage に遷移先メールIDを保存
+              localStorage.setItem("md_navigate_to_email", String(activeTask.sourceEmailId));
+              // タブ切替（少し遅延させて screen reset を確実にする）
+              setTimeout(() => {
                 if (typeof window.__myDeskSetTab === "function") {
-                  window.__myDeskSetTab("mail");
+                  window.__myDeskSetTab("email");
                 } else {
+                  localStorage.setItem("md_tab", "email");
                   window.location.reload();
                 }
-              }}
-                style={{
-                  marginTop:"0.5rem",
-                  padding:"0.35rem 0.8rem",
-                  borderRadius:5,
-                  border:"none",
-                  background:"#2563eb",
-                  color:"white",
-                  fontSize:"0.74rem",
-                  fontWeight:700,
-                  cursor:"pointer",
-                  fontFamily:"inherit",
-                }}>
-                📧 元メールを開く
-              </button>
-            </div>
-          </Card>
+              }, 50);
+            }}
+          />
         )}
         {/* Tabs */}
         <div style={{display:"flex",background:"white",borderRadius:"6px",padding:"0.2rem",marginBottom:"1rem",border:`1px solid ${C.border}`}}>
@@ -9056,8 +9127,8 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onGenerateR
                         
                         // ローカルのデータにタスクを追加（メール紐付け + プロジェクト紐付け含む）
                         const taskId = Date.now()+Math.random();
-                        // メール本文のスニペット（最初の200文字）
-                        const emailSnippet = (email.body || "").replace(/\s+/g, " ").trim().slice(0, 200);
+                        // メール本文のスニペット（改行を保持、最初の500文字）
+                        const emailSnippet = (email.body || "").trim().slice(0, 500);
                         const newTask = {
                           id: taskId,
                           title: s.title,
