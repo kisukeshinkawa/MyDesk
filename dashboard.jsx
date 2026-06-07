@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v109-bizcard-suggest-project-link"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v110-task-email-detail"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -7521,10 +7521,59 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
               <div style={{display:"flex",alignItems:"center",gap:"0.5rem",flexWrap:"wrap"}}>
                 <StatusPill status={activeTask.status} onChange={s=>updateTask(activeTask.id,{status:s})}/>
                 {activeTask.isPrivate&&<span style={{fontSize:"0.68rem",color:"#dc2626",fontWeight:700}}>🔒</span>}
+                {activeTask.sourceType==="email" && <span style={{fontSize:"0.65rem",fontWeight:700,color:"#1e40af",background:"#dbeafe",borderRadius:3,padding:"0.1rem 0.4rem"}}>📧 メール由来</span>}
+                {activeTask.aiGenerated && <span style={{fontSize:"0.62rem",fontWeight:700,color:"white",background:"#7c3aed",borderRadius:3,padding:"0.1rem 0.4rem"}}>AI</span>}
               </div>
             </div>
           </div>
         </Card>
+        {/* メール由来タスクの場合、元メール情報を表示 */}
+        {activeTask.sourceType === "email" && activeTask.sourceEmailId && (
+          <Card style={{padding:"0.75rem 1rem",marginBottom:"0.875rem",background:"#eff6ff",border:"1px solid #bfdbfe"}}>
+            <div style={{fontWeight:800,color:"#1e40af",marginBottom:"0.4rem",display:"flex",alignItems:"center",gap:"0.3rem",fontSize:"0.78rem"}}>
+              📧 元メール情報
+              {activeTask.aiGenerated && <span style={{fontSize:"0.62rem",padding:"0.05rem 0.4rem",borderRadius:3,background:"#dbeafe",color:"#1e40af",fontWeight:700}}>AI生成</span>}
+            </div>
+            <div style={{fontSize:"0.78rem",color:"#1e3a8a",lineHeight:1.6}}>
+              <div><b>件名:</b> {activeTask.sourceEmailSubject || "(件名なし)"}</div>
+              <div><b>差出人:</b> {activeTask.sourceEmailFromName ? `${activeTask.sourceEmailFromName} <${activeTask.sourceEmailFrom}>` : activeTask.sourceEmailFrom}</div>
+              {activeTask.sourceEmailDate && <div><b>受信:</b> {new Date(activeTask.sourceEmailDate).toLocaleString("ja-JP")}</div>}
+              {activeTask.sourceEmailSnippet && (
+                <div style={{marginTop:"0.4rem",padding:"0.5rem 0.65rem",background:"white",borderRadius:5,border:"1px solid #dbeafe",fontStyle:"italic",fontSize:"0.75rem",color:"#374151"}}>
+                  "{activeTask.sourceEmailSnippet}{activeTask.sourceEmailSnippet.length >= 200 ? "..." : ""}"
+                </div>
+              )}
+              {activeTask.aiReason && (
+                <div style={{marginTop:"0.4rem",fontSize:"0.72rem",color:"#1e40af",fontStyle:"italic"}}>
+                  💡 AI判断理由: {activeTask.aiReason}
+                </div>
+              )}
+              <button onClick={()=>{
+                localStorage.setItem("md_tab", "mail");
+                localStorage.setItem("md_navigate_to_email", String(activeTask.sourceEmailId));
+                if (typeof window.__myDeskSetTab === "function") {
+                  window.__myDeskSetTab("mail");
+                } else {
+                  window.location.reload();
+                }
+              }}
+                style={{
+                  marginTop:"0.5rem",
+                  padding:"0.35rem 0.8rem",
+                  borderRadius:5,
+                  border:"none",
+                  background:"#2563eb",
+                  color:"white",
+                  fontSize:"0.74rem",
+                  fontWeight:700,
+                  cursor:"pointer",
+                  fontFamily:"inherit",
+                }}>
+                📧 元メールを開く
+              </button>
+            </div>
+          </Card>
+        )}
         {/* Tabs */}
         <div style={{display:"flex",background:"white",borderRadius:"6px",padding:"0.2rem",marginBottom:"1rem",border:`1px solid ${C.border}`}}>
           {TASK_TABS.map(([id,icon,lbl])=>(
@@ -8153,16 +8202,24 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
       const bcEmail = (bc.email || "").toLowerCase().trim();
       if (!bcEmail) continue;
       if (usedEmails.has(bcEmail)) continue;
-      const bcName = (bc.name || "").toLowerCase();
-      const bcCompany = (bc.salesRef?.name || bc.companyName || "").toLowerCase();
+      // 名前は複数のフィールド構造に対応
+      const lastName = bc.lastName || "";
+      const firstName = bc.firstName || "";
+      const fullName = (lastName + firstName).trim() || bc.name || "";
+      const displayName = lastName && firstName ? `${lastName} ${firstName}` : (bc.name || lastName || firstName || "");
+      const bcNameLc = fullName.toLowerCase();
+      const bcCompany = (bc.salesRef?.name || bc.companyName || bc.company || "").toLowerCase();
       const bcPosition = (bc.position || bc.title || "").toLowerCase();
       
       // マッチ判定（スコア付き）
       let score = 0;
       if (bcEmail.startsWith(q)) score += 100;
       else if (bcEmail.includes(q)) score += 50;
-      if (bcName.startsWith(q)) score += 80;
-      else if (bcName.includes(q)) score += 40;
+      if (bcNameLc.startsWith(q)) score += 80;
+      else if (bcNameLc.includes(q)) score += 40;
+      // 苗字・名前個別マッチ
+      if (lastName.toLowerCase().includes(q)) score += 50;
+      if (firstName.toLowerCase().includes(q)) score += 30;
       if (bcCompany.startsWith(q)) score += 60;
       else if (bcCompany.includes(q)) score += 30;
       if (bcPosition.includes(q)) score += 10;
@@ -8170,9 +8227,9 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
       if (score > 0) {
         results.push({
           score,
-          name: bc.name || "",
+          name: displayName || "",
           email: bc.email,
-          company: bc.salesRef?.name || bc.companyName || "",
+          company: bc.salesRef?.name || bc.companyName || bc.company || "",
           position: bc.position || bc.title || "",
         });
       }
