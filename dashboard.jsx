@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v111-collapsible-email-source"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v113-spam-filter-loading"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -8778,7 +8778,7 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
 
 // ─── EMAIL VIEW ───────────────────────────────────────────────────────────────
 // ─── EMAIL DETAIL PANE: メール詳細＋AI返信＋エンティティ連携 ──────────────
-function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onGenerateReply, aiBusy, onLink, onUnlink, data, currentUser, fmtFull, onSend, sendBusy }) {
+function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onMarkSpam, onGenerateReply, aiBusy, onLink, onUnlink, data, currentUser, fmtFull, onSend, sendBusy }) {
   const [linkType, setLinkType] = React.useState(null); // 企業/業者/自治体/タスク/プロジェクト/名刺
   const [linkSearch, setLinkSearch] = React.useState("");
   const [replyMode, setReplyMode] = React.useState(null); // null | "reply" | "replyAll" | "forward"
@@ -9006,6 +9006,24 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onGenerateR
               style={{padding:"0.4rem 0.75rem",borderRadius:6,border:`1px solid ${C.accent}`,background:aiAnalyzing?C.borderLight:"#eff6ff",color:aiAnalyzing?C.textMuted:C.accent,fontSize:"0.78rem",fontWeight:700,cursor:aiAnalyzing?"default":"pointer",fontFamily:"inherit"}}>
               {aiAnalyzing?"🤖 分析中…":"✨ AI 分析"}
             </button>
+            {/* 迷惑メール認定/解除 ボタン（受信メールのみ） */}
+            {isInbound && (
+              <button onClick={()=>{
+                if (email.isSpam) {
+                  // 解除
+                  if (typeof onMarkSpam === "function") onMarkSpam(email.id, false);
+                } else {
+                  // 認定
+                  const reason = window.prompt("迷惑メール認定の理由（任意）:", "");
+                  if (reason === null) return; // キャンセル
+                  if (typeof onMarkSpam === "function") onMarkSpam(email.id, true, reason);
+                }
+              }}
+                title={email.isSpam ? "迷惑メール解除" : "迷惑メールに移動"}
+                style={{padding:"0.4rem 0.75rem",borderRadius:6,border:`1px solid ${email.isSpam?"#dc2626":"#fca5a5"}`,background:email.isSpam?"#fee2e2":"white",color:email.isSpam?"#991b1b":"#dc2626",fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                {email.isSpam ? "✓ 迷惑解除" : "🚫 迷惑"}
+              </button>
+            )}
           </>
         )}
         <div style={{flex:1}}/>
@@ -9340,6 +9358,57 @@ function EmailView({data,setData,currentUser=null}) {
     requestAnimationFrame(()=>{
       try { window.scrollTo({top: 0, behavior: "instant"}); } catch { window.scrollTo(0, 0); }
     });
+    // バックグラウンドでこのメールの最新DB情報を取得（AI分析など更新されてる可能性）
+    if (typeof emailId === "number" || (typeof emailId === "string" && /^\d+$/.test(emailId))) {
+      fetch(`${DB_API_BASE}/emails/${emailId}`, { headers: DB_API_HEADERS })
+        .then(res => res.ok ? res.json() : null)
+        .then(json => {
+          if (!json?.item) return;
+          const r = json.item;
+          const fresh = {
+            id: r.id,
+            messageId: r.message_id,
+            threadId: r.thread_id,
+            direction: r.direction,
+            status: r.direction === "inbound" ? "received" : "sent",
+            from: { name: r.from_name||"", email: r.from_email||"" },
+            to: r.to_recipients || [],
+            cc: r.cc_recipients || [],
+            bcc: r.bcc_recipients || [],
+            subject: r.subject||"(件名なし)",
+            body: r.body||"",
+            receivedAt: r.received_at,
+            sentAt: r.sent_at,
+            isRead: r.is_read,
+            isReplied: r.is_replied,
+            isStarred: r.is_starred,
+            inReplyTo: r.in_reply_to,
+            attachments: r.attachments || [],
+            linkedCompanyIds: r.linked_company_ids || [],
+            linkedVendorIds:  r.linked_vendor_ids  || [],
+            linkedMuniIds:    r.linked_muni_ids    || [],
+            linkedTaskIds:    r.linked_task_ids    || [],
+            linkedProjectIds: r.linked_project_ids || [],
+            linkedBizcardIds: r.linked_bizcard_ids || [],
+            linkedDisplay:    r.linked_display     || [],
+            ai_summary:      r.ai_summary,
+            ai_priority:     r.ai_priority,
+            ai_category:     r.ai_category,
+            ai_suggestions:  r.ai_suggestions || [],
+            ai_draft_reply:  r.ai_draft_reply,
+            ai_analyzed_at:  r.ai_analyzed_at,
+            ai_should_reply: r.ai_should_reply,
+            ai_should_reply_reason: r.ai_should_reply_reason,
+            isSpam: r.is_spam || false,
+            spamReason: r.spam_reason || "",
+            _fromDb: true,
+            _accountEmail: r.account_email,
+          };
+          // 既存リスト内で該当を最新版に置き換え
+          setDbEmails(prev => prev.map(e => e.id === r.id ? fresh : e));
+        })
+        .catch(()=>{});
+    }
     if (isUnread) {
       readTimerRef.current = setTimeout(()=>{
         updateEmailFieldRef.current?.(emailId, {isRead:true});
@@ -9353,9 +9422,12 @@ function EmailView({data,setData,currentUser=null}) {
   // 外部から呼べる「メールへ遷移」関数を公開（タスク詳細からの遷移用）
   React.useEffect(() => {
     window.__myDeskNavigateToEmail = (emailId) => {
-      setMbSelectedId(emailId);
-      requestAnimationFrame(()=>{
-        try { window.scrollTo({top: 0, behavior: "instant"}); } catch { window.scrollTo(0, 0); }
+      // まず DB から最新を取得してから選択（古い状態が一瞬見えるのを防ぐ）
+      reloadDbEmails().finally(() => {
+        setMbSelectedId(emailId);
+        requestAnimationFrame(()=>{
+          try { window.scrollTo({top: 0, behavior: "instant"}); } catch { window.scrollTo(0, 0); }
+        });
       });
     };
     // マウント時、localStorage に保存された遷移先メールがあれば開く
@@ -9363,12 +9435,13 @@ function EmailView({data,setData,currentUser=null}) {
     if (targetEmailId) {
       localStorage.removeItem("md_navigate_to_email");
       const parsedId = isNaN(Number(targetEmailId)) ? targetEmailId : Number(targetEmailId);
-      setTimeout(() => {
+      // DB 読み込み完了後にメール選択する
+      reloadDbEmails().finally(() => {
         setMbSelectedId(parsedId);
         requestAnimationFrame(()=>{
           try { window.scrollTo({top: 0, behavior: "instant"}); } catch { window.scrollTo(0, 0); }
         });
-      }, 200);
+      });
     }
     return () => { delete window.__myDeskNavigateToEmail; };
   }, []);
@@ -9706,13 +9779,14 @@ function EmailView({data,setData,currentUser=null}) {
   // DB(emails table)から取得したメール + ローカルの data.emails を統合表示
   const [dbEmails, setDbEmails]           = useState([]);
   const [dbEmailsLoading, setDbLoading]   = useState(false);
+  const [dbEmailsInitialized, setDbInit]  = useState(false); // 初回ロード完了フラグ
   const [dbEmailsTotal, setDbTotal]       = useState(0);
   const [dbEmailsError, setDbError]       = useState("");
   const [dbSyncBusy, setDbSyncBusy]       = useState(false);
 
   // DBからメール取得（メール統合ONのみ）
   const reloadDbEmails = React.useCallback(async () => {
-    if (!emailIntegrationEnabled) return;
+    if (!emailIntegrationEnabled) { setDbInit(true); return; }
     setDbLoading(true); setDbError("");
     try {
       const params = new URLSearchParams({ limit: "500", offset: "0" });
@@ -9755,6 +9829,8 @@ function EmailView({data,setData,currentUser=null}) {
         ai_analyzed_at:  r.ai_analyzed_at,
         ai_should_reply: r.ai_should_reply,
         ai_should_reply_reason: r.ai_should_reply_reason,
+        isSpam: r.is_spam || false,
+        spamReason: r.spam_reason || "",
         _fromDb: true,  // DB由来マーク
         _accountEmail: r.account_email,
       }));
@@ -9764,6 +9840,7 @@ function EmailView({data,setData,currentUser=null}) {
       setDbError(String(e.message||e));
     } finally {
       setDbLoading(false);
+      setDbInit(true); // 初回ロード完了
     }
   }, [emailIntegrationEnabled]);
 
@@ -9985,6 +10062,8 @@ function EmailView({data,setData,currentUser=null}) {
       if ("isRead" in patch) dbPatch.is_read = patch.isRead;
       if ("isReplied" in patch) dbPatch.is_replied = patch.isReplied;
       if ("isStarred" in patch) dbPatch.is_starred = patch.isStarred;
+      if ("isSpam" in patch) dbPatch.is_spam = patch.isSpam;
+      if ("spamReason" in patch) dbPatch.spam_reason = patch.spamReason;
       if ("linkedCompanyIds" in patch) dbPatch.linked_company_ids = patch.linkedCompanyIds;
       if ("linkedVendorIds" in patch) dbPatch.linked_vendor_ids = patch.linkedVendorIds;
       if ("linkedMuniIds" in patch) dbPatch.linked_muni_ids = patch.linkedMuniIds;
@@ -10239,15 +10318,26 @@ function EmailView({data,setData,currentUser=null}) {
       {(mbView==="inbox"||mbView==="sent"||mbView==="drafts") && (()=>{
         const dirFilter = mbView==="inbox"?"inbound":mbView==="sent"?"outbound":null;
         const statusFilter = mbView==="drafts"?"draft":null;
-        let list = allMailbox.filter(e => {
+        // DB 初回ロードが終わるまで、メール統合ONなら空リスト（古いキャッシュを見せない）
+        const useEmptyList = emailIntegrationEnabled && !dbEmailsInitialized;
+        let list = useEmptyList ? [] : allMailbox.filter(e => {
           if (dirFilter && e.direction!==dirFilter) return false;
           if (statusFilter && e.status!==statusFilter) return false;
           if (mbView!=="drafts" && e.status==="draft") return false;
+          // 迷惑メールフィルタ: spam フィルタ時のみ迷惑を表示、それ以外は除外
+          if (mbView==="inbox") {
+            if (mbFilter === "spam") {
+              if (!e.isSpam) return false;
+            } else {
+              if (e.isSpam) return false;
+            }
+          }
           return true;
         });
         if (mbFilter==="unread") list = list.filter(e=>!e.isRead);
         else if (mbFilter==="needsReply") list = list.filter(needsReplySoon);
         else if (mbFilter==="starred") list = list.filter(e=>e.isStarred);
+        // spam フィルタは上で適用済
         const ql = mbSearch.trim().toLowerCase();
         if (ql) list = list.filter(e => `${e.from?.email||""} ${e.from?.name||""} ${(e.to||[]).map(t=>t.email+t.name).join(" ")} ${e.subject||""} ${e.body||""}`.toLowerCase().includes(ql));
         list.sort((a,b)=> (new Date(b.sentAt||b.receivedAt||b.createdAt).getTime()) - (new Date(a.sentAt||a.receivedAt||a.createdAt).getTime()));
@@ -10265,9 +10355,9 @@ function EmailView({data,setData,currentUser=null}) {
             </div>
             {/* フィルタ + テスト追加 */}
             <div style={{display:"flex",gap:"0.3rem",flexWrap:"wrap",alignItems:"center"}}>
-              {[["all","すべて"],["unread","未読"],["needsReply","要返信"],["starred","⭐"]].map(([id,lbl])=>(
+              {[["all","すべて"],["unread","未読"],["needsReply","要返信"],["starred","⭐"],["spam","🚫 迷惑"]].map(([id,lbl])=>(
                 <button key={id} onClick={()=>setMbFilter(id)}
-                  style={{padding:"0.28rem 0.65rem",borderRadius:999,border:`1px solid ${mbFilter===id?C.accent:C.borderLight}`,background:mbFilter===id?C.accent:"white",color:mbFilter===id?"white":C.textSub,fontSize:"0.7rem",fontWeight:mbFilter===id?800:600,cursor:"pointer",fontFamily:"inherit"}}>{lbl}</button>
+                  style={{padding:"0.28rem 0.65rem",borderRadius:999,border:`1px solid ${mbFilter===id?C.accent:C.borderLight}`,background:mbFilter===id?(id==="spam"?"#dc2626":C.accent):"white",color:mbFilter===id?"white":C.textSub,fontSize:"0.7rem",fontWeight:mbFilter===id?800:600,cursor:"pointer",fontFamily:"inherit"}}>{lbl}</button>
               ))}
               <div style={{flex:1}}/>
               {mbView==="inbox" && <button onClick={()=>setMbTestOpen(true)}
@@ -10281,7 +10371,15 @@ function EmailView({data,setData,currentUser=null}) {
                 <div style={{display:"flex",flexDirection:"column",gap:"0.35rem",maxHeight:"calc(100vh - 280px)",overflowY:"auto",paddingRight:4}}>
                   {list.length === 0 ? (
                     <div style={{padding:"3rem 1rem",textAlign:"center",color:C.textMuted,fontSize:"0.82rem"}}>
-                      {mbView==="inbox"?"📭 受信メールはありません":mbView==="sent"?"📤 送信済みメールはありません":"📝 下書きはありません"}
+                      {useEmptyList ? (
+                        <>
+                          <div style={{fontSize:"2rem",marginBottom:"0.5rem"}}>🔄</div>
+                          <div>メールを読み込み中…</div>
+                          <div style={{fontSize:"0.7rem",marginTop:"0.5rem",color:C.textMuted}}>最新のメールを取得しています</div>
+                        </>
+                      ) : (
+                        mbView==="inbox"?"📭 受信メールはありません":mbView==="sent"?"📤 送信済みメールはありません":"📝 下書きはありません"
+                      )}
                     </div>
                   ) : list.map(e=>{
                     const isUnread = e.direction==="inbound" && !e.isRead;
@@ -10354,6 +10452,7 @@ function EmailView({data,setData,currentUser=null}) {
                     <EmailDetailPane email={selected} onClose={()=>setMbSelectedId(null)}
                       onMarkRead={()=>updateEmailField(selected.id,{isRead:true})}
                       onToggleStar={()=>updateEmailField(selected.id,{isStarred:!selected.isStarred})}
+                      onMarkSpam={(id,spam,reason)=>{ updateEmailField(id,{isSpam:spam,spamReason:reason||""}); if(spam){alert(spam?'🚫 迷惑メールに移動しました':'迷惑メールを解除しました'); setMbSelectedId(null);} }}
                       onGenerateReply={async()=>{
                         if(!selected.isRead) updateEmailField(selected.id,{isRead:true});
                         const txt = await generateAiReply(selected);
@@ -10410,6 +10509,7 @@ function EmailView({data,setData,currentUser=null}) {
               <EmailDetailPane email={selected} onClose={()=>setMbSelectedId(null)}
                 onMarkRead={()=>updateEmailField(selected.id,{isRead:true})}
                 onToggleStar={()=>updateEmailField(selected.id,{isStarred:!selected.isStarred})}
+                      onMarkSpam={(id,spam,reason)=>{ updateEmailField(id,{isSpam:spam,spamReason:reason||""}); if(spam){alert(spam?'🚫 迷惑メールに移動しました':'迷惑メールを解除しました'); setMbSelectedId(null);} }}
                 onGenerateReply={async()=>{
                   if(!selected.isRead) updateEmailField(selected.id,{isRead:true});
                   const txt = await generateAiReply(selected);
@@ -10432,7 +10532,15 @@ function EmailView({data,setData,currentUser=null}) {
               </>
             ) : list.length === 0 ? (
               <div style={{padding:"3rem 1rem",textAlign:"center",color:C.textMuted,fontSize:"0.85rem"}}>
-                {mbView==="inbox"?"📭 受信メールはありません":mbView==="sent"?"📤 送信済みメールはありません":"📝 下書きはありません"}
+                {useEmptyList ? (
+                  <>
+                    <div style={{fontSize:"2rem",marginBottom:"0.5rem"}}>🔄</div>
+                    <div>メールを読み込み中…</div>
+                    <div style={{fontSize:"0.7rem",marginTop:"0.5rem",color:C.textMuted}}>最新のメールを取得しています</div>
+                  </>
+                ) : (
+                  mbView==="inbox"?"📭 受信メールはありません":mbView==="sent"?"📤 送信済みメールはありません":"📝 下書きはありません"
+                )}
               </div>
             ) : (
               // ── モバイル: リストビュー ──
