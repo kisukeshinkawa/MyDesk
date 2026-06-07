@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v107-signature-sync-feedback"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v107b-new-fetch-url"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -143,7 +143,7 @@ const DB_API_HEADERS = {
 // AI メール分析 Lambda URL（環境変数優先、なければ将来のデプロイ後に設定）
 const EMAIL_AI_API_URL = (typeof import.meta !== "undefined" && import.meta.env?.VITE_EMAIL_AI_API_URL) || "";
 // メール受信 Lambda URL（手動受信用）
-const FETCH_EMAILS_URL = "https://gh4oad3i42mejfsnxxso6zzpbm0wkant.lambda-url.ap-northeast-1.on.aws/";
+const FETCH_EMAILS_URL = "https://kh4ppnjygtrezwlbnc6umysci40zflac.lambda-url.ap-northeast-1.on.aws/";
 
 // 新川さんのメール署名（送信時に自動付加）
 const MAIL_SIGNATURE = `
