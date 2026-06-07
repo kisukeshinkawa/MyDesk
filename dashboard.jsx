@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v108-newline-recipient-fix"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v109-bizcard-suggest-project-link"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -5108,6 +5108,8 @@ function TaskRow({task,onToggle,onStatusChange,onClick,users=[]}) {
       <div style={{flex:1,minWidth:0}}>
         <div style={{fontSize:"0.9rem",fontWeight:done?400:600,color:done?C.textMuted:C.text,textDecoration:done?"line-through":"none",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{task.title}</div>
         <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginTop:"0.2rem",flexWrap:"wrap"}}>
+          {task.sourceType==="email" && <span title={task.sourceEmailSubject||""} style={{fontSize:"0.65rem",fontWeight:700,color:"#1e40af",background:"#dbeafe",borderRadius:3,padding:"0.05rem 0.35rem",flexShrink:0}}>📧 メール</span>}
+          {task.aiGenerated && <span style={{fontSize:"0.62rem",fontWeight:700,color:"white",background:"#7c3aed",borderRadius:3,padding:"0.05rem 0.35rem",flexShrink:0}}>AI</span>}
           {task.salesRef&&<span style={{fontSize:"0.65rem",fontWeight:700,color:"white",background:salesBadgeColor,borderRadius:999,padding:"0.05rem 0.4rem",flexShrink:0}}>{task.salesRef.type} · {task.salesRef.name}</span>}
           {task.dueDate&&(()=>{const today=new Date().toISOString().slice(0,10);const isOD=!done&&task.dueDate<today;return <span style={{fontSize:"0.7rem",color:isOD?"#dc2626":near&&!done?"#2563eb":C.textMuted,fontWeight:isOD||near&&!done?700:400}}>{isOD?"⚠️":"📅"}{task.dueDate}{isOD?" 期限切れ":""}</span>;})()}
           {assignedNames.length>0&&<span style={{fontSize:"0.68rem",color:C.textSub}}>👤{assignedNames.join("・")}</span>}
@@ -5273,8 +5275,68 @@ function TaskForm({initial={},onSave,onClose,users=[],currentUserId=null,salesDa
     isPrivate:initial.isPrivate||false,
     salesRef:initial.salesRef||null,
   });
+  // メール由来かどうか
+  const hasSourceEmail = initial.sourceType === "email" && initial.sourceEmailId;
+  const sourceEmailDate = initial.sourceEmailDate ? new Date(initial.sourceEmailDate) : null;
   return (
     <div>
+      {/* メール由来タスクの場合、出典情報を表示 */}
+      {hasSourceEmail && (
+        <div style={{
+          background:"#eff6ff",
+          border:"1px solid #bfdbfe",
+          borderRadius:6,
+          padding:"0.6rem 0.75rem",
+          marginBottom:"0.85rem",
+          fontSize:"0.75rem",
+        }}>
+          <div style={{fontWeight:800,color:"#1e40af",marginBottom:4,display:"flex",alignItems:"center",gap:"0.3rem"}}>
+            📧 メールから自動生成されたタスク
+            {initial.aiGenerated && <span style={{fontSize:"0.62rem",padding:"0.05rem 0.4rem",borderRadius:3,background:"#dbeafe",color:"#1e40af",fontWeight:700}}>AI</span>}
+          </div>
+          <div style={{color:"#1e3a8a",lineHeight:1.5}}>
+            <div><b>件名:</b> {initial.sourceEmailSubject || "(件名なし)"}</div>
+            <div><b>差出人:</b> {initial.sourceEmailFromName ? `${initial.sourceEmailFromName} <${initial.sourceEmailFrom}>` : initial.sourceEmailFrom}</div>
+            {sourceEmailDate && <div><b>受信:</b> {sourceEmailDate.toLocaleString("ja-JP")}</div>}
+            {initial.sourceEmailSnippet && (
+              <div style={{marginTop:4,padding:"0.4rem 0.55rem",background:"white",borderRadius:4,border:"1px solid #dbeafe",fontSize:"0.7rem",color:"#374151",fontStyle:"italic"}}>
+                "{initial.sourceEmailSnippet}{initial.sourceEmailSnippet.length >= 200 ? "..." : ""}"
+              </div>
+            )}
+            {initial.aiReason && (
+              <div style={{marginTop:4,fontSize:"0.68rem",color:"#1e40af"}}>
+                💡 AI判断理由: {initial.aiReason}
+              </div>
+            )}
+            <button onClick={()=>{
+              // タブをメールに切替 + 該当メールを開くよう localStorage に保存
+              localStorage.setItem("md_tab", "mail");
+              localStorage.setItem("md_navigate_to_email", String(initial.sourceEmailId));
+              if (typeof onClose === "function") onClose();
+              // タブ切替（複数のフォールバック）
+              if (typeof window.__myDeskSetTab === "function") {
+                window.__myDeskSetTab("mail");
+              } else {
+                window.location.reload();
+              }
+            }}
+              style={{
+                marginTop:6,
+                padding:"0.3rem 0.65rem",
+                borderRadius:4,
+                border:"none",
+                background:"#2563eb",
+                color:"white",
+                fontSize:"0.68rem",
+                fontWeight:700,
+                cursor:"pointer",
+                fontFamily:"inherit",
+              }}>
+              📧 元メールを開く
+            </button>
+          </div>
+        </div>
+      )}
       <FieldLbl label="タイトル *"><Input value={f.title} onChange={e=>setF({...f,title:e.target.value})} placeholder="タスク名" autoFocus/></FieldLbl>
       <FieldLbl label="ステータス"><SelectEl value={f.status} onChange={e=>setF({...f,status:e.target.value})}>{STATUS_OPTIONS.map(s=><option key={s}>{s}</option>)}</SelectEl></FieldLbl>
       <FieldLbl label="期限"><Input type="date" value={f.dueDate} onChange={e=>setF({...f,dueDate:e.target.value})}/></FieldLbl>
@@ -8052,7 +8114,7 @@ function ScheduleView() {
 }
 
 // ─── QUICK AI REPLY FORM: AI返信案を直接編集・送信できるフォーム ──────────────
-function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, C, onSwitchToFullForm, onSend, sendBusy }) {
+function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards, C, onSwitchToFullForm, onSend, sendBusy }) {
   // 「全員に返信」を初期値にするか個別かを設定（CC があれば自動で全員に返信モード）
   const hasCc = (email.cc || []).length > 0;
   const [mode, setMode] = React.useState(hasCc ? "replyAll" : "reply");
@@ -8065,12 +8127,60 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, C, onSwitchToF
   const [extraTo, setExtraTo] = React.useState([]);      // [{name, email}, ...]
   const [extraCc, setExtraCc] = React.useState([]);
   const [extraBcc, setExtraBcc] = React.useState([]);
+  // 削除した宛先（元から付いていたものを × で削除した分）
+  const [removedEmails, setRemovedEmails] = React.useState(new Set());
   // 入力中のメアド一時保存
   const [showAddPanel, setShowAddPanel] = React.useState(false);
   const [addType, setAddType] = React.useState("to");    // "to" | "cc" | "bcc"
   const [addInput, setAddInput] = React.useState("");
   
-  // 返信先計算（mode + 追加宛先）
+  // 名刺から候補検索（メアド・名前・企業名のいずれかでマッチ）
+  const suggestions = React.useMemo(() => {
+    const q = addInput.trim().toLowerCase();
+    if (q.length < 1) return [];
+    const cards = businessCards || [];
+    // 既に追加済み or 元から含まれているメアドは除外
+    const usedEmails = new Set();
+    for (const t of extraTo) usedEmails.add((t.email||"").toLowerCase());
+    for (const t of extraCc) usedEmails.add((t.email||"").toLowerCase());
+    for (const t of extraBcc) usedEmails.add((t.email||"").toLowerCase());
+    if (email.from?.email) usedEmails.add(email.from.email.toLowerCase());
+    for (const t of (email.to||[])) usedEmails.add((t.email||"").toLowerCase());
+    for (const t of (email.cc||[])) usedEmails.add((t.email||"").toLowerCase());
+    
+    const results = [];
+    for (const bc of cards) {
+      const bcEmail = (bc.email || "").toLowerCase().trim();
+      if (!bcEmail) continue;
+      if (usedEmails.has(bcEmail)) continue;
+      const bcName = (bc.name || "").toLowerCase();
+      const bcCompany = (bc.salesRef?.name || bc.companyName || "").toLowerCase();
+      const bcPosition = (bc.position || bc.title || "").toLowerCase();
+      
+      // マッチ判定（スコア付き）
+      let score = 0;
+      if (bcEmail.startsWith(q)) score += 100;
+      else if (bcEmail.includes(q)) score += 50;
+      if (bcName.startsWith(q)) score += 80;
+      else if (bcName.includes(q)) score += 40;
+      if (bcCompany.startsWith(q)) score += 60;
+      else if (bcCompany.includes(q)) score += 30;
+      if (bcPosition.includes(q)) score += 10;
+      
+      if (score > 0) {
+        results.push({
+          score,
+          name: bc.name || "",
+          email: bc.email,
+          company: bc.salesRef?.name || bc.companyName || "",
+          position: bc.position || bc.title || "",
+        });
+      }
+    }
+    return results.sort((a,b) => b.score - a.score).slice(0, 8);
+  }, [addInput, businessCards, extraTo, extraCc, extraBcc, email]);
+  
+  // 返信先計算（mode + 追加宛先 - 削除済み）
   const recipients = React.useMemo(() => {
     const fromAddr = email.from || {};
     const baseTo = fromAddr.email ? [{ name: fromAddr.name || "", email: fromAddr.email }] : [];
@@ -8089,12 +8199,12 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, C, onSwitchToF
         seen.add(k); return true;
       });
     }
-    // 追加宛先と統合（重複排除）
+    // 追加宛先と統合（重複排除 + 削除済み除外）
     const dedupe = (arr) => {
       const seen = new Set();
       return arr.filter(t => {
         const k = (t.email || "").toLowerCase().trim();
-        if (!k || seen.has(k)) return false;
+        if (!k || seen.has(k) || removedEmails.has(k)) return false;
         seen.add(k); return true;
       });
     };
@@ -8103,7 +8213,7 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, C, onSwitchToF
       cc: dedupe([...baseCc, ...extraCc]),
       bcc: dedupe(extraBcc),
     };
-  }, [mode, email, myEmail, extraTo, extraCc, extraBcc]);
+  }, [mode, email, myEmail, extraTo, extraCc, extraBcc, removedEmails]);
   
   // AI 案が変わったら body も更新（編集中は維持）
   React.useEffect(() => {
@@ -8197,20 +8307,20 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, C, onSwitchToF
         <div style={{display:"flex",alignItems:"flex-start",gap:"0.4rem",flexWrap:"wrap"}}>
           <span style={{fontWeight:800,color:"#065f46",minWidth:24}}>To:</span>
           <div style={{flex:1,minWidth:0,display:"flex",flexWrap:"wrap",gap:"0.3rem"}}>
-            {recipients.to.map((t, i) => {
-              const isExtra = extraTo.some(e => (e.email||"").toLowerCase() === (t.email||"").toLowerCase());
-              return (
-                <span key={i} style={{display:"inline-flex",alignItems:"center",gap:3,background:"white",border:"1px solid #6ee7b7",borderRadius:4,padding:"0.1rem 0.4rem",fontSize:"0.68rem",color:"#065f46"}}>
-                  {t.name ? `${t.name} <${t.email}>` : t.email}
-                  {isExtra && (
-                    <button onClick={()=>setExtraTo(prev=>prev.filter(e=>(e.email||"").toLowerCase()!==(t.email||"").toLowerCase()))}
-                      style={{border:"none",background:"transparent",cursor:"pointer",padding:0,marginLeft:2,fontSize:"0.78rem",color:"#dc2626",fontFamily:"inherit",lineHeight:1}}>
-                      ×
-                    </button>
-                  )}
-                </span>
-              );
-            })}
+            {recipients.to.map((t, i) => (
+              <span key={i} style={{display:"inline-flex",alignItems:"center",gap:3,background:"white",border:"1px solid #6ee7b7",borderRadius:4,padding:"0.1rem 0.4rem",fontSize:"0.68rem",color:"#065f46"}}>
+                {t.name ? `${t.name} <${t.email}>` : t.email}
+                <button onClick={()=>{
+                  const lcEmail = (t.email||"").toLowerCase();
+                  setExtraTo(prev=>prev.filter(e=>(e.email||"").toLowerCase()!==lcEmail));
+                  setRemovedEmails(prev=>{ const s=new Set(prev); s.add(lcEmail); return s; });
+                }}
+                  title="削除"
+                  style={{border:"none",background:"transparent",cursor:"pointer",padding:0,marginLeft:2,fontSize:"0.78rem",color:"#dc2626",fontFamily:"inherit",lineHeight:1}}>
+                  ×
+                </button>
+              </span>
+            ))}
             {recipients.to.length === 0 && <span style={{color:"#9ca3af"}}>（なし）</span>}
             <button onClick={()=>{setAddType("to");setShowAddPanel(true);setAddInput("");}}
               style={{border:"1px dashed #10b981",background:"transparent",borderRadius:4,padding:"0.1rem 0.4rem",fontSize:"0.65rem",color:"#059669",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>
@@ -8219,24 +8329,24 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, C, onSwitchToF
           </div>
         </div>
         {/* Cc 行 */}
-        {(recipients.cc.length > 0 || showAddPanel) && (
+        {(recipients.cc.length > 0 || mode === "replyAll" || showAddPanel) && (
           <div style={{display:"flex",alignItems:"flex-start",gap:"0.4rem",flexWrap:"wrap",marginTop:4}}>
             <span style={{fontWeight:800,color:"#065f46",minWidth:24}}>Cc:</span>
             <div style={{flex:1,minWidth:0,display:"flex",flexWrap:"wrap",gap:"0.3rem"}}>
-              {recipients.cc.map((t, i) => {
-                const isExtra = extraCc.some(e => (e.email||"").toLowerCase() === (t.email||"").toLowerCase());
-                return (
-                  <span key={i} style={{display:"inline-flex",alignItems:"center",gap:3,background:"white",border:"1px solid #6ee7b7",borderRadius:4,padding:"0.1rem 0.4rem",fontSize:"0.68rem",color:"#065f46"}}>
-                    {t.name ? `${t.name} <${t.email}>` : t.email}
-                    {isExtra && (
-                      <button onClick={()=>setExtraCc(prev=>prev.filter(e=>(e.email||"").toLowerCase()!==(t.email||"").toLowerCase()))}
-                        style={{border:"none",background:"transparent",cursor:"pointer",padding:0,marginLeft:2,fontSize:"0.78rem",color:"#dc2626",fontFamily:"inherit",lineHeight:1}}>
-                        ×
-                      </button>
-                    )}
-                  </span>
-                );
-              })}
+              {recipients.cc.map((t, i) => (
+                <span key={i} style={{display:"inline-flex",alignItems:"center",gap:3,background:"white",border:"1px solid #6ee7b7",borderRadius:4,padding:"0.1rem 0.4rem",fontSize:"0.68rem",color:"#065f46"}}>
+                  {t.name ? `${t.name} <${t.email}>` : t.email}
+                  <button onClick={()=>{
+                    const lcEmail = (t.email||"").toLowerCase();
+                    setExtraCc(prev=>prev.filter(e=>(e.email||"").toLowerCase()!==lcEmail));
+                    setRemovedEmails(prev=>{ const s=new Set(prev); s.add(lcEmail); return s; });
+                  }}
+                    title="削除"
+                    style={{border:"none",background:"transparent",cursor:"pointer",padding:0,marginLeft:2,fontSize:"0.78rem",color:"#dc2626",fontFamily:"inherit",lineHeight:1}}>
+                    ×
+                  </button>
+                </span>
+              ))}
               {recipients.cc.length === 0 && <span style={{color:"#9ca3af",fontSize:"0.65rem"}}>（なし）</span>}
               <button onClick={()=>{setAddType("cc");setShowAddPanel(true);setAddInput("");}}
                 style={{border:"1px dashed #10b981",background:"transparent",borderRadius:4,padding:"0.1rem 0.4rem",fontSize:"0.65rem",color:"#059669",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>
@@ -8253,7 +8363,11 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, C, onSwitchToF
               {recipients.bcc.map((t, i) => (
                 <span key={i} style={{display:"inline-flex",alignItems:"center",gap:3,background:"white",border:"1px solid #fcd34d",borderRadius:4,padding:"0.1rem 0.4rem",fontSize:"0.68rem",color:"#92400e"}}>
                   {t.name ? `${t.name} <${t.email}>` : t.email}
-                  <button onClick={()=>setExtraBcc(prev=>prev.filter(e=>(e.email||"").toLowerCase()!==(t.email||"").toLowerCase()))}
+                  <button onClick={()=>{
+                    const lcEmail = (t.email||"").toLowerCase();
+                    setExtraBcc(prev=>prev.filter(e=>(e.email||"").toLowerCase()!==lcEmail));
+                  }}
+                    title="削除"
                     style={{border:"none",background:"transparent",cursor:"pointer",padding:0,marginLeft:2,fontSize:"0.78rem",color:"#dc2626",fontFamily:"inherit",lineHeight:1}}>
                     ×
                   </button>
@@ -8271,71 +8385,110 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, C, onSwitchToF
             </button>
           </div>
         )}
-        {/* 追加パネル（モーダル風）*/}
+        {/* 追加パネル（モーダル風 + サジェスト機能）*/}
         {showAddPanel && (
-          <div style={{marginTop:"0.5rem",padding:"0.5rem",background:"white",border:"1px solid #6ee7b7",borderRadius:5,display:"flex",alignItems:"center",gap:"0.4rem",flexWrap:"wrap"}}>
-            <span style={{fontSize:"0.7rem",fontWeight:700,color:"#065f46",minWidth:30}}>
-              {addType === "to" ? "To:" : addType === "cc" ? "Cc:" : "Bcc:"}
-            </span>
-            <input 
-              type="email"
-              value={addInput}
-              onChange={e=>setAddInput(e.target.value)}
-              onKeyDown={e=>{
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  const email = addInput.trim();
-                  if (!email) return;
-                  // 簡易バリデーション
-                  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-                    alert("無効なメールアドレスです");
-                    return;
+          <div style={{marginTop:"0.5rem",padding:"0.6rem",background:"white",border:"1px solid #6ee7b7",borderRadius:6,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}>
+            <div style={{display:"flex",alignItems:"center",gap:"0.4rem",flexWrap:"wrap",marginBottom:suggestions.length>0?"0.5rem":0}}>
+              <span style={{fontSize:"0.72rem",fontWeight:800,color:"#065f46",minWidth:30}}>
+                {addType === "to" ? "To:" : addType === "cc" ? "Cc:" : "Bcc:"}
+              </span>
+              <input 
+                type="text"
+                value={addInput}
+                onChange={e=>setAddInput(e.target.value)}
+                onKeyDown={e=>{
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    // サジェストの先頭を採用するか、入力をそのまま使う
+                    if (suggestions.length > 0) {
+                      const s = suggestions[0];
+                      const newEntry = { name: s.name, email: s.email };
+                      if (addType === "to") setExtraTo(prev => [...prev, newEntry]);
+                      else if (addType === "cc") setExtraCc(prev => [...prev, newEntry]);
+                      else setExtraBcc(prev => [...prev, newEntry]);
+                      setAddInput("");
+                      setShowAddPanel(false);
+                      return;
+                    }
+                    const txt = addInput.trim();
+                    if (!txt) return;
+                    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(txt)) {
+                      alert("無効なメールアドレスです");
+                      return;
+                    }
+                    const newEntry = { name: "", email: txt };
+                    if (addType === "to") setExtraTo(prev => [...prev, newEntry]);
+                    else if (addType === "cc") setExtraCc(prev => [...prev, newEntry]);
+                    else setExtraBcc(prev => [...prev, newEntry]);
+                    setAddInput("");
+                    setShowAddPanel(false);
+                  } else if (e.key === "Escape") {
+                    setShowAddPanel(false);
+                    setAddInput("");
                   }
-                  const newEntry = { name: "", email };
-                  if (addType === "to") setExtraTo(prev => [...prev, newEntry]);
-                  else if (addType === "cc") setExtraCc(prev => [...prev, newEntry]);
-                  else setExtraBcc(prev => [...prev, newEntry]);
-                  setAddInput("");
-                  setShowAddPanel(false);
-                } else if (e.key === "Escape") {
-                  setShowAddPanel(false);
-                  setAddInput("");
-                }
-              }}
-              placeholder="メールアドレスを入力（Enter で追加）"
-              autoFocus
-              style={{
-                flex:1,
-                minWidth:200,
-                padding:"0.3rem 0.5rem",
-                borderRadius:4,
-                border:"1px solid #d1d5db",
-                fontSize:"0.75rem",
-                fontFamily:"inherit",
-                outline:"none",
-              }}
-            />
-            <button onClick={()=>{
-              const email = addInput.trim();
-              if (!email) return;
-              if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-                alert("無効なメールアドレスです");
-                return;
-              }
-              const newEntry = { name: "", email };
-              if (addType === "to") setExtraTo(prev => [...prev, newEntry]);
-              else if (addType === "cc") setExtraCc(prev => [...prev, newEntry]);
-              else setExtraBcc(prev => [...prev, newEntry]);
-              setAddInput("");
-              setShowAddPanel(false);
-            }}
-              style={{padding:"0.3rem 0.7rem",borderRadius:4,border:"none",background:"#059669",color:"white",fontSize:"0.7rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-              追加
-            </button>
-            <button onClick={()=>{setShowAddPanel(false);setAddInput("");}}
-              style={{padding:"0.3rem 0.6rem",borderRadius:4,border:"1px solid #d1d5db",background:"white",color:"#6b7280",fontSize:"0.7rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-              キャンセル
-            </button>
+                }}
+                placeholder="メアド・名前・企業名で検索（Enter で追加）"
+                autoFocus
+                style={{
+                  flex:1,
+                  minWidth:200,
+                  padding:"0.35rem 0.55rem",
+                  borderRadius:4,
+                  border:"1px solid #d1d5db",
+                  fontSize:"0.78rem",
+                  fontFamily:"inherit",
+                  outline:"none",
+                }}
+              />
+              <button onClick={()=>{setShowAddPanel(false);setAddInput("");}}
+                style={{padding:"0.35rem 0.65rem",borderRadius:4,border:"1px solid #d1d5db",background:"white",color:"#6b7280",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                キャンセル
+              </button>
+            </div>
+            {/* サジェストリスト */}
+            {suggestions.length > 0 && (
+              <div style={{maxHeight:250,overflowY:"auto",border:"1px solid #e5e7eb",borderRadius:5,background:"#fafafa"}}>
+                {suggestions.map((s, i) => (
+                  <div key={i} 
+                    onClick={()=>{
+                      const newEntry = { name: s.name, email: s.email };
+                      if (addType === "to") setExtraTo(prev => [...prev, newEntry]);
+                      else if (addType === "cc") setExtraCc(prev => [...prev, newEntry]);
+                      else setExtraBcc(prev => [...prev, newEntry]);
+                      setAddInput("");
+                      setShowAddPanel(false);
+                    }}
+                    style={{
+                      padding:"0.5rem 0.7rem",
+                      borderBottom: i < suggestions.length-1 ? "1px solid #e5e7eb" : "none",
+                      cursor:"pointer",
+                      background: i === 0 ? "#f0fdf4" : "white",
+                      transition: "background 0.1s",
+                    }}
+                    onMouseEnter={e=>e.currentTarget.style.background = "#f0fdf4"}
+                    onMouseLeave={e=>e.currentTarget.style.background = i === 0 ? "#f0fdf4" : "white"}
+                  >
+                    <div style={{fontSize:"0.78rem",fontWeight:700,color:"#111827",marginBottom:2}}>
+                      {s.name || "(名前なし)"} 
+                      {s.position && <span style={{fontSize:"0.65rem",fontWeight:500,color:"#6b7280",marginLeft:6}}>{s.position}</span>}
+                    </div>
+                    <div style={{fontSize:"0.68rem",color:"#6b7280"}}>
+                      {s.company && <span style={{marginRight:8}}>🏢 {s.company}</span>}
+                      <span style={{color:"#059669"}}>✉️ {s.email}</span>
+                    </div>
+                  </div>
+                ))}
+                <div style={{padding:"0.3rem 0.7rem",fontSize:"0.62rem",color:"#9ca3af",background:"#f9fafb",borderTop:"1px solid #e5e7eb"}}>
+                  💡 候補をクリックするか、Enter で先頭を選択
+                </div>
+              </div>
+            )}
+            {/* サジェストなしの場合のヘルプ */}
+            {addInput.length > 0 && suggestions.length === 0 && (
+              <div style={{padding:"0.4rem 0.6rem",fontSize:"0.68rem",color:"#6b7280",background:"#f9fafb",borderRadius:4,marginTop:"0.3rem"}}>
+                該当する名刺がありません。完全なメールアドレスを入力して Enter で追加できます。
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -8819,10 +8972,35 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onGenerateR
                     <button onClick={()=>{
                       // 提案を承諾するアクション（タスク作成・PJ紐付け・企業紐付け）
                       if (s.type === "task") {
-                        const t = window.confirm(`タスクを作成しますか？\n\n${s.title}${s.due?` (期限: ${s.due})`:""}\n\n※このメールへの関連リンクが自動付与されます`);
-                        if (!t) return;
-                        // ローカルのデータにタスクを追加（メール紐付け含む）
+                        // 名刺から企業名を取得（送信者のメアドベース）
+                        const senderEmail = (email.from?.email || "").toLowerCase().trim();
+                        const matchedBizcard = (data.businessCards || []).find(bc => 
+                          (bc.email || "").toLowerCase().trim() === senderEmail
+                        );
+                        const companyName = matchedBizcard?.salesRef?.name || matchedBizcard?.companyName || "";
+                        // 企業名から該当する企業を検索
+                        const matchedCompany = companyName ? (data.companies || []).find(c =>
+                          (c.name || "").includes(companyName) || companyName.includes(c.name || "")
+                        ) : null;
+                        // その企業に紐付くアクティブなプロジェクトを検索
+                        const matchedProject = matchedCompany ? (data.projects || []).find(p => {
+                          if (p.status === "完了" || p.status === "終了" || p.status === "中止") return false;
+                          return p.companyId === matchedCompany.id || 
+                                 (p.linkedCompanyIds || []).includes(matchedCompany.id);
+                        }) : null;
+                        
+                        // 確認ダイアログ
+                        let confirmMsg = `タスクを作成しますか？\n\n${s.title}${s.due?` (期限: ${s.due})`:""}\n\n📧 元メール: ${email.subject || "(件名なし)"}`;
+                        if (matchedCompany) confirmMsg += `\n🏢 企業: ${matchedCompany.name}`;
+                        if (matchedProject) confirmMsg += `\n📁 プロジェクト: ${matchedProject.name}\n  → このプロジェクトに自動で紐付けます`;
+                        
+                        const ok = window.confirm(confirmMsg);
+                        if (!ok) return;
+                        
+                        // ローカルのデータにタスクを追加（メール紐付け + プロジェクト紐付け含む）
                         const taskId = Date.now()+Math.random();
+                        // メール本文のスニペット（最初の200文字）
+                        const emailSnippet = (email.body || "").replace(/\s+/g, " ").trim().slice(0, 200);
                         const newTask = {
                           id: taskId,
                           title: s.title,
@@ -8836,8 +9014,16 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onGenerateR
                           sourceEmailId: email.id,
                           sourceEmailSubject: email.subject || "",
                           sourceEmailFrom: email.from?.email || "",
+                          sourceEmailFromName: email.from?.name || "",
+                          sourceEmailDate: email.receivedAt || email.sentAt || email.createdAt,
+                          sourceEmailSnippet: emailSnippet,
                           aiGenerated: true,
                           aiReason: s.reason || "",
+                          // 自動紐付け
+                          companyId: matchedCompany?.id || null,
+                          projectId: matchedProject?.id || null,
+                          linkedCompanyIds: matchedCompany ? [matchedCompany.id] : [],
+                          linkedProjectIds: matchedProject ? [matchedProject.id] : [],
                         };
                         // メール側にも紐付けタスクIDを追加
                         const updatedEmails = (data.emails || []).map(e => {
@@ -8850,7 +9036,12 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onGenerateR
                         });
                         const nd = { ...data, tasks: [...(data.tasks||[]), newTask], emails: updatedEmails };
                         if (typeof window.__myDeskSetData === "function") window.__myDeskSetData(nd);
-                        alert("✅ タスクを作成しました\n\n" + s.title + "\n\n📧 このメールへのリンクが付与されています");
+                        // 結果メッセージ
+                        let resultMsg = "✅ タスクを作成しました\n\n" + s.title;
+                        resultMsg += "\n\n📧 元メールへのリンク付与";
+                        if (matchedCompany) resultMsg += `\n🏢 ${matchedCompany.name} に紐付け`;
+                        if (matchedProject) resultMsg += `\n📁 ${matchedProject.name} に紐付け`;
+                        alert(resultMsg);
                       } else if (s.type === "project_link" && s.projectId) {
                         onLink && onLink("プロジェクト", s.projectId, s.projectName);
                       } else if (s.type === "company_link" && s.companyId) {
@@ -8872,6 +9063,7 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onGenerateR
               aiDraft={aiData.ai_draft_reply}
               currentUser={currentUser}
               myEmail={myEmail}
+              businessCards={data?.businessCards || []}
               C={C}
               onSwitchToFullForm={(mode, body) => {
                 openReplyForm(mode);
@@ -9029,6 +9221,29 @@ function EmailView({data,setData,currentUser=null}) {
   }, []);
   // unmountでタイマークリア
   React.useEffect(()=>{ return ()=>{ if(readTimerRef.current) clearTimeout(readTimerRef.current); }; }, []);
+  
+  // 外部から呼べる「メールへ遷移」関数を公開（タスク詳細からの遷移用）
+  React.useEffect(() => {
+    window.__myDeskNavigateToEmail = (emailId) => {
+      setMbSelectedId(emailId);
+      requestAnimationFrame(()=>{
+        try { window.scrollTo({top: 0, behavior: "instant"}); } catch { window.scrollTo(0, 0); }
+      });
+    };
+    // マウント時、localStorage に保存された遷移先メールがあれば開く
+    const targetEmailId = localStorage.getItem("md_navigate_to_email");
+    if (targetEmailId) {
+      localStorage.removeItem("md_navigate_to_email");
+      const parsedId = isNaN(Number(targetEmailId)) ? targetEmailId : Number(targetEmailId);
+      setTimeout(() => {
+        setMbSelectedId(parsedId);
+        requestAnimationFrame(()=>{
+          try { window.scrollTo({top: 0, behavior: "instant"}); } catch { window.scrollTo(0, 0); }
+        });
+      }, 200);
+    }
+    return () => { delete window.__myDeskNavigateToEmail; };
+  }, []);
 
   // 隣のメールに移動（dir: +1 = 次、-1 = 前）
   const selectAdjacent = React.useCallback((dir) => {
@@ -25021,6 +25236,14 @@ export default function App() {
       try { window.scrollTo({top: 0, behavior: "instant"}); } catch { window.scrollTo(0, 0); }
     });
   };
+
+  // 外部から呼べる「タブ切替」関数を公開（タスク詳細→メールへの遷移用）
+  React.useEffect(() => {
+    window.__myDeskSetTab = (newTab) => {
+      persistTab("md_tab", newTab, setTab);
+    };
+    return () => { delete window.__myDeskSetTab; };
+  }, []);
 
   // __all__ notifications are shown to every logged-in user
   const appNotifs = React.useMemo(
