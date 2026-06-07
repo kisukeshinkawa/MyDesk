@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v106-quick-ai-reply"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v107-signature-sync-feedback"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -142,6 +142,25 @@ const DB_API_HEADERS = {
 };
 // AI メール分析 Lambda URL（環境変数優先、なければ将来のデプロイ後に設定）
 const EMAIL_AI_API_URL = (typeof import.meta !== "undefined" && import.meta.env?.VITE_EMAIL_AI_API_URL) || "";
+// メール受信 Lambda URL（手動受信用）
+const FETCH_EMAILS_URL = "https://gh4oad3i42mejfsnxxso6zzpbm0wkant.lambda-url.ap-northeast-1.on.aws/";
+
+// 新川さんのメール署名（送信時に自動付加）
+const MAIL_SIGNATURE = `
+
+■■■■■■■■■■■■■■■■■■■■■■■■■■■■
+株式会社西原商事ホールディング
+企画部　部長
+新川　希亮（Kisuke Shinkawa）
+[本社]〒807-0821福岡県北九州市八幡西区陣原2丁目8-2
+■フリーダイヤル 0120-532-109
+■TEL 093-644-0158
+■FAX 093-644-0168
+■携帯 090-4053-6315
+E-mail: k-shinkawa@beetle-ems.com
+HP：https://www.dustalk.com/
+HP：http://beetlemanagement.com
+■■■■■■■■■■■■■■■■■■■■■■■■■■■■`;
 const S3_BUCKET = "mydesk-files-dustalk-1777302196";
 const S3_REGION = "ap-northeast-1";
 const S3_PUBLIC_BASE = `https://${S3_BUCKET}.s3.${S3_REGION}.amazonaws.com`;
@@ -8040,6 +8059,8 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, C, onSwitchToF
   const [body, setBody] = React.useState(aiDraft || "");
   const [editing, setEditing] = React.useState(false);
   const [sending, setSending] = React.useState(false);
+  const [sentSuccess, setSentSuccess] = React.useState(false);  // 送信成功表示
+  const [errorMsg, setErrorMsg] = React.useState("");           // エラーメッセージ表示
   
   // 返信先計算（mode に応じて）
   const recipients = React.useMemo(() => {
@@ -8069,41 +8090,63 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, C, onSwitchToF
   }, [aiDraft]);
   
   const handleSend = async () => {
+    setErrorMsg("");
     if (!body.trim()) {
-      alert("本文が空です");
+      setErrorMsg("本文が空です");
       return;
     }
     if (recipients.to.length === 0) {
-      alert("返信先が見つかりません");
+      setErrorMsg("返信先が見つかりません");
       return;
     }
     if (sending || sendBusy) return;
     setSending(true);
     try {
       const subj = (email.subject || "").replace(/^(Re:\s*|Fwd:\s*)+/gi, "");
+      // 署名を自動付加（既に署名がある場合は重複しない）
+      const bodyWithSignature = body.includes("■■■■■■■■■■") 
+        ? body 
+        : body + MAIL_SIGNATURE;
       const payload = {
         to: recipients.to,
         cc: recipients.cc,
         bcc: [],
         subject: `Re: ${subj}`,
-        body: body,
+        body: bodyWithSignature,
         replyToId: email.id,
         linkedDisplay: email.linkedDisplay || [],
       };
       if (typeof onSend === "function") {
         const ok = await onSend(payload);
         if (ok !== false) {
-          // 成功時の処理は親側で（メール一覧から外す等）
+          setSentSuccess(true);
+          // 3秒後に成功表示を消す
+          setTimeout(() => setSentSuccess(false), 3000);
+        } else {
+          setErrorMsg("送信に失敗しました。サーバーログを確認してください。");
         }
       } else {
-        alert("送信機能が初期化されていません");
+        setErrorMsg("送信機能が初期化されていません");
       }
     } catch (e) {
-      alert("送信エラー: " + (e.message || e));
+      setErrorMsg("送信エラー: " + (e.message || e));
     } finally {
       setSending(false);
     }
   };
+  
+  // 送信済みの場合は完了表示のみ
+  if (sentSuccess) {
+    return (
+      <div style={{background:"#d1fae5",borderRadius:8,padding:"1rem",border:"2px solid #10b981",textAlign:"center"}}>
+        <div style={{fontSize:"1.5rem",marginBottom:"0.3rem"}}>✅</div>
+        <div style={{fontSize:"0.85rem",fontWeight:800,color:"#065f46"}}>返信を送信しました</div>
+        <div style={{fontSize:"0.7rem",color:"#047857",marginTop:"0.2rem"}}>
+          To: {recipients.to.map(t=>t.email).join(", ")}
+        </div>
+      </div>
+    );
+  }
   
   return (
     <div style={{background:"white",borderRadius:8,padding:"0.75rem",border:"2px solid #10b981",boxShadow:"0 2px 6px rgba(16,185,129,0.1)"}}>
@@ -8171,6 +8214,49 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, C, onSwitchToF
           ✏️ 編集中 — 送信前に内容を確認してください
         </div>
       )}
+      
+      {/* エラーメッセージ */}
+      {errorMsg && (
+        <div style={{
+          background:"#fee2e2",
+          border:"1px solid #fca5a5",
+          borderRadius:5,
+          padding:"0.5rem 0.7rem",
+          marginBottom:"0.5rem",
+          fontSize:"0.75rem",
+          color:"#991b1b",
+          display:"flex",
+          alignItems:"flex-start",
+          gap:"0.4rem",
+        }}>
+          <span style={{fontSize:"0.9rem"}}>⚠️</span>
+          <div style={{flex:1}}>
+            <div style={{fontWeight:700,marginBottom:2}}>送信エラー</div>
+            <div>{errorMsg}</div>
+          </div>
+          <button onClick={()=>setErrorMsg("")} 
+            style={{padding:"0 0.4rem",border:"none",background:"transparent",cursor:"pointer",color:"#991b1b",fontSize:"0.85rem",fontWeight:700,fontFamily:"inherit"}}>
+            ×
+          </button>
+        </div>
+      )}
+      
+      {/* 署名プレビュー */}
+      <div style={{
+        background:"#f9fafb",
+        border:`1px dashed ${C.border}`,
+        borderRadius:5,
+        padding:"0.4rem 0.65rem",
+        marginBottom:"0.5rem",
+        fontSize:"0.65rem",
+        color:C.textMuted,
+        display:"flex",
+        alignItems:"center",
+        gap:"0.4rem",
+      }}>
+        <span>📝</span>
+        <span>送信時に自動で署名が付加されます</span>
+      </div>
       
       {/* アクションボタン */}
       <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap"}}>
@@ -8487,15 +8573,35 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onGenerateR
         <div style={{flex:1}}/>
         <button onClick={onToggleStar} style={{padding:"0.15rem 0.4rem",border:"none",background:"transparent",cursor:"pointer",fontSize:"1.1rem",lineHeight:1,color:email.isStarred?"#eab308":C.borderLight}}>{email.isStarred?"⭐":"☆"}</button>
       </div>
-      {/* 件名 */}
-      <div style={{fontSize:"1rem",fontWeight:800,color:C.text,marginBottom:"0.45rem",letterSpacing:"-0.01em"}}>{email.subject||"(件名なし)"}</div>
+      {/* 件名 + 返信済みバッジ */}
+      <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.45rem",flexWrap:"wrap"}}>
+        <div style={{fontSize:"1rem",fontWeight:800,color:C.text,letterSpacing:"-0.01em",flex:1,minWidth:0}}>{email.subject||"(件名なし)"}</div>
+        {email.isReplied && (
+          <span style={{fontSize:"0.7rem",fontWeight:700,padding:"0.2rem 0.6rem",borderRadius:5,background:"#d1fae5",color:"#065f46",border:"1px solid #6ee7b7"}}>
+            ✓ 返信済み{email.repliedAt ? `（${fmtFull(email.repliedAt).slice(5,10)}）` : ""}
+          </span>
+        )}
+      </div>
       {/* メタ情報 */}
       <div style={{fontSize:"0.74rem",color:C.textSub,marginBottom:"0.65rem",lineHeight:1.6}}>
         <div><b style={{fontWeight:700,color:C.text}}>{isInbound?"From:":"To:"}</b> {isInbound ? `${email.from?.name||""} <${email.from?.email||""}>` : (email.to||[]).map(t=>`${t.name||""} <${t.email||""}>`).join(", ")}</div>
         <div><b style={{fontWeight:700,color:C.text}}>{isInbound?"To:":"From:"}</b> {isInbound ? (email.to||[]).map(t=>t.email).join(", ") : `${email.from?.name||""} <${email.from?.email||""}>`}</div>
         {(email.cc||[]).length>0 && <div><b style={{fontWeight:700,color:C.text}}>CC:</b> {(email.cc||[]).map(t=>t.email).join(", ")}</div>}
         <div><b style={{fontWeight:700,color:C.text}}>日時:</b> {fmtFull(email.sentAt||email.receivedAt||email.createdAt)}</div>
-        {email.status==="failed" && <div style={{color:"#b91c1c",fontWeight:700,marginTop:"0.2rem"}}>⚠️ 送信失敗: {email.errorReason||"不明"}</div>}
+        {email.status==="failed" && (
+          <div style={{
+            background:"#fee2e2",
+            border:"1px solid #fca5a5",
+            borderRadius:5,
+            padding:"0.5rem 0.7rem",
+            marginTop:"0.4rem",
+            color:"#991b1b",
+            fontSize:"0.78rem",
+          }}>
+            <div style={{fontWeight:800,marginBottom:2}}>⚠️ 送信失敗</div>
+            <div>{email.errorReason||"不明なエラー"}</div>
+          </div>
+        )}
       </div>
       {/* リンク済みエンティティ */}
       {(email.linkedDisplay||[]).length>0 && (
@@ -8556,21 +8662,38 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onGenerateR
                     <button onClick={()=>{
                       // 提案を承諾するアクション（タスク作成・PJ紐付け・企業紐付け）
                       if (s.type === "task") {
-                        const t = window.confirm(`タスクを作成しますか？\n\n${s.title}${s.due?` (期限: ${s.due})`:""}`);
+                        const t = window.confirm(`タスクを作成しますか？\n\n${s.title}${s.due?` (期限: ${s.due})`:""}\n\n※このメールへの関連リンクが自動付与されます`);
                         if (!t) return;
-                        // ローカルのデータにタスクを追加
+                        // ローカルのデータにタスクを追加（メール紐付け含む）
+                        const taskId = Date.now()+Math.random();
                         const newTask = {
-                          id: Date.now()+Math.random(),
+                          id: taskId,
                           title: s.title,
                           status: "未着手",
                           dueDate: s.due || null,
                           assignees: currentUser?.id ? [currentUser.id] : [],
                           createdBy: currentUser?.id,
                           createdAt: new Date().toISOString(),
+                          // AI生成タスクの出典情報
+                          sourceType: "email",
+                          sourceEmailId: email.id,
+                          sourceEmailSubject: email.subject || "",
+                          sourceEmailFrom: email.from?.email || "",
+                          aiGenerated: true,
+                          aiReason: s.reason || "",
                         };
-                        const nd = { ...data, tasks: [...(data.tasks||[]), newTask] };
+                        // メール側にも紐付けタスクIDを追加
+                        const updatedEmails = (data.emails || []).map(e => {
+                          if (e.id === email.id) {
+                            const linkedTaskIds = [...(e.linkedTaskIds || []), taskId];
+                            const linkedDisplay = [...(e.linkedDisplay || []), {type:"タスク", id:taskId, name:s.title}];
+                            return { ...e, linkedTaskIds, linkedDisplay };
+                          }
+                          return e;
+                        });
+                        const nd = { ...data, tasks: [...(data.tasks||[]), newTask], emails: updatedEmails };
                         if (typeof window.__myDeskSetData === "function") window.__myDeskSetData(nd);
-                        alert("タスクを作成しました: " + s.title);
+                        alert("✅ タスクを作成しました\n\n" + s.title + "\n\n📧 このメールへのリンクが付与されています");
                       } else if (s.type === "project_link" && s.projectId) {
                         onLink && onLink("プロジェクト", s.projectId, s.projectName);
                       } else if (s.type === "company_link" && s.companyId) {
@@ -9570,22 +9693,40 @@ function EmailView({data,setData,currentUser=null}) {
           </button>
           <button disabled={dbSyncBusy}
             onClick={async()=>{
-              if (!window.confirm("お名前メールサーバーから最新メールを取得しますか？\n（処理に30〜60秒かかる場合があります）")) return;
               setDbSyncBusy(true);
               try {
-                // mydesk-fetch-emails Lambda を直接呼ぶことはできないので、
-                // 通常は EventBridge で自動同期に任せる。手動同期は別Lambda URL化が必要。
-                // ここでは「再読込」のみ実行（自動同期Lambdaが裏で動いてればすぐ反映される）
+                // mydesk-fetch-emails Lambda を Function URL 経由で呼び出し
+                const startTime = Date.now();
+                const res = await fetch(FETCH_EMAILS_URL, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "x-mydesk-secret": DB_API_SECRET,
+                  },
+                  body: JSON.stringify({}),
+                });
+                if (!res.ok) {
+                  const t = await res.text().catch(()=>"");
+                  throw new Error("HTTP " + res.status + ": " + t.slice(0, 200));
+                }
+                const result = await res.json();
+                const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+                // DB から再読み込み
                 await reloadDbEmails();
-                alert("最新メールを再読み込みしました。\n（バックグラウンド同期は自動で動作中です）");
+                // 結果表示
+                if (result.inboxNew > 0 || result.sentNew > 0) {
+                  alert(`✅ メール同期完了（${elapsed}秒）\n\n📥 新着受信: ${result.inboxNew}通\n📤 新着送信: ${result.sentNew}通\n💾 DB保存: ${result.inserted}通\n🤖 AI分析: ${result.aiTriggered}通`);
+                } else {
+                  alert(`✅ 同期完了（${elapsed}秒）\n\n新着メールはありませんでした。`);
+                }
               } catch(e) {
-                alert("エラー: " + (e.message||e));
+                alert("❌ メール同期エラー\n\n" + (e.message||e));
               } finally {
                 setDbSyncBusy(false);
               }
             }}
             style={{padding:"0.35rem 0.7rem",fontSize:"0.72rem",borderRadius:6,border:"none",background:dbSyncBusy?C.borderLight:C.accent,color:"white",cursor:dbSyncBusy?"not-allowed":"pointer",fontFamily:"inherit",fontWeight:800}}>
-            {dbSyncBusy?"同期中…":"📥 メール同期"}
+            {dbSyncBusy?"📥 受信中…":"📥 今すぐ受信"}
           </button>
         </div>
       </div>
@@ -9668,10 +9809,11 @@ function EmailView({data,setData,currentUser=null}) {
                           <div style={{fontSize:"0.66rem",color:e.ai_summary?"#1e40af":C.textMuted,marginTop:"0.05rem",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontWeight:e.ai_summary?500:400}}>
                             {e.ai_summary || (e.body||"").slice(0,80)}
                           </div>
-                          {(needsRep || e.status==="failed") && (
-                            <div style={{display:"flex",gap:4,marginTop:"0.25rem"}}>
+                          {(needsRep || e.status==="failed" || e.isReplied) && (
+                            <div style={{display:"flex",gap:4,marginTop:"0.25rem",flexWrap:"wrap"}}>
                               {needsRep && <span style={{fontSize:"0.58rem",fontWeight:700,padding:"0.05rem 0.35rem",borderRadius:4,background:"#fee2e2",color:"#b91c1c"}}>要返信 {daysSince(e.receivedAt||e.createdAt)}日</span>}
-                              {e.status==="failed" && <span style={{fontSize:"0.58rem",fontWeight:700,padding:"0.05rem 0.35rem",borderRadius:4,background:"#fee2e2",color:"#b91c1c"}}>送信失敗</span>}
+                              {e.isReplied && <span style={{fontSize:"0.58rem",fontWeight:700,padding:"0.05rem 0.35rem",borderRadius:4,background:"#d1fae5",color:"#065f46"}}>✓ 返信済</span>}
+                              {e.status==="failed" && <span style={{fontSize:"0.58rem",fontWeight:700,padding:"0.05rem 0.35rem",borderRadius:4,background:"#fee2e2",color:"#b91c1c"}}>⚠️ 送信失敗</span>}
                             </div>
                           )}
                         </div>
@@ -9806,7 +9948,8 @@ function EmailView({data,setData,currentUser=null}) {
                           {isUnread && <span style={{width:7,height:7,borderRadius:"50%",background:"#ea580c",flexShrink:0}}/>}
                           <span style={{fontSize:"0.82rem",fontWeight:isUnread?800:600,color:C.text,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{peer}</span>
                           {needsRep && <span style={{fontSize:"0.62rem",fontWeight:700,padding:"0.1rem 0.4rem",borderRadius:4,background:"#fee2e2",color:"#b91c1c",flexShrink:0}}>要返信 {daysSince(e.receivedAt||e.createdAt)}日</span>}
-                          {e.status==="failed" && <span style={{fontSize:"0.62rem",fontWeight:700,padding:"0.1rem 0.4rem",borderRadius:4,background:"#fee2e2",color:"#b91c1c",flexShrink:0}}>送信失敗</span>}
+                          {e.isReplied && <span style={{fontSize:"0.62rem",fontWeight:700,padding:"0.1rem 0.4rem",borderRadius:4,background:"#d1fae5",color:"#065f46",flexShrink:0}}>✓ 返信済</span>}
+                          {e.status==="failed" && <span style={{fontSize:"0.62rem",fontWeight:700,padding:"0.1rem 0.4rem",borderRadius:4,background:"#fee2e2",color:"#b91c1c",flexShrink:0}}>⚠️ 送信失敗</span>}
                           <span style={{fontSize:"0.66rem",color:C.textMuted,flexShrink:0,fontVariantNumeric:"tabular-nums"}}>{fmtMbDate(e.sentAt||e.receivedAt||e.createdAt)}</span>
                         </div>
                         <div style={{fontSize:"0.78rem",fontWeight:isUnread?700:500,color:C.text,marginTop:"0.15rem",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.subject||"(件名なし)"}</div>
