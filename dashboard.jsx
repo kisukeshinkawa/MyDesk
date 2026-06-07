@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v104-should-reply"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v106-quick-ai-reply"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -8032,6 +8032,226 @@ function ScheduleView() {
   );
 }
 
+// ─── QUICK AI REPLY FORM: AI返信案を直接編集・送信できるフォーム ──────────────
+function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, C, onSwitchToFullForm, onSend, sendBusy }) {
+  // 「全員に返信」を初期値にするか個別かを設定（CC があれば自動で全員に返信モード）
+  const hasCc = (email.cc || []).length > 0;
+  const [mode, setMode] = React.useState(hasCc ? "replyAll" : "reply");
+  const [body, setBody] = React.useState(aiDraft || "");
+  const [editing, setEditing] = React.useState(false);
+  const [sending, setSending] = React.useState(false);
+  
+  // 返信先計算（mode に応じて）
+  const recipients = React.useMemo(() => {
+    const fromAddr = email.from || {};
+    const to = fromAddr.email ? [{ name: fromAddr.name || "", email: fromAddr.email }] : [];
+    let cc = [];
+    if (mode === "replyAll") {
+      const origTo = (email.to || []).filter(t => 
+        (t.email || "").toLowerCase().trim() !== myEmail && 
+        (t.email || "").toLowerCase().trim() !== (fromAddr.email || "").toLowerCase().trim()
+      );
+      const origCc = (email.cc || []).filter(t => (t.email || "").toLowerCase().trim() !== myEmail);
+      const all = [...origTo, ...origCc];
+      const seen = new Set();
+      cc = all.filter(t => {
+        const k = (t.email || "").toLowerCase().trim();
+        if (!k || seen.has(k)) return false;
+        seen.add(k); return true;
+      });
+    }
+    return { to, cc };
+  }, [mode, email, myEmail]);
+  
+  // AI 案が変わったら body も更新（編集中は維持）
+  React.useEffect(() => {
+    if (!editing) setBody(aiDraft || "");
+  }, [aiDraft]);
+  
+  const handleSend = async () => {
+    if (!body.trim()) {
+      alert("本文が空です");
+      return;
+    }
+    if (recipients.to.length === 0) {
+      alert("返信先が見つかりません");
+      return;
+    }
+    if (sending || sendBusy) return;
+    setSending(true);
+    try {
+      const subj = (email.subject || "").replace(/^(Re:\s*|Fwd:\s*)+/gi, "");
+      const payload = {
+        to: recipients.to,
+        cc: recipients.cc,
+        bcc: [],
+        subject: `Re: ${subj}`,
+        body: body,
+        replyToId: email.id,
+        linkedDisplay: email.linkedDisplay || [],
+      };
+      if (typeof onSend === "function") {
+        const ok = await onSend(payload);
+        if (ok !== false) {
+          // 成功時の処理は親側で（メール一覧から外す等）
+        }
+      } else {
+        alert("送信機能が初期化されていません");
+      }
+    } catch (e) {
+      alert("送信エラー: " + (e.message || e));
+    } finally {
+      setSending(false);
+    }
+  };
+  
+  return (
+    <div style={{background:"white",borderRadius:8,padding:"0.75rem",border:"2px solid #10b981",boxShadow:"0 2px 6px rgba(16,185,129,0.1)"}}>
+      {/* ヘッダー: モード切替 */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:"0.5rem",marginBottom:"0.6rem",flexWrap:"wrap"}}>
+        <div style={{fontSize:"0.75rem",fontWeight:800,color:"#059669",display:"flex",alignItems:"center",gap:6}}>
+          ✨ AI 返信
+        </div>
+        {/* モード切替タブ */}
+        <div style={{display:"flex",gap:0,background:"#f0fdf4",borderRadius:6,padding:2,border:"1px solid #bbf7d0"}}>
+          <button onClick={()=>setMode("reply")} 
+            style={{padding:"0.3rem 0.65rem",fontSize:"0.7rem",fontWeight:700,border:"none",borderRadius:4,cursor:"pointer",fontFamily:"inherit",
+              background:mode==="reply"?"#059669":"transparent",color:mode==="reply"?"white":"#065f46"}}>
+            ↩️ 返信
+          </button>
+          <button onClick={()=>setMode("replyAll")} 
+            style={{padding:"0.3rem 0.65rem",fontSize:"0.7rem",fontWeight:700,border:"none",borderRadius:4,cursor:"pointer",fontFamily:"inherit",
+              background:mode==="replyAll"?"#059669":"transparent",color:mode==="replyAll"?"white":"#065f46"}}>
+            👥 全員に返信
+          </button>
+        </div>
+      </div>
+      
+      {/* 返信先プレビュー */}
+      <div style={{background:"#f0fdf4",borderRadius:5,padding:"0.45rem 0.6rem",marginBottom:"0.5rem",fontSize:"0.7rem",lineHeight:1.5}}>
+        <div style={{color:"#065f46"}}>
+          <span style={{fontWeight:700}}>To:</span>{" "}
+          {recipients.to.map(t => t.name ? `${t.name} <${t.email}>` : t.email).join(", ") || "(なし)"}
+        </div>
+        {recipients.cc.length > 0 && (
+          <div style={{color:"#065f46",marginTop:2}}>
+            <span style={{fontWeight:700}}>Cc:</span>{" "}
+            {recipients.cc.map(t => t.name ? `${t.name} <${t.email}>` : t.email).join(", ")}
+          </div>
+        )}
+      </div>
+      
+      {/* 本文編集（直接クリックして編集可能）*/}
+      <textarea 
+        value={body} 
+        onChange={e => { setBody(e.target.value); setEditing(true); }}
+        onFocus={() => setEditing(true)}
+        rows={Math.min(15, Math.max(6, (body.split("\n").length || 6) + 1))}
+        placeholder="返信内容を入力..."
+        style={{
+          width:"100%",
+          padding:"0.7rem 0.85rem",
+          borderRadius:6,
+          border:`1px solid ${editing?"#059669":"#d1fae5"}`,
+          fontSize:"0.85rem",
+          fontFamily:"inherit",
+          lineHeight:1.7,
+          color:C.text,
+          background:"#fefffe",
+          resize:"vertical",
+          boxSizing:"border-box",
+          marginBottom:"0.5rem",
+          outline:"none",
+        }}
+      />
+      
+      {/* 編集インジケータ */}
+      {editing && (
+        <div style={{fontSize:"0.65rem",color:"#059669",marginBottom:"0.4rem",fontStyle:"italic"}}>
+          ✏️ 編集中 — 送信前に内容を確認してください
+        </div>
+      )}
+      
+      {/* アクションボタン */}
+      <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap"}}>
+        <button 
+          onClick={handleSend}
+          disabled={sending || !body.trim()}
+          style={{
+            padding:"0.55rem 1.2rem",
+            borderRadius:6,
+            border:"none",
+            background:sending?"#9ca3af":"#059669",
+            color:"white",
+            fontSize:"0.8rem",
+            fontWeight:800,
+            cursor:sending?"default":"pointer",
+            fontFamily:"inherit",
+            display:"flex",
+            alignItems:"center",
+            gap:6,
+          }}
+        >
+          {sending ? "送信中…" : "📤 この内容で送信"}
+        </button>
+        <button 
+          onClick={() => { setBody(aiDraft || ""); setEditing(false); }}
+          style={{
+            padding:"0.55rem 0.9rem",
+            borderRadius:6,
+            border:`1px solid ${C.border}`,
+            background:"white",
+            color:C.textSub,
+            fontSize:"0.75rem",
+            fontWeight:700,
+            cursor:"pointer",
+            fontFamily:"inherit",
+          }}
+        >
+          🔄 AI案にリセット
+        </button>
+        <button 
+          onClick={() => onSwitchToFullForm(mode, body)}
+          style={{
+            padding:"0.55rem 0.9rem",
+            borderRadius:6,
+            border:`1px solid ${C.border}`,
+            background:"white",
+            color:C.textSub,
+            fontSize:"0.75rem",
+            fontWeight:700,
+            cursor:"pointer",
+            fontFamily:"inherit",
+          }}
+        >
+          ⚙️ 詳細編集
+        </button>
+        <button 
+          onClick={() => {
+            if (navigator.clipboard) {
+              navigator.clipboard.writeText(body);
+              alert("コピーしました");
+            }
+          }}
+          style={{
+            padding:"0.55rem 0.9rem",
+            borderRadius:6,
+            border:`1px solid ${C.border}`,
+            background:"white",
+            color:C.textSub,
+            fontSize:"0.75rem",
+            fontWeight:700,
+            cursor:"pointer",
+            fontFamily:"inherit",
+          }}
+        >
+          📋
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── EMAIL VIEW ───────────────────────────────────────────────────────────────
 // ─── EMAIL DETAIL PANE: メール詳細＋AI返信＋エンティティ連携 ──────────────
 function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onGenerateReply, aiBusy, onLink, onUnlink, data, currentUser, fmtFull, onSend, sendBusy }) {
@@ -8365,22 +8585,28 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onGenerateR
               })}
             </div>
           )}
-          {/* AI 返信下書き */}
+          {/* AI 返信下書き - 編集可能なクイック返信フォーム */}
           {aiData.ai_draft_reply && isInbound && (
-            <div style={{background:"white",borderRadius:5,padding:"0.5rem 0.65rem",fontSize:"0.74rem",border:"1px solid #bbf7d0"}}>
-              <div style={{fontSize:"0.66rem",fontWeight:700,color:"#059669",marginBottom:4}}>📝 AI 返信案</div>
-              <div style={{whiteSpace:"pre-wrap",color:C.text,lineHeight:1.6,marginBottom:"0.4rem",maxHeight:120,overflow:"auto"}}>
-                {aiData.ai_draft_reply}
-              </div>
-              <button onClick={()=>{
-                // 返信フォームを開いて AI 案を入れる
-                openReplyForm("reply");
-                setReplyBody(aiData.ai_draft_reply + "\n\n");
+            <QuickAiReplyForm 
+              email={email}
+              aiDraft={aiData.ai_draft_reply}
+              currentUser={currentUser}
+              myEmail={myEmail}
+              C={C}
+              onSwitchToFullForm={(mode, body) => {
+                openReplyForm(mode);
+                setTimeout(() => {
+                  setReplyBody(body + "\n\n");
+                  const el = document.querySelector('textarea[placeholder*="本文"]');
+                  if (el) {
+                    el.scrollIntoView({behavior: "smooth", block: "center"});
+                    el.focus();
+                  }
+                }, 50);
               }}
-                style={{padding:"0.25rem 0.7rem",borderRadius:4,border:"none",background:"#059669",color:"white",fontSize:"0.68rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                ↩️ この案で返信
-              </button>
-            </div>
+              onSend={onSend}
+              sendBusy={sendBusy}
+            />
           )}
         </div>
       )}
@@ -8510,6 +8736,10 @@ function EmailView({data,setData,currentUser=null}) {
       readTimerRef.current = null;
     }
     setMbSelectedId(emailId);
+    // メール詳細を開いた時、ページの一番上にスクロール
+    requestAnimationFrame(()=>{
+      try { window.scrollTo({top: 0, behavior: "instant"}); } catch { window.scrollTo(0, 0); }
+    });
     if (isUnread) {
       readTimerRef.current = setTimeout(()=>{
         updateEmailFieldRef.current?.(emailId, {isRead:true});
@@ -24480,12 +24710,12 @@ export default function App() {
   const scrollPos  = useRef({});   // tab → scrollY
 
   const persistTab = (newKey, val, setter) => {
-    // save current scroll position before switching
-    if (contentRef.current) scrollPos.current[tab] = contentRef.current.scrollTop;
+    // Always scroll to top on tab change (don't restore previous position)
     localStorage.setItem(newKey, val); setter(val);
-    // restore after render
     requestAnimationFrame(()=>{
-      if (contentRef.current) contentRef.current.scrollTop = scrollPos.current[val]||0;
+      if (contentRef.current) contentRef.current.scrollTop = 0;
+      // Also scroll window in case content is in window scroll
+      try { window.scrollTo({top: 0, behavior: "instant"}); } catch { window.scrollTo(0, 0); }
     });
   };
 
