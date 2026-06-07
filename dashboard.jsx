@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v107c-proxy-sync"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v108-newline-recipient-fix"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -8061,12 +8061,20 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, C, onSwitchToF
   const [sending, setSending] = React.useState(false);
   const [sentSuccess, setSentSuccess] = React.useState(false);  // 送信成功表示
   const [errorMsg, setErrorMsg] = React.useState("");           // エラーメッセージ表示
+  // 追加宛先（ユーザーが「+ 追加」ボタンで足したもの）
+  const [extraTo, setExtraTo] = React.useState([]);      // [{name, email}, ...]
+  const [extraCc, setExtraCc] = React.useState([]);
+  const [extraBcc, setExtraBcc] = React.useState([]);
+  // 入力中のメアド一時保存
+  const [showAddPanel, setShowAddPanel] = React.useState(false);
+  const [addType, setAddType] = React.useState("to");    // "to" | "cc" | "bcc"
+  const [addInput, setAddInput] = React.useState("");
   
-  // 返信先計算（mode に応じて）
+  // 返信先計算（mode + 追加宛先）
   const recipients = React.useMemo(() => {
     const fromAddr = email.from || {};
-    const to = fromAddr.email ? [{ name: fromAddr.name || "", email: fromAddr.email }] : [];
-    let cc = [];
+    const baseTo = fromAddr.email ? [{ name: fromAddr.name || "", email: fromAddr.email }] : [];
+    let baseCc = [];
     if (mode === "replyAll") {
       const origTo = (email.to || []).filter(t => 
         (t.email || "").toLowerCase().trim() !== myEmail && 
@@ -8075,14 +8083,27 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, C, onSwitchToF
       const origCc = (email.cc || []).filter(t => (t.email || "").toLowerCase().trim() !== myEmail);
       const all = [...origTo, ...origCc];
       const seen = new Set();
-      cc = all.filter(t => {
+      baseCc = all.filter(t => {
         const k = (t.email || "").toLowerCase().trim();
         if (!k || seen.has(k)) return false;
         seen.add(k); return true;
       });
     }
-    return { to, cc };
-  }, [mode, email, myEmail]);
+    // 追加宛先と統合（重複排除）
+    const dedupe = (arr) => {
+      const seen = new Set();
+      return arr.filter(t => {
+        const k = (t.email || "").toLowerCase().trim();
+        if (!k || seen.has(k)) return false;
+        seen.add(k); return true;
+      });
+    };
+    return { 
+      to: dedupe([...baseTo, ...extraTo]),
+      cc: dedupe([...baseCc, ...extraCc]),
+      bcc: dedupe(extraBcc),
+    };
+  }, [mode, email, myEmail, extraTo, extraCc, extraBcc]);
   
   // AI 案が変わったら body も更新（編集中は維持）
   React.useEffect(() => {
@@ -8110,7 +8131,7 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, C, onSwitchToF
       const payload = {
         to: recipients.to,
         cc: recipients.cc,
-        bcc: [],
+        bcc: recipients.bcc,
         subject: `Re: ${subj}`,
         body: bodyWithSignature,
         replyToId: email.id,
@@ -8170,16 +8191,151 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, C, onSwitchToF
         </div>
       </div>
       
-      {/* 返信先プレビュー */}
-      <div style={{background:"#f0fdf4",borderRadius:5,padding:"0.45rem 0.6rem",marginBottom:"0.5rem",fontSize:"0.7rem",lineHeight:1.5}}>
-        <div style={{color:"#065f46"}}>
-          <span style={{fontWeight:700}}>To:</span>{" "}
-          {recipients.to.map(t => t.name ? `${t.name} <${t.email}>` : t.email).join(", ") || "(なし)"}
+      {/* 返信先プレビュー（追加・削除可能）*/}
+      <div style={{background:"#f0fdf4",borderRadius:6,padding:"0.5rem 0.65rem",marginBottom:"0.5rem",fontSize:"0.72rem",lineHeight:1.6,border:"1px solid #bbf7d0"}}>
+        {/* To 行 */}
+        <div style={{display:"flex",alignItems:"flex-start",gap:"0.4rem",flexWrap:"wrap"}}>
+          <span style={{fontWeight:800,color:"#065f46",minWidth:24}}>To:</span>
+          <div style={{flex:1,minWidth:0,display:"flex",flexWrap:"wrap",gap:"0.3rem"}}>
+            {recipients.to.map((t, i) => {
+              const isExtra = extraTo.some(e => (e.email||"").toLowerCase() === (t.email||"").toLowerCase());
+              return (
+                <span key={i} style={{display:"inline-flex",alignItems:"center",gap:3,background:"white",border:"1px solid #6ee7b7",borderRadius:4,padding:"0.1rem 0.4rem",fontSize:"0.68rem",color:"#065f46"}}>
+                  {t.name ? `${t.name} <${t.email}>` : t.email}
+                  {isExtra && (
+                    <button onClick={()=>setExtraTo(prev=>prev.filter(e=>(e.email||"").toLowerCase()!==(t.email||"").toLowerCase()))}
+                      style={{border:"none",background:"transparent",cursor:"pointer",padding:0,marginLeft:2,fontSize:"0.78rem",color:"#dc2626",fontFamily:"inherit",lineHeight:1}}>
+                      ×
+                    </button>
+                  )}
+                </span>
+              );
+            })}
+            {recipients.to.length === 0 && <span style={{color:"#9ca3af"}}>（なし）</span>}
+            <button onClick={()=>{setAddType("to");setShowAddPanel(true);setAddInput("");}}
+              style={{border:"1px dashed #10b981",background:"transparent",borderRadius:4,padding:"0.1rem 0.4rem",fontSize:"0.65rem",color:"#059669",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>
+              + 追加
+            </button>
+          </div>
         </div>
-        {recipients.cc.length > 0 && (
-          <div style={{color:"#065f46",marginTop:2}}>
-            <span style={{fontWeight:700}}>Cc:</span>{" "}
-            {recipients.cc.map(t => t.name ? `${t.name} <${t.email}>` : t.email).join(", ")}
+        {/* Cc 行 */}
+        {(recipients.cc.length > 0 || showAddPanel) && (
+          <div style={{display:"flex",alignItems:"flex-start",gap:"0.4rem",flexWrap:"wrap",marginTop:4}}>
+            <span style={{fontWeight:800,color:"#065f46",minWidth:24}}>Cc:</span>
+            <div style={{flex:1,minWidth:0,display:"flex",flexWrap:"wrap",gap:"0.3rem"}}>
+              {recipients.cc.map((t, i) => {
+                const isExtra = extraCc.some(e => (e.email||"").toLowerCase() === (t.email||"").toLowerCase());
+                return (
+                  <span key={i} style={{display:"inline-flex",alignItems:"center",gap:3,background:"white",border:"1px solid #6ee7b7",borderRadius:4,padding:"0.1rem 0.4rem",fontSize:"0.68rem",color:"#065f46"}}>
+                    {t.name ? `${t.name} <${t.email}>` : t.email}
+                    {isExtra && (
+                      <button onClick={()=>setExtraCc(prev=>prev.filter(e=>(e.email||"").toLowerCase()!==(t.email||"").toLowerCase()))}
+                        style={{border:"none",background:"transparent",cursor:"pointer",padding:0,marginLeft:2,fontSize:"0.78rem",color:"#dc2626",fontFamily:"inherit",lineHeight:1}}>
+                        ×
+                      </button>
+                    )}
+                  </span>
+                );
+              })}
+              {recipients.cc.length === 0 && <span style={{color:"#9ca3af",fontSize:"0.65rem"}}>（なし）</span>}
+              <button onClick={()=>{setAddType("cc");setShowAddPanel(true);setAddInput("");}}
+                style={{border:"1px dashed #10b981",background:"transparent",borderRadius:4,padding:"0.1rem 0.4rem",fontSize:"0.65rem",color:"#059669",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>
+                + 追加
+              </button>
+            </div>
+          </div>
+        )}
+        {/* Bcc 行 */}
+        {recipients.bcc.length > 0 && (
+          <div style={{display:"flex",alignItems:"flex-start",gap:"0.4rem",flexWrap:"wrap",marginTop:4}}>
+            <span style={{fontWeight:800,color:"#065f46",minWidth:24}}>Bcc:</span>
+            <div style={{flex:1,minWidth:0,display:"flex",flexWrap:"wrap",gap:"0.3rem"}}>
+              {recipients.bcc.map((t, i) => (
+                <span key={i} style={{display:"inline-flex",alignItems:"center",gap:3,background:"white",border:"1px solid #fcd34d",borderRadius:4,padding:"0.1rem 0.4rem",fontSize:"0.68rem",color:"#92400e"}}>
+                  {t.name ? `${t.name} <${t.email}>` : t.email}
+                  <button onClick={()=>setExtraBcc(prev=>prev.filter(e=>(e.email||"").toLowerCase()!==(t.email||"").toLowerCase()))}
+                    style={{border:"none",background:"transparent",cursor:"pointer",padding:0,marginLeft:2,fontSize:"0.78rem",color:"#dc2626",fontFamily:"inherit",lineHeight:1}}>
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+        {/* Bcc 追加ボタン（Bcc がない時用） */}
+        {recipients.bcc.length === 0 && (
+          <div style={{marginTop:4}}>
+            <button onClick={()=>{setAddType("bcc");setShowAddPanel(true);setAddInput("");}}
+              style={{border:"none",background:"transparent",cursor:"pointer",fontSize:"0.62rem",color:"#059669",textDecoration:"underline",fontFamily:"inherit"}}>
+              + Bcc を追加
+            </button>
+          </div>
+        )}
+        {/* 追加パネル（モーダル風）*/}
+        {showAddPanel && (
+          <div style={{marginTop:"0.5rem",padding:"0.5rem",background:"white",border:"1px solid #6ee7b7",borderRadius:5,display:"flex",alignItems:"center",gap:"0.4rem",flexWrap:"wrap"}}>
+            <span style={{fontSize:"0.7rem",fontWeight:700,color:"#065f46",minWidth:30}}>
+              {addType === "to" ? "To:" : addType === "cc" ? "Cc:" : "Bcc:"}
+            </span>
+            <input 
+              type="email"
+              value={addInput}
+              onChange={e=>setAddInput(e.target.value)}
+              onKeyDown={e=>{
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  const email = addInput.trim();
+                  if (!email) return;
+                  // 簡易バリデーション
+                  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                    alert("無効なメールアドレスです");
+                    return;
+                  }
+                  const newEntry = { name: "", email };
+                  if (addType === "to") setExtraTo(prev => [...prev, newEntry]);
+                  else if (addType === "cc") setExtraCc(prev => [...prev, newEntry]);
+                  else setExtraBcc(prev => [...prev, newEntry]);
+                  setAddInput("");
+                  setShowAddPanel(false);
+                } else if (e.key === "Escape") {
+                  setShowAddPanel(false);
+                  setAddInput("");
+                }
+              }}
+              placeholder="メールアドレスを入力（Enter で追加）"
+              autoFocus
+              style={{
+                flex:1,
+                minWidth:200,
+                padding:"0.3rem 0.5rem",
+                borderRadius:4,
+                border:"1px solid #d1d5db",
+                fontSize:"0.75rem",
+                fontFamily:"inherit",
+                outline:"none",
+              }}
+            />
+            <button onClick={()=>{
+              const email = addInput.trim();
+              if (!email) return;
+              if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                alert("無効なメールアドレスです");
+                return;
+              }
+              const newEntry = { name: "", email };
+              if (addType === "to") setExtraTo(prev => [...prev, newEntry]);
+              else if (addType === "cc") setExtraCc(prev => [...prev, newEntry]);
+              else setExtraBcc(prev => [...prev, newEntry]);
+              setAddInput("");
+              setShowAddPanel(false);
+            }}
+              style={{padding:"0.3rem 0.7rem",borderRadius:4,border:"none",background:"#059669",color:"white",fontSize:"0.7rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+              追加
+            </button>
+            <button onClick={()=>{setShowAddPanel(false);setAddInput("");}}
+              style={{padding:"0.3rem 0.6rem",borderRadius:4,border:"1px solid #d1d5db",background:"white",color:"#6b7280",fontSize:"0.7rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+              キャンセル
+            </button>
           </div>
         )}
       </div>
@@ -8189,22 +8345,23 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, C, onSwitchToF
         value={body} 
         onChange={e => { setBody(e.target.value); setEditing(true); }}
         onFocus={() => setEditing(true)}
-        rows={Math.min(15, Math.max(6, (body.split("\n").length || 6) + 1))}
+        rows={Math.min(20, Math.max(8, (body.split("\n").length || 8) + 2))}
         placeholder="返信内容を入力..."
         style={{
           width:"100%",
-          padding:"0.7rem 0.85rem",
+          padding:"0.8rem 0.95rem",
           borderRadius:6,
           border:`1px solid ${editing?"#059669":"#d1fae5"}`,
-          fontSize:"0.85rem",
+          fontSize:"0.88rem",
           fontFamily:"inherit",
-          lineHeight:1.7,
+          lineHeight:1.8,
           color:C.text,
           background:"#fefffe",
           resize:"vertical",
           boxSizing:"border-box",
           marginBottom:"0.5rem",
           outline:"none",
+          minHeight:200,
         }}
       />
       
@@ -9534,10 +9691,13 @@ function EmailView({data,setData,currentUser=null}) {
     try {
       // 送信元: 現在のユーザーのメアドを使う（同一ドメイン内の任意のアドレスから送信可能）
       const fromEmail = currentUser?.email || "noreply@beetle-ems.com";
+      // 本文を HTML 改行付きに変換（プレーンテキストの改行を保持）
+      const escapeHtml = (s) => String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+      const html = `<div style="font-family:'Hiragino Sans','Yu Gothic',sans-serif;font-size:14px;line-height:1.7;color:#222;white-space:pre-wrap;">${escapeHtml(body)}</div>`;
       const res = await fetch(`${DB_API_BASE}/send-email`, {
         method: "POST",
         headers: DB_API_HEADERS,
-        body: JSON.stringify({ to, cc, bcc, subject, body, replyToId, fromName: currentUser?.name||"", fromEmail })
+        body: JSON.stringify({ to, cc, bcc, subject, body, html, replyToId, fromName: currentUser?.name||"", fromEmail })
       });
       let result = null;
       try { result = await res.json(); } catch(e){}
