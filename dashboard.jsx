@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v115-terms-terminology"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v116-urgent-task-status"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -7913,12 +7913,19 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
             const label=diff<0?`${-diff}日超過`:diff===0?"今日":diff===1?"明日":`${diff}日後`;
             const col=diff<0?"#dc2626":diff===0?"#ea580c":"#d97706";
             const pj=t.projectId?allProjects.find(p=>p.id===t.projectId):null;
+            const sMeta=STATUS_META[t.status]||STATUS_META["未着手"];
             return (
               <div key={t.id} onClick={()=>{setActiveTaskId(t.id);setFromProject(t.projectId||null);setScreen("taskDetail");setTaskTab("info");}}
                 style={{display:"flex",alignItems:"center",padding:"0.55rem 1rem",borderTop:"1px solid #fed7aa",cursor:"pointer",gap:"0.5rem",background:"white"}}>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:"0.85rem",fontWeight:600,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div>
-                  {pj&&<div style={{fontSize:"0.65rem",color:C.textMuted}}>🗂 {pj.name}</div>}
+                  <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginTop:2,flexWrap:"wrap"}}>
+                    <span style={{fontSize:"0.65rem",fontWeight:700,color:sMeta.color,background:sMeta.bg,borderRadius:999,padding:"0.05rem 0.45rem",display:"inline-flex",alignItems:"center",gap:3}}>
+                      <span style={{width:6,height:6,borderRadius:"50%",background:sMeta.dot}}/>
+                      {t.status||"未着手"}
+                    </span>
+                    {pj&&<span style={{fontSize:"0.65rem",color:C.textMuted}}>🗂 {pj.name}</span>}
+                  </div>
                 </div>
                 <span style={{fontSize:"0.72rem",fontWeight:800,color:col,background:diff<0?"#fee2e2":diff===0?"#fff7ed":"#fef3c7",borderRadius:999,padding:"0.15rem 0.5rem",flexShrink:0,border:`1px solid ${col}33`}}>{label}</span>
                 <span style={{color:C.textMuted,fontSize:"0.75rem"}}>›</span>
