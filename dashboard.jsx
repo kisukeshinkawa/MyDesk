@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v114-spam-blocklist-whitelist"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v115-terms-terminology"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -23329,15 +23329,15 @@ function SpamFilterSettings({ currentUser, C }) {
 
 // ─── 規約テンプレートレジストリ: 標準で管理する規約ドキュメント ─────────────
 const TERMS_REGISTRY = [
-  { id:"01_partner_agreement",      icon:"🤝", name:"パートナー規約",                 category:"事業者間契約", description:"サービスのパートナー事業者（廃棄物収集運搬業者等）との契約条件を定める規約。委託業務範囲、報酬、責任、契約期間、解除条件などを規定する。", relatedLaws:["civil","haikibutsu_shori","shitauke"] },
-  { id:"02_partner_poc",            icon:"🧪", name:"PoC限定 パートナー規約",          category:"事業者間契約", description:"概念実証（Proof of Concept）期間中のパートナー事業者との限定契約。試験運用期間、評価項目、本格契約への移行条件、知財・成果物の取扱い、機密保持などを定める。", relatedLaws:["civil","fusei_kyousou","shitauke"] },
-  { id:"03_terms_business_waste",   icon:"🏢", name:"利用規約 (事業ごみ回収サービス)",   category:"利用規約",     description:"事業者向けのごみ回収サービスの利用規約。料金体系、契約期間、サービス内容、責任範囲などを定める。", relatedLaws:["civil","consumer_contract","haikibutsu_shori"] },
-  { id:"05_terms_bulk_waste",       icon:"🛋️", name:"利用規約 (粗大ごみ回収サービス)",   category:"利用規約",     description:"個人向けの粗大ごみ回収サービスの利用規約。回収対象、料金、申込み・キャンセル方法、責任範囲などを定める。",     relatedLaws:["civil","consumer_contract","tokutei_shotorihiki","haikibutsu_shori"] },
+  { id:"01_partner_agreement",      icon:"🤝", name:"パートナー規約",                 category:"事業者間契約", description:"パートナー（業者：廃棄物収集運搬業者等）との契約条件を定める規約。委託業務範囲、報酬、責任、契約期間、解除条件などを規定する。", relatedLaws:["civil","haikibutsu_shori","shitauke"] },
+  { id:"02_partner_poc",            icon:"🧪", name:"PoC限定 パートナー規約",          category:"事業者間契約", description:"概念実証（Proof of Concept）期間中のパートナー（業者）との限定契約。試験運用期間、評価項目、本格契約への移行条件、知財・成果物の取扱い、機密保持などを定める。パートナー規約と同じ法令を参照。", relatedLaws:["civil","haikibutsu_shori","shitauke"] },
+  { id:"03_terms_business_waste",   icon:"🏢", name:"利用規約 (事業ごみ回収サービス)",   category:"利用規約",     description:"事業者（toB）向けのごみ回収サービスの利用規約。料金体系、契約期間、サービス内容、責任範囲などを定める。", relatedLaws:["civil","consumer_contract","haikibutsu_shori"] },
+  { id:"05_terms_bulk_waste",       icon:"🛋️", name:"利用規約 (粗大ごみ回収サービス)",   category:"利用規約",     description:"個人（toC）向けの粗大ごみ回収サービスの利用規約。回収対象、料金、申込み・キャンセル方法、責任範囲などを定める。",     relatedLaws:["civil","consumer_contract","tokutei_shotorihiki","haikibutsu_shori"] },
   { id:"07_privacy_policy",         icon:"🔒", name:"プライバシーポリシー",             category:"個人情報",     description:"個人情報の取扱方針。取得する情報の種類、利用目的、第三者提供、安全管理措置、開示等請求への対応を定める。", relatedLaws:["kojin_jouhou","denki_tsushin"] },
   { id:"08_personal_info_protection", icon:"🛡️", name:"個人情報保護方針",                category:"個人情報",     description:"個人情報保護に関する基本方針。法令遵守、利用目的の明確化、適切な取得・管理、漏洩対策、教育・監査体制などを定める。プライバシーポリシーの上位ドキュメント。", relatedLaws:["kojin_jouhou","my_number","denki_tsushin"] },
-  { id:"09A_tokushou_individual",   icon:"📋", name:"特定商取引法表記 (個人向け)",       category:"法定表示",     description:"個人顧客向けの通信販売における特定商取引法に基づく表示。事業者情報、料金、支払方法、契約解除等を明示する。", relatedLaws:["tokutei_shotorihiki","consumer_contract"] },
-  { id:"09B_tokushou_partner",      icon:"📋", name:"特定商取引法表記 (パートナー向け)", category:"法定表示",     description:"パートナー事業者向けの通信販売における特定商取引法に基づく表示。事業者情報、料金、支払方法、契約解除等を明示する。", relatedLaws:["tokutei_shotorihiki"] },
-  { id:"09C_tokushou_business",     icon:"📋", name:"特定商取引法表記 (事業者向け)",     category:"法定表示",     description:"事業者顧客向けの通信販売における特定商取引法に基づく表示。事業者情報、料金、支払方法、契約解除等を明示する（BtoB取引向け）。", relatedLaws:["tokutei_shotorihiki","civil"] },
+  { id:"09A_tokushou_individual",   icon:"📋", name:"特定商取引法表記 (個人向け)",       category:"法定表示",     description:"個人（toC）顧客向けの通信販売における特定商取引法に基づく表示。事業者情報、料金、支払方法、契約解除等を明示する。", relatedLaws:["tokutei_shotorihiki","consumer_contract"] },
+  { id:"09B_tokushou_partner",      icon:"📋", name:"特定商取引法表記 (パートナー向け)", category:"法定表示",     description:"パートナー（業者）向けの通信販売における特定商取引法に基づく表示。事業者情報、料金、支払方法、契約解除等を明示する。", relatedLaws:["tokutei_shotorihiki"] },
+  { id:"09C_tokushou_business",     icon:"📋", name:"特定商取引法表記 (事業者向け)",     category:"法定表示",     description:"事業者（toB）顧客向けの通信販売における特定商取引法に基づく表示。事業者情報、料金、支払方法、契約解除等を明示する。", relatedLaws:["tokutei_shotorihiki","civil"] },
 ];
 
 // PWAの強制更新（SW登録解除＋全キャッシュ削除＋ハードリロード）
