@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v116-urgent-task-status"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v117-email-privacy-filter"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -9804,12 +9804,21 @@ function EmailView({data,setData,currentUser=null}) {
   const [dbEmailsError, setDbError]       = useState("");
   const [dbSyncBusy, setDbSyncBusy]       = useState(false);
 
-  // DBからメール取得（メール統合ONのみ）
+  // DBからメール取得（メール統合ONのみ、自分のメアドのみ）
   const reloadDbEmails = React.useCallback(async () => {
     if (!emailIntegrationEnabled) { setDbInit(true); return; }
     setDbLoading(true); setDbError("");
     try {
-      const params = new URLSearchParams({ limit: "500", offset: "0" });
+      const myAddr = (currentUser?.email||"").toLowerCase().trim();
+      if (!myAddr) {
+        // メアドが未設定なら空にして返す
+        setDbEmails([]);
+        setDbTotal(0);
+        setDbInit(true);
+        setDbLoading(false);
+        return;
+      }
+      const params = new URLSearchParams({ limit: "500", offset: "0", account_email: myAddr });
       const res = await fetch(`${DB_API_BASE}/emails?${params}`, { headers: DB_API_HEADERS });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
@@ -9862,7 +9871,7 @@ function EmailView({data,setData,currentUser=null}) {
       setDbLoading(false);
       setDbInit(true); // 初回ロード完了
     }
-  }, [emailIntegrationEnabled]);
+  }, [emailIntegrationEnabled, currentUser?.email]);
 
   // 初回マウント時にDB読み込み
   React.useEffect(()=>{ reloadDbEmails(); }, [reloadDbEmails]);
