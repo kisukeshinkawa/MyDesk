@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v113-spam-filter-loading"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v114-spam-blocklist-whitelist"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -9013,10 +9013,23 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onMarkSpam,
                   // 解除
                   if (typeof onMarkSpam === "function") onMarkSpam(email.id, false);
                 } else {
-                  // 認定
-                  const reason = window.prompt("迷惑メール認定の理由（任意）:", "");
-                  if (reason === null) return; // キャンセル
-                  if (typeof onMarkSpam === "function") onMarkSpam(email.id, true, reason);
+                  // 認定 - 詳細選択肢を表示
+                  const senderEmail = (email.from?.email || "").toLowerCase();
+                  const domain = senderEmail.includes("@") ? senderEmail.split("@")[1] : "";
+                  let msg = "🚫 迷惑メール認定の方法を選択してください\n\n";
+                  msg += "[1] このメールのみ迷惑メールに移動\n";
+                  if (senderEmail) msg += `[2] このメアド (${senderEmail}) からのメールを全てブロック\n`;
+                  if (domain) msg += `[3] このドメイン (${domain}) からのメールを全てブロック\n`;
+                  msg += "[キャンセル] 何もしない\n\n";
+                  msg += "番号を入力してください (1/2/3):";
+                  const choice = window.prompt(msg, "1");
+                  if (choice === null) return;
+                  const reason = window.prompt("理由（任意、ブロック理由として保存）:", "") || "";
+                  if (reason === null) return;
+                  if (typeof onMarkSpam === "function") {
+                    const opts = { blockEmail: choice === "2", blockDomain: choice === "3" };
+                    onMarkSpam(email.id, true, reason, opts);
+                  }
                 }
               }}
                 title={email.isSpam ? "迷惑メール解除" : "迷惑メールに移動"}
@@ -10353,13 +10366,36 @@ function EmailView({data,setData,currentUser=null}) {
                 placeholder="🔍 件名・本文・宛先で検索…"
                 style={{width:"100%",padding:"0.55rem 0.75rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.82rem",background:"white",outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
             </div>
-            {/* フィルタ + テスト追加 */}
+            {/* フィルタ + テスト追加 + 迷惑タブの一括削除 */}
             <div style={{display:"flex",gap:"0.3rem",flexWrap:"wrap",alignItems:"center"}}>
               {[["all","すべて"],["unread","未読"],["needsReply","要返信"],["starred","⭐"],["spam","🚫 迷惑"]].map(([id,lbl])=>(
                 <button key={id} onClick={()=>setMbFilter(id)}
                   style={{padding:"0.28rem 0.65rem",borderRadius:999,border:`1px solid ${mbFilter===id?C.accent:C.borderLight}`,background:mbFilter===id?(id==="spam"?"#dc2626":C.accent):"white",color:mbFilter===id?"white":C.textSub,fontSize:"0.7rem",fontWeight:mbFilter===id?800:600,cursor:"pointer",fontFamily:"inherit"}}>{lbl}</button>
               ))}
               <div style={{flex:1}}/>
+              {/* 迷惑タブ表示中: 一括削除ボタン */}
+              {mbFilter==="spam" && mbView==="inbox" && list.length > 0 && (
+                <button onClick={async()=>{
+                  const ok = window.confirm(`迷惑メール ${list.length} 件をすべて完全削除しますか？\n\n⚠️ この操作は取り消せません`);
+                  if (!ok) return;
+                  try {
+                    const res = await fetch(`${DB_API_BASE}/emails/spam/bulk-delete`, {
+                      method:"POST", headers:DB_API_HEADERS,
+                      body:JSON.stringify({account_email: currentUser?.email})
+                    });
+                    const j = await res.json();
+                    if (res.ok) {
+                      alert(`✅ ${j.deleted || 0} 件の迷惑メールを削除しました`);
+                      reloadDbEmails();
+                    } else {
+                      alert(`エラー: ${j.error || res.status}`);
+                    }
+                  } catch(e) { alert("削除エラー: " + e.message); }
+                }}
+                  style={{padding:"0.28rem 0.7rem",borderRadius:6,border:"none",background:"#dc2626",color:"white",fontSize:"0.7rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+                  🗑 すべて削除 ({list.length})
+                </button>
+              )}
               {mbView==="inbox" && <button onClick={()=>setMbTestOpen(true)}
                 style={{padding:"0.28rem 0.6rem",borderRadius:6,border:`1px dashed ${C.border}`,background:"white",color:C.textMuted,fontSize:"0.68rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}} title="バックエンド未実装中の手動テスト">＋ テスト受信</button>}
             </div>
@@ -10452,7 +10488,44 @@ function EmailView({data,setData,currentUser=null}) {
                     <EmailDetailPane email={selected} onClose={()=>setMbSelectedId(null)}
                       onMarkRead={()=>updateEmailField(selected.id,{isRead:true})}
                       onToggleStar={()=>updateEmailField(selected.id,{isStarred:!selected.isStarred})}
-                      onMarkSpam={(id,spam,reason)=>{ updateEmailField(id,{isSpam:spam,spamReason:reason||""}); if(spam){alert(spam?'🚫 迷惑メールに移動しました':'迷惑メールを解除しました'); setMbSelectedId(null);} }}
+                      onMarkSpam={async(id,spam,reason,opts)=>{
+                        updateEmailField(id,{isSpam:spam,spamReason:reason||""});
+                        if(spam){
+                          // ブロックリストへの自動追加
+                          if(opts && (opts.blockEmail || opts.blockDomain) && currentUser?.email){
+                            try{
+                              const senderEmail = (selected?.from?.email||"").toLowerCase();
+                              const domain = senderEmail.includes("@") ? senderEmail.split("@")[1] : "";
+                              const blockType = opts.blockEmail ? "email" : "domain";
+                              const pattern = opts.blockEmail ? senderEmail : domain;
+                              await fetch(`${DB_API_BASE}/emails/blocklist`,{
+                                method:'POST', headers:DB_API_HEADERS,
+                                body:JSON.stringify({account_email:currentUser.email, block_type:blockType, pattern, reason:reason||"", created_by:currentUser.id||""})
+                              });
+                              alert('🚫 迷惑メールに移動 + ブロックリスト追加しました\n\n同じ送信元のメールは自動的に迷惑メール扱いになります');
+                              reloadDbEmails();
+                            }catch(e){ alert('ブロックリスト追加エラー: '+e.message); }
+                          } else {
+                            alert('🚫 迷惑メールに移動しました');
+                          }
+                          setMbSelectedId(null);
+                        } else {
+                          // 解除時: 学習機能 - このメアドをホワイトリストに自動追加
+                          const senderEmail = selected?.from?.email;
+                          if(senderEmail && currentUser?.email){
+                            const addToWl = window.confirm(`迷惑メールを解除しました。\n\n${senderEmail} を信頼済リスト（ホワイトリスト）に追加して、今後 AI が迷惑判定しないようにしますか？`);
+                            if(addToWl){
+                              try{
+                                await fetch(`${DB_API_BASE}/emails/whitelist`,{
+                                  method:'POST', headers:DB_API_HEADERS,
+                                  body:JSON.stringify({account_email:currentUser.email, pattern:senderEmail.toLowerCase(), source:'unspam'})
+                                });
+                                alert('✓ ホワイトリストに追加しました');
+                              }catch(e){ alert('ホワイトリスト追加エラー: '+e.message); }
+                            }
+                          }
+                        }
+                      }}
                       onGenerateReply={async()=>{
                         if(!selected.isRead) updateEmailField(selected.id,{isRead:true});
                         const txt = await generateAiReply(selected);
@@ -10509,7 +10582,44 @@ function EmailView({data,setData,currentUser=null}) {
               <EmailDetailPane email={selected} onClose={()=>setMbSelectedId(null)}
                 onMarkRead={()=>updateEmailField(selected.id,{isRead:true})}
                 onToggleStar={()=>updateEmailField(selected.id,{isStarred:!selected.isStarred})}
-                      onMarkSpam={(id,spam,reason)=>{ updateEmailField(id,{isSpam:spam,spamReason:reason||""}); if(spam){alert(spam?'🚫 迷惑メールに移動しました':'迷惑メールを解除しました'); setMbSelectedId(null);} }}
+                      onMarkSpam={async(id,spam,reason,opts)=>{
+                        updateEmailField(id,{isSpam:spam,spamReason:reason||""});
+                        if(spam){
+                          // ブロックリストへの自動追加
+                          if(opts && (opts.blockEmail || opts.blockDomain) && currentUser?.email){
+                            try{
+                              const senderEmail = (selected?.from?.email||"").toLowerCase();
+                              const domain = senderEmail.includes("@") ? senderEmail.split("@")[1] : "";
+                              const blockType = opts.blockEmail ? "email" : "domain";
+                              const pattern = opts.blockEmail ? senderEmail : domain;
+                              await fetch(`${DB_API_BASE}/emails/blocklist`,{
+                                method:'POST', headers:DB_API_HEADERS,
+                                body:JSON.stringify({account_email:currentUser.email, block_type:blockType, pattern, reason:reason||"", created_by:currentUser.id||""})
+                              });
+                              alert('🚫 迷惑メールに移動 + ブロックリスト追加しました\n\n同じ送信元のメールは自動的に迷惑メール扱いになります');
+                              reloadDbEmails();
+                            }catch(e){ alert('ブロックリスト追加エラー: '+e.message); }
+                          } else {
+                            alert('🚫 迷惑メールに移動しました');
+                          }
+                          setMbSelectedId(null);
+                        } else {
+                          // 解除時: 学習機能 - このメアドをホワイトリストに自動追加
+                          const senderEmail = selected?.from?.email;
+                          if(senderEmail && currentUser?.email){
+                            const addToWl = window.confirm(`迷惑メールを解除しました。\n\n${senderEmail} を信頼済リスト（ホワイトリスト）に追加して、今後 AI が迷惑判定しないようにしますか？`);
+                            if(addToWl){
+                              try{
+                                await fetch(`${DB_API_BASE}/emails/whitelist`,{
+                                  method:'POST', headers:DB_API_HEADERS,
+                                  body:JSON.stringify({account_email:currentUser.email, pattern:senderEmail.toLowerCase(), source:'unspam'})
+                                });
+                                alert('✓ ホワイトリストに追加しました');
+                              }catch(e){ alert('ホワイトリスト追加エラー: '+e.message); }
+                            }
+                          }
+                        }
+                      }}
                 onGenerateReply={async()=>{
                   if(!selected.isRead) updateEmailField(selected.id,{isRead:true});
                   const txt = await generateAiReply(selected);
@@ -21701,6 +21811,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
     {id:"profile",  icon:"👤", label:"プロフィール"},
     {id:"members",  icon:"👥", label:"メンバー"},
     {id:"terms",    icon:"📜", label:"規約"},
+    {id:"spamfilter", icon:"🚫", label:"迷惑メール"},
     {id:"links",    icon:"🔗", label:"外部連携"},
     {id:"contract", icon:"📜", label:"契約書"},
     {id:"account",  icon:"🔑", label:"パスワード"},
@@ -22085,6 +22196,11 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
             );
           })}
         </div>
+      )}
+
+      {/* ── 迷惑メールフィルタの管理 ── */}
+      {section==="spamfilter"&&(
+        <SpamFilterSettings currentUser={currentUser} C={C}/>
       )}
 
       {/* ── 外部サービス連携 ── */}
@@ -22982,14 +23098,246 @@ const LAWS_REGISTRY = {
   kaisha_hou:      { name:"会社法", category:"会社", short:"会社の設立・運営の基本法", summary:"株式会社・合同会社等の設立、機関設計、取締役の責任、株主の権利、計算・決算、組織再編（合併・分割等）などを定める基本法。" },
 };
 
+// ─── SPAM FILTER SETTINGS: 迷惑メールフィルタの管理画面 ─────────────
+function SpamFilterSettings({ currentUser, C }) {
+  const [blocklist, setBlocklist] = React.useState([]);
+  const [whitelist, setWhitelist] = React.useState([]);
+  const [loading, setLoading] = React.useState(false);
+  const [tab, setTab] = React.useState("block"); // "block" | "white"
+  // 新規追加フォーム
+  const [newBlockType, setNewBlockType] = React.useState("email");
+  const [newBlockPattern, setNewBlockPattern] = React.useState("");
+  const [newBlockReason, setNewBlockReason] = React.useState("");
+  const [newWhitelistPattern, setNewWhitelistPattern] = React.useState("");
+  
+  const accountEmail = currentUser?.email || "";
+  
+  const loadLists = React.useCallback(async () => {
+    if (!accountEmail) return;
+    setLoading(true);
+    try {
+      const [bRes, wRes] = await Promise.all([
+        fetch(`${DB_API_BASE}/emails/blocklist?account_email=${encodeURIComponent(accountEmail)}`, { headers: DB_API_HEADERS }),
+        fetch(`${DB_API_BASE}/emails/whitelist?account_email=${encodeURIComponent(accountEmail)}`, { headers: DB_API_HEADERS }),
+      ]);
+      if (bRes.ok) { const j = await bRes.json(); setBlocklist(j.items || []); }
+      if (wRes.ok) { const j = await wRes.json(); setWhitelist(j.items || []); }
+    } catch(e) { console.warn("loadLists error:", e); }
+    setLoading(false);
+  }, [accountEmail]);
+  
+  React.useEffect(() => { loadLists(); }, [loadLists]);
+  
+  const addBlock = async () => {
+    if (!newBlockPattern.trim()) { alert("パターンを入力してください"); return; }
+    try {
+      const res = await fetch(`${DB_API_BASE}/emails/blocklist`, {
+        method: "POST", headers: DB_API_HEADERS,
+        body: JSON.stringify({
+          account_email: accountEmail,
+          block_type: newBlockType,
+          pattern: newBlockPattern.trim().toLowerCase(),
+          reason: newBlockReason.trim(),
+          created_by: currentUser?.id || "",
+        }),
+      });
+      if (res.ok) {
+        setNewBlockPattern(""); setNewBlockReason("");
+        alert("✅ ブロックリストに追加しました\n\n既存の該当メールも自動的に迷惑メール扱いになります");
+        loadLists();
+      } else {
+        const j = await res.json();
+        alert("エラー: " + (j.error || res.status));
+      }
+    } catch(e) { alert("追加エラー: " + e.message); }
+  };
+  
+  const deleteBlock = async (id) => {
+    if (!window.confirm("このブロック設定を削除しますか？")) return;
+    try {
+      await fetch(`${DB_API_BASE}/emails/blocklist?id=${id}`, { method: "DELETE", headers: DB_API_HEADERS });
+      loadLists();
+    } catch(e) { alert("削除エラー: " + e.message); }
+  };
+  
+  const addWhitelist = async () => {
+    if (!newWhitelistPattern.trim()) { alert("メアドまたはドメインを入力してください"); return; }
+    try {
+      const res = await fetch(`${DB_API_BASE}/emails/whitelist`, {
+        method: "POST", headers: DB_API_HEADERS,
+        body: JSON.stringify({
+          account_email: accountEmail,
+          pattern: newWhitelistPattern.trim().toLowerCase(),
+          source: "manual",
+        }),
+      });
+      if (res.ok) {
+        setNewWhitelistPattern("");
+        alert("✅ ホワイトリストに追加しました");
+        loadLists();
+      } else {
+        const j = await res.json();
+        alert("エラー: " + (j.error || res.status));
+      }
+    } catch(e) { alert("追加エラー: " + e.message); }
+  };
+  
+  const deleteWhitelist = async (id) => {
+    if (!window.confirm("このホワイトリスト設定を削除しますか？")) return;
+    try {
+      await fetch(`${DB_API_BASE}/emails/whitelist?id=${id}`, { method: "DELETE", headers: DB_API_HEADERS });
+      loadLists();
+    } catch(e) { alert("削除エラー: " + e.message); }
+  };
+  
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:"0.75rem"}}>
+      {/* 説明 */}
+      <div style={{background:"white",borderRadius:"1rem",padding:"1.15rem 1.25rem",border:`1px solid ${C.border}`,boxShadow:"0 1px 2px rgba(0,0,0,0.03)"}}>
+        <div style={{fontWeight:800,fontSize:"0.95rem",color:C.text,marginBottom:"0.4rem"}}>🚫 迷惑メールフィルタの管理</div>
+        <div style={{fontSize:"0.74rem",color:C.textMuted,lineHeight:1.65}}>
+          ブロックリスト・ホワイトリストを管理します。AI 自動判定に加えて、明示的なルールベースの判定が可能です。
+          <br/>
+          • <b>ブロックリスト</b>: 指定したメアド・ドメイン・件名キーワードのメールを自動的に迷惑メールに分類
+          <br/>
+          • <b>ホワイトリスト</b>: AI が誤って迷惑メールと判定しないようにする信頼済リスト（最優先）
+        </div>
+      </div>
+      
+      {/* タブ切替 */}
+      <div style={{display:"flex",gap:"0.4rem"}}>
+        <button onClick={()=>setTab("block")}
+          style={{padding:"0.5rem 1rem",borderRadius:8,border:tab==="block"?`2px solid #dc2626`:`1px solid ${C.border}`,background:tab==="block"?"#fee2e2":"white",color:tab==="block"?"#991b1b":C.textSub,fontSize:"0.8rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+          🚫 ブロックリスト ({blocklist.length})
+        </button>
+        <button onClick={()=>setTab("white")}
+          style={{padding:"0.5rem 1rem",borderRadius:8,border:tab==="white"?`2px solid #059669`:`1px solid ${C.border}`,background:tab==="white"?"#d1fae5":"white",color:tab==="white"?"#065f46":C.textSub,fontSize:"0.8rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+          ✓ ホワイトリスト ({whitelist.length})
+        </button>
+      </div>
+      
+      {/* ブロックリスト */}
+      {tab === "block" && (
+        <div style={{background:"white",borderRadius:"1rem",padding:"1.15rem 1.25rem",border:`1px solid ${C.border}`}}>
+          {/* 新規追加 */}
+          <div style={{marginBottom:"1rem",paddingBottom:"1rem",borderBottom:`1px solid ${C.border}`}}>
+            <div style={{fontWeight:700,fontSize:"0.82rem",color:C.text,marginBottom:"0.5rem"}}>新しいブロックを追加</div>
+            <div style={{display:"flex",gap:"0.4rem",alignItems:"center",flexWrap:"wrap"}}>
+              <select value={newBlockType} onChange={e=>setNewBlockType(e.target.value)}
+                style={{padding:"0.4rem 0.6rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"inherit",background:"white"}}>
+                <option value="email">📧 メアド</option>
+                <option value="domain">🌐 ドメイン</option>
+                <option value="subject">📝 件名キーワード</option>
+              </select>
+              <input value={newBlockPattern} onChange={e=>setNewBlockPattern(e.target.value)}
+                placeholder={newBlockType==="email"?"spam@example.com":newBlockType==="domain"?"aliexpress.com":"[SPAM]"}
+                style={{flex:1,minWidth:200,padding:"0.4rem 0.65rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.8rem",fontFamily:"inherit"}}/>
+              <input value={newBlockReason} onChange={e=>setNewBlockReason(e.target.value)}
+                placeholder="理由（任意）"
+                style={{width:160,padding:"0.4rem 0.65rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}/>
+              <button onClick={addBlock}
+                style={{padding:"0.4rem 0.9rem",borderRadius:6,border:"none",background:"#dc2626",color:"white",fontSize:"0.78rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+                追加
+              </button>
+            </div>
+            <div style={{fontSize:"0.66rem",color:C.textMuted,marginTop:"0.4rem"}}>
+              💡 例: ドメイン「aliexpress.com」を登録すると、@aliexpress.com からの全メールが自動的に迷惑メール扱いになります
+            </div>
+          </div>
+          {/* リスト */}
+          {loading ? (
+            <div style={{padding:"2rem",textAlign:"center",color:C.textMuted}}>読み込み中…</div>
+          ) : blocklist.length === 0 ? (
+            <div style={{padding:"1.5rem",textAlign:"center",color:C.textMuted,fontSize:"0.8rem"}}>
+              📭 ブロックリストは空です
+            </div>
+          ) : (
+            <div style={{display:"flex",flexDirection:"column",gap:"0.35rem"}}>
+              {blocklist.map(b => (
+                <div key={b.id} style={{display:"flex",alignItems:"center",gap:"0.6rem",padding:"0.55rem 0.7rem",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:6}}>
+                  <span style={{fontSize:"0.7rem",fontWeight:800,color:"#991b1b",background:"white",borderRadius:3,padding:"0.1rem 0.4rem",border:"1px solid #fca5a5",flexShrink:0}}>
+                    {b.block_type === "email" ? "📧 メアド" : b.block_type === "domain" ? "🌐 ドメイン" : "📝 件名"}
+                  </span>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:"0.82rem",fontWeight:700,color:"#7f1d1d"}}>{b.pattern}</div>
+                    {b.reason && <div style={{fontSize:"0.68rem",color:"#991b1b",marginTop:1}}>{b.reason}</div>}
+                  </div>
+                  <button onClick={()=>deleteBlock(b.id)}
+                    style={{padding:"0.25rem 0.6rem",borderRadius:5,border:"1px solid #fca5a5",background:"white",color:"#dc2626",fontSize:"0.7rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
+                    削除
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      
+      {/* ホワイトリスト */}
+      {tab === "white" && (
+        <div style={{background:"white",borderRadius:"1rem",padding:"1.15rem 1.25rem",border:`1px solid ${C.border}`}}>
+          {/* 新規追加 */}
+          <div style={{marginBottom:"1rem",paddingBottom:"1rem",borderBottom:`1px solid ${C.border}`}}>
+            <div style={{fontWeight:700,fontSize:"0.82rem",color:C.text,marginBottom:"0.5rem"}}>信頼済の送信元を追加</div>
+            <div style={{display:"flex",gap:"0.4rem",alignItems:"center",flexWrap:"wrap"}}>
+              <input value={newWhitelistPattern} onChange={e=>setNewWhitelistPattern(e.target.value)}
+                placeholder="trusted@example.com または example.com (ドメイン)"
+                style={{flex:1,minWidth:240,padding:"0.4rem 0.65rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.8rem",fontFamily:"inherit"}}/>
+              <button onClick={addWhitelist}
+                style={{padding:"0.4rem 0.9rem",borderRadius:6,border:"none",background:"#059669",color:"white",fontSize:"0.78rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+                追加
+              </button>
+            </div>
+            <div style={{fontSize:"0.66rem",color:C.textMuted,marginTop:"0.4rem"}}>
+              💡 メアド (a@b.com) または ドメイン (b.com) を入力できます。ホワイトリスト登録された送信元は、AI判定でも絶対に迷惑メールにならず、最優先で表示されます。
+            </div>
+          </div>
+          {/* リスト */}
+          {loading ? (
+            <div style={{padding:"2rem",textAlign:"center",color:C.textMuted}}>読み込み中…</div>
+          ) : whitelist.length === 0 ? (
+            <div style={{padding:"1.5rem",textAlign:"center",color:C.textMuted,fontSize:"0.8rem"}}>
+              📭 ホワイトリストは空です<br/>
+              <span style={{fontSize:"0.7rem"}}>💡 メールの「✓ 迷惑解除」操作でも自動的に追加できます</span>
+            </div>
+          ) : (
+            <div style={{display:"flex",flexDirection:"column",gap:"0.35rem"}}>
+              {whitelist.map(w => (
+                <div key={w.id} style={{display:"flex",alignItems:"center",gap:"0.6rem",padding:"0.55rem 0.7rem",background:"#ecfdf5",border:"1px solid #a7f3d0",borderRadius:6}}>
+                  <span style={{fontSize:"0.7rem",fontWeight:800,color:"#065f46",background:"white",borderRadius:3,padding:"0.1rem 0.4rem",border:"1px solid #6ee7b7",flexShrink:0}}>
+                    {w.pattern.includes("@") ? "📧 メアド" : "🌐 ドメイン"}
+                  </span>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:"0.82rem",fontWeight:700,color:"#064e3b"}}>{w.pattern}</div>
+                    <div style={{fontSize:"0.68rem",color:"#065f46",marginTop:1}}>
+                      追加元: {w.source === "unspam" ? "迷惑解除時に自動追加" : w.source === "bizcard" ? "名刺登録から" : "手動追加"}
+                    </div>
+                  </div>
+                  <button onClick={()=>deleteWhitelist(w.id)}
+                    style={{padding:"0.25rem 0.6rem",borderRadius:5,border:"1px solid #a7f3d0",background:"white",color:"#059669",fontSize:"0.7rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
+                    削除
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── 規約テンプレートレジストリ: 標準で管理する規約ドキュメント ─────────────
 const TERMS_REGISTRY = [
   { id:"01_partner_agreement",      icon:"🤝", name:"パートナー規約",                 category:"事業者間契約", description:"サービスのパートナー事業者（廃棄物収集運搬業者等）との契約条件を定める規約。委託業務範囲、報酬、責任、契約期間、解除条件などを規定する。", relatedLaws:["civil","haikibutsu_shori","shitauke"] },
+  { id:"02_partner_poc",            icon:"🧪", name:"PoC限定 パートナー規約",          category:"事業者間契約", description:"概念実証（Proof of Concept）期間中のパートナー事業者との限定契約。試験運用期間、評価項目、本格契約への移行条件、知財・成果物の取扱い、機密保持などを定める。", relatedLaws:["civil","fusei_kyousou","shitauke"] },
   { id:"03_terms_business_waste",   icon:"🏢", name:"利用規約 (事業ごみ回収サービス)",   category:"利用規約",     description:"事業者向けのごみ回収サービスの利用規約。料金体系、契約期間、サービス内容、責任範囲などを定める。", relatedLaws:["civil","consumer_contract","haikibutsu_shori"] },
   { id:"05_terms_bulk_waste",       icon:"🛋️", name:"利用規約 (粗大ごみ回収サービス)",   category:"利用規約",     description:"個人向けの粗大ごみ回収サービスの利用規約。回収対象、料金、申込み・キャンセル方法、責任範囲などを定める。",     relatedLaws:["civil","consumer_contract","tokutei_shotorihiki","haikibutsu_shori"] },
   { id:"07_privacy_policy",         icon:"🔒", name:"プライバシーポリシー",             category:"個人情報",     description:"個人情報の取扱方針。取得する情報の種類、利用目的、第三者提供、安全管理措置、開示等請求への対応を定める。", relatedLaws:["kojin_jouhou","denki_tsushin"] },
+  { id:"08_personal_info_protection", icon:"🛡️", name:"個人情報保護方針",                category:"個人情報",     description:"個人情報保護に関する基本方針。法令遵守、利用目的の明確化、適切な取得・管理、漏洩対策、教育・監査体制などを定める。プライバシーポリシーの上位ドキュメント。", relatedLaws:["kojin_jouhou","my_number","denki_tsushin"] },
   { id:"09A_tokushou_individual",   icon:"📋", name:"特定商取引法表記 (個人向け)",       category:"法定表示",     description:"個人顧客向けの通信販売における特定商取引法に基づく表示。事業者情報、料金、支払方法、契約解除等を明示する。", relatedLaws:["tokutei_shotorihiki","consumer_contract"] },
   { id:"09B_tokushou_partner",      icon:"📋", name:"特定商取引法表記 (パートナー向け)", category:"法定表示",     description:"パートナー事業者向けの通信販売における特定商取引法に基づく表示。事業者情報、料金、支払方法、契約解除等を明示する。", relatedLaws:["tokutei_shotorihiki"] },
+  { id:"09C_tokushou_business",     icon:"📋", name:"特定商取引法表記 (事業者向け)",     category:"法定表示",     description:"事業者顧客向けの通信販売における特定商取引法に基づく表示。事業者情報、料金、支払方法、契約解除等を明示する（BtoB取引向け）。", relatedLaws:["tokutei_shotorihiki","civil"] },
 ];
 
 // PWAの強制更新（SW登録解除＋全キャッシュ削除＋ハードリロード）
