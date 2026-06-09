@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v124-distribution-status"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v125-ai-reply-mail"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -247,6 +247,115 @@ let __pendingSaveData = null;
 let __isCurrentlySaving = false;
 let __lastSavedHash = "";
 const SAVE_DEBOUNCE_MS = 1500;
+
+// ─── QR反応から営業データ（プロジェクト + 企業 + 名刺）を作成する共通ヘルパー ─────
+async function createProjectFromQrSubmission(sub, ctx, currentUserId) {
+  try {
+    if (typeof window.__myDeskSetData !== "function") {
+      alert("プロジェクト作成エラー: setData が利用できません");
+      return;
+    }
+    const company = sub.company_name || "(企業名未入力)";
+    const pjName = `${company} (${ctx.announcementTitle || "QR反応"})`;
+    const now = new Date().toISOString();
+    const rand = () => Math.random().toString(36).slice(2,7);
+    
+    // 名前を 姓/名 に分割（半角・全角スペース対応）
+    let lastName = sub.contact_name || "";
+    let firstName = "";
+    if (lastName) {
+      const m = lastName.match(/^(\S+)[\s　]+(\S+.*)$/);
+      if (m) {
+        lastName = m[1];
+        firstName = m[2];
+      }
+    }
+    
+    window.__myDeskSetData(prev => {
+      const next = {...prev};
+      
+      // 1. 企業マスタへ自動登録（同名企業がある場合はそれを使う）
+      let companyId = null;
+      const existingCompany = (next.companies || []).find(c => c.name === company && company !== "(企業名未入力)");
+      if (existingCompany) {
+        companyId = existingCompany.id;
+      } else if (company !== "(企業名未入力)") {
+        companyId = `co_${Date.now()}_${rand()}`;
+        const newCompany = {
+          id: companyId,
+          name: company,
+          phone: sub.phone || "",
+          email: sub.email || "",
+          status: "新規",
+          memo: `[QR反応から自動登録]\n発行業者: ${ctx.vendorName || "(不明)"}\n案内状: ${ctx.announcementTitle || "(不明)"}`,
+          createdAt: now,
+          createdBy: currentUserId || "",
+          assigneeIds: [],
+          source: "qr_form",
+        };
+        next.companies = [...(next.companies || []), newCompany];
+      }
+      
+      // 2. 名刺登録（重複チェック: 同社・同名なら追加しない）
+      let bizcardId = null;
+      if (sub.contact_name && company !== "(企業名未入力)") {
+        const dup = (next.businessCards || []).find(bc => 
+          bc.company === company && bc.lastName === lastName && bc.firstName === firstName
+        );
+        if (dup) {
+          bizcardId = dup.id;
+        } else {
+          bizcardId = `bc_${Date.now()}_${rand()}`;
+          const newBizcard = {
+            id: bizcardId,
+            company,
+            companyId,
+            lastName,
+            firstName,
+            email: sub.email || "",
+            mobile: sub.phone || "",
+            tel: sub.phone || "",
+            owners: currentUserId ? [currentUserId] : [],
+            note: `[QR反応から自動登録]\n発行業者: ${ctx.vendorName || "(不明)"}`,
+            createdAt: now,
+          };
+          next.businessCards = [...(next.businessCards || []), newBizcard];
+        }
+      }
+      
+      // 3. プロジェクト作成
+      const newProject = {
+        id: `pj_${Date.now()}_${rand()}`,
+        name: pjName,
+        stage: "新規",
+        vendorId: ctx.vendorId || "",
+        companyId: companyId || "",
+        bizcardId: bizcardId || "",
+        memo: `[QR反応から自動作成]\n発行業者: ${ctx.vendorName || "(不明)"}\n案内状: ${ctx.announcementTitle || "(不明)"}\n\n【お問い合わせ内容】\n会社名: ${sub.company_name || "(未入力)"}\n担当者: ${sub.contact_name || "(未入力)"}\n電話: ${sub.phone || "(未入力)"}\nメール: ${sub.email || "(未入力)"}\n\n【アンケート回答】\n${Object.entries(sub.form_data||{}).filter(([k,v])=>k&&v).map(([k,v])=>`・${k}: ${Array.isArray(v)?v.join(", "):v}`).join("\n") || "(なし)"}\n\n送信日時: ${new Date(sub.submitted_at).toLocaleString("ja-JP")}`,
+        contactName: sub.contact_name || "",
+        contactPhone: sub.phone || "",
+        contactEmail: sub.email || "",
+        createdAt: now,
+        createdBy: currentUserId || "",
+        source: "qr_form",
+        qrSubmissionId: sub.id,
+      };
+      next.projects = [...(next.projects || []), newProject];
+      return next;
+    });
+    
+    const messages = [`✅ プロジェクト「${pjName}」を作成しました`];
+    if (company !== "(企業名未入力)") {
+      messages.push(`✅ 企業「${company}」を登録 / 更新`);
+    }
+    if (sub.contact_name) {
+      messages.push(`✅ 名刺「${sub.contact_name}（${company}）」を登録`);
+    }
+    alert(messages.join("\n"));
+  } catch(e) {
+    alert("プロジェクト作成エラー: " + e.message);
+  }
+}
 
 function _quickHash(s) {
   let h = 0;
@@ -23685,35 +23794,7 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
                 vendorName={vendorName} vendorId={vendorId} 
                 announcementTitle={activeAnnouncement?.title || ""}
                 onCreateProject={async (sub, ctx) => {
-                  // 自動プロジェクト作成
-                  try {
-                    if (typeof window.__myDeskSetData !== "function") {
-                      alert("プロジェクト作成エラー: setData が利用できません");
-                      return;
-                    }
-                    const pjName = `${sub.company_name || "(企業名未入力)"} (${ctx.announcementTitle || "QR反応"})`;
-                    const newProject = {
-                      id: `pj_${Date.now()}_${Math.random().toString(36).slice(2,7)}`,
-                      name: pjName,
-                      stage: "新規",
-                      vendorId: ctx.vendorId || "",
-                      memo: `[QR反応から自動作成]\n発行業者: ${ctx.vendorName || "(不明)"}\n案内状: ${ctx.announcementTitle || "(不明)"}\n\n【お問い合わせ内容】\n会社名: ${sub.company_name || "(未入力)"}\n担当者: ${sub.contact_name || "(未入力)"}\n電話: ${sub.phone || "(未入力)"}\nメール: ${sub.email || "(未入力)"}\n\n【アンケート回答】\n${Object.entries(sub.form_data||{}).filter(([k,v])=>k&&v).map(([k,v])=>`・${k}: ${Array.isArray(v)?v.join(", "):v}`).join("\n") || "(なし)"}\n\n送信日時: ${new Date(sub.submitted_at).toLocaleString("ja-JP")}`,
-                      contactName: sub.contact_name || "",
-                      contactPhone: sub.phone || "",
-                      contactEmail: sub.email || "",
-                      createdAt: new Date().toISOString(),
-                      createdBy: currentUserId || "",
-                      source: "qr_form",
-                      qrSubmissionId: sub.id,
-                    };
-                    window.__myDeskSetData(prev => ({
-                      ...prev,
-                      projects: [...(prev.projects || []), newProject],
-                    }));
-                    alert(`✅ プロジェクト「${pjName}」を作成しました`);
-                  } catch(e) {
-                    alert("プロジェクト作成エラー: " + e.message);
-                  }
+                  await createProjectFromQrSubmission(sub, ctx, currentUserId);
                 }}
               />
             ))}
@@ -23728,7 +23809,79 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
 function QrSubmissionItem({ submission, onUpdate, currentUserId, vendorName, vendorId, announcementTitle, onCreateProject }) {
   const [expanded, setExpanded] = React.useState(false);
   const [updating, setUpdating] = React.useState(false);
+  // AI メール生成関連
+  const [showReplyMail, setShowReplyMail] = React.useState(false);
+  const [generatingMail, setGeneratingMail] = React.useState(false);
+  const [sendingMail, setSendingMail] = React.useState(false);
+  const [replySubject, setReplySubject] = React.useState("");
+  const [replyBody, setReplyBody] = React.useState("");
   const s = submission;
+  
+  const generateReplyMail = async () => {
+    setGeneratingMail(true);
+    try {
+      const res = await fetch(`${DB_API_BASE}/qr/submissions/${s.id}/generate-reply`, {
+        method: "POST", headers: DB_API_HEADERS,
+        body: JSON.stringify({
+          vendor_name: vendorName || "",
+          announcement_title: announcementTitle || "",
+        }),
+      });
+      if (res.ok) {
+        const j = await res.json();
+        setReplySubject(j.subject || "");
+        setReplyBody(j.body || "");
+        setShowReplyMail(true);
+      } else {
+        const j = await res.json().catch(()=>({}));
+        alert("生成エラー: " + (j.error || res.status));
+      }
+    } catch(e) { alert("生成エラー: " + e.message); }
+    setGeneratingMail(false);
+  };
+  
+  const sendReplyMail = async () => {
+    if (!s.email) { alert("送信先メアドが未入力です"); return; }
+    if (!window.confirm(`このメール内容で「${s.email}」に送信しますか？`)) return;
+    setSendingMail(true);
+    try {
+      const res = await fetch(`${DB_API_BASE}/qr/submissions/${s.id}/send-reply`, {
+        method: "POST", headers: DB_API_HEADERS,
+        body: JSON.stringify({ subject: replySubject, body: replyBody }),
+      });
+      if (res.ok) {
+        alert(`✅ ${s.email} に返信メールを送信しました`);
+        setShowReplyMail(false);
+      } else {
+        const j = await res.json().catch(()=>({}));
+        alert("送信エラー: " + (j.error || res.status));
+      }
+    } catch(e) { alert("送信エラー: " + e.message); }
+    setSendingMail(false);
+  };
+  
+  const copyReplyMail = async () => {
+    const text = `件名: ${replySubject}\n\n${replyBody}`;
+    try {
+      await navigator.clipboard.writeText(text);
+      alert("✅ メール内容をコピーしました");
+    } catch(e) {
+      const t = document.createElement("textarea");
+      t.value = text;
+      document.body.appendChild(t);
+      t.select();
+      document.execCommand("copy");
+      document.body.removeChild(t);
+      alert("✅ コピーしました");
+    }
+  };
+  
+  const openInMailer = () => {
+    const to = encodeURIComponent(s.email || "");
+    const subject = encodeURIComponent(replySubject);
+    const body = encodeURIComponent(replyBody);
+    window.open(`mailto:${to}?subject=${subject}&body=${body}`, "_blank");
+  };
   
   // ステータス: "new" (未対応) | "handled" (対応済)
   // 旧 "reviewed" は "new" として扱う
@@ -23842,7 +23995,7 @@ function QrSubmissionItem({ submission, onUpdate, currentUserId, vendorName, ven
           </div>
           
           {/* ステータス更新ボタン（2段階） */}
-          <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap",alignItems:"center"}}>
+          <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap",alignItems:"center",marginBottom:"0.6rem"}}>
             <div style={{fontSize:"0.72rem",color:"#6b7280",fontWeight:700}}>ステータス:</div>
             <button onClick={()=>updateStatus("new")} disabled={!isHandled || updating}
               style={{padding:"0.35rem 0.8rem",borderRadius:5,border:`1px solid ${!isHandled?"#dc2626":"#d1d5db"}`,background:!isHandled?"#dc2626":"white",color:!isHandled?"white":"#374151",fontSize:"0.75rem",fontWeight:700,cursor:!isHandled||updating?"default":"pointer",fontFamily:"inherit",opacity:updating?0.5:1}}>
@@ -23853,6 +24006,56 @@ function QrSubmissionItem({ submission, onUpdate, currentUserId, vendorName, ven
               対応済 {isHandled ? "✓" : "→ プロジェクト作成"}
             </button>
           </div>
+          
+          {/* ✉️ 返信メール文を生成 */}
+          {!showReplyMail ? (
+            <button onClick={generateReplyMail} disabled={generatingMail || !s.email}
+              style={{padding:"0.5rem 1rem",borderRadius:6,border:"none",background:(!s.email||generatingMail)?"#9ca3af":"#7c3aed",color:"white",fontSize:"0.78rem",fontWeight:800,cursor:(!s.email||generatingMail)?"not-allowed":"pointer",fontFamily:"inherit"}}>
+              {generatingMail ? "🤖 AI 生成中..." : "✉️ 返信メール文を生成 (AI)"}
+            </button>
+          ) : (
+            <div style={{marginTop:"0.6rem",padding:"0.85rem 1rem",background:"#f5f3ff",border:"1px solid #c4b5fd",borderRadius:8}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.5rem"}}>
+                <div style={{fontWeight:800,fontSize:"0.85rem",color:"#5b21b6"}}>✉️ AI 生成した返信メール</div>
+                <button onClick={()=>setShowReplyMail(false)}
+                  style={{padding:"0.2rem 0.5rem",borderRadius:4,border:"1px solid #c4b5fd",background:"white",color:"#5b21b6",fontSize:"0.7rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                  × 閉じる
+                </button>
+              </div>
+              <div style={{marginBottom:"0.5rem"}}>
+                <label style={{display:"block",fontSize:"0.7rem",fontWeight:700,color:"#5b21b6",marginBottom:"0.2rem"}}>件名</label>
+                <input value={replySubject} onChange={e=>setReplySubject(e.target.value)}
+                  style={{width:"100%",padding:"0.45rem 0.65rem",borderRadius:5,border:"1px solid #c4b5fd",fontSize:"0.85rem",fontFamily:"inherit",boxSizing:"border-box",background:"white"}}/>
+              </div>
+              <div style={{marginBottom:"0.6rem"}}>
+                <label style={{display:"block",fontSize:"0.7rem",fontWeight:700,color:"#5b21b6",marginBottom:"0.2rem"}}>本文</label>
+                <textarea value={replyBody} onChange={e=>setReplyBody(e.target.value)}
+                  rows={12}
+                  style={{width:"100%",padding:"0.55rem 0.75rem",borderRadius:5,border:"1px solid #c4b5fd",fontSize:"0.82rem",fontFamily:"inherit",resize:"vertical",boxSizing:"border-box",lineHeight:1.6,background:"white"}}/>
+              </div>
+              <div style={{fontSize:"0.7rem",color:"#5b21b6",marginBottom:"0.55rem"}}>
+                📧 送信先: <b>{s.email}</b>
+              </div>
+              <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap"}}>
+                <button onClick={sendReplyMail} disabled={sendingMail || !s.email}
+                  style={{padding:"0.5rem 1rem",borderRadius:6,border:"none",background:sendingMail?"#9ca3af":"#059669",color:"white",fontSize:"0.78rem",fontWeight:800,cursor:sendingMail?"not-allowed":"pointer",fontFamily:"inherit"}}>
+                  {sendingMail ? "送信中..." : "📤 この内容で送信"}
+                </button>
+                <button onClick={copyReplyMail}
+                  style={{padding:"0.5rem 0.85rem",borderRadius:6,border:"1px solid #7c3aed",background:"white",color:"#7c3aed",fontSize:"0.78rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+                  📋 コピー
+                </button>
+                <button onClick={openInMailer}
+                  style={{padding:"0.5rem 0.85rem",borderRadius:6,border:"1px solid #7c3aed",background:"white",color:"#7c3aed",fontSize:"0.78rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+                  📨 メーラーで開く
+                </button>
+                <button onClick={generateReplyMail} disabled={generatingMail}
+                  style={{padding:"0.5rem 0.85rem",borderRadius:6,border:"1px solid #d1d5db",background:"white",color:"#6b7280",fontSize:"0.75rem",fontWeight:700,cursor:generatingMail?"default":"pointer",fontFamily:"inherit"}}>
+                  🔄 再生成
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -23964,23 +24167,7 @@ function AnnouncementDistribution({ announcementId, announcementTitle, currentUs
                   vendorName={v?.vendor_name || ""} vendorId={s.vendor_id}
                   announcementTitle={announcementTitle}
                   onCreateProject={async (sub, ctx) => {
-                    try {
-                      if (typeof window.__myDeskSetData !== "function") {
-                        alert("プロジェクト作成エラー");
-                        return;
-                      }
-                      const pjName = `${sub.company_name || "(企業名未入力)"} (${ctx.announcementTitle || "QR反応"})`;
-                      const newProject = {
-                        id: `pj_${Date.now()}_${Math.random().toString(36).slice(2,7)}`,
-                        name: pjName, stage: "新規", vendorId: ctx.vendorId || "",
-                        memo: `[QR反応から自動作成]\n発行業者: ${ctx.vendorName || "(不明)"}\n案内状: ${ctx.announcementTitle || "(不明)"}\n\n【お問い合わせ内容】\n会社名: ${sub.company_name || "(未入力)"}\n担当者: ${sub.contact_name || "(未入力)"}\n電話: ${sub.phone || "(未入力)"}\nメール: ${sub.email || "(未入力)"}\n\n【アンケート回答】\n${Object.entries(sub.form_data||{}).filter(([k,v])=>k&&v).map(([k,v])=>`・${k}: ${Array.isArray(v)?v.join(", "):v}`).join("\n") || "(なし)"}\n\n送信日時: ${new Date(sub.submitted_at).toLocaleString("ja-JP")}`,
-                        contactName: sub.contact_name || "", contactPhone: sub.phone || "", contactEmail: sub.email || "",
-                        createdAt: new Date().toISOString(), createdBy: currentUser?.id || "",
-                        source: "qr_form", qrSubmissionId: sub.id,
-                      };
-                      window.__myDeskSetData(prev => ({...prev, projects: [...(prev.projects || []), newProject]}));
-                      alert(`✅ プロジェクト「${pjName}」を作成しました`);
-                    } catch(e) { alert("プロジェクト作成エラー: " + e.message); }
+                    await createProjectFromQrSubmission(sub, ctx, currentUser?.id);
                   }}
                 />
               );
