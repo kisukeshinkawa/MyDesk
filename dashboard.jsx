@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v126-bulk-print"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v128-bulk-enriched"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -247,6 +247,47 @@ let __pendingSaveData = null;
 let __isCurrentlySaving = false;
 let __lastSavedHash = "";
 const SAVE_DEBOUNCE_MS = 1500;
+
+// ─── 案内状の変数差し込み: {{QR_CODE}}, {{VENDOR_NAME}}, {{DATE}} 等を置換 ─────
+function renderAnnouncementTemplate(html, vendor, qrImgUrl) {
+  if (!html) return "";
+  const today = new Date();
+  const yyyy = today.getFullYear();
+  const mm = String(today.getMonth()+1).padStart(2,"0");
+  const dd = String(today.getDate()).padStart(2,"0");
+  const dateJp = `${yyyy}年${today.getMonth()+1}月${today.getDate()}日`;
+  const dateIso = `${yyyy}-${mm}-${dd}`;
+  
+  const vendorName = vendor?.vendor_name || vendor?.name || "";
+  const vendorPhone = vendor?.phone || vendor?.tel || "";
+  const vendorEmail = vendor?.email || "";
+  const vendorAddress = vendor?.address || "";
+  
+  return html
+    // QRコード
+    .replace(/\{\{QR_CODE\}\}/g, qrImgUrl 
+      ? `<img src="${qrImgUrl}" style="width:150px;height:150px;display:inline-block;" alt="QR"/>` 
+      : '<div style="display:inline-block;padding:0.5rem;background:#f0f0f0;border:1px dashed #999;border-radius:4px;font-size:0.7rem;color:#666;">[QRコード]</div>')
+    // 業者情報
+    .replace(/\{\{VENDOR_NAME\}\}/g, vendorName)
+    .replace(/\{\{業者名\}\}/g, vendorName)
+    .replace(/\{\{VENDOR_PHONE\}\}/g, vendorPhone)
+    .replace(/\{\{業者電話\}\}/g, vendorPhone)
+    .replace(/\{\{VENDOR_EMAIL\}\}/g, vendorEmail)
+    .replace(/\{\{業者メアド\}\}/g, vendorEmail)
+    .replace(/\{\{VENDOR_ADDRESS\}\}/g, vendorAddress)
+    .replace(/\{\{業者住所\}\}/g, vendorAddress)
+    // 日付
+    .replace(/\{\{DATE\}\}/g, dateJp)
+    .replace(/\{\{日付\}\}/g, dateJp)
+    .replace(/\{\{DATE_ISO\}\}/g, dateIso)
+    .replace(/\{\{YEAR\}\}/g, String(yyyy))
+    .replace(/\{\{年\}\}/g, String(yyyy))
+    .replace(/\{\{MONTH\}\}/g, String(today.getMonth()+1))
+    .replace(/\{\{月\}\}/g, String(today.getMonth()+1))
+    .replace(/\{\{DAY\}\}/g, String(today.getDate()))
+    .replace(/\{\{日\}\}/g, String(today.getDate()));
+}
 
 // ─── QR反応から営業データ（プロジェクト + 企業 + 名刺）を作成する共通ヘルパー ─────
 async function createProjectFromQrSubmission(sub, ctx, currentUserId) {
@@ -23648,10 +23689,16 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
     if (!qrData?.tracking_id) return;
     setGenerating(true);
     try {
-      const html = activeAnnouncement.content_html.replace(
-        /\{\{QR_CODE\}\}/g,
-        `<img src="${qrImageUrl}" style="width:150px;height:150px;display:inline-block;" alt="QR"/>`
-      );
+      // 業者情報を window.__myDeskGetData から取得（電話・メアド・住所も含めるため）
+      let vendorObj = { vendor_name: vendorName };
+      if (typeof window.__myDeskGetData === "function") {
+        try {
+          const d = window.__myDeskGetData();
+          const v = (d?.vendors || []).find(x => x.id === vendorId);
+          if (v) vendorObj = { ...v, vendor_name: v.name };
+        } catch(e) {}
+      }
+      const html = renderAnnouncementTemplate(activeAnnouncement.content_html, vendorObj, qrImageUrl);
       const win = window.open("", "_blank", "width=900,height=1200");
       if (!win) { alert("ポップアップがブロックされました。許可してください"); setGenerating(false); return; }
       win.document.write(`<!DOCTYPE html>
@@ -24073,7 +24120,13 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
   const [searchTerm, setSearchTerm] = React.useState("");
   const [showAllVendors, setShowAllVendors] = React.useState(false); // 全業者から選ぶモード
   const [allVendors, setAllVendors] = React.useState([]); // 全業者リスト（main_data から）
+  const [allPrefs, setAllPrefs] = React.useState([]);
+  const [allMunis, setAllMunis] = React.useState([]);
   const [bulkPrinting, setBulkPrinting] = React.useState(false);
+  // 営業の業者と同じフィルター
+  const [filterPref, setFilterPref] = React.useState("");
+  const [filterMuni, setFilterMuni] = React.useState("");
+  const [filterPermit, setFilterPermit] = React.useState("");
   
   const loadAll = React.useCallback(async () => {
     setLoading(true);
@@ -24088,12 +24141,14 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
     setLoading(false);
   }, [announcementId]);
   
-  // App から全業者リストを取得
+  // App から全業者リスト + 都道府県/市町村を取得
   React.useEffect(() => {
     if (typeof window.__myDeskGetData === "function") {
       try {
         const d = window.__myDeskGetData();
         setAllVendors(d?.vendors || []);
+        setAllPrefs(d?.prefectures || []);
+        setAllMunis(d?.municipalities || []);
       } catch(e) {}
     }
   }, [showAllVendors]);
@@ -24139,15 +24194,24 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
       
       // 印刷ウィンドウを生成
       const baseUrl = window.location.origin;
+      // 業者情報の補強（電話・メアド・住所を取得）
+      let allVendorsData = [];
+      if (typeof window.__myDeskGetData === "function") {
+        try { allVendorsData = window.__myDeskGetData()?.vendors || []; } catch(e) {}
+      }
       const pages = selectedVendors.map((v, idx) => {
         const trackingId = qrMap[v.vendor_id];
         if (!trackingId) return null;
         const url = `${baseUrl}/?qr=${trackingId}`;
         const qrImgUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(url)}&margin=2`;
-        const html = (announcement.content_html || "").replace(
-          /\{\{QR_CODE\}\}/g,
-          `<img src="${qrImgUrl}" style="width:150px;height:150px;display:inline-block;" alt="QR"/>`
-        );
+        // 補強: id から完全情報を取得
+        const fullVendor = allVendorsData.find(av => av.id === v.vendor_id) || {};
+        const enrichedVendor = {
+          ...v,
+          ...fullVendor,
+          vendor_name: v.vendor_name || fullVendor.name || "",
+        };
+        const html = renderAnnouncementTemplate(announcement.content_html, enrichedVendor, qrImgUrl);
         const pageBreak = idx < selectedVendors.length - 1 ? '<div style="page-break-after:always;"></div>' : '';
         return `<div class="page" data-vendor="${v.vendor_name||''}">
   <div class="vendor-header">配布先: ${v.vendor_name || "(業者名なし)"}</div>
@@ -24244,22 +24308,78 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
       {/* 業者リスト表示時の検索 + 一括PDF + 「全業者から選ぶ」モード切替 */}
       {!loading && tab === "vendors" && (
         <div style={{marginBottom:"0.6rem",padding:"0.6rem 0.75rem",background:"#f9fafb",borderRadius:8,border:`1px solid ${C.borderLight}`}}>
+          {/* モード切替バー */}
           <div style={{display:"flex",gap:"0.4rem",alignItems:"center",flexWrap:"wrap",marginBottom:"0.5rem"}}>
-            <input value={searchTerm} onChange={e=>setSearchTerm(e.target.value)}
-              placeholder="🔍 業者名で検索..."
-              style={{flex:1,minWidth:150,padding:"0.4rem 0.65rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"inherit"}}/>
-            <button onClick={()=>{
-              setShowAllVendors(s=>!s);
-              setSelectedIds(new Set());
-            }}
-              style={{padding:"0.4rem 0.8rem",borderRadius:5,border:`1px solid ${showAllVendors?"#2563eb":C.border}`,background:showAllVendors?"#dbeafe":"white",color:showAllVendors?"#1e40af":C.textSub,fontSize:"0.75rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-              {showAllVendors ? "✓ 全業者表示中" : "🔍 全業者から選ぶ"}
-            </button>
+            {!showAllVendors ? (
+              <>
+                <input value={searchTerm} onChange={e=>setSearchTerm(e.target.value)}
+                  placeholder="🔍 業者名で検索..."
+                  style={{flex:1,minWidth:150,padding:"0.4rem 0.65rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"inherit"}}/>
+                <button onClick={()=>{
+                  setShowAllVendors(true);
+                  setSelectedIds(new Set());
+                }}
+                  style={{padding:"0.4rem 0.8rem",borderRadius:5,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.75rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                  🔍 全業者から選ぶ
+                </button>
+              </>
+            ) : (
+              <>
+                <div style={{fontSize:"0.8rem",fontWeight:800,color:"#1e40af",flex:1,minWidth:120}}>
+                  📋 全業者から選ぶ
+                </div>
+                <button onClick={()=>{
+                  setShowAllVendors(false);
+                  setSelectedIds(new Set());
+                  setSearchTerm("");
+                  setFilterPref("");
+                  setFilterMuni("");
+                  setFilterPermit("");
+                }}
+                  style={{padding:"0.4rem 0.8rem",borderRadius:5,border:"1px solid #dc2626",background:"white",color:"#dc2626",fontSize:"0.75rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                  ✕ 選択画面を閉じる
+                </button>
+              </>
+            )}
           </div>
+          
+          {/* 全業者モード時のフィルタバー */}
+          {showAllVendors && (
+            <div style={{display:"flex",gap:"0.4rem",alignItems:"center",flexWrap:"wrap",marginBottom:"0.5rem",padding:"0.5rem 0.6rem",background:"white",borderRadius:6,border:`1px solid ${C.borderLight}`}}>
+              <input value={searchTerm} onChange={e=>setSearchTerm(e.target.value)}
+                placeholder="🔍 業者名で検索..."
+                style={{flex:1,minWidth:130,padding:"0.4rem 0.6rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}/>
+              <select value={filterPref} onChange={e=>{setFilterPref(e.target.value);setFilterMuni("");}}
+                style={{padding:"0.4rem 0.6rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.75rem",fontFamily:"inherit",background:"white"}}>
+                <option value="">📍 都道府県</option>
+                {allPrefs.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+              {filterPref && (
+                <select value={filterMuni} onChange={e=>setFilterMuni(e.target.value)}
+                  style={{padding:"0.4rem 0.6rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.75rem",fontFamily:"inherit",background:"white"}}>
+                  <option value="">🏛 市町村</option>
+                  {allMunis.filter(m=>String(m.prefectureId)===String(filterPref)).map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
+                </select>
+              )}
+              <select value={filterPermit} onChange={e=>setFilterPermit(e.target.value)}
+                style={{padding:"0.4rem 0.6rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.75rem",fontFamily:"inherit",background:"white"}}>
+                <option value="">🪪 許可区分</option>
+                {PERMIT_TYPES.map(pt=><option key={pt} value={pt}>{pt}</option>)}
+              </select>
+              {(searchTerm || filterPref || filterMuni || filterPermit) && (
+                <button onClick={()=>{setSearchTerm("");setFilterPref("");setFilterMuni("");setFilterPermit("");}}
+                  style={{padding:"0.35rem 0.6rem",borderRadius:5,border:"1px dashed #d1d5db",background:"white",color:"#6b7280",fontSize:"0.7rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                  ✕ クリア
+                </button>
+              )}
+            </div>
+          )}
+          
           {(() => {
             const listSource = showAllVendors ? allVendors.map(av => {
               const existing = vendors.find(v => v.vendor_id === av.id);
               return {
+                ...av,
                 vendor_id: av.id,
                 vendor_name: av.name,
                 access_count: existing?.access_count || 0,
@@ -24268,9 +24388,29 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
                 _hasQr: !!existing,
               };
             }) : vendors;
-            const filtered = searchTerm.trim() 
-              ? listSource.filter(v => (v.vendor_name||"").toLowerCase().includes(searchTerm.toLowerCase()))
-              : listSource;
+            // フィルタリング
+            let filtered = listSource;
+            if (searchTerm.trim()) {
+              const q = searchTerm.toLowerCase();
+              filtered = filtered.filter(v => (v.vendor_name||"").toLowerCase().includes(q) || (v.name||"").toLowerCase().includes(q));
+            }
+            if (showAllVendors) {
+              if (filterPref) {
+                const muniIdsInPref = new Set(allMunis.filter(m=>String(m.prefectureId)===String(filterPref)).map(m=>String(m.id)));
+                filtered = filtered.filter(v => {
+                  const vPrefs = (v.prefectureIds||[]).map(String);
+                  if (vPrefs.includes(String(filterPref))) return true;
+                  const vMunis = (v.municipalityIds||[]).map(String);
+                  return vMunis.some(mid => muniIdsInPref.has(mid));
+                });
+              }
+              if (filterMuni) {
+                filtered = filtered.filter(v => (v.municipalityIds||[]).map(String).includes(String(filterMuni)));
+              }
+              if (filterPermit) {
+                filtered = filtered.filter(v => (v.permitTypes||[]).includes(filterPermit));
+              }
+            }
             const allSelected = filtered.length > 0 && filtered.every(v => selectedIds.has(v.vendor_id));
             const someSelected = filtered.some(v => selectedIds.has(v.vendor_id));
             const selectedCount = selectedIds.size;
@@ -24306,6 +24446,7 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
           const listSource = showAllVendors ? allVendors.map(av => {
             const existing = vendors.find(v => v.vendor_id === av.id);
             return {
+              ...av,
               vendor_id: av.id,
               vendor_name: av.name,
               access_count: existing?.access_count || 0,
@@ -24314,22 +24455,41 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
               _hasQr: !!existing,
             };
           }) : vendors;
-          const filtered = searchTerm.trim() 
-            ? listSource.filter(v => (v.vendor_name||"").toLowerCase().includes(searchTerm.toLowerCase()))
-            : listSource;
+          let filtered = listSource;
+          if (searchTerm.trim()) {
+            const q = searchTerm.toLowerCase();
+            filtered = filtered.filter(v => (v.vendor_name||"").toLowerCase().includes(q) || (v.name||"").toLowerCase().includes(q));
+          }
+          if (showAllVendors) {
+            if (filterPref) {
+              const muniIdsInPref = new Set(allMunis.filter(m=>String(m.prefectureId)===String(filterPref)).map(m=>String(m.id)));
+              filtered = filtered.filter(v => {
+                const vPrefs = (v.prefectureIds||[]).map(String);
+                if (vPrefs.includes(String(filterPref))) return true;
+                const vMunis = (v.municipalityIds||[]).map(String);
+                return vMunis.some(mid => muniIdsInPref.has(mid));
+              });
+            }
+            if (filterMuni) {
+              filtered = filtered.filter(v => (v.municipalityIds||[]).map(String).includes(String(filterMuni)));
+            }
+            if (filterPermit) {
+              filtered = filtered.filter(v => (v.permitTypes||[]).includes(filterPermit));
+            }
+          }
           if (filtered.length === 0) {
             return (
               <div style={{padding:"1.5rem",textAlign:"center",color:C.textMuted,fontSize:"0.8rem"}}>
                 {showAllVendors ? "該当する業者がありません" : "まだ業者の配布はありません"}<br/>
                 <span style={{fontSize:"0.7rem"}}>
-                  {showAllVendors ? "検索ワードを変えてみてください" : "「🔍 全業者から選ぶ」で業者を追加できます"}
+                  {showAllVendors ? "検索ワードやフィルタを変えてみてください" : "「🔍 全業者から選ぶ」で業者を追加できます"}
                 </span>
               </div>
             );
           }
           return (
             <div style={{display:"flex",flexDirection:"column",gap:"0.3rem",maxHeight:400,overflowY:"auto"}}>
-              {filtered.map(v => {
+              {filtered.slice(0, 500).map(v => {
                 const checked = selectedIds.has(v.vendor_id);
                 return (
                   <label key={v.vendor_id} style={{padding:"0.5rem 0.7rem",background:checked?"#eff6ff":"#fafafa",border:`1px solid ${checked?"#93c5fd":"#e5e7eb"}`,borderRadius:6,display:"flex",alignItems:"center",gap:"0.5rem",flexWrap:"wrap",cursor:"pointer"}}>
@@ -24354,6 +24514,11 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
                   </label>
                 );
               })}
+              {filtered.length > 500 && (
+                <div style={{padding:"0.7rem",textAlign:"center",fontSize:"0.72rem",color:"#92400e",background:"#fef3c7",borderRadius:5}}>
+                  ⚠️ {filtered.length}件中 500件のみ表示中。さらに絞り込んでください
+                </div>
+              )}
             </div>
           );
         })()
@@ -24629,6 +24794,11 @@ function AnnouncementSettings({ currentUser, C }) {
               ["右揃え", '<div style="text-align:right;">○○○○</div>'],
               ["枠付きボックス", '<div style="padding:1rem;border:2px solid #2563eb;border-radius:8px;margin:1rem 0;">○○○○</div>'],
               ["QRコード", "{{QR_CODE}}"],
+              ["業者名", "{{業者名}}"],
+              ["業者電話", "{{業者電話}}"],
+              ["業者メアド", "{{業者メアド}}"],
+              ["業者住所", "{{業者住所}}"],
+              ["日付", "{{日付}}"],
               ["区切り線", "<hr/>"],
             ].map(([label, code]) => (
               <button key={label} onClick={()=>{
@@ -24648,8 +24818,19 @@ function AnnouncementSettings({ currentUser, C }) {
                 • <code>{`<p>段落</p>`}</code> / <code>{`<br/>`}</code> 改行<br/>
                 • <code>{`<b>太字</b>`}</code> / <code>{`<i>斜体</i>`}</code><br/>
                 • <code>{`<ul><li>項目</li></ul>`}</code> 箇条書き<br/>
-                • <code>{`<div style="text-align:center;">中央</div>`}</code><br/>
-                • <b>QRコード</b>: <code>{`{{QR_CODE}}`}</code> を書いた場所に業者固有のQRが差し込まれます
+                • <code>{`<div style="text-align:center;">中央</div>`}</code>
+              </div>
+              <div style={{fontWeight:800,marginTop:"0.6rem",marginBottom:"0.3rem",color:"#92400e"}}>🔀 変動型テキスト（自動置換される変数）</div>
+              <div style={{fontSize:"0.72rem"}}>
+                配布時に各業者の情報に自動で置き換わります：<br/>
+                • <code>{`{{QR_CODE}}`}</code> → 業者固有の QR コード画像<br/>
+                • <code>{`{{業者名}}`}</code> → 例: 株式会社○○<br/>
+                • <code>{`{{業者電話}}`}</code> → 例: 092-XXX-XXXX<br/>
+                • <code>{`{{業者メアド}}`}</code> → 業者のメールアドレス<br/>
+                • <code>{`{{業者住所}}`}</code> → 業者の住所<br/>
+                • <code>{`{{日付}}`}</code> → 印刷日（例: 2026年6月9日）<br/>
+                <br/>
+                例: <code>{`<p>{{業者名}} 御中</p>`}</code> → 印刷時「株式会社○○ 御中」に変換
               </div>
             </div>
           )}
