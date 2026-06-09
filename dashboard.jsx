@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v118-announcement-editor"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v119-html-guide"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -23131,6 +23131,7 @@ function AnnouncementSettings({ currentUser, C }) {
   const [editContent, setEditContent] = React.useState("");
   const [editDescription, setEditDescription] = React.useState("");
   const [editIsCurrent, setEditIsCurrent] = React.useState(true);
+  const [showHtmlGuide, setShowHtmlGuide] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   
   const loadList = React.useCallback(async () => {
@@ -23297,16 +23298,113 @@ function AnnouncementSettings({ currentUser, C }) {
         
         {/* 本文エディタ */}
         <div style={{background:"white",borderRadius:"1rem",padding:"1rem 1.25rem",border:`1px solid ${C.border}`}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.5rem"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.5rem",flexWrap:"wrap",gap:"0.4rem"}}>
             <label style={{fontSize:"0.78rem",fontWeight:700,color:C.textSub}}>本文 (HTML)</label>
-            <div style={{fontSize:"0.68rem",color:C.textMuted}}>
-              💡 <code>{`{{QR_CODE}}`}</code> をQRコードの差し込み位置に書いてください
-            </div>
+            <button onClick={()=>setShowHtmlGuide(s=>!s)}
+              style={{padding:"0.25rem 0.6rem",borderRadius:5,border:`1px solid ${C.border}`,background:showHtmlGuide?"#dbeafe":"white",color:showHtmlGuide?"#1e40af":C.textSub,fontSize:"0.7rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+              📖 HTMLタグの使い方 {showHtmlGuide ? "▲" : "▼"}
+            </button>
           </div>
+          
+          {/* クイック挿入ツールバー */}
+          <div style={{display:"flex",gap:"0.3rem",flexWrap:"wrap",marginBottom:"0.5rem",padding:"0.4rem 0.5rem",background:"#f9fafb",borderRadius:6,border:`1px solid ${C.borderLight}`}}>
+            {[
+              ["見出し", "<h1>○○○○</h1>"],
+              ["小見出し", "<h2>○○○○</h2>"],
+              ["段落", "<p>○○○○</p>"],
+              ["太字", "<b>○○○○</b>"],
+              ["改行", "<br/>"],
+              ["箇条書き", "<ul>\n  <li>項目1</li>\n  <li>項目2</li>\n</ul>"],
+              ["番号付き", "<ol>\n  <li>項目1</li>\n  <li>項目2</li>\n</ol>"],
+              ["中央揃え", '<div style="text-align:center;">○○○○</div>'],
+              ["右揃え", '<div style="text-align:right;">○○○○</div>'],
+              ["枠付きボックス", '<div style="padding:1rem;border:2px solid #2563eb;border-radius:8px;margin:1rem 0;">○○○○</div>'],
+              ["QRコード", "{{QR_CODE}}"],
+              ["区切り線", "<hr/>"],
+            ].map(([label, code]) => (
+              <button key={label} onClick={()=>{
+                // カーソル位置に挿入（簡易版：末尾に追加）
+                setEditContent(prev => prev + (prev.endsWith("\n") || prev === "" ? "" : "\n") + code + "\n");
+              }}
+                style={{padding:"0.2rem 0.55rem",borderRadius:4,border:`1px solid ${C.border}`,background:"white",color:C.text,fontSize:"0.7rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                ＋{label}
+              </button>
+            ))}
+          </div>
+          
+          {/* HTMLガイド（折りたたみ） */}
+          {showHtmlGuide && (
+            <div style={{background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:8,padding:"0.85rem 1rem",marginBottom:"0.5rem",fontSize:"0.78rem",lineHeight:1.7,color:"#78350f"}}>
+              <div style={{fontWeight:800,marginBottom:"0.4rem",color:"#92400e"}}>📖 HTMLタグの使い方ガイド</div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:"0.5rem 1rem"}}>
+                <div>
+                  <b>見出し</b><br/>
+                  <code style={{background:"white",padding:"0.05rem 0.3rem",borderRadius:3,fontSize:"0.72rem"}}>{'<h1>大見出し</h1>'}</code><br/>
+                  <code style={{background:"white",padding:"0.05rem 0.3rem",borderRadius:3,fontSize:"0.72rem"}}>{'<h2>小見出し</h2>'}</code>
+                </div>
+                <div>
+                  <b>段落・改行</b><br/>
+                  <code style={{background:"white",padding:"0.05rem 0.3rem",borderRadius:3,fontSize:"0.72rem"}}>{'<p>段落テキスト</p>'}</code><br/>
+                  <code style={{background:"white",padding:"0.05rem 0.3rem",borderRadius:3,fontSize:"0.72rem"}}>{'<br/>'}</code> 改行
+                </div>
+                <div>
+                  <b>文字装飾</b><br/>
+                  <code style={{background:"white",padding:"0.05rem 0.3rem",borderRadius:3,fontSize:"0.72rem"}}>{'<b>太字</b>'}</code><br/>
+                  <code style={{background:"white",padding:"0.05rem 0.3rem",borderRadius:3,fontSize:"0.72rem"}}>{'<i>斜体</i>'}</code><br/>
+                  <code style={{background:"white",padding:"0.05rem 0.3rem",borderRadius:3,fontSize:"0.72rem"}}>{'<u>下線</u>'}</code>
+                </div>
+                <div>
+                  <b>リスト</b><br/>
+                  <code style={{background:"white",padding:"0.05rem 0.3rem",borderRadius:3,fontSize:"0.72rem"}}>{'<ul><li>項目</li></ul>'}</code><br/>
+                  → 箇条書き<br/>
+                  <code style={{background:"white",padding:"0.05rem 0.3rem",borderRadius:3,fontSize:"0.72rem"}}>{'<ol><li>項目</li></ol>'}</code><br/>
+                  → 番号付き
+                </div>
+                <div>
+                  <b>ボックス（枠で囲む）</b><br/>
+                  <code style={{background:"white",padding:"0.05rem 0.3rem",borderRadius:3,fontSize:"0.7rem",display:"block",whiteSpace:"pre-wrap",lineHeight:1.4}}>{'<div style="padding:1rem;\nborder:2px solid #2563eb;\nborder-radius:8px;">\n  ○○○○\n</div>'}</code>
+                </div>
+                <div>
+                  <b>整列</b><br/>
+                  <code style={{background:"white",padding:"0.05rem 0.3rem",borderRadius:3,fontSize:"0.7rem"}}>{'<div style="text-align:center;">中央</div>'}</code><br/>
+                  <code style={{background:"white",padding:"0.05rem 0.3rem",borderRadius:3,fontSize:"0.7rem"}}>{'<div style="text-align:right;">右</div>'}</code>
+                </div>
+                <div>
+                  <b>色・サイズ</b><br/>
+                  <code style={{background:"white",padding:"0.05rem 0.3rem",borderRadius:3,fontSize:"0.7rem"}}>{'<span style="color:red;">赤文字</span>'}</code><br/>
+                  <code style={{background:"white",padding:"0.05rem 0.3rem",borderRadius:3,fontSize:"0.7rem"}}>{'<span style="font-size:1.5rem;">大きく</span>'}</code>
+                </div>
+                <div>
+                  <b>区切り線</b><br/>
+                  <code style={{background:"white",padding:"0.05rem 0.3rem",borderRadius:3,fontSize:"0.72rem"}}>{'<hr/>'}</code> 横線
+                </div>
+                <div>
+                  <b>テーブル</b><br/>
+                  <code style={{background:"white",padding:"0.05rem 0.3rem",borderRadius:3,fontSize:"0.68rem",display:"block",whiteSpace:"pre-wrap",lineHeight:1.4}}>{'<table border="1">\n  <tr><th>項目</th><th>値</th></tr>\n  <tr><td>○○</td><td>××</td></tr>\n</table>'}</code>
+                </div>
+                <div style={{background:"#fef3c7",padding:"0.5rem 0.65rem",borderRadius:6,border:"1px solid #fcd34d"}}>
+                  <b>🎯 QRコード（重要）</b><br/>
+                  本文中の <code style={{background:"white",padding:"0.05rem 0.3rem",borderRadius:3}}>{`{{QR_CODE}}`}</code> を書いた場所に、各業者固有のQRが差し込まれます。<br/>
+                  通常は<b>右下のお問い合わせボックス内</b>に配置します。
+                </div>
+              </div>
+              <div style={{marginTop:"0.6rem",padding:"0.5rem 0.65rem",background:"#e0f2fe",borderRadius:6,border:"1px solid #7dd3fc",color:"#075985"}}>
+                <b>💡 ヒント</b><br/>
+                • タグは必ず <code>{`<開始タグ>`}</code> と <code>{`</閉じタグ/>`}</code> をペアにする<br/>
+                • 上のツールバーボタンから簡単に挿入できます<br/>
+                • プレビューを見ながら調整してください<br/>
+                • 不安な場合はテンプレートをそのまま使うのが安全
+              </div>
+            </div>
+          )}
+          
           <textarea value={editContent} onChange={e=>setEditContent(e.target.value)}
             placeholder="HTML 形式で文書を作成してください"
             rows={20}
             style={{width:"100%",padding:"0.7rem 0.85rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"'Menlo','Courier New',monospace",lineHeight:1.5,resize:"vertical",boxSizing:"border-box",minHeight:300}}/>
+          <div style={{marginTop:"0.4rem",fontSize:"0.68rem",color:C.textMuted}}>
+            💡 <code>{`{{QR_CODE}}`}</code> をQRコードの差し込み位置に書いてください（業者ごとに自動で差し込まれます）
+          </div>
         </div>
         
         {/* プレビュー */}
