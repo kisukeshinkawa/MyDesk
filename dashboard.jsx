@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v122-qr-detail-conditional"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v123-option-editor"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -24236,23 +24236,64 @@ function AnnouncementSettings({ currentUser, C }) {
                       
                       {/* 選択肢入力（select/radio/checkbox の時のみ） */}
                       {hasOptions && (
-                        <div style={{marginBottom:"0.5rem",padding:"0.6rem 0.8rem",background:"#f9fafb",borderRadius:6,border:`1px solid ${C.borderLight}`}}>
-                          <label style={{display:"block",fontSize:"0.7rem",fontWeight:700,color:C.textSub,marginBottom:"0.25rem"}}>選択肢（カンマ区切り）</label>
-                          <input value={(f.options||[]).join(", ")} onChange={e=>{
-                            const next=[...formConfig.extra_fields];
-                            next[idx]={...next[idx], options:e.target.value.split(",").map(s=>s.trim()).filter(Boolean), _isNew:false};
-                            setFormConfig(p=>({...p, extra_fields:next}));
-                          }} placeholder="例: 廃棄物処理, リサイクル, その他"
-                            style={{width:"100%",padding:"0.45rem 0.65rem",borderRadius:4,border:`1px solid ${C.border}`,fontSize:"0.8rem",fontFamily:"inherit",boxSizing:"border-box"}}/>
-                          {(f.options||[]).length > 0 && (
-                            <div style={{display:"flex",gap:"0.3rem",flexWrap:"wrap",marginTop:"0.4rem"}}>
-                              {(f.options||[]).map((o,i)=>(
-                                <span key={i} style={{fontSize:"0.7rem",padding:"0.15rem 0.5rem",background:"white",border:`1px solid ${C.border}`,borderRadius:3,color:C.textSub}}>
-                                  {o}
-                                </span>
+                        <div style={{marginBottom:"0.5rem",padding:"0.7rem 0.85rem",background:"#f9fafb",borderRadius:6,border:`1px solid ${C.borderLight}`}}>
+                          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.4rem"}}>
+                            <label style={{fontSize:"0.75rem",fontWeight:700,color:C.textSub}}>選択肢</label>
+                            <span style={{fontSize:"0.65rem",color:C.textMuted}}>{(f.options||[]).length}個</span>
+                          </div>
+                          {(f.options||[]).length === 0 ? (
+                            <div style={{fontSize:"0.72rem",color:"#9ca3af",padding:"0.6rem 0.7rem",background:"white",borderRadius:5,border:"1px dashed #d1d5db",textAlign:"center",marginBottom:"0.4rem"}}>
+                              選択肢がまだありません
+                            </div>
+                          ) : (
+                            <div style={{display:"flex",flexDirection:"column",gap:"0.3rem",marginBottom:"0.4rem"}}>
+                              {(f.options||[]).map((o, oIdx) => (
+                                <div key={oIdx} style={{display:"flex",gap:"0.3rem",alignItems:"center"}}>
+                                  <div style={{fontSize:"0.7rem",fontWeight:700,color:"#9ca3af",width:24,textAlign:"right",flexShrink:0}}>{oIdx+1}.</div>
+                                  <input value={o} onChange={e=>{
+                                    const next=[...formConfig.extra_fields];
+                                    const nextOptions=[...(next[idx].options||[])];
+                                    nextOptions[oIdx]=e.target.value;
+                                    next[idx]={...next[idx], options:nextOptions, _isNew:false};
+                                    setFormConfig(p=>({...p, extra_fields:next}));
+                                  }} placeholder={`選択肢 ${oIdx+1}`}
+                                    style={{flex:1,padding:"0.4rem 0.6rem",borderRadius:4,border:`1px solid ${C.border}`,fontSize:"0.8rem",fontFamily:"inherit",background:"white"}}/>
+                                  <button disabled={oIdx===0} onClick={()=>{
+                                    const next=[...formConfig.extra_fields];
+                                    const nextOptions=[...(next[idx].options||[])];
+                                    [nextOptions[oIdx-1], nextOptions[oIdx]]=[nextOptions[oIdx], nextOptions[oIdx-1]];
+                                    next[idx]={...next[idx], options:nextOptions, _isNew:false};
+                                    setFormConfig(p=>({...p, extra_fields:next}));
+                                  }}
+                                    style={{padding:"0.3rem 0.45rem",borderRadius:4,border:`1px solid ${C.border}`,background:"white",color:oIdx===0?"#d1d5db":"#374151",fontSize:"0.7rem",fontWeight:700,cursor:oIdx===0?"not-allowed":"pointer",fontFamily:"inherit",flexShrink:0}}>↑</button>
+                                  <button disabled={oIdx===(f.options||[]).length-1} onClick={()=>{
+                                    const next=[...formConfig.extra_fields];
+                                    const nextOptions=[...(next[idx].options||[])];
+                                    [nextOptions[oIdx], nextOptions[oIdx+1]]=[nextOptions[oIdx+1], nextOptions[oIdx]];
+                                    next[idx]={...next[idx], options:nextOptions, _isNew:false};
+                                    setFormConfig(p=>({...p, extra_fields:next}));
+                                  }}
+                                    style={{padding:"0.3rem 0.45rem",borderRadius:4,border:`1px solid ${C.border}`,background:"white",color:oIdx===(f.options||[]).length-1?"#d1d5db":"#374151",fontSize:"0.7rem",fontWeight:700,cursor:oIdx===(f.options||[]).length-1?"not-allowed":"pointer",fontFamily:"inherit",flexShrink:0}}>↓</button>
+                                  <button onClick={()=>{
+                                    const next=[...formConfig.extra_fields];
+                                    const nextOptions=[...(next[idx].options||[])];
+                                    nextOptions.splice(oIdx,1);
+                                    next[idx]={...next[idx], options:nextOptions, _isNew:false};
+                                    setFormConfig(p=>({...p, extra_fields:next}));
+                                  }}
+                                    style={{padding:"0.3rem 0.5rem",borderRadius:4,border:"1px solid #fca5a5",background:"white",color:"#dc2626",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🗑</button>
+                                </div>
                               ))}
                             </div>
                           )}
+                          <button onClick={()=>{
+                            const next=[...formConfig.extra_fields];
+                            next[idx]={...next[idx], options:[...(next[idx].options||[]), ""], _isNew:false};
+                            setFormConfig(p=>({...p, extra_fields:next}));
+                          }}
+                            style={{padding:"0.4rem 0.85rem",borderRadius:5,border:"1px dashed #2563eb",background:"#eff6ff",color:"#2563eb",fontSize:"0.75rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                            ＋ 選択肢を追加
+                          </button>
                         </div>
                       )}
                       
