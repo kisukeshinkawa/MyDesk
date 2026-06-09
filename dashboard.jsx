@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v128-bulk-enriched"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v129-overwrite-mode"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -24623,13 +24623,13 @@ function AnnouncementSettings({ currentUser, C }) {
     });
   };
   
-  const openEdit = async (id) => {
+  const openEdit = async (id, mode="copy") => {
     try {
       const res = await fetch(`${DB_API_BASE}/announcements/${id}`, { headers: DB_API_HEADERS });
       if (!res.ok) throw new Error("HTTP "+res.status);
       const j = await res.json();
       const item = j.item;
-      setEditing({...item, mode:"copy"});
+      setEditing({...item, mode});  // "copy" or "overwrite"
       setEditTitle(item.title || "");
       setEditContent(item.content_html || "");
       setEditDescription(item.description || "");
@@ -24700,6 +24700,47 @@ function AnnouncementSettings({ currentUser, C }) {
     setSaving(false);
   };
   
+  const saveOverwrite = async () => {
+    if (!editTitle.trim()) { alert("タイトルを入力してください"); return; }
+    if (!editContent.trim()) { alert("本文を入力してください"); return; }
+    // editing がオブジェクトで id を持っている場合のみ上書き
+    if (!editing || typeof editing !== "object" || !editing.id) {
+      alert("上書き対象が不明です。新バージョンとして保存してください");
+      return;
+    }
+    const versionLabel = `v${editing.version}: ${editing.title}`;
+    if (!window.confirm(`⚠️ 既存バージョン「${versionLabel}」を上書きします。\n\n配布済みQRはそのまま動作しますが、開いた時の本文・フォームが更新されます。\n本当に上書きしますか？`)) return;
+    setSaving(true);
+    try {
+      const cleanFormConfig = {
+        ...formConfig,
+        extra_fields: (formConfig.extra_fields||[]).map(f => {
+          const {_isNew, ...rest} = f;
+          return rest;
+        }),
+      };
+      const res = await fetch(`${DB_API_BASE}/announcements/${editing.id}`, {
+        method:"PATCH", headers: DB_API_HEADERS,
+        body: JSON.stringify({
+          title: editTitle.trim(),
+          content_html: editContent,
+          paper_size: "A4",
+          description: editDescription.trim(),
+          form_config: cleanFormConfig,
+        }),
+      });
+      if (res.ok) {
+        alert(`✅ v${editing.version} を上書き保存しました`);
+        setEditing(null);
+        loadList();
+      } else {
+        const j = await res.json();
+        alert("上書きエラー: " + (j.error || res.status));
+      }
+    } catch(e) { alert("上書きエラー: " + e.message); }
+    setSaving(false);
+  };
+  
   const setCurrent = async (id) => {
     if (!window.confirm(`このバージョンを現行版に設定しますか？\n\n業者にQRから配布される案内状は、常に現行版が使われます。`)) return;
     try {
@@ -24733,22 +24774,75 @@ function AnnouncementSettings({ currentUser, C }) {
   
   // 編集中の表示
   if (editing) {
-    const isCopy = typeof editing === "object" && editing.mode === "copy";
+    const editMode = (typeof editing === "object" && editing.mode) || "new";
+    // editMode: "new" (新規) | "copy" (複製して新バージョン) | "overwrite" (上書き)
+    const isExisting = editMode === "copy" || editMode === "overwrite";
     return (
       <div style={{display:"flex",flexDirection:"column",gap:"0.75rem"}}>
-        <div style={{background:"white",borderRadius:"1rem",padding:"1rem 1.25rem",border:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:"0.5rem",position:"sticky",top:0,zIndex:10}}>
+        <div style={{background:"white",borderRadius:"1rem",padding:"1rem 1.25rem",border:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:"0.5rem",position:"sticky",top:0,zIndex:10,flexWrap:"wrap"}}>
           <button onClick={()=>{if(!saving && window.confirm("編集を破棄しますか？"))setEditing(null);}}
             style={{padding:"0.4rem 0.7rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
             ← 戻る
           </button>
-          <div style={{flex:1,fontWeight:800,fontSize:"0.95rem",color:C.text}}>
-            {isCopy ? `v${editing.version} を複製して新バージョン作成` : "新しい案内状セットを作成"}
+          <div style={{flex:1,minWidth:200,fontWeight:800,fontSize:"0.9rem",color:C.text}}>
+            {editMode === "new" && "新しい案内状セットを作成"}
+            {editMode === "copy" && `v${editing.version} を複製して新バージョン作成`}
+            {editMode === "overwrite" && `v${editing.version}: ${editing.title} を上書き編集`}
           </div>
-          <button onClick={saveNew} disabled={saving}
-            style={{padding:"0.5rem 1.1rem",borderRadius:6,border:"none",background:saving?"#9ca3af":"#2563eb",color:"white",fontSize:"0.82rem",fontWeight:800,cursor:saving?"not-allowed":"pointer",fontFamily:"inherit"}}>
-            {saving ? "保存中..." : "💾 保存"}
-          </button>
+          {/* 保存モード切替 + 保存 */}
+          {editMode === "overwrite" ? (
+            <>
+              <button onClick={()=>{ if(window.confirm("新バージョンとして保存しますか？\n（現バージョンはそのまま残ります）")) { 
+                  // 新バージョンへ切替: editing.mode を copy に変更し、saveNew を呼ぶ
+                  setEditing(prev => ({...prev, mode: "copy"}));
+                  setTimeout(() => saveNew(), 100);
+                }}}
+                disabled={saving}
+                style={{padding:"0.45rem 0.85rem",borderRadius:6,border:"1px solid #2563eb",background:"white",color:"#2563eb",fontSize:"0.78rem",fontWeight:800,cursor:saving?"not-allowed":"pointer",fontFamily:"inherit"}}>
+                🆕 新バージョンとして保存
+              </button>
+              <button onClick={saveOverwrite} disabled={saving}
+                style={{padding:"0.5rem 1.1rem",borderRadius:6,border:"none",background:saving?"#9ca3af":"#059669",color:"white",fontSize:"0.82rem",fontWeight:800,cursor:saving?"not-allowed":"pointer",fontFamily:"inherit"}}>
+                {saving ? "保存中..." : "💾 上書き保存"}
+              </button>
+            </>
+          ) : editMode === "copy" ? (
+            <>
+              <button onClick={()=>{
+                // 「上書きにする」: mode を overwrite に変更
+                if (window.confirm(`v${editing.version} を上書き保存しますか？\n（複製ではなく既存バージョンを更新します）`)) {
+                  setEditing(prev => ({...prev, mode: "overwrite"}));
+                  setTimeout(() => saveOverwrite(), 100);
+                }
+              }} disabled={saving}
+                style={{padding:"0.45rem 0.85rem",borderRadius:6,border:"1px solid #059669",background:"white",color:"#059669",fontSize:"0.78rem",fontWeight:800,cursor:saving?"not-allowed":"pointer",fontFamily:"inherit"}}>
+                💾 上書きする
+              </button>
+              <button onClick={saveNew} disabled={saving}
+                style={{padding:"0.5rem 1.1rem",borderRadius:6,border:"none",background:saving?"#9ca3af":"#2563eb",color:"white",fontSize:"0.82rem",fontWeight:800,cursor:saving?"not-allowed":"pointer",fontFamily:"inherit"}}>
+                {saving ? "保存中..." : "🆕 新バージョンとして保存"}
+              </button>
+            </>
+          ) : (
+            <button onClick={saveNew} disabled={saving}
+              style={{padding:"0.5rem 1.1rem",borderRadius:6,border:"none",background:saving?"#9ca3af":"#2563eb",color:"white",fontSize:"0.82rem",fontWeight:800,cursor:saving?"not-allowed":"pointer",fontFamily:"inherit"}}>
+              {saving ? "保存中..." : "💾 保存"}
+            </button>
+          )}
         </div>
+        
+        {/* モード説明バー */}
+        {editMode === "overwrite" && (
+          <div style={{padding:"0.6rem 1rem",background:"#fef3c7",border:"1px solid #fcd34d",borderRadius:8,fontSize:"0.78rem",color:"#92400e"}}>
+            ⚠️ <b>上書きモード</b>: 既存の v{editing.version} を直接更新します。配布済みQRはそのまま使えますが、開いた時の本文・フォームが新しいものに切り替わります。
+          </div>
+        )}
+        {editMode === "copy" && (
+          <div style={{padding:"0.6rem 1rem",background:"#dbeafe",border:"1px solid #93c5fd",borderRadius:8,fontSize:"0.78rem",color:"#1e40af"}}>
+            💡 <b>新バージョン作成モード</b>: 別のバージョンとして保存されます。配布済みQRは旧バージョンを表示し続けます。<br/>
+            <span style={{fontSize:"0.72rem"}}>軽微な修正で配布済QRに反映したい場合は「💾 上書きする」を選んでください。</span>
+          </div>
+        )}
         
         {/* タイトル + メタ */}
         <div style={{background:"white",borderRadius:"1rem",padding:"1rem 1.25rem",border:`1px solid ${C.border}`}}>
@@ -24763,12 +24857,14 @@ function AnnouncementSettings({ currentUser, C }) {
               placeholder="例: 2026年夏キャンペーン用"
               style={{width:"100%",padding:"0.55rem 0.8rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",boxSizing:"border-box"}}/>
           </div>
-          <div>
-            <label style={{display:"inline-flex",alignItems:"center",gap:"0.4rem",fontSize:"0.82rem",color:C.text,cursor:"pointer"}}>
-              <input type="checkbox" checked={editIsCurrent} onChange={e=>setEditIsCurrent(e.target.checked)} style={{width:16,height:16}}/>
-              このバージョンを現行版にする
-            </label>
-          </div>
+          {editMode !== "overwrite" && (
+            <div>
+              <label style={{display:"inline-flex",alignItems:"center",gap:"0.4rem",fontSize:"0.82rem",color:C.text,cursor:"pointer"}}>
+                <input type="checkbox" checked={editIsCurrent} onChange={e=>setEditIsCurrent(e.target.checked)} style={{width:16,height:16}}/>
+                このバージョンを現行版にする
+              </label>
+            </div>
+          )}
         </div>
         
         {/* 本文エディタ */}
@@ -24801,8 +24897,24 @@ function AnnouncementSettings({ currentUser, C }) {
               ["日付", "{{日付}}"],
               ["区切り線", "<hr/>"],
             ].map(([label, code]) => (
-              <button key={label} onClick={()=>{
-                setEditContent(prev => prev + (prev.endsWith("\n") || prev === "" ? "" : "\n") + code + "\n");
+              <button key={label} type="button" onClick={()=>{
+                // カーソル位置に挿入（フォーカスがあれば）
+                const ta = document.getElementById("announcement-content-textarea");
+                if (ta && document.activeElement === ta) {
+                  const start = ta.selectionStart;
+                  const end = ta.selectionEnd;
+                  const before = editContent.substring(0, start);
+                  const after = editContent.substring(end);
+                  const newContent = before + code + after;
+                  setEditContent(newContent);
+                  setTimeout(() => {
+                    ta.focus();
+                    ta.setSelectionRange(start + code.length, start + code.length);
+                  }, 0);
+                } else {
+                  // 末尾に追加
+                  setEditContent(prev => prev + (prev.endsWith("\n") || prev === "" ? "" : "\n") + code + "\n");
+                }
               }}
                 style={{padding:"0.2rem 0.55rem",borderRadius:4,border:`1px solid ${C.border}`,background:"white",color:C.text,fontSize:"0.7rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
                 ＋{label}
@@ -24835,7 +24947,7 @@ function AnnouncementSettings({ currentUser, C }) {
             </div>
           )}
           
-          <textarea value={editContent} onChange={e=>setEditContent(e.target.value)}
+          <textarea id="announcement-content-textarea" value={editContent} onChange={e=>setEditContent(e.target.value)}
             placeholder="HTML 形式で文書を作成してください"
             rows={20}
             style={{width:"100%",padding:"0.7rem 0.85rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"'Menlo','Courier New',monospace",lineHeight:1.5,resize:"vertical",boxSizing:"border-box",minHeight:300}}/>
@@ -25133,9 +25245,13 @@ function AnnouncementSettings({ currentUser, C }) {
               現行版にする
             </button>
           )}
-          <button onClick={()=>{setPreviewing(null);openEdit(previewing.id);}}
+          <button onClick={()=>{setPreviewing(null);openEdit(previewing.id, "overwrite");}}
+            style={{padding:"0.4rem 0.8rem",borderRadius:6,border:"none",background:"#059669",color:"white",fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+            ✏️ 編集
+          </button>
+          <button onClick={()=>{setPreviewing(null);openEdit(previewing.id, "copy");}}
             style={{padding:"0.4rem 0.8rem",borderRadius:6,border:"none",background:"#2563eb",color:"white",fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-            ✏️ 複製して編集
+            🆕 複製して新バージョン
           </button>
         </div>
         <div style={{background:"white",borderRadius:"1rem",padding:"2.5rem 3rem",border:`1px solid ${C.border}`,fontSize:"0.9rem",lineHeight:1.7,color:"#222"}}>
@@ -25218,6 +25334,14 @@ function AnnouncementSettings({ currentUser, C }) {
               <button onClick={()=>openPreview(a.id)}
                 style={{padding:"0.3rem 0.7rem",borderRadius:5,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
                 👁 表示
+              </button>
+              <button onClick={()=>openEdit(a.id, "overwrite")}
+                style={{padding:"0.3rem 0.7rem",borderRadius:5,border:"1px solid #059669",background:"white",color:"#059669",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
+                ✏️ 編集
+              </button>
+              <button onClick={()=>openEdit(a.id, "copy")}
+                style={{padding:"0.3rem 0.7rem",borderRadius:5,border:"1px solid #2563eb",background:"white",color:"#2563eb",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
+                🆕 複製
               </button>
               {!a.is_current && (
                 <>
