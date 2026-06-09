@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v132-bubble-fetch"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v133-bubble-url-fix"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -27554,7 +27554,7 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
                           if (!j.item) {
                             if (window.confirm(`Bubble側にまだ ${mk} のデータがキャッシュされていません。\n\n同期 Lambda を手動実行しますか？（数秒かかります）`)) {
                               try {
-                                const syncUrl = "https://yhdfxq3w7obyf3sn4nbzjvhvmu0dyvsa.lambda-url.ap-northeast-1.on.aws/";
+                                const syncUrl = "https://36w7fx2ywn7t4raggrbwe65ili0fddnr.lambda-url.ap-northeast-1.on.aws/";
                                 const syncRes = await fetch(syncUrl, {
                                   method: "POST",
                                   headers: { "Content-Type": "application/json", "x-mydesk-secret": "mydesk2026secret" },
