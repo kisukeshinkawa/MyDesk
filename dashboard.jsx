@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v123-option-editor"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v124-distribution-status"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -23681,7 +23681,41 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
         ) : (
           <div style={{display:"flex",flexDirection:"column",gap:"0.35rem"}}>
             {submissions.slice(0, 10).map(s => (
-              <QrSubmissionItem key={s.id} submission={s} onUpdate={loadAll} currentUserId={currentUserId}/>
+              <QrSubmissionItem key={s.id} submission={s} onUpdate={loadAll} currentUserId={currentUserId}
+                vendorName={vendorName} vendorId={vendorId} 
+                announcementTitle={activeAnnouncement?.title || ""}
+                onCreateProject={async (sub, ctx) => {
+                  // 自動プロジェクト作成
+                  try {
+                    if (typeof window.__myDeskSetData !== "function") {
+                      alert("プロジェクト作成エラー: setData が利用できません");
+                      return;
+                    }
+                    const pjName = `${sub.company_name || "(企業名未入力)"} (${ctx.announcementTitle || "QR反応"})`;
+                    const newProject = {
+                      id: `pj_${Date.now()}_${Math.random().toString(36).slice(2,7)}`,
+                      name: pjName,
+                      stage: "新規",
+                      vendorId: ctx.vendorId || "",
+                      memo: `[QR反応から自動作成]\n発行業者: ${ctx.vendorName || "(不明)"}\n案内状: ${ctx.announcementTitle || "(不明)"}\n\n【お問い合わせ内容】\n会社名: ${sub.company_name || "(未入力)"}\n担当者: ${sub.contact_name || "(未入力)"}\n電話: ${sub.phone || "(未入力)"}\nメール: ${sub.email || "(未入力)"}\n\n【アンケート回答】\n${Object.entries(sub.form_data||{}).filter(([k,v])=>k&&v).map(([k,v])=>`・${k}: ${Array.isArray(v)?v.join(", "):v}`).join("\n") || "(なし)"}\n\n送信日時: ${new Date(sub.submitted_at).toLocaleString("ja-JP")}`,
+                      contactName: sub.contact_name || "",
+                      contactPhone: sub.phone || "",
+                      contactEmail: sub.email || "",
+                      createdAt: new Date().toISOString(),
+                      createdBy: currentUserId || "",
+                      source: "qr_form",
+                      qrSubmissionId: sub.id,
+                    };
+                    window.__myDeskSetData(prev => ({
+                      ...prev,
+                      projects: [...(prev.projects || []), newProject],
+                    }));
+                    alert(`✅ プロジェクト「${pjName}」を作成しました`);
+                  } catch(e) {
+                    alert("プロジェクト作成エラー: " + e.message);
+                  }
+                }}
+              />
             ))}
           </div>
         )}
@@ -23691,12 +23725,22 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
 }
 
 // ─── QR SUBMISSION ITEM: 単一反応の表示・展開・ステータス更新 ─────────────
-function QrSubmissionItem({ submission, onUpdate, currentUserId }) {
+function QrSubmissionItem({ submission, onUpdate, currentUserId, vendorName, vendorId, announcementTitle, onCreateProject }) {
   const [expanded, setExpanded] = React.useState(false);
   const [updating, setUpdating] = React.useState(false);
   const s = submission;
   
+  // ステータス: "new" (未対応) | "handled" (対応済)
+  // 旧 "reviewed" は "new" として扱う
+  const isHandled = s.status === "handled";
+  
   const updateStatus = async (newStatus) => {
+    // 対応済に変更時は確認 + 自動プロジェクト作成
+    if (newStatus === "handled" && !isHandled) {
+      const company = s.company_name || "(企業名未入力)";
+      const ok = window.confirm(`「${company}」を対応済に変更します。\n\n同時に営業プロジェクトを自動作成します。よろしいですか？`);
+      if (!ok) return;
+    }
     setUpdating(true);
     try {
       const res = await fetch(`${DB_API_BASE}/qr/submissions/${s.id}`, {
@@ -23704,6 +23748,10 @@ function QrSubmissionItem({ submission, onUpdate, currentUserId }) {
         body: JSON.stringify({ status: newStatus, reviewed_by: currentUserId || "" }),
       });
       if (res.ok) {
+        // 対応済に変更時 → プロジェクト自動作成
+        if (newStatus === "handled" && !isHandled && typeof onCreateProject === "function") {
+          await onCreateProject(s, { vendorName, vendorId, announcementTitle });
+        }
         if (onUpdate) onUpdate();
       } else {
         const j = await res.json();
@@ -23713,9 +23761,8 @@ function QrSubmissionItem({ submission, onUpdate, currentUserId }) {
     setUpdating(false);
   };
   
-  const statusColor = s.status === "new" ? "#dc2626" : s.status === "reviewed" ? "#d97706" : "#059669";
-  const statusBg = s.status === "new" ? "#fee2e2" : s.status === "reviewed" ? "#fef3c7" : "#d1fae5";
-  const statusLabel = s.status === "new" ? "未対応" : s.status === "reviewed" ? "確認済" : "対応済";
+  const statusColor = isHandled ? "#059669" : "#dc2626";
+  const statusLabel = isHandled ? "対応済" : "未対応";
   
   return (
     <div style={{background:"#f9fafb",border:`1px solid ${expanded ? "#2563eb" : "#e5e7eb"}`,borderRadius:6,overflow:"hidden",transition:"border-color 0.15s"}}>
@@ -23740,6 +23787,14 @@ function QrSubmissionItem({ submission, onUpdate, currentUserId }) {
       {/* 展開エリア */}
       {expanded && (
         <div style={{padding:"0.8rem 1rem",borderTop:"1px solid #e5e7eb",background:"white"}}>
+          {/* 発行業者 & 案内状名 */}
+          {(vendorName || announcementTitle) && (
+            <div style={{marginBottom:"0.6rem",padding:"0.4rem 0.6rem",background:"#eff6ff",borderRadius:5,fontSize:"0.7rem",color:"#1e3a8a",display:"flex",gap:"0.7rem",flexWrap:"wrap"}}>
+              {vendorName && <span><b>発行業者:</b> {vendorName}</span>}
+              {announcementTitle && <span><b>案内状:</b> {announcementTitle}</span>}
+            </div>
+          )}
+          
           {/* 基本情報 */}
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:"0.5rem 1rem",marginBottom:"0.8rem"}}>
             <div>
@@ -23783,25 +23838,155 @@ function QrSubmissionItem({ submission, onUpdate, currentUserId }) {
           <div style={{fontSize:"0.68rem",color:"#9ca3af",marginBottom:"0.7rem",lineHeight:1.5}}>
             <div>送信日時: {new Date(s.submitted_at).toLocaleString("ja-JP")}</div>
             {s.notified_at && <div>メール通知: {new Date(s.notified_at).toLocaleString("ja-JP")} ✓</div>}
-            {s.reviewed_at && <div>レビュー: {new Date(s.reviewed_at).toLocaleString("ja-JP")}</div>}
+            {s.reviewed_at && <div>対応日時: {new Date(s.reviewed_at).toLocaleString("ja-JP")}</div>}
           </div>
           
-          {/* ステータス更新ボタン */}
-          <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap"}}>
-            <div style={{fontSize:"0.72rem",color:"#6b7280",fontWeight:700,alignSelf:"center"}}>ステータス変更:</div>
-            {["new","reviewed","handled"].map(st => {
-              const stColor = st==="new"?"#dc2626":st==="reviewed"?"#d97706":"#059669";
-              const stLabel = st==="new"?"未対応":st==="reviewed"?"確認済":"対応済";
-              const isActive = s.status === st;
+          {/* ステータス更新ボタン（2段階） */}
+          <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap",alignItems:"center"}}>
+            <div style={{fontSize:"0.72rem",color:"#6b7280",fontWeight:700}}>ステータス:</div>
+            <button onClick={()=>updateStatus("new")} disabled={!isHandled || updating}
+              style={{padding:"0.35rem 0.8rem",borderRadius:5,border:`1px solid ${!isHandled?"#dc2626":"#d1d5db"}`,background:!isHandled?"#dc2626":"white",color:!isHandled?"white":"#374151",fontSize:"0.75rem",fontWeight:700,cursor:!isHandled||updating?"default":"pointer",fontFamily:"inherit",opacity:updating?0.5:1}}>
+              未対応{!isHandled?" ✓":""}
+            </button>
+            <button onClick={()=>updateStatus("handled")} disabled={isHandled || updating}
+              style={{padding:"0.35rem 0.8rem",borderRadius:5,border:`1px solid ${isHandled?"#059669":"#d1d5db"}`,background:isHandled?"#059669":"white",color:isHandled?"white":"#374151",fontSize:"0.75rem",fontWeight:700,cursor:isHandled||updating?"default":"pointer",fontFamily:"inherit",opacity:updating?0.5:1}}>
+              対応済 {isHandled ? "✓" : "→ プロジェクト作成"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── ANNOUNCEMENT DISTRIBUTION: 案内状の配布先業者一覧 + 反応 ─────────────
+function AnnouncementDistribution({ announcementId, announcementTitle, currentUser, C }) {
+  const [vendors, setVendors] = React.useState([]);
+  const [submissions, setSubmissions] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [tab, setTab] = React.useState("vendors"); // "vendors" | "submissions"
+  
+  const loadAll = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const [vRes, sRes] = await Promise.all([
+        fetch(`${DB_API_BASE}/announcements/${announcementId}/vendors`, { headers: DB_API_HEADERS }),
+        fetch(`${DB_API_BASE}/qr/submissions?announcement_id=${announcementId}&limit=200`, { headers: DB_API_HEADERS }),
+      ]);
+      if (vRes.ok) { const j = await vRes.json(); setVendors(j.items || []); }
+      if (sRes.ok) { const j = await sRes.json(); setSubmissions(j.items || []); }
+    } catch(e) { console.warn("dist load error:", e); }
+    setLoading(false);
+  }, [announcementId]);
+  
+  React.useEffect(() => { loadAll(); }, [loadAll]);
+  
+  const totalAccess = vendors.reduce((sum, v) => sum + (v.access_count||0), 0);
+  const totalSubmit = vendors.reduce((sum, v) => sum + (v.submit_count||0), 0);
+  // vendor_id → vendor 情報マップ
+  const vendorMap = {};
+  vendors.forEach(v => { vendorMap[v.vendor_id] = v; });
+  
+  return (
+    <div style={{background:"white",borderRadius:"1rem",padding:"1.15rem 1.25rem",border:`1px solid ${C.border}`}}>
+      <div style={{fontWeight:800,fontSize:"0.95rem",color:C.text,marginBottom:"0.6rem"}}>📊 配布状況と反応</div>
+      
+      {/* サマリ統計 */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",gap:"0.5rem",marginBottom:"0.8rem"}}>
+        <div style={{padding:"0.6rem 0.7rem",background:"#f5f3ff",borderRadius:6,textAlign:"center"}}>
+          <div style={{fontSize:"0.65rem",color:"#6d28d9",fontWeight:700}}>配布業者数</div>
+          <div style={{fontSize:"1.5rem",fontWeight:800,color:"#6d28d9"}}>{vendors.length}</div>
+        </div>
+        <div style={{padding:"0.6rem 0.7rem",background:"#eff6ff",borderRadius:6,textAlign:"center"}}>
+          <div style={{fontSize:"0.65rem",color:"#1e40af",fontWeight:700}}>総アクセス数</div>
+          <div style={{fontSize:"1.5rem",fontWeight:800,color:"#1e40af"}}>{totalAccess}</div>
+        </div>
+        <div style={{padding:"0.6rem 0.7rem",background:"#ecfdf5",borderRadius:6,textAlign:"center"}}>
+          <div style={{fontSize:"0.65rem",color:"#065f46",fontWeight:700}}>総反応数</div>
+          <div style={{fontSize:"1.5rem",fontWeight:800,color:"#065f46"}}>{totalSubmit}</div>
+        </div>
+        <div style={{padding:"0.6rem 0.7rem",background:"#fef3c7",borderRadius:6,textAlign:"center"}}>
+          <div style={{fontSize:"0.65rem",color:"#92400e",fontWeight:700}}>反応率</div>
+          <div style={{fontSize:"1.5rem",fontWeight:800,color:"#92400e"}}>
+            {totalAccess > 0 ? Math.round((totalSubmit / totalAccess) * 100) : 0}%
+          </div>
+        </div>
+      </div>
+      
+      {/* タブ切替 */}
+      <div style={{display:"flex",gap:"0.4rem",marginBottom:"0.6rem"}}>
+        <button onClick={()=>setTab("vendors")}
+          style={{padding:"0.4rem 0.85rem",borderRadius:6,border:tab==="vendors"?"2px solid #2563eb":`1px solid ${C.border}`,background:tab==="vendors"?"#dbeafe":"white",color:tab==="vendors"?"#1e40af":C.textSub,fontSize:"0.78rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+          📋 配布先業者 ({vendors.length})
+        </button>
+        <button onClick={()=>setTab("submissions")}
+          style={{padding:"0.4rem 0.85rem",borderRadius:6,border:tab==="submissions"?"2px solid #059669":`1px solid ${C.border}`,background:tab==="submissions"?"#d1fae5":"white",color:tab==="submissions"?"#065f46":C.textSub,fontSize:"0.78rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+          📩 反応一覧 ({submissions.length})
+        </button>
+      </div>
+      
+      {loading ? (
+        <div style={{padding:"2rem",textAlign:"center",color:C.textMuted}}>読み込み中…</div>
+      ) : tab === "vendors" ? (
+        // 配布先業者
+        vendors.length === 0 ? (
+          <div style={{padding:"1.5rem",textAlign:"center",color:C.textMuted,fontSize:"0.8rem"}}>
+            まだ業者の配布はありません<br/>
+            <span style={{fontSize:"0.7rem"}}>業者詳細画面でこの案内状を選択すると配布されます</span>
+          </div>
+        ) : (
+          <div style={{display:"flex",flexDirection:"column",gap:"0.35rem"}}>
+            {vendors.map(v => (
+              <div key={v.vendor_id} style={{padding:"0.55rem 0.7rem",background:"#fafafa",border:"1px solid #e5e7eb",borderRadius:6,display:"flex",alignItems:"center",gap:"0.5rem",flexWrap:"wrap"}}>
+                <div style={{fontSize:"0.85rem",fontWeight:700,color:C.text,flex:1,minWidth:140}}>{v.vendor_name || "(業者名なし)"}</div>
+                <div style={{display:"flex",gap:"0.4rem",flexShrink:0}}>
+                  <span style={{fontSize:"0.68rem",padding:"0.15rem 0.5rem",background:"#dbeafe",color:"#1e40af",borderRadius:4,fontWeight:700}}>👁 {v.access_count||0}</span>
+                  <span style={{fontSize:"0.68rem",padding:"0.15rem 0.5rem",background:"#d1fae5",color:"#065f46",borderRadius:4,fontWeight:700}}>✉️ {v.submit_count||0}</span>
+                </div>
+                <div style={{fontSize:"0.65rem",color:C.textMuted,fontFamily:"monospace",flexShrink:0}}>{v.tracking_id}</div>
+              </div>
+            ))}
+          </div>
+        )
+      ) : (
+        // 反応一覧
+        submissions.length === 0 ? (
+          <div style={{padding:"1.5rem",textAlign:"center",color:C.textMuted,fontSize:"0.8rem"}}>
+            まだ反応はありません
+          </div>
+        ) : (
+          <div style={{display:"flex",flexDirection:"column",gap:"0.35rem"}}>
+            {submissions.map(s => {
+              const v = vendorMap[s.vendor_id];
               return (
-                <button key={st} onClick={()=>updateStatus(st)} disabled={isActive || updating}
-                  style={{padding:"0.3rem 0.7rem",borderRadius:5,border:`1px solid ${isActive?stColor:"#d1d5db"}`,background:isActive?stColor:"white",color:isActive?"white":"#374151",fontSize:"0.72rem",fontWeight:700,cursor:isActive||updating?"default":"pointer",fontFamily:"inherit",opacity:updating?0.5:1}}>
-                  {stLabel}{isActive?" ✓":""}
-                </button>
+                <QrSubmissionItem key={s.id} submission={s} onUpdate={loadAll} 
+                  currentUserId={currentUser?.id}
+                  vendorName={v?.vendor_name || ""} vendorId={s.vendor_id}
+                  announcementTitle={announcementTitle}
+                  onCreateProject={async (sub, ctx) => {
+                    try {
+                      if (typeof window.__myDeskSetData !== "function") {
+                        alert("プロジェクト作成エラー");
+                        return;
+                      }
+                      const pjName = `${sub.company_name || "(企業名未入力)"} (${ctx.announcementTitle || "QR反応"})`;
+                      const newProject = {
+                        id: `pj_${Date.now()}_${Math.random().toString(36).slice(2,7)}`,
+                        name: pjName, stage: "新規", vendorId: ctx.vendorId || "",
+                        memo: `[QR反応から自動作成]\n発行業者: ${ctx.vendorName || "(不明)"}\n案内状: ${ctx.announcementTitle || "(不明)"}\n\n【お問い合わせ内容】\n会社名: ${sub.company_name || "(未入力)"}\n担当者: ${sub.contact_name || "(未入力)"}\n電話: ${sub.phone || "(未入力)"}\nメール: ${sub.email || "(未入力)"}\n\n【アンケート回答】\n${Object.entries(sub.form_data||{}).filter(([k,v])=>k&&v).map(([k,v])=>`・${k}: ${Array.isArray(v)?v.join(", "):v}`).join("\n") || "(なし)"}\n\n送信日時: ${new Date(sub.submitted_at).toLocaleString("ja-JP")}`,
+                        contactName: sub.contact_name || "", contactPhone: sub.phone || "", contactEmail: sub.email || "",
+                        createdAt: new Date().toISOString(), createdBy: currentUser?.id || "",
+                        source: "qr_form", qrSubmissionId: sub.id,
+                      };
+                      window.__myDeskSetData(prev => ({...prev, projects: [...(prev.projects || []), newProject]}));
+                      alert(`✅ プロジェクト「${pjName}」を作成しました`);
+                    } catch(e) { alert("プロジェクト作成エラー: " + e.message); }
+                  }}
+                />
               );
             })}
           </div>
-        </div>
+        )
       )}
     </div>
   );
@@ -24403,6 +24588,9 @@ function AnnouncementSettings({ currentUser, C }) {
             <b>説明:</b> {previewing.description}
           </div>
         )}
+        
+        {/* 配布先業者 + 反応一覧 */}
+        <AnnouncementDistribution announcementId={previewing.id} announcementTitle={previewing.title} currentUser={currentUser} C={C}/>
       </div>
     );
   }
