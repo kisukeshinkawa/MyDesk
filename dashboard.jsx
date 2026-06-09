@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v131-insert-debug"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v132-bubble-fetch"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -27543,6 +27543,72 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
               {!editing
                 ? <>
                     <Btn size="sm" onClick={startEdit}>✏️ 編集</Btn>
+                    {sys === "dustalk" && (
+                      <button onClick={async()=>{
+                        try{
+                          if(!window.confirm(`${monthLabel(mk)}のデータをBubble (Dustalk)から取得して上書きしますか？\n\n対象項目:\n・依頼数（家庭系/事業系/合計）\n・成約数\n・売上\n・支払方法内訳\n\nHP閲覧数・LINE友達追加数・サービスログは上書きされません。`)) return;
+                          // RDS にキャッシュされた値を取得
+                          const res = await fetch(`${DB_API_BASE}/dustalk/monthly?ym=${mk}`, { headers: DB_API_HEADERS });
+                          if (!res.ok) throw new Error("HTTP "+res.status);
+                          const j = await res.json();
+                          if (!j.item) {
+                            if (window.confirm(`Bubble側にまだ ${mk} のデータがキャッシュされていません。\n\n同期 Lambda を手動実行しますか？（数秒かかります）`)) {
+                              try {
+                                const syncUrl = "https://yhdfxq3w7obyf3sn4nbzjvhvmu0dyvsa.lambda-url.ap-northeast-1.on.aws/";
+                                const syncRes = await fetch(syncUrl, {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json", "x-mydesk-secret": "mydesk2026secret" },
+                                  body: JSON.stringify({ months: [mk] }),
+                                });
+                                if (!syncRes.ok) throw new Error("Sync failed: HTTP " + syncRes.status);
+                                const syncJ = await syncRes.json();
+                                console.log("[Bubble sync]", syncJ);
+                                // 再取得
+                                const res2 = await fetch(`${DB_API_BASE}/dustalk/monthly?ym=${mk}`, { headers: DB_API_HEADERS });
+                                const j2 = await res2.json();
+                                if (!j2.item) { alert("同期後もデータが取得できませんでした"); return; }
+                                j.item = j2.item;
+                              } catch (err) {
+                                alert("同期エラー: " + err.message);
+                                return;
+                              }
+                            } else { return; }
+                          }
+                          const item = j.item;
+                          // 既存のdraftまたは保存値に流し込む
+                          const current = getCurrent();
+                          const updated = {
+                            ...current,
+                            requests: item.total_request_count,
+                            requestsKatei: item.family_request_count,
+                            requestsJigyo: item.business_request_count,
+                            contracts: item.deal_count,
+                            contractsKatei: item.family_deal_count,
+                            contractsJigyo: item.business_deal_count,
+                            revenue: item.total_sales,
+                            revenueKatei: item.family_sales,
+                            revenueJigyo: item.business_sales,
+                            pay: {
+                              ...(current.pay||{}),
+                              // Bubbleの値をMyDeskのキーにマッピング
+                              credit: item.payment_methods?.["クレジットカード"] || 0,
+                              paypay: item.payment_methods?.["PayPay"] || 0,
+                              merupay: item.payment_methods?.["メルペイ"] || 0,
+                              cash: item.payment_methods?.["現金支払い"] || 0,
+                            },
+                          };
+                          // analytics に保存
+                          const nd = {...data, analytics:{...(data.analytics||{}),[sys]:{...((data.analytics||{})[sys]||{}),[mk]:updated}}};
+                          saveWithPush(nd);
+                          alert(`✅ ${monthLabel(mk)} のデータを取得しました\n\n依頼数: ${item.total_request_count}件（家庭${item.family_request_count} / 事業${item.business_request_count}）\n成約数: ${item.deal_count}件\n売上: ¥${(item.total_sales||0).toLocaleString()}`);
+                        } catch(e) {
+                          alert("Bubble取得エラー: " + e.message);
+                        }
+                      }}
+                        style={{padding:"0.3rem 0.625rem",borderRadius:"0.5rem",border:"1px solid #f59e0b",background:"#fef3c7",color:"#92400e",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"0.25rem"}}>
+                        🔄 Bubble取得
+                      </button>
+                    )}
                     <button onClick={async()=>{try{await exportPPTX(sys,mk,yk,d,prev,data.analytics||{});}catch(e){alert("レポート出力に失敗しました:\n"+e.message);}}}
                       style={{padding:"0.3rem 0.625rem",borderRadius:"0.5rem",border:"1px solid #7c3aed30",background:"#f5f3ff",color:"#7c3aed",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"0.25rem"}}>
                       📊 PPTXレポート
