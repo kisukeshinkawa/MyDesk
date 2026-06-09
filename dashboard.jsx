@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v129-overwrite-mode"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v131-insert-debug"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -24897,25 +24897,35 @@ function AnnouncementSettings({ currentUser, C }) {
               ["日付", "{{日付}}"],
               ["区切り線", "<hr/>"],
             ].map(([label, code]) => (
-              <button key={label} type="button" onClick={()=>{
-                // カーソル位置に挿入（フォーカスがあれば）
-                const ta = document.getElementById("announcement-content-textarea");
-                if (ta && document.activeElement === ta) {
-                  const start = ta.selectionStart;
-                  const end = ta.selectionEnd;
-                  const before = editContent.substring(0, start);
-                  const after = editContent.substring(end);
-                  const newContent = before + code + after;
-                  setEditContent(newContent);
+              <button key={label} type="button" 
+                onClick={()=>{
+                  const ta = document.getElementById("announcement-content-textarea");
+                  let inserted = false;
+                  setEditContent(prev => {
+                    if (ta && typeof ta.selectionStart === "number" && ta.selectionStart <= prev.length) {
+                      const start = ta.selectionStart;
+                      const end = ta.selectionEnd;
+                      const newContent = prev.substring(0, start) + code + prev.substring(end);
+                      setTimeout(() => {
+                        try {
+                          ta.focus();
+                          ta.setSelectionRange(start + code.length, start + code.length);
+                        } catch(e) {}
+                      }, 0);
+                      inserted = true;
+                      return newContent;
+                    }
+                    inserted = true;
+                    return prev + (prev && !prev.endsWith("\n") ? "\n" : "") + code + "\n";
+                  });
+                  // フォールバック確認: 1秒後にチェック
                   setTimeout(() => {
-                    ta.focus();
-                    ta.setSelectionRange(start + code.length, start + code.length);
-                  }, 0);
-                } else {
-                  // 末尾に追加
-                  setEditContent(prev => prev + (prev.endsWith("\n") || prev === "" ? "" : "\n") + code + "\n");
-                }
-              }}
+                    if (!inserted) {
+                      console.error("[MyDesk] Quick insert failed:", label, code);
+                      alert(`挿入失敗: ${label}\nコンソールログを確認してください`);
+                    }
+                  }, 100);
+                }}
                 style={{padding:"0.2rem 0.55rem",borderRadius:4,border:`1px solid ${C.border}`,background:"white",color:C.text,fontSize:"0.7rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
                 ＋{label}
               </button>
