@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v133-bubble-url-fix"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v135-pay-full-overwrite"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -27589,11 +27589,10 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
                             revenueKatei: item.family_sales,
                             revenueJigyo: item.business_sales,
                             pay: {
-                              ...(current.pay||{}),
-                              // Bubbleの値をMyDeskのキーにマッピング
-                              credit: item.payment_methods?.["クレジットカード"] || 0,
+                              // Bubbleの値で完全上書き（既存値の足し算にならないように）
+                              cc: item.payment_methods?.["クレジットカード"] || 0,
                               paypay: item.payment_methods?.["PayPay"] || 0,
-                              merupay: item.payment_methods?.["メルペイ"] || 0,
+                              merpay: item.payment_methods?.["メルペイ"] || 0,
                               cash: item.payment_methods?.["現金支払い"] || 0,
                             },
                           };
