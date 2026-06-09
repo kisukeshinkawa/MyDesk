@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v119-html-guide"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v120-vendor-qr-section"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -3806,6 +3806,7 @@ function VendorDetailTabsModal({ vendorId, vendorName, initialTab = "licenses", 
   const tabs = [
     { id: "licenses", label: "🪪 許可証", color: "#16a34a" },
     { id: "dustalk", label: "🚚 ダストーク登録情報", color: "#2563eb" },
+    { id: "qr", label: "📨 案内状/QR", color: "#7c3aed" },
   ];
 
   return (
@@ -3837,6 +3838,9 @@ function VendorDetailTabsModal({ vendorId, vendorName, initialTab = "licenses", 
           )}
           {tab === "dustalk" && (
             <DustalkInfoSection vendorId={vendorId} vendorName={vendorName} bizCards={bizCards} onAddBizCard={onAddBizCard}/>
+          )}
+          {tab === "qr" && (
+            <VendorQrSection vendorId={vendorId} vendorName={vendorName} currentUserId={currentUserId}/>
           )}
         </div>
       </div>
@@ -23119,6 +23123,382 @@ const LAWS_REGISTRY = {
   // ── 会社 ──
   kaisha_hou:      { name:"会社法", category:"会社", short:"会社の設立・運営の基本法", summary:"株式会社・合同会社等の設立、機関設計、取締役の責任、株主の権利、計算・決算、組織再編（合併・分割等）などを定める基本法。" },
 };
+
+// ─── VENDOR QR SECTION: 業者詳細の QR / 案内状管理 ─────────────
+function VendorQrSection({ vendorId, vendorName, currentUserId }) {
+  const [qrData, setQrData] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  const [currentAnnouncement, setCurrentAnnouncement] = React.useState(null);
+  const [submissions, setSubmissions] = React.useState([]);
+  const [generating, setGenerating] = React.useState(false);
+  // フォーム設定
+  const [showFormConfig, setShowFormConfig] = React.useState(false);
+  const [formConfig, setFormConfig] = React.useState({
+    show_company: true,
+    show_contact: true,
+    show_phone: true,
+    show_email: true,
+    require_company: true,
+    require_contact: true,
+    require_phone: false,
+    require_email: true,
+    custom_message: "",
+    extra_fields: [], // [{key, label, type, required, options:[]}]
+  });
+  
+  const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
+  
+  const loadAll = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      // 業者のQR設定取得（なければ作成）
+      const [qrRes, annRes] = await Promise.all([
+        fetch(`${DB_API_BASE}/vendor-qr?vendor_id=${encodeURIComponent(vendorId)}`, { headers: DB_API_HEADERS }),
+        fetch(`${DB_API_BASE}/announcements/current`, { headers: DB_API_HEADERS }),
+      ]);
+      if (qrRes.ok) {
+        const j = await qrRes.json();
+        setQrData(j.item);
+        // 既存のフォーム設定をマージ
+        if (j.item?.form_config && typeof j.item.form_config === "object") {
+          setFormConfig(prev => ({...prev, ...j.item.form_config}));
+        }
+        // 既存の送信履歴
+        setSubmissions(j.item?.recent_submissions || []);
+      }
+      if (annRes.ok) {
+        const j = await annRes.json();
+        setCurrentAnnouncement(j.item);
+      }
+    } catch(e) { console.warn("loadAll error:", e); }
+    setLoading(false);
+  }, [vendorId]);
+  
+  React.useEffect(() => { loadAll(); }, [loadAll]);
+  
+  const trackingUrl = qrData?.tracking_id ? `${baseUrl}/?qr=${qrData.tracking_id}` : "";
+  
+  // QR コードの画像 URL（Google Charts API 無料、または qrserver.com）
+  const qrImageUrl = trackingUrl 
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(trackingUrl)}&margin=2`
+    : "";
+  
+  const saveFormConfig = async () => {
+    try {
+      const res = await fetch(`${DB_API_BASE}/vendor-qr/form-config`, {
+        method: "POST", headers: DB_API_HEADERS,
+        body: JSON.stringify({ vendor_id: vendorId, form_config: formConfig }),
+      });
+      if (res.ok) {
+        alert("✅ フォーム設定を保存しました");
+        loadAll();
+      } else {
+        const j = await res.json();
+        alert("保存エラー: " + (j.error || res.status));
+      }
+    } catch(e) { alert("保存エラー: " + e.message); }
+  };
+  
+  const downloadQrImage = () => {
+    if (!qrImageUrl) return;
+    const link = document.createElement("a");
+    link.href = qrImageUrl;
+    link.download = `${vendorName}_QR.png`;
+    link.target = "_blank";
+    link.click();
+  };
+  
+  const copyUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(trackingUrl);
+      alert("✅ URLをクリップボードにコピーしました");
+    } catch(e) { 
+      // Fallback
+      const t = document.createElement("textarea");
+      t.value = trackingUrl;
+      document.body.appendChild(t);
+      t.select();
+      document.execCommand("copy");
+      document.body.removeChild(t);
+      alert("✅ URLをコピーしました"); 
+    }
+  };
+  
+  const generatePdf = async () => {
+    if (!currentAnnouncement) {
+      alert("先に「設定 → 📨 案内状」で現行版を作成してください");
+      return;
+    }
+    if (!qrData?.tracking_id) return;
+    setGenerating(true);
+    try {
+      // クライアントサイドで PDF を生成（印刷ダイアログ経由）
+      const html = currentAnnouncement.content_html.replace(
+        /\{\{QR_CODE\}\}/g,
+        `<img src="${qrImageUrl}" style="width:150px;height:150px;display:inline-block;" alt="QR"/>`
+      );
+      const win = window.open("", "_blank", "width=900,height=1200");
+      if (!win) { alert("ポップアップがブロックされました。ポップアップを許可してください"); setGenerating(false); return; }
+      win.document.write(`<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>${currentAnnouncement.title} - ${vendorName}</title>
+<style>
+  @page { size: A4; margin: 1.5cm; }
+  body { font-family: 'Hiragino Sans','Yu Gothic',sans-serif; line-height: 1.7; color: #222; margin: 0; padding: 2rem; }
+  h1 { font-size: 1.5rem; margin: 1rem 0 0.5rem; }
+  h2 { font-size: 1.2rem; margin: 1rem 0 0.4rem; color: #1e40af; border-bottom: 1px solid #ddd; padding-bottom: 0.3rem; }
+  p { margin: 0.5rem 0; }
+  ul, ol { margin: 0.5rem 0; padding-left: 1.5rem; }
+  li { margin: 0.2rem 0; }
+  @media print { body { padding: 0; } .no-print { display: none !important; } }
+  .print-bar { position: fixed; top: 0; left: 0; right: 0; background: #2563eb; color: white; padding: 0.5rem 1rem; display: flex; justify-content: space-between; align-items: center; z-index: 9999; }
+  .print-bar button { padding: 0.4rem 1rem; background: white; color: #2563eb; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; }
+  .content { margin-top: 3rem; }
+</style></head>
+<body>
+  <div class="print-bar no-print">
+    <span>📄 ${currentAnnouncement.title} - ${vendorName}</span>
+    <div><button onclick="window.print()">🖨 PDF として保存 / 印刷</button> <button onclick="window.close()">閉じる</button></div>
+  </div>
+  <div class="content">${html}</div>
+</body></html>`);
+      win.document.close();
+    } catch(e) {
+      alert("PDF 生成エラー: " + e.message);
+    }
+    setGenerating(false);
+  };
+  
+  if (loading) {
+    return <div style={{padding:"3rem",textAlign:"center",color:"#6b7280"}}>読み込み中…</div>;
+  }
+  
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:"0.8rem"}}>
+      {/* 案内状の現行版チェック */}
+      {!currentAnnouncement && (
+        <div style={{background:"#fef3c7",border:"1px solid #fcd34d",borderRadius:8,padding:"0.7rem 1rem",fontSize:"0.82rem",color:"#92400e"}}>
+          ⚠️ <b>現行版の案内状がありません</b><br/>
+          <span style={{fontSize:"0.75rem"}}>設定 → 📨 案内状 で案内状を作成し、現行版に設定してください。</span>
+        </div>
+      )}
+      
+      {/* QR コード表示 */}
+      <div style={{background:"white",borderRadius:8,padding:"1.25rem",border:"1px solid #e5e7eb"}}>
+        <div style={{fontWeight:800,fontSize:"0.95rem",color:"#111827",marginBottom:"0.6rem",display:"flex",alignItems:"center",gap:"0.4rem"}}>
+          📲 この業者専用 QR コード
+        </div>
+        <div style={{display:"flex",gap:"1rem",alignItems:"flex-start",flexWrap:"wrap"}}>
+          {qrImageUrl && (
+            <div style={{flexShrink:0}}>
+              <img src={qrImageUrl} alt="QR" style={{width:200,height:200,border:"1px solid #e5e7eb",borderRadius:6,background:"white"}}/>
+              <div style={{display:"flex",gap:"0.3rem",marginTop:"0.5rem",justifyContent:"center"}}>
+                <button onClick={downloadQrImage}
+                  style={{padding:"0.3rem 0.6rem",borderRadius:5,border:"1px solid #d1d5db",background:"white",fontSize:"0.7rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit",color:"#374151"}}>
+                  💾 画像保存
+                </button>
+              </div>
+            </div>
+          )}
+          <div style={{flex:1,minWidth:200}}>
+            <div style={{fontSize:"0.7rem",color:"#6b7280",fontWeight:600,marginBottom:"0.2rem"}}>追跡ID</div>
+            <div style={{fontSize:"0.95rem",fontWeight:800,fontFamily:"monospace",color:"#7c3aed",marginBottom:"0.6rem"}}>{qrData?.tracking_id}</div>
+            
+            <div style={{fontSize:"0.7rem",color:"#6b7280",fontWeight:600,marginBottom:"0.2rem"}}>QR の URL</div>
+            <div style={{fontSize:"0.72rem",fontFamily:"monospace",color:"#374151",padding:"0.4rem 0.55rem",background:"#f3f4f6",borderRadius:4,wordBreak:"break-all",marginBottom:"0.4rem"}}>{trackingUrl}</div>
+            <button onClick={copyUrl}
+              style={{padding:"0.3rem 0.7rem",borderRadius:5,border:"1px solid #d1d5db",background:"white",fontSize:"0.7rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit",color:"#374151"}}>
+              📋 URLをコピー
+            </button>
+            
+            <div style={{display:"flex",gap:"0.5rem",marginTop:"0.8rem",flexWrap:"wrap"}}>
+              <div style={{flex:1,minWidth:120,padding:"0.5rem 0.65rem",background:"#eff6ff",borderRadius:6,textAlign:"center"}}>
+                <div style={{fontSize:"0.65rem",color:"#1e40af",fontWeight:700}}>アクセス数</div>
+                <div style={{fontSize:"1.4rem",fontWeight:800,color:"#1e40af"}}>{qrData?.access_count || 0}</div>
+              </div>
+              <div style={{flex:1,minWidth:120,padding:"0.5rem 0.65rem",background:"#ecfdf5",borderRadius:6,textAlign:"center"}}>
+                <div style={{fontSize:"0.65rem",color:"#065f46",fontWeight:700}}>送信数</div>
+                <div style={{fontSize:"1.4rem",fontWeight:800,color:"#065f46"}}>{qrData?.submit_count || 0}</div>
+              </div>
+              <div style={{flex:1,minWidth:120,padding:"0.5rem 0.65rem",background:"#fef3c7",borderRadius:6,textAlign:"center"}}>
+                <div style={{fontSize:"0.65rem",color:"#92400e",fontWeight:700}}>完了率</div>
+                <div style={{fontSize:"1.4rem",fontWeight:800,color:"#92400e"}}>
+                  {qrData?.access_count > 0 ? Math.round((qrData.submit_count / qrData.access_count) * 100) : 0}%
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      {/* PDF 生成ボタン */}
+      <div style={{background:"white",borderRadius:8,padding:"0.85rem 1rem",border:"1px solid #e5e7eb"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:"0.6rem",flexWrap:"wrap"}}>
+          <div>
+            <div style={{fontWeight:800,fontSize:"0.85rem",color:"#111827"}}>📄 案内状 PDF を生成</div>
+            <div style={{fontSize:"0.7rem",color:"#6b7280",marginTop:2}}>
+              {currentAnnouncement ? `現行版: v${currentAnnouncement.version} ${currentAnnouncement.title}` : "現行版未設定"}
+            </div>
+          </div>
+          <button onClick={generatePdf} disabled={!currentAnnouncement || generating}
+            style={{padding:"0.55rem 1.1rem",borderRadius:6,border:"none",background:(!currentAnnouncement||generating)?"#9ca3af":"#2563eb",color:"white",fontSize:"0.82rem",fontWeight:800,cursor:(!currentAnnouncement||generating)?"not-allowed":"pointer",fontFamily:"inherit"}}>
+            {generating ? "生成中..." : "🖨 PDF生成・印刷"}
+          </button>
+        </div>
+      </div>
+      
+      {/* フォーム設定 */}
+      <div style={{background:"white",borderRadius:8,padding:"0.85rem 1rem",border:"1px solid #e5e7eb"}}>
+        <div onClick={()=>setShowFormConfig(s=>!s)}
+          style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",userSelect:"none"}}>
+          <div>
+            <div style={{fontWeight:800,fontSize:"0.85rem",color:"#111827"}}>⚙️ フォーム設定</div>
+            <div style={{fontSize:"0.7rem",color:"#6b7280",marginTop:2}}>QRから開くフォームの入力項目をカスタマイズ</div>
+          </div>
+          <span style={{color:"#6b7280",fontSize:"0.8rem"}}>{showFormConfig?"▼":"▶"}</span>
+        </div>
+        {showFormConfig && (
+          <div style={{marginTop:"0.75rem",paddingTop:"0.75rem",borderTop:"1px solid #e5e7eb"}}>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:"0.5rem",marginBottom:"0.8rem"}}>
+              {[
+                ["会社名", "company"],
+                ["担当者名", "contact"],
+                ["電話番号", "phone"],
+                ["メールアドレス", "email"],
+              ].map(([label, key]) => (
+                <div key={key} style={{padding:"0.55rem 0.7rem",border:"1px solid #e5e7eb",borderRadius:6,background:"#f9fafb"}}>
+                  <div style={{fontSize:"0.78rem",fontWeight:700,color:"#111827",marginBottom:"0.3rem"}}>{label}</div>
+                  <label style={{display:"flex",alignItems:"center",gap:"0.3rem",fontSize:"0.72rem",color:"#374151",cursor:"pointer",marginBottom:"0.2rem"}}>
+                    <input type="checkbox" checked={!!formConfig[`show_${key}`]} 
+                      onChange={e=>setFormConfig(p=>({...p, [`show_${key}`]:e.target.checked}))}/>
+                    表示する
+                  </label>
+                  <label style={{display:"flex",alignItems:"center",gap:"0.3rem",fontSize:"0.72rem",color:"#dc2626",cursor:formConfig[`show_${key}`]?"pointer":"not-allowed",opacity:formConfig[`show_${key}`]?1:0.5}}>
+                    <input type="checkbox" checked={!!formConfig[`require_${key}`]} disabled={!formConfig[`show_${key}`]}
+                      onChange={e=>setFormConfig(p=>({...p, [`require_${key}`]:e.target.checked}))}/>
+                    必須にする
+                  </label>
+                </div>
+              ))}
+            </div>
+            <div style={{marginBottom:"0.8rem"}}>
+              <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.25rem"}}>フォーム冒頭メッセージ（任意）</label>
+              <textarea value={formConfig.custom_message||""} onChange={e=>setFormConfig(p=>({...p, custom_message:e.target.value}))}
+                placeholder="例: 弊社サービスにご興味をお持ちいただきありがとうございます。下記フォームよりお問い合わせください。"
+                rows={2}
+                style={{width:"100%",padding:"0.45rem 0.65rem",borderRadius:5,border:"1px solid #d1d5db",fontSize:"0.78rem",fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
+            </div>
+            
+            {/* 追加質問項目 */}
+            <div style={{marginBottom:"0.8rem"}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.4rem"}}>
+                <label style={{fontSize:"0.78rem",fontWeight:700,color:"#374151"}}>追加質問（条件分岐用）</label>
+                <button onClick={()=>setFormConfig(p=>({...p, extra_fields:[...(p.extra_fields||[]), {key:`q${Date.now()}`, label:"", type:"text", required:false, options:[]}]}))}
+                  style={{padding:"0.25rem 0.6rem",borderRadius:4,border:"1px solid #2563eb",background:"white",color:"#2563eb",fontSize:"0.7rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                  ＋ 追加
+                </button>
+              </div>
+              {(formConfig.extra_fields||[]).length === 0 ? (
+                <div style={{fontSize:"0.72rem",color:"#9ca3af",padding:"0.55rem 0.7rem",background:"#f9fafb",borderRadius:5,border:"1px dashed #e5e7eb",textAlign:"center"}}>
+                  追加質問なし
+                </div>
+              ) : (
+                <div style={{display:"flex",flexDirection:"column",gap:"0.4rem"}}>
+                  {(formConfig.extra_fields||[]).map((f, idx) => (
+                    <div key={idx} style={{padding:"0.55rem 0.7rem",border:"1px solid #e5e7eb",borderRadius:6,background:"#f9fafb"}}>
+                      <div style={{display:"flex",gap:"0.4rem",alignItems:"center",marginBottom:"0.4rem",flexWrap:"wrap"}}>
+                        <input value={f.label} onChange={e=>{
+                          const next=[...formConfig.extra_fields];
+                          next[idx]={...next[idx], label:e.target.value};
+                          setFormConfig(p=>({...p, extra_fields:next}));
+                        }} placeholder="質問文（例: ご興味のあるサービス）"
+                          style={{flex:1,minWidth:160,padding:"0.35rem 0.55rem",borderRadius:4,border:"1px solid #d1d5db",fontSize:"0.78rem",fontFamily:"inherit"}}/>
+                        <select value={f.type} onChange={e=>{
+                          const next=[...formConfig.extra_fields];
+                          next[idx]={...next[idx], type:e.target.value};
+                          setFormConfig(p=>({...p, extra_fields:next}));
+                        }}
+                          style={{padding:"0.35rem 0.55rem",borderRadius:4,border:"1px solid #d1d5db",fontSize:"0.75rem",fontFamily:"inherit",background:"white"}}>
+                          <option value="text">テキスト</option>
+                          <option value="textarea">複数行</option>
+                          <option value="select">選択肢</option>
+                          <option value="radio">単一選択</option>
+                          <option value="checkbox">複数選択</option>
+                        </select>
+                        <label style={{display:"flex",alignItems:"center",gap:"0.25rem",fontSize:"0.72rem",color:"#dc2626"}}>
+                          <input type="checkbox" checked={!!f.required} onChange={e=>{
+                            const next=[...formConfig.extra_fields];
+                            next[idx]={...next[idx], required:e.target.checked};
+                            setFormConfig(p=>({...p, extra_fields:next}));
+                          }}/>
+                          必須
+                        </label>
+                        <button onClick={()=>{
+                          const next=[...formConfig.extra_fields];
+                          next.splice(idx,1);
+                          setFormConfig(p=>({...p, extra_fields:next}));
+                        }}
+                          style={{padding:"0.25rem 0.5rem",borderRadius:4,border:"1px solid #fca5a5",background:"white",color:"#dc2626",fontSize:"0.7rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                          🗑
+                        </button>
+                      </div>
+                      {(f.type === "select" || f.type === "radio" || f.type === "checkbox") && (
+                        <div>
+                          <div style={{fontSize:"0.68rem",color:"#6b7280",marginBottom:"0.2rem"}}>選択肢（カンマ区切り）</div>
+                          <input value={(f.options||[]).join(", ")} onChange={e=>{
+                            const next=[...formConfig.extra_fields];
+                            next[idx]={...next[idx], options:e.target.value.split(",").map(s=>s.trim()).filter(Boolean)};
+                            setFormConfig(p=>({...p, extra_fields:next}));
+                          }} placeholder="例: 廃棄物処理, リサイクル, その他"
+                            style={{width:"100%",padding:"0.35rem 0.55rem",borderRadius:4,border:"1px solid #d1d5db",fontSize:"0.75rem",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            
+            <button onClick={saveFormConfig}
+              style={{padding:"0.5rem 1.1rem",borderRadius:6,border:"none",background:"#2563eb",color:"white",fontSize:"0.82rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+              💾 フォーム設定を保存
+            </button>
+          </div>
+        )}
+      </div>
+      
+      {/* この業者の QR 反応一覧 */}
+      <div style={{background:"white",borderRadius:8,padding:"0.85rem 1rem",border:"1px solid #e5e7eb"}}>
+        <div style={{fontWeight:800,fontSize:"0.85rem",color:"#111827",marginBottom:"0.6rem"}}>
+          📩 QR 反応 ({submissions.length})
+        </div>
+        {submissions.length === 0 ? (
+          <div style={{padding:"1.5rem",textAlign:"center",color:"#9ca3af",fontSize:"0.78rem"}}>
+            まだ反応がありません
+          </div>
+        ) : (
+          <div style={{display:"flex",flexDirection:"column",gap:"0.35rem"}}>
+            {submissions.slice(0, 10).map(s => (
+              <div key={s.id} style={{padding:"0.55rem 0.7rem",background:"#f9fafb",border:"1px solid #e5e7eb",borderRadius:6}}>
+                <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginBottom:"0.2rem"}}>
+                  <span style={{fontSize:"0.62rem",fontWeight:700,color:"white",background:s.status==="new"?"#dc2626":s.status==="reviewed"?"#d97706":"#059669",borderRadius:3,padding:"0.1rem 0.4rem"}}>
+                    {s.status==="new"?"未対応":s.status==="reviewed"?"確認済":"対応済"}
+                  </span>
+                  <div style={{fontSize:"0.82rem",fontWeight:700,color:"#111827",flex:1}}>{s.company_name||"(企業名未入力)"}</div>
+                  <div style={{fontSize:"0.68rem",color:"#9ca3af"}}>{new Date(s.submitted_at).toLocaleString("ja-JP")}</div>
+                </div>
+                <div style={{fontSize:"0.72rem",color:"#374151",display:"flex",gap:"0.6rem",flexWrap:"wrap"}}>
+                  {s.contact_name && <span>👤 {s.contact_name}</span>}
+                  {s.phone && <span>📞 {s.phone}</span>}
+                  {s.email && <span>✉️ {s.email}</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 // ─── ANNOUNCEMENT SETTINGS: 業者向け案内状の管理画面 ─────────────
 function AnnouncementSettings({ currentUser, C }) {
