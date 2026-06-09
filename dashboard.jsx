@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v120-vendor-qr-section"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v121-qr-public-form"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -23124,51 +23124,312 @@ const LAWS_REGISTRY = {
   kaisha_hou:      { name:"会社法", category:"会社", short:"会社の設立・運営の基本法", summary:"株式会社・合同会社等の設立、機関設計、取締役の責任、株主の権利、計算・決算、組織再編（合併・分割等）などを定める基本法。" },
 };
 
-// ─── VENDOR QR SECTION: 業者詳細の QR / 案内状管理 ─────────────
+function QrPublicForm({ trackingId, onExit }) {
+  const [loading, setLoading] = React.useState(true);
+  const [info, setInfo] = React.useState(null); // {tracking_id, vendor_id, vendor_name, form_config, announcement_title}
+  const [error, setError] = React.useState("");
+  const [formData, setFormData] = React.useState({
+    company_name: "",
+    contact_name: "",
+    phone: "",
+    email: "",
+  });
+  const [extraValues, setExtraValues] = React.useState({}); // {key: value}
+  const [submitting, setSubmitting] = React.useState(false);
+  const [submitted, setSubmitted] = React.useState(false);
+  
+  React.useEffect(() => {
+    if (!trackingId) return;
+    setLoading(true);
+    fetch(`${DB_API_BASE}/qr/info?t=${encodeURIComponent(trackingId)}`, { headers: DB_API_HEADERS })
+      .then(r => {
+        if (!r.ok) throw new Error(r.status === 404 ? "QRコードが無効です。再度QRをスキャンしてください。" : "HTTP "+r.status);
+        return r.json();
+      })
+      .then(j => {
+        setInfo(j);
+        // 既定値の初期化
+        const fc = j.form_config || {};
+        const initialExtra = {};
+        (fc.extra_fields || []).forEach(f => {
+          initialExtra[f.key] = f.type === "checkbox" ? [] : "";
+        });
+        setExtraValues(initialExtra);
+      })
+      .catch(e => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [trackingId]);
+  
+  const fc = info?.form_config || {};
+  
+  const handleSubmit = async () => {
+    setError("");
+    // バリデーション
+    if (fc.show_company !== false && fc.require_company && !formData.company_name.trim()) {
+      setError("会社名を入力してください"); return;
+    }
+    if (fc.show_contact !== false && fc.require_contact && !formData.contact_name.trim()) {
+      setError("担当者名を入力してください"); return;
+    }
+    if (fc.show_phone !== false && fc.require_phone && !formData.phone.trim()) {
+      setError("電話番号を入力してください"); return;
+    }
+    if (fc.show_email !== false && fc.require_email && !formData.email.trim()) {
+      setError("メールアドレスを入力してください"); return;
+    }
+    if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      setError("メールアドレスの形式が正しくありません"); return;
+    }
+    // 追加質問のバリデーション
+    for (const f of (fc.extra_fields || [])) {
+      if (f.required) {
+        const v = extraValues[f.key];
+        if (f.type === "checkbox") {
+          if (!Array.isArray(v) || v.length === 0) {
+            setError(`「${f.label}」を選択してください`); return;
+          }
+        } else {
+          if (!v || (typeof v === "string" && !v.trim())) {
+            setError(`「${f.label}」を入力してください`); return;
+          }
+        }
+      }
+    }
+    
+    setSubmitting(true);
+    try {
+      // form_data に追加質問の答えを格納
+      const form_data = {};
+      (fc.extra_fields || []).forEach(f => {
+        form_data[f.label] = extraValues[f.key];
+      });
+      const res = await fetch(`${DB_API_BASE}/qr/submit`, {
+        method: "POST", headers: DB_API_HEADERS,
+        body: JSON.stringify({
+          tracking_id: trackingId,
+          company_name: formData.company_name,
+          contact_name: formData.contact_name,
+          phone: formData.phone,
+          email: formData.email,
+          form_data,
+        }),
+      });
+      if (res.ok) {
+        setSubmitted(true);
+      } else {
+        const j = await res.json().catch(()=>({}));
+        setError("送信エラー: " + (j.error || res.status));
+      }
+    } catch(e) {
+      setError("送信エラー: " + e.message);
+    }
+    setSubmitting(false);
+  };
+  
+  if (loading) {
+    return (
+      <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#f9fafb"}}>
+        <div style={{textAlign:"center",color:"#6b7280"}}>
+          <div style={{fontSize:"2rem",marginBottom:"0.5rem"}}>⏳</div>
+          <div>読み込み中…</div>
+        </div>
+      </div>
+    );
+  }
+  
+  if (error && !info) {
+    return (
+      <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#f9fafb",padding:"2rem"}}>
+        <div style={{textAlign:"center",maxWidth:400,background:"white",padding:"2rem",borderRadius:12,boxShadow:"0 4px 12px rgba(0,0,0,0.05)"}}>
+          <div style={{fontSize:"3rem",marginBottom:"0.5rem"}}>⚠️</div>
+          <div style={{fontSize:"1rem",fontWeight:800,color:"#dc2626",marginBottom:"0.5rem"}}>エラー</div>
+          <div style={{fontSize:"0.88rem",color:"#374151",lineHeight:1.6}}>{error}</div>
+        </div>
+      </div>
+    );
+  }
+  
+  if (submitted) {
+    return (
+      <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#f0fdf4",padding:"2rem"}}>
+        <div style={{textAlign:"center",maxWidth:500,background:"white",padding:"2.5rem 2rem",borderRadius:16,boxShadow:"0 6px 18px rgba(0,0,0,0.06)"}}>
+          <div style={{fontSize:"4rem",marginBottom:"0.5rem"}}>✅</div>
+          <div style={{fontSize:"1.15rem",fontWeight:800,color:"#065f46",marginBottom:"0.7rem"}}>送信完了</div>
+          <div style={{fontSize:"0.9rem",color:"#374151",lineHeight:1.7,marginBottom:"1.5rem"}}>
+            {fc.thanks_message || "お問い合わせありがとうございます。担当者よりご連絡いたします。"}
+          </div>
+          <div style={{padding:"0.8rem",background:"#f9fafb",borderRadius:8,fontSize:"0.78rem",color:"#6b7280"}}>
+            DUSTALK 事務局
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
+  return (
+    <div style={{minHeight:"100vh",background:"#f9fafb",padding:"1rem"}}>
+      <div style={{maxWidth:500,margin:"0 auto",background:"white",borderRadius:16,padding:"1.5rem",boxShadow:"0 4px 12px rgba(0,0,0,0.05)"}}>
+        {/* ヘッダ */}
+        <div style={{textAlign:"center",marginBottom:"1.25rem",paddingBottom:"1rem",borderBottom:"2px solid #2563eb"}}>
+          <div style={{fontSize:"0.82rem",color:"#6b7280",marginBottom:"0.25rem"}}>DUSTALK</div>
+          <div style={{fontSize:"1.05rem",fontWeight:800,color:"#1e40af"}}>{info?.announcement_title || "お問い合わせフォーム"}</div>
+          {info?.vendor_name && <div style={{fontSize:"0.78rem",color:"#6b7280",marginTop:"0.3rem"}}>発行業者: {info.vendor_name}</div>}
+        </div>
+        
+        {/* 冒頭メッセージ */}
+        {fc.custom_message && (
+          <div style={{padding:"0.7rem 0.85rem",background:"#eff6ff",borderLeft:"3px solid #2563eb",borderRadius:4,marginBottom:"1.25rem",fontSize:"0.85rem",lineHeight:1.7,color:"#1e3a8a",whiteSpace:"pre-wrap"}}>
+            {fc.custom_message}
+          </div>
+        )}
+        
+        {/* エラー表示 */}
+        {error && (
+          <div style={{padding:"0.6rem 0.85rem",background:"#fee2e2",border:"1px solid #fca5a5",borderRadius:6,marginBottom:"1rem",fontSize:"0.82rem",color:"#991b1b"}}>
+            ⚠️ {error}
+          </div>
+        )}
+        
+        {/* フォーム */}
+        <div style={{display:"flex",flexDirection:"column",gap:"0.85rem"}}>
+          {fc.show_company !== false && (
+            <div>
+              <label style={{display:"block",fontSize:"0.85rem",fontWeight:700,color:"#374151",marginBottom:"0.3rem"}}>
+                会社名 {fc.require_company && <span style={{color:"#dc2626"}}>*</span>}
+              </label>
+              <input value={formData.company_name} onChange={e=>setFormData(p=>({...p, company_name:e.target.value}))}
+                placeholder="株式会社○○"
+                style={{width:"100%",padding:"0.65rem 0.85rem",borderRadius:8,border:"1px solid #d1d5db",fontSize:"0.95rem",fontFamily:"inherit",boxSizing:"border-box"}}/>
+            </div>
+          )}
+          {fc.show_contact !== false && (
+            <div>
+              <label style={{display:"block",fontSize:"0.85rem",fontWeight:700,color:"#374151",marginBottom:"0.3rem"}}>
+                担当者名 {fc.require_contact && <span style={{color:"#dc2626"}}>*</span>}
+              </label>
+              <input value={formData.contact_name} onChange={e=>setFormData(p=>({...p, contact_name:e.target.value}))}
+                placeholder="山田 太郎"
+                style={{width:"100%",padding:"0.65rem 0.85rem",borderRadius:8,border:"1px solid #d1d5db",fontSize:"0.95rem",fontFamily:"inherit",boxSizing:"border-box"}}/>
+            </div>
+          )}
+          {fc.show_phone !== false && (
+            <div>
+              <label style={{display:"block",fontSize:"0.85rem",fontWeight:700,color:"#374151",marginBottom:"0.3rem"}}>
+                電話番号 {fc.require_phone && <span style={{color:"#dc2626"}}>*</span>}
+              </label>
+              <input type="tel" value={formData.phone} onChange={e=>setFormData(p=>({...p, phone:e.target.value}))}
+                placeholder="090-1234-5678"
+                style={{width:"100%",padding:"0.65rem 0.85rem",borderRadius:8,border:"1px solid #d1d5db",fontSize:"0.95rem",fontFamily:"inherit",boxSizing:"border-box"}}/>
+            </div>
+          )}
+          {fc.show_email !== false && (
+            <div>
+              <label style={{display:"block",fontSize:"0.85rem",fontWeight:700,color:"#374151",marginBottom:"0.3rem"}}>
+                メールアドレス {fc.require_email && <span style={{color:"#dc2626"}}>*</span>}
+              </label>
+              <input type="email" value={formData.email} onChange={e=>setFormData(p=>({...p, email:e.target.value}))}
+                placeholder="contact@example.com"
+                style={{width:"100%",padding:"0.65rem 0.85rem",borderRadius:8,border:"1px solid #d1d5db",fontSize:"0.95rem",fontFamily:"inherit",boxSizing:"border-box"}}/>
+            </div>
+          )}
+          
+          {/* 追加質問 */}
+          {(fc.extra_fields || []).map(f => (
+            <div key={f.key}>
+              <label style={{display:"block",fontSize:"0.85rem",fontWeight:700,color:"#374151",marginBottom:"0.3rem"}}>
+                {f.label} {f.required && <span style={{color:"#dc2626"}}>*</span>}
+              </label>
+              {f.type === "text" && (
+                <input value={extraValues[f.key]||""} onChange={e=>setExtraValues(p=>({...p, [f.key]:e.target.value}))}
+                  style={{width:"100%",padding:"0.65rem 0.85rem",borderRadius:8,border:"1px solid #d1d5db",fontSize:"0.95rem",fontFamily:"inherit",boxSizing:"border-box"}}/>
+              )}
+              {f.type === "textarea" && (
+                <textarea value={extraValues[f.key]||""} onChange={e=>setExtraValues(p=>({...p, [f.key]:e.target.value}))}
+                  rows={4}
+                  style={{width:"100%",padding:"0.65rem 0.85rem",borderRadius:8,border:"1px solid #d1d5db",fontSize:"0.95rem",fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
+              )}
+              {f.type === "select" && (
+                <select value={extraValues[f.key]||""} onChange={e=>setExtraValues(p=>({...p, [f.key]:e.target.value}))}
+                  style={{width:"100%",padding:"0.65rem 0.85rem",borderRadius:8,border:"1px solid #d1d5db",fontSize:"0.95rem",fontFamily:"inherit",background:"white",boxSizing:"border-box"}}>
+                  <option value="">選択してください</option>
+                  {(f.options||[]).map((o,i) => <option key={i} value={o}>{o}</option>)}
+                </select>
+              )}
+              {f.type === "radio" && (
+                <div style={{display:"flex",flexDirection:"column",gap:"0.35rem"}}>
+                  {(f.options||[]).map((o,i) => (
+                    <label key={i} style={{display:"flex",alignItems:"center",gap:"0.5rem",fontSize:"0.88rem",color:"#374151",cursor:"pointer"}}>
+                      <input type="radio" name={f.key} value={o} checked={extraValues[f.key]===o}
+                        onChange={e=>setExtraValues(p=>({...p, [f.key]:e.target.value}))}
+                        style={{width:18,height:18}}/>
+                      {o}
+                    </label>
+                  ))}
+                </div>
+              )}
+              {f.type === "checkbox" && (
+                <div style={{display:"flex",flexDirection:"column",gap:"0.35rem"}}>
+                  {(f.options||[]).map((o,i) => {
+                    const checked = Array.isArray(extraValues[f.key]) && extraValues[f.key].includes(o);
+                    return (
+                      <label key={i} style={{display:"flex",alignItems:"center",gap:"0.5rem",fontSize:"0.88rem",color:"#374151",cursor:"pointer"}}>
+                        <input type="checkbox" checked={checked} onChange={e=>{
+                          const cur = Array.isArray(extraValues[f.key]) ? extraValues[f.key] : [];
+                          const next = e.target.checked ? [...cur, o] : cur.filter(x=>x!==o);
+                          setExtraValues(p=>({...p, [f.key]:next}));
+                        }} style={{width:18,height:18}}/>
+                        {o}
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+        
+        {/* 送信ボタン */}
+        <button onClick={handleSubmit} disabled={submitting}
+          style={{width:"100%",marginTop:"1.5rem",padding:"0.85rem",borderRadius:8,border:"none",background:submitting?"#9ca3af":"#2563eb",color:"white",fontSize:"1rem",fontWeight:800,cursor:submitting?"not-allowed":"pointer",fontFamily:"inherit"}}>
+          {submitting ? "送信中..." : (fc.submit_button_label || "送信する")}
+        </button>
+        
+        <div style={{marginTop:"1rem",textAlign:"center",fontSize:"0.7rem",color:"#9ca3af"}}>
+          DUSTALK 事務局 / 株式会社西原商事ホールディングス
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 function VendorQrSection({ vendorId, vendorName, currentUserId }) {
   const [qrData, setQrData] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
-  const [currentAnnouncement, setCurrentAnnouncement] = React.useState(null);
+  const [announcements, setAnnouncements] = React.useState([]);
+  const [selectedAnnouncementId, setSelectedAnnouncementId] = React.useState(null); // null = 現行版を自動使用
+  const [activeAnnouncement, setActiveAnnouncement] = React.useState(null);
   const [submissions, setSubmissions] = React.useState([]);
   const [generating, setGenerating] = React.useState(false);
-  // フォーム設定
-  const [showFormConfig, setShowFormConfig] = React.useState(false);
-  const [formConfig, setFormConfig] = React.useState({
-    show_company: true,
-    show_contact: true,
-    show_phone: true,
-    show_email: true,
-    require_company: true,
-    require_contact: true,
-    require_phone: false,
-    require_email: true,
-    custom_message: "",
-    extra_fields: [], // [{key, label, type, required, options:[]}]
-  });
   
   const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
   
   const loadAll = React.useCallback(async () => {
     setLoading(true);
     try {
-      // 業者のQR設定取得（なければ作成）
-      const [qrRes, annRes] = await Promise.all([
+      const [qrRes, annListRes] = await Promise.all([
         fetch(`${DB_API_BASE}/vendor-qr?vendor_id=${encodeURIComponent(vendorId)}`, { headers: DB_API_HEADERS }),
-        fetch(`${DB_API_BASE}/announcements/current`, { headers: DB_API_HEADERS }),
+        fetch(`${DB_API_BASE}/announcements`, { headers: DB_API_HEADERS }),
       ]);
       if (qrRes.ok) {
         const j = await qrRes.json();
         setQrData(j.item);
-        // 既存のフォーム設定をマージ
-        if (j.item?.form_config && typeof j.item.form_config === "object") {
-          setFormConfig(prev => ({...prev, ...j.item.form_config}));
-        }
-        // 既存の送信履歴
+        setSelectedAnnouncementId(j.item?.announcement_id || null);
         setSubmissions(j.item?.recent_submissions || []);
       }
-      if (annRes.ok) {
-        const j = await annRes.json();
-        setCurrentAnnouncement(j.item);
+      if (annListRes.ok) {
+        const j = await annListRes.json();
+        setAnnouncements(j.items || []);
       }
     } catch(e) { console.warn("loadAll error:", e); }
     setLoading(false);
@@ -23176,27 +23437,29 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
   
   React.useEffect(() => { loadAll(); }, [loadAll]);
   
-  const trackingUrl = qrData?.tracking_id ? `${baseUrl}/?qr=${qrData.tracking_id}` : "";
+  // 使用中の案内状を取得（選択 or 現行版）
+  React.useEffect(() => {
+    const targetId = selectedAnnouncementId || announcements.find(a=>a.is_current)?.id;
+    if (!targetId) { setActiveAnnouncement(null); return; }
+    fetch(`${DB_API_BASE}/announcements/${targetId}`, { headers: DB_API_HEADERS })
+      .then(r=>r.ok?r.json():null)
+      .then(j=>{ if(j?.item) setActiveAnnouncement(j.item); })
+      .catch(()=>{});
+  }, [selectedAnnouncementId, announcements]);
   
-  // QR コードの画像 URL（Google Charts API 無料、または qrserver.com）
+  const trackingUrl = qrData?.tracking_id ? `${baseUrl}/?qr=${qrData.tracking_id}` : "";
   const qrImageUrl = trackingUrl 
     ? `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(trackingUrl)}&margin=2`
     : "";
   
-  const saveFormConfig = async () => {
+  const changeAnnouncement = async (annId) => {
     try {
-      const res = await fetch(`${DB_API_BASE}/vendor-qr/form-config`, {
+      await fetch(`${DB_API_BASE}/vendor-qr/announcement`, {
         method: "POST", headers: DB_API_HEADERS,
-        body: JSON.stringify({ vendor_id: vendorId, form_config: formConfig }),
+        body: JSON.stringify({ vendor_id: vendorId, announcement_id: annId }),
       });
-      if (res.ok) {
-        alert("✅ フォーム設定を保存しました");
-        loadAll();
-      } else {
-        const j = await res.json();
-        alert("保存エラー: " + (j.error || res.status));
-      }
-    } catch(e) { alert("保存エラー: " + e.message); }
+      setSelectedAnnouncementId(annId);
+    } catch(e) { alert("変更エラー: " + e.message); }
   };
   
   const downloadQrImage = () => {
@@ -23213,7 +23476,6 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
       await navigator.clipboard.writeText(trackingUrl);
       alert("✅ URLをクリップボードにコピーしました");
     } catch(e) { 
-      // Fallback
       const t = document.createElement("textarea");
       t.value = trackingUrl;
       document.body.appendChild(t);
@@ -23224,23 +23486,19 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
     }
   };
   
-  const generatePdf = async () => {
-    if (!currentAnnouncement) {
-      alert("先に「設定 → 📨 案内状」で現行版を作成してください");
-      return;
-    }
+  const generatePdf = () => {
+    if (!activeAnnouncement) { alert("先に案内状セットを作成してください"); return; }
     if (!qrData?.tracking_id) return;
     setGenerating(true);
     try {
-      // クライアントサイドで PDF を生成（印刷ダイアログ経由）
-      const html = currentAnnouncement.content_html.replace(
+      const html = activeAnnouncement.content_html.replace(
         /\{\{QR_CODE\}\}/g,
         `<img src="${qrImageUrl}" style="width:150px;height:150px;display:inline-block;" alt="QR"/>`
       );
       const win = window.open("", "_blank", "width=900,height=1200");
-      if (!win) { alert("ポップアップがブロックされました。ポップアップを許可してください"); setGenerating(false); return; }
+      if (!win) { alert("ポップアップがブロックされました。許可してください"); setGenerating(false); return; }
       win.document.write(`<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>${currentAnnouncement.title} - ${vendorName}</title>
+<html><head><meta charset="utf-8"><title>${activeAnnouncement.title} - ${vendorName}</title>
 <style>
   @page { size: A4; margin: 1.5cm; }
   body { font-family: 'Hiragino Sans','Yu Gothic',sans-serif; line-height: 1.7; color: #222; margin: 0; padding: 2rem; }
@@ -23256,7 +23514,7 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
 </style></head>
 <body>
   <div class="print-bar no-print">
-    <span>📄 ${currentAnnouncement.title} - ${vendorName}</span>
+    <span>📄 ${activeAnnouncement.title} - ${vendorName}</span>
     <div><button onclick="window.print()">🖨 PDF として保存 / 印刷</button> <button onclick="window.close()">閉じる</button></div>
   </div>
   <div class="content">${html}</div>
@@ -23272,19 +23530,38 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
     return <div style={{padding:"3rem",textAlign:"center",color:"#6b7280"}}>読み込み中…</div>;
   }
   
+  const currentAnnouncement = announcements.find(a=>a.is_current);
+  
   return (
     <div style={{display:"flex",flexDirection:"column",gap:"0.8rem"}}>
-      {/* 案内状の現行版チェック */}
-      {!currentAnnouncement && (
+      {/* 案内状未作成の警告 */}
+      {announcements.length === 0 && (
         <div style={{background:"#fef3c7",border:"1px solid #fcd34d",borderRadius:8,padding:"0.7rem 1rem",fontSize:"0.82rem",color:"#92400e"}}>
-          ⚠️ <b>現行版の案内状がありません</b><br/>
-          <span style={{fontSize:"0.75rem"}}>設定 → 📨 案内状 で案内状を作成し、現行版に設定してください。</span>
+          ⚠️ <b>案内状セットがまだありません</b><br/>
+          <span style={{fontSize:"0.75rem"}}>設定 → 📨 案内状 で作成してください。</span>
+        </div>
+      )}
+      
+      {/* 使用する案内状セット選択 */}
+      {announcements.length > 0 && (
+        <div style={{background:"white",borderRadius:8,padding:"0.85rem 1rem",border:"1px solid #e5e7eb"}}>
+          <div style={{fontWeight:800,fontSize:"0.85rem",color:"#111827",marginBottom:"0.5rem"}}>📨 使用する案内状セット</div>
+          <select value={selectedAnnouncementId || ""} onChange={e=>changeAnnouncement(e.target.value ? parseInt(e.target.value) : null)}
+            style={{width:"100%",padding:"0.5rem 0.7rem",borderRadius:6,border:"1px solid #d1d5db",fontSize:"0.82rem",fontFamily:"inherit",background:"white"}}>
+            <option value="">現行版を自動使用 (v{currentAnnouncement?.version}: {currentAnnouncement?.title})</option>
+            {announcements.map(a => (
+              <option key={a.id} value={a.id}>v{a.version}: {a.title}{a.is_current?" (現行版)":""}</option>
+            ))}
+          </select>
+          <div style={{fontSize:"0.7rem",color:"#6b7280",marginTop:"0.3rem"}}>
+            💡 通常は「現行版を自動使用」のままで OK。特定バージョンを固定したい場合のみ指定してください。
+          </div>
         </div>
       )}
       
       {/* QR コード表示 */}
       <div style={{background:"white",borderRadius:8,padding:"1.25rem",border:"1px solid #e5e7eb"}}>
-        <div style={{fontWeight:800,fontSize:"0.95rem",color:"#111827",marginBottom:"0.6rem",display:"flex",alignItems:"center",gap:"0.4rem"}}>
+        <div style={{fontWeight:800,fontSize:"0.95rem",color:"#111827",marginBottom:"0.6rem"}}>
           📲 この業者専用 QR コード
         </div>
         <div style={{display:"flex",gap:"1rem",alignItems:"flex-start",flexWrap:"wrap"}}>
@@ -23302,14 +23579,12 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
           <div style={{flex:1,minWidth:200}}>
             <div style={{fontSize:"0.7rem",color:"#6b7280",fontWeight:600,marginBottom:"0.2rem"}}>追跡ID</div>
             <div style={{fontSize:"0.95rem",fontWeight:800,fontFamily:"monospace",color:"#7c3aed",marginBottom:"0.6rem"}}>{qrData?.tracking_id}</div>
-            
             <div style={{fontSize:"0.7rem",color:"#6b7280",fontWeight:600,marginBottom:"0.2rem"}}>QR の URL</div>
             <div style={{fontSize:"0.72rem",fontFamily:"monospace",color:"#374151",padding:"0.4rem 0.55rem",background:"#f3f4f6",borderRadius:4,wordBreak:"break-all",marginBottom:"0.4rem"}}>{trackingUrl}</div>
             <button onClick={copyUrl}
               style={{padding:"0.3rem 0.7rem",borderRadius:5,border:"1px solid #d1d5db",background:"white",fontSize:"0.7rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit",color:"#374151"}}>
               📋 URLをコピー
             </button>
-            
             <div style={{display:"flex",gap:"0.5rem",marginTop:"0.8rem",flexWrap:"wrap"}}>
               <div style={{flex:1,minWidth:120,padding:"0.5rem 0.65rem",background:"#eff6ff",borderRadius:6,textAlign:"center"}}>
                 <div style={{fontSize:"0.65rem",color:"#1e40af",fontWeight:700}}>アクセス数</div>
@@ -23336,134 +23611,14 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
           <div>
             <div style={{fontWeight:800,fontSize:"0.85rem",color:"#111827"}}>📄 案内状 PDF を生成</div>
             <div style={{fontSize:"0.7rem",color:"#6b7280",marginTop:2}}>
-              {currentAnnouncement ? `現行版: v${currentAnnouncement.version} ${currentAnnouncement.title}` : "現行版未設定"}
+              {activeAnnouncement ? `使用中: v${activeAnnouncement.version} ${activeAnnouncement.title}` : "案内状未選択"}
             </div>
           </div>
-          <button onClick={generatePdf} disabled={!currentAnnouncement || generating}
-            style={{padding:"0.55rem 1.1rem",borderRadius:6,border:"none",background:(!currentAnnouncement||generating)?"#9ca3af":"#2563eb",color:"white",fontSize:"0.82rem",fontWeight:800,cursor:(!currentAnnouncement||generating)?"not-allowed":"pointer",fontFamily:"inherit"}}>
+          <button onClick={generatePdf} disabled={!activeAnnouncement || generating}
+            style={{padding:"0.55rem 1.1rem",borderRadius:6,border:"none",background:(!activeAnnouncement||generating)?"#9ca3af":"#2563eb",color:"white",fontSize:"0.82rem",fontWeight:800,cursor:(!activeAnnouncement||generating)?"not-allowed":"pointer",fontFamily:"inherit"}}>
             {generating ? "生成中..." : "🖨 PDF生成・印刷"}
           </button>
         </div>
-      </div>
-      
-      {/* フォーム設定 */}
-      <div style={{background:"white",borderRadius:8,padding:"0.85rem 1rem",border:"1px solid #e5e7eb"}}>
-        <div onClick={()=>setShowFormConfig(s=>!s)}
-          style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",userSelect:"none"}}>
-          <div>
-            <div style={{fontWeight:800,fontSize:"0.85rem",color:"#111827"}}>⚙️ フォーム設定</div>
-            <div style={{fontSize:"0.7rem",color:"#6b7280",marginTop:2}}>QRから開くフォームの入力項目をカスタマイズ</div>
-          </div>
-          <span style={{color:"#6b7280",fontSize:"0.8rem"}}>{showFormConfig?"▼":"▶"}</span>
-        </div>
-        {showFormConfig && (
-          <div style={{marginTop:"0.75rem",paddingTop:"0.75rem",borderTop:"1px solid #e5e7eb"}}>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:"0.5rem",marginBottom:"0.8rem"}}>
-              {[
-                ["会社名", "company"],
-                ["担当者名", "contact"],
-                ["電話番号", "phone"],
-                ["メールアドレス", "email"],
-              ].map(([label, key]) => (
-                <div key={key} style={{padding:"0.55rem 0.7rem",border:"1px solid #e5e7eb",borderRadius:6,background:"#f9fafb"}}>
-                  <div style={{fontSize:"0.78rem",fontWeight:700,color:"#111827",marginBottom:"0.3rem"}}>{label}</div>
-                  <label style={{display:"flex",alignItems:"center",gap:"0.3rem",fontSize:"0.72rem",color:"#374151",cursor:"pointer",marginBottom:"0.2rem"}}>
-                    <input type="checkbox" checked={!!formConfig[`show_${key}`]} 
-                      onChange={e=>setFormConfig(p=>({...p, [`show_${key}`]:e.target.checked}))}/>
-                    表示する
-                  </label>
-                  <label style={{display:"flex",alignItems:"center",gap:"0.3rem",fontSize:"0.72rem",color:"#dc2626",cursor:formConfig[`show_${key}`]?"pointer":"not-allowed",opacity:formConfig[`show_${key}`]?1:0.5}}>
-                    <input type="checkbox" checked={!!formConfig[`require_${key}`]} disabled={!formConfig[`show_${key}`]}
-                      onChange={e=>setFormConfig(p=>({...p, [`require_${key}`]:e.target.checked}))}/>
-                    必須にする
-                  </label>
-                </div>
-              ))}
-            </div>
-            <div style={{marginBottom:"0.8rem"}}>
-              <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.25rem"}}>フォーム冒頭メッセージ（任意）</label>
-              <textarea value={formConfig.custom_message||""} onChange={e=>setFormConfig(p=>({...p, custom_message:e.target.value}))}
-                placeholder="例: 弊社サービスにご興味をお持ちいただきありがとうございます。下記フォームよりお問い合わせください。"
-                rows={2}
-                style={{width:"100%",padding:"0.45rem 0.65rem",borderRadius:5,border:"1px solid #d1d5db",fontSize:"0.78rem",fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
-            </div>
-            
-            {/* 追加質問項目 */}
-            <div style={{marginBottom:"0.8rem"}}>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.4rem"}}>
-                <label style={{fontSize:"0.78rem",fontWeight:700,color:"#374151"}}>追加質問（条件分岐用）</label>
-                <button onClick={()=>setFormConfig(p=>({...p, extra_fields:[...(p.extra_fields||[]), {key:`q${Date.now()}`, label:"", type:"text", required:false, options:[]}]}))}
-                  style={{padding:"0.25rem 0.6rem",borderRadius:4,border:"1px solid #2563eb",background:"white",color:"#2563eb",fontSize:"0.7rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                  ＋ 追加
-                </button>
-              </div>
-              {(formConfig.extra_fields||[]).length === 0 ? (
-                <div style={{fontSize:"0.72rem",color:"#9ca3af",padding:"0.55rem 0.7rem",background:"#f9fafb",borderRadius:5,border:"1px dashed #e5e7eb",textAlign:"center"}}>
-                  追加質問なし
-                </div>
-              ) : (
-                <div style={{display:"flex",flexDirection:"column",gap:"0.4rem"}}>
-                  {(formConfig.extra_fields||[]).map((f, idx) => (
-                    <div key={idx} style={{padding:"0.55rem 0.7rem",border:"1px solid #e5e7eb",borderRadius:6,background:"#f9fafb"}}>
-                      <div style={{display:"flex",gap:"0.4rem",alignItems:"center",marginBottom:"0.4rem",flexWrap:"wrap"}}>
-                        <input value={f.label} onChange={e=>{
-                          const next=[...formConfig.extra_fields];
-                          next[idx]={...next[idx], label:e.target.value};
-                          setFormConfig(p=>({...p, extra_fields:next}));
-                        }} placeholder="質問文（例: ご興味のあるサービス）"
-                          style={{flex:1,minWidth:160,padding:"0.35rem 0.55rem",borderRadius:4,border:"1px solid #d1d5db",fontSize:"0.78rem",fontFamily:"inherit"}}/>
-                        <select value={f.type} onChange={e=>{
-                          const next=[...formConfig.extra_fields];
-                          next[idx]={...next[idx], type:e.target.value};
-                          setFormConfig(p=>({...p, extra_fields:next}));
-                        }}
-                          style={{padding:"0.35rem 0.55rem",borderRadius:4,border:"1px solid #d1d5db",fontSize:"0.75rem",fontFamily:"inherit",background:"white"}}>
-                          <option value="text">テキスト</option>
-                          <option value="textarea">複数行</option>
-                          <option value="select">選択肢</option>
-                          <option value="radio">単一選択</option>
-                          <option value="checkbox">複数選択</option>
-                        </select>
-                        <label style={{display:"flex",alignItems:"center",gap:"0.25rem",fontSize:"0.72rem",color:"#dc2626"}}>
-                          <input type="checkbox" checked={!!f.required} onChange={e=>{
-                            const next=[...formConfig.extra_fields];
-                            next[idx]={...next[idx], required:e.target.checked};
-                            setFormConfig(p=>({...p, extra_fields:next}));
-                          }}/>
-                          必須
-                        </label>
-                        <button onClick={()=>{
-                          const next=[...formConfig.extra_fields];
-                          next.splice(idx,1);
-                          setFormConfig(p=>({...p, extra_fields:next}));
-                        }}
-                          style={{padding:"0.25rem 0.5rem",borderRadius:4,border:"1px solid #fca5a5",background:"white",color:"#dc2626",fontSize:"0.7rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                          🗑
-                        </button>
-                      </div>
-                      {(f.type === "select" || f.type === "radio" || f.type === "checkbox") && (
-                        <div>
-                          <div style={{fontSize:"0.68rem",color:"#6b7280",marginBottom:"0.2rem"}}>選択肢（カンマ区切り）</div>
-                          <input value={(f.options||[]).join(", ")} onChange={e=>{
-                            const next=[...formConfig.extra_fields];
-                            next[idx]={...next[idx], options:e.target.value.split(",").map(s=>s.trim()).filter(Boolean)};
-                            setFormConfig(p=>({...p, extra_fields:next}));
-                          }} placeholder="例: 廃棄物処理, リサイクル, その他"
-                            style={{width:"100%",padding:"0.35rem 0.55rem",borderRadius:4,border:"1px solid #d1d5db",fontSize:"0.75rem",fontFamily:"inherit",boxSizing:"border-box"}}/>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            
-            <button onClick={saveFormConfig}
-              style={{padding:"0.5rem 1.1rem",borderRadius:6,border:"none",background:"#2563eb",color:"white",fontSize:"0.82rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
-              💾 フォーム設定を保存
-            </button>
-          </div>
-        )}
       </div>
       
       {/* この業者の QR 反応一覧 */}
@@ -23500,12 +23655,12 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
   );
 }
 
-// ─── ANNOUNCEMENT SETTINGS: 業者向け案内状の管理画面 ─────────────
+// ─── ANNOUNCEMENT SETTINGS: 業者向け案内状の管理画面（本文 + フォーム設定セット） ─────────────
 function AnnouncementSettings({ currentUser, C }) {
   const [list, setList] = React.useState([]);
   const [loading, setLoading] = React.useState(false);
-  const [editing, setEditing] = React.useState(null); // null | "new" | {id, ...} 編集中
-  const [previewing, setPreviewing] = React.useState(null); // 表示中の詳細
+  const [editing, setEditing] = React.useState(null);
+  const [previewing, setPreviewing] = React.useState(null);
   // 編集用フォーム state
   const [editTitle, setEditTitle] = React.useState("");
   const [editContent, setEditContent] = React.useState("");
@@ -23513,6 +23668,17 @@ function AnnouncementSettings({ currentUser, C }) {
   const [editIsCurrent, setEditIsCurrent] = React.useState(true);
   const [showHtmlGuide, setShowHtmlGuide] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
+  // フォーム設定（案内状とセット）
+  const [formConfig, setFormConfig] = React.useState({
+    show_company: true, require_company: true,
+    show_contact: true, require_contact: true,
+    show_phone: true,   require_phone: false,
+    show_email: true,   require_email: true,
+    custom_message: "",
+    submit_button_label: "送信する",
+    thanks_message: "お問い合わせありがとうございます。担当者よりご連絡いたします。",
+    extra_fields: [],
+  });
   
   const loadList = React.useCallback(async () => {
     setLoading(true);
@@ -23550,6 +23716,16 @@ function AnnouncementSettings({ currentUser, C }) {
 </div>`);
     setEditDescription("");
     setEditIsCurrent(true);
+    setFormConfig({
+      show_company: true, require_company: true,
+      show_contact: true, require_contact: true,
+      show_phone: true,   require_phone: false,
+      show_email: true,   require_email: true,
+      custom_message: "弊社サービスにご興味をお持ちいただきありがとうございます。下記フォームよりお問い合わせください。",
+      submit_button_label: "送信する",
+      thanks_message: "お問い合わせありがとうございます。担当者よりご連絡いたします。",
+      extra_fields: [],
+    });
   };
   
   const openEdit = async (id) => {
@@ -23558,12 +23734,27 @@ function AnnouncementSettings({ currentUser, C }) {
       if (!res.ok) throw new Error("HTTP "+res.status);
       const j = await res.json();
       const item = j.item;
-      // 編集は新バージョンとして保存する
       setEditing({...item, mode:"copy"});
       setEditTitle(item.title || "");
       setEditContent(item.content_html || "");
       setEditDescription(item.description || "");
       setEditIsCurrent(true);
+      // フォーム設定を引き継ぐ
+      const fc = item.form_config || {};
+      setFormConfig({
+        show_company: fc.show_company !== false,
+        require_company: !!fc.require_company,
+        show_contact: fc.show_contact !== false,
+        require_contact: !!fc.require_contact,
+        show_phone: fc.show_phone !== false,
+        require_phone: !!fc.require_phone,
+        show_email: fc.show_email !== false,
+        require_email: fc.require_email !== false,
+        custom_message: fc.custom_message || "",
+        submit_button_label: fc.submit_button_label || "送信する",
+        thanks_message: fc.thanks_message || "お問い合わせありがとうございます。担当者よりご連絡いたします。",
+        extra_fields: fc.extra_fields || [],
+      });
     } catch(e) { alert("読み込みエラー: " + e.message); }
   };
   
@@ -23589,6 +23780,7 @@ function AnnouncementSettings({ currentUser, C }) {
           paper_size: "A4",
           is_current: editIsCurrent,
           description: editDescription.trim(),
+          form_config: formConfig,
           created_by: currentUser?.id || "",
         }),
       });
@@ -23641,13 +23833,13 @@ function AnnouncementSettings({ currentUser, C }) {
     const isCopy = typeof editing === "object" && editing.mode === "copy";
     return (
       <div style={{display:"flex",flexDirection:"column",gap:"0.75rem"}}>
-        <div style={{background:"white",borderRadius:"1rem",padding:"1rem 1.25rem",border:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:"0.5rem"}}>
+        <div style={{background:"white",borderRadius:"1rem",padding:"1rem 1.25rem",border:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:"0.5rem",position:"sticky",top:0,zIndex:10}}>
           <button onClick={()=>{if(!saving && window.confirm("編集を破棄しますか？"))setEditing(null);}}
             style={{padding:"0.4rem 0.7rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
             ← 戻る
           </button>
           <div style={{flex:1,fontWeight:800,fontSize:"0.95rem",color:C.text}}>
-            {isCopy ? `v${editing.version} を複製して新バージョン作成` : "新しい案内状を作成"}
+            {isCopy ? `v${editing.version} を複製して新バージョン作成` : "新しい案内状セットを作成"}
           </div>
           <button onClick={saveNew} disabled={saving}
             style={{padding:"0.5rem 1.1rem",borderRadius:6,border:"none",background:saving?"#9ca3af":"#2563eb",color:"white",fontSize:"0.82rem",fontWeight:800,cursor:saving?"not-allowed":"pointer",fontFamily:"inherit"}}>
@@ -23679,14 +23871,13 @@ function AnnouncementSettings({ currentUser, C }) {
         {/* 本文エディタ */}
         <div style={{background:"white",borderRadius:"1rem",padding:"1rem 1.25rem",border:`1px solid ${C.border}`}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.5rem",flexWrap:"wrap",gap:"0.4rem"}}>
-            <label style={{fontSize:"0.78rem",fontWeight:700,color:C.textSub}}>本文 (HTML)</label>
+            <label style={{fontSize:"0.78rem",fontWeight:700,color:C.textSub}}>📄 案内状本文 (HTML)</label>
             <button onClick={()=>setShowHtmlGuide(s=>!s)}
               style={{padding:"0.25rem 0.6rem",borderRadius:5,border:`1px solid ${C.border}`,background:showHtmlGuide?"#dbeafe":"white",color:showHtmlGuide?"#1e40af":C.textSub,fontSize:"0.7rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
               📖 HTMLタグの使い方 {showHtmlGuide ? "▲" : "▼"}
             </button>
           </div>
           
-          {/* クイック挿入ツールバー */}
           <div style={{display:"flex",gap:"0.3rem",flexWrap:"wrap",marginBottom:"0.5rem",padding:"0.4rem 0.5rem",background:"#f9fafb",borderRadius:6,border:`1px solid ${C.borderLight}`}}>
             {[
               ["見出し", "<h1>○○○○</h1>"],
@@ -23703,7 +23894,6 @@ function AnnouncementSettings({ currentUser, C }) {
               ["区切り線", "<hr/>"],
             ].map(([label, code]) => (
               <button key={label} onClick={()=>{
-                // カーソル位置に挿入（簡易版：末尾に追加）
                 setEditContent(prev => prev + (prev.endsWith("\n") || prev === "" ? "" : "\n") + code + "\n");
               }}
                 style={{padding:"0.2rem 0.55rem",borderRadius:4,border:`1px solid ${C.border}`,background:"white",color:C.text,fontSize:"0.7rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
@@ -23712,68 +23902,16 @@ function AnnouncementSettings({ currentUser, C }) {
             ))}
           </div>
           
-          {/* HTMLガイド（折りたたみ） */}
           {showHtmlGuide && (
             <div style={{background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:8,padding:"0.85rem 1rem",marginBottom:"0.5rem",fontSize:"0.78rem",lineHeight:1.7,color:"#78350f"}}>
-              <div style={{fontWeight:800,marginBottom:"0.4rem",color:"#92400e"}}>📖 HTMLタグの使い方ガイド</div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:"0.5rem 1rem"}}>
-                <div>
-                  <b>見出し</b><br/>
-                  <code style={{background:"white",padding:"0.05rem 0.3rem",borderRadius:3,fontSize:"0.72rem"}}>{'<h1>大見出し</h1>'}</code><br/>
-                  <code style={{background:"white",padding:"0.05rem 0.3rem",borderRadius:3,fontSize:"0.72rem"}}>{'<h2>小見出し</h2>'}</code>
-                </div>
-                <div>
-                  <b>段落・改行</b><br/>
-                  <code style={{background:"white",padding:"0.05rem 0.3rem",borderRadius:3,fontSize:"0.72rem"}}>{'<p>段落テキスト</p>'}</code><br/>
-                  <code style={{background:"white",padding:"0.05rem 0.3rem",borderRadius:3,fontSize:"0.72rem"}}>{'<br/>'}</code> 改行
-                </div>
-                <div>
-                  <b>文字装飾</b><br/>
-                  <code style={{background:"white",padding:"0.05rem 0.3rem",borderRadius:3,fontSize:"0.72rem"}}>{'<b>太字</b>'}</code><br/>
-                  <code style={{background:"white",padding:"0.05rem 0.3rem",borderRadius:3,fontSize:"0.72rem"}}>{'<i>斜体</i>'}</code><br/>
-                  <code style={{background:"white",padding:"0.05rem 0.3rem",borderRadius:3,fontSize:"0.72rem"}}>{'<u>下線</u>'}</code>
-                </div>
-                <div>
-                  <b>リスト</b><br/>
-                  <code style={{background:"white",padding:"0.05rem 0.3rem",borderRadius:3,fontSize:"0.72rem"}}>{'<ul><li>項目</li></ul>'}</code><br/>
-                  → 箇条書き<br/>
-                  <code style={{background:"white",padding:"0.05rem 0.3rem",borderRadius:3,fontSize:"0.72rem"}}>{'<ol><li>項目</li></ol>'}</code><br/>
-                  → 番号付き
-                </div>
-                <div>
-                  <b>ボックス（枠で囲む）</b><br/>
-                  <code style={{background:"white",padding:"0.05rem 0.3rem",borderRadius:3,fontSize:"0.7rem",display:"block",whiteSpace:"pre-wrap",lineHeight:1.4}}>{'<div style="padding:1rem;\nborder:2px solid #2563eb;\nborder-radius:8px;">\n  ○○○○\n</div>'}</code>
-                </div>
-                <div>
-                  <b>整列</b><br/>
-                  <code style={{background:"white",padding:"0.05rem 0.3rem",borderRadius:3,fontSize:"0.7rem"}}>{'<div style="text-align:center;">中央</div>'}</code><br/>
-                  <code style={{background:"white",padding:"0.05rem 0.3rem",borderRadius:3,fontSize:"0.7rem"}}>{'<div style="text-align:right;">右</div>'}</code>
-                </div>
-                <div>
-                  <b>色・サイズ</b><br/>
-                  <code style={{background:"white",padding:"0.05rem 0.3rem",borderRadius:3,fontSize:"0.7rem"}}>{'<span style="color:red;">赤文字</span>'}</code><br/>
-                  <code style={{background:"white",padding:"0.05rem 0.3rem",borderRadius:3,fontSize:"0.7rem"}}>{'<span style="font-size:1.5rem;">大きく</span>'}</code>
-                </div>
-                <div>
-                  <b>区切り線</b><br/>
-                  <code style={{background:"white",padding:"0.05rem 0.3rem",borderRadius:3,fontSize:"0.72rem"}}>{'<hr/>'}</code> 横線
-                </div>
-                <div>
-                  <b>テーブル</b><br/>
-                  <code style={{background:"white",padding:"0.05rem 0.3rem",borderRadius:3,fontSize:"0.68rem",display:"block",whiteSpace:"pre-wrap",lineHeight:1.4}}>{'<table border="1">\n  <tr><th>項目</th><th>値</th></tr>\n  <tr><td>○○</td><td>××</td></tr>\n</table>'}</code>
-                </div>
-                <div style={{background:"#fef3c7",padding:"0.5rem 0.65rem",borderRadius:6,border:"1px solid #fcd34d"}}>
-                  <b>🎯 QRコード（重要）</b><br/>
-                  本文中の <code style={{background:"white",padding:"0.05rem 0.3rem",borderRadius:3}}>{`{{QR_CODE}}`}</code> を書いた場所に、各業者固有のQRが差し込まれます。<br/>
-                  通常は<b>右下のお問い合わせボックス内</b>に配置します。
-                </div>
-              </div>
-              <div style={{marginTop:"0.6rem",padding:"0.5rem 0.65rem",background:"#e0f2fe",borderRadius:6,border:"1px solid #7dd3fc",color:"#075985"}}>
-                <b>💡 ヒント</b><br/>
-                • タグは必ず <code>{`<開始タグ>`}</code> と <code>{`</閉じタグ/>`}</code> をペアにする<br/>
-                • 上のツールバーボタンから簡単に挿入できます<br/>
-                • プレビューを見ながら調整してください<br/>
-                • 不安な場合はテンプレートをそのまま使うのが安全
+              <div style={{fontWeight:800,marginBottom:"0.4rem",color:"#92400e"}}>📖 HTMLタグの使い方</div>
+              <div style={{fontSize:"0.72rem"}}>
+                • <code>{`<h1>大見出し</h1>`}</code> / <code>{`<h2>小見出し</h2>`}</code><br/>
+                • <code>{`<p>段落</p>`}</code> / <code>{`<br/>`}</code> 改行<br/>
+                • <code>{`<b>太字</b>`}</code> / <code>{`<i>斜体</i>`}</code><br/>
+                • <code>{`<ul><li>項目</li></ul>`}</code> 箇条書き<br/>
+                • <code>{`<div style="text-align:center;">中央</div>`}</code><br/>
+                • <b>QRコード</b>: <code>{`{{QR_CODE}}`}</code> を書いた場所に業者固有のQRが差し込まれます
               </div>
             </div>
           )}
@@ -23782,16 +23920,135 @@ function AnnouncementSettings({ currentUser, C }) {
             placeholder="HTML 形式で文書を作成してください"
             rows={20}
             style={{width:"100%",padding:"0.7rem 0.85rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"'Menlo','Courier New',monospace",lineHeight:1.5,resize:"vertical",boxSizing:"border-box",minHeight:300}}/>
-          <div style={{marginTop:"0.4rem",fontSize:"0.68rem",color:C.textMuted}}>
-            💡 <code>{`{{QR_CODE}}`}</code> をQRコードの差し込み位置に書いてください（業者ごとに自動で差し込まれます）
-          </div>
         </div>
         
         {/* プレビュー */}
         <div style={{background:"white",borderRadius:"1rem",padding:"1rem 1.25rem",border:`1px solid ${C.border}`}}>
-          <div style={{fontSize:"0.82rem",fontWeight:800,color:C.text,marginBottom:"0.6rem"}}>📄 プレビュー</div>
+          <div style={{fontSize:"0.82rem",fontWeight:800,color:C.text,marginBottom:"0.6rem"}}>📄 案内状プレビュー</div>
           <div style={{background:"#fafafa",border:`1px solid ${C.borderLight}`,borderRadius:8,padding:"2rem 2.5rem",minHeight:400,fontSize:"0.85rem",lineHeight:1.7,color:"#222"}}>
             <div dangerouslySetInnerHTML={{__html: editContent.replace(/\{\{QR_CODE\}\}/g, '<div style="display:inline-block;padding:0.5rem;background:#f0f0f0;border:1px dashed #999;border-radius:4px;font-size:0.7rem;color:#666;">[QRコード差し込み位置]</div>')}}/>
+          </div>
+        </div>
+        
+        {/* フォーム設定（案内状とセット） */}
+        <div style={{background:"white",borderRadius:"1rem",padding:"1rem 1.25rem",border:`1px solid ${C.border}`}}>
+          <div style={{fontWeight:800,fontSize:"0.95rem",color:C.text,marginBottom:"0.5rem"}}>📝 アンケートフォーム設定</div>
+          <div style={{fontSize:"0.72rem",color:C.textMuted,marginBottom:"0.7rem"}}>QRからアクセスした業者が入力するフォーム項目を設定します</div>
+          
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:"0.5rem",marginBottom:"0.8rem"}}>
+            {[
+              ["会社名", "company"],
+              ["担当者名", "contact"],
+              ["電話番号", "phone"],
+              ["メールアドレス", "email"],
+            ].map(([label, key]) => (
+              <div key={key} style={{padding:"0.55rem 0.7rem",border:`1px solid ${C.border}`,borderRadius:6,background:"#f9fafb"}}>
+                <div style={{fontSize:"0.78rem",fontWeight:700,color:C.text,marginBottom:"0.3rem"}}>{label}</div>
+                <label style={{display:"flex",alignItems:"center",gap:"0.3rem",fontSize:"0.72rem",color:C.textSub,cursor:"pointer",marginBottom:"0.2rem"}}>
+                  <input type="checkbox" checked={!!formConfig[`show_${key}`]} 
+                    onChange={e=>setFormConfig(p=>({...p, [`show_${key}`]:e.target.checked}))}/>
+                  表示する
+                </label>
+                <label style={{display:"flex",alignItems:"center",gap:"0.3rem",fontSize:"0.72rem",color:"#dc2626",cursor:formConfig[`show_${key}`]?"pointer":"not-allowed",opacity:formConfig[`show_${key}`]?1:0.5}}>
+                  <input type="checkbox" checked={!!formConfig[`require_${key}`]} disabled={!formConfig[`show_${key}`]}
+                    onChange={e=>setFormConfig(p=>({...p, [`require_${key}`]:e.target.checked}))}/>
+                  必須にする
+                </label>
+              </div>
+            ))}
+          </div>
+          
+          <div style={{marginBottom:"0.6rem"}}>
+            <label style={{display:"block",fontSize:"0.75rem",fontWeight:700,color:C.textSub,marginBottom:"0.25rem"}}>フォーム冒頭メッセージ</label>
+            <textarea value={formConfig.custom_message||""} onChange={e=>setFormConfig(p=>({...p, custom_message:e.target.value}))}
+              placeholder="例: 弊社サービスにご興味をお持ちいただきありがとうございます。"
+              rows={2}
+              style={{width:"100%",padding:"0.45rem 0.65rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
+          </div>
+          
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.5rem",marginBottom:"0.6rem"}}>
+            <div>
+              <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:C.textSub,marginBottom:"0.2rem"}}>送信ボタンのラベル</label>
+              <input value={formConfig.submit_button_label||""} onChange={e=>setFormConfig(p=>({...p, submit_button_label:e.target.value}))}
+                placeholder="送信する"
+                style={{width:"100%",padding:"0.4rem 0.6rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"inherit",boxSizing:"border-box"}}/>
+            </div>
+            <div>
+              <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:C.textSub,marginBottom:"0.2rem"}}>送信完了メッセージ</label>
+              <input value={formConfig.thanks_message||""} onChange={e=>setFormConfig(p=>({...p, thanks_message:e.target.value}))}
+                placeholder="お問い合わせありがとうございます"
+                style={{width:"100%",padding:"0.4rem 0.6rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"inherit",boxSizing:"border-box"}}/>
+            </div>
+          </div>
+          
+          {/* 追加質問 */}
+          <div style={{marginTop:"0.8rem"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.4rem"}}>
+              <label style={{fontSize:"0.78rem",fontWeight:700,color:C.text}}>追加質問</label>
+              <button onClick={()=>setFormConfig(p=>({...p, extra_fields:[...(p.extra_fields||[]), {key:`q${Date.now()}`, label:"", type:"text", required:false, options:[]}]}))}
+                style={{padding:"0.25rem 0.6rem",borderRadius:4,border:"1px solid #2563eb",background:"white",color:"#2563eb",fontSize:"0.7rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                ＋ 質問を追加
+              </button>
+            </div>
+            {(formConfig.extra_fields||[]).length === 0 ? (
+              <div style={{fontSize:"0.72rem",color:"#9ca3af",padding:"0.55rem 0.7rem",background:"#f9fafb",borderRadius:5,border:"1px dashed #e5e7eb",textAlign:"center"}}>
+                追加質問なし
+              </div>
+            ) : (
+              <div style={{display:"flex",flexDirection:"column",gap:"0.4rem"}}>
+                {(formConfig.extra_fields||[]).map((f, idx) => (
+                  <div key={idx} style={{padding:"0.55rem 0.7rem",border:`1px solid ${C.border}`,borderRadius:6,background:"#f9fafb"}}>
+                    <div style={{display:"flex",gap:"0.4rem",alignItems:"center",marginBottom:"0.4rem",flexWrap:"wrap"}}>
+                      <input value={f.label} onChange={e=>{
+                        const next=[...formConfig.extra_fields];
+                        next[idx]={...next[idx], label:e.target.value};
+                        setFormConfig(p=>({...p, extra_fields:next}));
+                      }} placeholder="質問文（例: ご興味のあるサービス）"
+                        style={{flex:1,minWidth:160,padding:"0.35rem 0.55rem",borderRadius:4,border:`1px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"inherit"}}/>
+                      <select value={f.type} onChange={e=>{
+                        const next=[...formConfig.extra_fields];
+                        next[idx]={...next[idx], type:e.target.value};
+                        setFormConfig(p=>({...p, extra_fields:next}));
+                      }}
+                        style={{padding:"0.35rem 0.55rem",borderRadius:4,border:`1px solid ${C.border}`,fontSize:"0.75rem",fontFamily:"inherit",background:"white"}}>
+                        <option value="text">テキスト</option>
+                        <option value="textarea">複数行</option>
+                        <option value="select">選択肢</option>
+                        <option value="radio">単一選択</option>
+                        <option value="checkbox">複数選択</option>
+                      </select>
+                      <label style={{display:"flex",alignItems:"center",gap:"0.25rem",fontSize:"0.72rem",color:"#dc2626"}}>
+                        <input type="checkbox" checked={!!f.required} onChange={e=>{
+                          const next=[...formConfig.extra_fields];
+                          next[idx]={...next[idx], required:e.target.checked};
+                          setFormConfig(p=>({...p, extra_fields:next}));
+                        }}/>
+                        必須
+                      </label>
+                      <button onClick={()=>{
+                        const next=[...formConfig.extra_fields];
+                        next.splice(idx,1);
+                        setFormConfig(p=>({...p, extra_fields:next}));
+                      }}
+                        style={{padding:"0.25rem 0.5rem",borderRadius:4,border:"1px solid #fca5a5",background:"white",color:"#dc2626",fontSize:"0.7rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                        🗑
+                      </button>
+                    </div>
+                    {(f.type === "select" || f.type === "radio" || f.type === "checkbox") && (
+                      <div>
+                        <div style={{fontSize:"0.68rem",color:C.textMuted,marginBottom:"0.2rem"}}>選択肢（カンマ区切り）</div>
+                        <input value={(f.options||[]).join(", ")} onChange={e=>{
+                          const next=[...formConfig.extra_fields];
+                          next[idx]={...next[idx], options:e.target.value.split(",").map(s=>s.trim()).filter(Boolean)};
+                          setFormConfig(p=>({...p, extra_fields:next}));
+                        }} placeholder="例: 廃棄物処理, リサイクル, その他"
+                          style={{width:"100%",padding:"0.35rem 0.55rem",borderRadius:4,border:`1px solid ${C.border}`,fontSize:"0.75rem",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -23800,6 +24057,7 @@ function AnnouncementSettings({ currentUser, C }) {
   
   // プレビュー表示
   if (previewing) {
+    const fc = previewing.form_config || {};
     return (
       <div style={{display:"flex",flexDirection:"column",gap:"0.75rem"}}>
         <div style={{background:"white",borderRadius:"1rem",padding:"1rem 1.25rem",border:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:"0.5rem"}}>
@@ -23825,6 +24083,22 @@ function AnnouncementSettings({ currentUser, C }) {
         <div style={{background:"white",borderRadius:"1rem",padding:"2.5rem 3rem",border:`1px solid ${C.border}`,fontSize:"0.9rem",lineHeight:1.7,color:"#222"}}>
           <div dangerouslySetInnerHTML={{__html: (previewing.content_html||"").replace(/\{\{QR_CODE\}\}/g, '<div style="display:inline-block;padding:0.5rem;background:#f0f0f0;border:1px dashed #999;border-radius:4px;font-size:0.75rem;color:#666;">[QRコード差し込み位置]</div>')}}/>
         </div>
+        <div style={{background:"white",borderRadius:"1rem",padding:"1.5rem",border:`1px solid ${C.border}`}}>
+          <div style={{fontWeight:800,fontSize:"0.95rem",color:C.text,marginBottom:"0.6rem"}}>📝 アンケート設定（フォームのプレビュー）</div>
+          {fc.custom_message && <div style={{padding:"0.5rem 0.7rem",background:"#f0f9ff",borderLeft:"3px solid #2563eb",fontSize:"0.82rem",marginBottom:"0.6rem"}}>{fc.custom_message}</div>}
+          <div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
+            {fc.show_company !== false && <div style={{fontSize:"0.78rem"}}>📝 会社名 {fc.require_company && <span style={{color:"#dc2626"}}>*</span>}</div>}
+            {fc.show_contact !== false && <div style={{fontSize:"0.78rem"}}>📝 担当者名 {fc.require_contact && <span style={{color:"#dc2626"}}>*</span>}</div>}
+            {fc.show_phone !== false && <div style={{fontSize:"0.78rem"}}>📝 電話番号 {fc.require_phone && <span style={{color:"#dc2626"}}>*</span>}</div>}
+            {fc.show_email !== false && <div style={{fontSize:"0.78rem"}}>📝 メールアドレス {fc.require_email && <span style={{color:"#dc2626"}}>*</span>}</div>}
+            {(fc.extra_fields||[]).map((f, i) => (
+              <div key={i} style={{fontSize:"0.78rem",color:C.text}}>
+                📝 {f.label} <span style={{fontSize:"0.65rem",color:C.textMuted}}>[{f.type}]</span> {f.required && <span style={{color:"#dc2626"}}>*</span>}
+                {f.options?.length > 0 && <div style={{fontSize:"0.7rem",color:C.textMuted,marginLeft:"1.2rem"}}>選択肢: {f.options.join(", ")}</div>}
+              </div>
+            ))}
+          </div>
+        </div>
         {previewing.description && (
           <div style={{background:"#f9fafb",borderRadius:8,padding:"0.7rem 1rem",fontSize:"0.78rem",color:C.textSub}}>
             <b>説明:</b> {previewing.description}
@@ -23838,20 +24112,20 @@ function AnnouncementSettings({ currentUser, C }) {
   return (
     <div style={{display:"flex",flexDirection:"column",gap:"0.75rem"}}>
       <div style={{background:"white",borderRadius:"1rem",padding:"1.15rem 1.25rem",border:`1px solid ${C.border}`,boxShadow:"0 1px 2px rgba(0,0,0,0.03)"}}>
-        <div style={{fontWeight:800,fontSize:"0.95rem",color:C.text,marginBottom:"0.4rem"}}>📨 業者向け案内状の管理</div>
+        <div style={{fontWeight:800,fontSize:"0.95rem",color:C.text,marginBottom:"0.4rem"}}>📨 案内状＋アンケート の管理</div>
         <div style={{fontSize:"0.74rem",color:C.textMuted,lineHeight:1.65}}>
-          DUSTALK 業者向けの案内状をバージョン管理します。<br/>
-          • 文書本文は HTML 形式で作成（タグで装飾、リスト、見出し等が使えます）<br/>
-          • <code>{`{{QR_CODE}}`}</code> プレースホルダーに各業者固有のQRが差し込まれます<br/>
-          • 業者詳細画面の「QR設定」から PDF を生成して配布します<br/>
-          • 「現行版」がデフォルトで使われます（変更すると新しい配布から反映）
+          DUSTALK 業者向けの<b>案内状本文 + アンケートフォーム</b>を1セットでバージョン管理します。<br/>
+          • 案内状を PDF として印刷 → 業者に配布<br/>
+          • 業者がQRをスキャン → アンケートフォームが表示される<br/>
+          • 業者がフォーム送信 → info@dustalk.com に通知 + 営業データに反映<br/>
+          • 「現行版」がデフォルトで使われます
         </div>
       </div>
       
       <div style={{display:"flex",gap:"0.5rem"}}>
         <button onClick={openNew}
           style={{padding:"0.55rem 1.1rem",borderRadius:8,border:"none",background:"#2563eb",color:"white",fontSize:"0.85rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
-          ＋ 新しい案内状を作成
+          ＋ 新しい案内状セットを作成
         </button>
       </div>
       
@@ -23860,8 +24134,8 @@ function AnnouncementSettings({ currentUser, C }) {
       ) : list.length === 0 ? (
         <div style={{background:"white",borderRadius:"1rem",padding:"3rem 1.5rem",border:`1px solid ${C.border}`,textAlign:"center",color:C.textMuted}}>
           <div style={{fontSize:"2rem",marginBottom:"0.5rem"}}>📨</div>
-          <div style={{fontSize:"0.9rem",marginBottom:"0.3rem"}}>まだ案内状がありません</div>
-          <div style={{fontSize:"0.75rem"}}>「＋ 新しい案内状を作成」から始めてください</div>
+          <div style={{fontSize:"0.9rem",marginBottom:"0.3rem"}}>まだ案内状セットがありません</div>
+          <div style={{fontSize:"0.75rem"}}>「＋ 新しい案内状セットを作成」から始めてください</div>
         </div>
       ) : (
         <div style={{display:"flex",flexDirection:"column",gap:"0.4rem"}}>
@@ -23891,7 +24165,7 @@ function AnnouncementSettings({ currentUser, C }) {
                     現行版に
                   </button>
                   <button onClick={()=>deleteOne(a.id, a.version)}
-                    style={{padding:"0.3rem 0.6rem",borderRadius:5,border:`1px solid #fca5a5`,background:"white",color:"#dc2626",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
+                    style={{padding:"0.3rem 0.6rem",borderRadius:5,border:"1px solid #fca5a5",background:"white",color:"#dc2626",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
                     🗑
                   </button>
                 </>
@@ -23903,6 +24177,7 @@ function AnnouncementSettings({ currentUser, C }) {
     </div>
   );
 }
+
 
 // ─── SPAM FILTER SETTINGS: 迷惑メールフィルタの管理画面 ─────────────
 function SpamFilterSettings({ currentUser, C }) {
@@ -26500,6 +26775,22 @@ function GlobalSearchModal({ query, onQueryChange, onClose, data, onNavigate, us
 
 
 export default function App() {
+  // ━━━━ QR 公開フォームルート（業者がスキャンしてアクセス）━━━━
+  // 通常のMyDeskアプリより前に判定し、フォーム画面に切り替える
+  const [qrPublicMode, setQrPublicMode] = React.useState(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.get("qr") || null;
+    } catch { return null; }
+  });
+  if (qrPublicMode) {
+    return <QrPublicForm trackingId={qrPublicMode} onExit={()=>{
+      // URL からクエリパラメータを除去
+      window.history.replaceState({}, "", window.location.pathname);
+      setQrPublicMode(null);
+    }}/>;
+  }
+  
   const [data, setData] = useState(INIT);
   // AI 提案からのタスク追加用に setData をグローバル公開
   React.useEffect(()=>{ window.__myDeskSetData = setData; }, []);
