@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v121-qr-public-form"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v122-qr-detail-conditional"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -23180,8 +23180,22 @@ function QrPublicForm({ trackingId, onExit }) {
     if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
       setError("メールアドレスの形式が正しくありません"); return;
     }
-    // 追加質問のバリデーション
+    // 追加質問のバリデーション（条件分岐で非表示の質問・空ラベルはスキップ）
     for (const f of (fc.extra_fields || [])) {
+      // 空ラベルはスキップ
+      if (!f.label || !f.label.trim()) continue;
+      // 条件分岐で非表示の場合はスキップ
+      if (f.show_if && f.show_if.question_key) {
+        const triggerValue = extraValues[f.show_if.question_key];
+        const expectedValue = f.show_if.value;
+        let visible = false;
+        if (Array.isArray(triggerValue)) {
+          visible = triggerValue.includes(expectedValue);
+        } else {
+          visible = String(triggerValue||"") === String(expectedValue||"");
+        }
+        if (!visible) continue;
+      }
       if (f.required) {
         const v = extraValues[f.key];
         if (f.type === "checkbox") {
@@ -23198,10 +23212,26 @@ function QrPublicForm({ trackingId, onExit }) {
     
     setSubmitting(true);
     try {
-      // form_data に追加質問の答えを格納
+      // form_data に追加質問の答えを格納（空ラベル・非表示の質問はスキップ）
       const form_data = {};
       (fc.extra_fields || []).forEach(f => {
-        form_data[f.label] = extraValues[f.key];
+        if (!f.label || !f.label.trim()) return;
+        // 条件分岐で非表示はスキップ
+        if (f.show_if && f.show_if.question_key) {
+          const triggerValue = extraValues[f.show_if.question_key];
+          const expectedValue = f.show_if.value;
+          let visible = false;
+          if (Array.isArray(triggerValue)) {
+            visible = triggerValue.includes(expectedValue);
+          } else {
+            visible = String(triggerValue||"") === String(expectedValue||"");
+          }
+          if (!visible) return;
+        }
+        const val = extraValues[f.key];
+        if (val !== undefined && val !== null && val !== "" && !(Array.isArray(val) && val.length === 0)) {
+          form_data[f.label] = val;
+        }
       });
       const res = await fetch(`${DB_API_BASE}/qr/submit`, {
         method: "POST", headers: DB_API_HEADERS,
@@ -23333,59 +23363,77 @@ function QrPublicForm({ trackingId, onExit }) {
             </div>
           )}
           
-          {/* 追加質問 */}
-          {(fc.extra_fields || []).map(f => (
-            <div key={f.key}>
-              <label style={{display:"block",fontSize:"0.85rem",fontWeight:700,color:"#374151",marginBottom:"0.3rem"}}>
-                {f.label} {f.required && <span style={{color:"#dc2626"}}>*</span>}
-              </label>
-              {f.type === "text" && (
-                <input value={extraValues[f.key]||""} onChange={e=>setExtraValues(p=>({...p, [f.key]:e.target.value}))}
-                  style={{width:"100%",padding:"0.65rem 0.85rem",borderRadius:8,border:"1px solid #d1d5db",fontSize:"0.95rem",fontFamily:"inherit",boxSizing:"border-box"}}/>
-              )}
-              {f.type === "textarea" && (
-                <textarea value={extraValues[f.key]||""} onChange={e=>setExtraValues(p=>({...p, [f.key]:e.target.value}))}
-                  rows={4}
-                  style={{width:"100%",padding:"0.65rem 0.85rem",borderRadius:8,border:"1px solid #d1d5db",fontSize:"0.95rem",fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
-              )}
-              {f.type === "select" && (
-                <select value={extraValues[f.key]||""} onChange={e=>setExtraValues(p=>({...p, [f.key]:e.target.value}))}
-                  style={{width:"100%",padding:"0.65rem 0.85rem",borderRadius:8,border:"1px solid #d1d5db",fontSize:"0.95rem",fontFamily:"inherit",background:"white",boxSizing:"border-box"}}>
-                  <option value="">選択してください</option>
-                  {(f.options||[]).map((o,i) => <option key={i} value={o}>{o}</option>)}
-                </select>
-              )}
-              {f.type === "radio" && (
-                <div style={{display:"flex",flexDirection:"column",gap:"0.35rem"}}>
-                  {(f.options||[]).map((o,i) => (
-                    <label key={i} style={{display:"flex",alignItems:"center",gap:"0.5rem",fontSize:"0.88rem",color:"#374151",cursor:"pointer"}}>
-                      <input type="radio" name={f.key} value={o} checked={extraValues[f.key]===o}
-                        onChange={e=>setExtraValues(p=>({...p, [f.key]:e.target.value}))}
-                        style={{width:18,height:18}}/>
-                      {o}
-                    </label>
-                  ))}
-                </div>
-              )}
-              {f.type === "checkbox" && (
-                <div style={{display:"flex",flexDirection:"column",gap:"0.35rem"}}>
-                  {(f.options||[]).map((o,i) => {
-                    const checked = Array.isArray(extraValues[f.key]) && extraValues[f.key].includes(o);
-                    return (
+          {/* 追加質問（条件分岐対応 + 空ラベルは非表示） */}
+          {(fc.extra_fields || []).map(f => {
+            // 空ラベルは表示しない
+            if (!f.label || !f.label.trim()) return null;
+            // 条件分岐: show_if が設定されている場合、その条件を満たす時のみ表示
+            if (f.show_if && f.show_if.question_key) {
+              const triggerValue = extraValues[f.show_if.question_key];
+              const expectedValue = f.show_if.value;
+              let visible = false;
+              if (Array.isArray(triggerValue)) {
+                // チェックボックス（配列）
+                visible = triggerValue.includes(expectedValue);
+              } else {
+                // 文字列の単純比較
+                visible = String(triggerValue||"") === String(expectedValue||"");
+              }
+              if (!visible) return null;
+            }
+            return (
+              <div key={f.key} >
+                <label style={{display:"block",fontSize:"0.85rem",fontWeight:700,color:"#374151",marginBottom:"0.3rem"}}>
+                  {f.label} {f.required && <span style={{color:"#dc2626"}}>*</span>}
+                </label>
+                {f.type === "text" && (
+                  <input value={extraValues[f.key]||""} onChange={e=>setExtraValues(p=>({...p, [f.key]:e.target.value}))}
+                    style={{width:"100%",padding:"0.65rem 0.85rem",borderRadius:8,border:"1px solid #d1d5db",fontSize:"0.95rem",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                )}
+                {f.type === "textarea" && (
+                  <textarea value={extraValues[f.key]||""} onChange={e=>setExtraValues(p=>({...p, [f.key]:e.target.value}))}
+                    rows={4}
+                    style={{width:"100%",padding:"0.65rem 0.85rem",borderRadius:8,border:"1px solid #d1d5db",fontSize:"0.95rem",fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
+                )}
+                {f.type === "select" && (
+                  <select value={extraValues[f.key]||""} onChange={e=>setExtraValues(p=>({...p, [f.key]:e.target.value}))}
+                    style={{width:"100%",padding:"0.65rem 0.85rem",borderRadius:8,border:"1px solid #d1d5db",fontSize:"0.95rem",fontFamily:"inherit",background:"white",boxSizing:"border-box"}}>
+                    <option value="">選択してください</option>
+                    {(f.options||[]).map((o,i) => <option key={i} value={o}>{o}</option>)}
+                  </select>
+                )}
+                {f.type === "radio" && (
+                  <div style={{display:"flex",flexDirection:"column",gap:"0.35rem"}}>
+                    {(f.options||[]).map((o,i) => (
                       <label key={i} style={{display:"flex",alignItems:"center",gap:"0.5rem",fontSize:"0.88rem",color:"#374151",cursor:"pointer"}}>
-                        <input type="checkbox" checked={checked} onChange={e=>{
-                          const cur = Array.isArray(extraValues[f.key]) ? extraValues[f.key] : [];
-                          const next = e.target.checked ? [...cur, o] : cur.filter(x=>x!==o);
-                          setExtraValues(p=>({...p, [f.key]:next}));
-                        }} style={{width:18,height:18}}/>
+                        <input type="radio" name={f.key} value={o} checked={extraValues[f.key]===o}
+                          onChange={e=>setExtraValues(p=>({...p, [f.key]:e.target.value}))}
+                          style={{width:18,height:18}}/>
                         {o}
                       </label>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          ))}
+                    ))}
+                  </div>
+                )}
+                {f.type === "checkbox" && (
+                  <div style={{display:"flex",flexDirection:"column",gap:"0.35rem"}}>
+                    {(f.options||[]).map((o,i) => {
+                      const checked = Array.isArray(extraValues[f.key]) && extraValues[f.key].includes(o);
+                      return (
+                        <label key={i} style={{display:"flex",alignItems:"center",gap:"0.5rem",fontSize:"0.88rem",color:"#374151",cursor:"pointer"}}>
+                          <input type="checkbox" checked={checked} onChange={e=>{
+                            const cur = Array.isArray(extraValues[f.key]) ? extraValues[f.key] : [];
+                            const next = e.target.checked ? [...cur, o] : cur.filter(x=>x!==o);
+                            setExtraValues(p=>({...p, [f.key]:next}));
+                          }} style={{width:18,height:18}}/>
+                          {o}
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
         
         {/* 送信ボタン */}
@@ -23633,24 +23681,128 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
         ) : (
           <div style={{display:"flex",flexDirection:"column",gap:"0.35rem"}}>
             {submissions.slice(0, 10).map(s => (
-              <div key={s.id} style={{padding:"0.55rem 0.7rem",background:"#f9fafb",border:"1px solid #e5e7eb",borderRadius:6}}>
-                <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginBottom:"0.2rem"}}>
-                  <span style={{fontSize:"0.62rem",fontWeight:700,color:"white",background:s.status==="new"?"#dc2626":s.status==="reviewed"?"#d97706":"#059669",borderRadius:3,padding:"0.1rem 0.4rem"}}>
-                    {s.status==="new"?"未対応":s.status==="reviewed"?"確認済":"対応済"}
-                  </span>
-                  <div style={{fontSize:"0.82rem",fontWeight:700,color:"#111827",flex:1}}>{s.company_name||"(企業名未入力)"}</div>
-                  <div style={{fontSize:"0.68rem",color:"#9ca3af"}}>{new Date(s.submitted_at).toLocaleString("ja-JP")}</div>
-                </div>
-                <div style={{fontSize:"0.72rem",color:"#374151",display:"flex",gap:"0.6rem",flexWrap:"wrap"}}>
-                  {s.contact_name && <span>👤 {s.contact_name}</span>}
-                  {s.phone && <span>📞 {s.phone}</span>}
-                  {s.email && <span>✉️ {s.email}</span>}
-                </div>
-              </div>
+              <QrSubmissionItem key={s.id} submission={s} onUpdate={loadAll} currentUserId={currentUserId}/>
             ))}
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ─── QR SUBMISSION ITEM: 単一反応の表示・展開・ステータス更新 ─────────────
+function QrSubmissionItem({ submission, onUpdate, currentUserId }) {
+  const [expanded, setExpanded] = React.useState(false);
+  const [updating, setUpdating] = React.useState(false);
+  const s = submission;
+  
+  const updateStatus = async (newStatus) => {
+    setUpdating(true);
+    try {
+      const res = await fetch(`${DB_API_BASE}/qr/submissions/${s.id}`, {
+        method: "PATCH", headers: DB_API_HEADERS,
+        body: JSON.stringify({ status: newStatus, reviewed_by: currentUserId || "" }),
+      });
+      if (res.ok) {
+        if (onUpdate) onUpdate();
+      } else {
+        const j = await res.json();
+        alert("更新エラー: " + (j.error || res.status));
+      }
+    } catch(e) { alert("更新エラー: " + e.message); }
+    setUpdating(false);
+  };
+  
+  const statusColor = s.status === "new" ? "#dc2626" : s.status === "reviewed" ? "#d97706" : "#059669";
+  const statusBg = s.status === "new" ? "#fee2e2" : s.status === "reviewed" ? "#fef3c7" : "#d1fae5";
+  const statusLabel = s.status === "new" ? "未対応" : s.status === "reviewed" ? "確認済" : "対応済";
+  
+  return (
+    <div style={{background:"#f9fafb",border:`1px solid ${expanded ? "#2563eb" : "#e5e7eb"}`,borderRadius:6,overflow:"hidden",transition:"border-color 0.15s"}}>
+      {/* サマリ行（クリックで展開） */}
+      <div onClick={()=>setExpanded(e=>!e)} 
+        style={{padding:"0.6rem 0.8rem",cursor:"pointer",userSelect:"none"}}>
+        <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginBottom:"0.2rem"}}>
+          <span style={{fontSize:"0.62rem",fontWeight:700,color:"white",background:statusColor,borderRadius:3,padding:"0.1rem 0.4rem",flexShrink:0}}>
+            {statusLabel}
+          </span>
+          <div style={{fontSize:"0.85rem",fontWeight:700,color:"#111827",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.company_name||"(企業名未入力)"}</div>
+          <div style={{fontSize:"0.68rem",color:"#9ca3af",flexShrink:0}}>{new Date(s.submitted_at).toLocaleString("ja-JP",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"})}</div>
+          <span style={{color:"#6b7280",fontSize:"0.75rem",fontWeight:700,flexShrink:0}}>{expanded ? "▼" : "▶"}</span>
+        </div>
+        <div style={{fontSize:"0.72rem",color:"#374151",display:"flex",gap:"0.6rem",flexWrap:"wrap",marginLeft:"3.5rem"}}>
+          {s.contact_name && <span>👤 {s.contact_name}</span>}
+          {s.phone && <span>📞 {s.phone}</span>}
+          {s.email && <span>✉️ {s.email}</span>}
+        </div>
+      </div>
+      
+      {/* 展開エリア */}
+      {expanded && (
+        <div style={{padding:"0.8rem 1rem",borderTop:"1px solid #e5e7eb",background:"white"}}>
+          {/* 基本情報 */}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:"0.5rem 1rem",marginBottom:"0.8rem"}}>
+            <div>
+              <div style={{fontSize:"0.65rem",color:"#6b7280",fontWeight:700,marginBottom:"0.15rem"}}>会社名</div>
+              <div style={{fontSize:"0.85rem",color:"#111827",fontWeight:600}}>{s.company_name || "(未入力)"}</div>
+            </div>
+            <div>
+              <div style={{fontSize:"0.65rem",color:"#6b7280",fontWeight:700,marginBottom:"0.15rem"}}>担当者名</div>
+              <div style={{fontSize:"0.85rem",color:"#111827",fontWeight:600}}>{s.contact_name || "(未入力)"}</div>
+            </div>
+            <div>
+              <div style={{fontSize:"0.65rem",color:"#6b7280",fontWeight:700,marginBottom:"0.15rem"}}>電話番号</div>
+              <div style={{fontSize:"0.85rem",color:"#111827",fontWeight:600}}>
+                {s.phone ? <a href={`tel:${s.phone}`} style={{color:"#2563eb",textDecoration:"none"}}>{s.phone}</a> : "(未入力)"}
+              </div>
+            </div>
+            <div>
+              <div style={{fontSize:"0.65rem",color:"#6b7280",fontWeight:700,marginBottom:"0.15rem"}}>メールアドレス</div>
+              <div style={{fontSize:"0.85rem",color:"#111827",fontWeight:600}}>
+                {s.email ? <a href={`mailto:${s.email}`} style={{color:"#2563eb",textDecoration:"none"}}>{s.email}</a> : "(未入力)"}
+              </div>
+            </div>
+          </div>
+          
+          {/* 追加質問の回答 */}
+          {s.form_data && typeof s.form_data === "object" && Object.keys(s.form_data).length > 0 && (
+            <div style={{marginBottom:"0.8rem",padding:"0.6rem 0.8rem",background:"#f9fafb",borderRadius:6,border:"1px solid #e5e7eb"}}>
+              <div style={{fontSize:"0.72rem",fontWeight:800,color:"#374151",marginBottom:"0.4rem"}}>📝 アンケート回答</div>
+              {Object.entries(s.form_data).filter(([k,v])=>k && (v!==null && v!=='')).map(([k, v]) => (
+                <div key={k} style={{marginBottom:"0.35rem"}}>
+                  <div style={{fontSize:"0.7rem",color:"#6b7280",fontWeight:700}}>{k}</div>
+                  <div style={{fontSize:"0.8rem",color:"#111827",marginLeft:"0.5rem"}}>
+                    {Array.isArray(v) ? v.join(", ") : String(v)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          
+          {/* メタ情報 */}
+          <div style={{fontSize:"0.68rem",color:"#9ca3af",marginBottom:"0.7rem",lineHeight:1.5}}>
+            <div>送信日時: {new Date(s.submitted_at).toLocaleString("ja-JP")}</div>
+            {s.notified_at && <div>メール通知: {new Date(s.notified_at).toLocaleString("ja-JP")} ✓</div>}
+            {s.reviewed_at && <div>レビュー: {new Date(s.reviewed_at).toLocaleString("ja-JP")}</div>}
+          </div>
+          
+          {/* ステータス更新ボタン */}
+          <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap"}}>
+            <div style={{fontSize:"0.72rem",color:"#6b7280",fontWeight:700,alignSelf:"center"}}>ステータス変更:</div>
+            {["new","reviewed","handled"].map(st => {
+              const stColor = st==="new"?"#dc2626":st==="reviewed"?"#d97706":"#059669";
+              const stLabel = st==="new"?"未対応":st==="reviewed"?"確認済":"対応済";
+              const isActive = s.status === st;
+              return (
+                <button key={st} onClick={()=>updateStatus(st)} disabled={isActive || updating}
+                  style={{padding:"0.3rem 0.7rem",borderRadius:5,border:`1px solid ${isActive?stColor:"#d1d5db"}`,background:isActive?stColor:"white",color:isActive?"white":"#374151",fontSize:"0.72rem",fontWeight:700,cursor:isActive||updating?"default":"pointer",fontFamily:"inherit",opacity:updating?0.5:1}}>
+                  {stLabel}{isActive?" ✓":""}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -23772,6 +23924,14 @@ function AnnouncementSettings({ currentUser, C }) {
     if (!editContent.trim()) { alert("本文を入力してください"); return; }
     setSaving(true);
     try {
+      // _isNew フラグは保存しない（UIだけの目印）
+      const cleanFormConfig = {
+        ...formConfig,
+        extra_fields: (formConfig.extra_fields||[]).map(f => {
+          const {_isNew, ...rest} = f;
+          return rest;
+        }),
+      };
       const res = await fetch(`${DB_API_BASE}/announcements`, {
         method:"POST", headers: DB_API_HEADERS,
         body: JSON.stringify({
@@ -23780,7 +23940,7 @@ function AnnouncementSettings({ currentUser, C }) {
           paper_size: "A4",
           is_current: editIsCurrent,
           description: editDescription.trim(),
-          form_config: formConfig,
+          form_config: cleanFormConfig,
           created_by: currentUser?.id || "",
         }),
       });
@@ -23982,71 +24142,169 @@ function AnnouncementSettings({ currentUser, C }) {
           </div>
           
           {/* 追加質問 */}
-          <div style={{marginTop:"0.8rem"}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.4rem"}}>
-              <label style={{fontSize:"0.78rem",fontWeight:700,color:C.text}}>追加質問</label>
-              <button onClick={()=>setFormConfig(p=>({...p, extra_fields:[...(p.extra_fields||[]), {key:`q${Date.now()}`, label:"", type:"text", required:false, options:[]}]}))}
-                style={{padding:"0.25rem 0.6rem",borderRadius:4,border:"1px solid #2563eb",background:"white",color:"#2563eb",fontSize:"0.7rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+          <div style={{marginTop:"1rem",paddingTop:"0.8rem",borderTop:`1px solid ${C.borderLight}`}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.6rem"}}>
+              <div>
+                <div style={{fontSize:"0.85rem",fontWeight:800,color:C.text}}>📋 追加質問</div>
+                <div style={{fontSize:"0.7rem",color:C.textMuted,marginTop:2}}>
+                  {(formConfig.extra_fields||[]).length} 件の質問が登録されています
+                </div>
+              </div>
+              <button onClick={()=>setFormConfig(p=>({...p, extra_fields:[...(p.extra_fields||[]), {key:`q${Date.now()}`, label:"", type:"text", required:false, options:[], _isNew:true}]}))}
+                style={{padding:"0.45rem 0.85rem",borderRadius:6,border:"none",background:"#2563eb",color:"white",fontSize:"0.78rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 1px 3px rgba(37,99,235,0.3)"}}>
                 ＋ 質問を追加
               </button>
             </div>
             {(formConfig.extra_fields||[]).length === 0 ? (
-              <div style={{fontSize:"0.72rem",color:"#9ca3af",padding:"0.55rem 0.7rem",background:"#f9fafb",borderRadius:5,border:"1px dashed #e5e7eb",textAlign:"center"}}>
-                追加質問なし
+              <div style={{fontSize:"0.78rem",color:"#9ca3af",padding:"1.5rem 0.7rem",background:"#fafafa",borderRadius:8,border:"2px dashed #e5e7eb",textAlign:"center"}}>
+                <div style={{fontSize:"1.8rem",marginBottom:"0.3rem"}}>📝</div>
+                <div>追加質問がまだありません</div>
+                <div style={{fontSize:"0.7rem",marginTop:"0.2rem"}}>右上の「＋ 質問を追加」ボタンから質問を作成できます</div>
               </div>
             ) : (
-              <div style={{display:"flex",flexDirection:"column",gap:"0.4rem"}}>
-                {(formConfig.extra_fields||[]).map((f, idx) => (
-                  <div key={idx} style={{padding:"0.55rem 0.7rem",border:`1px solid ${C.border}`,borderRadius:6,background:"#f9fafb"}}>
-                    <div style={{display:"flex",gap:"0.4rem",alignItems:"center",marginBottom:"0.4rem",flexWrap:"wrap"}}>
-                      <input value={f.label} onChange={e=>{
-                        const next=[...formConfig.extra_fields];
-                        next[idx]={...next[idx], label:e.target.value};
-                        setFormConfig(p=>({...p, extra_fields:next}));
-                      }} placeholder="質問文（例: ご興味のあるサービス）"
-                        style={{flex:1,minWidth:160,padding:"0.35rem 0.55rem",borderRadius:4,border:`1px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"inherit"}}/>
-                      <select value={f.type} onChange={e=>{
-                        const next=[...formConfig.extra_fields];
-                        next[idx]={...next[idx], type:e.target.value};
-                        setFormConfig(p=>({...p, extra_fields:next}));
-                      }}
-                        style={{padding:"0.35rem 0.55rem",borderRadius:4,border:`1px solid ${C.border}`,fontSize:"0.75rem",fontFamily:"inherit",background:"white"}}>
-                        <option value="text">テキスト</option>
-                        <option value="textarea">複数行</option>
-                        <option value="select">選択肢</option>
-                        <option value="radio">単一選択</option>
-                        <option value="checkbox">複数選択</option>
-                      </select>
-                      <label style={{display:"flex",alignItems:"center",gap:"0.25rem",fontSize:"0.72rem",color:"#dc2626"}}>
-                        <input type="checkbox" checked={!!f.required} onChange={e=>{
+              <div style={{display:"flex",flexDirection:"column",gap:"0.7rem"}}>
+                {(formConfig.extra_fields||[]).map((f, idx) => {
+                  const hasOptions = f.type === "select" || f.type === "radio" || f.type === "checkbox";
+                  // 自分より上の質問で、選択肢ありのものを条件分岐のターゲット候補に
+                  const triggerCandidates = (formConfig.extra_fields||[]).filter((g, gIdx) => {
+                    return gIdx < idx && (g.type === "select" || g.type === "radio" || g.type === "checkbox") && (g.options||[]).length > 0;
+                  });
+                  return (
+                    <div key={f.key||idx} style={{padding:"0.85rem 1rem",border:`2px solid ${f._isNew ? "#86efac" : "#e5e7eb"}`,borderRadius:10,background:f._isNew?"#f0fdf4":"white",boxShadow:f._isNew?"0 2px 8px rgba(34,197,94,0.15)":"0 1px 2px rgba(0,0,0,0.03)"}}>
+                      {/* ヘッダ */}
+                      <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginBottom:"0.6rem"}}>
+                        <div style={{fontSize:"0.75rem",fontWeight:800,color:"white",background:"#2563eb",borderRadius:"50%",width:24,height:24,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                          {idx+1}
+                        </div>
+                        <div style={{flex:1,fontSize:"0.78rem",fontWeight:700,color:C.text}}>質問 {idx+1}{f._isNew && <span style={{marginLeft:"0.5rem",fontSize:"0.65rem",color:"#059669",background:"#d1fae5",padding:"0.1rem 0.4rem",borderRadius:3}}>新規追加</span>}</div>
+                        {/* 並び替えボタン */}
+                        <button disabled={idx===0} onClick={()=>{
                           const next=[...formConfig.extra_fields];
-                          next[idx]={...next[idx], required:e.target.checked};
+                          [next[idx-1],next[idx]]=[next[idx],next[idx-1]];
                           setFormConfig(p=>({...p, extra_fields:next}));
-                        }}/>
-                        必須
-                      </label>
-                      <button onClick={()=>{
-                        const next=[...formConfig.extra_fields];
-                        next.splice(idx,1);
-                        setFormConfig(p=>({...p, extra_fields:next}));
-                      }}
-                        style={{padding:"0.25rem 0.5rem",borderRadius:4,border:"1px solid #fca5a5",background:"white",color:"#dc2626",fontSize:"0.7rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                        🗑
-                      </button>
-                    </div>
-                    {(f.type === "select" || f.type === "radio" || f.type === "checkbox") && (
-                      <div>
-                        <div style={{fontSize:"0.68rem",color:C.textMuted,marginBottom:"0.2rem"}}>選択肢（カンマ区切り）</div>
-                        <input value={(f.options||[]).join(", ")} onChange={e=>{
+                        }} style={{padding:"0.25rem 0.45rem",borderRadius:4,border:`1px solid ${C.border}`,background:"white",color:idx===0?"#d1d5db":"#374151",fontSize:"0.72rem",fontWeight:700,cursor:idx===0?"not-allowed":"pointer",fontFamily:"inherit"}}>↑</button>
+                        <button disabled={idx===(formConfig.extra_fields||[]).length-1} onClick={()=>{
                           const next=[...formConfig.extra_fields];
-                          next[idx]={...next[idx], options:e.target.value.split(",").map(s=>s.trim()).filter(Boolean)};
+                          [next[idx],next[idx+1]]=[next[idx+1],next[idx]];
                           setFormConfig(p=>({...p, extra_fields:next}));
-                        }} placeholder="例: 廃棄物処理, リサイクル, その他"
-                          style={{width:"100%",padding:"0.35rem 0.55rem",borderRadius:4,border:`1px solid ${C.border}`,fontSize:"0.75rem",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                        }} style={{padding:"0.25rem 0.45rem",borderRadius:4,border:`1px solid ${C.border}`,background:"white",color:idx===(formConfig.extra_fields||[]).length-1?"#d1d5db":"#374151",fontSize:"0.72rem",fontWeight:700,cursor:idx===(formConfig.extra_fields||[]).length-1?"not-allowed":"pointer",fontFamily:"inherit"}}>↓</button>
+                        <button onClick={()=>{
+                          if(!window.confirm(`質問 ${idx+1}「${f.label||"無題"}」を削除しますか？`)) return;
+                          const next=[...formConfig.extra_fields];
+                          next.splice(idx,1);
+                          setFormConfig(p=>({...p, extra_fields:next}));
+                        }} style={{padding:"0.25rem 0.5rem",borderRadius:4,border:"1px solid #fca5a5",background:"white",color:"#dc2626",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🗑</button>
                       </div>
-                    )}
-                  </div>
-                ))}
+                      
+                      {/* 質問文 */}
+                      <div style={{marginBottom:"0.5rem"}}>
+                        <label style={{display:"block",fontSize:"0.7rem",fontWeight:700,color:C.textSub,marginBottom:"0.2rem"}}>質問文 *</label>
+                        <input value={f.label} onChange={e=>{
+                          const next=[...formConfig.extra_fields];
+                          next[idx]={...next[idx], label:e.target.value, _isNew:false};
+                          setFormConfig(p=>({...p, extra_fields:next}));
+                        }} placeholder="例: ご興味のあるサービスを選択してください"
+                          style={{width:"100%",padding:"0.5rem 0.7rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                      </div>
+                      
+                      {/* 種別 + 必須 */}
+                      <div style={{display:"grid",gridTemplateColumns:"1fr auto",gap:"0.5rem",alignItems:"end",marginBottom:"0.5rem"}}>
+                        <div>
+                          <label style={{display:"block",fontSize:"0.7rem",fontWeight:700,color:C.textSub,marginBottom:"0.2rem"}}>回答形式</label>
+                          <select value={f.type} onChange={e=>{
+                            const next=[...formConfig.extra_fields];
+                            next[idx]={...next[idx], type:e.target.value, _isNew:false};
+                            setFormConfig(p=>({...p, extra_fields:next}));
+                          }}
+                            style={{width:"100%",padding:"0.5rem 0.7rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.82rem",fontFamily:"inherit",background:"white",boxSizing:"border-box"}}>
+                            <option value="text">テキスト（1行）</option>
+                            <option value="textarea">テキスト（複数行）</option>
+                            <option value="select">プルダウン選択</option>
+                            <option value="radio">ラジオボタン（1つ選択）</option>
+                            <option value="checkbox">チェックボックス（複数選択）</option>
+                          </select>
+                        </div>
+                        <label style={{display:"flex",alignItems:"center",gap:"0.3rem",fontSize:"0.8rem",color:"#dc2626",cursor:"pointer",padding:"0.5rem 0.7rem",background:f.required?"#fee2e2":"#f9fafb",borderRadius:5,border:`1px solid ${f.required?"#fca5a5":C.border}`,fontWeight:700}}>
+                          <input type="checkbox" checked={!!f.required} onChange={e=>{
+                            const next=[...formConfig.extra_fields];
+                            next[idx]={...next[idx], required:e.target.checked, _isNew:false};
+                            setFormConfig(p=>({...p, extra_fields:next}));
+                          }}/>
+                          必須
+                        </label>
+                      </div>
+                      
+                      {/* 選択肢入力（select/radio/checkbox の時のみ） */}
+                      {hasOptions && (
+                        <div style={{marginBottom:"0.5rem",padding:"0.6rem 0.8rem",background:"#f9fafb",borderRadius:6,border:`1px solid ${C.borderLight}`}}>
+                          <label style={{display:"block",fontSize:"0.7rem",fontWeight:700,color:C.textSub,marginBottom:"0.25rem"}}>選択肢（カンマ区切り）</label>
+                          <input value={(f.options||[]).join(", ")} onChange={e=>{
+                            const next=[...formConfig.extra_fields];
+                            next[idx]={...next[idx], options:e.target.value.split(",").map(s=>s.trim()).filter(Boolean), _isNew:false};
+                            setFormConfig(p=>({...p, extra_fields:next}));
+                          }} placeholder="例: 廃棄物処理, リサイクル, その他"
+                            style={{width:"100%",padding:"0.45rem 0.65rem",borderRadius:4,border:`1px solid ${C.border}`,fontSize:"0.8rem",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                          {(f.options||[]).length > 0 && (
+                            <div style={{display:"flex",gap:"0.3rem",flexWrap:"wrap",marginTop:"0.4rem"}}>
+                              {(f.options||[]).map((o,i)=>(
+                                <span key={i} style={{fontSize:"0.7rem",padding:"0.15rem 0.5rem",background:"white",border:`1px solid ${C.border}`,borderRadius:3,color:C.textSub}}>
+                                  {o}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      
+                      {/* 条件分岐: 別の質問の回答に応じて表示 */}
+                      <div style={{marginTop:"0.6rem",padding:"0.6rem 0.8rem",background:"#fffbeb",borderRadius:6,border:"1px solid #fde68a"}}>
+                        <label style={{display:"flex",alignItems:"center",gap:"0.4rem",fontSize:"0.78rem",fontWeight:700,color:"#92400e",cursor:triggerCandidates.length===0?"not-allowed":"pointer",opacity:triggerCandidates.length===0?0.5:1}}>
+                          <input type="checkbox" checked={!!f.show_if} disabled={triggerCandidates.length===0}
+                            onChange={e=>{
+                              const next=[...formConfig.extra_fields];
+                              if (e.target.checked && triggerCandidates.length > 0) {
+                                const first = triggerCandidates[0];
+                                next[idx]={...next[idx], show_if:{question_key:first.key, op:"includes", value:(first.options||[])[0]||""}, _isNew:false};
+                              } else {
+                                next[idx]={...next[idx], show_if:null, _isNew:false};
+                              }
+                              setFormConfig(p=>({...p, extra_fields:next}));
+                            }}/>
+                          🔀 条件分岐（特定の回答時のみ表示）
+                          {triggerCandidates.length === 0 && <span style={{fontSize:"0.65rem",fontWeight:400}}>※選択式の上位質問が必要です</span>}
+                        </label>
+                        {f.show_if && (
+                          <div style={{marginTop:"0.5rem",display:"flex",gap:"0.4rem",alignItems:"center",flexWrap:"wrap"}}>
+                            <select value={f.show_if.question_key||""} onChange={e=>{
+                              const next=[...formConfig.extra_fields];
+                              const triggerQ = triggerCandidates.find(q=>q.key===e.target.value);
+                              next[idx]={...next[idx], show_if:{...next[idx].show_if, question_key:e.target.value, value:(triggerQ?.options||[])[0]||""}, _isNew:false};
+                              setFormConfig(p=>({...p, extra_fields:next}));
+                            }}
+                              style={{padding:"0.35rem 0.55rem",borderRadius:4,border:"1px solid #d97706",fontSize:"0.75rem",fontFamily:"inherit",background:"white",minWidth:130}}>
+                              {triggerCandidates.map(q => (
+                                <option key={q.key} value={q.key}>「{q.label||"無題"}」</option>
+                              ))}
+                            </select>
+                            <span style={{fontSize:"0.75rem",color:"#92400e"}}>で</span>
+                            <select value={f.show_if.value||""} onChange={e=>{
+                              const next=[...formConfig.extra_fields];
+                              next[idx]={...next[idx], show_if:{...next[idx].show_if, value:e.target.value}, _isNew:false};
+                              setFormConfig(p=>({...p, extra_fields:next}));
+                            }}
+                              style={{padding:"0.35rem 0.55rem",borderRadius:4,border:"1px solid #d97706",fontSize:"0.75rem",fontFamily:"inherit",background:"white"}}>
+                              {(() => {
+                                const tq = triggerCandidates.find(q=>q.key===f.show_if.question_key);
+                                return (tq?.options||[]).map((o,i)=>(<option key={i} value={o}>{o}</option>));
+                              })()}
+                            </select>
+                            <span style={{fontSize:"0.75rem",color:"#92400e"}}>が選ばれた時に表示</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
