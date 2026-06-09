@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v117-email-privacy-filter"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v118-announcement-editor"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -21828,6 +21828,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
     {id:"members",  icon:"👥", label:"メンバー"},
     {id:"terms",    icon:"📜", label:"規約"},
     {id:"spamfilter", icon:"🚫", label:"迷惑メール"},
+    {id:"announcement", icon:"📨", label:"案内状"},
     {id:"links",    icon:"🔗", label:"外部連携"},
     {id:"contract", icon:"📜", label:"契約書"},
     {id:"account",  icon:"🔑", label:"パスワード"},
@@ -22217,6 +22218,11 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
       {/* ── 迷惑メールフィルタの管理 ── */}
       {section==="spamfilter"&&(
         <SpamFilterSettings currentUser={currentUser} C={C}/>
+      )}
+
+      {/* ── 業者向け案内状の管理 ── */}
+      {section==="announcement"&&(
+        <AnnouncementSettings currentUser={currentUser} C={C}/>
       )}
 
       {/* ── 外部サービス連携 ── */}
@@ -23113,6 +23119,312 @@ const LAWS_REGISTRY = {
   // ── 会社 ──
   kaisha_hou:      { name:"会社法", category:"会社", short:"会社の設立・運営の基本法", summary:"株式会社・合同会社等の設立、機関設計、取締役の責任、株主の権利、計算・決算、組織再編（合併・分割等）などを定める基本法。" },
 };
+
+// ─── ANNOUNCEMENT SETTINGS: 業者向け案内状の管理画面 ─────────────
+function AnnouncementSettings({ currentUser, C }) {
+  const [list, setList] = React.useState([]);
+  const [loading, setLoading] = React.useState(false);
+  const [editing, setEditing] = React.useState(null); // null | "new" | {id, ...} 編集中
+  const [previewing, setPreviewing] = React.useState(null); // 表示中の詳細
+  // 編集用フォーム state
+  const [editTitle, setEditTitle] = React.useState("");
+  const [editContent, setEditContent] = React.useState("");
+  const [editDescription, setEditDescription] = React.useState("");
+  const [editIsCurrent, setEditIsCurrent] = React.useState(true);
+  const [saving, setSaving] = React.useState(false);
+  
+  const loadList = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${DB_API_BASE}/announcements`, { headers: DB_API_HEADERS });
+      if (res.ok) {
+        const j = await res.json();
+        setList(j.items || []);
+      }
+    } catch(e) { console.warn("announcements load error:", e); }
+    setLoading(false);
+  }, []);
+  
+  React.useEffect(() => { loadList(); }, [loadList]);
+  
+  const openNew = () => {
+    setEditing("new");
+    setEditTitle("業者向け案内状");
+    setEditContent(`<h1 style="text-align:center;">DUSTALK 業者向け案内状</h1>
+<p>株式会社○○ 御中</p>
+<p>平素より大変お世話になっております。</p>
+<p>株式会社西原商事ホールディングス DUSTALK事業部の新川と申します。</p>
+<p>このたび、DUSTALK では業者様向けの新しいサービスをご案内させていただきます。</p>
+<h2>サービス概要</h2>
+<ul>
+  <li>項目1: ○○○○</li>
+  <li>項目2: ○○○○</li>
+  <li>項目3: ○○○○</li>
+</ul>
+<p>ご興味をお持ちいただけましたら、ぜひ下記のQRコードよりお問い合わせください。</p>
+<div style="margin-top:2rem;padding:1rem;border:2px solid #2563eb;border-radius:8px;text-align:right;">
+  <div style="font-weight:bold;">お問い合わせはこちら</div>
+  <div style="margin-top:0.5rem;">{{QR_CODE}}</div>
+  <div style="font-size:0.8rem;color:#666;margin-top:0.5rem;">スマートフォンで読み取ってください</div>
+</div>`);
+    setEditDescription("");
+    setEditIsCurrent(true);
+  };
+  
+  const openEdit = async (id) => {
+    try {
+      const res = await fetch(`${DB_API_BASE}/announcements/${id}`, { headers: DB_API_HEADERS });
+      if (!res.ok) throw new Error("HTTP "+res.status);
+      const j = await res.json();
+      const item = j.item;
+      // 編集は新バージョンとして保存する
+      setEditing({...item, mode:"copy"});
+      setEditTitle(item.title || "");
+      setEditContent(item.content_html || "");
+      setEditDescription(item.description || "");
+      setEditIsCurrent(true);
+    } catch(e) { alert("読み込みエラー: " + e.message); }
+  };
+  
+  const openPreview = async (id) => {
+    try {
+      const res = await fetch(`${DB_API_BASE}/announcements/${id}`, { headers: DB_API_HEADERS });
+      if (!res.ok) throw new Error("HTTP "+res.status);
+      const j = await res.json();
+      setPreviewing(j.item);
+    } catch(e) { alert("読み込みエラー: " + e.message); }
+  };
+  
+  const saveNew = async () => {
+    if (!editTitle.trim()) { alert("タイトルを入力してください"); return; }
+    if (!editContent.trim()) { alert("本文を入力してください"); return; }
+    setSaving(true);
+    try {
+      const res = await fetch(`${DB_API_BASE}/announcements`, {
+        method:"POST", headers: DB_API_HEADERS,
+        body: JSON.stringify({
+          title: editTitle.trim(),
+          content_html: editContent,
+          paper_size: "A4",
+          is_current: editIsCurrent,
+          description: editDescription.trim(),
+          created_by: currentUser?.id || "",
+        }),
+      });
+      if (res.ok) {
+        const j = await res.json();
+        alert(`✅ v${j.item.version} として保存しました${editIsCurrent ? "\n\n現行版に設定しました" : ""}`);
+        setEditing(null);
+        loadList();
+      } else {
+        const j = await res.json();
+        alert("保存エラー: " + (j.error || res.status));
+      }
+    } catch(e) { alert("保存エラー: " + e.message); }
+    setSaving(false);
+  };
+  
+  const setCurrent = async (id) => {
+    if (!window.confirm(`このバージョンを現行版に設定しますか？\n\n業者にQRから配布される案内状は、常に現行版が使われます。`)) return;
+    try {
+      const res = await fetch(`${DB_API_BASE}/announcements/${id}/set-current`, {
+        method:"POST", headers: DB_API_HEADERS,
+      });
+      if (res.ok) {
+        alert("✅ 現行版に設定しました");
+        loadList();
+      } else {
+        const j = await res.json();
+        alert("エラー: " + (j.error || res.status));
+      }
+    } catch(e) { alert("エラー: " + e.message); }
+  };
+  
+  const deleteOne = async (id, version) => {
+    if (!window.confirm(`v${version} を削除しますか？\n\n削除すると元に戻せません。`)) return;
+    try {
+      const res = await fetch(`${DB_API_BASE}/announcements/${id}`, {
+        method:"DELETE", headers: DB_API_HEADERS,
+      });
+      if (res.ok) {
+        loadList();
+      } else {
+        const j = await res.json();
+        alert("削除エラー: " + (j.error || res.status));
+      }
+    } catch(e) { alert("削除エラー: " + e.message); }
+  };
+  
+  // 編集中の表示
+  if (editing) {
+    const isCopy = typeof editing === "object" && editing.mode === "copy";
+    return (
+      <div style={{display:"flex",flexDirection:"column",gap:"0.75rem"}}>
+        <div style={{background:"white",borderRadius:"1rem",padding:"1rem 1.25rem",border:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:"0.5rem"}}>
+          <button onClick={()=>{if(!saving && window.confirm("編集を破棄しますか？"))setEditing(null);}}
+            style={{padding:"0.4rem 0.7rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+            ← 戻る
+          </button>
+          <div style={{flex:1,fontWeight:800,fontSize:"0.95rem",color:C.text}}>
+            {isCopy ? `v${editing.version} を複製して新バージョン作成` : "新しい案内状を作成"}
+          </div>
+          <button onClick={saveNew} disabled={saving}
+            style={{padding:"0.5rem 1.1rem",borderRadius:6,border:"none",background:saving?"#9ca3af":"#2563eb",color:"white",fontSize:"0.82rem",fontWeight:800,cursor:saving?"not-allowed":"pointer",fontFamily:"inherit"}}>
+            {saving ? "保存中..." : "💾 保存"}
+          </button>
+        </div>
+        
+        {/* タイトル + メタ */}
+        <div style={{background:"white",borderRadius:"1rem",padding:"1rem 1.25rem",border:`1px solid ${C.border}`}}>
+          <div style={{marginBottom:"0.6rem"}}>
+            <label style={{display:"block",fontSize:"0.75rem",fontWeight:700,color:C.textSub,marginBottom:"0.25rem"}}>タイトル *</label>
+            <input value={editTitle} onChange={e=>setEditTitle(e.target.value)}
+              style={{width:"100%",padding:"0.55rem 0.8rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.9rem",fontFamily:"inherit",boxSizing:"border-box"}}/>
+          </div>
+          <div style={{marginBottom:"0.6rem"}}>
+            <label style={{display:"block",fontSize:"0.75rem",fontWeight:700,color:C.textSub,marginBottom:"0.25rem"}}>バージョンの説明（任意）</label>
+            <input value={editDescription} onChange={e=>setEditDescription(e.target.value)}
+              placeholder="例: 2026年夏キャンペーン用"
+              style={{width:"100%",padding:"0.55rem 0.8rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",boxSizing:"border-box"}}/>
+          </div>
+          <div>
+            <label style={{display:"inline-flex",alignItems:"center",gap:"0.4rem",fontSize:"0.82rem",color:C.text,cursor:"pointer"}}>
+              <input type="checkbox" checked={editIsCurrent} onChange={e=>setEditIsCurrent(e.target.checked)} style={{width:16,height:16}}/>
+              このバージョンを現行版にする
+            </label>
+          </div>
+        </div>
+        
+        {/* 本文エディタ */}
+        <div style={{background:"white",borderRadius:"1rem",padding:"1rem 1.25rem",border:`1px solid ${C.border}`}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.5rem"}}>
+            <label style={{fontSize:"0.78rem",fontWeight:700,color:C.textSub}}>本文 (HTML)</label>
+            <div style={{fontSize:"0.68rem",color:C.textMuted}}>
+              💡 <code>{`{{QR_CODE}}`}</code> をQRコードの差し込み位置に書いてください
+            </div>
+          </div>
+          <textarea value={editContent} onChange={e=>setEditContent(e.target.value)}
+            placeholder="HTML 形式で文書を作成してください"
+            rows={20}
+            style={{width:"100%",padding:"0.7rem 0.85rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"'Menlo','Courier New',monospace",lineHeight:1.5,resize:"vertical",boxSizing:"border-box",minHeight:300}}/>
+        </div>
+        
+        {/* プレビュー */}
+        <div style={{background:"white",borderRadius:"1rem",padding:"1rem 1.25rem",border:`1px solid ${C.border}`}}>
+          <div style={{fontSize:"0.82rem",fontWeight:800,color:C.text,marginBottom:"0.6rem"}}>📄 プレビュー</div>
+          <div style={{background:"#fafafa",border:`1px solid ${C.borderLight}`,borderRadius:8,padding:"2rem 2.5rem",minHeight:400,fontSize:"0.85rem",lineHeight:1.7,color:"#222"}}>
+            <div dangerouslySetInnerHTML={{__html: editContent.replace(/\{\{QR_CODE\}\}/g, '<div style="display:inline-block;padding:0.5rem;background:#f0f0f0;border:1px dashed #999;border-radius:4px;font-size:0.7rem;color:#666;">[QRコード差し込み位置]</div>')}}/>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
+  // プレビュー表示
+  if (previewing) {
+    return (
+      <div style={{display:"flex",flexDirection:"column",gap:"0.75rem"}}>
+        <div style={{background:"white",borderRadius:"1rem",padding:"1rem 1.25rem",border:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:"0.5rem"}}>
+          <button onClick={()=>setPreviewing(null)}
+            style={{padding:"0.4rem 0.7rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+            ← 戻る
+          </button>
+          <div style={{flex:1,fontWeight:800,fontSize:"0.95rem",color:C.text}}>
+            v{previewing.version}: {previewing.title}
+            {previewing.is_current && <span style={{fontSize:"0.7rem",fontWeight:700,color:"white",background:"#059669",borderRadius:3,padding:"0.15rem 0.5rem",marginLeft:"0.5rem"}}>現行版</span>}
+          </div>
+          {!previewing.is_current && (
+            <button onClick={()=>{setCurrent(previewing.id);setPreviewing(null);}}
+              style={{padding:"0.4rem 0.8rem",borderRadius:6,border:"none",background:"#059669",color:"white",fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+              現行版にする
+            </button>
+          )}
+          <button onClick={()=>{setPreviewing(null);openEdit(previewing.id);}}
+            style={{padding:"0.4rem 0.8rem",borderRadius:6,border:"none",background:"#2563eb",color:"white",fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+            ✏️ 複製して編集
+          </button>
+        </div>
+        <div style={{background:"white",borderRadius:"1rem",padding:"2.5rem 3rem",border:`1px solid ${C.border}`,fontSize:"0.9rem",lineHeight:1.7,color:"#222"}}>
+          <div dangerouslySetInnerHTML={{__html: (previewing.content_html||"").replace(/\{\{QR_CODE\}\}/g, '<div style="display:inline-block;padding:0.5rem;background:#f0f0f0;border:1px dashed #999;border-radius:4px;font-size:0.75rem;color:#666;">[QRコード差し込み位置]</div>')}}/>
+        </div>
+        {previewing.description && (
+          <div style={{background:"#f9fafb",borderRadius:8,padding:"0.7rem 1rem",fontSize:"0.78rem",color:C.textSub}}>
+            <b>説明:</b> {previewing.description}
+          </div>
+        )}
+      </div>
+    );
+  }
+  
+  // 一覧表示
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:"0.75rem"}}>
+      <div style={{background:"white",borderRadius:"1rem",padding:"1.15rem 1.25rem",border:`1px solid ${C.border}`,boxShadow:"0 1px 2px rgba(0,0,0,0.03)"}}>
+        <div style={{fontWeight:800,fontSize:"0.95rem",color:C.text,marginBottom:"0.4rem"}}>📨 業者向け案内状の管理</div>
+        <div style={{fontSize:"0.74rem",color:C.textMuted,lineHeight:1.65}}>
+          DUSTALK 業者向けの案内状をバージョン管理します。<br/>
+          • 文書本文は HTML 形式で作成（タグで装飾、リスト、見出し等が使えます）<br/>
+          • <code>{`{{QR_CODE}}`}</code> プレースホルダーに各業者固有のQRが差し込まれます<br/>
+          • 業者詳細画面の「QR設定」から PDF を生成して配布します<br/>
+          • 「現行版」がデフォルトで使われます（変更すると新しい配布から反映）
+        </div>
+      </div>
+      
+      <div style={{display:"flex",gap:"0.5rem"}}>
+        <button onClick={openNew}
+          style={{padding:"0.55rem 1.1rem",borderRadius:8,border:"none",background:"#2563eb",color:"white",fontSize:"0.85rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+          ＋ 新しい案内状を作成
+        </button>
+      </div>
+      
+      {loading ? (
+        <div style={{padding:"3rem",textAlign:"center",color:C.textMuted}}>読み込み中…</div>
+      ) : list.length === 0 ? (
+        <div style={{background:"white",borderRadius:"1rem",padding:"3rem 1.5rem",border:`1px solid ${C.border}`,textAlign:"center",color:C.textMuted}}>
+          <div style={{fontSize:"2rem",marginBottom:"0.5rem"}}>📨</div>
+          <div style={{fontSize:"0.9rem",marginBottom:"0.3rem"}}>まだ案内状がありません</div>
+          <div style={{fontSize:"0.75rem"}}>「＋ 新しい案内状を作成」から始めてください</div>
+        </div>
+      ) : (
+        <div style={{display:"flex",flexDirection:"column",gap:"0.4rem"}}>
+          {list.map(a => (
+            <div key={a.id} style={{background:"white",borderRadius:8,padding:"0.7rem 0.9rem",border:`1px solid ${a.is_current?"#86efac":C.border}`,display:"flex",alignItems:"center",gap:"0.6rem"}}>
+              <div style={{fontSize:"0.85rem",fontWeight:800,color:a.is_current?"#065f46":C.textSub,minWidth:50}}>
+                v{a.version}
+              </div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:"0.86rem",fontWeight:700,color:C.text,display:"flex",alignItems:"center",gap:"0.4rem"}}>
+                  {a.title}
+                  {a.is_current && <span style={{fontSize:"0.62rem",fontWeight:700,color:"white",background:"#059669",borderRadius:3,padding:"0.1rem 0.4rem"}}>現行版</span>}
+                </div>
+                <div style={{fontSize:"0.7rem",color:C.textMuted,marginTop:1}}>
+                  {a.description || ""} {a.description && "  "}
+                  {new Date(a.created_at).toLocaleString("ja-JP")}
+                </div>
+              </div>
+              <button onClick={()=>openPreview(a.id)}
+                style={{padding:"0.3rem 0.7rem",borderRadius:5,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
+                👁 表示
+              </button>
+              {!a.is_current && (
+                <>
+                  <button onClick={()=>setCurrent(a.id)}
+                    style={{padding:"0.3rem 0.7rem",borderRadius:5,border:"none",background:"#059669",color:"white",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
+                    現行版に
+                  </button>
+                  <button onClick={()=>deleteOne(a.id, a.version)}
+                    style={{padding:"0.3rem 0.6rem",borderRadius:5,border:`1px solid #fca5a5`,background:"white",color:"#dc2626",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
+                    🗑
+                  </button>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ─── SPAM FILTER SETTINGS: 迷惑メールフィルタの管理画面 ─────────────
 function SpamFilterSettings({ currentUser, C }) {
