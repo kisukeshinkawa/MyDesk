@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v135-pay-full-overwrite"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v136-business-correct"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -27577,29 +27577,50 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
                           const item = j.item;
                           // 既存のdraftまたは保存値に流し込む
                           const current = getCurrent();
+                          const fpm = item.family_payment_methods || {};
+                          const bpm = item.business_payment_methods || {};
                           const updated = {
                             ...current,
+                            // サービスログ
+                            serviceLog: item.service_log_count || 0,
+                            // 依頼数
                             requests: item.total_request_count,
                             requestsKatei: item.family_request_count,
                             requestsJigyo: item.business_request_count,
+                            // 成約数
                             contracts: item.deal_count,
                             contractsKatei: item.family_deal_count,
                             contractsJigyo: item.business_deal_count,
+                            // 売上
                             revenue: item.total_sales,
                             revenueKatei: item.family_sales,
                             revenueJigyo: item.business_sales,
+                            // 決済方法（合算）
                             pay: {
-                              // Bubbleの値で完全上書き（既存値の足し算にならないように）
-                              cc: item.payment_methods?.["クレジットカード"] || 0,
-                              paypay: item.payment_methods?.["PayPay"] || 0,
-                              merpay: item.payment_methods?.["メルペイ"] || 0,
-                              cash: item.payment_methods?.["現金支払い"] || 0,
+                              cc: (fpm["クレジットカード"]||0) + (bpm["クレジットカード"]||0),
+                              paypay: (fpm["PayPay"]||0) + (bpm["PayPay"]||0),
+                              merpay: (fpm["メルペイ"]||0) + (bpm["メルペイ"]||0),
+                              cash: (fpm["現金支払い"]||0) + (bpm["現金支払い"]||0),
+                            },
+                            // 家庭系決済方法
+                            payKatei: {
+                              cc: fpm["クレジットカード"] || 0,
+                              paypay: fpm["PayPay"] || 0,
+                              merpay: fpm["メルペイ"] || 0,
+                              cash: fpm["現金支払い"] || 0,
+                            },
+                            // 事業系決済方法
+                            payJigyo: {
+                              cc: bpm["クレジットカード"] || 0,
+                              paypay: bpm["PayPay"] || 0,
+                              merpay: bpm["メルペイ"] || 0,
+                              cash: bpm["現金支払い"] || 0,
                             },
                           };
                           // analytics に保存
                           const nd = {...data, analytics:{...(data.analytics||{}),[sys]:{...((data.analytics||{})[sys]||{}),[mk]:updated}}};
                           saveWithPush(nd);
-                          alert(`✅ ${monthLabel(mk)} のデータを取得しました\n\n依頼数: ${item.total_request_count}件（家庭${item.family_request_count} / 事業${item.business_request_count}）\n成約数: ${item.deal_count}件\n売上: ¥${(item.total_sales||0).toLocaleString()}`);
+                          alert(`✅ ${monthLabel(mk)} のデータを取得しました\n\n依頼数: ${item.total_request_count}件（家庭${item.family_request_count} / 事業${item.business_request_count}）\n成約数: ${item.deal_count}件（家庭${item.family_deal_count} / 事業${item.business_deal_count}）\n売上: ¥${(item.total_sales||0).toLocaleString()}\n  家庭: ¥${(item.family_sales||0).toLocaleString()}\n  事業: ¥${(item.business_sales||0).toLocaleString()}\nサービスログ: ${item.service_log_count||0}件`);
                         } catch(e) {
                           alert("Bubble取得エラー: " + e.message);
                         }
@@ -27774,16 +27795,26 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
                 {PAY_KEYS.map(([k,lbl])=>{
                   const mv=+d.pay?.[k]||0, mp=payTotal>0?((mv/payTotal)*100).toFixed(0):0;
                   const cv=cumPay[k]||0, cp=cumPayTotal>0?((cv/cumPayTotal)*100).toFixed(0):0;
+                  const kateiV = +d.payKatei?.[k]||0;
+                  const jigyoV = +d.payJigyo?.[k]||0;
                   return (
-                    <div key={k} style={{...rowStyle,gap:"0.25rem"}}>
-                      <span style={{flex:1,fontSize:"0.85rem",color:C.text}}>{lbl}</span>
-                      {editing?<InputNum value={d.pay?.[k]??0} onChange={v=>setDraft(p=>({...p,pay:{...p.pay,[k]:v}}))}/>:(
-                        <>
-                          <span style={{width:52,textAlign:"right",fontSize:"0.88rem",fontWeight:700,color:C.text}}>{mv}件</span>
-                          <span style={{width:44,textAlign:"right",fontSize:"0.78rem",color:C.blue,fontWeight:600}}>{mp}%</span>
-                          <span style={{width:52,textAlign:"right",fontSize:"0.78rem",color:C.textSub}}>{cv}件</span>
-                          <span style={{width:44,textAlign:"right",fontSize:"0.78rem",color:C.textSub}}>{cp}%</span>
-                        </>
+                    <div key={k} style={{borderBottom:`1px solid ${C.borderLight||C.border}`}}>
+                      <div style={{...rowStyle,gap:"0.25rem",borderBottom:"none"}}>
+                        <span style={{flex:1,fontSize:"0.85rem",color:C.text}}>{lbl}</span>
+                        {editing?<InputNum value={d.pay?.[k]??0} onChange={v=>setDraft(p=>({...p,pay:{...p.pay,[k]:v}}))}/>:(
+                          <>
+                            <span style={{width:52,textAlign:"right",fontSize:"0.88rem",fontWeight:700,color:C.text}}>{mv}件</span>
+                            <span style={{width:44,textAlign:"right",fontSize:"0.78rem",color:C.blue,fontWeight:600}}>{mp}%</span>
+                            <span style={{width:52,textAlign:"right",fontSize:"0.78rem",color:C.textSub}}>{cv}件</span>
+                            <span style={{width:44,textAlign:"right",fontSize:"0.78rem",color:C.textSub}}>{cp}%</span>
+                          </>
+                        )}
+                      </div>
+                      {!editing && (kateiV>0 || jigyoV>0) && (
+                        <div style={{padding:"0 0 0.3rem 0.6rem",fontSize:"0.66rem",color:C.textMuted,display:"flex",gap:"0.6rem"}}>
+                          <span>家庭: {kateiV}件</span>
+                          <span>事業: {jigyoV}件</span>
+                        </div>
                       )}
                     </div>
                   );
