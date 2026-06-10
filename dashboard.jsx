@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v146-fiscal-year-correct"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v147-bm-pv-fix"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -23207,6 +23207,7 @@ const ANALYTICS_SYSTEMS = [
   {id:"beenet", label:"bee-net"},
   {id:"rebit",  label:"Rebit"},
   {id:"bizcon", label:"ビジコン"},
+  {id:"bm",     label:"BM"},
 ];
 const DUSTALK_EXIT_STEPS = [
   {key:"top",             label:"トップ画面"},
@@ -25678,6 +25679,7 @@ const DUSTALK_DEF = {hp:0,serviceLog:0,requests:0,contracts:0,revenue:0,lineFrie
   partnerStores:[]};
 const REBIT_DEF  = {cumulative:0,monthly:0,hp:0};
 const BIZCON_DEF = {hpByMonth:{},applicants:0,fullApplicants:0};
+const BM_DEF     = {hpByMonth:{}};
 
 function getMonthKey(d=new Date()){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;}
 function getYearKey(d=new Date()){return `${d.getFullYear()}`;}
@@ -26581,8 +26583,8 @@ async function exportPPTX(sys, mk, yk, d, prev, allAnalytics) {
   pres.layout = "LAYOUT_16x9"; // 10" x 5.625"
   pres.title = "分析レポート";
 
-  const label = sys==="bizcon" ? `${yk}年` : mk.replace("-","年")+"月";
-  const sysLabel = {dustalk:"DUSTALK",rebit:"Rebit",bizcon:"ビジコン",beenet:"bee-net"}[sys]||sys;
+  const label = (sys==="bizcon"||sys==="bm") ? `${yk}年` : mk.replace("-","年")+"月";
+  const sysLabel = {dustalk:"DUSTALK",rebit:"Rebit",bizcon:"ビジコン",beenet:"bee-net",bm:"BM"}[sys]||sys;
 
   // カラー
   const NAVY="1E2A3A", BLUE="2563EB", GREEN="059669", AMBER="D97706", RED="DC2626";
@@ -26779,7 +26781,7 @@ async function exportPPTX(sys, mk, yk, d, prev, allAnalytics) {
 
 // ── 月次比較レポート: 各月1枚スライド（改良版）──────────────────────────────
 async function exportMultiMonthPPTX(sys, currentMk, allAnalytics) {
-  const sysLabelMap = {dustalk:"DUSTALK",rebit:"Rebit",bizcon:"BizCon",beenet:"BeeNet"};
+  const sysLabelMap = {dustalk:"DUSTALK",rebit:"Rebit",bizcon:"BizCon",beenet:"BeeNet",bm:"BM"};
   const sysLabel = sysLabelMap[sys] || sys;
   const NAVY="1E2A3A", BLUE="2563EB", GREEN="059669", AMBER="D97706", RED="DC2626", PURPLE="7C3AED";
   const WHITE="FFFFFF", LGRAY="F8FAFC", DGRAY="64748B", LBLUE="EFF6FF";
@@ -26860,7 +26862,7 @@ async function exportMultiMonthPPTX(sys, currentMk, allAnalytics) {
         };
         tblData.push([
           {text:k.replace("20","").replace("-","/"),options:{bold:true,fontSize:10,fontFace:"Arial",fill:{color:i%2===0?"F8FAFC":WHITE}}},
-          mk(d.hp,prev.hp,"PV"),mk(d.lineFriends,prev.lineFriends,"人"),
+          mk(d.hp,prev.hp,"人"),mk(d.lineFriends,prev.lineFriends,"人"),
           mk(d.requests,prev.requests,"件"),mk(d.contracts,prev.contracts,"件"),
           mk(d.revenue,prev.revenue,"円"),{text:cvRate,options:{fontSize:9,fontFace:"Arial",align:"center"}},
         ]);
@@ -27181,17 +27183,18 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
 
   const ana     = data.analytics || {};
   const sysData = ana[sys] || {};
-  const key     = sys==="bizcon" ? yk : mk;
+  const key     = (sys==="bizcon"||sys==="bm") ? yk : mk;
   const raw     = sysData[key] || {};
 
   const getCurrent = () => {
     if (sys==="dustalk") return mergeDustalk(raw);
     if (sys==="rebit")   return {...REBIT_DEF,...raw};
     if (sys==="bizcon")  return {...BIZCON_DEF,...raw};
+    if (sys==="bm")      return {...BM_DEF,...raw};
     return {};
   };
 
-  const prevKey = sys==="bizcon" ? shiftYear(yk,-1) : shiftMonth(mk,-1);
+  const prevKey = (sys==="bizcon"||sys==="bm") ? shiftYear(yk,-1) : shiftMonth(mk,-1);
   const prevRaw = sysData[prevKey] || {};
   const getPrev = () => {
     if (sys==="dustalk") return mergeDustalk(prevRaw);
@@ -27216,7 +27219,7 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
       ? {...nd, notifications:[...(nd.notifications||[]),{
           id:Date.now()+Math.random(),
           type:"analytics_update",
-          title:`📊 分析データが更新されました（${ANALYTICS_SYSTEMS.find(s=>s.id===sys)?.label} · ${sys==="bizcon"?yearLabel(yk):monthLabel(mk)}）`,
+          title:`📊 分析データが更新されました（${ANALYTICS_SYSTEMS.find(s=>s.id===sys)?.label} · ${(sys==="bizcon"||sys==="bm")?yearLabel(yk):monthLabel(mk)}）`,
           body:"",
           toUserId:"__all__",
           read:false,
@@ -27529,7 +27532,7 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
       {/* Period selector */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"1rem",
         background:"white",borderRadius:"8px",padding:"0.625rem 1rem",border:`1px solid ${C.border}`}}>
-        {sys==="bizcon" ? (
+        {(sys==="bizcon"||sys==="bm") ? (
           <>
             <button onClick={()=>setYk(shiftYear(yk,-1))} style={{background:"none",border:"none",fontSize:"1.2rem",cursor:"pointer",color:C.textSub,padding:"0.2rem 0.4rem"}}>‹</button>
             <span style={{fontWeight:800,fontSize:"0.95rem",color:C.text}}>{yearLabel(yk)}</span>
@@ -27677,7 +27680,7 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
         <div style={{background:"white",borderRadius:"1rem",padding:"1.25rem",border:`1px solid ${C.border}`,boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1.25rem"}}>
             <span style={{fontWeight:800,fontSize:"0.88rem",color:C.textSub}}>
-              {ANALYTICS_SYSTEMS.find(s=>s.id===sys)?.label} · {sys==="bizcon"?yearLabel(yk):monthLabel(mk)}
+              {ANALYTICS_SYSTEMS.find(s=>s.id===sys)?.label} · {(sys==="bizcon"||sys==="bm")?yearLabel(yk):monthLabel(mk)}
             </span>
             <div style={{display:"flex",gap:"0.4rem",alignItems:"center"}}>
               {!editing
@@ -27712,7 +27715,7 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
                 {/* HP閲覧者数 */}
                 <div style={{...rowStyle}}>
                   <span style={{fontSize:"0.87rem",color:C.text,flex:1}}>HP閲覧者数</span>
-                  {editing?<InputNum value={d.hp??0} onChange={v=>setD({hp:v})}/>:<span style={{fontSize:"1rem",fontWeight:700,color:C.text,display:"flex",alignItems:"center"}}>{(+d.hp||0).toLocaleString()}PV<DiffBadge cur={+d.hp||0} prv={+prev.hp||0}/></span>}
+                  {editing?<InputNum value={d.hp??0} onChange={v=>setD({hp:v})}/>:<span style={{fontSize:"1rem",fontWeight:700,color:C.text,display:"flex",alignItems:"center"}}>{(+d.hp||0).toLocaleString()}人<DiffBadge cur={+d.hp||0} prv={+prev.hp||0}/></span>}
                 </div>
                 {/* LINE友達追加 */}
                 <div style={{...rowStyle}}>
@@ -27956,7 +27959,7 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
                     <div style={{fontSize:"0.68rem",color:C.textMuted}}>全月の合計から自動計算</div>
                   </div>
                   <span style={{fontSize:"1rem",fontWeight:700,color:C.blue}}>
-                    {Object.keys(sysData).reduce((s,k)=>s+(+(sysData[k]?.hp)||0),0).toLocaleString()}PV
+                    {Object.keys(sysData).reduce((s,k)=>s+(+(sysData[k]?.hp)||0),0).toLocaleString()}人
                   </span>
                 </div>
                 {/* 当月入力 */}
@@ -27964,7 +27967,7 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
                   <span style={{fontSize:"0.87rem",color:C.text,flex:1}}>当月 ({monthLabel(mk)})</span>
                   {editing
                     ? <InputNum value={d.hp??0} onChange={v=>setD({hp:v})}/>
-                    : <span style={{fontSize:"1rem",fontWeight:700,color:C.text}}>{(+d.hp||0).toLocaleString()}PV</span>
+                    : <span style={{fontSize:"1rem",fontWeight:700,color:C.text}}>{(+d.hp||0).toLocaleString()}人</span>
                   }
                 </div>
               </div>
@@ -27974,7 +27977,7 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
             </div>
           )}
 
-          {/* ── BIZCON ── */}
+          {/* ── BIZCON (年度: 6月〜5月、申込+HP閲覧者数) ── */}
           {sys==="bizcon" && (
             <div>
               <div style={{marginBottom:"1.25rem"}}>
@@ -28004,6 +28007,35 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
                   return (
                     <div key={m} style={{...rowStyle}}>
                       <span style={{fontSize:"0.85rem",color:C.text,flex:1}}>{m}月{isNextYear && <span style={{fontSize:"0.65rem",color:C.textMuted,marginLeft:"0.3rem"}}>({Number(yk)+1}年)</span>}</span>
+                      {editing?(
+                        <div style={{display:"flex",alignItems:"center",gap:"0.35rem"}}>
+                          <InputNum value={val} onChange={v=>setDraft(p=>({...p,hpByMonth:{...(p.hpByMonth||{}),[m]:v}}))}/>
+                          <span style={{fontSize:"0.75rem",color:C.textSub}}>人</span>
+                        </div>
+                      ):(
+                        <span style={{fontSize:"0.9rem",fontWeight:700,color:C.text}}>{(+val||0).toLocaleString()}人</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          
+          {/* ── BM (カレンダー年: 1月〜12月、HP閲覧者数のみ) ── */}
+          {sys==="bm" && (
+            <div>
+              <div style={{marginBottom:"1.25rem"}}>
+                <div style={{fontSize:"0.7rem",fontWeight:800,color:C.textSub,textTransform:"uppercase",letterSpacing:"0.05em",padding:"0.35rem 0",borderBottom:`2px solid ${C.accent}`,marginBottom:"0.1rem"}}>HP閲覧者数 <span style={{fontSize:"0.65rem",fontWeight:600,color:C.textMuted,textTransform:"none",letterSpacing:"normal"}}>({yk}年)</span></div>
+                <div style={{...rowStyle}}>
+                  <div style={{flex:1}}><span style={{fontSize:"0.87rem",color:C.text}}>年間合計</span><div style={{fontSize:"0.68rem",color:C.textMuted}}>月間の合計から自動計算</div></div>
+                  <span style={{fontSize:"1rem",fontWeight:700,color:C.blue}}>{Object.values(d.hpByMonth||{}).reduce((s,v)=>s+(+v||0),0).toLocaleString()}人</span>
+                </div>
+                {[1,2,3,4,5,6,7,8,9,10,11,12].map(m=>{
+                  const val=d.hpByMonth?.[m]??0;
+                  return (
+                    <div key={m} style={{...rowStyle}}>
+                      <span style={{fontSize:"0.85rem",color:C.text,flex:1}}>{m}月</span>
                       {editing?(
                         <div style={{display:"flex",alignItems:"center",gap:"0.35rem"}}>
                           <InputNum value={val} onChange={v=>setDraft(p=>({...p,hpByMonth:{...(p.hpByMonth||{}),[m]:v}}))}/>
