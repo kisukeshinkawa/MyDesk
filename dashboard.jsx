@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v145-bizcon-fiscal-year"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v146-fiscal-year-correct"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -27120,6 +27120,9 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
   }, [sys]);
   
   // === Bizcon (ビジコン) / その他システム: GA4 PV を自動取得 ===
+  // ビジコンは年度制（6月〜翌年5月）:
+  //   bizcon["2026"].hpByMonth[6〜12] = 2026/06〜12 のデータ
+  //   bizcon["2026"].hpByMonth[1〜5]  = 2027/01〜05 のデータ
   React.useEffect(() => {
     if (sys !== "bizcon") return;
     const last = window.__myDeskBizconPvLastFetch || 0;
@@ -27133,35 +27136,41 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
         const items = j.items || [];
         if (items.length === 0) return;
         
-        // ビジコンは年単位データ構造 (bizcon[year].hpByMonth[1-12])
         const currentAna = data.analytics || {};
         const sysAna = {...(currentAna["bizcon"] || {})};
-        let updated = false;
-        
-        // items を年×月でグループ化
-        for (const item of items) {
-          const ym = item.ym; // "2026-05"
-          if (!ym || ym.length < 7) continue;
-          const year = ym.substring(0, 4);  // "2026"
-          const month = parseInt(ym.substring(5, 7), 10);  // 5
-          const newHp = item.hp_views || 0;
-          
-          const yearData = {...(sysAna[year] || {hpByMonth:{}, applicants:0, fullApplicants:0})};
-          const hpByMonth = {...(yearData.hpByMonth || {})};
-          
-          if ((hpByMonth[month] || 0) !== newHp) {
-            hpByMonth[month] = newHp;
-            yearData.hpByMonth = hpByMonth;
-            sysAna[year] = yearData;
-            updated = true;
+        // 既存の hpByMonth を全クリアして再構築（古いキャッシュデータを完全リセット）
+        for (const yr of Object.keys(sysAna)) {
+          if (yr.includes("-")) {
+            // "2026-05" のような ym形式は削除
+            delete sysAna[yr];
+          } else if (sysAna[yr]) {
+            // 年度キーは hpByMonth だけクリア（申込者数は残す）
+            sysAna[yr] = {...sysAna[yr], hpByMonth: {}};
           }
         }
         
-        if (updated) {
-          const nd = {...data, analytics: {...currentAna, bizcon: sysAna}};
-          saveWithPush(nd);
-          console.log(`[Bizcon PV auto-sync] ${items.length}ヶ月分のPVを bizcon[年].hpByMonth[月] に反映`);
+        // items の各月を年度に分類して反映
+        for (const item of items) {
+          const ym = item.ym;
+          if (!ym || ym.length < 7) continue;
+          const year = parseInt(ym.substring(0, 4), 10);   // 2026
+          const month = parseInt(ym.substring(5, 7), 10);  // 5
+          const newHp = item.hp_views || 0;
+          
+          // 年度判定: 6〜12月 → そのままの年度, 1〜5月 → 前年の年度
+          const fiscalYear = month >= 6 ? year : year - 1;
+          const fiscalYearStr = String(fiscalYear);
+          
+          if (!sysAna[fiscalYearStr]) {
+            sysAna[fiscalYearStr] = {hpByMonth:{}, applicants:0, fullApplicants:0};
+          }
+          sysAna[fiscalYearStr].hpByMonth = {...(sysAna[fiscalYearStr].hpByMonth || {})};
+          sysAna[fiscalYearStr].hpByMonth[month] = newHp;
         }
+        
+        const nd = {...data, analytics: {...currentAna, bizcon: sysAna}};
+        saveWithPush(nd);
+        console.log(`[Bizcon PV auto-sync] ${items.length}ヶ月分のPVを年度別(6月〜5月)に反映`);
         window.__myDeskBizconPvLastFetch = Date.now();
       } catch (e) {
         console.warn("[Bizcon PV auto-sync] error:", e);
