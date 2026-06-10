@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v136-business-correct"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v137-all-months"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -27627,6 +27627,72 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
                       }}
                         style={{padding:"0.3rem 0.625rem",borderRadius:"0.5rem",border:"1px solid #f59e0b",background:"#fef3c7",color:"#92400e",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"0.25rem"}}>
                         🔄 Bubble取得
+                      </button>
+                    )}
+                    {sys === "dustalk" && (
+                      <button onClick={async()=>{
+                        try{
+                          if(!window.confirm(`全12ヶ月分のデータをBubble (Dustalk)から取得して上書きします。\n\nHP閲覧数・LINE友達追加数は上書きされません。\n\n実行しますか？`)) return;
+                          // RDS から全12ヶ月分を取得
+                          const res = await fetch(`${DB_API_BASE}/dustalk/monthly?limit=12`, { headers: DB_API_HEADERS });
+                          if (!res.ok) throw new Error("HTTP "+res.status);
+                          const j = await res.json();
+                          const items = j.items || [];
+                          if (items.length === 0) {
+                            alert("RDSにデータがありません。まず単月で「🔄 Bubble取得」を実行してください。");
+                            return;
+                          }
+                          // analytics を一気に更新
+                          let nd = {...data, analytics: {...(data.analytics||{})}};
+                          const sysAnalytics = {...(nd.analytics[sys]||{})};
+                          let appliedCount = 0;
+                          for (const item of items) {
+                            const itemYm = item.ym;
+                            const current = sysAnalytics[itemYm] || {hp:0,lineFriends:0,serviceLog:0,requests:0,contracts:0,revenue:0,pay:{cc:0,paypay:0,merpay:0,cash:0}};
+                            const fpm = item.family_payment_methods || {};
+                            const bpm = item.business_payment_methods || {};
+                            sysAnalytics[itemYm] = {
+                              ...current,
+                              serviceLog: item.service_log_count || 0,
+                              requests: item.total_request_count,
+                              requestsKatei: item.family_request_count,
+                              requestsJigyo: item.business_request_count,
+                              contracts: item.deal_count,
+                              contractsKatei: item.family_deal_count,
+                              contractsJigyo: item.business_deal_count,
+                              revenue: item.total_sales,
+                              revenueKatei: item.family_sales,
+                              revenueJigyo: item.business_sales,
+                              pay: {
+                                cc: (fpm["クレジットカード"]||0) + (bpm["クレジットカード"]||0),
+                                paypay: (fpm["PayPay"]||0) + (bpm["PayPay"]||0),
+                                merpay: (fpm["メルペイ"]||0) + (bpm["メルペイ"]||0),
+                                cash: (fpm["現金支払い"]||0) + (bpm["現金支払い"]||0),
+                              },
+                              payKatei: {
+                                cc: fpm["クレジットカード"] || 0,
+                                paypay: fpm["PayPay"] || 0,
+                                merpay: fpm["メルペイ"] || 0,
+                                cash: fpm["現金支払い"] || 0,
+                              },
+                              payJigyo: {
+                                cc: bpm["クレジットカード"] || 0,
+                                paypay: bpm["PayPay"] || 0,
+                                merpay: bpm["メルペイ"] || 0,
+                                cash: bpm["現金支払い"] || 0,
+                              },
+                            };
+                            appliedCount++;
+                          }
+                          nd.analytics[sys] = sysAnalytics;
+                          await saveWithPush(nd);
+                          alert(`✅ ${appliedCount}ヶ月分のデータを反映しました`);
+                        } catch(e) {
+                          alert("全月Bubble取得エラー: " + e.message);
+                        }
+                      }}
+                        style={{padding:"0.3rem 0.625rem",borderRadius:"0.5rem",border:"1px solid #ea580c",background:"#fff7ed",color:"#9a3412",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"0.25rem"}}>
+                        📦 全月Bubble取得
                       </button>
                     )}
                     <button onClick={async()=>{try{await exportPPTX(sys,mk,yk,d,prev,data.analytics||{});}catch(e){alert("レポート出力に失敗しました:\n"+e.message);}}}
