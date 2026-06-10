@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v141-ga4-hp"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v143-bizcon-pv"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -135,6 +135,7 @@ if (typeof window !== "undefined") {
   console.log("[MyDesk] 診断: コンソールで __myDeskDiag() を実行してください");
 }
 const DB_API_BASE   = "https://zv3hlppejxw32cjxhn2mnsdgqq0sxeqa.lambda-url.ap-northeast-1.on.aws";
+const DUSTALK_SYNC_URL = "https://36w7fx2ywn7t4raggrbwe65ili0fddnr.lambda-url.ap-northeast-1.on.aws";
 const DB_API_SECRET = "mydesk2026secret";
 const DB_API_HEADERS = {
   "Content-Type": "application/json",
@@ -26632,7 +26633,7 @@ async function exportPPTX(sys, mk, yk, d, prev, allAnalytics) {
       s.addText("📊 月次KPIサマリー  — "+label,{x:0.4,y:0,w:9,h:0.9,fontSize:16,fontFace:"Arial",bold:true,color:WHITE,valign:"middle"});
 
       const kpis=[
-        {lbl:"HP閲覧数",val:fmt(d.hp,"PV"),cur:+d.hp||0,prv:+prev.hp||0},
+        {lbl:"HP閲覧者数",val:fmt(d.hp,"人"),cur:+d.hp||0,prv:+prev.hp||0},
         {lbl:"LINE友達",val:fmt(d.lineFriends,"人"),cur:+d.lineFriends||0,prv:+prev.lineFriends||0},
         {lbl:"依頼数",val:fmt(d.requests,"件"),cur:+d.requests||0,prv:+prev.requests||0},
         {lbl:"成約数",val:fmt(d.contracts,"件"),cur:+d.contracts||0,prv:+prev.contracts||0},
@@ -26735,7 +26736,7 @@ async function exportPPTX(sys, mk, yk, d, prev, allAnalytics) {
       s.addText("📊 先月比較",{x:0.4,y:0,w:9,h:0.9,fontSize:16,fontFace:"Arial",bold:true,color:WHITE,valign:"middle"});
       const compRows=[
         ["指標","今月","先月","増減"],
-        ["HP閲覧数",fmt(d.hp,"PV"),fmt(prev.hp,"PV"),diffTxt(+d.hp||0,+prev.hp||0)],
+        ["HP閲覧者数",fmt(d.hp,"人"),fmt(prev.hp,"人"),diffTxt(+d.hp||0,+prev.hp||0)],
         ["LINE友達",fmt(d.lineFriends,"人"),fmt(prev.lineFriends,"人"),diffTxt(+d.lineFriends||0,+prev.lineFriends||0)],
         ["依頼数",fmt(d.requests,"件"),fmt(prev.requests,"件"),diffTxt(+d.requests||0,+prev.requests||0)],
         ["成約数",fmt(d.contracts,"件"),fmt(prev.contracts,"件"),diffTxt(+d.contracts||0,+prev.contracts||0)],
@@ -26910,7 +26911,7 @@ async function exportMultiMonthPPTX(sys, currentMk, allAnalytics) {
 
       // KPIカード4枚
       const kpis=[
-        {label:"HP閲覧数",val:fmt(d.hp,"PV"),cur:+d.hp||0,prv:+prev.hp||0,color:BLUE,icon:"🌐"},
+        {label:"HP閲覧者数",val:fmt(d.hp,"人"),cur:+d.hp||0,prv:+prev.hp||0,color:BLUE,icon:"🌐"},
         {label:"依頼数",val:fmt(d.requests,"件"),cur:+d.requests||0,prv:+prev.requests||0,color:GREEN,icon:"📋"},
         {label:"成約数",val:fmt(d.contracts,"件"),cur:+d.contracts||0,prv:+prev.contracts||0,color:AMBER,icon:"✅"},
         {label:"売上",val:fmt(d.revenue,"円"),cur:+d.revenue||0,prv:+prev.revenue||0,color:PURPLE,icon:"💴"},
@@ -27117,6 +27118,45 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sys]);
+  
+  // === Bizcon (ビジコン) / その他システム: GA4 PV を自動取得 ===
+  React.useEffect(() => {
+    if (sys !== "bizcon") return;
+    const last = window.__myDeskBizconPvLastFetch || 0;
+    if (Date.now() - last < 30 * 60 * 1000) return;
+    
+    (async () => {
+      try {
+        const res = await fetch(`${DUSTALK_SYNC_URL}/pv-list?sys=bizcon`, { headers: DB_API_HEADERS });
+        if (!res.ok) { console.warn("[Bizcon PV auto-sync] HTTP " + res.status); return; }
+        const j = await res.json();
+        const items = j.items || [];
+        if (items.length === 0) return;
+        
+        const currentAna = data.analytics || {};
+        const sysAna = {...(currentAna["bizcon"] || {})};
+        let updated = false;
+        for (const item of items) {
+          const itemYm = item.ym;
+          const current = sysAna[itemYm] || {};
+          const newHp = item.hp_views || 0;
+          if ((current.hp || 0) !== newHp) {
+            sysAna[itemYm] = { ...current, hp: newHp };
+            updated = true;
+          }
+        }
+        if (updated) {
+          const nd = {...data, analytics: {...currentAna, bizcon: sysAna}};
+          saveWithPush(nd);
+          console.log(`[Bizcon PV auto-sync] ${items.length}ヶ月分のPVを反映`);
+        }
+        window.__myDeskBizconPvLastFetch = Date.now();
+      } catch (e) {
+        console.warn("[Bizcon PV auto-sync] error:", e);
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sys]);
 
   const ana     = data.analytics || {};
   const sysData = ana[sys] || {};
@@ -27177,7 +27217,7 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
   const CHART_DEFS = {
     dustalk: {
       "基本指標": [
-        {label:"HP閲覧数",       unit:"PV",  get:(m)=>m?.hp||0},
+        {label:"HP閲覧者数",       unit:"人",  get:(m)=>m?.hp||0},
         {label:"LINE友達追加",   unit:"人",  get:(m)=>m?.lineFriends||0},
         {label:"サービスログ",   unit:"件",  get:(m)=>m?.serviceLog||0},
         {label:"依頼数",         unit:"件",  get:(m)=>m?.requests||0},
@@ -27193,8 +27233,8 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
         {label:"月間ユーザー数", unit:"人", get:(m)=>m?.monthly||0},
         {label:"累積ユーザー数", unit:"人", get:(m)=>m?.cumulative||0},
       ],
-      "HP閲覧数": [
-        {label:"月間HP閲覧数", unit:"PV", get:(m)=>m?.hp||0},
+      "HP閲覧者数": [
+        {label:"月間HP閲覧者数", unit:"人", get:(m)=>m?.hp||0},
       ],
     },
     bizcon: {},
@@ -27493,7 +27533,6 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
         const POS = "#10b981", NEG = "#ef4444";
         const metrics = [
           {id:"revenue",  label:"売上",   sub:"Revenue",   get:d=>d.revenue||0,  money:true,  cumulative:false},
-          {id:"customers",label:"顧客数", sub:"Customers", get:d=>d.contracts||0,             cumulative:true},
           {id:"requests", label:"依頼数", sub:"Requests",  get:d=>d.requests||0,              cumulative:false},
           {id:"contracts",label:"成約数", sub:"Closed",    get:d=>d.contracts||0,             cumulative:false},
         ];
@@ -27649,9 +27688,9 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
                   <div style={{flex:1,fontSize:"0.7rem",fontWeight:800,color:C.textSub,textTransform:"uppercase",letterSpacing:"0.05em",padding:"0.35rem 0"}}>基本指標</div>
                   {!editing&&<button onClick={()=>setChart({section:"基本指標",metricIdx:0})} style={{background:C.accentBg,border:`1px solid ${C.accent}40`,borderRadius:"0.4rem",padding:"0.2rem 0.5rem",fontSize:"0.68rem",fontWeight:700,color:C.accentDark,cursor:"pointer",fontFamily:"inherit",marginBottom:"0.2rem"}}>📊 グラフ</button>}
                 </div>
-                {/* HP閲覧数 */}
+                {/* HP閲覧者数 */}
                 <div style={{...rowStyle}}>
-                  <span style={{fontSize:"0.87rem",color:C.text,flex:1}}>HP閲覧数</span>
+                  <span style={{fontSize:"0.87rem",color:C.text,flex:1}}>HP閲覧者数</span>
                   {editing?<InputNum value={d.hp??0} onChange={v=>setD({hp:v})}/>:<span style={{fontSize:"1rem",fontWeight:700,color:C.text,display:"flex",alignItems:"center"}}>{(+d.hp||0).toLocaleString()}PV<DiffBadge cur={+d.hp||0} prv={+prev.hp||0}/></span>}
                 </div>
                 {/* LINE友達追加 */}
@@ -27886,8 +27925,8 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
               </div>
               <div style={{marginBottom:"1.25rem"}}>
                 <div style={{display:"flex",alignItems:"center",borderBottom:`2px solid ${C.accent}`,marginBottom:"0.1rem"}}>
-                  <div style={{flex:1,fontSize:"0.7rem",fontWeight:800,color:C.textSub,textTransform:"uppercase",letterSpacing:"0.05em",padding:"0.35rem 0"}}>HP閲覧数</div>
-                  {!editing&&<button onClick={()=>setChart({section:"HP閲覧数",metricIdx:0})} style={{background:C.accentBg,border:`1px solid ${C.accent}40`,borderRadius:"0.4rem",padding:"0.2rem 0.5rem",fontSize:"0.68rem",fontWeight:700,color:C.accentDark,cursor:"pointer",fontFamily:"inherit",marginBottom:"0.2rem"}}>📊 グラフ</button>}
+                  <div style={{flex:1,fontSize:"0.7rem",fontWeight:800,color:C.textSub,textTransform:"uppercase",letterSpacing:"0.05em",padding:"0.35rem 0"}}>HP閲覧者数</div>
+                  {!editing&&<button onClick={()=>setChart({section:"HP閲覧者数",metricIdx:0})} style={{background:C.accentBg,border:`1px solid ${C.accent}40`,borderRadius:"0.4rem",padding:"0.2rem 0.5rem",fontSize:"0.68rem",fontWeight:700,color:C.accentDark,cursor:"pointer",fontFamily:"inherit",marginBottom:"0.2rem"}}>📊 グラフ</button>}
                 </div>
                 {/* 合算（全月キーのhp合計・自動計算） */}
                 <div style={{...rowStyle}}>
@@ -27909,7 +27948,7 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
                 </div>
               </div>
               {editing&&<div style={{background:C.accentBg,border:`1px solid ${C.accent}30`,borderRadius:"6px",padding:"0.75rem",fontSize:"0.8rem",color:C.accentDark}}>
-                💡 月間ユーザー数を変更すると、差分が累積に自動加算されます。HP閲覧数の累積は全月の合計です。
+                💡 月間ユーザー数を変更すると、差分が累積に自動加算されます。HP閲覧者数の累積は全月の合計です。
               </div>}
             </div>
           )}
@@ -27933,7 +27972,7 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
                 </div>
               </div>
               <div style={{marginBottom:"1.25rem"}}>
-                <div style={{fontSize:"0.7rem",fontWeight:800,color:C.textSub,textTransform:"uppercase",letterSpacing:"0.05em",padding:"0.35rem 0",borderBottom:`2px solid ${C.accent}`,marginBottom:"0.1rem"}}>HP閲覧数</div>
+                <div style={{fontSize:"0.7rem",fontWeight:800,color:C.textSub,textTransform:"uppercase",letterSpacing:"0.05em",padding:"0.35rem 0",borderBottom:`2px solid ${C.accent}`,marginBottom:"0.1rem"}}>HP閲覧者数</div>
                 <div style={{...rowStyle}}>
                   <div style={{flex:1}}><span style={{fontSize:"0.87rem",color:C.text}}>年間合計</span><div style={{fontSize:"0.68rem",color:C.textMuted}}>月間の合計から自動計算</div></div>
                   <span style={{fontSize:"1rem",fontWeight:700,color:C.blue}}>{Object.values(d.hpByMonth||{}).reduce((s,v)=>s+(+v||0),0).toLocaleString()}PV</span>
