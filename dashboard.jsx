@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v139-auto-sync"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v140-line-total"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -27658,6 +27658,13 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
                   <span style={{fontSize:"0.87rem",color:C.text,flex:1}}>LINE友達追加</span>
                   {editing?<InputNum value={d.lineFriends??0} onChange={v=>setD({lineFriends:v})}/>:<span style={{fontSize:"1rem",fontWeight:700,color:C.text,display:"flex",alignItems:"center"}}>{(+d.lineFriends||0).toLocaleString()}人<DiffBadge cur={+d.lineFriends||0} prv={+prev.lineFriends||0}/></span>}
                 </div>
+                {/* LINE累計友達数 (Bubble取得時のみ表示) */}
+                {!editing && (+d.lineFriendsTotal||0) > 0 && (
+                  <div style={{padding:"0 0 0.45rem 0.6rem",fontSize:"0.7rem",color:C.textMuted,display:"flex",gap:"0.6rem",alignItems:"center"}}>
+                    <span>累計友達数:</span>
+                    <span style={{fontWeight:600,color:C.textSub}}>{(+d.lineFriendsTotal||0).toLocaleString()}人</span>
+                  </div>
+                )}
                 {/* サービスログ合計（展開式）*/}
                 <div style={{...rowStyle,flexWrap:"wrap"}}>
                   <span style={{fontSize:"0.87rem",color:C.text,flex:1}}>サービスログ（合計）</span>
