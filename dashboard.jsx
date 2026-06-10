@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v140-line-total"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v141-ga4-hp"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -27068,6 +27068,7 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
             serviceLog: item.service_log_count || 0,
             lineFriends: item.line_friends_added || 0,
             lineFriendsTotal: item.line_friends_total || 0,
+            hp: item.hp_views || 0,
             requests: item.total_request_count,
             requestsKatei: item.family_request_count,
             requestsJigyo: item.business_request_count,
