@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v138-line-friends"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v139-auto-sync"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -27037,6 +27037,85 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
   // expanded sections for collapsible partner stores
   const [openSects,setOpenSects]= useState({serviceLog:false,requests:false,contracts:false,revenue:false});
   const [kpiMetric, setKpiMetric] = useState("revenue"); // 上部ダッシュボードのグラフ表示指標
+  
+  // === Dustalk: RDSから自動取得（毎日0時に同期されたデータを読み込み） ===
+  const [dustalkSyncedAt, setDustalkSyncedAt] = useState(null);
+  React.useEffect(() => {
+    if (sys !== "dustalk") return;
+    // 一度フェッチしたら30分以内は再取得しない
+    const last = window.__myDeskDustalkLastFetch || 0;
+    if (Date.now() - last < 30 * 60 * 1000) return;
+    
+    (async () => {
+      try {
+        const res = await fetch(`${DB_API_BASE}/dustalk/monthly?limit=12`, { headers: DB_API_HEADERS });
+        if (!res.ok) { console.warn("[Dustalk auto-sync] HTTP " + res.status); return; }
+        const j = await res.json();
+        const items = j.items || [];
+        if (items.length === 0) return;
+        
+        // analytics を一気に更新（既存データのHP/LINE/サービスログを上書き）
+        const currentAna = data.analytics || {};
+        const sysAna = {...(currentAna["dustalk"] || {})};
+        let updated = false;
+        for (const item of items) {
+          const itemYm = item.ym;
+          const current = sysAna[itemYm] || {hp:0,lineFriends:0,serviceLog:0,requests:0,contracts:0,revenue:0,pay:{cc:0,paypay:0,merpay:0,cash:0}};
+          const fpm = item.family_payment_methods || {};
+          const bpm = item.business_payment_methods || {};
+          const newData = {
+            ...current,
+            serviceLog: item.service_log_count || 0,
+            lineFriends: item.line_friends_added || 0,
+            lineFriendsTotal: item.line_friends_total || 0,
+            requests: item.total_request_count,
+            requestsKatei: item.family_request_count,
+            requestsJigyo: item.business_request_count,
+            contracts: item.deal_count,
+            contractsKatei: item.family_deal_count,
+            contractsJigyo: item.business_deal_count,
+            revenue: item.total_sales,
+            revenueKatei: item.family_sales,
+            revenueJigyo: item.business_sales,
+            pay: {
+              cc: (fpm["クレジットカード"]||0) + (bpm["クレジットカード"]||0),
+              paypay: (fpm["PayPay"]||0) + (bpm["PayPay"]||0),
+              merpay: (fpm["メルペイ"]||0) + (bpm["メルペイ"]||0),
+              cash: (fpm["現金支払い"]||0) + (bpm["現金支払い"]||0),
+            },
+            payKatei: {
+              cc: fpm["クレジットカード"] || 0,
+              paypay: fpm["PayPay"] || 0,
+              merpay: fpm["メルペイ"] || 0,
+              cash: fpm["現金支払い"] || 0,
+            },
+            payJigyo: {
+              cc: bpm["クレジットカード"] || 0,
+              paypay: bpm["PayPay"] || 0,
+              merpay: bpm["メルペイ"] || 0,
+              cash: bpm["現金支払い"] || 0,
+            },
+          };
+          // 既存と違うときだけ更新
+          if (JSON.stringify(sysAna[itemYm]) !== JSON.stringify(newData)) {
+            sysAna[itemYm] = newData;
+            updated = true;
+          }
+        }
+        if (updated) {
+          const nd = {...data, analytics: {...currentAna, dustalk: sysAna}};
+          saveWithPush(nd);
+          console.log(`[Dustalk auto-sync] ${items.length}ヶ月分のデータをRDSから取得して反映`);
+        }
+        // 最終取得時刻を記録
+        window.__myDeskDustalkLastFetch = Date.now();
+        if (items[0]?.last_synced_at) setDustalkSyncedAt(items[0].last_synced_at);
+      } catch (e) {
+        console.warn("[Dustalk auto-sync] error:", e);
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sys]);
 
   const ana     = data.analytics || {};
   const sysData = ana[sys] || {};
@@ -27543,163 +27622,6 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
               {!editing
                 ? <>
                     <Btn size="sm" onClick={startEdit}>✏️ 編集</Btn>
-                    {sys === "dustalk" && (
-                      <button onClick={async()=>{
-                        try{
-                          if(!window.confirm(`${monthLabel(mk)}のデータをBubble (Dustalk)から取得して上書きしますか？\n\n対象項目:\n・依頼数（家庭系/事業系/合計）\n・成約数\n・売上\n・支払方法内訳\n\nHP閲覧数・LINE友達追加数・サービスログは上書きされません。`)) return;
-                          // RDS にキャッシュされた値を取得
-                          const res = await fetch(`${DB_API_BASE}/dustalk/monthly?ym=${mk}`, { headers: DB_API_HEADERS });
-                          if (!res.ok) throw new Error("HTTP "+res.status);
-                          const j = await res.json();
-                          if (!j.item) {
-                            if (window.confirm(`Bubble側にまだ ${mk} のデータがキャッシュされていません。\n\n同期 Lambda を手動実行しますか？（数秒かかります）`)) {
-                              try {
-                                const syncUrl = "https://36w7fx2ywn7t4raggrbwe65ili0fddnr.lambda-url.ap-northeast-1.on.aws/";
-                                const syncRes = await fetch(syncUrl, {
-                                  method: "POST",
-                                  headers: { "Content-Type": "application/json", "x-mydesk-secret": "mydesk2026secret" },
-                                  body: JSON.stringify({ months: [mk] }),
-                                });
-                                if (!syncRes.ok) throw new Error("Sync failed: HTTP " + syncRes.status);
-                                const syncJ = await syncRes.json();
-                                console.log("[Bubble sync]", syncJ);
-                                // 再取得
-                                const res2 = await fetch(`${DB_API_BASE}/dustalk/monthly?ym=${mk}`, { headers: DB_API_HEADERS });
-                                const j2 = await res2.json();
-                                if (!j2.item) { alert("同期後もデータが取得できませんでした"); return; }
-                                j.item = j2.item;
-                              } catch (err) {
-                                alert("同期エラー: " + err.message);
-                                return;
-                              }
-                            } else { return; }
-                          }
-                          const item = j.item;
-                          // 既存のdraftまたは保存値に流し込む
-                          const current = getCurrent();
-                          const fpm = item.family_payment_methods || {};
-                          const bpm = item.business_payment_methods || {};
-                          const updated = {
-                            ...current,
-                            // サービスログ
-                            serviceLog: item.service_log_count || 0,
-                            // LINE 友達追加数（当月純増）
-                            lineFriends: item.line_friends_added || 0,
-                            lineFriendsTotal: item.line_friends_total || 0,
-                            // 依頼数
-                            requests: item.total_request_count,
-                            requestsKatei: item.family_request_count,
-                            requestsJigyo: item.business_request_count,
-                            // 成約数
-                            contracts: item.deal_count,
-                            contractsKatei: item.family_deal_count,
-                            contractsJigyo: item.business_deal_count,
-                            // 売上
-                            revenue: item.total_sales,
-                            revenueKatei: item.family_sales,
-                            revenueJigyo: item.business_sales,
-                            // 決済方法（合算）
-                            pay: {
-                              cc: (fpm["クレジットカード"]||0) + (bpm["クレジットカード"]||0),
-                              paypay: (fpm["PayPay"]||0) + (bpm["PayPay"]||0),
-                              merpay: (fpm["メルペイ"]||0) + (bpm["メルペイ"]||0),
-                              cash: (fpm["現金支払い"]||0) + (bpm["現金支払い"]||0),
-                            },
-                            // 家庭系決済方法
-                            payKatei: {
-                              cc: fpm["クレジットカード"] || 0,
-                              paypay: fpm["PayPay"] || 0,
-                              merpay: fpm["メルペイ"] || 0,
-                              cash: fpm["現金支払い"] || 0,
-                            },
-                            // 事業系決済方法
-                            payJigyo: {
-                              cc: bpm["クレジットカード"] || 0,
-                              paypay: bpm["PayPay"] || 0,
-                              merpay: bpm["メルペイ"] || 0,
-                              cash: bpm["現金支払い"] || 0,
-                            },
-                          };
-                          // analytics に保存
-                          const nd = {...data, analytics:{...(data.analytics||{}),[sys]:{...((data.analytics||{})[sys]||{}),[mk]:updated}}};
-                          saveWithPush(nd);
-                          alert(`✅ ${monthLabel(mk)} のデータを取得しました\n\n依頼数: ${item.total_request_count}件（家庭${item.family_request_count} / 事業${item.business_request_count}）\n成約数: ${item.deal_count}件（家庭${item.family_deal_count} / 事業${item.business_deal_count}）\n売上: ¥${(item.total_sales||0).toLocaleString()}\n  家庭: ¥${(item.family_sales||0).toLocaleString()}\n  事業: ¥${(item.business_sales||0).toLocaleString()}\nサービスログ: ${item.service_log_count||0}件`);
-                        } catch(e) {
-                          alert("Bubble取得エラー: " + e.message);
-                        }
-                      }}
-                        style={{padding:"0.3rem 0.625rem",borderRadius:"0.5rem",border:"1px solid #f59e0b",background:"#fef3c7",color:"#92400e",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"0.25rem"}}>
-                        🔄 Bubble取得
-                      </button>
-                    )}
-                    {sys === "dustalk" && (
-                      <button onClick={async()=>{
-                        try{
-                          if(!window.confirm(`全12ヶ月分のデータをBubble (Dustalk)から取得して上書きします。\n\nHP閲覧数・LINE友達追加数は上書きされません。\n\n実行しますか？`)) return;
-                          // RDS から全12ヶ月分を取得
-                          const res = await fetch(`${DB_API_BASE}/dustalk/monthly?limit=12`, { headers: DB_API_HEADERS });
-                          if (!res.ok) throw new Error("HTTP "+res.status);
-                          const j = await res.json();
-                          const items = j.items || [];
-                          if (items.length === 0) {
-                            alert("RDSにデータがありません。まず単月で「🔄 Bubble取得」を実行してください。");
-                            return;
-                          }
-                          // analytics を一気に更新
-                          let nd = {...data, analytics: {...(data.analytics||{})}};
-                          const sysAnalytics = {...(nd.analytics[sys]||{})};
-                          let appliedCount = 0;
-                          for (const item of items) {
-                            const itemYm = item.ym;
-                            const current = sysAnalytics[itemYm] || {hp:0,lineFriends:0,serviceLog:0,requests:0,contracts:0,revenue:0,pay:{cc:0,paypay:0,merpay:0,cash:0}};
-                            const fpm = item.family_payment_methods || {};
-                            const bpm = item.business_payment_methods || {};
-                            sysAnalytics[itemYm] = {
-                              ...current,
-                              serviceLog: item.service_log_count || 0,
-                              lineFriends: item.line_friends_added || 0,
-                              lineFriendsTotal: item.line_friends_total || 0,
-                              requests: item.total_request_count,
-                              requestsKatei: item.family_request_count,
-                              requestsJigyo: item.business_request_count,
-                              contracts: item.deal_count,
-                              contractsKatei: item.family_deal_count,
-                              contractsJigyo: item.business_deal_count,
-                              revenue: item.total_sales,
-                              revenueKatei: item.family_sales,
-                              revenueJigyo: item.business_sales,
-                              pay: {
-                                cc: (fpm["クレジットカード"]||0) + (bpm["クレジットカード"]||0),
-                                paypay: (fpm["PayPay"]||0) + (bpm["PayPay"]||0),
-                                merpay: (fpm["メルペイ"]||0) + (bpm["メルペイ"]||0),
-                                cash: (fpm["現金支払い"]||0) + (bpm["現金支払い"]||0),
-                              },
-                              payKatei: {
-                                cc: fpm["クレジットカード"] || 0,
-                                paypay: fpm["PayPay"] || 0,
-                                merpay: fpm["メルペイ"] || 0,
-                                cash: fpm["現金支払い"] || 0,
-                              },
-                              payJigyo: {
-                                cc: bpm["クレジットカード"] || 0,
-                                paypay: bpm["PayPay"] || 0,
-                                merpay: bpm["メルペイ"] || 0,
-                                cash: bpm["現金支払い"] || 0,
-                              },
-                            };
-                            appliedCount++;
-                          }
-                          nd.analytics[sys] = sysAnalytics;
-                          await saveWithPush(nd);
-                          alert(`✅ ${appliedCount}ヶ月分のデータを反映しました`);
-                        } catch(e) {
-                          alert("全月Bubble取得エラー: " + e.message);
-                        }
-                      }}
-                        style={{padding:"0.3rem 0.625rem",borderRadius:"0.5rem",border:"1px solid #ea580c",background:"#fff7ed",color:"#9a3412",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"0.25rem"}}>
-                        📦 全月Bubble取得
-                      </button>
-                    )}
                     <button onClick={async()=>{try{await exportPPTX(sys,mk,yk,d,prev,data.analytics||{});}catch(e){alert("レポート出力に失敗しました:\n"+e.message);}}}
                       style={{padding:"0.3rem 0.625rem",borderRadius:"0.5rem",border:"1px solid #7c3aed30",background:"#f5f3ff",color:"#7c3aed",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"0.25rem"}}>
                       📊 PPTXレポート
