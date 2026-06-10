@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v144-bizcon-fix"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v145-bizcon-fiscal-year"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -27984,16 +27984,17 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
                 </div>
               </div>
               <div style={{marginBottom:"1.25rem"}}>
-                <div style={{fontSize:"0.7rem",fontWeight:800,color:C.textSub,textTransform:"uppercase",letterSpacing:"0.05em",padding:"0.35rem 0",borderBottom:`2px solid ${C.accent}`,marginBottom:"0.1rem"}}>HP閲覧者数</div>
+                <div style={{fontSize:"0.7rem",fontWeight:800,color:C.textSub,textTransform:"uppercase",letterSpacing:"0.05em",padding:"0.35rem 0",borderBottom:`2px solid ${C.accent}`,marginBottom:"0.1rem"}}>HP閲覧者数 <span style={{fontSize:"0.65rem",fontWeight:600,color:C.textMuted,textTransform:"none",letterSpacing:"normal"}}>({yk}年6月 〜 {Number(yk)+1}年5月)</span></div>
                 <div style={{...rowStyle}}>
                   <div style={{flex:1}}><span style={{fontSize:"0.87rem",color:C.text}}>年間合計</span><div style={{fontSize:"0.68rem",color:C.textMuted}}>月間の合計から自動計算</div></div>
                   <span style={{fontSize:"1rem",fontWeight:700,color:C.blue}}>{Object.values(d.hpByMonth||{}).reduce((s,v)=>s+(+v||0),0).toLocaleString()}人</span>
                 </div>
-                {Array.from({length:12},(_,i)=>i+1).map(m=>{
+                {[6,7,8,9,10,11,12,1,2,3,4,5].map(m=>{
                   const val=d.hpByMonth?.[m]??0;
+                  const isNextYear = m <= 5;
                   return (
                     <div key={m} style={{...rowStyle}}>
-                      <span style={{fontSize:"0.85rem",color:C.text,flex:1}}>{m}月</span>
+                      <span style={{fontSize:"0.85rem",color:C.text,flex:1}}>{m}月{isNextYear && <span style={{fontSize:"0.65rem",color:C.textMuted,marginLeft:"0.3rem"}}>({Number(yk)+1}年)</span>}</span>
                       {editing?(
                         <div style={{display:"flex",alignItems:"center",gap:"0.35rem"}}>
                           <InputNum value={val} onChange={v=>setDraft(p=>({...p,hpByMonth:{...(p.hpByMonth||{}),[m]:v}}))}/>
