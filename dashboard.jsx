@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v147-bm-pv-fix"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v148-bm-rebit-autosync"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -27176,6 +27176,90 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
         window.__myDeskBizconPvLastFetch = Date.now();
       } catch (e) {
         console.warn("[Bizcon PV auto-sync] error:", e);
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sys]);
+  
+  // === BM: GA4 PV を自動取得 (カレンダー年 1〜12月) ===
+  React.useEffect(() => {
+    if (sys !== "bm") return;
+    const last = window.__myDeskBmPvLastFetch || 0;
+    if (Date.now() - last < 30 * 60 * 1000) return;
+    
+    (async () => {
+      try {
+        const res = await fetch(`${DUSTALK_SYNC_URL}/pv-list?sys=bm`, { headers: DB_API_HEADERS });
+        if (!res.ok) { console.warn("[BM PV auto-sync] HTTP " + res.status); return; }
+        const j = await res.json();
+        const items = j.items || [];
+        if (items.length === 0) return;
+        
+        const currentAna = data.analytics || {};
+        const sysAna = {...(currentAna["bm"] || {})};
+        for (const yr of Object.keys(sysAna)) {
+          if (yr.includes("-")) { delete sysAna[yr]; continue; }
+          if (sysAna[yr]) sysAna[yr] = {...sysAna[yr], hpByMonth: {}};
+        }
+        
+        for (const item of items) {
+          const ym = item.ym;
+          if (!ym || ym.length < 7) continue;
+          const year = ym.substring(0, 4);  // BMはカレンダー年
+          const month = parseInt(ym.substring(5, 7), 10);
+          const newHp = item.hp_views || 0;
+          
+          if (!sysAna[year]) sysAna[year] = {hpByMonth:{}};
+          sysAna[year].hpByMonth = {...(sysAna[year].hpByMonth || {})};
+          sysAna[year].hpByMonth[month] = newHp;
+        }
+        
+        const nd = {...data, analytics: {...currentAna, bm: sysAna}};
+        saveWithPush(nd);
+        console.log(`[BM PV auto-sync] ${items.length}ヶ月分のPVを bm[年].hpByMonth[月] に反映`);
+        window.__myDeskBmPvLastFetch = Date.now();
+      } catch (e) {
+        console.warn("[BM PV auto-sync] error:", e);
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sys]);
+  
+  // === Rebit: GA4 PV を自動取得 (カレンダー年 1〜12月、月別の monthly フィールド) ===
+  React.useEffect(() => {
+    if (sys !== "rebit") return;
+    const last = window.__myDeskRebitPvLastFetch || 0;
+    if (Date.now() - last < 30 * 60 * 1000) return;
+    
+    (async () => {
+      try {
+        const res = await fetch(`${DUSTALK_SYNC_URL}/pv-list?sys=rebit`, { headers: DB_API_HEADERS });
+        if (!res.ok) { console.warn("[Rebit PV auto-sync] HTTP " + res.status); return; }
+        const j = await res.json();
+        const items = j.items || [];
+        if (items.length === 0) return;
+        
+        // Rebit は月別キー "YYYY-MM" 形式（dustalkと同じ）
+        const currentAna = data.analytics || {};
+        const sysAna = {...(currentAna["rebit"] || {})};
+        let updated = false;
+        for (const item of items) {
+          const ym = item.ym;
+          const newHp = item.hp_views || 0;
+          const current = sysAna[ym] || {};
+          if ((current.hp || 0) !== newHp) {
+            sysAna[ym] = { ...current, hp: newHp };
+            updated = true;
+          }
+        }
+        if (updated) {
+          const nd = {...data, analytics: {...currentAna, rebit: sysAna}};
+          saveWithPush(nd);
+          console.log(`[Rebit PV auto-sync] ${items.length}ヶ月分のPVを反映`);
+        }
+        window.__myDeskRebitPvLastFetch = Date.now();
+      } catch (e) {
+        console.warn("[Rebit PV auto-sync] error:", e);
       }
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
