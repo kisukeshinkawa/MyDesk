@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v143-bizcon-pv"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v144-bizcon-fix"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -27133,22 +27133,34 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
         const items = j.items || [];
         if (items.length === 0) return;
         
+        // ビジコンは年単位データ構造 (bizcon[year].hpByMonth[1-12])
         const currentAna = data.analytics || {};
         const sysAna = {...(currentAna["bizcon"] || {})};
         let updated = false;
+        
+        // items を年×月でグループ化
         for (const item of items) {
-          const itemYm = item.ym;
-          const current = sysAna[itemYm] || {};
+          const ym = item.ym; // "2026-05"
+          if (!ym || ym.length < 7) continue;
+          const year = ym.substring(0, 4);  // "2026"
+          const month = parseInt(ym.substring(5, 7), 10);  // 5
           const newHp = item.hp_views || 0;
-          if ((current.hp || 0) !== newHp) {
-            sysAna[itemYm] = { ...current, hp: newHp };
+          
+          const yearData = {...(sysAna[year] || {hpByMonth:{}, applicants:0, fullApplicants:0})};
+          const hpByMonth = {...(yearData.hpByMonth || {})};
+          
+          if ((hpByMonth[month] || 0) !== newHp) {
+            hpByMonth[month] = newHp;
+            yearData.hpByMonth = hpByMonth;
+            sysAna[year] = yearData;
             updated = true;
           }
         }
+        
         if (updated) {
           const nd = {...data, analytics: {...currentAna, bizcon: sysAna}};
           saveWithPush(nd);
-          console.log(`[Bizcon PV auto-sync] ${items.length}ヶ月分のPVを反映`);
+          console.log(`[Bizcon PV auto-sync] ${items.length}ヶ月分のPVを bizcon[年].hpByMonth[月] に反映`);
         }
         window.__myDeskBizconPvLastFetch = Date.now();
       } catch (e) {
@@ -27975,7 +27987,7 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
                 <div style={{fontSize:"0.7rem",fontWeight:800,color:C.textSub,textTransform:"uppercase",letterSpacing:"0.05em",padding:"0.35rem 0",borderBottom:`2px solid ${C.accent}`,marginBottom:"0.1rem"}}>HP閲覧者数</div>
                 <div style={{...rowStyle}}>
                   <div style={{flex:1}}><span style={{fontSize:"0.87rem",color:C.text}}>年間合計</span><div style={{fontSize:"0.68rem",color:C.textMuted}}>月間の合計から自動計算</div></div>
-                  <span style={{fontSize:"1rem",fontWeight:700,color:C.blue}}>{Object.values(d.hpByMonth||{}).reduce((s,v)=>s+(+v||0),0).toLocaleString()}PV</span>
+                  <span style={{fontSize:"1rem",fontWeight:700,color:C.blue}}>{Object.values(d.hpByMonth||{}).reduce((s,v)=>s+(+v||0),0).toLocaleString()}人</span>
                 </div>
                 {Array.from({length:12},(_,i)=>i+1).map(m=>{
                   const val=d.hpByMonth?.[m]??0;
@@ -27985,10 +27997,10 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
                       {editing?(
                         <div style={{display:"flex",alignItems:"center",gap:"0.35rem"}}>
                           <InputNum value={val} onChange={v=>setDraft(p=>({...p,hpByMonth:{...(p.hpByMonth||{}),[m]:v}}))}/>
-                          <span style={{fontSize:"0.75rem",color:C.textSub}}>PV</span>
+                          <span style={{fontSize:"0.75rem",color:C.textSub}}>人</span>
                         </div>
                       ):(
-                        <span style={{fontSize:"0.9rem",fontWeight:700,color:C.text}}>{(+val||0).toLocaleString()}PV</span>
+                        <span style={{fontSize:"0.9rem",fontWeight:700,color:C.text}}>{(+val||0).toLocaleString()}人</span>
                       )}
                     </div>
                   );
