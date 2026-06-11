@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v152-spam-session-fallback"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v153-bulk-block-and-simple-dialog"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -9175,22 +9175,22 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onMarkSpam,
                   // 解除
                   if (typeof onMarkSpam === "function") onMarkSpam(email.id, false);
                 } else {
-                  // 認定 - 詳細選択肢を表示
+                  // 認定 - 簡略化: 即メアドブロック（理由のみ入力）
                   const senderEmail = (email.from?.email || "").toLowerCase();
                   const domain = senderEmail.includes("@") ? senderEmail.split("@")[1] : "";
-                  let msg = "🚫 迷惑メール認定の方法を選択してください\n\n";
-                  msg += "[1] このメールのみ迷惑メールに移動（送信元はブロックしない）\n";
-                  if (senderEmail) msg += `[2] このメアド (${senderEmail}) からのメールを全てブロック ⭐推奨\n`;
-                  if (domain) msg += `[3] このドメイン (@${domain}) からのメールを全てブロック\n`;
-                  msg += "[キャンセル] 何もしない\n\n";
-                  msg += "番号を入力してください (1/2/3):";
-                  // デフォルトを「2」(メアドブロック) にする — 通常の迷惑メール認定はこれが期待動作
-                  const choice = window.prompt(msg, senderEmail ? "2" : "1");
-                  if (choice === null) return;
-                  const reason = window.prompt("理由（任意、ブロック理由として保存）:", "") || "";
+                  
+                  // 確認ダイアログ
+                  const confirmMsg = senderEmail
+                    ? `🚫 「${senderEmail}」を迷惑メールに認定しますか？\n\nこのメアドからの今後のメールも全て自動ブロックされます。\n（ドメイン単位でブロックしたい場合はキャンセルして、設定→迷惑メールから手動追加してください）`
+                    : '🚫 このメールを迷惑メールに認定しますか？';
+                  if (!window.confirm(confirmMsg)) return;
+                  
+                  const reason = window.prompt("理由（任意）:", "") || "";
                   if (reason === null) return;
+                  
                   if (typeof onMarkSpam === "function") {
-                    const opts = { blockEmail: choice === "2", blockDomain: choice === "3" };
+                    // senderEmail があれば必ずブロック
+                    const opts = { blockEmail: !!senderEmail, blockDomain: false };
                     onMarkSpam(email.id, true, reason, opts);
                   }
                 }
@@ -25508,6 +25508,31 @@ function SpamFilterSettings({ currentUser, C }) {
           • <b>ブロックリスト</b>: 指定したメアド・ドメイン・件名キーワードのメールを自動的に迷惑メールに分類
           <br/>
           • <b>ホワイトリスト</b>: AI が誤って迷惑メールと判定しないようにする信頼済リスト（最優先）
+        </div>
+        {/* 過去の迷惑メール一括追加ボタン */}
+        <div style={{marginTop:"0.75rem",padding:"0.6rem 0.75rem",background:"#fef3c7",border:"1px solid #f59e0b",borderRadius:8}}>
+          <div style={{fontSize:"0.74rem",color:"#92400e",fontWeight:700,marginBottom:"0.4rem"}}>💡 過去に迷惑メール認定したメールがありませんか？</div>
+          <button onClick={async()=>{
+            if(!accountEmail){ alert("ログイン情報が取れません"); return; }
+            const ok = window.confirm("⚠️ 過去に迷惑メール認定したメールの送信元を、まとめてブロックリストに追加します。\n\n既に登録済みのものはスキップされます。\n\n実行しますか？");
+            if(!ok) return;
+            try{
+              const res = await fetch(`${DB_API_BASE}/emails/blocklist/bulk-from-spam`,{
+                method:"POST", headers:DB_API_HEADERS,
+                body:JSON.stringify({account_email:accountEmail, created_by:accountEmail})
+              });
+              const j = await res.json();
+              if(res.ok){
+                alert(`✅ ${j.added || 0} 件をブロックリストに追加しました${(j.patterns||[]).length>0 ? "\n\n例:\n" + (j.patterns||[]).slice(0,5).join("\n") + ((j.patterns||[]).length>5 ? `\n…他 ${(j.patterns||[]).length-5} 件` : "") : ""}`);
+                loadLists();
+              } else {
+                alert("エラー: " + (j.error || res.status));
+              }
+            }catch(e){ alert("追加エラー: "+e.message); }
+          }}
+            style={{padding:"0.5rem 0.9rem",background:"#f59e0b",color:"white",border:"none",borderRadius:6,fontWeight:800,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}}>
+            📥 過去の迷惑認定メールからまとめてブロック追加
+          </button>
         </div>
       </div>
       
