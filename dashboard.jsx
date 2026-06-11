@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v149-bizcon-applicants"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v150-bizcon-monthly"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -28106,8 +28106,30 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
               <div style={{marginBottom:"1.25rem"}}>
                 <div style={{fontSize:"0.7rem",fontWeight:800,color:C.textSub,textTransform:"uppercase",letterSpacing:"0.05em",padding:"0.35rem 0",borderBottom:`2px solid ${C.accent}`,marginBottom:"0.1rem"}}>申込</div>
                 <div style={{...rowStyle}}>
-                  <span style={{fontSize:"0.87rem",color:C.text,flex:1}}>申込者数</span>
-                  {editing?<InputNum value={d.applicants??0} onChange={v=>setD({applicants:v})}/>:<span style={{fontSize:"1rem",fontWeight:700,color:C.text}}>{(+d.applicants||0).toLocaleString()}人</span>}
+                  <div style={{flex:1}}><span style={{fontSize:"0.87rem",color:C.text}}>申込者数</span><div style={{fontSize:"0.68rem",color:C.textMuted}}>6月・7月の合計</div></div>
+                  <span style={{fontSize:"1rem",fontWeight:700,color:C.blue}}>{(((d.applicantsByMonth||{})[6]||0) + ((d.applicantsByMonth||{})[7]||0)).toLocaleString()}人</span>
+                </div>
+                <div style={{...rowStyle,paddingLeft:"1rem"}}>
+                  <span style={{fontSize:"0.8rem",color:C.textSub,flex:1}}>└ 6月</span>
+                  {editing?(
+                    <div style={{display:"flex",alignItems:"center",gap:"0.35rem"}}>
+                      <InputNum value={(d.applicantsByMonth||{})[6]??0} onChange={v=>setDraft(p=>({...p,applicantsByMonth:{...(p.applicantsByMonth||{}),6:v}}))}/>
+                      <span style={{fontSize:"0.75rem",color:C.textSub}}>人</span>
+                    </div>
+                  ):(
+                    <span style={{fontSize:"0.9rem",fontWeight:700,color:C.text}}>{(+((d.applicantsByMonth||{})[6])||0).toLocaleString()}人</span>
+                  )}
+                </div>
+                <div style={{...rowStyle,paddingLeft:"1rem"}}>
+                  <span style={{fontSize:"0.8rem",color:C.textSub,flex:1}}>└ 7月</span>
+                  {editing?(
+                    <div style={{display:"flex",alignItems:"center",gap:"0.35rem"}}>
+                      <InputNum value={(d.applicantsByMonth||{})[7]??0} onChange={v=>setDraft(p=>({...p,applicantsByMonth:{...(p.applicantsByMonth||{}),7:v}}))}/>
+                      <span style={{fontSize:"0.75rem",color:C.textSub}}>人</span>
+                    </div>
+                  ):(
+                    <span style={{fontSize:"0.9rem",fontWeight:700,color:C.text}}>{(+((d.applicantsByMonth||{})[7])||0).toLocaleString()}人</span>
+                  )}
                 </div>
                 <div style={{...rowStyle}}>
                   <span style={{fontSize:"0.87rem",color:C.text,flex:1}}>本申込者数</span>
@@ -28115,7 +28137,10 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
                 </div>
                 <div style={{...rowStyle}}>
                   <div style={{flex:1}}><span style={{fontSize:"0.87rem",color:C.text}}>本申込転換率</span></div>
-                  <span style={{fontSize:"1rem",fontWeight:700,color:C.blue}}>{d.applicants>0?((d.fullApplicants/d.applicants)*100).toFixed(1)+"%":"－"}</span>
+                  {(()=>{
+                    const total = ((d.applicantsByMonth||{})[6]||0) + ((d.applicantsByMonth||{})[7]||0);
+                    return <span style={{fontSize:"1rem",fontWeight:700,color:C.blue}}>{total>0?((d.fullApplicants/total)*100).toFixed(1)+"%":"－"}</span>;
+                  })()}
                 </div>
               </div>
               <div style={{marginBottom:"1.25rem"}}>
