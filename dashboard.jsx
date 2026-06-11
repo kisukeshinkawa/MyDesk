@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v156-beenet-chart-modal"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v157-email-ux-overhaul"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -9151,14 +9151,25 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onMarkSpam,
               if (aiAnalyzing) return;
               setAiAnalyzing(true);
               try {
+                // 過去のスレッドメール (同じ threadId) を取得して要約のヒントに
+                let threadHint = "";
+                if (email.threadId) {
+                  try {
+                    const thRes = await fetch(`${DB_API_BASE}/emails?thread_id=${encodeURIComponent(email.threadId)}&limit=20`, { headers: DB_API_HEADERS });
+                    if (thRes.ok) {
+                      const thJ = await thRes.json();
+                      const thList = (thJ.items||[]).filter(e => e.id !== email.id).slice(0, 5);
+                      threadHint = thList.map(e => `[${e.direction==="inbound"?"受信":"送信"}/${(e.from_name||e.from_email||"").slice(0,30)}] ${(e.subject||"").slice(0,60)} | ${(e.body||"").slice(0,200)}`).join("\n---\n");
+                    }
+                  } catch(_){}
+                }
                 const res = await fetch(EMAIL_AI_API_URL, {
                   method: "POST",
                   headers: { "Content-Type": "application/json", "x-mydesk-secret": DB_API_SECRET },
-                  body: JSON.stringify({ emailId: email.id, force: true }),
+                  body: JSON.stringify({ emailId: email.id, force: true, threadHint }),
                 });
                 const j = await res.json();
                 if (!res.ok) { alert("AI 分析失敗: " + (j.error || res.status)); return; }
-                // 更新後のメールを再取得
                 const er = await fetch(`${DB_API_BASE}/emails/${email.id}`, { headers: DB_API_HEADERS });
                 if (er.ok) { const ej = await er.json(); setAiData(ej.item || {}); }
               } catch(e) {
@@ -9208,6 +9219,28 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onMarkSpam,
       {/* 件名 + 返信済みバッジ */}
       <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.45rem",flexWrap:"wrap"}}>
         <div style={{fontSize:"1rem",fontWeight:800,color:C.text,letterSpacing:"-0.01em",flex:1,minWidth:0}}>{email.subject||"(件名なし)"}</div>
+        {(() => {
+          // 自分宛か判定
+          const myEm = (currentUser?.email || (()=>{try{return JSON.parse(localStorage.getItem("mydesk_session_v2")||"{}").email;}catch{return "";}})()).toLowerCase();
+          if (!isInbound || !myEm) return null;
+          const inTo = (email.to||[]).some(t => (t?.email||"").toLowerCase() === myEm);
+          const inCc = (email.cc||[]).some(t => (t?.email||"").toLowerCase() === myEm);
+          if (inTo) return (
+            <span style={{fontSize:"0.7rem",fontWeight:800,padding:"0.2rem 0.6rem",borderRadius:5,background:"#fef3c7",color:"#92400e",border:"1px solid #fcd34d"}}>
+              ✉️ 要返信
+            </span>
+          );
+          if (inCc) return (
+            <span style={{fontSize:"0.7rem",fontWeight:700,padding:"0.2rem 0.6rem",borderRadius:5,background:"#dbeafe",color:"#1e40af",border:"1px solid #93c5fd"}}>
+              📋 CC（参考）
+            </span>
+          );
+          return (
+            <span style={{fontSize:"0.7rem",fontWeight:700,padding:"0.2rem 0.6rem",borderRadius:5,background:"#f1f5f9",color:"#475569",border:"1px solid #cbd5e1"}}>
+              👁️ 共有
+            </span>
+          );
+        })()}
         {email.isReplied && (
           <span style={{fontSize:"0.7rem",fontWeight:700,padding:"0.2rem 0.6rem",borderRadius:5,background:"#d1fae5",color:"#065f46",border:"1px solid #6ee7b7"}}>
             ✓ 返信済み{email.repliedAt ? `（${fmtFull(email.repliedAt).slice(5,10)}）` : ""}
@@ -9586,10 +9619,8 @@ function EmailView({data,setData,currentUser=null}) {
         .catch(()=>{});
     }
     if (isUnread) {
-      readTimerRef.current = setTimeout(()=>{
-        updateEmailFieldRef.current?.(emailId, {isRead:true});
-        readTimerRef.current = null;
-      }, 2000);
+      // 即既読（旧: 2秒遅延 → 即時）
+      updateEmailFieldRef.current?.(emailId, {isRead:true});
     }
   }, []);
   // unmountでタイマークリア
@@ -9629,6 +9660,13 @@ function EmailView({data,setData,currentUser=null}) {
     if (!mbSelectedId) {
       const target = lst[0];
       if (target) selectEmailWithDelayedRead(target.id, target.direction === "inbound" && !target.isRead);
+      // 選択した要素をビューに入れる
+      requestAnimationFrame(()=>{
+        try {
+          const el = document.querySelector(`[data-email-id="${target.id}"]`);
+          if (el) el.scrollIntoView({block:"nearest", behavior:"smooth"});
+        } catch(e){}
+      });
       return;
     }
     const idx = lst.findIndex(e => e.id === mbSelectedId);
@@ -9637,6 +9675,13 @@ function EmailView({data,setData,currentUser=null}) {
     if (nextIdx === idx) return;
     const target = lst[nextIdx];
     selectEmailWithDelayedRead(target.id, target.direction === "inbound" && !target.isRead);
+    // 選択した要素をビューに入れる
+    requestAnimationFrame(()=>{
+      try {
+        const el = document.querySelector(`[data-email-id="${target.id}"]`);
+        if (el) el.scrollIntoView({block:"nearest", behavior:"smooth"});
+      } catch(e){}
+    });
   }, [mbSelectedId, selectEmailWithDelayedRead]);
 
   // updateEmailField を ref で保持（selectAdjacent から呼ぶため）
@@ -10389,7 +10434,100 @@ function EmailView({data,setData,currentUser=null}) {
     setMbAiBusy(true);
     try {
       const linkedContext = (email.linkedDisplay||[]).map(l=>`- ${l.type}: ${l.name}`).join("\n");
-      const prompt = `次の受信メールに対する自然で丁寧な日本語の返信文を作成してください。本文のみを出力し、件名や前置きは出さないでください。\n\n【受信メール】\n差出人: ${email.from?.name||""} <${email.from?.email||""}>\n件名: ${email.subject||""}\n本文:\n${email.body||""}\n\n${linkedContext?`【MyDesk上の関連情報】\n${linkedContext}\n\n`:""}【私の名前】${currentUser?.name||""}\n\n返信本文:`;
+      
+      // 社内/社外判定
+      const fromEmail = (email.from?.email||"").toLowerCase();
+      const isInternal = fromEmail.endsWith("@beetle-ems.com");
+      
+      // スレッド履歴を抽出（メール本文に含まれる過去のやり取り）
+      const threadHistory = (email.body||"").slice(0, 5000); // 長すぎないように制限
+      
+      // 自分の情報
+      const myName = currentUser?.name || (()=>{try{return JSON.parse(localStorage.getItem("mydesk_session_v2")||"{}").name||"新川";}catch{return "新川";}})();
+      const myEmail = (currentUser?.email || (()=>{try{return JSON.parse(localStorage.getItem("mydesk_session_v2")||"{}").email;}catch{return "";}})()).toLowerCase();
+      
+      // 自分が To に入ってるか確認
+      const isToMe = (email.to||[]).some(t => (t?.email||"").toLowerCase() === myEmail);
+      
+      // 送信元の表示名から「苗字 様」を生成（社外向け）
+      const senderName = email.from?.name || "";
+      // 括弧や敬称を除去して苗字部分を抽出
+      const cleanedName = senderName.replace(/[(（].+?[)）]/g, "").replace(/様|さん|殿/g, "").trim();
+      // 苗字のみ取得 (姓 名 → 姓)
+      const surnameOnly = cleanedName.split(/[\s　]/)[0] || cleanedName;
+      
+      // 会社名（メール署名から抽出を試みる、簡易版）
+      let companyHint = "";
+      const bodyText = email.body || "";
+      const companyMatch = bodyText.match(/(株式会社[^\s\n\r　]{1,30}|有限会社[^\s\n\r　]{1,30}|合同会社[^\s\n\r　]{1,30}|[^\s\n\r　]{2,30}(株式会社|有限会社))/);
+      if (companyMatch) companyHint = companyMatch[0].slice(0, 40);
+      
+      let prompt = "";
+      
+      if (isInternal) {
+        // 社内メール
+        prompt = `あなたは社内メール返信アシスタントです。同僚に対する自然で簡潔な返信文を作成してください。
+
+【重要ルール】
+- 社内宛なのでフランクで簡潔に。「お疲れ様です」「ありがとうございます」程度の軽い挨拶。
+- 過剰な敬語は不要。
+- 本文のみを出力（件名・前置き・署名は不要）。
+- 元の差出人の本文をそのままコピーしないこと。新規の返信文を書くこと。
+- スレッドの過去のやり取りを踏まえて適切に返信すること。
+
+【受信メール】
+差出人: ${senderName} <${fromEmail}>
+件名: ${email.subject||""}
+本文（スレッドの過去のやり取りを含む）:
+${threadHistory}
+
+${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
+【私】${myName}（${myEmail}）
+
+【返信を作成する際の判断】
+- 質問されているなら、それに答える形で
+- 報告・連絡なら、了解した旨を伝える
+- 何か頼まれているなら、対応する/確認する旨を伝える
+- 雑談・冗談なら、軽く返す（カジュアルに）
+
+返信本文（社内向け、簡潔に）:`;
+      } else {
+        // 社外メール - 宛先「会社名 / 苗字 様」を含める
+        prompt = `あなたはビジネスメール返信アシスタントです。社外向けの丁寧で適切な日本語の返信文を作成してください。
+
+【重要ルール】
+- 本文の冒頭に宛先を以下の形式で必ず入れること（会社名がわかる場合は2行で、わからない場合は1行で）：
+  ${companyHint ? `「${companyHint}\n${surnameOnly} 様」` : `「${surnameOnly} 様」`}
+- 続けて空行を1つ入れる。
+- 「お世話になっております。株式会社西原商事ホールディングスの${myName.split(/[\s　]/)[1]||myName}です。」で始める。
+- 元の差出人の本文をそのままコピーしないこと。新規の返信文を書くこと。
+- スレッドの過去のやり取りを踏まえて適切に返信すること。
+- 本文の末尾に「引き続き何卒よろしくお願いいたします。」を入れる。
+- 署名（連絡先・会社情報）は入れない（自動付与される）。
+
+【受信メール】
+差出人: ${senderName} <${fromEmail}>
+件名: ${email.subject||""}
+本文（スレッドの過去のやり取りを含む）:
+${threadHistory}
+
+${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
+【私】${myName}（${myEmail}）
+
+【返信本文を作成する際の判断】
+- 質問されているなら、それに答える形で（曖昧な場合は確認するが、ストレートに）
+- 連絡事項なら、了解・承知した旨を伝える
+- 何か頼まれているなら、対応する/確認する旨を伝える
+- 過去のやり取りで決定事項があれば、それを踏まえて
+
+返信本文:`;
+      }
+      
+      // 自分が To に入っていない場合は、警告を含めるが返信案は生成
+      if (!isToMe && email.direction === "inbound") {
+        // 警告を出すが、AIには通常通り作らせる（ユーザーが必要なら使う）
+      }
+      
       const res = await fetch(`${API_BASE}/api/generate-email`, {
         method:"POST",
         headers:{"Content-Type":"application/json","x-mydesk-secret":"mydesk2026"},
@@ -10594,9 +10732,13 @@ function EmailView({data,setData,currentUser=null}) {
                     const peer = e.direction==="inbound" ? getDisplayName(e.from?.email, e.from?.name) : getDisplayName((e.to||[])[0]?.email, (e.to||[])[0]?.name);
                     const needsRep = needsReplySoon(e);
                     const isSelected = mbSelectedId === e.id;
+                    // 自分が To に入ってる受信メール = 要返信候補
+                    const myEmail = (currentUser?.email || (()=>{try{return JSON.parse(localStorage.getItem("mydesk_session_v2")||"{}").email;}catch{return "";}})()).toLowerCase();
+                    const isToMe = e.direction === "inbound" && (e.to||[]).some(t => (t?.email||"").toLowerCase() === myEmail);
+                    const needsAction = isToMe && !e.isReplied && !e.isSpam;
                     return (
-                      <div key={e.id} onClick={()=>selectEmailWithDelayedRead(e.id, isUnread)}
-                        style={{display:"flex",alignItems:"flex-start",gap:"0.5rem",padding:"0.55rem 0.7rem",background:isSelected?"#dbeafe":isUnread?"#fff7ed":"white",borderRadius:"8px",border:`1px solid ${isSelected?C.accent:needsRep?"#fca5a5":C.borderLight}`,cursor:"pointer",boxShadow:isSelected?"0 2px 6px rgba(37,99,235,0.15)":"0 1px 2px rgba(0,0,0,0.03)",transition:"all 0.1s"}}>
+                      <div key={e.id} data-email-id={e.id} onClick={()=>selectEmailWithDelayedRead(e.id, isUnread)}
+                        style={{display:"flex",alignItems:"flex-start",gap:"0.5rem",padding:"0.55rem 0.7rem",background:isSelected?"#dbeafe":isUnread?"#fff7ed":"white",borderRadius:"8px",border:`1px solid ${isSelected?C.accent:needsAction?"#fbbf24":needsRep?"#fca5a5":C.borderLight}`,cursor:"pointer",boxShadow:isSelected?"0 2px 6px rgba(37,99,235,0.15)":"0 1px 2px rgba(0,0,0,0.03)",transition:"all 0.1s",borderLeftWidth:needsAction?"4px":"1px",borderLeftColor:needsAction?"#f59e0b":undefined}}>
                         <button onClick={ev=>{ev.stopPropagation();updateEmailField(e.id,{isStarred:!e.isStarred});}}
                           style={{padding:0,border:"none",background:"none",cursor:"pointer",fontSize:"0.95rem",lineHeight:1,flexShrink:0,color:e.isStarred?"#eab308":C.borderLight}}>{e.isStarred?"⭐":"☆"}</button>
                         <div style={{flex:1,minWidth:0}}>
@@ -10618,9 +10760,10 @@ function EmailView({data,setData,currentUser=null}) {
                           <div style={{fontSize:"0.66rem",color:e.ai_summary?"#1e40af":C.textMuted,marginTop:"0.05rem",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontWeight:e.ai_summary?500:400}}>
                             {e.ai_summary || (e.body||"").slice(0,80)}
                           </div>
-                          {(needsRep || e.status==="failed" || e.isReplied) && (
+                          {(needsRep || needsAction || e.status==="failed" || e.isReplied) && (
                             <div style={{display:"flex",gap:4,marginTop:"0.25rem",flexWrap:"wrap"}}>
                               {needsRep && <span style={{fontSize:"0.58rem",fontWeight:700,padding:"0.05rem 0.35rem",borderRadius:4,background:"#fee2e2",color:"#b91c1c"}}>要返信 {daysSince(e.receivedAt||e.createdAt)}日</span>}
+                              {needsAction && !needsRep && !e.isReplied && <span style={{fontSize:"0.58rem",fontWeight:700,padding:"0.05rem 0.35rem",borderRadius:4,background:"#fef3c7",color:"#92400e"}}>✉️ 要返信</span>}
                               {e.isReplied && <span style={{fontSize:"0.58rem",fontWeight:700,padding:"0.05rem 0.35rem",borderRadius:4,background:"#d1fae5",color:"#065f46"}}>✓ 返信済</span>}
                               {e.status==="failed" && <span style={{fontSize:"0.58rem",fontWeight:700,padding:"0.05rem 0.35rem",borderRadius:4,background:"#fee2e2",color:"#b91c1c"}}>⚠️ 送信失敗</span>}
                             </div>
