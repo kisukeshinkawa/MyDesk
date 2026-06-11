@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v159-bugfix-and-style-learning"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v160-agent-phase-AB"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -143,6 +143,7 @@ const DB_API_HEADERS = {
 };
 // AI メール分析 Lambda URL（環境変数優先、なければ将来のデプロイ後に設定）
 const EMAIL_AI_API_URL = (typeof import.meta !== "undefined" && import.meta.env?.VITE_EMAIL_AI_API_URL) || "";
+const AGENT_API_URL = (typeof import.meta !== "undefined" && import.meta.env?.VITE_AGENT_API_URL) || "";
 // メール受信 Lambda URL（手動受信用）
 const FETCH_EMAILS_URL = "https://kh4ppnjygtrezwlbnc6umysci40zflac.lambda-url.ap-northeast-1.on.aws/";
 
@@ -28882,6 +28883,349 @@ function GlobalSearchModal({ query, onQueryChange, onClose, data, onNavigate, us
 }
 
 
+// ─── AI AGENT CHAT (右下フローティング) ─────────────────────────────────────
+// MyDesk 全体を操作できる AI 秘書。自然言語で指示すると Tool Use で適切な
+// 操作を実行する（ナビゲーション・検索・メール下書き・タスク作成等）
+function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
+  const [input, setInput] = React.useState("");
+  const [messages, setMessages] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem("md_agent_history") || "[]").slice(-30); }
+    catch { return []; }
+  });
+  const [busy, setBusy] = React.useState(false);
+  const inputRef = React.useRef(null);
+  const messagesEndRef = React.useRef(null);
+  
+  // メッセージを保存
+  React.useEffect(() => {
+    try { localStorage.setItem("md_agent_history", JSON.stringify(messages.slice(-30))); } catch {}
+  }, [messages]);
+  
+  // 自動スクロール
+  React.useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({behavior: "smooth", block: "end"});
+  }, [messages, busy]);
+  
+  // 開いたらフォーカス
+  React.useEffect(() => {
+    if (isOpen) setTimeout(() => inputRef.current?.focus(), 100);
+  }, [isOpen]);
+  
+  // データの軽量サマリーを作る（Lambda に送る用）
+  const buildDataSummary = () => {
+    const companies = (data?.companies || []).map(c => ({
+      id: c.id, name: c.name, status: c.status, assigneeIds: c.assigneeIds
+    }));
+    const vendors = (data?.vendors || []).map(v => ({
+      id: v.id, name: v.name, status: v.status,
+      assigneeIds: v.assigneeIds, beeNet: v.beeNet
+    }));
+    const munis = (data?.municipalities || []).map(m => ({
+      id: m.id, name: m.name, prefectureId: m.prefectureId,
+      assigneeIds: m.assigneeIds
+    }));
+    const tasks = (data?.tasks || []).map(t => ({
+      id: t.id, title: t.title, status: t.status,
+      priority: t.priority, dueDate: t.dueDate
+    }));
+    // メール送信者の情報（連絡先）
+    const people = [];
+    const seenEmails = new Set();
+    (data?.businessCards || []).forEach(b => {
+      const em = (b.email || "").toLowerCase();
+      if (em && !seenEmails.has(em)) {
+        seenEmails.add(em);
+        people.push({id: b.id, name: b.name || em, email: em, company: b.company});
+      }
+    });
+    // ユーザー側からの連絡先（社内）
+    (users || []).forEach(u => {
+      const em = (u.email || "").toLowerCase();
+      if (em && !seenEmails.has(em)) {
+        seenEmails.add(em);
+        people.push({id: u.id, name: u.name, email: em, type: "user"});
+      }
+    });
+    
+    return {
+      companies_count: companies.length,
+      vendors_count: vendors.length,
+      munis_count: munis.length,
+      tasks_count: tasks.length,
+      // 検索用に最初の一部だけ送る（全件送ると context overflow）
+      companies: companies.slice(0, 1000),
+      vendors: vendors.slice(0, 1500),
+      munis: munis,
+      tasks: tasks.slice(0, 300),
+      people: people.slice(0, 500),
+      users: (users || []).map(u => ({id: u.id, name: u.name, email: u.email})),
+    };
+  };
+  
+  const send = async () => {
+    const text = input.trim();
+    if (!text || busy) return;
+    if (!AGENT_API_URL) {
+      alert("AI エージェントの URL が設定されていません。\n環境変数 VITE_AGENT_API_URL を設定してください。");
+      return;
+    }
+    
+    const userMsg = {role: "user", content: text, timestamp: Date.now()};
+    setMessages(prev => [...prev, userMsg]);
+    setInput("");
+    setBusy(true);
+    
+    try {
+      const summary = buildDataSummary();
+      const payload = {
+        user_input: text,
+        context: {
+          current_user: {
+            id: currentUser?.id,
+            name: currentUser?.name,
+            email: currentUser?.email,
+          },
+          data_summary: summary,
+          history: messages.slice(-8).map(m => ({role: m.role, content: m.content})),
+        },
+      };
+      
+      const res = await fetch(AGENT_API_URL, {
+        method: "POST",
+        headers: {"Content-Type": "application/json", "x-mydesk-secret": "mydesk2026secret"},
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      
+      if (!res.ok || !json.ok) {
+        setMessages(prev => [...prev, {role: "assistant", content: `❌ エラー: ${json.error || json.message || "AI応答失敗"}`, timestamp: Date.now()}]);
+        return;
+      }
+      
+      const assistantMsg = {
+        role: "assistant",
+        content: json.message || "了解しました。",
+        actions: json.actions || [],
+        timestamp: Date.now(),
+      };
+      setMessages(prev => [...prev, assistantMsg]);
+      
+      // アクションを実行（onAction でハンドリング）
+      if (json.actions && json.actions.length > 0 && typeof onAction === "function") {
+        for (const action of json.actions) {
+          await onAction(action);
+        }
+      }
+    } catch (e) {
+      setMessages(prev => [...prev, {role: "assistant", content: `❌ 通信エラー: ${e.message || e}`, timestamp: Date.now()}]);
+    } finally {
+      setBusy(false);
+    }
+  };
+  
+  const clearHistory = () => {
+    if (!window.confirm("会話履歴をクリアしますか？")) return;
+    setMessages([]);
+    localStorage.removeItem("md_agent_history");
+  };
+  
+  if (!isOpen) return null;
+  
+  return (
+    <div style={{
+      position: "fixed",
+      bottom: "90px",
+      right: "20px",
+      width: "min(420px, calc(100vw - 40px))",
+      height: "min(580px, calc(100vh - 140px))",
+      background: "white",
+      borderRadius: "16px",
+      boxShadow: "0 12px 48px rgba(0,0,0,0.25), 0 4px 12px rgba(0,0,0,0.1)",
+      zIndex: 9998,
+      display: "flex",
+      flexDirection: "column",
+      overflow: "hidden",
+      border: "1px solid #e5e7eb",
+    }}>
+      {/* ヘッダー */}
+      <div style={{
+        padding: "0.75rem 1rem",
+        background: "linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)",
+        color: "white",
+        display: "flex",
+        alignItems: "center",
+        gap: "0.6rem",
+        flexShrink: 0,
+      }}>
+        <div style={{fontSize: "1.2rem"}}>🤖</div>
+        <div style={{flex: 1}}>
+          <div style={{fontWeight: 800, fontSize: "0.95rem"}}>MyDesk AI 秘書</div>
+          <div style={{fontSize: "0.65rem", opacity: 0.9}}>Claude Opus 4.7 / 何でも聞いてください</div>
+        </div>
+        <button onClick={clearHistory} title="履歴クリア"
+          style={{background: "rgba(255,255,255,0.15)", border: "none", color: "white", cursor: "pointer", fontSize: "0.7rem", padding: "0.25rem 0.5rem", borderRadius: 4, fontFamily: "inherit"}}>
+          🗑
+        </button>
+        <button onClick={onClose} title="閉じる"
+          style={{background: "rgba(255,255,255,0.15)", border: "none", color: "white", cursor: "pointer", fontSize: "1.1rem", padding: "0.1rem 0.5rem", borderRadius: 4, lineHeight: 1, fontFamily: "inherit"}}>
+          ×
+        </button>
+      </div>
+      
+      {/* メッセージリスト */}
+      <div style={{
+        flex: 1,
+        overflowY: "auto",
+        padding: "1rem 0.85rem",
+        background: "#f9fafb",
+      }}>
+        {messages.length === 0 && (
+          <div style={{textAlign: "center", padding: "1.5rem 1rem", color: "#6b7280"}}>
+            <div style={{fontSize: "2.5rem", marginBottom: "0.5rem"}}>👋</div>
+            <div style={{fontSize: "0.88rem", fontWeight: 600, color: "#374151", marginBottom: "0.5rem"}}>こんにちは、{currentUser?.name?.split(/[\s　]/)[0]||"ユーザー"}さん</div>
+            <div style={{fontSize: "0.74rem", lineHeight: 1.6}}>
+              MyDesk内のことなら何でも。<br/>
+              例えば...<br/>
+              <span style={{display: "inline-block", marginTop: "0.5rem", padding: "0.35rem 0.6rem", background: "white", borderRadius: 999, fontSize: "0.7rem", color: "#7c3aed", border: "1px solid #e9d5ff", cursor: "pointer"}} onClick={()=>setInput("KPMGの案件どうなってる")}>「KPMGの案件どうなってる」</span><br/>
+              <span style={{display: "inline-block", marginTop: "0.35rem", padding: "0.35rem 0.6rem", background: "white", borderRadius: 999, fontSize: "0.7rem", color: "#7c3aed", border: "1px solid #e9d5ff", cursor: "pointer"}} onClick={()=>setInput("自分の担当の業者見せて")}>「自分の担当の業者見せて」</span><br/>
+              <span style={{display: "inline-block", marginTop: "0.35rem", padding: "0.35rem 0.6rem", background: "white", borderRadius: 999, fontSize: "0.7rem", color: "#7c3aed", border: "1px solid #e9d5ff", cursor: "pointer"}} onClick={()=>setInput("今月の売上は")}>「今月の売上は」</span>
+            </div>
+          </div>
+        )}
+        {messages.map((m, i) => (
+          <div key={i} style={{
+            display: "flex",
+            justifyContent: m.role === "user" ? "flex-end" : "flex-start",
+            marginBottom: "0.6rem",
+          }}>
+            <div style={{
+              maxWidth: "85%",
+              padding: "0.55rem 0.8rem",
+              borderRadius: m.role === "user" ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
+              background: m.role === "user" ? "#7c3aed" : "white",
+              color: m.role === "user" ? "white" : "#1f2937",
+              fontSize: "0.82rem",
+              lineHeight: 1.5,
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-word",
+              border: m.role === "assistant" ? "1px solid #e5e7eb" : "none",
+              boxShadow: m.role === "assistant" ? "0 1px 2px rgba(0,0,0,0.04)" : "none",
+            }}>
+              {m.content}
+              {/* アクション表示 */}
+              {m.actions && m.actions.length > 0 && (
+                <div style={{marginTop: "0.5rem", paddingTop: "0.5rem", borderTop: "1px solid #e5e7eb", fontSize: "0.66rem", color: "#6b7280"}}>
+                  ⚡ {m.actions.length}件のアクション実行
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+        {busy && (
+          <div style={{display: "flex", justifyContent: "flex-start", marginBottom: "0.6rem"}}>
+            <div style={{
+              padding: "0.55rem 0.85rem",
+              borderRadius: "16px 16px 16px 4px",
+              background: "white",
+              border: "1px solid #e5e7eb",
+              fontSize: "0.82rem",
+              color: "#6b7280",
+            }}>
+              <span style={{display: "inline-block", animation: "pulse 1s infinite"}}>🤔 考え中...</span>
+            </div>
+          </div>
+        )}
+        <div ref={messagesEndRef}/>
+      </div>
+      
+      {/* 入力欄 */}
+      <div style={{
+        padding: "0.6rem 0.75rem",
+        background: "white",
+        borderTop: "1px solid #e5e7eb",
+        display: "flex",
+        gap: "0.5rem",
+        flexShrink: 0,
+      }}>
+        <textarea
+          ref={inputRef}
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+          }}
+          placeholder="何でも聞いてください... (Enter で送信)"
+          rows={1}
+          style={{
+            flex: 1,
+            padding: "0.5rem 0.7rem",
+            borderRadius: "10px",
+            border: "1.5px solid #e5e7eb",
+            fontSize: "0.82rem",
+            fontFamily: "inherit",
+            outline: "none",
+            resize: "none",
+            maxHeight: "100px",
+            lineHeight: 1.5,
+          }}
+        />
+        <button onClick={send} disabled={busy || !input.trim()}
+          style={{
+            padding: "0.5rem 0.85rem",
+            borderRadius: "10px",
+            border: "none",
+            background: busy || !input.trim() ? "#d1d5db" : "#7c3aed",
+            color: "white",
+            cursor: busy || !input.trim() ? "default" : "pointer",
+            fontSize: "0.82rem",
+            fontWeight: 700,
+            fontFamily: "inherit",
+            flexShrink: 0,
+          }}>
+          {busy ? "..." : "送信"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── AGENT FAB (右下チャットボタン) ────────────────────────────────────
+function AgentFAB({ data, currentUser, users, onAction }) {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <>
+      <AgentChat data={data} currentUser={currentUser} users={users} onAction={onAction} isOpen={open} onClose={()=>setOpen(false)}/>
+      <button onClick={() => setOpen(o => !o)}
+        title="AI秘書 (Claude)"
+        style={{
+          position: "fixed",
+          bottom: "20px",
+          right: "20px",
+          width: "56px",
+          height: "56px",
+          borderRadius: "50%",
+          background: "linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)",
+          color: "white",
+          border: "none",
+          cursor: "pointer",
+          fontSize: "1.6rem",
+          boxShadow: "0 6px 24px rgba(124, 58, 237, 0.4), 0 2px 8px rgba(0,0,0,0.1)",
+          zIndex: 9997,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontFamily: "inherit",
+          transition: "transform 0.15s",
+        }}
+        onMouseEnter={e => e.currentTarget.style.transform = "scale(1.08)"}
+        onMouseLeave={e => e.currentTarget.style.transform = "scale(1)"}>
+        {open ? "▼" : "🤖"}
+      </button>
+    </>
+  );
+}
+
+
 export default function App() {
   // ━━━━ QR 公開フォームルート（業者がスキャンしてアクセス）━━━━
   // 通常のMyDeskアプリより前に判定し、フォーム画面に切り替える
@@ -28924,6 +29268,172 @@ export default function App() {
   const [taskTab,setTaskTab]  =useState(()=>localStorage.getItem("md_taskTab")||"info");
   const [navTarget,setNavTarget]=useState(null); // {type:'task'|'project'|'company'|'vendor'|'muni', id}
   const [salesNavTarget,setSalesNavTarget]=useState(null);
+
+  // ── AI エージェントからのアクション実行ハンドラー ─────────────────────
+  // Bedrock Tool Use が生成した action を実際の MyDesk 操作に変換
+  const handleAgentAction = React.useCallback((action) => {
+    if (!action || !action.type) return;
+    const params = action.params || {};
+    console.log("[Agent] action:", action.type, params);
+    
+    switch (action.type) {
+      case "navigate_to": {
+        // 画面遷移
+        const target = params.target;
+        const id = params.id;
+        if (target === "company" && id) {
+          setNavTarget({type: "company", id});
+        } else if (target === "vendor" && id) {
+          setNavTarget({type: "vendor", id});
+        } else if (target === "muni" && id) {
+          setNavTarget({type: "muni", id});
+        } else if (target === "task" && id) {
+          setNavTarget({type: "task", id});
+        } else if (target === "project" && id) {
+          setNavTarget({type: "project", id});
+        } else if (target === "inbox") {
+          persistTab("md_tab", "mail", setTab);
+        } else if (target === "sales") {
+          persistTab("md_tab", "sales", setTab);
+        } else if (target === "dashboard") {
+          persistTab("md_tab", "dashboard", setTab);
+        } else if (target === "analytics") {
+          persistTab("md_tab", "analytics", setTab);
+        } else {
+          // ID無しでセクションだけ
+          if (target === "company") { persistTab("md_tab","sales",setTab); persistTab("md_salesTab","company",setSalesTab); }
+          else if (target === "vendor") { persistTab("md_tab","sales",setTab); persistTab("md_salesTab","vendor",setSalesTab); }
+          else if (target === "muni") { persistTab("md_tab","sales",setTab); persistTab("md_salesTab","muni",setSalesTab); }
+        }
+        break;
+      }
+      
+      case "apply_filter": {
+        // フィルター適用（localStorage に書き込み → 営業画面へ遷移）
+        const view = params.view;
+        const f = params.filters || {};
+        if (view === "vendors") {
+          if (Array.isArray(f.prefs)) localStorage.setItem("md_vendFilterPrefs", JSON.stringify(f.prefs));
+          if (Array.isArray(f.munis)) localStorage.setItem("md_vendFilterMunis", JSON.stringify(f.munis));
+          if (Array.isArray(f.statuses)) localStorage.setItem("md_vendFilterStatuses", JSON.stringify(f.statuses));
+          if (Array.isArray(f.permits)) localStorage.setItem("md_vendFilterPermits", JSON.stringify(f.permits));
+          if (Array.isArray(f.beeNets)) localStorage.setItem("md_vendFilterBeeNets", JSON.stringify(f.beeNets));
+          if (Array.isArray(f.assignees)) localStorage.setItem("md_vendFilterAssignees", JSON.stringify(f.assignees));
+          persistTab("md_tab","sales",setTab);
+          persistTab("md_salesTab","vendor",setSalesTab);
+          alert("業者画面にフィルターを適用しました。再読み込みすると反映されます。");
+          // フィルター反映のため画面リロード
+          setTimeout(()=>window.location.reload(), 300);
+        } else if (view === "companies") {
+          // compFilter は assignees のみ
+          if (Array.isArray(f.assignees)) {
+            const cur = JSON.parse(localStorage.getItem("md_compFilter")||"{}");
+            localStorage.setItem("md_compFilter", JSON.stringify({...cur, assignees: f.assignees}));
+          }
+          persistTab("md_tab","sales",setTab);
+          persistTab("md_salesTab","company",setSalesTab);
+          setTimeout(()=>window.location.reload(), 300);
+        } else if (view === "munis") {
+          if (Array.isArray(f.assignees)) localStorage.setItem("md_muniFilterAssignees", JSON.stringify(f.assignees));
+          persistTab("md_tab","sales",setTab);
+          persistTab("md_salesTab","muni",setSalesTab);
+          setTimeout(()=>window.location.reload(), 300);
+        } else if (view === "tasks") {
+          persistTab("md_tab","tasks",setTab);
+        }
+        break;
+      }
+      
+      case "create_email_draft": {
+        // メール下書き作成 → 確認ダイアログ
+        const to = (params.to || []).join(", ");
+        const subject = params.subject || "";
+        const body = (params.body || "").slice(0, 300);
+        const preview = `📧 メール下書き作成しますか？\n\nTo: ${to}\nSubject: ${subject}\n\n本文プレビュー:\n${body}${(params.body||"").length>300?"...":""}`;
+        if (window.confirm(preview)) {
+          // メールタブに遷移してドラフト情報をlocalStorageに保存
+          const draftKey = "md_pending_email_draft";
+          localStorage.setItem(draftKey, JSON.stringify({
+            to: params.to || [],
+            cc: params.cc || [],
+            subject: params.subject || "",
+            body: params.body || "",
+            linkedEntityType: params.linked_entity_type,
+            linkedEntityId: params.linked_entity_id,
+            timestamp: Date.now(),
+          }));
+          persistTab("md_tab", "mail", setTab);
+          alert("メールタブに遷移しました。新規作成画面で『下書きを読み込む』が表示されたら適用してください。");
+        }
+        break;
+      }
+      
+      case "create_task": {
+        // タスク作成 → 確認ダイアログ
+        const preview = `📝 タスク作成しますか？\n\nタイトル: ${params.title}\n${params.due_date?`期限: ${params.due_date}\n`:""}${params.priority?`優先度: ${params.priority}\n`:""}${params.description?`詳細: ${params.description.slice(0,200)}`:""}`;
+        if (window.confirm(preview)) {
+          const newTask = {
+            id: `task_${Date.now()}_${Math.random().toString(36).slice(2,8)}`,
+            title: params.title,
+            description: params.description || "",
+            dueDate: params.due_date || "",
+            priority: params.priority || "normal",
+            status: "open",
+            assigneeIds: params.assignee_id ? [params.assignee_id] : [currentUser?.id].filter(Boolean),
+            salesRef: params.linked_entity_id && params.linked_entity_type ? {
+              type: ({company:"企業", vendor:"業者", muni:"自治体"})[params.linked_entity_type] || "企業",
+              id: params.linked_entity_id,
+            } : null,
+            createdAt: new Date().toISOString(),
+            createdBy: currentUser?.id,
+          };
+          const nd = {...data, tasks: [...(data.tasks||[]), newTask]};
+          setData(nd);
+          scheduleSaveData(nd);
+          alert(`✅ タスクを作成しました: ${params.title}`);
+        }
+        break;
+      }
+      
+      case "update_entity": {
+        // データ更新 → 確認ダイアログ
+        const entityType = params.entity_type;
+        const entityId = params.entity_id;
+        const fields = params.fields || {};
+        const typeMap = {company:"companies", vendor:"vendors", muni:"municipalities", task:"tasks", project:"projects"};
+        const key = typeMap[entityType];
+        if (!key) { alert("不明なエンティティタイプ: " + entityType); break; }
+        const current = (data[key]||[]).find(e => String(e.id) === String(entityId));
+        if (!current) { alert("エンティティが見つかりません: " + entityId); break; }
+        
+        const changes = Object.entries(fields).map(([k,v]) => `  ${k}: ${current[k]||"(空)"} → ${JSON.stringify(v)}`).join("\n");
+        const preview = `🔧 ${current.name||current.title}を更新しますか？\n\n${changes}`;
+        if (window.confirm(preview)) {
+          const nd = {...data};
+          nd[key] = nd[key].map(e => String(e.id) === String(entityId) ? {...e, ...fields, updatedAt: new Date().toISOString()} : e);
+          setData(nd);
+          scheduleSaveData(nd);
+          alert(`✅ 更新しました`);
+        }
+        break;
+      }
+      
+      case "get_analytics": {
+        // 集計表示 → 分析画面に遷移
+        persistTab("md_tab", "analytics", setTab);
+        if (params.system) {
+          localStorage.setItem("md_analyticsSystem", params.system);
+        }
+        break;
+      }
+      
+      default:
+        console.warn("[Agent] unknown action:", action.type);
+    }
+  }, [data, setData, currentUser]);
+  
+  // window 経由でアクセス可能にする（後方互換）
+  React.useEffect(() => { window.__myDeskHandleAgentAction = handleAgentAction; }, [handleAgentAction]);
 
   // Route navTarget to correct tab
   React.useEffect(()=>{
@@ -29926,8 +30436,15 @@ export default function App() {
         </div>
       </div>
       </div>{/* end content+bottomNav wrapper */}
-      {/* MyDesk AIアシスタント（右下常駐） */}
-      {currentUser && <AssistantFab data={data} setData={setData} currentUser={currentUser} users={users}/>}
+      {/* MyDesk AI 秘書（右下常駐・Bedrock Tool Use エージェント） */}
+      {currentUser && <AgentFAB data={data} currentUser={currentUser} users={users} onAction={async (action) => {
+        try {
+          await handleAgentAction(action);
+        } catch(e) {
+          console.error("[Agent] action error:", e);
+          alert("アクション実行エラー: " + e.message);
+        }
+      }}/>}
       {/* ⓪ 新バージョン更新バナー（最優先表示） */}
       {updateAvailable&&(
         <div style={{position:"fixed",top:0,left:0,right:0,zIndex:1002,background:"linear-gradient(90deg, #5b5bd6, #7c7cf0)",padding:"0.6rem 1rem",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.65rem",color:"white",boxShadow:"0 2px 8px rgba(91,91,214,0.3)"}}>
