@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v154-beenet-analytics"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v155-beenet-enable"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -27846,16 +27846,8 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
         );
       })()}
 
-      {sys==="beenet" && (
-        <div style={{textAlign:"center",padding:"4rem 1rem",color:C.textMuted,background:"white",borderRadius:"8px",border:`1.5px dashed ${C.border}`}}>
-          <div style={{fontSize:"2.5rem",marginBottom:"0.75rem"}}>🚧</div>
-          <div style={{fontWeight:700,marginBottom:"0.35rem"}}>bee-net</div>
-          <div style={{fontSize:"0.82rem"}}>準備中</div>
-        </div>
-      )}
-
       {/* Data panel */}
-      {sys!=="beenet" && (
+      {(
         <div style={{background:"white",borderRadius:"1rem",padding:"1.25rem",border:`1px solid ${C.border}`,boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1.25rem"}}>
             <span style={{fontWeight:800,fontSize:"0.88rem",color:C.textSub}}>
