@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v150-bizcon-monthly"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v151-spam-block-default"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -9179,12 +9179,13 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onMarkSpam,
                   const senderEmail = (email.from?.email || "").toLowerCase();
                   const domain = senderEmail.includes("@") ? senderEmail.split("@")[1] : "";
                   let msg = "🚫 迷惑メール認定の方法を選択してください\n\n";
-                  msg += "[1] このメールのみ迷惑メールに移動\n";
-                  if (senderEmail) msg += `[2] このメアド (${senderEmail}) からのメールを全てブロック\n`;
-                  if (domain) msg += `[3] このドメイン (${domain}) からのメールを全てブロック\n`;
+                  msg += "[1] このメールのみ迷惑メールに移動（送信元はブロックしない）\n";
+                  if (senderEmail) msg += `[2] このメアド (${senderEmail}) からのメールを全てブロック ⭐推奨\n`;
+                  if (domain) msg += `[3] このドメイン (@${domain}) からのメールを全てブロック\n`;
                   msg += "[キャンセル] 何もしない\n\n";
                   msg += "番号を入力してください (1/2/3):";
-                  const choice = window.prompt(msg, "1");
+                  // デフォルトを「2」(メアドブロック) にする — 通常の迷惑メール認定はこれが期待動作
+                  const choice = window.prompt(msg, senderEmail ? "2" : "1");
                   if (choice === null) return;
                   const reason = window.prompt("理由（任意、ブロック理由として保存）:", "") || "";
                   if (reason === null) return;
