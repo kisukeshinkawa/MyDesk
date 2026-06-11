@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v153-bulk-block-and-simple-dialog"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v154-beenet-analytics"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -25734,6 +25734,7 @@ const DUSTALK_DEF = {hp:0,serviceLog:0,requests:0,contracts:0,revenue:0,lineFrie
 const REBIT_DEF  = {cumulative:0,monthly:0,hp:0};
 const BIZCON_DEF = {hpByMonth:{},applicants:0,fullApplicants:0};
 const BM_DEF     = {hpByMonth:{}};
+const BEENET_DEF = {emitters:0, emitterSites:0, vendors:0, vendorsTransport:0, vendorsDispose:0, salesAmount:0};
 
 function getMonthKey(d=new Date()){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;}
 function getYearKey(d=new Date()){return `${d.getFullYear()}`;}
@@ -27368,6 +27369,7 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
     if (sys==="rebit")   return {...REBIT_DEF,...raw};
     if (sys==="bizcon")  return {...BIZCON_DEF,...raw};
     if (sys==="bm")      return {...BM_DEF,...raw};
+    if (sys==="beenet")  return {...BEENET_DEF,...raw};
     return {};
   };
 
@@ -28252,6 +28254,192 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
               </div>
             </div>
           )}
+          
+          {/* ── bee-net (月別: 排出事業者 / 排出事業場 / 委託業者 / 流通額) ── */}
+          {sys==="beenet" && (() => {
+            // 前12ヶ月の月別データ
+            const months = [];
+            for (let i = 11; i >= 0; i--) {
+              const m = shiftMonth(mk, -i);
+              const md = sysData[m] || {};
+              months.push({
+                mk: m,
+                label: m.replace("-", "/").replace(/^\d{4}\//, ""),  // "06" 形式
+                emitters: +md.emitters || 0,
+                emitterSites: +md.emitterSites || 0,
+                vendors: +md.vendors || 0,
+                vendorsTransport: +md.vendorsTransport || 0,
+                vendorsDispose: +md.vendorsDispose || 0,
+                salesAmount: +md.salesAmount || 0,
+              });
+            }
+            const Row = ({label, current, prev, unit="社", indent=false}) => (
+              <div style={{...rowStyle, paddingLeft: indent ? "1rem" : 0}}>
+                <span style={{fontSize: indent ? "0.8rem" : "0.87rem", color: indent ? C.textSub : C.text, flex:1}}>{indent && "└ "}{label}</span>
+                {editing?(
+                  <div style={{display:"flex",alignItems:"center",gap:"0.35rem"}}>
+                    <InputNum value={current} onChange={v=>setD({[Row.field]:v})}/>
+                    <span style={{fontSize:"0.75rem",color:C.textSub}}>{unit}</span>
+                  </div>
+                ):(
+                  <div style={{display:"flex",alignItems:"center",gap:"0.4rem"}}>
+                    <span style={{fontSize:"1rem",fontWeight:700,color:C.text}}>{current>0 ? current.toLocaleString()+unit : "－"}</span>
+                    <DiffBadge cur={current} prv={prev}/>
+                  </div>
+                )}
+              </div>
+            );
+            return (
+              <div>
+                <div style={{marginBottom:"1.25rem"}}>
+                  <div style={{fontSize:"0.7rem",fontWeight:800,color:C.textSub,textTransform:"uppercase",letterSpacing:"0.05em",padding:"0.35rem 0",borderBottom:`2px solid ${C.accent}`,marginBottom:"0.1rem"}}>📊 主要指標</div>
+                  
+                  {/* 排出事業者 */}
+                  <div style={{...rowStyle}}>
+                    <span style={{fontSize:"0.87rem",color:C.text,flex:1}}>排出事業者</span>
+                    {editing?(
+                      <div style={{display:"flex",alignItems:"center",gap:"0.35rem"}}>
+                        <InputNum value={d.emitters??0} onChange={v=>setD({emitters:v})}/>
+                        <span style={{fontSize:"0.75rem",color:C.textSub}}>社</span>
+                      </div>
+                    ):(
+                      <div style={{display:"flex",alignItems:"center",gap:"0.4rem"}}>
+                        <span style={{fontSize:"1rem",fontWeight:700,color:C.text}}>{(+d.emitters||0)>0 ? (+d.emitters).toLocaleString()+"社" : "－"}</span>
+                        <DiffBadge cur={+d.emitters||0} prv={+prev.emitters||0}/>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* 排出事業場 */}
+                  <div style={{...rowStyle}}>
+                    <span style={{fontSize:"0.87rem",color:C.text,flex:1}}>排出事業場</span>
+                    {editing?(
+                      <div style={{display:"flex",alignItems:"center",gap:"0.35rem"}}>
+                        <InputNum value={d.emitterSites??0} onChange={v=>setD({emitterSites:v})}/>
+                        <span style={{fontSize:"0.75rem",color:C.textSub}}>社</span>
+                      </div>
+                    ):(
+                      <div style={{display:"flex",alignItems:"center",gap:"0.4rem"}}>
+                        <span style={{fontSize:"1rem",fontWeight:700,color:C.text}}>{(+d.emitterSites||0)>0 ? (+d.emitterSites).toLocaleString()+"社" : "－"}</span>
+                        <DiffBadge cur={+d.emitterSites||0} prv={+prev.emitterSites||0}/>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* 委託業者 */}
+                  <div style={{...rowStyle}}>
+                    <span style={{fontSize:"0.87rem",color:C.text,flex:1}}>委託業者</span>
+                    {editing?(
+                      <div style={{display:"flex",alignItems:"center",gap:"0.35rem"}}>
+                        <InputNum value={d.vendors??0} onChange={v=>setD({vendors:v})}/>
+                        <span style={{fontSize:"0.75rem",color:C.textSub}}>社</span>
+                      </div>
+                    ):(
+                      <div style={{display:"flex",alignItems:"center",gap:"0.4rem"}}>
+                        <span style={{fontSize:"1rem",fontWeight:700,color:C.text}}>{(+d.vendors||0)>0 ? (+d.vendors).toLocaleString()+"社" : "－"}</span>
+                        <DiffBadge cur={+d.vendors||0} prv={+prev.vendors||0}/>
+                      </div>
+                    )}
+                  </div>
+                  {/* └ 運搬 */}
+                  <div style={{...rowStyle,paddingLeft:"1rem"}}>
+                    <span style={{fontSize:"0.8rem",color:C.textSub,flex:1}}>└ 運搬</span>
+                    {editing?(
+                      <div style={{display:"flex",alignItems:"center",gap:"0.35rem"}}>
+                        <InputNum value={d.vendorsTransport??0} onChange={v=>setD({vendorsTransport:v})}/>
+                        <span style={{fontSize:"0.75rem",color:C.textSub}}>社</span>
+                      </div>
+                    ):(
+                      <div style={{display:"flex",alignItems:"center",gap:"0.4rem"}}>
+                        <span style={{fontSize:"0.92rem",fontWeight:600,color:C.text}}>{(+d.vendorsTransport||0)>0 ? (+d.vendorsTransport).toLocaleString()+"社" : "－"}</span>
+                        {(+d.vendorsTransport||0)>0 && <DiffBadge cur={+d.vendorsTransport||0} prv={+prev.vendorsTransport||0}/>}
+                      </div>
+                    )}
+                  </div>
+                  {/* └ 処分 */}
+                  <div style={{...rowStyle,paddingLeft:"1rem"}}>
+                    <span style={{fontSize:"0.8rem",color:C.textSub,flex:1}}>└ 処分</span>
+                    {editing?(
+                      <div style={{display:"flex",alignItems:"center",gap:"0.35rem"}}>
+                        <InputNum value={d.vendorsDispose??0} onChange={v=>setD({vendorsDispose:v})}/>
+                        <span style={{fontSize:"0.75rem",color:C.textSub}}>社</span>
+                      </div>
+                    ):(
+                      <div style={{display:"flex",alignItems:"center",gap:"0.4rem"}}>
+                        <span style={{fontSize:"0.92rem",fontWeight:600,color:C.text}}>{(+d.vendorsDispose||0)>0 ? (+d.vendorsDispose).toLocaleString()+"社" : "－"}</span>
+                        {(+d.vendorsDispose||0)>0 && <DiffBadge cur={+d.vendorsDispose||0} prv={+prev.vendorsDispose||0}/>}
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* 流通額 */}
+                  <div style={{...rowStyle}}>
+                    <span style={{fontSize:"0.87rem",color:C.text,flex:1}}>流通額</span>
+                    {editing?(
+                      <div style={{display:"flex",alignItems:"center",gap:"0.35rem"}}>
+                        <InputNum value={d.salesAmount??0} onChange={v=>setD({salesAmount:v})}/>
+                        <span style={{fontSize:"0.75rem",color:C.textSub}}>円</span>
+                      </div>
+                    ):(
+                      <div style={{display:"flex",alignItems:"center",gap:"0.4rem"}}>
+                        <span style={{fontSize:"1rem",fontWeight:700,color:C.text}}>{(+d.salesAmount||0)>0 ? "¥"+(+d.salesAmount).toLocaleString() : "－"}</span>
+                        <DiffBadge cur={+d.salesAmount||0} prv={+prev.salesAmount||0}/>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                
+                {/* 月別グラフ（過去12ヶ月） */}
+                <div style={{marginBottom:"1.25rem"}}>
+                  <div style={{fontSize:"0.7rem",fontWeight:800,color:C.textSub,textTransform:"uppercase",letterSpacing:"0.05em",padding:"0.35rem 0",borderBottom:`2px solid ${C.accent}`,marginBottom:"0.6rem"}}>📈 月別推移（過去12ヶ月）</div>
+                  {[
+                    {key:"emitters", label:"排出事業者", color:"#3b82f6", unit:"社"},
+                    {key:"emitterSites", label:"排出事業場", color:"#10b981", unit:"社"},
+                    {key:"vendors", label:"委託業者", color:"#f59e0b", unit:"社"},
+                    {key:"salesAmount", label:"流通額", color:"#ef4444", unit:"円", isCurrency:true},
+                  ].map(({key, label, color, unit, isCurrency}) => {
+                    const vals = months.map(m => m[key]);
+                    const maxVal = Math.max(...vals, 1);
+                    const hasAny = vals.some(v => v > 0);
+                    if (!hasAny) return null;
+                    return (
+                      <div key={key} style={{marginBottom:"1rem"}}>
+                        <div style={{fontSize:"0.78rem",fontWeight:700,color:C.text,marginBottom:"0.35rem",display:"flex",justifyContent:"space-between"}}>
+                          <span>{label}</span>
+                          <span style={{fontSize:"0.7rem",color:C.textMuted,fontWeight:500}}>最大: {isCurrency ? "¥"+maxVal.toLocaleString() : maxVal.toLocaleString()+unit}</span>
+                        </div>
+                        <div style={{display:"flex",alignItems:"flex-end",gap:"0.18rem",height:"60px",background:"#fafafa",padding:"0.3rem",borderRadius:6,border:`1px solid ${C.borderLight}`}}>
+                          {months.map((m, idx) => {
+                            const v = m[key];
+                            const pct = maxVal > 0 ? (v/maxVal)*100 : 0;
+                            return (
+                              <div key={idx} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-end",height:"100%"}}
+                                   title={`${m.mk}: ${isCurrency ? "¥"+v.toLocaleString() : v.toLocaleString()+unit}`}>
+                                <div style={{
+                                  width:"80%",
+                                  height: v>0 ? `${pct}%` : "2px",
+                                  minHeight: v>0 ? "3px" : "2px",
+                                  background: v>0 ? color : C.borderLight,
+                                  borderRadius:"2px 2px 0 0",
+                                  transition:"height 0.3s",
+                                }}/>
+                                <div style={{fontSize:"0.55rem",color:C.textMuted,marginTop:"0.2rem"}}>{m.label}</div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {months.every(m => m.emitters===0 && m.emitterSites===0 && m.vendors===0 && m.salesAmount===0) && (
+                    <div style={{fontSize:"0.78rem",color:C.textMuted,textAlign:"center",padding:"1.5rem 1rem"}}>
+                      まだデータがありません。「✏️ 編集」から各月の数値を入力してください。
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
       {renderChartModal()}
