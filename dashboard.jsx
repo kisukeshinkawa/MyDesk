@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v148-bm-rebit-autosync"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v149-bizcon-applicants"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -27168,6 +27168,45 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
           }
           sysAna[fiscalYearStr].hpByMonth = {...(sysAna[fiscalYearStr].hpByMonth || {})};
           sysAna[fiscalYearStr].hpByMonth[month] = newHp;
+        }
+        
+        // 申込数も同時取得（同じビジコン年度ロジックを適用）
+        try {
+          const resA = await fetch(`${DUSTALK_SYNC_URL}/applicants-list?sys=bizcon`, { headers: DB_API_HEADERS });
+          if (resA.ok) {
+            const jA = await resA.json();
+            const aItems = jA.items || [];
+            // 各年度の applicantsByMonth をクリア
+            for (const yr of Object.keys(sysAna)) {
+              if (!yr.includes("-")) {
+                sysAna[yr] = {...sysAna[yr], applicantsByMonth: {}};
+              }
+            }
+            for (const aItem of aItems) {
+              const aym = aItem.ym;
+              if (!aym || aym.length < 7) continue;
+              const ayear = parseInt(aym.substring(0, 4), 10);
+              const amonth = parseInt(aym.substring(5, 7), 10);
+              const newCnt = aItem.applicants || 0;
+              const aFiscalYear = amonth >= 6 ? ayear : ayear - 1;
+              const aFiscalYearStr = String(aFiscalYear);
+              if (!sysAna[aFiscalYearStr]) {
+                sysAna[aFiscalYearStr] = {hpByMonth:{}, applicantsByMonth:{}, applicants:0, fullApplicants:0};
+              }
+              sysAna[aFiscalYearStr].applicantsByMonth = {...(sysAna[aFiscalYearStr].applicantsByMonth || {})};
+              sysAna[aFiscalYearStr].applicantsByMonth[amonth] = newCnt;
+            }
+            // 年度合計を計算して applicants にも反映
+            for (const yr of Object.keys(sysAna)) {
+              if (yr.includes("-")) continue;
+              const abm = sysAna[yr].applicantsByMonth || {};
+              const sumA = Object.values(abm).reduce((s,v)=>s+(+v||0), 0);
+              sysAna[yr] = {...sysAna[yr], applicants: sumA};
+            }
+            console.log(`[Bizcon Applicants auto-sync] ${aItems.length}ヶ月分の申込数を反映`);
+          }
+        } catch (eA) {
+          console.warn("[Bizcon Applicants auto-sync] error:", eA);
         }
         
         const nd = {...data, analytics: {...currentAna, bizcon: sysAna}};
