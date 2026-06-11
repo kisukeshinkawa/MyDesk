@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v157-email-ux-overhaul"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v158-multi-select-filters"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -15300,8 +15300,14 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     return () => clearTimeout(timer);
   }, [compSearch]);
   const [compFilter,   setCompFilter]   = useState(()=>{
-    try { return JSON.parse(localStorage.getItem("md_compFilter")) || {status:"",assignee:""}; }
-    catch { return {status:"",assignee:""}; }
+    try { 
+      const raw = JSON.parse(localStorage.getItem("md_compFilter"));
+      if (!raw) return {statuses:[], assignees:[]};
+      // 旧形式: {status:"", assignee:""} → 新形式: {statuses:[], assignees:[]}
+      const statuses = Array.isArray(raw.statuses) ? raw.statuses : (raw.status ? [raw.status] : []);
+      const assignees = Array.isArray(raw.assignees) ? raw.assignees : (raw.assignee ? [raw.assignee] : []);
+      return {statuses, assignees};
+    } catch { return {statuses:[], assignees:[]}; }
   });
   React.useEffect(()=>{ localStorage.setItem("md_compFilter", JSON.stringify(compFilter)); }, [compFilter]);
   const [vendSearch,   setVendSearch]   = useState(()=>localStorage.getItem("md_vendSearch")||"");
@@ -15312,24 +15318,38 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     const timer = setTimeout(() => setDebouncedVendSearch(vendSearch), 300);
     return () => clearTimeout(timer);
   }, [vendSearch]);
-  const [vendFilterPref, setVendFilterPref] = useState(()=>localStorage.getItem("md_vendFilterPref")||"");
-  React.useEffect(()=>{ localStorage.setItem("md_vendFilterPref", vendFilterPref||""); }, [vendFilterPref]);
-  const [vendFilterMuni, setVendFilterMuni] = useState(()=>localStorage.getItem("md_vendFilterMuni")||"");
-  React.useEffect(()=>{ localStorage.setItem("md_vendFilterMuni", vendFilterMuni||""); }, [vendFilterMuni]);
-  const [vendFilterStatus, setVendFilterStatus] = useState(()=>localStorage.getItem("md_vendFilterStatus")||"");
-  React.useEffect(()=>{ localStorage.setItem("md_vendFilterStatus", vendFilterStatus||""); }, [vendFilterStatus]);
-  const [vendFilterPermit, setVendFilterPermit] = useState(()=>localStorage.getItem("md_vendFilterPermit")||"");
-  React.useEffect(()=>{ localStorage.setItem("md_vendFilterPermit", vendFilterPermit||""); }, [vendFilterPermit]);
-  const [vendFilterBeeNet, setVendFilterBeeNet] = useState(()=>localStorage.getItem("md_vendFilterBeeNet")||"");
-  React.useEffect(()=>{ localStorage.setItem("md_vendFilterBeeNet", vendFilterBeeNet||""); }, [vendFilterBeeNet]);
-  const [vendFilterAssignee, setVendFilterAssignee] = useState(()=>localStorage.getItem("md_vendFilterAssignee")||"");
-  React.useEffect(()=>{ localStorage.setItem("md_vendFilterAssignee", vendFilterAssignee||""); }, [vendFilterAssignee]);
+  // ── 業者フィルター（複数選択化）─────────────────────────
+  // localStorage に保存されたJSON配列を読み込み、旧形式（文字列）も互換対応
+  const _parseMultiFilter = (key) => {
+    const raw = localStorage.getItem(key);
+    if (!raw) return [];
+    try {
+      const v = JSON.parse(raw);
+      if (Array.isArray(v)) return v.filter(x => x !== null && x !== undefined && x !== "");
+      // 旧形式: 文字列1個 → 配列に変換
+      return v ? [String(v)] : [];
+    } catch {
+      return raw ? [String(raw)] : [];
+    }
+  };
+  const [vendFilterPrefs, setVendFilterPrefs] = useState(()=>_parseMultiFilter("md_vendFilterPrefs"));
+  React.useEffect(()=>{ localStorage.setItem("md_vendFilterPrefs", JSON.stringify(vendFilterPrefs||[])); }, [vendFilterPrefs]);
+  const [vendFilterMunis, setVendFilterMunis] = useState(()=>_parseMultiFilter("md_vendFilterMunis"));
+  React.useEffect(()=>{ localStorage.setItem("md_vendFilterMunis", JSON.stringify(vendFilterMunis||[])); }, [vendFilterMunis]);
+  const [vendFilterStatuses, setVendFilterStatuses] = useState(()=>_parseMultiFilter("md_vendFilterStatuses"));
+  React.useEffect(()=>{ localStorage.setItem("md_vendFilterStatuses", JSON.stringify(vendFilterStatuses||[])); }, [vendFilterStatuses]);
+  const [vendFilterPermits, setVendFilterPermits] = useState(()=>_parseMultiFilter("md_vendFilterPermits"));
+  React.useEffect(()=>{ localStorage.setItem("md_vendFilterPermits", JSON.stringify(vendFilterPermits||[])); }, [vendFilterPermits]);
+  const [vendFilterBeeNets, setVendFilterBeeNets] = useState(()=>_parseMultiFilter("md_vendFilterBeeNets"));
+  React.useEffect(()=>{ localStorage.setItem("md_vendFilterBeeNets", JSON.stringify(vendFilterBeeNets||[])); }, [vendFilterBeeNets]);
+  const [vendFilterAssignees, setVendFilterAssignees] = useState(()=>_parseMultiFilter("md_vendFilterAssignees"));
+  React.useEffect(()=>{ localStorage.setItem("md_vendFilterAssignees", JSON.stringify(vendFilterAssignees||[])); }, [vendFilterAssignees]);
   const [openCompGrp,  setOpenCompGrp]  = useState(new Set());
   const [openVendGrp,  setOpenVendGrp]  = useState(new Set());
   const [muniTopSearch,setMuniTopSearch]= useState(()=>localStorage.getItem("md_muniTopSearch")||"");
   React.useEffect(()=>{ localStorage.setItem("md_muniTopSearch", muniTopSearch||""); }, [muniTopSearch]);
-  const [muniFilterAssignee, setMuniFilterAssignee] = useState(()=>localStorage.getItem("md_muniFilterAssignee")||"");
-  React.useEffect(()=>{ localStorage.setItem("md_muniFilterAssignee", muniFilterAssignee||""); }, [muniFilterAssignee]);
+  const [muniFilterAssignees, setMuniFilterAssignees] = useState(()=>_parseMultiFilter("md_muniFilterAssignees"));
+  React.useEffect(()=>{ localStorage.setItem("md_muniFilterAssignees", JSON.stringify(muniFilterAssignees||[])); }, [muniFilterAssignees]);
   // フォロー中エリアの折りたたみ状態（デフォルト閉じる、localStorage で永続化）
   const [followCompOpen, setFollowCompOpen] = useState(()=>localStorage.getItem("md_followCompOpen")==="1");
   const [followVendOpen, setFollowVendOpen] = useState(()=>localStorage.getItem("md_followVendOpen")==="1");
@@ -17129,24 +17149,51 @@ ${recentLogs}
 
   const filteredVendors = React.useMemo(() => {
     return vendors.filter(v=>{
-      if(vendFilterPref){
+      // 都道府県（複数選択: ORで判定）
+      if(vendFilterPrefs.length > 0){
         const ids = v.municipalityIds||[];
         let match = false;
         for(let i=0;i<ids.length;i++){
-          if(muniIdToPrefIdMap.get(ids[i])===vendFilterPref){ match=true; break; }
+          const prefId = muniIdToPrefIdMap.get(ids[i]);
+          if(prefId && vendFilterPrefs.includes(prefId)){ match=true; break; }
         }
         if(!match) return false;
       }
-      if(vendFilterMuni && !(v.municipalityIds||[]).map(String).includes(vendFilterMuni)) return false;
-      if(vendFilterStatus && (v.status||"未接触")!==vendFilterStatus) return false;
-      if(vendFilterPermit && !(v.permitTypes||[]).includes(vendFilterPermit)) return false;
-      if(vendFilterBeeNet === "加入済み" && !v.beeNet) return false;
-      if(vendFilterBeeNet === "未加入" && v.beeNet) return false;
-      if(vendFilterAssignee==="__me__" && !(v.assigneeIds||[]).some(id=>id===currentUser?.id)) return false;
-      if(vendFilterAssignee && vendFilterAssignee!=="__me__" && !(v.assigneeIds||[]).some(id=>String(id)===vendFilterAssignee)) return false;
+      // 自治体（複数選択: ORで判定）
+      if(vendFilterMunis.length > 0){
+        const muniIds = (v.municipalityIds||[]).map(String);
+        if(!vendFilterMunis.some(fm => muniIds.includes(String(fm)))) return false;
+      }
+      // ステータス（複数選択: ORで判定）
+      if(vendFilterStatuses.length > 0){
+        if(!vendFilterStatuses.includes(v.status||"未接触")) return false;
+      }
+      // 許可種別（複数選択: ORで判定 - vendorがいずれかの許可を持っていればOK）
+      if(vendFilterPermits.length > 0){
+        const vp = v.permitTypes||[];
+        if(!vendFilterPermits.some(fp => vp.includes(fp))) return false;
+      }
+      // bee-net加入（複数選択: ORで判定）
+      if(vendFilterBeeNets.length > 0){
+        const matchAny = vendFilterBeeNets.some(fb => {
+          if(fb === "加入済み") return !!v.beeNet;
+          if(fb === "未加入") return !v.beeNet;
+          return false;
+        });
+        if(!matchAny) return false;
+      }
+      // 担当者（複数選択: ORで判定）
+      if(vendFilterAssignees.length > 0){
+        const aids = (v.assigneeIds||[]).map(String);
+        const matchAny = vendFilterAssignees.some(fa => {
+          if(fa === "__me__") return aids.includes(String(currentUser?.id));
+          return aids.includes(String(fa));
+        });
+        if(!matchAny) return false;
+      }
       return true;
     });
-  }, [vendors, vendFilterPref, vendFilterMuni, vendFilterStatus, vendFilterPermit, vendFilterBeeNet, vendFilterAssignee, currentUser?.id, muniIdToPrefIdMap]);
+  }, [vendors, vendFilterPrefs, vendFilterMunis, vendFilterStatuses, vendFilterPermits, vendFilterBeeNets, vendFilterAssignees, currentUser?.id, muniIdToPrefIdMap]);
   const _normVSearch = s => (s||"").replace(/[\s\u3000]/g,"").toLowerCase();
   const searchedVendors = React.useMemo(
     () => debouncedVendSearch ? filteredVendors.filter(v=>_normVSearch(v.name).includes(_normVSearch(debouncedVendSearch))) : null,
@@ -17169,11 +17216,14 @@ ${recentLogs}
 
   const compFilteredBase = React.useMemo(() => {
     return companies.filter(c=>{
-      if(compFilter.assignee==="__me__") return (c.assigneeIds||[]).some(id=>id===currentUser?.id);
-      if(compFilter.assignee) return (c.assigneeIds||[]).some(id=>String(id)===compFilter.assignee);
-      return true;
+      if(compFilter.assignees.length === 0) return true;
+      const aids = (c.assigneeIds||[]).map(String);
+      return compFilter.assignees.some(fa => {
+        if(fa === "__me__") return aids.includes(String(currentUser?.id));
+        return aids.includes(String(fa));
+      });
     });
-  }, [companies, compFilter.assignee, currentUser?.id]);
+  }, [companies, compFilter.assignees, currentUser?.id]);
   const _normCSearch = s => (s||"").replace(/[\s\u3000]/g,"").toLowerCase();
   const compsByStatus = React.useMemo(() => {
     const grouped = {};
@@ -18836,18 +18886,63 @@ ${orig}`})
         <div style={{width:isPC?(activeCompany?440:"100%"):"100%",maxWidth:isPC&&!activeCompany?720:"none",flexShrink:isPC&&!activeCompany?1:0,overflowY:isPC?"auto":"visible",borderRight:isPC&&activeCompany?"1px solid #e5e5ea":"none",transition:"width 0.2s",minWidth:isPC&&activeCompany?440:undefined,padding:isPC?"1rem 1.25rem":"0",boxSizing:"border-box"}}>
         <TopTabs/>
         <BulkBar statusMap={COMPANY_STATUS} applyFn={applyBulkComp} visibleIds={compVisibleIds} onDelete={deleteBulkComp}/>
+        {/* 担当者フィルター（複数選択） */}
+        {(()=>{
+          const CompAssignFilter = () => {
+            const [open, setOpen] = React.useState(false);
+            const isActive = compFilter.assignees.length > 0;
+            return (
+              <div style={{position:"relative",marginBottom:"0.6rem"}}>
+                <button onClick={()=>setOpen(o=>!o)}
+                  style={{width:"100%",padding:"0.4rem 0.6rem",borderRadius:"0.5rem",border:`1.5px solid ${isActive?C.accent:C.border}`,background:isActive?"#eff6ff":"white",color:isActive?C.accent:C.text,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",fontWeight:isActive?700:500,display:"flex",alignItems:"center",justifyContent:"space-between",gap:"0.3rem"}}>
+                  <span>👤 担当者で絞り込み{isActive ? `（${compFilter.assignees.length}人）` : ""}</span>
+                  <span style={{fontSize:"0.6rem"}}>▼</span>
+                </button>
+                {open && (
+                  <>
+                    <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:100,background:"transparent"}}/>
+                    <div style={{position:"absolute",top:"100%",left:0,right:0,marginTop:"0.2rem",background:"white",border:`1.5px solid ${C.border}`,borderRadius:"0.5rem",boxShadow:"0 4px 16px rgba(0,0,0,0.12)",zIndex:101,maxHeight:300,overflowY:"auto",padding:"0.35rem"}}>
+                      {[{value:"__me__", label:"自分の担当のみ"}, ...(users||[]).map(u=>({value:String(u.id), label:u.name}))].map(opt => {
+                        const sel = compFilter.assignees.map(String).includes(String(opt.value));
+                        return (
+                          <label key={String(opt.value)} style={{display:"flex",alignItems:"center",gap:"0.4rem",padding:"0.3rem 0.45rem",fontSize:"0.78rem",cursor:"pointer",borderRadius:"0.3rem",background:sel?"#eff6ff":"transparent"}}
+                            onClick={ev=>{
+                              ev.preventDefault();
+                              const sv = String(opt.value);
+                              const cur = compFilter.assignees || [];
+                              if(sel) setCompFilter(p=>({...p, assignees: cur.filter(v => String(v) !== sv)}));
+                              else setCompFilter(p=>({...p, assignees: [...cur, sv]}));
+                            }}>
+                            <input type="checkbox" readOnly checked={sel} style={{margin:0,cursor:"pointer"}}/>
+                            <span style={{color:sel?C.accent:C.text,fontWeight:sel?700:500,flex:1}}>{opt.label}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          };
+          return <CompAssignFilter/>;
+        })()}
         {/* 担当者絞り込み中の件数表示 */}
-        {compFilter.assignee && (()=>{
+        {compFilter.assignees.length > 0 && (()=>{
           const fCount=compFilteredBase.length;
           const statusCounts=Object.keys(COMPANY_STATUS).map(s=>{const n=compFilteredBase.filter(c=>(c.status||"未接触")===s).length;return n>0?{s,n}:null;}).filter(Boolean);
+          const assigneeNames = compFilter.assignees.map(id => {
+            if(id === "__me__") return "自分";
+            const u = (users||[]).find(u=>String(u.id)===String(id));
+            return u ? u.name : id;
+          });
           return (
             <div style={{background:"#eff6ff",border:`1px solid ${C.accent}`,borderRadius:"8px",padding:"0.45rem 0.7rem",marginBottom:"0.75rem",display:"flex",alignItems:"center",gap:"0.5rem",flexWrap:"wrap"}}>
-              <span style={{fontSize:"0.72rem",fontWeight:800,color:C.accent}}>👤 絞り込み中: {fCount}件</span>
+              <span style={{fontSize:"0.72rem",fontWeight:800,color:C.accent}}>👤 {assigneeNames.join(" / ")} 絞り込み中: {fCount}件</span>
               {statusCounts.map(({s,n})=>(
                 <span key={s} style={{fontSize:"0.62rem",padding:"0.1rem 0.35rem",borderRadius:999,fontWeight:700,background:COMPANY_STATUS[s]?.bg,color:COMPANY_STATUS[s]?.color}}>{s}: {n}件</span>
               ))}
               <div style={{flex:1}}/>
-              <button onClick={()=>setCompFilter(p=>({...p,assignee:""}))}
+              <button onClick={()=>setCompFilter(p=>({...p,assignees:[]}))}
                 style={{fontSize:"0.65rem",background:"#fef2f2",color:"#dc2626",border:"1px solid #fca5a5",borderRadius:999,padding:"0.15rem 0.55rem",cursor:"pointer",fontWeight:700,fontFamily:"inherit"}}>✕ 解除</button>
             </div>
           );
@@ -18939,11 +19034,10 @@ ${orig}`})
           <button onClick={()=>{
             const list = bulkMode && bulkSelected.size>0
               ? companies.filter(c=>bulkSelected.has(c.id))
-              : (compSearch ? searchedComps : (compFilterAssignee ? compFilteredBase : compFilteredBase));
+              : (compSearch ? searchedComps : compFilteredBase);
             const desc = bulkMode && bulkSelected.size>0 ? `選択${bulkSelected.size}件`
               : compSearch ? `検索_${compSearch}`
-              : compFilterStatus ? `ステータス_${compFilterStatus}`
-              : compFilterAssignee ? `担当_${(users.find(u=>u.id===compFilterAssignee)?.name)||""}`
+              : compFilter.assignees.length ? `担当_${compFilter.assignees.map(id=>id==="__me__"?"自分":(users.find(u=>String(u.id)===String(id))?.name||id)).join("+")}`
               : "全件";
             exportCompanyList(list, desc);
           }} title="エクセル出力（フィルター済み・全アプローチ含む）"
@@ -18962,7 +19056,7 @@ ${orig}`})
           </div>
         )}
         {/* 担当者フィルタ結果フラットリスト */}
-        {!compSearch&&compFilter.assignee&&(()=>{
+        {!compSearch&&compFilter.assignees.length>0&&(()=>{
           if(!compFilteredBase.length) return (
             <div style={{textAlign:"center",padding:"1.5rem",color:C.textMuted,background:"white",borderRadius:"8px",border:`1.5px dashed ${C.border}`,fontSize:"0.82rem"}}>該当する企業がありません</div>
           );
@@ -19030,7 +19124,7 @@ ${orig}`})
           </div>
         )}
         {/* ステータスタブビュー */}
-        {!compSearch&&!compFilter.assignee&&(()=>{
+        {!compSearch&&compFilter.assignees.length===0&&(()=>{
           const items = compFilteredBase.filter(c=>(c.status||"未接触")===compStatusTab);
           return (
             <div style={{background:"white",borderRadius:"8px",border:`1.5px solid ${C.border}`,overflow:"hidden",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
@@ -19575,64 +19669,139 @@ ${orig}`})
             </div>
           );
         })()}
-        {/* 絞り込みフィルタ */}
+        {/* 絞り込みフィルタ（複数選択化） */}
         {(()=>{
-          const hasFilter=vendFilterPref||vendFilterMuni||vendFilterStatus||vendFilterPermit||vendFilterAssignee;
-          // 絞り込み結果の集計
-          const fvCount=filteredVendors.length;
-          // 許可種別ごとの件数
-          const permitCounts=hasFilter?PERMIT_TYPES.map(p=>{
-            const n=filteredVendors.filter(v=>(v.permitTypes||[]).includes(p)).length;
+          const hasFilter = vendFilterPrefs.length||vendFilterMunis.length||vendFilterStatuses.length||vendFilterPermits.length||vendFilterBeeNets.length||vendFilterAssignees.length;
+          const fvCount = filteredVendors.length;
+          const permitCounts = hasFilter ? PERMIT_TYPES.map(p=>{
+            const n = filteredVendors.filter(v=>(v.permitTypes||[]).includes(p)).length;
             return n>0?{name:p,n}:null;
-          }).filter(Boolean):[];
-          // 自治体選択肢（都道府県が選択されている場合に絞る）
-          const muniOptions=vendFilterPref?munis.filter(m=>String(m.prefectureId)===vendFilterPref):[];
-          const clearAll=()=>{setVendFilterPref("");setVendFilterMuni("");setVendFilterStatus("");setVendFilterPermit("");setVendFilterAssignee("");};
+          }).filter(Boolean) : [];
+          // 自治体選択肢（都道府県が1つでも選ばれてれば、それに紐づく自治体に絞る）
+          const muniOptions = vendFilterPrefs.length > 0
+            ? munis.filter(m=>vendFilterPrefs.includes(String(m.prefectureId)))
+            : munis;
+          const clearAll = ()=>{
+            setVendFilterPrefs([]); setVendFilterMunis([]); setVendFilterStatuses([]);
+            setVendFilterPermits([]); setVendFilterBeeNets([]); setVendFilterAssignees([]);
+          };
+          
+          // MultiChipFilter: 値配列、setter、選択肢、ラベル、表示変換
+          const MultiChipFilter = ({label, icon, values, setValues, options, getOpt}) => {
+            // options = [{value, label}, ...]
+            const [open, setOpen] = React.useState(false);
+            const selectedLabels = values.map(v => {
+              const opt = options.find(o => String(o.value) === String(v));
+              return opt ? opt.label : v;
+            });
+            const isActive = values.length > 0;
+            return (
+              <div style={{position:"relative"}}>
+                <button onClick={()=>setOpen(o=>!o)}
+                  style={{padding:"0.3rem 0.5rem",borderRadius:"0.5rem",border:`1.5px solid ${isActive?C.accent:C.border}`,background:isActive?"#eff6ff":"white",color:isActive?C.accent:C.text,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"0.3rem",maxWidth:"100%"}}>
+                  <span>{icon} {label}</span>
+                  {isActive && <span style={{background:C.accent,color:"white",borderRadius:999,padding:"0.05rem 0.4rem",fontSize:"0.6rem",fontWeight:800}}>{values.length}</span>}
+                  <span style={{fontSize:"0.55rem",color:isActive?C.accent:C.textMuted}}>▼</span>
+                </button>
+                {open && (
+                  <>
+                    <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:100,background:"transparent"}}/>
+                    <div style={{position:"absolute",top:"100%",left:0,marginTop:"0.2rem",background:"white",border:`1.5px solid ${C.border}`,borderRadius:"0.5rem",boxShadow:"0 4px 16px rgba(0,0,0,0.12)",zIndex:101,minWidth:160,maxWidth:240,maxHeight:300,overflowY:"auto",padding:"0.35rem"}}>
+                      {options.length === 0 && <div style={{padding:"0.4rem 0.6rem",fontSize:"0.7rem",color:C.textMuted}}>選択肢がありません</div>}
+                      {options.map(opt => {
+                        const sel = values.map(String).includes(String(opt.value));
+                        return (
+                          <label key={String(opt.value)} style={{display:"flex",alignItems:"center",gap:"0.4rem",padding:"0.3rem 0.45rem",fontSize:"0.74rem",cursor:"pointer",borderRadius:"0.3rem",background:sel?"#eff6ff":"transparent"}}
+                            onClick={ev=>{
+                              ev.preventDefault();
+                              const sv = String(opt.value);
+                              if(sel) setValues(values.filter(v => String(v) !== sv));
+                              else setValues([...values, sv]);
+                            }}>
+                            <input type="checkbox" readOnly checked={sel} style={{margin:0,cursor:"pointer"}}/>
+                            <span style={{color:sel?C.accent:C.text,fontWeight:sel?700:500,flex:1}}>{opt.label}</span>
+                          </label>
+                        );
+                      })}
+                      {values.length > 0 && (
+                        <button onClick={()=>setValues([])} style={{width:"100%",marginTop:"0.3rem",padding:"0.25rem",fontSize:"0.66rem",background:"#fef2f2",color:"#dc2626",border:"1px solid #fca5a5",borderRadius:4,cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>このフィルターをクリア</button>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          };
+          
+          // チップ表示: 選択済みのものを「× で外せる」チップとして表示
+          const selChips = [];
+          vendFilterPrefs.forEach(id => {
+            const p = prefs.find(p=>String(p.id)===String(id));
+            if(p) selChips.push({label:`🗾 ${p.name}`, key:`pref-${id}`, remove:()=>setVendFilterPrefs(vendFilterPrefs.filter(x=>String(x)!==String(id)))});
+          });
+          vendFilterMunis.forEach(id => {
+            const m = munis.find(m=>String(m.id)===String(id));
+            if(m) selChips.push({label:`🏛 ${m.name}`, key:`muni-${id}`, remove:()=>setVendFilterMunis(vendFilterMunis.filter(x=>String(x)!==String(id)))});
+          });
+          vendFilterStatuses.forEach(s => {
+            selChips.push({label:`📌 ${s}`, key:`status-${s}`, remove:()=>setVendFilterStatuses(vendFilterStatuses.filter(x=>x!==s))});
+          });
+          vendFilterPermits.forEach(p => {
+            selChips.push({label:`📋 ${p}`, key:`permit-${p}`, remove:()=>setVendFilterPermits(vendFilterPermits.filter(x=>x!==p))});
+          });
+          vendFilterBeeNets.forEach(b => {
+            selChips.push({label:`🔷 ${b}`, key:`bee-${b}`, remove:()=>setVendFilterBeeNets(vendFilterBeeNets.filter(x=>x!==b))});
+          });
+          vendFilterAssignees.forEach(id => {
+            let nm = id;
+            if(id === "__me__") nm = "自分";
+            else { const u = (users||[]).find(u=>String(u.id)===String(id)); if(u) nm = u.name; }
+            selChips.push({label:`👤 ${nm}`, key:`assignee-${id}`, remove:()=>setVendFilterAssignees(vendFilterAssignees.filter(x=>String(x)!==String(id)))});
+          });
+          
           return (
             <div style={{background:"#f8fafc",border:`1px solid ${hasFilter?"#7c3aed":C.border}`,borderRadius:"8px",padding:"0.625rem 0.75rem",marginBottom:"0.75rem"}}>
-              <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem"}}>
+              <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem",flexWrap:"wrap"}}>
                 <span style={{fontSize:"0.72rem",fontWeight:800,color:C.textSub}}>🔍 絞り込み</span>
-                {hasFilter&&<button onClick={clearAll} style={{fontSize:"0.65rem",background:"#fef2f2",color:"#dc2626",border:"1px solid #fca5a5",borderRadius:999,padding:"0.1rem 0.45rem",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>全解除</button>}
-                {hasFilter&&<span style={{fontSize:"0.72rem",fontWeight:800,color:"#7c3aed",marginLeft:"auto"}}>{fvCount}件</span>}
+                {hasFilter && <button onClick={clearAll} style={{fontSize:"0.65rem",background:"#fef2f2",color:"#dc2626",border:"1px solid #fca5a5",borderRadius:999,padding:"0.1rem 0.45rem",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>全解除</button>}
+                {hasFilter && <span style={{fontSize:"0.72rem",fontWeight:800,color:"#7c3aed",marginLeft:"auto"}}>{fvCount}件</span>}
               </div>
-              <div style={{display:"flex",gap:"0.35rem",flexWrap:"wrap",marginBottom:"0.4rem"}}>
-                <select value={vendFilterPref} onChange={e=>{setVendFilterPref(e.target.value);setVendFilterMuni("");}}
-                  style={{padding:"0.3rem 0.4rem",borderRadius:"0.5rem",border:`1.5px solid ${vendFilterPref?C.accent:C.border}`,fontSize:"0.72rem",background:vendFilterPref?"#eff6ff":"white",color:vendFilterPref?C.accent:C.text,fontFamily:"inherit"}}>
-                  <option value="">🗾 都道府県</option>
-                  {prefs.map(p=><option key={p.id} value={String(p.id)}>{p.name}</option>)}
-                </select>
-                {vendFilterPref&&muniOptions.length>0&&(
-                  <select value={vendFilterMuni} onChange={e=>setVendFilterMuni(e.target.value)}
-                    style={{padding:"0.3rem 0.4rem",borderRadius:"0.5rem",border:`1.5px solid ${vendFilterMuni?C.accent:C.border}`,fontSize:"0.72rem",background:vendFilterMuni?"#eff6ff":"white",color:vendFilterMuni?C.accent:C.text,fontFamily:"inherit"}}>
-                    <option value="">🏛 自治体</option>
-                    {muniOptions.map(m=><option key={m.id} value={String(m.id)}>{m.name}</option>)}
-                  </select>
+              {/* フィルター追加ボタン群 */}
+              <div style={{display:"flex",gap:"0.35rem",flexWrap:"wrap",marginBottom:selChips.length>0?"0.5rem":"0"}}>
+                <MultiChipFilter label="都道府県" icon="🗾"
+                  values={vendFilterPrefs} setValues={v=>{setVendFilterPrefs(v); /* 都道府県解除で自治体もクリア（無関係になるため） */ if(v.length===0)setVendFilterMunis([]);}}
+                  options={prefs.map(p=>({value:String(p.id), label:p.name}))}/>
+                {(muniOptions.length>0 || vendFilterMunis.length>0) && (
+                  <MultiChipFilter label="自治体" icon="🏛"
+                    values={vendFilterMunis} setValues={setVendFilterMunis}
+                    options={muniOptions.map(m=>({value:String(m.id), label:m.name}))}/>
                 )}
-                <select value={vendFilterStatus} onChange={e=>setVendFilterStatus(e.target.value)}
-                  style={{padding:"0.3rem 0.4rem",borderRadius:"0.5rem",border:`1.5px solid ${vendFilterStatus?C.accent:C.border}`,fontSize:"0.72rem",background:vendFilterStatus?"#eff6ff":"white",color:vendFilterStatus?C.accent:C.text,fontFamily:"inherit"}}>
-                  <option value="">📌 ステータス</option>
-                  {Object.keys(VENDOR_STATUS).map(s=><option key={s} value={s}>{s}</option>)}
-                </select>
-                <select value={vendFilterPermit} onChange={e=>setVendFilterPermit(e.target.value)}
-                  style={{padding:"0.3rem 0.4rem",borderRadius:"0.5rem",border:`1.5px solid ${vendFilterPermit?C.accent:C.border}`,fontSize:"0.72rem",background:vendFilterPermit?"#eff6ff":"white",color:vendFilterPermit?C.accent:C.text,fontFamily:"inherit"}}>
-                  <option value="">📋 許可種別</option>
-                  {PERMIT_TYPES.map(p=><option key={p} value={p}>{p}</option>)}
-                </select>
-                <select value={vendFilterBeeNet} onChange={e=>setVendFilterBeeNet(e.target.value)}
-                  style={{padding:"0.3rem 0.4rem",borderRadius:"0.5rem",border:`1.5px solid ${vendFilterBeeNet?C.accent:C.border}`,fontSize:"0.72rem",background:vendFilterBeeNet?"#eff6ff":"white",color:vendFilterBeeNet?C.accent:C.text,fontFamily:"inherit"}}>
-                  <option value="">🔷 bee-net</option>
-                  <option value="加入済み">加入済み</option>
-                  <option value="未加入">未加入</option>
-                </select>
-                <select value={vendFilterAssignee} onChange={e=>setVendFilterAssignee(e.target.value)}
-                  style={{padding:"0.3rem 0.4rem",borderRadius:"0.5rem",border:`1.5px solid ${vendFilterAssignee?C.accent:C.border}`,fontSize:"0.72rem",background:vendFilterAssignee?"#eff6ff":"white",color:vendFilterAssignee?C.accent:C.text,fontFamily:"inherit"}}>
-                  <option value="">👤 担当者</option>
-                  <option value="__me__">自分</option>
-                  {users.map(u=><option key={u.id} value={String(u.id)}>{u.name}</option>)}
-                </select>
+                <MultiChipFilter label="ステータス" icon="📌"
+                  values={vendFilterStatuses} setValues={setVendFilterStatuses}
+                  options={Object.keys(VENDOR_STATUS).map(s=>({value:s, label:s}))}/>
+                <MultiChipFilter label="許可種別" icon="📋"
+                  values={vendFilterPermits} setValues={setVendFilterPermits}
+                  options={PERMIT_TYPES.map(p=>({value:p, label:p}))}/>
+                <MultiChipFilter label="bee-net" icon="🔷"
+                  values={vendFilterBeeNets} setValues={setVendFilterBeeNets}
+                  options={[{value:"加入済み", label:"加入済み"},{value:"未加入", label:"未加入"}]}/>
+                <MultiChipFilter label="担当者" icon="👤"
+                  values={vendFilterAssignees} setValues={setVendFilterAssignees}
+                  options={[{value:"__me__", label:"自分"},...(users||[]).map(u=>({value:String(u.id), label:u.name}))]}/>
               </div>
-              {hasFilter&&permitCounts.length>0&&(
-                <div style={{display:"flex",gap:"0.25rem",flexWrap:"wrap"}}>
+              {/* 選択済みフィルターのチップ表示 */}
+              {selChips.length > 0 && (
+                <div style={{display:"flex",gap:"0.25rem",flexWrap:"wrap",paddingTop:"0.4rem",borderTop:`1px dashed ${C.border}`}}>
+                  {selChips.map(chip => (
+                    <span key={chip.key} style={{display:"inline-flex",alignItems:"center",gap:"0.25rem",fontSize:"0.66rem",background:"#eff6ff",color:C.accent,padding:"0.15rem 0.5rem",borderRadius:999,fontWeight:700,border:`1px solid ${C.accent}30`}}>
+                      {chip.label}
+                      <button onClick={chip.remove} style={{background:"none",border:"none",color:C.accent,cursor:"pointer",padding:0,fontSize:"0.7rem",fontWeight:800,lineHeight:1}}>×</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              {hasFilter && permitCounts.length > 0 && (
+                <div style={{display:"flex",gap:"0.25rem",flexWrap:"wrap",marginTop:"0.4rem"}}>
                   {permitCounts.map(({name,n})=>(
                     <span key={name} style={{fontSize:"0.62rem",background:"#ede9fe",color:"#5b21b6",padding:"0.1rem 0.35rem",borderRadius:999,fontWeight:700}}>{name}: {n}社</span>
                   ))}
@@ -19693,14 +19862,14 @@ ${orig}`})
             // フィルター条件に該当する業者リストを取得
             const list = bulkMode && bulkSelected.size>0
               ? vendors.filter(v=>bulkSelected.has(v.id))
-              : (vendSearch ? searchedVendors : (vendFilterAssignee ? filteredVendors : filteredVendors));
+              : (vendSearch ? searchedVendors : filteredVendors);
             const desc = bulkMode && bulkSelected.size>0 ? `選択${bulkSelected.size}件`
               : vendSearch ? `検索_${vendSearch}`
-              : vendFilterStatus ? `ステータス_${vendFilterStatus}`
-              : vendFilterPermit ? `許可_${vendFilterPermit}`
-              : vendFilterPref ? `都道府県_${prefOf(vendFilterPref)?.name||""}`
-              : vendFilterMuni ? `自治体_${muniOf(vendFilterMuni)?.name||""}`
-              : vendFilterAssignee ? `担当_${(users.find(u=>u.id===vendFilterAssignee)?.name)||""}`
+              : vendFilterStatuses.length ? `ステータス_${vendFilterStatuses.join("+")}`
+              : vendFilterPermits.length ? `許可_${vendFilterPermits.join("+")}`
+              : vendFilterPrefs.length ? `都道府県_${vendFilterPrefs.map(id=>prefOf(id)?.name||id).join("+")}`
+              : vendFilterMunis.length ? `自治体_${vendFilterMunis.map(id=>muniOf(id)?.name||id).join("+")}`
+              : vendFilterAssignees.length ? `担当_${vendFilterAssignees.map(id=>id==="__me__"?"自分":(users.find(u=>String(u.id)===String(id))?.name||id)).join("+")}`
               : "全件";
             exportVendorList(list, desc);
           }} title="エクセル出力（フィルター済み・全アプローチ含む）"
@@ -19719,7 +19888,7 @@ ${orig}`})
           </div>
         )}
         {/* 担当者フィルタ結果フラットリスト */}
-        {!vendSearch&&vendFilterAssignee&&(()=>{
+        {!vendSearch&&vendFilterAssignees.length>0&&(()=>{
           if(!filteredVendors.length) return (
             <div style={{textAlign:"center",padding:"1.5rem",color:C.textMuted,background:"white",borderRadius:"8px",border:`1.5px dashed ${C.border}`,fontSize:"0.82rem"}}>該当する業者がありません</div>
           );
@@ -19792,7 +19961,7 @@ ${orig}`})
           </div>
         )}
         {/* ステータスタブビュー */}
-        {!vendSearch&&!vendFilterAssignee&&(()=>{
+        {!vendSearch&&vendFilterAssignees.length===0&&(()=>{
           const items = vendorsByStatus[vendStatusTab]||[];
           return (
             <div style={{background:"white",borderRadius:"8px",border:`1.5px solid ${C.border}`,overflow:"hidden",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
@@ -20707,15 +20876,19 @@ ${orig}`})
         <button onClick={backfillAssigneesFromApproach} title="記録者を担当者に一括補完（業者・企業・自治体すべて）"
           style={{padding:"0.5rem 0.625rem",borderRadius:"6px",border:"1.5px solid #f59e0b",background:"#fffbeb",color:"#92400e",fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>🔄</button>
       </div>
-      {/* 担当者フィルタ */}
+      {/* 担当者フィルタ（複数選択化） */}
       {(()=>{
-        const filteredMunis = muniFilterAssignee ? munis.filter(m=>{
-          if(muniFilterAssignee==="__me__") return (m.assigneeIds||[]).some(id=>id===currentUser?.id);
-          return (m.assigneeIds||[]).some(id=>String(id)===muniFilterAssignee);
+        const filteredMunis = muniFilterAssignees.length > 0 ? munis.filter(m=>{
+          const aids = (m.assigneeIds||[]).map(String);
+          return muniFilterAssignees.some(fa => {
+            if(fa === "__me__") return aids.includes(String(currentUser?.id));
+            return aids.includes(String(fa));
+          });
         }) : null;
         const fCount = filteredMunis?.length;
+        const isActive = muniFilterAssignees.length > 0;
         // 地方・都道府県ごとの件数
-        const regionCounts = muniFilterAssignee ? JAPAN_REGIONS.map(rg=>{
+        const regionCounts = isActive ? JAPAN_REGIONS.map(rg=>{
           const rPrefs2=prefs.filter(p=>p.region===rg.region||(!p.region&&rg.prefs.includes(p.name)));
           const rMuniIds=rPrefs2.flatMap(p=>munis.filter(m=>String(m.prefectureId)===String(p.id)).map(m=>m.id));
           const n=(filteredMunis||[]).filter(m=>rMuniIds.includes(m.id)).length;
@@ -20726,20 +20899,70 @@ ${orig}`})
           }).filter(Boolean);
           return {region:rg.region,n,prefDetails};
         }).filter(Boolean) : [];
-        return (
-          <div style={{background:"#f8fafc",border:`1px solid ${muniFilterAssignee?C.accent:C.border}`,borderRadius:"8px",padding:"0.625rem 0.75rem",marginBottom:"0.5rem"}}>
-            <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.4rem"}}>
-              <select value={muniFilterAssignee} onChange={e=>setMuniFilterAssignee(e.target.value)}
-                style={{flex:1,padding:"0.3rem 0.5rem",borderRadius:"0.5rem",border:`1.5px solid ${muniFilterAssignee?C.accent:C.border}`,fontSize:"0.78rem",background:muniFilterAssignee?"#eff6ff":"white",color:muniFilterAssignee?C.accent:C.text,fontFamily:"inherit",fontWeight:muniFilterAssignee?700:400}}>
-                <option value="">👤 担当者で絞り込み</option>
-                <option value="__me__">自分の担当のみ</option>
-                {users.map(u=><option key={u.id} value={String(u.id)}>{u.name}</option>)}
-              </select>
-              {muniFilterAssignee&&<span style={{fontSize:"0.8rem",fontWeight:800,color:"#7c3aed",flexShrink:0}}>{fCount}件</span>}
-              {muniFilterAssignee&&<button onClick={()=>setMuniFilterAssignee("")}
-                style={{fontSize:"0.65rem",background:"#fef2f2",color:"#dc2626",border:"1px solid #fca5a5",borderRadius:999,padding:"0.1rem 0.45rem",cursor:"pointer",fontWeight:700,fontFamily:"inherit",flexShrink:0}}>解除</button>}
+        
+        // 選択中チップ
+        const selChips = muniFilterAssignees.map(id => {
+          let nm = id;
+          if(id === "__me__") nm = "自分";
+          else { const u = (users||[]).find(u=>String(u.id)===String(id)); if(u) nm = u.name; }
+          return {label:`👤 ${nm}`, key:`mu-as-${id}`, remove:()=>setMuniFilterAssignees(muniFilterAssignees.filter(x=>String(x)!==String(id)))};
+        });
+        
+        // インラインで multi-select 開閉
+        const MultiOpener = () => {
+          const [open, setOpen] = React.useState(false);
+          return (
+            <div style={{position:"relative",flex:1,minWidth:0}}>
+              <button onClick={()=>setOpen(o=>!o)}
+                style={{width:"100%",padding:"0.3rem 0.5rem",borderRadius:"0.5rem",border:`1.5px solid ${isActive?C.accent:C.border}`,background:isActive?"#eff6ff":"white",color:isActive?C.accent:C.text,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",fontWeight:isActive?700:400,display:"flex",alignItems:"center",gap:"0.3rem",justifyContent:"space-between"}}>
+                <span>👤 担当者で絞り込み{isActive ? `（${muniFilterAssignees.length}人）` : ""}</span>
+                <span style={{fontSize:"0.6rem"}}>▼</span>
+              </button>
+              {open && (
+                <>
+                  <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:100,background:"transparent"}}/>
+                  <div style={{position:"absolute",top:"100%",left:0,right:0,marginTop:"0.2rem",background:"white",border:`1.5px solid ${C.border}`,borderRadius:"0.5rem",boxShadow:"0 4px 16px rgba(0,0,0,0.12)",zIndex:101,maxHeight:300,overflowY:"auto",padding:"0.35rem"}}>
+                    {[{value:"__me__", label:"自分の担当のみ"}, ...(users||[]).map(u=>({value:String(u.id), label:u.name}))].map(opt => {
+                      const sel = muniFilterAssignees.map(String).includes(String(opt.value));
+                      return (
+                        <label key={String(opt.value)} style={{display:"flex",alignItems:"center",gap:"0.4rem",padding:"0.3rem 0.45rem",fontSize:"0.78rem",cursor:"pointer",borderRadius:"0.3rem",background:sel?"#eff6ff":"transparent"}}
+                          onClick={ev=>{
+                            ev.preventDefault();
+                            const sv = String(opt.value);
+                            if(sel) setMuniFilterAssignees(muniFilterAssignees.filter(v => String(v) !== sv));
+                            else setMuniFilterAssignees([...muniFilterAssignees, sv]);
+                          }}>
+                          <input type="checkbox" readOnly checked={sel} style={{margin:0,cursor:"pointer"}}/>
+                          <span style={{color:sel?C.accent:C.text,fontWeight:sel?700:500,flex:1}}>{opt.label}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
             </div>
-            {muniFilterAssignee&&regionCounts.length>0&&(
+          );
+        };
+        
+        return (
+          <div style={{background:"#f8fafc",border:`1px solid ${isActive?C.accent:C.border}`,borderRadius:"8px",padding:"0.625rem 0.75rem",marginBottom:"0.5rem"}}>
+            <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:isActive?"0.4rem":0}}>
+              <MultiOpener/>
+              {isActive && <span style={{fontSize:"0.8rem",fontWeight:800,color:"#7c3aed",flexShrink:0}}>{fCount}件</span>}
+              {isActive && <button onClick={()=>setMuniFilterAssignees([])}
+                style={{fontSize:"0.65rem",background:"#fef2f2",color:"#dc2626",border:"1px solid #fca5a5",borderRadius:999,padding:"0.1rem 0.45rem",cursor:"pointer",fontWeight:700,fontFamily:"inherit",flexShrink:0}}>全解除</button>}
+            </div>
+            {selChips.length > 0 && (
+              <div style={{display:"flex",gap:"0.25rem",flexWrap:"wrap",marginBottom:"0.4rem"}}>
+                {selChips.map(chip => (
+                  <span key={chip.key} style={{display:"inline-flex",alignItems:"center",gap:"0.25rem",fontSize:"0.66rem",background:"#eff6ff",color:C.accent,padding:"0.15rem 0.5rem",borderRadius:999,fontWeight:700,border:`1px solid ${C.accent}30`}}>
+                    {chip.label}
+                    <button onClick={chip.remove} style={{background:"none",border:"none",color:C.accent,cursor:"pointer",padding:0,fontSize:"0.7rem",fontWeight:800,lineHeight:1}}>×</button>
+                  </span>
+                ))}
+              </div>
+            )}
+            {isActive && regionCounts.length > 0 && (
               <div style={{display:"flex",flexDirection:"column",gap:"0.25rem"}}>
                 {regionCounts.map(({region,n,prefDetails})=>(
                   <div key={region} style={{display:"flex",gap:"0.25rem",flexWrap:"wrap",alignItems:"center"}}>
@@ -20752,12 +20975,14 @@ ${orig}`})
               </div>
             )}
           </div>
-
         );
       })()}
       <BulkBar statusMap={MUNI_STATUS} applyFn={applyBulkMuni}
         extraFields={[["dustalk","ダストーク展開",DUSTALK_STATUS],["treatyStatus","連携協定",TREATY_STATUS],["status","アプローチ",MUNI_STATUS]]}
-        visibleIds={(muniTopSearch?munis.filter(m=>(m.name||"").includes(muniTopSearch)):muniFilterAssignee?(munis.filter(m=>muniFilterAssignee==="__me__"?(m.assigneeIds||[]).some(id=>id===currentUser?.id):(m.assigneeIds||[]).some(id=>String(id)===muniFilterAssignee))):munis).map(m=>m.id)}
+        visibleIds={(muniTopSearch?munis.filter(m=>(m.name||"").includes(muniTopSearch)):(muniFilterAssignees.length>0?munis.filter(m=>{
+          const aids=(m.assigneeIds||[]).map(String);
+          return muniFilterAssignees.some(fa=>fa==="__me__"?aids.includes(String(currentUser?.id)):aids.includes(String(fa)));
+        }):munis)).map(m=>m.id)}
         onDelete={deleteBulkMuni}/>
       {/* Global dustalk summary */}
       {munis.length>0&&!muniTopSearch&&(
@@ -20784,9 +21009,9 @@ ${orig}`})
       {muniTopSearch&&(()=>{
         const hits=munis.filter(m=>{
           if(!m.name.includes(muniTopSearch)) return false;
-          if(muniFilterAssignee==="__me__") return (m.assigneeIds||[]).some(id=>id===currentUser?.id);
-          if(muniFilterAssignee) return (m.assigneeIds||[]).some(id=>String(id)===muniFilterAssignee);
-          return true;
+          if(muniFilterAssignees.length===0) return true;
+          const aids=(m.assigneeIds||[]).map(String);
+          return muniFilterAssignees.some(fa=>fa==="__me__"?aids.includes(String(currentUser?.id)):aids.includes(String(fa)));
         });
         return (
           <div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
@@ -20819,10 +21044,10 @@ ${orig}`})
       })()}
 
       {/* 担当者フィルタ結果リスト（上部集約） */}
-      {muniFilterAssignee&&(()=>{
+      {muniFilterAssignees.length>0&&(()=>{
         const fMunis = munis.filter(m=>{
-          if(muniFilterAssignee==="__me__") return (m.assigneeIds||[]).some(id=>id===currentUser?.id);
-          return (m.assigneeIds||[]).some(id=>String(id)===muniFilterAssignee);
+          const aids=(m.assigneeIds||[]).map(String);
+          return muniFilterAssignees.some(fa=>fa==="__me__"?aids.includes(String(currentUser?.id)):aids.includes(String(fa)));
         });
         if(!fMunis.length) return <div style={{textAlign:"center",padding:"1.5rem",color:C.textMuted,background:"white",borderRadius:"8px",border:`1.5px dashed ${C.border}`,fontSize:"0.82rem"}}>該当する自治体がありません</div>;
         return (
@@ -20865,7 +21090,7 @@ ${orig}`})
         );
       })()}
       {/* Hierarchy view: 地方タブ式 */}
-      {!muniTopSearch&&!muniFilterAssignee&&(()=>{
+      {!muniTopSearch&&muniFilterAssignees.length===0&&(()=>{
         // 現在選択中の地方
         const activeRegion = JAPAN_REGIONS.find(r=>r.region===muniRegionTab) || JAPAN_REGIONS[0];
         return (
@@ -20900,9 +21125,9 @@ ${orig}`})
                     const pOpen=openPrefs[pref.id]===true;
                     const pMunis=munis.filter(m=>{
                     if(String(m.prefectureId)!==String(pref.id)) return false;
-                    if(muniFilterAssignee==="__me__") return (m.assigneeIds||[]).some(id=>id===currentUser?.id);
-                    if(muniFilterAssignee) return (m.assigneeIds||[]).some(id=>String(id)===muniFilterAssignee);
-                    return true;
+                    if(muniFilterAssignees.length===0) return true;
+                    const aids=(m.assigneeIds||[]).map(String);
+                    return muniFilterAssignees.some(fa=>fa==="__me__"?aids.includes(String(currentUser?.id)):aids.includes(String(fa)));
                   });
                     const pTreaty=pMunis.filter(m=>m.treatyStatus==="協定済").length;
                     const pDeploy=pMunis.filter(m=>m.dustalk==="展開").length;
