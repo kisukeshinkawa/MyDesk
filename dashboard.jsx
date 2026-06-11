@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v158-multi-select-filters"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v159-bugfix-and-style-learning"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -9618,10 +9618,8 @@ function EmailView({data,setData,currentUser=null}) {
         })
         .catch(()=>{});
     }
-    if (isUnread) {
-      // 即既読（旧: 2秒遅延 → 即時）
-      updateEmailFieldRef.current?.(emailId, {isRead:true});
-    }
+    // 選択された時点で常に既読にする（isUnread 引数に関係なく、未読ならマーク）
+    updateEmailFieldRef.current?.(emailId, {isRead:true});
   }, []);
   // unmountでタイマークリア
   React.useEffect(()=>{ return ()=>{ if(readTimerRef.current) clearTimeout(readTimerRef.current); }; }, []);
@@ -10445,6 +10443,40 @@ function EmailView({data,setData,currentUser=null}) {
       // 自分の情報
       const myName = currentUser?.name || (()=>{try{return JSON.parse(localStorage.getItem("mydesk_session_v2")||"{}").name||"新川";}catch{return "新川";}})();
       const myEmail = (currentUser?.email || (()=>{try{return JSON.parse(localStorage.getItem("mydesk_session_v2")||"{}").email;}catch{return "";}})()).toLowerCase();
+      const uid = currentUser?.id || (()=>{try{return JSON.parse(localStorage.getItem("mydesk_session_v2")||"{}").id;}catch{return null;}})();
+      
+      // ── 文体学習：保存された文体サンプル + 過去のAI生成メール + 過去の送信メール ──
+      // 1. emailStyles から自分のサンプル
+      const allStyles = (data.emailStyles || []);
+      const myStyles = allStyles.filter(s=>!s.userId||s.userId===uid).slice(-3); // 最新3件
+      // 2. AIが過去生成したメール (data.emailDrafts等)
+      const allDrafts = (data.emailDrafts || []);
+      const myDrafts = allDrafts.filter(e=>(!e.userId||e.userId===uid) && e.generated).slice(-2);
+      // 3. 過去に実際に送信したメール (data.emails の outbound or DB)
+      const allEmails = (data.emails || []);
+      const mySentSocial = isInternal ? [] : allEmails
+        .filter(e => e.direction === "outbound" && e.body && !e.body.includes("お疲れ様") && (e._accountEmail||"").toLowerCase() === myEmail)
+        .slice(-3); // 直近3件の社外送信メール
+      const mySentInternal = isInternal ? allEmails
+        .filter(e => e.direction === "outbound" && e.body && (e._accountEmail||"").toLowerCase() === myEmail)
+        .filter(e => (e.to||[]).some(t => (t?.email||"").toLowerCase().endsWith("@beetle-ems.com")))
+        .slice(-3) : [];
+      
+      // 学習用テキストブロックを作る
+      let learningBlock = "";
+      if (myStyles.length > 0) {
+        learningBlock += "【私の文体サンプル（この語調・トーンで書いてください）】\n";
+        learningBlock += myStyles.map(s=>(s.text||"").slice(0, 500)).join("\n---\n") + "\n\n";
+      }
+      if (myDrafts.length > 0) {
+        learningBlock += "【AI生成した過去メール（同じトーンで）】\n";
+        learningBlock += myDrafts.map(e=>(e.generated||"").slice(0, 300)).join("\n---\n") + "\n\n";
+      }
+      const refSent = isInternal ? mySentInternal : mySentSocial;
+      if (refSent.length > 0) {
+        learningBlock += `【私が${isInternal?"社内":"社外"}向けに過去に送信したメール（口調を真似てください）】\n`;
+        learningBlock += refSent.map(e=>(e.body||"").slice(0, 400)).join("\n---\n") + "\n\n";
+      }
       
       // 自分が To に入ってるか確認
       const isToMe = (email.to||[]).some(t => (t?.email||"").toLowerCase() === myEmail);
@@ -10466,7 +10498,7 @@ function EmailView({data,setData,currentUser=null}) {
       
       if (isInternal) {
         // 社内メール
-        prompt = `あなたは社内メール返信アシスタントです。同僚に対する自然で簡潔な返信文を作成してください。
+        prompt = learningBlock + `あなたは社内メール返信アシスタントです。同僚に対する自然で簡潔な返信文を作成してください。
 
 【重要ルール】
 - 社内宛なのでフランクで簡潔に。「お疲れ様です」「ありがとうございます」程度の軽い挨拶。
@@ -10493,7 +10525,7 @@ ${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
 返信本文（社内向け、簡潔に）:`;
       } else {
         // 社外メール - 宛先「会社名 / 苗字 様」を含める
-        prompt = `あなたはビジネスメール返信アシスタントです。社外向けの丁寧で適切な日本語の返信文を作成してください。
+        prompt = learningBlock + `あなたはビジネスメール返信アシスタントです。社外向けの丁寧で適切な日本語の返信文を作成してください。
 
 【重要ルール】
 - 本文の冒頭に宛先を以下の形式で必ず入れること（会社名がわかる場合は2行で、わからない場合は1行で）：
@@ -16423,6 +16455,12 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
         });
       });
       save(nd);
+      // ★ 統合後は即座にサーバーに保存（debounce を待たない、競合防止）
+      try {
+        if (typeof saveData === "function") {
+          saveData(nd).catch(e => console.warn("[merge] saveData failed:", e));
+        }
+      } catch(e){ console.warn("[merge] immediate save error:", e); }
       const merged = targetGroups.reduce((sum,g)=>sum+g.drops.length, 0);
       return {merged, groupCount: targetGroups.length};
     };
