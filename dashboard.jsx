@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v155-beenet-enable"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v156-beenet-chart-modal"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -27441,6 +27441,16 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
       ],
     },
     bizcon: {},
+    beenet: {
+      "主要指標": [
+        {label:"排出事業者",   unit:"社", get:(m)=>m?.emitters||0},
+        {label:"排出事業場",   unit:"社", get:(m)=>m?.emitterSites||0},
+        {label:"委託業者",     unit:"社", get:(m)=>m?.vendors||0},
+        {label:"委託業者 運搬", unit:"社", get:(m)=>m?.vendorsTransport||0},
+        {label:"委託業者 処分", unit:"社", get:(m)=>m?.vendorsDispose||0},
+        {label:"流通額",       unit:"円", get:(m)=>m?.salesAmount||0},
+      ],
+    },
   };
 
   // ── Build 12-month series ─────────────────────────────────────────────────
@@ -27448,7 +27458,11 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
     Array.from({length:12},(_,i)=>{
       const k = shiftMonth(mk, i-11);
       const r = sysData[k] || {};
-      const m = sys==="dustalk" ? mergeDustalk(r) : {...REBIT_DEF,...r};
+      let m;
+      if (sys==="dustalk") m = mergeDustalk(r);
+      else if (sys==="beenet") m = {...BEENET_DEF, ...r};
+      else if (sys==="bm") m = {...BM_DEF, ...r};
+      else m = {...REBIT_DEF, ...r};
       return {label: monthLabel(k).replace(/\d+年/,""), value: metricFn(m)};
     });
 
@@ -28248,43 +28262,13 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
           )}
           
           {/* ── bee-net (月別: 排出事業者 / 排出事業場 / 委託業者 / 流通額) ── */}
-          {sys==="beenet" && (() => {
-            // 前12ヶ月の月別データ
-            const months = [];
-            for (let i = 11; i >= 0; i--) {
-              const m = shiftMonth(mk, -i);
-              const md = sysData[m] || {};
-              months.push({
-                mk: m,
-                label: m.replace("-", "/").replace(/^\d{4}\//, ""),  // "06" 形式
-                emitters: +md.emitters || 0,
-                emitterSites: +md.emitterSites || 0,
-                vendors: +md.vendors || 0,
-                vendorsTransport: +md.vendorsTransport || 0,
-                vendorsDispose: +md.vendorsDispose || 0,
-                salesAmount: +md.salesAmount || 0,
-              });
-            }
-            const Row = ({label, current, prev, unit="社", indent=false}) => (
-              <div style={{...rowStyle, paddingLeft: indent ? "1rem" : 0}}>
-                <span style={{fontSize: indent ? "0.8rem" : "0.87rem", color: indent ? C.textSub : C.text, flex:1}}>{indent && "└ "}{label}</span>
-                {editing?(
-                  <div style={{display:"flex",alignItems:"center",gap:"0.35rem"}}>
-                    <InputNum value={current} onChange={v=>setD({[Row.field]:v})}/>
-                    <span style={{fontSize:"0.75rem",color:C.textSub}}>{unit}</span>
-                  </div>
-                ):(
-                  <div style={{display:"flex",alignItems:"center",gap:"0.4rem"}}>
-                    <span style={{fontSize:"1rem",fontWeight:700,color:C.text}}>{current>0 ? current.toLocaleString()+unit : "－"}</span>
-                    <DiffBadge cur={current} prv={prev}/>
-                  </div>
-                )}
-              </div>
-            );
-            return (
+          {sys==="beenet" && (
               <div>
                 <div style={{marginBottom:"1.25rem"}}>
-                  <div style={{fontSize:"0.7rem",fontWeight:800,color:C.textSub,textTransform:"uppercase",letterSpacing:"0.05em",padding:"0.35rem 0",borderBottom:`2px solid ${C.accent}`,marginBottom:"0.1rem"}}>📊 主要指標</div>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"0.35rem 0",borderBottom:`2px solid ${C.accent}`,marginBottom:"0.1rem"}}>
+                    <div style={{fontSize:"0.7rem",fontWeight:800,color:C.textSub,textTransform:"uppercase",letterSpacing:"0.05em"}}>📊 主要指標</div>
+                    {!editing&&<button onClick={()=>setChart({section:"主要指標",metricIdx:0})} style={{background:C.accentBg,border:`1px solid ${C.accent}40`,borderRadius:"0.4rem",padding:"0.2rem 0.5rem",fontSize:"0.68rem",fontWeight:700,color:C.accentDark,cursor:"pointer",fontFamily:"inherit"}}>📊 グラフ</button>}
+                  </div>
                   
                   {/* 排出事業者 */}
                   <div style={{...rowStyle}}>
@@ -28381,57 +28365,8 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
                   </div>
                 </div>
                 
-                {/* 月別グラフ（過去12ヶ月） */}
-                <div style={{marginBottom:"1.25rem"}}>
-                  <div style={{fontSize:"0.7rem",fontWeight:800,color:C.textSub,textTransform:"uppercase",letterSpacing:"0.05em",padding:"0.35rem 0",borderBottom:`2px solid ${C.accent}`,marginBottom:"0.6rem"}}>📈 月別推移（過去12ヶ月）</div>
-                  {[
-                    {key:"emitters", label:"排出事業者", color:"#3b82f6", unit:"社"},
-                    {key:"emitterSites", label:"排出事業場", color:"#10b981", unit:"社"},
-                    {key:"vendors", label:"委託業者", color:"#f59e0b", unit:"社"},
-                    {key:"salesAmount", label:"流通額", color:"#ef4444", unit:"円", isCurrency:true},
-                  ].map(({key, label, color, unit, isCurrency}) => {
-                    const vals = months.map(m => m[key]);
-                    const maxVal = Math.max(...vals, 1);
-                    const hasAny = vals.some(v => v > 0);
-                    if (!hasAny) return null;
-                    return (
-                      <div key={key} style={{marginBottom:"1rem"}}>
-                        <div style={{fontSize:"0.78rem",fontWeight:700,color:C.text,marginBottom:"0.35rem",display:"flex",justifyContent:"space-between"}}>
-                          <span>{label}</span>
-                          <span style={{fontSize:"0.7rem",color:C.textMuted,fontWeight:500}}>最大: {isCurrency ? "¥"+maxVal.toLocaleString() : maxVal.toLocaleString()+unit}</span>
-                        </div>
-                        <div style={{display:"flex",alignItems:"flex-end",gap:"0.18rem",height:"60px",background:"#fafafa",padding:"0.3rem",borderRadius:6,border:`1px solid ${C.borderLight}`}}>
-                          {months.map((m, idx) => {
-                            const v = m[key];
-                            const pct = maxVal > 0 ? (v/maxVal)*100 : 0;
-                            return (
-                              <div key={idx} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-end",height:"100%"}}
-                                   title={`${m.mk}: ${isCurrency ? "¥"+v.toLocaleString() : v.toLocaleString()+unit}`}>
-                                <div style={{
-                                  width:"80%",
-                                  height: v>0 ? `${pct}%` : "2px",
-                                  minHeight: v>0 ? "3px" : "2px",
-                                  background: v>0 ? color : C.borderLight,
-                                  borderRadius:"2px 2px 0 0",
-                                  transition:"height 0.3s",
-                                }}/>
-                                <div style={{fontSize:"0.55rem",color:C.textMuted,marginTop:"0.2rem"}}>{m.label}</div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {months.every(m => m.emitters===0 && m.emitterSites===0 && m.vendors===0 && m.salesAmount===0) && (
-                    <div style={{fontSize:"0.78rem",color:C.textMuted,textAlign:"center",padding:"1.5rem 1rem"}}>
-                      まだデータがありません。「✏️ 編集」から各月の数値を入力してください。
-                    </div>
-                  )}
-                </div>
               </div>
-            );
-          })()}
+          )}
         </div>
       )}
       {renderChartModal()}
