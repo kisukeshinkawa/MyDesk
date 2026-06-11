@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v151-spam-block-default"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v152-spam-session-fallback"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -10664,21 +10664,35 @@ function EmailView({data,setData,currentUser=null}) {
                         updateEmailField(id,{isSpam:spam,spamReason:reason||""});
                         if(spam){
                           // ブロックリストへの自動追加
-                          if(opts && (opts.blockEmail || opts.blockDomain) && currentUser?.email){
+                          const sessionForSpam = (()=>{try{return JSON.parse(localStorage.getItem("mydesk_session_v2")||"{}");}catch{return{};}})();
+                          const myEmailForSpam = currentUser?.email || sessionForSpam.email;
+                          if(opts && (opts.blockEmail || opts.blockDomain) && myEmailForSpam){
                             try{
                               const senderEmail = (selected?.from?.email||"").toLowerCase();
                               const domain = senderEmail.includes("@") ? senderEmail.split("@")[1] : "";
                               const blockType = opts.blockEmail ? "email" : "domain";
                               const pattern = opts.blockEmail ? senderEmail : domain;
-                              await fetch(`${DB_API_BASE}/emails/blocklist`,{
+                              console.log("[spam-block] POST", {account_email:myEmailForSpam, block_type:blockType, pattern});
+                              const blockRes = await fetch(`${DB_API_BASE}/emails/blocklist`,{
                                 method:'POST', headers:DB_API_HEADERS,
-                                body:JSON.stringify({account_email:currentUser.email, block_type:blockType, pattern, reason:reason||"", created_by:currentUser.id||""})
+                                body:JSON.stringify({account_email:myEmailForSpam, block_type:blockType, pattern, reason:reason||"", created_by:currentUser?.id||myEmailForSpam})
                               });
-                              alert('🚫 迷惑メールに移動 + ブロックリスト追加しました\n\n同じ送信元のメールは自動的に迷惑メール扱いになります');
+                              if(!blockRes.ok){
+                                const errTxt = await blockRes.text();
+                                console.warn("[spam-block] failed:", blockRes.status, errTxt);
+                                alert(`🚫 迷惑メールに移動しましたが、ブロックリスト追加に失敗:\n${blockRes.status} ${errTxt.slice(0,100)}`);
+                              } else {
+                                alert('🚫 迷惑メールに移動 + ブロックリスト追加しました\n\n同じ送信元のメールは自動的に迷惑メール扱いになります');
+                              }
                               reloadDbEmails();
-                            }catch(e){ alert('ブロックリスト追加エラー: '+e.message); }
+                            }catch(e){ alert('ブロックリスト追加エラー: '+e.message); console.warn("[spam-block] catch:", e); }
                           } else {
-                            alert('🚫 迷惑メールに移動しました');
+                            if(opts && (opts.blockEmail || opts.blockDomain)){
+                              console.warn("[spam-block] スキップ: myEmail取得失敗", {currentUser, session:sessionForSpam});
+                              alert('🚫 迷惑メールに移動しましたが、ユーザー情報が取れずブロックリスト追加スキップ');
+                            } else {
+                              alert('🚫 迷惑メールに移動しました');
+                            }
                           }
                           setMbSelectedId(null);
                         } else {
@@ -10758,21 +10772,35 @@ function EmailView({data,setData,currentUser=null}) {
                         updateEmailField(id,{isSpam:spam,spamReason:reason||""});
                         if(spam){
                           // ブロックリストへの自動追加
-                          if(opts && (opts.blockEmail || opts.blockDomain) && currentUser?.email){
+                          const sessionForSpam = (()=>{try{return JSON.parse(localStorage.getItem("mydesk_session_v2")||"{}");}catch{return{};}})();
+                          const myEmailForSpam = currentUser?.email || sessionForSpam.email;
+                          if(opts && (opts.blockEmail || opts.blockDomain) && myEmailForSpam){
                             try{
                               const senderEmail = (selected?.from?.email||"").toLowerCase();
                               const domain = senderEmail.includes("@") ? senderEmail.split("@")[1] : "";
                               const blockType = opts.blockEmail ? "email" : "domain";
                               const pattern = opts.blockEmail ? senderEmail : domain;
-                              await fetch(`${DB_API_BASE}/emails/blocklist`,{
+                              console.log("[spam-block] POST", {account_email:myEmailForSpam, block_type:blockType, pattern});
+                              const blockRes = await fetch(`${DB_API_BASE}/emails/blocklist`,{
                                 method:'POST', headers:DB_API_HEADERS,
-                                body:JSON.stringify({account_email:currentUser.email, block_type:blockType, pattern, reason:reason||"", created_by:currentUser.id||""})
+                                body:JSON.stringify({account_email:myEmailForSpam, block_type:blockType, pattern, reason:reason||"", created_by:currentUser?.id||myEmailForSpam})
                               });
-                              alert('🚫 迷惑メールに移動 + ブロックリスト追加しました\n\n同じ送信元のメールは自動的に迷惑メール扱いになります');
+                              if(!blockRes.ok){
+                                const errTxt = await blockRes.text();
+                                console.warn("[spam-block] failed:", blockRes.status, errTxt);
+                                alert(`🚫 迷惑メールに移動しましたが、ブロックリスト追加に失敗:\n${blockRes.status} ${errTxt.slice(0,100)}`);
+                              } else {
+                                alert('🚫 迷惑メールに移動 + ブロックリスト追加しました\n\n同じ送信元のメールは自動的に迷惑メール扱いになります');
+                              }
                               reloadDbEmails();
-                            }catch(e){ alert('ブロックリスト追加エラー: '+e.message); }
+                            }catch(e){ alert('ブロックリスト追加エラー: '+e.message); console.warn("[spam-block] catch:", e); }
                           } else {
-                            alert('🚫 迷惑メールに移動しました');
+                            if(opts && (opts.blockEmail || opts.blockDomain)){
+                              console.warn("[spam-block] スキップ: myEmail取得失敗", {currentUser, session:sessionForSpam});
+                              alert('🚫 迷惑メールに移動しましたが、ユーザー情報が取れずブロックリスト追加スキップ');
+                            } else {
+                              alert('🚫 迷惑メールに移動しました');
+                            }
                           }
                           setMbSelectedId(null);
                         } else {
