@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v162-ime-fix-and-better-search"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v163-pre-search-and-opus"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -28912,28 +28912,86 @@ function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
   }, [isOpen]);
   
   // データの軽量サマリーを作る（Lambda に送る用）
-  const buildDataSummary = () => {
-    // 軽量化のため最小フィールドのみ、ただし全件送る（検索精度のため）
-    const companies = (data?.companies || []).map(c => ({
+  // userInputが渡されたら、その入力に関連しそうな候補を事前検索して優先的に含める
+  const buildDataSummary = (userInput) => {
+    // 正規化関数（Lambda側と同じロジック）
+    const normalize = (s) => {
+      if (!s) return "";
+      let r = String(s).toLowerCase();
+      // 全角英数を半角に
+      r = r.replace(/[Ａ-Ｚａ-ｚ０-９]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0));
+      // 空白・記号除去
+      r = r.replace(/[\s　・\-ー−ｰ‐—（）()「」『』.,。、]/g, "");
+      // 法人格除去
+      r = r.replace(/株式会社|有限会社|合同会社|合資会社|合名会社|\(株\)|（株）/g, "");
+      return r;
+    };
+    
+    // ユーザー入力から「候補キーワード」を抽出
+    // 短いキーワード (KPMG, メルカリ, 石田 etc) は重要なシグナル
+    const extractKeywords = (text) => {
+      if (!text) return [];
+      const kws = new Set();
+      // 全体
+      kws.add(text);
+      // カタカナの塊（メルカリ、ダストーク等）
+      const katakana = text.match(/[\u30A0-\u30FF]{2,}/g) || [];
+      katakana.forEach(k => kws.add(k));
+      // 漢字+ひらがなの塊
+      const kanji = text.match(/[\u4E00-\u9FFF]{2,}[\u3040-\u309F]*[\u4E00-\u9FFF]*/g) || [];
+      kanji.forEach(k => kws.add(k));
+      // 英数字の塊 (KPMG, ABCコーポ等)
+      const ascii = text.match(/[A-Za-z][A-Za-z0-9]{1,}/g) || [];
+      ascii.forEach(k => kws.add(k));
+      // 全角英数も
+      const fwAscii = text.match(/[Ａ-Ｚａ-ｚ０-９]{2,}/g) || [];
+      fwAscii.forEach(k => kws.add(k));
+      // 「〇〇さん」「〇〇社長」「〇〇様」パターンから氏名抽出
+      const honorific = text.match(/([\u4E00-\u9FFF]{1,4})(さん|社長|専務|常務|部長|課長|主任|様)/g) || [];
+      honorific.forEach(h => {
+        const nm = h.replace(/(さん|社長|専務|常務|部長|課長|主任|様)/g, "");
+        if (nm) kws.add(nm);
+      });
+      return Array.from(kws).filter(k => k.length >= 2);
+    };
+    
+    const keywords = userInput ? extractKeywords(userInput) : [];
+    const nKeywords = keywords.map(normalize).filter(Boolean);
+    
+    // マッチ判定
+    const matches = (name) => {
+      if (nKeywords.length === 0) return false;
+      const nName = normalize(name);
+      return nKeywords.some(nk => nName.includes(nk) || nk.includes(nName));
+    };
+    
+    // 全件をスリム化
+    const allCompanies = (data?.companies || []).map(c => ({
       id: c.id, name: c.name, status: c.status
     }));
-    const vendors = (data?.vendors || []).map(v => ({
+    const allVendors = (data?.vendors || []).map(v => ({
       id: v.id, name: v.name, status: v.status
     }));
-    const munis = (data?.municipalities || []).map(m => ({
+    const allMunis = (data?.municipalities || []).map(m => ({
       id: m.id, name: m.name, prefectureId: m.prefectureId
     }));
-    const tasks = (data?.tasks || []).map(t => ({
-      id: t.id, title: t.title, status: t.status, priority: t.priority
+    const allTasks = (data?.tasks || []).map(t => ({
+      id: t.id, title: t.title, status: t.status, priority: t.priority, dueDate: t.dueDate, assigneeIds: t.assigneeIds
     }));
-    // メール送信者の情報（連絡先）
+    const allProjects = (data?.projects || []).map(p => ({
+      id: p.id, name: p.name, status: p.status
+    }));
+    
+    // 連絡先情報
     const people = [];
     const seenEmails = new Set();
     (data?.businessCards || []).forEach(b => {
       const em = (b.email || "").toLowerCase();
-      if (em && !seenEmails.has(em)) {
-        seenEmails.add(em);
-        people.push({id: b.id, name: b.name || em, email: em, company: b.company});
+      const nm = b.name || "";
+      const key = em || nm;
+      if (key && !seenEmails.has(key)) {
+        seenEmails.add(key);
+        people.push({id: b.id, name: nm, email: em, company: b.company || b.companyName, title: b.title});
       }
     });
     (users || []).forEach(u => {
@@ -28944,18 +29002,33 @@ function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
       }
     });
     
+    // ユーザー入力に関連する「事前マッチ」を優先候補として抽出
+    const preMatch = {
+      companies: keywords.length ? allCompanies.filter(c => matches(c.name)).slice(0, 30) : [],
+      vendors: keywords.length ? allVendors.filter(v => matches(v.name)).slice(0, 30) : [],
+      munis: keywords.length ? allMunis.filter(m => matches(m.name)).slice(0, 30) : [],
+      tasks: keywords.length ? allTasks.filter(t => matches(t.title)).slice(0, 30) : [],
+      projects: keywords.length ? allProjects.filter(p => matches(p.name)).slice(0, 30) : [],
+      people: keywords.length ? people.filter(p => matches(p.name) || matches(p.company) || matches(p.email)).slice(0, 30) : [],
+    };
+    
     return {
-      companies_count: companies.length,
-      vendors_count: vendors.length,
-      munis_count: munis.length,
-      tasks_count: tasks.length,
+      companies_count: allCompanies.length,
+      vendors_count: allVendors.length,
+      munis_count: allMunis.length,
+      tasks_count: allTasks.length,
+      projects_count: allProjects.length,
       // 全件送る（検索精度向上のため）
-      companies: companies,
-      vendors: vendors,
-      munis: munis,
-      tasks: tasks,
+      companies: allCompanies,
+      vendors: allVendors,
+      munis: allMunis,
+      tasks: allTasks,
+      projects: allProjects,
       people: people,
       users: (users || []).map(u => ({id: u.id, name: u.name, email: u.email})),
+      // 事前マッチ結果（Lambda 側で system prompt に含める）
+      pre_match: preMatch,
+      extracted_keywords: keywords,
     };
   };
   
@@ -28973,7 +29046,7 @@ function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
     setBusy(true);
     
     try {
-      const summary = buildDataSummary();
+      const summary = buildDataSummary(text);
       const payload = {
         user_input: text,
         context: {
