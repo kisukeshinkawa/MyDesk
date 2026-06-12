@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-06-12-v173-strip-ai-signature"; // ビルド識別子
+const MYDESK_BUILD = "2026-06-12-v174-mail-scroll-restore"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -9554,6 +9554,9 @@ function EmailView({data,setData,currentUser=null}) {
 
   // 現在表示中のメール一覧（↑↓キー移動用にref保持）
   const currentListRef = React.useRef([]);
+  // メール一覧のスクロール位置を保存（詳細→一覧に戻った時に復元するため）
+  const listScrollRef = React.useRef(0);
+  const prevSelectedRef = React.useRef(null);
 
   // 既読化タイマー（クリック即読ではなく 2秒選択後に既読化する）
   const readTimerRef = React.useRef(null);
@@ -9564,9 +9567,15 @@ function EmailView({data,setData,currentUser=null}) {
       readTimerRef.current = null;
     }
     setMbSelectedId(emailId);
+    // 一覧のスクロール位置を保存（モバイルは .mydesk-content が実スクロール領域）
+    try {
+      const sc = document.querySelector(".mydesk-content");
+      if (sc) listScrollRef.current = sc.scrollTop;
+    } catch {}
     // メール詳細を開いた時、ページの一番上にスクロール
     requestAnimationFrame(()=>{
       try { window.scrollTo({top: 0, behavior: "instant"}); } catch { window.scrollTo(0, 0); }
+      try { const sc = document.querySelector(".mydesk-content"); if (sc) sc.scrollTop = 0; } catch {}
     });
     // バックグラウンドでこのメールの最新DB情報を取得（AI分析など更新されてる可能性）
     if (typeof emailId === "number" || (typeof emailId === "string" && /^\d+$/.test(emailId))) {
@@ -9700,6 +9709,21 @@ function EmailView({data,setData,currentUser=null}) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [mbView, selectAdjacent]);
+
+  // 詳細→一覧に戻った時、選択していたあたりにスクロール位置を復元
+  React.useLayoutEffect(() => {
+    const wasSelected = prevSelectedRef.current;
+    prevSelectedRef.current = mbSelectedId;
+    if (wasSelected && !mbSelectedId && !isPC) {
+      const top = listScrollRef.current;
+      if (top > 0) {
+        const restore = () => { try { const sc = document.querySelector(".mydesk-content"); if (sc) sc.scrollTop = top; } catch {} };
+        restore();
+        // 一覧の再描画で高さが変わるため、レイアウト確定後にもう一度合わせる
+        requestAnimationFrame(restore);
+      }
+    }
+  }, [mbSelectedId, isPC]);
 
   // "reply" = 受信メールへの返信, "compose" = 新規メール作成, "follow" = フォローメール
   const [mode,setMode]           = useState("reply");
