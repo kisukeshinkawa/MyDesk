@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v166-improved-keyword-extraction"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v167-name-field-detection"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -28992,18 +28992,43 @@ function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
     const seenEmails = new Set();
     const bizCards = data?.businessCards || data?.business_cards || data?.bizCards || [];
     console.log("[Agent] businessCards count:", bizCards.length);
+    if (bizCards.length > 0) {
+      console.log("[Agent] First businessCard sample (keys):", Object.keys(bizCards[0]));
+      console.log("[Agent] First businessCard sample:", bizCards[0]);
+      // 石田カードを探してみる
+      const ishidaCard = bizCards.find(c => JSON.stringify(c).includes('石田'));
+      if (ishidaCard) {
+        console.log("[Agent] Found Ishida card:", ishidaCard);
+      }
+    }
     bizCards.forEach(b => {
       const em = (b.email || b.mailAddress || b.mail || "").toLowerCase();
-      const nm = b.name || b.fullName || b.displayName || "";
-      const key = em || nm;
+      // 名前の取得を強化: 様々なフィールド名候補を試す
+      let nm = b.name || b.fullName || b.displayName || "";
+      // 姓+名の分割形式
+      if (!nm) {
+        const lastName = b.lastName || b.familyName || b.姓 || b.last_name || b.surname || "";
+        const firstName = b.firstName || b.givenName || b.名 || b.first_name || "";
+        if (lastName || firstName) nm = `${lastName}${firstName ? " " + firstName : ""}`.trim();
+      }
+      // それでもダメなら、ありそうなフィールドを全部試す
+      if (!nm) {
+        for (const k of Object.keys(b)) {
+          const v = b[k];
+          if (typeof v === "string" && v && k.toLowerCase().includes("name") && !k.toLowerCase().includes("company") && !k.toLowerCase().includes("organization")) {
+            nm = v; break;
+          }
+        }
+      }
+      const key = em || nm || b.id;
       if (key && !seenEmails.has(key)) {
         seenEmails.add(key);
         people.push({
           id: b.id,
           name: nm,
           email: em,
-          company: b.company || b.companyName || b.organization || "",
-          title: b.title || b.position || "",
+          company: b.company || b.companyName || b.organization || b.会社名 || "",
+          title: b.title || b.position || b.役職 || "",
         });
       }
     });
