@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v160-agent-phase-AB"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v161-agent-search-improved"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -28913,20 +28913,18 @@ function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
   
   // データの軽量サマリーを作る（Lambda に送る用）
   const buildDataSummary = () => {
+    // 軽量化のため最小フィールドのみ、ただし全件送る（検索精度のため）
     const companies = (data?.companies || []).map(c => ({
-      id: c.id, name: c.name, status: c.status, assigneeIds: c.assigneeIds
+      id: c.id, name: c.name, status: c.status
     }));
     const vendors = (data?.vendors || []).map(v => ({
-      id: v.id, name: v.name, status: v.status,
-      assigneeIds: v.assigneeIds, beeNet: v.beeNet
+      id: v.id, name: v.name, status: v.status
     }));
     const munis = (data?.municipalities || []).map(m => ({
-      id: m.id, name: m.name, prefectureId: m.prefectureId,
-      assigneeIds: m.assigneeIds
+      id: m.id, name: m.name, prefectureId: m.prefectureId
     }));
     const tasks = (data?.tasks || []).map(t => ({
-      id: t.id, title: t.title, status: t.status,
-      priority: t.priority, dueDate: t.dueDate
+      id: t.id, title: t.title, status: t.status, priority: t.priority
     }));
     // メール送信者の情報（連絡先）
     const people = [];
@@ -28938,7 +28936,6 @@ function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
         people.push({id: b.id, name: b.name || em, email: em, company: b.company});
       }
     });
-    // ユーザー側からの連絡先（社内）
     (users || []).forEach(u => {
       const em = (u.email || "").toLowerCase();
       if (em && !seenEmails.has(em)) {
@@ -28952,12 +28949,12 @@ function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
       vendors_count: vendors.length,
       munis_count: munis.length,
       tasks_count: tasks.length,
-      // 検索用に最初の一部だけ送る（全件送ると context overflow）
-      companies: companies.slice(0, 1000),
-      vendors: vendors.slice(0, 1500),
+      // 全件送る（検索精度向上のため）
+      companies: companies,
+      vendors: vendors,
       munis: munis,
-      tasks: tasks.slice(0, 300),
-      people: people.slice(0, 500),
+      tasks: tasks,
+      people: people,
       users: (users || []).map(u => ({id: u.id, name: u.name, email: u.email})),
     };
   };
