@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v165-id-resolution-fix"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v166-improved-keyword-extraction"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -28932,31 +28932,36 @@ function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
     const extractKeywords = (text) => {
       if (!text) return [];
       const kws = new Set();
-      // 全体
-      kws.add(text);
+      // 「〇〇さん」「〇〇社長」「〇〇様」パターンから氏名抽出（最優先）
+      const honorific = text.match(/([\u4E00-\u9FFF]{1,4})(さん|社長|専務|常務|部長|課長|主任|様|くん|ちゃん)/g) || [];
+      honorific.forEach(h => {
+        const nm = h.replace(/(さん|社長|専務|常務|部長|課長|主任|様|くん|ちゃん)/g, "");
+        if (nm) kws.add(nm);  // 「石田」のような苗字を確実に追加
+      });
       // カタカナの塊（メルカリ、ダストーク等）
       const katakana = text.match(/[\u30A0-\u30FF]{2,}/g) || [];
       katakana.forEach(k => kws.add(k));
-      // 漢字+ひらがなの塊
-      const kanji = text.match(/[\u4E00-\u9FFF]{2,}[\u3040-\u309F]*[\u4E00-\u9FFF]*/g) || [];
+      // 漢字の塊（連続漢字を含む単語）
+      const kanji = text.match(/[\u4E00-\u9FFF]{2,}/g) || [];
       kanji.forEach(k => kws.add(k));
+      // 漢字1文字+漢字（「石田」みたいな苗字パターン）
+      const kanji_pair = text.match(/[\u4E00-\u9FFF]{1}[\u4E00-\u9FFF]{1}/g) || [];
+      kanji_pair.forEach(k => kws.add(k));
       // 英数字の塊 (KPMG, ABCコーポ等)
       const ascii = text.match(/[A-Za-z][A-Za-z0-9]{1,}/g) || [];
       ascii.forEach(k => kws.add(k));
       // 全角英数も
       const fwAscii = text.match(/[Ａ-Ｚａ-ｚ０-９]{2,}/g) || [];
       fwAscii.forEach(k => kws.add(k));
-      // 「〇〇さん」「〇〇社長」「〇〇様」パターンから氏名抽出
-      const honorific = text.match(/([\u4E00-\u9FFF]{1,4})(さん|社長|専務|常務|部長|課長|主任|様)/g) || [];
-      honorific.forEach(h => {
-        const nm = h.replace(/(さん|社長|専務|常務|部長|課長|主任|様)/g, "");
-        if (nm) kws.add(nm);
-      });
+      // 全体テキストも入れる（最後）
+      kws.add(text);
       return Array.from(kws).filter(k => k.length >= 2);
     };
     
     const keywords = userInput ? extractKeywords(userInput) : [];
     const nKeywords = keywords.map(normalize).filter(Boolean);
+    console.log("[Agent] extracted keywords:", keywords);
+    console.log("[Agent] normalized keywords:", nKeywords);
     
     // マッチ判定
     const matches = (name) => {
@@ -29044,6 +29049,22 @@ function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
       projects: keywords.length ? allProjects.filter(p => matches(p.name)).slice(0, 30) : [],
       people: keywords.length ? people.filter(p => matches(p.name) || matches(p.company) || matches(p.email)).slice(0, 30) : [],
     };
+    console.log("[Agent] pre_match counts:", {
+      companies: preMatch.companies.length,
+      vendors: preMatch.vendors.length,
+      munis: preMatch.munis.length,
+      tasks: preMatch.tasks.length,
+      projects: preMatch.projects.length,
+      people: preMatch.people.length,
+    });
+    if (preMatch.people.length > 0) {
+      console.log("[Agent] matched people:", preMatch.people.slice(0, 5).map(p => `${p.name}(${p.email}/${p.company})`));
+    } else if (keywords.length > 0) {
+      // 石田などの検索で見つからない時にデバッグ
+      const sampleSize = Math.min(people.length, 5);
+      console.log(`[Agent] no people matched. Sample people (${people.length} total):`,
+        people.slice(0, sampleSize).map(p => `${p.name || "(no name)"} (${p.email || "no email"}, ${p.company || "no company"})`));
+    }
     
     return {
       companies_count: allCompanies.length,
