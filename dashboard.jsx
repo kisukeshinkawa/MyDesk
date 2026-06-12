@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v168-final-fixes"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v169-email-draft-and-websearch"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -9740,6 +9740,45 @@ function EmailView({data,setData,currentUser=null}) {
     if(typeof draft.isInternal==="boolean") setIsInternal(draft.isInternal);
     setMode(draft.mode||"compose"); // 名刺からは新規メール作成モード
     window.__myDeskEmailDraft = null; // 取り込み後にクリア（連打防止）
+  }, []);
+  
+  // AIエージェント経由の下書きを取り込む（localStorage 経由）
+  React.useEffect(()=>{
+    try {
+      const raw = localStorage.getItem("md_pending_email_draft");
+      if (!raw) return;
+      const draft = JSON.parse(raw);
+      if (!draft) return;
+      // 5分以内の下書きだけ取り込む（古いものは無視）
+      if (draft.timestamp && (Date.now() - draft.timestamp) > 5*60*1000) {
+        localStorage.removeItem("md_pending_email_draft");
+        return;
+      }
+      console.log("[Agent] 下書きを取り込み:", draft);
+      // 宛先メアドの先頭から会社名・担当者名を推測（既にAIが入れてくれてれば不要だが念のため）
+      setMode("compose");
+      if (Array.isArray(draft.to) && draft.to.length > 0) {
+        setSendToEmail(draft.to.join(", "));
+      }
+      if (draft.subject) setSendSubject(draft.subject);
+      if (draft.body) {
+        setGenerated(draft.body);
+        setPhase("edit"); // 直接編集画面に
+      }
+      // 関連エンティティから会社・担当者を取得
+      if (draft.linkedEntityType === "company" && draft.linkedEntityId) {
+        const c = (data?.companies||[]).find(x => String(x.id) === String(draft.linkedEntityId));
+        if (c) setToCompany(c.name || "");
+      }
+      // 取り込んだら削除
+      localStorage.removeItem("md_pending_email_draft");
+      // 通知
+      setTimeout(() => {
+        alert("📧 AIが作成した下書きを読み込みました。内容を確認・編集してください。");
+      }, 300);
+    } catch (e) {
+      console.error("[Agent] draft load error:", e);
+    }
   }, []);
 
   // メール本文から宛先情報を自動抽出
@@ -29121,6 +29160,16 @@ function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
     
     try {
       const summary = buildDataSummary(text);
+      // Web 検索が必要そうかフロント側で判定して hint を送る
+      const needsWebSearchKeywords = [
+        "廃掃法", "廃棄物処理法", "廃棄物の処理及び清掃に関する法律",
+        "独禁法", "下請法", "個人情報保護法", "労働基準法",
+        "とは何", "について教えて", "意味", "条文", "法律",
+        "ニュース", "最新", "リンク", "URL",
+        "検索して", "調べて", "Google",
+      ];
+      const needsWebSearch = needsWebSearchKeywords.some(k => text.includes(k));
+      
       const payload = {
         user_input: text,
         context: {
@@ -29131,6 +29180,7 @@ function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
           },
           data_summary: summary,
           history: messages.slice(-8).map(m => ({role: m.role, content: m.content})),
+          hint_web_search: needsWebSearch,
         },
       };
       
