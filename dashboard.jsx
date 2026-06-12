@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v169-email-draft-and-websearch"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v170-full-fixes"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -9755,7 +9755,8 @@ function EmailView({data,setData,currentUser=null}) {
         return;
       }
       console.log("[Agent] 下書きを取り込み:", draft);
-      // 宛先メアドの先頭から会社名・担当者名を推測（既にAIが入れてくれてれば不要だが念のため）
+      // メール作成画面に切替（最重要！）
+      setMbView("compose");
       setMode("compose");
       if (Array.isArray(draft.to) && draft.to.length > 0) {
         setSendToEmail(draft.to.join(", "));
@@ -29139,6 +29140,19 @@ function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
       projects: allProjects,
       people: people,
       users: (users || []).map(u => ({id: u.id, name: u.name, email: u.email})),
+      // メール傾向参照用（直近のメール本文サンプル）
+      recent_emails_sample: (data?.emails || []).slice(-50).map(e => ({
+        from: e.from?.email || "",
+        to: (e.to || []).map(r => r?.email).filter(Boolean),
+        subject: e.subject || "",
+        body: (e.body || "").slice(0, 500),
+        direction: e.direction,
+      })),
+      // 自分が過去送ったメールから文体学習用サンプル
+      my_sent_emails: (data?.emails || [])
+        .filter(e => e.direction === "outbound" && e.userId === currentUser?.id)
+        .slice(-20)
+        .map(e => ({to: (e.to||[]).map(r=>r?.email), subject: e.subject||"", body: (e.body||"").slice(0,1000)})),
       // 事前マッチ結果（Lambda 側で system prompt に含める）
       pre_match: preMatch,
       extracted_keywords: keywords,
@@ -29170,6 +29184,21 @@ function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
       ];
       const needsWebSearch = needsWebSearchKeywords.some(k => text.includes(k));
       
+      // フロント側で先に検索リンクを生成して、AIへ「これも使え」と教える
+      // 同時にユーザーには即時にリンクを表示できるようにする
+      let webSearchPreResult = null;
+      if (needsWebSearch) {
+        const encoded = encodeURIComponent(text);
+        webSearchPreResult = {
+          query: text,
+          links: [
+            {title: `Google検索: ${text}`, url: `https://www.google.com/search?q=${encoded}`, source: "Google"},
+            {title: `Wikipedia: ${text}`, url: `https://ja.wikipedia.org/wiki/${encoded}`, source: "Wikipedia"},
+            {title: `e-Gov法令検索: ${text}`, url: `https://laws.e-gov.go.jp/search/elawsSearch/elaws_search/lsg0100/?searchType=simpleSearch&searchText=${encoded}`, source: "e-Gov"},
+          ],
+        };
+      }
+      
       const payload = {
         user_input: text,
         context: {
@@ -29181,6 +29210,7 @@ function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
           data_summary: summary,
           history: messages.slice(-8).map(m => ({role: m.role, content: m.content})),
           hint_web_search: needsWebSearch,
+          web_search_pre_result: webSearchPreResult,
         },
       };
       
