@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v164-people-from-emails"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v165-id-resolution-fix"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -28985,13 +28985,21 @@ function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
     // 連絡先情報
     const people = [];
     const seenEmails = new Set();
-    (data?.businessCards || []).forEach(b => {
-      const em = (b.email || "").toLowerCase();
-      const nm = b.name || "";
+    const bizCards = data?.businessCards || data?.business_cards || data?.bizCards || [];
+    console.log("[Agent] businessCards count:", bizCards.length);
+    bizCards.forEach(b => {
+      const em = (b.email || b.mailAddress || b.mail || "").toLowerCase();
+      const nm = b.name || b.fullName || b.displayName || "";
       const key = em || nm;
       if (key && !seenEmails.has(key)) {
         seenEmails.add(key);
-        people.push({id: b.id, name: nm, email: em, company: b.company || b.companyName, title: b.title});
+        people.push({
+          id: b.id,
+          name: nm,
+          email: em,
+          company: b.company || b.companyName || b.organization || "",
+          title: b.title || b.position || "",
+        });
       }
     });
     // メールの送信者/受信者からも連絡先を抽出（社外メールが豊富な情報源）
@@ -29381,16 +29389,30 @@ export default function App() {
       case "navigate_to": {
         // 画面遷移
         const target = params.target;
-        const id = params.id;
-        if (target === "company" && id) {
+        let id = params.id;
+        // ID 型を正規化: data 側に数値で保存されてる場合に対応
+        if (id !== undefined && id !== null && id !== "") {
+          // data.companies等で同じIDを文字列/数値で探す
+          const findOriginalId = (arr) => {
+            const found = (arr || []).find(e => String(e.id) === String(id));
+            return found ? found.id : id; // 元のid型を使う
+          };
+          if (target === "company") id = findOriginalId(data?.companies);
+          else if (target === "vendor") id = findOriginalId(data?.vendors);
+          else if (target === "muni") id = findOriginalId(data?.municipalities);
+          else if (target === "task") id = findOriginalId(data?.tasks);
+          else if (target === "project") id = findOriginalId(data?.projects);
+        }
+        console.log("[Agent] navigate_to resolved id:", id, typeof id);
+        if (target === "company" && id !== undefined) {
           setNavTarget({type: "company", id});
-        } else if (target === "vendor" && id) {
+        } else if (target === "vendor" && id !== undefined) {
           setNavTarget({type: "vendor", id});
-        } else if (target === "muni" && id) {
+        } else if (target === "muni" && id !== undefined) {
           setNavTarget({type: "muni", id});
-        } else if (target === "task" && id) {
+        } else if (target === "task" && id !== undefined) {
           setNavTarget({type: "task", id});
-        } else if (target === "project" && id) {
+        } else if (target === "project" && id !== undefined) {
           setNavTarget({type: "project", id});
         } else if (target === "inbox") {
           persistTab("md_tab", "mail", setTab);
