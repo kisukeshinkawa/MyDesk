@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v170-full-fixes"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v171-email-load-fix"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -9743,7 +9743,8 @@ function EmailView({data,setData,currentUser=null}) {
   }, []);
   
   // AIエージェント経由の下書きを取り込む（localStorage 経由）
-  React.useEffect(()=>{
+  // 関数化して、初回マウント時 + 後からの呼び出しに両対応
+  const loadAgentDraft = React.useCallback(() => {
     try {
       const raw = localStorage.getItem("md_pending_email_draft");
       if (!raw) return;
@@ -9780,7 +9781,16 @@ function EmailView({data,setData,currentUser=null}) {
     } catch (e) {
       console.error("[Agent] draft load error:", e);
     }
-  }, []);
+  }, [data]);
+  
+  // 初回マウント時に試す
+  React.useEffect(() => { loadAgentDraft(); }, []);
+  
+  // window 経由で外から呼び出せるようにする（メールタブ遷移後にコールする用）
+  React.useEffect(() => {
+    window.__myDeskLoadAgentDraft = loadAgentDraft;
+    return () => { if (window.__myDeskLoadAgentDraft === loadAgentDraft) delete window.__myDeskLoadAgentDraft; };
+  }, [loadAgentDraft]);
 
   // メール本文から宛先情報を自動抽出
   const extractRecipientFromEmail = (text) => {
@@ -29607,7 +29617,16 @@ export default function App() {
             timestamp: Date.now(),
           }));
           persistTab("md_tab", "mail", setTab);
-          alert("メールタブに遷移しました。新規作成画面で『下書きを読み込む』が表示されたら適用してください。");
+          // 遷移後、EmailView が再マウントされない場合に備えて、
+          // window 経由でロード関数を呼び出し（複数回試す）
+          const tryLoad = (n) => {
+            if (typeof window.__myDeskLoadAgentDraft === "function") {
+              window.__myDeskLoadAgentDraft();
+            } else if (n > 0) {
+              setTimeout(() => tryLoad(n - 1), 200);
+            }
+          };
+          setTimeout(() => tryLoad(10), 100); // 最大2秒間、200msごとに試す
         }
         break;
       }
