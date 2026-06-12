@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v167-name-field-detection"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v168-final-fixes"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -28965,8 +28965,10 @@ function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
     
     // マッチ判定
     const matches = (name) => {
+      if (!name) return false;
       if (nKeywords.length === 0) return false;
       const nName = normalize(name);
+      if (!nName) return false;
       return nKeywords.some(nk => nName.includes(nk) || nk.includes(nName));
     };
     
@@ -28989,57 +28991,43 @@ function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
     
     // 連絡先情報
     const people = [];
-    const seenEmails = new Set();
     const bizCards = data?.businessCards || data?.business_cards || data?.bizCards || [];
     console.log("[Agent] businessCards count:", bizCards.length);
     if (bizCards.length > 0) {
       console.log("[Agent] First businessCard sample (keys):", Object.keys(bizCards[0]));
       console.log("[Agent] First businessCard sample:", bizCards[0]);
-      // 石田カードを探してみる
       const ishidaCard = bizCards.find(c => JSON.stringify(c).includes('石田'));
       if (ishidaCard) {
         console.log("[Agent] Found Ishida card:", ishidaCard);
       }
     }
+    // 名刺は全件 people に追加（重複排除しない、IDは一意）
     bizCards.forEach(b => {
       const em = (b.email || b.mailAddress || b.mail || "").toLowerCase();
-      // 名前の取得を強化: 様々なフィールド名候補を試す
       let nm = b.name || b.fullName || b.displayName || "";
-      // 姓+名の分割形式
       if (!nm) {
         const lastName = b.lastName || b.familyName || b.姓 || b.last_name || b.surname || "";
         const firstName = b.firstName || b.givenName || b.名 || b.first_name || "";
         if (lastName || firstName) nm = `${lastName}${firstName ? " " + firstName : ""}`.trim();
       }
-      // それでもダメなら、ありそうなフィールドを全部試す
-      if (!nm) {
-        for (const k of Object.keys(b)) {
-          const v = b[k];
-          if (typeof v === "string" && v && k.toLowerCase().includes("name") && !k.toLowerCase().includes("company") && !k.toLowerCase().includes("organization")) {
-            nm = v; break;
-          }
-        }
-      }
-      const key = em || nm || b.id;
-      if (key && !seenEmails.has(key)) {
-        seenEmails.add(key);
-        people.push({
-          id: b.id,
-          name: nm,
-          email: em,
-          company: b.company || b.companyName || b.organization || b.会社名 || "",
-          title: b.title || b.position || b.役職 || "",
-        });
-      }
+      people.push({
+        id: b.id,
+        name: nm,
+        email: em,
+        company: b.company || b.companyName || b.organization || b.会社名 || "",
+        title: b.title || b.position || b.役職 || "",
+        source: "businessCard",
+      });
     });
-    // メールの送信者/受信者からも連絡先を抽出（社外メールが豊富な情報源）
+    
+    // メールの送信者/受信者からも連絡先を抽出（名刺にない人物用）
+    const existingEmails = new Set(people.map(p => p.email).filter(Boolean));
     (data?.emails || []).forEach(em => {
       const from = em.from || {};
       const fromEmail = (from.email || "").toLowerCase();
       const fromName = from.name || "";
-      if (fromEmail && !seenEmails.has(fromEmail)) {
-        seenEmails.add(fromEmail);
-        // メール送信者名から会社名を推測
+      if (fromEmail && !existingEmails.has(fromEmail)) {
+        existingEmails.add(fromEmail);
         let company = "";
         if (em.body) {
           const m = em.body.match(/(株式会社[^\s\n\r　]{1,30}|有限会社[^\s\n\r　]{1,30}|[^\s\n\r　]{2,30}(株式会社|有限会社))/);
@@ -29047,32 +29035,40 @@ function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
         }
         people.push({id: `email_${em.id||fromEmail}`, name: fromName, email: fromEmail, company, source: "email"});
       }
-      // 受信者も
       (em.to || []).concat(em.cc || []).forEach(r => {
         const re = (r?.email || "").toLowerCase();
         const rn = r?.name || "";
-        if (re && !seenEmails.has(re)) {
-          seenEmails.add(re);
+        if (re && !existingEmails.has(re)) {
+          existingEmails.add(re);
           people.push({id: `email_to_${re}`, name: rn, email: re, source: "email_recipient"});
         }
       });
     });
     (users || []).forEach(u => {
       const em = (u.email || "").toLowerCase();
-      if (em && !seenEmails.has(em)) {
-        seenEmails.add(em);
+      if (em && !existingEmails.has(em)) {
+        existingEmails.add(em);
         people.push({id: u.id, name: u.name, email: em, type: "user"});
       }
     });
     
     // ユーザー入力に関連する「事前マッチ」を優先候補として抽出
+    // 人物検索は name / email / company / title の全部をチェック
+    const matchPerson = (p) => {
+      if (matches(p.name)) return true;
+      if (p.email && matches(p.email)) return true;
+      if (p.company && matches(p.company)) return true;
+      if (p.title && matches(p.title)) return true;
+      return false;
+    };
+    
     const preMatch = {
       companies: keywords.length ? allCompanies.filter(c => matches(c.name)).slice(0, 30) : [],
       vendors: keywords.length ? allVendors.filter(v => matches(v.name)).slice(0, 30) : [],
       munis: keywords.length ? allMunis.filter(m => matches(m.name)).slice(0, 30) : [],
       tasks: keywords.length ? allTasks.filter(t => matches(t.title)).slice(0, 30) : [],
       projects: keywords.length ? allProjects.filter(p => matches(p.name)).slice(0, 30) : [],
-      people: keywords.length ? people.filter(p => matches(p.name) || matches(p.company) || matches(p.email)).slice(0, 30) : [],
+      people: keywords.length ? people.filter(matchPerson).slice(0, 50) : [],
     };
     console.log("[Agent] pre_match counts:", {
       companies: preMatch.companies.length,
@@ -29083,9 +29079,8 @@ function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
       people: preMatch.people.length,
     });
     if (preMatch.people.length > 0) {
-      console.log("[Agent] matched people:", preMatch.people.slice(0, 5).map(p => `${p.name}(${p.email}/${p.company})`));
+      console.log("[Agent] matched people (all):", preMatch.people.map(p => `${p.name || "(noname)"}(${p.email || ""}/${p.company || ""})`));
     } else if (keywords.length > 0) {
-      // 石田などの検索で見つからない時にデバッグ
       const sampleSize = Math.min(people.length, 5);
       console.log(`[Agent] no people matched. Sample people (${people.length} total):`,
         people.slice(0, sampleSize).map(p => `${p.name || "(no name)"} (${p.email || "no email"}, ${p.company || "no company"})`));
