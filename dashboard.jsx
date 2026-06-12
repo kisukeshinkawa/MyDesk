@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v163-pre-search-and-opus"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v164-people-from-emails"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -28993,6 +28993,31 @@ function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
         seenEmails.add(key);
         people.push({id: b.id, name: nm, email: em, company: b.company || b.companyName, title: b.title});
       }
+    });
+    // メールの送信者/受信者からも連絡先を抽出（社外メールが豊富な情報源）
+    (data?.emails || []).forEach(em => {
+      const from = em.from || {};
+      const fromEmail = (from.email || "").toLowerCase();
+      const fromName = from.name || "";
+      if (fromEmail && !seenEmails.has(fromEmail)) {
+        seenEmails.add(fromEmail);
+        // メール送信者名から会社名を推測
+        let company = "";
+        if (em.body) {
+          const m = em.body.match(/(株式会社[^\s\n\r　]{1,30}|有限会社[^\s\n\r　]{1,30}|[^\s\n\r　]{2,30}(株式会社|有限会社))/);
+          if (m) company = m[0].slice(0, 40);
+        }
+        people.push({id: `email_${em.id||fromEmail}`, name: fromName, email: fromEmail, company, source: "email"});
+      }
+      // 受信者も
+      (em.to || []).concat(em.cc || []).forEach(r => {
+        const re = (r?.email || "").toLowerCase();
+        const rn = r?.name || "";
+        if (re && !seenEmails.has(re)) {
+          seenEmails.add(re);
+          people.push({id: `email_to_${re}`, name: rn, email: re, source: "email_recipient"});
+        }
+      });
     });
     (users || []).forEach(u => {
       const em = (u.email || "").toLowerCase();
