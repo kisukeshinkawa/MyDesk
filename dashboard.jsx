@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v161-agent-search-improved"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v162-ime-fix-and-better-search"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -29149,9 +29149,15 @@ function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={e => {
-            if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+            // IME変換中の Enter は無視（誤送信防止）
+            // e.nativeEvent.isComposing: 日本語IME変換中なら true
+            // e.keyCode === 229: 古いブラウザ用の IME 中Enter判定
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent?.isComposing && e.keyCode !== 229) {
+              e.preventDefault();
+              send();
+            }
           }}
-          placeholder="何でも聞いてください... (Enter で送信)"
+          placeholder="何でも聞いてください... (Enter で送信 / Shift+Enter で改行 / IME確定は安全)"
           rows={1}
           style={{
             flex: 1,
