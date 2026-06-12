@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v171-email-load-fix"; // ビルド識別子
+const MYDESK_BUILD = "2026-06-12-v172-emailtab-beenet-graph"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -28317,6 +28317,129 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
         );
       })()}
 
+      {/* bee-net: DUSTALK と同じ PERFORMANCE OVERVIEW + MONTHLY TREND グラフ */}
+      {sys==="beenet" && (()=>{
+        const curYear = mk.split("-")[0];
+        const months = Array.from({length:12},(_,i)=>`${curYear}-${String(i+1).padStart(2,"0")}`);
+        const md = months.map(m=>({...BEENET_DEF, ...(sysData[m]||{})}));
+        const curIdx = parseInt(mk.split("-")[1],10)-1;
+        const ACC = C.accent;
+        const POS = "#10b981", NEG = "#ef4444";
+        // 流通額=月次フロー（累計線が意味あり）、件数系=スナップショット（線は推移＝そのまま）
+        const metrics = [
+          {id:"bn_sales",    label:"流通額",     sub:"Distribution", get:d=>d.salesAmount||0, money:true, snapshot:false},
+          {id:"bn_emitters", label:"排出事業者", sub:"Emitters",     get:d=>d.emitters||0,                snapshot:true},
+          {id:"bn_vendors",  label:"委託業者",   sub:"Vendors",      get:d=>d.vendors||0,                 snapshot:true},
+        ];
+        const fmtNum = (v,money)=>{
+          const n=Math.round(Number(v)||0);
+          if(money){ if(n>=100000000)return "¥"+(n/100000000).toFixed(2)+"億"; if(n>=10000)return "¥"+(n/10000).toFixed(1)+"万"; return "¥"+n.toLocaleString(); }
+          return n.toLocaleString();
+        };
+        const fmtDelta = (v,money)=>{ const n=Math.round(Number(v)||0); const a=Math.abs(n); if(money){ if(a>=10000)return (a/10000).toFixed(1)+"万"; return a.toLocaleString(); } return a.toLocaleString(); };
+        const kpiVals = metrics.map(mt=>{
+          const monthlyArr = md.map(mt.get);
+          const curVal = monthlyArr[curIdx]||0;
+          const delta = curVal - (curIdx>0?(monthlyArr[curIdx-1]||0):0);
+          return {...mt, curVal, delta, monthlyArr};
+        });
+        const sel = kpiVals.find(m=>m.id===kpiMetric) || kpiVals[0];
+        let running=0;
+        const series = sel.monthlyArr.map((v,i)=>{
+          running+=v;
+          const lineVal = sel.snapshot ? v : running; // スナップショットは線＝当月値、フローは累計
+          return {label:`${i+1}`, monthly:v, line:lineVal, isCur:i===curIdx, isFuture:i>curIdx};
+        });
+        const sparkPath = (arr,w=120,h=28)=>{ const max=Math.max(...arr,1); return arr.map((v,i)=>{ const x=(i/(arr.length-1))*w; const y=h-(v/max)*(h-2)-1; return `${i===0?"M":"L"}${x.toFixed(1)},${y.toFixed(1)}`; }).join(" "); };
+        const W=720, H=320, PL=58, PR=18, PT=22, PB=48, innerW=W-PL-PR, innerH=H-PT-PB;
+        const maxMonthly = Math.max(...series.map(p=>p.monthly), 1);
+        const maxLine = Math.max(...series.map(p=>p.line), 1);
+        const barSlot = innerW/12;
+        const linePts = series.map((p,i)=>{ const x=PL+i*barSlot+barSlot/2; const y=PT+innerH-(p.line/maxLine)*innerH; return {x,y,...p}; });
+        const linePath = linePts.filter(p=>!p.isFuture).map((p,i)=>`${i===0?"M":"L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+        const lineLabel = sel.snapshot ? "推移" : "累計";
+        return (
+          <>
+            <div style={{background:"white",borderRadius:"14px",padding:"1.5rem 1.25rem 1.5rem",border:`1px solid ${C.border}`,boxShadow:"0 1px 2px rgba(0,0,0,0.03)",marginBottom:"1rem"}}>
+              <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginBottom:"1.25rem",flexWrap:"wrap",gap:"0.5rem"}}>
+                <div>
+                  <div style={{fontSize:"0.68rem",fontWeight:700,letterSpacing:"0.12em",color:C.textMuted,textTransform:"uppercase",marginBottom:"0.3rem"}}>Performance overview</div>
+                  <div style={{fontSize:"1.55rem",fontWeight:700,color:C.text,letterSpacing:"-0.02em",lineHeight:1}}>{curYear}<span style={{fontSize:"0.85rem",fontWeight:500,color:C.textSub,marginLeft:"0.5rem"}}>年間実績</span></div>
+                </div>
+                <div style={{fontSize:"0.78rem",color:C.textSub,fontWeight:700,padding:"0.35rem 0.7rem",background:ACC+"0d",borderRadius:"6px"}}>当月 · {monthLabel(mk)}</div>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:0,marginBottom:"1.75rem",border:`1px solid ${C.borderLight}`,borderRadius:"12px",overflow:"hidden"}}>
+                {kpiVals.map((k,idx)=>{
+                  const active=k.id===sel.id;
+                  const isPos = k.delta>0, isNeg = k.delta<0;
+                  return (
+                    <button key={k.id} onClick={()=>setKpiMetric(k.id)}
+                      style={{textAlign:"left",cursor:"pointer",fontFamily:"inherit",background:active?ACC+"0d":"white",border:"none",borderRight:idx<kpiVals.length-1?`1px solid ${C.borderLight}`:"none",padding:"1.15rem 1.2rem 1rem",position:"relative",transition:"background 0.15s",overflow:"hidden"}}>
+                      {active && <div style={{position:"absolute",top:0,left:0,right:0,height:3,background:ACC}}/>}
+                      <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginBottom:"0.7rem"}}>
+                        <span style={{width:7,height:7,borderRadius:"50%",background:active?ACC:C.borderLight,display:"inline-block"}}/>
+                        <span style={{fontSize:"0.7rem",fontWeight:700,letterSpacing:"0.04em",color:active?ACC:C.textSub}}>{k.label}</span>
+                      </div>
+                      <div style={{fontSize:"1.85rem",fontWeight:800,color:C.text,lineHeight:1,letterSpacing:"-0.035em",fontVariantNumeric:"tabular-nums",marginBottom:"0.5rem"}}>{fmtNum(k.curVal,k.money)}</div>
+                      <div style={{display:"flex",alignItems:"center",gap:"0.45rem",fontSize:"0.78rem",fontVariantNumeric:"tabular-nums"}}>
+                        <span style={{display:"inline-flex",alignItems:"center",gap:"0.15rem",fontWeight:800,color:isPos?POS:isNeg?NEG:C.textMuted,padding:"0.15rem 0.4rem",borderRadius:"5px",background:isPos?POS+"15":isNeg?NEG+"15":C.bg,fontSize:"0.75rem"}}>
+                          <span style={{fontSize:"0.85rem",lineHeight:1}}>{isPos?"↑":isNeg?"↓":"−"}</span>
+                          {fmtDelta(k.delta,k.money)}
+                        </span>
+                        <span style={{color:C.textMuted,fontSize:"0.7rem",fontWeight:600}}>前月比</span>
+                      </div>
+                      <svg viewBox="0 0 120 32" preserveAspectRatio="none" style={{width:"100%",height:30,marginTop:"0.7rem",display:"block"}}>
+                        <path d={sparkPath(k.monthlyArr,120,32)} fill="none" stroke={active?ACC:C.textMuted+"cc"} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round"/>
+                        {(()=>{ const max=Math.max(...k.monthlyArr,1); const v=k.monthlyArr[curIdx]||0; const x=(curIdx/11)*120; const y=32-(v/max)*(32-2)-1; return <circle cx={x} cy={y} r={3.5} fill={active?ACC:C.text}/>; })()}
+                      </svg>
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"1rem",flexWrap:"wrap",gap:"0.5rem"}}>
+                <div>
+                  <div style={{fontSize:"0.68rem",fontWeight:700,letterSpacing:"0.12em",color:C.textMuted,textTransform:"uppercase",marginBottom:"0.25rem"}}>Monthly trend</div>
+                  <div style={{fontSize:"1.05rem",fontWeight:700,color:C.text,letterSpacing:"-0.01em"}}>{sel.label}<span style={{fontSize:"0.78rem",fontWeight:500,color:C.textSub,marginLeft:"0.55rem"}}>月次推移 ＋ 年間{lineLabel}</span></div>
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:"0.9rem",fontSize:"0.75rem",color:C.textSub,fontWeight:700}}>
+                  <span style={{display:"flex",alignItems:"center",gap:"0.35rem"}}><span style={{display:"inline-block",width:12,height:12,background:ACC,borderRadius:3}}/>月次</span>
+                  <span style={{display:"flex",alignItems:"center",gap:"0.35rem"}}><span style={{display:"inline-block",width:16,height:3,background:ACC,borderRadius:2}}/>{lineLabel}</span>
+                </div>
+              </div>
+              <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{overflow:"visible",display:"block"}}>
+                {[0,0.25,0.5,0.75,1].map(r=>{ const y=PT+innerH*(1-r); return <line key={r} x1={PL} y1={y} x2={W-PR} y2={y} stroke={r===0||r===1?C.border:C.borderLight} strokeWidth={r===0||r===1?1.5:1} strokeDasharray={r===0||r===1?"":"3 4"}/>; })}
+                {[0,0.25,0.5,0.75,1].map(r=>{ const y=PT+innerH*(1-r); const val = Math.round(maxLine*r); return <text key={r} x={PL-10} y={y+4} textAnchor="end" fontSize={13} fill={C.textSub} fontWeight={500} fontVariantNumeric="tabular-nums">{fmtNum(val,sel.money).replace("¥","")}</text>; })}
+                {series.map((p,i)=>{
+                  const bh=Math.max(0,(p.monthly/maxMonthly)*innerH*0.82);
+                  const x=PL+i*barSlot+barSlot*0.18, bw=barSlot*0.64, y=PT+innerH-bh;
+                  const fill=p.isFuture?C.borderLight:p.isCur?ACC:ACC+"99";
+                  return (
+                    <g key={i}>
+                      {bh>0&&<rect x={x} y={y} width={bw} height={bh} fill={fill} rx={3}/>}
+                      {bh>16 && !p.isFuture && (
+                        <text x={PL+i*barSlot+barSlot/2} y={y-6} textAnchor="middle" fontSize={11} fill={p.isCur?ACC:C.textSub} fontWeight={p.isCur?800:600} fontVariantNumeric="tabular-nums">{fmtNum(p.monthly,sel.money).replace("¥","")}</text>
+                      )}
+                      <rect x={PL+i*barSlot+1} y={H-PB+6} width={barSlot-2} height={20} fill={p.isCur?ACC+"15":"transparent"} rx={4}/>
+                      <text x={PL+i*barSlot+barSlot/2} y={H-PB+21} textAnchor="middle" fontSize={13} fill={p.isCur?ACC:C.textSub} fontWeight={p.isCur?800:600} fontVariantNumeric="tabular-nums">{p.label}月</text>
+                    </g>
+                  );
+                })}
+                {linePath&&<path d={linePath} fill="none" stroke={ACC} strokeWidth={2.8} strokeLinejoin="round" strokeLinecap="round"/>}
+                {linePts.filter(p=>!p.isFuture).map((p,i)=>(
+                  <circle key={i} cx={p.x} cy={p.y} r={p.isCur?5.5:3.2} fill="white" stroke={ACC} strokeWidth={p.isCur?3:2}/>
+                ))}
+                {(()=>{ const cp=linePts[curIdx]; if(!cp||cp.isFuture)return null; const txt=fmtNum(cp.line,sel.money); const w=Math.max(60,txt.length*9.5); return (
+                  <g>
+                    <rect x={cp.x-w/2} y={cp.y-30} width={w} height={22} rx={5} fill={ACC}/>
+                    <text x={cp.x} y={cp.y-15} textAnchor="middle" fontSize={13} fontWeight={800} fill="white" fontVariantNumeric="tabular-nums">{txt}</text>
+                  </g>
+                ); })()}
+              </svg>
+            </div>
+          </>
+        );
+      })()}
+
       {/* Data panel */}
       {(
         <div style={{background:"white",borderRadius:"1rem",padding:"1.25rem",border:`1px solid ${C.border}`,boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
@@ -29546,7 +29669,7 @@ export default function App() {
         } else if (target === "project" && id !== undefined) {
           setNavTarget({type: "project", id});
         } else if (target === "inbox") {
-          persistTab("md_tab", "mail", setTab);
+          persistTab("md_tab", "email", setTab);
         } else if (target === "sales") {
           persistTab("md_tab", "sales", setTab);
         } else if (target === "dashboard") {
@@ -29616,7 +29739,7 @@ export default function App() {
             linkedEntityId: params.linked_entity_id,
             timestamp: Date.now(),
           }));
-          persistTab("md_tab", "mail", setTab);
+          persistTab("md_tab", "email", setTab);
           // 遷移後、EmailView が再マウントされない場合に備えて、
           // window 経由でロード関数を呼び出し（複数回試す）
           const tryLoad = (n) => {
