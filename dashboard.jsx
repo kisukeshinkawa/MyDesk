@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-06-12-v172-emailtab-beenet-graph"; // ビルド識別子
+const MYDESK_BUILD = "2026-06-12-v173-strip-ai-signature"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -9742,6 +9742,26 @@ function EmailView({data,setData,currentUser=null}) {
     window.__myDeskEmailDraft = null; // 取り込み後にクリア（連打防止）
   }, []);
   
+  // AIが本文末尾に勝手に付けた署名を除去（正式な署名は送信時に自動付加されるため）
+  const stripAgentSignature = React.useCallback((body) => {
+    if (!body) return body;
+    const myName = (currentUser?.name || "").trim();
+    const myFlat = myName.replace(/[\s\u3000]/g, "");
+    const sigMarkers = ["西原商事","ニシハラ","DUSTALK","ダストーク","事業部","ホールディング",
+      "TEL","FAX","携帯","E-mail","Email","〒","フリーダイヤル","■","http://","https://"];
+    const looksSig = (raw) => {
+      const t = (raw || "").trim();
+      if (!t) return true; // 末尾の空行は許容（後で除去）
+      if (sigMarkers.some(m => t.includes(m))) return true;
+      if (myFlat && t.replace(/[\s\u3000]/g, "") === myFlat) return true; // 氏名だけの行
+      return false;
+    };
+    const lines = body.replace(/\r/g, "").split("\n");
+    let end = lines.length;
+    while (end > 0 && looksSig(lines[end - 1])) end--;
+    return lines.slice(0, end).join("\n").trimEnd();
+  }, [currentUser]);
+
   // AIエージェント経由の下書きを取り込む（localStorage 経由）
   // 関数化して、初回マウント時 + 後からの呼び出しに両対応
   const loadAgentDraft = React.useCallback(() => {
@@ -9764,7 +9784,7 @@ function EmailView({data,setData,currentUser=null}) {
       }
       if (draft.subject) setSendSubject(draft.subject);
       if (draft.body) {
-        setGenerated(draft.body);
+        setGenerated(stripAgentSignature(draft.body));
         setPhase("edit"); // 直接編集画面に
       }
       // 関連エンティティから会社・担当者を取得
@@ -9781,7 +9801,7 @@ function EmailView({data,setData,currentUser=null}) {
     } catch (e) {
       console.error("[Agent] draft load error:", e);
     }
-  }, [data]);
+  }, [data, stripAgentSignature]);
   
   // 初回マウント時に試す
   React.useEffect(() => { loadAgentDraft(); }, []);
