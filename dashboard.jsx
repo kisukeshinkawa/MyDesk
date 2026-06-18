@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v172-save-reliability"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v173-instant-save"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -270,7 +270,7 @@ let __saveTimer = null;
 let __pendingSaveData = null;
 let __isCurrentlySaving = false;
 let __lastSavedHash = "";
-const SAVE_DEBOUNCE_MS = 500;  // 1500→500: より早く保存
+const SAVE_DEBOUNCE_MS = 100;  // 即時保存に近い（100ms）
 
 // ─── 案内状の変数差し込み: {{QR_CODE}}, {{VENDOR_NAME}}, {{DATE}} 等を置換 ─────
 function renderAnnouncementTemplate(html, vendor, qrImgUrl) {
