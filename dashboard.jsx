@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v173-instant-save"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v174-prevent-data-loss"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -433,7 +433,20 @@ function _quickHash(s) {
 async function _processSaveQueue() {
   if (__isCurrentlySaving) return;
   while (__pendingSaveData) {
-    const toSave = __pendingSaveData;
+    // ★ closure 問題対策：保存直前に最新ステート取得
+    // 複数の setData が連続実行された場合、各 setData の closure は古い data を見ている
+    // window.__myDeskGetData() で常に最新のステートを取得することで、変更の取りこぼしを防ぐ
+    let toSave = __pendingSaveData;
+    try {
+      if (typeof window !== "undefined" && typeof window.__myDeskGetData === "function") {
+        const latest = window.__myDeskGetData();
+        if (latest && typeof latest === "object" && Object.keys(latest).length > 0) {
+          toSave = latest;
+        }
+      }
+    } catch (e) {
+      console.warn("[MyDesk] getLatestData failed, using cached pending:", e);
+    }
     __pendingSaveData = null;
     __isCurrentlySaving = true;
     try {
@@ -1327,29 +1340,40 @@ function addNotif(data, {type, title, body, toUserIds=[], fromUserId=null, entit
 }
 
 async function loadData() {
+  // ★ 重要: ネット失敗時は INIT を返さない。失敗を明示的に返す。
+  // 過去のバージョンでは失敗時に INIT を返していたが、これが「データ消失」の原因だった：
+  //   1. ネット切断 → loadData が INIT を返す → 画面が空っぽに見える
+  //   2. ユーザーが「あれ消えた」と思って再入力 → 空データに変更が乗る
+  //   3. ネット回復 → 空に近い data でサーバーを上書き → 既存データ消失
+  // この修正により、ネット失敗時は loadData が { error: true } を返し、
+  // 呼び出し元が「ロード失敗」を検知してリトライ or エラー表示できる。
   try {
     const result = await sbGet("main");
     if(result && result._rawData !== undefined) {
       const raw = result._rawData;
-      // raw がオブジェクトで、INIT のキーを持つ本物のデータか確認
       if(raw && typeof raw === "object" && !Array.isArray(raw)) {
         const merged = {...INIT, ...raw};
-        // 縮退ガード用：ロード成功した「正常データ」を記憶
         __myDeskLastKnownGoodData = merged;
         console.log(`[MyDesk] loadData OK — quotes: ${(merged.quotes||[]).length}件, companies: ${(merged.companies||[]).length}, vendors: ${(merged.vendors||[]).length}, munis: ${(merged.municipalities||[]).length}, tasks: ${(merged.tasks||[]).length}, updated_at: ${result._updatedAt}`);
         return { data: merged, updated_at: result._updatedAt };
       }
     }
-    console.warn("[MyDesk] loadData: no valid data in response, using INIT");
+    console.warn("[MyDesk] loadData: no valid data in response, marking error");
+    return { error: true, errorType: "empty_response", updated_at: null };
   } catch(e) {
     console.error("[MyDesk] loadData failed:", e);
+    return { error: true, errorType: "network", errorMessage: String(e?.message || e), updated_at: null };
   }
-  return { data: INIT, updated_at: null };
 }
 // 最後にロード/保存に成功した「正常データ」を記憶（縮退検知用）
 let __myDeskLastKnownGoodData = null;
 
 async function saveData(d) {
+  // ★ ロード失敗中は絶対に保存しない（既存データを INIT で上書きするのを防ぐ）
+  if (typeof window !== "undefined" && window.__myDeskLoadError) {
+    console.warn("[MyDesk] saveData BLOCKED — load error state, refusing to save", window.__myDeskLoadError);
+    return false;
+  }
   // ── データ保護ガード ──────────────────────────────────────────────
   if (!d || typeof d !== "object" || Array.isArray(d)) {
     console.error("[MyDesk] saveData rejected invalid data", d); return;
@@ -5098,10 +5122,17 @@ function AuthScreen({onLogin}) {
       await saveUsers(newUsers);
       // 全ユーザーに新規登録通知を送信（データ上）
       const existingResult = await loadData();
-      const existingData = existingResult?.data || INIT; // ← .data を正しく取り出す
-      const notif={id:Date.now()+Math.random(),type:"new_user",title:`👋 新規ユーザーが登録されました：${nu.name}`,body:nu.email,toUserId:"__all__",read:false,date:new Date().toISOString()};
-      const ndWithNotif={...existingData,notifications:[...(existingData.notifications||[]),notif]};
-      scheduleSaveData(ndWithNotif);
+      // ★ ロード失敗時は通知追加をスキップ（既存データを INIT で上書きしない）
+      if (existingResult?.error) {
+        console.error("[MyDesk] 新規登録通知スキップ — loadData失敗:", existingResult.errorType);
+      } else {
+        const existingData = existingResult?.data;
+        if (existingData && typeof existingData === "object") {
+          const notif={id:Date.now()+Math.random(),type:"new_user",title:`👋 新規ユーザーが登録されました：${nu.name}`,body:nu.email,toUserId:"__all__",read:false,date:new Date().toISOString()};
+          const ndWithNotif={...existingData,notifications:[...(existingData.notifications||[]),notif]};
+          scheduleSaveData(ndWithNotif);
+        }
+      }
       await sendEmail({
         toEmail: f.email.trim(), toName: composedName,
         subject: "【MyDesk】登録が完了しました",
@@ -29935,9 +29966,36 @@ export default function App() {
     };
   },[]);
 
+  // 初期ロード状態
+  const [loadError, setLoadError] = React.useState(null);
+  const [loadRetryCount, setLoadRetryCount] = React.useState(0);
+  // ★ ロード失敗中は保存をブロック（既存データを INIT で上書きしない）
+  React.useEffect(() => { window.__myDeskLoadError = loadError; }, [loadError]);
+
   useEffect(()=>{const session = getSession();
     Promise.all([loadData(), loadUsers()]).then(([result,u])=>{
-      const d = (result && result.data) ? result.data : INIT;
+      // ★ ロード失敗時はアプリを起動せず、エラー画面を出す
+      // 過去のバージョンでは INIT(空) で起動してしまい、その状態で操作したら
+      // 既存データを上書きする「データ消失バグ」があった。
+      if (result?.error) {
+        console.error("[MyDesk] 初期データ読み込み失敗:", result.errorType, result.errorMessage);
+        setLoadError({
+          type: result.errorType || "unknown",
+          message: result.errorMessage || "ネットワーク接続を確認してください",
+        });
+        setUsers(u);
+        // ローディング完了はマークしない（loadError UI を表示する）
+        setLoaded(true);
+        return;
+      }
+      const d = (result && result.data) ? result.data : null;
+      if (!d) {
+        // 想定外: data が無い場合もエラー扱い
+        console.error("[MyDesk] 初期データなし");
+        setLoadError({ type: "empty", message: "サーバーからデータを取得できませんでした" });
+        setUsers(u); setLoaded(true);
+        return;
+      }
       if(result?.updated_at) window.__myDeskLastSaveAt = result.updated_at;
       // 重複IDを起動時に修復（CSVインポートの不具合で発生した場合）
       const seenM = new Set(); let mChanged = false;
@@ -29953,6 +30011,7 @@ export default function App() {
       const fixed = (mChanged||vChanged) ? {...d,municipalities:fixedM,vendors:fixedV} : d;
       if(mChanged||vChanged) scheduleSaveData(fixed);
       setData(fixed); setUsers(u);
+      setLoadError(null); // ロード成功
       if (session) {
         const fresh = u.find(x=>x.id===session.id);
         if (fresh) { setCurrentUser(fresh); setSession(fresh); }
@@ -29961,10 +30020,10 @@ export default function App() {
       setLoaded(true);
     }).catch(err => {
       console.error("[MyDesk] 初期データ読み込みエラー:", err);
-      setData(INIT);
+      setLoadError({ type: "exception", message: String(err?.message || err) });
       setLoaded(true);
     });
-  },[]);
+  },[loadRetryCount]);
 
   // ── Supabase リアルタイム同期 + ブラウザ通知 ────────────────────────────
   // 最後に確認した通知IDを追跡（ポーリングで新着検出用）
@@ -29980,6 +30039,12 @@ export default function App() {
     const poll = async () => {
       try {
         const [result, u] = await Promise.all([loadData(), loadUsers()]);
+        // ★ ロード失敗時はポーリングをスキップ（既存データを守る）
+        if (result?.error) {
+          console.warn("[MyDesk] poll skipped — loadData error:", result.errorType);
+          setUsers(u);
+          return;
+        }
         const d = (result && result.data) ? result.data : null;
         const serverUpdatedAt = result?.updated_at;
         if(!d) { setUsers(u); return; } // データ取得失敗時はスキップ
@@ -30003,6 +30068,11 @@ export default function App() {
         }
         // 自分が最後にsaveした時刻との比較で上書き判定
         const timeSinceSave = Date.now() - (window.__myDeskLastSave || 0);
+        // ★保存中 or 直近保存(10秒以内)はポーリングをスキップ（自分の変更を守る）
+        if (__isCurrentlySaving || __pendingSaveData || timeSinceSave < 10000) {
+          console.log("[MyDesk] poll skipped — recent save detected, protecting local changes");
+          setUsers(u); return;
+        }
         // サーバーのupdated_atが自分の最終保存より新しい（他ユーザーの更新）場合のみ反映
         // または自分の保存から十分時間が経過している場合は反映
         const serverIsNewer = (() => {
@@ -30010,18 +30080,52 @@ export default function App() {
           if(serverUpdatedAt && window.__myDeskLastSaveAt) {
             return serverUpdatedAt > window.__myDeskLastSaveAt;
           }
-          // 自分がsaveしてから5秒以上経過、またはまだ一度もsaveしていない
+          // 自分がsaveしてから30秒以上経過、またはまだ一度もsaveしていない
           if(!window.__myDeskLastSave) return true; // 初回
-          return timeSinceSave > 15000;
+          return timeSinceSave > 30000;  // 15秒→30秒に延長（保護期間拡大）
         })();
         if(serverIsNewer) {
           // 常にローカルの「失われた可能性のあるデータ」をサーバーデータにマージ
           const localData2 = dataRef.current || {};
-          // 各配列について: サーバーにないローカルアイテムを追加（IDベースマージ）
+          // 各配列について: ID ベースでマージ
+          // - サーバーにあってローカルにない → 追加
+          // - ローカルにあってサーバーにない → 保持（追加）
+          // - 両方にある → 更新日時の新しい方を採用（ローカル優先：自分が編集中の可能性）
           const mergeArrays = (serverArr, localArr) => {
-            const serverIds = new Set((serverArr||[]).map(x=>String(x.id)));
-            const localOnly = (localArr||[]).filter(x=>!serverIds.has(String(x.id)));
-            return localOnly.length > 0 ? [...(serverArr||[]), ...localOnly] : (serverArr||[]);
+            const sList = serverArr || [];
+            const lList = localArr  || [];
+            const lMap = new Map(lList.map(x => [String(x.id), x]));
+            const sMap = new Map(sList.map(x => [String(x.id), x]));
+            const result = [];
+            const seen = new Set();
+            // サーバー側のレコードを処理
+            for (const s of sList) {
+              const sId = String(s.id);
+              const l = lMap.get(sId);
+              if (!l) {
+                // ローカルにない → サーバーのまま追加
+                result.push(s);
+              } else {
+                // 両方にある → updatedAt 比較。ローカルが新しいならローカル優先
+                const lTs = l.updatedAt || l.lastEditedAt || l.modifiedAt || "";
+                const sTs = s.updatedAt || s.lastEditedAt || s.modifiedAt || "";
+                if (lTs && sTs && lTs > sTs) {
+                  result.push(l); // ローカルが新しい
+                } else if (lTs && !sTs) {
+                  result.push(l); // ローカルに更新あり、サーバーには未反映
+                } else {
+                  result.push(s); // サーバー優先（または同時）
+                }
+              }
+              seen.add(sId);
+            }
+            // ローカル独自（サーバーにない）レコードを追加
+            for (const l of lList) {
+              if (!seen.has(String(l.id))) {
+                result.push(l);
+              }
+            }
+            return result;
           };
           // 通知のマージ：既読状態と削除状態を競合なく統合する
           // - 両方にある: 既読フラグはOR (どちらかで読んでいたら既読)、ローカルでdismissedなら除外
@@ -30439,6 +30543,28 @@ export default function App() {
     <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:"1rem"}}>
       <div style={{width:44,height:44,borderRadius:"50%",border:`3px solid ${C.accent}`,borderTopColor:"transparent",animation:"spin 0.8s linear infinite"}}/>
       <div style={{color:C.textSub,fontSize:"0.9rem",fontWeight:600}}>読み込み中...</div>
+    </div>
+  );
+
+  // ★ ロード失敗時：エラー画面を出してリトライさせる（INIT で起動させない）
+  if (loadError) return (
+    <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:"1.2rem",padding:"2rem"}}>
+      <div style={{fontSize:"3rem"}}>📡</div>
+      <div style={{color:"#dc2626",fontSize:"1.1rem",fontWeight:700}}>データの読み込みに失敗しました</div>
+      <div style={{color:C.textSub,fontSize:"0.85rem",textAlign:"center",maxWidth:"400px"}}>
+        ネットワーク接続を確認してください。<br/>
+        <small style={{opacity:0.7,fontSize:"0.75rem",display:"block",marginTop:"0.5rem"}}>
+          エラータイプ: {loadError.type}<br/>
+          {loadError.message}
+        </small>
+      </div>
+      <div style={{color:"#b91c1c",fontSize:"0.78rem",fontWeight:600,textAlign:"center",maxWidth:"400px",padding:"0.6rem 0.8rem",background:"#fef2f2",borderRadius:6,border:"1px solid #fecaca"}}>
+        ⚠️ この状態では絶対に編集しないでください。<br/>データが消えるリスクがあります。
+      </div>
+      <button onClick={()=>{setLoaded(false); setLoadError(null); setLoadRetryCount(c=>c+1);}}
+        style={{padding:"0.7rem 2rem",borderRadius:8,background:C.accent,color:"white",border:"none",cursor:"pointer",fontWeight:700,fontSize:"0.9rem",fontFamily:"inherit"}}>
+        🔄 再読み込み
+      </button>
     </div>
   );
 
