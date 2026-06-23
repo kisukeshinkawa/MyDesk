@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v175-file-upload-improved"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v176-multi-file-propagation"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -4265,39 +4265,75 @@ function FileSection({ files=[], onAdd, onDelete, currentUserId, entityType, ent
   const fileInputRef = React.useRef();
 
   const handleFile = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 50 * 1024 * 1024) { setError("50MB以下のファイルを選択してください"); return; }
-    setUploading(true); setError("");
-    try {
-      const result = await uploadFileToSupabase(file, entityType || "tasks", entityId || currentUserId || "shared");
-      // AI で良い感じのファイル名を自動生成（拡張子は元のを保持）
-      const ext = file.name.includes(".") ? "." + file.name.split(".").pop() : "";
-      const today = new Date().toISOString().slice(0,10).replace(/-/g,"");
-      const fallback = `${(entityName||"資料").slice(0,20)}_${file.name.replace(ext,"").slice(0,20)}_${today}`;
-      let displayName = file.name;
-      try {
-        const aiName = await Promise.race([
-          generateSmartFileName({
-            original_filename: file.name,
-            entity_type: entityType,
-            entity_name: entityName || "",
-            file_type: file.type,
-            upload_date: new Date().toISOString().slice(0,10),
-          }, fallback, file),
-          new Promise((_, reject) => setTimeout(() => reject(new Error("AI命名タイムアウト")), 8000)),  // 8秒タイムアウト
-        ]);
-        if (aiName) displayName = aiName + ext;
-      } catch (aiErr) {
-        console.warn("[FileUpload] AI命名失敗（元のファイル名を使用）:", aiErr?.message || aiErr);
-        // AI生成失敗時は元のファイル名のまま（致命的でないのでアップロード続行）
+    const fileList = Array.from(e.target.files || []);
+    if (fileList.length === 0) return;
+    
+    // 最大10個まで
+    if (fileList.length > 10) {
+      setError(`一度にアップロードできるのは10個までです（${fileList.length}個選択されました）`);
+      if(fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+    
+    // サイズチェック（個別に）
+    for (const f of fileList) {
+      if (f.size > 50 * 1024 * 1024) {
+        setError(`${f.name}: 50MB以下のファイルを選択してください`);
+        if(fileInputRef.current) fileInputRef.current.value = "";
+        return;
       }
-      onAdd({ ...result, name: displayName, originalName: file.name, uploadedBy: currentUserId });
-      console.log("[FileUpload] ✅ ファイル追加完了:", displayName);
-    } catch (err) {
-      console.error("[FileUpload] ❌ エラー:", err);
-      setError("アップロード失敗: " + (err?.message || String(err)));
-    } finally { setUploading(false); if(fileInputRef.current) fileInputRef.current.value = ""; }
+    }
+    
+    setUploading(true); setError("");
+    const uploadedFiles = [];
+    const failedFiles = [];
+    
+    for (let i = 0; i < fileList.length; i++) {
+      const file = fileList[i];
+      try {
+        console.log(`[FileUpload] (${i+1}/${fileList.length}) ${file.name} を処理中...`);
+        const result = await uploadFileToSupabase(file, entityType || "tasks", entityId || currentUserId || "shared");
+        // AI で良い感じのファイル名を自動生成（拡張子は元のを保持）
+        const ext = file.name.includes(".") ? "." + file.name.split(".").pop() : "";
+        const today = new Date().toISOString().slice(0,10).replace(/-/g,"");
+        const fallback = `${(entityName||"資料").slice(0,20)}_${file.name.replace(ext,"").slice(0,20)}_${today}`;
+        let displayName = file.name;
+        try {
+          const aiName = await Promise.race([
+            generateSmartFileName({
+              original_filename: file.name,
+              entity_type: entityType,
+              entity_name: entityName || "",
+              file_type: file.type,
+              upload_date: new Date().toISOString().slice(0,10),
+            }, fallback, file),
+            new Promise((_, reject) => setTimeout(() => reject(new Error("AI命名タイムアウト")), 8000)),
+          ]);
+          if (aiName) displayName = aiName + ext;
+        } catch (aiErr) {
+          console.warn(`[FileUpload] AI命名失敗（${file.name}、元のファイル名を使用）:`, aiErr?.message);
+        }
+        uploadedFiles.push({ ...result, name: displayName, originalName: file.name, uploadedBy: currentUserId });
+      } catch (err) {
+        console.error(`[FileUpload] ❌ ${file.name} アップロード失敗:`, err);
+        failedFiles.push({ name: file.name, error: err?.message || String(err) });
+      }
+    }
+    
+    // 成功したファイルをまとめて追加
+    if (uploadedFiles.length > 0) {
+      onAdd(uploadedFiles.length === 1 ? uploadedFiles[0] : uploadedFiles);
+      console.log(`[FileUpload] ✅ ${uploadedFiles.length}件 完了`);
+    }
+    
+    // 失敗があれば表示
+    if (failedFiles.length > 0) {
+      const msg = failedFiles.map(f => `${f.name}: ${f.error}`).join("\n");
+      setError(`アップロード失敗 (${failedFiles.length}件):\n${msg}`);
+    }
+    
+    setUploading(false);
+    if(fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const fmt = (bytes) => bytes > 1024*1024 ? `${(bytes/1024/1024).toFixed(1)}MB` : `${(bytes/1024).toFixed(0)}KB`;
@@ -4330,6 +4366,11 @@ function FileSection({ files=[], onAdd, onDelete, currentUserId, entityType, ent
                     {f._source.kind==="task"?"📋 タスク":"📁 プロジェクト"}: {(f._source.title||"").slice(0,20)}
                   </span>
                 )}
+                {f._propagatedFrom && !f._source && (
+                  <span style={{marginLeft:6,padding:"0.05rem 0.35rem",borderRadius:4,background:f._propagatedFrom==="task"?"#dbeafe":"#ede9fe",color:f._propagatedFrom==="task"?"#1d4ed8":"#7c3aed",fontWeight:700,fontSize:"0.6rem"}}>
+                    {f._propagatedFrom==="task"?"📋 タスクから":"📁 プロジェクトから"}
+                  </span>
+                )}
               </div>
             </div>
             {!readOnly && !f._source && (
@@ -4350,8 +4391,8 @@ function FileSection({ files=[], onAdd, onDelete, currentUserId, entityType, ent
                 <span style={{width:14,height:14,borderRadius:"50%",border:`2px solid ${C.accentDark}`,borderTopColor:"transparent",animation:"spin 0.8s linear infinite",display:"inline-block"}}/>
                 ファイルをアップロード中...
               </span>
-            : "📎 ファイルを追加（最大20MB）"}
-          <input ref={fileInputRef} type="file" onChange={handleFile} disabled={uploading} style={{display:"none"}}/>
+            : "📎 ファイルを追加（最大10個、各50MBまで）"}
+          <input ref={fileInputRef} type="file" multiple onChange={handleFile} disabled={uploading} style={{display:"none"}}/>
         </label>
       )}
     </div>
@@ -6130,21 +6171,41 @@ function DocumentSection({entityType, entityId, entityName, files, currentUserId
       
       {/* ファイルタブ */}
       {subTab === "files" && (()=>{
-        // 関連タスク/プロジェクトの資料を集める
+        // 関連タスク/プロジェクトの資料を集める（プロジェクト→営業先紐付けでも集約）
         const linkedTaskFiles = (data?.tasks||[])
           .filter(t => String(t.salesRef?.id)===String(entityId))
           .flatMap(t => (t.files||[]).map(f => ({...f, _source:{kind:"task", title:t.title, id:t.id}})));
-        const linkedProjectFiles = (data?.projects||[])
-          .filter(p => String(p.salesRef?.id)===String(entityId))
-          .flatMap(p => (p.files||[]).map(f => ({...f, _source:{kind:"project", title:p.name||p.title, id:p.id}})));
-        const aggregatedFiles = [...(files||[]), ...linkedTaskFiles, ...linkedProjectFiles];
+        // プロジェクト経由（salesRef.id ベース + linkedCompanyIds/linkedVendorIds/linkedMuniIds 経由）
+        const linkedProjectFiles = (data?.projects||[]).filter(p => {
+          if (String(p.salesRef?.id) === String(entityId)) return true;
+          // entityType に応じて紐付けIDをチェック
+          if (entityType === "companies" && (p.linkedCompanyIds||[]).includes(entityId)) return true;
+          if (entityType === "vendors" && (p.linkedVendorIds||[]).includes(entityId)) return true;
+          if (entityType === "municipalities" && (p.linkedMuniIds||[]).includes(entityId)) return true;
+          return false;
+        }).flatMap(p => (p.files||[]).map(f => ({...f, _source:{kind:"project", title:p.name||p.title, id:p.id}})));
+        // 重複排除（ファイルIDで一意化）
+        const seen = new Set();
+        const aggregatedFiles = [];
+        for (const f of [...(files||[]), ...linkedTaskFiles, ...linkedProjectFiles]) {
+          const key = String(f.id || f.url || f.path);
+          if (seen.has(key)) continue;
+          seen.add(key);
+          aggregatedFiles.push(f);
+        }
         return <FileSection 
           files={aggregatedFiles} 
           currentUserId={currentUserId} 
           entityType={entityType} 
           entityId={entityId} 
           entityName={entityName} 
-          onAdd={(newFile) => onSaveFiles([...(files||[]), newFile])}
+          onAdd={(newFileOrFiles) => {
+            const newFiles = Array.isArray(newFileOrFiles) ? newFileOrFiles : [newFileOrFiles];
+            const existing = files || [];
+            // 重複排除して追加
+            const toAdd = newFiles.filter(nf => !existing.some(ef => String(ef.id) === String(nf.id)));
+            if (toAdd.length > 0) onSaveFiles([...existing, ...toAdd]);
+          }}
           onDelete={(fileIdOrUrl) => onSaveFiles((files||[]).filter(f => (f.id||f.url) !== fileIdOrUrl))}
         />;
       })()}
@@ -7356,18 +7417,93 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     saveWithPush(nd, data.notifications);
   };
 
-  const addFileToTask = (taskId, file) => {
-    const nd = { ...data, tasks: allTasks.map(t => t.id === taskId ? { ...t, files: [...(t.files||[]), file] } : t) };
+  // ─── ファイル伝播ヘルパー ────────────────────────────────────────────
+  // タスク→プロジェクト→営業先 へ一方向で反映（ユニーク化）
+  // file.id で重複排除（既存ファイルがあれば追加しない）
+  const propagateFileToPj = (nd, projectId, file) => {
+    if (!projectId) return nd;
+    const projects = (nd.projects || []).map(p => {
+      if (p.id !== projectId) return p;
+      const existing = (p.files || []);
+      if (existing.some(f => String(f.id) === String(file.id))) return p; // 既にあればスキップ
+      return { ...p, files: [...existing, { ...file, _propagatedFrom: "task" }] };
+    });
+    return { ...nd, projects };
+  };
+  
+  const propagateFileToSales = (nd, projectId, file) => {
+    if (!projectId) return nd;
+    const pj = (nd.projects || []).find(p => p.id === projectId);
+    if (!pj) return nd;
+    const linkedCompanyIds = pj.linkedCompanyIds || [];
+    const linkedVendorIds  = pj.linkedVendorIds || [];
+    const linkedMuniIds    = pj.linkedMuniIds || [];
+    if (!linkedCompanyIds.length && !linkedVendorIds.length && !linkedMuniIds.length) return nd;
+    
+    const propagate = (arr, ids, kind) => (arr || []).map(item => {
+      if (!ids.includes(item.id)) return item;
+      const existing = item.files || [];
+      if (existing.some(f => String(f.id) === String(file.id))) return item;
+      return { ...item, files: [...existing, { ...file, _propagatedFrom: kind }] };
+    });
+    
+    return {
+      ...nd,
+      companies: propagate(nd.companies, linkedCompanyIds, "project"),
+      vendors: propagate(nd.vendors, linkedVendorIds, "project"),
+      municipalities: propagate(nd.municipalities, linkedMuniIds, "project"),
+    };
+  };
+  
+  // 複数ファイルを一括で受け取れるよう拡張
+  const addFileToTask = (taskId, fileOrFiles) => {
+    const files = Array.isArray(fileOrFiles) ? fileOrFiles : [fileOrFiles];
+    if (files.length === 0) return;
+    const task = allTasks.find(t => t.id === taskId);
+    if (!task) return;
+    
+    // 1. タスクに追加
+    let nd = { ...data, tasks: allTasks.map(t => {
+      if (t.id !== taskId) return t;
+      const existing = (t.files || []);
+      const newFiles = files.filter(f => !existing.some(ef => String(ef.id) === String(f.id)));
+      return { ...t, files: [...existing, ...newFiles] };
+    })};
+    
+    // 2. タスクのプロジェクトにも反映
+    if (task.projectId) {
+      for (const f of files) {
+        nd = propagateFileToPj(nd, task.projectId, f);
+        nd = propagateFileToSales(nd, task.projectId, f);
+      }
+    }
+    
     window.__myDeskLastSave = Date.now();
     setData(nd); scheduleSaveData(nd);
   };
   const removeFileFromTask = (taskId, fileIdOrUrl) => {
+    // タスクからのみ削除（伝播先からは消さない、つまり営業先・プロジェクトには残る）
     const nd = { ...data, tasks: allTasks.map(t => t.id === taskId ? { ...t, files: (t.files||[]).filter(f=>(f.id||f.url)!==fileIdOrUrl) } : t) };
     window.__myDeskLastSave = Date.now();
     setData(nd); scheduleSaveData(nd);
   };
-  const addFileToPj = (pjId, file) => {
-    const nd = { ...data, projects: allProjects.map(p => p.id === pjId ? { ...p, files: [...(p.files||[]), file] } : p) };
+  const addFileToPj = (pjId, fileOrFiles) => {
+    const files = Array.isArray(fileOrFiles) ? fileOrFiles : [fileOrFiles];
+    if (files.length === 0) return;
+    
+    // 1. プロジェクトに追加
+    let nd = { ...data, projects: allProjects.map(p => {
+      if (p.id !== pjId) return p;
+      const existing = (p.files || []);
+      const newFiles = files.filter(f => !existing.some(ef => String(ef.id) === String(f.id)));
+      return { ...p, files: [...existing, ...newFiles] };
+    })};
+    
+    // 2. プロジェクトの紐付け営業先にも反映
+    for (const f of files) {
+      nd = propagateFileToSales(nd, pjId, f);
+    }
+    
     window.__myDeskLastSave = Date.now();
     setData(nd); scheduleSaveData(nd);
   };
