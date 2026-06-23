@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v174-prevent-data-loss"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v175-file-upload-improved"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -431,6 +431,12 @@ function _quickHash(s) {
 }
 
 async function _processSaveQueue() {
+  // ★ ロード失敗中はキュー処理自体をスキップ（INIT 空データの誤保存を防ぐ）
+  if (typeof window !== "undefined" && window.__myDeskLoadError) {
+    console.warn("[MyDesk] _processSaveQueue skipped — load error state");
+    __pendingSaveData = null; // キューもクリア
+    return;
+  }
   if (__isCurrentlySaving) return;
   while (__pendingSaveData) {
     // ★ closure 問題対策：保存直前に最新ステート取得
@@ -467,7 +473,17 @@ async function _processSaveQueue() {
 }
 
 function scheduleSaveData(d) {
+  // ★ ロード失敗中はスケジュールしない（INIT 空データ保存防止の最終ライン）
+  if (typeof window !== "undefined" && window.__myDeskLoadError) {
+    console.warn("[MyDesk] scheduleSaveData skipped — load error state");
+    return;
+  }
   if (!d || typeof d !== "object") return;
+  // 重要なフィールド数をログ
+  const c = (d.companies||[]).length;
+  const v = (d.vendors||[]).length;
+  const t = (d.tasks||[]).length;
+  console.log(`[MyDesk] scheduleSaveData queued: companies=${c}, vendors=${v}, tasks=${t}`);
   __pendingSaveData = d;
   if (__saveTimer) clearTimeout(__saveTimer);
   __saveTimer = setTimeout(() => {
@@ -4171,6 +4187,11 @@ ${JSON.stringify(context, null, 2)}
 // STORAGE_BUCKET は S3_BUCKET に統一済み
 
 async function uploadFileToSupabase(file, entityType, entityId) {
+  console.log(`[FileUpload] 開始: ${file.name} (${(file.size/1024/1024).toFixed(2)}MB, type=${file.type})`);
+  // ★ ロードエラー中のアップロードをブロック（既存データ保護）
+  if (typeof window !== "undefined" && window.__myDeskLoadError) {
+    throw new Error("ネットワーク接続を確認してください（ロードエラー状態）");
+  }
   const ext = file.name.includes(".")
     ? "." + file.name.split(".").pop().replace(/[^a-zA-Z0-9]/g, "") : "";
   const safeName = Date.now() + ext;
@@ -4178,27 +4199,44 @@ async function uploadFileToSupabase(file, entityType, entityId) {
   const contentType = file.type || "application/octet-stream";
 
   // Lambda から署名付きURLを取得
-  const presignRes = await fetch(`${DB_API_BASE}/storage/upload-url`, {
-    method: "POST",
-    headers: DB_API_HEADERS,
-    body: JSON.stringify({ path, contentType }),
-  });
+  console.log(`[FileUpload] 署名付きURL取得中...`);
+  let presignRes;
+  try {
+    presignRes = await fetch(`${DB_API_BASE}/storage/upload-url`, {
+      method: "POST",
+      headers: DB_API_HEADERS,
+      body: JSON.stringify({ path, contentType }),
+    });
+  } catch (e) {
+    console.error("[FileUpload] 署名付きURL取得ネットワークエラー:", e);
+    throw new Error("ネットワークエラー: 接続を確認してください");
+  }
   if (!presignRes.ok) {
     const e = await presignRes.text();
+    console.error(`[FileUpload] 署名付きURL取得失敗: HTTP ${presignRes.status}`, e);
     throw new Error("署名付きURL取得失敗: HTTP " + presignRes.status + ": " + e);
   }
   const { uploadUrl, publicUrl } = await presignRes.json();
+  console.log(`[FileUpload] 署名付きURL取得OK, S3アップロード開始...`);
 
   // S3 へ直接アップロード
-  const upRes = await fetch(uploadUrl, {
-    method: "PUT",
-    headers: { "Content-Type": contentType },
-    body: file,
-  });
+  let upRes;
+  try {
+    upRes = await fetch(uploadUrl, {
+      method: "PUT",
+      headers: { "Content-Type": contentType },
+      body: file,
+    });
+  } catch (e) {
+    console.error("[FileUpload] S3アップロードネットワークエラー:", e);
+    throw new Error("S3アップロード失敗: ネットワーク接続を確認してください");
+  }
   if (!upRes.ok) {
     const e = await upRes.text();
+    console.error(`[FileUpload] S3アップロード失敗: HTTP ${upRes.status}`, e);
     throw new Error("S3アップロード失敗: HTTP " + upRes.status + ": " + e);
   }
+  console.log(`[FileUpload] ✅ 完了: ${file.name} → ${publicUrl}`);
 
   return {
     id: Date.now() + Math.random(),
@@ -4229,7 +4267,7 @@ function FileSection({ files=[], onAdd, onDelete, currentUserId, entityType, ent
   const handleFile = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 20 * 1024 * 1024) { setError("20MB以下のファイルを選択してください"); return; }
+    if (file.size > 50 * 1024 * 1024) { setError("50MB以下のファイルを選択してください"); return; }
     setUploading(true); setError("");
     try {
       const result = await uploadFileToSupabase(file, entityType || "tasks", entityId || currentUserId || "shared");
@@ -4239,19 +4277,25 @@ function FileSection({ files=[], onAdd, onDelete, currentUserId, entityType, ent
       const fallback = `${(entityName||"資料").slice(0,20)}_${file.name.replace(ext,"").slice(0,20)}_${today}`;
       let displayName = file.name;
       try {
-        const aiName = await generateSmartFileName({
-          original_filename: file.name,
-          entity_type: entityType,
-          entity_name: entityName || "",
-          file_type: file.type,
-          upload_date: new Date().toISOString().slice(0,10),
-        }, fallback, file);  // ★ file 自体を渡して vision 命名を有効化
+        const aiName = await Promise.race([
+          generateSmartFileName({
+            original_filename: file.name,
+            entity_type: entityType,
+            entity_name: entityName || "",
+            file_type: file.type,
+            upload_date: new Date().toISOString().slice(0,10),
+          }, fallback, file),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("AI命名タイムアウト")), 8000)),  // 8秒タイムアウト
+        ]);
         if (aiName) displayName = aiName + ext;
       } catch (aiErr) {
-        // AI生成失敗時は元のファイル名のまま
+        console.warn("[FileUpload] AI命名失敗（元のファイル名を使用）:", aiErr?.message || aiErr);
+        // AI生成失敗時は元のファイル名のまま（致命的でないのでアップロード続行）
       }
       onAdd({ ...result, name: displayName, originalName: file.name, uploadedBy: currentUserId });
+      console.log("[FileUpload] ✅ ファイル追加完了:", displayName);
     } catch (err) {
+      console.error("[FileUpload] ❌ エラー:", err);
       setError("アップロード失敗: " + (err?.message || String(err)));
     } finally { setUploading(false); if(fileInputRef.current) fileInputRef.current.value = ""; }
   };
