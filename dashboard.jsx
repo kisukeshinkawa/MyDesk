@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v181-quote-layout-fix"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v182-filter-and-zipcode"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -1113,6 +1113,93 @@ const CLOSED_STATUSES = new Set(["失注","見送り","断り"]);
 
 // メールテンプレート変数
 const EMAIL_TEMPLATE_VARS = ["{{会社名}}","{{担当者名}}","{{自分の名前}}","{{日付}}","{{来週の日付}}"];
+
+// ─── 共通: 複数選択フィルタードロップダウン ─────────────────────────────
+// 親が再レンダリングしても open state を維持するため、トップレベル定義
+function MultiChipFilter({label, icon, values, setValues, options, C}) {
+  const [open, setOpen] = React.useState(false);
+  const isActive = (values||[]).length > 0;
+  return (
+    <div style={{position:"relative"}}>
+      <button onClick={()=>setOpen(o=>!o)}
+        style={{padding:"0.3rem 0.5rem",borderRadius:"0.5rem",border:`1.5px solid ${isActive?C.accent:C.border}`,background:isActive?"#eff6ff":"white",color:isActive?C.accent:C.text,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"0.3rem",maxWidth:"100%"}}>
+        <span>{icon} {label}</span>
+        {isActive && <span style={{background:C.accent,color:"white",borderRadius:999,padding:"0.05rem 0.4rem",fontSize:"0.6rem",fontWeight:800}}>{values.length}</span>}
+        <span style={{fontSize:"0.55rem",color:isActive?C.accent:C.textMuted}}>▼</span>
+      </button>
+      {open && (
+        <>
+          <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:100,background:"transparent"}}/>
+          <div onClick={ev=>ev.stopPropagation()} style={{position:"absolute",top:"100%",left:0,marginTop:"0.2rem",background:"white",border:`1.5px solid ${C.border}`,borderRadius:"0.5rem",boxShadow:"0 4px 16px rgba(0,0,0,0.12)",zIndex:101,minWidth:160,maxWidth:240,maxHeight:300,overflowY:"auto",padding:"0.35rem"}}>
+            {options.length === 0 && <div style={{padding:"0.4rem 0.6rem",fontSize:"0.7rem",color:C.textMuted}}>選択肢がありません</div>}
+            {options.map(opt => {
+              const sel = (values||[]).map(String).includes(String(opt.value));
+              return (
+                <label key={String(opt.value)} style={{display:"flex",alignItems:"center",gap:"0.4rem",padding:"0.3rem 0.45rem",fontSize:"0.74rem",cursor:"pointer",borderRadius:"0.3rem",background:sel?"#eff6ff":"transparent"}}
+                  onClick={ev=>{
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    const sv = String(opt.value);
+                    if(sel) setValues((values||[]).filter(v => String(v) !== sv));
+                    else setValues([...(values||[]), sv]);
+                  }}>
+                  <input type="checkbox" readOnly checked={sel} style={{margin:0,cursor:"pointer",pointerEvents:"none"}}/>
+                  <span style={{color:sel?C.accent:C.text,fontWeight:sel?700:500,flex:1}}>{opt.label}</span>
+                </label>
+              );
+            })}
+            {(values||[]).length > 0 && (
+              <button onClick={ev=>{ev.stopPropagation(); setValues([]);}} style={{width:"100%",marginTop:"0.3rem",padding:"0.25rem",fontSize:"0.66rem",background:"#fef2f2",color:"#dc2626",border:"1px solid #fca5a5",borderRadius:4,cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>このフィルターをクリア</button>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── 共通: 単一フィルタードロップダウン（全幅版・複数選択）──────────────
+// 担当者フィルターなど、ドロップダウンが横幅100%なものに使用
+function FullWidthMultiFilter({label, icon, values, setValues, options, C, showMeOption=false}) {
+  const [open, setOpen] = React.useState(false);
+  const isActive = (values||[]).length > 0;
+  const opts = showMeOption ? [{value:"__me__", label:"自分の担当のみ"}, ...options] : options;
+  return (
+    <div style={{position:"relative",marginBottom:"0.6rem"}}>
+      <button onClick={()=>setOpen(o=>!o)}
+        style={{width:"100%",padding:"0.4rem 0.6rem",borderRadius:"0.5rem",border:`1.5px solid ${isActive?C.accent:C.border}`,background:isActive?"#eff6ff":"white",color:isActive?C.accent:C.text,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",fontWeight:isActive?700:500,display:"flex",alignItems:"center",justifyContent:"space-between",gap:"0.3rem"}}>
+        <span>{icon} {label}{isActive ? `（${values.length}件）` : ""}</span>
+        <span style={{fontSize:"0.6rem"}}>▼</span>
+      </button>
+      {open && (
+        <>
+          <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:100,background:"transparent"}}/>
+          <div onClick={ev=>ev.stopPropagation()} style={{position:"absolute",top:"100%",left:0,right:0,marginTop:"0.2rem",background:"white",border:`1.5px solid ${C.border}`,borderRadius:"0.5rem",boxShadow:"0 4px 16px rgba(0,0,0,0.12)",zIndex:101,maxHeight:300,overflowY:"auto",padding:"0.35rem"}}>
+            {opts.map(opt => {
+              const sel = (values||[]).map(String).includes(String(opt.value));
+              return (
+                <label key={String(opt.value)} style={{display:"flex",alignItems:"center",gap:"0.4rem",padding:"0.3rem 0.45rem",fontSize:"0.78rem",cursor:"pointer",borderRadius:"0.3rem",background:sel?"#eff6ff":"transparent"}}
+                  onClick={ev=>{
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    const sv = String(opt.value);
+                    if(sel) setValues((values||[]).filter(v => String(v) !== sv));
+                    else setValues([...(values||[]), sv]);
+                  }}>
+                  <input type="checkbox" readOnly checked={sel} style={{margin:0,cursor:"pointer",pointerEvents:"none"}}/>
+                  <span style={{color:sel?C.accent:C.text,fontWeight:sel?700:500,flex:1}}>{opt.label}</span>
+                </label>
+              );
+            })}
+            {(values||[]).length > 0 && (
+              <button onClick={ev=>{ev.stopPropagation(); setValues([]);}} style={{width:"100%",marginTop:"0.3rem",padding:"0.25rem",fontSize:"0.66rem",background:"#fef2f2",color:"#dc2626",border:"1px solid #fca5a5",borderRadius:4,cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>このフィルターをクリア</button>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 
 
@@ -17777,21 +17864,21 @@ ${recentLogs}
         }
         if(!match) return false;
       }
-      // 自治体（複数選択: ORで判定）
+      // 自治体（複数選択: ANDで判定 - 全ての自治体に紐付いている必要あり）
       if(vendFilterMunis.length > 0){
         const muniIds = (v.municipalityIds||[]).map(String);
-        if(!vendFilterMunis.some(fm => muniIds.includes(String(fm)))) return false;
+        if(!vendFilterMunis.every(fm => muniIds.includes(String(fm)))) return false;
       }
-      // ステータス（複数選択: ORで判定）
+      // ステータス（複数選択: ORで判定 - 1レコード1ステータスなので ANDは意味なし）
       if(vendFilterStatuses.length > 0){
         if(!vendFilterStatuses.includes(v.status||"未接触")) return false;
       }
-      // 許可種別（複数選択: ORで判定 - vendorがいずれかの許可を持っていればOK）
+      // 許可種別（複数選択: ANDで判定 - 全ての許可を持つvendor）
       if(vendFilterPermits.length > 0){
         const vp = v.permitTypes||[];
-        if(!vendFilterPermits.some(fp => vp.includes(fp))) return false;
+        if(!vendFilterPermits.every(fp => vp.includes(fp))) return false;
       }
-      // bee-net加入（複数選択: ORで判定）
+      // bee-net加入（複数選択: 排他なのでOR維持）
       if(vendFilterBeeNets.length > 0){
         const matchAny = vendFilterBeeNets.some(fb => {
           if(fb === "加入済み") return !!v.beeNet;
@@ -17800,14 +17887,14 @@ ${recentLogs}
         });
         if(!matchAny) return false;
       }
-      // 担当者（複数選択: ORで判定）
+      // 担当者（複数選択: ANDで判定 - 全ての担当者が登録されている必要あり）
       if(vendFilterAssignees.length > 0){
         const aids = (v.assigneeIds||[]).map(String);
-        const matchAny = vendFilterAssignees.some(fa => {
+        const matchAll = vendFilterAssignees.every(fa => {
           if(fa === "__me__") return aids.includes(String(currentUser?.id));
           return aids.includes(String(fa));
         });
-        if(!matchAny) return false;
+        if(!matchAll) return false;
       }
       return true;
     });
@@ -17836,7 +17923,8 @@ ${recentLogs}
     return companies.filter(c=>{
       if(compFilter.assignees.length === 0) return true;
       const aids = (c.assigneeIds||[]).map(String);
-      return compFilter.assignees.some(fa => {
+      // AND判定: 選択された全担当者が登録されている必要あり
+      return compFilter.assignees.every(fa => {
         if(fa === "__me__") return aids.includes(String(currentUser?.id));
         return aids.includes(String(fa));
       });
@@ -19371,9 +19459,10 @@ ${orig}`})
               </div>
             )}
             {/* 連絡先・住所・最終更新（インライン） */}
-            {(comp.email||comp.address||comp.updatedAt)&&(
+            {(comp.email||comp.zip||comp.address||comp.updatedAt)&&(
               <div style={{display:"flex",alignItems:"center",gap:"0.75rem",flexWrap:"wrap",fontSize:"0.72rem",color:C.textMuted,marginBottom:"0.5rem"}}>
                 {comp.email&&<span>✉️ {comp.email}</span>}
+                {comp.zip&&<span>📮 〒{comp.zip}</span>}
                 {comp.address&&<span>📍 {comp.address}</span>}
                 {comp.updatedAt&&<span>📅 {comp.updatedAt}</span>}
               </div>
@@ -19478,6 +19567,7 @@ ${orig}`})
                 );
               })()}
             </div>
+            <FieldLbl label="郵便番号（任意）"><Input value={form.zip||""} onChange={e=>setForm({...form,zip:e.target.value})} placeholder="例: 100-0001"/></FieldLbl>
             <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
             <FieldLbl label="備考"><Textarea value={form.notes||""} onChange={e=>setForm({...form,notes:e.target.value})} style={{height:70}} placeholder="メモ、特記事項など"/></FieldLbl>
             <div style={{display:"flex",gap:"0.625rem"}}>
@@ -19505,45 +19595,10 @@ ${orig}`})
         <TopTabs/>
         <BulkBar statusMap={COMPANY_STATUS} applyFn={applyBulkComp} visibleIds={compVisibleIds} onDelete={deleteBulkComp}/>
         {/* 担当者フィルター（複数選択） */}
-        {(()=>{
-          const CompAssignFilter = () => {
-            const [open, setOpen] = React.useState(false);
-            const isActive = compFilter.assignees.length > 0;
-            return (
-              <div style={{position:"relative",marginBottom:"0.6rem"}}>
-                <button onClick={()=>setOpen(o=>!o)}
-                  style={{width:"100%",padding:"0.4rem 0.6rem",borderRadius:"0.5rem",border:`1.5px solid ${isActive?C.accent:C.border}`,background:isActive?"#eff6ff":"white",color:isActive?C.accent:C.text,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",fontWeight:isActive?700:500,display:"flex",alignItems:"center",justifyContent:"space-between",gap:"0.3rem"}}>
-                  <span>👤 担当者で絞り込み{isActive ? `（${compFilter.assignees.length}人）` : ""}</span>
-                  <span style={{fontSize:"0.6rem"}}>▼</span>
-                </button>
-                {open && (
-                  <>
-                    <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:100,background:"transparent"}}/>
-                    <div style={{position:"absolute",top:"100%",left:0,right:0,marginTop:"0.2rem",background:"white",border:`1.5px solid ${C.border}`,borderRadius:"0.5rem",boxShadow:"0 4px 16px rgba(0,0,0,0.12)",zIndex:101,maxHeight:300,overflowY:"auto",padding:"0.35rem"}}>
-                      {[{value:"__me__", label:"自分の担当のみ"}, ...(users||[]).map(u=>({value:String(u.id), label:u.name}))].map(opt => {
-                        const sel = compFilter.assignees.map(String).includes(String(opt.value));
-                        return (
-                          <label key={String(opt.value)} style={{display:"flex",alignItems:"center",gap:"0.4rem",padding:"0.3rem 0.45rem",fontSize:"0.78rem",cursor:"pointer",borderRadius:"0.3rem",background:sel?"#eff6ff":"transparent"}}
-                            onClick={ev=>{
-                              ev.preventDefault();
-                              const sv = String(opt.value);
-                              const cur = compFilter.assignees || [];
-                              if(sel) setCompFilter(p=>({...p, assignees: cur.filter(v => String(v) !== sv)}));
-                              else setCompFilter(p=>({...p, assignees: [...cur, sv]}));
-                            }}>
-                            <input type="checkbox" readOnly checked={sel} style={{margin:0,cursor:"pointer"}}/>
-                            <span style={{color:sel?C.accent:C.text,fontWeight:sel?700:500,flex:1}}>{opt.label}</span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </>
-                )}
-              </div>
-            );
-          };
-          return <CompAssignFilter/>;
-        })()}
+        <FullWidthMultiFilter label="担当者で絞り込み" icon="👤" C={C} showMeOption={true}
+          values={compFilter.assignees||[]}
+          setValues={v => setCompFilter(p=>({...p, assignees: v}))}
+          options={(users||[]).map(u=>({value:String(u.id), label:u.name}))}/>
         {/* 担当者絞り込み中の件数表示 */}
         {compFilter.assignees.length > 0 && (()=>{
           const fCount=compFilteredBase.length;
@@ -19820,6 +19875,7 @@ ${orig}`})
             <FieldLbl label="電話番号（任意）"><Input value={form.phone||""} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="000-0000-0000"/></FieldLbl>
             <FieldLbl label="メールアドレス（任意）"><Input value={form.email||""} onChange={e=>setForm({...form,email:e.target.value})} placeholder="example@mail.com"/></FieldLbl>
             <FieldLbl label="電話番号（任意）"><Input value={form.phone||""} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="092-xxx-xxxx" type="tel"/></FieldLbl>
+            <FieldLbl label="郵便番号（任意）"><Input value={form.zip||""} onChange={e=>setForm({...form,zip:e.target.value})} placeholder="例: 100-0001"/></FieldLbl>
             <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
             <FieldLbl label="備考"><Textarea value={form.notes||""} onChange={e=>setForm({...form,notes:e.target.value})} style={{height:70}} placeholder="メモ、特記事項など"/></FieldLbl>
             <div style={{display:"flex",gap:"0.625rem"}}>
@@ -20028,8 +20084,9 @@ ${orig}`})
               </div>
             )}
             {/* 住所・最終更新（インライン） */}
-            {(v.address||v.updatedAt)&&(
+            {(v.zip||v.address||v.updatedAt)&&(
               <div style={{display:"flex",alignItems:"center",gap:"0.75rem",flexWrap:"wrap",fontSize:"0.72rem",color:C.textMuted,marginBottom:"0.5rem"}}>
+                {v.zip&&<span style={{display:"inline-flex",alignItems:"center",gap:"0.2rem"}}>📮 〒{v.zip}</span>}
                 {v.address&&<span style={{display:"inline-flex",alignItems:"center",gap:"0.2rem"}}>📍 {v.address}</span>}
                 {v.updatedAt&&<span style={{display:"inline-flex",alignItems:"center",gap:"0.2rem"}}>📅 {v.updatedAt}</span>}
               </div>
@@ -20205,7 +20262,8 @@ ${orig}`})
                   );
                 })()}
               </div>
-              <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
+              <FieldLbl label="郵便番号（任意）"><Input value={form.zip||""} onChange={e=>setForm({...form,zip:e.target.value})} placeholder="例: 100-0001"/></FieldLbl>
+            <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
               <FieldLbl label="許可種別（複数選択可）">
                 <div style={{display:"flex",flexWrap:"wrap",gap:"0.4rem",padding:"0.5rem",background:"#f8fafc",borderRadius:"6px",border:"1px solid #e2e8f0"}}>
                   {PERMIT_TYPES.map(p=>{
@@ -20305,51 +20363,7 @@ ${orig}`})
           };
           
           // MultiChipFilter: 値配列、setter、選択肢、ラベル、表示変換
-          const MultiChipFilter = ({label, icon, values, setValues, options, getOpt}) => {
-            // options = [{value, label}, ...]
-            const [open, setOpen] = React.useState(false);
-            const selectedLabels = values.map(v => {
-              const opt = options.find(o => String(o.value) === String(v));
-              return opt ? opt.label : v;
-            });
-            const isActive = values.length > 0;
-            return (
-              <div style={{position:"relative"}}>
-                <button onClick={()=>setOpen(o=>!o)}
-                  style={{padding:"0.3rem 0.5rem",borderRadius:"0.5rem",border:`1.5px solid ${isActive?C.accent:C.border}`,background:isActive?"#eff6ff":"white",color:isActive?C.accent:C.text,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"0.3rem",maxWidth:"100%"}}>
-                  <span>{icon} {label}</span>
-                  {isActive && <span style={{background:C.accent,color:"white",borderRadius:999,padding:"0.05rem 0.4rem",fontSize:"0.6rem",fontWeight:800}}>{values.length}</span>}
-                  <span style={{fontSize:"0.55rem",color:isActive?C.accent:C.textMuted}}>▼</span>
-                </button>
-                {open && (
-                  <>
-                    <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:100,background:"transparent"}}/>
-                    <div style={{position:"absolute",top:"100%",left:0,marginTop:"0.2rem",background:"white",border:`1.5px solid ${C.border}`,borderRadius:"0.5rem",boxShadow:"0 4px 16px rgba(0,0,0,0.12)",zIndex:101,minWidth:160,maxWidth:240,maxHeight:300,overflowY:"auto",padding:"0.35rem"}}>
-                      {options.length === 0 && <div style={{padding:"0.4rem 0.6rem",fontSize:"0.7rem",color:C.textMuted}}>選択肢がありません</div>}
-                      {options.map(opt => {
-                        const sel = values.map(String).includes(String(opt.value));
-                        return (
-                          <label key={String(opt.value)} style={{display:"flex",alignItems:"center",gap:"0.4rem",padding:"0.3rem 0.45rem",fontSize:"0.74rem",cursor:"pointer",borderRadius:"0.3rem",background:sel?"#eff6ff":"transparent"}}
-                            onClick={ev=>{
-                              ev.preventDefault();
-                              const sv = String(opt.value);
-                              if(sel) setValues(values.filter(v => String(v) !== sv));
-                              else setValues([...values, sv]);
-                            }}>
-                            <input type="checkbox" readOnly checked={sel} style={{margin:0,cursor:"pointer"}}/>
-                            <span style={{color:sel?C.accent:C.text,fontWeight:sel?700:500,flex:1}}>{opt.label}</span>
-                          </label>
-                        );
-                      })}
-                      {values.length > 0 && (
-                        <button onClick={()=>setValues([])} style={{width:"100%",marginTop:"0.3rem",padding:"0.25rem",fontSize:"0.66rem",background:"#fef2f2",color:"#dc2626",border:"1px solid #fca5a5",borderRadius:4,cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>このフィルターをクリア</button>
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
-            );
-          };
+          // ✅ MultiChipFilter はモジュールトップレベルで定義済み（C を props で渡す必要あり）
           
           // チップ表示: 選択済みのものを「× で外せる」チップとして表示
           const selChips = [];
@@ -20386,24 +20400,24 @@ ${orig}`})
               </div>
               {/* フィルター追加ボタン群 */}
               <div style={{display:"flex",gap:"0.35rem",flexWrap:"wrap",marginBottom:selChips.length>0?"0.5rem":"0"}}>
-                <MultiChipFilter label="都道府県" icon="🗾"
+                <MultiChipFilter label="都道府県" icon="🗾" C={C}
                   values={vendFilterPrefs} setValues={v=>{setVendFilterPrefs(v); /* 都道府県解除で自治体もクリア（無関係になるため） */ if(v.length===0)setVendFilterMunis([]);}}
                   options={prefs.map(p=>({value:String(p.id), label:p.name}))}/>
                 {(muniOptions.length>0 || vendFilterMunis.length>0) && (
-                  <MultiChipFilter label="自治体" icon="🏛"
+                  <MultiChipFilter label="自治体" icon="🏛" C={C}
                     values={vendFilterMunis} setValues={setVendFilterMunis}
                     options={muniOptions.map(m=>({value:String(m.id), label:m.name}))}/>
                 )}
-                <MultiChipFilter label="ステータス" icon="📌"
+                <MultiChipFilter label="ステータス" icon="📌" C={C}
                   values={vendFilterStatuses} setValues={setVendFilterStatuses}
                   options={Object.keys(VENDOR_STATUS).map(s=>({value:s, label:s}))}/>
-                <MultiChipFilter label="許可種別" icon="📋"
+                <MultiChipFilter label="許可種別" icon="📋" C={C}
                   values={vendFilterPermits} setValues={setVendFilterPermits}
                   options={PERMIT_TYPES.map(p=>({value:p, label:p}))}/>
-                <MultiChipFilter label="bee-net" icon="🔷"
+                <MultiChipFilter label="bee-net" icon="🔷" C={C}
                   values={vendFilterBeeNets} setValues={setVendFilterBeeNets}
                   options={[{value:"加入済み", label:"加入済み"},{value:"未加入", label:"未加入"}]}/>
-                <MultiChipFilter label="担当者" icon="👤"
+                <MultiChipFilter label="担当者" icon="👤" C={C}
                   values={vendFilterAssignees} setValues={setVendFilterAssignees}
                   options={[{value:"__me__", label:"自分"},...(users||[]).map(u=>({value:String(u.id), label:u.name}))]}/>
               </div>
@@ -20671,6 +20685,7 @@ ${orig}`})
             </FieldLbl>
             <FieldLbl label="担当者">{AssigneePicker({ids:form.assigneeIds||[],onChange:ids=>setForm({...form,assigneeIds:ids})})}</FieldLbl>
             <FieldLbl label="電話番号（任意）"><Input value={form.phone||""} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="092-xxx-xxxx" type="tel"/></FieldLbl>
+            <FieldLbl label="郵便番号（任意）"><Input value={form.zip||""} onChange={e=>setForm({...form,zip:e.target.value})} placeholder="例: 100-0001"/></FieldLbl>
             <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
             <FieldLbl label="許可種別（複数選択可）">
                 <div style={{display:"flex",flexWrap:"wrap",gap:"0.4rem",padding:"0.5rem",background:"#f8fafc",borderRadius:"6px",border:"1px solid #e2e8f0"}}>
@@ -20966,6 +20981,11 @@ ${orig}`})
             }}/>
             <span style={{fontSize:"0.62rem",color:C.textMuted,fontWeight:700,marginLeft:"0.3rem",marginRight:"0.1rem"}}>営業</span>
             <CompactStatusPicker map={MUNI_STATUS} value={muni.status||"未接触"} colors={C} onChange={s=>{
+              // 失注/見送り/断り なら理由入力モーダルを表示
+              if (CLOSED_STATUSES.has(s)) {
+                openLossModal("municipalities", muni.id, muni.name, s);
+                return;
+              }
               let nd={...data,municipalities:munis.map(m=>String(m.id)===String(activeMuni)?{...m,status:s,updatedAt:new Date().toISOString()}:m)};
               nd=addChangeLog(nd,{entityType:"自治体",entityId:muni.id,entityName:muni.name,field:"ステータス",oldVal:muni.status,newVal:s});
               save(nd);
@@ -20981,9 +21001,10 @@ ${orig}`})
             ))}
           </div>
           {/* メタ情報（インライン） */}
-          {(muni.artBranch||muni.address||muni.updatedAt)&&(
+          {(muni.artBranch||muni.zip||muni.address||muni.updatedAt)&&(
             <div style={{display:"flex",alignItems:"center",gap:"0.75rem",flexWrap:"wrap",fontSize:"0.72rem",color:C.textMuted,marginBottom:"0.5rem"}}>
               {muni.artBranch&&<span>🏢 {muni.artBranch}</span>}
+              {muni.zip&&<span>📮 〒{muni.zip}</span>}
               {muni.address&&<span>📍 {muni.address}</span>}
               {muni.updatedAt&&<span>📅 {muni.updatedAt}</span>}
             </div>
@@ -21197,6 +21218,7 @@ ${orig}`})
 
             <FieldLbl label="アート引越センター 管轄支店"><Input value={form.artBranch||""} onChange={e=>setForm({...form,artBranch:e.target.value})} placeholder="例：福岡支店"/></FieldLbl>
             <FieldLbl label="連携協定ステータス"><TreatyPicker value={form.treatyStatus||"未接触"} onChange={s=>setForm({...form,treatyStatus:s})}/></FieldLbl>
+            <FieldLbl label="郵便番号（任意）"><Input value={form.zip||""} onChange={e=>setForm({...form,zip:e.target.value})} placeholder="例: 100-0001"/></FieldLbl>
             <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
             <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:"0.625rem",padding:"0.625rem 0.75rem",marginBottom:"0.5rem"}}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.4rem"}}>
@@ -21271,6 +21293,7 @@ ${orig}`})
             <FieldLbl label="業者名 *"><Input value={form.name||""} onChange={e=>setForm({...form,name:e.target.value})} autoFocus/></FieldLbl>
             <FieldLbl label="ステータス"><StatusPicker map={VENDOR_STATUS} value={form.status||"未接触"} onChange={s=>setForm({...form,status:s})}/></FieldLbl>
             <FieldLbl label="担当者">{AssigneePicker({ids:form.assigneeIds||[],onChange:ids=>setForm({...form,assigneeIds:ids})})}</FieldLbl>
+            <FieldLbl label="郵便番号（任意）"><Input value={form.zip||""} onChange={e=>setForm({...form,zip:e.target.value})} placeholder="例: 100-0001"/></FieldLbl>
             <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
             <FieldLbl label="bee-net加入">
                 <label style={{display:"flex",alignItems:"center",gap:"0.625rem",cursor:"pointer",padding:"0.625rem 0.875rem",borderRadius:"6px",background:form.beeNet?"#eff6ff":"#f8fafc",border:`1.5px solid ${form.beeNet?"#2563eb":"#e2e8f0"}`,transition:"all 0.15s"}}>
@@ -21498,7 +21521,7 @@ ${orig}`})
       {(()=>{
         const filteredMunis = muniFilterAssignees.length > 0 ? munis.filter(m=>{
           const aids = (m.assigneeIds||[]).map(String);
-          return muniFilterAssignees.some(fa => {
+          return muniFilterAssignees.every(fa => {
             if(fa === "__me__") return aids.includes(String(currentUser?.id));
             return aids.includes(String(fa));
           });
@@ -21526,46 +21549,17 @@ ${orig}`})
           return {label:`👤 ${nm}`, key:`mu-as-${id}`, remove:()=>setMuniFilterAssignees(muniFilterAssignees.filter(x=>String(x)!==String(id)))};
         });
         
-        // インラインで multi-select 開閉
-        const MultiOpener = () => {
-          const [open, setOpen] = React.useState(false);
-          return (
-            <div style={{position:"relative",flex:1,minWidth:0}}>
-              <button onClick={()=>setOpen(o=>!o)}
-                style={{width:"100%",padding:"0.3rem 0.5rem",borderRadius:"0.5rem",border:`1.5px solid ${isActive?C.accent:C.border}`,background:isActive?"#eff6ff":"white",color:isActive?C.accent:C.text,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",fontWeight:isActive?700:400,display:"flex",alignItems:"center",gap:"0.3rem",justifyContent:"space-between"}}>
-                <span>👤 担当者で絞り込み{isActive ? `（${muniFilterAssignees.length}人）` : ""}</span>
-                <span style={{fontSize:"0.6rem"}}>▼</span>
-              </button>
-              {open && (
-                <>
-                  <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:100,background:"transparent"}}/>
-                  <div style={{position:"absolute",top:"100%",left:0,right:0,marginTop:"0.2rem",background:"white",border:`1.5px solid ${C.border}`,borderRadius:"0.5rem",boxShadow:"0 4px 16px rgba(0,0,0,0.12)",zIndex:101,maxHeight:300,overflowY:"auto",padding:"0.35rem"}}>
-                    {[{value:"__me__", label:"自分の担当のみ"}, ...(users||[]).map(u=>({value:String(u.id), label:u.name}))].map(opt => {
-                      const sel = muniFilterAssignees.map(String).includes(String(opt.value));
-                      return (
-                        <label key={String(opt.value)} style={{display:"flex",alignItems:"center",gap:"0.4rem",padding:"0.3rem 0.45rem",fontSize:"0.78rem",cursor:"pointer",borderRadius:"0.3rem",background:sel?"#eff6ff":"transparent"}}
-                          onClick={ev=>{
-                            ev.preventDefault();
-                            const sv = String(opt.value);
-                            if(sel) setMuniFilterAssignees(muniFilterAssignees.filter(v => String(v) !== sv));
-                            else setMuniFilterAssignees([...muniFilterAssignees, sv]);
-                          }}>
-                          <input type="checkbox" readOnly checked={sel} style={{margin:0,cursor:"pointer"}}/>
-                          <span style={{color:sel?C.accent:C.text,fontWeight:sel?700:500,flex:1}}>{opt.label}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </>
-              )}
-            </div>
-          );
-        };
+        // ✅ MultiOpener はトップレベルの FullWidthMultiFilter を使う
         
         return (
           <div style={{background:"#f8fafc",border:`1px solid ${isActive?C.accent:C.border}`,borderRadius:"8px",padding:"0.625rem 0.75rem",marginBottom:"0.5rem"}}>
             <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:isActive?"0.4rem":0}}>
-              <MultiOpener/>
+              <div style={{flex:1,minWidth:0}}>
+                <FullWidthMultiFilter label="担当者で絞り込み" icon="👤" C={C} showMeOption={true}
+                  values={muniFilterAssignees}
+                  setValues={setMuniFilterAssignees}
+                  options={(users||[]).map(u=>({value:String(u.id), label:u.name}))}/>
+              </div>
               {isActive && <span style={{fontSize:"0.8rem",fontWeight:800,color:"#7c3aed",flexShrink:0}}>{fCount}件</span>}
               {isActive && <button onClick={()=>setMuniFilterAssignees([])}
                 style={{fontSize:"0.65rem",background:"#fef2f2",color:"#dc2626",border:"1px solid #fca5a5",borderRadius:999,padding:"0.1rem 0.45rem",cursor:"pointer",fontWeight:700,fontFamily:"inherit",flexShrink:0}}>全解除</button>}
@@ -21599,7 +21593,7 @@ ${orig}`})
         extraFields={[["dustalk","ダストーク展開",DUSTALK_STATUS],["treatyStatus","連携協定",TREATY_STATUS],["status","アプローチ",MUNI_STATUS]]}
         visibleIds={(muniTopSearch?munis.filter(m=>(m.name||"").includes(muniTopSearch)):(muniFilterAssignees.length>0?munis.filter(m=>{
           const aids=(m.assigneeIds||[]).map(String);
-          return muniFilterAssignees.some(fa=>fa==="__me__"?aids.includes(String(currentUser?.id)):aids.includes(String(fa)));
+          return muniFilterAssignees.every(fa=>fa==="__me__"?aids.includes(String(currentUser?.id)):aids.includes(String(fa)));
         }):munis)).map(m=>m.id)}
         onDelete={deleteBulkMuni}/>
       {/* Global dustalk summary */}
@@ -21629,7 +21623,7 @@ ${orig}`})
           if(!m.name.includes(muniTopSearch)) return false;
           if(muniFilterAssignees.length===0) return true;
           const aids=(m.assigneeIds||[]).map(String);
-          return muniFilterAssignees.some(fa=>fa==="__me__"?aids.includes(String(currentUser?.id)):aids.includes(String(fa)));
+          return muniFilterAssignees.every(fa=>fa==="__me__"?aids.includes(String(currentUser?.id)):aids.includes(String(fa)));
         });
         return (
           <div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
@@ -21665,7 +21659,7 @@ ${orig}`})
       {muniFilterAssignees.length>0&&(()=>{
         const fMunis = munis.filter(m=>{
           const aids=(m.assigneeIds||[]).map(String);
-          return muniFilterAssignees.some(fa=>fa==="__me__"?aids.includes(String(currentUser?.id)):aids.includes(String(fa)));
+          return muniFilterAssignees.every(fa=>fa==="__me__"?aids.includes(String(currentUser?.id)):aids.includes(String(fa)));
         });
         if(!fMunis.length) return <div style={{textAlign:"center",padding:"1.5rem",color:C.textMuted,background:"white",borderRadius:"8px",border:`1.5px dashed ${C.border}`,fontSize:"0.82rem"}}>該当する自治体がありません</div>;
         return (
@@ -21745,7 +21739,7 @@ ${orig}`})
                     if(String(m.prefectureId)!==String(pref.id)) return false;
                     if(muniFilterAssignees.length===0) return true;
                     const aids=(m.assigneeIds||[]).map(String);
-                    return muniFilterAssignees.some(fa=>fa==="__me__"?aids.includes(String(currentUser?.id)):aids.includes(String(fa)));
+                    return muniFilterAssignees.every(fa=>fa==="__me__"?aids.includes(String(currentUser?.id)):aids.includes(String(fa)));
                   });
                     const pTreaty=pMunis.filter(m=>m.treatyStatus==="協定済").length;
                     const pDeploy=pMunis.filter(m=>m.dustalk==="展開").length;
@@ -21809,7 +21803,8 @@ ${orig}`})
                               <FieldLbl label="展開ステータス（ダストーク）"><DustalkPicker value={form.dustalk||"未展開"} onChange={s=>setForm({...form,dustalk:s})}/></FieldLbl>
                               <FieldLbl label="アート引越センター 管轄支店"><Input value={form.artBranch||""} onChange={e=>setForm({...form,artBranch:e.target.value})} placeholder="例：福岡支店"/></FieldLbl>
                               <FieldLbl label="連携協定ステータス"><TreatyPicker value={form.treatyStatus||"未接触"} onChange={s=>setForm({...form,treatyStatus:s})}/></FieldLbl>
-                              <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
+                              <FieldLbl label="郵便番号（任意）"><Input value={form.zip||""} onChange={e=>setForm({...form,zip:e.target.value})} placeholder="例: 100-0001"/></FieldLbl>
+            <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
                               <div style={{display:"flex",gap:"0.625rem"}}>
                                 <Btn variant="secondary" style={{flex:1}} onClick={()=>setSheet(null)}>キャンセル</Btn>
                                 <Btn style={{flex:2}} onClick={()=>saveMuni()} disabled={!form.name?.trim()}>追加する</Btn>
