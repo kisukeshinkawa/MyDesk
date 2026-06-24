@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v176-multi-file-propagation"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v179-task-to-pj-history"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -1500,8 +1500,97 @@ async function loadSnapshot(key) {
 
 // ─── GLOBAL CHANGE LOG HELPER ─────────────────────────────────────────────────
 function globalAddChangeLog(nd, {entityType,entityId,entityName,field,oldVal,newVal,userId}) {
-  const log = {id:Date.now()+Math.random(),entityType,entityId,entityName,field,oldVal:oldVal||"",newVal:newVal||"",userId:userId||null,date:new Date().toISOString()};
-  return {...nd,changeLogs:[...(nd.changeLogs||[]),log]};
+  const ts = Date.now() + Math.random();
+  const baseLog = {id:ts,entityType,entityId,entityName,field,oldVal:oldVal||"",newVal:newVal||"",userId:userId||null,date:new Date().toISOString()};
+  const logs = [baseLog];
+  
+  // タスク/プロジェクトの変更は、関連する親エンティティ（プロジェクト、営業先）にも反映する
+  // 各伝播先には _source: { type, id, name } を付けて「タスク〜から」と分かるように
+  const collectPropagationRefs = () => {
+    const refs = []; // {entityType, entityId, entityName}
+    if (entityType === "タスク") {
+      const task = (nd.tasks||[]).find(t => String(t.id) === String(entityId));
+      if (!task) return refs;
+      // 1. タスクの直接の営業紐付け
+      if (task.salesRef?.id) {
+        refs.push({ entityType: task.salesRef.type, entityId: task.salesRef.id, entityName: task.salesRef.name });
+      }
+      // 2. タスクの親プロジェクトに伝播（NEW）
+      if (task.projectId) {
+        const pj = (nd.projects||[]).find(p => String(p.id) === String(task.projectId));
+        if (pj) {
+          refs.push({ entityType: "プロジェクト", entityId: pj.id, entityName: pj.name||"" });
+          // 3. プロジェクトの直接の営業紐付け
+          if (pj.salesRef?.id) {
+            refs.push({ entityType: pj.salesRef.type, entityId: pj.salesRef.id, entityName: pj.salesRef.name });
+          }
+          // 4. プロジェクトの linkedCompanyIds/linkedVendorIds/linkedMuniIds の営業先
+          for (const cid of (pj.linkedCompanyIds||[])) {
+            const c = (nd.companies||[]).find(x => String(x.id)===String(cid));
+            if (c) refs.push({ entityType: "企業", entityId: c.id, entityName: c.name });
+          }
+          for (const vid of (pj.linkedVendorIds||[])) {
+            const v = (nd.vendors||[]).find(x => String(x.id)===String(vid));
+            if (v) refs.push({ entityType: "業者", entityId: v.id, entityName: v.name });
+          }
+          for (const mid of (pj.linkedMuniIds||[])) {
+            const m = (nd.municipalities||[]).find(x => String(x.id)===String(mid));
+            if (m) refs.push({ entityType: "自治体", entityId: m.id, entityName: m.name });
+          }
+        }
+      }
+    } else if (entityType === "プロジェクト") {
+      const pj = (nd.projects||[]).find(p => String(p.id) === String(entityId));
+      if (!pj) return refs;
+      // プロジェクトの直接の営業紐付け
+      if (pj.salesRef?.id) {
+        refs.push({ entityType: pj.salesRef.type, entityId: pj.salesRef.id, entityName: pj.salesRef.name });
+      }
+      // プロジェクトの linkedCompanyIds/linkedVendorIds/linkedMuniIds の営業先
+      for (const cid of (pj.linkedCompanyIds||[])) {
+        const c = (nd.companies||[]).find(x => String(x.id)===String(cid));
+        if (c) refs.push({ entityType: "企業", entityId: c.id, entityName: c.name });
+      }
+      for (const vid of (pj.linkedVendorIds||[])) {
+        const v = (nd.vendors||[]).find(x => String(x.id)===String(vid));
+        if (v) refs.push({ entityType: "業者", entityId: v.id, entityName: v.name });
+      }
+      for (const mid of (pj.linkedMuniIds||[])) {
+        const m = (nd.municipalities||[]).find(x => String(x.id)===String(mid));
+        if (m) refs.push({ entityType: "自治体", entityId: m.id, entityName: m.name });
+      }
+    }
+    // 重複排除（自分自身は除外）
+    const seen = new Set();
+    return refs.filter(r => {
+      if (String(r.entityType) === String(entityType) && String(r.entityId) === String(entityId)) return false;
+      const k = `${r.entityType}-${r.entityId}`;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+  };
+  
+  if (entityType === "タスク" || entityType === "プロジェクト") {
+    const refs = collectPropagationRefs();
+    for (const ref of refs) {
+      logs.push({
+        id: ts + Math.random() * 0.0001,
+        entityType: ref.entityType,
+        entityId: ref.entityId,
+        entityName: ref.entityName,
+        field,
+        oldVal: oldVal||"",
+        newVal: newVal||"",
+        userId: userId||null,
+        date: baseLog.date,
+        // 伝播元情報（伝播先で「タスク〜から」と表示するため）
+        _source: { type: entityType, id: entityId, name: entityName },
+      });
+    }
+  }
+  
+  return {...nd,changeLogs:[...(nd.changeLogs||[]),...logs]};
 }
 
 // ─── 全アクション統合タイムライン: data全体からイベントを集めて時系列で返す ──
@@ -1535,14 +1624,25 @@ function buildGlobalActivities(data) {
     const tc = ({"タスク":"#1d4ed8","プロジェクト":"#7c3aed","企業":"#059669","業者":"#d97706","自治体":"#db2777"})[log.entityType] || "#475569";
     const isLink = log.field === "名刺紐付け";
     const isUnlink = log.field === "名刺紐付け解除";
+    // 伝播ログ（タスク/プロジェクトから営業先へ）の場合は、元情報を表示
+    const isPropagated = !!log._source;
+    const srcLabel = isPropagated
+      ? (log._source.type === "タスク" ? `📋 タスク「${log._source.name||""}」` : `🗂 プロジェクト「${log._source.name||""}」`)
+      : "";
+    const fieldIcon = ({"ファイル添付":"📎","ファイル削除":"🗑","ステータス":"🔄","メモ":"📝","営業紐付け":"🔗","担当者":"👤","期限":"📅","タイトル":"✏️","プロジェクト名":"✏️"})[log.field] || "✏️";
     push({
       id: "cl_"+log.id, ts: tsOf(log.date, log.id), date: log.date,
       userId: log.userId, category: log.entityType||"その他",
       action: isLink ? "bizcard_link" : isUnlink ? "bizcard_unlink" : "edit",
-      icon: isLink ? "🔗" : isUnlink ? "🔓" : "✏️", color: tc,
+      icon: isLink ? "🔗" : isUnlink ? "🔓" : fieldIcon, color: tc,
       entityType: log.entityType, entityId: log.entityId, entityName: log.entityName,
-      title: isLink ? `名刺を紐付け` : isUnlink ? `名刺の紐付けを解除` : `${log.field||"項目"}を変更`,
+      // 伝播ログは元情報も表示
+      title: isPropagated
+        ? `${srcLabel} の${log.field||"項目"}変更`
+        : (isLink ? `名刺を紐付け` : isUnlink ? `名刺の紐付けを解除` : `${log.field||"項目"}を変更`),
       detail: isLink || isUnlink ? (log.newVal || log.oldVal || "") : (log.oldVal ? `${log.oldVal} → ${log.newVal||"—"}` : (log.newVal||"")),
+      _propagated: isPropagated,
+      _source: log._source,
     });
   }
 
@@ -4374,7 +4474,12 @@ function FileSection({ files=[], onAdd, onDelete, currentUserId, entityType, ent
               </div>
             </div>
             {!readOnly && !f._source && (
-              <button onClick={async()=>{if(!window.confirm("削除しますか？"))return; if(f.path){try{await deleteFileFromSupabase(f.path);}catch(e){}} onDelete(f.id||f.url);}}
+              <button onClick={async()=>{
+                if(!window.confirm("削除しますか？")) return;
+                // ★ 物理削除は行わない（他の場所に伝播されている可能性があるため）
+                // S3 ファイル本体は残し、レコードだけ消す（論理削除）
+                onDelete(f.id||f.url);
+              }}
                 style={{background:"none",border:"none",color:"#dc2626",cursor:"pointer",fontSize:"0.85rem",padding:"0.2rem",flexShrink:0}}>✕</button>
             )}
             {f._source && (
@@ -6293,7 +6398,7 @@ function QuoteView({data, setData, users=[], currentUser=null, onNavigateToSales
       updatedAt: new Date().toISOString(),
     };
     const nd = {...data, quotes: [newQuote, ...quotes]};
-    setData(nd);
+    setData(nd); scheduleSaveData(nd);
     setActiveQuoteId(newQuote.id);
     setShowNewModal(false);
   };
@@ -6306,13 +6411,13 @@ function QuoteView({data, setData, users=[], currentUser=null, onNavigateToSales
     const isPdfMetaOnlyUpdate = updateKeys.length > 0 && updateKeys.every(k => PDF_META_KEYS.has(k));
     const finalUpdates = isPdfMetaOnlyUpdate ? updates : {...updates, pdfStale: true};
     const nd = {...data, quotes: quotes.map(q => q.id===id ? {...q, ...finalUpdates, updatedAt:new Date().toISOString()} : q)};
-    setData(nd);
+    setData(nd); scheduleSaveData(nd);
   };
   
   const deleteQuote = (id) => {
     if(!window.confirm("この見積書を削除しますか？")) return;
     const nd = {...data, quotes: quotes.filter(q => q.id !== id)};
-    setData(nd);
+    setData(nd); scheduleSaveData(nd);
     if(activeQuoteId === id) setActiveQuoteId(null);
   };
   
@@ -7193,7 +7298,7 @@ function QuotePreview({quote, company, authorLastName, onClose, onSavePdfMeta}) 
 
 }
 
-function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjTab,setPjTab,navTarget,clearNavTarget,onNavigateToSales}) {
+function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjTab,setPjTab,navTarget,clearNavTarget,onNavigateToSales,onNavigateToProject}) {
   const uid = currentUser?.id;
 
   // ── State（全て先頭にまとめる）─────────────────────────────────────────
@@ -7421,11 +7526,18 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
   // タスク→プロジェクト→営業先 へ一方向で反映（ユニーク化）
   // file.id で重複排除（既存ファイルがあれば追加しない）
   const propagateFileToPj = (nd, projectId, file) => {
-    if (!projectId) return nd;
+    if (!projectId) {
+      console.log("[Propagate] スキップ: projectId なし");
+      return nd;
+    }
     const projects = (nd.projects || []).map(p => {
-      if (p.id !== projectId) return p;
+      if (String(p.id) !== String(projectId)) return p;
       const existing = (p.files || []);
-      if (existing.some(f => String(f.id) === String(file.id))) return p; // 既にあればスキップ
+      if (existing.some(f => String(f.id) === String(file.id))) {
+        console.log(`[Propagate→PJ] スキップ: 既存ファイル ${file.name}`);
+        return p;
+      }
+      console.log(`[Propagate→PJ] ✅ ${p.name||p.title} へ ${file.name} 反映`);
       return { ...p, files: [...existing, { ...file, _propagatedFrom: "task" }] };
     });
     return { ...nd, projects };
@@ -7433,25 +7545,35 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
   
   const propagateFileToSales = (nd, projectId, file) => {
     if (!projectId) return nd;
-    const pj = (nd.projects || []).find(p => p.id === projectId);
-    if (!pj) return nd;
-    const linkedCompanyIds = pj.linkedCompanyIds || [];
-    const linkedVendorIds  = pj.linkedVendorIds || [];
-    const linkedMuniIds    = pj.linkedMuniIds || [];
-    if (!linkedCompanyIds.length && !linkedVendorIds.length && !linkedMuniIds.length) return nd;
+    const pj = (nd.projects || []).find(p => String(p.id) === String(projectId));
+    if (!pj) {
+      console.log(`[Propagate→Sales] プロジェクト ${projectId} が見つからない`);
+      return nd;
+    }
+    const linkedCompanyIds = (pj.linkedCompanyIds || []).map(String);
+    const linkedVendorIds  = (pj.linkedVendorIds  || []).map(String);
+    const linkedMuniIds    = (pj.linkedMuniIds    || []).map(String);
+    if (!linkedCompanyIds.length && !linkedVendorIds.length && !linkedMuniIds.length) {
+      console.log(`[Propagate→Sales] プロジェクト「${pj.name||pj.title}」に紐付け営業先なし`);
+      return nd;
+    }
     
-    const propagate = (arr, ids, kind) => (arr || []).map(item => {
-      if (!ids.includes(item.id)) return item;
+    const propagate = (arr, ids, kind, label) => (arr || []).map(item => {
+      if (!ids.includes(String(item.id))) return item;
       const existing = item.files || [];
-      if (existing.some(f => String(f.id) === String(file.id))) return item;
+      if (existing.some(f => String(f.id) === String(file.id))) {
+        console.log(`[Propagate→${label}] スキップ: 既存 ${file.name}`);
+        return item;
+      }
+      console.log(`[Propagate→${label}] ✅ ${item.name} へ ${file.name} 反映`);
       return { ...item, files: [...existing, { ...file, _propagatedFrom: kind }] };
     });
     
     return {
       ...nd,
-      companies: propagate(nd.companies, linkedCompanyIds, "project"),
-      vendors: propagate(nd.vendors, linkedVendorIds, "project"),
-      municipalities: propagate(nd.municipalities, linkedMuniIds, "project"),
+      companies: propagate(nd.companies, linkedCompanyIds, "project", "企業"),
+      vendors: propagate(nd.vendors, linkedVendorIds, "project", "業者"),
+      municipalities: propagate(nd.municipalities, linkedMuniIds, "project", "自治体"),
     };
   };
   
@@ -7459,41 +7581,71 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
   const addFileToTask = (taskId, fileOrFiles) => {
     const files = Array.isArray(fileOrFiles) ? fileOrFiles : [fileOrFiles];
     if (files.length === 0) return;
-    const task = allTasks.find(t => t.id === taskId);
-    if (!task) return;
+    const task = allTasks.find(t => String(t.id) === String(taskId));
+    if (!task) {
+      console.error(`[addFileToTask] タスク ${taskId} が見つからない`);
+      return;
+    }
+    console.log(`[addFileToTask] タスク「${task.title}」(projectId=${task.projectId||"なし"}) にファイル ${files.length}件 追加`);
     
     // 1. タスクに追加
     let nd = { ...data, tasks: allTasks.map(t => {
-      if (t.id !== taskId) return t;
+      if (String(t.id) !== String(taskId)) return t;
       const existing = (t.files || []);
       const newFiles = files.filter(f => !existing.some(ef => String(ef.id) === String(f.id)));
       return { ...t, files: [...existing, ...newFiles] };
     })};
     
-    // 2. タスクのプロジェクトにも反映
+    // 2. タスクのプロジェクトにも反映 + プロジェクト経由で営業先にも
     if (task.projectId) {
       for (const f of files) {
         nd = propagateFileToPj(nd, task.projectId, f);
         nd = propagateFileToSales(nd, task.projectId, f);
       }
+    } else {
+      console.log(`[addFileToTask] タスク「${task.title}」にprojectIdなし → プロジェクト反映スキップ`);
+    }
+    
+    // 3. ChangeLog（営業先にも自動伝播される）
+    for (const f of files) {
+      nd = globalAddChangeLog(nd, {
+        entityType: "タスク", entityId: taskId, entityName: task.title || "",
+        field: "ファイル添付", oldVal: "", newVal: f.name || "ファイル",
+        userId: uid,
+      });
     }
     
     window.__myDeskLastSave = Date.now();
     setData(nd); scheduleSaveData(nd);
   };
   const removeFileFromTask = (taskId, fileIdOrUrl) => {
+    const task = allTasks.find(t => String(t.id) === String(taskId));
+    const removedFile = (task?.files||[]).find(f => String(f.id||f.url)===String(fileIdOrUrl));
     // タスクからのみ削除（伝播先からは消さない、つまり営業先・プロジェクトには残る）
-    const nd = { ...data, tasks: allTasks.map(t => t.id === taskId ? { ...t, files: (t.files||[]).filter(f=>(f.id||f.url)!==fileIdOrUrl) } : t) };
+    let nd = { ...data, tasks: allTasks.map(t => String(t.id) === String(taskId) ? { ...t, files: (t.files||[]).filter(f=>String(f.id||f.url)!==String(fileIdOrUrl)) } : t) };
+    if (task && removedFile) {
+      nd = globalAddChangeLog(nd, {
+        entityType: "タスク", entityId: taskId, entityName: task.title || "",
+        field: "ファイル削除", oldVal: removedFile.name || "ファイル", newVal: "",
+        userId: uid,
+      });
+    }
     window.__myDeskLastSave = Date.now();
     setData(nd); scheduleSaveData(nd);
   };
   const addFileToPj = (pjId, fileOrFiles) => {
     const files = Array.isArray(fileOrFiles) ? fileOrFiles : [fileOrFiles];
     if (files.length === 0) return;
+    const pj = allProjects.find(p => String(p.id) === String(pjId));
+    if (!pj) {
+      console.error(`[addFileToPj] プロジェクト ${pjId} が見つからない`);
+      return;
+    }
+    console.log(`[addFileToPj] プロジェクト「${pj.name}」にファイル ${files.length}件 追加`);
     
     // 1. プロジェクトに追加
     let nd = { ...data, projects: allProjects.map(p => {
-      if (p.id !== pjId) return p;
+      if (String(p.id) !== String(pjId)) return p;
       const existing = (p.files || []);
       const newFiles = files.filter(f => !existing.some(ef => String(ef.id) === String(f.id)));
       return { ...p, files: [...existing, ...newFiles] };
@@ -7504,11 +7656,29 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
       nd = propagateFileToSales(nd, pjId, f);
     }
     
+    // 3. ChangeLog（営業先にも自動伝播）
+    for (const f of files) {
+      nd = globalAddChangeLog(nd, {
+        entityType: "プロジェクト", entityId: pjId, entityName: pj?.name || "",
+        field: "ファイル添付", oldVal: "", newVal: f.name || "ファイル",
+        userId: uid,
+      });
+    }
+    
     window.__myDeskLastSave = Date.now();
     setData(nd); scheduleSaveData(nd);
   };
   const removeFileFromPj = (pjId, fileIdOrUrl) => {
-    const nd = { ...data, projects: allProjects.map(p => p.id === pjId ? { ...p, files: (p.files||[]).filter(f=>(f.id||f.url)!==fileIdOrUrl) } : p) };
+    const pj = allProjects.find(p => String(p.id) === String(pjId));
+    const removedFile = (pj?.files||[]).find(f => String(f.id||f.url)===String(fileIdOrUrl));
+    let nd = { ...data, projects: allProjects.map(p => String(p.id) === String(pjId) ? { ...p, files: (p.files||[]).filter(f=>String(f.id||f.url)!==String(fileIdOrUrl)) } : p) };
+    if (pj && removedFile) {
+      nd = globalAddChangeLog(nd, {
+        entityType: "プロジェクト", entityId: pjId, entityName: pj.name || "",
+        field: "ファイル削除", oldVal: removedFile.name || "ファイル", newVal: "",
+        userId: uid,
+      });
+    }
     window.__myDeskLastSave = Date.now();
     setData(nd); scheduleSaveData(nd);
   };
@@ -7518,10 +7688,17 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     let nd = {...data,tasks:allTasks.map(t=>t.id===id?{...t,...ch}:t)};
     const updated = nd.tasks.find(t=>t.id===id);
     // ── ChangeLog ──
-    const logFields = [["status","ステータス"],["title","タイトル"],["dueDate","期限"],["priority","優先度"]];
+    const logFields = [["status","ステータス"],["title","タイトル"],["dueDate","期限"],["priority","優先度"],["notes","メモ"]];
     logFields.forEach(([f,label])=>{
-      if(ch[f]!==undefined && prev?.[f]!==ch[f])
-        nd=globalAddChangeLog(nd,{entityType:"タスク",entityId:id,entityName:updated?.title||prev?.title||"",field:label,oldVal:String(prev?.[f]||""),newVal:String(ch[f]||""),userId:uid});
+      if(ch[f]!==undefined && prev?.[f]!==ch[f]) {
+        // notes は長文になる可能性があるので40字省略
+        const shorten = (s) => {
+          if (!s) return "";
+          const str = String(s);
+          return str.length > 40 ? str.slice(0,40)+"…" : str;
+        };
+        nd=globalAddChangeLog(nd,{entityType:"タスク",entityId:id,entityName:updated?.title||prev?.title||"",field:label,oldVal:shorten(prev?.[f]),newVal:shorten(ch[f]),userId:uid});
+      }
     });
     if(ch.assignees && JSON.stringify(prev?.assignees||[])!==JSON.stringify(ch.assignees||[])) {
       const oldNames=(prev?.assignees||[]).map(i=>users.find(u=>u.id===i)?.name||i).join(",");
@@ -7621,10 +7798,16 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
   const updateProject = (id,ch) => {
     const prev=allProjects.find(p=>p.id===id);
     let u={...data,projects:allProjects.map(p=>p.id===id?{...p,...ch}:p)};
-    const logFields=[["status","ステータス"],["name","プロジェクト名"],["dueDate","期限"]];
+    const logFields=[["status","ステータス"],["name","プロジェクト名"],["dueDate","期限"],["notes","メモ"],["description","説明"]];
     logFields.forEach(([f,label])=>{
-      if(ch[f]!==undefined && prev?.[f]!==ch[f])
-        u=globalAddChangeLog(u,{entityType:"プロジェクト",entityId:id,entityName:ch.name||prev?.name||"",field:label,oldVal:String(prev?.[f]||""),newVal:String(ch[f]||""),userId:uid});
+      if(ch[f]!==undefined && prev?.[f]!==ch[f]) {
+        const shorten = (s) => {
+          if (!s) return "";
+          const str = String(s);
+          return str.length > 40 ? str.slice(0,40)+"…" : str;
+        };
+        u=globalAddChangeLog(u,{entityType:"プロジェクト",entityId:id,entityName:ch.name||prev?.name||"",field:label,oldVal:shorten(prev?.[f]),newVal:shorten(ch[f]),userId:uid});
+      }
     });
     if(ch.salesRef!==undefined && JSON.stringify(prev?.salesRef||null)!==JSON.stringify(ch.salesRef||null)) {
       u=globalAddChangeLog(u,{entityType:"プロジェクト",entityId:id,entityName:ch.name||prev?.name||"",field:"営業紐付け",oldVal:prev?.salesRef?.name||"なし",newVal:ch.salesRef?.name||"なし",userId:uid});
@@ -7645,6 +7828,15 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     const arr = (data[entityKey]||[]).map(x=>x.id===entityId?{...x,memos:[...(x.memos||[]),memo]}:x);
     const entity = (data[entityKey]||[]).find(x=>x.id===entityId);
     let nd = {...data,[entityKey]:arr};
+    // ── ChangeLog（メモ追加） ──
+    if(entityKey==="tasks" || entityKey==="projects") {
+      const etLabel = entityKey==="tasks" ? "タスク" : "プロジェクト";
+      const shorten = (s)=>{ const str=String(s||""); return str.length>40 ? str.slice(0,40)+"…" : str; };
+      nd = globalAddChangeLog(nd, {
+        entityType: etLabel, entityId, entityName: entity?.title||entity?.name||"",
+        field: "メモ追加", oldVal: "", newVal: shorten(text), userId: uid,
+      });
+    }
     const toAll = users.filter(u=>u.id!==uid).map(u=>u.id);
     const eTypeMemo = entityKey==="tasks"?"task":entityKey==="projects"?"project":entityKey;
     const targetMemoIds=[...(entity?.assignees||[]),entity?.createdBy,(entity?.members||[])].flat().filter(Boolean);
@@ -7681,6 +7873,15 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     const entity = (data[entityKey]||[]).find(x=>x.id===entityId);
     const eType = entityKey==="tasks"?"task":entityKey==="projects"?"project":entityKey;
     let nd = {...data,[entityKey]:arr};
+    // ── ChangeLog（チャット投稿） ──
+    if(entityKey==="tasks" || entityKey==="projects") {
+      const etLabel = entityKey==="tasks" ? "タスク" : "プロジェクト";
+      const shorten = (s)=>{ const str=String(s||""); return str.length>40 ? str.slice(0,40)+"…" : str; };
+      nd = globalAddChangeLog(nd, {
+        entityType: etLabel, entityId, entityName: entity?.title||entity?.name||"",
+        field: "チャット投稿", oldVal: "", newVal: shorten(text), userId: uid,
+      });
+    }
     // 担当者+作成者に通知（自分以外）
     const targetIds=[...(entity?.assignees||[]),entity?.createdBy,(entity?.members||[])].flat().filter(Boolean);
     const assignees=[...new Set(targetIds)].filter(i=>i!==uid);
@@ -7702,6 +7903,14 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     const arr = (data[entityKey]||[]).map(x=>x.id===entityId?{...x,mtgLogs:[...(x.mtgLogs||[]),mtg]}:x);
     const entity = (data[entityKey]||[]).find(x=>x.id===entityId);
     let nd = {...data,[entityKey]:arr};
+    // ── ChangeLog（議事録追加） ──
+    if(entityKey==="tasks" || entityKey==="projects") {
+      const etLabel = entityKey==="tasks" ? "タスク" : "プロジェクト";
+      nd = globalAddChangeLog(nd, {
+        entityType: etLabel, entityId, entityName: entity?.title||entity?.name||"",
+        field: "議事録追加", oldVal: "", newVal: (title||"議事録").slice(0,40), userId: uid,
+      });
+    }
     const eType = entityKey==="tasks"?"task":entityKey==="projects"?"project":entityKey;
     const targetIds=[...(entity?.assignees||[]),entity?.createdBy,(entity?.members||[])].flat().filter(Boolean);
     const toUsers=[...new Set(targetIds)].filter(i=>i!==uid);
@@ -7785,10 +7994,20 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
               );
             }
             if (it._kind==="change") {
+              // フィールド別のアイコン
+              const fieldIcon = ({"ファイル添付":"📎","ファイル削除":"🗑","ステータス":"🔄","メモ":"📝","メモ追加":"📝","チャット投稿":"💬","議事録追加":"🎤","営業紐付け":"🔗","担当者":"👤","期限":"📅","タイトル":"✏️","プロジェクト名":"✏️","優先度":"⚡","登録":"✨","削除":"🗑","説明":"📄"})[it.field] || "🔄";
+              const isPropagated = !!it._source;
+              const srcBg = isPropagated ? (it._source.type === "タスク" ? "#dbeafe" : "#ede9fe") : "#faf5ff";
+              const srcBorder = isPropagated ? (it._source.type === "タスク" ? "#93c5fd" : "#d8b4fe") : "#d8b4fe";
               return (
-                <div key={`ch-${it.id||i}`} style={{background:"#faf5ff",border:"1px solid #d8b4fe",borderRadius:"8px",padding:"0.55rem 0.85rem",fontSize:"0.74rem"}}>
+                <div key={`ch-${it.id||i}`} style={{background:srcBg,border:`1px solid ${srcBorder}`,borderRadius:"8px",padding:"0.55rem 0.85rem",fontSize:"0.74rem"}}>
+                  {isPropagated && (
+                    <div style={{fontSize:"0.62rem",color:it._source.type==="タスク"?"#1d4ed8":"#7c3aed",fontWeight:700,marginBottom:"0.3rem",display:"flex",alignItems:"center",gap:"0.25rem"}}>
+                      {it._source.type==="タスク" ? "📋" : "🗂"} {it._source.type}「{it._source.name||""}」より
+                    </div>
+                  )}
                   <div style={{display:"flex",alignItems:"center",gap:"0.4rem",flexWrap:"wrap"}}>
-                    <span style={{fontWeight:700,color:"#7c3aed"}}>🔄 {it.field}</span>
+                    <span style={{fontWeight:700,color:isPropagated?(it._source.type==="タスク"?"#1d4ed8":"#7c3aed"):"#7c3aed"}}>{fieldIcon} {it.field}</span>
                     {it.oldVal && <span style={{color:"#dc2626",textDecoration:"line-through",fontSize:"0.7rem"}}>{it.oldVal}</span>}
                     {it.oldVal && <span style={{color:C.textMuted}}>→</span>}
                     {it.newVal && <span style={{color:"#059669",fontWeight:700,fontSize:"0.72rem"}}>{it.newVal}</span>}
@@ -8046,7 +8265,15 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
         {/* 情報タブ */}
         {taskTab==="info"&&(
           <div>
-            {parentPj&&<div style={{background:C.bg,borderRadius:"0.625rem",padding:"0.5rem 0.75rem",marginBottom:"0.75rem",fontSize:"0.8rem",color:C.textSub}}>🗂 {parentPj.name}</div>}
+            {parentPj&&(
+              <div onClick={()=>onNavigateToProject?.(parentPj.id)}
+                style={{background:C.bg,borderRadius:"0.625rem",padding:"0.5rem 0.75rem",marginBottom:"0.75rem",fontSize:"0.8rem",color:C.textSub,cursor:onNavigateToProject?"pointer":"default",display:"flex",alignItems:"center",gap:"0.4rem",border:onNavigateToProject?`1px solid ${C.border}`:"none",transition:"background 0.15s"}}
+                onMouseEnter={e=>{if(onNavigateToProject)e.currentTarget.style.background=C.accentBg}}
+                onMouseLeave={e=>{if(onNavigateToProject)e.currentTarget.style.background=C.bg}}>
+                <span style={{flex:1}}>🗂 {parentPj.name}</span>
+                {onNavigateToProject && <span style={{fontSize:"0.65rem",fontWeight:700,color:C.accent}}>詳細へ →</span>}
+              </div>
+            )}
             {/* salesRef 表示 + 変更 */}
             {(()=>{
               const col={"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"}[activeTask.salesRef?.type]||C.accent;
@@ -14265,9 +14492,13 @@ function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach
         // change log
         const isCardLink = item.field === "名刺紐付け";
         const isCardUnlink = item.field === "名刺紐付け解除";
-        const changeIcon = isCardLink ? "🔗" : isCardUnlink ? "🔓" : "🔄";
-        const changeBg = isCardLink ? "#cffafe" : isCardUnlink ? "#fee2e2" : "#ede9fe";
-        const changeColor = isCardLink ? "#0e7490" : isCardUnlink ? "#b91c1c" : "#7c3aed";
+        // 伝播ログ（タスク/プロジェクトからの来訪）
+        const isPropagated = !!item._source;
+        // フィールド別アイコン
+        const fieldIcon = ({"ファイル添付":"📎","ファイル削除":"🗑","ステータス":"🔄","メモ追加":"📝","チャット投稿":"💬","議事録追加":"🎤","営業紐付け":"🔗","担当者":"👤","期限":"📅","タイトル":"✏️","プロジェクト名":"✏️","優先度":"⚡","登録":"✨","削除":"🗑","説明":"📄","メモ":"📝"})[item.field] || "🔄";
+        const changeIcon = isCardLink ? "🔗" : isCardUnlink ? "🔓" : fieldIcon;
+        const changeBg = isCardLink ? "#cffafe" : isCardUnlink ? "#fee2e2" : (isPropagated ? (item._source.type === "タスク" ? "#dbeafe" : "#ede9fe") : "#ede9fe");
+        const changeColor = isCardLink ? "#0e7490" : isCardUnlink ? "#b91c1c" : (isPropagated ? (item._source.type === "タスク" ? "#1d4ed8" : "#7c3aed") : "#7c3aed");
         const changeLabel = isCardLink ? "名刺を紐付け" : isCardUnlink ? "名刺の紐付けを解除" : item.field;
         return (
           <div key={item.id||i} style={{display:"flex",gap:"0.6rem",marginBottom:"0.75rem"}}>
@@ -14276,6 +14507,11 @@ function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach
               {i<items.length-1&&<div style={{width:2,flex:1,background:C.borderLight,margin:"4px 0"}}/>}
             </div>
             <div style={{flex:1,paddingBottom:"0.5rem"}}>
+              {isPropagated && (
+                <div style={{fontSize:"0.62rem",color:changeColor,fontWeight:700,marginBottom:"0.2rem"}}>
+                  {item._source.type==="タスク" ? "📋" : "🗂"} {item._source.type}「{item._source.name||""}」より
+                </div>
+              )}
               <div style={{display:"flex",gap:"0.5rem",alignItems:"center",flexWrap:"wrap"}}>
                 <span style={{fontSize:"0.7rem",fontWeight:700,color:changeColor}}>{changeLabel}</span>
                 {(isCardLink||isCardUnlink) ? (
@@ -31028,6 +31264,7 @@ export default function App() {
                 else if(t==="業者") { setSalesNavTarget({type:"vendor",id:salesRef.id}); persistTab("md_tab","sales",setTab); }
                 else if(t==="自治体") { setSalesNavTarget({type:"muni",id:salesRef.id}); persistTab("md_tab","sales",setTab); }
               }}
+              onNavigateToProject={(pjId)=>{ setNavTarget({type:"project",id:pjId}); }}
               navTarget={navTarget} clearNavTarget={()=>setNavTarget(null)}/>}
             {tab==="schedule"  && <ScheduleView/>}
             {tab==="email"     && <EmailView     data={data} setData={setData} currentUser={currentUser}/>}
