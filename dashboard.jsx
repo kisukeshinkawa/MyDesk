@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v184-grammarly-and-draft"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v185-agent-superpowers"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -27247,18 +27247,50 @@ function AssistantFab({data, setData, currentUser, users}) {
 ※ コード例示用の \`\`\`json コードブロックとは異なる。アクション用は必ず {"actions":[...]} の形式。
 
 【サポートされるアクション】
+
+▼ 作成系
 1. タスク作成（他人もアサイン可・複数人可）:
    {"type":"create_task","title":"...","dueDate":"YYYY-MM-DD","description":"任意","assigneeNames":["新川 希亮","佐藤"],"linkedEntityName":"任意"}
    ※ assigneeNames は「チームメンバー一覧」から正確な名前を使う。「私」「自分」は現在のユーザー名。
-2. メモ追加: {"type":"add_memo","entityType":"company"|"vendor"|"muni","entityName":"...","content":"..."}
-3. ファイル保存: {"type":"save_file","attachmentIndex":0,"entityType":"company"|"vendor"|"muni","entityName":"..."}
-4. プロジェクト作成: {"type":"create_project","title":"...","description":"任意","members":["..."]}
-5. 資料作成（ダウンロード可）: {"type":"create_file","filename":"提案書.md","format":"markdown"|"text"|"csv"|"html"|"json"|"code","content":"全文をここに"}
+2. プロジェクト作成: {"type":"create_project","title":"...","description":"任意","members":["..."]}
+3. 資料作成（ダウンロード可）: {"type":"create_file","filename":"提案書.md","format":"markdown"|"text"|"csv"|"html"|"json"|"code","content":"全文をここに"}
+
+▼ 営業先への記録系（entityType: "company"|"vendor"|"muni"）
+4. メモ追加: {"type":"add_memo","entityType":"...","entityName":"...","content":"..."}
+5. チャット投稿: {"type":"add_chat","entityType":"...","entityName":"...","content":"@名前 でメンション可"}
+6. 議事録追加: {"type":"add_mtg","entityType":"...","entityName":"...","title":"6/4 進捗MTG","content":"決定事項・宿題など"}
+7. アプローチ記録: {"type":"add_approach","entityType":"...","entityName":"...","approachType":"電話"|"訪問"|"メール"|"資料送付"|"提案"|"見積"|"その他","note":"...","date":"YYYY-MM-DD"}
+8. 次回設定: {"type":"set_next_action","entityType":"...","entityName":"...","nextType":"電話"|"訪問"|"メール"|"提案書送付"|"見積提出"|"その他","nextDate":"YYYY-MM-DD","note":"任意"}
+9. ステータス変更: {"type":"update_entity_status","entityType":"...","entityName":"...","newStatus":"未接触"|"電話済"|"資料送付"|"商談中"|"成約"|"失注"等}
+
+▼ タスク・プロジェクト
+10. タスク更新: {"type":"update_task","taskTitle":"...","newStatus":"未着手"|"進行中"|"完了","newDueDate":"YYYY-MM-DD（任意）","newAssigneeNames":["..."（任意）]}
+    ※ taskTitle で曖昧マッチ。同名複数なら最新を更新。
+11. タスクへメモ/チャット: {"type":"add_task_memo","taskTitle":"...","content":"..."} or {"type":"add_task_chat","taskTitle":"...","content":"..."}
+12. プロジェクトへメモ/チャット: {"type":"add_project_memo","projectTitle":"...","content":"..."} or {"type":"add_project_chat","projectTitle":"...","content":"..."}
+
+▼ ファイル
+13. 添付ファイルを営業先に保存: {"type":"save_file","attachmentIndex":0,"entityType":"...","entityName":"..."}
+14. 添付ファイルをタスクに保存: {"type":"save_file_to_task","attachmentIndex":0,"taskTitle":"..."}
+
+▼ 通信
+15. メール送信: {"type":"send_email","to":"name@example.com","subject":"...","body":"..."}
+    ※ 送信前にユーザー承認を求める。
+16. 通知（プッシュ）: {"type":"send_push","userName":"佐藤 太郎","title":"...","body":"..."}
 
 アクション例:
 \`\`\`json
-{"actions":[{"type":"create_task","title":"見積書送付","dueDate":"2026-06-10","assigneeNames":["佐藤 太郎"]}]}
+{"actions":[
+  {"type":"create_task","title":"見積書送付","dueDate":"2026-06-10","assigneeNames":["佐藤 太郎"]},
+  {"type":"add_chat","entityType":"company","entityName":"マルエドラッグ","content":"@田中 先方から問い合わせあり、要対応"},
+  {"type":"set_next_action","entityType":"vendor","entityName":"○○商事","nextType":"訪問","nextDate":"2026-06-15"},
+  {"type":"update_entity_status","entityType":"company","entityName":"△△株式会社","newStatus":"商談中"}
+]}
 \`\`\`
+
+▼ 重要：複数アクションは1つのJSON内に複数並べる。ユーザーは個別に承認/拒否できる。
+▼ 添付ファイルが複数ある場合、attachmentIndex で個別指定可能（0始まり）。
+▼ メンション機能：add_chat の content に「@山田」と書くと該当ユーザーに通知される。
 
 普通の相談・質問の時はアクションJSONを出さなくてよい。
 
@@ -27407,11 +27439,132 @@ ${q || "（添付ファイルのみ。中身を確認して、適切な提案を
         const mime = mimeMap[fmt] || "text/plain";
         downloadGeneratedFile(action.filename || "file.txt", action.content || "", mime);
         // newData は変更しない
+      }
+      // ── 新規アクション（v185+）──
+      else if (action.type === "add_chat") {
+        const ent = findEntity(action.entityType, action.entityName);
+        if (!ent) throw new Error(`「${action.entityName}」が見つかりません`);
+        const key = action.entityType==="company"?"companies":action.entityType==="vendor"?"vendors":"municipalities";
+        const chat = { id: Date.now(), userId: uid, text: action.content||"", date: now };
+        newData = { ...data, [key]: data[key].map(e => e.id===ent.id ? {...e, chat:[...(e.chat||[]), chat]} : e) };
+      }
+      else if (action.type === "add_mtg") {
+        const ent = findEntity(action.entityType, action.entityName);
+        if (!ent) throw new Error(`「${action.entityName}」が見つかりません`);
+        const key = action.entityType==="company"?"companies":action.entityType==="vendor"?"vendors":"municipalities";
+        const mtg = { id: Date.now(), userId: uid, title: action.title||"議事録", content: action.content||"", date: now };
+        newData = { ...data, [key]: data[key].map(e => e.id===ent.id ? {...e, mtgLogs:[...(e.mtgLogs||[]), mtg]} : e) };
+      }
+      else if (action.type === "add_approach") {
+        const ent = findEntity(action.entityType, action.entityName);
+        if (!ent) throw new Error(`「${action.entityName}」が見つかりません`);
+        const key = action.entityType==="company"?"companies":action.entityType==="vendor"?"vendors":"municipalities";
+        const dateStr = action.date || new Date().toISOString().slice(0,10);
+        const dt = dateStr + "T" + new Date().toTimeString().slice(0,8);
+        const log = { id: Date.now(), userId: uid, type: action.approachType||"電話", note: action.note||"", date: dt, createdAt: now };
+        newData = { ...data, [key]: data[key].map(e => e.id===ent.id ? {...e, approachLogs:[...(e.approachLogs||[]), log], updatedAt: now.slice(0,10)} : e) };
+      }
+      else if (action.type === "set_next_action") {
+        const ent = findEntity(action.entityType, action.entityName);
+        if (!ent) throw new Error(`「${action.entityName}」が見つかりません`);
+        const key = action.entityType==="company"?"companies":action.entityType==="vendor"?"vendors":"municipalities";
+        newData = { ...data, [key]: data[key].map(e => e.id===ent.id ? {...e, nextActionType: action.nextType||"電話", nextActionDate: action.nextDate||"", nextActionNote: action.note||"", updatedAt: now.slice(0,10)} : e) };
+      }
+      else if (action.type === "update_entity_status") {
+        const ent = findEntity(action.entityType, action.entityName);
+        if (!ent) throw new Error(`「${action.entityName}」が見つかりません`);
+        const key = action.entityType==="company"?"companies":action.entityType==="vendor"?"vendors":"municipalities";
+        newData = { ...data, [key]: data[key].map(e => e.id===ent.id ? {...e, status: action.newStatus, updatedAt: now.slice(0,10)} : e) };
+      }
+      else if (action.type === "update_task") {
+        // taskTitle で曖昧マッチ
+        const lt = String(action.taskTitle||"").toLowerCase().trim();
+        const tasks = data.tasks || [];
+        const target = tasks.find(t => (t.title||"").toLowerCase().trim() === lt)
+                    || tasks.find(t => (t.title||"").toLowerCase().includes(lt));
+        if (!target) throw new Error(`タスク「${action.taskTitle}」が見つかりません`);
+        const patch = {};
+        if (action.newStatus) patch.status = action.newStatus;
+        if (action.newDueDate) patch.dueDate = action.newDueDate;
+        if (action.newAssigneeNames) {
+          const aids = (action.newAssigneeNames||[]).map(findUserIdByName).filter(Boolean);
+          if (aids.length) patch.assignees = aids;
+        }
+        newData = { ...data, tasks: tasks.map(t => t.id===target.id ? {...t, ...patch, updatedAt: now} : t) };
+      }
+      else if (action.type === "add_task_memo" || action.type === "add_task_chat") {
+        const lt = String(action.taskTitle||"").toLowerCase().trim();
+        const tasks = data.tasks || [];
+        const target = tasks.find(t => (t.title||"").toLowerCase().trim() === lt)
+                    || tasks.find(t => (t.title||"").toLowerCase().includes(lt));
+        if (!target) throw new Error(`タスク「${action.taskTitle}」が見つかりません`);
+        const entry = { id: Date.now(), userId: uid, text: action.content||"", date: now };
+        const field = action.type === "add_task_memo" ? "memos" : "chat";
+        newData = { ...data, tasks: tasks.map(t => t.id===target.id ? {...t, [field]:[...(t[field]||[]), entry]} : t) };
+      }
+      else if (action.type === "add_project_memo" || action.type === "add_project_chat") {
+        const lt = String(action.projectTitle||"").toLowerCase().trim();
+        const projects = data.projects || [];
+        const target = projects.find(p => (p.title||p.name||"").toLowerCase().trim() === lt)
+                    || projects.find(p => (p.title||p.name||"").toLowerCase().includes(lt));
+        if (!target) throw new Error(`プロジェクト「${action.projectTitle}」が見つかりません`);
+        const entry = { id: Date.now(), userId: uid, text: action.content||"", date: now };
+        const field = action.type === "add_project_memo" ? "memos" : "chat";
+        newData = { ...data, projects: projects.map(p => p.id===target.id ? {...p, [field]:[...(p[field]||[]), entry]} : p) };
+      }
+      else if (action.type === "save_file_to_task") {
+        const lt = String(action.taskTitle||"").toLowerCase().trim();
+        const tasks = data.tasks || [];
+        const target = tasks.find(t => (t.title||"").toLowerCase().trim() === lt)
+                    || tasks.find(t => (t.title||"").toLowerCase().includes(lt));
+        if (!target) throw new Error(`タスク「${action.taskTitle}」が見つかりません`);
+        const att = (turn.attachments||[])[action.attachmentIndex];
+        if (!att) throw new Error("添付ファイルが見つかりません");
+        let fileEntry;
+        if (att.url) {
+          fileEntry = { id: Date.now()+Math.random(), name: att.name, url: att.url, path: att.path, size: att.size, type: att.mime||"", uploadedAt: now };
+        } else {
+          const blob = new Blob([att.textContent||""], { type: "text/plain" });
+          const fileObj = new File([blob], att.name, { type: "text/plain" });
+          const up = await uploadFileToSupabase(fileObj, "tasks", target.id);
+          fileEntry = up;
+        }
+        newData = { ...data, tasks: tasks.map(t => t.id===target.id ? {...t, files:[...(t.files||[]), fileEntry]} : t) };
+      }
+      else if (action.type === "send_email") {
+        // メール送信は API 経由（既存の send-email エンドポイント利用）
+        if (!action.to || !action.subject || !action.body) throw new Error("send_email: to, subject, body は必須");
+        try {
+          const r = await fetch(`${API_BASE}/api/send-email`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ to: action.to, subject: action.subject, body: action.body, from: currentUser?.email })
+          });
+          if (!r.ok) throw new Error(`メール送信失敗: ${r.status}`);
+        } catch(e) { throw new Error("メール送信エラー: " + e.message); }
+        // メール送信はDBを変更しない（履歴記録は将来実装）
+      }
+      else if (action.type === "send_push") {
+        const targetUser = (users||[]).find(u => {
+          const full = ((u.lastName||"")+(u.firstName||"")+(u.name||"")).replace(/\s/g,"").toLowerCase();
+          return full.includes(String(action.userName||"").replace(/\s/g,"").toLowerCase());
+        });
+        if (!targetUser) throw new Error(`ユーザー「${action.userName}」が見つかりません`);
+        try {
+          const r = await fetch(`${API_BASE}/api/send-push`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ userId: targetUser.id, title: action.title||"通知", body: action.body||"" })
+          });
+          if (!r.ok) throw new Error(`通知送信失敗: ${r.status}`);
+        } catch(e) { throw new Error("通知エラー: " + e.message); }
       } else {
         throw new Error("未対応のアクション: "+action.type);
       }
 
-      if (action.type !== "create_file") {
+      // DBを変更しないアクション（DBに保存しない）
+      const NO_DATA_CHANGE = new Set(["create_file","send_email","send_push"]);
+      if (!NO_DATA_CHANGE.has(action.type)) {
         setData(newData);
         const ok = await saveData(newData);
         if (ok === false) {
@@ -27513,13 +27666,34 @@ ${q || "（添付ファイルのみ。中身を確認して、適切な提案を
                         const actionKey = `${i}-${j}`;
                         const isBusy = busyAction===actionKey;
                         const isDone = act._done;
-                        const labelMap = {create_task:"📋 タスク作成",add_memo:"📝 メモ追加",save_file:"💾 ファイル保存",create_project:"📁 プロジェクト作成",create_file:"📄 資料作成"};
+                        const labelMap = {
+                          create_task:"📋 タスク作成", add_memo:"📝 メモ追加", save_file:"💾 ファイル保存",
+                          create_project:"📁 プロジェクト作成", create_file:"📄 資料作成",
+                          add_chat:"💬 チャット投稿", add_mtg:"🎤 議事録追加", add_approach:"📞 アプローチ記録",
+                          set_next_action:"📅 次回設定", update_entity_status:"📊 ステータス変更",
+                          update_task:"✏️ タスク更新", add_task_memo:"📝 タスクへメモ", add_task_chat:"💬 タスクへチャット",
+                          add_project_memo:"📝 PJへメモ", add_project_chat:"💬 PJへチャット",
+                          save_file_to_task:"💾 タスクへ保存", send_email:"✉️ メール送信", send_push:"🔔 プッシュ通知"
+                        };
                         const summaryMap = {
                           create_task: `${act.title||"タスク"}${act.dueDate?` (期限: ${act.dueDate})`:""}${act.assigneeNames?.length?` (担当: ${act.assigneeNames.join("、")})`:""}${act.linkedEntityName?` ＠${act.linkedEntityName}`:""}`,
                           add_memo: `${act.entityName||""} に「${(act.content||"").slice(0,40)}${(act.content||"").length>40?"…":""}」を追加`,
                           save_file: `添付#${(act.attachmentIndex||0)+1} を ${act.entityName||""} に保存`,
                           create_project: `${act.title||"プロジェクト"}${act.members?.length?` (メンバー: ${act.members.join("、")})`:""}`,
                           create_file: `${act.filename||"file.txt"} (${act.format||"text"}, ${(act.content||"").length}文字)`,
+                          add_chat: `${act.entityName||""} に「${(act.content||"").slice(0,40)}${(act.content||"").length>40?"…":""}」`,
+                          add_mtg: `${act.entityName||""} へ「${act.title||"議事録"}」`,
+                          add_approach: `${act.entityName||""} へ${act.approachType||"電話"}: 「${(act.note||"").slice(0,30)}」`,
+                          set_next_action: `${act.entityName||""} → ${act.nextDate||""} ${act.nextType||"電話"}`,
+                          update_entity_status: `${act.entityName||""} → ${act.newStatus||""}`,
+                          update_task: `${act.taskTitle||""}${act.newStatus?` → ${act.newStatus}`:""}${act.newDueDate?` (期限: ${act.newDueDate})`:""}`,
+                          add_task_memo: `${act.taskTitle||""} に「${(act.content||"").slice(0,40)}」`,
+                          add_task_chat: `${act.taskTitle||""} に「${(act.content||"").slice(0,40)}」`,
+                          add_project_memo: `${act.projectTitle||""} に「${(act.content||"").slice(0,40)}」`,
+                          add_project_chat: `${act.projectTitle||""} に「${(act.content||"").slice(0,40)}」`,
+                          save_file_to_task: `添付#${(act.attachmentIndex||0)+1} を ${act.taskTitle||""} に保存`,
+                          send_email: `${act.to||""} へ「${act.subject||""}」`,
+                          send_push: `${act.userName||""} へ通知: 「${act.title||""}」`,
                         };
                         return (
                           <div key={j} style={{padding:"0.7rem 0.85rem",background:isDone?"#ecfdf5":"white",borderRadius:"10px",border:`1.5px solid ${isDone?"#10b98155":ACC+"33"}`,boxShadow:"0 1px 2px rgba(0,0,0,0.03)"}}>
