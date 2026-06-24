@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v180-dataref-and-delete-propagation"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v181-quote-layout-fix"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -6743,22 +6743,22 @@ function QuoteEditor({quote, users=[], currentUser, onUpdate, onDelete, onClose,
                       placeholder={pastItems.length>0?"品目（過去明細から候補）":"品目・サービス内容"}
                       style={{...inputStyle,fontSize:"0.88rem",padding:"0.55rem 0.7rem"}}/>
                   </div>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"0.4rem",marginBottom:"0.4rem"}}>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.4rem",marginBottom:"0.4rem"}}>
                     <div>
                       <label style={{...labelStyle,fontSize:"0.68rem"}}>数量</label>
                       <input type="number" inputMode="decimal" value={it.qty||""} onChange={e => updateItem(idx,"qty",e.target.value)}
-                        style={{...inputStyle,fontSize:"0.88rem",padding:"0.5rem 0.6rem",textAlign:"right"}}/>
+                        style={{...inputStyle,fontSize:"0.95rem",padding:"0.65rem 0.7rem",textAlign:"right"}}/>
                     </div>
                     <div>
                       <label style={{...labelStyle,fontSize:"0.68rem"}}>単位</label>
                       <input value={it.unit||""} onChange={e => updateItem(idx,"unit",e.target.value)} placeholder="個"
-                        style={{...inputStyle,fontSize:"0.88rem",padding:"0.5rem 0.6rem"}}/>
+                        style={{...inputStyle,fontSize:"0.95rem",padding:"0.65rem 0.7rem"}}/>
                     </div>
-                    <div>
-                      <label style={{...labelStyle,fontSize:"0.68rem"}}>単価</label>
-                      <input type="number" inputMode="decimal" value={it.price||""} onChange={e => updateItem(idx,"price",e.target.value)}
-                        style={{...inputStyle,fontSize:"0.88rem",padding:"0.5rem 0.6rem",textAlign:"right"}}/>
-                    </div>
+                  </div>
+                  <div style={{marginBottom:"0.4rem"}}>
+                    <label style={{...labelStyle,fontSize:"0.68rem"}}>単価</label>
+                    <input type="number" inputMode="decimal" value={it.price||""} onChange={e => updateItem(idx,"price",e.target.value)}
+                      style={{...inputStyle,fontSize:"0.95rem",padding:"0.65rem 0.7rem",textAlign:"right"}}/>
                   </div>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",borderTop:"1px solid #f3f4f6",paddingTop:"0.5rem",marginTop:"0.3rem"}}>
                     <span style={{fontSize:"0.72rem",color:"#9ca3af",fontWeight:700}}>金額</span>
@@ -6771,11 +6771,11 @@ function QuoteEditor({quote, users=[], currentUser, onUpdate, onDelete, onClose,
         ) : (
           /* ── PC用：従来のテーブルレイアウト ─────────────────── */
           <div style={{overflowX:"auto"}}>
-            <table style={{width:"100%",borderCollapse:"collapse",fontSize:"0.82rem"}}>
+            <table style={{width:"100%",minWidth:680,borderCollapse:"collapse",fontSize:"0.82rem",tableLayout:"fixed"}}>
               <thead>
                 <tr style={{background:"#f9fafb",borderBottom:"1px solid #e5e7eb"}}>
                   <th style={{padding:"0.45rem",textAlign:"left",fontWeight:700,fontSize:"0.7rem",color:"#6b7280",width:30}}>#</th>
-                  <th style={{padding:"0.45rem",textAlign:"left",fontWeight:700,fontSize:"0.7rem",color:"#6b7280"}}>内容</th>
+                  <th style={{padding:"0.45rem",textAlign:"left",fontWeight:700,fontSize:"0.7rem",color:"#6b7280",minWidth:200}}>内容</th>
                   <th style={{padding:"0.45rem",textAlign:"right",fontWeight:700,fontSize:"0.7rem",color:"#6b7280",width:70}}>数量</th>
                   <th style={{padding:"0.45rem",textAlign:"left",fontWeight:700,fontSize:"0.7rem",color:"#6b7280",width:65}}>単位</th>
                   <th style={{padding:"0.45rem",textAlign:"right",fontWeight:700,fontSize:"0.7rem",color:"#6b7280",width:100}}>単価</th>
