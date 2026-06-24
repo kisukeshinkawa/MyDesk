@@ -99,10 +99,55 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v183-unified-composer-merge"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v184-grammarly-and-draft"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
+  
+  // ─── Grammarly 無効化（入力消失バグ防止）─────────────────────────────
+  // Grammarly拡張機能が textarea/input に干渉して文字を消すバグを防ぐ
+  // 全要素に data-gramm=false 属性を自動付与
+  if (!window.__myDeskGrammDisablerInstalled) {
+    window.__myDeskGrammDisablerInstalled = true;
+    const disableGramm = (el) => {
+      if (!el || !el.setAttribute) return;
+      el.setAttribute("data-gramm", "false");
+      el.setAttribute("data-gramm_editor", "false");
+      el.setAttribute("data-enable-grammarly", "false");
+    };
+    const setupAll = () => {
+      try {
+        document.querySelectorAll("textarea, input").forEach(disableGramm);
+      } catch(_) {}
+    };
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", setupAll);
+    } else {
+      setupAll();
+    }
+    // 新規追加の要素にも対応
+    try {
+      const observer = new MutationObserver(mutations => {
+        for (const m of mutations) {
+          for (const node of m.addedNodes) {
+            if (node && node.nodeType === 1) {
+              if (node.tagName === "TEXTAREA" || node.tagName === "INPUT") disableGramm(node);
+              try {
+                node.querySelectorAll && node.querySelectorAll("textarea, input").forEach(disableGramm);
+              } catch(_) {}
+            }
+          }
+        }
+      });
+      // DOM が ready になってから observer 開始
+      const startObserver = () => {
+        if (document.body) observer.observe(document.body, { childList: true, subtree: true });
+      };
+      if (document.body) startObserver();
+      else document.addEventListener("DOMContentLoaded", startObserver);
+    } catch(_) {}
+  }
+  
   // 診断関数（コンソールから window.__myDeskDiag() で実行可能）
   window.__myDeskDiag = async () => {
     console.log("=".repeat(60));
@@ -14107,9 +14152,18 @@ function UnifiedComposer({
   onSubmitNextAction,   // (type, date, note) => void (営業のみ)
 }) {
   const isSales = hasApproach;
-  const [mode, setMode] = React.useState("post"); // post | mtg | approach | next
-  const [text, setText] = React.useState("");
-  const [mtgTitle, setMtgTitle] = React.useState("");
+  // 下書き保存キー（エンティティ単位で別管理）
+  const draftKey = `md_composer_draft_${entityKey}_${entityId}`;
+  const initDraft = (()=>{
+    try {
+      const raw = localStorage.getItem(draftKey);
+      if (raw) return JSON.parse(raw);
+    } catch(_) {}
+    return {};
+  })();
+  const [mode, setMode] = React.useState(initDraft.mode || "post");
+  const [text, setText] = React.useState(initDraft.text || "");
+  const [mtgTitle, setMtgTitle] = React.useState(initDraft.mtgTitle || "");
   const [appType, setAppType] = React.useState("電話");
   const [appDate, setAppDate] = React.useState(()=>new Date().toISOString().slice(0,10));
   const [naType, setNaType] = React.useState("電話");
@@ -14118,6 +14172,20 @@ function UnifiedComposer({
     const d = new Date(); d.setDate(d.getDate()+7);
     return d.toISOString().slice(0,10);
   });
+  
+  // 下書き保存（500ms デバウンス）
+  React.useEffect(() => {
+    const t = setTimeout(() => {
+      try {
+        if (text || mtgTitle) {
+          localStorage.setItem(draftKey, JSON.stringify({mode, text, mtgTitle}));
+        } else {
+          localStorage.removeItem(draftKey);
+        }
+      } catch(_) {}
+    }, 500);
+    return () => clearTimeout(t);
+  }, [text, mtgTitle, mode, draftKey]);
 
   const modes = [
     {id:"post", label:"💬 メモ・チャット", color:"#5b5bd6"},
@@ -14127,7 +14195,10 @@ function UnifiedComposer({
   ];
   const cur = modes.find(m=>m.id===mode) || modes[0];
 
-  const reset = () => { setText(""); setMtgTitle(""); };
+  const reset = () => { 
+    setText(""); setMtgTitle(""); 
+    try { localStorage.removeItem(draftKey); } catch(_) {}
+  };
   const submit = () => {
     if (mode==="mtg") {
       if (!mtgTitle.trim() && !text.trim()) return;
@@ -14203,8 +14274,11 @@ function UnifiedComposer({
       {/* メイン入力（textarea） */}
       <textarea value={text} onChange={e=>{setText(e.target.value);e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,300)+"px";}}
         onKeyDown={e=>{
+          // IME変換中（日本語入力中）のEnterは無視（誤送信防止）
+          if (e.isComposing || e.nativeEvent?.isComposing || e.keyCode === 229) return;
           if (mode==="post" && e.key==="Enter" && (e.metaKey||e.ctrlKey)) { e.preventDefault(); submit(); }
         }}
+        data-gramm="false" data-gramm_editor="false" data-enable-grammarly="false"
         placeholder={placeholder}
         style={{width:"100%",padding:"0.55rem 0.7rem",borderRadius:6,border:`1px solid ${cur.color}33`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none",resize:"none",minHeight:60,maxHeight:300,lineHeight:1.55,boxSizing:"border-box"}}/>
 
