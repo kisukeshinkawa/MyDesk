@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v182-filter-and-zipcode"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v183-unified-composer-merge"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -14100,23 +14100,30 @@ function UnifiedComposer({
   entityId,
   entityName,
   hasApproach=false,    // 営業エンティティのみ true
-  onSubmitMemo,         // (text) => void
-  onSubmitChat,         // (text) => void
+  onSubmitMemo,         // (text) => void  [後方互換]
+  onSubmitChat,         // (text) => void  ← post モードはこれを呼ぶ
   onSubmitMtg,          // (title, content) => void
   onSubmitApproach,     // (type, note, date) => void (営業のみ)
+  onSubmitNextAction,   // (type, date, note) => void (営業のみ)
 }) {
   const isSales = hasApproach;
-  const [mode, setMode] = React.useState(isSales ? "chat" : "chat"); // memo | chat | mtg | approach
+  const [mode, setMode] = React.useState("post"); // post | mtg | approach | next
   const [text, setText] = React.useState("");
   const [mtgTitle, setMtgTitle] = React.useState("");
   const [appType, setAppType] = React.useState("電話");
   const [appDate, setAppDate] = React.useState(()=>new Date().toISOString().slice(0,10));
+  const [naType, setNaType] = React.useState("電話");
+  const [naDate, setNaDate] = React.useState(()=>{
+    // 翌週の同曜日をデフォルト
+    const d = new Date(); d.setDate(d.getDate()+7);
+    return d.toISOString().slice(0,10);
+  });
 
   const modes = [
-    {id:"chat", label:"💬 チャット", color:"#5b5bd6"},
-    {id:"memo", label:"📝 メモ", color:"#a16207"},
+    {id:"post", label:"💬 メモ・チャット", color:"#5b5bd6"},
     {id:"mtg", label:"🎤 議事録", color:"#166534"},
     ...(isSales ? [{id:"approach", label:"📞 アプローチ", color:"#1d4ed8"}] : []),
+    ...(isSales ? [{id:"next", label:"📅 次回設定", color:"#065f46"}] : []),
   ];
   const cur = modes.find(m=>m.id===mode) || modes[0];
 
@@ -14130,11 +14137,12 @@ function UnifiedComposer({
       if (!text.trim()) return;
       onSubmitApproach && onSubmitApproach(appType, text, appDate);
       reset();
-    } else if (mode==="memo") {
-      if (!text.trim()) return;
-      onSubmitMemo && onSubmitMemo(text);
+    } else if (mode==="next") {
+      // 次回設定: text は任意、種別と日付は必須
+      onSubmitNextAction && onSubmitNextAction(naType, naDate, text);
       reset();
     } else {
+      // post (メモ・チャット統合) → チャットとして保存
       if (!text.trim()) return;
       onSubmitChat && onSubmitChat(text);
       reset();
@@ -14143,10 +14151,10 @@ function UnifiedComposer({
 
   // 入力欄のプレースホルダ
   const placeholder = {
-    chat: "💬 チャットを投稿（@で担当者にメンション、Cmd/Ctrl+Enterで送信）",
-    memo: "📝 メモを追加（自分用・通知あり）",
+    post: "💬 メモ・チャット（@担当者名でメンション、Cmd/Ctrl+Enterで送信）",
     mtg: "🎤 議事内容（決定事項・宿題・次回確認など）",
     approach: `📞 ${appType}の内容を記録...`,
+    next: `📅 次回 ${naType} の内容（任意）...`,
   }[mode];
 
   return (
@@ -14180,10 +14188,22 @@ function UnifiedComposer({
         </div>
       )}
 
+      {/* 次回設定の場合: 種別 + 日付 */}
+      {mode==="next" && (
+        <div style={{display:"flex",gap:"0.4rem",marginBottom:"0.45rem",flexWrap:"wrap"}}>
+          <select value={naType} onChange={e=>setNaType(e.target.value)}
+            style={{padding:"0.35rem 0.55rem",borderRadius:6,border:`1px solid ${cur.color}44`,fontSize:"0.78rem",fontFamily:"inherit",cursor:"pointer",background:"white"}}>
+            {NEXT_ACTION_TYPES.map(t=><option key={t} value={t}>{t}</option>)}
+          </select>
+          <input type="date" value={naDate} onChange={e=>setNaDate(e.target.value)}
+            style={{padding:"0.35rem 0.55rem",borderRadius:6,border:`1px solid ${cur.color}44`,fontSize:"0.78rem",fontFamily:"inherit"}}/>
+        </div>
+      )}
+
       {/* メイン入力（textarea） */}
       <textarea value={text} onChange={e=>{setText(e.target.value);e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,300)+"px";}}
         onKeyDown={e=>{
-          if (mode==="chat" && e.key==="Enter" && (e.metaKey||e.ctrlKey)) { e.preventDefault(); submit(); }
+          if (mode==="post" && e.key==="Enter" && (e.metaKey||e.ctrlKey)) { e.preventDefault(); submit(); }
         }}
         placeholder={placeholder}
         style={{width:"100%",padding:"0.55rem 0.7rem",borderRadius:6,border:`1px solid ${cur.color}33`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none",resize:"none",minHeight:60,maxHeight:300,lineHeight:1.55,boxSizing:"border-box"}}/>
@@ -14191,9 +14211,9 @@ function UnifiedComposer({
       {/* 送信ボタン */}
       <div style={{display:"flex",justifyContent:"flex-end",marginTop:"0.45rem"}}>
         <button onClick={submit}
-          disabled={mode==="mtg" ? (!mtgTitle.trim()&&!text.trim()) : !text.trim()}
-          style={{padding:"0.4rem 1rem",borderRadius:6,border:"none",cursor:(mode==="mtg" ? (mtgTitle.trim()||text.trim()) : text.trim())?"pointer":"default",fontFamily:"inherit",fontSize:"0.8rem",fontWeight:700,background:(mode==="mtg" ? (mtgTitle.trim()||text.trim()) : text.trim())?cur.color:"#e5e7eb",color:(mode==="mtg" ? (mtgTitle.trim()||text.trim()) : text.trim())?"white":"#9ca3af",minWidth:80}}>
-          {mode==="mtg"?"議事録を保存":mode==="approach"?"アプローチ記録":mode==="memo"?"メモを追加":"送信"}
+          disabled={mode==="mtg" ? (!mtgTitle.trim()&&!text.trim()) : mode==="next" ? false : !text.trim()}
+          style={{padding:"0.4rem 1rem",borderRadius:6,border:"none",cursor:(mode==="mtg" ? (mtgTitle.trim()||text.trim()) : mode==="next" ? true : text.trim())?"pointer":"default",fontFamily:"inherit",fontSize:"0.8rem",fontWeight:700,background:(mode==="mtg" ? (mtgTitle.trim()||text.trim()) : mode==="next" ? cur.color : text.trim())?cur.color:"#e5e7eb",color:(mode==="mtg" ? (mtgTitle.trim()||text.trim()) : mode==="next" ? "white" : text.trim())?"white":"#9ca3af",minWidth:80}}>
+          {mode==="mtg"?"議事録を保存":mode==="approach"?"記録":mode==="next"?"次回を設定":"送信"}
         </button>
       </div>
     </div>
@@ -14369,6 +14389,10 @@ function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach
             const dt = (dateStr||new Date().toISOString().slice(0,10)) + "T" + new Date().toTimeString().slice(0,8);
             const log = {id:Date.now(), userId:currentUserId, type, note, date:dt, createdAt:new Date().toISOString()};
             const updated = (data[entityKey]||[]).map(e=>e.id===entityId?{...e, approachLogs:[...(e.approachLogs||[]),log], updatedAt:new Date().toISOString().slice(0,10)}:e);
+            onSave({...data, [entityKey]:updated});
+          }}
+          onSubmitNextAction={(type,date,note)=>{
+            const updated = (data[entityKey]||[]).map(e=>e.id===entityId?{...e, nextActionDate:date, nextActionType:type, nextActionNote:note||"", updatedAt:new Date().toISOString().slice(0,10)}:e);
             onSave({...data, [entityKey]:updated});
           }}
         />
@@ -19486,10 +19510,10 @@ ${orig}`})
               </div>
             )}
           </Card>
-          <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap",marginBottom:"0.75rem"}}>
-            <button onClick={e=>{e.stopPropagation();openApproachModal("companies",comp.id,comp.name);}} style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#dbeafe",color:"#1d4ed8"}}>📞 アプローチ記録</button>
-            <button onClick={e=>{e.stopPropagation();setMtgModal({entityKey:"companies",entityId:comp.id,entityName:comp.name});}} style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#f0fdf4",color:"#166534"}}>🎤 MTG記録</button>
-            <button onClick={e=>{e.stopPropagation();openNextActionModal("companies",comp.id,comp.name,comp);}} style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#d1fae5",color:"#065f46"}}>📅 {comp.nextActionDate?"次回変更":"次回設定"}</button>
+          <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap",marginBottom:"0.75rem",alignItems:"center"}}>
+            {comp.nextActionDate&&(
+              <span style={{fontSize:"0.72rem",color:"#0369a1",fontWeight:700}}>📅 次回: {comp.nextActionDate} {comp.nextActionType||""}</span>
+            )}
             <div style={{flex:1}}/>
             <button onClick={()=>{if(window.confirm(`${comp.name}を削除しますか？\nこの操作は元に戻せません。`))deleteCompany(comp.id);}} style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"1px solid #fca5a5",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#fef2f2",color:"#dc2626"}}>🗑 削除</button>
           </div>
@@ -20163,18 +20187,9 @@ ${orig}`})
               style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:v.needFollow?"#fef9c3":"#f3f4f6",color:v.needFollow?"#854d0e":"#6b7280"}}>
               {v.needFollow?"⭐ フォロー中":"☆ フォロー"}
             </button>
-            <button onClick={e=>{e.stopPropagation();openApproachModal("vendors",v.id,v.name);}}
-              style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#dbeafe",color:"#1d4ed8"}}>
-              📞 アプローチ記録
-            </button>
-            <button onClick={e=>{e.stopPropagation();setMtgModal({entityKey:"vendors",entityId:v.id,entityName:v.name});}}
-              style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#f0fdf4",color:"#166534"}}>
-              🎤 MTG記録
-            </button>
-            <button onClick={e=>{e.stopPropagation();openNextActionModal("vendors",v.id,v.name,v);}}
-              style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#d1fae5",color:"#065f46"}}>
-              📅 {v.nextActionDate?"次回変更":"次回設定"}
-            </button>
+            {v.nextActionDate&&(
+              <span style={{fontSize:"0.72rem",color:"#0369a1",fontWeight:700}}>📅 次回: {v.nextActionDate} {v.nextActionType||""}</span>
+            )}
           </div>
           {/* 失注理由表示（あれば） */}
           {CLOSED_STATUSES.has(v.status)&&v.lossReason&&(
@@ -21103,20 +21118,8 @@ ${orig}`})
         </Card>
         {/* アクションボタン行 */}
         <div style={{marginBottom:"0.75rem",display:"flex",alignItems:"center",gap:"0.4rem",flexWrap:"wrap"}}>
-          <button onClick={e=>{e.stopPropagation();openApproachModal("municipalities",muni.id,muni.name);}}
-            style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#dbeafe",color:"#1d4ed8"}}>
-            📞 アプローチ記録
-          </button>
-          <button onClick={e=>{e.stopPropagation();setMtgModal({entityKey:"municipalities",entityId:muni.id,entityName:muni.name});}}
-            style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#f0fdf4",color:"#166534"}}>
-            🎤 MTG記録
-          </button>
-          <button onClick={e=>{e.stopPropagation();openNextActionModal("municipalities",muni.id,muni.name,muni);}}
-            style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#d1fae5",color:"#065f46"}}>
-            📅 {muni.nextActionDate?"次回変更":"次回設定"}
-          </button>
           {muni.nextActionDate&&(
-            <span style={{fontSize:"0.72rem",color:"#0369a1",fontWeight:700}}>→ {muni.nextActionDate} {muni.nextActionType}</span>
+            <span style={{fontSize:"0.72rem",color:"#0369a1",fontWeight:700}}>📅 次回: {muni.nextActionDate} {muni.nextActionType}</span>
           )}
         </div>
         {/* Sub-tabs: 履歴・チャット・タスク・ファイル */}
