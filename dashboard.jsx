@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v179-task-to-pj-history"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v180-dataref-and-delete-propagation"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -6410,7 +6410,12 @@ function QuoteView({data, setData, users=[], currentUser=null, onNavigateToSales
     const updateKeys = Object.keys(updates);
     const isPdfMetaOnlyUpdate = updateKeys.length > 0 && updateKeys.every(k => PDF_META_KEYS.has(k));
     const finalUpdates = isPdfMetaOnlyUpdate ? updates : {...updates, pdfStale: true};
-    const nd = {...data, quotes: quotes.map(q => q.id===id ? {...q, ...finalUpdates, updatedAt:new Date().toISOString()} : q)};
+    // ★ 最新の data を取得（古いクロージャ問題を回避）
+    const latestData = (typeof window !== "undefined" && typeof window.__myDeskGetData === "function") 
+      ? (window.__myDeskGetData() || data) 
+      : data;
+    const latestQuotes = latestData.quotes || [];
+    const nd = {...latestData, quotes: latestQuotes.map(q => q.id===id ? {...q, ...finalUpdates, updatedAt:new Date().toISOString()} : q)};
     setData(nd); scheduleSaveData(nd);
   };
   
@@ -7621,15 +7626,44 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
   const removeFileFromTask = (taskId, fileIdOrUrl) => {
     const task = allTasks.find(t => String(t.id) === String(taskId));
     const removedFile = (task?.files||[]).find(f => String(f.id||f.url)===String(fileIdOrUrl));
-    // タスクからのみ削除（伝播先からは消さない、つまり営業先・プロジェクトには残る）
-    let nd = { ...data, tasks: allTasks.map(t => String(t.id) === String(taskId) ? { ...t, files: (t.files||[]).filter(f=>String(f.id||f.url)!==String(fileIdOrUrl)) } : t) };
-    if (task && removedFile) {
-      nd = globalAddChangeLog(nd, {
-        entityType: "タスク", entityId: taskId, entityName: task.title || "",
-        field: "ファイル削除", oldVal: removedFile.name || "ファイル", newVal: "",
-        userId: uid,
-      });
+    if (!task || !removedFile) return;
+    const fid = String(removedFile.id||removedFile.url);
+    console.log(`[removeFileFromTask] タスク「${task.title}」から ${removedFile.name} 削除 → 関連箇所にも伝播`);
+    
+    // 1. タスクから削除
+    let nd = { ...data, tasks: allTasks.map(t => String(t.id) === String(taskId) ? { ...t, files: (t.files||[]).filter(f=>String(f.id||f.url)!==fid) } : t) };
+    
+    // 2. 親プロジェクトからも同じファイル削除
+    if (task.projectId) {
+      nd = { ...nd, projects: (nd.projects||[]).map(p => 
+        String(p.id) === String(task.projectId) 
+          ? { ...p, files: (p.files||[]).filter(f=>String(f.id||f.url)!==fid) } 
+          : p
+      )};
+      // 3. プロジェクトの紐付け営業先からも削除
+      const pj = (nd.projects||[]).find(p => String(p.id) === String(task.projectId));
+      if (pj) {
+        const removeFromCollection = (arr, ids) => (arr||[]).map(item => 
+          ids.includes(String(item.id)) 
+            ? { ...item, files: (item.files||[]).filter(f=>String(f.id||f.url)!==fid) } 
+            : item
+        );
+        nd = {
+          ...nd,
+          companies: removeFromCollection(nd.companies, (pj.linkedCompanyIds||[]).map(String)),
+          vendors: removeFromCollection(nd.vendors, (pj.linkedVendorIds||[]).map(String)),
+          municipalities: removeFromCollection(nd.municipalities, (pj.linkedMuniIds||[]).map(String)),
+        };
+      }
     }
+    
+    // 4. ChangeLog（営業先にも自動伝播）
+    nd = globalAddChangeLog(nd, {
+      entityType: "タスク", entityId: taskId, entityName: task.title || "",
+      field: "ファイル削除", oldVal: removedFile.name || "ファイル", newVal: "",
+      userId: uid,
+    });
+    
     window.__myDeskLastSave = Date.now();
     setData(nd); scheduleSaveData(nd);
   };
@@ -7671,14 +7705,40 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
   const removeFileFromPj = (pjId, fileIdOrUrl) => {
     const pj = allProjects.find(p => String(p.id) === String(pjId));
     const removedFile = (pj?.files||[]).find(f => String(f.id||f.url)===String(fileIdOrUrl));
-    let nd = { ...data, projects: allProjects.map(p => String(p.id) === String(pjId) ? { ...p, files: (p.files||[]).filter(f=>String(f.id||f.url)!==String(fileIdOrUrl)) } : p) };
-    if (pj && removedFile) {
-      nd = globalAddChangeLog(nd, {
-        entityType: "プロジェクト", entityId: pjId, entityName: pj.name || "",
-        field: "ファイル削除", oldVal: removedFile.name || "ファイル", newVal: "",
-        userId: uid,
-      });
-    }
+    if (!pj || !removedFile) return;
+    const fid = String(removedFile.id||removedFile.url);
+    console.log(`[removeFileFromPj] プロジェクト「${pj.name}」から ${removedFile.name} 削除 → 関連箇所にも伝播`);
+    
+    // 1. プロジェクトから削除
+    let nd = { ...data, projects: allProjects.map(p => String(p.id) === String(pjId) ? { ...p, files: (p.files||[]).filter(f=>String(f.id||f.url)!==fid) } : p) };
+    
+    // 2. このプロジェクト配下のタスクからも同じファイル削除
+    nd = { ...nd, tasks: (nd.tasks||[]).map(t => 
+      String(t.projectId) === String(pjId) 
+        ? { ...t, files: (t.files||[]).filter(f=>String(f.id||f.url)!==fid) } 
+        : t
+    )};
+    
+    // 3. プロジェクトの紐付け営業先からも削除
+    const removeFromCollection = (arr, ids) => (arr||[]).map(item => 
+      ids.includes(String(item.id)) 
+        ? { ...item, files: (item.files||[]).filter(f=>String(f.id||f.url)!==fid) } 
+        : item
+    );
+    nd = {
+      ...nd,
+      companies: removeFromCollection(nd.companies, (pj.linkedCompanyIds||[]).map(String)),
+      vendors: removeFromCollection(nd.vendors, (pj.linkedVendorIds||[]).map(String)),
+      municipalities: removeFromCollection(nd.municipalities, (pj.linkedMuniIds||[]).map(String)),
+    };
+    
+    // 4. ChangeLog
+    nd = globalAddChangeLog(nd, {
+      entityType: "プロジェクト", entityId: pjId, entityName: pj.name || "",
+      field: "ファイル削除", oldVal: removedFile.name || "ファイル", newVal: "",
+      userId: uid,
+    });
+    
     window.__myDeskLastSave = Date.now();
     setData(nd); scheduleSaveData(nd);
   };
@@ -29985,10 +30045,29 @@ export default function App() {
     }}/>;
   }
   
-  const [data, setData] = useState(INIT);
+  const [_data, _setData] = useState(INIT);
+  // dataRef: setData と同期して即時更新される最新の data 参照
+  // これにより useEffect 待ちが不要、保存処理が常に最新ステートを得られる
+  const dataRef = React.useRef(INIT);
+  const setData = React.useCallback((nd) => {
+    if (typeof nd === "function") {
+      _setData(prev => {
+        const next = nd(prev);
+        dataRef.current = next;
+        return next;
+      });
+    } else {
+      dataRef.current = nd;
+      _setData(nd);
+    }
+  }, []);
+  const data = _data;
   // AI 提案からのタスク追加用に setData をグローバル公開
-  React.useEffect(()=>{ window.__myDeskSetData = setData; }, []);
-  React.useEffect(()=>{ window.__myDeskGetData = () => data; }, [data]);
+  React.useEffect(()=>{ window.__myDeskSetData = setData; }, [setData]);
+  // dataRef を返す形に変更（useEffect 待ちなしで即時最新を返す）
+  if (typeof window !== "undefined") {
+    window.__myDeskGetData = () => dataRef.current;
+  }
   const [users,setUsers]     = useState([]);
   const [currentUser,setCurrentUser] = useState(null);
   // 通知フォールバック用にcurrentUserIdをwindowに保存
@@ -30446,9 +30525,7 @@ export default function App() {
   const lastNotifIdsRef = useRef(null);
   // 最後に自分でsaveした時刻（競合防止用）
   const lastSaveTimeRef = useRef(0);
-  // 常に最新のdataを参照するref（ポーリング内のstale closure対策）
-  const dataRef = useRef(null);
-  React.useEffect(()=>{ dataRef.current = data; }, [data]);
+  // dataRef は既に上で定義済み（同期 setData 用）。ここでは別追加しない。
 
   useEffect(()=>{
     if(!currentUser) return;
