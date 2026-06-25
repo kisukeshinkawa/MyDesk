@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v187-extra-actions-and-files-context"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v188-realtime-and-changelog"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -30620,6 +30620,8 @@ export default function App() {
       
       case "create_task": {
         // タスク作成 → 確認ダイアログ
+        // ✅ 最新データを取得
+        const curData = (window.__myDeskGetData && window.__myDeskGetData()) || data;
         // priority の英→日マッピング
         const PRIO_MAP = {urgent:"緊急", high:"高", normal:"中", medium:"中", low:"低"};
         const priority = PRIO_MAP[params.priority] || params.priority || "中";
@@ -30632,25 +30634,25 @@ export default function App() {
           autoProjectId = params.project_id;
         } else if (linkId && linkType) {
           // 営業先に紐づくプロジェクトを検索
-          const pjs = data.projects || [];
+          const pjs = curData.projects || [];
           const found = pjs.find(p => {
             const ids = ({company:p.linkedCompanyIds, vendor:p.linkedVendorIds, muni:p.linkedMuniIds})[linkType] || [];
             return ids.map(String).includes(String(linkId));
           });
           if (found) autoProjectId = found.id;
         }
-        const projectName = autoProjectId ? (data.projects||[]).find(p=>String(p.id)===String(autoProjectId))?.name : null;
+        const projectName = autoProjectId ? (curData.projects||[]).find(p=>String(p.id)===String(autoProjectId))?.name : null;
         const preview = `📝 タスク作成しますか？\n\nタイトル: ${params.title}\n${params.due_date?`期限: ${params.due_date}\n`:""}優先度: ${priority}\n${projectName?`プロジェクト: ${projectName}\n`:""}${params.description?`詳細: ${params.description.slice(0,200)}`:""}`;
         if (window.confirm(preview)) {
           const newTask = {
-            id: Date.now(),  // ✅ 数値IDに統一（MyDesk 全体と互換）
+            id: Date.now(),
             title: params.title,
             description: params.description || "",
             dueDate: params.due_date || "",
             priority,
-            status: "未着手",  // ✅ MyDesk のステータスに統一
+            status: "未着手",
             assignees: params.assignee_id ? [params.assignee_id] : (currentUser?.id ? [currentUser.id] : []),
-            projectId: autoProjectId,  // ✅ プロジェクト紐付け
+            projectId: autoProjectId,
             companyIds: linkType==="company" && linkId ? [linkId] : [],
             vendorIds: linkType==="vendor" && linkId ? [linkId] : [],
             muniIds: linkType==="muni" && linkId ? [linkId] : [],
@@ -30658,7 +30660,7 @@ export default function App() {
             createdAt: new Date().toISOString(),
             createdBy: currentUser?.id,
           };
-          const nd = {...data, tasks: [...(data.tasks||[]), newTask]};
+          const nd = {...curData, tasks: [...(curData.tasks||[]), newTask]};
           setData(nd);
           scheduleSaveData(nd);
           alert(`✅ タスクを作成しました: ${params.title}${projectName?`\n📁 ${projectName} に紐付け`:""}`);
@@ -30674,9 +30676,13 @@ export default function App() {
         const typeMap = {company:"companies", vendor:"vendors", muni:"municipalities", task:"tasks", project:"projects"};
         const key = typeMap[entityType];
         if (!key) { alert("不明なエンティティタイプ: " + entityType); break; }
+        
+        // ✅ 必ず最新データを取得（複合アクションのクロージャ問題対策）
+        const curData = (window.__myDeskGetData && window.__myDeskGetData()) || data;
+        
         // ID マッチ: 文字列・数値・部分一致対応
-        const current = (data[key]||[]).find(e => String(e.id) === String(entityId))
-                     || (data[key]||[]).find(e => String(e.id).includes(String(entityId)));
+        const current = (curData[key]||[]).find(e => String(e.id) === String(entityId))
+                     || (curData[key]||[]).find(e => String(e.id).includes(String(entityId)));
         if (!current) { alert("エンティティが見つかりません: " + entityId); break; }
         
         // ✅ タスクのステータス英→日マッピング
@@ -30690,31 +30696,27 @@ export default function App() {
           fields.priority = PRIO_MAP[fields.priority] || fields.priority;
         }
         
-        // ✅ 配列フィールド: 既存配列に append（上書きしない）
+        // ✅ 配列フィールド: 既存配列に append（上書きしない） + date を強制最新化
         const APPEND_FIELDS = ["memos", "chat", "mtgLogs", "approachLogs", "files", "comments"];
         const processedFields = {};
+        const nowISO = new Date().toISOString();
         for (const [k, v] of Object.entries(fields)) {
           if (APPEND_FIELDS.includes(k) && Array.isArray(v)) {
             // 配列フィールド: 既存配列がない場合は新規作成
             const existing = Array.isArray(current[k]) ? current[k] : [];
-            // 各要素に id / userId / date 等の必須フィールドを補完
+            // ✅ 各要素の date を「今この瞬間」で強制上書き（Lambdaが古い時刻を送る問題を解消）
             const enriched = v.map(item => {
               const base = {...item};
               if (!base.id) base.id = Date.now() + Math.random();
+              // userId は currentUser に強制（Lambdaが間違うと紐付け失敗するため）
+              base.userId = currentUser?.id;
+              // ✅ date は常に「今」で上書き
+              base.date = nowISO;
               if (k === "memos" || k === "chat") {
-                if (!base.userId) base.userId = currentUser?.id;
-                if (!base.date) base.date = new Date().toISOString();
-                // text or content フィールドの統一（chat/memos は text 想定）
                 if (!base.text && base.content) base.text = base.content;
               }
-              if (k === "mtgLogs") {
-                if (!base.userId) base.userId = currentUser?.id;
-                if (!base.date) base.date = new Date().toISOString();
-              }
               if (k === "approachLogs") {
-                if (!base.userId) base.userId = currentUser?.id;
-                if (!base.date) base.date = new Date().toISOString();
-                if (!base.createdAt) base.createdAt = new Date().toISOString();
+                base.createdAt = nowISO;
                 if (!base.type) base.type = "電話";
               }
               return base;
@@ -30735,8 +30737,50 @@ export default function App() {
         }).join("\n");
         const preview = `🔧 ${current.name||current.title}を更新しますか？\n\n${changes}`;
         if (window.confirm(preview)) {
-          const nd = {...data};
-          nd[key] = nd[key].map(e => String(e.id) === String(current.id) ? {...e, ...processedFields, updatedAt: new Date().toISOString()} : e);
+          // ✅ 最新データを使う
+          let nd = {...curData};
+          nd[key] = nd[key].map(e => String(e.id) === String(current.id) ? {...e, ...processedFields, updatedAt: nowISO} : e);
+          
+          // ✅ changeLog に変更履歴を記録（特に nextActionDate, status などのフィールド系）
+          const ENTITY_TYPE_JA = {companies:"企業", vendors:"業者", municipalities:"自治体", tasks:"タスク", projects:"プロジェクト"};
+          const entityTypeJa = ENTITY_TYPE_JA[key] || entityType;
+          const FIELD_LABEL = {
+            status: "ステータス", priority: "優先度", dueDate: "期限",
+            nextActionDate: "次回日", nextActionType: "次回種別", nextActionNote: "次回メモ",
+            assignees: "担当者", projectId: "プロジェクト",
+            memos: "メモ", chat: "チャット", mtgLogs: "議事録", approachLogs: "アプローチ",
+          };
+          for (const [k, v] of Object.entries(processedFields)) {
+            const label = FIELD_LABEL[k] || k;
+            if (APPEND_FIELDS.includes(k)) {
+              // 配列追加系: 追加件数だけ簡潔に記録
+              const added = (Array.isArray(v) ? v.length : 0) - (Array.isArray(current[k]) ? current[k].length : 0);
+              if (added > 0) {
+                const sample = (Array.isArray(v) && v.length > 0) ? (v[v.length-1]?.text || v[v.length-1]?.title || v[v.length-1]?.note || "") : "";
+                nd = globalAddChangeLog(nd, {
+                  entityType: entityTypeJa,
+                  entityId: current.id,
+                  entityName: current.name || current.title,
+                  field: label,
+                  oldVal: "",
+                  newVal: sample.slice(0, 50) + (sample.length > 50 ? "…" : ""),
+                  userId: currentUser?.id,
+                });
+              }
+            } else if (current[k] !== v) {
+              // 単純フィールド: oldVal → newVal を記録
+              nd = globalAddChangeLog(nd, {
+                entityType: entityTypeJa,
+                entityId: current.id,
+                entityName: current.name || current.title,
+                field: label,
+                oldVal: current[k] || "",
+                newVal: v,
+                userId: currentUser?.id,
+              });
+            }
+          }
+          
           setData(nd);
           scheduleSaveData(nd);
           alert(`✅ 更新しました`);
@@ -30756,6 +30800,8 @@ export default function App() {
       // ✅ v187: 新規アクション
       case "create_project": {
         // プロジェクト作成
+        // ✅ 最新データを取得
+        const curData = (window.__myDeskGetData && window.__myDeskGetData()) || data;
         const memberNames = params.members || params.member_names || [];
         const memberIds = memberNames.map(name => {
           const ln = String(name||"").replace(/\s/g,"").toLowerCase();
@@ -30766,7 +30812,32 @@ export default function App() {
           return u?.id;
         }).filter(Boolean);
         const name = params.name || params.title || "新規プロジェクト";
-        const preview = `📁 プロジェクト作成しますか？\n\nプロジェクト名: ${name}\n${memberIds.length?`メンバー: ${memberNames.join(", ")}\n`:""}${params.description?`説明: ${params.description}`:""}`;
+        
+        // ✅ ID を数値に変換（MyDesk のエンティティIDは数値）
+        const toIdArray = (arr) => (arr||[]).map(id => {
+          const n = Number(id);
+          return Number.isFinite(n) && String(n) === String(id).replace(/\D/g, "") ? n : id;
+        });
+        const linkedCompanyIds = toIdArray(params.linked_company_ids);
+        const linkedVendorIds = toIdArray(params.linked_vendor_ids);
+        const linkedMuniIds = toIdArray(params.linked_muni_ids);
+        
+        // 紐付け対象の名前を取得（表示用）
+        const linkedNames = [];
+        for (const id of linkedCompanyIds) {
+          const c = (curData.companies||[]).find(x => String(x.id) === String(id));
+          if (c) linkedNames.push(c.name);
+        }
+        for (const id of linkedVendorIds) {
+          const v = (curData.vendors||[]).find(x => String(x.id) === String(id));
+          if (v) linkedNames.push(v.name);
+        }
+        for (const id of linkedMuniIds) {
+          const m = (curData.municipalities||[]).find(x => String(x.id) === String(id));
+          if (m) linkedNames.push(m.name);
+        }
+        
+        const preview = `📁 プロジェクト作成しますか？\n\nプロジェクト名: ${name}\n${memberIds.length?`メンバー: ${memberNames.join(", ")}\n`:""}${linkedNames.length?`紐付け: ${linkedNames.join("、")}\n`:""}${params.description?`説明: ${params.description}`:""}`;
         if (window.confirm(preview)) {
           const newProject = {
             id: Date.now(),
@@ -30776,22 +30847,22 @@ export default function App() {
             members: memberIds.length ? memberIds : (currentUser?.id ? [currentUser.id] : []),
             status: "進行中",
             memos: [], chat: [], files: [], mtgLogs: [],
-            linkedCompanyIds: params.linked_company_ids || [],
-            linkedVendorIds: params.linked_vendor_ids || [],
-            linkedMuniIds: params.linked_muni_ids || [],
+            linkedCompanyIds,
+            linkedVendorIds,
+            linkedMuniIds,
             createdAt: new Date().toISOString(),
             createdBy: currentUser?.id,
           };
-          const nd = {...data, projects: [...(data.projects||[]), newProject]};
+          const nd = {...curData, projects: [...(curData.projects||[]), newProject]};
           setData(nd);
           scheduleSaveData(nd);
-          alert(`✅ プロジェクト「${name}」を作成しました`);
+          alert(`✅ プロジェクト「${name}」を作成しました${linkedNames.length?`\n🔗 紐付け: ${linkedNames.join("、")}`:""}`);
         }
         break;
       }
       
       case "send_push": {
-        // プッシュ通知送信
+        // プッシュ通知送信（既存の sendPushToUsers 関数を使う）
         const userName = params.user_name || params.userName || params.to_name;
         const ln = String(userName||"").replace(/\s/g,"").toLowerCase();
         const target = (users||[]).find(u => {
@@ -30803,14 +30874,13 @@ export default function App() {
         const body = params.body || params.message || "";
         if (window.confirm(`🔔 ${target.name} さんに通知を送りますか？\n\n${title}\n${body}`)) {
           try {
-            const API_BASE = import.meta.env?.VITE_API_BASE_URL || "";
-            const r = await fetch(`${API_BASE}/api/send-push`, {
-              method: "POST",
-              headers: {"Content-Type": "application/json"},
-              body: JSON.stringify({userId: target.id, title, body}),
-            });
-            if (!r.ok) throw new Error(`通知送信失敗: ${r.status}`);
-            alert(`✅ ${target.name} さんに通知を送信しました`);
+            // window 経由で既存の送信関数を呼ぶ
+            if (typeof window.__myDeskSendPush === "function") {
+              await window.__myDeskSendPush([target.id], title, body);
+              alert(`✅ ${target.name} さんに通知を送信しました`);
+            } else {
+              alert(`❌ 通知送信関数が見つかりません`);
+            }
           } catch(e) {
             alert(`❌ 通知送信エラー: ${e.message}`);
           }
@@ -31598,6 +31668,12 @@ export default function App() {
     };
     checkPushStatus();
   },[currentUser?.id]);
+
+  // ✅ sendPushToUsers を window 経由で公開（エージェントから呼び出すため）
+  React.useEffect(() => {
+    window.__myDeskSendPush = sendPushToUsers;
+    return () => { delete window.__myDeskSendPush; };
+  }, [sendPushToUsers]);
 
   const handleLogin = (user) => {
     setCurrentUser(user);
