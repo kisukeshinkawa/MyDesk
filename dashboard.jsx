@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v191-fix-approach-createdAt"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v192-fix-persistTab-and-email-send"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -19657,7 +19657,7 @@ ${orig}`})
                   <div style={{fontSize:"0.62rem",fontWeight:700,color:"#6d28d9",marginBottom:"0.4rem",letterSpacing:"0.04em"}}>📁 関連プロジェクト ({relatedPjs.length})</div>
                   <div style={{display:"flex",flexWrap:"wrap",gap:"0.35rem"}}>
                     {relatedPjs.map(p=>(
-                      <button key={p.id} onClick={()=>{persistTab("md_tab","tasks",setTab);persistTab("md_tasksTab","projects",setTasksTab);setActivePj(p.id);}}
+                      <button key={p.id} onClick={()=>window.__myDeskNavigateToProject?.(p.id)}
                         style={{padding:"0.25rem 0.55rem",background:"#ede9fe",border:"1px solid #c4b5fd",borderRadius:999,cursor:"pointer",fontFamily:"inherit",fontSize:"0.72rem",color:"#5b21b6",fontWeight:700}}>
                         📁 {p.name||p.title}
                       </button>
@@ -20303,7 +20303,7 @@ ${orig}`})
                   <div style={{fontSize:"0.62rem",fontWeight:700,color:"#6d28d9",marginBottom:"0.4rem",letterSpacing:"0.04em"}}>📁 関連プロジェクト ({relatedPjs.length})</div>
                   <div style={{display:"flex",flexWrap:"wrap",gap:"0.35rem"}}>
                     {relatedPjs.map(p=>(
-                      <button key={p.id} onClick={()=>{persistTab("md_tab","tasks",setTab);persistTab("md_tasksTab","projects",setTasksTab);setActivePj(p.id);}}
+                      <button key={p.id} onClick={()=>window.__myDeskNavigateToProject?.(p.id)}
                         style={{padding:"0.25rem 0.55rem",background:"#ede9fe",border:"1px solid #c4b5fd",borderRadius:999,cursor:"pointer",fontFamily:"inherit",fontSize:"0.72rem",color:"#5b21b6",fontWeight:700}}>
                         📁 {p.name||p.title}
                       </button>
@@ -21252,7 +21252,7 @@ ${orig}`})
                 <div style={{fontSize:"0.62rem",fontWeight:700,color:"#6d28d9",marginBottom:"0.3rem",letterSpacing:"0.04em"}}>📁 関連プロジェクト ({relatedPjs.length})</div>
                 <div style={{display:"flex",flexWrap:"wrap",gap:"0.35rem"}}>
                   {relatedPjs.map(p=>(
-                    <button key={p.id} onClick={()=>{persistTab("md_tab","tasks",setTab);persistTab("md_tasksTab","projects",setTasksTab);setActivePj(p.id);}}
+                    <button key={p.id} onClick={()=>window.__myDeskNavigateToProject?.(p.id)}
                       style={{padding:"0.25rem 0.55rem",background:"#ede9fe",border:"1px solid #c4b5fd",borderRadius:999,cursor:"pointer",fontFamily:"inherit",fontSize:"0.72rem",color:"#5b21b6",fontWeight:700}}>
                       📁 {p.name||p.title}
                     </button>
@@ -30707,8 +30707,35 @@ export default function App() {
       
       case "apply_filter": {
         // フィルター適用（localStorage に書き込み → 営業画面へ遷移）
+        const curData = (window.__myDeskGetData && window.__myDeskGetData()) || data;
         const view = params.view;
-        const f = params.filters || {};
+        const f = {...(params.filters || {})};
+        
+        // ✅ v192: 名前 → ID の自動変換
+        // 県名 (例: "神奈川県") → 県ID
+        if (Array.isArray(f.prefs)) {
+          f.prefs = f.prefs.map(v => {
+            if (typeof v === "number") return v;
+            const s = String(v).replace(/[都道府県]$/, "");
+            const found = (curData.prefs||[]).find(p => p.name === v || p.name.startsWith(s));
+            return found?.id || v;
+          });
+        }
+        // 担当者名 (例: "新川 希亮" or "新川") → ユーザーID
+        if (Array.isArray(f.assignees)) {
+          f.assignees = f.assignees.map(v => {
+            if (typeof v === "number") return v;
+            // 既に ID (long number string) ならそのまま
+            if (/^\d{10,}$/.test(String(v))) return v;
+            const ln = String(v).replace(/\s/g,"").toLowerCase();
+            const u = (users||[]).find(u => {
+              const full = ((u.lastName||"")+(u.firstName||"")+(u.name||"")).replace(/\s/g,"").toLowerCase();
+              return full === ln || full.includes(ln);
+            });
+            return u?.id || v;
+          });
+        }
+        
         if (view === "vendors") {
           if (Array.isArray(f.prefs)) localStorage.setItem("md_vendFilterPrefs", JSON.stringify(f.prefs));
           if (Array.isArray(f.munis)) localStorage.setItem("md_vendFilterMunis", JSON.stringify(f.munis));
@@ -30778,6 +30805,8 @@ export default function App() {
         const projectName = autoProjectId ? (curData.projects||[]).find(p=>String(p.id)===String(autoProjectId))?.name : null;
         const preview = `📝 タスク作成しますか？\n\nタイトル: ${params.title}\n${params.due_date?`期限: ${params.due_date}\n`:""}優先度: ${priority}\n${projectName?`プロジェクト: ${projectName}\n`:""}${params.description?`詳細: ${params.description.slice(0,200)}`:""}`;
         if (window.confirm(preview)) {
+          // ✅ v192: linkId を数値変換（営業先タスク欄での照合のため）
+          const linkIdNum = linkId ? (Number(linkId) || linkId) : null;
           const newTask = {
             id: Date.now(),
             title: params.title,
@@ -30787,9 +30816,14 @@ export default function App() {
             status: "未着手",
             assignees: params.assignee_id ? [params.assignee_id] : (currentUser?.id ? [currentUser.id] : []),
             projectId: autoProjectId,
-            companyIds: linkType==="company" && linkId ? [linkId] : [],
-            vendorIds: linkType==="vendor" && linkId ? [linkId] : [],
-            muniIds: linkType==="muni" && linkId ? [linkId] : [],
+            companyIds: linkType==="company" && linkIdNum ? [linkIdNum] : [],
+            vendorIds: linkType==="vendor" && linkIdNum ? [linkIdNum] : [],
+            muniIds: linkType==="muni" && linkIdNum ? [linkIdNum] : [],
+            salesRef: linkType && linkIdNum ? {
+              type: ({company:"企業",vendor:"業者",muni:"自治体"})[linkType],
+              id: linkIdNum,
+              name: (curData[({company:"companies",vendor:"vendors",muni:"municipalities"})[linkType]]||[]).find(x=>String(x.id)===String(linkIdNum))?.name||""
+            } : null,
             comments: [], memos: [], chat: [], files: [], approachLogs: [], mtgLogs: [],
             createdAt: new Date().toISOString(),
             createdBy: currentUser?.id,
@@ -31174,6 +31208,17 @@ export default function App() {
       try { window.scrollTo({top: 0, behavior: "instant"}); } catch { window.scrollTo(0, 0); }
     });
   };
+
+  // ✅ v192: 関連プロジェクトボタンから呼ぶナビゲーション関数を公開
+  React.useEffect(() => {
+    window.__myDeskNavigateToProject = (pjId) => {
+      persistTab("md_tab", "tasks", setTab);
+      persistTab("md_tasksTab", "projects", setTasksTab);
+      if (typeof setActivePj === "function") setActivePj(pjId);
+      else if (typeof setActivePjId === "function") setActivePjId(pjId);
+    };
+    return () => { delete window.__myDeskNavigateToProject; };
+  }, []);
 
   // 外部から呼べる「タブ切替」関数を公開（タスク詳細→メールへの遷移用）
   React.useEffect(() => {
@@ -32224,7 +32269,50 @@ export default function App() {
                 const subject = encodeURIComponent(agentEmailDraft.subject);
                 const body = encodeURIComponent(agentEmailDraft.body);
                 window.location.href = `mailto:${to}?${cc?`cc=${cc}&`:""}subject=${subject}&body=${body}`;
-              }} style={{padding:"0.5rem 0.95rem",borderRadius:6,border:"none",background:"#5b5bd6",color:"white",cursor:"pointer",fontFamily:"inherit",fontSize:"0.82rem",fontWeight:700}}>📧 メーラーで開く</button>
+              }} style={{padding:"0.5rem 0.95rem",borderRadius:6,border:"1px solid #d1d5db",background:"white",color:"#5b5bd6",cursor:"pointer",fontFamily:"inherit",fontSize:"0.82rem",fontWeight:700}}>📧 メーラーで開く</button>
+              {/* ✅ v192: MyDesk から直接送信 */}
+              <button onClick={async ()=>{
+                if (!window.confirm(`📤 MyDesk から直接送信しますか？\n\nTo: ${agentEmailDraft.to}\nSubject: ${agentEmailDraft.subject}`)) return;
+                try {
+                  const API_BASE = import.meta.env?.VITE_API_BASE_URL || "";
+                  const r = await fetch(`${API_BASE}/api/send-email`, {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json", "x-mydesk-secret": "mydesk2026"},
+                    body: JSON.stringify({
+                      to: agentEmailDraft.to.split(",").map(s=>s.trim()).filter(Boolean),
+                      cc: agentEmailDraft.cc ? agentEmailDraft.cc.split(",").map(s=>s.trim()).filter(Boolean) : [],
+                      subject: agentEmailDraft.subject,
+                      body: agentEmailDraft.body,
+                      from: currentUser?.email,
+                      fromName: currentUser?.name,
+                    }),
+                  });
+                  if (!r.ok) throw new Error(`送信失敗: ${r.status}`);
+                  // 送信記録としてメール一覧に追加
+                  const nd = {...data};
+                  const nowISO = new Date().toISOString();
+                  nd.emails = [...(nd.emails||[]), {
+                    id: Date.now(),
+                    from: {email: currentUser?.email, name: currentUser?.name},
+                    to: agentEmailDraft.to.split(",").map(s=>({email:s.trim()})),
+                    cc: agentEmailDraft.cc ? agentEmailDraft.cc.split(",").map(s=>({email:s.trim()})) : [],
+                    subject: agentEmailDraft.subject,
+                    body: agentEmailDraft.body,
+                    direction: "outbound",
+                    userId: currentUser?.id,
+                    sentAt: nowISO,
+                    createdAt: nowISO,
+                    linkedEntityType: agentEmailDraft.linkedEntityType,
+                    linkedEntityId: agentEmailDraft.linkedEntityId,
+                  }];
+                  setData(nd);
+                  scheduleSaveData(nd);
+                  setAgentEmailDraft(null);
+                  alert("✅ メールを送信しました");
+                } catch(e) {
+                  alert(`❌ 送信エラー: ${e.message}`);
+                }
+              }} style={{padding:"0.5rem 0.95rem",borderRadius:6,border:"none",background:"#059669",color:"white",cursor:"pointer",fontFamily:"inherit",fontSize:"0.82rem",fontWeight:700}}>📤 MyDesk から送信</button>
             </div>
           </div>
         </div>
