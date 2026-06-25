@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v192-fix-persistTab-and-email-send"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v193-tasks-pj-integration-realtime-filter"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -14848,8 +14848,19 @@ function SalesTaskPanel({ entityType, entityId, entityName, data, onSave, curren
   const uid = currentUser?.id;
   const allTasks    = data.tasks    || [];
   const allProjects = data.projects || [];
-  const linked    = allTasks.filter(t=>t.salesRef?.id===entityId);
-  const linkedPjs = allProjects.filter(p=>p.salesRef?.id===entityId);
+  // ✅ v193: salesRef + companyIds/vendorIds/muniIds の全パターンで検出
+  const taskFieldKey = {"企業":"companyIds", "業者":"vendorIds", "自治体":"muniIds"}[entityType];
+  const pjFieldKey   = {"企業":"linkedCompanyIds", "業者":"linkedVendorIds", "自治体":"linkedMuniIds"}[entityType];
+  const linked    = allTasks.filter(t => {
+    if (t.salesRef && String(t.salesRef.id) === String(entityId)) return true;
+    if (taskFieldKey && (t[taskFieldKey]||[]).map(String).includes(String(entityId))) return true;
+    return false;
+  });
+  const linkedPjs = allProjects.filter(p => {
+    if (p.salesRef && String(p.salesRef.id) === String(entityId)) return true;
+    if (pjFieldKey && (p[pjFieldKey]||[]).map(String).includes(String(entityId))) return true;
+    return false;
+  });
   const [addMode,setAddMode] = useState(null);
   const [tf,setTf] = useState({title:entityName,dueDate:"",notes:"",assignees:uid?[uid]:[]});
   const [pf,setPf] = useState({name:entityName,notes:"",members:uid?[uid]:[]});
@@ -16209,12 +16220,33 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   React.useEffect(()=>{ localStorage.setItem("md_vendFilterBeeNets", JSON.stringify(vendFilterBeeNets||[])); }, [vendFilterBeeNets]);
   const [vendFilterAssignees, setVendFilterAssignees] = useState(()=>_parseMultiFilter("md_vendFilterAssignees"));
   React.useEffect(()=>{ localStorage.setItem("md_vendFilterAssignees", JSON.stringify(vendFilterAssignees||[])); }, [vendFilterAssignees]);
+  // ✅ v193: フィルター setter を window 経由で公開（エージェントからリアルタイム反映）
+  React.useEffect(() => {
+    window.__myDeskSetVendFilters = {
+      prefs: setVendFilterPrefs,
+      munis: setVendFilterMunis,
+      statuses: setVendFilterStatuses,
+      permits: setVendFilterPermits,
+      beeNets: setVendFilterBeeNets,
+      assignees: setVendFilterAssignees,
+    };
+    return () => { delete window.__myDeskSetVendFilters; };
+  }, []);
   const [openCompGrp,  setOpenCompGrp]  = useState(new Set());
   const [openVendGrp,  setOpenVendGrp]  = useState(new Set());
   const [muniTopSearch,setMuniTopSearch]= useState(()=>localStorage.getItem("md_muniTopSearch")||"");
   React.useEffect(()=>{ localStorage.setItem("md_muniTopSearch", muniTopSearch||""); }, [muniTopSearch]);
   const [muniFilterAssignees, setMuniFilterAssignees] = useState(()=>_parseMultiFilter("md_muniFilterAssignees"));
   React.useEffect(()=>{ localStorage.setItem("md_muniFilterAssignees", JSON.stringify(muniFilterAssignees||[])); }, [muniFilterAssignees]);
+  // ✅ v193: comp/muni のフィルター setter も公開
+  React.useEffect(() => {
+    window.__myDeskSetCompFilter = setCompFilter;
+    window.__myDeskSetMuniFilters = { assignees: setMuniFilterAssignees };
+    return () => {
+      delete window.__myDeskSetCompFilter;
+      delete window.__myDeskSetMuniFilters;
+    };
+  }, []);
   // フォロー中エリアの折りたたみ状態（デフォルト閉じる、localStorage で永続化）
   const [followCompOpen, setFollowCompOpen] = useState(()=>localStorage.getItem("md_followCompOpen")==="1");
   const [followVendOpen, setFollowVendOpen] = useState(()=>localStorage.getItem("md_followVendOpen")==="1");
@@ -19644,28 +19676,6 @@ ${orig}`})
                 </div>
               </div>
             )}
-            {/* ✅ 関連プロジェクト（v189 → v190 強化: salesRef も検出） */}
-            {(()=>{
-              const relatedPjs = (data.projects||[]).filter(p => {
-                if ((p.linkedCompanyIds||[]).map(String).includes(String(comp.id))) return true;
-                if (String(p.salesRef?.id) === String(comp.id)) return true;
-                return false;
-              });
-              if (relatedPjs.length === 0) return null;
-              return (
-                <div style={{background:"#f5f3ff",border:"1px solid #ddd6fe",borderRadius:"0.5rem",padding:"0.5rem 0.625rem",marginBottom:comp.notes?"0.5rem":0}}>
-                  <div style={{fontSize:"0.62rem",fontWeight:700,color:"#6d28d9",marginBottom:"0.4rem",letterSpacing:"0.04em"}}>📁 関連プロジェクト ({relatedPjs.length})</div>
-                  <div style={{display:"flex",flexWrap:"wrap",gap:"0.35rem"}}>
-                    {relatedPjs.map(p=>(
-                      <button key={p.id} onClick={()=>window.__myDeskNavigateToProject?.(p.id)}
-                        style={{padding:"0.25rem 0.55rem",background:"#ede9fe",border:"1px solid #c4b5fd",borderRadius:999,cursor:"pointer",fontFamily:"inherit",fontSize:"0.72rem",color:"#5b21b6",fontWeight:700}}>
-                        📁 {p.name||p.title}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              );
-            })()}
             {/* 備考 */}
             {comp.notes&&(
               <div style={{fontSize:"0.75rem",color:C.text,background:"#f8fafc",borderRadius:6,padding:"0.5rem 0.7rem",borderLeft:"3px solid #cbd5e1",whiteSpace:"pre-wrap"}}>
@@ -20290,28 +20300,6 @@ ${orig}`})
                 </div>
               </div>
             )}
-            {/* ✅ 関連プロジェクト（v189 → v190 強化） */}
-            {(()=>{
-              const relatedPjs = (data.projects||[]).filter(p => {
-                if ((p.linkedVendorIds||[]).map(String).includes(String(v.id))) return true;
-                if (String(p.salesRef?.id) === String(v.id)) return true;
-                return false;
-              });
-              if (relatedPjs.length === 0) return null;
-              return (
-                <div style={{background:"#f5f3ff",border:"1px solid #ddd6fe",borderRadius:"0.5rem",padding:"0.5rem 0.625rem",marginBottom:"0.5rem"}}>
-                  <div style={{fontSize:"0.62rem",fontWeight:700,color:"#6d28d9",marginBottom:"0.4rem",letterSpacing:"0.04em"}}>📁 関連プロジェクト ({relatedPjs.length})</div>
-                  <div style={{display:"flex",flexWrap:"wrap",gap:"0.35rem"}}>
-                    {relatedPjs.map(p=>(
-                      <button key={p.id} onClick={()=>window.__myDeskNavigateToProject?.(p.id)}
-                        style={{padding:"0.25rem 0.55rem",background:"#ede9fe",border:"1px solid #c4b5fd",borderRadius:999,cursor:"pointer",fontFamily:"inherit",fontSize:"0.72rem",color:"#5b21b6",fontWeight:700}}>
-                        📁 {p.name||p.title}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              );
-            })()}
             {/* 許可エリア（タグ） */}
             {vmunis.length>0&&(
               <div style={{display:"flex",alignItems:"center",gap:"0.4rem",flexWrap:"wrap",marginBottom:"0.5rem"}}>
@@ -21239,28 +21227,6 @@ ${orig}`})
             );
           })()}
           {/* 備考 */}
-          {/* ✅ 関連プロジェクト（v189 → v190 強化） */}
-          {(()=>{
-            const relatedPjs = (data.projects||[]).filter(p => {
-              if ((p.linkedMuniIds||[]).map(String).includes(String(muni.id))) return true;
-              if (String(p.salesRef?.id) === String(muni.id)) return true;
-              return false;
-            });
-            if (relatedPjs.length === 0) return null;
-            return (
-              <div style={{background:"#f5f3ff",border:"1px solid #ddd6fe",borderRadius:6,padding:"0.5rem 0.7rem",marginBottom:muni.notes?"0.5rem":0}}>
-                <div style={{fontSize:"0.62rem",fontWeight:700,color:"#6d28d9",marginBottom:"0.3rem",letterSpacing:"0.04em"}}>📁 関連プロジェクト ({relatedPjs.length})</div>
-                <div style={{display:"flex",flexWrap:"wrap",gap:"0.35rem"}}>
-                  {relatedPjs.map(p=>(
-                    <button key={p.id} onClick={()=>window.__myDeskNavigateToProject?.(p.id)}
-                      style={{padding:"0.25rem 0.55rem",background:"#ede9fe",border:"1px solid #c4b5fd",borderRadius:999,cursor:"pointer",fontFamily:"inherit",fontSize:"0.72rem",color:"#5b21b6",fontWeight:700}}>
-                      📁 {p.name||p.title}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            );
-          })()}
           {muni.notes&&(
             <div style={{fontSize:"0.75rem",color:C.text,background:"#f8fafc",borderRadius:6,padding:"0.5rem 0.7rem",borderLeft:"3px solid #cbd5e1",whiteSpace:"pre-wrap"}}>
               <div style={{fontSize:"0.62rem",fontWeight:700,color:C.textSub,marginBottom:"0.2rem",letterSpacing:"0.04em"}}>📝 備考</div>
@@ -30706,62 +30672,73 @@ export default function App() {
       }
       
       case "apply_filter": {
-        // フィルター適用（localStorage に書き込み → 営業画面へ遷移）
+        // ✅ v193: リロードなしでフィルター適用、ID変換強化
         const curData = (window.__myDeskGetData && window.__myDeskGetData()) || data;
         const view = params.view;
         const f = {...(params.filters || {})};
         
-        // ✅ v192: 名前 → ID の自動変換
-        // 県名 (例: "神奈川県") → 県ID
-        if (Array.isArray(f.prefs)) {
-          f.prefs = f.prefs.map(v => {
-            if (typeof v === "number") return v;
-            const s = String(v).replace(/[都道府県]$/, "");
-            const found = (curData.prefs||[]).find(p => p.name === v || p.name.startsWith(s));
-            return found?.id || v;
+        console.log("[Agent] apply_filter raw:", view, f);
+        
+        // 県名 → 県ID
+        const resolvePrefId = (v) => {
+          if (typeof v === "number") return v;
+          const sv = String(v);
+          // 完全一致
+          let found = (curData.prefs||[]).find(p => p.name === sv);
+          if (found) return found.id;
+          // 「都/道/府/県」を取り除いて先頭一致
+          const stripped = sv.replace(/[都道府県]$/, "");
+          found = (curData.prefs||[]).find(p => p.name.startsWith(stripped));
+          if (found) return found.id;
+          // 部分一致
+          found = (curData.prefs||[]).find(p => p.name.includes(stripped));
+          if (found) return found.id;
+          console.warn("[Agent] pref not found:", v, "available:", curData.prefs?.slice(0,3).map(p=>p.name));
+          return null;
+        };
+        // ユーザー名 → ユーザーID
+        const resolveUserId = (v) => {
+          if (typeof v === "number") return v;
+          // 既に数字ID形式ならそのまま
+          if (/^\d{10,}$/.test(String(v))) return v;
+          const ln = String(v).replace(/\s/g,"").toLowerCase();
+          const u = (users||[]).find(u => {
+            const full = ((u.lastName||"")+(u.firstName||"")+(u.name||"")).replace(/\s/g,"").toLowerCase();
+            return full === ln || full.includes(ln);
           });
-        }
-        // 担当者名 (例: "新川 希亮" or "新川") → ユーザーID
-        if (Array.isArray(f.assignees)) {
-          f.assignees = f.assignees.map(v => {
-            if (typeof v === "number") return v;
-            // 既に ID (long number string) ならそのまま
-            if (/^\d{10,}$/.test(String(v))) return v;
-            const ln = String(v).replace(/\s/g,"").toLowerCase();
-            const u = (users||[]).find(u => {
-              const full = ((u.lastName||"")+(u.firstName||"")+(u.name||"")).replace(/\s/g,"").toLowerCase();
-              return full === ln || full.includes(ln);
-            });
-            return u?.id || v;
-          });
-        }
+          if (u) return u.id;
+          console.warn("[Agent] user not found:", v);
+          return null;
+        };
+        
+        if (Array.isArray(f.prefs))     f.prefs     = f.prefs.map(resolvePrefId).filter(Boolean);
+        if (Array.isArray(f.assignees)) f.assignees = f.assignees.map(resolveUserId).filter(Boolean);
+        
+        console.log("[Agent] apply_filter resolved:", view, f);
         
         if (view === "vendors") {
-          if (Array.isArray(f.prefs)) localStorage.setItem("md_vendFilterPrefs", JSON.stringify(f.prefs));
-          if (Array.isArray(f.munis)) localStorage.setItem("md_vendFilterMunis", JSON.stringify(f.munis));
-          if (Array.isArray(f.statuses)) localStorage.setItem("md_vendFilterStatuses", JSON.stringify(f.statuses));
-          if (Array.isArray(f.permits)) localStorage.setItem("md_vendFilterPermits", JSON.stringify(f.permits));
-          if (Array.isArray(f.beeNets)) localStorage.setItem("md_vendFilterBeeNets", JSON.stringify(f.beeNets));
-          if (Array.isArray(f.assignees)) localStorage.setItem("md_vendFilterAssignees", JSON.stringify(f.assignees));
+          // ✅ state setter で直接更新（リロード不要）
+          const setters = window.__myDeskSetVendFilters || {};
+          if (Array.isArray(f.prefs)) setters.prefs?.(f.prefs);
+          if (Array.isArray(f.munis)) setters.munis?.(f.munis);
+          if (Array.isArray(f.statuses)) setters.statuses?.(f.statuses);
+          if (Array.isArray(f.permits)) setters.permits?.(f.permits);
+          if (Array.isArray(f.beeNets)) setters.beeNets?.(f.beeNets);
+          if (Array.isArray(f.assignees)) setters.assignees?.(f.assignees);
           persistTab("md_tab","sales",setTab);
           persistTab("md_salesTab","vendor",setSalesTab);
-          alert("業者画面にフィルターを適用しました。再読み込みすると反映されます。");
-          // フィルター反映のため画面リロード
-          setTimeout(()=>window.location.reload(), 300);
         } else if (view === "companies") {
-          // compFilter は assignees のみ
-          if (Array.isArray(f.assignees)) {
-            const cur = JSON.parse(localStorage.getItem("md_compFilter")||"{}");
-            localStorage.setItem("md_compFilter", JSON.stringify({...cur, assignees: f.assignees}));
+          const compSetter = window.__myDeskSetCompFilter;
+          if (compSetter && Array.isArray(f.assignees)) {
+            compSetter(p => ({...p, assignees: f.assignees}));
           }
           persistTab("md_tab","sales",setTab);
           persistTab("md_salesTab","company",setSalesTab);
-          setTimeout(()=>window.location.reload(), 300);
         } else if (view === "munis") {
-          if (Array.isArray(f.assignees)) localStorage.setItem("md_muniFilterAssignees", JSON.stringify(f.assignees));
+          const setters = window.__myDeskSetMuniFilters || {};
+          if (Array.isArray(f.assignees)) setters.assignees?.(f.assignees);
           persistTab("md_tab","sales",setTab);
           persistTab("md_salesTab","muni",setSalesTab);
-          setTimeout(()=>window.location.reload(), 300);
         } else if (view === "tasks") {
           persistTab("md_tab","tasks",setTab);
         }
