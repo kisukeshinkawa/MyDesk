@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v190-date-fix-and-project-links"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v191-fix-approach-createdAt"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -1512,12 +1512,18 @@ async function loadData() {
             for (const f of ARRAY_FIELDS) {
               if (!Array.isArray(e[f])) continue;
               for (const item of e[f]) {
-                if (!item || !item.date) continue;
-                const t = new Date(item.date).getTime();
-                if (Number.isFinite(t) && t > nowMs + 5*60*1000) {
-                  // 未来 5 分以上の date は現在時刻に置換
+                if (!item) continue;
+                // ✅ date と createdAt の両方をチェック（どちらかが未来なら両方補正）
+                const dCheck = item.date || item.createdAt;
+                if (!dCheck) continue;
+                const t = new Date(dCheck).getTime();
+                // createdAt が UTC で未来でも、date がローカルで現在のことがある → 両方見る
+                const tCreated = item.createdAt ? new Date(item.createdAt).getTime() : 0;
+                const isFuture = (Number.isFinite(t) && t > nowMs + 5*60*1000)
+                               || (Number.isFinite(tCreated) && tCreated > nowMs + 5*60*1000);
+                if (isFuture) {
                   item.date = nowISO;
-                  if (item.createdAt) item.createdAt = nowISO;
+                  item.createdAt = nowISO;
                   item._fixedFromFuture = true; // 印
                 }
               }
