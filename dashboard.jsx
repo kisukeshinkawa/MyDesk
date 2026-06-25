@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v189-related-projects-display"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v190-date-fix-and-project-links"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -1501,6 +1501,35 @@ async function loadData() {
       const raw = result._rawData;
       if(raw && typeof raw === "object" && !Array.isArray(raw)) {
         const merged = {...INIT, ...raw};
+        
+        // ✅ v190: 未来日時のデータを「現在時刻」に補正（古いテストデータ対策）
+        // Lambda が `2026-06-25T10:00:00Z` のような UTC で送ると JST 19:00 になり未来扱いされるバグの対処
+        try {
+          const nowMs = Date.now();
+          const nowISO = new Date(nowMs).toISOString();
+          const ARRAY_FIELDS = ["memos", "chat", "mtgLogs", "approachLogs"];
+          const fixEntity = (e) => {
+            for (const f of ARRAY_FIELDS) {
+              if (!Array.isArray(e[f])) continue;
+              for (const item of e[f]) {
+                if (!item || !item.date) continue;
+                const t = new Date(item.date).getTime();
+                if (Number.isFinite(t) && t > nowMs + 5*60*1000) {
+                  // 未来 5 分以上の date は現在時刻に置換
+                  item.date = nowISO;
+                  if (item.createdAt) item.createdAt = nowISO;
+                  item._fixedFromFuture = true; // 印
+                }
+              }
+            }
+          };
+          for (const e of (merged.companies||[])) fixEntity(e);
+          for (const e of (merged.vendors||[])) fixEntity(e);
+          for (const e of (merged.municipalities||[])) fixEntity(e);
+          for (const e of (merged.tasks||[])) fixEntity(e);
+          for (const e of (merged.projects||[])) fixEntity(e);
+        } catch(e) { console.warn("[MyDesk] date fix migration failed:", e); }
+        
         __myDeskLastKnownGoodData = merged;
         console.log(`[MyDesk] loadData OK — quotes: ${(merged.quotes||[]).length}件, companies: ${(merged.companies||[]).length}, vendors: ${(merged.vendors||[]).length}, munis: ${(merged.municipalities||[]).length}, tasks: ${(merged.tasks||[]).length}, updated_at: ${result._updatedAt}`);
         return { data: merged, updated_at: result._updatedAt };
@@ -8554,6 +8583,39 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
             </div>
             <Btn variant="ghost" size="sm" onClick={()=>setSheet("editProject")}>✏️</Btn>
           </div>
+          {/* ✅ v190: 紐付け営業先一覧（linkedCompanyIds/linkedVendorIds/linkedMuniIds） */}
+          {(()=>{
+            const linkedCompanies = (data.companies||[]).filter(c => (activePj.linkedCompanyIds||[]).map(String).includes(String(c.id)));
+            const linkedVendors = (data.vendors||[]).filter(v => (activePj.linkedVendorIds||[]).map(String).includes(String(v.id)));
+            const linkedMunis = (data.municipalities||[]).filter(m => (activePj.linkedMuniIds||[]).map(String).includes(String(m.id)));
+            const total = linkedCompanies.length + linkedVendors.length + linkedMunis.length;
+            if (total === 0) return null;
+            return (
+              <div style={{marginTop:"0.6rem",padding:"0.5rem 0.7rem",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:6}}>
+                <div style={{fontSize:"0.62rem",fontWeight:700,color:"#15803d",marginBottom:"0.35rem",letterSpacing:"0.04em"}}>🔗 紐付け営業先 ({total})</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:"0.35rem"}}>
+                  {linkedCompanies.map(c=>(
+                    <button key={`c${c.id}`} onClick={()=>onNavigateToSales && onNavigateToSales({type:"企業", id:c.id, name:c.name})}
+                      style={{padding:"0.2rem 0.55rem",background:"#dbeafe",border:"1px solid #93c5fd",borderRadius:999,cursor:"pointer",fontFamily:"inherit",fontSize:"0.7rem",color:"#1e40af",fontWeight:700}}>
+                      🏢 {c.name}
+                    </button>
+                  ))}
+                  {linkedVendors.map(v=>(
+                    <button key={`v${v.id}`} onClick={()=>onNavigateToSales && onNavigateToSales({type:"業者", id:v.id, name:v.name})}
+                      style={{padding:"0.2rem 0.55rem",background:"#ede9fe",border:"1px solid #c4b5fd",borderRadius:999,cursor:"pointer",fontFamily:"inherit",fontSize:"0.7rem",color:"#5b21b6",fontWeight:700}}>
+                      🔧 {v.name}
+                    </button>
+                  ))}
+                  {linkedMunis.map(m=>(
+                    <button key={`m${m.id}`} onClick={()=>onNavigateToSales && onNavigateToSales({type:"自治体", id:m.id, name:m.name})}
+                      style={{padding:"0.2rem 0.55rem",background:"#fce7f3",border:"1px solid #f9a8d4",borderRadius:999,cursor:"pointer",fontFamily:"inherit",fontSize:"0.7rem",color:"#9d174d",fontWeight:700}}>
+                      🏛 {m.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
           {activePj.notes&&<div style={{fontSize:"0.82rem",color:C.textSub,marginTop:"0.5rem"}}>{activePj.notes}</div>}
           {/* 完了ボタン */}
           <div style={{marginTop:"0.875rem",paddingTop:"0.875rem",borderTop:`1px solid ${C.borderLight}`}}>
@@ -19576,11 +19638,13 @@ ${orig}`})
                 </div>
               </div>
             )}
-            {/* ✅ 関連プロジェクト（v189） */}
+            {/* ✅ 関連プロジェクト（v189 → v190 強化: salesRef も検出） */}
             {(()=>{
-              const relatedPjs = (data.projects||[]).filter(p => 
-                (p.linkedCompanyIds||[]).map(String).includes(String(comp.id))
-              );
+              const relatedPjs = (data.projects||[]).filter(p => {
+                if ((p.linkedCompanyIds||[]).map(String).includes(String(comp.id))) return true;
+                if (String(p.salesRef?.id) === String(comp.id)) return true;
+                return false;
+              });
               if (relatedPjs.length === 0) return null;
               return (
                 <div style={{background:"#f5f3ff",border:"1px solid #ddd6fe",borderRadius:"0.5rem",padding:"0.5rem 0.625rem",marginBottom:comp.notes?"0.5rem":0}}>
@@ -20220,11 +20284,13 @@ ${orig}`})
                 </div>
               </div>
             )}
-            {/* ✅ 関連プロジェクト（v189） */}
+            {/* ✅ 関連プロジェクト（v189 → v190 強化） */}
             {(()=>{
-              const relatedPjs = (data.projects||[]).filter(p => 
-                (p.linkedVendorIds||[]).map(String).includes(String(v.id))
-              );
+              const relatedPjs = (data.projects||[]).filter(p => {
+                if ((p.linkedVendorIds||[]).map(String).includes(String(v.id))) return true;
+                if (String(p.salesRef?.id) === String(v.id)) return true;
+                return false;
+              });
               if (relatedPjs.length === 0) return null;
               return (
                 <div style={{background:"#f5f3ff",border:"1px solid #ddd6fe",borderRadius:"0.5rem",padding:"0.5rem 0.625rem",marginBottom:"0.5rem"}}>
@@ -21167,11 +21233,13 @@ ${orig}`})
             );
           })()}
           {/* 備考 */}
-          {/* ✅ 関連プロジェクト（v189） */}
+          {/* ✅ 関連プロジェクト（v189 → v190 強化） */}
           {(()=>{
-            const relatedPjs = (data.projects||[]).filter(p => 
-              (p.linkedMuniIds||[]).map(String).includes(String(muni.id))
-            );
+            const relatedPjs = (data.projects||[]).filter(p => {
+              if ((p.linkedMuniIds||[]).map(String).includes(String(muni.id))) return true;
+              if (String(p.salesRef?.id) === String(muni.id)) return true;
+              return false;
+            });
             if (relatedPjs.length === 0) return null;
             return (
               <div style={{background:"#f5f3ff",border:"1px solid #ddd6fe",borderRadius:6,padding:"0.5rem 0.7rem",marginBottom:muni.notes?"0.5rem":0}}>
