@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v188-realtime-and-changelog"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v189-related-projects-display"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -19576,6 +19576,26 @@ ${orig}`})
                 </div>
               </div>
             )}
+            {/* ✅ 関連プロジェクト（v189） */}
+            {(()=>{
+              const relatedPjs = (data.projects||[]).filter(p => 
+                (p.linkedCompanyIds||[]).map(String).includes(String(comp.id))
+              );
+              if (relatedPjs.length === 0) return null;
+              return (
+                <div style={{background:"#f5f3ff",border:"1px solid #ddd6fe",borderRadius:"0.5rem",padding:"0.5rem 0.625rem",marginBottom:comp.notes?"0.5rem":0}}>
+                  <div style={{fontSize:"0.62rem",fontWeight:700,color:"#6d28d9",marginBottom:"0.4rem",letterSpacing:"0.04em"}}>📁 関連プロジェクト ({relatedPjs.length})</div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:"0.35rem"}}>
+                    {relatedPjs.map(p=>(
+                      <button key={p.id} onClick={()=>{persistTab("md_tab","tasks",setTab);persistTab("md_tasksTab","projects",setTasksTab);setActivePj(p.id);}}
+                        style={{padding:"0.25rem 0.55rem",background:"#ede9fe",border:"1px solid #c4b5fd",borderRadius:999,cursor:"pointer",fontFamily:"inherit",fontSize:"0.72rem",color:"#5b21b6",fontWeight:700}}>
+                        📁 {p.name||p.title}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
             {/* 備考 */}
             {comp.notes&&(
               <div style={{fontSize:"0.75rem",color:C.text,background:"#f8fafc",borderRadius:6,padding:"0.5rem 0.7rem",borderLeft:"3px solid #cbd5e1",whiteSpace:"pre-wrap"}}>
@@ -20200,6 +20220,26 @@ ${orig}`})
                 </div>
               </div>
             )}
+            {/* ✅ 関連プロジェクト（v189） */}
+            {(()=>{
+              const relatedPjs = (data.projects||[]).filter(p => 
+                (p.linkedVendorIds||[]).map(String).includes(String(v.id))
+              );
+              if (relatedPjs.length === 0) return null;
+              return (
+                <div style={{background:"#f5f3ff",border:"1px solid #ddd6fe",borderRadius:"0.5rem",padding:"0.5rem 0.625rem",marginBottom:"0.5rem"}}>
+                  <div style={{fontSize:"0.62rem",fontWeight:700,color:"#6d28d9",marginBottom:"0.4rem",letterSpacing:"0.04em"}}>📁 関連プロジェクト ({relatedPjs.length})</div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:"0.35rem"}}>
+                    {relatedPjs.map(p=>(
+                      <button key={p.id} onClick={()=>{persistTab("md_tab","tasks",setTab);persistTab("md_tasksTab","projects",setTasksTab);setActivePj(p.id);}}
+                        style={{padding:"0.25rem 0.55rem",background:"#ede9fe",border:"1px solid #c4b5fd",borderRadius:999,cursor:"pointer",fontFamily:"inherit",fontSize:"0.72rem",color:"#5b21b6",fontWeight:700}}>
+                        📁 {p.name||p.title}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
             {/* 許可エリア（タグ） */}
             {vmunis.length>0&&(
               <div style={{display:"flex",alignItems:"center",gap:"0.4rem",flexWrap:"wrap",marginBottom:"0.5rem"}}>
@@ -21127,6 +21167,26 @@ ${orig}`})
             );
           })()}
           {/* 備考 */}
+          {/* ✅ 関連プロジェクト（v189） */}
+          {(()=>{
+            const relatedPjs = (data.projects||[]).filter(p => 
+              (p.linkedMuniIds||[]).map(String).includes(String(muni.id))
+            );
+            if (relatedPjs.length === 0) return null;
+            return (
+              <div style={{background:"#f5f3ff",border:"1px solid #ddd6fe",borderRadius:6,padding:"0.5rem 0.7rem",marginBottom:muni.notes?"0.5rem":0}}>
+                <div style={{fontSize:"0.62rem",fontWeight:700,color:"#6d28d9",marginBottom:"0.3rem",letterSpacing:"0.04em"}}>📁 関連プロジェクト ({relatedPjs.length})</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:"0.35rem"}}>
+                  {relatedPjs.map(p=>(
+                    <button key={p.id} onClick={()=>{persistTab("md_tab","tasks",setTab);persistTab("md_tasksTab","projects",setTasksTab);setActivePj(p.id);}}
+                      style={{padding:"0.25rem 0.55rem",background:"#ede9fe",border:"1px solid #c4b5fd",borderRadius:999,cursor:"pointer",fontFamily:"inherit",fontSize:"0.72rem",color:"#5b21b6",fontWeight:700}}>
+                      📁 {p.name||p.title}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
           {muni.notes&&(
             <div style={{fontSize:"0.75rem",color:C.text,background:"#f8fafc",borderRadius:6,padding:"0.5rem 0.7rem",borderLeft:"3px solid #cbd5e1",whiteSpace:"pre-wrap"}}>
               <div style={{fontSize:"0.62rem",fontWeight:700,color:C.textSub,marginBottom:"0.2rem",letterSpacing:"0.04em"}}>📝 備考</div>
