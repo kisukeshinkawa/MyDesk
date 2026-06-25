@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v185-agent-superpowers"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v187-extra-actions-and-files-context"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -29721,6 +29721,102 @@ function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
   const inputRef = React.useRef(null);
   const messagesEndRef = React.useRef(null);
   
+  // ── ドラッグ移動 & リサイズ用 state ──
+  const [position, setPosition] = React.useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("md_agent_pos") || "null");
+      if (saved) return saved;
+    } catch {}
+    return { bottom: 90, right: 20 };
+  });
+  const [size, setSize] = React.useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("md_agent_size") || "null");
+      if (saved) return saved;
+    } catch {}
+    return { width: 420, height: 580 };
+  });
+  const [dragging, setDragging] = React.useState(false);
+  const dragState = React.useRef(null);
+  
+  // ── ファイル添付用 state ──
+  const [pendingFiles, setPendingFiles] = React.useState([]); // [{id, file, name, size, type, kind, textContent, ...}]
+  const [dragOver, setDragOver] = React.useState(false);
+  const agentFileInputRef = React.useRef(null);
+  
+  // テキスト系ファイル判定
+  const fileKind = (f) => {
+    const TEXT_EXT = ["txt","md","csv","json","html","htm","log","tsv","yaml","yml","xml"];
+    const EXTRACTABLE_EXT = ["pdf","docx"];
+    const ext = (f.name.split(".").pop()||"").toLowerCase();
+    if (TEXT_EXT.includes(ext) || (f.type||"").startsWith("text/")) return "text";
+    if (EXTRACTABLE_EXT.includes(ext)) return "extractable";
+    return "binary";
+  };
+  const readAsText = f => new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=()=>rej(r.error); r.readAsText(f); });
+  
+  // ファイル選択処理
+  const handleAgentFilePick = async (files) => {
+    const arr = Array.from(files||[]);
+    if (!arr.length) return;
+    const prepared = await Promise.all(arr.map(async f => {
+      const kind = fileKind(f);
+      const item = { id: Date.now()+Math.random(), file: f, name: f.name, size: f.size, type: f.type, kind };
+      try {
+        if (kind === "text") {
+          item.textContent = (await readAsText(f)).slice(0, 100000);
+        } else if (kind === "extractable" && typeof window.extractTextFromFile === "function") {
+          item.extracting = true;
+          try {
+            const ex = await window.extractTextFromFile(f);
+            if (ex && ex.ok) { item.textContent = ex.text; item.extracted = true; }
+          } catch(_) {}
+          item.extracting = false;
+        }
+      } catch(e) { item.extractError = e.message; }
+      return item;
+    }));
+    setPendingFiles(prev => [...prev, ...prepared]);
+  };
+  const removePending = (id) => setPendingFiles(prev => prev.filter(f => f.id !== id));
+  
+  React.useEffect(() => { try { localStorage.setItem("md_agent_pos", JSON.stringify(position)); } catch {} }, [position]);
+  React.useEffect(() => { try { localStorage.setItem("md_agent_size", JSON.stringify(size)); } catch {} }, [size]);
+  
+  // ドラッグ開始
+  const startDrag = React.useCallback((e) => {
+    const isTouch = e.type === "touchstart";
+    const point = isTouch ? e.touches[0] : e;
+    e.preventDefault();
+    setDragging(true);
+    dragState.current = {
+      startX: point.clientX,
+      startY: point.clientY,
+      startBottom: position.bottom,
+      startRight: position.right,
+    };
+    const onMove = (ev) => {
+      const p = ev.type === "touchmove" ? ev.touches[0] : ev;
+      const dx = p.clientX - dragState.current.startX;
+      const dy = p.clientY - dragState.current.startY;
+      setPosition({
+        bottom: Math.max(10, Math.min(window.innerHeight - 100, dragState.current.startBottom - dy)),
+        right: Math.max(10, Math.min(window.innerWidth - 100, dragState.current.startRight - dx)),
+      });
+    };
+    const onUp = () => {
+      setDragging(false);
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("touchmove", onMove);
+      window.removeEventListener("touchend", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    window.addEventListener("touchmove", onMove, { passive: false });
+    window.addEventListener("touchend", onUp);
+  }, [position]);
+  
   // メッセージを保存
   React.useEffect(() => {
     try { localStorage.setItem("md_agent_history", JSON.stringify(messages.slice(-30))); } catch {}
@@ -29925,6 +30021,32 @@ function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
       projects: allProjects,
       people: people,
       users: (users || []).map(u => ({id: u.id, name: u.name, email: u.email})),
+      // ✅ MyDesk 内既存ファイル一覧（資料作成時の参照元）
+      existing_files: (() => {
+        const out = [];
+        const collect = (entType, entKey, items) => {
+          for (const it of (items||[])) {
+            for (const f of (it.files||[])) {
+              if (!f || !f.name) continue;
+              out.push({
+                name: f.name,
+                entityType: entType,
+                entityName: it.name || it.title,
+                entityId: it.id,
+                size: f.size,
+                uploadedAt: f.uploadedAt,
+              });
+            }
+          }
+        };
+        collect("company", "companies", data?.companies);
+        collect("vendor", "vendors", data?.vendors);
+        collect("muni", "municipalities", data?.municipalities);
+        collect("task", "tasks", data?.tasks);
+        collect("project", "projects", data?.projects);
+        // 最新200件のみ送る（巨大化防止）
+        return out.slice(-200);
+      })(),
       // メール傾向参照用（直近のメール本文サンプル）
       recent_emails_sample: (data?.emails || []).slice(-50).map(e => ({
         from: e.from?.email || "",
@@ -29946,15 +30068,37 @@ function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
   
   const send = async () => {
     const text = input.trim();
-    if (!text || busy) return;
+    if ((!text && pendingFiles.length === 0) || busy) return;
     if (!AGENT_API_URL) {
       alert("AI エージェントの URL が設定されていません。\n環境変数 VITE_AGENT_API_URL を設定してください。");
       return;
     }
     
-    const userMsg = {role: "user", content: text, timestamp: Date.now()};
+    // 添付ファイルの情報を user message に含めて表示
+    let displayContent = text;
+    if (pendingFiles.length > 0) {
+      const fileList = pendingFiles.map(f => `📎 ${f.name} (${Math.round(f.size/1024)}KB)`).join("\n");
+      displayContent = text ? `${text}\n\n${fileList}` : fileList;
+    }
+    
+    // 添付ファイルのテキスト内容を質問文に追記（Lambda は質問文を見て判断）
+    let augmentedText = text;
+    if (pendingFiles.length > 0) {
+      augmentedText += `\n\n===== ユーザー添付ファイル (${pendingFiles.length}件) =====\n`;
+      pendingFiles.forEach((pf, i) => {
+        augmentedText += `\n[添付#${i+1}] ${pf.name} (${Math.round(pf.size/1024)}KB${pf.type?", "+pf.type:""})\n`;
+        if (pf.textContent) {
+          augmentedText += `--- 内容 ---\n${pf.textContent.slice(0, 30000)}\n--- ここまで ---\n`;
+        } else if (pf.kind === "binary") {
+          augmentedText += `(バイナリファイル: 中身を読めません${pf.extractError?` - 抽出失敗: ${pf.extractError}`:""})\n`;
+        }
+      });
+    }
+    
+    const userMsg = {role: "user", content: displayContent, timestamp: Date.now()};
     setMessages(prev => [...prev, userMsg]);
     setInput("");
+    setPendingFiles([]);
     setBusy(true);
     
     try {
@@ -29985,13 +30129,14 @@ function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
       }
       
       const payload = {
-        user_input: text,
+        user_input: augmentedText,
         context: {
           current_user: {
             id: currentUser?.id,
             name: currentUser?.name,
             email: currentUser?.email,
           },
+          today: new Date().toISOString().slice(0,10),  // ✅ 今日の日付を明示
           data_summary: summary,
           history: messages.slice(-8).map(m => ({role: m.role, content: m.content})),
           hint_web_search: needsWebSearch,
@@ -30043,10 +30188,12 @@ function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
   return (
     <div style={{
       position: "fixed",
-      bottom: "90px",
-      right: "20px",
-      width: "min(420px, calc(100vw - 40px))",
-      height: "min(580px, calc(100vh - 140px))",
+      bottom: position.bottom,
+      right: position.right,
+      width: size.width,
+      height: size.height,
+      maxWidth: "calc(100vw - 20px)",
+      maxHeight: "calc(100vh - 20px)",
       background: "white",
       borderRadius: "16px",
       boxShadow: "0 12px 48px rgba(0,0,0,0.25), 0 4px 12px rgba(0,0,0,0.1)",
@@ -30055,9 +30202,11 @@ function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
       flexDirection: "column",
       overflow: "hidden",
       border: "1px solid #e5e7eb",
+      transition: dragging ? "none" : "bottom 0.15s, right 0.15s",
     }}>
-      {/* ヘッダー */}
-      <div style={{
+      {/* ヘッダー（ドラッグ可能） */}
+      <div onMouseDown={startDrag} onTouchStart={startDrag}
+        style={{
         padding: "0.75rem 1rem",
         background: "linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)",
         color: "white",
@@ -30065,10 +30214,13 @@ function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
         alignItems: "center",
         gap: "0.6rem",
         flexShrink: 0,
+        cursor: dragging ? "grabbing" : "grab",
+        userSelect: "none",
+        touchAction: "none",
       }}>
         <div style={{fontSize: "1.2rem"}}>🤖</div>
         <div style={{flex: 1}}>
-          <div style={{fontWeight: 800, fontSize: "0.95rem"}}>MyDesk AI 秘書</div>
+          <div style={{fontWeight: 800, fontSize: "0.95rem"}}>MyDesk AI 秘書 ⋮⋮</div>
           <div style={{fontSize: "0.65rem", opacity: 0.9}}>Claude Opus 4.7 / 何でも聞いてください</div>
         </div>
         <button onClick={clearHistory} title="履歴クリア"
@@ -30148,50 +30300,78 @@ function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
       </div>
       
       {/* 入力欄 */}
-      <div style={{
-        padding: "0.6rem 0.75rem",
-        background: "white",
-        borderTop: "1px solid #e5e7eb",
-        display: "flex",
-        gap: "0.5rem",
-        flexShrink: 0,
-      }}>
-        <textarea
-          ref={inputRef}
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={e => {
-            // IME変換中の Enter は無視（誤送信防止）
-            // e.nativeEvent.isComposing: 日本語IME変換中なら true
-            // e.keyCode === 229: 古いブラウザ用の IME 中Enter判定
-            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent?.isComposing && e.keyCode !== 229) {
-              e.preventDefault();
-              send();
-            }
-          }}
-          placeholder="何でも聞いてください... (Enter で送信 / Shift+Enter で改行 / IME確定は安全)"
-          rows={1}
-          style={{
-            flex: 1,
-            padding: "0.5rem 0.7rem",
-            borderRadius: "10px",
-            border: "1.5px solid #e5e7eb",
-            fontSize: "0.82rem",
-            fontFamily: "inherit",
-            outline: "none",
-            resize: "none",
-            maxHeight: "100px",
-            lineHeight: 1.5,
-          }}
-        />
-        <button onClick={send} disabled={busy || !input.trim()}
-          style={{
+      <div 
+        onDragOver={e=>{e.preventDefault(); setDragOver(true);}}
+        onDragLeave={()=>setDragOver(false)}
+        onDrop={e=>{e.preventDefault(); setDragOver(false); handleAgentFilePick(e.dataTransfer.files);}}
+        style={{
+          padding: "0.6rem 0.75rem",
+          background: dragOver ? "#ede9fe" : "white",
+          borderTop: "1px solid #e5e7eb",
+          flexShrink: 0,
+          transition: "background 0.15s",
+        }}>
+        {dragOver && <div style={{textAlign:"center",fontSize:"0.78rem",color:"#7c3aed",fontWeight:700,marginBottom:"0.4rem"}}>📥 ここにファイルをドロップ</div>}
+        
+        {/* 添付ファイルチップ */}
+        {pendingFiles.length > 0 && (
+          <div style={{display:"flex",flexWrap:"wrap",gap:"0.35rem",marginBottom:"0.5rem"}}>
+            {pendingFiles.map(pf=>{
+              const ext = (pf.name.split(".").pop()||"").toLowerCase();
+              const icon = pf.kind==="text"?"📄":ext==="pdf"?"📕":ext==="docx"?"📘":pf.type?.startsWith("image/")?"🖼️":"📎";
+              return (
+                <div key={pf.id} style={{display:"inline-flex",alignItems:"center",gap:"0.3rem",padding:"0.25rem 0.5rem",background:"#ede9fe",borderRadius:6,border:"1px solid #c4b5fd",fontSize:"0.7rem",color:"#5b21b6",fontWeight:600,maxWidth:200}}>
+                  <span>{icon}</span>
+                  <span style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{pf.name}</span>
+                  {pf.extracting && <span style={{fontSize:"0.6rem",opacity:0.7}}>抽出中…</span>}
+                  {pf.extracted && <span style={{fontSize:"0.6rem",color:"#059669"}}>✓</span>}
+                  <button onClick={()=>removePending(pf.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#5b21b6",padding:0,fontSize:"0.85rem",lineHeight:1,marginLeft:"0.2rem"}}>×</button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        
+        <div style={{display:"flex",gap:"0.5rem",alignItems:"flex-end"}}>
+          <input ref={agentFileInputRef} type="file" multiple style={{display:"none"}} onChange={e=>{handleAgentFilePick(e.target.files); e.target.value="";}}
+            accept=".txt,.md,.csv,.json,.html,.log,.tsv,.yml,.yaml,.xml,.pdf,.docx,.doc,.xlsx,.xls,.png,.jpg,.jpeg,.gif,.webp,.heic"/>
+          <button onClick={()=>agentFileInputRef.current?.click()} disabled={busy} title="ファイルを添付"
+            style={{padding:"0.5rem 0.6rem",borderRadius:8,border:"1.5px solid #e5e7eb",background:"white",cursor:busy?"default":"pointer",fontSize:"1.05rem",lineHeight:1,fontFamily:"inherit",flexShrink:0}}>📎</button>
+          <textarea
+            ref={inputRef}
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent?.isComposing && e.keyCode !== 229) {
+                e.preventDefault();
+                send();
+              }
+            }}
+            placeholder={pendingFiles.length>0?"何をするか伝えてください…":"何でも聞いてください... (Enter で送信 / Shift+Enter で改行)"}
+            rows={1}
+            data-gramm="false"
+            style={{
+              flex: 1,
+              padding: "0.5rem 0.7rem",
+              borderRadius: "10px",
+              border: "1.5px solid #e5e7eb",
+              fontSize: "0.82rem",
+              fontFamily: "inherit",
+              outline: "none",
+              resize: "none",
+              maxHeight: "100px",
+              lineHeight: 1.5,
+              minWidth: 0,
+            }}
+          />
+          <button onClick={send} disabled={busy || (!input.trim() && pendingFiles.length===0)}
+            style={{
             padding: "0.5rem 0.85rem",
             borderRadius: "10px",
             border: "none",
-            background: busy || !input.trim() ? "#d1d5db" : "#7c3aed",
+            background: busy || (!input.trim() && pendingFiles.length===0) ? "#d1d5db" : "#7c3aed",
             color: "white",
-            cursor: busy || !input.trim() ? "default" : "pointer",
+            cursor: busy || (!input.trim() && pendingFiles.length===0) ? "default" : "pointer",
             fontSize: "0.82rem",
             fontWeight: 700,
             fontFamily: "inherit",
@@ -30199,7 +30379,8 @@ function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
           }}>
           {busy ? "..." : "送信"}
         </button>
-      </div>
+        </div>{/* end of flex row */}
+      </div>{/* end of input area */}
     </div>
   );
 }
@@ -30338,7 +30519,8 @@ export default function App() {
 
   // ── AI エージェントからのアクション実行ハンドラー ─────────────────────
   // Bedrock Tool Use が生成した action を実際の MyDesk 操作に変換
-  const handleAgentAction = React.useCallback((action) => {
+  const [agentEmailDraft, setAgentEmailDraft] = React.useState(null); // {to, subject, body, ...} | null
+  const handleAgentAction = React.useCallback(async (action) => {
     if (!action || !action.type) return;
     const params = action.params || {};
     console.log("[Agent] action:", action.type, params);
@@ -30426,61 +30608,60 @@ export default function App() {
       }
       
       case "create_email_draft": {
-        // メール下書き作成 → 確認ダイアログ
+        // メール下書き作成 → モーダル表示（タブ遷移しない＝真っ白問題対策）
         const to = (params.to || []).join(", ");
+        const cc = (params.cc || []).join(", ");
         const subject = params.subject || "";
-        const body = (params.body || "").slice(0, 300);
-        const preview = `📧 メール下書き作成しますか？\n\nTo: ${to}\nSubject: ${subject}\n\n本文プレビュー:\n${body}${(params.body||"").length>300?"...":""}`;
-        if (window.confirm(preview)) {
-          // メールタブに遷移してドラフト情報をlocalStorageに保存
-          const draftKey = "md_pending_email_draft";
-          localStorage.setItem(draftKey, JSON.stringify({
-            to: params.to || [],
-            cc: params.cc || [],
-            subject: params.subject || "",
-            body: params.body || "",
-            linkedEntityType: params.linked_entity_type,
-            linkedEntityId: params.linked_entity_id,
-            timestamp: Date.now(),
-          }));
-          persistTab("md_tab", "mail", setTab);
-          // 遷移後、EmailView が再マウントされない場合に備えて、
-          // window 経由でロード関数を呼び出し（複数回試す）
-          const tryLoad = (n) => {
-            if (typeof window.__myDeskLoadAgentDraft === "function") {
-              window.__myDeskLoadAgentDraft();
-            } else if (n > 0) {
-              setTimeout(() => tryLoad(n - 1), 200);
-            }
-          };
-          setTimeout(() => tryLoad(10), 100); // 最大2秒間、200msごとに試す
-        }
+        const body = params.body || "";
+        // 既存モーダル状態に保存して表示
+        setAgentEmailDraft({ to, cc, subject, body, linkedEntityType: params.linked_entity_type, linkedEntityId: params.linked_entity_id });
         break;
       }
       
       case "create_task": {
         // タスク作成 → 確認ダイアログ
-        const preview = `📝 タスク作成しますか？\n\nタイトル: ${params.title}\n${params.due_date?`期限: ${params.due_date}\n`:""}${params.priority?`優先度: ${params.priority}\n`:""}${params.description?`詳細: ${params.description.slice(0,200)}`:""}`;
+        // priority の英→日マッピング
+        const PRIO_MAP = {urgent:"緊急", high:"高", normal:"中", medium:"中", low:"低"};
+        const priority = PRIO_MAP[params.priority] || params.priority || "中";
+        // linked_entity 解決 + プロジェクトも紐付け試行
+        const linkType = params.linked_entity_type;
+        const linkId = params.linked_entity_id;
+        // 営業先IDから関連プロジェクトを自動検索
+        let autoProjectId = null;
+        if (params.project_id) {
+          autoProjectId = params.project_id;
+        } else if (linkId && linkType) {
+          // 営業先に紐づくプロジェクトを検索
+          const pjs = data.projects || [];
+          const found = pjs.find(p => {
+            const ids = ({company:p.linkedCompanyIds, vendor:p.linkedVendorIds, muni:p.linkedMuniIds})[linkType] || [];
+            return ids.map(String).includes(String(linkId));
+          });
+          if (found) autoProjectId = found.id;
+        }
+        const projectName = autoProjectId ? (data.projects||[]).find(p=>String(p.id)===String(autoProjectId))?.name : null;
+        const preview = `📝 タスク作成しますか？\n\nタイトル: ${params.title}\n${params.due_date?`期限: ${params.due_date}\n`:""}優先度: ${priority}\n${projectName?`プロジェクト: ${projectName}\n`:""}${params.description?`詳細: ${params.description.slice(0,200)}`:""}`;
         if (window.confirm(preview)) {
           const newTask = {
-            id: `task_${Date.now()}_${Math.random().toString(36).slice(2,8)}`,
+            id: Date.now(),  // ✅ 数値IDに統一（MyDesk 全体と互換）
             title: params.title,
             description: params.description || "",
             dueDate: params.due_date || "",
-            priority: params.priority || "normal",
-            status: "open",
-            assigneeIds: params.assignee_id ? [params.assignee_id] : [currentUser?.id].filter(Boolean),
-            salesRef: params.linked_entity_id && params.linked_entity_type ? {
-              type: ({company:"企業", vendor:"業者", muni:"自治体"})[params.linked_entity_type] || "企業",
-              id: params.linked_entity_id,
-            } : null,
+            priority,
+            status: "未着手",  // ✅ MyDesk のステータスに統一
+            assignees: params.assignee_id ? [params.assignee_id] : (currentUser?.id ? [currentUser.id] : []),
+            projectId: autoProjectId,  // ✅ プロジェクト紐付け
+            companyIds: linkType==="company" && linkId ? [linkId] : [],
+            vendorIds: linkType==="vendor" && linkId ? [linkId] : [],
+            muniIds: linkType==="muni" && linkId ? [linkId] : [],
+            comments: [], memos: [], chat: [], files: [], approachLogs: [], mtgLogs: [],
             createdAt: new Date().toISOString(),
             createdBy: currentUser?.id,
           };
           const nd = {...data, tasks: [...(data.tasks||[]), newTask]};
           setData(nd);
           scheduleSaveData(nd);
-          alert(`✅ タスクを作成しました: ${params.title}`);
+          alert(`✅ タスクを作成しました: ${params.title}${projectName?`\n📁 ${projectName} に紐付け`:""}`);
         }
         break;
       }
@@ -30489,18 +30670,73 @@ export default function App() {
         // データ更新 → 確認ダイアログ
         const entityType = params.entity_type;
         const entityId = params.entity_id;
-        const fields = params.fields || {};
+        let fields = {...(params.fields || {})};
         const typeMap = {company:"companies", vendor:"vendors", muni:"municipalities", task:"tasks", project:"projects"};
         const key = typeMap[entityType];
         if (!key) { alert("不明なエンティティタイプ: " + entityType); break; }
-        const current = (data[key]||[]).find(e => String(e.id) === String(entityId));
+        // ID マッチ: 文字列・数値・部分一致対応
+        const current = (data[key]||[]).find(e => String(e.id) === String(entityId))
+                     || (data[key]||[]).find(e => String(e.id).includes(String(entityId)));
         if (!current) { alert("エンティティが見つかりません: " + entityId); break; }
         
-        const changes = Object.entries(fields).map(([k,v]) => `  ${k}: ${current[k]||"(空)"} → ${JSON.stringify(v)}`).join("\n");
+        // ✅ タスクのステータス英→日マッピング
+        if (entityType === "task" && fields.status) {
+          const STATUS_MAP = {open:"未着手", in_progress:"進行中", done:"完了", completed:"完了", closed:"完了", todo:"未着手"};
+          fields.status = STATUS_MAP[fields.status] || fields.status;
+        }
+        // ✅ タスクの優先度英→日マッピング
+        if (entityType === "task" && fields.priority) {
+          const PRIO_MAP = {urgent:"緊急", high:"高", normal:"中", medium:"中", low:"低"};
+          fields.priority = PRIO_MAP[fields.priority] || fields.priority;
+        }
+        
+        // ✅ 配列フィールド: 既存配列に append（上書きしない）
+        const APPEND_FIELDS = ["memos", "chat", "mtgLogs", "approachLogs", "files", "comments"];
+        const processedFields = {};
+        for (const [k, v] of Object.entries(fields)) {
+          if (APPEND_FIELDS.includes(k) && Array.isArray(v)) {
+            // 配列フィールド: 既存配列がない場合は新規作成
+            const existing = Array.isArray(current[k]) ? current[k] : [];
+            // 各要素に id / userId / date 等の必須フィールドを補完
+            const enriched = v.map(item => {
+              const base = {...item};
+              if (!base.id) base.id = Date.now() + Math.random();
+              if (k === "memos" || k === "chat") {
+                if (!base.userId) base.userId = currentUser?.id;
+                if (!base.date) base.date = new Date().toISOString();
+                // text or content フィールドの統一（chat/memos は text 想定）
+                if (!base.text && base.content) base.text = base.content;
+              }
+              if (k === "mtgLogs") {
+                if (!base.userId) base.userId = currentUser?.id;
+                if (!base.date) base.date = new Date().toISOString();
+              }
+              if (k === "approachLogs") {
+                if (!base.userId) base.userId = currentUser?.id;
+                if (!base.date) base.date = new Date().toISOString();
+                if (!base.createdAt) base.createdAt = new Date().toISOString();
+                if (!base.type) base.type = "電話";
+              }
+              return base;
+            });
+            processedFields[k] = [...existing, ...enriched];
+          } else {
+            processedFields[k] = v;
+          }
+        }
+        
+        const changes = Object.entries(processedFields).map(([k,v]) => {
+          if (Array.isArray(v)) {
+            const existing = Array.isArray(current[k]) ? current[k].length : 0;
+            const added = v.length - existing;
+            return `  ${k}: 既存${existing}件 + 追加${added}件`;
+          }
+          return `  ${k}: ${current[k]||"(空)"} → ${typeof v === "string" ? v : JSON.stringify(v)}`;
+        }).join("\n");
         const preview = `🔧 ${current.name||current.title}を更新しますか？\n\n${changes}`;
         if (window.confirm(preview)) {
           const nd = {...data};
-          nd[key] = nd[key].map(e => String(e.id) === String(entityId) ? {...e, ...fields, updatedAt: new Date().toISOString()} : e);
+          nd[key] = nd[key].map(e => String(e.id) === String(current.id) ? {...e, ...processedFields, updatedAt: new Date().toISOString()} : e);
           setData(nd);
           scheduleSaveData(nd);
           alert(`✅ 更新しました`);
@@ -30517,10 +30753,118 @@ export default function App() {
         break;
       }
       
+      // ✅ v187: 新規アクション
+      case "create_project": {
+        // プロジェクト作成
+        const memberNames = params.members || params.member_names || [];
+        const memberIds = memberNames.map(name => {
+          const ln = String(name||"").replace(/\s/g,"").toLowerCase();
+          const u = (users||[]).find(u => {
+            const full = ((u.lastName||"")+(u.firstName||"")+(u.name||"")).replace(/\s/g,"").toLowerCase();
+            return full === ln || full.includes(ln);
+          });
+          return u?.id;
+        }).filter(Boolean);
+        const name = params.name || params.title || "新規プロジェクト";
+        const preview = `📁 プロジェクト作成しますか？\n\nプロジェクト名: ${name}\n${memberIds.length?`メンバー: ${memberNames.join(", ")}\n`:""}${params.description?`説明: ${params.description}`:""}`;
+        if (window.confirm(preview)) {
+          const newProject = {
+            id: Date.now(),
+            name,
+            title: name,
+            description: params.description || "",
+            members: memberIds.length ? memberIds : (currentUser?.id ? [currentUser.id] : []),
+            status: "進行中",
+            memos: [], chat: [], files: [], mtgLogs: [],
+            linkedCompanyIds: params.linked_company_ids || [],
+            linkedVendorIds: params.linked_vendor_ids || [],
+            linkedMuniIds: params.linked_muni_ids || [],
+            createdAt: new Date().toISOString(),
+            createdBy: currentUser?.id,
+          };
+          const nd = {...data, projects: [...(data.projects||[]), newProject]};
+          setData(nd);
+          scheduleSaveData(nd);
+          alert(`✅ プロジェクト「${name}」を作成しました`);
+        }
+        break;
+      }
+      
+      case "send_push": {
+        // プッシュ通知送信
+        const userName = params.user_name || params.userName || params.to_name;
+        const ln = String(userName||"").replace(/\s/g,"").toLowerCase();
+        const target = (users||[]).find(u => {
+          const full = ((u.lastName||"")+(u.firstName||"")+(u.name||"")).replace(/\s/g,"").toLowerCase();
+          return full === ln || full.includes(ln);
+        });
+        if (!target) { alert(`ユーザー「${userName}」が見つかりません`); break; }
+        const title = params.title || params.subject || "通知";
+        const body = params.body || params.message || "";
+        if (window.confirm(`🔔 ${target.name} さんに通知を送りますか？\n\n${title}\n${body}`)) {
+          try {
+            const API_BASE = import.meta.env?.VITE_API_BASE_URL || "";
+            const r = await fetch(`${API_BASE}/api/send-push`, {
+              method: "POST",
+              headers: {"Content-Type": "application/json"},
+              body: JSON.stringify({userId: target.id, title, body}),
+            });
+            if (!r.ok) throw new Error(`通知送信失敗: ${r.status}`);
+            alert(`✅ ${target.name} さんに通知を送信しました`);
+          } catch(e) {
+            alert(`❌ 通知送信エラー: ${e.message}`);
+          }
+        }
+        break;
+      }
+      
+      case "link_task_to_project": {
+        // タスクをプロジェクトに紐付け
+        const taskTitle = params.task_title || params.taskTitle;
+        const projectTitle = params.project_title || params.projectTitle;
+        const tasks = data.tasks || [];
+        const projects = data.projects || [];
+        const lt = String(taskTitle||"").toLowerCase();
+        const lp = String(projectTitle||"").toLowerCase();
+        const task = tasks.find(t => (t.title||"").toLowerCase().includes(lt));
+        const project = projects.find(p => ((p.name||p.title)||"").toLowerCase().includes(lp));
+        if (!task) { alert(`タスク「${taskTitle}」が見つかりません`); break; }
+        if (!project) { alert(`プロジェクト「${projectTitle}」が見つかりません`); break; }
+        if (window.confirm(`🔗 タスク「${task.title}」を プロジェクト「${project.name||project.title}」に紐付けますか？`)) {
+          const nd = {...data, tasks: tasks.map(t => t.id===task.id ? {...t, projectId: project.id, updatedAt: new Date().toISOString()} : t)};
+          setData(nd);
+          scheduleSaveData(nd);
+          alert(`✅ 紐付けました`);
+        }
+        break;
+      }
+      
+      case "create_file_with_template": {
+        // MyDesk 既存ファイルをベースに資料作成
+        // params.template_file_name で既存ファイルを参照、AI が内容を編集して .md でダウンロード
+        const fmt = params.format || "markdown";
+        const mimeMap = { markdown:"text/markdown", text:"text/plain", csv:"text/csv", html:"text/html", json:"application/json"};
+        const mime = mimeMap[fmt] || "text/plain";
+        const filename = params.filename || "document.md";
+        const content = params.content || "";
+        const blob = new Blob([content], { type: mime });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = filename;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        if (params.based_on) {
+          alert(`✅ ${filename} をダウンロードしました\n（参考: ${params.based_on}）`);
+        } else {
+          alert(`✅ ${filename} をダウンロードしました`);
+        }
+        break;
+      }
+      
       default:
         console.warn("[Agent] unknown action:", action.type);
     }
-  }, [data, setData, currentUser]);
+  }, [data, setData, currentUser, users]);
   
   // window 経由でアクセス可能にする（後方互換）
   React.useEffect(() => { window.__myDeskHandleAgentAction = handleAgentAction; }, [handleAgentAction]);
@@ -31629,6 +31973,52 @@ export default function App() {
           alert("アクション実行エラー: " + e.message);
         }
       }}/>}
+      {/* AIエージェント メール下書きモーダル */}
+      {agentEmailDraft && (
+        <div onClick={()=>setAgentEmailDraft(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"white",borderRadius:12,padding:"1.25rem",maxWidth:600,width:"100%",maxHeight:"90vh",overflowY:"auto",boxShadow:"0 20px 50px rgba(0,0,0,0.3)"}}>
+            <div style={{fontSize:"1.05rem",fontWeight:800,marginBottom:"0.85rem",color:"#1f2937"}}>📧 メール下書き</div>
+            <div style={{marginBottom:"0.6rem"}}>
+              <div style={{fontSize:"0.7rem",fontWeight:700,color:"#6b7280",marginBottom:"0.2rem"}}>宛先 (To)</div>
+              <div style={{padding:"0.45rem 0.65rem",background:"#f9fafb",borderRadius:6,fontSize:"0.85rem",fontFamily:"inherit"}}>{agentEmailDraft.to||"(空)"}</div>
+            </div>
+            {agentEmailDraft.cc && (
+              <div style={{marginBottom:"0.6rem"}}>
+                <div style={{fontSize:"0.7rem",fontWeight:700,color:"#6b7280",marginBottom:"0.2rem"}}>Cc</div>
+                <div style={{padding:"0.45rem 0.65rem",background:"#f9fafb",borderRadius:6,fontSize:"0.85rem"}}>{agentEmailDraft.cc}</div>
+              </div>
+            )}
+            <div style={{marginBottom:"0.6rem"}}>
+              <div style={{fontSize:"0.7rem",fontWeight:700,color:"#6b7280",marginBottom:"0.2rem"}}>件名</div>
+              <input type="text" value={agentEmailDraft.subject} onChange={e=>setAgentEmailDraft(p=>({...p, subject:e.target.value}))}
+                style={{width:"100%",padding:"0.5rem 0.65rem",borderRadius:6,border:"1px solid #d1d5db",fontSize:"0.88rem",fontFamily:"inherit",boxSizing:"border-box"}}/>
+            </div>
+            <div style={{marginBottom:"1rem"}}>
+              <div style={{fontSize:"0.7rem",fontWeight:700,color:"#6b7280",marginBottom:"0.2rem"}}>本文</div>
+              <textarea value={agentEmailDraft.body} onChange={e=>setAgentEmailDraft(p=>({...p, body:e.target.value}))}
+                rows={10}
+                style={{width:"100%",padding:"0.55rem 0.7rem",borderRadius:6,border:"1px solid #d1d5db",fontSize:"0.85rem",fontFamily:"inherit",resize:"vertical",lineHeight:1.55,boxSizing:"border-box"}}/>
+            </div>
+            <div style={{display:"flex",gap:"0.5rem",justifyContent:"flex-end",flexWrap:"wrap"}}>
+              <button onClick={()=>setAgentEmailDraft(null)} style={{padding:"0.5rem 0.95rem",borderRadius:6,border:"1px solid #d1d5db",background:"white",color:"#6b7280",cursor:"pointer",fontFamily:"inherit",fontSize:"0.82rem",fontWeight:600}}>キャンセル</button>
+              <button onClick={()=>{
+                // クリップボードへコピー
+                const text = `To: ${agentEmailDraft.to}\n${agentEmailDraft.cc?`Cc: ${agentEmailDraft.cc}\n`:""}Subject: ${agentEmailDraft.subject}\n\n${agentEmailDraft.body}`;
+                navigator.clipboard?.writeText(text);
+                alert("📋 メール全文をコピーしました");
+              }} style={{padding:"0.5rem 0.95rem",borderRadius:6,border:"1px solid #d1d5db",background:"white",color:"#374151",cursor:"pointer",fontFamily:"inherit",fontSize:"0.82rem",fontWeight:700}}>📋 コピー</button>
+              <button onClick={()=>{
+                // mailto で開く
+                const to = encodeURIComponent(agentEmailDraft.to);
+                const cc = encodeURIComponent(agentEmailDraft.cc||"");
+                const subject = encodeURIComponent(agentEmailDraft.subject);
+                const body = encodeURIComponent(agentEmailDraft.body);
+                window.location.href = `mailto:${to}?${cc?`cc=${cc}&`:""}subject=${subject}&body=${body}`;
+              }} style={{padding:"0.5rem 0.95rem",borderRadius:6,border:"none",background:"#5b5bd6",color:"white",cursor:"pointer",fontFamily:"inherit",fontSize:"0.82rem",fontWeight:700}}>📧 メーラーで開く</button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* ⓪ 新バージョン更新バナー（最優先表示） */}
       {updateAvailable&&(
         <div style={{position:"fixed",top:0,left:0,right:0,zIndex:1002,background:"linear-gradient(90deg, #5b5bd6, #7c7cf0)",padding:"0.6rem 1rem",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.65rem",color:"white",boxShadow:"0 2px 8px rgba(91,91,214,0.3)"}}>
