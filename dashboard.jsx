@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v198-fix-api-base-and-auto-link"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v199-fulltext-search-memos-mtg-approach"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -30234,6 +30234,45 @@ function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
       return nKeywords.some(nk => nName.includes(nk) || nk.includes(nName));
     };
     
+    // ✅ v199: メモ・議事録・アプローチ履歴・備考の全文検索
+    const matchesContent = (entity) => {
+      if (nKeywords.length === 0) return null;
+      const hits = [];
+      // memos: [{text}]
+      (entity.memos||[]).forEach(m => {
+        const text = m.text || m.content || "";
+        if (text && nKeywords.some(nk => normalize(text).includes(nk))) {
+          hits.push({kind:"memo", text: text.slice(0, 200), date: m.createdAt||m.date});
+        }
+      });
+      // mtgLogs: [{title, content}]
+      (entity.mtgLogs||[]).forEach(m => {
+        const text = (m.title||"") + " " + (m.content||"");
+        if (text.trim() && nKeywords.some(nk => normalize(text).includes(nk))) {
+          hits.push({kind:"議事録", text: ((m.title||"")+" "+(m.content||"")).slice(0, 200), date: m.createdAt||m.date});
+        }
+      });
+      // approachLogs: [{note, type}]
+      (entity.approachLogs||[]).forEach(a => {
+        const text = (a.type||"") + " " + (a.note||"");
+        if (text.trim() && nKeywords.some(nk => normalize(text).includes(nk))) {
+          hits.push({kind:"アプローチ", text: text.slice(0, 200), date: a.createdAt||a.date});
+        }
+      });
+      // notes (備考)
+      if (entity.notes && nKeywords.some(nk => normalize(entity.notes).includes(nk))) {
+        hits.push({kind:"備考", text: String(entity.notes).slice(0, 200)});
+      }
+      // chat (チャット投稿)
+      (entity.chat||[]).forEach(c => {
+        const text = c.text || c.content || "";
+        if (text && nKeywords.some(nk => normalize(text).includes(nk))) {
+          hits.push({kind:"チャット", text: text.slice(0, 200), date: c.createdAt||c.date});
+        }
+      });
+      return hits.length > 0 ? hits : null;
+    };
+    
     // 全件をスリム化
     const allCompanies = (data?.companies || []).map(c => ({
       id: c.id, name: c.name, status: c.status
@@ -30324,10 +30363,33 @@ function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
       return false;
     };
     
+    // ✅ v199: 名前ヒット + コンテンツ（メモ・議事録・アプローチ等）ヒットを統合
+    // フル業者データを参照する必要があるため、data.vendors/companies/munis を直接見る
+    const collectMatchesWithContent = (collection, nameField="name") => {
+      if (!keywords.length) return [];
+      const matched = [];
+      for (const ent of (collection||[])) {
+        const nameMatch = matches(ent[nameField]);
+        const contentHits = matchesContent(ent);
+        if (nameMatch || contentHits) {
+          matched.push({
+            id: ent.id,
+            name: ent[nameField],
+            status: ent.status,
+            // コンテンツでヒットした場合、ヒット箇所の抜粋を含める
+            ...(contentHits ? { matched_content: contentHits.slice(0, 3) } : {}),
+            ...(nameMatch ? { matched_by: "name" } : { matched_by: "content" }),
+          });
+        }
+        if (matched.length >= 30) break;
+      }
+      return matched;
+    };
+    
     const preMatch = {
-      companies: keywords.length ? allCompanies.filter(c => matches(c.name)).slice(0, 30) : [],
-      vendors: keywords.length ? allVendors.filter(v => matches(v.name)).slice(0, 30) : [],
-      munis: keywords.length ? allMunis.filter(m => matches(m.name)).slice(0, 30) : [],
+      companies: collectMatchesWithContent(data?.companies || [], "name"),
+      vendors: collectMatchesWithContent(data?.vendors || [], "name"),
+      munis: collectMatchesWithContent(data?.municipalities || [], "name"),
       tasks: keywords.length ? allTasks.filter(t => matches(t.title)).slice(0, 30) : [],
       projects: keywords.length ? allProjects.filter(p => matches(p.name)).slice(0, 30) : [],
       people: keywords.length ? people.filter(matchPerson).slice(0, 50) : [],
@@ -30340,6 +30402,15 @@ function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
       projects: preMatch.projects.length,
       people: preMatch.people.length,
     });
+    // ✅ v199: コンテンツヒットがあれば内容を表示
+    const contentHitVendors = preMatch.vendors.filter(v => v.matched_by === "content");
+    if (contentHitVendors.length > 0) {
+      console.log("[Agent] vendors matched by CONTENT (memo/議事録/アプローチ):", contentHitVendors.map(v => `${v.name} - ${(v.matched_content||[]).map(h=>`[${h.kind}] ${h.text.slice(0,50)}`).join(" / ")}`));
+    }
+    const contentHitCompanies = preMatch.companies.filter(c => c.matched_by === "content");
+    if (contentHitCompanies.length > 0) {
+      console.log("[Agent] companies matched by CONTENT:", contentHitCompanies.map(c => `${c.name} - ${(c.matched_content||[]).map(h=>`[${h.kind}] ${h.text.slice(0,50)}`).join(" / ")}`));
+    }
     if (preMatch.people.length > 0) {
       console.log("[Agent] matched people (all):", preMatch.people.map(p => `${p.name || "(noname)"}(${p.email || ""}/${p.company || ""})`));
     } else if (keywords.length > 0) {
