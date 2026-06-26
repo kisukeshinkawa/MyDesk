@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v194-pj-strikethrough-and-pref-fallback"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v195-filter-reset-before-apply"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -30734,8 +30734,16 @@ export default function App() {
         console.log("[Agent] apply_filter resolved:", view, f);
         
         if (view === "vendors") {
-          // ✅ state setter で直接更新（リロード不要）
+          // ✅ v195: 既存フィルターを全クリアしてから新しいフィルターを適用
+          // (「神奈川県の業者を見せて」と言われたら他のフィルターはリセット)
           const setters = window.__myDeskSetVendFilters || {};
+          setters.prefs?.([]);
+          setters.munis?.([]);
+          setters.statuses?.([]);
+          setters.permits?.([]);
+          setters.beeNets?.([]);
+          setters.assignees?.([]);
+          // 新しいフィルターをセット
           if (Array.isArray(f.prefs)) setters.prefs?.(f.prefs);
           if (Array.isArray(f.munis)) setters.munis?.(f.munis);
           if (Array.isArray(f.statuses)) setters.statuses?.(f.statuses);
@@ -30745,15 +30753,17 @@ export default function App() {
           persistTab("md_tab","sales",setTab);
           persistTab("md_salesTab","vendor",setSalesTab);
         } else if (view === "companies") {
+          // ✅ v195: comp も既存フィルターをクリア
           const compSetter = window.__myDeskSetCompFilter;
-          if (compSetter && Array.isArray(f.assignees)) {
-            compSetter(p => ({...p, assignees: f.assignees}));
+          if (compSetter) {
+            compSetter({ assignees: Array.isArray(f.assignees) ? f.assignees : [] });
           }
           persistTab("md_tab","sales",setTab);
           persistTab("md_salesTab","company",setSalesTab);
         } else if (view === "munis") {
+          // ✅ v195: muni も既存フィルターをクリア
           const setters = window.__myDeskSetMuniFilters || {};
-          if (Array.isArray(f.assignees)) setters.assignees?.(f.assignees);
+          setters.assignees?.(Array.isArray(f.assignees) ? f.assignees : []);
           persistTab("md_tab","sales",setTab);
           persistTab("md_salesTab","muni",setSalesTab);
         } else if (view === "tasks") {
