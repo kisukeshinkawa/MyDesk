@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v197-email-upgrade-phase1"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v198-fix-api-base-and-auto-link"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -9923,7 +9923,7 @@ ${styleSamples}
 
 【生成】`;
                   
-                  const API_BASE = import.meta.env?.VITE_API_BASE_URL || "";
+                  // ✅ v198: モジュールトップレベルの API_BASE を使う (再定義しない)
                   const res = await fetch(`${API_BASE}/api/generate-email`, {
                     method: "POST",
                     headers: {"Content-Type": "application/json"},
@@ -9949,11 +9949,77 @@ ${styleSamples}
             )}
             <button onClick={()=>setLinkType(linkType?null:"企業")}
               style={{padding:"0.4rem 0.75rem",borderRadius:6,border:`1px solid ${C.border}`,background:linkType?"#fff7ed":"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🔗 連携</button>
-            {/* ✅ v197: メール → タスク化 */}
+            {/* ✅ v197: メール → タスク化 + v198 営業先自動紐付け */}
             <button onClick={()=>{
               const taskTitle = (email.subject||"").slice(0, 60).replace(/^(Re:|Fwd?:|FW:)\s*/i, "").trim() || "メール対応";
               const senderName = email.from?.name || email.from?.email || "";
               const taskDesc = `${senderName}からのメール対応\n\n${(email.body||"").slice(0, 500)}`;
+              
+              // ✅ v198: メアドのドメインから企業/業者/自治体を自動検出
+              let autoLinkType = null;
+              let autoLinkId = null;
+              let autoLinkName = null;
+              // 既にメールが連携済みなら、それを優先
+              if (email.linkedEntityType && email.linkedEntityId) {
+                autoLinkType = email.linkedEntityType;
+                autoLinkId = email.linkedEntityId;
+                const typeMap = {"企業":"companies", "業者":"vendors", "自治体":"municipalities"};
+                const ent = (data[typeMap[autoLinkType]]||[]).find(e=>String(e.id)===String(autoLinkId));
+                if (ent) autoLinkName = ent.name;
+              } else {
+                // 送信元・宛先のメアドから営業先を検索
+                const allRelevantEmails = [
+                  email.from?.email,
+                  ...(email.to||[]).map(t=>t?.email),
+                  ...(email.cc||[]).map(t=>t?.email),
+                ].filter(Boolean).map(e=>String(e).toLowerCase());
+                // 自分のドメインは除外
+                const myDomain = (currentUser?.email||"").split("@")[1]?.toLowerCase();
+                const externalEmails = allRelevantEmails.filter(e => !e.endsWith(`@${myDomain}`));
+                const domains = [...new Set(externalEmails.map(e => e.split("@")[1]).filter(Boolean))];
+                
+                // 企業から検索（人物のメアドが一致する企業）
+                for (const c of (data.companies||[])) {
+                  const contactEmails = (c.contacts||[]).map(co=>(co.email||"").toLowerCase()).filter(Boolean);
+                  if (externalEmails.some(e => contactEmails.includes(e))) {
+                    autoLinkType = "企業"; autoLinkId = c.id; autoLinkName = c.name; break;
+                  }
+                }
+                // 業者から検索
+                if (!autoLinkType) {
+                  for (const v of (data.vendors||[])) {
+                    const contactEmails = (v.contacts||[]).map(co=>(co.email||"").toLowerCase()).filter(Boolean);
+                    if (externalEmails.some(e => contactEmails.includes(e))) {
+                      autoLinkType = "業者"; autoLinkId = v.id; autoLinkName = v.name; break;
+                    }
+                  }
+                }
+                // 自治体から検索
+                if (!autoLinkType) {
+                  for (const m of (data.municipalities||[])) {
+                    const contactEmails = (m.govContacts||[]).map(co=>(co.email||"").toLowerCase()).filter(Boolean);
+                    if (externalEmails.some(e => contactEmails.includes(e))) {
+                      autoLinkType = "自治体"; autoLinkId = m.id; autoLinkName = m.name; break;
+                    }
+                  }
+                }
+                // 名刺から検索（最後の手段）
+                if (!autoLinkType) {
+                  for (const card of (data.businessCards||[])) {
+                    if (externalEmails.includes((card.email||"").toLowerCase())) {
+                      // 名刺の company を企業/業者から探す
+                      const compName = card.company;
+                      if (compName) {
+                        const matchC = (data.companies||[]).find(c=>c.name===compName || c.name.includes(compName));
+                        if (matchC) { autoLinkType="企業"; autoLinkId=matchC.id; autoLinkName=matchC.name; break; }
+                        const matchV = (data.vendors||[]).find(v=>v.name===compName || v.name.includes(compName));
+                        if (matchV) { autoLinkType="業者"; autoLinkId=matchV.id; autoLinkName=matchV.name; break; }
+                      }
+                    }
+                  }
+                }
+              }
+              
               const newTask = {
                 id: Date.now(),
                 title: taskTitle,
@@ -9966,22 +10032,27 @@ ${styleSamples}
                 createdAt: new Date().toISOString(),
                 comments: [], memos: [], chat: [], files: [],
                 emailRef: { emailId: email.id, subject: email.subject, fromName: senderName, fromEmail: email.from?.email },
+                // ✅ 営業先自動紐付け
+                companyIds: autoLinkType==="企業" ? [autoLinkId] : [],
+                vendorIds: autoLinkType==="業者" ? [autoLinkId] : [],
+                muniIds: autoLinkType==="自治体" ? [autoLinkId] : [],
+                salesRef: autoLinkType ? { type: autoLinkType, id: autoLinkId, name: autoLinkName } : null,
               };
-              if (window.confirm(`📋 タスクを作成しますか？\n\nタイトル: ${taskTitle}\n担当: ${currentUser?.name||""}`)) {
+              const preview = `📋 タスクを作成しますか？\n\nタイトル: ${taskTitle}\n担当: ${currentUser?.name||""}${autoLinkName?`\n🔗 ${autoLinkType}: ${autoLinkName}`:""}`;
+              if (window.confirm(preview)) {
                 const nd = { ...data, tasks: [...(data.tasks||[]), newTask] };
                 setData(nd); 
-                if (window.scheduleSaveData) window.scheduleSaveData(nd);
-                else if (typeof scheduleSaveData === "function") scheduleSaveData(nd);
-                alert(`✅ タスク「${taskTitle}」を作成しました`);
+                if (typeof scheduleSaveData === "function") scheduleSaveData(nd);
+                alert(`✅ タスク「${taskTitle}」を作成しました${autoLinkName?`\n🔗 ${autoLinkName} に紐付け`:""}`);
               }
             }}
               style={{padding:"0.4rem 0.75rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>📋 タスク化</button>
-            {/* ✅ v197: メール → 議事録化（連携営業先に保存） */}
+            {/* ✅ v197: メール → 議事録化（連携営業先に保存、v198 改善版） */}
             <button onClick={()=>{
-              // 連携営業先を選んで議事録として保存
+              console.log("[議事録化] クリック検知, email.linkedEntityType=", email.linkedEntityType, "id=", email.linkedEntityId);
               const linked = email.linkedEntityType && email.linkedEntityId;
               if (!linked) {
-                alert("先に「🔗 連携」で営業先を紐付けてください。");
+                alert("📌 先にメールを営業先と連携してください。\n\n手順:\n1. メール上部の「🔗 連携」ボタンをタップ\n2. 営業先（企業・業者・自治体）を選択\n3. 連携完了後、再度「📝 議事録化」をタップ");
                 return;
               }
               const senderName = email.from?.name || email.from?.email || "";
@@ -9990,23 +10061,31 @@ ${styleSamples}
               if (window.confirm(`📝 このメール内容を議事録として保存しますか？\n\nタイトル: ${mtgTitle}`)) {
                 const typeMap = {"企業":"companies", "業者":"vendors", "自治体":"municipalities"};
                 const key = typeMap[email.linkedEntityType];
-                if (!key) { alert("エンティティ種別が不明です"); return; }
+                if (!key) { alert("エンティティ種別が不明です: " + email.linkedEntityType); return; }
                 const nd = { ...data };
+                let updated = false;
                 nd[key] = (nd[key]||[]).map(e => {
                   if (String(e.id) !== String(email.linkedEntityId)) return e;
+                  updated = true;
                   const newMtg = {
                     id: Date.now(),
                     title: mtgTitle,
                     content: mtgContent,
                     userId: currentUser?.id,
+                    createdBy: currentUser?.id,
                     date: new Date().toISOString(),
+                    createdAt: new Date().toISOString(),
                     emailRef: { emailId: email.id, subject: email.subject },
                   };
                   return { ...e, mtgLogs: [...(e.mtgLogs||[]), newMtg] };
                 });
+                if (!updated) {
+                  alert(`連携先（${email.linkedEntityType} ID:${email.linkedEntityId}）が見つかりませんでした`);
+                  return;
+                }
                 setData(nd);
                 if (typeof scheduleSaveData === "function") scheduleSaveData(nd);
-                alert(`✅ 議事録に追加しました`);
+                alert(`✅ 議事録に追加しました\n(連携先: ${email.linkedEntityType})`);
               }
             }}
               style={{padding:"0.4rem 0.75rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>📝 議事録化</button>
@@ -32450,7 +32529,7 @@ export default function App() {
               <button onClick={async ()=>{
                 if (!window.confirm(`📤 MyDesk から直接送信しますか？\n\nTo: ${agentEmailDraft.to}\nSubject: ${agentEmailDraft.subject}`)) return;
                 try {
-                  const API_BASE = import.meta.env?.VITE_API_BASE_URL || "";
+                  // ✅ v198: モジュールトップレベルの API_BASE を使う
                   const r = await fetch(`${API_BASE}/api/send-email`, {
                     method: "POST",
                     headers: {"Content-Type": "application/json", "x-mydesk-secret": "mydesk2026"},
