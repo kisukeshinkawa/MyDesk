@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v195-filter-reset-before-apply"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v196-prefectures-key-fix"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -30688,29 +30688,43 @@ export default function App() {
           if (typeof v === "number") return v;
           const sv = String(v).trim();
           
-          // 1) curData.prefs から完全一致
-          let found = (curData.prefs||[]).find(p => p.name === sv);
+          // ✅ v196: 正しいキーは `data.prefectures` (data.prefs ではない)
+          const prefList = curData.prefectures || curData.prefs || [];
+          
+          // 1) 完全一致
+          let found = prefList.find(p => p.name === sv);
           if (found) { console.log("[Agent] pref matched (exact):", sv, "→", found.id); return found.id; }
           
           // 2) 末尾「都/道/府/県」を取り除いて先頭一致
           const stripped = sv.replace(/[都道府県]$/, "");
-          found = (curData.prefs||[]).find(p => p.name.startsWith(stripped));
+          found = prefList.find(p => p.name.startsWith(stripped));
           if (found) { console.log("[Agent] pref matched (startsWith):", sv, "→", found.id); return found.id; }
           
           // 3) 部分一致
-          found = (curData.prefs||[]).find(p => p.name.includes(stripped));
+          found = prefList.find(p => p.name.includes(stripped));
           if (found) { console.log("[Agent] pref matched (includes):", sv, "→", found.id); return found.id; }
           
-          // ✅ 4) JAPAN_PREFS_SEED にフォールバック（curData.prefs が空・破損時の安全策）
-          // SEED の index に 10000 を足したものが ID（dashboard 16753 行の seed ロジックに合わせる）
+          // 4) 業者の municipalityIds 経由でも検索（自治体から県を逆引き）
+          for (const muni of (curData.municipalities||[])) {
+            if (muni.name?.includes(stripped)) {
+              const prefId = muni.prefectureId;
+              const prefName = prefList.find(p=>String(p.id)===String(prefId))?.name;
+              if (prefName && (prefName === sv || prefName.startsWith(stripped))) {
+                console.log("[Agent] pref matched (via muni):", sv, "→", prefId);
+                return prefId;
+              }
+            }
+          }
+          
+          // 5) SEED fallback（最終手段）
           const seedIdx = JAPAN_PREFS_SEED.findIndex(p => p.name === sv || p.name.startsWith(stripped));
           if (seedIdx >= 0) {
             const seedId = seedIdx + 10000;
-            console.log("[Agent] pref matched (SEED fallback):", sv, "→", seedId);
+            console.warn("[Agent] pref matched (SEED fallback, may not match vendor data):", sv, "→", seedId);
             return seedId;
           }
           
-          console.warn("[Agent] pref NOT found:", v, "curData.prefs sample:", (curData.prefs||[]).slice(0,3));
+          console.warn("[Agent] pref NOT found:", v, "prefectures sample:", prefList.slice(0,3));
           return null;
         };
         // ユーザー名 → ユーザーID
@@ -30728,7 +30742,7 @@ export default function App() {
           return null;
         };
         
-        if (Array.isArray(f.prefs))     f.prefs     = f.prefs.map(resolvePrefId).filter(Boolean);
+        if (Array.isArray(f.prefs))     f.prefs     = f.prefs.map(resolvePrefId).filter(Boolean).map(String);
         if (Array.isArray(f.assignees)) f.assignees = f.assignees.map(resolveUserId).filter(Boolean);
         
         console.log("[Agent] apply_filter resolved:", view, f);
