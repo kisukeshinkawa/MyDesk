@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v196-prefectures-key-fix"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v197-email-upgrade-phase1"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -9676,6 +9676,7 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onMarkSpam,
   
   // AI 分析データ（要約・優先度・提案・返信案）
   const [aiAnalyzing, setAiAnalyzing] = React.useState(false);
+  const [aiReplying, setAiReplying] = React.useState(false); // ✅ v197: AI返信生成中
   const [aiData, setAiData] = React.useState({
     ai_summary: email.ai_summary,
     ai_priority: email.ai_priority,
@@ -9862,8 +9863,153 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onMarkSpam,
               <button onClick={()=>openReplyForm("forward")}
                 style={{padding:"0.4rem 0.75rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>→ 転送</button>
             )}
+            {/* ✅ v197: AI 返信ドラフト生成 */}
+            {isInbound && (
+              <button onClick={async()=>{
+                if (aiReplying) return;
+                setAiReplying(true);
+                try {
+                  // まず返信フォームを開く
+                  openReplyForm("reply");
+                  // AI に返信案を生成依頼
+                  const myName = currentUser?.name || "";
+                  const myEmailAddr = (currentUser?.email||"").toLowerCase();
+                  const uid = currentUser?.id;
+                  const allEmails = data.emails || [];
+                  // 過去の同じ宛先メールから文体学習
+                  const targetEmail = (email.from?.email||"").toLowerCase();
+                  const targetDomain = targetEmail.split("@")[1] || "";
+                  const isInternalReply = targetEmail.endsWith("@beetle-ems.com");
+                  const sameRecipientEmails = allEmails
+                    .filter(e => e.direction === "outbound" && e.body && (e._accountEmail||"").toLowerCase() === myEmailAddr)
+                    .filter(e => (e.to||[]).some(t => {
+                      const d = (t?.email||"").split("@")[1]?.toLowerCase();
+                      return d === targetDomain;
+                    }))
+                    .slice(-5);
+                  const allMyOutbound = allEmails
+                    .filter(e => e.direction === "outbound" && e.body && (e._accountEmail||"").toLowerCase() === myEmailAddr)
+                    .slice(-10);
+                  const styleSamples = (sameRecipientEmails.length > 0 ? sameRecipientEmails : allMyOutbound)
+                    .map(e => (e.body||"").slice(0, 300)).join("\n---\n");
+                  
+                  const senderName = email.from?.name || email.from?.email || "";
+                  const cleanedName = senderName.replace(/[(（].+?[)）]/g, "").replace(/様|さん|殿/g, "").trim();
+                  const surname = cleanedName.split(/[\s　]/)[0] || cleanedName;
+                  
+                  const prompt = `以下の受信メールに対して、返信メールを作成してください。
+
+【受信メール】
+差出人: ${senderName} <${email.from?.email||""}>
+件名: ${email.subject||""}
+本文:
+${(email.body||"").slice(0, 2000)}
+
+【あなたの情報】
+名前: ${myName}
+所属: 株式会社西原商事ホールディングス DUSTALK事業部
+
+【過去に同じ相手・近い宛先に送った私のメール（口調を真似てください）】
+${styleSamples}
+
+【返信のルール】
+- 宛名は「${isInternalReply ? cleanedName + "さん" : surname + "様"}」で始める
+- ${isInternalReply ? "社内向け：簡潔に。「お疲れ様です」で始めても良い。" : "社外向け：「いつもお世話になっております。」で始める。"}
+- 私の文体サンプルから自然な口調を選んで使う
+- 「誠に」「どうぞ」は使わない
+- 押し売り感を出さない
+- 署名は「${myName}」のみ
+- 返信内容のみを書いて。引用や前置きはなし
+
+【生成】`;
+                  
+                  const API_BASE = import.meta.env?.VITE_API_BASE_URL || "";
+                  const res = await fetch(`${API_BASE}/api/generate-email`, {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({prompt, max_tokens: 800})
+                  });
+                  if (!res.ok) throw new Error(`AI 生成失敗: ${res.status}`);
+                  const j = await res.json();
+                  const generatedText = j.text || j.body || j.message || j.content || "";
+                  if (generatedText) {
+                    // 返信本文に AI 生成テキストを入れる（引用の前に挿入）
+                    const quoted = `\n\n--- 元のメッセージ ---\nFrom: ${email.from?.name||""} <${email.from?.email||""}>\nDate: ${fmtFull(email.sentAt||email.receivedAt||email.createdAt)}\n\n${(email.body||"").split("\n").map(l=>"> "+l).join("\n")}`;
+                    setReplyBody(generatedText + quoted);
+                  }
+                } catch(e) {
+                  alert(`AI返信生成エラー: ${e.message}`);
+                } finally {
+                  setAiReplying(false);
+                }
+              }} disabled={aiReplying}
+                style={{padding:"0.4rem 0.85rem",borderRadius:6,border:"none",background:aiReplying?"#9ca3af":"#7c3aed",color:"white",fontSize:"0.78rem",fontWeight:800,cursor:aiReplying?"wait":"pointer",fontFamily:"inherit"}}>
+                {aiReplying ? "⏳ 生成中..." : "💡 AI返信"}
+              </button>
+            )}
             <button onClick={()=>setLinkType(linkType?null:"企業")}
               style={{padding:"0.4rem 0.75rem",borderRadius:6,border:`1px solid ${C.border}`,background:linkType?"#fff7ed":"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🔗 連携</button>
+            {/* ✅ v197: メール → タスク化 */}
+            <button onClick={()=>{
+              const taskTitle = (email.subject||"").slice(0, 60).replace(/^(Re:|Fwd?:|FW:)\s*/i, "").trim() || "メール対応";
+              const senderName = email.from?.name || email.from?.email || "";
+              const taskDesc = `${senderName}からのメール対応\n\n${(email.body||"").slice(0, 500)}`;
+              const newTask = {
+                id: Date.now(),
+                title: taskTitle,
+                description: taskDesc,
+                status: "未着手",
+                priority: "中",
+                dueDate: "",
+                assignees: currentUser?.id ? [currentUser.id] : [],
+                createdBy: currentUser?.id,
+                createdAt: new Date().toISOString(),
+                comments: [], memos: [], chat: [], files: [],
+                emailRef: { emailId: email.id, subject: email.subject, fromName: senderName, fromEmail: email.from?.email },
+              };
+              if (window.confirm(`📋 タスクを作成しますか？\n\nタイトル: ${taskTitle}\n担当: ${currentUser?.name||""}`)) {
+                const nd = { ...data, tasks: [...(data.tasks||[]), newTask] };
+                setData(nd); 
+                if (window.scheduleSaveData) window.scheduleSaveData(nd);
+                else if (typeof scheduleSaveData === "function") scheduleSaveData(nd);
+                alert(`✅ タスク「${taskTitle}」を作成しました`);
+              }
+            }}
+              style={{padding:"0.4rem 0.75rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>📋 タスク化</button>
+            {/* ✅ v197: メール → 議事録化（連携営業先に保存） */}
+            <button onClick={()=>{
+              // 連携営業先を選んで議事録として保存
+              const linked = email.linkedEntityType && email.linkedEntityId;
+              if (!linked) {
+                alert("先に「🔗 連携」で営業先を紐付けてください。");
+                return;
+              }
+              const senderName = email.from?.name || email.from?.email || "";
+              const mtgTitle = `📧 ${(email.subject||"メール").slice(0, 40)}`;
+              const mtgContent = `${senderName} とのメールやりとり\n\n${(email.body||"").slice(0, 800)}`;
+              if (window.confirm(`📝 このメール内容を議事録として保存しますか？\n\nタイトル: ${mtgTitle}`)) {
+                const typeMap = {"企業":"companies", "業者":"vendors", "自治体":"municipalities"};
+                const key = typeMap[email.linkedEntityType];
+                if (!key) { alert("エンティティ種別が不明です"); return; }
+                const nd = { ...data };
+                nd[key] = (nd[key]||[]).map(e => {
+                  if (String(e.id) !== String(email.linkedEntityId)) return e;
+                  const newMtg = {
+                    id: Date.now(),
+                    title: mtgTitle,
+                    content: mtgContent,
+                    userId: currentUser?.id,
+                    date: new Date().toISOString(),
+                    emailRef: { emailId: email.id, subject: email.subject },
+                  };
+                  return { ...e, mtgLogs: [...(e.mtgLogs||[]), newMtg] };
+                });
+                setData(nd);
+                if (typeof scheduleSaveData === "function") scheduleSaveData(nd);
+                alert(`✅ 議事録に追加しました`);
+              }
+            }}
+              style={{padding:"0.4rem 0.75rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>📝 議事録化</button>
             <button onClick={async()=>{
               if (!EMAIL_AI_API_URL) {
                 alert("AI 分析 Lambda の URL が設定されていません。\n環境変数 VITE_EMAIL_AI_API_URL を設定してください。");
@@ -11216,38 +11362,50 @@ function EmailView({data,setData,currentUser=null}) {
       const myEmail = (currentUser?.email || (()=>{try{return JSON.parse(localStorage.getItem("mydesk_session_v2")||"{}").email;}catch{return "";}})()).toLowerCase();
       const uid = currentUser?.id || (()=>{try{return JSON.parse(localStorage.getItem("mydesk_session_v2")||"{}").id;}catch{return null;}})();
       
-      // ── 文体学習：保存された文体サンプル + 過去のAI生成メール + 過去の送信メール ──
-      // 1. emailStyles から自分のサンプル
+      // ✅ v197: 文体学習を AI 任せに強化
+      // 自動で「相手・文脈」に合わせた文体サンプルを選ぶ
       const allStyles = (data.emailStyles || []);
-      const myStyles = allStyles.filter(s=>!s.userId||s.userId===uid).slice(-3); // 最新3件
-      // 2. AIが過去生成したメール (data.emailDrafts等)
+      const myStyles = allStyles.filter(s=>!s.userId||s.userId===uid).slice(-5); // 明示登録分は最新5件
       const allDrafts = (data.emailDrafts || []);
-      const myDrafts = allDrafts.filter(e=>(!e.userId||e.userId===uid) && e.generated).slice(-2);
-      // 3. 過去に実際に送信したメール (data.emails の outbound or DB)
+      const myDrafts = allDrafts.filter(e=>(!e.userId||e.userId===uid) && e.generated).slice(-3);
       const allEmails = (data.emails || []);
-      const mySentSocial = isInternal ? [] : allEmails
-        .filter(e => e.direction === "outbound" && e.body && !e.body.includes("お疲れ様") && (e._accountEmail||"").toLowerCase() === myEmail)
-        .slice(-3); // 直近3件の社外送信メール
-      const mySentInternal = isInternal ? allEmails
+      // ✅ 過去送信メール: ジャンル別に大量サンプル（最大30件）を AI に渡し、AI が文脈に合うものを選ぶ
+      const recentSent = allEmails
         .filter(e => e.direction === "outbound" && e.body && (e._accountEmail||"").toLowerCase() === myEmail)
-        .filter(e => (e.to||[]).some(t => (t?.email||"").toLowerCase().endsWith("@beetle-ems.com")))
-        .slice(-3) : [];
+        .slice(-30); // 直近30件
+      // 相手別に分類（社内 / 社外 / 同じ宛先）
+      const targetDomain = (email.from?.email || "").split("@")[1]?.toLowerCase() || "";
+      const sameRecipient = recentSent.filter(e => (e.to||[]).some(t => {
+        const d = (t?.email||"").split("@")[1]?.toLowerCase();
+        return d === targetDomain;
+      })).slice(-5);
+      const internalSent = recentSent.filter(e => (e.to||[]).some(t => (t?.email||"").toLowerCase().endsWith("@beetle-ems.com"))).slice(-5);
+      const externalSent = recentSent.filter(e => !((e.to||[]).every(t => (t?.email||"").toLowerCase().endsWith("@beetle-ems.com")))).slice(-5);
       
       // 学習用テキストブロックを作る
       let learningBlock = "";
       if (myStyles.length > 0) {
-        learningBlock += "【私の文体サンプル（この語調・トーンで書いてください）】\n";
+        learningBlock += "【私の明示登録した文体サンプル（最優先で参照）】\n";
         learningBlock += myStyles.map(s=>(s.text||"").slice(0, 500)).join("\n---\n") + "\n\n";
       }
       if (myDrafts.length > 0) {
         learningBlock += "【AI生成した過去メール（同じトーンで）】\n";
         learningBlock += myDrafts.map(e=>(e.generated||"").slice(0, 300)).join("\n---\n") + "\n\n";
       }
-      const refSent = isInternal ? mySentInternal : mySentSocial;
-      if (refSent.length > 0) {
-        learningBlock += `【私が${isInternal?"社内":"社外"}向けに過去に送信したメール（口調を真似てください）】\n`;
-        learningBlock += refSent.map(e=>(e.body||"").slice(0, 400)).join("\n---\n") + "\n\n";
+      // ✅ AI に「相手・文脈に合った文体」を自動選択させる
+      if (sameRecipient.length > 0) {
+        learningBlock += `【同じ宛先(${targetDomain})に過去送ったメール - 同じ口調で】\n`;
+        learningBlock += sameRecipient.map(e=>(e.body||"").slice(0, 400)).join("\n---\n") + "\n\n";
       }
+      if (isInternal && internalSent.length > 0) {
+        learningBlock += "【私が社内向けに送ったメール（社内向けの口調を参考）】\n";
+        learningBlock += internalSent.map(e=>(e.body||"").slice(0, 400)).join("\n---\n") + "\n\n";
+      }
+      if (!isInternal && externalSent.length > 0) {
+        learningBlock += "【私が社外向けに送ったメール（社外向けの口調を参考）】\n";
+        learningBlock += externalSent.map(e=>(e.body||"").slice(0, 400)).join("\n---\n") + "\n\n";
+      }
+      learningBlock += "【重要】上記サンプルから、今回の相手・状況に最も合った文体を選んで使ってください。サンプルがない場合は、丁寧だが硬すぎない自然な文体で書いてください。\n\n";
       
       // 自分が To に入ってるか確認
       const isToMe = (email.to||[]).some(t => (t?.email||"").toLowerCase() === myEmail);
