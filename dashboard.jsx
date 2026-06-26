@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v193-tasks-pj-integration-realtime-filter"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v194-pj-strikethrough-and-pref-fallback"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -14908,12 +14908,16 @@ function SalesTaskPanel({ entityType, entityId, entityName, data, onSave, curren
           {linkedPjs.map(pj=>{
             const pjTasks=allTasks.filter(t=>t.projectId===pj.id);
             const done=pjTasks.filter(t=>t.status==="完了").length;
+            // ✅ v194: プロジェクト完了判定（status="完了" or 全タスク完了）
+            const isPjDone = pj.status === "完了" 
+                          || (pjTasks.length > 0 && done === pjTasks.length);
             return (
               <div key={pj.id} onClick={()=>onNavigateToProject?.(pj.id)}
-                style={{background:C.bg,borderRadius:"6px",padding:"0.625rem 0.875rem",marginBottom:"0.4rem",border:`1px solid ${C.border}`,cursor:onNavigateToProject?"pointer":"default"}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.2rem"}}>
-                  <div style={{fontWeight:700,fontSize:"0.85rem",color:C.text}}>{pj.name}</div>
-                  {onNavigateToProject&&<span style={{fontSize:"0.68rem",color:C.textMuted}}>›</span>}
+                style={{background:isPjDone?"#f9fafb":C.bg,borderRadius:"6px",padding:"0.625rem 0.875rem",marginBottom:"0.4rem",border:`1px solid ${isPjDone?"#d1d5db":C.border}`,cursor:onNavigateToProject?"pointer":"default",opacity:isPjDone?0.7:1}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.2rem",gap:"0.4rem"}}>
+                  <div style={{fontWeight:700,fontSize:"0.85rem",color:isPjDone?C.textMuted:C.text,textDecoration:isPjDone?"line-through":"none",flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{pj.name}</div>
+                  {isPjDone && <span style={{fontSize:"0.62rem",fontWeight:700,background:"#d1fae5",color:"#059669",borderRadius:999,padding:"0.1rem 0.4rem",flexShrink:0}}>完了</span>}
+                  {onNavigateToProject&&<span style={{fontSize:"0.68rem",color:C.textMuted,flexShrink:0}}>›</span>}
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:"0.5rem"}}>
                   <div style={{flex:1,height:4,background:C.borderLight,borderRadius:999,overflow:"hidden"}}>
@@ -30682,18 +30686,31 @@ export default function App() {
         // 県名 → 県ID
         const resolvePrefId = (v) => {
           if (typeof v === "number") return v;
-          const sv = String(v);
-          // 完全一致
+          const sv = String(v).trim();
+          
+          // 1) curData.prefs から完全一致
           let found = (curData.prefs||[]).find(p => p.name === sv);
-          if (found) return found.id;
-          // 「都/道/府/県」を取り除いて先頭一致
+          if (found) { console.log("[Agent] pref matched (exact):", sv, "→", found.id); return found.id; }
+          
+          // 2) 末尾「都/道/府/県」を取り除いて先頭一致
           const stripped = sv.replace(/[都道府県]$/, "");
           found = (curData.prefs||[]).find(p => p.name.startsWith(stripped));
-          if (found) return found.id;
-          // 部分一致
+          if (found) { console.log("[Agent] pref matched (startsWith):", sv, "→", found.id); return found.id; }
+          
+          // 3) 部分一致
           found = (curData.prefs||[]).find(p => p.name.includes(stripped));
-          if (found) return found.id;
-          console.warn("[Agent] pref not found:", v, "available:", curData.prefs?.slice(0,3).map(p=>p.name));
+          if (found) { console.log("[Agent] pref matched (includes):", sv, "→", found.id); return found.id; }
+          
+          // ✅ 4) JAPAN_PREFS_SEED にフォールバック（curData.prefs が空・破損時の安全策）
+          // SEED の index に 10000 を足したものが ID（dashboard 16753 行の seed ロジックに合わせる）
+          const seedIdx = JAPAN_PREFS_SEED.findIndex(p => p.name === sv || p.name.startsWith(stripped));
+          if (seedIdx >= 0) {
+            const seedId = seedIdx + 10000;
+            console.log("[Agent] pref matched (SEED fallback):", sv, "→", seedId);
+            return seedId;
+          }
+          
+          console.warn("[Agent] pref NOT found:", v, "curData.prefs sample:", (curData.prefs||[]).slice(0,3));
           return null;
         };
         // ユーザー名 → ユーザーID
