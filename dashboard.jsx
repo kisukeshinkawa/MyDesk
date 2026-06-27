@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v199-fulltext-search-memos-mtg-approach"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v201-EMERGENCY-ROLLBACK-no-autolink"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -9695,6 +9695,7 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onMarkSpam,
       ai_draft_reply: email.ai_draft_reply,
       ai_analyzed_at: email.ai_analyzed_at,
     });
+    // ⚠️ v201 緊急ロールバック: v200 の auto-link を削除（データ破壊防止）
     // 未分析メールを開いた瞬間に自動で AI 分析を発火
     if (email.direction === "inbound" && !email.ai_analyzed_at && EMAIL_AI_API_URL && !aiAnalyzing) {
       console.log(`[AI auto] 未分析メール ${email.id} を即時分析`);
@@ -9924,9 +9925,10 @@ ${styleSamples}
 【生成】`;
                   
                   // ✅ v198: モジュールトップレベルの API_BASE を使う (再定義しない)
+                  // ✅ v200: 認証ヘッダー追加 (401 対策)
                   const res = await fetch(`${API_BASE}/api/generate-email`, {
                     method: "POST",
-                    headers: {"Content-Type": "application/json"},
+                    headers: {"Content-Type": "application/json", "x-mydesk-secret": "mydesk2026secret"},
                     body: JSON.stringify({prompt, max_tokens: 800})
                   });
                   if (!res.ok) throw new Error(`AI 生成失敗: ${res.status}`);
@@ -32603,7 +32605,7 @@ export default function App() {
                   // ✅ v198: モジュールトップレベルの API_BASE を使う
                   const r = await fetch(`${API_BASE}/api/send-email`, {
                     method: "POST",
-                    headers: {"Content-Type": "application/json", "x-mydesk-secret": "mydesk2026"},
+                    headers: {"Content-Type": "application/json", "x-mydesk-secret": "mydesk2026secret"},
                     body: JSON.stringify({
                       to: agentEmailDraft.to.split(",").map(s=>s.trim()).filter(Boolean),
                       cc: agentEmailDraft.cc ? agentEmailDraft.cc.split(",").map(s=>s.trim()).filter(Boolean) : [],
