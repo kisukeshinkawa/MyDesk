@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v207-fix-413-link-modal"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v208-fix-minutes-spam-aireply"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -9661,7 +9661,7 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
 
 // ─── EMAIL VIEW ───────────────────────────────────────────────────────────────
 // ─── EMAIL DETAIL PANE: メール詳細＋AI返信＋エンティティ連携 ──────────────
-function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onMarkSpam, onGenerateReply, aiBusy, onLink, onUnlink, data, currentUser, fmtFull, onSend, sendBusy }) {
+function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onMarkSpam, onGenerateReply, aiBusy, onLink, onUnlink, data, setData, scheduleSaveData, currentUser, fmtFull, onSend, sendBusy }) {
   const [linkType, setLinkType] = React.useState(null); // 企業/業者/自治体/タスク/プロジェクト/名刺
   const [linkSearch, setLinkSearch] = React.useState("");
   const [replyMode, setReplyMode] = React.useState(null); // null | "reply" | "replyAll" | "forward"
@@ -9861,8 +9861,8 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onMarkSpam,
                 if (aiReplying) return;
                 setAiReplying(true);
                 try {
-                  // まず返信フォームを開く
-                  openReplyForm("reply");
+                  // ✅ v208: openReplyForm は生成完了後に呼ぶ
+                  // （先に呼ぶと replyMode=true になり、AI返信ボタンが即非表示で「生成中」が見えない）
                   // AI に返信案を生成依頼
                   const myName = currentUser?.name || "";
                   const myEmailAddr = (currentUser?.email||"").toLowerCase();
@@ -9925,10 +9925,13 @@ ${styleSamples}
                   if (!res.ok) throw new Error(`AI 生成失敗: ${res.status}`);
                   const j = await res.json();
                   const generatedText = j.text || j.body || j.message || j.content || "";
+                  // ✅ v208: 生成完了後に返信フォームを開く
+                  openReplyForm("reply");
                   if (generatedText) {
                     // 返信本文に AI 生成テキストを入れる（引用の前に挿入）
                     const quoted = `\n\n--- 元のメッセージ ---\nFrom: ${email.from?.name||""} <${email.from?.email||""}>\nDate: ${fmtFull(email.sentAt||email.receivedAt||email.createdAt)}\n\n${(email.body||"").split("\n").map(l=>"> "+l).join("\n")}`;
-                    setReplyBody(generatedText + quoted);
+                    // 返信フォーム描画後にテキスト挿入（React再レンダリング待ち）
+                    setTimeout(()=>setReplyBody(generatedText + quoted), 50);
                   }
                 } catch(e) {
                   alert(`AI返信生成エラー: ${e.message}`);
@@ -12034,12 +12037,17 @@ ${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
                               alert('🚫 迷惑メールに移動しました');
                             }
                           }
+                          // ✅ v208: スクロール位置を保存
+                          const savedScroll208a = (typeof window !== "undefined") ? window.scrollY : 0;
                           setMbSelectedId(null);
+                          setTimeout(()=>{try{if(savedScroll208a&&window.scrollTo)window.scrollTo({top:savedScroll208a,behavior:"instant"});}catch(_){}},50);
                         } else {
+                          // ✅ v208: 解除時に明確なフィードバック
+                          alert(`✓ 迷惑メールから戻しました\n返信や対応ができるようになりました！`);
                           // 解除時: 学習機能 - このメアドをホワイトリストに自動追加
                           const senderEmail = selected?.from?.email;
                           if(senderEmail && currentUser?.email){
-                            const addToWl = window.confirm(`迷惑メールを解除しました。\n\n${senderEmail} を信頼済リスト（ホワイトリスト）に追加して、今後 AI が迷惑判定しないようにしますか？`);
+                            const addToWl = window.confirm(`${senderEmail} を信頼済リスト（ホワイトリスト）に追加して、今後 AI が迷惑判定しないようにしますか？`);
                             if(addToWl){
                               try{
                                 await fetch(`${DB_API_BASE}/emails/whitelist`,{
@@ -12068,7 +12076,7 @@ ${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
                         const newDisplay = (selected.linkedDisplay||[]).filter(d=>!(d.type===linkType&&d.id===id));
                         updateEmailField(selected.id,{[f]:newIds,linkedDisplay:newDisplay});
                       }}
-                      data={data} currentUser={currentUser} fmtFull={fmtMbFullDate}
+                      data={data} setData={setData} scheduleSaveData={scheduleSaveData} currentUser={currentUser} fmtFull={fmtMbFullDate}
                       onSend={async(payload)=>{ const ok=await sendEmailNow(payload); if(ok) setMbSelectedId(null); return ok; }}
                       sendBusy={mbSendBusy}/>
                   ) : (
@@ -12142,12 +12150,17 @@ ${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
                               alert('🚫 迷惑メールに移動しました');
                             }
                           }
+                          // ✅ v208: スクロール位置を保存
+                          const savedScroll208b = (typeof window !== "undefined") ? window.scrollY : 0;
                           setMbSelectedId(null);
+                          setTimeout(()=>{try{if(savedScroll208b&&window.scrollTo)window.scrollTo({top:savedScroll208b,behavior:"instant"});}catch(_){}},50);
                         } else {
+                          // ✅ v208: 解除時に明確なフィードバック
+                          alert(`✓ 迷惑メールから戻しました\n返信や対応ができるようになりました！`);
                           // 解除時: 学習機能 - このメアドをホワイトリストに自動追加
                           const senderEmail = selected?.from?.email;
                           if(senderEmail && currentUser?.email){
-                            const addToWl = window.confirm(`迷惑メールを解除しました。\n\n${senderEmail} を信頼済リスト（ホワイトリスト）に追加して、今後 AI が迷惑判定しないようにしますか？`);
+                            const addToWl = window.confirm(`${senderEmail} を信頼済リスト（ホワイトリスト）に追加して、今後 AI が迷惑判定しないようにしますか？`);
                             if(addToWl){
                               try{
                                 await fetch(`${DB_API_BASE}/emails/whitelist`,{
@@ -12176,7 +12189,7 @@ ${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
                   const newDisplay = (selected.linkedDisplay||[]).filter(d=>!(d.type===linkType&&d.id===id));
                   updateEmailField(selected.id,{[f]:newIds,linkedDisplay:newDisplay});
                 }}
-                data={data} currentUser={currentUser} fmtFull={fmtMbFullDate}
+                data={data} setData={setData} scheduleSaveData={scheduleSaveData} currentUser={currentUser} fmtFull={fmtMbFullDate}
                 onSend={async(payload)=>{ const ok=await sendEmailNow(payload); if(ok) setMbSelectedId(null); return ok; }}
                 sendBusy={mbSendBusy}/>
               </>
