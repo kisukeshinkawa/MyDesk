@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v203-fix-secret-and-task-dedup"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v206-agent-all-mydesk-data"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -9959,8 +9959,25 @@ ${styleSamples}
                   → 転送
                 </button>
               )}
-              {/* 🔗 連携 */}
-              <button onClick={()=>{setLinkType(linkType?null:"企業");setShowMoreMenu(false);}}
+              {/* 🔗 連携 - ✅ v204: スクロール誘導追加 */}
+              <button onClick={()=>{
+                console.log("[連携] クリック - 現在の linkType:", linkType);
+                const newType = linkType ? null : "企業";
+                setLinkType(newType);
+                setShowMoreMenu(false);
+                if (newType) {
+                  // 連携 UI が見える位置にスクロール（少し遅延させて UI が描画されてから）
+                  setTimeout(()=>{
+                    const linkSection = document.querySelector('[data-link-ui]');
+                    if (linkSection) {
+                      linkSection.scrollIntoView({behavior:"smooth", block:"center"});
+                      console.log("[連携] UI へスクロール");
+                    } else {
+                      console.warn("[連携] UI セクションが見つかりません");
+                    }
+                  }, 100);
+                }
+              }}
                 style={{padding:"0.4rem 0.75rem",borderRadius:6,border:`1px solid ${C.border}`,background:linkType?"#fff7ed":"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🔗 連携</button>
             {/* ✅ v197: メール → タスク化 + v203 改善版（重複防止、メール連携先から紐付け） */}
             <button onClick={()=>{
@@ -10091,26 +10108,41 @@ ${styleSamples}
               setShowMoreMenu(false);
             }}
               style={{padding:"0.4rem 0.75rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>📋 タスク化</button>
-            {/* ✅ v197: メール → 議事録化（連携営業先に保存、v198 改善版） */}
+            {/* ✅ v197: メール → 議事録化（連携営業先に保存、v204 新形式対応版） */}
             <button onClick={()=>{
-              console.log("[議事録化] クリック検知, email.linkedEntityType=", email.linkedEntityType, "id=", email.linkedEntityId);
-              const linked = email.linkedEntityType && email.linkedEntityId;
-              if (!linked) {
-                alert("📌 先にメールを営業先と連携してください。\n\n手順:\n1. メール上部の「🔗 連携」ボタンをタップ\n2. 営業先（企業・業者・自治体）を選択\n3. 連携完了後、再度「📝 議事録化」をタップ");
+              // ✅ v204: 新形式 (linkedCompanyIds等) と旧形式 (linkedEntityType) の両方をチェック
+              let entityType = null;
+              let entityId = null;
+              if ((email.linkedCompanyIds||[]).length > 0) {
+                entityType = "企業"; entityId = email.linkedCompanyIds[0];
+              } else if ((email.linkedVendorIds||[]).length > 0) {
+                entityType = "業者"; entityId = email.linkedVendorIds[0];
+              } else if ((email.linkedMuniIds||[]).length > 0) {
+                entityType = "自治体"; entityId = email.linkedMuniIds[0];
+              } else if (email.linkedEntityType && email.linkedEntityId) {
+                entityType = email.linkedEntityType; entityId = email.linkedEntityId;
+              }
+              console.log("[議事録化] クリック検知, 検出された連携先:", entityType, entityId);
+              
+              if (!entityType || !entityId) {
+                alert("📌 先にメールを営業先と連携してください。\n\n手順:\n1. メール上部の「⋯ その他」→「🔗 連携」ボタンをタップ\n2. 営業先（企業・業者・自治体）を選択\n3. 連携完了後、再度「📝 議事録化」をタップ");
+                setShowMoreMenu(false);
                 return;
               }
               const senderName = email.from?.name || email.from?.email || "";
               const mtgTitle = `📧 ${(email.subject||"メール").slice(0, 40)}`;
               const mtgContent = `${senderName} とのメールやりとり\n\n${(email.body||"").slice(0, 800)}`;
-              if (window.confirm(`📝 このメール内容を議事録として保存しますか？\n\nタイトル: ${mtgTitle}`)) {
+              if (window.confirm(`📝 このメール内容を議事録として保存しますか？\n\n連携先: ${entityType}\nタイトル: ${mtgTitle}`)) {
                 const typeMap = {"企業":"companies", "業者":"vendors", "自治体":"municipalities"};
-                const key = typeMap[email.linkedEntityType];
-                if (!key) { alert("エンティティ種別が不明です: " + email.linkedEntityType); return; }
+                const key = typeMap[entityType];
+                if (!key) { alert("エンティティ種別が不明です: " + entityType); return; }
                 const nd = { ...data };
                 let updated = false;
+                let targetName = "";
                 nd[key] = (nd[key]||[]).map(e => {
-                  if (String(e.id) !== String(email.linkedEntityId)) return e;
+                  if (String(e.id) !== String(entityId)) return e;
                   updated = true;
+                  targetName = e.name;
                   const newMtg = {
                     id: Date.now(),
                     title: mtgTitle,
@@ -10124,14 +10156,15 @@ ${styleSamples}
                   return { ...e, mtgLogs: [...(e.mtgLogs||[]), newMtg] };
                 });
                 if (!updated) {
-                  alert(`連携先（${email.linkedEntityType} ID:${email.linkedEntityId}）が見つかりませんでした`);
+                  alert(`連携先（${entityType} ID:${entityId}）が見つかりませんでした`);
+                  setShowMoreMenu(false);
                   return;
                 }
                 setData(nd);
                 if (typeof scheduleSaveData === "function") scheduleSaveData(nd);
-                alert(`✅ 議事録に追加しました\n(連携先: ${email.linkedEntityType})`);
+                alert(`✅ 議事録に追加しました\n\n連携先: ${entityType} ${targetName}\n営業先の議事録タブで確認できます。`);
               }
-              setShowMoreMenu(false); // ✅ v202: アクション後にメニュー閉じる
+              setShowMoreMenu(false);
             }}
               style={{padding:"0.4rem 0.75rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>📝 議事録化</button>
             <button onClick={async()=>{
@@ -10437,7 +10470,8 @@ ${styleSamples}
 
       {/* エンティティ連携 UI */}
       {linkType && (
-        <div style={{background:"#fff7ed",borderRadius:8,padding:"0.7rem",border:"1px solid #fed7aa",marginBottom:"0.65rem"}}>
+        <div data-link-ui="true" style={{background:"#fff7ed",borderRadius:8,padding:"0.7rem",border:"2px solid #fb923c",marginBottom:"0.65rem",boxShadow:"0 2px 8px rgba(251,146,60,0.2)"}}>
+          <div style={{fontSize:"0.72rem",fontWeight:800,color:"#9a3412",marginBottom:"0.5rem"}}>🔗 連携先を選択してください</div>
           <div style={{display:"flex",gap:"0.25rem",flexWrap:"wrap",marginBottom:"0.5rem"}}>
             {["企業","業者","自治体","タスク","プロジェクト","名刺"].map(t=>(
               <button key={t} onClick={()=>setLinkType(t)}
@@ -30283,60 +30317,146 @@ function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
       return nKeywords.some(nk => nName.includes(nk) || nk.includes(nName));
     };
     
-    // ✅ v199: メモ・議事録・アプローチ履歴・備考の全文検索
+    // ✅ v205: メモ・議事録・アプローチ履歴・チャット・備考・コメント・変更履歴・次回設定など全フィールド検索
     const matchesContent = (entity) => {
       if (nKeywords.length === 0) return null;
       const hits = [];
-      // memos: [{text}]
+      const checkText = (text, kind) => {
+        if (!text) return;
+        const s = String(text);
+        if (s.trim() && nKeywords.some(nk => normalize(s).includes(nk))) {
+          hits.push({kind, text: s.slice(0, 200)});
+        }
+      };
+      
+      // memos: [{text/content}]
       (entity.memos||[]).forEach(m => {
-        const text = m.text || m.content || "";
-        if (text && nKeywords.some(nk => normalize(text).includes(nk))) {
-          hits.push({kind:"memo", text: text.slice(0, 200), date: m.createdAt||m.date});
+        checkText(m.text || m.content || m.body, "memo");
+        if (hits.length >= 1 && hits[hits.length-1].kind === "memo") {
+          hits[hits.length-1].date = m.createdAt || m.date;
         }
       });
-      // mtgLogs: [{title, content}]
+      // mtgLogs: 議事録
       (entity.mtgLogs||[]).forEach(m => {
         const text = (m.title||"") + " " + (m.content||"");
         if (text.trim() && nKeywords.some(nk => normalize(text).includes(nk))) {
-          hits.push({kind:"議事録", text: ((m.title||"")+" "+(m.content||"")).slice(0, 200), date: m.createdAt||m.date});
+          hits.push({kind:"議事録", text: text.slice(0, 200), date: m.createdAt||m.date});
         }
       });
-      // approachLogs: [{note, type}]
+      // approachLogs: アプローチ履歴
       (entity.approachLogs||[]).forEach(a => {
-        const text = (a.type||"") + " " + (a.note||"");
+        const text = (a.type||"") + " " + (a.note||"") + " " + (a.content||"");
         if (text.trim() && nKeywords.some(nk => normalize(text).includes(nk))) {
           hits.push({kind:"アプローチ", text: text.slice(0, 200), date: a.createdAt||a.date});
         }
       });
-      // notes (備考)
-      if (entity.notes && nKeywords.some(nk => normalize(entity.notes).includes(nk))) {
-        hits.push({kind:"備考", text: String(entity.notes).slice(0, 200)});
-      }
-      // chat (チャット投稿)
+      // chat: チャット投稿
       (entity.chat||[]).forEach(c => {
-        const text = c.text || c.content || "";
+        const text = c.text || c.content || c.body || "";
         if (text && nKeywords.some(nk => normalize(text).includes(nk))) {
           hits.push({kind:"チャット", text: text.slice(0, 200), date: c.createdAt||c.date});
         }
       });
+      // ✅ comments: コメント
+      (entity.comments||[]).forEach(c => {
+        const text = c.text || c.content || c.body || "";
+        if (text && nKeywords.some(nk => normalize(text).includes(nk))) {
+          hits.push({kind:"コメント", text: text.slice(0, 200), date: c.createdAt||c.date});
+        }
+      });
+      // ✅ changeLog: 変更履歴（ステータス変更時間など）
+      (entity.changeLog||[]).forEach(c => {
+        const text = (c.field||"") + " " + (c.action||"") + " " + (c.from||"") + " " + (c.to||"") + " " + (c.note||"");
+        if (text.trim() && nKeywords.some(nk => normalize(text).includes(nk))) {
+          hits.push({kind:"履歴", text: text.slice(0, 200), date: c.createdAt||c.date});
+        }
+      });
+      // notes (備考)
+      if (entity.notes) checkText(entity.notes, "備考");
+      // description (説明)
+      if (entity.description) checkText(entity.description, "説明");
+      // ✅ nextAction: 次回設定
+      if (entity.nextAction) {
+        const na = entity.nextAction;
+        const text = (na.type||"") + " " + (na.date||"") + " " + (na.note||"");
+        if (text.trim() && nKeywords.some(nk => normalize(text).includes(nk))) {
+          hits.push({kind:"次回設定", text: text.slice(0, 200), date: na.date});
+        }
+      }
+      // ✅ status: ステータス自体
+      if (entity.status && nKeywords.some(nk => normalize(entity.status).includes(nk))) {
+        hits.push({kind:"ステータス", text: entity.status});
+      }
+      // ✅ files: ファイル名
+      (entity.files||[]).forEach(f => {
+        if (f.name && nKeywords.some(nk => normalize(f.name).includes(nk))) {
+          hits.push({kind:"ファイル", text: f.name.slice(0, 200)});
+        }
+      });
+      // ✅ 自治体・業者の許可情報・bee_net等のフィールド
+      if (entity.permits) {
+        const text = Array.isArray(entity.permits) ? entity.permits.join(" ") : String(entity.permits);
+        if (text && nKeywords.some(nk => normalize(text).includes(nk))) {
+          hits.push({kind:"許可", text: text.slice(0, 200)});
+        }
+      }
+      // ✅ contacts (連絡先名・部署・役職)
+      (entity.contacts||entity.govContacts||[]).forEach(co => {
+        const text = (co.name||"") + " " + (co.dept||"") + " " + (co.title||"") + " " + (co.note||"");
+        if (text.trim() && nKeywords.some(nk => normalize(text).includes(nk))) {
+          hits.push({kind:"先方担当", text: text.slice(0, 200)});
+        }
+      });
+      
       return hits.length > 0 ? hits : null;
     };
     
     // 全件をスリム化
-    const allCompanies = (data?.companies || []).map(c => ({
-      id: c.id, name: c.name, status: c.status
-    }));
-    const allVendors = (data?.vendors || []).map(v => ({
-      id: v.id, name: v.name, status: v.status
-    }));
-    const allMunis = (data?.municipalities || []).map(m => ({
-      id: m.id, name: m.name, prefectureId: m.prefectureId
-    }));
+    // ✅ v206: エンティティに全フィールド含める（メモ・議事録・アプローチ・変更履歴・次回設定など）
+    // サイズ制限対策: 各配列フィールドは最新3-5件に絞る
+    const trimList = (arr, n=3) => (arr||[]).slice(-n);
+    const slimEntity = (e, extra={}) => ({
+      id: e.id, name: e.name, status: e.status,
+      prefectureId: e.prefectureId, address: e.address, tel: e.tel || e.telephone,
+      assignees: e.assignees, ownerIds: e.ownerIds,
+      nextAction: e.nextAction,
+      notes: e.notes ? String(e.notes).slice(0, 300) : undefined,
+      memos: trimList(e.memos, 3).map(m => ({text: (m.text||m.content||"").slice(0,300), date: m.createdAt||m.date, userId: m.createdBy||m.userId})),
+      mtgLogs: trimList(e.mtgLogs, 3).map(m => ({title: m.title, content: (m.content||"").slice(0,300), date: m.createdAt||m.date})),
+      approachLogs: trimList(e.approachLogs, 5).map(a => ({type: a.type, note: (a.note||"").slice(0,200), date: a.createdAt||a.date})),
+      chat: trimList(e.chat, 2).map(c => ({text: (c.text||c.content||"").slice(0,200), date: c.createdAt||c.date, userId: c.userId||c.createdBy})),
+      comments: trimList(e.comments, 2).map(c => ({text: (c.text||c.content||"").slice(0,200), date: c.createdAt||c.date})),
+      changeLog: trimList(e.changeLog, 5).map(cl => ({field: cl.field, from: cl.from, to: cl.to, date: cl.createdAt||cl.date, userId: cl.userId})),
+      contacts: (e.contacts||e.govContacts||[]).slice(0,5).map(co => ({name: co.name, dept: co.dept, title: co.title, email: co.email, mobile: co.mobile})),
+      permits: e.permits, beeNet: e.beeNet,
+      files_count: (e.files||[]).length,
+      ...extra,
+    });
+    
+    const allCompanies = (data?.companies || []).map(c => slimEntity(c));
+    const allVendors = (data?.vendors || []).map(v => slimEntity(v));
+    const allMunis = (data?.municipalities || []).map(m => slimEntity(m));
     const allTasks = (data?.tasks || []).map(t => ({
-      id: t.id, title: t.title, status: t.status, priority: t.priority, dueDate: t.dueDate, assigneeIds: t.assigneeIds
+      id: t.id, title: t.title, status: t.status, priority: t.priority,
+      dueDate: t.dueDate, assignees: t.assignees, assigneeIds: t.assigneeIds,
+      projectId: t.projectId, salesRef: t.salesRef,
+      companyIds: t.companyIds, vendorIds: t.vendorIds, muniIds: t.muniIds,
+      description: (t.description||"").slice(0, 200),
+      memos: trimList(t.memos, 2).map(m => ({text: (m.text||m.content||"").slice(0,200), date: m.createdAt||m.date})),
+      comments: trimList(t.comments, 2).map(c => ({text: (c.text||c.content||"").slice(0,200), date: c.createdAt||c.date})),
+      chat: trimList(t.chat, 2).map(c => ({text: (c.text||c.content||"").slice(0,200), date: c.createdAt||c.date})),
+      changeLog: trimList(t.changeLog, 3).map(cl => ({field: cl.field, from: cl.from, to: cl.to, date: cl.createdAt||cl.date})),
+      createdAt: t.createdAt,
     }));
     const allProjects = (data?.projects || []).map(p => ({
-      id: p.id, name: p.name, status: p.status
+      id: p.id, name: p.name, status: p.status, description: (p.description||"").slice(0,200),
+      members: p.members, ownerIds: p.ownerIds,
+      linkedCompanyIds: p.linkedCompanyIds, linkedVendorIds: p.linkedVendorIds, linkedMuniIds: p.linkedMuniIds,
+      memos: trimList(p.memos, 2).map(m => ({text: (m.text||m.content||"").slice(0,200), date: m.createdAt||m.date})),
+      chat: trimList(p.chat, 2).map(c => ({text: (c.text||c.content||"").slice(0,200), date: c.createdAt||c.date})),
+      comments: trimList(p.comments, 2).map(c => ({text: (c.text||c.content||"").slice(0,200), date: c.createdAt||c.date})),
+      changeLog: trimList(p.changeLog, 3).map(cl => ({field: cl.field, from: cl.from, to: cl.to, date: cl.createdAt||cl.date})),
+      createdAt: p.createdAt,
     }));
     
     // 連絡先情報
@@ -30412,8 +30532,8 @@ function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
       return false;
     };
     
-    // ✅ v199: 名前ヒット + コンテンツ（メモ・議事録・アプローチ等）ヒットを統合
-    // フル業者データを参照する必要があるため、data.vendors/companies/munis を直接見る
+    // ✅ v205: フル業者データを参照する必要があるため、data.vendors/companies/munis を直接見る
+    // ヒットしたエンティティには status, assignees, nextAction などの追加情報も含める
     const collectMatchesWithContent = (collection, nameField="name") => {
       if (!keywords.length) return [];
       const matched = [];
@@ -30425,7 +30545,37 @@ function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
             id: ent.id,
             name: ent[nameField],
             status: ent.status,
-            // コンテンツでヒットした場合、ヒット箇所の抜粋を含める
+            // ✅ v205: 追加情報（エージェントが豊富にデータ取れるように）
+            assignees: ent.assignees,
+            nextAction: ent.nextAction,
+            address: ent.address,
+            prefectureId: ent.prefectureId,
+            // 最新のメモ・議事録・アプローチを少量サンプリング (検索ヒットしてなくても)
+            recent_memos: (ent.memos||[]).slice(-2).map(m=>({text:(m.text||m.content||"").slice(0,150), date:m.createdAt||m.date})),
+            recent_mtg: (ent.mtgLogs||[]).slice(-2).map(m=>({title:m.title, content:(m.content||"").slice(0,150), date:m.createdAt||m.date})),
+            recent_approach: (ent.approachLogs||[]).slice(-3).map(a=>({type:a.type, note:(a.note||"").slice(0,150), date:a.createdAt||a.date})),
+            recent_changes: (ent.changeLog||[]).slice(-3).map(c=>({field:c.field, from:c.from, to:c.to, date:c.createdAt||c.date})),
+            ...(contentHits ? { matched_content: contentHits.slice(0, 5) } : {}),
+            ...(nameMatch ? { matched_by: "name" } : { matched_by: "content" }),
+          });
+        }
+        if (matched.length >= 30) break;
+      }
+      return matched;
+    };
+    
+    // ✅ v205: タスクもコンテンツ検索を有効化（メモ・コメント・チャット等）
+    const collectTaskMatches = () => {
+      if (!keywords.length) return [];
+      const matched = [];
+      for (const t of (allTasks||[])) {
+        const nameMatch = matches(t.title);
+        const contentHits = matchesContent(t);
+        if (nameMatch || contentHits) {
+          matched.push({
+            id: t.id, title: t.title, status: t.status, priority: t.priority,
+            dueDate: t.dueDate, assignees: t.assignees,
+            projectId: t.projectId, salesRef: t.salesRef,
             ...(contentHits ? { matched_content: contentHits.slice(0, 3) } : {}),
             ...(nameMatch ? { matched_by: "name" } : { matched_by: "content" }),
           });
@@ -30435,13 +30585,132 @@ function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
       return matched;
     };
     
+    // ✅ v205: プロジェクトもコンテンツ検索を有効化
+    const collectProjectMatches = () => {
+      if (!keywords.length) return [];
+      const matched = [];
+      for (const p of (allProjects||[])) {
+        const nameMatch = matches(p.name);
+        const contentHits = matchesContent(p);
+        if (nameMatch || contentHits) {
+          matched.push({
+            id: p.id, name: p.name, status: p.status,
+            members: p.members, linkedCompanyIds: p.linkedCompanyIds,
+            linkedVendorIds: p.linkedVendorIds, linkedMuniIds: p.linkedMuniIds,
+            ...(contentHits ? { matched_content: contentHits.slice(0, 3) } : {}),
+            ...(nameMatch ? { matched_by: "name" } : { matched_by: "content" }),
+          });
+        }
+        if (matched.length >= 30) break;
+      }
+      return matched;
+    };
+    
+    // ✅ v206: 名刺の全文検索
+    const collectBusinessCardMatches = () => {
+      if (!keywords.length) return [];
+      const matched = [];
+      for (const card of (data?.businessCards || [])) {
+        // 名前 / 会社 / メアド / 部署 / 役職 / 電話番号 / 住所 / メモ すべて対象
+        const fullText = [
+          card.firstName, card.lastName, card.company, card.department,
+          card.title, card.email, card.mobile, card.telDirect, card.telCompany,
+          card.address, card.url, card.zip,
+          (card.memos||[]).map(m=>m.text||m.content||"").join(" "),
+        ].filter(Boolean).join(" ");
+        const fullName = `${card.lastName||""}${card.firstName||""}`.trim();
+        const nameMatch = matches(fullName) || matches(card.company);
+        const contentMatch = nKeywords.some(nk => normalize(fullText).includes(nk));
+        if (nameMatch || contentMatch) {
+          matched.push({
+            id: card.id,
+            name: fullName,
+            company: card.company,
+            title: card.title,
+            department: card.department,
+            email: card.email,
+            mobile: card.mobile,
+            telDirect: card.telDirect,
+            telCompany: card.telCompany,
+            address: card.address,
+            owners: card.owners,
+            exchangedAt: card.exchangedAt,
+            recent_memos: (card.memos||[]).slice(-2).map(m=>(m.text||m.content||"").slice(0,150)),
+            matched_by: nameMatch ? "name" : "content",
+          });
+        }
+        if (matched.length >= 30) break;
+      }
+      return matched;
+    };
+    
+    // ✅ v206: MyDesk ユーザーの全文検索（社内メンバー）
+    const collectUserMatches = () => {
+      if (!keywords.length) return [];
+      const matched = [];
+      for (const u of (users || [])) {
+        const fullName = u.name || `${u.lastName||""}${u.firstName||""}`.trim();
+        const fullText = [u.name, u.lastName, u.firstName, u.email, u.dept, u.title, u.phone].filter(Boolean).join(" ");
+        const nameMatch = matches(fullName);
+        const contentMatch = nKeywords.some(nk => normalize(fullText).includes(nk));
+        if (nameMatch || contentMatch) {
+          matched.push({
+            id: u.id, name: fullName, email: u.email,
+            dept: u.dept, title: u.title, phone: u.phone,
+            matched_by: nameMatch ? "name" : "content",
+          });
+        }
+        if (matched.length >= 20) break;
+      }
+      return matched;
+    };
+    
+    // ✅ v206: メール (AI 分析結果も検索対象)
+    const collectEmailMatches = () => {
+      if (!keywords.length) return [];
+      const matched = [];
+      const emails = (data?.emails || []);
+      for (const e of emails) {
+        const fullText = [
+          e.subject, e.body,
+          e.from?.name, e.from?.email,
+          (e.to||[]).map(t=>t?.email||t?.name).join(" "),
+          // ✅ AI 分析結果
+          e.ai_summary, e.ai_category, e.ai_priority,
+          (e.ai_suggestions||[]).join(" "),
+          e.ai_draft_reply,
+        ].filter(Boolean).join(" ");
+        const hit = nKeywords.some(nk => normalize(fullText).includes(nk));
+        if (hit) {
+          matched.push({
+            id: e.id,
+            subject: e.subject?.slice(0, 100),
+            from: e.from?.name || e.from?.email,
+            direction: e.direction,
+            sentAt: e.sentAt || e.receivedAt || e.createdAt,
+            ai_summary: e.ai_summary,
+            ai_category: e.ai_category,
+            ai_priority: e.ai_priority,
+            linkedDisplay: e.linkedDisplay,
+            body_excerpt: (e.body||"").slice(0, 200),
+          });
+        }
+        if (matched.length >= 20) break;
+      }
+      return matched;
+    };
+    
     const preMatch = {
       companies: collectMatchesWithContent(data?.companies || [], "name"),
       vendors: collectMatchesWithContent(data?.vendors || [], "name"),
       munis: collectMatchesWithContent(data?.municipalities || [], "name"),
-      tasks: keywords.length ? allTasks.filter(t => matches(t.title)).slice(0, 30) : [],
-      projects: keywords.length ? allProjects.filter(p => matches(p.name)).slice(0, 30) : [],
+      tasks: collectTaskMatches(),
+      projects: collectProjectMatches(),
       people: keywords.length ? people.filter(matchPerson).slice(0, 50) : [],
+      // ✅ v206: 名刺・ユーザー・メール（AI分析含む）も検索対象
+      businessCards: collectBusinessCardMatches(),
+      users: collectUserMatches(),
+      emails: collectEmailMatches(),
     };
     console.log("[Agent] pre_match counts:", {
       companies: preMatch.companies.length,
@@ -30450,15 +30719,37 @@ function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
       tasks: preMatch.tasks.length,
       projects: preMatch.projects.length,
       people: preMatch.people.length,
+      businessCards: preMatch.businessCards.length,
+      users: preMatch.users.length,
+      emails: preMatch.emails.length,
     });
     // ✅ v199: コンテンツヒットがあれば内容を表示
     const contentHitVendors = preMatch.vendors.filter(v => v.matched_by === "content");
     if (contentHitVendors.length > 0) {
-      console.log("[Agent] vendors matched by CONTENT (memo/議事録/アプローチ):", contentHitVendors.map(v => `${v.name} - ${(v.matched_content||[]).map(h=>`[${h.kind}] ${h.text.slice(0,50)}`).join(" / ")}`));
+      console.log("[Agent] vendors matched by CONTENT:", contentHitVendors.map(v => `${v.name} - ${(v.matched_content||[]).map(h=>`[${h.kind}] ${h.text.slice(0,50)}`).join(" / ")}`));
     }
     const contentHitCompanies = preMatch.companies.filter(c => c.matched_by === "content");
     if (contentHitCompanies.length > 0) {
       console.log("[Agent] companies matched by CONTENT:", contentHitCompanies.map(c => `${c.name} - ${(c.matched_content||[]).map(h=>`[${h.kind}] ${h.text.slice(0,50)}`).join(" / ")}`));
+    }
+    // ✅ v205: tasks/projects のコンテンツヒットも表示
+    const contentHitTasks = preMatch.tasks.filter(t => t.matched_by === "content");
+    if (contentHitTasks.length > 0) {
+      console.log("[Agent] tasks matched by CONTENT:", contentHitTasks.map(t => `${t.title} - ${(t.matched_content||[]).map(h=>`[${h.kind}] ${h.text.slice(0,50)}`).join(" / ")}`));
+    }
+    const contentHitProjects = preMatch.projects.filter(p => p.matched_by === "content");
+    if (contentHitProjects.length > 0) {
+      console.log("[Agent] projects matched by CONTENT:", contentHitProjects.map(p => `${p.name} - ${(p.matched_content||[]).map(h=>`[${h.kind}] ${h.text.slice(0,50)}`).join(" / ")}`));
+    }
+    // ✅ v206: businessCards / users / emails のヒット
+    if (preMatch.businessCards.length > 0) {
+      console.log("[Agent] businessCards matched:", preMatch.businessCards.map(b => `${b.name}(${b.company||"?"}) - ${b.matched_by}`));
+    }
+    if (preMatch.users.length > 0) {
+      console.log("[Agent] users matched:", preMatch.users.map(u => `${u.name}(${u.email||"?"}) - ${u.matched_by}`));
+    }
+    if (preMatch.emails.length > 0) {
+      console.log("[Agent] emails matched:", preMatch.emails.map(e => `${(e.subject||"").slice(0,40)} | ${e.ai_category||""}`));
     }
     if (preMatch.people.length > 0) {
       console.log("[Agent] matched people (all):", preMatch.people.map(p => `${p.name || "(noname)"}(${p.email || ""}/${p.company || ""})`));
@@ -30481,7 +30772,24 @@ function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
       tasks: allTasks,
       projects: allProjects,
       people: people,
-      users: (users || []).map(u => ({id: u.id, name: u.name, email: u.email})),
+      // ✅ v206: MyDesk ユーザー（社内メンバー）の全情報
+      users: (users || []).map(u => ({
+        id: u.id, name: u.name,
+        lastName: u.lastName, firstName: u.firstName,
+        email: u.email, dept: u.dept, title: u.title, phone: u.phone,
+        role: u.role, isAdmin: u.isAdmin,
+      })),
+      // ✅ v206: 名刺（businessCards）の全情報
+      businessCards: (data?.businessCards || []).map(c => ({
+        id: c.id,
+        name: `${c.lastName||""}${c.firstName||""}`.trim() || c.name,
+        lastName: c.lastName, firstName: c.firstName,
+        company: c.company, department: c.department, title: c.title,
+        email: c.email, mobile: c.mobile, telDirect: c.telDirect, telCompany: c.telCompany,
+        fax: c.fax, url: c.url, zip: c.zip, address: c.address,
+        owners: c.owners, exchangedAt: c.exchangedAt,
+        memos_excerpt: (c.memos||[]).slice(-1).map(m=>(m.text||m.content||"").slice(0,200)).join(""),
+      })),
       // ✅ MyDesk 内既存ファイル一覧（資料作成時の参照元）
       existing_files: (() => {
         const out = [];
@@ -30508,22 +30816,60 @@ function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
         // 最新200件のみ送る（巨大化防止）
         return out.slice(-200);
       })(),
-      // メール傾向参照用（直近のメール本文サンプル）
+      // ✅ v206: メール（AI分析結果含む）
       recent_emails_sample: (data?.emails || []).slice(-50).map(e => ({
+        id: e.id,
         from: e.from?.email || "",
+        from_name: e.from?.name || "",
         to: (e.to || []).map(r => r?.email).filter(Boolean),
         subject: e.subject || "",
         body: (e.body || "").slice(0, 500),
         direction: e.direction,
+        sentAt: e.sentAt || e.receivedAt || e.createdAt,
+        // ✅ AI 分析結果
+        ai_summary: e.ai_summary,
+        ai_category: e.ai_category,
+        ai_priority: e.ai_priority,
+        ai_suggestions: e.ai_suggestions,
+        // 連携情報
+        linkedDisplay: e.linkedDisplay,
+        linkedCompanyIds: e.linkedCompanyIds,
+        linkedVendorIds: e.linkedVendorIds,
+        linkedMuniIds: e.linkedMuniIds,
+        isStarred: e.isStarred, isRead: e.isRead, isSpam: e.isSpam,
       })),
+      // ✅ v206: 全メール件数とサマリ
+      emails_total: (data?.emails || []).length,
       // 自分が過去送ったメールから文体学習用サンプル
       my_sent_emails: (data?.emails || [])
         .filter(e => e.direction === "outbound" && e.userId === currentUser?.id)
         .slice(-20)
         .map(e => ({to: (e.to||[]).map(r=>r?.email), subject: e.subject||"", body: (e.body||"").slice(0,1000)})),
+      // ✅ v206: 文体サンプル登録分も送る
+      email_styles: (data?.emailStyles || []).filter(s => !s.userId || s.userId === currentUser?.id).slice(-5).map(s => ({text: (s.text||"").slice(0,500)})),
+      // ✅ v206: 都道府県マスター（フィルター・地域分析用）
+      prefectures: (data?.prefectures || []).map(p => ({id: p.id, name: p.name, region: p.region})),
       // 事前マッチ結果（Lambda 側で system prompt に含める）
       pre_match: preMatch,
       extracted_keywords: keywords,
+      // ✅ v206: 現在のユーザー情報
+      current_user: currentUser ? {
+        id: currentUser.id, name: currentUser.name, email: currentUser.email,
+        dept: currentUser.dept, title: currentUser.title, role: currentUser.role,
+      } : null,
+      // ✅ v206: 全体集計（エージェントが「どのくらいのデータがあるか」を把握）
+      data_summary: {
+        companies: (data?.companies || []).length,
+        vendors: (data?.vendors || []).length,
+        municipalities: (data?.municipalities || []).length,
+        tasks: (data?.tasks || []).length,
+        tasks_by_status: (data?.tasks || []).reduce((acc, t) => { acc[t.status||"未設定"] = (acc[t.status||"未設定"]||0) + 1; return acc; }, {}),
+        projects: (data?.projects || []).length,
+        projects_by_status: (data?.projects || []).reduce((acc, p) => { acc[p.status||"未設定"] = (acc[p.status||"未設定"]||0) + 1; return acc; }, {}),
+        businessCards: (data?.businessCards || []).length,
+        emails: (data?.emails || []).length,
+        users: (users || []).length,
+      },
     };
   };
   
