@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v212-scroll-tracker-multidir"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v213-scroll-noOverwrite-latestOnly"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -9956,6 +9956,7 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onMarkSpam,
                 const existingTaskForLabel = (data.tasks||[]).find(t => String(t.emailRef?.emailId||"") === String(email.id||""));
                 if (typeof window !== "undefined") {
                   window.__taskLabelDebug = {emailId: email.id, found: !!existingTaskForLabel, tasksWithEmailRef: (data.tasks||[]).filter(t=>t.emailRef).map(t=>({id:t.id, emailId:t.emailRef?.emailId, title:t.title}))};
+                  console.log("[taskLabel]", "email.id:", email.id, "found:", !!existingTaskForLabel, "tasks-with-emailRef:", window.__taskLabelDebug.tasksWithEmailRef.length);
                 }
                 return (
               <button onClick={()=>{
@@ -10074,32 +10075,59 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onMarkSpam,
               // ✅ v211: AI で要約生成（事実のみ・推測禁止）
               let mtgContent = `${senderName} とのメールやりとり\n\n${(email.body||"").slice(0, 800)}`;
               try {
+                // ✅ v213: 最新メールに絞る（過去の引用は除外）
+                // 引用「-----Original message-----」「2026/XX/XX」「>」より上の最新部分のみ抽出
+                let latestBody = email.body || "";
+                try {
+                  // 引用区切りで分割して最初のセクションのみ
+                  const splitters = [
+                    /-----Original message-----/i,
+                    /-----Forwarded message-----/i,
+                    /\n\d{4}\/\d{1,2}\/\d{1,2}[\s、 ]+/,  // "2026/06/24 10:42、"
+                    /\nOn\s+\w+,?\s+\w+\s+\d+,?\s+\d{4}/i,
+                    /\n>\s*[\s\S]/,
+                    /\n｡\.｡･\.｡/,
+                  ];
+                  let cutAt = latestBody.length;
+                  for (const re of splitters) {
+                    const m = latestBody.match(re);
+                    if (m && m.index !== undefined && m.index < cutAt) {
+                      cutAt = m.index;
+                    }
+                  }
+                  latestBody = latestBody.slice(0, cutAt).trim();
+                  if (latestBody.length < 20) latestBody = (email.body||"").slice(0, 1500);
+                } catch(_) {}
+                
                 const prompt = `以下のメールを商談記録として超簡潔にまとめてください。
 
 【メール】
 差出人: ${senderName}
 件名: ${email.subject||""}
-本文:
-${(email.body||"").slice(0, 2000)}
+本文（最新部分のみ）:
+${latestBody.slice(0, 1500)}
 
 【絶対ルール】
-- **メール本文に書かれている事実のみ**を記載すること
-- 推測・想像・解釈・補完は禁止（「確定」「予定」など明記されてないことは書かない）
-- 不明なものは書かない、または「未確定」と明記
+- **このメール本文 = 「先方からこちらに送られたメッセージ」** として要約
+- 主体を明確に書く: 「先方から〜」「当方から〜」「先方が〜」など
+- メール本文に書かれている事実のみ（推測・補完・確定の言葉は禁止）
+- 過去の経緯・引用部分・署名は除外
 - 最大80文字、3行以内
-- 1行目: メールの状況 (例: 提案受領 / 質問 / 日程候補提示 / 日程確定 など)
-- 2行目: 出てきた具体的な数値・日付・固有名詞のみ
-- 3行目: 次のアクション (あれば「次: 〜」)
-- 挨拶・敬語・引用・署名・前置きは除外
+- 1行目: 先方のアクション (例: 先方から日程提示 / 先方から質問 / 先方が見積依頼)
+- 2行目: 具体的な数値・日付・固有名詞 (あれば)
+- 3行目: 次のアクション「次: 〜」(あれば)
 - マークダウン記号禁止
 
-【良い例 - 日程候補が出ただけ】
-日程候補提示 (7/6, 7/7, 7/8, 7/9)
-先方の都合確認待ち
-次: 先方からの返信待ち
+【良い例 - 先方から日程提示】
+先方から日程提示
+7/8 10:30 三ヶ森店
+次: 訪問可否を回答
 
-【悪い例 - 推測している】
-訪問日程確定 7/8 10:30 ← メールに「確定」と書いてないのに「確定」と書いてる
+【悪い例】（主体不明）
+日程提示: 7/8 10:30 三ヶ森店  ← 誰が提示？分からない
+
+【悪い例】（推測している）
+訪問日程確定 7/8 10:30  ← 「確定」と書いてないのに
 
 【要約のみ出力】`;
                 const res = await fetch(`${API_BASE}/api/generate-email`, {
@@ -10708,7 +10736,7 @@ function EmailView({data,setData,currentUser=null}) {
       clearTimeout(readTimerRef.current);
       readTimerRef.current = null;
     }
-    // ✅ v212: グローバルスクロール追跡値を最優先で使用（スクロールイベントから直接取得した値）
+    // ✅ v213: 保存値の保護 - 「pos > 0 のみ追跡」+ 「保存後に短時間 lock」 で確実に守る
     const getScroller = () => {
       try {
         return document.scrollingElement || document.documentElement || document.body;
@@ -10728,12 +10756,14 @@ function EmailView({data,setData,currentUser=null}) {
         
         // 最大値を採用
         const pos = Math.max(pos1, pos2, pos3, pos4, pos5, trackedPos);
-        window.__myDeskMbListScroll = pos;
+        // 保存値: 0 で上書きしない（前回の値を保持）
+        if (pos > 0) {
+          window.__myDeskMbListScroll = pos;
+          window.__myDeskScrollTargetSaved = trackedTgt;
+        }
         window.__myDeskLastSelectedEmailId = emailId;
-        // スクロール対象を保存（要素ならその参照、window なら "window"）
-        window.__myDeskScrollTargetSaved = trackedTgt;
         
-        // 全スクロール要素を保存（メール一覧の親 div が別途スクロールしてる場合に対応）
+        // 全スクロール要素を保存
         const allScrolled = [];
         try {
           const elements = document.querySelectorAll('*');
@@ -10744,8 +10774,10 @@ function EmailView({data,setData,currentUser=null}) {
             }
           }
         } catch(_) {}
-        window.__myDeskAllScrolled = allScrolled;
-        console.log("[scroll-save] picked:", pos, "from:", {pos1, pos2, pos3, pos4, pos5, trackedPos, trackedTgt: trackedTgt?.tagName || trackedTgt}, "extra:", allScrolled.length);
+        if (allScrolled.length > 0) {
+          window.__myDeskAllScrolled = allScrolled;
+        }
+        console.log("[scroll-save] picked:", pos, "stored:", window.__myDeskMbListScroll, "tgt:", trackedTgt?.tagName || trackedTgt, "extra:", window.__myDeskAllScrolled?.length || 0);
       }
     } catch(_) {}
     setMbSelectedId(emailId);
@@ -31483,19 +31515,27 @@ export default function App() {
   }
   
   const [_data, _setData] = useState(INIT);
-  // ✅ v212: グローバルスクロール追跡 - スクロールしてる要素を常時把握
+  // ✅ v213: グローバルスクロール追跡 - スクロールしてる要素を常時把握
+  // 重要: pos > 0 の時のみ上書き（メール詳細を開いた時の 0 で上書きされないように）
   React.useEffect(() => {
     const onScroll = (ev) => {
       try {
         const tgt = ev?.target;
         if (tgt && tgt !== document) {
-          // 要素のスクロール
-          window.__myDeskScrollTarget = tgt;
-          window.__myDeskScrollPos = tgt.scrollTop || 0;
+          // 要素のスクロール - DIV など
+          const pos = tgt.scrollTop || 0;
+          // メール一覧的なスクロール（一定以上の高さ + スクロール >0）の時のみ更新
+          if (pos > 10) {
+            window.__myDeskScrollTarget = tgt;
+            window.__myDeskScrollPos = pos;
+          }
         } else {
           // ドキュメントのスクロール
-          window.__myDeskScrollTarget = "window";
-          window.__myDeskScrollPos = window.scrollY || document.scrollingElement?.scrollTop || document.documentElement?.scrollTop || document.body?.scrollTop || 0;
+          const pos = window.scrollY || document.scrollingElement?.scrollTop || document.documentElement?.scrollTop || document.body?.scrollTop || 0;
+          if (pos > 10) {
+            window.__myDeskScrollTarget = "window";
+            window.__myDeskScrollPos = pos;
+          }
         }
       } catch(_) {}
     };
