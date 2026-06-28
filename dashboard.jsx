@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v201-EMERGENCY-ROLLBACK-no-autolink"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v203-fix-secret-and-task-dedup"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -9673,6 +9673,8 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onMarkSpam,
   const [replyBody, setReplyBody]   = React.useState("");
   const [replySubject, setReplySubject] = React.useState("");
   const [aiBusyLocal, setAiBusyLocal] = React.useState(false);
+  // ✅ v202: その他メニュー（メール詳細のサブアクション）
+  const [showMoreMenu, setShowMoreMenu] = React.useState(false);
   
   // AI 分析データ（要約・優先度・提案・返信案）
   const [aiAnalyzing, setAiAnalyzing] = React.useState(false);
@@ -9837,34 +9839,23 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onMarkSpam,
 
   return (
     <div style={{background:"white",borderRadius:"10px",padding:"0.9rem",border:`1px solid ${C.borderLight}`,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
-      {/* ヘッダー（ツールバー: 戻る + 返信系アクション + スター） */}
-      <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginBottom:"0.65rem",flexWrap:"wrap"}}>
+      {/* ヘッダー（ツールバー: ✅ v202 簡素化版 - 主要3ボタン + ⋯ メニュー） */}
+      <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginBottom:"0.65rem",flexWrap:"wrap",position:"relative"}}>
         <button onClick={onClose} style={{padding:"0.3rem 0.55rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.74rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>← 戻る</button>
         {!replyMode && (
           <>
+            {/* === 主要アクション（常時表示）=== */}
             {isInbound && (
-              <>
-                <button onClick={()=>openReplyForm("reply")}
-                  style={{padding:"0.4rem 0.85rem",borderRadius:6,border:"none",background:C.accent,color:"white",fontSize:"0.78rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
-                  ↩️ 返信
-                </button>
-                {((email.to||[]).length + (email.cc||[]).length) > 1 && (
-                  <button onClick={()=>openReplyForm("replyAll")}
-                    style={{padding:"0.4rem 0.75rem",borderRadius:6,border:`1px solid ${C.accent}`,background:"white",color:C.accent,fontSize:"0.78rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
-                    ↩️ 全員に返信
-                  </button>
-                )}
-                <button onClick={()=>openReplyForm("forward")}
-                  style={{padding:"0.4rem 0.75rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                  → 転送
-                </button>
-              </>
+              <button onClick={()=>openReplyForm("reply")}
+                style={{padding:"0.4rem 0.85rem",borderRadius:6,border:"none",background:C.accent,color:"white",fontSize:"0.78rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+                ↩️ 返信
+              </button>
             )}
             {!isInbound && (
               <button onClick={()=>openReplyForm("forward")}
                 style={{padding:"0.4rem 0.75rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>→ 転送</button>
             )}
-            {/* ✅ v197: AI 返信ドラフト生成 */}
+            {/* ✅ v197: AI 返信ドラフト生成（受信メールのみ常時表示） */}
             {isInbound && (
               <button onClick={async()=>{
                 if (aiReplying) return;
@@ -9925,10 +9916,10 @@ ${styleSamples}
 【生成】`;
                   
                   // ✅ v198: モジュールトップレベルの API_BASE を使う (再定義しない)
-                  // ✅ v200: 認証ヘッダー追加 (401 対策)
+                  // ✅ v203: 認証ヘッダー修正 (mydesk2026 が正しい / 既存呼び出しと統一)
                   const res = await fetch(`${API_BASE}/api/generate-email`, {
                     method: "POST",
-                    headers: {"Content-Type": "application/json", "x-mydesk-secret": "mydesk2026secret"},
+                    headers: {"Content-Type": "application/json", "x-mydesk-secret": "mydesk2026"},
                     body: JSON.stringify({prompt, max_tokens: 800})
                   });
                   if (!res.ok) throw new Error(`AI 生成失敗: ${res.status}`);
@@ -9949,75 +9940,126 @@ ${styleSamples}
                 {aiReplying ? "⏳ 生成中..." : "💡 AI返信"}
               </button>
             )}
-            <button onClick={()=>setLinkType(linkType?null:"企業")}
-              style={{padding:"0.4rem 0.75rem",borderRadius:6,border:`1px solid ${C.border}`,background:linkType?"#fff7ed":"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🔗 連携</button>
-            {/* ✅ v197: メール → タスク化 + v198 営業先自動紐付け */}
+            {/* === ⋯ その他メニュー === */}
+            <button onClick={()=>setShowMoreMenu(v=>!v)}
+              style={{padding:"0.4rem 0.7rem",borderRadius:6,border:`1px solid ${C.border}`,background:showMoreMenu?"#f3f4f6":"white",color:C.textSub,fontSize:"0.78rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>⋯ その他</button>
+            {showMoreMenu && (
+              <div style={{position:"absolute",top:"100%",left:0,marginTop:"0.3rem",background:"white",border:`1px solid ${C.border}`,borderRadius:8,boxShadow:"0 4px 12px rgba(0,0,0,0.08)",padding:"0.4rem",zIndex:20,display:"flex",flexWrap:"wrap",gap:"0.35rem",minWidth:280,maxWidth:"95vw"}}>
+              {/* 全員に返信 */}
+              {isInbound && ((email.to||[]).length + (email.cc||[]).length) > 1 && (
+                <button onClick={()=>{openReplyForm("replyAll");setShowMoreMenu(false);}}
+                  style={{padding:"0.4rem 0.75rem",borderRadius:6,border:`1px solid ${C.accent}`,background:"white",color:C.accent,fontSize:"0.78rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+                  ↩️ 全員に返信
+                </button>
+              )}
+              {/* 転送（受信のみ。送信は最上段に表示済み） */}
+              {isInbound && (
+                <button onClick={()=>{openReplyForm("forward");setShowMoreMenu(false);}}
+                  style={{padding:"0.4rem 0.75rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                  → 転送
+                </button>
+              )}
+              {/* 🔗 連携 */}
+              <button onClick={()=>{setLinkType(linkType?null:"企業");setShowMoreMenu(false);}}
+                style={{padding:"0.4rem 0.75rem",borderRadius:6,border:`1px solid ${C.border}`,background:linkType?"#fff7ed":"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🔗 連携</button>
+            {/* ✅ v197: メール → タスク化 + v203 改善版（重複防止、メール連携先から紐付け） */}
             <button onClick={()=>{
+              // ✅ v203: 重複防止 - このメールから既にタスクを作成してないか確認
+              const existingTask = (data.tasks||[]).find(t => t.emailRef?.emailId === email.id);
+              if (existingTask) {
+                if (!window.confirm(`⚠️ このメールから既にタスク「${existingTask.title}」が作成されています。\n\n新しく作成しますか？\n\nキャンセル: 既存タスクを開く`)) {
+                  // 既存タスクへ遷移
+                  if (typeof window.__myDeskSetTab === "function") {
+                    window.__myDeskSetTab("tasks");
+                  }
+                  setShowMoreMenu(false);
+                  return;
+                }
+              }
+              
               const taskTitle = (email.subject||"").slice(0, 60).replace(/^(Re:|Fwd?:|FW:)\s*/i, "").trim() || "メール対応";
               const senderName = email.from?.name || email.from?.email || "";
               const taskDesc = `${senderName}からのメール対応\n\n${(email.body||"").slice(0, 500)}`;
               
-              // ✅ v198: メアドのドメインから企業/業者/自治体を自動検出
+              // ✅ v203: メール連携先（linkedCompanyIds/linkedVendorIds/linkedMuniIds）から営業先取得
               let autoLinkType = null;
               let autoLinkId = null;
               let autoLinkName = null;
-              // 既にメールが連携済みなら、それを優先
-              if (email.linkedEntityType && email.linkedEntityId) {
+              
+              // メール側で連携済みなら、その情報を最優先で使用
+              if ((email.linkedCompanyIds||[]).length > 0) {
+                autoLinkType = "企業";
+                autoLinkId = email.linkedCompanyIds[0];
+                autoLinkName = (data.companies||[]).find(c=>String(c.id)===String(autoLinkId))?.name;
+              } else if ((email.linkedVendorIds||[]).length > 0) {
+                autoLinkType = "業者";
+                autoLinkId = email.linkedVendorIds[0];
+                autoLinkName = (data.vendors||[]).find(v=>String(v.id)===String(autoLinkId))?.name;
+              } else if ((email.linkedMuniIds||[]).length > 0) {
+                autoLinkType = "自治体";
+                autoLinkId = email.linkedMuniIds[0];
+                autoLinkName = (data.municipalities||[]).find(m=>String(m.id)===String(autoLinkId))?.name;
+              } else if (email.linkedEntityType && email.linkedEntityId) {
+                // 旧形式 (linkedEntityType/Id)
                 autoLinkType = email.linkedEntityType;
                 autoLinkId = email.linkedEntityId;
                 const typeMap = {"企業":"companies", "業者":"vendors", "自治体":"municipalities"};
                 const ent = (data[typeMap[autoLinkType]]||[]).find(e=>String(e.id)===String(autoLinkId));
                 if (ent) autoLinkName = ent.name;
               } else {
-                // 送信元・宛先のメアドから営業先を検索
+                // 送信元・宛先のメアドから営業先を検索（フォールバック）
                 const allRelevantEmails = [
                   email.from?.email,
                   ...(email.to||[]).map(t=>t?.email),
                   ...(email.cc||[]).map(t=>t?.email),
                 ].filter(Boolean).map(e=>String(e).toLowerCase());
-                // 自分のドメインは除外
                 const myDomain = (currentUser?.email||"").split("@")[1]?.toLowerCase();
                 const externalEmails = allRelevantEmails.filter(e => !e.endsWith(`@${myDomain}`));
-                const domains = [...new Set(externalEmails.map(e => e.split("@")[1]).filter(Boolean))];
                 
-                // 企業から検索（人物のメアドが一致する企業）
+                // 企業 contacts
                 for (const c of (data.companies||[])) {
-                  const contactEmails = (c.contacts||[]).map(co=>(co.email||"").toLowerCase()).filter(Boolean);
-                  if (externalEmails.some(e => contactEmails.includes(e))) {
-                    autoLinkType = "企業"; autoLinkId = c.id; autoLinkName = c.name; break;
+                  const ces = (c.contacts||[]).map(co=>(co.email||"").toLowerCase()).filter(Boolean);
+                  if (externalEmails.some(e => ces.includes(e))) {
+                    autoLinkType="企業"; autoLinkId=c.id; autoLinkName=c.name; break;
                   }
                 }
-                // 業者から検索
-                if (!autoLinkType) {
-                  for (const v of (data.vendors||[])) {
-                    const contactEmails = (v.contacts||[]).map(co=>(co.email||"").toLowerCase()).filter(Boolean);
-                    if (externalEmails.some(e => contactEmails.includes(e))) {
-                      autoLinkType = "業者"; autoLinkId = v.id; autoLinkName = v.name; break;
-                    }
+                if (!autoLinkType) for (const v of (data.vendors||[])) {
+                  const ces = (v.contacts||[]).map(co=>(co.email||"").toLowerCase()).filter(Boolean);
+                  if (externalEmails.some(e => ces.includes(e))) {
+                    autoLinkType="業者"; autoLinkId=v.id; autoLinkName=v.name; break;
                   }
                 }
-                // 自治体から検索
-                if (!autoLinkType) {
-                  for (const m of (data.municipalities||[])) {
-                    const contactEmails = (m.govContacts||[]).map(co=>(co.email||"").toLowerCase()).filter(Boolean);
-                    if (externalEmails.some(e => contactEmails.includes(e))) {
-                      autoLinkType = "自治体"; autoLinkId = m.id; autoLinkName = m.name; break;
-                    }
+                if (!autoLinkType) for (const m of (data.municipalities||[])) {
+                  const ces = (m.govContacts||[]).map(co=>(co.email||"").toLowerCase()).filter(Boolean);
+                  if (externalEmails.some(e => ces.includes(e))) {
+                    autoLinkType="自治体"; autoLinkId=m.id; autoLinkName=m.name; break;
                   }
                 }
-                // 名刺から検索（最後の手段）
+                // 名刺メアド一致
                 if (!autoLinkType) {
                   for (const card of (data.businessCards||[])) {
-                    if (externalEmails.includes((card.email||"").toLowerCase())) {
-                      // 名刺の company を企業/業者から探す
-                      const compName = card.company;
+                    const cardEmail = (card.email||"").toLowerCase();
+                    if (cardEmail && externalEmails.includes(cardEmail)) {
+                      const compName = card.company || "";
                       if (compName) {
-                        const matchC = (data.companies||[]).find(c=>c.name===compName || c.name.includes(compName));
-                        if (matchC) { autoLinkType="企業"; autoLinkId=matchC.id; autoLinkName=matchC.name; break; }
-                        const matchV = (data.vendors||[]).find(v=>v.name===compName || v.name.includes(compName));
-                        if (matchV) { autoLinkType="業者"; autoLinkId=matchV.id; autoLinkName=matchV.name; break; }
+                        const cc = (data.companies||[]).find(c=>c.name===compName || (c.name && (c.name.includes(compName)||compName.includes(c.name))));
+                        if (cc) { autoLinkType="企業"; autoLinkId=cc.id; autoLinkName=cc.name; break; }
+                        const vv = (data.vendors||[]).find(v=>v.name===compName || (v.name && (v.name.includes(compName)||compName.includes(v.name))));
+                        if (vv) { autoLinkType="業者"; autoLinkId=vv.id; autoLinkName=vv.name; break; }
                       }
                     }
+                  }
+                }
+                // ドメイン部分一致
+                if (!autoLinkType) {
+                  const domains = [...new Set(externalEmails.map(e=>e.split("@")[1]).filter(Boolean))];
+                  for (const dom of domains) {
+                    const domHead = dom.split(".")[0];
+                    if (!domHead || domHead.length < 3) continue;
+                    const cc = (data.companies||[]).find(c => c.name && c.name.toLowerCase().includes(domHead));
+                    if (cc) { autoLinkType="企業"; autoLinkId=cc.id; autoLinkName=cc.name; break; }
+                    const vv = (data.vendors||[]).find(v => v.name && v.name.toLowerCase().includes(domHead));
+                    if (vv) { autoLinkType="業者"; autoLinkId=vv.id; autoLinkName=vv.name; break; }
                   }
                 }
               }
@@ -10034,19 +10076,19 @@ ${styleSamples}
                 createdAt: new Date().toISOString(),
                 comments: [], memos: [], chat: [], files: [],
                 emailRef: { emailId: email.id, subject: email.subject, fromName: senderName, fromEmail: email.from?.email },
-                // ✅ 営業先自動紐付け
                 companyIds: autoLinkType==="企業" ? [autoLinkId] : [],
                 vendorIds: autoLinkType==="業者" ? [autoLinkId] : [],
                 muniIds: autoLinkType==="自治体" ? [autoLinkId] : [],
                 salesRef: autoLinkType ? { type: autoLinkType, id: autoLinkId, name: autoLinkName } : null,
               };
-              const preview = `📋 タスクを作成しますか？\n\nタイトル: ${taskTitle}\n担当: ${currentUser?.name||""}${autoLinkName?`\n🔗 ${autoLinkType}: ${autoLinkName}`:""}`;
+              const preview = `📋 タスクを作成しますか？\n\nタイトル: ${taskTitle}\n担当: ${currentUser?.name||""}${autoLinkName?`\n🔗 ${autoLinkType}: ${autoLinkName}`:"\n⚠️ 営業先紐付けなし"}`;
               if (window.confirm(preview)) {
                 const nd = { ...data, tasks: [...(data.tasks||[]), newTask] };
                 setData(nd); 
                 if (typeof scheduleSaveData === "function") scheduleSaveData(nd);
-                alert(`✅ タスク「${taskTitle}」を作成しました${autoLinkName?`\n🔗 ${autoLinkName} に紐付け`:""}`);
+                alert(`✅ タスク「${taskTitle}」を作成しました${autoLinkName?`\n🔗 ${autoLinkName} に紐付け`:""}\n\nタスクタブで確認できます。`);
               }
+              setShowMoreMenu(false);
             }}
               style={{padding:"0.4rem 0.75rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>📋 タスク化</button>
             {/* ✅ v197: メール → 議事録化（連携営業先に保存、v198 改善版） */}
@@ -10089,9 +10131,11 @@ ${styleSamples}
                 if (typeof scheduleSaveData === "function") scheduleSaveData(nd);
                 alert(`✅ 議事録に追加しました\n(連携先: ${email.linkedEntityType})`);
               }
+              setShowMoreMenu(false); // ✅ v202: アクション後にメニュー閉じる
             }}
               style={{padding:"0.4rem 0.75rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>📝 議事録化</button>
             <button onClick={async()=>{
+              setShowMoreMenu(false); // ✅ v202
               if (!EMAIL_AI_API_URL) {
                 alert("AI 分析 Lambda の URL が設定されていません。\n環境変数 VITE_EMAIL_AI_API_URL を設定してください。");
                 return;
@@ -10130,6 +10174,7 @@ ${styleSamples}
             {/* 迷惑メール認定/解除 ボタン（受信メールのみ） */}
             {isInbound && (
               <button onClick={()=>{
+                setShowMoreMenu(false); // ✅ v202
                 if (email.isSpam) {
                   // 解除
                   if (typeof onMarkSpam === "function") onMarkSpam(email.id, false);
@@ -10158,6 +10203,8 @@ ${styleSamples}
                 style={{padding:"0.4rem 0.75rem",borderRadius:6,border:`1px solid ${email.isSpam?"#dc2626":"#fca5a5"}`,background:email.isSpam?"#fee2e2":"white",color:email.isSpam?"#991b1b":"#dc2626",fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                 {email.isSpam ? "✓ 迷惑解除" : "🚫 迷惑"}
               </button>
+            )}
+              </div>
             )}
           </>
         )}
@@ -32605,7 +32652,7 @@ export default function App() {
                   // ✅ v198: モジュールトップレベルの API_BASE を使う
                   const r = await fetch(`${API_BASE}/api/send-email`, {
                     method: "POST",
-                    headers: {"Content-Type": "application/json", "x-mydesk-secret": "mydesk2026secret"},
+                    headers: {"Content-Type": "application/json", "x-mydesk-secret": "mydesk2026"},
                     body: JSON.stringify({
                       to: agentEmailDraft.to.split(",").map(s=>s.trim()).filter(Boolean),
                       cc: agentEmailDraft.cc ? agentEmailDraft.cc.split(",").map(s=>s.trim()).filter(Boolean) : [],
