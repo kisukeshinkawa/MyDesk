@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v206-agent-all-mydesk-data"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v207-fix-413-link-modal"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -9959,24 +9959,11 @@ ${styleSamples}
                   → 転送
                 </button>
               )}
-              {/* 🔗 連携 - ✅ v204: スクロール誘導追加 */}
+              {/* 🔗 連携 - ✅ v207: モーダル化 */}
               <button onClick={()=>{
-                console.log("[連携] クリック - 現在の linkType:", linkType);
-                const newType = linkType ? null : "企業";
-                setLinkType(newType);
+                console.log("[連携] クリック - linkType:", linkType);
+                setLinkType(linkType ? null : "企業");
                 setShowMoreMenu(false);
-                if (newType) {
-                  // 連携 UI が見える位置にスクロール（少し遅延させて UI が描画されてから）
-                  setTimeout(()=>{
-                    const linkSection = document.querySelector('[data-link-ui]');
-                    if (linkSection) {
-                      linkSection.scrollIntoView({behavior:"smooth", block:"center"});
-                      console.log("[連携] UI へスクロール");
-                    } else {
-                      console.warn("[連携] UI セクションが見つかりません");
-                    }
-                  }, 100);
-                }
               }}
                 style={{padding:"0.4rem 0.75rem",borderRadius:6,border:`1px solid ${C.border}`,background:linkType?"#fff7ed":"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🔗 連携</button>
             {/* ✅ v197: メール → タスク化 + v203 改善版（重複防止、メール連携先から紐付け） */}
@@ -10468,26 +10455,113 @@ ${styleSamples}
       {/* 本文 */}
       <div style={{padding:"0.75rem 0.9rem",background:C.bg,borderRadius:8,border:`1px solid ${C.borderLight}`,fontSize:"0.83rem",lineHeight:1.7,color:C.text,whiteSpace:"pre-wrap",marginBottom:"0.85rem",wordBreak:"break-word"}}>{email.body||"(本文なし)"}</div>
 
-      {/* エンティティ連携 UI */}
+      {/* ✅ v207: エンティティ連携 UI - モーダル化（自動候補付き） */}
       {linkType && (
-        <div data-link-ui="true" style={{background:"#fff7ed",borderRadius:8,padding:"0.7rem",border:"2px solid #fb923c",marginBottom:"0.65rem",boxShadow:"0 2px 8px rgba(251,146,60,0.2)"}}>
-          <div style={{fontSize:"0.72rem",fontWeight:800,color:"#9a3412",marginBottom:"0.5rem"}}>🔗 連携先を選択してください</div>
-          <div style={{display:"flex",gap:"0.25rem",flexWrap:"wrap",marginBottom:"0.5rem"}}>
-            {["企業","業者","自治体","タスク","プロジェクト","名刺"].map(t=>(
-              <button key={t} onClick={()=>setLinkType(t)}
-                style={{padding:"0.2rem 0.5rem",borderRadius:5,border:"none",background:linkType===t?C.accent:"white",color:linkType===t?"white":C.textSub,fontSize:"0.68rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{t}</button>
-            ))}
-            <div style={{flex:1}}/>
-            <button onClick={()=>setLinkType(null)} style={{padding:"0.2rem 0.5rem",borderRadius:5,border:"none",background:"transparent",color:C.textMuted,fontSize:"0.74rem",cursor:"pointer",fontFamily:"inherit"}}>閉じる</button>
-          </div>
-          <input type="text" value={linkSearch} onChange={e=>setLinkSearch(e.target.value)} placeholder={`${linkType}を検索…`}
-            style={{width:"100%",padding:"0.4rem 0.6rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"inherit",boxSizing:"border-box",marginBottom:"0.4rem"}}/>
-          <div style={{maxHeight:200,overflow:"auto",display:"flex",flexDirection:"column",gap:"0.2rem"}}>
-            {candidates.length===0 && <div style={{fontSize:"0.72rem",color:C.textMuted,padding:"0.3rem"}}>該当なし</div>}
-            {candidates.map(c=>(
-              <button key={c.id} onClick={()=>{onLink(linkType, c.id, c.name); setLinkSearch("");}}
-                style={{padding:"0.4rem 0.55rem",borderRadius:5,border:`1px solid ${C.borderLight}`,background:"white",color:C.text,fontSize:"0.76rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>{c.name}</button>
-            ))}
+        <div onClick={(e)=>{if(e.target===e.currentTarget) setLinkType(null);}}
+          style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,0.5)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:"1rem"}}>
+          <div data-link-ui="true" style={{background:"white",borderRadius:12,padding:"1rem",maxWidth:480,width:"100%",maxHeight:"80vh",overflow:"auto",boxShadow:"0 10px 25px rgba(0,0,0,0.25)"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.75rem"}}>
+              <div style={{fontSize:"0.9rem",fontWeight:800,color:"#9a3412"}}>🔗 連携先を選択</div>
+              <button onClick={()=>setLinkType(null)} style={{padding:"0.25rem 0.55rem",borderRadius:5,border:`1px solid ${C.border}`,background:"white",color:C.textMuted,fontSize:"0.74rem",cursor:"pointer",fontFamily:"inherit"}}>✕ 閉じる</button>
+            </div>
+            {/* ✅ v207: メアドから推測した候補表示 */}
+            {(() => {
+              const myDomain = (currentUser?.email||"").split("@")[1]?.toLowerCase();
+              const allRelevantEmails = [
+                email.from?.email,
+                ...(email.to||[]).map(t=>t?.email),
+                ...(email.cc||[]).map(t=>t?.email),
+              ].filter(Boolean).map(e=>String(e).toLowerCase());
+              const externalEmails = allRelevantEmails.filter(e => myDomain ? !e.endsWith(`@${myDomain}`) : true);
+              
+              const suggestions = [];
+              // 1) contacts 完全一致
+              for (const c of (data.companies||[])) {
+                const ces = (c.contacts||[]).map(co=>(co.email||"").toLowerCase()).filter(Boolean);
+                if (externalEmails.some(e => ces.includes(e))) {
+                  suggestions.push({type:"企業", id:c.id, name:c.name, reason:"先方担当メアド一致"});
+                  if (suggestions.length >= 5) break;
+                }
+              }
+              if (suggestions.length < 5) for (const v of (data.vendors||[])) {
+                const ces = (v.contacts||[]).map(co=>(co.email||"").toLowerCase()).filter(Boolean);
+                if (externalEmails.some(e => ces.includes(e))) {
+                  suggestions.push({type:"業者", id:v.id, name:v.name, reason:"先方担当メアド一致"});
+                  if (suggestions.length >= 5) break;
+                }
+              }
+              // 2) 名刺メアドから検索
+              if (suggestions.length < 5) for (const card of (data.businessCards||[])) {
+                const cardEmail = (card.email||"").toLowerCase();
+                if (cardEmail && externalEmails.includes(cardEmail)) {
+                  const compName = card.company || "";
+                  if (compName) {
+                    const cc = (data.companies||[]).find(c=>c.name===compName || (c.name && (c.name.includes(compName)||compName.includes(c.name))));
+                    if (cc && !suggestions.find(s=>s.id===cc.id)) {
+                      suggestions.push({type:"企業", id:cc.id, name:cc.name, reason:`名刺(${card.lastName||""}${card.firstName||""})から推測`});
+                      if (suggestions.length >= 5) break;
+                    } else {
+                      const vv = (data.vendors||[]).find(v=>v.name===compName || (v.name && (v.name.includes(compName)||compName.includes(v.name))));
+                      if (vv && !suggestions.find(s=>s.id===vv.id)) {
+                        suggestions.push({type:"業者", id:vv.id, name:vv.name, reason:`名刺(${card.lastName||""}${card.firstName||""})から推測`});
+                        if (suggestions.length >= 5) break;
+                      }
+                    }
+                  }
+                }
+              }
+              // 3) ドメイン部分一致
+              if (suggestions.length < 5) {
+                const domains = [...new Set(externalEmails.map(e=>e.split("@")[1]).filter(Boolean))];
+                for (const dom of domains) {
+                  const domHead = dom.split(".")[0];
+                  if (!domHead || domHead.length < 3) continue;
+                  const cc = (data.companies||[]).find(c => c.name && c.name.toLowerCase().includes(domHead));
+                  if (cc && !suggestions.find(s=>s.id===cc.id)) {
+                    suggestions.push({type:"企業", id:cc.id, name:cc.name, reason:`ドメイン(${dom})から推測`});
+                    if (suggestions.length >= 5) break;
+                  }
+                  const vv = (data.vendors||[]).find(v => v.name && v.name.toLowerCase().includes(domHead));
+                  if (vv && !suggestions.find(s=>s.id===vv.id)) {
+                    suggestions.push({type:"業者", id:vv.id, name:vv.name, reason:`ドメイン(${dom})から推測`});
+                    if (suggestions.length >= 5) break;
+                  }
+                }
+              }
+              
+              if (suggestions.length === 0) return null;
+              return (
+                <div style={{marginBottom:"0.8rem",padding:"0.6rem",background:"#fef3c7",borderRadius:8,border:"1px solid #fcd34d"}}>
+                  <div style={{fontSize:"0.74rem",fontWeight:700,color:"#92400e",marginBottom:"0.4rem"}}>💡 候補（メールから自動推測）</div>
+                  <div style={{display:"flex",flexDirection:"column",gap:"0.3rem"}}>
+                    {suggestions.map((s,i)=>(
+                      <button key={`${s.type}-${s.id}-${i}`} onClick={()=>{onLink(s.type, s.id, s.name); setLinkType(null); setLinkSearch("");}}
+                        style={{padding:"0.5rem 0.65rem",borderRadius:6,border:"1px solid #f59e0b",background:"white",color:"#92400e",fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+                        <div>{s.type}: {s.name}</div>
+                        <div style={{fontSize:"0.65rem",color:C.textMuted,fontWeight:500,marginTop:"0.15rem"}}>{s.reason}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+            {/* 種別タブ */}
+            <div style={{fontSize:"0.72rem",fontWeight:700,color:C.textMuted,marginBottom:"0.4rem"}}>👇 候補にない場合は自分で選択</div>
+            <div style={{display:"flex",gap:"0.25rem",flexWrap:"wrap",marginBottom:"0.5rem"}}>
+              {["企業","業者","自治体","タスク","プロジェクト","名刺"].map(t=>(
+                <button key={t} onClick={()=>setLinkType(t)}
+                  style={{padding:"0.3rem 0.55rem",borderRadius:5,border:"none",background:linkType===t?C.accent:"#f3f4f6",color:linkType===t?"white":C.textSub,fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{t}</button>
+              ))}
+            </div>
+            <input type="text" value={linkSearch} onChange={e=>setLinkSearch(e.target.value)} placeholder={`${linkType}を検索…`} autoFocus
+              style={{width:"100%",padding:"0.5rem 0.65rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.82rem",fontFamily:"inherit",boxSizing:"border-box",marginBottom:"0.5rem"}}/>
+            <div style={{maxHeight:300,overflow:"auto",display:"flex",flexDirection:"column",gap:"0.25rem"}}>
+              {candidates.length===0 && <div style={{fontSize:"0.74rem",color:C.textMuted,padding:"0.4rem",textAlign:"center"}}>該当なし（検索キーワードを変えてみてください）</div>}
+              {candidates.map(c=>(
+                <button key={c.id} onClick={()=>{onLink(linkType, c.id, c.name); setLinkType(null); setLinkSearch("");}}
+                  style={{padding:"0.5rem 0.65rem",borderRadius:5,border:`1px solid ${C.borderLight}`,background:"white",color:C.text,fontSize:"0.8rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>{c.name}</button>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -30433,30 +30507,30 @@ function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
       ...extra,
     });
     
-    const allCompanies = (data?.companies || []).map(c => slimEntity(c));
-    const allVendors = (data?.vendors || []).map(v => slimEntity(v));
-    const allMunis = (data?.municipalities || []).map(m => slimEntity(m));
+    // ✅ v207: payload サイズ削減（Lambda 413 対策）
+    // 全件は最小情報のみ。詳細は preMatch でヒットしたものだけ
+    const allCompanies = (data?.companies || []).map(c => ({
+      id: c.id, name: c.name, status: c.status,
+      prefectureId: c.prefectureId, assignees: c.assignees,
+    }));
+    const allVendors = (data?.vendors || []).map(v => ({
+      id: v.id, name: v.name, status: v.status,
+      prefectureId: v.prefectureId, assignees: v.assignees,
+    }));
+    const allMunis = (data?.municipalities || []).map(m => ({
+      id: m.id, name: m.name, status: m.status,
+      prefectureId: m.prefectureId, assignees: m.assignees,
+    }));
     const allTasks = (data?.tasks || []).map(t => ({
       id: t.id, title: t.title, status: t.status, priority: t.priority,
-      dueDate: t.dueDate, assignees: t.assignees, assigneeIds: t.assigneeIds,
+      dueDate: t.dueDate, assignees: t.assignees,
       projectId: t.projectId, salesRef: t.salesRef,
       companyIds: t.companyIds, vendorIds: t.vendorIds, muniIds: t.muniIds,
-      description: (t.description||"").slice(0, 200),
-      memos: trimList(t.memos, 2).map(m => ({text: (m.text||m.content||"").slice(0,200), date: m.createdAt||m.date})),
-      comments: trimList(t.comments, 2).map(c => ({text: (c.text||c.content||"").slice(0,200), date: c.createdAt||c.date})),
-      chat: trimList(t.chat, 2).map(c => ({text: (c.text||c.content||"").slice(0,200), date: c.createdAt||c.date})),
-      changeLog: trimList(t.changeLog, 3).map(cl => ({field: cl.field, from: cl.from, to: cl.to, date: cl.createdAt||cl.date})),
-      createdAt: t.createdAt,
     }));
     const allProjects = (data?.projects || []).map(p => ({
-      id: p.id, name: p.name, status: p.status, description: (p.description||"").slice(0,200),
-      members: p.members, ownerIds: p.ownerIds,
+      id: p.id, name: p.name, status: p.status,
+      members: p.members,
       linkedCompanyIds: p.linkedCompanyIds, linkedVendorIds: p.linkedVendorIds, linkedMuniIds: p.linkedMuniIds,
-      memos: trimList(p.memos, 2).map(m => ({text: (m.text||m.content||"").slice(0,200), date: m.createdAt||m.date})),
-      chat: trimList(p.chat, 2).map(c => ({text: (c.text||c.content||"").slice(0,200), date: c.createdAt||c.date})),
-      comments: trimList(p.comments, 2).map(c => ({text: (c.text||c.content||"").slice(0,200), date: c.createdAt||c.date})),
-      changeLog: trimList(p.changeLog, 3).map(cl => ({field: cl.field, from: cl.from, to: cl.to, date: cl.createdAt||cl.date})),
-      createdAt: p.createdAt,
     }));
     
     // 連絡先情報
@@ -30532,8 +30606,7 @@ function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
       return false;
     };
     
-    // ✅ v205: フル業者データを参照する必要があるため、data.vendors/companies/munis を直接見る
-    // ヒットしたエンティティには status, assignees, nextAction などの追加情報も含める
+    // ✅ v207: ヒットしたエンティティのみ slimEntity でリッチデータ送信
     const collectMatchesWithContent = (collection, nameField="name") => {
       if (!keywords.length) return [];
       const matched = [];
@@ -30541,25 +30614,14 @@ function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
         const nameMatch = matches(ent[nameField]);
         const contentHits = matchesContent(ent);
         if (nameMatch || contentHits) {
+          // ヒット時は slimEntity でリッチ情報送信
           matched.push({
-            id: ent.id,
-            name: ent[nameField],
-            status: ent.status,
-            // ✅ v205: 追加情報（エージェントが豊富にデータ取れるように）
-            assignees: ent.assignees,
-            nextAction: ent.nextAction,
-            address: ent.address,
-            prefectureId: ent.prefectureId,
-            // 最新のメモ・議事録・アプローチを少量サンプリング (検索ヒットしてなくても)
-            recent_memos: (ent.memos||[]).slice(-2).map(m=>({text:(m.text||m.content||"").slice(0,150), date:m.createdAt||m.date})),
-            recent_mtg: (ent.mtgLogs||[]).slice(-2).map(m=>({title:m.title, content:(m.content||"").slice(0,150), date:m.createdAt||m.date})),
-            recent_approach: (ent.approachLogs||[]).slice(-3).map(a=>({type:a.type, note:(a.note||"").slice(0,150), date:a.createdAt||a.date})),
-            recent_changes: (ent.changeLog||[]).slice(-3).map(c=>({field:c.field, from:c.from, to:c.to, date:c.createdAt||c.date})),
+            ...slimEntity(ent),
             ...(contentHits ? { matched_content: contentHits.slice(0, 5) } : {}),
-            ...(nameMatch ? { matched_by: "name" } : { matched_by: "content" }),
+            matched_by: nameMatch ? "name" : "content",
           });
         }
-        if (matched.length >= 30) break;
+        if (matched.length >= 20) break; // 30 → 20 に削減
       }
       return matched;
     };
@@ -30779,16 +30841,12 @@ function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
         email: u.email, dept: u.dept, title: u.title, phone: u.phone,
         role: u.role, isAdmin: u.isAdmin,
       })),
-      // ✅ v206: 名刺（businessCards）の全情報
+      // ✅ v207: 名刺は最小情報のみ全件送信（ヒット時の詳細は pre_match.businessCards で取得）
       businessCards: (data?.businessCards || []).map(c => ({
         id: c.id,
-        name: `${c.lastName||""}${c.firstName||""}`.trim() || c.name,
-        lastName: c.lastName, firstName: c.firstName,
-        company: c.company, department: c.department, title: c.title,
-        email: c.email, mobile: c.mobile, telDirect: c.telDirect, telCompany: c.telCompany,
-        fax: c.fax, url: c.url, zip: c.zip, address: c.address,
-        owners: c.owners, exchangedAt: c.exchangedAt,
-        memos_excerpt: (c.memos||[]).slice(-1).map(m=>(m.text||m.content||"").slice(0,200)).join(""),
+        name: `${c.lastName||""}${c.firstName||""}`.trim(),
+        company: c.company,
+        email: c.email,
       })),
       // ✅ MyDesk 内既存ファイル一覧（資料作成時の参照元）
       existing_files: (() => {
@@ -30813,38 +30871,26 @@ function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
         collect("muni", "municipalities", data?.municipalities);
         collect("task", "tasks", data?.tasks);
         collect("project", "projects", data?.projects);
-        // 最新200件のみ送る（巨大化防止）
-        return out.slice(-200);
+        // ✅ v207: 最新50件のみ送る（payload 削減）
+        return out.slice(-50);
       })(),
-      // ✅ v206: メール（AI分析結果含む）
-      recent_emails_sample: (data?.emails || []).slice(-50).map(e => ({
+      // ✅ v207: メールサンプル削減（payload 削減のため 20件 / 本文 300文字）
+      recent_emails_sample: (data?.emails || []).slice(-20).map(e => ({
         id: e.id,
         from: e.from?.email || "",
-        from_name: e.from?.name || "",
-        to: (e.to || []).map(r => r?.email).filter(Boolean),
-        subject: e.subject || "",
-        body: (e.body || "").slice(0, 500),
+        subject: (e.subject||"").slice(0, 100),
+        body: (e.body || "").slice(0, 300),
         direction: e.direction,
-        sentAt: e.sentAt || e.receivedAt || e.createdAt,
-        // ✅ AI 分析結果
-        ai_summary: e.ai_summary,
         ai_category: e.ai_category,
         ai_priority: e.ai_priority,
-        ai_suggestions: e.ai_suggestions,
-        // 連携情報
-        linkedDisplay: e.linkedDisplay,
-        linkedCompanyIds: e.linkedCompanyIds,
-        linkedVendorIds: e.linkedVendorIds,
-        linkedMuniIds: e.linkedMuniIds,
-        isStarred: e.isStarred, isRead: e.isRead, isSpam: e.isSpam,
       })),
       // ✅ v206: 全メール件数とサマリ
       emails_total: (data?.emails || []).length,
-      // 自分が過去送ったメールから文体学習用サンプル
+      // ✅ v207: 文体学習サンプルも削減
       my_sent_emails: (data?.emails || [])
         .filter(e => e.direction === "outbound" && e.userId === currentUser?.id)
-        .slice(-20)
-        .map(e => ({to: (e.to||[]).map(r=>r?.email), subject: e.subject||"", body: (e.body||"").slice(0,1000)})),
+        .slice(-5)
+        .map(e => ({to: (e.to||[]).map(r=>r?.email), subject: e.subject||"", body: (e.body||"").slice(0,500)})),
       // ✅ v206: 文体サンプル登録分も送る
       email_styles: (data?.emailStyles || []).filter(s => !s.userId || s.userId === currentUser?.id).slice(-5).map(s => ({text: (s.text||"").slice(0,500)})),
       // ✅ v206: 都道府県マスター（フィルター・地域分析用）
