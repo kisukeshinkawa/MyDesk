@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v215-rAF-scroll-anchor-disable"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v216-bcardtab-allperiod"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -16651,10 +16651,12 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   // Handle navigation from notifications (company/vendor/muni)
   React.useEffect(()=>{
     if(!salesNavTarget) return;
+    // ✅ v216: tab パラメータ対応 (info / timeline / files / linked_cards / projects 等)
+    const desiredTab = salesNavTarget.tab || "timeline";
     if(salesNavTarget.type==="company"){
-      setSalesTab("company"); setActiveCompany(salesNavTarget.id); setActiveDetail("timeline");
+      setSalesTab("company"); setActiveCompany(salesNavTarget.id); setActiveDetail(desiredTab);
     } else if(salesNavTarget.type==="vendor"){
-      setSalesTab("vendor"); setActiveVendor(salesNavTarget.id); setActiveDetail("timeline");
+      setSalesTab("vendor"); setActiveVendor(salesNavTarget.id); setActiveDetail(desiredTab);
     } else if(salesNavTarget.type==="muni"){
       setSalesTab("muni");
       setActiveMuni(null); // いったんリセットして再レンダリング確実化
@@ -16662,7 +16664,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       const prefId = targetMuni?String(targetMuni.prefectureId):(salesNavTarget.prefId?String(salesNavTarget.prefId):null);
       if(prefId) setActivePref(prefId);
       setMuniScreen("top"); // 先にtopにして
-      setTimeout(()=>{ setActiveMuni(String(salesNavTarget.id)); setMuniScreen("muniDetail"); setActiveDetail("timeline"); }, 50);
+      setTimeout(()=>{ setActiveMuni(String(salesNavTarget.id)); setMuniScreen("muniDetail"); setActiveDetail(desiredTab); }, 50);
     }
     clearSalesNavTarget?.();
   },[salesNavTarget]);
@@ -19535,16 +19537,25 @@ ${recentLogs}
       return d;
     };
     const [dashView, setDashView] = dashPeriod==="week" ? ["week","week"] : ["month","month"];
-    // dashPeriod: "week" | "month"
+    // ✅ v216: dashPeriod: "week" | "month" | "all" (全期間)
     const periodStart = dashPeriod==="week"
       ? getWeekStart()
+      : dashPeriod==="all"
+      ? new Date(2000, 0, 1)
       : new Date(now.getFullYear(), now.getMonth(), 1);
     const periodEnd = dashPeriod==="week"
       ? new Date(getWeekStart().getTime() + 7*24*60*60*1000 - 1)
+      : dashPeriod==="all"
+      ? new Date(2100, 11, 31, 23, 59, 59)
       : new Date(now.getFullYear(), now.getMonth()+1, 0, 23, 59, 59);
-    const inPeriod = d => { const dt=new Date(d); return dt>=periodStart && dt<=periodEnd; };
+    const inPeriod = d => { 
+      if (dashPeriod === "all") return true; // 全期間 = 全てtrue
+      const dt=new Date(d); return dt>=periodStart && dt<=periodEnd; 
+    };
     const periodLabel = dashPeriod==="week"
       ? `${periodStart.getMonth()+1}/${periodStart.getDate()}〜${periodEnd.getMonth()+1}/${periodEnd.getDate()}`
+      : dashPeriod==="all"
+      ? `全期間`
       : `${now.getFullYear()}年${now.getMonth()+1}月`;
 
     // ── 全アプローチログ（期間内）
@@ -19612,9 +19623,9 @@ ${recentLogs}
       <div style={{paddingBottom:"1rem"}}>
         <TopTabs/>
 
-        {/* 期間切替 */}
+        {/* 期間切替 - ✅ v216: 全期間 追加 */}
         <div style={{display:"flex",background:"white",borderRadius:"8px",padding:"0.25rem",marginBottom:"1rem",border:`1px solid ${C.border}`,gap:"0.25rem"}}>
-          {[["week","📅 週間"],["month","📆 月間"]].map(([id,lbl])=>(
+          {[["week","📅 週間"],["month","📆 月間"],["all","📊 全期間"]].map(([id,lbl])=>(
             <button key={id} onClick={()=>setDashPeriod(id)}
               style={{flex:1,padding:"0.55rem",borderRadius:"0.625rem",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.82rem",background:dashPeriod===id?C.accent:"transparent",color:dashPeriod===id?"white":C.textSub,transition:"all 0.15s"}}>
               {lbl}
@@ -31545,13 +31556,15 @@ export default function App() {
           else if (target === "task") id = findOriginalId(data?.tasks);
           else if (target === "project") id = findOriginalId(data?.projects);
         }
-        console.log("[Agent] navigate_to resolved id:", id, typeof id);
+        console.log("[Agent] navigate_to resolved id:", id, typeof id, "tab:", params.tab);
+        // ✅ v216: tab パラメータ対応 (名刺タブ等への直接遷移)
+        const desiredTab = params.tab || params.subtab || null;
         if (target === "company" && id !== undefined) {
-          setNavTarget({type: "company", id});
+          setNavTarget({type: "company", id, tab: desiredTab});
         } else if (target === "vendor" && id !== undefined) {
-          setNavTarget({type: "vendor", id});
+          setNavTarget({type: "vendor", id, tab: desiredTab});
         } else if (target === "muni" && id !== undefined) {
-          setNavTarget({type: "muni", id});
+          setNavTarget({type: "muni", id, tab: desiredTab});
         } else if (target === "task" && id !== undefined) {
           setNavTarget({type: "task", id});
         } else if (target === "project" && id !== undefined) {
@@ -32027,9 +32040,10 @@ export default function App() {
   React.useEffect(()=>{
     if(!navTarget) return;
     if(navTarget.type==="task"||navTarget.type==="project") return; // handled by TaskView
-    if(navTarget.type==="company"){persistTab("md_tab","sales",setTab);persistTab("md_salesTab","company",setSalesTab);setSalesNavTarget({...navTarget});}
-    else if(navTarget.type==="vendor"){persistTab("md_tab","sales",setTab);persistTab("md_salesTab","vendor",setSalesTab);setSalesNavTarget({...navTarget});}
-    else if(navTarget.type==="muni"){persistTab("md_tab","sales",setTab);persistTab("md_salesTab","muni",setSalesTab);setSalesNavTarget({...navTarget});}
+    // ✅ v216: tab パラメータを salesNavTarget に伝播
+    if(navTarget.type==="company"){persistTab("md_tab","sales",setTab);persistTab("md_salesTab","company",setSalesTab);setSalesNavTarget({...navTarget, tab: navTarget.tab});}
+    else if(navTarget.type==="vendor"){persistTab("md_tab","sales",setTab);persistTab("md_salesTab","vendor",setSalesTab);setSalesNavTarget({...navTarget, tab: navTarget.tab});}
+    else if(navTarget.type==="muni"){persistTab("md_tab","sales",setTab);persistTab("md_salesTab","muni",setSalesTab);setSalesNavTarget({...navTarget, tab: navTarget.tab});}
     // task/project: navTarget はそのまま維持し、TaskViewのuseEffectで処理させる
     // タブ切り替え後にTaskViewがマウントされてから処理されるよう、clearNavTargetはTaskView側で呼ぶ
   },[navTarget]);
