@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v209-ai-summary-merged-reply"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v210b-scroll-debug-tasklink"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -8453,6 +8453,32 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
                 {activeTask.isPrivate&&<span style={{fontSize:"0.68rem",color:"#dc2626",fontWeight:700}}>🔒</span>}
                 {activeTask.sourceType==="email" && <span style={{fontSize:"0.65rem",fontWeight:700,color:"#1e40af",background:"#dbeafe",borderRadius:3,padding:"0.1rem 0.4rem"}}>📧 メール由来</span>}
                 {activeTask.aiGenerated && <span style={{fontSize:"0.62rem",fontWeight:700,color:"white",background:"#7c3aed",borderRadius:3,padding:"0.1rem 0.4rem"}}>AI</span>}
+                {/* ✅ v210: タスク詳細にも営業先バッジ表示（クリックで遷移） */}
+                {(() => {
+                  // salesRef または companyIds/vendorIds/muniIds から営業先を取得
+                  let linkType = null, linkId = null, linkName = null;
+                  if (activeTask.salesRef?.id) {
+                    linkType = activeTask.salesRef.type;
+                    linkId = activeTask.salesRef.id;
+                    linkName = activeTask.salesRef.name;
+                  } else if ((activeTask.companyIds||[]).length > 0) {
+                    linkType = "企業"; linkId = activeTask.companyIds[0];
+                    linkName = (data.companies||[]).find(c => String(c.id) === String(linkId))?.name;
+                  } else if ((activeTask.vendorIds||[]).length > 0) {
+                    linkType = "業者"; linkId = activeTask.vendorIds[0];
+                    linkName = (data.vendors||[]).find(v => String(v.id) === String(linkId))?.name;
+                  } else if ((activeTask.muniIds||[]).length > 0) {
+                    linkType = "自治体"; linkId = activeTask.muniIds[0];
+                    linkName = (data.municipalities||[]).find(m => String(m.id) === String(linkId))?.name;
+                  }
+                  if (!linkType || !linkId) return null;
+                  const badgeColor = {"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"}[linkType] || C.accent;
+                  return (
+                    <span style={{fontSize:"0.7rem",fontWeight:700,color:"white",background:badgeColor,borderRadius:999,padding:"0.15rem 0.55rem"}}>
+                      🔗 {linkType}: {linkName || linkId}
+                    </span>
+                  );
+                })()}
               </div>
             </div>
           </div>
@@ -9662,13 +9688,29 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
 // ─── EMAIL VIEW ───────────────────────────────────────────────────────────────
 // ─── EMAIL DETAIL PANE: メール詳細＋AI返信＋エンティティ連携 ──────────────
 function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onMarkSpam, onGenerateReply, aiBusy, onLink, onUnlink, data, setData, scheduleSaveData, currentUser, fmtFull, onSend, sendBusy }) {
-  // ✅ v209: メール詳細を開いた時、必ず上端から表示
+  // ✅ v210: メール詳細を開いた時、全てのスクロール可能な祖先要素を上端にスクロール
+  const rootRef = React.useRef(null);
   React.useEffect(()=>{
-    try {
-      if (typeof window !== "undefined" && window.scrollTo) {
-        window.scrollTo({top: 0, behavior: "instant"});
-      }
-    } catch(_) {}
+    const scrollAllToTop = () => {
+      try {
+        if (typeof window !== "undefined" && window.scrollTo) window.scrollTo({top: 0, behavior: "instant"});
+        if (document.scrollingElement) document.scrollingElement.scrollTop = 0;
+        if (document.documentElement) document.documentElement.scrollTop = 0;
+        if (document.body) document.body.scrollTop = 0;
+        // メール詳細のルート要素から祖先を辿って scrollTop=0 にする
+        let el = rootRef.current;
+        while (el) {
+          if (el.scrollHeight > el.clientHeight + 1) el.scrollTop = 0;
+          el = el.parentElement;
+        }
+      } catch(_) {}
+    };
+    scrollAllToTop();
+    // React レンダリング後にも再実行
+    const t1 = requestAnimationFrame(scrollAllToTop);
+    const t2 = setTimeout(scrollAllToTop, 50);
+    const t3 = setTimeout(scrollAllToTop, 150);
+    return () => { cancelAnimationFrame(t1); clearTimeout(t2); clearTimeout(t3); };
   }, [email?.id]);
   const [linkType, setLinkType] = React.useState(null); // 企業/業者/自治体/タスク/プロジェクト/名刺
   const [linkSearch, setLinkSearch] = React.useState("");
@@ -9852,7 +9894,7 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onMarkSpam,
   };
 
   return (
-    <div style={{background:"white",borderRadius:"10px",padding:"0.9rem",border:`1px solid ${C.borderLight}`,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+    <div ref={rootRef} data-email-detail-root style={{background:"white",borderRadius:"10px",padding:"0.9rem",border:`1px solid ${C.borderLight}`,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
       {/* ヘッダー（ツールバー: ✅ v202 簡素化版 - 主要3ボタン + ⋯ メニュー） */}
       <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginBottom:"0.65rem",flexWrap:"wrap",position:"relative"}}>
         <button onClick={onClose} style={{padding:"0.3rem 0.55rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.74rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>← 戻る</button>
@@ -9896,13 +9938,16 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onMarkSpam,
                 setShowMoreMenu(false);
               }}
                 style={{padding:"0.4rem 0.75rem",borderRadius:6,border:`1px solid ${C.border}`,background:linkType?"#fff7ed":"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🔗 連携</button>
-              {/* ✅ v209: メール → タスク化 + 既存タスクがある場合はラベル変更 */}
+              {/* ✅ v210: メール → タスク化 + 既存タスクがある場合はラベル変更（ID 型を統一して比較） */}
               {(() => {
-                const existingTaskForLabel = (data.tasks||[]).find(t => t.emailRef?.emailId === email.id);
+                const existingTaskForLabel = (data.tasks||[]).find(t => String(t.emailRef?.emailId||"") === String(email.id||""));
+                if (typeof window !== "undefined") {
+                  window.__taskLabelDebug = {emailId: email.id, found: !!existingTaskForLabel, tasksWithEmailRef: (data.tasks||[]).filter(t=>t.emailRef).map(t=>({id:t.id, emailId:t.emailRef?.emailId, title:t.title}))};
+                }
                 return (
               <button onClick={()=>{
-              // ✅ v203: 重複防止 - このメールから既にタスクを作成してないか確認
-              const existingTask = (data.tasks||[]).find(t => t.emailRef?.emailId === email.id);
+              // ✅ v203: 重複防止 - このメールから既にタスクを作成してないか確認 (v210: ID 型統一)
+              const existingTask = (data.tasks||[]).find(t => String(t.emailRef?.emailId||"") === String(email.id||""));
               if (existingTask) {
                 if (!window.confirm(`⚠️ このメールから既にタスク「${existingTask.title}」が作成されています。\n\n新しく作成しますか？\n\nキャンセル: 既存タスクを開く`)) {
                   // 既存タスクへ遷移
@@ -9943,62 +9988,14 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onMarkSpam,
                 const typeMap = {"企業":"companies", "業者":"vendors", "自治体":"municipalities"};
                 const ent = (data[typeMap[autoLinkType]]||[]).find(e=>String(e.id)===String(autoLinkId));
                 if (ent) autoLinkName = ent.name;
-              } else {
-                // 送信元・宛先のメアドから営業先を検索（フォールバック）
-                const allRelevantEmails = [
-                  email.from?.email,
-                  ...(email.to||[]).map(t=>t?.email),
-                  ...(email.cc||[]).map(t=>t?.email),
-                ].filter(Boolean).map(e=>String(e).toLowerCase());
-                const myDomain = (currentUser?.email||"").split("@")[1]?.toLowerCase();
-                const externalEmails = allRelevantEmails.filter(e => !e.endsWith(`@${myDomain}`));
-                
-                // 企業 contacts
-                for (const c of (data.companies||[])) {
-                  const ces = (c.contacts||[]).map(co=>(co.email||"").toLowerCase()).filter(Boolean);
-                  if (externalEmails.some(e => ces.includes(e))) {
-                    autoLinkType="企業"; autoLinkId=c.id; autoLinkName=c.name; break;
-                  }
-                }
-                if (!autoLinkType) for (const v of (data.vendors||[])) {
-                  const ces = (v.contacts||[]).map(co=>(co.email||"").toLowerCase()).filter(Boolean);
-                  if (externalEmails.some(e => ces.includes(e))) {
-                    autoLinkType="業者"; autoLinkId=v.id; autoLinkName=v.name; break;
-                  }
-                }
-                if (!autoLinkType) for (const m of (data.municipalities||[])) {
-                  const ces = (m.govContacts||[]).map(co=>(co.email||"").toLowerCase()).filter(Boolean);
-                  if (externalEmails.some(e => ces.includes(e))) {
-                    autoLinkType="自治体"; autoLinkId=m.id; autoLinkName=m.name; break;
-                  }
-                }
-                // 名刺メアド一致
-                if (!autoLinkType) {
-                  for (const card of (data.businessCards||[])) {
-                    const cardEmail = (card.email||"").toLowerCase();
-                    if (cardEmail && externalEmails.includes(cardEmail)) {
-                      const compName = card.company || "";
-                      if (compName) {
-                        const cc = (data.companies||[]).find(c=>c.name===compName || (c.name && (c.name.includes(compName)||compName.includes(c.name))));
-                        if (cc) { autoLinkType="企業"; autoLinkId=cc.id; autoLinkName=cc.name; break; }
-                        const vv = (data.vendors||[]).find(v=>v.name===compName || (v.name && (v.name.includes(compName)||compName.includes(v.name))));
-                        if (vv) { autoLinkType="業者"; autoLinkId=vv.id; autoLinkName=vv.name; break; }
-                      }
-                    }
-                  }
-                }
-                // ドメイン部分一致
-                if (!autoLinkType) {
-                  const domains = [...new Set(externalEmails.map(e=>e.split("@")[1]).filter(Boolean))];
-                  for (const dom of domains) {
-                    const domHead = dom.split(".")[0];
-                    if (!domHead || domHead.length < 3) continue;
-                    const cc = (data.companies||[]).find(c => c.name && c.name.toLowerCase().includes(domHead));
-                    if (cc) { autoLinkType="企業"; autoLinkId=cc.id; autoLinkName=cc.name; break; }
-                    const vv = (data.vendors||[]).find(v => v.name && v.name.toLowerCase().includes(domHead));
-                    if (vv) { autoLinkType="業者"; autoLinkId=vv.id; autoLinkName=vv.name; break; }
-                  }
-                }
+              }
+              
+              // ✅ v210: 連携されてなければ警告して停止（営業先がない状態を防ぐ）
+              console.log("[タスク化] autoLink:", {autoLinkType, autoLinkId, autoLinkName, linkedCompanyIds: email.linkedCompanyIds, linkedVendorIds: email.linkedVendorIds, linkedMuniIds: email.linkedMuniIds});
+              if (!autoLinkType) {
+                alert("📌 先にメールを営業先と連携してください。\n\n手順:\n1. メール上部の「⋯ その他」→「🔗 連携」ボタンをタップ\n2. 営業先（企業・業者・自治体）を選択\n3. 連携完了後、再度「📋 タスク化」をタップ");
+                setShowMoreMenu(false);
+                return;
               }
               
               const newTask = {
@@ -10063,28 +10060,36 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onMarkSpam,
               // ✅ v209: AI で要約生成
               let mtgContent = `${senderName} とのメールやりとり\n\n${(email.body||"").slice(0, 800)}`;
               try {
-                const prompt = `以下のメール内容を商談記録（議事録）として要約してください。
+                const prompt = `以下のメールを商談記録として超簡潔にまとめてください。
 
-【メール情報】
-差出人: ${senderName} <${email.from?.email||""}>
+【メール】
+差出人: ${senderName}
 件名: ${email.subject||""}
-日時: ${email.sentAt || email.receivedAt || email.createdAt || ""}
 本文:
-${(email.body||"").slice(0, 3000)}
+${(email.body||"").slice(0, 2000)}
 
-【要約のルール】
-- 商談記録として重要なポイントだけを箇条書きで
-- 次のアクション項目があれば「次のアクション:」として明記
-- 価格・数量・条件などの数値は省略しない
-- 不要な定型挨拶・引用部分は除外
-- 全体で300〜500文字程度
-- 「以下の要約です」などの前置きは不要、本文のみ
+【厳守ルール】
+- **最大80文字、3行以内**
+- 1行目: メールの核心 (例: 見積依頼受領 / 提案書送付 / 日程調整 など)
+- 2行目: 重要な数値・日付 (あれば)
+- 3行目: 次のアクション (あれば「次: 〜」)
+- 挨拶・敬語・引用・前置きは完全除外
+- 「以下の要約」「要約します」などの前置き禁止
+- マークダウン記号 (* # など) 使用禁止
 
-【要約】`;
+【良い例】
+見積依頼受領、6/30まで
+次: 見積書作成し送付
+
+【悪い例】（長すぎ、装飾あり）
+**要約：** 〜様より、〜の見積依頼をいただきました。期限は6月30日です。
+次のアクションは、見積書を作成し、送付することです。
+
+【要約のみ出力】`;
                 const res = await fetch(`${API_BASE}/api/generate-email`, {
                   method: "POST",
                   headers: {"Content-Type": "application/json", "x-mydesk-secret": "mydesk2026"},
-                  body: JSON.stringify({prompt, max_tokens: 600})
+                  body: JSON.stringify({prompt, max_tokens: 200})
                 });
                 if (res.ok) {
                   const j = await res.json();
@@ -10639,16 +10644,41 @@ function EmailView({data,setData,currentUser=null}) {
       clearTimeout(readTimerRef.current);
       readTimerRef.current = null;
     }
-    // ✅ v209: メール一覧のスクロール位置を保存 (戻る時に復元)
+    // ✅ v210: メール一覧のスクロール位置を保存 (戻る時に復元)
+    // iOS PWA/Safari でも動くように document.scrollingElement を使う
+    const getScroller = () => {
+      try {
+        return document.scrollingElement || document.documentElement || document.body;
+      } catch { return null; }
+    };
     try {
       if (typeof window !== "undefined") {
-        window.__myDeskMbListScroll = window.scrollY || document.documentElement.scrollTop || 0;
+        const sc = getScroller();
+        const pos = sc ? sc.scrollTop : (window.scrollY || 0);
+        window.__myDeskMbListScroll = pos;
+        window.__myDeskLastSelectedEmailId = emailId;
+        console.log("[scroll-save] saved position:", pos);
       }
     } catch(_) {}
     setMbSelectedId(emailId);
-    // メール詳細を開いた時、ページの一番上にスクロール
+    // メール詳細を開いた時、ページの一番上にスクロール (確実に上端から表示)
     requestAnimationFrame(()=>{
-      try { window.scrollTo({top: 0, behavior: "instant"}); } catch { window.scrollTo(0, 0); }
+      try {
+        const sc = getScroller();
+        if (sc) sc.scrollTop = 0;
+        if (window.scrollTo) window.scrollTo({top: 0, behavior: "instant"});
+      } catch { try{window.scrollTo(0, 0);}catch(_){} }
+      // メール詳細のスクロール可能なコンテナがあれば 0 に
+      try {
+        const detail = document.querySelector('[data-email-detail-root]');
+        if (detail) detail.scrollTop = 0;
+        // 親 要素 も
+        let p = detail?.parentElement;
+        while (p) {
+          if (p.scrollHeight > p.clientHeight) { p.scrollTop = 0; }
+          p = p.parentElement;
+        }
+      } catch(_) {}
     });
     // バックグラウンドでこのメールの最新DB情報を取得（AI分析など更新されてる可能性）
     if (typeof emailId === "number" || (typeof emailId === "string" && /^\d+$/.test(emailId))) {
@@ -12014,10 +12044,30 @@ ${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
                               alert('🚫 迷惑メールに移動しました');
                             }
                           }
-                          // ✅ v209: メール一覧を開いた時のスクロール位置を復元（迷惑登録時はメール詳細にいるので window.scrollY じゃダメ）
-                          const savedScroll = (typeof window !== "undefined" && window.__myDeskMbListScroll) || 0;
+                          // ✅ v210 改: 迷惑登録するとメールが消えるので、保存したスクロール位置を直接復元
+                          const savedScroll = (typeof window !== "undefined") ? (window.__myDeskMbListScroll || 0) : 0;
+                          console.log("[scroll-restore] target:", savedScroll);
                           setMbSelectedId(null);
-                          setTimeout(()=>{try{if(savedScroll&&window.scrollTo)window.scrollTo({top:savedScroll,behavior:"instant"});}catch(_){}},80);
+                          // setMbSelectedId が反映されてレイアウトが戻ってから復元
+                          setTimeout(()=>{
+                            try {
+                              const sc = document.scrollingElement || document.documentElement || document.body;
+                              if (sc) {
+                                sc.scrollTop = savedScroll;
+                                console.log("[scroll-restore] applied:", sc.scrollTop);
+                              }
+                              if (window.scrollTo) window.scrollTo({top: savedScroll, behavior: "instant"});
+                            } catch(_) {}
+                          }, 100);
+                          // フォールバック: 念のため少し後にもう一回
+                          setTimeout(()=>{
+                            try {
+                              const sc = document.scrollingElement || document.documentElement || document.body;
+                              if (sc && Math.abs(sc.scrollTop - savedScroll) > 50) {
+                                sc.scrollTop = savedScroll;
+                              }
+                            } catch(_) {}
+                          }, 400);
                         } else {
                           // ✅ v208: 解除時に明確なフィードバック
                           alert(`✓ 迷惑メールから戻しました\n返信や対応ができるようになりました！`);
@@ -12127,10 +12177,28 @@ ${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
                               alert('🚫 迷惑メールに移動しました');
                             }
                           }
-                          // ✅ v209: メール一覧を開いた時のスクロール位置を復元
-                          const savedScrollB = (typeof window !== "undefined" && window.__myDeskMbListScroll) || 0;
+                          // ✅ v210 改: 保存したスクロール位置を直接復元（モバイル版）
+                          const savedScrollB = (typeof window !== "undefined") ? (window.__myDeskMbListScroll || 0) : 0;
+                          console.log("[scroll-restore-mobile] target:", savedScrollB);
                           setMbSelectedId(null);
-                          setTimeout(()=>{try{if(savedScrollB&&window.scrollTo)window.scrollTo({top:savedScrollB,behavior:"instant"});}catch(_){}},80);
+                          setTimeout(()=>{
+                            try {
+                              const sc = document.scrollingElement || document.documentElement || document.body;
+                              if (sc) {
+                                sc.scrollTop = savedScrollB;
+                                console.log("[scroll-restore-mobile] applied:", sc.scrollTop);
+                              }
+                              if (window.scrollTo) window.scrollTo({top: savedScrollB, behavior: "instant"});
+                            } catch(_) {}
+                          }, 100);
+                          setTimeout(()=>{
+                            try {
+                              const sc = document.scrollingElement || document.documentElement || document.body;
+                              if (sc && Math.abs(sc.scrollTop - savedScrollB) > 50) {
+                                sc.scrollTop = savedScrollB;
+                              }
+                            } catch(_) {}
+                          }, 400);
                         } else {
                           // ✅ v208: 解除時に明確なフィードバック
                           alert(`✓ 迷惑メールから戻しました\n返信や対応ができるようになりました！`);
@@ -12190,7 +12258,7 @@ ${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
                   const peer = e.direction==="inbound" ? getDisplayName(e.from?.email, e.from?.name) : getDisplayName((e.to||[])[0]?.email, (e.to||[])[0]?.name);
                   const needsRep = needsReplySoon(e);
                   return (
-                    <div key={e.id} onClick={()=>selectEmailWithDelayedRead(e.id, isUnread)}
+                    <div key={e.id} data-email-id={e.id} onClick={()=>selectEmailWithDelayedRead(e.id, isUnread)}
                       style={{display:"flex",alignItems:"flex-start",gap:"0.6rem",padding:"0.65rem 0.8rem",background:isUnread?"#fff7ed":"white",borderRadius:"8px",border:`1px solid ${needsRep?"#fca5a5":C.borderLight}`,cursor:"pointer",boxShadow:"0 1px 2px rgba(0,0,0,0.03)",transition:"all 0.1s"}}>
                       <button onClick={ev=>{ev.stopPropagation();updateEmailField(e.id,{isStarred:!e.isStarred});}}
                         style={{padding:0,border:"none",background:"none",cursor:"pointer",fontSize:"1rem",lineHeight:1,flexShrink:0,color:e.isStarred?"#eab308":C.borderLight}}>{e.isStarred?"⭐":"☆"}</button>
