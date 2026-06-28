@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v208-fix-minutes-spam-aireply"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v209-ai-summary-merged-reply"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -9662,6 +9662,14 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
 // ─── EMAIL VIEW ───────────────────────────────────────────────────────────────
 // ─── EMAIL DETAIL PANE: メール詳細＋AI返信＋エンティティ連携 ──────────────
 function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onMarkSpam, onGenerateReply, aiBusy, onLink, onUnlink, data, setData, scheduleSaveData, currentUser, fmtFull, onSend, sendBusy }) {
+  // ✅ v209: メール詳細を開いた時、必ず上端から表示
+  React.useEffect(()=>{
+    try {
+      if (typeof window !== "undefined" && window.scrollTo) {
+        window.scrollTo({top: 0, behavior: "instant"});
+      }
+    } catch(_) {}
+  }, [email?.id]);
   const [linkType, setLinkType] = React.useState(null); // 企業/業者/自治体/タスク/プロジェクト/名刺
   const [linkSearch, setLinkSearch] = React.useState("");
   const [replyMode, setReplyMode] = React.useState(null); // null | "reply" | "replyAll" | "forward"
@@ -9772,7 +9780,13 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onMarkSpam,
       setReplyBcc([]);
       // 引用付き本文
       const quoted = `\n\n--- 元のメッセージ ---\nFrom: ${email.from?.name||""} <${email.from?.email||""}>\nDate: ${fmtFull(email.sentAt||email.receivedAt||email.createdAt)}\n\n${(email.body||"").split("\n").map(l=>"> "+l).join("\n")}`;
-      setReplyBody(quoted);
+      // ✅ v209: AI 分析で生成された返信ドラフトが既にあれば本文に入れる
+      const aiDraft = email.ai_draft_reply || aiData?.ai_draft_reply || "";
+      if (aiDraft && aiDraft.trim()) {
+        setReplyBody(aiDraft.trim() + quoted);
+      } else {
+        setReplyBody(quoted);
+      }
     }
   };
 
@@ -9855,94 +9869,7 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onMarkSpam,
               <button onClick={()=>openReplyForm("forward")}
                 style={{padding:"0.4rem 0.75rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>→ 転送</button>
             )}
-            {/* ✅ v197: AI 返信ドラフト生成（受信メールのみ常時表示） */}
-            {isInbound && (
-              <button onClick={async()=>{
-                if (aiReplying) return;
-                setAiReplying(true);
-                try {
-                  // ✅ v208: openReplyForm は生成完了後に呼ぶ
-                  // （先に呼ぶと replyMode=true になり、AI返信ボタンが即非表示で「生成中」が見えない）
-                  // AI に返信案を生成依頼
-                  const myName = currentUser?.name || "";
-                  const myEmailAddr = (currentUser?.email||"").toLowerCase();
-                  const uid = currentUser?.id;
-                  const allEmails = data.emails || [];
-                  // 過去の同じ宛先メールから文体学習
-                  const targetEmail = (email.from?.email||"").toLowerCase();
-                  const targetDomain = targetEmail.split("@")[1] || "";
-                  const isInternalReply = targetEmail.endsWith("@beetle-ems.com");
-                  const sameRecipientEmails = allEmails
-                    .filter(e => e.direction === "outbound" && e.body && (e._accountEmail||"").toLowerCase() === myEmailAddr)
-                    .filter(e => (e.to||[]).some(t => {
-                      const d = (t?.email||"").split("@")[1]?.toLowerCase();
-                      return d === targetDomain;
-                    }))
-                    .slice(-5);
-                  const allMyOutbound = allEmails
-                    .filter(e => e.direction === "outbound" && e.body && (e._accountEmail||"").toLowerCase() === myEmailAddr)
-                    .slice(-10);
-                  const styleSamples = (sameRecipientEmails.length > 0 ? sameRecipientEmails : allMyOutbound)
-                    .map(e => (e.body||"").slice(0, 300)).join("\n---\n");
-                  
-                  const senderName = email.from?.name || email.from?.email || "";
-                  const cleanedName = senderName.replace(/[(（].+?[)）]/g, "").replace(/様|さん|殿/g, "").trim();
-                  const surname = cleanedName.split(/[\s　]/)[0] || cleanedName;
-                  
-                  const prompt = `以下の受信メールに対して、返信メールを作成してください。
-
-【受信メール】
-差出人: ${senderName} <${email.from?.email||""}>
-件名: ${email.subject||""}
-本文:
-${(email.body||"").slice(0, 2000)}
-
-【あなたの情報】
-名前: ${myName}
-所属: 株式会社西原商事ホールディングス DUSTALK事業部
-
-【過去に同じ相手・近い宛先に送った私のメール（口調を真似てください）】
-${styleSamples}
-
-【返信のルール】
-- 宛名は「${isInternalReply ? cleanedName + "さん" : surname + "様"}」で始める
-- ${isInternalReply ? "社内向け：簡潔に。「お疲れ様です」で始めても良い。" : "社外向け：「いつもお世話になっております。」で始める。"}
-- 私の文体サンプルから自然な口調を選んで使う
-- 「誠に」「どうぞ」は使わない
-- 押し売り感を出さない
-- 署名は「${myName}」のみ
-- 返信内容のみを書いて。引用や前置きはなし
-
-【生成】`;
-                  
-                  // ✅ v198: モジュールトップレベルの API_BASE を使う (再定義しない)
-                  // ✅ v203: 認証ヘッダー修正 (mydesk2026 が正しい / 既存呼び出しと統一)
-                  const res = await fetch(`${API_BASE}/api/generate-email`, {
-                    method: "POST",
-                    headers: {"Content-Type": "application/json", "x-mydesk-secret": "mydesk2026"},
-                    body: JSON.stringify({prompt, max_tokens: 800})
-                  });
-                  if (!res.ok) throw new Error(`AI 生成失敗: ${res.status}`);
-                  const j = await res.json();
-                  const generatedText = j.text || j.body || j.message || j.content || "";
-                  // ✅ v208: 生成完了後に返信フォームを開く
-                  openReplyForm("reply");
-                  if (generatedText) {
-                    // 返信本文に AI 生成テキストを入れる（引用の前に挿入）
-                    const quoted = `\n\n--- 元のメッセージ ---\nFrom: ${email.from?.name||""} <${email.from?.email||""}>\nDate: ${fmtFull(email.sentAt||email.receivedAt||email.createdAt)}\n\n${(email.body||"").split("\n").map(l=>"> "+l).join("\n")}`;
-                    // 返信フォーム描画後にテキスト挿入（React再レンダリング待ち）
-                    setTimeout(()=>setReplyBody(generatedText + quoted), 50);
-                  }
-                } catch(e) {
-                  alert(`AI返信生成エラー: ${e.message}`);
-                } finally {
-                  setAiReplying(false);
-                }
-              }} disabled={aiReplying}
-                style={{padding:"0.4rem 0.85rem",borderRadius:6,border:"none",background:aiReplying?"#9ca3af":"#7c3aed",color:"white",fontSize:"0.78rem",fontWeight:800,cursor:aiReplying?"wait":"pointer",fontFamily:"inherit"}}>
-                {aiReplying ? "⏳ 生成中..." : "💡 AI返信"}
-              </button>
-            )}
+            {/* ✅ v209: AI返信ボタン削除 - 返信ボタン押下時に ai_draft_reply を自動挿入する仕様に */}
             {/* === ⋯ その他メニュー === */}
             <button onClick={()=>setShowMoreMenu(v=>!v)}
               style={{padding:"0.4rem 0.7rem",borderRadius:6,border:`1px solid ${C.border}`,background:showMoreMenu?"#f3f4f6":"white",color:C.textSub,fontSize:"0.78rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>⋯ その他</button>
@@ -9969,8 +9896,11 @@ ${styleSamples}
                 setShowMoreMenu(false);
               }}
                 style={{padding:"0.4rem 0.75rem",borderRadius:6,border:`1px solid ${C.border}`,background:linkType?"#fff7ed":"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🔗 連携</button>
-            {/* ✅ v197: メール → タスク化 + v203 改善版（重複防止、メール連携先から紐付け） */}
-            <button onClick={()=>{
+              {/* ✅ v209: メール → タスク化 + 既存タスクがある場合はラベル変更 */}
+              {(() => {
+                const existingTaskForLabel = (data.tasks||[]).find(t => t.emailRef?.emailId === email.id);
+                return (
+              <button onClick={()=>{
               // ✅ v203: 重複防止 - このメールから既にタスクを作成してないか確認
               const existingTask = (data.tasks||[]).find(t => t.emailRef?.emailId === email.id);
               if (existingTask) {
@@ -10097,9 +10027,11 @@ ${styleSamples}
               }
               setShowMoreMenu(false);
             }}
-              style={{padding:"0.4rem 0.75rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>📋 タスク化</button>
-            {/* ✅ v197: メール → 議事録化（連携営業先に保存、v204 新形式対応版） */}
-            <button onClick={()=>{
+              style={{padding:"0.4rem 0.75rem",borderRadius:6,border:`1px solid ${C.border}`,background:existingTaskForLabel?"#dcfce7":"white",color:existingTaskForLabel?"#15803d":C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{existingTaskForLabel ? "✅ タスク作成済み" : "📋 タスク化"}</button>
+                );
+              })()}
+            {/* ✅ v209: メール → 議事録化（AI要約版） */}
+            <button onClick={async()=>{
               // ✅ v204: 新形式 (linkedCompanyIds等) と旧形式 (linkedEntityType) の両方をチェック
               let entityType = null;
               let entityId = null;
@@ -10121,40 +10053,79 @@ ${styleSamples}
               }
               const senderName = email.from?.name || email.from?.email || "";
               const mtgTitle = `📧 ${(email.subject||"メール").slice(0, 40)}`;
-              const mtgContent = `${senderName} とのメールやりとり\n\n${(email.body||"").slice(0, 800)}`;
-              if (window.confirm(`📝 このメール内容を議事録として保存しますか？\n\n連携先: ${entityType}\nタイトル: ${mtgTitle}`)) {
-                const typeMap = {"企業":"companies", "業者":"vendors", "自治体":"municipalities"};
-                const key = typeMap[entityType];
-                if (!key) { alert("エンティティ種別が不明です: " + entityType); return; }
-                const nd = { ...data };
-                let updated = false;
-                let targetName = "";
-                nd[key] = (nd[key]||[]).map(e => {
-                  if (String(e.id) !== String(entityId)) return e;
-                  updated = true;
-                  targetName = e.name;
-                  const newMtg = {
-                    id: Date.now(),
-                    title: mtgTitle,
-                    content: mtgContent,
-                    userId: currentUser?.id,
-                    createdBy: currentUser?.id,
-                    date: new Date().toISOString(),
-                    createdAt: new Date().toISOString(),
-                    emailRef: { emailId: email.id, subject: email.subject },
-                  };
-                  return { ...e, mtgLogs: [...(e.mtgLogs||[]), newMtg] };
-                });
-                if (!updated) {
-                  alert(`連携先（${entityType} ID:${entityId}）が見つかりませんでした`);
-                  setShowMoreMenu(false);
-                  return;
-                }
-                setData(nd);
-                if (typeof scheduleSaveData === "function") scheduleSaveData(nd);
-                alert(`✅ 議事録に追加しました\n\n連携先: ${entityType} ${targetName}\n営業先の議事録タブで確認できます。`);
+              if (!window.confirm(`📝 このメール内容を AI で要約して議事録にしますか？\n\n連携先: ${entityType}\nタイトル: ${mtgTitle}`)) {
+                setShowMoreMenu(false);
+                return;
               }
+              
               setShowMoreMenu(false);
+              
+              // ✅ v209: AI で要約生成
+              let mtgContent = `${senderName} とのメールやりとり\n\n${(email.body||"").slice(0, 800)}`;
+              try {
+                const prompt = `以下のメール内容を商談記録（議事録）として要約してください。
+
+【メール情報】
+差出人: ${senderName} <${email.from?.email||""}>
+件名: ${email.subject||""}
+日時: ${email.sentAt || email.receivedAt || email.createdAt || ""}
+本文:
+${(email.body||"").slice(0, 3000)}
+
+【要約のルール】
+- 商談記録として重要なポイントだけを箇条書きで
+- 次のアクション項目があれば「次のアクション:」として明記
+- 価格・数量・条件などの数値は省略しない
+- 不要な定型挨拶・引用部分は除外
+- 全体で300〜500文字程度
+- 「以下の要約です」などの前置きは不要、本文のみ
+
+【要約】`;
+                const res = await fetch(`${API_BASE}/api/generate-email`, {
+                  method: "POST",
+                  headers: {"Content-Type": "application/json", "x-mydesk-secret": "mydesk2026"},
+                  body: JSON.stringify({prompt, max_tokens: 600})
+                });
+                if (res.ok) {
+                  const j = await res.json();
+                  const summary = j.text || j.body || j.message || j.content || "";
+                  if (summary) {
+                    mtgContent = summary.trim();
+                  }
+                }
+              } catch(err) {
+                console.warn("[議事録化] AI 要約失敗、生メール使用:", err);
+              }
+              
+              const typeMap = {"企業":"companies", "業者":"vendors", "自治体":"municipalities"};
+              const key = typeMap[entityType];
+              if (!key) { alert("エンティティ種別が不明です: " + entityType); return; }
+              const nd = { ...data };
+              let updated = false;
+              let targetName = "";
+              nd[key] = (nd[key]||[]).map(e => {
+                if (String(e.id) !== String(entityId)) return e;
+                updated = true;
+                targetName = e.name;
+                const newMtg = {
+                  id: Date.now(),
+                  title: mtgTitle,
+                  content: mtgContent,
+                  userId: currentUser?.id,
+                  createdBy: currentUser?.id,
+                  date: new Date().toISOString(),
+                  createdAt: new Date().toISOString(),
+                  emailRef: { emailId: email.id, subject: email.subject },
+                };
+                return { ...e, mtgLogs: [...(e.mtgLogs||[]), newMtg] };
+              });
+              if (!updated) {
+                alert(`連携先（${entityType} ID:${entityId}）が見つかりませんでした`);
+                return;
+              }
+              setData(nd);
+              if (typeof scheduleSaveData === "function") scheduleSaveData(nd);
+              alert(`✅ 議事録に追加しました\n\n連携先: ${entityType} ${targetName}\n営業先の議事録タブで確認できます。`);
             }}
               style={{padding:"0.4rem 0.75rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>📝 議事録化</button>
             <button onClick={async()=>{
@@ -10668,6 +10639,12 @@ function EmailView({data,setData,currentUser=null}) {
       clearTimeout(readTimerRef.current);
       readTimerRef.current = null;
     }
+    // ✅ v209: メール一覧のスクロール位置を保存 (戻る時に復元)
+    try {
+      if (typeof window !== "undefined") {
+        window.__myDeskMbListScroll = window.scrollY || document.documentElement.scrollTop || 0;
+      }
+    } catch(_) {}
     setMbSelectedId(emailId);
     // メール詳細を開いた時、ページの一番上にスクロール
     requestAnimationFrame(()=>{
@@ -12037,10 +12014,10 @@ ${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
                               alert('🚫 迷惑メールに移動しました');
                             }
                           }
-                          // ✅ v208: スクロール位置を保存
-                          const savedScroll208a = (typeof window !== "undefined") ? window.scrollY : 0;
+                          // ✅ v209: メール一覧を開いた時のスクロール位置を復元（迷惑登録時はメール詳細にいるので window.scrollY じゃダメ）
+                          const savedScroll = (typeof window !== "undefined" && window.__myDeskMbListScroll) || 0;
                           setMbSelectedId(null);
-                          setTimeout(()=>{try{if(savedScroll208a&&window.scrollTo)window.scrollTo({top:savedScroll208a,behavior:"instant"});}catch(_){}},50);
+                          setTimeout(()=>{try{if(savedScroll&&window.scrollTo)window.scrollTo({top:savedScroll,behavior:"instant"});}catch(_){}},80);
                         } else {
                           // ✅ v208: 解除時に明確なフィードバック
                           alert(`✓ 迷惑メールから戻しました\n返信や対応ができるようになりました！`);
@@ -12150,10 +12127,10 @@ ${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
                               alert('🚫 迷惑メールに移動しました');
                             }
                           }
-                          // ✅ v208: スクロール位置を保存
-                          const savedScroll208b = (typeof window !== "undefined") ? window.scrollY : 0;
+                          // ✅ v209: メール一覧を開いた時のスクロール位置を復元
+                          const savedScrollB = (typeof window !== "undefined" && window.__myDeskMbListScroll) || 0;
                           setMbSelectedId(null);
-                          setTimeout(()=>{try{if(savedScroll208b&&window.scrollTo)window.scrollTo({top:savedScroll208b,behavior:"instant"});}catch(_){}},50);
+                          setTimeout(()=>{try{if(savedScrollB&&window.scrollTo)window.scrollTo({top:savedScrollB,behavior:"instant"});}catch(_){}},80);
                         } else {
                           // ✅ v208: 解除時に明確なフィードバック
                           alert(`✓ 迷惑メールから戻しました\n返信や対応ができるようになりました！`);
