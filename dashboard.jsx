@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v213-scroll-noOverwrite-latestOnly"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v214-back-scroll-adopt-grayout"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -9951,96 +9951,7 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onMarkSpam,
                 setShowMoreMenu(false);
               }}
                 style={{padding:"0.4rem 0.75rem",borderRadius:6,border:`1px solid ${C.border}`,background:linkType?"#fff7ed":"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🔗 連携</button>
-              {/* ✅ v210: メール → タスク化 + 既存タスクがある場合はラベル変更（ID 型を統一して比較） */}
-              {(() => {
-                const existingTaskForLabel = (data.tasks||[]).find(t => String(t.emailRef?.emailId||"") === String(email.id||""));
-                if (typeof window !== "undefined") {
-                  window.__taskLabelDebug = {emailId: email.id, found: !!existingTaskForLabel, tasksWithEmailRef: (data.tasks||[]).filter(t=>t.emailRef).map(t=>({id:t.id, emailId:t.emailRef?.emailId, title:t.title}))};
-                  console.log("[taskLabel]", "email.id:", email.id, "found:", !!existingTaskForLabel, "tasks-with-emailRef:", window.__taskLabelDebug.tasksWithEmailRef.length);
-                }
-                return (
-              <button onClick={()=>{
-              // ✅ v203: 重複防止 - このメールから既にタスクを作成してないか確認 (v210: ID 型統一)
-              const existingTask = (data.tasks||[]).find(t => String(t.emailRef?.emailId||"") === String(email.id||""));
-              if (existingTask) {
-                if (!window.confirm(`⚠️ このメールから既にタスク「${existingTask.title}」が作成されています。\n\n新しく作成しますか？\n\nキャンセル: 既存タスクを開く`)) {
-                  // 既存タスクへ遷移
-                  if (typeof window.__myDeskSetTab === "function") {
-                    window.__myDeskSetTab("tasks");
-                  }
-                  setShowMoreMenu(false);
-                  return;
-                }
-              }
-              
-              const taskTitle = (email.subject||"").slice(0, 60).replace(/^(Re:|Fwd?:|FW:)\s*/i, "").trim() || "メール対応";
-              const senderName = email.from?.name || email.from?.email || "";
-              const taskDesc = `${senderName}からのメール対応\n\n${(email.body||"").slice(0, 500)}`;
-              
-              // ✅ v203: メール連携先（linkedCompanyIds/linkedVendorIds/linkedMuniIds）から営業先取得
-              let autoLinkType = null;
-              let autoLinkId = null;
-              let autoLinkName = null;
-              
-              // メール側で連携済みなら、その情報を最優先で使用
-              if ((email.linkedCompanyIds||[]).length > 0) {
-                autoLinkType = "企業";
-                autoLinkId = email.linkedCompanyIds[0];
-                autoLinkName = (data.companies||[]).find(c=>String(c.id)===String(autoLinkId))?.name;
-              } else if ((email.linkedVendorIds||[]).length > 0) {
-                autoLinkType = "業者";
-                autoLinkId = email.linkedVendorIds[0];
-                autoLinkName = (data.vendors||[]).find(v=>String(v.id)===String(autoLinkId))?.name;
-              } else if ((email.linkedMuniIds||[]).length > 0) {
-                autoLinkType = "自治体";
-                autoLinkId = email.linkedMuniIds[0];
-                autoLinkName = (data.municipalities||[]).find(m=>String(m.id)===String(autoLinkId))?.name;
-              } else if (email.linkedEntityType && email.linkedEntityId) {
-                // 旧形式 (linkedEntityType/Id)
-                autoLinkType = email.linkedEntityType;
-                autoLinkId = email.linkedEntityId;
-                const typeMap = {"企業":"companies", "業者":"vendors", "自治体":"municipalities"};
-                const ent = (data[typeMap[autoLinkType]]||[]).find(e=>String(e.id)===String(autoLinkId));
-                if (ent) autoLinkName = ent.name;
-              }
-              
-              // ✅ v210: 連携されてなければ警告して停止（営業先がない状態を防ぐ）
-              console.log("[タスク化] autoLink:", {autoLinkType, autoLinkId, autoLinkName, linkedCompanyIds: email.linkedCompanyIds, linkedVendorIds: email.linkedVendorIds, linkedMuniIds: email.linkedMuniIds});
-              if (!autoLinkType) {
-                alert("📌 先にメールを営業先と連携してください。\n\n手順:\n1. メール上部の「⋯ その他」→「🔗 連携」ボタンをタップ\n2. 営業先（企業・業者・自治体）を選択\n3. 連携完了後、再度「📋 タスク化」をタップ");
-                setShowMoreMenu(false);
-                return;
-              }
-              
-              const newTask = {
-                id: Date.now(),
-                title: taskTitle,
-                description: taskDesc,
-                status: "未着手",
-                priority: "中",
-                dueDate: "",
-                assignees: currentUser?.id ? [currentUser.id] : [],
-                createdBy: currentUser?.id,
-                createdAt: new Date().toISOString(),
-                comments: [], memos: [], chat: [], files: [],
-                emailRef: { emailId: email.id, subject: email.subject, fromName: senderName, fromEmail: email.from?.email },
-                companyIds: autoLinkType==="企業" ? [autoLinkId] : [],
-                vendorIds: autoLinkType==="業者" ? [autoLinkId] : [],
-                muniIds: autoLinkType==="自治体" ? [autoLinkId] : [],
-                salesRef: autoLinkType ? { type: autoLinkType, id: autoLinkId, name: autoLinkName } : null,
-              };
-              const preview = `📋 タスクを作成しますか？\n\nタイトル: ${taskTitle}\n担当: ${currentUser?.name||""}${autoLinkName?`\n🔗 ${autoLinkType}: ${autoLinkName}`:"\n⚠️ 営業先紐付けなし"}`;
-              if (window.confirm(preview)) {
-                const nd = { ...data, tasks: [...(data.tasks||[]), newTask] };
-                setData(nd); 
-                if (typeof scheduleSaveData === "function") scheduleSaveData(nd);
-                alert(`✅ タスク「${taskTitle}」を作成しました${autoLinkName?`\n🔗 ${autoLinkName} に紐付け`:""}\n\nタスクタブで確認できます。`);
-              }
-              setShowMoreMenu(false);
-            }}
-              style={{padding:"0.4rem 0.75rem",borderRadius:6,border:`1px solid ${C.border}`,background:existingTaskForLabel?"#dcfce7":"white",color:existingTaskForLabel?"#15803d":C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{existingTaskForLabel ? "✅ タスク作成済み" : "📋 タスク化"}</button>
-                );
-              })()}
+            {/* ✅ v214: 「⋯ その他」のタスク化ボタンは削除。AI 採用ボタンに集約 */}
             {/* ✅ v209: メール → 議事録化（AI要約版） */}
             <button onClick={async()=>{
               // ✅ v204: 新形式 (linkedCompanyIds等) と旧形式 (linkedEntityType) の両方をチェック
@@ -10353,6 +10264,11 @@ ${latestBody.slice(0, 1500)}
               {(aiData.ai_suggestions||[]).map((s, i) => {
                 const icon = s.type==="task" ? "📝" : s.type==="project_link" ? "📁" : s.type==="company_link" ? "🏢" : "💡";
                 const label = s.type==="task" ? "タスク化" : s.type==="project_link" ? "プロジェクト紐付け" : s.type==="company_link" ? "企業紐付け" : "提案";
+                // ✅ v214: 同じメール × 同じタイトルのタスクが既にあるかチェック（グレーアウト表示用）
+                const alreadyAdopted = s.type === "task" && (data.tasks||[]).some(t => 
+                  String(t.emailRef?.emailId||t.sourceEmailId||"") === String(email.id||"") &&
+                  (t.title||"") === (s.title||"")
+                );
                 return (
                   <div key={i} style={{background:"white",borderRadius:5,padding:"0.45rem 0.6rem",fontSize:"0.74rem",display:"flex",alignItems:"center",gap:6,border:"1px solid #dbeafe"}}>
                     <span style={{fontSize:"0.9rem"}}>{icon}</span>
@@ -10365,6 +10281,10 @@ ${latestBody.slice(0, 1500)}
                       {s.due && <div style={{fontSize:"0.65rem",color:"#dc2626",marginTop:2}}>期限: {s.due}</div>}
                     </div>
                     <button onClick={()=>{
+                      // ✅ v214: 既に採用済みの場合、確認してから再作成
+                      if (alreadyAdopted) {
+                        if (!window.confirm(`このタスクは既に作成済みです。\n\n「${s.title}」\n\n誤って削除した場合などのために再作成しますか？`)) return;
+                      }
                       // 提案を承諾するアクション（タスク作成・PJ紐付け・企業紐付け）
                       if (s.type === "task") {
                         // ✅ v211: メール側の連携情報を最優先で使う
@@ -10489,8 +10409,9 @@ ${latestBody.slice(0, 1500)}
                         onLink && onLink("企業", s.companyId, s.companyName);
                       }
                     }}
-                      style={{padding:"0.25rem 0.6rem",borderRadius:4,border:"none",background:"#2563eb",color:"white",fontSize:"0.68rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
-                      ✓ 採用
+                      title={alreadyAdopted ? "既に採用済み。誤って削除した場合はクリックで再作成できます" : ""}
+                      style={{padding:"0.25rem 0.6rem",borderRadius:4,border:"none",background:alreadyAdopted?"#d1d5db":"#2563eb",color:alreadyAdopted?"#6b7280":"white",fontSize:"0.68rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
+                      {alreadyAdopted ? "✓ 採用済み" : "✓ 採用"}
                     </button>
                   </div>
                 );
@@ -10724,6 +10645,42 @@ function EmailView({data,setData,currentUser=null}) {
   const [mbSendBusy, setMbSendBusy] = useState(false);
   const [mbAiBusy, setMbAiBusy] = useState(false);
   const [mbTestOpen, setMbTestOpen] = useState(false);
+
+  // ✅ v214: mbSelectedId が null になった (メール一覧に戻った) 時に必ずスクロール復元
+  React.useEffect(() => {
+    if (mbSelectedId !== null) return; // メール詳細表示中はスキップ
+    if (typeof window === "undefined") return;
+    const saved = window.__myDeskMbListScroll || 0;
+    const savedTgt = window.__myDeskScrollTargetSaved;
+    const allScrolled = window.__myDeskAllScrolled || [];
+    if (saved <= 0 && allScrolled.length === 0) return; // 保存値がないなら何もしない
+    console.log("[scroll-restore-effect] target:", saved, "tgt:", savedTgt?.tagName || savedTgt, "extra:", allScrolled.length);
+    const doRestore = () => {
+      try {
+        // 1. グローバル追跡対象に書き戻し
+        if (savedTgt && savedTgt !== "window" && savedTgt.isConnected) {
+          savedTgt.scrollTop = saved;
+        }
+        // 2. document 全体
+        const sc = document.scrollingElement || document.documentElement || document.body;
+        if (sc && saved > 0) sc.scrollTop = saved;
+        if (saved > 0 && window.scrollTo) window.scrollTo({top: saved, behavior: "instant"});
+        // 3. 全要素を書き戻し
+        for (const item of allScrolled) {
+          try {
+            if (item.el && item.el.isConnected) {
+              item.el.scrollTop = item.scrollTop;
+            }
+          } catch(_) {}
+        }
+        console.log("[scroll-restore-effect] applied. tgt:", savedTgt?.scrollTop);
+      } catch(_) {}
+    };
+    const t1 = setTimeout(doRestore, 80);
+    const t2 = setTimeout(doRestore, 250);
+    const t3 = setTimeout(doRestore, 500);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+  }, [mbSelectedId]);
 
   // 現在表示中のメール一覧（↑↓キー移動用にref保持）
   const currentListRef = React.useRef([]);
