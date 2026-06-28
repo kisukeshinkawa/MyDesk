@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v214-back-scroll-adopt-grayout"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v215-rAF-scroll-anchor-disable"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -10646,40 +10646,56 @@ function EmailView({data,setData,currentUser=null}) {
   const [mbAiBusy, setMbAiBusy] = useState(false);
   const [mbTestOpen, setMbTestOpen] = useState(false);
 
-  // ✅ v214: mbSelectedId が null になった (メール一覧に戻った) 時に必ずスクロール復元
+  // ✅ v215: mbSelectedId が null になった (メール一覧に戻った) 時に必ずスクロール復元
+  // requestAnimationFrame で連続的に上書き → ブラウザの scroll-anchor を打ち破る
   React.useEffect(() => {
     if (mbSelectedId !== null) return; // メール詳細表示中はスキップ
     if (typeof window === "undefined") return;
     const saved = window.__myDeskMbListScroll || 0;
     const savedTgt = window.__myDeskScrollTargetSaved;
     const allScrolled = window.__myDeskAllScrolled || [];
-    if (saved <= 0 && allScrolled.length === 0) return; // 保存値がないなら何もしない
+    if (saved <= 0 && allScrolled.length === 0) return;
     console.log("[scroll-restore-effect] target:", saved, "tgt:", savedTgt?.tagName || savedTgt, "extra:", allScrolled.length);
-    const doRestore = () => {
+    
+    let cancelled = false;
+    let frames = 0;
+    const maxFrames = 90; // ~1.5秒 (60fps想定)
+    let lastApplied = -1;
+    
+    const tick = () => {
+      if (cancelled) return;
+      frames++;
       try {
-        // 1. グローバル追跡対象に書き戻し
+        // 1. 保存した参照に書き戻し
         if (savedTgt && savedTgt !== "window" && savedTgt.isConnected) {
-          savedTgt.scrollTop = saved;
+          if (savedTgt.scrollTop !== saved) {
+            savedTgt.scrollTop = saved;
+          }
         }
         // 2. document 全体
         const sc = document.scrollingElement || document.documentElement || document.body;
         if (sc && saved > 0) sc.scrollTop = saved;
         if (saved > 0 && window.scrollTo) window.scrollTo({top: saved, behavior: "instant"});
-        // 3. 全要素を書き戻し
+        // 3. 全保存要素を書き戻し
         for (const item of allScrolled) {
           try {
-            if (item.el && item.el.isConnected) {
+            if (item.el && item.el.isConnected && item.el.scrollTop !== item.scrollTop) {
               item.el.scrollTop = item.scrollTop;
             }
           } catch(_) {}
         }
-        console.log("[scroll-restore-effect] applied. tgt:", savedTgt?.scrollTop);
+        // ログは初回と最終回のみ
+        if (frames === 1 || frames === maxFrames) {
+          const actual = savedTgt?.isConnected ? savedTgt.scrollTop : "?";
+          console.log("[scroll-restore-effect] frame", frames, "target:", saved, "actual:", actual);
+        }
       } catch(_) {}
+      if (frames < maxFrames) {
+        requestAnimationFrame(tick);
+      }
     };
-    const t1 = setTimeout(doRestore, 80);
-    const t2 = setTimeout(doRestore, 250);
-    const t3 = setTimeout(doRestore, 500);
-    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+    requestAnimationFrame(tick);
+    return () => { cancelled = true; };
   }, [mbSelectedId]);
 
   // 現在表示中のメール一覧（↑↓キー移動用にref保持）
@@ -12121,36 +12137,8 @@ ${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
                               alert('🚫 迷惑メールに移動しました');
                             }
                           }
-                          // ✅ v212: グローバル追跡したスクロール対象に書き戻し
-                          const savedScroll = (typeof window !== "undefined") ? (window.__myDeskMbListScroll || 0) : 0;
-                          const savedTgt = (typeof window !== "undefined") ? window.__myDeskScrollTargetSaved : null;
-                          const allScrolled = (typeof window !== "undefined") ? (window.__myDeskAllScrolled || []) : [];
-                          console.log("[scroll-restore] target:", savedScroll, "tgt:", savedTgt?.tagName || savedTgt, "extra:", allScrolled.length);
+                          // ✅ v215: 復元処理は useEffect に統合（重複動作を防止）
                           setMbSelectedId(null);
-                          const doRestore = () => {
-                            try {
-                              // 1. グローバル追跡対象に書き戻し
-                              if (savedTgt && savedTgt !== "window" && savedTgt.isConnected) {
-                                savedTgt.scrollTop = savedScroll;
-                              }
-                              // 2. document 全体
-                              const sc = document.scrollingElement || document.documentElement || document.body;
-                              if (sc) sc.scrollTop = savedScroll;
-                              if (window.scrollTo) window.scrollTo({top: savedScroll, behavior: "instant"});
-                              // 3. 全要素を書き戻し
-                              for (const item of allScrolled) {
-                                try {
-                                  if (item.el && item.el.isConnected) {
-                                    item.el.scrollTop = item.scrollTop;
-                                  }
-                                } catch(_) {}
-                              }
-                              console.log("[scroll-restore] applied. doc:", sc?.scrollTop, "win:", window.scrollY, "tgt:", savedTgt?.scrollTop);
-                            } catch(_) {}
-                          };
-                          setTimeout(doRestore, 100);
-                          setTimeout(doRestore, 300);
-                          setTimeout(doRestore, 600);
                         } else {
                           // ✅ v208: 解除時に明確なフィードバック
                           alert(`✓ 迷惑メールから戻しました\n返信や対応ができるようになりました！`);
@@ -12260,33 +12248,8 @@ ${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
                               alert('🚫 迷惑メールに移動しました');
                             }
                           }
-                          // ✅ v212: グローバル追跡したスクロール対象に書き戻し（モバイル）
-                          const savedScrollB = (typeof window !== "undefined") ? (window.__myDeskMbListScroll || 0) : 0;
-                          const savedTgtB = (typeof window !== "undefined") ? window.__myDeskScrollTargetSaved : null;
-                          const allScrolledB = (typeof window !== "undefined") ? (window.__myDeskAllScrolled || []) : [];
-                          console.log("[scroll-restore-mobile] target:", savedScrollB, "tgt:", savedTgtB?.tagName || savedTgtB, "extra:", allScrolledB.length);
+                          // ✅ v215: 復元処理は useEffect に統合（重複動作を防止）
                           setMbSelectedId(null);
-                          const doRestoreB = () => {
-                            try {
-                              if (savedTgtB && savedTgtB !== "window" && savedTgtB.isConnected) {
-                                savedTgtB.scrollTop = savedScrollB;
-                              }
-                              const sc = document.scrollingElement || document.documentElement || document.body;
-                              if (sc) sc.scrollTop = savedScrollB;
-                              if (window.scrollTo) window.scrollTo({top: savedScrollB, behavior: "instant"});
-                              for (const item of allScrolledB) {
-                                try {
-                                  if (item.el && item.el.isConnected) {
-                                    item.el.scrollTop = item.scrollTop;
-                                  }
-                                } catch(_) {}
-                              }
-                              console.log("[scroll-restore-mobile] applied. doc:", sc?.scrollTop, "win:", window.scrollY, "tgt:", savedTgtB?.scrollTop);
-                            } catch(_) {}
-                          };
-                          setTimeout(doRestoreB, 100);
-                          setTimeout(doRestoreB, 300);
-                          setTimeout(doRestoreB, 600);
                         } else {
                           // ✅ v208: 解除時に明確なフィードバック
                           alert(`✓ 迷惑メールから戻しました\n返信や対応ができるようになりました！`);
@@ -31473,7 +31436,19 @@ export default function App() {
   
   const [_data, _setData] = useState(INIT);
   // ✅ v213: グローバルスクロール追跡 - スクロールしてる要素を常時把握
-  // 重要: pos > 0 の時のみ上書き（メール詳細を開いた時の 0 で上書きされないように）
+  // ✅ v215: 同時に scroll-anchor を無効化（手動 scrollTop 復元を効かせるため）
+  React.useEffect(() => {
+    // 動的に CSS を注入して全要素の scroll-anchor を無効化
+    try {
+      const style = document.createElement('style');
+      style.id = 'mydesk-no-scroll-anchor';
+      style.textContent = '* { overflow-anchor: none !important; }';
+      document.head.appendChild(style);
+      return () => {
+        try { document.head.removeChild(style); } catch(_) {}
+      };
+    } catch(_) {}
+  }, []);
   React.useEffect(() => {
     const onScroll = (ev) => {
       try {
