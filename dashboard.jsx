@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v210b-scroll-debug-tasklink"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v212-scroll-tracker-multidir"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -9729,6 +9729,7 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onMarkSpam,
   // AI 分析データ（要約・優先度・提案・返信案）
   const [aiAnalyzing, setAiAnalyzing] = React.useState(false);
   const [aiReplying, setAiReplying] = React.useState(false); // ✅ v197: AI返信生成中
+  const [minutesGenerating, setMinutesGenerating] = React.useState(false); // ✅ v211: 議事録生成中
   const [aiData, setAiData] = React.useState({
     ai_summary: email.ai_summary,
     ai_priority: email.ai_priority,
@@ -9915,6 +9916,18 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onMarkSpam,
             {/* === ⋯ その他メニュー === */}
             <button onClick={()=>setShowMoreMenu(v=>!v)}
               style={{padding:"0.4rem 0.7rem",borderRadius:6,border:`1px solid ${C.border}`,background:showMoreMenu?"#f3f4f6":"white",color:C.textSub,fontSize:"0.78rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>⋯ その他</button>
+            {/* ✅ v211: 議事録 AI 生成中の表示 */}
+            {minutesGenerating && (
+              <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",zIndex:9999,background:"white",border:`2px solid ${C.accent}`,borderRadius:12,padding:"1.5rem 2rem",boxShadow:"0 10px 40px rgba(0,0,0,0.15)",display:"flex",flexDirection:"column",alignItems:"center",gap:"0.75rem",minWidth:240}}>
+                <div style={{fontSize:"2rem"}}>📝</div>
+                <div style={{fontSize:"0.9rem",fontWeight:700,color:C.text}}>議事録を生成中...</div>
+                <div style={{fontSize:"0.75rem",color:C.textSub}}>AI がメール内容を要約しています</div>
+                <div style={{width:"100%",height:4,background:"#e5e7eb",borderRadius:2,overflow:"hidden"}}>
+                  <div style={{width:"40%",height:"100%",background:C.accent,animation:"slide 1.5s ease-in-out infinite"}}/>
+                </div>
+                <style>{`@keyframes slide { 0%{margin-left:-40%} 100%{margin-left:100%} }`}</style>
+              </div>
+            )}
             {showMoreMenu && (
               <div style={{position:"absolute",top:"100%",left:0,marginTop:"0.3rem",background:"white",border:`1px solid ${C.border}`,borderRadius:8,boxShadow:"0 4px 12px rgba(0,0,0,0.08)",padding:"0.4rem",zIndex:20,display:"flex",flexWrap:"wrap",gap:"0.35rem",minWidth:280,maxWidth:"95vw"}}>
               {/* 全員に返信 */}
@@ -10056,8 +10069,9 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onMarkSpam,
               }
               
               setShowMoreMenu(false);
+              setMinutesGenerating(true); // ✅ v211: ローディング表示開始
               
-              // ✅ v209: AI で要約生成
+              // ✅ v211: AI で要約生成（事実のみ・推測禁止）
               let mtgContent = `${senderName} とのメールやりとり\n\n${(email.body||"").slice(0, 800)}`;
               try {
                 const prompt = `以下のメールを商談記録として超簡潔にまとめてください。
@@ -10068,22 +10082,24 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onMarkSpam,
 本文:
 ${(email.body||"").slice(0, 2000)}
 
-【厳守ルール】
-- **最大80文字、3行以内**
-- 1行目: メールの核心 (例: 見積依頼受領 / 提案書送付 / 日程調整 など)
-- 2行目: 重要な数値・日付 (あれば)
+【絶対ルール】
+- **メール本文に書かれている事実のみ**を記載すること
+- 推測・想像・解釈・補完は禁止（「確定」「予定」など明記されてないことは書かない）
+- 不明なものは書かない、または「未確定」と明記
+- 最大80文字、3行以内
+- 1行目: メールの状況 (例: 提案受領 / 質問 / 日程候補提示 / 日程確定 など)
+- 2行目: 出てきた具体的な数値・日付・固有名詞のみ
 - 3行目: 次のアクション (あれば「次: 〜」)
-- 挨拶・敬語・引用・前置きは完全除外
-- 「以下の要約」「要約します」などの前置き禁止
-- マークダウン記号 (* # など) 使用禁止
+- 挨拶・敬語・引用・署名・前置きは除外
+- マークダウン記号禁止
 
-【良い例】
-見積依頼受領、6/30まで
-次: 見積書作成し送付
+【良い例 - 日程候補が出ただけ】
+日程候補提示 (7/6, 7/7, 7/8, 7/9)
+先方の都合確認待ち
+次: 先方からの返信待ち
 
-【悪い例】（長すぎ、装飾あり）
-**要約：** 〜様より、〜の見積依頼をいただきました。期限は6月30日です。
-次のアクションは、見積書を作成し、送付することです。
+【悪い例 - 推測している】
+訪問日程確定 7/8 10:30 ← メールに「確定」と書いてないのに「確定」と書いてる
 
 【要約のみ出力】`;
                 const res = await fetch(`${API_BASE}/api/generate-email`, {
@@ -10100,6 +10116,8 @@ ${(email.body||"").slice(0, 2000)}
                 }
               } catch(err) {
                 console.warn("[議事録化] AI 要約失敗、生メール使用:", err);
+              } finally {
+                setMinutesGenerating(false); // ✅ v211: ローディング終了
               }
               
               const typeMap = {"企業":"companies", "業者":"vendors", "自治体":"municipalities"};
@@ -10321,27 +10339,66 @@ ${(email.body||"").slice(0, 2000)}
                     <button onClick={()=>{
                       // 提案を承諾するアクション（タスク作成・PJ紐付け・企業紐付け）
                       if (s.type === "task") {
-                        // 名刺から企業名を取得（送信者のメアドベース）
-                        const senderEmail = (email.from?.email || "").toLowerCase().trim();
-                        const matchedBizcard = (data.businessCards || []).find(bc => 
-                          (bc.email || "").toLowerCase().trim() === senderEmail
-                        );
-                        const companyName = matchedBizcard?.salesRef?.name || matchedBizcard?.companyName || "";
-                        // 企業名から該当する企業を検索
-                        const matchedCompany = companyName ? (data.companies || []).find(c =>
-                          (c.name || "").includes(companyName) || companyName.includes(c.name || "")
-                        ) : null;
-                        // その企業に紐付くアクティブなプロジェクトを検索
-                        const matchedProject = matchedCompany ? (data.projects || []).find(p => {
-                          if (p.status === "完了" || p.status === "終了" || p.status === "中止") return false;
-                          return p.companyId === matchedCompany.id || 
-                                 (p.linkedCompanyIds || []).includes(matchedCompany.id);
-                        }) : null;
+                        // ✅ v211: メール側の連携情報を最優先で使う
+                        let matchedCompany = null;
+                        let matchedVendor = null;
+                        let matchedMuni = null;
+                        let matchedProject = null;
+                        let entityType = null;  // "企業" / "業者" / "自治体"
+                        let entityId = null;
+                        let entityName = null;
+                        
+                        if ((email.linkedCompanyIds||[]).length > 0) {
+                          const cid = email.linkedCompanyIds[0];
+                          matchedCompany = (data.companies||[]).find(c => String(c.id) === String(cid));
+                          if (matchedCompany) {
+                            entityType = "企業"; entityId = matchedCompany.id; entityName = matchedCompany.name;
+                          }
+                        } else if ((email.linkedVendorIds||[]).length > 0) {
+                          const vid = email.linkedVendorIds[0];
+                          matchedVendor = (data.vendors||[]).find(v => String(v.id) === String(vid));
+                          if (matchedVendor) {
+                            entityType = "業者"; entityId = matchedVendor.id; entityName = matchedVendor.name;
+                          }
+                        } else if ((email.linkedMuniIds||[]).length > 0) {
+                          const mid = email.linkedMuniIds[0];
+                          matchedMuni = (data.municipalities||[]).find(m => String(m.id) === String(mid));
+                          if (matchedMuni) {
+                            entityType = "自治体"; entityId = matchedMuni.id; entityName = matchedMuni.name;
+                          }
+                        }
+                        
+                        // メールに連携先がない場合のみ、名刺ベースで逆引き
+                        if (!entityType) {
+                          const senderEmail = (email.from?.email || "").toLowerCase().trim();
+                          const matchedBizcard = (data.businessCards || []).find(bc => 
+                            (bc.email || "").toLowerCase().trim() === senderEmail
+                          );
+                          const companyName = matchedBizcard?.salesRef?.name || matchedBizcard?.companyName || "";
+                          if (companyName) {
+                            matchedCompany = (data.companies || []).find(c =>
+                              (c.name || "").includes(companyName) || companyName.includes(c.name || "")
+                            );
+                            if (matchedCompany) {
+                              entityType = "企業"; entityId = matchedCompany.id; entityName = matchedCompany.name;
+                            }
+                          }
+                        }
+                        
+                        // その企業/業者に紐付くアクティブなプロジェクトを検索
+                        if (matchedCompany) {
+                          matchedProject = (data.projects || []).find(p => {
+                            if (p.status === "完了" || p.status === "終了" || p.status === "中止") return false;
+                            return p.companyId === matchedCompany.id || 
+                                   (p.linkedCompanyIds || []).includes(matchedCompany.id);
+                          });
+                        }
                         
                         // 確認ダイアログ
                         let confirmMsg = `タスクを作成しますか？\n\n${s.title}${s.due?` (期限: ${s.due})`:""}\n\n📧 元メール: ${email.subject || "(件名なし)"}`;
-                        if (matchedCompany) confirmMsg += `\n🏢 企業: ${matchedCompany.name}`;
+                        if (entityName) confirmMsg += `\n🔗 ${entityType}: ${entityName}`;
                         if (matchedProject) confirmMsg += `\n📁 プロジェクト: ${matchedProject.name}\n  → このプロジェクトに自動で紐付けます`;
+                        if (!entityName) confirmMsg += `\n⚠️ 営業先紐付けなし（メール連携先なし）`;
                         
                         const ok = window.confirm(confirmMsg);
                         if (!ok) return;
@@ -10368,7 +10425,14 @@ ${(email.body||"").slice(0, 2000)}
                           sourceEmailSnippet: emailSnippet,
                           aiGenerated: true,
                           aiReason: s.reason || "",
-                          // 自動紐付け
+                          // ✅ v211: emailRef を追加（タスク作成済みラベル用）
+                          emailRef: { emailId: email.id, subject: email.subject, fromName: email.from?.name || "", fromEmail: email.from?.email || "" },
+                          // ✅ v211: salesRef + companyIds/vendorIds/muniIds を正しくセット
+                          salesRef: entityType ? { type: entityType, id: entityId, name: entityName } : null,
+                          companyIds: entityType==="企業" ? [entityId] : [],
+                          vendorIds: entityType==="業者" ? [entityId] : [],
+                          muniIds: entityType==="自治体" ? [entityId] : [],
+                          // 自動紐付け (古い形式も互換のため残す)
                           companyId: matchedCompany?.id || null,
                           projectId: matchedProject?.id || null,
                           linkedCompanyIds: matchedCompany ? [matchedCompany.id] : [],
@@ -10388,7 +10452,7 @@ ${(email.body||"").slice(0, 2000)}
                         // 結果メッセージ
                         let resultMsg = "✅ タスクを作成しました\n\n" + s.title;
                         resultMsg += "\n\n📧 元メールへのリンク付与";
-                        if (matchedCompany) resultMsg += `\n🏢 ${matchedCompany.name} に紐付け`;
+                        if (entityName) resultMsg += `\n🔗 ${entityType}: ${entityName} に紐付け`;
                         if (matchedProject) resultMsg += `\n📁 ${matchedProject.name} に紐付け`;
                         alert(resultMsg);
                       } else if (s.type === "project_link" && s.projectId) {
@@ -10644,8 +10708,7 @@ function EmailView({data,setData,currentUser=null}) {
       clearTimeout(readTimerRef.current);
       readTimerRef.current = null;
     }
-    // ✅ v210: メール一覧のスクロール位置を保存 (戻る時に復元)
-    // iOS PWA/Safari でも動くように document.scrollingElement を使う
+    // ✅ v212: グローバルスクロール追跡値を最優先で使用（スクロールイベントから直接取得した値）
     const getScroller = () => {
       try {
         return document.scrollingElement || document.documentElement || document.body;
@@ -10653,11 +10716,36 @@ function EmailView({data,setData,currentUser=null}) {
     };
     try {
       if (typeof window !== "undefined") {
+        // 全方位の scroll 値を試す
         const sc = getScroller();
-        const pos = sc ? sc.scrollTop : (window.scrollY || 0);
+        const pos1 = sc ? sc.scrollTop : 0;
+        const pos2 = window.scrollY || 0;
+        const pos3 = window.pageYOffset || 0;
+        const pos4 = document.documentElement?.scrollTop || 0;
+        const pos5 = document.body?.scrollTop || 0;
+        const trackedPos = window.__myDeskScrollPos || 0;  // ← スクロールイベントで追跡した最新位置
+        const trackedTgt = window.__myDeskScrollTarget;
+        
+        // 最大値を採用
+        const pos = Math.max(pos1, pos2, pos3, pos4, pos5, trackedPos);
         window.__myDeskMbListScroll = pos;
         window.__myDeskLastSelectedEmailId = emailId;
-        console.log("[scroll-save] saved position:", pos);
+        // スクロール対象を保存（要素ならその参照、window なら "window"）
+        window.__myDeskScrollTargetSaved = trackedTgt;
+        
+        // 全スクロール要素を保存（メール一覧の親 div が別途スクロールしてる場合に対応）
+        const allScrolled = [];
+        try {
+          const elements = document.querySelectorAll('*');
+          for (let i = 0; i < elements.length; i++) {
+            const el = elements[i];
+            if (el.scrollTop > 0) {
+              allScrolled.push({el, scrollTop: el.scrollTop});
+            }
+          }
+        } catch(_) {}
+        window.__myDeskAllScrolled = allScrolled;
+        console.log("[scroll-save] picked:", pos, "from:", {pos1, pos2, pos3, pos4, pos5, trackedPos, trackedTgt: trackedTgt?.tagName || trackedTgt}, "extra:", allScrolled.length);
       }
     } catch(_) {}
     setMbSelectedId(emailId);
@@ -12044,30 +12132,36 @@ ${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
                               alert('🚫 迷惑メールに移動しました');
                             }
                           }
-                          // ✅ v210 改: 迷惑登録するとメールが消えるので、保存したスクロール位置を直接復元
+                          // ✅ v212: グローバル追跡したスクロール対象に書き戻し
                           const savedScroll = (typeof window !== "undefined") ? (window.__myDeskMbListScroll || 0) : 0;
-                          console.log("[scroll-restore] target:", savedScroll);
+                          const savedTgt = (typeof window !== "undefined") ? window.__myDeskScrollTargetSaved : null;
+                          const allScrolled = (typeof window !== "undefined") ? (window.__myDeskAllScrolled || []) : [];
+                          console.log("[scroll-restore] target:", savedScroll, "tgt:", savedTgt?.tagName || savedTgt, "extra:", allScrolled.length);
                           setMbSelectedId(null);
-                          // setMbSelectedId が反映されてレイアウトが戻ってから復元
-                          setTimeout(()=>{
+                          const doRestore = () => {
                             try {
-                              const sc = document.scrollingElement || document.documentElement || document.body;
-                              if (sc) {
-                                sc.scrollTop = savedScroll;
-                                console.log("[scroll-restore] applied:", sc.scrollTop);
+                              // 1. グローバル追跡対象に書き戻し
+                              if (savedTgt && savedTgt !== "window" && savedTgt.isConnected) {
+                                savedTgt.scrollTop = savedScroll;
                               }
+                              // 2. document 全体
+                              const sc = document.scrollingElement || document.documentElement || document.body;
+                              if (sc) sc.scrollTop = savedScroll;
                               if (window.scrollTo) window.scrollTo({top: savedScroll, behavior: "instant"});
-                            } catch(_) {}
-                          }, 100);
-                          // フォールバック: 念のため少し後にもう一回
-                          setTimeout(()=>{
-                            try {
-                              const sc = document.scrollingElement || document.documentElement || document.body;
-                              if (sc && Math.abs(sc.scrollTop - savedScroll) > 50) {
-                                sc.scrollTop = savedScroll;
+                              // 3. 全要素を書き戻し
+                              for (const item of allScrolled) {
+                                try {
+                                  if (item.el && item.el.isConnected) {
+                                    item.el.scrollTop = item.scrollTop;
+                                  }
+                                } catch(_) {}
                               }
+                              console.log("[scroll-restore] applied. doc:", sc?.scrollTop, "win:", window.scrollY, "tgt:", savedTgt?.scrollTop);
                             } catch(_) {}
-                          }, 400);
+                          };
+                          setTimeout(doRestore, 100);
+                          setTimeout(doRestore, 300);
+                          setTimeout(doRestore, 600);
                         } else {
                           // ✅ v208: 解除時に明確なフィードバック
                           alert(`✓ 迷惑メールから戻しました\n返信や対応ができるようになりました！`);
@@ -12177,28 +12271,33 @@ ${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
                               alert('🚫 迷惑メールに移動しました');
                             }
                           }
-                          // ✅ v210 改: 保存したスクロール位置を直接復元（モバイル版）
+                          // ✅ v212: グローバル追跡したスクロール対象に書き戻し（モバイル）
                           const savedScrollB = (typeof window !== "undefined") ? (window.__myDeskMbListScroll || 0) : 0;
-                          console.log("[scroll-restore-mobile] target:", savedScrollB);
+                          const savedTgtB = (typeof window !== "undefined") ? window.__myDeskScrollTargetSaved : null;
+                          const allScrolledB = (typeof window !== "undefined") ? (window.__myDeskAllScrolled || []) : [];
+                          console.log("[scroll-restore-mobile] target:", savedScrollB, "tgt:", savedTgtB?.tagName || savedTgtB, "extra:", allScrolledB.length);
                           setMbSelectedId(null);
-                          setTimeout(()=>{
+                          const doRestoreB = () => {
                             try {
-                              const sc = document.scrollingElement || document.documentElement || document.body;
-                              if (sc) {
-                                sc.scrollTop = savedScrollB;
-                                console.log("[scroll-restore-mobile] applied:", sc.scrollTop);
+                              if (savedTgtB && savedTgtB !== "window" && savedTgtB.isConnected) {
+                                savedTgtB.scrollTop = savedScrollB;
                               }
+                              const sc = document.scrollingElement || document.documentElement || document.body;
+                              if (sc) sc.scrollTop = savedScrollB;
                               if (window.scrollTo) window.scrollTo({top: savedScrollB, behavior: "instant"});
-                            } catch(_) {}
-                          }, 100);
-                          setTimeout(()=>{
-                            try {
-                              const sc = document.scrollingElement || document.documentElement || document.body;
-                              if (sc && Math.abs(sc.scrollTop - savedScrollB) > 50) {
-                                sc.scrollTop = savedScrollB;
+                              for (const item of allScrolledB) {
+                                try {
+                                  if (item.el && item.el.isConnected) {
+                                    item.el.scrollTop = item.scrollTop;
+                                  }
+                                } catch(_) {}
                               }
+                              console.log("[scroll-restore-mobile] applied. doc:", sc?.scrollTop, "win:", window.scrollY, "tgt:", savedTgtB?.scrollTop);
                             } catch(_) {}
-                          }, 400);
+                          };
+                          setTimeout(doRestoreB, 100);
+                          setTimeout(doRestoreB, 300);
+                          setTimeout(doRestoreB, 600);
                         } else {
                           // ✅ v208: 解除時に明確なフィードバック
                           alert(`✓ 迷惑メールから戻しました\n返信や対応ができるようになりました！`);
@@ -31384,6 +31483,26 @@ export default function App() {
   }
   
   const [_data, _setData] = useState(INIT);
+  // ✅ v212: グローバルスクロール追跡 - スクロールしてる要素を常時把握
+  React.useEffect(() => {
+    const onScroll = (ev) => {
+      try {
+        const tgt = ev?.target;
+        if (tgt && tgt !== document) {
+          // 要素のスクロール
+          window.__myDeskScrollTarget = tgt;
+          window.__myDeskScrollPos = tgt.scrollTop || 0;
+        } else {
+          // ドキュメントのスクロール
+          window.__myDeskScrollTarget = "window";
+          window.__myDeskScrollPos = window.scrollY || document.scrollingElement?.scrollTop || document.documentElement?.scrollTop || document.body?.scrollTop || 0;
+        }
+      } catch(_) {}
+    };
+    // capture:true で全スクロールを補足
+    window.addEventListener('scroll', onScroll, true);
+    return () => window.removeEventListener('scroll', onScroll, true);
+  }, []);
   // dataRef: setData と同期して即時更新される最新の data 参照
   // これにより useEffect 待ちが不要、保存処理が常に最新ステートを得られる
   const dataRef = React.useRef(INIT);
