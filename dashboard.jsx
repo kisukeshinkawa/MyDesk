@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v217-dashboard-revamp"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v218-user-actions-clarify"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -19607,42 +19607,56 @@ ${recentLogs}
       const myTasks = allTasks.filter(t=>t.createdBy===u.id);
       const myProjects = allProjects.filter(p=>p.createdBy===u.id);
 
-      // エンティティ別アプローチ数
-      const compApproach  = myApproaches.filter(l=>l.entityType==="企業").length;
-      const vendApproach  = myApproaches.filter(l=>l.entityType==="業者").length;
-      const muniApproach  = myApproaches.filter(l=>l.entityType==="自治体").length;
+      // ✅ v218: 「アクションした企業/業者/自治体のユニーク数」(同じ企業に複数回アプローチしても 1 件)
+      // アプローチ + メモ + チャット + 議事録 + ステータス変更 全部含む「アクション」
+      const allUserActions = [
+        ...myApproaches,
+        ...myMemos,
+        ...myChats,
+        ...myMtgs,
+        ...myLogs, // changeLogs (ステータス変更等)
+      ];
+      const uniqCompanies = new Set(allUserActions.filter(a=>a.entityType==="企業").map(a=>String(a.entityId))).size;
+      const uniqVendors   = new Set(allUserActions.filter(a=>a.entityType==="業者").map(a=>String(a.entityId))).size;
+      const uniqMunis     = new Set(allUserActions.filter(a=>a.entityType==="自治体").map(a=>String(a.entityId))).size;
 
-      // 新規登録数
-      const newComp  = myLogs.filter(l=>l.entityType==="企業"&&l.field==="登録").length;
-      const newVend  = myLogs.filter(l=>l.entityType==="業者"&&l.field==="登録").length;
-      const newMuni  = myLogs.filter(l=>l.entityType==="自治体"&&l.field==="登録").length;
-
-      // ステータス変更（成果指標）
-      const closedComp = myLogs.filter(l=>l.entityType==="企業"&&l.field==="ステータス"&&l.newVal==="成約").length;
-      const closedVend = myLogs.filter(l=>l.entityType==="業者"&&(l.field==="ステータス")&&l.newVal==="加入済").length;
-      const treaty     = myLogs.filter(l=>l.entityType==="自治体"&&l.field==="連携協定"&&l.newVal==="協定済").length;
-      const dustalk    = myLogs.filter(l=>l.entityType==="自治体"&&l.field==="ダストーク"&&l.newVal==="展開").length;
-      const statusChanges = myLogs.filter(l=>l.field==="ステータス").length;
-
-      // タスク完了
-      const tasksCompleted = (data.tasks||[]).filter(t => 
-        (t.assignees||[]).includes(u.id) && t.status==="完了" && inPeriod(t.updatedAt||t.completedAt||"")
+      // ✅ v218: 担当タスク (assignees に自分を含む) / 期間に依存しない「現在の担当タスク数」
+      const myAssignedTasks = (data.tasks||[]).filter(t=>(t.assignees||[]).includes(u.id));
+      const myAssignedTasksOpen = myAssignedTasks.filter(t=>t.status!=="完了"&&t.status!=="クローズ");
+      // 期間内にタスク完了に変えた件数
+      const tasksCompletedInPeriod = myAssignedTasks.filter(t => 
+        t.status==="完了" && inPeriod(t.updatedAt||t.completedAt||t.createdAt||"")
       ).length;
 
-      const total = myApproaches.length + myLogs.length + myMemos.length + myChats.length + myMtgs.length + myTasks.length;
-      return { 
-        u, total, 
-        compApproach, vendApproach, muniApproach, 
-        newComp, newVend, newMuni, 
-        closedComp, closedVend, treaty, dustalk, statusChanges,
+      // ✅ v218: 担当プロジェクト (assignees に自分を含む) / 現在進行中
+      const myAssignedProjects = (data.projects||[]).filter(p=>(p.assignees||[]).includes(u.id));
+      const myAssignedProjectsOpen = myAssignedProjects.filter(p=>p.status!=="完了"&&p.status!=="クローズ"&&p.status!=="中止");
+
+      // ✅ v218: 成果 = 業者加入済 + 企業成約済（期間内）
+      const closedComp = myLogs.filter(l=>l.entityType==="企業"&&l.field==="ステータス"&&l.newVal==="成約").length;
+      const closedVend = myLogs.filter(l=>l.entityType==="業者"&&l.field==="ステータス"&&l.newVal==="加入済").length;
+      const treaty     = myLogs.filter(l=>l.entityType==="自治体"&&l.field==="連携協定"&&l.newVal==="協定済").length;
+      const dustalk    = myLogs.filter(l=>l.entityType==="自治体"&&l.field==="ダストーク"&&l.newVal==="展開").length;
+
+      // 合計アクション = アプローチ + メモ + チャット + 議事録 + ステータス変更
+      const total = myApproaches.length + myMemos.length + myChats.length + myMtgs.length + myLogs.length;
+
+      return {
+        u, total,
+        approachTotal: myApproaches.length,
         memoCount: myMemos.length,
         chatCount: myChats.length,
         mtgCount: myMtgs.length,
-        taskCreated: myTasks.length,
-        tasksCompleted,
-        projectCreated: myProjects.length,
-        approachTotal: myApproaches.length,
-        myApproaches, myLogs 
+        statusChangeCount: myLogs.length,
+        uniqCompanies, uniqVendors, uniqMunis,
+        tasksAssigned: myAssignedTasks.length,
+        tasksAssignedOpen: myAssignedTasksOpen.length,
+        tasksCompletedInPeriod,
+        projectsAssigned: myAssignedProjects.length,
+        projectsAssignedOpen: myAssignedProjectsOpen.length,
+        achievement: closedComp + closedVend, // 業者加入済 + 企業成約済
+        closedComp, closedVend, treaty, dustalk,
+        myApproaches, myLogs
       };
     }).filter(s=>s.total>0).sort((a,b)=>b.total-a.total);
 
@@ -19741,10 +19755,11 @@ ${recentLogs}
             <div style={{padding:"0.75rem 1rem",borderBottom:`1px solid ${C.borderLight}`,fontWeight:800,fontSize:"0.85rem",color:C.text}}>
               👥 担当者別アクティビティ
             </div>
-            {userStats.map(({u,total,compApproach,vendApproach,muniApproach,newComp,newVend,newMuni,closedComp,closedVend,treaty,dustalk},idx)=>{
+            {userStats.map(({u,total},idx)=>{
               const maxTotal = userStats[0]?.total||1;
               const initials = (u.name||"?").split(/\s+/).map(s=>s[0]).join("").slice(0,2);
               const barColor = ["#2563eb","#7c3aed","#059669","#d97706","#dc2626"][idx%5];
+              const us = userStats[idx];
               return (
                 <div key={u.id} style={{padding:"0.875rem 1rem",borderBottom:`1px solid ${C.borderLight}`}}>
                   <div style={{display:"flex",alignItems:"center",gap:"0.6rem",marginBottom:"0.5rem"}}>
@@ -19759,36 +19774,26 @@ ${recentLogs}
                   <div style={{height:5,background:"#f1f5f9",borderRadius:999,marginBottom:"0.65rem",overflow:"hidden"}}>
                     <div style={{height:"100%",width:`${(total/maxTotal*100).toFixed(1)}%`,background:barColor,borderRadius:999,transition:"width 0.3s"}}/>
                   </div>
-                  {/* ✅ v217: アクション種別のグリッド表示（誰が何をどれだけしたかが一目でわかる） */}
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(4, 1fr)",gap:"0.35rem",marginBottom:"0.5rem"}}>
+                  {/* ✅ v218: 新スペック - 4列×2行のカードグリッド */}
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(4, 1fr)",gap:"0.35rem"}}>
                     {[
-                      {label:"📞 アプローチ", value:userStats[idx].approachTotal, color:"#1d4ed8", bg:"#dbeafe"},
-                      {label:"📝 メモ", value:userStats[idx].memoCount, color:"#4338ca", bg:"#eef2ff"},
-                      {label:"💬 チャット", value:userStats[idx].chatCount, color:"#0e7490", bg:"#cffafe"},
-                      {label:"🎤 議事録", value:userStats[idx].mtgCount, color:"#166534", bg:"#dcfce7"},
-                      {label:"📋 タスク作成", value:userStats[idx].taskCreated, color:"#7c2d12", bg:"#fed7aa"},
-                      {label:"✅ タスク完了", value:userStats[idx].tasksCompleted, color:"#15803d", bg:"#bbf7d0"},
-                      {label:"🔄 ステータス変更", value:userStats[idx].statusChanges, color:"#9d174d", bg:"#fce7f3"},
-                      {label:"⭐ 成果", value:closedComp+closedVend+treaty+dustalk, color:"#b45309", bg:"#fef3c7"},
+                      {label:"📞 アプローチ", value:us.approachTotal, color:"#1d4ed8", bg:"#dbeafe", sub:"件"},
+                      {label:"🏢 企業", value:us.uniqCompanies, color:"#1d4ed8", bg:"#dbeafe", sub:"社"},
+                      {label:"🔧 業者", value:us.uniqVendors, color:"#5b21b6", bg:"#ede9fe", sub:"社"},
+                      {label:"🏛️ 自治体", value:us.uniqMunis, color:"#065f46", bg:"#d1fae5", sub:"市町村"},
+                      {label:"📋 担当タスク", value:us.tasksAssignedOpen, color:"#7c2d12", bg:"#fed7aa", sub:`/${us.tasksAssigned}`},
+                      {label:"✅ タスク完了", value:us.tasksCompletedInPeriod, color:"#15803d", bg:"#bbf7d0", sub:"件"},
+                      {label:"📁 プロジェクト", value:us.projectsAssignedOpen, color:"#4338ca", bg:"#eef2ff", sub:`/${us.projectsAssigned}`},
+                      {label:"⭐ 成果", value:us.achievement, color:"#b45309", bg:"#fef3c7", sub:"件"},
                     ].map((item, kIdx)=>(
-                      <div key={kIdx} style={{background: item.value > 0 ? item.bg : "#f9fafb", borderRadius:6, padding:"0.4rem 0.5rem", textAlign:"center", opacity: item.value>0?1:0.5}}>
-                        <div style={{fontSize:"0.6rem",fontWeight:700,color:item.value>0?item.color:"#9ca3af",marginBottom:2}}>{item.label}</div>
-                        <div style={{fontSize:"1.1rem",fontWeight:800,color:item.value>0?item.color:"#9ca3af"}}>{item.value}</div>
+                      <div key={kIdx} style={{background: item.value > 0 ? item.bg : "#f9fafb", borderRadius:6, padding:"0.45rem 0.5rem", textAlign:"center", opacity: item.value>0?1:0.5}}>
+                        <div style={{fontSize:"0.6rem",fontWeight:700,color:item.value>0?item.color:"#9ca3af",marginBottom:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{item.label}</div>
+                        <div style={{display:"flex",alignItems:"baseline",justifyContent:"center",gap:2}}>
+                          <span style={{fontSize:"1.15rem",fontWeight:800,color:item.value>0?item.color:"#9ca3af"}}>{item.value}</span>
+                          <span style={{fontSize:"0.55rem",fontWeight:600,color:item.value>0?item.color:"#9ca3af",opacity:0.7}}>{item.sub}</span>
+                        </div>
                       </div>
                     ))}
-                  </div>
-                  {/* 内訳チップ（種別ごとの詳細） */}
-                  <div style={{display:"flex",flexWrap:"wrap",gap:"0.3rem"}}>
-                    {compApproach>0&&<span style={{fontSize:"0.66rem",fontWeight:700,background:"#dbeafe",color:"#1d4ed8",borderRadius:999,padding:"0.15rem 0.5rem"}}>🏢 企業 {compApproach}</span>}
-                    {muniApproach>0&&<span style={{fontSize:"0.66rem",fontWeight:700,background:"#d1fae5",color:"#065f46",borderRadius:999,padding:"0.15rem 0.5rem"}}>🏛️ 自治体 {muniApproach}</span>}
-                    {vendApproach>0&&<span style={{fontSize:"0.66rem",fontWeight:700,background:"#ede9fe",color:"#5b21b6",borderRadius:999,padding:"0.15rem 0.5rem"}}>🔧 業者 {vendApproach}</span>}
-                    {newComp>0&&<span style={{fontSize:"0.66rem",fontWeight:600,background:"#fff7ed",color:"#c2410c",borderRadius:999,padding:"0.15rem 0.5rem"}}>➕企業登録 {newComp}</span>}
-                    {newMuni>0&&<span style={{fontSize:"0.66rem",fontWeight:600,background:"#ecfdf5",color:"#047857",borderRadius:999,padding:"0.15rem 0.5rem"}}>➕自治体登録 {newMuni}</span>}
-                    {newVend>0&&<span style={{fontSize:"0.66rem",fontWeight:600,background:"#f5f3ff",color:"#6d28d9",borderRadius:999,padding:"0.15rem 0.5rem"}}>➕業者登録 {newVend}</span>}
-                    {closedComp>0&&<span style={{fontSize:"0.66rem",fontWeight:700,background:"#fef3c7",color:"#b45309",borderRadius:999,padding:"0.15rem 0.5rem"}}>⭐企業成約 {closedComp}</span>}
-                    {closedVend>0&&<span style={{fontSize:"0.66rem",fontWeight:700,background:"#fef3c7",color:"#b45309",borderRadius:999,padding:"0.15rem 0.5rem"}}>⭐業者加入 {closedVend}</span>}
-                    {dustalk>0&&<span style={{fontSize:"0.66rem",fontWeight:700,background:"#cffafe",color:"#0e7490",borderRadius:999,padding:"0.15rem 0.5rem"}}>✅展開 {dustalk}</span>}
-                    {treaty>0&&<span style={{fontSize:"0.66rem",fontWeight:700,background:"#fce7f3",color:"#9d174d",borderRadius:999,padding:"0.15rem 0.5rem"}}>🤝協定 {treaty}</span>}
                   </div>
                 </div>
               );
