@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v216-bcardtab-allperiod"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v217-dashboard-revamp"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -16936,7 +16936,12 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   const [linkVendorFilterMuni,setLinkVendorFilterMuni]=useState("");
   const [linkVendorFilterPermit,setLinkVendorFilterPermit]=useState("");
   // dashboard period filter (must be top-level, not inside conditional)
-  const [dashPeriod,setDashPeriod]=useState("month"); // today|week|month|all
+  const [dashPeriod,setDashPeriod]=useState("custom"); // custom|all
+  // ✅ v217: 期間ピッカー - デフォルトは「今月の1日〜今日」
+  const _todayStr = new Date().toISOString().slice(0,10);
+  const _monthStartStr = (() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0,10); })();
+  const [dashStartDate,setDashStartDate]=useState(_monthStartStr);
+  const [dashEndDate,setDashEndDate]=useState(_todayStr);
   // CSV import preview/error state (must be top-level, not inside IIFE)
   const [importPreview,setImportPreview]=useState(null);
   const [importErr,setImportErr]=useState("");
@@ -19536,27 +19541,23 @@ ${recentLogs}
       d.setHours(0,0,0,0);
       return d;
     };
-    const [dashView, setDashView] = dashPeriod==="week" ? ["week","week"] : ["month","month"];
-    // ✅ v216: dashPeriod: "week" | "month" | "all" (全期間)
-    const periodStart = dashPeriod==="week"
-      ? getWeekStart()
-      : dashPeriod==="all"
+    const [dashView, setDashView] = ["custom","custom"];
+    // ✅ v217: dashPeriod: "custom" (期間指定) | "all" (全期間)
+    const periodStart = dashPeriod==="all"
       ? new Date(2000, 0, 1)
-      : new Date(now.getFullYear(), now.getMonth(), 1);
-    const periodEnd = dashPeriod==="week"
-      ? new Date(getWeekStart().getTime() + 7*24*60*60*1000 - 1)
-      : dashPeriod==="all"
+      : new Date(dashStartDate + "T00:00:00");
+    const periodEnd = dashPeriod==="all"
       ? new Date(2100, 11, 31, 23, 59, 59)
-      : new Date(now.getFullYear(), now.getMonth()+1, 0, 23, 59, 59);
+      : new Date(dashEndDate + "T23:59:59");
     const inPeriod = d => { 
-      if (dashPeriod === "all") return true; // 全期間 = 全てtrue
-      const dt=new Date(d); return dt>=periodStart && dt<=periodEnd; 
+      if (dashPeriod === "all") return true;
+      const dt=new Date(d); 
+      if (isNaN(dt.getTime())) return false;
+      return dt>=periodStart && dt<=periodEnd; 
     };
-    const periodLabel = dashPeriod==="week"
-      ? `${periodStart.getMonth()+1}/${periodStart.getDate()}〜${periodEnd.getMonth()+1}/${periodEnd.getDate()}`
-      : dashPeriod==="all"
+    const periodLabel = dashPeriod==="all"
       ? `全期間`
-      : `${now.getFullYear()}年${now.getMonth()+1}月`;
+      : `${dashStartDate} 〜 ${dashEndDate}`;
 
     // ── 全アプローチログ（期間内）
     const allApproaches = [
@@ -19577,10 +19578,34 @@ ${recentLogs}
     const compClosed=companies.filter(c=>c.status==="成約").length;
     const periodActivity = allChangeLogs.length + allApproaches.length;
 
-    // ── 担当者別集計
+    // ── 担当者別集計 (v217: 各アクション種別を全部集計)
+    // 期間内のメモ・チャット・議事録・タスク作成・プロジェクト作成も取得
+    const allMemos = [
+      ...(data.companies||[]).flatMap(e=>(e.memos||[]).map(m=>({...m,entityType:"企業",entityName:e.name,entityId:e.id}))),
+      ...(data.vendors||[]).flatMap(e=>(e.memos||[]).map(m=>({...m,entityType:"業者",entityName:e.name,entityId:e.id}))),
+      ...(data.municipalities||[]).flatMap(e=>(e.memos||[]).map(m=>({...m,entityType:"自治体",entityName:e.name,entityId:e.id}))),
+    ].filter(m=>inPeriod(m.date||m.createdAt||""));
+    const allChats = [
+      ...(data.companies||[]).flatMap(e=>(e.chat||[]).map(c=>({...c,entityType:"企業",entityName:e.name,entityId:e.id}))),
+      ...(data.vendors||[]).flatMap(e=>(e.chat||[]).map(c=>({...c,entityType:"業者",entityName:e.name,entityId:e.id}))),
+      ...(data.municipalities||[]).flatMap(e=>(e.chat||[]).map(c=>({...c,entityType:"自治体",entityName:e.name,entityId:e.id}))),
+    ].filter(c=>inPeriod(c.date||c.createdAt||""));
+    const allMtgs = [
+      ...(data.companies||[]).flatMap(e=>(e.mtgLogs||[]).map(m=>({...m,entityType:"企業",entityName:e.name,entityId:e.id}))),
+      ...(data.vendors||[]).flatMap(e=>(e.mtgLogs||[]).map(m=>({...m,entityType:"業者",entityName:e.name,entityId:e.id}))),
+      ...(data.municipalities||[]).flatMap(e=>(e.mtgLogs||[]).map(m=>({...m,entityType:"自治体",entityName:e.name,entityId:e.id}))),
+    ].filter(m=>inPeriod(m.date||m.createdAt||""));
+    const allTasks = (data.tasks||[]).filter(t=>inPeriod(t.createdAt||""));
+    const allProjects = (data.projects||[]).filter(p=>inPeriod(p.createdAt||""));
+    
     const userStats = users.map(u => {
       const myApproaches = allApproaches.filter(l=>l.userId===u.id);
       const myLogs = allChangeLogs.filter(l=>l.userId===u.id);
+      const myMemos = allMemos.filter(m=>m.userId===u.id || m.createdBy===u.id);
+      const myChats = allChats.filter(c=>c.userId===u.id);
+      const myMtgs = allMtgs.filter(m=>m.userId===u.id || m.createdBy===u.id);
+      const myTasks = allTasks.filter(t=>t.createdBy===u.id);
+      const myProjects = allProjects.filter(p=>p.createdBy===u.id);
 
       // エンティティ別アプローチ数
       const compApproach  = myApproaches.filter(l=>l.entityType==="企業").length;
@@ -19592,14 +19617,33 @@ ${recentLogs}
       const newVend  = myLogs.filter(l=>l.entityType==="業者"&&l.field==="登録").length;
       const newMuni  = myLogs.filter(l=>l.entityType==="自治体"&&l.field==="登録").length;
 
-      // ステータス変更
+      // ステータス変更（成果指標）
       const closedComp = myLogs.filter(l=>l.entityType==="企業"&&l.field==="ステータス"&&l.newVal==="成約").length;
       const closedVend = myLogs.filter(l=>l.entityType==="業者"&&(l.field==="ステータス")&&l.newVal==="加入済").length;
       const treaty     = myLogs.filter(l=>l.entityType==="自治体"&&l.field==="連携協定"&&l.newVal==="協定済").length;
       const dustalk    = myLogs.filter(l=>l.entityType==="自治体"&&l.field==="ダストーク"&&l.newVal==="展開").length;
+      const statusChanges = myLogs.filter(l=>l.field==="ステータス").length;
 
-      const total = myApproaches.length + myLogs.length;
-      return { u, total, compApproach, vendApproach, muniApproach, newComp, newVend, newMuni, closedComp, closedVend, treaty, dustalk, myApproaches, myLogs };
+      // タスク完了
+      const tasksCompleted = (data.tasks||[]).filter(t => 
+        (t.assignees||[]).includes(u.id) && t.status==="完了" && inPeriod(t.updatedAt||t.completedAt||"")
+      ).length;
+
+      const total = myApproaches.length + myLogs.length + myMemos.length + myChats.length + myMtgs.length + myTasks.length;
+      return { 
+        u, total, 
+        compApproach, vendApproach, muniApproach, 
+        newComp, newVend, newMuni, 
+        closedComp, closedVend, treaty, dustalk, statusChanges,
+        memoCount: myMemos.length,
+        chatCount: myChats.length,
+        mtgCount: myMtgs.length,
+        taskCreated: myTasks.length,
+        tasksCompleted,
+        projectCreated: myProjects.length,
+        approachTotal: myApproaches.length,
+        myApproaches, myLogs 
+      };
     }).filter(s=>s.total>0).sort((a,b)=>b.total-a.total);
 
     // ── アプローチ種別集計（期間内）
@@ -19623,14 +19667,31 @@ ${recentLogs}
       <div style={{paddingBottom:"1rem"}}>
         <TopTabs/>
 
-        {/* 期間切替 - ✅ v216: 全期間 追加 */}
-        <div style={{display:"flex",background:"white",borderRadius:"8px",padding:"0.25rem",marginBottom:"1rem",border:`1px solid ${C.border}`,gap:"0.25rem"}}>
-          {[["week","📅 週間"],["month","📆 月間"],["all","📊 全期間"]].map(([id,lbl])=>(
-            <button key={id} onClick={()=>setDashPeriod(id)}
-              style={{flex:1,padding:"0.55rem",borderRadius:"0.625rem",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.82rem",background:dashPeriod===id?C.accent:"transparent",color:dashPeriod===id?"white":C.textSub,transition:"all 0.15s"}}>
-              {lbl}
-            </button>
-          ))}
+        {/* ✅ v217: 期間ピッカー - カスタム期間指定 + プリセット */}
+        <div style={{background:"white",borderRadius:"8px",padding:"0.75rem",marginBottom:"1rem",border:`1px solid ${C.border}`,boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
+          <div style={{display:"flex",alignItems:"center",gap:"0.5rem",flexWrap:"wrap",marginBottom:"0.6rem"}}>
+            <span style={{fontSize:"0.75rem",fontWeight:700,color:C.textSub,whiteSpace:"nowrap"}}>📅 期間</span>
+            <input type="date" value={dashStartDate} onChange={e=>{setDashStartDate(e.target.value);setDashPeriod("custom");}} disabled={dashPeriod==="all"}
+              style={{padding:"0.4rem 0.55rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.82rem",fontFamily:"inherit",background:dashPeriod==="all"?"#f3f4f6":"white",color:dashPeriod==="all"?"#9ca3af":C.text,cursor:dashPeriod==="all"?"not-allowed":"pointer"}}/>
+            <span style={{fontSize:"0.75rem",color:C.textMuted}}>〜</span>
+            <input type="date" value={dashEndDate} onChange={e=>{setDashEndDate(e.target.value);setDashPeriod("custom");}} disabled={dashPeriod==="all"}
+              style={{padding:"0.4rem 0.55rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.82rem",fontFamily:"inherit",background:dashPeriod==="all"?"#f3f4f6":"white",color:dashPeriod==="all"?"#9ca3af":C.text,cursor:dashPeriod==="all"?"not-allowed":"pointer"}}/>
+          </div>
+          <div style={{display:"flex",gap:"0.3rem",flexWrap:"wrap"}}>
+            {[
+              ["今日", () => { const t = new Date().toISOString().slice(0,10); setDashStartDate(t); setDashEndDate(t); setDashPeriod("custom"); }],
+              ["今週", () => { const d = new Date(); const day = d.getDay()||7; const start = new Date(d); start.setDate(d.getDate() - day + 1); const end = new Date(start); end.setDate(start.getDate() + 6); setDashStartDate(start.toISOString().slice(0,10)); setDashEndDate(end.toISOString().slice(0,10)); setDashPeriod("custom"); }],
+              ["今月", () => { const d = new Date(); const start = new Date(d.getFullYear(), d.getMonth(), 1); const end = new Date(d.getFullYear(), d.getMonth()+1, 0); setDashStartDate(start.toISOString().slice(0,10)); setDashEndDate(end.toISOString().slice(0,10)); setDashPeriod("custom"); }],
+              ["先月", () => { const d = new Date(); const start = new Date(d.getFullYear(), d.getMonth()-1, 1); const end = new Date(d.getFullYear(), d.getMonth(), 0); setDashStartDate(start.toISOString().slice(0,10)); setDashEndDate(end.toISOString().slice(0,10)); setDashPeriod("custom"); }],
+              ["今年", () => { const d = new Date(); const start = new Date(d.getFullYear(), 0, 1); const end = new Date(d.getFullYear(), 11, 31); setDashStartDate(start.toISOString().slice(0,10)); setDashEndDate(end.toISOString().slice(0,10)); setDashPeriod("custom"); }],
+              ["📊 全期間", () => setDashPeriod("all")],
+            ].map(([lbl, fn], idx) => (
+              <button key={idx} onClick={fn}
+                style={{padding:"0.35rem 0.7rem",borderRadius:5,border:`1px solid ${(lbl==="📊 全期間" && dashPeriod==="all") ? C.accent : C.border}`,background:(lbl==="📊 全期間" && dashPeriod==="all") ? C.accentBg : "white",color:(lbl==="📊 全期間" && dashPeriod==="all") ? C.accent : C.textSub,fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                {lbl}
+              </button>
+            ))}
+          </div>
         </div>
         <div style={{fontSize:"0.75rem",fontWeight:700,color:C.textMuted,marginBottom:"0.75rem",textAlign:"center"}}>{periodLabel}</div>
 
@@ -19687,28 +19748,47 @@ ${recentLogs}
               return (
                 <div key={u.id} style={{padding:"0.875rem 1rem",borderBottom:`1px solid ${C.borderLight}`}}>
                   <div style={{display:"flex",alignItems:"center",gap:"0.6rem",marginBottom:"0.5rem"}}>
-                    <div style={{width:32,height:32,borderRadius:"50%",background:`linear-gradient(135deg,${barColor},${barColor}99)`,display:"flex",alignItems:"center",justifyContent:"center",color:"white",fontWeight:800,fontSize:"0.78rem",flexShrink:0}}>{initials}</div>
+                    <div style={{width:36,height:36,borderRadius:"50%",background:`linear-gradient(135deg,${barColor},${barColor}99)`,display:"flex",alignItems:"center",justifyContent:"center",color:"white",fontWeight:800,fontSize:"0.82rem",flexShrink:0}}>{initials}</div>
                     <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontWeight:700,fontSize:"0.88rem",color:C.text}}>{u.name}</div>
-                      <div style={{fontSize:"0.65rem",color:C.textMuted}}>{total}件のアクティビティ</div>
+                      <div style={{fontWeight:700,fontSize:"0.92rem",color:C.text}}>{u.name}</div>
+                      <div style={{fontSize:"0.66rem",color:C.textMuted}}>合計 {total} アクション</div>
                     </div>
-                    <div style={{fontSize:"1.1rem",fontWeight:800,color:barColor}}>{total}</div>
+                    <div style={{fontSize:"1.3rem",fontWeight:800,color:barColor}}>{total}</div>
                   </div>
                   {/* プログレスバー */}
-                  <div style={{height:4,background:"#f1f5f9",borderRadius:999,marginBottom:"0.6rem",overflow:"hidden"}}>
+                  <div style={{height:5,background:"#f1f5f9",borderRadius:999,marginBottom:"0.65rem",overflow:"hidden"}}>
                     <div style={{height:"100%",width:`${(total/maxTotal*100).toFixed(1)}%`,background:barColor,borderRadius:999,transition:"width 0.3s"}}/>
                   </div>
-                  {/* 内訳チップ */}
+                  {/* ✅ v217: アクション種別のグリッド表示（誰が何をどれだけしたかが一目でわかる） */}
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(4, 1fr)",gap:"0.35rem",marginBottom:"0.5rem"}}>
+                    {[
+                      {label:"📞 アプローチ", value:userStats[idx].approachTotal, color:"#1d4ed8", bg:"#dbeafe"},
+                      {label:"📝 メモ", value:userStats[idx].memoCount, color:"#4338ca", bg:"#eef2ff"},
+                      {label:"💬 チャット", value:userStats[idx].chatCount, color:"#0e7490", bg:"#cffafe"},
+                      {label:"🎤 議事録", value:userStats[idx].mtgCount, color:"#166534", bg:"#dcfce7"},
+                      {label:"📋 タスク作成", value:userStats[idx].taskCreated, color:"#7c2d12", bg:"#fed7aa"},
+                      {label:"✅ タスク完了", value:userStats[idx].tasksCompleted, color:"#15803d", bg:"#bbf7d0"},
+                      {label:"🔄 ステータス変更", value:userStats[idx].statusChanges, color:"#9d174d", bg:"#fce7f3"},
+                      {label:"⭐ 成果", value:closedComp+closedVend+treaty+dustalk, color:"#b45309", bg:"#fef3c7"},
+                    ].map((item, kIdx)=>(
+                      <div key={kIdx} style={{background: item.value > 0 ? item.bg : "#f9fafb", borderRadius:6, padding:"0.4rem 0.5rem", textAlign:"center", opacity: item.value>0?1:0.5}}>
+                        <div style={{fontSize:"0.6rem",fontWeight:700,color:item.value>0?item.color:"#9ca3af",marginBottom:2}}>{item.label}</div>
+                        <div style={{fontSize:"1.1rem",fontWeight:800,color:item.value>0?item.color:"#9ca3af"}}>{item.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {/* 内訳チップ（種別ごとの詳細） */}
                   <div style={{display:"flex",flexWrap:"wrap",gap:"0.3rem"}}>
-                    {compApproach>0&&<span style={{fontSize:"0.68rem",fontWeight:700,background:"#dbeafe",color:"#1d4ed8",borderRadius:999,padding:"0.15rem 0.5rem"}}>🏢 企業 {compApproach}件</span>}
-                    {muniApproach>0&&<span style={{fontSize:"0.68rem",fontWeight:700,background:"#d1fae5",color:"#065f46",borderRadius:999,padding:"0.15rem 0.5rem"}}>🏛️ 自治体 {muniApproach}件</span>}
-                    {vendApproach>0&&<span style={{fontSize:"0.68rem",fontWeight:700,background:"#ede9fe",color:"#5b21b6",borderRadius:999,padding:"0.15rem 0.5rem"}}>🔧 業者 {vendApproach}件</span>}
-                    {newComp>0&&<span style={{fontSize:"0.68rem",fontWeight:600,background:"#fff7ed",color:"#c2410c",borderRadius:999,padding:"0.15rem 0.5rem"}}>➕企業登録 {newComp}</span>}
-                    {newMuni>0&&<span style={{fontSize:"0.68rem",fontWeight:600,background:"#ecfdf5",color:"#047857",borderRadius:999,padding:"0.15rem 0.5rem"}}>➕自治体登録 {newMuni}</span>}
-                    {newVend>0&&<span style={{fontSize:"0.68rem",fontWeight:600,background:"#f5f3ff",color:"#6d28d9",borderRadius:999,padding:"0.15rem 0.5rem"}}>➕業者登録 {newVend}</span>}
-                    {closedComp>0&&<span style={{fontSize:"0.68rem",fontWeight:700,background:"#fef3c7",color:"#b45309",borderRadius:999,padding:"0.15rem 0.5rem"}}>⭐企業成約 {closedComp}</span>}
-                    {dustalk>0&&<span style={{fontSize:"0.68rem",fontWeight:700,background:"#cffafe",color:"#0e7490",borderRadius:999,padding:"0.15rem 0.5rem"}}>✅展開 {dustalk}</span>}
-                    {treaty>0&&<span style={{fontSize:"0.68rem",fontWeight:700,background:"#fce7f3",color:"#9d174d",borderRadius:999,padding:"0.15rem 0.5rem"}}>🤝協定 {treaty}</span>}
+                    {compApproach>0&&<span style={{fontSize:"0.66rem",fontWeight:700,background:"#dbeafe",color:"#1d4ed8",borderRadius:999,padding:"0.15rem 0.5rem"}}>🏢 企業 {compApproach}</span>}
+                    {muniApproach>0&&<span style={{fontSize:"0.66rem",fontWeight:700,background:"#d1fae5",color:"#065f46",borderRadius:999,padding:"0.15rem 0.5rem"}}>🏛️ 自治体 {muniApproach}</span>}
+                    {vendApproach>0&&<span style={{fontSize:"0.66rem",fontWeight:700,background:"#ede9fe",color:"#5b21b6",borderRadius:999,padding:"0.15rem 0.5rem"}}>🔧 業者 {vendApproach}</span>}
+                    {newComp>0&&<span style={{fontSize:"0.66rem",fontWeight:600,background:"#fff7ed",color:"#c2410c",borderRadius:999,padding:"0.15rem 0.5rem"}}>➕企業登録 {newComp}</span>}
+                    {newMuni>0&&<span style={{fontSize:"0.66rem",fontWeight:600,background:"#ecfdf5",color:"#047857",borderRadius:999,padding:"0.15rem 0.5rem"}}>➕自治体登録 {newMuni}</span>}
+                    {newVend>0&&<span style={{fontSize:"0.66rem",fontWeight:600,background:"#f5f3ff",color:"#6d28d9",borderRadius:999,padding:"0.15rem 0.5rem"}}>➕業者登録 {newVend}</span>}
+                    {closedComp>0&&<span style={{fontSize:"0.66rem",fontWeight:700,background:"#fef3c7",color:"#b45309",borderRadius:999,padding:"0.15rem 0.5rem"}}>⭐企業成約 {closedComp}</span>}
+                    {closedVend>0&&<span style={{fontSize:"0.66rem",fontWeight:700,background:"#fef3c7",color:"#b45309",borderRadius:999,padding:"0.15rem 0.5rem"}}>⭐業者加入 {closedVend}</span>}
+                    {dustalk>0&&<span style={{fontSize:"0.66rem",fontWeight:700,background:"#cffafe",color:"#0e7490",borderRadius:999,padding:"0.15rem 0.5rem"}}>✅展開 {dustalk}</span>}
+                    {treaty>0&&<span style={{fontSize:"0.66rem",fontWeight:700,background:"#fce7f3",color:"#9d174d",borderRadius:999,padding:"0.15rem 0.5rem"}}>🤝協定 {treaty}</span>}
                   </div>
                 </div>
               );
@@ -19773,26 +19853,14 @@ ${recentLogs}
           </div>
         )}
 
-        {/* ① 今日やること */}
-        <TodayTodoPanel data={data} currentUser={currentUser} users={users} onNavigate={navigateToEntity}/>
-
-        {/* ② 担当案件一覧 */}
-        <MyCasesPanel data={data} currentUser={currentUser} users={users} onNavigate={navigateToEntity}/>
-
-        {/* ④ 営業パイプライン */}
-        <PipelineKanban data={data} currentUser={currentUser}
-          onNavigate={navigateToEntity}
-          onStatusChange={handlePipelineStatusChange}/>
-
-        {/* ⑨ チーム活動ボード */}
-        <TeamActivityBoard data={data} users={users} currentUser={currentUser}/>
-
-        {/* 🚨 案件スコアリング＋アラート */}
-        <ScoringAlertPanel data={data} users={users} currentUser={currentUser}
-          onNavigate={navigateToEntity}/>
-
-        {/* 📊 週次レポート */}
-        <WeeklyReportPanel data={data} users={users} currentUser={currentUser}/>
+        {/* ✅ v217: 以下のセクションは削除
+            - TodayTodoPanel (今日やること)
+            - MyCasesPanel (担当案件一覧)
+            - PipelineKanban (営業パイプライン)
+            - TeamActivityBoard (チーム活動ボード - 上の担当者別アクティビティに統合)
+            - ScoringAlertPanel (要フォロー案件)
+            - WeeklyReportPanel (営業レポート自動生成)
+        */}
 
       </div>
     );
