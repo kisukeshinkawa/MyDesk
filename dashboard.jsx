@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v218-user-actions-clarify"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v219-history-unified-format"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -15127,7 +15127,7 @@ function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach
                 ) : (
                   <>
                     <div style={{display:"flex",gap:"0.5rem",alignItems:"center",marginBottom:"0.2rem",flexWrap:"wrap"}}>
-                      <span style={{fontSize:"0.72rem",fontWeight:700,color:isLoss?"#dc2626":C.accent}}>{item.type}</span>
+                      <span style={{fontSize:"0.72rem",fontWeight:700,color:isLoss?"#dc2626":C.accent}}>{icon} {item.type}</span>
                       <span style={{fontSize:"0.68rem",color:C.textMuted}}>{dateStr}</span>
                       {u&&<span style={{fontSize:"0.68rem",color:C.textSub}}>👤 {u.name}</span>}
                       {item.updatedAt&&<span style={{fontSize:"0.62rem",color:"#9ca3af"}}>(編集済)</span>}
@@ -15157,7 +15157,7 @@ function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach
               </div>
               <div style={{flex:1,paddingBottom:"0.5rem",minWidth:0}}>
                 <div style={{display:"flex",gap:"0.5rem",alignItems:"center",marginBottom:"0.2rem",flexWrap:"wrap"}}>
-                  <span style={{fontSize:"0.72rem",fontWeight:700,color:C.textSub}}>{item.isMtg?"🎤 MTGメモ":"メモ"}</span>
+                  <span style={{fontSize:"0.72rem",fontWeight:700,color:C.textSub}}>📝 {item.isMtg?"MTGメモ":"メモ"}</span>
                   <span style={{fontSize:"0.68rem",color:C.textMuted}}>{dateStr}</span>
                   {u&&<span style={{fontSize:"0.68rem",color:C.textSub}}>👤 {u.name}</span>}
                   {item.editedAt&&<span style={{fontSize:"0.62rem",color:"#9ca3af"}}>(編集済)</span>}
@@ -15196,8 +15196,9 @@ function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach
               </div>
               <div style={{flex:1,paddingBottom:"0.5rem"}}>
                 <div style={{display:"flex",gap:"0.5rem",alignItems:"center",flexWrap:"wrap",marginBottom:"0.2rem"}}>
-                  <span style={{fontSize:"0.7rem",fontWeight:700,color:"#1d4ed8"}}>資料を追加</span>
-                  {userName && <span style={{fontSize:"0.65rem",color:C.textMuted}}>by {userName}</span>}
+                  <span style={{fontSize:"0.72rem",fontWeight:700,color:"#1d4ed8"}}>📎 資料添付</span>
+                  {item.uploadedAt&&<span style={{fontSize:"0.68rem",color:C.textMuted}}>{fmtJst(item.uploadedAt)}</span>}
+                  {userName && <span style={{fontSize:"0.68rem",color:C.textSub}}>👤 {userName}</span>}
                   <span style={{fontSize:"0.65rem",color:C.textMuted,marginLeft:"auto"}}>{dateStr}</span>
                 </div>
                 <div style={{fontSize:"0.78rem",color:C.text,background:"#eff6ff",borderRadius:"0.5rem",padding:"0.4rem 0.6rem",border:`1px solid #bfdbfe`,display:"flex",alignItems:"center",gap:"0.4rem"}}>
@@ -15220,9 +15221,9 @@ function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach
               </div>
               <div style={{flex:1,paddingBottom:"0.5rem"}}>
                 <div style={{display:"flex",gap:"0.5rem",alignItems:"center",flexWrap:"wrap",marginBottom:"0.2rem"}}>
-                  <span style={{fontSize:"0.7rem",fontWeight:700,color:"#0e7490"}}>名刺を紐付け</span>
-                  {userName && <span style={{fontSize:"0.65rem",color:C.textMuted}}>by {userName}</span>}
-                  <span style={{fontSize:"0.65rem",color:C.textMuted,marginLeft:"auto"}}>{dateStr}</span>
+                  <span style={{fontSize:"0.72rem",fontWeight:700,color:"#0e7490"}}>🔗 名刺紐付け</span>
+                  <span style={{fontSize:"0.68rem",color:C.textMuted}}>{dateStr}</span>
+                  {userName && <span style={{fontSize:"0.68rem",color:C.textSub}}>👤 {userName}</span>}
                 </div>
                 <div style={{fontSize:"0.78rem",color:C.text,background:"#ecfeff",borderRadius:"0.5rem",padding:"0.4rem 0.6rem",border:`1px solid #a5f3fc`}}>
                   <div style={{fontWeight:700}}>{cardName}</div>
@@ -15243,9 +15244,9 @@ function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach
               </div>
               <div style={{flex:1,paddingBottom:"0.5rem"}}>
                 <div style={{display:"flex",gap:"0.5rem",alignItems:"center",flexWrap:"wrap",marginBottom:"0.2rem"}}>
-                  <span style={{fontSize:"0.7rem",fontWeight:700,color:"#166534"}}>議事録</span>
-                  {userName && <span style={{fontSize:"0.65rem",color:C.textMuted}}>by {userName}</span>}
-                  <span style={{fontSize:"0.65rem",color:C.textMuted,marginLeft:"auto"}}>{dateStr}</span>
+                  <span style={{fontSize:"0.72rem",fontWeight:700,color:"#166534"}}>🎤 議事録</span>
+                  <span style={{fontSize:"0.68rem",color:C.textMuted}}>{dateStr}</span>
+                  {userName && <span style={{fontSize:"0.68rem",color:C.textSub}}>👤 {userName}</span>}
                 </div>
                 <div style={{fontSize:"0.83rem",color:C.text,background:"#f0fdf4",borderRadius:"0.5rem",padding:"0.5rem 0.7rem",border:`1px solid #86efac`}}>
                   {item.title && <div style={{fontWeight:700,marginBottom:item.content?"0.25rem":0}}>{item.title}</div>}
@@ -15276,10 +15277,10 @@ function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach
               <div style={{flex:1,paddingBottom:"0.5rem"}}>
                 <div style={{display:"flex",gap:"0.4rem",alignItems:"center",flexWrap:"wrap",marginBottom:"0.2rem"}}>
                   <span style={{fontSize:"0.6rem",fontWeight:700,padding:"0.1rem 0.4rem",borderRadius:4,background:baseBg,color:baseColor,letterSpacing:"0.02em"}}>{parentLbl}</span>
-                  <span style={{fontSize:"0.74rem",fontWeight:700,color:baseColor}}>{label}</span>
-                  <span style={{fontSize:"0.72rem",fontWeight:600,color:C.text}}>― {(item.parentTitle||item.title||"").slice(0,40)}</span>
-                  {userName && <span style={{fontSize:"0.65rem",color:C.textMuted}}>by {userName}</span>}
-                  <span style={{fontSize:"0.65rem",color:C.textMuted,marginLeft:"auto"}}>{dateStr}</span>
+                  <span style={{fontSize:"0.74rem",fontWeight:700,color:baseColor}}>{icon} {label}</span>
+                  <span style={{fontSize:"0.68rem",color:C.textMuted}}>{dateStr}</span>
+                  {userName && <span style={{fontSize:"0.68rem",color:C.textSub}}>👤 {userName}</span>}
+                  <span style={{fontSize:"0.7rem",fontWeight:600,color:C.text,width:"100%"}}>― {(item.parentTitle||item.title||"").slice(0,50)}</span>
                 </div>
                 {kindSuffix==="create" && (
                   <div style={{fontSize:"0.78rem",color:C.text,background:baseBg+"55",borderRadius:"0.5rem",padding:"0.4rem 0.6rem"}}>
@@ -15329,14 +15330,14 @@ function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach
                 </div>
               )}
               <div style={{display:"flex",gap:"0.5rem",alignItems:"center",flexWrap:"wrap"}}>
-                <span style={{fontSize:"0.7rem",fontWeight:700,color:changeColor}}>{changeLabel}</span>
+                <span style={{fontSize:"0.72rem",fontWeight:700,color:changeColor}}>{changeIcon} {changeLabel}</span>
+                <span style={{fontSize:"0.68rem",color:C.textMuted}}>{dateStr}</span>
                 {(isCardLink||isCardUnlink) ? (
                   <span style={{fontSize:"0.7rem",color:C.text,fontWeight:600}}>{item.newVal||item.oldVal||""}</span>
                 ) : (<>
                   {item.oldVal&&<><span style={{fontSize:"0.68rem",color:"#dc2626",textDecoration:"line-through"}}>{item.oldVal}</span><span style={{fontSize:"0.65rem",color:C.textMuted}}>→</span></>}
                   {item.newVal&&<span style={{fontSize:"0.68rem",color:"#059669",fontWeight:700}}>{item.newVal}</span>}
                 </>)}
-                <span style={{fontSize:"0.65rem",color:C.textMuted,marginLeft:"auto"}}>{dateStr}</span>
               </div>
             </div>
           </div>
