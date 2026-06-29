@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v219-history-unified-format"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v220-recording-fix"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -15596,6 +15596,7 @@ function PhoneLink({number, label, size="md", onMtg=null, onCallRecord=null}) {
   };
 
   // 録音通話ボタン: 録音開始 → 電話発信の順
+  // ✅ v220: 録音開始イベントを待ってから電話起動（タイミング保証）
   const handleRecordCall = (e) => {
     e.preventDefault();
     if(!onCallRecord) return;
@@ -15603,21 +15604,40 @@ function PhoneLink({number, label, size="md", onMtg=null, onCallRecord=null}) {
     const proceed = window.confirm(
       "📞 録音通話を開始します\n\n" +
       "【手順】\n" +
-      "1. これからMacの録音モーダルが開き、自動で録音開始されます\n" +
-      "2. その後、自動的に電話アプリが開きます\n" +
+      "1. これから録音モーダルが開き、自動で録音開始されます\n" +
+      "2. 録音開始を確認してから、電話アプリが開きます\n" +
       "3. iPhoneを「スピーカーホン」にして、Macの近くに置いてください\n" +
       "4. 通話終了後、MyDeskに戻って「停止」ボタンを押してください\n\n" +
       "続けますか？"
     );
     if(!proceed) return;
-    // 1. 先にモーダルを開く（録音モーダルは autoStart=true で自動録音開始）
+    
+    // ✅ v220: 録音開始イベントを listen して、確実に録音が始まってから電話起動
+    let phoneTriggered = false;
+    const onRecordingStarted = () => {
+      if(phoneTriggered) return;
+      phoneTriggered = true;
+      console.log("[RecordCall] Recording confirmed, opening phone in 500ms");
+      // 500ms 待ってから電話アプリ起動（録音が安定するまで）
+      setTimeout(() => {
+        window.location.href = `tel:${clean}`;
+      }, 500);
+      window.removeEventListener('mydesk-recording-started', onRecordingStarted);
+    };
+    window.addEventListener('mydesk-recording-started', onRecordingStarted);
+    
+    // 1. モーダルを開く（録音モーダルは autoStart=true で自動録音開始）
     onCallRecord();
-    // 2. 録音が開始されてから、電話アプリを起動する（2秒待機）
-    // ※ MtgRecordModal側の autoStart useEffect で 800ms 後に startRecording される
-    // ※ さらに録音準備に1秒程度かかるので、合計2秒待機
+    
+    // フォールバック: 5秒経っても録音開始しない場合は強制的に電話起動
     setTimeout(() => {
-      window.location.href = `tel:${clean}`;
-    }, 2000);
+      if(!phoneTriggered) {
+        console.warn("[RecordCall] Recording start timeout, opening phone anyway");
+        phoneTriggered = true;
+        window.removeEventListener('mydesk-recording-started', onRecordingStarted);
+        window.location.href = `tel:${clean}`;
+      }
+    }, 5000);
   };
 
   return (
@@ -15805,10 +15825,10 @@ function MtgRecordModal({entityKey,entityId,entityName,data,users,currentUser,on
       // 音声処理を全部無効化して「生のマイク音声」を取得
       // （echoCancellation/noiseSuppressionが過剰に効いて無音化される問題への対策）
       const audioConstraints = {
-        deviceId: selectedDeviceId ? { exact: selectedDeviceId } : undefined,
+        deviceId: selectedDeviceId ? { ideal: selectedDeviceId } : undefined,
         echoCancellation: false,
         noiseSuppression: false,
-        autoGainControl: false,
+        autoGainControl: true,  // ✅ v220: 音声強化（電話通話のスピーカー音を拾うため）
       };
       const stream = await navigator.mediaDevices.getUserMedia({audio: audioConstraints});
       audioStreamRef.current = stream;
@@ -15892,10 +15912,10 @@ function MtgRecordModal({entityKey,entityId,entityName,data,users,currentUser,on
     try {
       // 音声処理を無効化して生のマイク音声を取得
       const audioConstraints = {
-        deviceId: selectedDeviceId ? { exact: selectedDeviceId } : undefined,
+        deviceId: selectedDeviceId ? { ideal: selectedDeviceId } : undefined,
         echoCancellation: false,
         noiseSuppression: false,
-        autoGainControl: false,
+        autoGainControl: true,  // ✅ v220: 音声強化（電話通話のスピーカー音を拾うため）
       };
       const stream = await navigator.mediaDevices.getUserMedia({audio: audioConstraints});
       testStreamRef.current = stream;
@@ -15989,49 +16009,69 @@ function MtgRecordModal({entityKey,entityId,entityName,data,users,currentUser,on
     }
   };
 
-  const startRecording = async () => {
-    // HTTPS必須のチェック
+  const startRecording = async (retryCount = 0) => {
+    const MAX_RETRIES = 2;
+    
+    // ✅ v220: HTTPS必須のチェック
     if(window.location.protocol!=="https:" && window.location.hostname!=="localhost") {
       setPermError("録音はHTTPS環境のみで動作します。");
       return;
     }
-    // MediaRecorder API サポート確認
+    // ✅ v220: MediaRecorder API サポート確認
     if(typeof MediaRecorder === "undefined") {
       setPermError("このブラウザは録音機能（MediaRecorder API）に非対応です。Chrome/Safari/Edgeの最新版をお使いください。");
       return;
     }
+    
+    // ✅ v220: iOS PWA 警告（既知の制約）
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const isStandalone = window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+    if(isIOS && isStandalone) {
+      console.warn("[Recording] iOS PWA detected - MediaRecorder may be unstable");
+    }
+    
     setPermError("");
     setWhisperError("");
     // 既存の音声URLがあれば破棄
     if(recordedAudioUrl) { try { URL.revokeObjectURL(recordedAudioUrl); } catch{} setRecordedAudioUrl(""); }
 
+    console.log("[Recording] startRecording attempt:", retryCount + 1, "deviceId:", selectedDeviceId || "default");
+
     try {
-      // 音声処理を全部無効化して生のマイク音声を取得
+      // ✅ v220: 音声強化設定（電話の相手側スピーカー音を拾うため AGC ON）
       const audioConstraints = {
-        deviceId: selectedDeviceId ? { exact: selectedDeviceId } : undefined,
+        deviceId: selectedDeviceId ? { ideal: selectedDeviceId } : undefined,
         echoCancellation: false,
         noiseSuppression: false,
-        autoGainControl: false,
+        autoGainControl: true,  // ✅ v220: 自動ゲインを ON（電話通話を録るため）
       };
       const stream = await navigator.mediaDevices.getUserMedia({audio: audioConstraints});
       recordingStreamRef.current = stream;
+      console.log("[Recording] getUserMedia success");
 
       // 許可下りたのでデバイス一覧再取得
       refreshDevices();
 
-      // MediaRecorder セットアップ
+      // ✅ v220: MediaRecorder セットアップ (ビットレート 128kbps に改善)
       const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus"
                  : MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm"
                  : MediaRecorder.isTypeSupported("audio/mp4") ? "audio/mp4"
                  : "";
-      const recorder = mime ? new MediaRecorder(stream, {mimeType: mime, audioBitsPerSecond: 64000})
-                            : new MediaRecorder(stream, {audioBitsPerSecond: 64000});
+      console.log("[Recording] MIME type selected:", mime || "(default)");
+      const recorder = mime ? new MediaRecorder(stream, {mimeType: mime, audioBitsPerSecond: 128000})
+                            : new MediaRecorder(stream, {audioBitsPerSecond: 128000});
       mediaRecorderRef.current = recorder;
       audioChunksRef.current = [];
 
-      recorder.ondataavailable = e => { if(e.data && e.data.size > 0) audioChunksRef.current.push(e.data); };
+      recorder.ondataavailable = e => { 
+        if(e.data && e.data.size > 0) {
+          audioChunksRef.current.push(e.data);
+          console.log("[Recording] data chunk:", e.data.size, "bytes, total chunks:", audioChunksRef.current.length);
+        }
+      };
 
       recorder.onstop = async () => {
+        console.log("[Recording] onstop fired, chunks:", audioChunksRef.current.length);
         // ストリーム解放
         try { stream.getTracks().forEach(t => t.stop()); } catch{}
         recordingStreamRef.current = null;
@@ -16048,11 +16088,13 @@ function MtgRecordModal({entityKey,entityId,entityName,data,users,currentUser,on
         const chunks = audioChunksRef.current;
         audioChunksRef.current = [];
         if(chunks.length === 0) {
-          setWhisperError("録音データが取得できませんでした。マイクが動作していない可能性があります。");
+          setWhisperError("録音データが取得できませんでした。マイクが動作していない可能性があります。ブラウザの権限設定を確認してください。");
+          console.error("[Recording] No chunks recorded!");
           return;
         }
 
         const blob = new Blob(chunks, { type: mime || "audio/webm" });
+        console.log("[Recording] Final blob size:", blob.size, "bytes, type:", blob.type);
         // 再生確認用URL
         const url = URL.createObjectURL(blob);
         setRecordedAudioUrl(url);
@@ -16068,7 +16110,7 @@ function MtgRecordModal({entityKey,entityId,entityName,data,users,currentUser,on
       };
 
       recorder.onerror = e => {
-        console.warn("MediaRecorder error:", e);
+        console.warn("[Recording] MediaRecorder error:", e);
         setPermError("録音中にエラーが発生しました: " + (e.error?.message || "不明"));
         recordingRef.current = false;
         setRecording(false);
@@ -16085,15 +16127,38 @@ function MtgRecordModal({entityKey,entityId,entityName,data,users,currentUser,on
       setRecording(true);
       setElapsed(0);
       timerRef.current = setInterval(() => setElapsed(s => s + 1), 1000);
+      console.log("[Recording] Recording started successfully");
+      // ✅ v220: 録音開始イベントを通知（PhoneLink が電話起動タイミングを取るため）
+      try { window.dispatchEvent(new CustomEvent('mydesk-recording-started')); } catch(_) {}
 
     } catch(err) {
-      console.error("録音開始エラー:", err);
+      console.error("[Recording] startRecording error:", err.name, err.message);
+      
+      // ✅ v220: OverConstrainedError は deviceId 問題 → デフォルトデバイスでリトライ
+      if(err.name === "OverConstrainedError" && retryCount < MAX_RETRIES) {
+        console.log("[Recording] OverConstrainedError - retrying with default device");
+        setSelectedDeviceId("");  // デバイス指定をクリア
+        setTimeout(() => startRecording(retryCount + 1), 200);
+        return;
+      }
+      
+      // ✅ v220: NotReadableError は他のアプリがマイク使用中 → リトライ
+      if(err.name === "NotReadableError" && retryCount < MAX_RETRIES) {
+        console.log("[Recording] NotReadableError - retrying after 1s");
+        setTimeout(() => startRecording(retryCount + 1), 1000);
+        return;
+      }
+      
       if(err.name === "NotAllowedError") {
-        setPermError("マイクが許可されていません。URLバー左の🔒/🎤アイコンから許可してください。");
+        setPermError("マイクが許可されていません。URLバー左の🔒/🎤アイコンから許可してください。" + (isIOS ? " iPhoneの場合は設定 > Safari > マイクから許可してください。" : ""));
       } else if(err.name === "NotFoundError") {
         setPermError("マイクデバイスが見つかりません。マイクの接続を確認してください。");
+      } else if(err.name === "OverConstrainedError") {
+        setPermError("選択したマイクが使えません。マイクを再選択してください。");
+      } else if(err.name === "NotReadableError") {
+        setPermError("マイクが他のアプリで使用中です。他のアプリ（Zoom、Teams等）を閉じてから再試行してください。");
       } else {
-        setPermError("録音開始に失敗しました: " + (err.message || err.name || "不明なエラー"));
+        setPermError("録音開始に失敗しました: " + (err.message || err.name || "不明なエラー") + (isIOS && isStandalone ? " (iOS PWAの既知の制約の可能性があります。Safariで直接お試しください)" : ""));
       }
     }
   };
