@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v220-scroll-bizcard-search"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v220-debug-marker"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -14472,7 +14472,7 @@ function LinkBizcardModal({ allCards=[], entityType, entityId, entityName, users
         {/* ヘッダー */}
         <div style={{padding:"1rem 1.25rem 0.75rem",borderBottom:`1px solid ${C.borderLight}`,flexShrink:0}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.25rem"}}>
-            <span style={{fontWeight:800,fontSize:"0.95rem",color:C.text}}>🔗 名刺を紐づける</span>
+            <span style={{fontWeight:800,fontSize:"0.95rem",color:C.text}}>🔗 名刺を紐づける <span style={{color:"red",fontSize:"0.7rem"}}>[v220-DEBUG]</span></span>
             <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",fontSize:"1.3rem",color:C.textMuted,lineHeight:1,padding:"0.2rem 0.4rem"}}>✕</button>
           </div>
           <div style={{display:"flex",alignItems:"center",gap:"0.35rem",marginBottom:"0.6rem"}}>
