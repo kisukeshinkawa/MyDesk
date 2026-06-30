@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v220-recording-bizcard-popup"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v220-scroll-bizcard-search"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -7479,6 +7479,27 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
   const [activeTaskId,setActiveTaskId] = useState(null);
   const [fromProject,setFromProject] = useState(null);
   const [sheet,setSheet] = useState(null);
+  
+  // ✅ v220: スクロール位置保持（タスク・プロジェクトリスト用）
+  const savedTaskScroll = React.useRef({list:0});
+  const saveTaskScroll = (key) => {
+    // 画面全体スクロール + コンテナ内スクロール両方保存
+    const el = document.querySelector('[data-task-scroll]');
+    savedTaskScroll.current[key] = el ? el.scrollTop : (window.scrollY || document.documentElement.scrollTop || 0);
+  };
+  const restoreTaskScroll = (key) => {
+    const target = savedTaskScroll.current[key]||0;
+    // 複数フレームで確実に復元
+    let frames = 0;
+    const tick = () => {
+      const el = document.querySelector('[data-task-scroll]');
+      if(el) el.scrollTop = target;
+      else { window.scrollTo(0, target); }
+      frames++;
+      if(frames < 30) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  };
   const [tMemoIn,setTMemoIn]= useState({});
   const [tChatIn,setTChatIn]= useState({});
   const [tMemoEdit,setTMemoEdit]= useState(null); // {entityId,memoId,text}
@@ -8435,7 +8456,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     const TASK_TABS=[["info","📋","情報"],["history","💬","履歴・チャット"],["review","📨","確認依頼"],["files","📎","ファイル"]];
     return (
       <div>
-        <button onClick={()=>{setScreen(fromProject?"projectDetail":"list");setTaskTab("info");if(!fromProject)setActiveTaskId(null);}}
+        <button onClick={()=>{setScreen(fromProject?"projectDetail":"list");setTaskTab("info");if(!fromProject){setActiveTaskId(null);restoreTaskScroll("list");}}}
           style={{display:"flex",alignItems:"center",gap:"0.4rem",background:"none",border:"none",color:C.textSub,fontWeight:700,fontSize:"0.85rem",cursor:"pointer",marginBottom:"1.25rem",padding:0}}>
           ‹ {fromProject?activePj?.name:"タスク一覧"}
         </button>
@@ -8588,7 +8609,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     const PJ_TABS=[["tasks","📋","タスク"],["history","💬","履歴・チャット"],["files","📎","ファイル"]];
     return (
       <div>
-        <button onClick={()=>{setScreen("list");setPjTab("tasks");setActivePjId(null);}}
+        <button onClick={()=>{setScreen("list");setPjTab("tasks");setActivePjId(null);restoreTaskScroll("list");}}
           style={{display:"flex",alignItems:"center",gap:"0.4rem",background:"none",border:"none",color:C.textSub,fontWeight:700,fontSize:"0.85rem",cursor:"pointer",marginBottom:"1.25rem",padding:0}}>
           ‹ タスク一覧
         </button>
@@ -8817,7 +8838,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
             const pj=t.projectId?allProjects.find(p=>p.id===t.projectId):null;
             const sMeta=STATUS_META[t.status]||STATUS_META["未着手"];
             return (
-              <div key={t.id} onClick={()=>{setActiveTaskId(t.id);setFromProject(t.projectId||null);setScreen("taskDetail");setTaskTab("info");}}
+              <div key={t.id} onClick={()=>{saveTaskScroll("list");setActiveTaskId(t.id);setFromProject(t.projectId||null);setScreen("taskDetail");setTaskTab("info");}}
                 style={{display:"flex",alignItems:"center",padding:"0.55rem 1rem",borderTop:"1px solid #fed7aa",cursor:"pointer",gap:"0.5rem",background:"white"}}>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:"0.85rem",fontWeight:600,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div>
@@ -8939,7 +8960,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
                 const labelBgColor = pj.salesRef ? ({"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"})[pj.salesRef.type] || "#64748b" : "#64748b";
                 return (
                   <div key={pj.id}
-                    onClick={()=>{setActivePjId(pj.id);setScreen("projectDetail");}}
+                    onClick={()=>{saveTaskScroll("list");setActivePjId(pj.id);setScreen("projectDetail");}}
                     style={{padding:"0.85rem 1rem",margin:"0.5rem",background:"white",border:`1px solid ${C.borderLight}`,borderRadius:"10px",boxShadow:"0 1px 3px rgba(0,0,0,0.04)",cursor:"pointer",transition:"all 0.12s"}}
                     onMouseEnter={e=>{e.currentTarget.style.background="#fafbfc";e.currentTarget.style.boxShadow="0 2px 6px rgba(0,0,0,0.08)";}}
                     onMouseLeave={e=>{e.currentTarget.style.background="white";e.currentTarget.style.boxShadow="0 1px 3px rgba(0,0,0,0.04)";}}>
@@ -9009,7 +9030,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
                   const done=pjTasks.filter(t=>t.status==="完了").length;
                   return (
                     <div key={pj.id}
-                      onClick={()=>{setActivePjId(pj.id);setScreen("projectDetail");}}
+                      onClick={()=>{saveTaskScroll("list");setActivePjId(pj.id);setScreen("projectDetail");}}
                       style={{display:"flex",alignItems:"center",gap:"0.75rem",padding:"0.65rem 1rem",borderBottom:`1px solid ${C.borderLight}`,background:"white",cursor:"pointer",opacity:0.75}}
                       onMouseEnter={e=>e.currentTarget.style.opacity="1"}
                       onMouseLeave={e=>e.currentTarget.style.opacity="0.75"}>
@@ -9071,7 +9092,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
                             <TaskRow key={t.id} task={t} users={users}
                               onToggle={()=>updateTask(t.id,{status:t.status==="完了"?"未着手":"完了"})}
                               onStatusChange={s=>updateTask(t.id,{status:s})}
-                              onClick={()=>{setActiveTaskId(t.id);setFromProject(null);setScreen("taskDetail");}}/>
+                              onClick={()=>{saveTaskScroll("list");setActiveTaskId(t.id);setFromProject(null);setScreen("taskDetail");}}/>
                           ))}
                         </React.Fragment>
                       );
@@ -14425,10 +14446,9 @@ function LinkBizcardModal({ allCards=[], entityType, entityId, entityName, users
         return { card, score };
       });
       // ヒットしたものを最上部、ヒットしないものはその下に並べる
+      // ✅ v220: 検索時は misses を非表示（紛らわしさ防止）
       const hits = scored.filter(x=>x.score<99).sort((a,b)=>a.score-b.score).map(x=>x.card);
-      const misses = scored.filter(x=>x.score===99).map(x=>x.card)
-        .sort((a,b)=>(a.company||"").localeCompare(b.company||"","ja")||(`${a.lastName||""}${a.firstName||""}`).localeCompare(`${b.lastName||""}${b.firstName||""}`,"ja"));
-      return [...hits, ...misses];
+      return hits;
     }
 
     // 検索なし：会社名→姓の五十音順
@@ -14503,13 +14523,40 @@ function LinkBizcardModal({ allCards=[], entityType, entityId, entityName, users
             const hasOtherLink=!!(card.salesRef&&!(String(card.salesRef.id)===String(entityId)&&card.salesRef.type===entityType));
             return (
               <div key={card.id} onClick={()=>toggleCard(card.id)}
-                style={{display:"flex",alignItems:"center",gap:"0.6rem",padding:"0.55rem 0.75rem",background:isSel?`${typeColor}11`:"white",borderRadius:"6px",marginBottom:"0.3rem",cursor:"pointer",border:`1.5px solid ${isSel?typeColor:C.borderLight}`,transition:"all 0.1s"}}>
-                <div style={{width:20,height:20,borderRadius:"0.3rem",border:`2px solid ${isSel?typeColor:"#cbd5e1"}`,background:isSel?typeColor:"white",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,color:"white",fontSize:"0.8rem"}}>
+                style={{
+                  display:"flex",
+                  alignItems:"center",
+                  gap:"0.6rem",
+                  padding:"0.65rem 0.85rem",
+                  background:isSel?`${typeColor}22`:"white",
+                  borderRadius:"8px",
+                  marginBottom:"0.4rem",
+                  cursor:"pointer",
+                  border:`2.5px solid ${isSel?typeColor:C.borderLight}`,
+                  boxShadow:isSel?`0 2px 8px ${typeColor}33`:"none",
+                  transition:"all 0.15s",
+                  transform:isSel?"scale(1.01)":"scale(1)",
+                }}>
+                <div style={{
+                  width:24,
+                  height:24,
+                  borderRadius:"0.4rem",
+                  border:`2.5px solid ${isSel?typeColor:"#cbd5e1"}`,
+                  background:isSel?typeColor:"white",
+                  display:"flex",
+                  alignItems:"center",
+                  justifyContent:"center",
+                  flexShrink:0,
+                  color:"white",
+                  fontSize:"1rem",
+                  fontWeight:900,
+                  boxShadow:isSel?`0 2px 4px ${typeColor}55`:"none",
+                }}>
                   {isSel&&"✓"}
                 </div>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:"flex",alignItems:"center",gap:"0.4rem",flexWrap:"wrap"}}>
-                    <span style={{fontWeight:700,fontSize:"0.88rem",color:C.text}}>{name}</span>
+                    <span style={{fontWeight:isSel?800:700,fontSize:"0.88rem",color:isSel?typeColor:C.text}}>{name}</span>
                     {card.title&&<span style={{fontSize:"0.72rem",color:C.textSub}}>{card.title}</span>}
                     {hasOtherLink&&<span style={{fontSize:"0.62rem",background:"#fef3c7",color:"#d97706",borderRadius:999,padding:"0.05rem 0.35rem"}}>他へ紐付済</span>}
                   </div>
@@ -14518,6 +14565,7 @@ function LinkBizcardModal({ allCards=[], entityType, entityId, entityName, users
                     {owners.length>0&&<span style={{marginLeft:"0.4rem",color:"#7c3aed",fontWeight:600}}>👤{owners.join("・")}</span>}
                   </div>
                 </div>
+                {isSel&&<span style={{fontSize:"0.7rem",fontWeight:800,color:typeColor,background:"white",padding:"0.2rem 0.45rem",borderRadius:999,border:`1.5px solid ${typeColor}`,flexShrink:0}}>選択中</span>}
               </div>
             );
           })}
@@ -17336,13 +17384,20 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   };
   const saveSalesScroll = (key) => {
     const el = document.querySelector('[data-sales-scroll]');
-    if(el) savedScrollPos.current[key] = el.scrollTop;
+    savedScrollPos.current[key] = el ? el.scrollTop : (window.scrollY || document.documentElement.scrollTop || 0);
   };
   const restoreSalesScroll = (key) => {
-    requestAnimationFrame(()=>{
+    const target = savedScrollPos.current[key]||0;
+    // ✅ v220: 複数フレームで確実に復元
+    let frames = 0;
+    const tick = () => {
       const el = document.querySelector('[data-sales-scroll]');
-      if(el) el.scrollTop = savedScrollPos.current[key]||0;
-    });
+      if(el) el.scrollTop = target;
+      else { window.scrollTo(0, target); }
+      frames++;
+      if(frames < 30) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
   };
 
   // ── Seed 47 prefectures on first load (municipalities are managed externally) ──
