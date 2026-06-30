@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v220-recording-fix"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v220-recording-bizcard-popup"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -14544,7 +14544,7 @@ function LinkBizcardModal({ allCards=[], entityType, entityId, entityName, users
 
 
 // ─── LINKED BIZCARD LIST ─────────────────────────────────────────────────────
-function LinkedBizcardList({ cards=[], users=[], onUnlink, onNavigateToBizcard, onLink, onNavigateToEmail }) {
+function LinkedBizcardList({ cards=[], users=[], onUnlink, onNavigateToBizcard, onLink, onNavigateToEmail, onCallRecord }) {
   const [popup, setPopup] = React.useState(null); // card object for detail popup
 
   if(cards.length===0) return (
@@ -14637,14 +14637,37 @@ function LinkedBizcardList({ cards=[], users=[], onUnlink, onNavigateToBizcard, 
               {/* 連絡先 */}
               {(popup.email||popup.mobile||popup.telDirect||popup.telCompany||popup.address)&&(
                 <div style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"8px",padding:"0.875rem 1rem",marginBottom:"1rem"}}>
-                  {/* アクションボタン行：電話 / メール作成 */}
+                  {/* アクションボタン行：電話 / 録音通話 / メール作成 */}
                   {(popup.email||popup.mobile||popup.telDirect||popup.telCompany)&&(
                     <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap",marginBottom:"0.75rem",paddingBottom:"0.75rem",borderBottom:`1px solid ${C.borderLight}`}}>
                       {(popup.mobile||popup.telDirect||popup.telCompany)&&(
                         <a href={`tel:${(popup.mobile||popup.telDirect||popup.telCompany).replace(/[^0-9+]/g,"")}`}
-                          style={{flex:1,minWidth:120,padding:"0.55rem 0.875rem",borderRadius:"0.625rem",background:C.accentBg,color:C.accent,fontSize:"0.82rem",fontWeight:700,textDecoration:"none",textAlign:"center",border:`1.5px solid ${C.accent}40`}}>
-                          📞 電話する
+                          style={{flex:1,minWidth:100,padding:"0.55rem 0.875rem",borderRadius:"0.625rem",background:C.accentBg,color:C.accent,fontSize:"0.82rem",fontWeight:700,textDecoration:"none",textAlign:"center",border:`1.5px solid ${C.accent}40`}}>
+                          📞 電話
                         </a>
+                      )}
+                      {/* ✅ v220: 録音通話ボタンを名刺ポップアップにも追加 */}
+                      {(popup.mobile||popup.telDirect||popup.telCompany) && onCallRecord && (
+                        <button onClick={(e)=>{
+                          e.preventDefault();
+                          const phoneRaw = popup.mobile||popup.telDirect||popup.telCompany;
+                          const proceed = window.confirm(
+                            "📞 録音通話を開始します\n\n" +
+                            "【手順】\n" +
+                            "1. 録音モーダルが開き、自動で録音開始されます\n" +
+                            "2. 録音開始確認後、自動的に電話アプリが開きます\n" +
+                            "3. iPhone等で「スピーカーホン」にして、PC/Macの近くに置いてください\n" +
+                            "4. 通話終了後、MyDeskに戻って「停止」ボタンを押してください\n\n" +
+                            "続けますか？"
+                          );
+                          if(!proceed) return;
+                          // 録音モーダルを開く（コールバックで処理）
+                          onCallRecord(popup, phoneRaw);
+                          setPopup(null);
+                        }}
+                          style={{flex:1,minWidth:100,padding:"0.55rem 0.875rem",borderRadius:"0.625rem",background:"#fef3c7",color:"#b45309",fontSize:"0.82rem",fontWeight:700,textAlign:"center",border:"1.5px solid #b4530940",cursor:"pointer",fontFamily:"inherit"}}>
+                          🎙️ 録音通話
+                        </button>
                       )}
                       {popup.email&&onNavigateToEmail&&(
                         <button onClick={()=>{
@@ -14656,8 +14679,8 @@ function LinkedBizcardList({ cards=[], users=[], onUnlink, onNavigateToBizcard, 
                           };
                           onNavigateToEmail(draft);
                           setPopup(null);
-                        }} style={{flex:1,minWidth:120,padding:"0.55rem 0.875rem",borderRadius:"0.625rem",background:"#f0fdf4",color:"#059669",fontSize:"0.82rem",fontWeight:700,textDecoration:"none",textAlign:"center",border:"1.5px solid #05966940",cursor:"pointer",fontFamily:"inherit"}}>
-                          📧 メール作成
+                        }} style={{flex:1,minWidth:100,padding:"0.55rem 0.875rem",borderRadius:"0.625rem",background:"#f0fdf4",color:"#059669",fontSize:"0.82rem",fontWeight:700,textDecoration:"none",textAlign:"center",border:"1.5px solid #05966940",cursor:"pointer",fontFamily:"inherit"}}>
+                          📧 メール
                         </button>
                       )}
                     </div>
@@ -20363,7 +20386,26 @@ ${orig}`})
           {activeDetail==="tasks"&&<SalesTaskPanel entityType="企業" entityId={comp.id} entityName={comp.name} data={data} onSave={save} currentUser={currentUser} users={users} onNavigateToTask={onNavigateToTask} onNavigateToProject={onNavigateToProject}/>}
           {activeDetail==="bizcard"&&(()=>{
             const linked=linkedBizcards("企業",comp.id);
-            return <LinkedBizcardList cards={linked} users={users} onUnlink={id=>unlinkBizCard(id)} onNavigateToBizcard={navToBizcard.company} onLink={()=>requestAnimationFrame(()=>setLinkBizcardModal({entityType:"企業",entityId:comp.id,entityName:comp.name}))} onNavigateToEmail={onNavigateToEmail}/>;
+            return <LinkedBizcardList cards={linked} users={users} onUnlink={id=>unlinkBizCard(id)} onNavigateToBizcard={navToBizcard.company} onLink={()=>requestAnimationFrame(()=>setLinkBizcardModal({entityType:"企業",entityId:comp.id,entityName:comp.name}))} onNavigateToEmail={onNavigateToEmail} onCallRecord={(card, phone)=>{
+              // ✅ v220: 名刺から録音通話 → MtgModal を企業に紐付けて開く
+              setMtgModal({entityKey:"companies",entityId:comp.id,entityName:comp.name,autoStart:true,callMode:true});
+              // 録音開始後に電話を開く
+              let phoneTriggered = false;
+              const onStart = () => {
+                if(phoneTriggered) return;
+                phoneTriggered = true;
+                setTimeout(()=>{ window.location.href = `tel:${(phone||"").replace(/[^0-9+]/g,"")}`; }, 500);
+                window.removeEventListener('mydesk-recording-started', onStart);
+              };
+              window.addEventListener('mydesk-recording-started', onStart);
+              setTimeout(()=>{
+                if(!phoneTriggered){
+                  phoneTriggered = true;
+                  window.removeEventListener('mydesk-recording-started', onStart);
+                  window.location.href = `tel:${(phone||"").replace(/[^0-9+]/g,"")}`;
+                }
+              }, 5000);
+            }}/>;
           })()}
           {activeDetail==="files"&&<DocumentSection 
             entityType="企業" entityId={comp.id} entityName={comp.name}
@@ -21047,7 +21089,25 @@ ${orig}`})
           {activeDetail==="tasks"&&<SalesTaskPanel entityType="業者" entityId={v.id} entityName={v.name} data={data} onSave={save} currentUser={currentUser} users={users} onNavigateToTask={onNavigateToTask} onNavigateToProject={onNavigateToProject}/>}
           {activeDetail==="bizcard"&&(()=>{
             const linked=linkedBizcards("業者",v.id);
-            return <LinkedBizcardList cards={linked} users={users} onUnlink={id=>unlinkBizCard(id)} onNavigateToBizcard={navToBizcard.vendor} onLink={()=>requestAnimationFrame(()=>setLinkBizcardModal({entityType:"業者",entityId:v.id,entityName:v.name}))} onNavigateToEmail={onNavigateToEmail}/>;
+            return <LinkedBizcardList cards={linked} users={users} onUnlink={id=>unlinkBizCard(id)} onNavigateToBizcard={navToBizcard.vendor} onLink={()=>requestAnimationFrame(()=>setLinkBizcardModal({entityType:"業者",entityId:v.id,entityName:v.name}))} onNavigateToEmail={onNavigateToEmail} onCallRecord={(card, phone)=>{
+              // ✅ v220: 名刺から録音通話 → MtgModal を業者に紐付けて開く
+              setMtgModal({entityKey:"vendors",entityId:v.id,entityName:v.name,autoStart:true,callMode:true});
+              let phoneTriggered = false;
+              const onStart = () => {
+                if(phoneTriggered) return;
+                phoneTriggered = true;
+                setTimeout(()=>{ window.location.href = `tel:${(phone||"").replace(/[^0-9+]/g,"")}`; }, 500);
+                window.removeEventListener('mydesk-recording-started', onStart);
+              };
+              window.addEventListener('mydesk-recording-started', onStart);
+              setTimeout(()=>{
+                if(!phoneTriggered){
+                  phoneTriggered = true;
+                  window.removeEventListener('mydesk-recording-started', onStart);
+                  window.location.href = `tel:${(phone||"").replace(/[^0-9+]/g,"")}`;
+                }
+              }, 5000);
+            }}/>;
           })()}
           {activeDetail==="files"&&<DocumentSection 
             entityType="業者" entityId={v.id} entityName={v.name}
@@ -21968,7 +22028,25 @@ ${orig}`})
         {activeDetail==="tasks"&&<div style={{marginBottom:"1rem"}}><SalesTaskPanel entityType="自治体" entityId={muni.id} entityName={muni.name} data={data} onSave={save} currentUser={currentUser} users={users} onNavigateToTask={onNavigateToTask} onNavigateToProject={onNavigateToProject}/></div>}
         {activeDetail==="bizcard"&&<div style={{marginBottom:"1rem"}}>{(()=>{
           const linked=linkedBizcards("自治体",muni.id);
-          return <LinkedBizcardList cards={linked} users={users} onUnlink={id=>unlinkBizCard(id)} onNavigateToBizcard={navToBizcard.muni} onLink={()=>requestAnimationFrame(()=>setLinkBizcardModal({entityType:"自治体",entityId:muni.id,entityName:muni.name}))} onNavigateToEmail={onNavigateToEmail}/>;
+          return <LinkedBizcardList cards={linked} users={users} onUnlink={id=>unlinkBizCard(id)} onNavigateToBizcard={navToBizcard.muni} onLink={()=>requestAnimationFrame(()=>setLinkBizcardModal({entityType:"自治体",entityId:muni.id,entityName:muni.name}))} onNavigateToEmail={onNavigateToEmail} onCallRecord={(card, phone)=>{
+            // ✅ v220: 名刺から録音通話 → MtgModal を自治体に紐付けて開く
+            setMtgModal({entityKey:"municipalities",entityId:muni.id,entityName:muni.name,autoStart:true,callMode:true});
+            let phoneTriggered = false;
+            const onStart = () => {
+              if(phoneTriggered) return;
+              phoneTriggered = true;
+              setTimeout(()=>{ window.location.href = `tel:${(phone||"").replace(/[^0-9+]/g,"")}`; }, 500);
+              window.removeEventListener('mydesk-recording-started', onStart);
+            };
+            window.addEventListener('mydesk-recording-started', onStart);
+            setTimeout(()=>{
+              if(!phoneTriggered){
+                phoneTriggered = true;
+                window.removeEventListener('mydesk-recording-started', onStart);
+                window.location.href = `tel:${(phone||"").replace(/[^0-9+]/g,"")}`;
+              }
+            }, 5000);
+          }}/>;
         })()}</div>}
 
         {activeDetail==="files"&&<div style={{marginBottom:"1rem"}}><DocumentSection 
