@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v220-debug-marker"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v220-ultra-select-scroll"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -7481,24 +7481,30 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
   const [sheet,setSheet] = useState(null);
   
   // ✅ v220: スクロール位置保持（タスク・プロジェクトリスト用）
-  const savedTaskScroll = React.useRef({list:0});
+  const savedTaskScroll = React.useRef({});
   const saveTaskScroll = (key) => {
-    // 画面全体スクロール + コンテナ内スクロール両方保存
-    const el = document.querySelector('[data-task-scroll]');
-    savedTaskScroll.current[key] = el ? el.scrollTop : (window.scrollY || document.documentElement.scrollTop || 0);
+    const el = document.querySelector('[data-task-scroll]') || document.querySelector('[data-sales-scroll]');
+    savedTaskScroll.current[key] = {
+      el: el ? el.scrollTop : 0,
+      win: window.scrollY || document.documentElement.scrollTop || 0,
+    };
   };
   const restoreTaskScroll = (key) => {
-    const target = savedTaskScroll.current[key]||0;
-    // 複数フレームで確実に復元
-    let frames = 0;
+    const target = savedTaskScroll.current[key];
+    if(!target) return;
+    let attempts = 0;
     const tick = () => {
-      const el = document.querySelector('[data-task-scroll]');
-      if(el) el.scrollTop = target;
-      else { window.scrollTo(0, target); }
-      frames++;
-      if(frames < 30) requestAnimationFrame(tick);
+      const el = document.querySelector('[data-task-scroll]') || document.querySelector('[data-sales-scroll]');
+      if(el && el.scrollHeight > el.clientHeight + 10) {
+        el.scrollTop = target.el;
+      }
+      if(target.win > 0) {
+        window.scrollTo(0, target.win);
+      }
+      attempts++;
+      if(attempts < 60) requestAnimationFrame(tick);
     };
-    requestAnimationFrame(tick);
+    setTimeout(tick, 50);
   };
   const [tMemoIn,setTMemoIn]= useState({});
   const [tChatIn,setTChatIn]= useState({});
@@ -14472,7 +14478,7 @@ function LinkBizcardModal({ allCards=[], entityType, entityId, entityName, users
         {/* ヘッダー */}
         <div style={{padding:"1rem 1.25rem 0.75rem",borderBottom:`1px solid ${C.borderLight}`,flexShrink:0}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.25rem"}}>
-            <span style={{fontWeight:800,fontSize:"0.95rem",color:C.text}}>🔗 名刺を紐づける <span style={{color:"red",fontSize:"0.7rem"}}>[v220-DEBUG]</span></span>
+            <span style={{fontWeight:800,fontSize:"0.95rem",color:C.text}}>🔗 名刺を紐づける</span>
             <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",fontSize:"1.3rem",color:C.textMuted,lineHeight:1,padding:"0.2rem 0.4rem"}}>✕</button>
           </div>
           <div style={{display:"flex",alignItems:"center",gap:"0.35rem",marginBottom:"0.6rem"}}>
@@ -14497,16 +14503,11 @@ function LinkBizcardModal({ allCards=[], entityType, entityId, entityName, users
         {/* リスト */}
         <div style={{overflowY:"auto",flex:1,padding:"0.4rem 0.75rem"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0.3rem 0.25rem 0.4rem"}}>
-            <span style={{fontSize:"0.72rem",color:C.textMuted}}>
+            <span style={{fontSize:"0.72rem",color:searchQ?typeColor:C.textMuted,fontWeight:searchQ?800:400}}>
               {(()=>{
                 if(!searchQ) return `${candidates.length}件`;
-                // 検索中: ヒット件数 / 全件
-                const norm = s => (s||"").replace(/[ 　	]/g,"").toLowerCase();
-                const hitCount = candidates.filter(c=>{
-                  const fields=[c.lastName,c.firstName,`${c.lastName||""}${c.firstName||""}`,c.company,c.title,c.department,c.email,c.telDirect,c.mobile,c.telCompany];
-                  return fields.some(v=>norm(v).includes(searchQ));
-                }).length;
-                return `${hitCount}件ヒット / 全${candidates.length}件中（「${search}」）`;
+                // ✅ v220: 検索時は hits のみ表示中
+                return `🔍 ${candidates.length}件のヒット結果（「${search}」）`;
               })()}
             </span>
             {candidates.length>0&&<button onClick={toggleAll} style={{fontSize:"0.75rem",fontWeight:700,color:typeColor,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit"}}>{selected.size===candidates.length?"全解除":"全選択"}</button>}
@@ -14527,45 +14528,44 @@ function LinkBizcardModal({ allCards=[], entityType, entityId, entityName, users
                   display:"flex",
                   alignItems:"center",
                   gap:"0.6rem",
-                  padding:"0.65rem 0.85rem",
-                  background:isSel?`${typeColor}22`:"white",
+                  padding:"0.75rem 0.9rem",
+                  background:isSel?typeColor:"white",
                   borderRadius:"8px",
-                  marginBottom:"0.4rem",
+                  marginBottom:"0.5rem",
                   cursor:"pointer",
-                  border:`2.5px solid ${isSel?typeColor:C.borderLight}`,
-                  boxShadow:isSel?`0 2px 8px ${typeColor}33`:"none",
+                  border:isSel?`3px solid ${typeColor}`:`1.5px solid ${C.borderLight}`,
+                  boxShadow:isSel?`0 4px 12px ${typeColor}66`:"none",
                   transition:"all 0.15s",
-                  transform:isSel?"scale(1.01)":"scale(1)",
+                  color:isSel?"white":C.text,
                 }}>
                 <div style={{
-                  width:24,
-                  height:24,
+                  width:28,
+                  height:28,
                   borderRadius:"0.4rem",
-                  border:`2.5px solid ${isSel?typeColor:"#cbd5e1"}`,
-                  background:isSel?typeColor:"white",
+                  border:`3px solid ${isSel?"white":"#cbd5e1"}`,
+                  background:isSel?"white":"white",
                   display:"flex",
                   alignItems:"center",
                   justifyContent:"center",
                   flexShrink:0,
-                  color:"white",
-                  fontSize:"1rem",
+                  color:isSel?typeColor:"transparent",
+                  fontSize:"1.2rem",
                   fontWeight:900,
-                  boxShadow:isSel?`0 2px 4px ${typeColor}55`:"none",
                 }}>
-                  {isSel&&"✓"}
+                  {isSel?"✓":""}
                 </div>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:"flex",alignItems:"center",gap:"0.4rem",flexWrap:"wrap"}}>
-                    <span style={{fontWeight:isSel?800:700,fontSize:"0.88rem",color:isSel?typeColor:C.text}}>{name}</span>
-                    {card.title&&<span style={{fontSize:"0.72rem",color:C.textSub}}>{card.title}</span>}
+                    <span style={{fontWeight:800,fontSize:"0.92rem",color:isSel?"white":C.text}}>{name}</span>
+                    {card.title&&<span style={{fontSize:"0.72rem",color:isSel?"#fff8":C.textSub}}>{card.title}</span>}
                     {hasOtherLink&&<span style={{fontSize:"0.62rem",background:"#fef3c7",color:"#d97706",borderRadius:999,padding:"0.05rem 0.35rem"}}>他へ紐付済</span>}
                   </div>
-                  <div style={{fontSize:"0.72rem",color:C.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                  <div style={{fontSize:"0.74rem",color:isSel?"#fff8":C.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                     🏢 {card.company||"（会社名なし）"}
-                    {owners.length>0&&<span style={{marginLeft:"0.4rem",color:"#7c3aed",fontWeight:600}}>👤{owners.join("・")}</span>}
+                    {owners.length>0&&<span style={{marginLeft:"0.4rem",color:isSel?"white":"#7c3aed",fontWeight:600}}>👤{owners.join("・")}</span>}
                   </div>
                 </div>
-                {isSel&&<span style={{fontSize:"0.7rem",fontWeight:800,color:typeColor,background:"white",padding:"0.2rem 0.45rem",borderRadius:999,border:`1.5px solid ${typeColor}`,flexShrink:0}}>選択中</span>}
+                {isSel&&<span style={{fontSize:"0.75rem",fontWeight:900,color:typeColor,background:"white",padding:"0.25rem 0.6rem",borderRadius:999,flexShrink:0,letterSpacing:"0.05em"}}>✓ 選択中</span>}
               </div>
             );
           })}
@@ -17382,22 +17382,31 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       .replace(/[Ａ-Ｚａ-ｚ０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0))
       .replace(/[ァ-ヶ]/g,c=>String.fromCharCode(c.charCodeAt(0)-0x60)); // カタカナ→ひらがな
   };
+  // ✅ v220: スクロール位置保持
   const saveSalesScroll = (key) => {
     const el = document.querySelector('[data-sales-scroll]');
-    savedScrollPos.current[key] = el ? el.scrollTop : (window.scrollY || document.documentElement.scrollTop || 0);
+    savedScrollPos.current[key] = {
+      el: el ? el.scrollTop : 0,
+      win: window.scrollY || document.documentElement.scrollTop || 0,
+    };
   };
   const restoreSalesScroll = (key) => {
-    const target = savedScrollPos.current[key]||0;
-    // ✅ v220: 複数フレームで確実に復元
-    let frames = 0;
+    const target = savedScrollPos.current[key];
+    if(!target) return;
+    // ✅ React の再レンダリングが完了するまで複数フレーム待つ
+    let attempts = 0;
     const tick = () => {
       const el = document.querySelector('[data-sales-scroll]');
-      if(el) el.scrollTop = target;
-      else { window.scrollTo(0, target); }
-      frames++;
-      if(frames < 30) requestAnimationFrame(tick);
+      if(el && el.scrollHeight > el.clientHeight + 10) {
+        el.scrollTop = target.el;
+      }
+      if(target.win > 0) {
+        window.scrollTo(0, target.win);
+      }
+      attempts++;
+      if(attempts < 60) requestAnimationFrame(tick);
     };
-    requestAnimationFrame(tick);
+    setTimeout(tick, 50);
   };
 
   // ── Seed 47 prefectures on first load (municipalities are managed externally) ──
