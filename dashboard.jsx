@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v220-overflow-anchor"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v220-scroll-debug"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -17444,10 +17444,12 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   // ✅ v220: スクロール位置保持
   const saveSalesScroll = (key) => {
     const el = document.querySelector('[data-sales-scroll]');
-    savedScrollPos.current[key] = {
+    const saved = {
       el: el ? el.scrollTop : 0,
       win: window.scrollY || document.documentElement.scrollTop || 0,
     };
+    savedScrollPos.current[key] = saved;
+    console.log(`[Scroll SAVE] key=${key}`, saved, 'el存在:', !!el, 'scrollHeight:', el?.scrollHeight, 'clientHeight:', el?.clientHeight);
     // ✅ v220: 保存後、詳細画面が上部から始まるよう scrollTop=0 にする
     requestAnimationFrame(() => {
       if(el) el.scrollTop = 0;
@@ -17494,12 +17496,18 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   React.useEffect(() => {
     if(!activeVendor) {
       const target = savedScrollPos.current["vendor"];
+      console.log('[Scroll RESTORE vendor] activeVendor=null 発火, target:', target);
       if(target && (target.el > 0 || target.win > 0)) {
         let count = 0;
         const interval = setInterval(() => {
           const el = document.querySelector('[data-sales-scroll]');
+          const before = el?.scrollTop;
           if(el && el.scrollHeight > el.clientHeight + 10) el.scrollTop = target.el || 0;
           if(target.win > 0) window.scrollTo(0, target.win);
+          const after = el?.scrollTop;
+          if(count === 0 || count === 5 || count === 15 || count === 29) {
+            console.log(`[Scroll RESTORE vendor] count=${count} target.el=${target.el} before=${before} after=${after} scrollHeight=${el?.scrollHeight} winY=${window.scrollY}`);
+          }
           count++;
           if(count >= 30) clearInterval(interval);
         }, 100);
