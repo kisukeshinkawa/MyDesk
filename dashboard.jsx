@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v220-ultra-select-scroll"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v220-text-marker-effect"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -7506,6 +7506,25 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     };
     setTimeout(tick, 50);
   };
+  
+  // ✅ v220: screen が "list" に戻った瞬間にスクロール復元
+  React.useEffect(() => {
+    if(screen === "list") {
+      const target = savedTaskScroll.current["list"];
+      if(target) {
+        let attempts = 0;
+        const tick = () => {
+          const el = document.querySelector('[data-task-scroll]') || document.querySelector('[data-sales-scroll]');
+          if(el && el.scrollHeight > el.clientHeight + 10) el.scrollTop = target.el || 0;
+          if(target.win > 0) window.scrollTo(0, target.win);
+          attempts++;
+          if(attempts < 30) requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      }
+    }
+  }, [screen]);
+  
   const [tMemoIn,setTMemoIn]= useState({});
   const [tChatIn,setTChatIn]= useState({});
   const [tMemoEdit,setTMemoEdit]= useState(null); // {entityId,memoId,text}
@@ -14517,6 +14536,26 @@ function LinkBizcardModal({ allCards=[], entityType, entityId, entityName, users
               {searchQ||filterOwner?"条件に一致する名刺がありません":"紐づけ可能な名刺がありません"}
             </div>
           )}
+          {/* ✅ v220: 選択中の名前を上部に大きく表示 */}
+          {selected.size>0&&(
+            <div style={{
+              padding:"0.75rem 1rem",
+              background:typeColor,
+              color:"white",
+              borderRadius:"8px",
+              marginBottom:"0.75rem",
+              fontSize:"0.85rem",
+              fontWeight:700,
+            }}>
+              ✅ 選択中の名刺（{selected.size}件）:<br/>
+              {[...selected].slice(0,5).map(id=>{
+                const c = allCards.find(x=>x.id===id);
+                if(!c) return null;
+                return `${c.lastName||""}${c.firstName?" "+c.firstName:""}`.trim() || "(無名)";
+              }).join("、")}
+              {selected.size>5 && ` 他${selected.size-5}件`}
+            </div>
+          )}
           {candidates.map(card=>{
             const name=`${card.lastName||""}${card.firstName ? " "+card.firstName : ""}`.trim()||"（名前なし）";
             const owners=card.owners||(card.owner?[card.owner]:[]);
@@ -14556,7 +14595,10 @@ function LinkBizcardModal({ allCards=[], entityType, entityId, entityName, users
                 </div>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:"flex",alignItems:"center",gap:"0.4rem",flexWrap:"wrap"}}>
-                    <span style={{fontWeight:800,fontSize:"0.92rem",color:isSel?"white":C.text}}>{name}</span>
+                    {/* ✅ v220: 選択中は名前の前に絵文字を入れる（テキストレベルで確実に変わる） */}
+                    <span style={{fontWeight:800,fontSize:"0.92rem",color:isSel?"white":C.text}}>
+                      {isSel?"✅ ":""}{name}
+                    </span>
                     {card.title&&<span style={{fontSize:"0.72rem",color:isSel?"#fff8":C.textSub}}>{card.title}</span>}
                     {hasOtherLink&&<span style={{fontSize:"0.62rem",background:"#fef3c7",color:"#d97706",borderRadius:999,padding:"0.05rem 0.35rem"}}>他へ紐付済</span>}
                   </div>
@@ -17408,6 +17450,56 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     };
     setTimeout(tick, 50);
   };
+  
+  // ✅ v220: activeCompany/Vendor/Muni が null に戻った瞬間にスクロール復元
+  React.useEffect(() => {
+    if(!activeCompany) {
+      const target = savedScrollPos.current["company"];
+      if(target) {
+        let attempts = 0;
+        const tick = () => {
+          const el = document.querySelector('[data-sales-scroll]');
+          if(el && el.scrollHeight > el.clientHeight + 10) el.scrollTop = target.el || 0;
+          if(target.win > 0) window.scrollTo(0, target.win);
+          attempts++;
+          if(attempts < 30) requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      }
+    }
+  }, [activeCompany]);
+  React.useEffect(() => {
+    if(!activeVendor) {
+      const target = savedScrollPos.current["vendor"];
+      if(target) {
+        let attempts = 0;
+        const tick = () => {
+          const el = document.querySelector('[data-sales-scroll]');
+          if(el && el.scrollHeight > el.clientHeight + 10) el.scrollTop = target.el || 0;
+          if(target.win > 0) window.scrollTo(0, target.win);
+          attempts++;
+          if(attempts < 30) requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      }
+    }
+  }, [activeVendor]);
+  React.useEffect(() => {
+    if(!activeMuni) {
+      const target = savedScrollPos.current["muni"];
+      if(target) {
+        let attempts = 0;
+        const tick = () => {
+          const el = document.querySelector('[data-sales-scroll]');
+          if(el && el.scrollHeight > el.clientHeight + 10) el.scrollTop = target.el || 0;
+          if(target.win > 0) window.scrollTo(0, target.win);
+          attempts++;
+          if(attempts < 30) requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      }
+    }
+  }, [activeMuni]);
 
   // ── Seed 47 prefectures on first load (municipalities are managed externally) ──
   useEffect(()=>{
