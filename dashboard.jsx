@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v220-boundary-usememo"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v220-interval-scroll"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -7513,19 +7513,19 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
   };
   
   // ✅ v220: screen が "list" に戻った瞬間にスクロール復元
-  React.useLayoutEffect(() => {
+  React.useEffect(() => {
     if(screen === "list") {
       const target = savedTaskScroll.current["list"];
       if(target && (target.el > 0 || target.win > 0)) {
-        let attempts = 0;
-        const tick = () => {
+        let count = 0;
+        const interval = setInterval(() => {
           const el = document.querySelector('[data-task-scroll]') || document.querySelector('[data-sales-scroll]');
           if(el && el.scrollHeight > el.clientHeight + 10) el.scrollTop = target.el || 0;
           if(target.win > 0) window.scrollTo(0, target.win);
-          attempts++;
-          if(attempts < 60) requestAnimationFrame(tick);
-        };
-        requestAnimationFrame(tick);
+          count++;
+          if(count >= 30) clearInterval(interval);
+        }, 100);
+        return () => clearInterval(interval);
       }
     }
   }, [screen]);
@@ -17474,51 +17474,52 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   };
   
   // ✅ v220: activeCompany/Vendor/Muni が null に戻った瞬間にスクロール復元
-  React.useLayoutEffect(() => {
+  // setInterval で 100ms x 30 = 3秒間、粘り強く復元を試行
+  React.useEffect(() => {
     if(!activeCompany) {
       const target = savedScrollPos.current["company"];
       if(target && (target.el > 0 || target.win > 0)) {
-        let attempts = 0;
-        const tick = () => {
+        let count = 0;
+        const interval = setInterval(() => {
           const el = document.querySelector('[data-sales-scroll]');
           if(el && el.scrollHeight > el.clientHeight + 10) el.scrollTop = target.el || 0;
           if(target.win > 0) window.scrollTo(0, target.win);
-          attempts++;
-          if(attempts < 60) requestAnimationFrame(tick);
-        };
-        requestAnimationFrame(tick);
+          count++;
+          if(count >= 30) clearInterval(interval);
+        }, 100);
+        return () => clearInterval(interval);
       }
     }
   }, [activeCompany]);
-  React.useLayoutEffect(() => {
+  React.useEffect(() => {
     if(!activeVendor) {
       const target = savedScrollPos.current["vendor"];
       if(target && (target.el > 0 || target.win > 0)) {
-        let attempts = 0;
-        const tick = () => {
+        let count = 0;
+        const interval = setInterval(() => {
           const el = document.querySelector('[data-sales-scroll]');
           if(el && el.scrollHeight > el.clientHeight + 10) el.scrollTop = target.el || 0;
           if(target.win > 0) window.scrollTo(0, target.win);
-          attempts++;
-          if(attempts < 60) requestAnimationFrame(tick);
-        };
-        requestAnimationFrame(tick);
+          count++;
+          if(count >= 30) clearInterval(interval);
+        }, 100);
+        return () => clearInterval(interval);
       }
     }
   }, [activeVendor]);
-  React.useLayoutEffect(() => {
+  React.useEffect(() => {
     if(!activeMuni) {
       const target = savedScrollPos.current["muni"];
       if(target && (target.el > 0 || target.win > 0)) {
-        let attempts = 0;
-        const tick = () => {
+        let count = 0;
+        const interval = setInterval(() => {
           const el = document.querySelector('[data-sales-scroll]');
           if(el && el.scrollHeight > el.clientHeight + 10) el.scrollTop = target.el || 0;
           if(target.win > 0) window.scrollTo(0, target.win);
-          attempts++;
-          if(attempts < 60) requestAnimationFrame(tick);
-        };
-        requestAnimationFrame(tick);
+          count++;
+          if(count >= 30) clearInterval(interval);
+        }, 100);
+        return () => clearInterval(interval);
       }
     }
   }, [activeMuni]);
