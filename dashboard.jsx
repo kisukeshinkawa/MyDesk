@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v220-interval-scroll"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v220-overflow-anchor"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -33499,8 +33499,9 @@ export default function App() {
       <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
       {/* Content */}
       <div ref={contentRef} className="mydesk-content" data-sales-scroll style={{flex:1,overflowY:isPC?"hidden":"auto",display:isPC?"flex":"block",
+        overflowAnchor:"none",  /* ✅ v220: ブラウザのスクロールアンカー無効化 (戻る時の scrollTop 保持のため) */
         paddingBottom:isPC?0:"calc(5rem + env(safe-area-inset-bottom,0px))"}}>
-        <div style={{maxWidth:isPC?"none":720,margin:isPC?0:"0 auto",width:"100%",flex:isPC?1:undefined,overflowY:isPC?"auto":"visible",padding:isPC?(tab==="sales"?"0":"1.75rem 2rem 1rem"):"1.25rem 1rem 0.5rem",boxSizing:"border-box"}}>
+        <div style={{maxWidth:isPC?"none":720,margin:isPC?0:"0 auto",width:"100%",flex:isPC?1:undefined,overflowY:isPC?"auto":"visible",overflowAnchor:"none",padding:isPC?(tab==="sales"?"0":"1.75rem 2rem 1rem"):"1.25rem 1rem 0.5rem",boxSizing:"border-box"}}>
           <ErrorBoundary>
             {tab==="tasks"     && <TaskView      data={data} setData={setData} users={users} currentUser={currentUser}
               taskTab={taskTab} setTaskTab={(v)=>persistTab('md_taskTab',v,setTaskTab)}
