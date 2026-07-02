@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v220-dynamic-scroll"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v220-fast-restore"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -17490,15 +17490,17 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     if(!activeCompany) {
       const target = savedScrollPos.current["company"];
       if(target && ((target.scrolls && target.scrolls.length > 0) || target.win > 0)) {
-        let count = 0;
+        const start = Date.now();
+        // ✅ v220: 10ms 間隔で最大5秒間、粘り強く復元
         const interval = setInterval(() => {
           (target.scrolls || []).forEach(s => {
-            if(s.el.isConnected) s.el.scrollTop = s.top;
+            if(s.el.isConnected && Math.abs(s.el.scrollTop - s.top) > 5) {
+              s.el.scrollTop = s.top;
+            }
           });
-          if(target.win > 0) window.scrollTo(0, target.win);
-          count++;
-          if(count >= 30) clearInterval(interval);
-        }, 100);
+          if(target.win > 0 && Math.abs(window.scrollY - target.win) > 5) window.scrollTo(0, target.win);
+          if(Date.now() - start > 5000) clearInterval(interval);
+        }, 10);
         return () => clearInterval(interval);
       }
     }
@@ -17508,19 +17510,16 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       const target = savedScrollPos.current["vendor"];
       console.log('[Scroll RESTORE vendor] activeVendor=null 発火, target:', target);
       if(target && ((target.scrolls && target.scrolls.length > 0) || target.win > 0)) {
-        let count = 0;
+        const start = Date.now();
         const interval = setInterval(() => {
           (target.scrolls || []).forEach(s => {
-            if(s.el.isConnected) s.el.scrollTop = s.top;
+            if(s.el.isConnected && Math.abs(s.el.scrollTop - s.top) > 5) {
+              s.el.scrollTop = s.top;
+            }
           });
-          if(target.win > 0) window.scrollTo(0, target.win);
-          if(count === 0 || count === 29) {
-            const detail = (target.scrolls || []).map(s => ({tag: s.el.tagName, connected: s.el.isConnected, want: s.top, actual: s.el.scrollTop}));
-            console.log(`[Scroll RESTORE vendor] count=${count}`, detail);
-          }
-          count++;
-          if(count >= 30) clearInterval(interval);
-        }, 100);
+          if(target.win > 0 && Math.abs(window.scrollY - target.win) > 5) window.scrollTo(0, target.win);
+          if(Date.now() - start > 5000) clearInterval(interval);
+        }, 10);
         return () => clearInterval(interval);
       }
     }
@@ -17529,15 +17528,16 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     if(!activeMuni) {
       const target = savedScrollPos.current["muni"];
       if(target && ((target.scrolls && target.scrolls.length > 0) || target.win > 0)) {
-        let count = 0;
+        const start = Date.now();
         const interval = setInterval(() => {
           (target.scrolls || []).forEach(s => {
-            if(s.el.isConnected) s.el.scrollTop = s.top;
+            if(s.el.isConnected && Math.abs(s.el.scrollTop - s.top) > 5) {
+              s.el.scrollTop = s.top;
+            }
           });
-          if(target.win > 0) window.scrollTo(0, target.win);
-          count++;
-          if(count >= 30) clearInterval(interval);
-        }, 100);
+          if(target.win > 0 && Math.abs(window.scrollY - target.win) > 5) window.scrollTo(0, target.win);
+          if(Date.now() - start > 5000) clearInterval(interval);
+        }, 10);
         return () => clearInterval(interval);
       }
     }
