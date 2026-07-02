@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v220-inner-scroll"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v220-dynamic-scroll"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -7483,14 +7483,17 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
   // ✅ v220: スクロール位置保持（タスク・プロジェクトリスト用）
   const savedTaskScroll = React.useRef({});
   const saveTaskScroll = (key) => {
-    const el = document.querySelector('[data-task-scroll]') || document.querySelector('[data-sales-scroll]');
+    const scrolls = [];
+    document.querySelectorAll('*').forEach(el => {
+      if(el.scrollTop > 5) scrolls.push({el, top: el.scrollTop});
+    });
     savedTaskScroll.current[key] = {
-      el: el ? el.scrollTop : 0,
+      scrolls,
       win: window.scrollY || document.documentElement.scrollTop || 0,
     };
-    // ✅ v220: 詳細に入る時に上部から始めるため 0 にリセット
+    // 詳細に入る時に 0 にリセット
     requestAnimationFrame(() => {
-      if(el) el.scrollTop = 0;
+      scrolls.forEach(s => { if(s.el.isConnected) s.el.scrollTop = 0; });
       window.scrollTo(0, 0);
     });
   };
@@ -7516,11 +7519,12 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
   React.useEffect(() => {
     if(screen === "list") {
       const target = savedTaskScroll.current["list"];
-      if(target && (target.el > 0 || target.win > 0)) {
+      if(target && ((target.scrolls && target.scrolls.length > 0) || target.win > 0)) {
         let count = 0;
         const interval = setInterval(() => {
-          const el = document.querySelector('[data-task-scroll]') || document.querySelector('[data-sales-scroll]');
-          if(el && el.scrollHeight > el.clientHeight + 10) el.scrollTop = target.el || 0;
+          (target.scrolls || []).forEach(s => {
+            if(s.el.isConnected) s.el.scrollTop = s.top;
+          });
           if(target.win > 0) window.scrollTo(0, target.win);
           count++;
           if(count >= 30) clearInterval(interval);
@@ -17441,21 +17445,23 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       .replace(/[Ａ-Ｚａ-ｚ０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0))
       .replace(/[ァ-ヶ]/g,c=>String.fromCharCode(c.charCodeAt(0)-0x60)); // カタカナ→ひらがな
   };
-  // ✅ v220: スクロール位置保持（内側 div も対象）
+  // ✅ v220: スクロール位置保持（スクロール中の全要素を動的に検出）
   const saveSalesScroll = (key) => {
-    const outer = document.querySelector('[data-sales-scroll]');
-    const inner = document.querySelector('[data-sales-scroll-inner]');
-    const saved = {
-      el: outer ? outer.scrollTop : 0,
-      inner: inner ? inner.scrollTop : 0,  // ✅ 内側 div の scrollTop
+    // スクロール中の全要素を検出して保存（DOM 参照 + scrollTop）
+    const scrolls = [];
+    document.querySelectorAll('*').forEach(el => {
+      if(el.scrollTop > 5) {
+        scrolls.push({el, top: el.scrollTop});
+      }
+    });
+    savedScrollPos.current[key] = {
+      scrolls,
       win: window.scrollY || document.documentElement.scrollTop || 0,
     };
-    savedScrollPos.current[key] = saved;
-    console.log(`[Scroll SAVE] key=${key}`, saved);
-    // 保存後、詳細画面が上部から始まるよう scrollTop=0 にする
+    console.log(`[Scroll SAVE] key=${key} 検出:${scrolls.length}件`, scrolls.map(s => ({tag: s.el.tagName, cls: s.el.className.substring(0,30), top: s.top})));
+    // 詳細画面が上部から始まるよう、全要素の scrollTop=0 に
     requestAnimationFrame(() => {
-      if(outer) outer.scrollTop = 0;
-      if(inner) inner.scrollTop = 0;
+      scrolls.forEach(s => { if(s.el.isConnected) s.el.scrollTop = 0; });
       window.scrollTo(0, 0);
     });
   };
@@ -17483,13 +17489,12 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   React.useEffect(() => {
     if(!activeCompany) {
       const target = savedScrollPos.current["company"];
-      if(target && (target.el > 0 || target.inner > 0 || target.win > 0)) {
+      if(target && ((target.scrolls && target.scrolls.length > 0) || target.win > 0)) {
         let count = 0;
         const interval = setInterval(() => {
-          const outer = document.querySelector('[data-sales-scroll]');
-          const inner = document.querySelector('[data-sales-scroll-inner]');
-          if(outer && outer.scrollHeight > outer.clientHeight + 10) outer.scrollTop = target.el || 0;
-          if(inner && inner.scrollHeight > inner.clientHeight + 10) inner.scrollTop = target.inner || 0;
+          (target.scrolls || []).forEach(s => {
+            if(s.el.isConnected) s.el.scrollTop = s.top;
+          });
           if(target.win > 0) window.scrollTo(0, target.win);
           count++;
           if(count >= 30) clearInterval(interval);
@@ -17502,16 +17507,16 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     if(!activeVendor) {
       const target = savedScrollPos.current["vendor"];
       console.log('[Scroll RESTORE vendor] activeVendor=null 発火, target:', target);
-      if(target && (target.el > 0 || target.inner > 0 || target.win > 0)) {
+      if(target && ((target.scrolls && target.scrolls.length > 0) || target.win > 0)) {
         let count = 0;
         const interval = setInterval(() => {
-          const outer = document.querySelector('[data-sales-scroll]');
-          const inner = document.querySelector('[data-sales-scroll-inner]');
-          if(outer && outer.scrollHeight > outer.clientHeight + 10) outer.scrollTop = target.el || 0;
-          if(inner && inner.scrollHeight > inner.clientHeight + 10) inner.scrollTop = target.inner || 0;
+          (target.scrolls || []).forEach(s => {
+            if(s.el.isConnected) s.el.scrollTop = s.top;
+          });
           if(target.win > 0) window.scrollTo(0, target.win);
           if(count === 0 || count === 29) {
-            console.log(`[Scroll RESTORE vendor] count=${count} target=${JSON.stringify(target)} outer.scrollTop=${outer?.scrollTop} inner.scrollTop=${inner?.scrollTop}`);
+            const detail = (target.scrolls || []).map(s => ({tag: s.el.tagName, connected: s.el.isConnected, want: s.top, actual: s.el.scrollTop}));
+            console.log(`[Scroll RESTORE vendor] count=${count}`, detail);
           }
           count++;
           if(count >= 30) clearInterval(interval);
@@ -17523,13 +17528,12 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   React.useEffect(() => {
     if(!activeMuni) {
       const target = savedScrollPos.current["muni"];
-      if(target && (target.el > 0 || target.inner > 0 || target.win > 0)) {
+      if(target && ((target.scrolls && target.scrolls.length > 0) || target.win > 0)) {
         let count = 0;
         const interval = setInterval(() => {
-          const outer = document.querySelector('[data-sales-scroll]');
-          const inner = document.querySelector('[data-sales-scroll-inner]');
-          if(outer && outer.scrollHeight > outer.clientHeight + 10) outer.scrollTop = target.el || 0;
-          if(inner && inner.scrollHeight > inner.clientHeight + 10) inner.scrollTop = target.inner || 0;
+          (target.scrolls || []).forEach(s => {
+            if(s.el.isConnected) s.el.scrollTop = s.top;
+          });
           if(target.win > 0) window.scrollTo(0, target.win);
           count++;
           if(count >= 30) clearInterval(interval);
