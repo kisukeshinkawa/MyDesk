@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v220-render-count-debug"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v220-boundary-usememo"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -14444,8 +14444,8 @@ function LinkBizcardModal({ allCards=[], entityType, entityId, entityName, users
     [...new Set(allCards.flatMap(c=>c.owners||(c.owner?[c.owner]:[])).filter(Boolean))]
   , [allCards]);
 
-  // 候補リスト：毎レンダーで直接計算（検索の即時反映を保証）
-  const candidates = (() => {
+  // 候補リスト：useMemo で毎レンダーの再計算を安定化
+  const candidates = React.useMemo(() => {
     // Step1: 既紐付け・所有者フィルタで絞り込み
     let list = allCards.filter(card => {
       if(card.salesRef && String(card.salesRef.id)===String(entityId) && card.salesRef.type===entityType) return false;
@@ -14457,8 +14457,6 @@ function LinkBizcardModal({ allCards=[], entityType, entityId, entityName, users
     });
 
     // Step2: 検索ワードがあればスコアリングしてソート
-    //   - ヒットしたカードを最上部に出す
-    //   - ヒットしない他のカードもその下に表示する（件数の混乱防止）
     if(searchQ) {
       const norm = s => (s||"").replace(/[ 　	]/g,"").toLowerCase();
       const scored = list.map(card => {
@@ -14482,7 +14480,6 @@ function LinkBizcardModal({ allCards=[], entityType, entityId, entityName, users
         else if(phone.includes(searchQ))     score = 7;
         return { card, score };
       });
-      // ヒットしたものを最上部、ヒットしないものはその下に並べる
       // ✅ v220: 検索時は misses を非表示（紛らわしさ防止）
       const hits = scored.filter(x=>x.score<99).sort((a,b)=>a.score-b.score).map(x=>x.card);
       return hits;
@@ -14493,7 +14490,7 @@ function LinkBizcardModal({ allCards=[], entityType, entityId, entityName, users
       (a.company||"").localeCompare(b.company||"","ja")||
       (`${a.lastName||""}${a.firstName||""}`).localeCompare(`${b.lastName||""}${b.firstName||""}`,"ja")
     );
-  })();
+  }, [allCards, searchQ, filterOwner, entityId, entityType]);
 
   const toggleCard = id => setSelected(prev => {
     const n = new Set(prev); n.has(id)?n.delete(id):n.add(id); return n;
@@ -14572,13 +14569,15 @@ function LinkBizcardModal({ allCards=[], entityType, entityId, entityName, users
               {selected.size>5 && ` 他${selected.size-5}件`}
             </div>
           )}
-          {candidates.map(card=>{
+          {/* ✅ v220 デバッグ: リスト開始位置マーカー */}
+          <div style={{background:"#22c55e",color:"white",padding:"0.4rem",textAlign:"center",fontWeight:800,fontSize:"0.75rem",marginBottom:"0.3rem"}}>🟢 リスト開始: これから {candidates.length} 件</div>
+          {candidates.map((card, idx)=>{
             const name=`${card.lastName||""}${card.firstName ? " "+card.firstName : ""}`.trim()||"（名前なし）";
             const owners=card.owners||(card.owner?[card.owner]:[]);
             const isSel=selected.has(card.id);
             const hasOtherLink=!!(card.salesRef&&!(String(card.salesRef.id)===String(entityId)&&card.salesRef.type===entityType));
             return (
-              <div key={card.id} onClick={()=>toggleCard(card.id)}
+              <div key={`${card.id}_${idx}`} onClick={()=>toggleCard(card.id)}
                 style={{
                   display:"flex",
                   alignItems:"center",
@@ -14627,6 +14626,8 @@ function LinkBizcardModal({ allCards=[], entityType, entityId, entityName, users
               </div>
             );
           })}
+          {/* ✅ v220 デバッグ: リスト終了位置マーカー */}
+          <div style={{background:"#22c55e",color:"white",padding:"0.4rem",textAlign:"center",fontWeight:800,fontSize:"0.75rem",marginTop:"0.3rem"}}>🔴 リスト終了: 上に {candidates.length} 件表示したはず</div>
         </div>
         {/* フッター */}
         <div style={{padding:"0.875rem 1.25rem",borderTop:`1px solid ${C.borderLight}`,flexShrink:0}}>
