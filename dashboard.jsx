@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v220-scroll-debug"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v220-inner-scroll"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -17441,18 +17441,21 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       .replace(/[Ａ-Ｚａ-ｚ０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0))
       .replace(/[ァ-ヶ]/g,c=>String.fromCharCode(c.charCodeAt(0)-0x60)); // カタカナ→ひらがな
   };
-  // ✅ v220: スクロール位置保持
+  // ✅ v220: スクロール位置保持（内側 div も対象）
   const saveSalesScroll = (key) => {
-    const el = document.querySelector('[data-sales-scroll]');
+    const outer = document.querySelector('[data-sales-scroll]');
+    const inner = document.querySelector('[data-sales-scroll-inner]');
     const saved = {
-      el: el ? el.scrollTop : 0,
+      el: outer ? outer.scrollTop : 0,
+      inner: inner ? inner.scrollTop : 0,  // ✅ 内側 div の scrollTop
       win: window.scrollY || document.documentElement.scrollTop || 0,
     };
     savedScrollPos.current[key] = saved;
-    console.log(`[Scroll SAVE] key=${key}`, saved, 'el存在:', !!el, 'scrollHeight:', el?.scrollHeight, 'clientHeight:', el?.clientHeight);
-    // ✅ v220: 保存後、詳細画面が上部から始まるよう scrollTop=0 にする
+    console.log(`[Scroll SAVE] key=${key}`, saved);
+    // 保存後、詳細画面が上部から始まるよう scrollTop=0 にする
     requestAnimationFrame(() => {
-      if(el) el.scrollTop = 0;
+      if(outer) outer.scrollTop = 0;
+      if(inner) inner.scrollTop = 0;
       window.scrollTo(0, 0);
     });
   };
@@ -17480,11 +17483,13 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   React.useEffect(() => {
     if(!activeCompany) {
       const target = savedScrollPos.current["company"];
-      if(target && (target.el > 0 || target.win > 0)) {
+      if(target && (target.el > 0 || target.inner > 0 || target.win > 0)) {
         let count = 0;
         const interval = setInterval(() => {
-          const el = document.querySelector('[data-sales-scroll]');
-          if(el && el.scrollHeight > el.clientHeight + 10) el.scrollTop = target.el || 0;
+          const outer = document.querySelector('[data-sales-scroll]');
+          const inner = document.querySelector('[data-sales-scroll-inner]');
+          if(outer && outer.scrollHeight > outer.clientHeight + 10) outer.scrollTop = target.el || 0;
+          if(inner && inner.scrollHeight > inner.clientHeight + 10) inner.scrollTop = target.inner || 0;
           if(target.win > 0) window.scrollTo(0, target.win);
           count++;
           if(count >= 30) clearInterval(interval);
@@ -17497,16 +17502,16 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     if(!activeVendor) {
       const target = savedScrollPos.current["vendor"];
       console.log('[Scroll RESTORE vendor] activeVendor=null 発火, target:', target);
-      if(target && (target.el > 0 || target.win > 0)) {
+      if(target && (target.el > 0 || target.inner > 0 || target.win > 0)) {
         let count = 0;
         const interval = setInterval(() => {
-          const el = document.querySelector('[data-sales-scroll]');
-          const before = el?.scrollTop;
-          if(el && el.scrollHeight > el.clientHeight + 10) el.scrollTop = target.el || 0;
+          const outer = document.querySelector('[data-sales-scroll]');
+          const inner = document.querySelector('[data-sales-scroll-inner]');
+          if(outer && outer.scrollHeight > outer.clientHeight + 10) outer.scrollTop = target.el || 0;
+          if(inner && inner.scrollHeight > inner.clientHeight + 10) inner.scrollTop = target.inner || 0;
           if(target.win > 0) window.scrollTo(0, target.win);
-          const after = el?.scrollTop;
-          if(count === 0 || count === 5 || count === 15 || count === 29) {
-            console.log(`[Scroll RESTORE vendor] count=${count} target.el=${target.el} before=${before} after=${after} scrollHeight=${el?.scrollHeight} winY=${window.scrollY}`);
+          if(count === 0 || count === 29) {
+            console.log(`[Scroll RESTORE vendor] count=${count} target=${JSON.stringify(target)} outer.scrollTop=${outer?.scrollTop} inner.scrollTop=${inner?.scrollTop}`);
           }
           count++;
           if(count >= 30) clearInterval(interval);
@@ -17518,11 +17523,13 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   React.useEffect(() => {
     if(!activeMuni) {
       const target = savedScrollPos.current["muni"];
-      if(target && (target.el > 0 || target.win > 0)) {
+      if(target && (target.el > 0 || target.inner > 0 || target.win > 0)) {
         let count = 0;
         const interval = setInterval(() => {
-          const el = document.querySelector('[data-sales-scroll]');
-          if(el && el.scrollHeight > el.clientHeight + 10) el.scrollTop = target.el || 0;
+          const outer = document.querySelector('[data-sales-scroll]');
+          const inner = document.querySelector('[data-sales-scroll-inner]');
+          if(outer && outer.scrollHeight > outer.clientHeight + 10) outer.scrollTop = target.el || 0;
+          if(inner && inner.scrollHeight > inner.clientHeight + 10) inner.scrollTop = target.inner || 0;
           if(target.win > 0) window.scrollTo(0, target.win);
           count++;
           if(count >= 30) clearInterval(interval);
@@ -33509,7 +33516,7 @@ export default function App() {
       <div ref={contentRef} className="mydesk-content" data-sales-scroll style={{flex:1,overflowY:isPC?"hidden":"auto",display:isPC?"flex":"block",
         overflowAnchor:"none",  /* ✅ v220: ブラウザのスクロールアンカー無効化 (戻る時の scrollTop 保持のため) */
         paddingBottom:isPC?0:"calc(5rem + env(safe-area-inset-bottom,0px))"}}>
-        <div style={{maxWidth:isPC?"none":720,margin:isPC?0:"0 auto",width:"100%",flex:isPC?1:undefined,overflowY:isPC?"auto":"visible",overflowAnchor:"none",padding:isPC?(tab==="sales"?"0":"1.75rem 2rem 1rem"):"1.25rem 1rem 0.5rem",boxSizing:"border-box"}}>
+        <div data-sales-scroll-inner style={{maxWidth:isPC?"none":720,margin:isPC?0:"0 auto",width:"100%",flex:isPC?1:undefined,overflowY:isPC?"auto":"visible",overflowAnchor:"none",padding:isPC?(tab==="sales"?"0":"1.75rem 2rem 1rem"):"1.25rem 1rem 0.5rem",boxSizing:"border-box"}}>
           <ErrorBoundary>
             {tab==="tasks"     && <TaskView      data={data} setData={setData} users={users} currentUser={currentUser}
               taskTab={taskTab} setTaskTab={(v)=>persistTab('md_taskTab',v,setTaskTab)}
