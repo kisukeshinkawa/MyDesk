@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v220-text-marker-effect"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v220-render-count-debug"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -7488,6 +7488,11 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
       el: el ? el.scrollTop : 0,
       win: window.scrollY || document.documentElement.scrollTop || 0,
     };
+    // ✅ v220: 詳細に入る時に上部から始めるため 0 にリセット
+    requestAnimationFrame(() => {
+      if(el) el.scrollTop = 0;
+      window.scrollTo(0, 0);
+    });
   };
   const restoreTaskScroll = (key) => {
     const target = savedTaskScroll.current[key];
@@ -7508,17 +7513,17 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
   };
   
   // ✅ v220: screen が "list" に戻った瞬間にスクロール復元
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
     if(screen === "list") {
       const target = savedTaskScroll.current["list"];
-      if(target) {
+      if(target && (target.el > 0 || target.win > 0)) {
         let attempts = 0;
         const tick = () => {
           const el = document.querySelector('[data-task-scroll]') || document.querySelector('[data-sales-scroll]');
           if(el && el.scrollHeight > el.clientHeight + 10) el.scrollTop = target.el || 0;
           if(target.win > 0) window.scrollTo(0, target.win);
           attempts++;
-          if(attempts < 30) requestAnimationFrame(tick);
+          if(attempts < 60) requestAnimationFrame(tick);
         };
         requestAnimationFrame(tick);
       }
@@ -14421,11 +14426,18 @@ function LinkBizcardModal({ allCards=[], entityType, entityId, entityName, users
   const [search, setSearch] = React.useState("");
   const [selected, setSelected] = React.useState(new Set());
   const [filterOwner, setFilterOwner] = React.useState("");
+  // ✅ v220: リストコンテナ ref - 検索変更時にトップに戻す
+  const listRef = React.useRef(null);
 
   const typeColor = {"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"}[entityType]||"#2563eb";
 
   // 検索ワードを正規化（スペース除去・小文字化）
   const searchQ = search.replace(/[ 　	]/g,"").toLowerCase();
+  
+  // ✅ v220: 検索・フィルター変更時にリストを最上部にスクロールリセット
+  React.useEffect(() => {
+    if(listRef.current) listRef.current.scrollTop = 0;
+  }, [searchQ, filterOwner]);
 
   // 所有者一覧（メモ化）
   const allOwners = React.useMemo(() =>
@@ -14520,7 +14532,11 @@ function LinkBizcardModal({ allCards=[], entityType, entityId, entityName, users
           )}
         </div>
         {/* リスト */}
-        <div style={{overflowY:"auto",flex:1,padding:"0.4rem 0.75rem"}}>
+        <div ref={listRef} style={{overflowY:"auto",flex:1,padding:"0.4rem 0.75rem"}}>
+          {/* ✅ v220 デバッグ: 実際にレンダリングされている件数を表示 */}
+          <div style={{position:"sticky",top:0,zIndex:10,background:"red",color:"white",padding:"0.5rem",fontSize:"0.9rem",fontWeight:900,textAlign:"center",marginBottom:"0.5rem",borderRadius:"6px"}}>
+            🚨 レンダー中: {candidates.length}件 (allCards: {allCards.length}件)
+          </div>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0.3rem 0.25rem 0.4rem"}}>
             <span style={{fontSize:"0.72rem",color:searchQ?typeColor:C.textMuted,fontWeight:searchQ?800:400}}>
               {(()=>{
@@ -17431,6 +17447,11 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       el: el ? el.scrollTop : 0,
       win: window.scrollY || document.documentElement.scrollTop || 0,
     };
+    // ✅ v220: 保存後、詳細画面が上部から始まるよう scrollTop=0 にする
+    requestAnimationFrame(() => {
+      if(el) el.scrollTop = 0;
+      window.scrollTo(0, 0);
+    });
   };
   const restoreSalesScroll = (key) => {
     const target = savedScrollPos.current[key];
@@ -17452,49 +17473,49 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   };
   
   // ✅ v220: activeCompany/Vendor/Muni が null に戻った瞬間にスクロール復元
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
     if(!activeCompany) {
       const target = savedScrollPos.current["company"];
-      if(target) {
+      if(target && (target.el > 0 || target.win > 0)) {
         let attempts = 0;
         const tick = () => {
           const el = document.querySelector('[data-sales-scroll]');
           if(el && el.scrollHeight > el.clientHeight + 10) el.scrollTop = target.el || 0;
           if(target.win > 0) window.scrollTo(0, target.win);
           attempts++;
-          if(attempts < 30) requestAnimationFrame(tick);
+          if(attempts < 60) requestAnimationFrame(tick);
         };
         requestAnimationFrame(tick);
       }
     }
   }, [activeCompany]);
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
     if(!activeVendor) {
       const target = savedScrollPos.current["vendor"];
-      if(target) {
+      if(target && (target.el > 0 || target.win > 0)) {
         let attempts = 0;
         const tick = () => {
           const el = document.querySelector('[data-sales-scroll]');
           if(el && el.scrollHeight > el.clientHeight + 10) el.scrollTop = target.el || 0;
           if(target.win > 0) window.scrollTo(0, target.win);
           attempts++;
-          if(attempts < 30) requestAnimationFrame(tick);
+          if(attempts < 60) requestAnimationFrame(tick);
         };
         requestAnimationFrame(tick);
       }
     }
   }, [activeVendor]);
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
     if(!activeMuni) {
       const target = savedScrollPos.current["muni"];
-      if(target) {
+      if(target && (target.el > 0 || target.win > 0)) {
         let attempts = 0;
         const tick = () => {
           const el = document.querySelector('[data-sales-scroll]');
           if(el && el.scrollHeight > el.clientHeight + 10) el.scrollTop = target.el || 0;
           if(target.win > 0) window.scrollTo(0, target.win);
           attempts++;
-          if(attempts < 30) requestAnimationFrame(tick);
+          if(attempts < 60) requestAnimationFrame(tick);
         };
         requestAnimationFrame(tick);
       }
