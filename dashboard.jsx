@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v220-force-reset"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v220-muni-explicit"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -1607,6 +1607,8 @@ async function loadData() {
               if(Array.isArray(p.linkedMuniIds)) p.linkedMuniIds = p.linkedMuniIds.map(id => remap(id, 'municipalities'));
             });
             console.log(`[MyDesk] EnsureId 全体修正: ${changedCollections.join(', ')}`);
+            // ✅ v220: 修正されたデータをサーバに保存が必要とフラグを立てる
+            merged._ensureIdChanged = true;
           }
         } catch(e) { console.warn("[MyDesk] EnsureId migration failed:", e); }
         
@@ -7567,14 +7569,14 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
       scrolls,
       win: window.scrollY || document.documentElement.scrollTop || 0,
     };
-    // ✅ v220: 500ms 間、10ms 間隔で全 scroll 要素を 0 に強制
+    // ✅ v220: 100ms 間、10ms 間隔で全 scroll 要素を 0 に強制
     const start = Date.now();
     const resetInterval = setInterval(() => {
       document.querySelectorAll('*').forEach(el => {
         if(el.scrollTop > 5) el.scrollTop = 0;
       });
       window.scrollTo(0, 0);
-      if(Date.now() - start > 500) clearInterval(resetInterval);
+      if(Date.now() - start > 100) clearInterval(resetInterval);
     }, 10);
   };
   const restoreTaskScroll = (key) => {
@@ -17531,14 +17533,15 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       scrolls,
       win: window.scrollY || document.documentElement.scrollTop || 0,
     };
-    // ✅ v220: 500ms 間、10ms 間隔で全 scroll 要素を 0 に強制（詳細画面が確実に上部から始まる）
+    // ✅ v220: 100ms 間、10ms 間隔で scroll 要素を 0 に強制（詳細画面が確実に上部）
+    // 短時間で終わらせることで、後続の復元処理と競合しないようにする
     const start = Date.now();
     const resetInterval = setInterval(() => {
       document.querySelectorAll('*').forEach(el => {
         if(el.scrollTop > 5) el.scrollTop = 0;
       });
       window.scrollTo(0, 0);
-      if(Date.now() - start > 500) clearInterval(resetInterval);
+      if(Date.now() - start > 100) clearInterval(resetInterval);
     }, 10);
   };
   const restoreSalesScroll = (key) => {
@@ -22143,7 +22146,21 @@ ${orig}`})
 
       <div>
         <div style={{display:"flex",alignItems:"center",marginBottom:"1rem",gap:"0.5rem"}}>
-          <button onClick={()=>{setMuniScreen("top");setActiveMuni(null);restoreSalesScroll("muni");}} style={{background:"none",border:"none",color:C.textSub,fontWeight:700,fontSize:"0.85rem",cursor:"pointer",padding:0}}>‹ {pref?.name||"一覧"}</button>
+          <button onClick={()=>{
+              setMuniScreen("top");
+              setActiveMuni(null);
+              restoreSalesScroll("muni");
+              // ✅ v220: 追加の明示的な復元
+              const target = savedScrollPos.current["muni"];
+              if(target?.scrolls) {
+                [100, 300, 500, 1000].forEach(delay => setTimeout(() => {
+                  target.scrolls.forEach(s => {
+                    const el = getElementFromPath(s.path);
+                    if(el && Math.abs(el.scrollTop - s.top) > 5) el.scrollTop = s.top;
+                  });
+                }, delay));
+              }
+            }} style={{background:"none",border:"none",color:C.textSub,fontWeight:700,fontSize:"0.85rem",cursor:"pointer",padding:0}}>‹ {pref?.name||"一覧"}</button>
           <span style={{flex:1}}/>
         </div>
         <Card style={{padding:"0.875rem 1rem",marginBottom:"0.625rem"}}>
@@ -22641,7 +22658,7 @@ ${orig}`})
                 const pref=prefOf(m.prefectureId);
                 const ts=TREATY_STATUS[m.treatyStatus||"未接触"];
                 return (
-                  <div key={m.id} onClick={()=>{saveSalesScroll("muni");setActivePref(String(m.prefectureId));setActiveMuni(String(m.id));setMuniScreen("muniDetail");setActiveDetail("timeline");}}
+                  <div key={m.id} onClick={()=>{saveSalesScroll("muni");setActivePref(String(m.prefectureId));setActiveMuni(String(m.id));setMuniScreen("muniDetail");setActiveDetail("timeline");setTimeout(()=>{document.querySelectorAll("*").forEach(el=>{if(el.scrollTop>5)el.scrollTop=0;});window.scrollTo(0,0);}, 50);setTimeout(()=>{document.querySelectorAll("*").forEach(el=>{if(el.scrollTop>5)el.scrollTop=0;});window.scrollTo(0,0);}, 200);}}
                     style={{display:"flex",flexDirection:"column",gap:"0.2rem",cursor:"pointer",padding:"0.4rem 0.55rem",background:"white",borderRadius:"0.5rem",border:"1px solid #fde047"}}>
                     <span style={{fontSize:"0.82rem",fontWeight:700,color:C.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{m.name}</span>
                     <div style={{display:"flex",alignItems:"center",gap:"0.4rem",fontSize:"0.6rem"}}>
@@ -22832,7 +22849,7 @@ ${orig}`})
               const ds=DUSTALK_STATUS[m.dustalk]||DUSTALK_STATUS["未展開"];
               const mv=muniVendors(m.id);
               return (
-                <div key={m.id} onClick={()=>{saveSalesScroll("muni");setSheet(null);setActivePref(String(m.prefectureId));setActiveMuni(String(m.id));setMuniScreen("muniDetail");setActiveDetail("timeline");}}
+                <div key={m.id} onClick={()=>{saveSalesScroll("muni");setSheet(null);setActivePref(String(m.prefectureId));setActiveMuni(String(m.id));setMuniScreen("muniDetail");setActiveDetail("timeline");setTimeout(()=>{document.querySelectorAll("*").forEach(el=>{if(el.scrollTop>5)el.scrollTop=0;});window.scrollTo(0,0);}, 50);setTimeout(()=>{document.querySelectorAll("*").forEach(el=>{if(el.scrollTop>5)el.scrollTop=0;});window.scrollTo(0,0);}, 200);}}
                   style={{background:"white",border:`1.5px solid ${C.border}`,borderRadius:"8px",padding:"0.875rem 1rem",cursor:"pointer",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.25rem"}}>
                     <div>
@@ -22875,7 +22892,7 @@ ${orig}`})
                 const ms=MUNI_STATUS[m.status||"未接触"];
                 const mvs=muniVendors(m.id);
                 return (
-                  <div key={m.id} onClick={()=>{saveSalesScroll("muni");setActivePref(String(m.prefectureId));setActiveMuni(String(m.id));setMuniScreen("muniDetail");setActiveDetail("timeline");}}
+                  <div key={m.id} onClick={()=>{saveSalesScroll("muni");setActivePref(String(m.prefectureId));setActiveMuni(String(m.id));setMuniScreen("muniDetail");setActiveDetail("timeline");setTimeout(()=>{document.querySelectorAll("*").forEach(el=>{if(el.scrollTop>5)el.scrollTop=0;});window.scrollTo(0,0);}, 50);setTimeout(()=>{document.querySelectorAll("*").forEach(el=>{if(el.scrollTop>5)el.scrollTop=0;});window.scrollTo(0,0);}, 200);}}
                     style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.625rem 0.75rem",background:"white",borderRadius:"6px",border:`1.5px solid ${C.border}`,cursor:"pointer",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}
                     onMouseEnter={e=>e.currentTarget.style.borderColor=C.accent}
                     onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}>
@@ -32777,7 +32794,13 @@ export default function App() {
         seenV.add(String(v.id)); return v;
       });
       const fixed = (mChanged||vChanged) ? {...d,municipalities:fixedM,vendors:fixedV} : d;
-      if(mChanged||vChanged) scheduleSaveData(fixed);
+      // ✅ v220: EnsureId で修正があった場合、または重複が検出された場合はサーバに保存
+      if(mChanged||vChanged||d._ensureIdChanged) {
+        console.log("[MyDesk] EnsureId 修正データをサーバに保存します");
+        scheduleSaveData(fixed);
+      }
+      // _ensureIdChanged フラグは data 本体には残さない
+      if(fixed._ensureIdChanged) delete fixed._ensureIdChanged;
       setData(fixed); setUsers(u);
       setLoadError(null); // ロード成功
       if (session) {
