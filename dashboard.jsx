@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v220-unique-ids"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v220-muni-bizcard-scroll"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -17607,6 +17607,24 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       }
     }
   }, [activeMuni]);
+  // ✅ v220: bcScreen が "list" に戻った瞬間にスクロール復元
+  React.useEffect(() => {
+    if(bcScreen === "list") {
+      const target = savedScrollPos.current["bizcard"];
+      if(target && ((target.scrolls && target.scrolls.length > 0) || target.win > 0)) {
+        const start = Date.now();
+        const interval = setInterval(() => {
+          (target.scrolls || []).forEach(s => {
+            const el = getElementFromPath(s.path);
+            if(el && Math.abs(el.scrollTop - s.top) > 5) el.scrollTop = s.top;
+          });
+          if(target.win > 0 && Math.abs(window.scrollY - target.win) > 5) window.scrollTo(0, target.win);
+          if(Date.now() - start > 5000) clearInterval(interval);
+        }, 10);
+        return () => clearInterval(interval);
+      }
+    }
+  }, [bcScreen]);
 
   // ── Seed 47 prefectures on first load (municipalities are managed externally) ──
   useEffect(()=>{
@@ -22617,7 +22635,7 @@ ${orig}`})
                 const pref=prefOf(m.prefectureId);
                 const ts=TREATY_STATUS[m.treatyStatus||"未接触"];
                 return (
-                  <div key={m.id} onClick={()=>{setActivePref(String(m.prefectureId));setActiveMuni(String(m.id));setMuniScreen("muniDetail");setActiveDetail("timeline");}}
+                  <div key={m.id} onClick={()=>{saveSalesScroll("muni");setActivePref(String(m.prefectureId));setActiveMuni(String(m.id));setMuniScreen("muniDetail");setActiveDetail("timeline");}}
                     style={{display:"flex",flexDirection:"column",gap:"0.2rem",cursor:"pointer",padding:"0.4rem 0.55rem",background:"white",borderRadius:"0.5rem",border:"1px solid #fde047"}}>
                     <span style={{fontSize:"0.82rem",fontWeight:700,color:C.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{m.name}</span>
                     <div style={{display:"flex",alignItems:"center",gap:"0.4rem",fontSize:"0.6rem"}}>
@@ -22808,7 +22826,7 @@ ${orig}`})
               const ds=DUSTALK_STATUS[m.dustalk]||DUSTALK_STATUS["未展開"];
               const mv=muniVendors(m.id);
               return (
-                <div key={m.id} onClick={()=>{setSheet(null);setActivePref(String(m.prefectureId));setActiveMuni(String(m.id));setMuniScreen("muniDetail");setActiveDetail("timeline");}}
+                <div key={m.id} onClick={()=>{saveSalesScroll("muni");setSheet(null);setActivePref(String(m.prefectureId));setActiveMuni(String(m.id));setMuniScreen("muniDetail");setActiveDetail("timeline");}}
                   style={{background:"white",border:`1.5px solid ${C.border}`,borderRadius:"8px",padding:"0.875rem 1rem",cursor:"pointer",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.25rem"}}>
                     <div>
@@ -22851,7 +22869,7 @@ ${orig}`})
                 const ms=MUNI_STATUS[m.status||"未接触"];
                 const mvs=muniVendors(m.id);
                 return (
-                  <div key={m.id} onClick={()=>{setActivePref(String(m.prefectureId));setActiveMuni(String(m.id));setMuniScreen("muniDetail");setActiveDetail("timeline");}}
+                  <div key={m.id} onClick={()=>{saveSalesScroll("muni");setActivePref(String(m.prefectureId));setActiveMuni(String(m.id));setMuniScreen("muniDetail");setActiveDetail("timeline");}}
                     style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.625rem 0.75rem",background:"white",borderRadius:"6px",border:`1.5px solid ${C.border}`,cursor:"pointer",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}
                     onMouseEnter={e=>e.currentTarget.style.borderColor=C.accent}
                     onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}>
@@ -23531,7 +23549,7 @@ ${orig}`})
                   return (
                     <div key={card.id} onClick={()=>{
                       if(bulkMode){setBulkSelected(prev=>{const n=new Set(prev);n.has(card.id)?n.delete(card.id):n.add(card.id);return n;});return;}
-                      setBcActiveId(card.id);setBcScreen("detail");
+                      saveSalesScroll("bizcard");setBcActiveId(card.id);setBcScreen("detail");
                     }}
                       style={{display:"flex",alignItems:"center",gap:"0.75rem",padding:"0.75rem 1rem",borderBottom:`1px solid ${C.borderLight}`,cursor:"pointer",background:isSelected?"#eff6ff":"white"}}>
                       {bulkMode&&<input type="checkbox" checked={isSelected} readOnly style={{width:15,height:15,accentColor:C.accent,flexShrink:0}}/>}
@@ -23576,7 +23594,7 @@ ${orig}`})
                       return (
                         <div key={card.id} onClick={()=>{
                           if(bulkMode){setBulkSelected(prev=>{const n=new Set(prev);n.has(card.id)?n.delete(card.id):n.add(card.id);return n;});return;}
-                          setBcActiveId(card.id);setBcScreen("detail");
+                          saveSalesScroll("bizcard");setBcActiveId(card.id);setBcScreen("detail");
                         }}
                           style={{display:"flex",alignItems:"center",gap:"0.75rem",padding:"0.75rem 1rem",borderBottom:`1px solid ${C.borderLight}`,cursor:"pointer",background:isSelected?"#eff6ff":"white",transition:"background 0.1s"}}>
                           {bulkMode&&<input type="checkbox" checked={isSelected} readOnly style={{width:15,height:15,accentColor:C.accent,flexShrink:0}}/>}
