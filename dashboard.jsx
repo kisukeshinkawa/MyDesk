@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v220-searchable-filter"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v220-invitation-pdf"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -25959,17 +25959,37 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
       win.document.write(`<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>${activeAnnouncement.title} - ${vendorName}</title>
 <style>
-  @page { size: A4; margin: 1.5cm; }
-  body { font-family: 'Hiragino Sans','Yu Gothic',sans-serif; line-height: 1.7; color: #222; margin: 0; padding: 2rem; }
-  h1 { font-size: 1.5rem; margin: 1rem 0 0.5rem; }
-  h2 { font-size: 1.2rem; margin: 1rem 0 0.4rem; color: #1e40af; border-bottom: 1px solid #ddd; padding-bottom: 0.3rem; }
-  p { margin: 0.5rem 0; }
-  ul, ol { margin: 0.5rem 0; padding-left: 1.5rem; }
-  li { margin: 0.2rem 0; }
-  @media print { body { padding: 0; } .no-print { display: none !important; } }
+  @page { size: A4; margin: 1cm; }
+  body { font-family: 'Hiragino Sans','Yu Gothic',sans-serif; line-height: 1.55; color: #222; margin: 0; padding: 0.8rem 1.2rem; font-size: 0.88rem; }
+  h1 { font-size: 1.25rem; margin: 0.4rem 0 0.3rem; }
+  h2 { font-size: 1.02rem; margin: 0.5rem 0 0.3rem; color: #1e40af; padding-bottom: 0.15rem; border-bottom: none; }
+  p { margin: 0.3rem 0; }
+  ul, ol { margin: 0.3rem 0; padding-left: 1.3rem; }
+  li { margin: 0.15rem 0; }
+  /* ✅ v220: 印刷時の枠線を全て非表示 */
+  @media print { 
+    body { padding: 0.5rem 1rem; } 
+    .no-print { display: none !important; }
+    * { border: none !important; box-shadow: none !important; }
+    h2 { border-bottom: none !important; }
+    .contact-footer { border-top: none !important; }
+  }
   .print-bar { position: fixed; top: 0; left: 0; right: 0; background: #2563eb; color: white; padding: 0.5rem 1rem; display: flex; justify-content: space-between; align-items: center; z-index: 9999; }
   .print-bar button { padding: 0.4rem 1rem; background: white; color: #2563eb; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; }
-  .content { margin-top: 3rem; }
+  .content { margin-top: 3rem; margin-bottom: 5rem; }
+  @media print { .content { margin-top: 0; margin-bottom: 4rem; } }
+  /* ✅ v220: お問い合わせ先を左下に配置 */
+  .contact-footer {
+    position: fixed;
+    bottom: 0.8cm;
+    left: 1.2rem;
+    right: 1.2rem;
+    font-size: 0.72rem;
+    color: #333;
+    line-height: 1.5;
+    padding-top: 0.4rem;
+  }
+  .contact-footer b { color: #1e40af; }
 </style></head>
 <body>
   <div class="print-bar no-print">
@@ -25977,6 +25997,11 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
     <div><button onclick="window.print()">🖨 PDF として保存 / 印刷</button> <button onclick="window.close()">閉じる</button></div>
   </div>
   <div class="content">${html}</div>
+  <div class="contact-footer">
+    <b>【お問い合わせ先】</b><br>
+    株式会社ビートルマネージメント　DUSTALK事業局<br>
+    TEL：0120-532-109（平日9:00〜17:00）　E-mail：info@dustalk.com
+  </div>
 </body></html>`);
       win.document.close();
     } catch(e) {
@@ -26471,6 +26496,11 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
         return `<div class="page" data-vendor="${v.vendor_name||''}">
   <div class="vendor-header">配布先: ${v.vendor_name || "(業者名なし)"}</div>
   <div class="content">${html}</div>
+  <div class="contact-footer">
+    <b>【お問い合わせ先】</b><br>
+    株式会社ビートルマネージメント　DUSTALK事業局<br>
+    TEL：0120-532-109（平日9:00〜17:00）　E-mail：info@dustalk.com
+  </div>
 </div>${pageBreak}`;
       }).filter(Boolean).join("\n");
       
@@ -26483,24 +26513,41 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
       win.document.write(`<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>${announcement.title} - 一括印刷 (${selectedVendors.length}社)</title>
 <style>
-  @page { size: A4; margin: 1.5cm; }
-  body { font-family: 'Hiragino Sans','Yu Gothic',sans-serif; line-height: 1.7; color: #222; margin: 0; padding: 0; }
-  h1 { font-size: 1.5rem; margin: 1rem 0 0.5rem; }
-  h2 { font-size: 1.2rem; margin: 1rem 0 0.4rem; color: #1e40af; border-bottom: 1px solid #ddd; padding-bottom: 0.3rem; }
-  p { margin: 0.5rem 0; }
-  ul, ol { margin: 0.5rem 0; padding-left: 1.5rem; }
-  li { margin: 0.2rem 0; }
-  .page { padding: 2rem; }
+  @page { size: A4; margin: 1cm; }
+  body { font-family: 'Hiragino Sans','Yu Gothic',sans-serif; line-height: 1.55; color: #222; margin: 0; padding: 0; font-size: 0.88rem; }
+  h1 { font-size: 1.25rem; margin: 0.4rem 0 0.3rem; }
+  h2 { font-size: 1.02rem; margin: 0.5rem 0 0.3rem; color: #1e40af; padding-bottom: 0.15rem; border-bottom: none; }
+  p { margin: 0.3rem 0; }
+  ul, ol { margin: 0.3rem 0; padding-left: 1.3rem; }
+  li { margin: 0.15rem 0; }
+  .page { padding: 0.8rem 1.2rem; position: relative; page-break-after: always; min-height: 26cm; }
+  .page:last-child { page-break-after: auto; }
   .vendor-header { font-size: 0.78rem; color: #6b7280; margin-bottom: 1rem; padding: 0.4rem 0.8rem; background: #f3f4f6; border-radius: 4px; }
+  /* ✅ v220: 印刷時の枠線を全て非表示 */
   @media print { 
     .no-print { display: none !important; } 
     .vendor-header { display: none; }
-    .page { padding: 0; }
+    .page { padding: 0.5rem 1rem; }
+    body { padding-top: 0; }
+    * { border: none !important; box-shadow: none !important; }
+    h2 { border-bottom: none !important; }
+    .contact-footer { border-top: none !important; }
   }
   .print-bar { position: fixed; top: 0; left: 0; right: 0; background: #2563eb; color: white; padding: 0.5rem 1rem; display: flex; justify-content: space-between; align-items: center; z-index: 9999; }
   .print-bar button { padding: 0.4rem 1rem; background: white; color: #2563eb; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; margin-left: 0.5rem; }
   body { padding-top: 3rem; }
-  @media print { body { padding-top: 0; } }
+  /* ✅ v220: お問い合わせ先を各ページ左下に配置 */
+  .contact-footer {
+    position: absolute;
+    bottom: 0.8cm;
+    left: 1.2rem;
+    right: 1.2rem;
+    font-size: 0.72rem;
+    color: #333;
+    line-height: 1.5;
+    padding-top: 0.4rem;
+  }
+  .contact-footer b { color: #1e40af; }
 </style></head>
 <body>
   <div class="print-bar no-print">
