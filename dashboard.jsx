@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v220-fast-restore"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v220-unique-ids"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -1535,6 +1535,80 @@ async function loadData() {
           for (const e of (merged.tasks||[])) fixEntity(e);
           for (const e of (merged.projects||[])) fixEntity(e);
         } catch(e) { console.warn("[MyDesk] date fix migration failed:", e); }
+        
+        // ✅ v220: 全エンティティに一意な id を保証（欠損 or 重複を修正）
+        try {
+          const idMap = { companies:{}, vendors:{}, municipalities:{}, tasks:{}, projects:{}, businessCards:{} };
+          const changedCollections = [];
+          const genId = () => Date.now() * 1000 + Math.floor(Math.random() * 1000);
+          const dedup = (arr, name) => {
+            if(!Array.isArray(arr)) return arr;
+            const seen = new Set();
+            let fixed = 0;
+            arr.forEach(item => {
+              const orig = item.id;
+              let newId = orig;
+              if(newId === undefined || newId === null || newId === "" || seen.has(String(newId))) {
+                newId = genId();
+                while(seen.has(String(newId))) newId = genId();
+                fixed++;
+                if(orig !== undefined && orig !== null && orig !== "") {
+                  idMap[name][String(orig)] = newId;
+                }
+                item.id = newId;
+              }
+              seen.add(String(newId));
+            });
+            if(fixed > 0) {
+              changedCollections.push(`${name}:${fixed}件`);
+              console.log(`[MyDesk] EnsureId ${name}: ${fixed}件の id を修正`);
+            }
+          };
+          dedup(merged.companies, 'companies');
+          dedup(merged.vendors, 'vendors');
+          dedup(merged.municipalities, 'municipalities');
+          dedup(merged.tasks, 'tasks');
+          dedup(merged.projects, 'projects');
+          dedup(merged.businessCards, 'businessCards');
+          
+          // 参照リンクの更新（id が変更されたエンティティを参照している箇所を更新）
+          if(Object.keys(idMap.companies).length + Object.keys(idMap.vendors).length + 
+             Object.keys(idMap.municipalities).length + Object.keys(idMap.projects).length + 
+             Object.keys(idMap.tasks).length + Object.keys(idMap.businessCards).length > 0) {
+            const remap = (val, type) => {
+              if(val === undefined || val === null) return val;
+              const mapped = idMap[type][String(val)];
+              return mapped !== undefined ? mapped : val;
+            };
+            // task.projectId, task.entityId
+            (merged.tasks||[]).forEach(t => {
+              if(t.projectId !== undefined) t.projectId = remap(t.projectId, 'projects');
+              if(t.entityId !== undefined) {
+                // task の entityKey で参照先が変わる
+                const key = t.entityKey === 'companies' ? 'companies' :
+                            t.entityKey === 'vendors' ? 'vendors' :
+                            t.entityKey === 'municipalities' ? 'municipalities' : null;
+                if(key) t.entityId = remap(t.entityId, key);
+              }
+            });
+            // businessCard.salesRef.id
+            (merged.businessCards||[]).forEach(bc => {
+              if(bc.salesRef && bc.salesRef.id !== undefined) {
+                const key = bc.salesRef.type === '企業' ? 'companies' :
+                            bc.salesRef.type === '業者' ? 'vendors' :
+                            bc.salesRef.type === '自治体' ? 'municipalities' : null;
+                if(key) bc.salesRef.id = remap(bc.salesRef.id, key);
+              }
+            });
+            // project.linkedCompanyIds, linkedVendorIds, linkedMuniIds
+            (merged.projects||[]).forEach(p => {
+              if(Array.isArray(p.linkedCompanyIds)) p.linkedCompanyIds = p.linkedCompanyIds.map(id => remap(id, 'companies'));
+              if(Array.isArray(p.linkedVendorIds)) p.linkedVendorIds = p.linkedVendorIds.map(id => remap(id, 'vendors'));
+              if(Array.isArray(p.linkedMuniIds)) p.linkedMuniIds = p.linkedMuniIds.map(id => remap(id, 'municipalities'));
+            });
+            console.log(`[MyDesk] EnsureId 全体修正: ${changedCollections.join(', ')}`);
+          }
+        } catch(e) { console.warn("[MyDesk] EnsureId migration failed:", e); }
         
         __myDeskLastKnownGoodData = merged;
         console.log(`[MyDesk] loadData OK — quotes: ${(merged.quotes||[]).length}件, companies: ${(merged.companies||[]).length}, vendors: ${(merged.vendors||[]).length}, munis: ${(merged.municipalities||[]).length}, tasks: ${(merged.tasks||[]).length}, updated_at: ${result._updatedAt}`);
@@ -7480,57 +7554,42 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
   const [fromProject,setFromProject] = useState(null);
   const [sheet,setSheet] = useState(null);
   
-  // ✅ v220: スクロール位置保持（タスク・プロジェクトリスト用）
+  // ✅ v220: スクロール位置保持（path ベース - 再マウントに強い）
   const savedTaskScroll = React.useRef({});
+  const _getTaskPath = (el) => { const p=[]; let c=el; while(c && c.parentElement && c!==document.body){ p.unshift(Array.from(c.parentElement.children).indexOf(c)); c=c.parentElement;} return p; };
+  const _fromTaskPath = (path) => { let c=document.body; for(const i of path){ if(!c||!c.children||!c.children[i]) return null; c=c.children[i]; } return c; };
   const saveTaskScroll = (key) => {
     const scrolls = [];
     document.querySelectorAll('*').forEach(el => {
-      if(el.scrollTop > 5) scrolls.push({el, top: el.scrollTop});
+      if(el.scrollTop > 5) scrolls.push({path: _getTaskPath(el), top: el.scrollTop});
     });
     savedTaskScroll.current[key] = {
       scrolls,
       win: window.scrollY || document.documentElement.scrollTop || 0,
     };
-    // 詳細に入る時に 0 にリセット
     requestAnimationFrame(() => {
-      scrolls.forEach(s => { if(s.el.isConnected) s.el.scrollTop = 0; });
+      scrolls.forEach(s => { const el = _fromTaskPath(s.path); if(el) el.scrollTop = 0; });
       window.scrollTo(0, 0);
     });
   };
   const restoreTaskScroll = (key) => {
     const target = savedTaskScroll.current[key];
-    if(!target) return;
-    let attempts = 0;
-    const tick = () => {
-      const el = document.querySelector('[data-task-scroll]') || document.querySelector('[data-sales-scroll]');
-      if(el && el.scrollHeight > el.clientHeight + 10) {
-        el.scrollTop = target.el;
-      }
-      if(target.win > 0) {
-        window.scrollTo(0, target.win);
-      }
-      attempts++;
-      if(attempts < 60) requestAnimationFrame(tick);
-    };
-    setTimeout(tick, 50);
+    if(!target || (!target.scrolls?.length && !target.win)) return;
+    const start = Date.now();
+    const interval = setInterval(() => {
+      (target.scrolls || []).forEach(s => {
+        const el = _fromTaskPath(s.path);
+        if(el && Math.abs(el.scrollTop - s.top) > 5) el.scrollTop = s.top;
+      });
+      if(target.win > 0 && Math.abs(window.scrollY - target.win) > 5) window.scrollTo(0, target.win);
+      if(Date.now() - start > 5000) clearInterval(interval);
+    }, 10);
   };
   
   // ✅ v220: screen が "list" に戻った瞬間にスクロール復元
   React.useEffect(() => {
     if(screen === "list") {
-      const target = savedTaskScroll.current["list"];
-      if(target && ((target.scrolls && target.scrolls.length > 0) || target.win > 0)) {
-        let count = 0;
-        const interval = setInterval(() => {
-          (target.scrolls || []).forEach(s => {
-            if(s.el.isConnected) s.el.scrollTop = s.top;
-          });
-          if(target.win > 0) window.scrollTo(0, target.win);
-          count++;
-          if(count >= 30) clearInterval(interval);
-        }, 100);
-        return () => clearInterval(interval);
-      }
+      restoreTaskScroll("list");
     }
   }, [screen]);
   
@@ -14534,10 +14593,6 @@ function LinkBizcardModal({ allCards=[], entityType, entityId, entityName, users
         </div>
         {/* リスト */}
         <div ref={listRef} style={{overflowY:"auto",flex:1,padding:"0.4rem 0.75rem"}}>
-          {/* ✅ v220 デバッグ: 実際にレンダリングされている件数を表示 */}
-          <div style={{position:"sticky",top:0,zIndex:10,background:"red",color:"white",padding:"0.5rem",fontSize:"0.9rem",fontWeight:900,textAlign:"center",marginBottom:"0.5rem",borderRadius:"6px"}}>
-            🚨 レンダー中: {candidates.length}件 (allCards: {allCards.length}件)
-          </div>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0.3rem 0.25rem 0.4rem"}}>
             <span style={{fontSize:"0.72rem",color:searchQ?typeColor:C.textMuted,fontWeight:searchQ?800:400}}>
               {(()=>{
@@ -14573,8 +14628,6 @@ function LinkBizcardModal({ allCards=[], entityType, entityId, entityName, users
               {selected.size>5 && ` 他${selected.size-5}件`}
             </div>
           )}
-          {/* ✅ v220 デバッグ: リスト開始位置マーカー */}
-          <div style={{background:"#22c55e",color:"white",padding:"0.4rem",textAlign:"center",fontWeight:800,fontSize:"0.75rem",marginBottom:"0.3rem"}}>🟢 リスト開始: これから {candidates.length} 件</div>
           {candidates.map((card, idx)=>{
             const name=`${card.lastName||""}${card.firstName ? " "+card.firstName : ""}`.trim()||"（名前なし）";
             const owners=card.owners||(card.owner?[card.owner]:[]);
@@ -14630,8 +14683,6 @@ function LinkBizcardModal({ allCards=[], entityType, entityId, entityName, users
               </div>
             );
           })}
-          {/* ✅ v220 デバッグ: リスト終了位置マーカー */}
-          <div style={{background:"#22c55e",color:"white",padding:"0.4rem",textAlign:"center",fontWeight:800,fontSize:"0.75rem",marginTop:"0.3rem"}}>🔴 リスト終了: 上に {candidates.length} 件表示したはず</div>
         </div>
         {/* フッター */}
         <div style={{padding:"0.875rem 1.25rem",borderTop:`1px solid ${C.borderLight}`,flexShrink:0}}>
@@ -15695,7 +15746,7 @@ function VirtualList({items, itemHeight=72, renderItem, overscan=3, containerSty
       <div style={{height:`${totalHeight}px`, position:"relative"}}>
         <div style={{transform:`translateY(${offsetY}px)`, position:"absolute", left:0, right:0, top:0}}>
           {visibleItems.map((item, i) => (
-            <div key={getKey ? getKey(item) : (item.id ?? (startIdx + i))} style={{height:`${itemHeight}px`}}>
+            <div key={`${getKey ? getKey(item) : (item.id ?? '')}_${startIdx + i}`} style={{height:`${itemHeight}px`}}>
               {renderItem(item, startIdx + i)}
             </div>
           ))}
@@ -17445,23 +17496,42 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       .replace(/[Ａ-Ｚａ-ｚ０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0))
       .replace(/[ァ-ヶ]/g,c=>String.fromCharCode(c.charCodeAt(0)-0x60)); // カタカナ→ひらがな
   };
-  // ✅ v220: スクロール位置保持（スクロール中の全要素を動的に検出）
+  // ✅ v220: スクロール位置保持（DOM path ベース - 再マウントに強い）
+  const getElementPath = (el) => {
+    const path = [];
+    let cur = el;
+    while(cur && cur.parentElement && cur !== document.body) {
+      const idx = Array.from(cur.parentElement.children).indexOf(cur);
+      path.unshift(idx);
+      cur = cur.parentElement;
+    }
+    return path;
+  };
+  const getElementFromPath = (path) => {
+    let cur = document.body;
+    for(const idx of path) {
+      if(!cur || !cur.children || !cur.children[idx]) return null;
+      cur = cur.children[idx];
+    }
+    return cur;
+  };
   const saveSalesScroll = (key) => {
-    // スクロール中の全要素を検出して保存（DOM 参照 + scrollTop）
     const scrolls = [];
     document.querySelectorAll('*').forEach(el => {
       if(el.scrollTop > 5) {
-        scrolls.push({el, top: el.scrollTop});
+        scrolls.push({path: getElementPath(el), top: el.scrollTop});
       }
     });
     savedScrollPos.current[key] = {
       scrolls,
       win: window.scrollY || document.documentElement.scrollTop || 0,
     };
-    console.log(`[Scroll SAVE] key=${key} 検出:${scrolls.length}件`, scrolls.map(s => ({tag: s.el.tagName, cls: s.el.className.substring(0,30), top: s.top})));
-    // 詳細画面が上部から始まるよう、全要素の scrollTop=0 に
+    // 詳細画面が上部から始まるよう scrollTop=0 にする
     requestAnimationFrame(() => {
-      scrolls.forEach(s => { if(s.el.isConnected) s.el.scrollTop = 0; });
+      scrolls.forEach(s => {
+        const el = getElementFromPath(s.path);
+        if(el) el.scrollTop = 0;
+      });
       window.scrollTo(0, 0);
     });
   };
@@ -17491,12 +17561,10 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       const target = savedScrollPos.current["company"];
       if(target && ((target.scrolls && target.scrolls.length > 0) || target.win > 0)) {
         const start = Date.now();
-        // ✅ v220: 10ms 間隔で最大5秒間、粘り強く復元
         const interval = setInterval(() => {
           (target.scrolls || []).forEach(s => {
-            if(s.el.isConnected && Math.abs(s.el.scrollTop - s.top) > 5) {
-              s.el.scrollTop = s.top;
-            }
+            const el = getElementFromPath(s.path);
+            if(el && Math.abs(el.scrollTop - s.top) > 5) el.scrollTop = s.top;
           });
           if(target.win > 0 && Math.abs(window.scrollY - target.win) > 5) window.scrollTo(0, target.win);
           if(Date.now() - start > 5000) clearInterval(interval);
@@ -17508,14 +17576,12 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   React.useEffect(() => {
     if(!activeVendor) {
       const target = savedScrollPos.current["vendor"];
-      console.log('[Scroll RESTORE vendor] activeVendor=null 発火, target:', target);
       if(target && ((target.scrolls && target.scrolls.length > 0) || target.win > 0)) {
         const start = Date.now();
         const interval = setInterval(() => {
           (target.scrolls || []).forEach(s => {
-            if(s.el.isConnected && Math.abs(s.el.scrollTop - s.top) > 5) {
-              s.el.scrollTop = s.top;
-            }
+            const el = getElementFromPath(s.path);
+            if(el && Math.abs(el.scrollTop - s.top) > 5) el.scrollTop = s.top;
           });
           if(target.win > 0 && Math.abs(window.scrollY - target.win) > 5) window.scrollTo(0, target.win);
           if(Date.now() - start > 5000) clearInterval(interval);
@@ -17531,9 +17597,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
         const start = Date.now();
         const interval = setInterval(() => {
           (target.scrolls || []).forEach(s => {
-            if(s.el.isConnected && Math.abs(s.el.scrollTop - s.top) > 5) {
-              s.el.scrollTop = s.top;
-            }
+            const el = getElementFromPath(s.path);
+            if(el && Math.abs(el.scrollTop - s.top) > 5) el.scrollTop = s.top;
           });
           if(target.win > 0 && Math.abs(window.scrollY - target.win) > 5) window.scrollTo(0, target.win);
           if(Date.now() - start > 5000) clearInterval(interval);
