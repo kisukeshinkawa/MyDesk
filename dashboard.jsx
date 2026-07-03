@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v220-muni-bizcard-scroll"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v220-force-reset"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -7567,10 +7567,15 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
       scrolls,
       win: window.scrollY || document.documentElement.scrollTop || 0,
     };
-    requestAnimationFrame(() => {
-      scrolls.forEach(s => { const el = _fromTaskPath(s.path); if(el) el.scrollTop = 0; });
+    // ✅ v220: 500ms 間、10ms 間隔で全 scroll 要素を 0 に強制
+    const start = Date.now();
+    const resetInterval = setInterval(() => {
+      document.querySelectorAll('*').forEach(el => {
+        if(el.scrollTop > 5) el.scrollTop = 0;
+      });
       window.scrollTo(0, 0);
-    });
+      if(Date.now() - start > 500) clearInterval(resetInterval);
+    }, 10);
   };
   const restoreTaskScroll = (key) => {
     const target = savedTaskScroll.current[key];
@@ -17526,14 +17531,15 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       scrolls,
       win: window.scrollY || document.documentElement.scrollTop || 0,
     };
-    // 詳細画面が上部から始まるよう scrollTop=0 にする
-    requestAnimationFrame(() => {
-      scrolls.forEach(s => {
-        const el = getElementFromPath(s.path);
-        if(el) el.scrollTop = 0;
+    // ✅ v220: 500ms 間、10ms 間隔で全 scroll 要素を 0 に強制（詳細画面が確実に上部から始まる）
+    const start = Date.now();
+    const resetInterval = setInterval(() => {
+      document.querySelectorAll('*').forEach(el => {
+        if(el.scrollTop > 5) el.scrollTop = 0;
       });
       window.scrollTo(0, 0);
-    });
+      if(Date.now() - start > 500) clearInterval(resetInterval);
+    }, 10);
   };
   const restoreSalesScroll = (key) => {
     const target = savedScrollPos.current[key];
@@ -17591,7 +17597,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     }
   }, [activeVendor]);
   React.useEffect(() => {
-    if(!activeMuni) {
+    if(!activeMuni && muniScreen === "top") {
       const target = savedScrollPos.current["muni"];
       if(target && ((target.scrolls && target.scrolls.length > 0) || target.win > 0)) {
         const start = Date.now();
@@ -17606,7 +17612,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
         return () => clearInterval(interval);
       }
     }
-  }, [activeMuni]);
+  }, [activeMuni, muniScreen]);
   // ✅ v220: bcScreen が "list" に戻った瞬間にスクロール復元
   React.useEffect(() => {
     if(bcScreen === "list") {
