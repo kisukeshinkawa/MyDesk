@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v220-muni-explicit"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v220-searchable-filter"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -1163,7 +1163,19 @@ const EMAIL_TEMPLATE_VARS = ["{{会社名}}","{{担当者名}}","{{自分の名�
 // 親が再レンダリングしても open state を維持するため、トップレベル定義
 function MultiChipFilter({label, icon, values, setValues, options, C}) {
   const [open, setOpen] = React.useState(false);
+  const [searchQ, setSearchQ] = React.useState("");
   const isActive = (values||[]).length > 0;
+  // ✅ v220: 選択肢数が多い時（10件超）は検索できるように
+  const showSearch = options.length > 10;
+  const normQ = searchQ.trim().toLowerCase().replace(/[ 　]/g, "");
+  const filteredOptions = normQ
+    ? options.filter(opt => {
+        const label = String(opt.label||"").toLowerCase().replace(/[ 　]/g, "");
+        return label.includes(normQ);
+      })
+    : options;
+  // 検索ドロップダウンを閉じた時、検索クエリもクリア
+  React.useEffect(() => { if(!open) setSearchQ(""); }, [open]);
   return (
     <div style={{position:"relative"}}>
       <button onClick={()=>setOpen(o=>!o)}
@@ -1175,26 +1187,41 @@ function MultiChipFilter({label, icon, values, setValues, options, C}) {
       {open && (
         <>
           <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:100,background:"transparent"}}/>
-          <div onClick={ev=>ev.stopPropagation()} style={{position:"absolute",top:"100%",left:0,marginTop:"0.2rem",background:"white",border:`1.5px solid ${C.border}`,borderRadius:"0.5rem",boxShadow:"0 4px 16px rgba(0,0,0,0.12)",zIndex:101,minWidth:160,maxWidth:240,maxHeight:300,overflowY:"auto",padding:"0.35rem"}}>
-            {options.length === 0 && <div style={{padding:"0.4rem 0.6rem",fontSize:"0.7rem",color:C.textMuted}}>選択肢がありません</div>}
-            {options.map(opt => {
-              const sel = (values||[]).map(String).includes(String(opt.value));
-              return (
-                <label key={String(opt.value)} style={{display:"flex",alignItems:"center",gap:"0.4rem",padding:"0.3rem 0.45rem",fontSize:"0.74rem",cursor:"pointer",borderRadius:"0.3rem",background:sel?"#eff6ff":"transparent"}}
-                  onClick={ev=>{
-                    ev.preventDefault();
-                    ev.stopPropagation();
-                    const sv = String(opt.value);
-                    if(sel) setValues((values||[]).filter(v => String(v) !== sv));
-                    else setValues([...(values||[]), sv]);
-                  }}>
-                  <input type="checkbox" readOnly checked={sel} style={{margin:0,cursor:"pointer",pointerEvents:"none"}}/>
-                  <span style={{color:sel?C.accent:C.text,fontWeight:sel?700:500,flex:1}}>{opt.label}</span>
-                </label>
-              );
-            })}
+          <div onClick={ev=>ev.stopPropagation()} style={{position:"absolute",top:"100%",left:0,marginTop:"0.2rem",background:"white",border:`1.5px solid ${C.border}`,borderRadius:"0.5rem",boxShadow:"0 4px 16px rgba(0,0,0,0.12)",zIndex:101,minWidth:200,maxWidth:280,maxHeight:360,overflowY:"auto",padding:"0.35rem",display:"flex",flexDirection:"column"}}>
+            {showSearch && (
+              <div style={{position:"sticky",top:0,background:"white",zIndex:1,paddingBottom:"0.3rem",borderBottom:`1px solid ${C.borderLight}`,marginBottom:"0.3rem"}}>
+                <input
+                  type="text"
+                  placeholder={`🔍 ${label}を検索...`}
+                  value={searchQ}
+                  onChange={e=>setSearchQ(e.target.value)}
+                  onClick={ev=>ev.stopPropagation()}
+                  autoFocus
+                  style={{width:"100%",padding:"0.35rem 0.55rem",borderRadius:"0.35rem",border:`1.5px solid ${C.border}`,fontSize:"0.75rem",fontFamily:"inherit",boxSizing:"border-box",outline:"none"}}
+                />
+              </div>
+            )}
+            <div style={{flex:1,overflowY:"auto"}}>
+              {filteredOptions.length === 0 && <div style={{padding:"0.4rem 0.6rem",fontSize:"0.7rem",color:C.textMuted}}>{normQ?"該当なし":"選択肢がありません"}</div>}
+              {filteredOptions.map(opt => {
+                const sel = (values||[]).map(String).includes(String(opt.value));
+                return (
+                  <label key={String(opt.value)} style={{display:"flex",alignItems:"center",gap:"0.4rem",padding:"0.3rem 0.45rem",fontSize:"0.74rem",cursor:"pointer",borderRadius:"0.3rem",background:sel?"#eff6ff":"transparent"}}
+                    onClick={ev=>{
+                      ev.preventDefault();
+                      ev.stopPropagation();
+                      const sv = String(opt.value);
+                      if(sel) setValues((values||[]).filter(v => String(v) !== sv));
+                      else setValues([...(values||[]), sv]);
+                    }}>
+                    <input type="checkbox" readOnly checked={sel} style={{margin:0,cursor:"pointer",pointerEvents:"none"}}/>
+                    <span style={{color:sel?C.accent:C.text,fontWeight:sel?700:500,flex:1}}>{opt.label}</span>
+                  </label>
+                );
+              })}
+            </div>
             {(values||[]).length > 0 && (
-              <button onClick={ev=>{ev.stopPropagation(); setValues([]);}} style={{width:"100%",marginTop:"0.3rem",padding:"0.25rem",fontSize:"0.66rem",background:"#fef2f2",color:"#dc2626",border:"1px solid #fca5a5",borderRadius:4,cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>このフィルターをクリア</button>
+              <button onClick={ev=>{ev.stopPropagation(); setValues([]);}} style={{width:"100%",marginTop:"0.3rem",padding:"0.25rem",fontSize:"0.66rem",background:"#fef2f2",color:"#dc2626",border:"1px solid #fca5a5",borderRadius:4,cursor:"pointer",fontFamily:"inherit",fontWeight:700,flexShrink:0}}>このフィルターをクリア</button>
             )}
           </div>
         </>
