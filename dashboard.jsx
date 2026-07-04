@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v220-normal-margin"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v220-fit-one-page"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -25979,7 +25979,7 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
       win.document.write(`<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>${activeAnnouncement.title} - ${vendorName}</title>
 <style>
-  @page { size: A4; margin: 1.8cm; }
+  @page { size: A4; margin: 1.2cm 1.8cm; }
   html, body { height: auto; }
   body { font-family: 'Hiragino Sans','Yu Gothic',sans-serif; line-height: 1.55; color: #222; margin: 0; padding: 0; font-size: 0.85rem; }
   h1 { font-size: 1.2rem; margin: 0.8rem 0 0.4rem; line-height: 1.3; }
@@ -25987,7 +25987,7 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
   .content > p:nth-child(1),
   .content > p:nth-child(2),
   .content > p:nth-child(3),
-  .content > p:nth-child(4) { margin: 0.7rem 0; }
+  .content > p:nth-child(4) { margin: 0.5rem 0; }
   .content > p:nth-child(1) { margin-top: 0.2rem; }
   p { margin: 0.25rem 0; }
   ul, ol { margin: 0.2rem 0; padding-left: 1rem; }
@@ -26008,7 +26008,7 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
     }
     .contact-footer { border: 0 none !important; }
     /* 全体を88%に圧縮して確実に1ページに収める */
-    body { zoom: 0.82; }
+    body { zoom: 0.78; }
   }
   .print-bar { position: fixed; top: 0; left: 0; right: 0; background: #2563eb; color: white; padding: 0.5rem 1rem; display: flex; justify-content: space-between; align-items: center; z-index: 9999; }
   .print-bar button { padding: 0.4rem 1rem; background: white; color: #2563eb; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; }
@@ -26016,7 +26016,7 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
   @media print { .content { margin-top: 0; } }
   /* ✅ v220: お問い合わせ先を通常フローで右下配置 */
   .contact-footer {
-    margin-top: 1.2rem;
+    margin-top: 0.5rem;
     text-align: right;
     page-break-inside: avoid;
   }
@@ -26577,7 +26577,7 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
       win.document.write(`<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>${announcement.title} - 一括印刷 (${selectedVendors.length}社)</title>
 <style>
-  @page { size: A4; margin: 1.8cm; }
+  @page { size: A4; margin: 1.2cm 1.8cm; }
   html, body { height: auto; }
   body { font-family: 'Hiragino Sans','Yu Gothic',sans-serif; line-height: 1.55; color: #222; margin: 0; padding: 0; font-size: 0.85rem; }
   h1 { font-size: 1.2rem; margin: 0.8rem 0 0.4rem; line-height: 1.3; }
@@ -26585,7 +26585,7 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
   .content > p:nth-child(1),
   .content > p:nth-child(2),
   .content > p:nth-child(3),
-  .content > p:nth-child(4) { margin: 0.7rem 0; }
+  .content > p:nth-child(4) { margin: 0.5rem 0; }
   .content > p:nth-child(1) { margin-top: 0.2rem; }
   p { margin: 0.25rem 0; }
   ul, ol { margin: 0.2rem 0; padding-left: 1rem; }
@@ -26597,7 +26597,7 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
   @media print { 
     .no-print { display: none !important; } 
     .vendor-header { display: none; }
-    .page { padding: 0; page-break-after: always; page-break-inside: avoid; zoom: 0.82; }
+    .page { padding: 0; page-break-after: always; page-break-inside: avoid; zoom: 0.78; }
     .page:last-child { page-break-after: auto; }
     body { padding-top: 0; }
     .content, .content *, .content *::before, .content *::after {
@@ -26614,7 +26614,7 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
   .print-bar button { padding: 0.4rem 1rem; background: white; color: #2563eb; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; margin-left: 0.5rem; }
   body { padding-top: 3rem; }
   .contact-footer {
-    margin-top: 1.2rem;
+    margin-top: 0.5rem;
     text-align: right;
     page-break-inside: avoid;
   }
