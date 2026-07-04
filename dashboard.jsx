@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v220-pdf-layout-final"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v220-qr-integrated"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -25957,7 +25957,23 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
           if (v) vendorObj = { ...v, vendor_name: v.name };
         } catch(e) {}
       }
-      const html = renderAnnouncementTemplate(activeAnnouncement.content_html, vendorObj, qrImageUrl);
+      const rawHtml = renderAnnouncementTemplate(activeAnnouncement.content_html, vendorObj, qrImageUrl);
+      // ✅ v220: QR画像とQR周辺の重複テキストを削除（問い合わせ先エリアに集約）
+      let html = rawHtml;
+      if (qrImageUrl) {
+        const qrPattern = qrImageUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        html = html.replace(new RegExp(`<img[^>]*src=["']?${qrPattern}["']?[^>]*>`, 'gi'), '');
+      }
+      // QR周辺のテキストを削除
+      html = html.replace(/お問い合わせはこちら[^<]*/g, '');
+      html = html.replace(/（スマートフォンで読み取ってください）/g, '');
+      html = html.replace(/株式会社ビートルマネージメント（DUSTALK事業[部局]）[^<]*/g, '');
+      html = html.replace(/TEL：0120-532-109\s*[　\s]*mail：info@dustalk\.com/gi, '');
+      html = html.replace(/TEL：0120-532-109\s*[　\s]*E-?mail：info@dustalk\.com/gi, '');
+      // 空になった要素を削除
+      html = html.replace(/<p[^>]*>\s*<\/p>/g, '');
+      html = html.replace(/<div[^>]*>\s*<\/div>/g, '');
+      html = html.replace(/<p[^>]*>\s*<br\s*\/?>\s*<\/p>/g, '');
       const win = window.open("", "_blank", "width=900,height=1200");
       if (!win) { alert("ポップアップがブロックされました。許可してください"); setGenerating(false); return; }
       win.document.write(`<!DOCTYPE html>
@@ -26030,6 +26046,7 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
       DUSTALK事業局<br>
       TEL：0120-532-109（平日9:00〜17:00）<br>
       E-mail：info@dustalk.com
+      ${qrImageUrl ? `<br><img src="${qrImageUrl}" style="width:60px;height:60px;margin-top:0.4rem;display:block;margin-left:auto;">` : ''}
     </div>
   </div>
 </body></html>`);
@@ -26521,7 +26538,21 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
           ...fullVendor,
           vendor_name: v.vendor_name || fullVendor.name || "",
         };
-        const html = renderAnnouncementTemplate(announcement.content_html, enrichedVendor, qrImgUrl);
+        const rawHtml = renderAnnouncementTemplate(announcement.content_html, enrichedVendor, qrImgUrl);
+        // ✅ v220: QR画像とQR周辺の重複テキストを削除（問い合わせ先エリアに集約）
+        let html = rawHtml;
+        if (qrImgUrl) {
+          const qrPattern = qrImgUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          html = html.replace(new RegExp(`<img[^>]*src=["']?${qrPattern}["']?[^>]*>`, 'gi'), '');
+        }
+        html = html.replace(/お問い合わせはこちら[^<]*/g, '');
+        html = html.replace(/（スマートフォンで読み取ってください）/g, '');
+        html = html.replace(/株式会社ビートルマネージメント（DUSTALK事業[部局]）[^<]*/g, '');
+        html = html.replace(/TEL：0120-532-109\s*[　\s]*mail：info@dustalk\.com/gi, '');
+        html = html.replace(/TEL：0120-532-109\s*[　\s]*E-?mail：info@dustalk\.com/gi, '');
+        html = html.replace(/<p[^>]*>\s*<\/p>/g, '');
+        html = html.replace(/<div[^>]*>\s*<\/div>/g, '');
+        html = html.replace(/<p[^>]*>\s*<br\s*\/?>\s*<\/p>/g, '');
         // ✅ v220: CSS の page-break-after で改ページするため、明示的な pageBreak div は削除（白紙ページ防止）
         const pageBreak = '';
         return `<div class="page" data-vendor="${v.vendor_name||''}">
@@ -26534,6 +26565,7 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
       DUSTALK事業局<br>
       TEL：0120-532-109（平日9:00〜17:00）<br>
       E-mail：info@dustalk.com
+      ${qrImgUrl ? `<br><img src="${qrImgUrl}" style="width:60px;height:60px;margin-top:0.4rem;display:block;margin-left:auto;">` : ''}
     </div>
   </div>
 </div>${pageBreak}`;
@@ -26564,7 +26596,7 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
   table { border-collapse: collapse; }
   img { max-width: 130px; max-height: 130px; }
   .content img { display: block; margin-left: auto; margin-right: 0; }
-  .page { padding: 0.5rem 1rem; position: relative; }
+  .page { padding: 0.5rem 1rem; position: relative; page-break-inside: avoid; overflow: hidden; }
   .vendor-header { font-size: 0.78rem; color: #6b7280; margin-bottom: 1rem; padding: 0.4rem 0.8rem; background: #f3f4f6; border-radius: 4px; }
   /* ✅ v220: 印刷時、全枠線・影を強制削除 */
   @media print { 
