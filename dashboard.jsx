@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v220-flexbox-fit"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v220-tight-compress"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -25979,17 +25979,17 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
       win.document.write(`<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>${activeAnnouncement.title} - ${vendorName}</title>
 <style>
-  @page { size: A4; margin: 1.2cm 1.8cm; }
+  @page { size: A4; margin: 1cm 1.8cm; }
   html, body { height: auto; }
-  body { font-family: 'Hiragino Sans','Yu Gothic',sans-serif; line-height: 1.55; color: #222; margin: 0; padding: 0; font-size: 0.85rem; }
-  h1 { font-size: 1.2rem; margin: 0.8rem 0 0.4rem; line-height: 1.3; }
-  h2 { font-size: 1rem; margin: 0.6rem 0 0.3rem; color: #1e40af; padding: 0; }
+  body { font-family: 'Hiragino Sans','Yu Gothic',sans-serif; line-height: 1.45; color: #222; margin: 0; padding: 0; font-size: 0.85rem; }
+  h1 { font-size: 1.1rem; margin: 0.5rem 0 0.25rem; line-height: 1.25; }
+  h2 { font-size: 0.95rem; margin: 0.45rem 0 0.2rem; color: #1e40af; padding: 0; }
   .content > p:nth-child(1),
   .content > p:nth-child(2),
   .content > p:nth-child(3),
-  .content > p:nth-child(4) { margin: 0.5rem 0; }
+  .content > p:nth-child(4) { margin: 0.4rem 0; }
   .content > p:nth-child(1) { margin-top: 0.2rem; }
-  p { margin: 0.25rem 0; }
+  p { margin: 0.2rem 0; }
   ul, ol { margin: 0.2rem 0; padding-left: 1rem; }
   li { margin: 0.1rem 0; }
   table { border-collapse: collapse; }
@@ -26009,7 +26009,7 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
     .contact-footer { border: 0 none !important; }
     /* ✅ v220: flexbox で contact-footer を確実にページ下部に固定 */
     body { 
-      zoom: 0.78; 
+      zoom: 0.68; 
       display: flex;
       flex-direction: column;
       min-height: 100vh;
@@ -26024,7 +26024,7 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
   @media print { .content { margin-top: 0; } }
   /* ✅ v220: お問い合わせ先を通常フローで右下配置 */
   .contact-footer {
-    margin-top: 0.5rem;
+    margin-top: 0.3rem;
     text-align: right;
     page-break-inside: avoid;
   }
@@ -26585,17 +26585,17 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
       win.document.write(`<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>${announcement.title} - 一括印刷 (${selectedVendors.length}社)</title>
 <style>
-  @page { size: A4; margin: 1.2cm 1.8cm; }
+  @page { size: A4; margin: 1cm 1.8cm; }
   html, body { height: auto; }
-  body { font-family: 'Hiragino Sans','Yu Gothic',sans-serif; line-height: 1.55; color: #222; margin: 0; padding: 0; font-size: 0.85rem; }
-  h1 { font-size: 1.2rem; margin: 0.8rem 0 0.4rem; line-height: 1.3; }
-  h2 { font-size: 1rem; margin: 0.6rem 0 0.3rem; color: #1e40af; padding: 0; }
+  body { font-family: 'Hiragino Sans','Yu Gothic',sans-serif; line-height: 1.45; color: #222; margin: 0; padding: 0; font-size: 0.85rem; }
+  h1 { font-size: 1.1rem; margin: 0.5rem 0 0.25rem; line-height: 1.25; }
+  h2 { font-size: 0.95rem; margin: 0.45rem 0 0.2rem; color: #1e40af; padding: 0; }
   .content > p:nth-child(1),
   .content > p:nth-child(2),
   .content > p:nth-child(3),
-  .content > p:nth-child(4) { margin: 0.5rem 0; }
+  .content > p:nth-child(4) { margin: 0.4rem 0; }
   .content > p:nth-child(1) { margin-top: 0.2rem; }
-  p { margin: 0.25rem 0; }
+  p { margin: 0.2rem 0; }
   ul, ol { margin: 0.2rem 0; padding-left: 1rem; }
   li { margin: 0.1rem 0; }
   table { border-collapse: collapse; }
@@ -26610,7 +26610,7 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
       padding: 0; 
       page-break-after: always; 
       page-break-inside: avoid; 
-      zoom: 0.78;
+      zoom: 0.68;
       display: flex;
       flex-direction: column;
       min-height: 100vh;
@@ -26634,7 +26634,7 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
   .print-bar button { padding: 0.4rem 1rem; background: white; color: #2563eb; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; margin-left: 0.5rem; }
   body { padding-top: 3rem; }
   .contact-footer {
-    margin-top: 0.5rem;
+    margin-top: 0.3rem;
     text-align: right;
     page-break-inside: avoid;
   }
