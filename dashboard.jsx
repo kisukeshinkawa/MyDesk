@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v220-natural-flow"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-04-v221-scale-fit-pdf"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -25979,26 +25979,29 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
       win.document.write(`<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>${activeAnnouncement.title} - ${vendorName}</title>
 <style>
-  @page { size: A4; margin: 1cm 1.8cm; }
+  @page { size: A4; margin: 10mm 18mm; }
   html, body { height: auto; }
-  body { font-family: 'Hiragino Sans','Yu Gothic',sans-serif; line-height: 1.45; color: #222; margin: 0; padding: 0; font-size: 0.85rem; }
-  h1 { font-size: 1.1rem; margin: 0.5rem 0 0.25rem; line-height: 1.25; }
-  h2 { font-size: 0.95rem; margin: 0.45rem 0 0.2rem; color: #1e40af; padding: 0; }
-  .content > p:nth-child(1),
-  .content > p:nth-child(2),
-  .content > p:nth-child(3),
-  .content > p:nth-child(4) { margin: 0.4rem 0; }
-  .content > p:nth-child(1) { margin-top: 0.2rem; }
-  p { margin: 0.2rem 0; }
-  ul, ol { margin: 0.2rem 0; padding-left: 1rem; }
-  li { margin: 0.1rem 0; }
+  body { font-family: 'Hiragino Sans','Yu Gothic',sans-serif; line-height: 1.5; color: #222; margin: 0; padding: 0; font-size: 0.9rem; }
+  h1 { font-size: 1.18rem; margin: 0.5rem 0 0.3rem; line-height: 1.3; }
+  h2 { font-size: 1.02rem; margin: 0.55rem 0 0.25rem; color: #1e40af; padding: 0; }
+  p { margin: 0.32rem 0; }
+  ul, ol { margin: 0.32rem 0; padding-left: 1.1rem; }
+  li { margin: 0.14rem 0; }
   table { border-collapse: collapse; }
   img { max-width: 110px; max-height: 110px; }
-  /* ✅ v220: 印刷時、全枠線・影を強制削除 + 全体を圧縮 */
-  @media print { 
-    body { padding: 0; }
+  .print-bar { position: fixed; top: 0; left: 0; right: 0; background: #2563eb; color: white; padding: 0.5rem 1rem; display: flex; justify-content: space-between; align-items: center; z-index: 9999; }
+  .print-bar button { padding: 0.4rem 1rem; background: white; color: #2563eb; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; }
+  /* ✅ v221: A4 1ページに実測スケールフィットさせる土台 */
+  .sheet { margin-top: 3.2rem; overflow: hidden; }
+  .fit { width: 174mm; transform-origin: top left; }
+  .contact-footer { margin-top: 1.8rem; text-align: right; }
+  .contact-footer-inner { display: inline-block; text-align: left; font-size: 0.82rem; color: #333; line-height: 1.55; }
+  .contact-footer-inner b { color: #1e40af; }
+  .contact-footer-inner img { display: block; margin: 0.5rem 0 0 auto; width: 82px; height: 82px; }
+  @media print {
     .no-print { display: none !important; }
-    .content, .content *, .content *::before, .content *::after {
+    .sheet { margin-top: 0; }
+    .fit, .fit *, .fit *::before, .fit *::after {
       border: 0 none transparent !important;
       border-width: 0 !important;
       border-style: none !important;
@@ -26006,49 +26009,63 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
       box-shadow: none !important;
       outline: none !important;
     }
-    .contact-footer { border: 0 none !important; }
-    /* ✅ v220: 通常フロー配置で本文と問い合わせ先を自然に並べる */
-    body { 
-      zoom: 0.72; 
-      box-sizing: border-box;
-    }
   }
-  .print-bar { position: fixed; top: 0; left: 0; right: 0; background: #2563eb; color: white; padding: 0.5rem 1rem; display: flex; justify-content: space-between; align-items: center; z-index: 9999; }
-  .print-bar button { padding: 0.4rem 1rem; background: white; color: #2563eb; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; }
-  .content { margin-top: 3rem; }
-  @media print { .content { margin-top: 0; } }
-  /* ✅ v220: お問い合わせ先を通常フローで右下配置 */
-  .contact-footer {
-    margin-top: 1.5rem;
-    text-align: right;
-    page-break-inside: avoid;
-  }
-  .contact-footer-inner {
-    display: inline-block;
-    text-align: left;
-    font-size: 0.75rem;
-    color: #333;
-    line-height: 1.4;
-  }
-  .contact-footer-inner b { color: #1e40af; }
-  .contact-footer-inner img { display: block; margin: 0.4rem 0 0 auto; width: 65px; height: 65px; }
 </style></head>
 <body>
   <div class="print-bar no-print">
     <span>📄 ${activeAnnouncement.title} - ${vendorName}</span>
     <div><button onclick="window.print()">🖨 PDF として保存 / 印刷</button> <button onclick="window.close()">閉じる</button></div>
   </div>
-  <div class="content">${html}</div>
-  <div class="contact-footer">
-    <div class="contact-footer-inner">
-      <b>【お問い合わせ先】</b><br>
-      株式会社ビートルマネージメント<br>
-      DUSTALK事業局<br>
-      TEL：0120-532-109（平日9:00〜17:00）<br>
-      E-mail：info@dustalk.com
-      ${qrImageUrl ? `<img src="${qrImageUrl}">` : ''}
+  <div class="sheet">
+    <div class="fit">
+      <div class="content">${html}</div>
+      <div class="contact-footer">
+        <div class="contact-footer-inner">
+          <b>【お問い合わせ先】</b><br>
+          株式会社ビートルマネージメント<br>
+          DUSTALK事業局<br>
+          TEL：0120-532-109（平日9:00〜17:00）<br>
+          E-mail：info@dustalk.com
+          ${qrImageUrl ? `<img src="${qrImageUrl}">` : ''}
+        </div>
+      </div>
     </div>
   </div>
+  <script>
+  (function(){
+    function fitOne(sheet){
+      var fit = sheet.querySelector('.fit');
+      if(!fit) return;
+      fit.style.transform = 'none';
+      sheet.style.height = 'auto';
+      var mmPx = 96 / 25.4;
+      // A4高さ297mm - 上下マージン20mm - 安全マージン6mm
+      var avail = (297 - 20 - 6) * mmPx;
+      var h = fit.offsetHeight;
+      if(h > avail){
+        var s = avail / h;
+        fit.style.transform = 'scale(' + s + ')';
+        sheet.style.height = Math.ceil(h * s) + 'px';
+      }
+    }
+    function fitAll(){
+      var sheets = document.querySelectorAll('.sheet');
+      for(var i=0;i<sheets.length;i++) fitOne(sheets[i]);
+    }
+    function whenImagesReady(cb){
+      var imgs = document.images, n = imgs.length;
+      if(!n){ cb(); return; }
+      var done = 0;
+      function tick(){ if(++done >= n) cb(); }
+      for(var i=0;i<imgs.length;i++){
+        if(imgs[i].complete) tick();
+        else { imgs[i].addEventListener('load', tick); imgs[i].addEventListener('error', tick); }
+      }
+    }
+    window.addEventListener('load', function(){ whenImagesReady(fitAll); });
+    window.addEventListener('beforeprint', fitAll);
+  })();
+  </script>
 </body></html>`);
       win.document.close();
     } catch(e) {
@@ -26555,17 +26572,19 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
         html = html.replace(/<p[^>]*>\s*<br\s*\/?>\s*<\/p>/g, '');
         // ✅ v220: CSS の page-break-after で改ページするため、明示的な pageBreak div は削除（白紙ページ防止）
         const pageBreak = '';
-        return `<div class="page" data-vendor="${v.vendor_name||''}">
-  <div class="vendor-header">配布先: ${v.vendor_name || "(業者名なし)"}</div>
-  <div class="content">${html}</div>
-  <div class="contact-footer">
-    <div class="contact-footer-inner">
-      <b>【お問い合わせ先】</b><br>
-      株式会社ビートルマネージメント<br>
-      DUSTALK事業局<br>
-      TEL：0120-532-109（平日9:00〜17:00）<br>
-      E-mail：info@dustalk.com
-      ${qrImgUrl ? `<img src="${qrImgUrl}">` : ''}
+        return `<div class="sheet page" data-vendor="${v.vendor_name||''}">
+  <div class="fit">
+    <div class="vendor-header no-print">配布先: ${v.vendor_name || "(業者名なし)"}</div>
+    <div class="content">${html}</div>
+    <div class="contact-footer">
+      <div class="contact-footer-inner">
+        <b>【お問い合わせ先】</b><br>
+        株式会社ビートルマネージメント<br>
+        DUSTALK事業局<br>
+        TEL：0120-532-109（平日9:00〜17:00）<br>
+        E-mail：info@dustalk.com
+        ${qrImgUrl ? `<img src="${qrImgUrl}">` : ''}
+      </div>
     </div>
   </div>
 </div>${pageBreak}`;
@@ -26580,37 +26599,31 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
       win.document.write(`<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>${announcement.title} - 一括印刷 (${selectedVendors.length}社)</title>
 <style>
-  @page { size: A4; margin: 1cm 1.8cm; }
+  @page { size: A4; margin: 10mm 18mm; }
   html, body { height: auto; }
-  body { font-family: 'Hiragino Sans','Yu Gothic',sans-serif; line-height: 1.45; color: #222; margin: 0; padding: 0; font-size: 0.85rem; }
-  h1 { font-size: 1.1rem; margin: 0.5rem 0 0.25rem; line-height: 1.25; }
-  h2 { font-size: 0.95rem; margin: 0.45rem 0 0.2rem; color: #1e40af; padding: 0; }
-  .content > p:nth-child(1),
-  .content > p:nth-child(2),
-  .content > p:nth-child(3),
-  .content > p:nth-child(4) { margin: 0.4rem 0; }
-  .content > p:nth-child(1) { margin-top: 0.2rem; }
-  p { margin: 0.2rem 0; }
-  ul, ol { margin: 0.2rem 0; padding-left: 1rem; }
-  li { margin: 0.1rem 0; }
+  body { font-family: 'Hiragino Sans','Yu Gothic',sans-serif; line-height: 1.5; color: #222; margin: 0; padding: 0; font-size: 0.9rem; padding-top: 3rem; }
+  h1 { font-size: 1.18rem; margin: 0.5rem 0 0.3rem; line-height: 1.3; }
+  h2 { font-size: 1.02rem; margin: 0.55rem 0 0.25rem; color: #1e40af; padding: 0; }
+  p { margin: 0.32rem 0; }
+  ul, ol { margin: 0.32rem 0; padding-left: 1.1rem; }
+  li { margin: 0.14rem 0; }
   table { border-collapse: collapse; }
   img { max-width: 110px; max-height: 110px; }
-  .page { padding: 0; }
   .vendor-header { font-size: 0.78rem; color: #6b7280; margin-bottom: 1rem; padding: 0.4rem 0.8rem; background: #f3f4f6; border-radius: 4px; }
-  @media print { 
-    .no-print { display: none !important; } 
-    .vendor-header { display: none; }
-    /* ✅ v220: 通常フロー配置で本文と問い合わせ先を自然に並べる */
-    .page { 
-      padding: 0; 
-      page-break-after: always; 
-      page-break-inside: avoid; 
-      zoom: 0.72;
-      box-sizing: border-box;
-    }
-    .page:last-child { page-break-after: auto; }
+  /* ✅ v221: 1社=1ページ、実測スケールフィット */
+  .sheet { overflow: hidden; page-break-after: always; }
+  .sheet:last-child { page-break-after: auto; }
+  .fit { width: 174mm; transform-origin: top left; }
+  .contact-footer { margin-top: 1.8rem; text-align: right; }
+  .contact-footer-inner { display: inline-block; text-align: left; font-size: 0.82rem; color: #333; line-height: 1.55; }
+  .contact-footer-inner b { color: #1e40af; }
+  .contact-footer-inner img { display: block; margin: 0.5rem 0 0 auto; width: 82px; height: 82px; }
+  .print-bar { position: fixed; top: 0; left: 0; right: 0; background: #2563eb; color: white; padding: 0.5rem 1rem; display: flex; justify-content: space-between; align-items: center; z-index: 9999; }
+  .print-bar button { padding: 0.4rem 1rem; background: white; color: #2563eb; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; margin-left: 0.5rem; }
+  @media print {
+    .no-print { display: none !important; }
     body { padding-top: 0; }
-    .content, .content *, .content *::before, .content *::after {
+    .fit, .fit *, .fit *::before, .fit *::after {
       border: 0 none transparent !important;
       border-width: 0 !important;
       border-style: none !important;
@@ -26618,25 +26631,7 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
       box-shadow: none !important;
       outline: none !important;
     }
-    .contact-footer { border: 0 none !important; }
   }
-  .print-bar { position: fixed; top: 0; left: 0; right: 0; background: #2563eb; color: white; padding: 0.5rem 1rem; display: flex; justify-content: space-between; align-items: center; z-index: 9999; }
-  .print-bar button { padding: 0.4rem 1rem; background: white; color: #2563eb; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; margin-left: 0.5rem; }
-  body { padding-top: 3rem; }
-  .contact-footer {
-    margin-top: 1.5rem;
-    text-align: right;
-    page-break-inside: avoid;
-  }
-  .contact-footer-inner {
-    display: inline-block;
-    text-align: left;
-    font-size: 0.75rem;
-    color: #333;
-    line-height: 1.4;
-  }
-  .contact-footer-inner b { color: #1e40af; }
-  .contact-footer-inner img { display: block; margin: 0.4rem 0 0 auto; width: 65px; height: 65px; }
 </style></head>
 <body>
   <div class="print-bar no-print">
@@ -26647,6 +26642,41 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
     </div>
   </div>
   ${pages}
+  <script>
+  (function(){
+    function fitOne(sheet){
+      var fit = sheet.querySelector('.fit');
+      if(!fit) return;
+      fit.style.transform = 'none';
+      sheet.style.height = 'auto';
+      var mmPx = 96 / 25.4;
+      // A4高さ297mm - 上下マージン20mm - 安全マージン6mm
+      var avail = (297 - 20 - 6) * mmPx;
+      var h = fit.offsetHeight;
+      if(h > avail){
+        var s = avail / h;
+        fit.style.transform = 'scale(' + s + ')';
+        sheet.style.height = Math.ceil(h * s) + 'px';
+      }
+    }
+    function fitAll(){
+      var sheets = document.querySelectorAll('.sheet');
+      for(var i=0;i<sheets.length;i++) fitOne(sheets[i]);
+    }
+    function whenImagesReady(cb){
+      var imgs = document.images, n = imgs.length;
+      if(!n){ cb(); return; }
+      var done = 0;
+      function tick(){ if(++done >= n) cb(); }
+      for(var i=0;i<imgs.length;i++){
+        if(imgs[i].complete) tick();
+        else { imgs[i].addEventListener('load', tick); imgs[i].addEventListener('error', tick); }
+      }
+    }
+    window.addEventListener('load', function(){ whenImagesReady(fitAll); });
+    window.addEventListener('beforeprint', fitAll);
+  })();
+  </script>
 </body></html>`);
       win.document.close();
       
