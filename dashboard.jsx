@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v220-tight-compress"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v220-natural-flow"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -26007,16 +26007,11 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
       outline: none !important;
     }
     .contact-footer { border: 0 none !important; }
-    /* ✅ v220: flexbox で contact-footer を確実にページ下部に固定 */
+    /* ✅ v220: 通常フロー配置で本文と問い合わせ先を自然に並べる */
     body { 
-      zoom: 0.68; 
-      display: flex;
-      flex-direction: column;
-      min-height: 100vh;
+      zoom: 0.72; 
       box-sizing: border-box;
     }
-    .content { flex: 1 1 auto; }
-    .contact-footer { flex-shrink: 0; margin-top: 0.5rem; }
   }
   .print-bar { position: fixed; top: 0; left: 0; right: 0; background: #2563eb; color: white; padding: 0.5rem 1rem; display: flex; justify-content: space-between; align-items: center; z-index: 9999; }
   .print-bar button { padding: 0.4rem 1rem; background: white; color: #2563eb; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; }
@@ -26024,7 +26019,7 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
   @media print { .content { margin-top: 0; } }
   /* ✅ v220: お問い合わせ先を通常フローで右下配置 */
   .contact-footer {
-    margin-top: 0.3rem;
+    margin-top: 1.5rem;
     text-align: right;
     page-break-inside: avoid;
   }
@@ -26605,19 +26600,14 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
   @media print { 
     .no-print { display: none !important; } 
     .vendor-header { display: none; }
-    /* ✅ v220: 各 .page を flexbox コンテナに */
+    /* ✅ v220: 通常フロー配置で本文と問い合わせ先を自然に並べる */
     .page { 
       padding: 0; 
       page-break-after: always; 
       page-break-inside: avoid; 
-      zoom: 0.68;
-      display: flex;
-      flex-direction: column;
-      min-height: 100vh;
+      zoom: 0.72;
       box-sizing: border-box;
     }
-    .page > .content { flex: 1 1 auto; }
-    .page > .contact-footer { flex-shrink: 0; margin-top: 0.5rem; }
     .page:last-child { page-break-after: auto; }
     body { padding-top: 0; }
     .content, .content *, .content *::before, .content *::after {
@@ -26634,7 +26624,7 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
   .print-bar button { padding: 0.4rem 1rem; background: white; color: #2563eb; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; margin-left: 0.5rem; }
   body { padding-top: 3rem; }
   .contact-footer {
-    margin-top: 0.3rem;
+    margin-top: 1.5rem;
     text-align: right;
     page-break-inside: avoid;
   }
