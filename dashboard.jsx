@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-05-12-v220-zoom88-fit"; // ビルド識別子
+const MYDESK_BUILD = "2026-05-12-v220-full-page-preview"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -25981,9 +25981,9 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
 <style>
   @page { size: A4; margin: 0.6cm; }
   html, body { height: auto; }
-  body { font-family: 'Hiragino Sans','Yu Gothic',sans-serif; line-height: 1.4; color: #222; margin: 0; padding: 0.3rem 0.6rem; font-size: 0.78rem; }
-  h1 { font-size: 1.1rem; margin: 0.6rem 0 0.3rem; line-height: 1.3; }
-  h2 { font-size: 0.92rem; margin: 0.5rem 0 0.25rem; color: #1e40af; padding: 0; }
+  body { font-family: 'Hiragino Sans','Yu Gothic',sans-serif; line-height: 1.5; color: #222; margin: 0; padding: 0.4rem 0.7rem; font-size: 0.88rem; }
+  h1 { font-size: 1.22rem; margin: 0.7rem 0 0.35rem; line-height: 1.3; }
+  h2 { font-size: 1.02rem; margin: 0.55rem 0 0.3rem; color: #1e40af; padding: 0; }
   .content > p:nth-child(1),
   .content > p:nth-child(2),
   .content > p:nth-child(3),
@@ -26008,7 +26008,7 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
     }
     .contact-footer { border: 0 none !important; }
     /* 全体を88%に圧縮して確実に1ページに収める */
-    body { zoom: 0.88; }
+    body { zoom: 0.95; }
   }
   .print-bar { position: fixed; top: 0; left: 0; right: 0; background: #2563eb; color: white; padding: 0.5rem 1rem; display: flex; justify-content: space-between; align-items: center; z-index: 9999; }
   .print-bar button { padding: 0.4rem 1rem; background: white; color: #2563eb; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; }
@@ -26023,12 +26023,12 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
   .contact-footer-inner {
     display: inline-block;
     text-align: left;
-    font-size: 0.65rem;
+    font-size: 0.75rem;
     color: #333;
     line-height: 1.4;
   }
   .contact-footer-inner b { color: #1e40af; }
-  .contact-footer-inner img { display: block; margin: 0.3rem 0 0 auto; width: 50px; height: 50px; }
+  .contact-footer-inner img { display: block; margin: 0.4rem 0 0 auto; width: 65px; height: 65px; }
 </style></head>
 <body>
   <div class="print-bar no-print">
@@ -26579,9 +26579,9 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
 <style>
   @page { size: A4; margin: 0.6cm; }
   html, body { height: auto; }
-  body { font-family: 'Hiragino Sans','Yu Gothic',sans-serif; line-height: 1.4; color: #222; margin: 0; padding: 0; font-size: 0.78rem; }
-  h1 { font-size: 1.1rem; margin: 0.6rem 0 0.3rem; line-height: 1.3; }
-  h2 { font-size: 0.92rem; margin: 0.5rem 0 0.25rem; color: #1e40af; padding: 0; }
+  body { font-family: 'Hiragino Sans','Yu Gothic',sans-serif; line-height: 1.5; color: #222; margin: 0; padding: 0; font-size: 0.88rem; }
+  h1 { font-size: 1.22rem; margin: 0.7rem 0 0.35rem; line-height: 1.3; }
+  h2 { font-size: 1.02rem; margin: 0.55rem 0 0.3rem; color: #1e40af; padding: 0; }
   .content > p:nth-child(1),
   .content > p:nth-child(2),
   .content > p:nth-child(3),
@@ -26597,7 +26597,7 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
   @media print { 
     .no-print { display: none !important; } 
     .vendor-header { display: none; }
-    .page { padding: 0.2rem 0.5rem; page-break-after: always; page-break-inside: avoid; zoom: 0.88; }
+    .page { padding: 0.2rem 0.5rem; page-break-after: always; page-break-inside: avoid; zoom: 0.95; }
     .page:last-child { page-break-after: auto; }
     body { padding-top: 0; }
     .content, .content *, .content *::before, .content *::after {
@@ -26621,12 +26621,12 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
   .contact-footer-inner {
     display: inline-block;
     text-align: left;
-    font-size: 0.65rem;
+    font-size: 0.75rem;
     color: #333;
     line-height: 1.4;
   }
   .contact-footer-inner b { color: #1e40af; }
-  .contact-footer-inner img { display: block; margin: 0.3rem 0 0 auto; width: 50px; height: 50px; }
+  .contact-footer-inner img { display: block; margin: 0.4rem 0 0 auto; width: 65px; height: 65px; }
 </style></head>
 <body>
   <div class="print-bar no-print">
@@ -27672,7 +27672,33 @@ function AnnouncementSettings({ currentUser, C }) {
           </button>
         </div>
         <div style={{background:"white",borderRadius:"1rem",padding:"2.5rem 3rem",border:`1px solid ${C.border}`,fontSize:"0.9rem",lineHeight:1.7,color:"#222"}}>
-          <div dangerouslySetInnerHTML={{__html: (previewing.content_html||"").replace(/\{\{QR_CODE\}\}/g, '<div style="display:inline-block;padding:0.5rem;background:#f0f0f0;border:1px dashed #999;border-radius:4px;font-size:0.75rem;color:#666;">[QRコード差し込み位置]</div>')}}/>
+          {(() => {
+            // ✅ v220: 印刷時と同じフィルタを適用（旧問い合わせ削除）
+            let preview = (previewing.content_html||"")
+              .replace(/\{\{QR_CODE\}\}/g, '')
+              .replace(/お問い合わせはこちら[^<]*/g, '')
+              .replace(/（スマートフォンで読み取ってください）/g, '')
+              .replace(/株式会社ビートルマネージメント（DUSTALK事業[部局]）[^<]*/g, '')
+              .replace(/TEL：0120-532-109\s*[　\s]*mail：info@dustalk\.com/gi, '')
+              .replace(/TEL：0120-532-109\s*[　\s]*E-?mail：info@dustalk\.com/gi, '')
+              .replace(/<p[^>]*>\s*<\/p>/g, '')
+              .replace(/<div[^>]*>\s*<\/div>/g, '')
+              .replace(/<p[^>]*>\s*<br\s*\/?>\s*<\/p>/g, '');
+            return <>
+              <div dangerouslySetInnerHTML={{__html: preview}}/>
+              {/* ✅ v220: 新しい問い合わせ情報を右下に表示（印刷時と同じ） */}
+              <div style={{marginTop:"2rem",textAlign:"right"}}>
+                <div style={{display:"inline-block",textAlign:"left",fontSize:"0.75rem",color:"#333",lineHeight:1.5}}>
+                  <b style={{color:"#1e40af"}}>【お問い合わせ先】</b><br/>
+                  株式会社ビートルマネージメント<br/>
+                  DUSTALK事業局<br/>
+                  TEL：0120-532-109（平日9:00〜17:00）<br/>
+                  E-mail：info@dustalk.com<br/>
+                  <div style={{display:"inline-block",padding:"0.3rem",background:"#f0f0f0",border:"1px dashed #999",borderRadius:4,fontSize:"0.65rem",color:"#666",marginTop:"0.4rem"}}>[QRコード差し込み位置]</div>
+                </div>
+              </div>
+            </>;
+          })()}
         </div>
         <div style={{background:"white",borderRadius:"1rem",padding:"1.5rem",border:`1px solid ${C.border}`}}>
           <div style={{fontWeight:800,fontSize:"0.95rem",color:C.text,marginBottom:"0.6rem"}}>📝 アンケート設定（フォームのプレビュー）</div>
