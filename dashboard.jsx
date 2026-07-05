@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-04-v222-jspdf-noheader"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-05-v223-print-1page-qrgen"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -25998,7 +25998,8 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
   .contact-footer { margin-top: 1.8rem; text-align: right; }
   .contact-footer-inner { display: inline-block; text-align: left; font-size: 0.82rem; color: #333; line-height: 1.55; }
   .contact-footer-inner b { color: #1e40af; }
-  .contact-footer-inner img { display: block; margin: 0.5rem 0 0 auto; width: 82px; height: 82px; }
+  .contact-footer-inner .qrbox { display: block; margin: 0.5rem 0 0 auto; width: 82px; height: 82px; }
+  .contact-footer-inner .qrbox img, .contact-footer-inner .qrbox canvas { display: block; width: 82px !important; height: 82px !important; }
   @media print {
     .no-print { display: none !important; }
     .sheet { margin-top: 0; }
@@ -26007,14 +26008,14 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
 <body>
   <script>window.__PDF_TITLE = ${JSON.stringify(activeAnnouncement.title + " - " + vendorName)};</script>
   <div class="print-bar no-print">
     <span>📄 ${activeAnnouncement.title} - ${vendorName}</span>
     <div>
-      <button id="pdfBtn" onclick="window.__downloadPDF()">📥 PDF保存（ヘッダーなし）</button>
-      <button onclick="window.print()">🖨 通常印刷</button>
+      <button id="pdfBtn" onclick="window.__downloadPDF()">🖨 印刷</button>
       <button onclick="window.close()">閉じる</button>
     </div>
   </div>
@@ -26028,7 +26029,7 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
           DUSTALK事業局<br>
           TEL：0120-532-109（平日9:00〜17:00）<br>
           E-mail：info@dustalk.com
-          ${qrImageUrl ? `<img src="${qrImageUrl}" crossorigin="anonymous">` : ''}
+          ${trackingUrl ? `<div class="qrbox" data-qr="${trackingUrl}"></div>` : ''}
         </div>
       </div>
     </div>
@@ -26036,6 +26037,16 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
   <script>
   (function(){
     var mmPx = 96 / 25.4;
+    function renderQRs(){
+      if(!window.QRCode) return;
+      var boxes = document.querySelectorAll('.qrbox');
+      for(var i=0;i<boxes.length;i++){
+        if(boxes[i].getAttribute('data-done')) continue;
+        var u = boxes[i].getAttribute('data-qr');
+        if(!u) continue;
+        try { new window.QRCode(boxes[i], { text: u, width: 82, height: 82, correctLevel: window.QRCode.CorrectLevel.M }); boxes[i].setAttribute('data-done','1'); } catch(e){}
+      }
+    }
     function fitPreview(){
       var sheets = document.querySelectorAll('.sheet');
       for(var i=0;i<sheets.length;i++){
@@ -26043,6 +26054,7 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
         if(!fit) continue;
         fit.style.transform = 'none';
         sheets[i].style.height = 'auto';
+        sheets[i].style.overflow = 'hidden';
         var avail = (297 - 20 - 6) * mmPx;
         var h = fit.offsetHeight;
         if(h > avail){ var s = avail / h; fit.style.transform = 'scale(' + s + ')'; sheets[i].style.height = Math.ceil(h*s) + 'px'; }
@@ -26050,58 +26062,53 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
     }
     function whenImagesReady(cb){
       var imgs = document.images, n = imgs.length;
-      if(!n){ cb(); return; }
-      var done = 0;
-      function tick(){ if(++done >= n) cb(); }
+      var done = 0, called = false;
+      function fire(){ if(!called){ called = true; cb(); } }
+      if(!n){ fire(); return; }
+      function tick(){ if(++done >= n) fire(); }
       for(var i=0;i<n;i++){ if(imgs[i].complete) tick(); else { imgs[i].addEventListener('load', tick); imgs[i].addEventListener('error', tick); } }
+      setTimeout(fire, 2500);
     }
-    window.addEventListener('load', function(){ whenImagesReady(fitPreview); });
-    window.addEventListener('beforeprint', fitPreview);
+    window.addEventListener('load', function(){ renderQRs(); setTimeout(function(){ whenImagesReady(fitPreview); }, 60); });
 
     window.__downloadPDF = function(){
       var btn = document.getElementById('pdfBtn');
       var label = btn ? btn.textContent : '';
-      if(btn){ btn.disabled = true; btn.textContent = 'PDF生成中…'; }
-      whenImagesReady(function(){
-        if(!window.html2canvas || !window.jspdf || !window.jspdf.jsPDF){
-          alert('PDFライブラリの読み込みに失敗しました。通信環境をご確認のうえ、再度お試しください。');
-          if(btn){ btn.disabled = false; btn.textContent = label; }
-          return;
-        }
-        var JsPDF = window.jspdf.jsPDF;
-        var pdf = new JsPDF({ unit:'mm', format:'a4', orientation:'portrait' });
-        var margin = 10, pageW = 210, pageH = 297;
-        var availW = pageW - margin*2, availH = pageH - margin*2;
-        var fits = document.querySelectorAll('.fit');
-        var idx = 0;
-        function finish(){
-          var name = (window.__PDF_TITLE || '案内状') + '.pdf';
-          pdf.save(name);
-          if(btn){ btn.disabled = false; btn.textContent = label; }
-        }
-        function step(){
-          if(idx >= fits.length){ finish(); return; }
-          var el = fits[idx];
-          var prev = el.style.transform;
-          el.style.transform = 'none';
-          window.html2canvas(el, { scale:2.5, useCORS:true, backgroundColor:'#ffffff', logging:false }).then(function(canvas){
-            el.style.transform = prev;
-            var iw = canvas.width, ih = canvas.height;
-            var wmm = availW, hmm = wmm * (ih/iw);
-            if(hmm > availH){ hmm = availH; wmm = hmm * (iw/ih); }
-            if(idx > 0) pdf.addPage();
-            var x = margin + (availW - wmm)/2, y = margin;
-            pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', x, y, wmm, hmm);
-            idx++;
-            step();
-          }).catch(function(err){
-            el.style.transform = prev;
-            alert('PDF生成エラー: ' + (err && err.message ? err.message : err));
-            if(btn){ btn.disabled = false; btn.textContent = label; }
-          });
-        }
-        step();
-      });
+      if(btn){ btn.disabled = true; btn.textContent = 'PDF作成中…'; }
+      function fail(msg){ alert(msg); if(btn){ btn.disabled = false; btn.textContent = label; } }
+      renderQRs();
+      setTimeout(function(){
+        whenImagesReady(function(){
+          if(!window.html2canvas || !window.jspdf || !window.jspdf.jsPDF){ fail('PDFライブラリの読み込みに失敗しました。通信環境をご確認のうえ再度お試しください。'); return; }
+          var JsPDF = window.jspdf.jsPDF;
+          var pdf = new JsPDF({ unit:'mm', format:'a4', orientation:'portrait' });
+          var margin = 10, pageW = 210, pageH = 297;
+          var availW = pageW - margin*2, availH = pageH - margin*2;
+          var fits = document.querySelectorAll('.fit');
+          var idx = 0;
+          function finish(){ pdf.save((window.__PDF_TITLE || '案内状') + '.pdf'); if(btn){ btn.disabled = false; btn.textContent = label; } }
+          function step(){
+            if(idx >= fits.length){ finish(); return; }
+            var el = fits[idx];
+            var sheet = el.parentElement;
+            var pT = el.style.transform, pH = sheet.style.height, pO = sheet.style.overflow;
+            el.style.transform = 'none';
+            sheet.style.height = 'auto';
+            sheet.style.overflow = 'visible';
+            window.html2canvas(el, { scale: 2.5, useCORS: true, backgroundColor: '#ffffff', logging: false }).then(function(canvas){
+              el.style.transform = pT; sheet.style.height = pH; sheet.style.overflow = pO;
+              var iw = canvas.width, ih = canvas.height;
+              var wmm = availW, hmm = wmm * (ih / iw);
+              if(hmm > availH){ hmm = availH; wmm = hmm * (iw / ih); }
+              if(idx > 0) pdf.addPage();
+              var x = margin + (availW - wmm) / 2, y = margin;
+              pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', x, y, wmm, hmm);
+              idx++; step();
+            }).catch(function(err){ el.style.transform = pT; sheet.style.height = pH; sheet.style.overflow = pO; fail('PDF生成エラー: ' + (err && err.message ? err.message : err)); });
+          }
+          step();
+        });
+      }, 120);
     };
   })();
   </script>
@@ -26622,7 +26629,7 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
         DUSTALK事業局<br>
         TEL：0120-532-109（平日9:00〜17:00）<br>
         E-mail：info@dustalk.com
-        ${qrImgUrl ? `<img src="${qrImgUrl}" crossorigin="anonymous">` : ''}
+        ${url ? `<div class="qrbox" data-qr="${url}"></div>` : ''}
       </div>
     </div>
   </div>
@@ -26655,7 +26662,8 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
   .contact-footer { margin-top: 1.8rem; text-align: right; }
   .contact-footer-inner { display: inline-block; text-align: left; font-size: 0.82rem; color: #333; line-height: 1.55; }
   .contact-footer-inner b { color: #1e40af; }
-  .contact-footer-inner img { display: block; margin: 0.5rem 0 0 auto; width: 82px; height: 82px; }
+  .contact-footer-inner .qrbox { display: block; margin: 0.5rem 0 0 auto; width: 82px; height: 82px; }
+  .contact-footer-inner .qrbox img, .contact-footer-inner .qrbox canvas { display: block; width: 82px !important; height: 82px !important; }
   .print-bar { position: fixed; top: 0; left: 0; right: 0; background: #2563eb; color: white; padding: 0.5rem 1rem; display: flex; justify-content: space-between; align-items: center; z-index: 9999; gap: 0.5rem; flex-wrap: wrap; }
   .print-bar button { padding: 0.4rem 0.9rem; background: white; color: #2563eb; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; }
   .print-bar #pdfBtn { background: #16a34a; color: white; }
@@ -26668,14 +26676,14 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
 <body>
   <script>window.__PDF_TITLE = ${JSON.stringify(announcement.title + " - 一括印刷 (" + selectedVendors.length + "社)")};</script>
   <div class="print-bar no-print">
     <span>📄 ${announcement.title} - 一括印刷 (${selectedVendors.length}社)</span>
     <div>
-      <button id="pdfBtn" onclick="window.__downloadPDF()">📥 PDF保存（ヘッダーなし）</button>
-      <button onclick="window.print()">🖨 通常印刷</button>
+      <button id="pdfBtn" onclick="window.__downloadPDF()">🖨 印刷</button>
       <button onclick="window.close()">閉じる</button>
     </div>
   </div>
@@ -26683,6 +26691,16 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
   <script>
   (function(){
     var mmPx = 96 / 25.4;
+    function renderQRs(){
+      if(!window.QRCode) return;
+      var boxes = document.querySelectorAll('.qrbox');
+      for(var i=0;i<boxes.length;i++){
+        if(boxes[i].getAttribute('data-done')) continue;
+        var u = boxes[i].getAttribute('data-qr');
+        if(!u) continue;
+        try { new window.QRCode(boxes[i], { text: u, width: 82, height: 82, correctLevel: window.QRCode.CorrectLevel.M }); boxes[i].setAttribute('data-done','1'); } catch(e){}
+      }
+    }
     function fitPreview(){
       var sheets = document.querySelectorAll('.sheet');
       for(var i=0;i<sheets.length;i++){
@@ -26690,6 +26708,7 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
         if(!fit) continue;
         fit.style.transform = 'none';
         sheets[i].style.height = 'auto';
+        sheets[i].style.overflow = 'hidden';
         var avail = (297 - 20 - 6) * mmPx;
         var h = fit.offsetHeight;
         if(h > avail){ var s = avail / h; fit.style.transform = 'scale(' + s + ')'; sheets[i].style.height = Math.ceil(h*s) + 'px'; }
@@ -26697,58 +26716,53 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
     }
     function whenImagesReady(cb){
       var imgs = document.images, n = imgs.length;
-      if(!n){ cb(); return; }
-      var done = 0;
-      function tick(){ if(++done >= n) cb(); }
+      var done = 0, called = false;
+      function fire(){ if(!called){ called = true; cb(); } }
+      if(!n){ fire(); return; }
+      function tick(){ if(++done >= n) fire(); }
       for(var i=0;i<n;i++){ if(imgs[i].complete) tick(); else { imgs[i].addEventListener('load', tick); imgs[i].addEventListener('error', tick); } }
+      setTimeout(fire, 2500);
     }
-    window.addEventListener('load', function(){ whenImagesReady(fitPreview); });
-    window.addEventListener('beforeprint', fitPreview);
+    window.addEventListener('load', function(){ renderQRs(); setTimeout(function(){ whenImagesReady(fitPreview); }, 60); });
 
     window.__downloadPDF = function(){
       var btn = document.getElementById('pdfBtn');
       var label = btn ? btn.textContent : '';
-      if(btn){ btn.disabled = true; btn.textContent = 'PDF生成中…'; }
-      whenImagesReady(function(){
-        if(!window.html2canvas || !window.jspdf || !window.jspdf.jsPDF){
-          alert('PDFライブラリの読み込みに失敗しました。通信環境をご確認のうえ、再度お試しください。');
-          if(btn){ btn.disabled = false; btn.textContent = label; }
-          return;
-        }
-        var JsPDF = window.jspdf.jsPDF;
-        var pdf = new JsPDF({ unit:'mm', format:'a4', orientation:'portrait' });
-        var margin = 10, pageW = 210, pageH = 297;
-        var availW = pageW - margin*2, availH = pageH - margin*2;
-        var fits = document.querySelectorAll('.fit');
-        var idx = 0;
-        function finish(){
-          var name = (window.__PDF_TITLE || '案内状') + '.pdf';
-          pdf.save(name);
-          if(btn){ btn.disabled = false; btn.textContent = label; }
-        }
-        function step(){
-          if(idx >= fits.length){ finish(); return; }
-          var el = fits[idx];
-          var prev = el.style.transform;
-          el.style.transform = 'none';
-          window.html2canvas(el, { scale:2.5, useCORS:true, backgroundColor:'#ffffff', logging:false }).then(function(canvas){
-            el.style.transform = prev;
-            var iw = canvas.width, ih = canvas.height;
-            var wmm = availW, hmm = wmm * (ih/iw);
-            if(hmm > availH){ hmm = availH; wmm = hmm * (iw/ih); }
-            if(idx > 0) pdf.addPage();
-            var x = margin + (availW - wmm)/2, y = margin;
-            pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', x, y, wmm, hmm);
-            idx++;
-            step();
-          }).catch(function(err){
-            el.style.transform = prev;
-            alert('PDF生成エラー: ' + (err && err.message ? err.message : err));
-            if(btn){ btn.disabled = false; btn.textContent = label; }
-          });
-        }
-        step();
-      });
+      if(btn){ btn.disabled = true; btn.textContent = 'PDF作成中…'; }
+      function fail(msg){ alert(msg); if(btn){ btn.disabled = false; btn.textContent = label; } }
+      renderQRs();
+      setTimeout(function(){
+        whenImagesReady(function(){
+          if(!window.html2canvas || !window.jspdf || !window.jspdf.jsPDF){ fail('PDFライブラリの読み込みに失敗しました。通信環境をご確認のうえ再度お試しください。'); return; }
+          var JsPDF = window.jspdf.jsPDF;
+          var pdf = new JsPDF({ unit:'mm', format:'a4', orientation:'portrait' });
+          var margin = 10, pageW = 210, pageH = 297;
+          var availW = pageW - margin*2, availH = pageH - margin*2;
+          var fits = document.querySelectorAll('.fit');
+          var idx = 0;
+          function finish(){ pdf.save((window.__PDF_TITLE || '案内状') + '.pdf'); if(btn){ btn.disabled = false; btn.textContent = label; } }
+          function step(){
+            if(idx >= fits.length){ finish(); return; }
+            var el = fits[idx];
+            var sheet = el.parentElement;
+            var pT = el.style.transform, pH = sheet.style.height, pO = sheet.style.overflow;
+            el.style.transform = 'none';
+            sheet.style.height = 'auto';
+            sheet.style.overflow = 'visible';
+            window.html2canvas(el, { scale: 2.5, useCORS: true, backgroundColor: '#ffffff', logging: false }).then(function(canvas){
+              el.style.transform = pT; sheet.style.height = pH; sheet.style.overflow = pO;
+              var iw = canvas.width, ih = canvas.height;
+              var wmm = availW, hmm = wmm * (ih / iw);
+              if(hmm > availH){ hmm = availH; wmm = hmm * (iw / ih); }
+              if(idx > 0) pdf.addPage();
+              var x = margin + (availW - wmm) / 2, y = margin;
+              pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', x, y, wmm, hmm);
+              idx++; step();
+            }).catch(function(err){ el.style.transform = pT; sheet.style.height = pH; sheet.style.overflow = pO; fail('PDF生成エラー: ' + (err && err.message ? err.message : err)); });
+          }
+          step();
+        });
+      }, 120);
     };
   })();
   </script>
