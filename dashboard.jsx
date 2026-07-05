@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-05-v226-1page-nolabel"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-05-v227-transcribe-and-pdf"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -15999,9 +15999,9 @@ function MtgRecordModal({entityKey,entityId,entityName,data,users,currentUser,on
         reader.readAsDataURL(blob);
       });
 
-      // サイズチェック（base64で~22MB = 元16MB相当）
-      if(base64.length > 22 * 1024 * 1024) {
-        throw new Error("録音時間が長すぎます（約15分以内に）");
+      // サイズチェック（API Gatewayの上限対策。32kbps録音で約28分相当）
+      if(base64.length > 9 * 1024 * 1024) {
+        throw new Error("録音が長すぎます（目安：約28分）。一度「停止」すると文字起こしされ、続けて再録音できます。長い商談は区切って録音してください。");
       }
 
       const res = await fetch(`${API_BASE}/api/transcribe`, {
@@ -16014,6 +16014,10 @@ function MtgRecordModal({entityKey,entityId,entityName,data,users,currentUser,on
           audio: base64,
           filename: `mtg-${Date.now()}.webm`,
           mimeType: blob.type || "audio/webm",
+          // ✅ v227: 精度向上 — 言語固定・新モデル・業界用語プロンプト
+          language: "ja",
+          model: "gpt-4o-transcribe",
+          prompt: "DUSTALK ダストーク 株式会社ビートルマネージメント 西原商事 廃棄物処理 産業廃棄物 特別管理産業廃棄物 一般廃棄物 収集運搬 電子マニフェスト JWNET 排出事業者 許可業者 リサイクル リユース 見積 契約 請求 委託契約。廃棄物処理業の営業商談・電話での日本語の会話です。",
         }),
       });
 
@@ -16277,8 +16281,9 @@ function MtgRecordModal({entityKey,entityId,entityName,data,users,currentUser,on
                  : MediaRecorder.isTypeSupported("audio/mp4") ? "audio/mp4"
                  : "";
       console.log("[Recording] MIME type selected:", mime || "(default)");
-      const recorder = mime ? new MediaRecorder(stream, {mimeType: mime, audioBitsPerSecond: 128000})
-                            : new MediaRecorder(stream, {audioBitsPerSecond: 128000});
+      // ✅ v227: 32kbps に下げて録音可能時間を約3〜4倍に（音声認識は16kHz相当なので精度影響なし）
+      const recorder = mime ? new MediaRecorder(stream, {mimeType: mime, audioBitsPerSecond: 32000})
+                            : new MediaRecorder(stream, {audioBitsPerSecond: 32000});
       mediaRecorderRef.current = recorder;
       audioChunksRef.current = [];
 
