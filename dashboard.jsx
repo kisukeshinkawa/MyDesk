@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-05-v229-mtg-dedupe"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-06-v231-reply-firstperson"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -11083,6 +11083,8 @@ function EmailView({data,setData,currentUser=null}) {
   const myStyles  = allStyles.filter(s=>!s.userId||s.userId===uid);
   // 旧形式の保存ドラフトのみ（generatedフィールドを持つもの）。新しい送受信メール(direction有)は除外
   const myEmails  = allEmails.filter(e=>(!e.userId||e.userId===uid) && e.generated && !e.direction);
+  // ✅ v230: 実際に送信したメール（本物の文体サンプル）
+  const mySentEmails = allEmails.filter(e=>e.direction==="outbound" && (e.body||"").trim().length>20);
 
   // 名刺等から「メール作成」で遷移してきたとき：window.__myDeskEmailDraft を取り込む
   React.useEffect(()=>{
@@ -11274,8 +11276,17 @@ function EmailView({data,setData,currentUser=null}) {
     try {
       const styleRef = myStyles.length>0
         ? "【私の文体サンプル（この語調・トーンで書いてください）】\n"+myStyles.map(s=>s.text).join("\n---\n")+"\n\n" : "";
-      const pastRef = myEmails.length>0
-        ? "【過去に私が書いたメール参考】\n"+myEmails.slice(-2).map(e=>(e.generated||"").slice(0,300)).join("\n---\n")+"\n\n" : "";
+      // ✅ v230: 実送信メールを優先して文体参照（署名・引用は除去）
+      const _cleanSent = (b) => {
+        let t = String(b||"").split("■■■■■■■■■■")[0].split(/-----+\s*Original message/i)[0];
+        t = t.replace(/^>.*$/gm,"").replace(/\n\d{4}[\/年][\s\S]*$/,"");
+        return t.trim();
+      };
+      const _sentSamples = mySentEmails.slice(-3).map(e=>_cleanSent(e.body)).filter(t=>t.length>15);
+      const pastRef = _sentSamples.length>0
+        ? "【私が実際に送った過去メール（この文体・敬語・言い回しに厳密に合わせる）】\n"+_sentSamples.join("\n---\n")+"\n\n"
+        : (myEmails.length>0
+            ? "【過去に私が書いたメール参考】\n"+myEmails.slice(-2).map(e=>(e.generated||"").slice(0,300)).join("\n---\n")+"\n\n" : "");
 
       const myFullName = currentUser?.name || "";
       // 苗字だけ使う（スペース前を取得）
@@ -11341,6 +11352,9 @@ function EmailView({data,setData,currentUser=null}) {
 
       // 返信モード専用フォーマットルール（受信メール本文から宛先を自動抽出）
       const replyFormatRule = `\n\n【メール書式ルール（必ず守ること）】\n` +
+        `・この返信は私（${myName}／${myCompany}）本人が送信します。必ず私の一人称で書き、自分自身（${myName}・新川・西原商事）を「新川様」など第三者のように絶対に書かないこと\n` +
+        `・私がCC等の立場で、送信者が私を第三者へ紹介・仲介してくれている場合は、返信（＝送信者宛）でその紹介の御礼を必ず述べること\n` +
+        `・スレッド内で私が第三者へ直接連絡する旨が示されている場合は、その第三者へ後日ご連絡する意向を一言添えること\n` +
         `・受信メールの差出人情報（署名・本文・From名）から、相手の会社名・氏名（または苗字）を読み取ること\n` +
         `・冒頭は必ず以下の形式で始める：\n` +
         `　1行目: 相手の会社名（社外の場合のみ。社内同士なら省略）\n` +
@@ -11350,7 +11364,9 @@ function EmailView({data,setData,currentUser=null}) {
         `・社外宛の書き出しは「お世話になります。\n${myCompany}の${myName}です。」\n` +
         `・社内宛の書き出しは「${myName}です。」\n` +
         `・受信メールの内容から社外/社内を判断（${myCompany}・西原商事・ニシハラなどのドメインや署名なら社内）\n` +
-        `・件名は含めない\n・署名は含めない`;
+        `・件名は含めない\n・署名は含めない\n` +
+        `・受信メールの装飾記号（例 ｡.｡･.｡ﾟ+）や引用（-----Original message----- や 行頭>）は返信に含めない\n` +
+        `・受信メール本文をそのまま繰り返さず、必ず新しい返信本文を書くこと`;
 
       const prompt = mode==="reply"
         ? `${styleRef}${pastRef}以下の受信メールへの返信文を作成してください。受信メール本文から相手の会社名・氏名を読み取り、適切な宛名で始めてください。${replyFormatRule}\n\n【返信の指示・方向性】\n${instruction}\n\n【受信メール】\n${inputText}\n\n上記の書式ルールを厳守して返信本文のみ出力してください。`
@@ -11743,6 +11759,8 @@ function EmailView({data,setData,currentUser=null}) {
   const sendEmailNow = async ({to, cc, bcc, subject, body, replyToId, linkedDisplay}) => {
     setMbSendBusy(true);
     try {
+      // ✅ v230: 署名を自動付加（全送信経路で統一・重複防止）
+      body = (body && body.includes("■■■■■■■■■■")) ? body : (body||"") + MAIL_SIGNATURE;
       // 送信元: 現在のユーザーのメアドを使う（同一ドメイン内の任意のアドレスから送信可能）
       const fromEmail = currentUser?.email || "noreply@beetle-ems.com";
       // 本文を HTML 改行付きに変換（プレーンテキストの改行を保持）
@@ -12778,13 +12796,15 @@ ${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
                 setSendBusy(true);
                 try {
                   const fromEmail = currentUser?.email || "noreply@beetle-ems.com";
+                  // ✅ v230: 署名を自動付加（重複防止）
+                  const genSigned = (generated && generated.includes("■■■■■■■■■■")) ? generated : generated + MAIL_SIGNATURE;
                   const res = await fetch(`${DB_API_BASE}/send-email`, {
                     method: "POST",
                     headers: DB_API_HEADERS,
                     body: JSON.stringify({
                       to: [{name: toName||"", email: sendToEmail.trim()}],
                       subject: sendSubject.trim(),
-                      body: generated,
+                      body: genSigned,
                       fromEmail,
                       fromName: currentUser?.name||""
                     })
@@ -12798,7 +12818,7 @@ ${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
                       from: { email: fromEmail, name: currentUser?.name||"" },
                       to: [{ name: toName||"", email: sendToEmail.trim() }],
                       subject: sendSubject.trim(),
-                      body: generated,
+                      body: genSigned,
                       direction: "outbound",
                       status: "sent",
                       sentAt: new Date().toISOString(),
