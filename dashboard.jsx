@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-05-v228-mtg-record-button"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-05-v229-mtg-dedupe"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -16026,7 +16026,7 @@ function MtgRecordModal({entityKey,entityId,entityName,data,users,currentUser,on
           // ✅ v227: 精度向上 — 言語固定・新モデル・業界用語プロンプト
           language: "ja",
           model: "gpt-4o-transcribe",
-          prompt: "DUSTALK ダストーク 株式会社ビートルマネージメント 西原商事 廃棄物処理 産業廃棄物 特別管理産業廃棄物 一般廃棄物 収集運搬 電子マニフェスト JWNET 排出事業者 許可業者 リサイクル リユース 見積 契約 請求 委託契約。廃棄物処理業の営業商談・電話での日本語の会話です。",
+          prompt: "DUSTALK 株式会社ビートルマネージメント 新川（しんかわ） 西原商事 廃棄物処理 産業廃棄物 特別管理産業廃棄物 一般廃棄物 収集運搬 電子マニフェスト JWNET 排出事業者 許可業者 リサイクル リユース 見積 契約 請求 委託契約。廃棄物処理業の営業担当・新川による営業商談や電話の日本語会話です。固有名詞 DUSTALK・JWNET はアルファベット表記。",
         }),
       });
 
@@ -20598,12 +20598,7 @@ ${orig}`})
           users={users}
           currentUser={currentUser}
           onSave={(note,tasks)=>{
-            // メモとして保存
-            const arr=(data[mtgModal.entityKey]||[]).map(x=>x.id===mtgModal.entityId
-              ?{...x,memos:[...(x.memos||[]),{id:Date.now(),userId:currentUser?.id,text:note,date:new Date().toISOString(),isMtg:true}]}
-              :x);
-            let nd={...data,[mtgModal.entityKey]:arr};
-            // アプローチ記録も追加 (callModeなら "電話"、通常は "MTG")
+            // ✅ v229: 議事録は「アプローチ記録(MTG/電話)」1件に集約（メモとの二重登録を解消）
             const approachType = mtgModal.callMode ? "電話" : "MTG";
             const entity=(data[mtgModal.entityKey]||[]).find(x=>x.id===mtgModal.entityId);
             const uid = currentUser?.id;
@@ -20612,8 +20607,8 @@ ${orig}`})
             const newAssigneeIds = (uid && !currentAssigneeIds.includes(uid))
               ? [...currentAssigneeIds, uid]
               : currentAssigneeIds;
-            nd={...nd,[mtgModal.entityKey]:(nd[mtgModal.entityKey]||[]).map(x=>x.id===mtgModal.entityId
-              ?{...x,approachLogs:[...(x.approachLogs||[]),{id:Date.now()+1,type:approachType,note:note.slice(0,80),date:new Date().toISOString().slice(0,10),createdAt:new Date().toISOString(),userId:uid,createdBy:uid}],assigneeIds:newAssigneeIds,updatedAt:new Date().toISOString().slice(0,10)}
+            let nd={...data,[mtgModal.entityKey]:(data[mtgModal.entityKey]||[]).map(x=>x.id===mtgModal.entityId
+              ?{...x,approachLogs:[...(x.approachLogs||[]),{id:Date.now()+1,type:approachType,note:note,date:new Date().toISOString().slice(0,10),createdAt:new Date().toISOString(),userId:uid,createdBy:uid}],assigneeIds:newAssigneeIds,updatedAt:new Date().toISOString().slice(0,10)}
               :x)};
             save(nd);
             // タスク登録（確定済みのもの）
