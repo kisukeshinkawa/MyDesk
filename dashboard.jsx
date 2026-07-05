@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-05-v223-print-1page-qrgen"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-05-v224-print-fullcapture"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -25993,7 +25993,7 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
   .print-bar button { padding: 0.4rem 0.9rem; background: white; color: #2563eb; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; }
   .print-bar #pdfBtn { background: #16a34a; color: white; }
   .print-bar #pdfBtn:disabled { opacity: 0.6; cursor: wait; }
-  .sheet { margin-top: 3.4rem; overflow: hidden; }
+  .sheet { margin-top: 3.4rem; overflow: visible; }
   .fit { width: 174mm; transform-origin: top left; background: #fff; }
   .contact-footer { margin-top: 1.8rem; text-align: right; }
   .contact-footer-inner { display: inline-block; text-align: left; font-size: 0.82rem; color: #333; line-height: 1.55; }
@@ -26036,7 +26036,6 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
   </div>
   <script>
   (function(){
-    var mmPx = 96 / 25.4;
     function renderQRs(){
       if(!window.QRCode) return;
       var boxes = document.querySelectorAll('.qrbox');
@@ -26044,20 +26043,13 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
         if(boxes[i].getAttribute('data-done')) continue;
         var u = boxes[i].getAttribute('data-qr');
         if(!u) continue;
-        try { new window.QRCode(boxes[i], { text: u, width: 82, height: 82, correctLevel: window.QRCode.CorrectLevel.M }); boxes[i].setAttribute('data-done','1'); } catch(e){}
-      }
-    }
-    function fitPreview(){
-      var sheets = document.querySelectorAll('.sheet');
-      for(var i=0;i<sheets.length;i++){
-        var fit = sheets[i].querySelector('.fit');
-        if(!fit) continue;
-        fit.style.transform = 'none';
-        sheets[i].style.height = 'auto';
-        sheets[i].style.overflow = 'hidden';
-        var avail = (297 - 20 - 6) * mmPx;
-        var h = fit.offsetHeight;
-        if(h > avail){ var s = avail / h; fit.style.transform = 'scale(' + s + ')'; sheets[i].style.height = Math.ceil(h*s) + 'px'; }
+        try {
+          new window.QRCode(boxes[i], { text: u, width: 82, height: 82, correctLevel: window.QRCode.CorrectLevel.M });
+          boxes[i].setAttribute('data-done','1');
+          var c = boxes[i].querySelector('canvas'); var im = boxes[i].querySelector('img');
+          if(c){ c.style.width='82px'; c.style.height='82px'; c.style.display='block'; if(im){ im.style.display='none'; } }
+          else if(im){ im.style.width='82px'; im.style.height='82px'; im.style.display='block'; }
+        } catch(e){}
       }
     }
     function whenImagesReady(cb){
@@ -26069,7 +26061,7 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
       for(var i=0;i<n;i++){ if(imgs[i].complete) tick(); else { imgs[i].addEventListener('load', tick); imgs[i].addEventListener('error', tick); } }
       setTimeout(fire, 2500);
     }
-    window.addEventListener('load', function(){ renderQRs(); setTimeout(function(){ whenImagesReady(fitPreview); }, 60); });
+    window.addEventListener('load', function(){ renderQRs(); });
 
     window.__downloadPDF = function(){
       var btn = document.getElementById('pdfBtn');
@@ -26090,13 +26082,16 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
           function step(){
             if(idx >= fits.length){ finish(); return; }
             var el = fits[idx];
-            var sheet = el.parentElement;
-            var pT = el.style.transform, pH = sheet.style.height, pO = sheet.style.overflow;
-            el.style.transform = 'none';
-            sheet.style.height = 'auto';
-            sheet.style.overflow = 'visible';
-            window.html2canvas(el, { scale: 2.5, useCORS: true, backgroundColor: '#ffffff', logging: false }).then(function(canvas){
-              el.style.transform = pT; sheet.style.height = pH; sheet.style.overflow = pO;
+            var fullW = el.scrollWidth, fullH = el.scrollHeight;
+            window.html2canvas(el, {
+              scale: 2.5, useCORS: true, backgroundColor: '#ffffff', logging: false,
+              width: fullW, height: fullH, windowWidth: fullW, windowHeight: fullH, scrollX: 0, scrollY: 0,
+              onclone: function(doc){
+                var np = doc.querySelectorAll('.no-print'); for(var k=0;k<np.length;k++){ np[k].style.display='none'; }
+                var sh = doc.querySelectorAll('.sheet'); for(var k=0;k<sh.length;k++){ sh[k].style.overflow='visible'; sh[k].style.height='auto'; }
+                var ft = doc.querySelectorAll('.fit'); for(var k=0;k<ft.length;k++){ ft[k].style.transform='none'; }
+              }
+            }).then(function(canvas){
               var iw = canvas.width, ih = canvas.height;
               var wmm = availW, hmm = wmm * (ih / iw);
               if(hmm > availH){ hmm = availH; wmm = hmm * (iw / ih); }
@@ -26104,7 +26099,7 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
               var x = margin + (availW - wmm) / 2, y = margin;
               pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', x, y, wmm, hmm);
               idx++; step();
-            }).catch(function(err){ el.style.transform = pT; sheet.style.height = pH; sheet.style.overflow = pO; fail('PDF生成エラー: ' + (err && err.message ? err.message : err)); });
+            }).catch(function(err){ fail('PDF生成エラー: ' + (err && err.message ? err.message : err)); });
           }
           step();
         });
@@ -26619,8 +26614,8 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
         // ✅ v220: CSS の page-break-after で改ページするため、明示的な pageBreak div は削除（白紙ページ防止）
         const pageBreak = '';
         return `<div class="sheet page" data-vendor="${v.vendor_name||''}">
+  <div class="vendor-header no-print">配布先: ${v.vendor_name || "(業者名なし)"}</div>
   <div class="fit">
-    <div class="vendor-header no-print">配布先: ${v.vendor_name || "(業者名なし)"}</div>
     <div class="content">${html}</div>
     <div class="contact-footer">
       <div class="contact-footer-inner">
@@ -26656,7 +26651,7 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
   table { border-collapse: collapse; }
   img { max-width: 110px; max-height: 110px; }
   .vendor-header { font-size: 0.78rem; color: #6b7280; margin-bottom: 1rem; padding: 0.4rem 0.8rem; background: #f3f4f6; border-radius: 4px; }
-  .sheet { overflow: hidden; page-break-after: always; margin-bottom: 1rem; }
+  .sheet { overflow: visible; page-break-after: always; margin-bottom: 1rem; }
   .sheet:last-child { page-break-after: auto; }
   .fit { width: 174mm; transform-origin: top left; background: #fff; }
   .contact-footer { margin-top: 1.8rem; text-align: right; }
@@ -26690,7 +26685,6 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
   ${pages}
   <script>
   (function(){
-    var mmPx = 96 / 25.4;
     function renderQRs(){
       if(!window.QRCode) return;
       var boxes = document.querySelectorAll('.qrbox');
@@ -26698,20 +26692,13 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
         if(boxes[i].getAttribute('data-done')) continue;
         var u = boxes[i].getAttribute('data-qr');
         if(!u) continue;
-        try { new window.QRCode(boxes[i], { text: u, width: 82, height: 82, correctLevel: window.QRCode.CorrectLevel.M }); boxes[i].setAttribute('data-done','1'); } catch(e){}
-      }
-    }
-    function fitPreview(){
-      var sheets = document.querySelectorAll('.sheet');
-      for(var i=0;i<sheets.length;i++){
-        var fit = sheets[i].querySelector('.fit');
-        if(!fit) continue;
-        fit.style.transform = 'none';
-        sheets[i].style.height = 'auto';
-        sheets[i].style.overflow = 'hidden';
-        var avail = (297 - 20 - 6) * mmPx;
-        var h = fit.offsetHeight;
-        if(h > avail){ var s = avail / h; fit.style.transform = 'scale(' + s + ')'; sheets[i].style.height = Math.ceil(h*s) + 'px'; }
+        try {
+          new window.QRCode(boxes[i], { text: u, width: 82, height: 82, correctLevel: window.QRCode.CorrectLevel.M });
+          boxes[i].setAttribute('data-done','1');
+          var c = boxes[i].querySelector('canvas'); var im = boxes[i].querySelector('img');
+          if(c){ c.style.width='82px'; c.style.height='82px'; c.style.display='block'; if(im){ im.style.display='none'; } }
+          else if(im){ im.style.width='82px'; im.style.height='82px'; im.style.display='block'; }
+        } catch(e){}
       }
     }
     function whenImagesReady(cb){
@@ -26723,7 +26710,7 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
       for(var i=0;i<n;i++){ if(imgs[i].complete) tick(); else { imgs[i].addEventListener('load', tick); imgs[i].addEventListener('error', tick); } }
       setTimeout(fire, 2500);
     }
-    window.addEventListener('load', function(){ renderQRs(); setTimeout(function(){ whenImagesReady(fitPreview); }, 60); });
+    window.addEventListener('load', function(){ renderQRs(); });
 
     window.__downloadPDF = function(){
       var btn = document.getElementById('pdfBtn');
@@ -26744,13 +26731,16 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
           function step(){
             if(idx >= fits.length){ finish(); return; }
             var el = fits[idx];
-            var sheet = el.parentElement;
-            var pT = el.style.transform, pH = sheet.style.height, pO = sheet.style.overflow;
-            el.style.transform = 'none';
-            sheet.style.height = 'auto';
-            sheet.style.overflow = 'visible';
-            window.html2canvas(el, { scale: 2.5, useCORS: true, backgroundColor: '#ffffff', logging: false }).then(function(canvas){
-              el.style.transform = pT; sheet.style.height = pH; sheet.style.overflow = pO;
+            var fullW = el.scrollWidth, fullH = el.scrollHeight;
+            window.html2canvas(el, {
+              scale: 2.5, useCORS: true, backgroundColor: '#ffffff', logging: false,
+              width: fullW, height: fullH, windowWidth: fullW, windowHeight: fullH, scrollX: 0, scrollY: 0,
+              onclone: function(doc){
+                var np = doc.querySelectorAll('.no-print'); for(var k=0;k<np.length;k++){ np[k].style.display='none'; }
+                var sh = doc.querySelectorAll('.sheet'); for(var k=0;k<sh.length;k++){ sh[k].style.overflow='visible'; sh[k].style.height='auto'; }
+                var ft = doc.querySelectorAll('.fit'); for(var k=0;k<ft.length;k++){ ft[k].style.transform='none'; }
+              }
+            }).then(function(canvas){
               var iw = canvas.width, ih = canvas.height;
               var wmm = availW, hmm = wmm * (ih / iw);
               if(hmm > availH){ hmm = availH; wmm = hmm * (iw / ih); }
@@ -26758,7 +26748,7 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
               var x = margin + (availW - wmm) / 2, y = margin;
               pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', x, y, wmm, hmm);
               idx++; step();
-            }).catch(function(err){ el.style.transform = pT; sheet.style.height = pH; sheet.style.overflow = pO; fail('PDF生成エラー: ' + (err && err.message ? err.message : err)); });
+            }).catch(function(err){ fail('PDF生成エラー: ' + (err && err.message ? err.message : err)); });
           }
           step();
         });
