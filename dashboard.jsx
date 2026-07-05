@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-04-v221-scale-fit-pdf"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-04-v222-jspdf-noheader"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -25989,11 +25989,12 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
   li { margin: 0.14rem 0; }
   table { border-collapse: collapse; }
   img { max-width: 110px; max-height: 110px; }
-  .print-bar { position: fixed; top: 0; left: 0; right: 0; background: #2563eb; color: white; padding: 0.5rem 1rem; display: flex; justify-content: space-between; align-items: center; z-index: 9999; }
-  .print-bar button { padding: 0.4rem 1rem; background: white; color: #2563eb; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; }
-  /* ✅ v221: A4 1ページに実測スケールフィットさせる土台 */
-  .sheet { margin-top: 3.2rem; overflow: hidden; }
-  .fit { width: 174mm; transform-origin: top left; }
+  .print-bar { position: fixed; top: 0; left: 0; right: 0; background: #2563eb; color: white; padding: 0.5rem 1rem; display: flex; justify-content: space-between; align-items: center; z-index: 9999; gap: 0.5rem; flex-wrap: wrap; }
+  .print-bar button { padding: 0.4rem 0.9rem; background: white; color: #2563eb; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; }
+  .print-bar #pdfBtn { background: #16a34a; color: white; }
+  .print-bar #pdfBtn:disabled { opacity: 0.6; cursor: wait; }
+  .sheet { margin-top: 3.4rem; overflow: hidden; }
+  .fit { width: 174mm; transform-origin: top left; background: #fff; }
   .contact-footer { margin-top: 1.8rem; text-align: right; }
   .contact-footer-inner { display: inline-block; text-align: left; font-size: 0.82rem; color: #333; line-height: 1.55; }
   .contact-footer-inner b { color: #1e40af; }
@@ -26001,20 +26002,21 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
   @media print {
     .no-print { display: none !important; }
     .sheet { margin-top: 0; }
-    .fit, .fit *, .fit *::before, .fit *::after {
-      border: 0 none transparent !important;
-      border-width: 0 !important;
-      border-style: none !important;
-      border-color: transparent !important;
-      box-shadow: none !important;
-      outline: none !important;
-    }
+    .fit, .fit *, .fit *::before, .fit *::after { border: 0 none transparent !important; border-width: 0 !important; border-style: none !important; box-shadow: none !important; outline: none !important; }
   }
-</style></head>
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
 <body>
+  <script>window.__PDF_TITLE = ${JSON.stringify(activeAnnouncement.title + " - " + vendorName)};</script>
   <div class="print-bar no-print">
     <span>📄 ${activeAnnouncement.title} - ${vendorName}</span>
-    <div><button onclick="window.print()">🖨 PDF として保存 / 印刷</button> <button onclick="window.close()">閉じる</button></div>
+    <div>
+      <button id="pdfBtn" onclick="window.__downloadPDF()">📥 PDF保存（ヘッダーなし）</button>
+      <button onclick="window.print()">🖨 通常印刷</button>
+      <button onclick="window.close()">閉じる</button>
+    </div>
   </div>
   <div class="sheet">
     <div class="fit">
@@ -26026,44 +26028,81 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
           DUSTALK事業局<br>
           TEL：0120-532-109（平日9:00〜17:00）<br>
           E-mail：info@dustalk.com
-          ${qrImageUrl ? `<img src="${qrImageUrl}">` : ''}
+          ${qrImageUrl ? `<img src="${qrImageUrl}" crossorigin="anonymous">` : ''}
         </div>
       </div>
     </div>
   </div>
   <script>
   (function(){
-    function fitOne(sheet){
-      var fit = sheet.querySelector('.fit');
-      if(!fit) return;
-      fit.style.transform = 'none';
-      sheet.style.height = 'auto';
-      var mmPx = 96 / 25.4;
-      // A4高さ297mm - 上下マージン20mm - 安全マージン6mm
-      var avail = (297 - 20 - 6) * mmPx;
-      var h = fit.offsetHeight;
-      if(h > avail){
-        var s = avail / h;
-        fit.style.transform = 'scale(' + s + ')';
-        sheet.style.height = Math.ceil(h * s) + 'px';
-      }
-    }
-    function fitAll(){
+    var mmPx = 96 / 25.4;
+    function fitPreview(){
       var sheets = document.querySelectorAll('.sheet');
-      for(var i=0;i<sheets.length;i++) fitOne(sheets[i]);
+      for(var i=0;i<sheets.length;i++){
+        var fit = sheets[i].querySelector('.fit');
+        if(!fit) continue;
+        fit.style.transform = 'none';
+        sheets[i].style.height = 'auto';
+        var avail = (297 - 20 - 6) * mmPx;
+        var h = fit.offsetHeight;
+        if(h > avail){ var s = avail / h; fit.style.transform = 'scale(' + s + ')'; sheets[i].style.height = Math.ceil(h*s) + 'px'; }
+      }
     }
     function whenImagesReady(cb){
       var imgs = document.images, n = imgs.length;
       if(!n){ cb(); return; }
       var done = 0;
       function tick(){ if(++done >= n) cb(); }
-      for(var i=0;i<imgs.length;i++){
-        if(imgs[i].complete) tick();
-        else { imgs[i].addEventListener('load', tick); imgs[i].addEventListener('error', tick); }
-      }
+      for(var i=0;i<n;i++){ if(imgs[i].complete) tick(); else { imgs[i].addEventListener('load', tick); imgs[i].addEventListener('error', tick); } }
     }
-    window.addEventListener('load', function(){ whenImagesReady(fitAll); });
-    window.addEventListener('beforeprint', fitAll);
+    window.addEventListener('load', function(){ whenImagesReady(fitPreview); });
+    window.addEventListener('beforeprint', fitPreview);
+
+    window.__downloadPDF = function(){
+      var btn = document.getElementById('pdfBtn');
+      var label = btn ? btn.textContent : '';
+      if(btn){ btn.disabled = true; btn.textContent = 'PDF生成中…'; }
+      whenImagesReady(function(){
+        if(!window.html2canvas || !window.jspdf || !window.jspdf.jsPDF){
+          alert('PDFライブラリの読み込みに失敗しました。通信環境をご確認のうえ、再度お試しください。');
+          if(btn){ btn.disabled = false; btn.textContent = label; }
+          return;
+        }
+        var JsPDF = window.jspdf.jsPDF;
+        var pdf = new JsPDF({ unit:'mm', format:'a4', orientation:'portrait' });
+        var margin = 10, pageW = 210, pageH = 297;
+        var availW = pageW - margin*2, availH = pageH - margin*2;
+        var fits = document.querySelectorAll('.fit');
+        var idx = 0;
+        function finish(){
+          var name = (window.__PDF_TITLE || '案内状') + '.pdf';
+          pdf.save(name);
+          if(btn){ btn.disabled = false; btn.textContent = label; }
+        }
+        function step(){
+          if(idx >= fits.length){ finish(); return; }
+          var el = fits[idx];
+          var prev = el.style.transform;
+          el.style.transform = 'none';
+          window.html2canvas(el, { scale:2.5, useCORS:true, backgroundColor:'#ffffff', logging:false }).then(function(canvas){
+            el.style.transform = prev;
+            var iw = canvas.width, ih = canvas.height;
+            var wmm = availW, hmm = wmm * (ih/iw);
+            if(hmm > availH){ hmm = availH; wmm = hmm * (iw/ih); }
+            if(idx > 0) pdf.addPage();
+            var x = margin + (availW - wmm)/2, y = margin;
+            pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', x, y, wmm, hmm);
+            idx++;
+            step();
+          }).catch(function(err){
+            el.style.transform = prev;
+            alert('PDF生成エラー: ' + (err && err.message ? err.message : err));
+            if(btn){ btn.disabled = false; btn.textContent = label; }
+          });
+        }
+        step();
+      });
+    };
   })();
   </script>
 </body></html>`);
@@ -26583,7 +26622,7 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
         DUSTALK事業局<br>
         TEL：0120-532-109（平日9:00〜17:00）<br>
         E-mail：info@dustalk.com
-        ${qrImgUrl ? `<img src="${qrImgUrl}">` : ''}
+        ${qrImgUrl ? `<img src="${qrImgUrl}" crossorigin="anonymous">` : ''}
       </div>
     </div>
   </div>
@@ -26601,7 +26640,7 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
 <style>
   @page { size: A4; margin: 10mm 18mm; }
   html, body { height: auto; }
-  body { font-family: 'Hiragino Sans','Yu Gothic',sans-serif; line-height: 1.5; color: #222; margin: 0; padding: 0; font-size: 0.9rem; padding-top: 3rem; }
+  body { font-family: 'Hiragino Sans','Yu Gothic',sans-serif; line-height: 1.5; color: #222; margin: 0; padding: 0; font-size: 0.9rem; padding-top: 3.4rem; }
   h1 { font-size: 1.18rem; margin: 0.5rem 0 0.3rem; line-height: 1.3; }
   h2 { font-size: 1.02rem; margin: 0.55rem 0 0.25rem; color: #1e40af; padding: 0; }
   p { margin: 0.32rem 0; }
@@ -26610,71 +26649,107 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
   table { border-collapse: collapse; }
   img { max-width: 110px; max-height: 110px; }
   .vendor-header { font-size: 0.78rem; color: #6b7280; margin-bottom: 1rem; padding: 0.4rem 0.8rem; background: #f3f4f6; border-radius: 4px; }
-  /* ✅ v221: 1社=1ページ、実測スケールフィット */
-  .sheet { overflow: hidden; page-break-after: always; }
+  .sheet { overflow: hidden; page-break-after: always; margin-bottom: 1rem; }
   .sheet:last-child { page-break-after: auto; }
-  .fit { width: 174mm; transform-origin: top left; }
+  .fit { width: 174mm; transform-origin: top left; background: #fff; }
   .contact-footer { margin-top: 1.8rem; text-align: right; }
   .contact-footer-inner { display: inline-block; text-align: left; font-size: 0.82rem; color: #333; line-height: 1.55; }
   .contact-footer-inner b { color: #1e40af; }
   .contact-footer-inner img { display: block; margin: 0.5rem 0 0 auto; width: 82px; height: 82px; }
-  .print-bar { position: fixed; top: 0; left: 0; right: 0; background: #2563eb; color: white; padding: 0.5rem 1rem; display: flex; justify-content: space-between; align-items: center; z-index: 9999; }
-  .print-bar button { padding: 0.4rem 1rem; background: white; color: #2563eb; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; margin-left: 0.5rem; }
+  .print-bar { position: fixed; top: 0; left: 0; right: 0; background: #2563eb; color: white; padding: 0.5rem 1rem; display: flex; justify-content: space-between; align-items: center; z-index: 9999; gap: 0.5rem; flex-wrap: wrap; }
+  .print-bar button { padding: 0.4rem 0.9rem; background: white; color: #2563eb; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; }
+  .print-bar #pdfBtn { background: #16a34a; color: white; }
+  .print-bar #pdfBtn:disabled { opacity: 0.6; cursor: wait; }
   @media print {
     .no-print { display: none !important; }
     body { padding-top: 0; }
-    .fit, .fit *, .fit *::before, .fit *::after {
-      border: 0 none transparent !important;
-      border-width: 0 !important;
-      border-style: none !important;
-      border-color: transparent !important;
-      box-shadow: none !important;
-      outline: none !important;
-    }
+    .fit, .fit *, .fit *::before, .fit *::after { border: 0 none transparent !important; border-width: 0 !important; border-style: none !important; box-shadow: none !important; outline: none !important; }
   }
-</style></head>
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
 <body>
+  <script>window.__PDF_TITLE = ${JSON.stringify(announcement.title + " - 一括印刷 (" + selectedVendors.length + "社)")};</script>
   <div class="print-bar no-print">
     <span>📄 ${announcement.title} - 一括印刷 (${selectedVendors.length}社)</span>
     <div>
-      <button onclick="window.print()">🖨 PDF として保存 / 印刷</button>
+      <button id="pdfBtn" onclick="window.__downloadPDF()">📥 PDF保存（ヘッダーなし）</button>
+      <button onclick="window.print()">🖨 通常印刷</button>
       <button onclick="window.close()">閉じる</button>
     </div>
   </div>
   ${pages}
   <script>
   (function(){
-    function fitOne(sheet){
-      var fit = sheet.querySelector('.fit');
-      if(!fit) return;
-      fit.style.transform = 'none';
-      sheet.style.height = 'auto';
-      var mmPx = 96 / 25.4;
-      // A4高さ297mm - 上下マージン20mm - 安全マージン6mm
-      var avail = (297 - 20 - 6) * mmPx;
-      var h = fit.offsetHeight;
-      if(h > avail){
-        var s = avail / h;
-        fit.style.transform = 'scale(' + s + ')';
-        sheet.style.height = Math.ceil(h * s) + 'px';
-      }
-    }
-    function fitAll(){
+    var mmPx = 96 / 25.4;
+    function fitPreview(){
       var sheets = document.querySelectorAll('.sheet');
-      for(var i=0;i<sheets.length;i++) fitOne(sheets[i]);
+      for(var i=0;i<sheets.length;i++){
+        var fit = sheets[i].querySelector('.fit');
+        if(!fit) continue;
+        fit.style.transform = 'none';
+        sheets[i].style.height = 'auto';
+        var avail = (297 - 20 - 6) * mmPx;
+        var h = fit.offsetHeight;
+        if(h > avail){ var s = avail / h; fit.style.transform = 'scale(' + s + ')'; sheets[i].style.height = Math.ceil(h*s) + 'px'; }
+      }
     }
     function whenImagesReady(cb){
       var imgs = document.images, n = imgs.length;
       if(!n){ cb(); return; }
       var done = 0;
       function tick(){ if(++done >= n) cb(); }
-      for(var i=0;i<imgs.length;i++){
-        if(imgs[i].complete) tick();
-        else { imgs[i].addEventListener('load', tick); imgs[i].addEventListener('error', tick); }
-      }
+      for(var i=0;i<n;i++){ if(imgs[i].complete) tick(); else { imgs[i].addEventListener('load', tick); imgs[i].addEventListener('error', tick); } }
     }
-    window.addEventListener('load', function(){ whenImagesReady(fitAll); });
-    window.addEventListener('beforeprint', fitAll);
+    window.addEventListener('load', function(){ whenImagesReady(fitPreview); });
+    window.addEventListener('beforeprint', fitPreview);
+
+    window.__downloadPDF = function(){
+      var btn = document.getElementById('pdfBtn');
+      var label = btn ? btn.textContent : '';
+      if(btn){ btn.disabled = true; btn.textContent = 'PDF生成中…'; }
+      whenImagesReady(function(){
+        if(!window.html2canvas || !window.jspdf || !window.jspdf.jsPDF){
+          alert('PDFライブラリの読み込みに失敗しました。通信環境をご確認のうえ、再度お試しください。');
+          if(btn){ btn.disabled = false; btn.textContent = label; }
+          return;
+        }
+        var JsPDF = window.jspdf.jsPDF;
+        var pdf = new JsPDF({ unit:'mm', format:'a4', orientation:'portrait' });
+        var margin = 10, pageW = 210, pageH = 297;
+        var availW = pageW - margin*2, availH = pageH - margin*2;
+        var fits = document.querySelectorAll('.fit');
+        var idx = 0;
+        function finish(){
+          var name = (window.__PDF_TITLE || '案内状') + '.pdf';
+          pdf.save(name);
+          if(btn){ btn.disabled = false; btn.textContent = label; }
+        }
+        function step(){
+          if(idx >= fits.length){ finish(); return; }
+          var el = fits[idx];
+          var prev = el.style.transform;
+          el.style.transform = 'none';
+          window.html2canvas(el, { scale:2.5, useCORS:true, backgroundColor:'#ffffff', logging:false }).then(function(canvas){
+            el.style.transform = prev;
+            var iw = canvas.width, ih = canvas.height;
+            var wmm = availW, hmm = wmm * (ih/iw);
+            if(hmm > availH){ hmm = availH; wmm = hmm * (iw/ih); }
+            if(idx > 0) pdf.addPage();
+            var x = margin + (availW - wmm)/2, y = margin;
+            pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', x, y, wmm, hmm);
+            idx++;
+            step();
+          }).catch(function(err){
+            el.style.transform = prev;
+            alert('PDF生成エラー: ' + (err && err.message ? err.message : err));
+            if(btn){ btn.disabled = false; btn.textContent = label; }
+          });
+        }
+        step();
+      });
+    };
   })();
   </script>
 </body></html>`);
