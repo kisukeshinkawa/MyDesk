@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-06-v232-sign-guard-addr"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-06-v233-sign-quote-safe"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -208,6 +208,17 @@ E-mail: k-shinkawa@beetle-ems.com
 HP：https://www.dustalk.com/
 HP：http://beetlemanagement.com
 ■■■■■■■■■■■■■■■■■■■■■■■■■■■■`;
+// ✅ v233: 署名を「新しい返信本文の末尾（引用スレッドの前）」に付加。引用内の旧署名で誤判定しない
+function appendSignature(rawBody) {
+  const b = String(rawBody || "");
+  // 過去スレッド（引用）の開始位置を検出
+  const m = b.search(/\n\s*(?:-{3,}|＿{3,}|_{3,}|From:\s|差出人:\s|On .+wrote:|\d{4}\s*[年\/]\s*\d{1,2}.*(?:のメール|<|wrote))/);
+  const head = m >= 0 ? b.slice(0, m) : b;
+  const tail = m >= 0 ? b.slice(m) : "";
+  // 新しい返信部分に既に署名がある場合のみスキップ（引用内の旧署名は無視）
+  if (head.includes("Kisuke Shinkawa")) return b;
+  return head.replace(/\s*$/, "") + MAIL_SIGNATURE + (tail ? "\n\n" + tail : "");
+}
 const S3_BUCKET = "mydesk-files-dustalk-1777302196";
 const S3_REGION = "ap-northeast-1";
 const S3_PUBLIC_BASE = `https://${S3_BUCKET}.s3.${S3_REGION}.amazonaws.com`;
@@ -9420,9 +9431,7 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
     try {
       const subj = (email.subject || "").replace(/^(Re:\s*|Fwd:\s*)+/gi, "");
       // 署名を自動付加（既に署名がある場合は重複しない）
-      const bodyWithSignature = body.includes("Kisuke Shinkawa") 
-        ? body 
-        : body + MAIL_SIGNATURE;
+      const bodyWithSignature = appendSignature(body);
       const payload = {
         to: recipients.to,
         cc: recipients.cc,
@@ -11760,7 +11769,7 @@ function EmailView({data,setData,currentUser=null}) {
     setMbSendBusy(true);
     try {
       // ✅ v230: 署名を自動付加（全送信経路で統一・重複防止）
-      body = (body && body.includes("Kisuke Shinkawa")) ? body : (body||"") + MAIL_SIGNATURE;
+      body = appendSignature(body);
       // 送信元: 現在のユーザーのメアドを使う（同一ドメイン内の任意のアドレスから送信可能）
       const fromEmail = currentUser?.email || "noreply@beetle-ems.com";
       // 本文を HTML 改行付きに変換（プレーンテキストの改行を保持）
@@ -12797,7 +12806,7 @@ ${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
                 try {
                   const fromEmail = currentUser?.email || "noreply@beetle-ems.com";
                   // ✅ v230: 署名を自動付加（重複防止）
-                  const genSigned = (generated && generated.includes("Kisuke Shinkawa")) ? generated : generated + MAIL_SIGNATURE;
+                  const genSigned = appendSignature(generated);
                   const res = await fetch(`${DB_API_BASE}/send-email`, {
                     method: "POST",
                     headers: DB_API_HEADERS,
