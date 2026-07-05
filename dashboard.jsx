@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-05-v227-transcribe-and-pdf"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-05-v228-mtg-record-button"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -15232,6 +15232,15 @@ function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach
         🤖 AIに次のタスク・プロジェクトを提案させる
       </button>
 
+      {/* ✅ v228: 録音して議事録（自動文字起こし）ボタン */}
+      <button onClick={()=>{
+        const _e=(data[entityKey]||[]).find(x=>x.id===entityId);
+        window.dispatchEvent(new CustomEvent("md-open-mtg-record",{detail:{entityKey,entityId,entityName:_e?.name||""}}));
+      }}
+        style={{width:"100%",marginBottom:"0.55rem",padding:"0.6rem 0.85rem",borderRadius:8,border:"1.5px solid #16a34a",background:"linear-gradient(135deg,#f0fdf4 0%,#dcfce7 100%)",color:"#166534",fontWeight:800,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.4rem"}}>
+        🎤 録音して議事録を作成（自動で文字起こし）
+      </button>
+
       {/* 統一入力ボックス（チャット・メモ・議事録・アプローチ） */}
       <div style={{marginBottom:"0.85rem"}}>
         <UnifiedComposer
@@ -17271,6 +17280,15 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   const [nextActionModal, setNextActionModal] = useState(null);
   const [approachModal, setApproachModal] = useState(null);
   const [mtgModal,      setMtgModal]      = useState(null); // {entityKey,entityId,entityName}
+  // ✅ v228: 議事録エリアの「🎤録音」ボタンから録音モーダルを開く
+  React.useEffect(()=>{
+    const openRec = (e) => {
+      const d = e?.detail||{};
+      if (d.entityKey && d.entityId) setMtgModal({entityKey:d.entityKey, entityId:d.entityId, entityName:d.entityName||""});
+    };
+    window.addEventListener("md-open-mtg-record", openRec);
+    return () => window.removeEventListener("md-open-mtg-record", openRec);
+  },[]);
   // モーダルフォーム用state（IIFEでhooks不可のため最上位で管理）
   const [lossReason,   setLossReason]   = useState("");
   const [lossNote,     setLossNote]     = useState("");
