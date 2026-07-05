@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-05-v225-printmargin0-1page"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-05-v226-1page-nolabel"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -25990,8 +25990,9 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
   table { border-collapse: collapse; }
   img { max-width: 110px; max-height: 110px; }
   .vendor-header { font-size: 0.78rem; color: #6b7280; margin: 0 auto 0.6rem; padding: 0.4rem 0.8rem; background: #f3f4f6; border-radius: 4px; width: 174mm; box-sizing: border-box; }
-  .page { width: 210mm; height: 297mm; padding: 14mm 18mm; box-sizing: border-box; background: #fff; margin: 0 auto 8mm; overflow: hidden; page-break-after: always; box-shadow: 0 2px 12px rgba(0,0,0,0.12); position: relative; }
-  .page:last-child { page-break-after: auto; margin-bottom: 0; }
+  .page { width: 210mm; height: 297mm; padding: 14mm 18mm; box-sizing: border-box; background: #fff; margin: 0 auto 8mm; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.12); position: relative; }
+  .page + .page { page-break-before: always; }
+  .page:last-child { margin-bottom: 0; }
   .fit { width: 174mm; transform-origin: top left; }
   .contact-footer { margin-top: 1.8rem; text-align: right; }
   .contact-footer-inner { display: inline-block; text-align: left; font-size: 0.82rem; color: #333; line-height: 1.55; }
@@ -26585,7 +26586,6 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
         // ✅ v220: CSS の page-break-after で改ページするため、明示的な pageBreak div は削除（白紙ページ防止）
         const pageBreak = '';
         return `<div class="page" data-vendor="${v.vendor_name||''}">
-  <div class="vendor-header no-print">配布先: ${v.vendor_name || "(業者名なし)"}</div>
   <div class="fit">
     <div class="content">${html}</div>
     <div class="contact-footer">
@@ -26622,8 +26622,9 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
   table { border-collapse: collapse; }
   img { max-width: 110px; max-height: 110px; }
   .vendor-header { font-size: 0.78rem; color: #6b7280; margin: 0 auto 0.6rem; padding: 0.4rem 0.8rem; background: #f3f4f6; border-radius: 4px; width: 174mm; box-sizing: border-box; }
-  .page { width: 210mm; height: 297mm; padding: 14mm 18mm; box-sizing: border-box; background: #fff; margin: 0 auto 8mm; overflow: hidden; page-break-after: always; box-shadow: 0 2px 12px rgba(0,0,0,0.12); position: relative; }
-  .page:last-child { page-break-after: auto; margin-bottom: 0; }
+  .page { width: 210mm; height: 297mm; padding: 14mm 18mm; box-sizing: border-box; background: #fff; margin: 0 auto 8mm; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.12); position: relative; }
+  .page + .page { page-break-before: always; }
+  .page:last-child { margin-bottom: 0; }
   .fit { width: 174mm; transform-origin: top left; }
   .contact-footer { margin-top: 1.8rem; text-align: right; }
   .contact-footer-inner { display: inline-block; text-align: left; font-size: 0.82rem; color: #333; line-height: 1.55; }
