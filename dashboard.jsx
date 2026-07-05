@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-06-v231-reply-firstperson"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-06-v232-sign-guard-addr"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -9420,7 +9420,7 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
     try {
       const subj = (email.subject || "").replace(/^(Re:\s*|Fwd:\s*)+/gi, "");
       // 署名を自動付加（既に署名がある場合は重複しない）
-      const bodyWithSignature = body.includes("■■■■■■■■■■") 
+      const bodyWithSignature = body.includes("Kisuke Shinkawa") 
         ? body 
         : body + MAIL_SIGNATURE;
       const payload = {
@@ -11357,8 +11357,8 @@ function EmailView({data,setData,currentUser=null}) {
         `・スレッド内で私が第三者へ直接連絡する旨が示されている場合は、その第三者へ後日ご連絡する意向を一言添えること\n` +
         `・受信メールの差出人情報（署名・本文・From名）から、相手の会社名・氏名（または苗字）を読み取ること\n` +
         `・冒頭は必ず以下の形式で始める：\n` +
-        `　1行目: 相手の会社名（社外の場合のみ。社内同士なら省略）\n` +
-        `　2行目: 相手の氏名 + 「様」（社外）または「さん」（社内・同僚）\n` +
+        `　1行目: 相手の会社名（社外の場合は必ず記載する。支店名まで分かれば付けてよい。社内同士なら省略）\n` +
+        `　2行目: 相手の「苗字」+「様」（社外／フルネームではなく苗字のみ。例「白川 耀介」→「白川 様」）、社内・同僚なら「さん」\n` +
         `・氏名が読み取れない場合は「ご担当者様」とする\n` +
         `・宛名の次の行は空行\n` +
         `・社外宛の書き出しは「お世話になります。\n${myCompany}の${myName}です。」\n` +
@@ -11760,7 +11760,7 @@ function EmailView({data,setData,currentUser=null}) {
     setMbSendBusy(true);
     try {
       // ✅ v230: 署名を自動付加（全送信経路で統一・重複防止）
-      body = (body && body.includes("■■■■■■■■■■")) ? body : (body||"") + MAIL_SIGNATURE;
+      body = (body && body.includes("Kisuke Shinkawa")) ? body : (body||"") + MAIL_SIGNATURE;
       // 送信元: 現在のユーザーのメアドを使う（同一ドメイン内の任意のアドレスから送信可能）
       const fromEmail = currentUser?.email || "noreply@beetle-ems.com";
       // 本文を HTML 改行付きに変換（プレーンテキストの改行を保持）
@@ -12797,7 +12797,7 @@ ${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
                 try {
                   const fromEmail = currentUser?.email || "noreply@beetle-ems.com";
                   // ✅ v230: 署名を自動付加（重複防止）
-                  const genSigned = (generated && generated.includes("■■■■■■■■■■")) ? generated : generated + MAIL_SIGNATURE;
+                  const genSigned = (generated && generated.includes("Kisuke Shinkawa")) ? generated : generated + MAIL_SIGNATURE;
                   const res = await fetch(`${DB_API_BASE}/send-email`, {
                     method: "POST",
                     headers: DB_API_HEADERS,
