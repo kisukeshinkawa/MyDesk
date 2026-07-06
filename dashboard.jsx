@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-06-v242-fab-dom-move"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-06-v244-fab-isolated-drag"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -28595,6 +28595,57 @@ function renderMarkdown(text, C) {
   return out;
 }
 
+// ✅ v244: FABを独立memo化し、親(AssistantFab)の頻繁な再描画から隔離してドラッグを安定化
+const DraggableFab = React.memo(function DraggableFab({ onOpen, accent }){
+  const ACC = accent;
+  const FAB_CORNERS = [
+    { right:"1.1rem", bottom:"calc(82px + env(safe-area-inset-bottom, 0px))", left:"auto", top:"auto" },
+    { left:"1.1rem",  bottom:"calc(82px + env(safe-area-inset-bottom, 0px))", right:"auto", top:"auto" },
+    { left:"1.1rem",  top:"72px", right:"auto", bottom:"auto" },
+    { right:"1.1rem", top:"72px", left:"auto", bottom:"auto" },
+  ];
+  const [pos, setPos] = React.useState(()=>{ try{ const s=localStorage.getItem("mydesk_fab_pos"); if(s){ const p=JSON.parse(s); if(p&&typeof p.x==="number"&&typeof p.y==="number") return p; } }catch(e){} return null; });
+  const [corner, setCorner] = React.useState(()=>{ try{ const n=parseInt(localStorage.getItem("mydesk_fab_corner")); if(!isNaN(n)&&n>=0&&n<4) return n; }catch(e){} return 0; });
+  const posRef = React.useRef(pos); posRef.current = pos;
+  const ref = React.useRef(null);
+  const drag = React.useRef(null);
+  const justMoved = React.useRef(false);
+
+  React.useEffect(()=>{
+    const move=(cx,cy)=>{ const d=drag.current; if(!d) return; const dx=cx-d.sx, dy=cy-d.sy; if(Math.abs(dx)>4||Math.abs(dy)>4) d.moved=true; if(!d.moved) return; const sz=58,pad=6; const nx=Math.max(pad,Math.min(window.innerWidth-sz-pad,d.ox+dx)); const ny=Math.max(pad,Math.min(window.innerHeight-sz-pad,d.oy+dy)); const el=ref.current; if(el){ el.style.left=nx+"px"; el.style.top=ny+"px"; el.style.right="auto"; el.style.bottom="auto"; } setPos({x:nx,y:ny}); };
+    const up=()=>{ const d=drag.current; if(d){ if(d.moved){ justMoved.current=true; const p=posRef.current; if(p){ try{ localStorage.setItem("mydesk_fab_pos",JSON.stringify(p)); }catch(e){} } } drag.current=null; } };
+    const mm=(e)=>move(e.clientX,e.clientY);
+    const tm=(e)=>{ const d=drag.current; if(e.touches&&e.touches[0]){ if(d&&d.moved&&e.cancelable) e.preventDefault(); move(e.touches[0].clientX,e.touches[0].clientY); } };
+    window.addEventListener("mousemove",mm,true);
+    window.addEventListener("mouseup",up,true);
+    window.addEventListener("touchmove",tm,{passive:false,capture:true});
+    window.addEventListener("touchend",up,true);
+    return ()=>{ window.removeEventListener("mousemove",mm,true); window.removeEventListener("mouseup",up,true); window.removeEventListener("touchmove",tm,true); window.removeEventListener("touchend",up,true); };
+  },[]);
+
+  const startDrag=(cx,cy)=>{ const el=ref.current; if(!el) return; const r=el.getBoundingClientRect(); drag.current={sx:cx,sy:cy,ox:r.left,oy:r.top,moved:false}; };
+  const cycleCorner=()=>{ setPos(null); try{ localStorage.removeItem("mydesk_fab_pos"); }catch(e){} setCorner(c=>{ const n=(c+1)%4; try{ localStorage.setItem("mydesk_fab_corner",String(n)); }catch(e){} return n; }); };
+
+  const posStyle = pos ? {left:pos.x, top:pos.y, right:"auto", bottom:"auto"} : FAB_CORNERS[corner];
+
+  return (
+    <button ref={ref}
+      onClick={()=>{ if(justMoved.current){ justMoved.current=false; return; } onOpen(); }}
+      onMouseDown={e=>{ if(e.button===0) startDrag(e.clientX,e.clientY); }}
+      onTouchStart={e=>{ if(e.touches&&e.touches[0]) startDrag(e.touches[0].clientX,e.touches[0].clientY); }}
+      title="MyDeskアシスタント（ドラッグで移動）"
+      style={{position:"fixed", ...posStyle, zIndex:2147483000,width:58,height:58,borderRadius:"50%",background:`linear-gradient(135deg, ${ACC}, ${ACC}dd)`,border:"none",boxShadow:`0 8px 24px ${ACC}66, 0 2px 6px rgba(0,0,0,0.12)`,cursor:"grab",display:"flex",alignItems:"center",justifyContent:"center",color:"white",fontFamily:"inherit",WebkitTapHighlightColor:"transparent",touchAction:"none",userSelect:"none"}}>
+      <span onClick={(e)=>{ e.stopPropagation(); cycleCorner(); }} onMouseDown={e=>e.stopPropagation()} onTouchStart={e=>e.stopPropagation()}
+        title="位置を四隅で切替（ドラッグが使えない時用）"
+        style={{position:"absolute",top:-8,right:-8,width:24,height:24,borderRadius:"50%",background:"white",color:ACC,border:`1.5px solid ${ACC}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:900,cursor:"pointer",boxShadow:"0 1px 5px rgba(0,0,0,0.25)",lineHeight:1}}>⤢</span>
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z" fill="currentColor" fillOpacity="0.95"/>
+        <path d="M19 14.5l.9 2.1L22 17.5l-2.1.9L19 20.5l-.9-2.1L16 17.5l2.1-.9L19 14.5z" fill="currentColor" fillOpacity="0.75"/>
+      </svg>
+    </button>
+  );
+});
+
 function AssistantFab({data, setData, currentUser, users}) {
   const [open, setOpen] = React.useState(false);
   const [input, setInput] = React.useState("");
@@ -29061,46 +29112,13 @@ ${q || "（添付ファイルのみ。中身を確認して、適切な提案を
 
   const suggestions = ["来週月曜に佐藤さんへ電話タスクを作成","この資料を要約して","○○社向けの提案書を作って","廃棄物処理法って何？"];
 
-  // ✅ v241: FABドラッグ = ネイティブDOMイベント（documentに直付け）で確実に動かす
-  const [fabPos, setFabPos] = React.useState(()=>{ try{ const s=localStorage.getItem("mydesk_fab_pos"); if(s) return JSON.parse(s); }catch(e){} return null; });
-  const fabPosRef = React.useRef(fabPos); fabPosRef.current = fabPos;
-  const fabDrag = React.useRef({moved:false});
-  const fabCleanup = React.useRef(null);
-  const fabRef = React.useCallback((el)=>{
-    if(fabCleanup.current){ fabCleanup.current(); fabCleanup.current=null; }
-    if(!el) return;
-    let drag=null;
-    const xy=(e)=> (e.touches&&e.touches[0]) ? [e.touches[0].clientX,e.touches[0].clientY] : [e.clientX,e.clientY];
-    const down=(e)=>{ const [cx,cy]=xy(e); const r=el.getBoundingClientRect(); drag={sx:cx,sy:cy,ox:r.left,oy:r.top,moved:false}; fabDrag.current.moved=false; };
-    const move=(e)=>{ if(!drag) return; const [cx,cy]=xy(e); if(cx==null) return; const dx=cx-drag.sx, dy=cy-drag.sy; if(Math.abs(dx)>4||Math.abs(dy)>4){ drag.moved=true; fabDrag.current.moved=true; } if(!drag.moved) return; if(e.cancelable) e.preventDefault(); const sz=58,pad=6; const nx=Math.max(pad,Math.min(window.innerWidth-sz-pad,drag.ox+dx)); const ny=Math.max(pad,Math.min(window.innerHeight-sz-pad,drag.oy+dy)); drag.lastX=nx; drag.lastY=ny; el.style.left=nx+"px"; el.style.top=ny+"px"; el.style.right="auto"; el.style.bottom="auto"; };
-    const up=()=>{ if(drag && drag.moved && drag.lastX!=null){ const p={x:drag.lastX,y:drag.lastY}; setFabPos(p); try{ localStorage.setItem("mydesk_fab_pos",JSON.stringify(p)); }catch(e){} } drag=null; };
-    el.addEventListener("mousedown",down);
-    el.addEventListener("touchstart",down,{passive:true});
-    document.addEventListener("mousemove",move);
-    document.addEventListener("touchmove",move,{passive:false});
-    document.addEventListener("mouseup",up);
-    document.addEventListener("touchend",up);
-    fabCleanup.current=()=>{ el.removeEventListener("mousedown",down); el.removeEventListener("touchstart",down); document.removeEventListener("mousemove",move); document.removeEventListener("touchmove",move); document.removeEventListener("mouseup",up); document.removeEventListener("touchend",up); };
-  },[]);
+  // ✅ v244: FABは独立memoコンポーネント(DraggableFab)に委譲。onOpenは安定参照に
+  const openFab = React.useCallback(()=>setOpen(true),[]);
 
   return (
     <>
       {/* FAB: floating button (closed state) */}
-      {!open && (
-        <button ref={fabRef}
-          onClick={()=>{ if(!fabDrag.current.moved) setOpen(true); }}
-          title="MyDeskアシスタント（ドラッグで移動）"
-          style={{position:"fixed",
-            ...(fabPos ? {left:fabPos.x, top:fabPos.y, right:"auto", bottom:"auto"} : {right:"1.1rem", bottom:"calc(82px + env(safe-area-inset-bottom, 0px))"}),
-            zIndex:2147483000,width:58,height:58,borderRadius:"50%",background:`linear-gradient(135deg, ${ACC}, ${ACC}dd)`,border:"none",boxShadow:`0 8px 24px ${ACC}66, 0 2px 6px rgba(0,0,0,0.12)`,cursor:"grab",display:"flex",alignItems:"center",justifyContent:"center",color:"white",fontFamily:"inherit",transition:"box-shadow 0.15s",WebkitTapHighlightColor:"transparent",touchAction:"none",userSelect:"none"}}
-          onMouseEnter={e=>{e.currentTarget.style.boxShadow=`0 10px 28px ${ACC}88, 0 2px 6px rgba(0,0,0,0.14)`;}}
-          onMouseLeave={e=>{e.currentTarget.style.boxShadow=`0 8px 24px ${ACC}66, 0 2px 6px rgba(0,0,0,0.12)`;}}>
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z" fill="currentColor" fillOpacity="0.95"/>
-            <path d="M19 14.5l.9 2.1L22 17.5l-2.1.9L19 20.5l-.9-2.1L16 17.5l2.1-.9L19 14.5z" fill="currentColor" fillOpacity="0.75"/>
-          </svg>
-        </button>
-      )}
+      {!open && <DraggableFab onOpen={openFab} accent={ACC} />}
 
       {/* Chat panel (open state) */}
       {open && (
