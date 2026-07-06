@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-06-v235-vendor-replied"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-06-v236-replied-robust"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -9930,6 +9930,9 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onMarkSpam,
   }, [email.id]);
 
   const isInbound = email.direction === "inbound";
+  // ✅ v236: 返信済み判定はフラグに頼らず「このメールへの返信送信が存在するか」で確実に行う
+  const sentReplies = (data?.emails||[]).filter(x => (x.inReplyTo!=null && x.inReplyTo === email.id) || (x.replyToId!=null && x.replyToId === email.id));
+  const hasReplied = !!email.isReplied || sentReplies.length > 0;
 
   // 自分のメアド（CC/BCCから除外するため）
   const myEmail = (currentUser?.email||"").toLowerCase().trim();
@@ -10576,24 +10579,21 @@ ${latestBody.slice(0, 1500)}
               })}
             </div>
           )}
-          {/* ✅ v235: 返信済みなら「送信した返信内容」を表示（二重返信防止） */}
-          {email.isReplied && isInbound && (() => {
-            const replies = (data?.emails||[]).filter(x => x.inReplyTo === email.id || (x.replyToId && x.replyToId === email.id));
-            return (
+          {/* ✅ v236: 返信済みなら「送信した返信内容」を表示（二重返信防止） */}
+          {hasReplied && isInbound && (
               <div style={{margin:"0.6rem 0",padding:"0.7rem 0.9rem",background:"#ecfdf5",border:"1px solid #a7f3d0",borderRadius:8}}>
-                <div style={{fontWeight:800,color:"#065f46",fontSize:"0.82rem",marginBottom:replies.length?"0.45rem":0}}>
+                <div style={{fontWeight:800,color:"#065f46",fontSize:"0.82rem",marginBottom:sentReplies.length?"0.45rem":0}}>
                   ✓ このメールには返信済みです{email.repliedAt?`（${fmtFull(email.repliedAt).slice(5,16)}）`:""}
                 </div>
-                {replies.length>0 ? replies.map(r=>(
+                {sentReplies.length>0 ? sentReplies.map(r=>(
                   <div key={r.id} style={{fontSize:"0.78rem",color:"#374151",whiteSpace:"pre-wrap",borderTop:"1px dashed #a7f3d0",paddingTop:"0.45rem",marginTop:"0.45rem",wordBreak:"break-word"}}>
                     {(r.body||"").split("■■■■■■■■■■")[0].trim() || "(本文なし)"}
                   </div>
                 )) : <div style={{fontSize:"0.74rem",color:"#6b7280",marginTop:"0.3rem"}}>※返信本文の記録が見つかりませんでした（「送信」タブでご確認ください）</div>}
               </div>
-            );
-          })()}
+          )}
           {/* AI 返信下書き - 編集可能なクイック返信フォーム（未返信のときのみ表示） */}
-          {aiData.ai_draft_reply && isInbound && !email.isReplied && (
+          {aiData.ai_draft_reply && isInbound && !hasReplied && (
             <QuickAiReplyForm 
               email={email}
               aiDraft={aiData.ai_draft_reply}
