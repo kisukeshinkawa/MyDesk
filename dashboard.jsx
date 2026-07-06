@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-06-v240-fab-pointer-drag"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-06-v241-fab-native-drag"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -29061,11 +29061,27 @@ ${q || "（添付ファイルのみ。中身を確認して、適切な提案を
 
   const suggestions = ["来週月曜に佐藤さんへ電話タスクを作成","この資料を要約して","○○社向けの提案書を作って","廃棄物処理法って何？"];
 
-  // ✅ v240: FABをドラッグで移動可能に（Pointer Events + setPointerCapture で確実に）
-  const fabRef = React.useRef(null);
+  // ✅ v241: FABドラッグ = ネイティブDOMイベント（documentに直付け）で確実に動かす
   const [fabPos, setFabPos] = React.useState(()=>{ try{ const s=localStorage.getItem("mydesk_fab_pos"); if(s) return JSON.parse(s); }catch(e){} return null; });
   const fabPosRef = React.useRef(fabPos); fabPosRef.current = fabPos;
-  const fabDrag = React.useRef({dragging:false, moved:false, sx:0, sy:0, ox:0, oy:0});
+  const fabDrag = React.useRef({moved:false});
+  const fabCleanup = React.useRef(null);
+  const fabRef = React.useCallback((el)=>{
+    if(fabCleanup.current){ fabCleanup.current(); fabCleanup.current=null; }
+    if(!el) return;
+    let drag=null;
+    const xy=(e)=> (e.touches&&e.touches[0]) ? [e.touches[0].clientX,e.touches[0].clientY] : [e.clientX,e.clientY];
+    const down=(e)=>{ const [cx,cy]=xy(e); const r=el.getBoundingClientRect(); drag={sx:cx,sy:cy,ox:r.left,oy:r.top,moved:false}; fabDrag.current.moved=false; };
+    const move=(e)=>{ if(!drag) return; const [cx,cy]=xy(e); if(cx==null) return; const dx=cx-drag.sx, dy=cy-drag.sy; if(Math.abs(dx)>4||Math.abs(dy)>4){ drag.moved=true; fabDrag.current.moved=true; } if(drag.moved && e.cancelable) e.preventDefault(); const sz=58,pad=6; const nx=Math.max(pad,Math.min(window.innerWidth-sz-pad,drag.ox+dx)); const ny=Math.max(pad,Math.min(window.innerHeight-sz-pad,drag.oy+dy)); setFabPos({x:nx,y:ny}); };
+    const up=()=>{ if(drag && drag.moved){ try{ localStorage.setItem("mydesk_fab_pos",JSON.stringify(fabPosRef.current)); }catch(e){} } drag=null; };
+    el.addEventListener("mousedown",down);
+    el.addEventListener("touchstart",down,{passive:true});
+    document.addEventListener("mousemove",move);
+    document.addEventListener("touchmove",move,{passive:false});
+    document.addEventListener("mouseup",up);
+    document.addEventListener("touchend",up);
+    fabCleanup.current=()=>{ el.removeEventListener("mousedown",down); el.removeEventListener("touchstart",down); document.removeEventListener("mousemove",move); document.removeEventListener("touchmove",move); document.removeEventListener("mouseup",up); document.removeEventListener("touchend",up); };
+  },[]);
 
   return (
     <>
@@ -29073,9 +29089,6 @@ ${q || "（添付ファイルのみ。中身を確認して、適切な提案を
       {!open && (
         <button ref={fabRef}
           onClick={()=>{ if(!fabDrag.current.moved) setOpen(true); }}
-          onPointerDown={e=>{ const el=fabRef.current; if(!el) return; try{ el.setPointerCapture(e.pointerId); }catch(_){}; const r=el.getBoundingClientRect(); fabDrag.current={dragging:true,moved:false,sx:e.clientX,sy:e.clientY,ox:r.left,oy:r.top}; }}
-          onPointerMove={e=>{ const d=fabDrag.current; if(!d.dragging) return; const dx=e.clientX-d.sx, dy=e.clientY-d.sy; if(Math.abs(dx)>4||Math.abs(dy)>4) d.moved=true; const sz=58,pad=6; const nx=Math.max(pad,Math.min(window.innerWidth-sz-pad,d.ox+dx)); const ny=Math.max(pad,Math.min(window.innerHeight-sz-pad,d.oy+dy)); setFabPos({x:nx,y:ny}); }}
-          onPointerUp={e=>{ const d=fabDrag.current; if(d.dragging){ d.dragging=false; const p=fabPosRef.current; if(p){ try{ localStorage.setItem("mydesk_fab_pos",JSON.stringify(p)); }catch(_){} } } try{ fabRef.current&&fabRef.current.releasePointerCapture(e.pointerId); }catch(_){} }}
           title="MyDeskアシスタント（ドラッグで移動）"
           style={{position:"fixed",
             ...(fabPos ? {left:fabPos.x, top:fabPos.y, right:"auto", bottom:"auto"} : {right:"1.1rem", bottom:"calc(82px + env(safe-area-inset-bottom, 0px))"}),
