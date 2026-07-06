@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-06-v233-sign-quote-safe"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-06-v234-sign-in-draft"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -9306,7 +9306,7 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
   // 「全員に返信」を初期値にするか個別かを設定（CC があれば自動で全員に返信モード）
   const hasCc = (email.cc || []).length > 0;
   const [mode, setMode] = React.useState(hasCc ? "replyAll" : "reply");
-  const [body, setBody] = React.useState(aiDraft || "");
+  const [body, setBody] = React.useState(aiDraft ? appendSignature(aiDraft) : "");
   const [editing, setEditing] = React.useState(false);
   const [sending, setSending] = React.useState(false);
   const [sentSuccess, setSentSuccess] = React.useState(false);  // 送信成功表示
@@ -9413,7 +9413,7 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
   
   // AI 案が変わったら body も更新（編集中は維持）
   React.useEffect(() => {
-    if (!editing) setBody(aiDraft || "");
+    if (!editing) setBody(aiDraft ? appendSignature(aiDraft) : "");
   }, [aiDraft]);
   
   const handleSend = async () => {
@@ -9785,7 +9785,7 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
           {sending ? "送信中…" : "📤 この内容で送信"}
         </button>
         <button 
-          onClick={() => { setBody(aiDraft || ""); setEditing(false); }}
+          onClick={() => { setBody(aiDraft ? appendSignature(aiDraft) : ""); setEditing(false); }}
           style={{
             padding:"0.55rem 0.9rem",
             borderRadius:6,
@@ -9983,7 +9983,7 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onMarkSpam,
       // ✅ v209: AI 分析で生成された返信ドラフトが既にあれば本文に入れる
       const aiDraft = email.ai_draft_reply || aiData?.ai_draft_reply || "";
       if (aiDraft && aiDraft.trim()) {
-        setReplyBody(aiDraft.trim() + quoted);
+        setReplyBody(appendSignature(aiDraft.trim()) + quoted);
       } else {
         setReplyBody(quoted);
       }
