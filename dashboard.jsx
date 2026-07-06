@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-06-v239-draggable-fab"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-06-v240-fab-pointer-drag"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -29061,21 +29061,11 @@ ${q || "（添付ファイルのみ。中身を確認して、適切な提案を
 
   const suggestions = ["来週月曜に佐藤さんへ電話タスクを作成","この資料を要約して","○○社向けの提案書を作って","廃棄物処理法って何？"];
 
-  // ✅ v239: FABをドラッグで移動可能に（位置はlocalStorageに記憶）
+  // ✅ v240: FABをドラッグで移動可能に（Pointer Events + setPointerCapture で確実に）
   const fabRef = React.useRef(null);
   const [fabPos, setFabPos] = React.useState(()=>{ try{ const s=localStorage.getItem("mydesk_fab_pos"); if(s) return JSON.parse(s); }catch(e){} return null; });
   const fabPosRef = React.useRef(fabPos); fabPosRef.current = fabPos;
   const fabDrag = React.useRef({dragging:false, moved:false, sx:0, sy:0, ox:0, oy:0});
-  const startFabDrag = (cx,cy)=>{ const el=fabRef.current; if(!el) return; const r=el.getBoundingClientRect(); fabDrag.current={dragging:true,moved:false,sx:cx,sy:cy,ox:r.left,oy:r.top}; };
-  React.useEffect(()=>{
-    const move=(cx,cy)=>{ const d=fabDrag.current; if(!d.dragging) return; const dx=cx-d.sx, dy=cy-d.sy; if(Math.abs(dx)>4||Math.abs(dy)>4) d.moved=true; const sz=58,pad=6; const nx=Math.max(pad,Math.min(window.innerWidth-sz-pad,d.ox+dx)); const ny=Math.max(pad,Math.min(window.innerHeight-sz-pad,d.oy+dy)); setFabPos({x:nx,y:ny}); };
-    const up=()=>{ const d=fabDrag.current; if(d.dragging){ d.dragging=false; const p=fabPosRef.current; if(p){ try{ localStorage.setItem("mydesk_fab_pos",JSON.stringify(p)); }catch(e){} } } };
-    const mm=(e)=>move(e.clientX,e.clientY);
-    const tm=(e)=>{ if(e.touches&&e.touches[0]){ if(fabDrag.current.dragging&&e.cancelable) e.preventDefault(); move(e.touches[0].clientX,e.touches[0].clientY); } };
-    window.addEventListener("mousemove",mm); window.addEventListener("mouseup",up);
-    window.addEventListener("touchmove",tm,{passive:false}); window.addEventListener("touchend",up);
-    return ()=>{ window.removeEventListener("mousemove",mm); window.removeEventListener("mouseup",up); window.removeEventListener("touchmove",tm); window.removeEventListener("touchend",up); };
-  },[]);
 
   return (
     <>
@@ -29083,14 +29073,15 @@ ${q || "（添付ファイルのみ。中身を確認して、適切な提案を
       {!open && (
         <button ref={fabRef}
           onClick={()=>{ if(!fabDrag.current.moved) setOpen(true); }}
-          onMouseDown={e=>startFabDrag(e.clientX,e.clientY)}
-          onTouchStart={e=>{ if(e.touches&&e.touches[0]) startFabDrag(e.touches[0].clientX,e.touches[0].clientY); }}
+          onPointerDown={e=>{ const el=fabRef.current; if(!el) return; try{ el.setPointerCapture(e.pointerId); }catch(_){}; const r=el.getBoundingClientRect(); fabDrag.current={dragging:true,moved:false,sx:e.clientX,sy:e.clientY,ox:r.left,oy:r.top}; }}
+          onPointerMove={e=>{ const d=fabDrag.current; if(!d.dragging) return; const dx=e.clientX-d.sx, dy=e.clientY-d.sy; if(Math.abs(dx)>4||Math.abs(dy)>4) d.moved=true; const sz=58,pad=6; const nx=Math.max(pad,Math.min(window.innerWidth-sz-pad,d.ox+dx)); const ny=Math.max(pad,Math.min(window.innerHeight-sz-pad,d.oy+dy)); setFabPos({x:nx,y:ny}); }}
+          onPointerUp={e=>{ const d=fabDrag.current; if(d.dragging){ d.dragging=false; const p=fabPosRef.current; if(p){ try{ localStorage.setItem("mydesk_fab_pos",JSON.stringify(p)); }catch(_){} } } try{ fabRef.current&&fabRef.current.releasePointerCapture(e.pointerId); }catch(_){} }}
           title="MyDeskアシスタント（ドラッグで移動）"
           style={{position:"fixed",
             ...(fabPos ? {left:fabPos.x, top:fabPos.y, right:"auto", bottom:"auto"} : {right:"1.1rem", bottom:"calc(82px + env(safe-area-inset-bottom, 0px))"}),
-            zIndex:2147483000,width:58,height:58,borderRadius:"50%",background:`linear-gradient(135deg, ${ACC}, ${ACC}dd)`,border:"none",boxShadow:`0 8px 24px ${ACC}66, 0 2px 6px rgba(0,0,0,0.12)`,cursor:"grab",display:"flex",alignItems:"center",justifyContent:"center",color:"white",fontFamily:"inherit",transition:"transform 0.15s, box-shadow 0.15s",WebkitTapHighlightColor:"transparent",touchAction:"none",userSelect:"none"}}
-          onMouseEnter={e=>{e.currentTarget.style.transform="scale(1.06)";}}
-          onMouseLeave={e=>{e.currentTarget.style.transform="scale(1)";}}>
+            zIndex:2147483000,width:58,height:58,borderRadius:"50%",background:`linear-gradient(135deg, ${ACC}, ${ACC}dd)`,border:"none",boxShadow:`0 8px 24px ${ACC}66, 0 2px 6px rgba(0,0,0,0.12)`,cursor:"grab",display:"flex",alignItems:"center",justifyContent:"center",color:"white",fontFamily:"inherit",transition:"box-shadow 0.15s",WebkitTapHighlightColor:"transparent",touchAction:"none",userSelect:"none"}}
+          onMouseEnter={e=>{e.currentTarget.style.boxShadow=`0 10px 28px ${ACC}88, 0 2px 6px rgba(0,0,0,0.14)`;}}
+          onMouseLeave={e=>{e.currentTarget.style.boxShadow=`0 8px 24px ${ACC}66, 0 2px 6px rgba(0,0,0,0.12)`;}}>
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z" fill="currentColor" fillOpacity="0.95"/>
             <path d="M19 14.5l.9 2.1L22 17.5l-2.1.9L19 20.5l-.9-2.1L16 17.5l2.1-.9L19 14.5z" fill="currentColor" fillOpacity="0.75"/>
