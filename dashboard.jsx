@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-06-v244-fab-isolated-drag"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-07-v245-sync-fix"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -12098,15 +12098,16 @@ ${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
             onClick={async()=>{
               setDbSyncBusy(true);
               try {
-                // mydesk-fetch-emails Lambda を Function URL 経由で呼び出し
+                // mydesk-fetch-emails Lambda を Function URL 経由で呼び出し（本人のメールのみ受信）
                 const startTime = Date.now();
-                const res = await fetch(`${DB_API_BASE}/emails/sync`, {
+                const myAcct = (currentUser?.email || (()=>{try{return JSON.parse(localStorage.getItem("mydesk_session_v2")||"{}").email;}catch{return "";}})() || "").toLowerCase().trim();
+                const res = await fetch(FETCH_EMAILS_URL, {
                   method: "POST",
                   headers: {
                     "Content-Type": "application/json",
                     "x-mydesk-secret": DB_API_SECRET,
                   },
-                  body: JSON.stringify({}),
+                  body: JSON.stringify({ account_email: myAcct }),
                 });
                 if (!res.ok) {
                   const t = await res.text().catch(()=>"");
