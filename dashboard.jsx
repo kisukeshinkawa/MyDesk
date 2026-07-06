@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-06-v237-list-replied-badge"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-06-v238-reply-dedupe"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -9930,8 +9930,12 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onMarkSpam,
   }, [email.id]);
 
   const isInbound = email.direction === "inbound";
-  // ✅ v236: 返信済み判定はフラグに頼らず「このメールへの返信送信が存在するか」で確実に行う
-  const sentReplies = (data?.emails||[]).filter(x => (x.inReplyTo!=null && x.inReplyTo === email.id) || (x.replyToId!=null && x.replyToId === email.id));
+  // ✅ v238: 返信済み判定＋表示（同一本文は重複除去し新しい順）
+  const _seenReply = new Set();
+  const sentReplies = (data?.emails||[])
+    .filter(x => (x.inReplyTo!=null && x.inReplyTo === email.id) || (x.replyToId!=null && x.replyToId === email.id))
+    .sort((a,b)=> new Date(b.sentAt||b.createdAt||0) - new Date(a.sentAt||a.createdAt||0))
+    .filter(x => { const k=(x.body||"").replace(/\s+/g,"").slice(0,200); if(_seenReply.has(k)) return false; _seenReply.add(k); return true; });
   const hasReplied = !!email.isReplied || sentReplies.length > 0;
 
   // 自分のメアド（CC/BCCから除外するため）
