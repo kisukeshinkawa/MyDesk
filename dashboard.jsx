@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-06-v241-fab-native-drag"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-06-v242-fab-dom-move"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -29072,8 +29072,8 @@ ${q || "（添付ファイルのみ。中身を確認して、適切な提案を
     let drag=null;
     const xy=(e)=> (e.touches&&e.touches[0]) ? [e.touches[0].clientX,e.touches[0].clientY] : [e.clientX,e.clientY];
     const down=(e)=>{ const [cx,cy]=xy(e); const r=el.getBoundingClientRect(); drag={sx:cx,sy:cy,ox:r.left,oy:r.top,moved:false}; fabDrag.current.moved=false; };
-    const move=(e)=>{ if(!drag) return; const [cx,cy]=xy(e); if(cx==null) return; const dx=cx-drag.sx, dy=cy-drag.sy; if(Math.abs(dx)>4||Math.abs(dy)>4){ drag.moved=true; fabDrag.current.moved=true; } if(drag.moved && e.cancelable) e.preventDefault(); const sz=58,pad=6; const nx=Math.max(pad,Math.min(window.innerWidth-sz-pad,drag.ox+dx)); const ny=Math.max(pad,Math.min(window.innerHeight-sz-pad,drag.oy+dy)); setFabPos({x:nx,y:ny}); };
-    const up=()=>{ if(drag && drag.moved){ try{ localStorage.setItem("mydesk_fab_pos",JSON.stringify(fabPosRef.current)); }catch(e){} } drag=null; };
+    const move=(e)=>{ if(!drag) return; const [cx,cy]=xy(e); if(cx==null) return; const dx=cx-drag.sx, dy=cy-drag.sy; if(Math.abs(dx)>4||Math.abs(dy)>4){ drag.moved=true; fabDrag.current.moved=true; } if(!drag.moved) return; if(e.cancelable) e.preventDefault(); const sz=58,pad=6; const nx=Math.max(pad,Math.min(window.innerWidth-sz-pad,drag.ox+dx)); const ny=Math.max(pad,Math.min(window.innerHeight-sz-pad,drag.oy+dy)); drag.lastX=nx; drag.lastY=ny; el.style.left=nx+"px"; el.style.top=ny+"px"; el.style.right="auto"; el.style.bottom="auto"; };
+    const up=()=>{ if(drag && drag.moved && drag.lastX!=null){ const p={x:drag.lastX,y:drag.lastY}; setFabPos(p); try{ localStorage.setItem("mydesk_fab_pos",JSON.stringify(p)); }catch(e){} } drag=null; };
     el.addEventListener("mousedown",down);
     el.addEventListener("touchstart",down,{passive:true});
     document.addEventListener("mousemove",move);
