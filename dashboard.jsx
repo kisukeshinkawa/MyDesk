@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-06-v236-replied-robust"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-06-v237-list-replied-badge"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -11690,6 +11690,8 @@ function EmailView({data,setData,currentUser=null}) {
   });
 
   const allMailbox = [...enrichWithAutoLink(dbEmails), ...localMailbox]; // DB由来が先、ローカル後
+  // ✅ v237: 返信送信済みの元メールID集合（一覧の返信済み判定・フラグに依存しない）
+  const repliedToIds = new Set(allMailbox.filter(e=>e.direction!=="inbound" && (e.inReplyTo!=null||e.replyToId!=null)).map(e=>e.inReplyTo!=null?e.inReplyTo:e.replyToId));
   const fmtMbDate = (iso) => { if(!iso) return ""; try{ const d=new Date(iso); const j=new Date(d.getTime()+9*3600*1000); const pad=n=>String(n).padStart(2,"0"); const today=new Date(Date.now()+9*3600*1000).toISOString().slice(0,10); const ymd=j.toISOString().slice(0,10); if(ymd===today) return `${pad(j.getUTCHours())}:${pad(j.getUTCMinutes())}`; return `${j.getUTCMonth()+1}/${j.getUTCDate()}`; }catch{return"";} };
   const fmtMbFullDate = (iso) => { if(!iso) return ""; try{ const d=new Date(iso); const j=new Date(d.getTime()+9*3600*1000); const pad=n=>String(n).padStart(2,"0"); return `${j.getUTCFullYear()}-${pad(j.getUTCMonth()+1)}-${pad(j.getUTCDate())} ${pad(j.getUTCHours())}:${pad(j.getUTCMinutes())}`; }catch{return"";} };
   // メールアドレスから企業/業者/自治体/名刺を自動検出
@@ -12255,8 +12257,8 @@ ${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
                           {(needsRep || needsAction || e.status==="failed" || e.isReplied) && (
                             <div style={{display:"flex",gap:4,marginTop:"0.25rem",flexWrap:"wrap"}}>
                               {needsRep && <span style={{fontSize:"0.58rem",fontWeight:700,padding:"0.05rem 0.35rem",borderRadius:4,background:"#fee2e2",color:"#b91c1c"}}>要返信 {daysSince(e.receivedAt||e.createdAt)}日</span>}
-                              {needsAction && !needsRep && !e.isReplied && <span style={{fontSize:"0.58rem",fontWeight:700,padding:"0.05rem 0.35rem",borderRadius:4,background:"#fef3c7",color:"#92400e"}}>✉️ 要返信</span>}
-                              {e.isReplied && <span style={{fontSize:"0.58rem",fontWeight:700,padding:"0.05rem 0.35rem",borderRadius:4,background:"#d1fae5",color:"#065f46"}}>✓ 返信済</span>}
+                              {needsAction && !needsRep && !(e.isReplied||repliedToIds.has(e.id)) && <span style={{fontSize:"0.58rem",fontWeight:700,padding:"0.05rem 0.35rem",borderRadius:4,background:"#fef3c7",color:"#92400e"}}>✉️ 要返信</span>}
+                              {(e.isReplied||repliedToIds.has(e.id)) && <span style={{fontSize:"0.58rem",fontWeight:700,padding:"0.05rem 0.35rem",borderRadius:4,background:"#d1fae5",color:"#065f46"}}>✓ 返信済</span>}
                               {e.status==="failed" && <span style={{fontSize:"0.58rem",fontWeight:700,padding:"0.05rem 0.35rem",borderRadius:4,background:"#fee2e2",color:"#b91c1c"}}>⚠️ 送信失敗</span>}
                             </div>
                           )}
@@ -12510,7 +12512,7 @@ ${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
                           {isUnread && <span style={{width:7,height:7,borderRadius:"50%",background:"#ea580c",flexShrink:0}}/>}
                           <span style={{fontSize:"0.82rem",fontWeight:isUnread?800:600,color:C.text,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{peer}</span>
                           {needsRep && <span style={{fontSize:"0.62rem",fontWeight:700,padding:"0.1rem 0.4rem",borderRadius:4,background:"#fee2e2",color:"#b91c1c",flexShrink:0}}>要返信 {daysSince(e.receivedAt||e.createdAt)}日</span>}
-                          {e.isReplied && <span style={{fontSize:"0.62rem",fontWeight:700,padding:"0.1rem 0.4rem",borderRadius:4,background:"#d1fae5",color:"#065f46",flexShrink:0}}>✓ 返信済</span>}
+                          {(e.isReplied||repliedToIds.has(e.id)) && <span style={{fontSize:"0.62rem",fontWeight:700,padding:"0.1rem 0.4rem",borderRadius:4,background:"#d1fae5",color:"#065f46",flexShrink:0}}>✓ 返信済</span>}
                           {e.status==="failed" && <span style={{fontSize:"0.62rem",fontWeight:700,padding:"0.1rem 0.4rem",borderRadius:4,background:"#fee2e2",color:"#b91c1c",flexShrink:0}}>⚠️ 送信失敗</span>}
                           <span style={{fontSize:"0.66rem",color:C.textMuted,flexShrink:0,fontVariantNumeric:"tabular-nums"}}>{fmtMbDate(e.sentAt||e.receivedAt||e.createdAt)}</span>
                         </div>
