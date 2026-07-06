@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-06-v234-sign-in-draft"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-06-v235-vendor-replied"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -1129,6 +1129,7 @@ const VENDOR_STATUS = {
   "電話済":  { color:"#0f62fe", bg:"#edf5ff", dot:true },
   "資料送付":{ color:"#6929c4", bg:"#f6f2ff", dot:true },
   "商談中":  { color:"#a37300", bg:"#fdf6dd", dot:true },
+  "仮登録":  { color:"#0891b2", bg:"#cffafe", dot:true },
   "加入済":  { color:"#198038", bg:"#defbe6", dot:true },
   "断り":    { color:"#da1e28", bg:"#fff1f1", dot:true },
   "見送り":  { color:"#6b6b69", bg:"#f4f4f2", dot:true },
@@ -10575,8 +10576,24 @@ ${latestBody.slice(0, 1500)}
               })}
             </div>
           )}
-          {/* AI 返信下書き - 編集可能なクイック返信フォーム */}
-          {aiData.ai_draft_reply && isInbound && (
+          {/* ✅ v235: 返信済みなら「送信した返信内容」を表示（二重返信防止） */}
+          {email.isReplied && isInbound && (() => {
+            const replies = (data?.emails||[]).filter(x => x.inReplyTo === email.id || (x.replyToId && x.replyToId === email.id));
+            return (
+              <div style={{margin:"0.6rem 0",padding:"0.7rem 0.9rem",background:"#ecfdf5",border:"1px solid #a7f3d0",borderRadius:8}}>
+                <div style={{fontWeight:800,color:"#065f46",fontSize:"0.82rem",marginBottom:replies.length?"0.45rem":0}}>
+                  ✓ このメールには返信済みです{email.repliedAt?`（${fmtFull(email.repliedAt).slice(5,16)}）`:""}
+                </div>
+                {replies.length>0 ? replies.map(r=>(
+                  <div key={r.id} style={{fontSize:"0.78rem",color:"#374151",whiteSpace:"pre-wrap",borderTop:"1px dashed #a7f3d0",paddingTop:"0.45rem",marginTop:"0.45rem",wordBreak:"break-word"}}>
+                    {(r.body||"").split("■■■■■■■■■■")[0].trim() || "(本文なし)"}
+                  </div>
+                )) : <div style={{fontSize:"0.74rem",color:"#6b7280",marginTop:"0.3rem"}}>※返信本文の記録が見つかりませんでした（「送信」タブでご確認ください）</div>}
+              </div>
+            );
+          })()}
+          {/* AI 返信下書き - 編集可能なクイック返信フォーム（未返信のときのみ表示） */}
+          {aiData.ai_draft_reply && isInbound && !email.isReplied && (
             <QuickAiReplyForm 
               email={email}
               aiDraft={aiData.ai_draft_reply}
