@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-07-v248-reply-instruction"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-07-v249-attachment-view"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -10723,6 +10723,36 @@ ${latestBody.slice(0, 1500)}
       )}
       {/* 本文 */}
       <div style={{padding:"0.75rem 0.9rem",background:C.bg,borderRadius:8,border:`1px solid ${C.borderLight}`,fontSize:"0.83rem",lineHeight:1.7,color:C.text,whiteSpace:"pre-wrap",marginBottom:"0.85rem",wordBreak:"break-word"}}>{email.body||"(本文なし)"}</div>
+
+      {/* ✅ v249: 添付ファイル（S3保存分。クリックで署名付きURLを取得して開く） */}
+      {(email.attachments||[]).filter(a=>a && a.s3Key).length > 0 && (
+        <div style={{marginBottom:"0.85rem",padding:"0.6rem 0.75rem",background:"#f8fafc",border:`1px solid ${C.borderLight}`,borderRadius:8}}>
+          <div style={{fontSize:"0.72rem",fontWeight:800,color:C.textSub,marginBottom:"0.4rem"}}>📎 添付ファイル（{(email.attachments||[]).filter(a=>a&&a.s3Key).length}）</div>
+          <div style={{display:"flex",flexDirection:"column",gap:"0.35rem"}}>
+            {(email.attachments||[]).filter(a=>a&&a.s3Key).map((a,i)=>{
+              const ct = (a.contentType||"");
+              const icon = ct.startsWith("image/")?"🖼":ct.includes("pdf")?"📄":(ct.includes("excel")||ct.includes("sheet"))?"📊":(ct.includes("word")||ct.includes("document"))?"📝":"📎";
+              const sz = a.size ? (a.size>1048576 ? (a.size/1048576).toFixed(1)+"MB" : Math.max(1,Math.round(a.size/1024))+"KB") : "";
+              return (
+                <button key={i} onClick={async()=>{
+                  try {
+                    const res = await fetch(FETCH_EMAILS_URL, {method:"POST",headers:{"Content-Type":"application/json","x-mydesk-secret":DB_API_SECRET},body:JSON.stringify({action:"attachment-url",s3Key:a.s3Key})});
+                    const j = await res.json().catch(()=>({}));
+                    if (j && j.url) window.open(j.url,"_blank");
+                    else alert("ファイルを開けませんでした\n"+(j&&j.error?j.error:"URL取得に失敗しました"));
+                  } catch(e){ alert("ファイルを開けませんでした\n"+(e.message||e)); }
+                }}
+                style={{display:"flex",alignItems:"center",gap:8,padding:"0.45rem 0.6rem",background:"white",border:`1px solid ${C.border}`,borderRadius:6,cursor:"pointer",fontFamily:"inherit",textAlign:"left",width:"100%"}}>
+                  <span style={{fontSize:"1.05rem"}}>{icon}</span>
+                  <span style={{flex:1,wordBreak:"break-all",fontWeight:600,fontSize:"0.78rem",color:C.text}}>{a.filename||"ファイル"}</span>
+                  {sz && <span style={{fontSize:"0.68rem",color:C.textMuted}}>{sz}</span>}
+                  <span style={{fontSize:"0.68rem",color:C.accent,fontWeight:800,flexShrink:0}}>開く ↗</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* ✅ v207: エンティティ連携 UI - モーダル化（自動候補付き） */}
       {linkType && (
