@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-07-v246-reply-badge-fix"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-07-v247-signature-per-user"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -193,7 +193,8 @@ const AGENT_API_URL = (typeof import.meta !== "undefined" && import.meta.env?.VI
 const FETCH_EMAILS_URL = "https://kh4ppnjygtrezwlbnc6umysci40zflac.lambda-url.ap-northeast-1.on.aws/";
 
 // 新川さんのメール署名（送信時に自動付加）
-const MAIL_SIGNATURE = `
+const MAIL_SIGNATURES = {
+  "k-shinkawa@beetle-ems.com": `
 
 ■■■■■■■■■■■■■■■■■■■■■■■■■■■■
 株式会社西原商事ホールディング
@@ -207,17 +208,64 @@ const MAIL_SIGNATURE = `
 E-mail: k-shinkawa@beetle-ems.com
 HP：https://www.dustalk.com/
 HP：http://beetlemanagement.com
-■■■■■■■■■■■■■■■■■■■■■■■■■■■■`;
-// ✅ v233: 署名を「新しい返信本文の末尾（引用スレッドの前）」に付加。引用内の旧署名で誤判定しない
+■■■■■■■■■■■■■■■■■■■■■■■■■■■■`,
+  "s-mori@beetle-ems.com": `
+
+■■■■■■■■■■■■■■■■■■■■■■■■■■■■
+株式会社西原商事ホールディング
+企画部　
+森　荘太（Sota Mori）
+[本社]〒807-0821福岡県北九州市八幡西区陣原2丁目8-2
+■フリーダイヤル 0120-532-109
+■TEL 093-644-0158
+■FAX 093-644-0168
+■携帯 080-2597-0131
+E-mail: s-mori@beetle-ems.com
+HP：https://www.dustalk.com/
+HP：http://beetlemanagement.com
+■■■■■■■■■■■■■■■■■■■■■■■■■■■■`,
+  "t-imai@beetle-ems.com": `
+
+■■■■■■■■■■■■■■■■■■■■■■■■■■■■
+株式会社西原商事ホールディング
+企画部　主任
+今井　知美（Tomomi Imai）
+[本社]〒807-0821福岡県北九州市八幡西区陣原2丁目8-2
+■フリーダイヤル 0120-532-109
+■TEL 093-644-0158
+■FAX 093-644-0168
+■携帯 090-5520-2611
+E-mail: t-imai@beetle-ems.com
+HP：https://www.dustalk.com/
+HP：http://beetlemanagement.com
+■■■■■■■■■■■■■■■■■■■■■■■■■■■■`,
+};
+const SIG_ROMAJI = {
+  "k-shinkawa@beetle-ems.com": "Kisuke Shinkawa",
+  "s-mori@beetle-ems.com": "Sota Mori",
+  "t-imai@beetle-ems.com": "Tomomi Imai",
+};
+function __currentUserEmail() {
+  try { return (JSON.parse(localStorage.getItem("mydesk_session_v2")||"{}").email||"").toLowerCase().trim(); } catch { return ""; }
+}
+function getMailSignature() {
+  const em = __currentUserEmail();
+  return MAIL_SIGNATURES[em] || MAIL_SIGNATURES["k-shinkawa@beetle-ems.com"];
+}
+// 互換: 旧 MAIL_SIGNATURE 参照が残っていても壊れないように
+const MAIL_SIGNATURE = MAIL_SIGNATURES["k-shinkawa@beetle-ems.com"];
+// ✅ v247: 署名をログイン中ユーザー（新川/森/今井）で自動出し分け。引用内の旧署名で誤判定しない
 function appendSignature(rawBody) {
   const b = String(rawBody || "");
   // 過去スレッド（引用）の開始位置を検出
   const m = b.search(/\n\s*(?:-{3,}|＿{3,}|_{3,}|From:\s|差出人:\s|On .+wrote:|\d{4}\s*[年\/]\s*\d{1,2}.*(?:のメール|<|wrote))/);
   const head = m >= 0 ? b.slice(0, m) : b;
   const tail = m >= 0 ? b.slice(m) : "";
-  // 新しい返信部分に既に署名がある場合のみスキップ（引用内の旧署名は無視）
-  if (head.includes("Kisuke Shinkawa")) return b;
-  return head.replace(/\s*$/, "") + MAIL_SIGNATURE + (tail ? "\n\n" + tail : "");
+  const em = __currentUserEmail();
+  const romaji = SIG_ROMAJI[em] || "Kisuke Shinkawa";
+  // 新しい返信部分に既に自分の署名がある場合のみスキップ（引用内の旧署名は無視）
+  if (head.includes(romaji)) return b;
+  return head.replace(/\s*$/, "") + getMailSignature() + (tail ? "\n\n" + tail : "");
 }
 const S3_BUCKET = "mydesk-files-dustalk-1777302196";
 const S3_REGION = "ap-northeast-1";
