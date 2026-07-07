@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-07-v247-signature-per-user"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-07-v248-reply-instruction"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -9370,6 +9370,36 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
   const [showAddPanel, setShowAddPanel] = React.useState(false);
   const [addType, setAddType] = React.useState("to");    // "to" | "cc" | "bcc"
   const [addInput, setAddInput] = React.useState("");
+  // ✅ v248: 返信の指示・方向性 → その内容で返信文を作り直す
+  const [instruction, setInstruction] = React.useState("");
+  const [regenBusy, setRegenBusy] = React.useState(false);
+  const regenerateReply = async () => {
+    if (regenBusy) return;
+    setRegenBusy(true);
+    try {
+      const myName = currentUser?.name || "";
+      const myShort = (myName.split(/[ \u3000]/)[0] || myName);
+      const fromName = email.from?.name || "";
+      const fromEmail = email.from?.email || "";
+      const recvBody = (email.body || "").slice(0, 3000);
+      const prompt = `あなたは「${myName}（株式会社西原商事ホールディングス）」本人として、以下の受信メールへの返信文を書きます。\n\n【返信の指示・方向性（最優先で必ず従う）】\n${instruction || "（特になし。ビジネス上適切に返信）"}\n\n【受信メール】\n差出人: ${fromName} <${fromEmail}>\n件名: ${email.subject || ""}\n本文:\n${recvBody}\n\n【ルール】\n- 冒頭の宛名は相手の会社名・氏名から「会社名（改行）苗字 様」。会社名が不明なら「苗字 様」。氏名は受信メールに書かれた通りの表記を使い、漢字を推測・変換しない（例：ひらがな『かく』なら『かく 様』）。\n- 次の行を空けて「お世話になっております。」、その次に「株式会社西原商事ホールディングスの${myShort}です。」\n- 上の指示・方向性の内容を必ず反映する\n- 自分（${myName}）を第三者のように書かない（一人称）\n- 署名は付けない\n- 返信本文のみ出力（前後の説明不要）`;
+      const res = await fetch(`${API_BASE}/api/generate-email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-mydesk-secret": "mydesk2026" },
+        body: JSON.stringify({ prompt, max_tokens: 1500 }),
+      });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const j = await res.json();
+      const text = (j.text || j.body || j.message || j.content || "").trim();
+      if (!text) throw new Error("空の応答");
+      setBody(appendSignature(text));
+      setEditing(true);
+    } catch (e) {
+      alert("作り直しに失敗しました。\n" + (e.message || e));
+    } finally {
+      setRegenBusy(false);
+    }
+  };
   
   // 名刺から候補検索（メアド・名前・企業名のいずれかでマッチ）
   const suggestions = React.useMemo(() => {
@@ -9810,7 +9840,26 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
         <span>📝</span>
         <span>送信時に自動で署名が付加されます</span>
       </div>
-      
+
+      {/* ✅ v248: 返信の指示・方向性 → 作り直し */}
+      <div style={{marginBottom:"0.5rem",padding:"0.5rem 0.65rem",background:"#f5f3ff",border:`1px solid #ddd6fe`,borderRadius:8}}>
+        <div style={{fontSize:"0.7rem",fontWeight:800,color:"#6d28d9",marginBottom:"0.3rem",display:"flex",alignItems:"center",gap:5}}>
+          🧭 返信の指示・方向性（AIが判断できない点を伝えて作り直せます）
+        </div>
+        <textarea value={instruction} onChange={e=>setInstruction(e.target.value)}
+          placeholder="例：今回は丁重にお断りする方向で／見積は来週提出予定と伝える／日程は7/10午後を提案 など"
+          rows={2}
+          style={{width:"100%",boxSizing:"border-box",padding:"0.45rem 0.6rem",fontSize:"0.78rem",borderRadius:6,border:`1px solid ${C.border}`,fontFamily:"inherit",resize:"vertical"}} />
+        <div style={{display:"flex",gap:6,marginTop:"0.4rem",alignItems:"center"}}>
+          <button onClick={regenerateReply} disabled={regenBusy}
+            style={{padding:"0.4rem 0.9rem",borderRadius:6,border:"none",background:regenBusy?"#c4b5fd":"#7c3aed",color:"white",fontSize:"0.75rem",fontWeight:800,cursor:regenBusy?"default":"pointer",fontFamily:"inherit"}}>
+            {regenBusy ? "作り直し中…" : "🔁 この指示で返信を作り直す"}
+          </button>
+          {instruction && <button onClick={()=>setInstruction("")}
+            style={{padding:"0.4rem 0.7rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>クリア</button>}
+        </div>
+      </div>
+
       {/* アクションボタン */}
       <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap"}}>
         <button 
@@ -10389,7 +10438,9 @@ ${latestBody.slice(0, 1500)}
           if (!isInbound || !myEm) return null;
           const inTo = (email.to||[]).some(t => (t?.email||"").toLowerCase() === myEm);
           const inCc = (email.cc||[]).some(t => (t?.email||"").toLowerCase() === myEm);
-          if (inTo) return (
+          // ✅ v248: AIが通知/メルマガ/返信不要と判定したものは要返信にしない
+          const aiNoReply = email.ai_should_reply === false || email.ai_priority === "メルマガ" || email.ai_category === "通知" || email.ai_category === "メルマガ";
+          if (inTo && !aiNoReply) return (
             <span style={{fontSize:"0.7rem",fontWeight:800,padding:"0.2rem 0.6rem",borderRadius:5,background:"#fef3c7",color:"#92400e",border:"1px solid #fcd34d"}}>
               ✉️ 要返信
             </span>
