@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-07-v245-sync-fix"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-07-v246-reply-badge-fix"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -12234,7 +12234,8 @@ ${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
                     // 自分が To に入ってる受信メール = 要返信候補
                     const myEmail = (currentUser?.email || (()=>{try{return JSON.parse(localStorage.getItem("mydesk_session_v2")||"{}").email;}catch{return "";}})()).toLowerCase();
                     const isToMe = e.direction === "inbound" && (e.to||[]).some(t => (t?.email||"").toLowerCase() === myEmail);
-                    const needsAction = isToMe && !e.isReplied && !e.isSpam;
+                    // ✅ v246: AIが「返信不要(false)」or メルマガと判定したものは黄色バッジを出さない（通知・自動配信・メルマガ対策）
+                    const needsAction = isToMe && !e.isReplied && !e.isSpam && e.ai_should_reply !== false && e.ai_priority !== "メルマガ" && e.ai_category !== "通知" && e.ai_category !== "メルマガ";
                     return (
                       <div key={e.id} data-email-id={e.id} onClick={()=>selectEmailWithDelayedRead(e.id, isUnread)}
                         style={{display:"flex",alignItems:"flex-start",gap:"0.5rem",padding:"0.55rem 0.7rem",background:isSelected?"#dbeafe":isUnread?"#fff7ed":"white",borderRadius:"8px",border:`1px solid ${isSelected?C.accent:needsAction?"#fbbf24":needsRep?"#fca5a5":C.borderLight}`,cursor:"pointer",boxShadow:isSelected?"0 2px 6px rgba(37,99,235,0.15)":"0 1px 2px rgba(0,0,0,0.03)",transition:"all 0.1s",borderLeftWidth:needsAction?"4px":"1px",borderLeftColor:needsAction?"#f59e0b":undefined}}>
