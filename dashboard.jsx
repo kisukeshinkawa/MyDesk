@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-10-v252-reply-attach"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-10-v253-attach-top"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -10974,10 +10974,7 @@ ${latestBody.slice(0, 1500)}
             <input type="text" value={replySubject} onChange={e=>setReplySubject(e.target.value)} placeholder="件名"
               style={{flex:1,padding:"0.4rem 0.55rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.8rem",fontFamily:"inherit",boxSizing:"border-box"}}/>
           </div>
-          {/* 本文 */}
-          <textarea value={replyBody} onChange={e=>setReplyBody(e.target.value)} rows={12} placeholder={aiBusyLocal?"AIが生成中…":"本文を入力"}
-            style={{width:"100%",padding:"0.55rem 0.7rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.84rem",fontFamily:"inherit",lineHeight:1.6,resize:"vertical",boxSizing:"border-box",marginBottom:"0.5rem"}}/>
-          {/* ✅ v252: 添付ファイル */}
+          {/* ✅ v253: 添付ファイル（本文の上に配置） */}
           <div style={{marginBottom:"0.5rem"}}>
             <input ref={replyFileInputRef} type="file" multiple style={{display:"none"}} onChange={onPickReplyFiles} />
             <button onClick={()=>replyFileInputRef.current&&replyFileInputRef.current.click()} disabled={replyAttachBusy}
@@ -11001,6 +10998,9 @@ ${latestBody.slice(0, 1500)}
               </div>
             )}
           </div>
+          {/* 本文 */}
+          <textarea value={replyBody} onChange={e=>setReplyBody(e.target.value)} rows={12} placeholder={aiBusyLocal?"AIが生成中…":"本文を入力"}
+            style={{width:"100%",padding:"0.55rem 0.7rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.84rem",fontFamily:"inherit",lineHeight:1.6,resize:"vertical",boxSizing:"border-box",marginBottom:"0.5rem"}}/>
           {/* アクション */}
           <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap"}}>
             {isInbound && replyMode !== "forward" && (
