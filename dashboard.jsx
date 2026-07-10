@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-10-v253-attach-top"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-10-v254-bizcard-gallery"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -14590,6 +14590,7 @@ const BizCardScanner = React.memo(function BizCardScannerInner({ onResult, curre
   const [lastResult, setLastResult] = React.useState(null); // 直近の解析結果（再適用用）
   const [diagInfo, setDiagInfo] = React.useState(""); // 診断情報
   const fileRef = React.useRef();
+  const galleryRef = React.useRef();
 
   // Lambda 接続テスト（GET リクエストでヘルスチェック）
   const testConnection = async () => {
@@ -14775,6 +14776,8 @@ const BizCardScanner = React.memo(function BizCardScannerInner({ onResult, curre
     <div style={{marginBottom:"1rem"}}>
       <input ref={fileRef} type="file" accept="image/*,.heic,.heif" capture="environment"
         style={{display:"none"}} onChange={e=>{handleFile(e.target.files[0]); e.target.value="";}}/>
+      <input ref={galleryRef} type="file" accept="image/*,.heic,.heif,.pdf,application/pdf"
+        style={{display:"none"}} onChange={e=>{handleFile(e.target.files[0]); e.target.value="";}}/>
       <div style={{display:"flex",gap:"0.4rem"}}>
         <button type="button"
           onClick={()=>fileRef.current?.click()}
@@ -14782,7 +14785,13 @@ const BizCardScanner = React.memo(function BizCardScannerInner({ onResult, curre
           style={{flex:1,padding:"0.75rem",borderRadius:"8px",border:"2px dashed #2563eb",background:scanning?"#eff6ff":"white",color:scanning?"#1d4ed8":"#2563eb",fontWeight:700,fontSize:"0.88rem",cursor:scanning?"not-allowed":"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
           {scanning
             ? <><span style={{width:18,height:18,borderRadius:"50%",border:"2.5px solid #2563eb",borderTopColor:"transparent",animation:"spin 0.8s linear infinite",display:"inline-block"}}/> {stageLabel[stage] || "処理中..."}</>
-            : <><span style={{fontSize:"1.2rem"}}>📷</span> 名刺を撮影して自動入力</>}
+            : <><span style={{fontSize:"1.2rem"}}>📷</span> 名刺を撮影</>}
+        </button>
+        <button type="button"
+          onClick={()=>galleryRef.current?.click()}
+          disabled={scanning}
+          style={{flex:1,padding:"0.75rem",borderRadius:"8px",border:"2px dashed #059669",background:scanning?"#ecfdf5":"white",color:scanning?"#047857":"#059669",fontWeight:700,fontSize:"0.88rem",cursor:scanning?"not-allowed":"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
+          <span style={{fontSize:"1.2rem"}}>🖼</span> 画像を選択
         </button>
         <button type="button" onClick={testConnection} disabled={scanning} title="Lambda 接続をテスト"
           style={{padding:"0.75rem 0.6rem",borderRadius:"8px",border:"1.5px solid #6b7280",background:"white",color:"#6b7280",fontWeight:700,fontSize:"0.85rem",cursor:scanning?"not-allowed":"pointer",fontFamily:"inherit"}}>
