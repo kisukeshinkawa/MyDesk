@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-10-v254-bizcard-gallery"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-10-v255-linkify"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -10822,7 +10822,7 @@ ${latestBody.slice(0, 1500)}
         </div>
       )}
       {/* 本文 */}
-      <div style={{padding:"0.75rem 0.9rem",background:C.bg,borderRadius:8,border:`1px solid ${C.borderLight}`,fontSize:"0.83rem",lineHeight:1.7,color:C.text,whiteSpace:"pre-wrap",marginBottom:"0.85rem",wordBreak:"break-word"}}>{email.body||"(本文なし)"}</div>
+      <div style={{padding:"0.75rem 0.9rem",background:C.bg,borderRadius:8,border:`1px solid ${C.borderLight}`,fontSize:"0.83rem",lineHeight:1.7,color:C.text,whiteSpace:"pre-wrap",marginBottom:"0.85rem",wordBreak:"break-word"}}>{linkifyToNodes(email.body)}</div>
 
 
       {/* ✅ v207: エンティティ連携 UI - モーダル化（自動候補付き） */}
@@ -14244,6 +14244,30 @@ const MAIL_SENDER_URL = cleanUrl(
   (typeof import.meta !== "undefined" && import.meta.env?.VITE_MAIL_SENDER_URL)
   || "https://pf4klt3fylg4wowypbbpzqe5ty0buvoe.lambda-url.ap-northeast-1.on.aws/"
 );
+
+// ✅ v255: 本文中のURLをクリック可能な<a>に変換（受信・送信共通）
+function linkifyToNodes(text) {
+  if (!text) return "(本文なし)";
+  const parts = [];
+  const regex = /(https?:\/\/[^\s<>"'）)]+|www\.[^\s<>"'）)]+)/g;
+  let last = 0, m, i = 0;
+  while ((m = regex.exec(text)) !== null) {
+    if (m.index > last) parts.push(text.slice(last, m.index));
+    let url = m[0];
+    let tail = "";
+    const trail = url.match(/[。、.,)\]]+$/);
+    if (trail) { tail = trail[0]; url = url.slice(0, -tail.length); }
+    const href = url.startsWith("http") ? url : "https://" + url;
+    parts.push(
+      <a key={i++} href={href} target="_blank" rel="noopener noreferrer"
+        style={{color:"#2563eb",textDecoration:"underline",wordBreak:"break-all"}}>{url}</a>
+    );
+    if (tail) parts.push(tail);
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts.length ? parts : text;
+}
 
 // ✅ v251: ファイルをS3にアップロードして {s3Key, filename} を返す（送信添付用）
 async function uploadFileForSend(file, accountEmail) {
