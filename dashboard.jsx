@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-07-v250-attach-top"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-10-v251-send-attach"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -9373,6 +9373,28 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
   // ✅ v248: 返信の指示・方向性 → その内容で返信文を作り直す
   const [instruction, setInstruction] = React.useState("");
   const [regenBusy, setRegenBusy] = React.useState(false);
+  // ✅ v251: 送信添付
+  const [attachedFiles, setAttachedFiles] = React.useState([]); // [{s3Key, filename, size}]
+  const [attachBusy, setAttachBusy] = React.useState(false);
+  const fileInputRef = React.useRef(null);
+  const onPickFiles = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (e.target) e.target.value = "";
+    if (files.length === 0) return;
+    setAttachBusy(true);
+    try {
+      const acct = (currentUser?.email || myEmail || "").toLowerCase();
+      for (const f of files) {
+        if (f.size > 25 * 1024 * 1024) { alert(`「${f.name}」は25MBを超えるため添付できません`); continue; }
+        const meta = await uploadFileForSend(f, acct);
+        setAttachedFiles(prev => [...prev, meta]);
+      }
+    } catch (err) {
+      alert("添付に失敗しました\n" + (err.message || err));
+    } finally {
+      setAttachBusy(false);
+    }
+  };
   const regenerateReply = async () => {
     if (regenBusy) return;
     setRegenBusy(true);
@@ -9519,6 +9541,7 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
         body: bodyWithSignature,
         replyToId: email.id,
         linkedDisplay: email.linkedDisplay || [],
+        attachments: attachedFiles,
       };
       if (typeof onSend === "function") {
         const ok = await onSend(payload);
@@ -9858,6 +9881,31 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
           {instruction && <button onClick={()=>setInstruction("")}
             style={{padding:"0.4rem 0.7rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>クリア</button>}
         </div>
+      </div>
+
+      {/* ✅ v251: ファイル添付 */}
+      <div style={{marginBottom:"0.5rem"}}>
+        <input ref={fileInputRef} type="file" multiple style={{display:"none"}} onChange={onPickFiles} />
+        <button onClick={()=>fileInputRef.current&&fileInputRef.current.click()} disabled={attachBusy}
+          style={{padding:"0.4rem 0.8rem",borderRadius:6,border:`1px dashed ${C.border}`,background:"white",color:C.textSub,fontSize:"0.75rem",fontWeight:700,cursor:attachBusy?"default":"pointer",fontFamily:"inherit"}}>
+          {attachBusy ? "アップロード中…" : "📎 ファイルを添付"}
+        </button>
+        {attachedFiles.length > 0 && (
+          <div style={{display:"flex",flexDirection:"column",gap:"0.3rem",marginTop:"0.4rem"}}>
+            {attachedFiles.map((a,i)=>{
+              const sz = a.size ? (a.size>1048576 ? (a.size/1048576).toFixed(1)+"MB" : Math.max(1,Math.round(a.size/1024))+"KB") : "";
+              return (
+                <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"0.35rem 0.55rem",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:6}}>
+                  <span style={{fontSize:"0.95rem"}}>📎</span>
+                  <span style={{flex:1,wordBreak:"break-all",fontSize:"0.76rem",fontWeight:600,color:C.text}}>{a.filename}</span>
+                  {sz && <span style={{fontSize:"0.66rem",color:C.textMuted}}>{sz}</span>}
+                  <button onClick={()=>setAttachedFiles(prev=>prev.filter((_,j)=>j!==i))}
+                    style={{border:"none",background:"none",cursor:"pointer",color:"#dc2626",fontSize:"0.95rem",lineHeight:1,padding:0}}>×</button>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* アクションボタン */}
@@ -11916,21 +11964,28 @@ function EmailView({data,setData,currentUser=null}) {
     setData(nd); saveData(nd);
   };
 
-  // 送信処理: API経由
-  const sendEmailNow = async ({to, cc, bcc, subject, body, replyToId, linkedDisplay}) => {
+  // 送信処理: mydesk-mail-sender (Resend) 経由。添付対応。
+  const sendEmailNow = async ({to, cc, bcc, subject, body, replyToId, linkedDisplay, attachments}) => {
     setMbSendBusy(true);
     try {
       // ✅ v230: 署名を自動付加（全送信経路で統一・重複防止）
       body = appendSignature(body);
       // 送信元: 現在のユーザーのメアドを使う（同一ドメイン内の任意のアドレスから送信可能）
       const fromEmail = currentUser?.email || "noreply@beetle-ems.com";
+      // {name,email} → メール文字列 に正規化（mail-sender はメール文字列配列を期待）
+      const toEmails = (arr) => (Array.isArray(arr)?arr:(arr?[arr]:[])).map(x => typeof x==="string" ? x : (x?.email||"")).filter(Boolean);
       // 本文を HTML 改行付きに変換（プレーンテキストの改行を保持）
       const escapeHtml = (s) => String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
       const html = `<div style="font-family:'Hiragino Sans','Yu Gothic',sans-serif;font-size:14px;line-height:1.7;color:#222;white-space:pre-wrap;">${escapeHtml(body)}</div>`;
-      const res = await fetch(`${DB_API_BASE}/send-email`, {
+      const res = await fetch(MAIL_SENDER_URL, {
         method: "POST",
-        headers: DB_API_HEADERS,
-        body: JSON.stringify({ to, cc, bcc, subject, body, html, replyToId, fromName: currentUser?.name||"", fromEmail })
+        headers: { "Content-Type": "application/json", "x-mydesk-secret": DB_API_SECRET },
+        body: JSON.stringify({
+          to: toEmails(to), cc: toEmails(cc), bcc: toEmails(bcc),
+          subject, body, html,
+          fromName: currentUser?.name || "", fromAddress: fromEmail,
+          attachments: (attachments||[]).map(a => ({ s3Key: a.s3Key, filename: a.filename })),
+        })
       });
       let result = null;
       try { result = await res.json(); } catch(e){}
@@ -14140,8 +14195,22 @@ const BIZCARD_OCR_URL = "https://2tosyclyqeswer2d7q4p7f4qri0lpfca.lambda-url.ap-
 const cleanUrl = (s) => String(s || "").replace(/[\s\u00A0\u200B-\u200D\uFEFF]+/g, "").trim();
 const MAIL_SENDER_URL = cleanUrl(
   (typeof import.meta !== "undefined" && import.meta.env?.VITE_MAIL_SENDER_URL)
-  || "https://MAIL_SENDER_PLACEHOLDER.lambda-url.ap-northeast-1.on.aws/"
+  || "https://pf4klt3fylg4wowypbbpzqe5ty0buvoe.lambda-url.ap-northeast-1.on.aws/"
 );
+
+// ✅ v251: ファイルをS3にアップロードして {s3Key, filename} を返す（送信添付用）
+async function uploadFileForSend(file, accountEmail) {
+  const r1 = await fetch(FETCH_EMAILS_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-mydesk-secret": DB_API_SECRET },
+    body: JSON.stringify({ action: "upload-url", filename: file.name, contentType: file.type || "application/octet-stream", account: accountEmail || "unknown" }),
+  });
+  const j1 = await r1.json().catch(()=>({}));
+  if (!j1 || !j1.uploadUrl || !j1.s3Key) throw new Error(j1?.error || "アップロードURL取得に失敗しました");
+  const put = await fetch(j1.uploadUrl, { method: "PUT", headers: { "Content-Type": file.type || "application/octet-stream" }, body: file });
+  if (!put.ok) throw new Error("アップロードに失敗しました (HTTP " + put.status + ")");
+  return { s3Key: j1.s3Key, filename: file.name, size: file.size, contentType: file.type || "application/octet-stream" };
+}
 
 // ─── 朝のタスク通知Lambda URL ──────────────────────────────────────
 const DAILY_TASK_NOTIFY_URL = cleanUrl(
