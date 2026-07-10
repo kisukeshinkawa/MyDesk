@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-10-v251-send-attach"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-10-v252-reply-attach"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -10026,6 +10026,28 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onMarkSpam,
   const [replyBody, setReplyBody]   = React.useState("");
   const [replySubject, setReplySubject] = React.useState("");
   const [aiBusyLocal, setAiBusyLocal] = React.useState(false);
+  // ✅ v252: 通常返信フォームの送信添付
+  const [replyAttachedFiles, setReplyAttachedFiles] = React.useState([]);
+  const [replyAttachBusy, setReplyAttachBusy] = React.useState(false);
+  const replyFileInputRef = React.useRef(null);
+  const onPickReplyFiles = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (e.target) e.target.value = "";
+    if (files.length === 0) return;
+    setReplyAttachBusy(true);
+    try {
+      const acct = (currentUser?.email || "").toLowerCase();
+      for (const f of files) {
+        if (f.size > 25 * 1024 * 1024) { alert(`「${f.name}」は25MBを超えるため添付できません`); continue; }
+        const meta = await uploadFileForSend(f, acct);
+        setReplyAttachedFiles(prev => [...prev, meta]);
+      }
+    } catch (err) {
+      alert("添付に失敗しました\n" + (err.message || err));
+    } finally {
+      setReplyAttachBusy(false);
+    }
+  };
   // ✅ v202: その他メニュー（メール詳細のサブアクション）
   const [showMoreMenu, setShowMoreMenu] = React.useState(false);
   
@@ -10175,9 +10197,10 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onMarkSpam,
       body: replyBody,
       replyToId: replyMode !== "forward" ? email.id : null,
       linkedDisplay: email.linkedDisplay||[],
+      attachments: replyAttachedFiles,
     };
     const ok = await onSend(payload);
-    if (ok) closeReplyForm();
+    if (ok) { setReplyAttachedFiles([]); closeReplyForm(); }
   };
 
   // メアド入力フィールド（chips式: 「name <email>, email2」をパース）
@@ -10954,6 +10977,30 @@ ${latestBody.slice(0, 1500)}
           {/* 本文 */}
           <textarea value={replyBody} onChange={e=>setReplyBody(e.target.value)} rows={12} placeholder={aiBusyLocal?"AIが生成中…":"本文を入力"}
             style={{width:"100%",padding:"0.55rem 0.7rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.84rem",fontFamily:"inherit",lineHeight:1.6,resize:"vertical",boxSizing:"border-box",marginBottom:"0.5rem"}}/>
+          {/* ✅ v252: 添付ファイル */}
+          <div style={{marginBottom:"0.5rem"}}>
+            <input ref={replyFileInputRef} type="file" multiple style={{display:"none"}} onChange={onPickReplyFiles} />
+            <button onClick={()=>replyFileInputRef.current&&replyFileInputRef.current.click()} disabled={replyAttachBusy}
+              style={{padding:"0.4rem 0.8rem",borderRadius:6,border:`1px dashed ${C.border}`,background:"white",color:C.textSub,fontSize:"0.75rem",fontWeight:700,cursor:replyAttachBusy?"default":"pointer",fontFamily:"inherit"}}>
+              {replyAttachBusy?"アップロード中…":"📎 ファイルを添付"}
+            </button>
+            {replyAttachedFiles.length>0 && (
+              <div style={{display:"flex",flexDirection:"column",gap:"0.3rem",marginTop:"0.4rem"}}>
+                {replyAttachedFiles.map((a,i)=>{
+                  const sz = a.size ? (a.size>1048576?(a.size/1048576).toFixed(1)+"MB":Math.max(1,Math.round(a.size/1024))+"KB") : "";
+                  return (
+                    <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"0.35rem 0.55rem",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:6}}>
+                      <span style={{fontSize:"0.95rem"}}>📎</span>
+                      <span style={{flex:1,wordBreak:"break-all",fontSize:"0.76rem",fontWeight:600,color:C.text}}>{a.filename}</span>
+                      {sz && <span style={{fontSize:"0.66rem",color:C.textMuted}}>{sz}</span>}
+                      <button onClick={()=>setReplyAttachedFiles(prev=>prev.filter((_,j)=>j!==i))}
+                        style={{border:"none",background:"none",cursor:"pointer",color:"#dc2626",fontSize:"0.95rem",lineHeight:1,padding:0}}>×</button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
           {/* アクション */}
           <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap"}}>
             {isInbound && replyMode !== "forward" && (
