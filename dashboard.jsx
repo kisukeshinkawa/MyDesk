@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-10-v255-linkify"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-10-v256-reply-compact"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -9373,6 +9373,8 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
   // ✅ v248: 返信の指示・方向性 → その内容で返信文を作り直す
   const [instruction, setInstruction] = React.useState("");
   const [regenBusy, setRegenBusy] = React.useState(false);
+  // ✅ v256: 詳細オプション（指示・添付）の折りたたみ
+  const [showAdvanced, setShowAdvanced] = React.useState(false);
   // ✅ v251: 送信添付
   const [attachedFiles, setAttachedFiles] = React.useState([]); // [{s3Key, filename, size}]
   const [attachBusy, setAttachBusy] = React.useState(false);
@@ -9864,6 +9866,14 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
         <span>送信時に自動で署名が付加されます</span>
       </div>
 
+      {/* ✅ v256: 詳細オプション（指示・添付）を折りたたみ */}
+      <button onClick={()=>setShowAdvanced(v=>!v)}
+        style={{display:"flex",alignItems:"center",gap:6,padding:"0.35rem 0.2rem",marginBottom:"0.4rem",background:"none",border:"none",cursor:"pointer",color:C.textSub,fontSize:"0.74rem",fontWeight:700,fontFamily:"inherit"}}>
+        <span style={{transition:"transform 0.15s",transform:showAdvanced?"rotate(90deg)":"rotate(0deg)",display:"inline-block"}}>▶</span>
+        指示で作り直す・ファイル添付
+        {attachedFiles.length>0 && <span style={{fontSize:"0.66rem",fontWeight:800,color:"#059669",background:"#ecfdf5",border:"1px solid #bbf7d0",borderRadius:10,padding:"0.05rem 0.4rem"}}>📎{attachedFiles.length}</span>}
+      </button>
+      {showAdvanced && (<>
       {/* ✅ v248: 返信の指示・方向性 → 作り直し */}
       <div style={{marginBottom:"0.5rem",padding:"0.5rem 0.65rem",background:"#f5f3ff",border:`1px solid #ddd6fe`,borderRadius:8}}>
         <div style={{fontSize:"0.7rem",fontWeight:800,color:"#6d28d9",marginBottom:"0.3rem",display:"flex",alignItems:"center",gap:5}}>
@@ -9907,6 +9917,7 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
           </div>
         )}
       </div>
+      </>)}
 
       {/* アクションボタン */}
       <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap"}}>
