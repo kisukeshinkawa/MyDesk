@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-10-v256-reply-compact"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-10-v257-reply-scroll"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -10029,6 +10029,7 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onMarkSpam,
   const [linkType, setLinkType] = React.useState(null); // 企業/業者/自治体/タスク/プロジェクト/名刺
   const [linkSearch, setLinkSearch] = React.useState("");
   const [replyMode, setReplyMode] = React.useState(null); // null | "reply" | "replyAll" | "forward"
+  const replyFormRef = React.useRef(null);
   const [replyTo, setReplyTo]       = React.useState([]); // [{name,email}]
   const [replyCc, setReplyCc]       = React.useState([]); // [{name,email}]
   const [replyBcc, setReplyBcc]     = React.useState([]); // [{name,email}]
@@ -10134,6 +10135,10 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onMarkSpam,
   // 返信フォームを開く（mode: reply | replyAll | forward）
   const openReplyForm = (mode) => {
     setReplyMode(mode);
+    // ✅ v257: 開いたら返信フォームまでスクロール（返信が下に隠れないように）
+    setTimeout(() => {
+      try { replyFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }); } catch {}
+    }, 60);
     const subj = (email.subject||"").replace(/^(Re:\s*|Fwd:\s*)+/gi,"");
     if (mode === "forward") {
       setReplySubject(`Fwd: ${subj}`);
@@ -10949,7 +10954,7 @@ ${latestBody.slice(0, 1500)}
 
       {/* 返信モード */}
       {replyMode && (
-        <div style={{background:"#f0fdf4",borderRadius:8,padding:"0.75rem",border:"1px solid #86efac"}}>
+        <div ref={replyFormRef} style={{background:"#f0fdf4",borderRadius:8,padding:"0.75rem",border:"1px solid #86efac"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.5rem"}}>
             <div style={{fontSize:"0.78rem",fontWeight:800,color:"#059669"}}>
               {replyMode==="reply"?"↩️ 返信":replyMode==="replyAll"?"↩️ 全員に返信":"→ 転送"}
