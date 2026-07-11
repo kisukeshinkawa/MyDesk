@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-10-v257-reply-scroll"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-11-v258-beenet-map"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -28562,7 +28562,77 @@ const DUSTALK_DEF = {hp:0,serviceLog:0,requests:0,contracts:0,revenue:0,lineFrie
 const REBIT_DEF  = {cumulative:0,monthly:0,hp:0};
 const BIZCON_DEF = {hpByMonth:{},applicants:0,fullApplicants:0};
 const BM_DEF     = {hpByMonth:{}};
-const BEENET_DEF = {emitters:0, emitterSites:0, vendors:0, vendorsTransport:0, vendorsDispose:0, salesAmount:0};
+const BEENET_DEF = {emitters:0, emitterSites:0, vendors:0, vendorsTransport:0, vendorsDispose:0, salesAmount:0,
+  // ✅ v258: 地方別拠点数
+  siteTohoku:0, siteKanto:0, siteChubu:0, siteKansai:0, siteChugokuShikoku:0, siteKyushu:0};
+
+// 地方の定義（bee-net拠点数）
+const BEENET_REGIONS = [
+  {key:"siteTohoku",         label:"東北・北海道", color:"#60a5fa"},
+  {key:"siteKanto",          label:"関東",         color:"#34d399"},
+  {key:"siteChubu",          label:"中部",         color:"#fbbf24"},
+  {key:"siteKansai",         label:"関西",         color:"#f472b6"},
+  {key:"siteChugokuShikoku", label:"中国・四国",   color:"#a78bfa"},
+  {key:"siteKyushu",         label:"九州",         color:"#fb923c"},
+];
+
+// ✅ v258: 日本地図（地方別拠点数を色の濃さで表示）
+function JapanRegionMap({ data, C }) {
+  const vals = BEENET_REGIONS.map(r => +(data?.[r.key]) || 0);
+  const max = Math.max(1, ...vals);
+  const total = vals.reduce((a,b)=>a+b, 0);
+  const [hover, setHover] = React.useState(null);
+  // 地方ごとの簡易ブロック配置（日本列島の並びを模した配置）
+  const shade = (v) => {
+    const t = max ? v / max : 0;
+    const alpha = 0.15 + t * 0.85;
+    return alpha;
+  };
+  const Region = ({ r, v, x, y, w, h }) => (
+    <g onMouseEnter={()=>setHover(r.key)} onMouseLeave={()=>setHover(null)} style={{cursor:"pointer"}}>
+      <rect x={x} y={y} width={w} height={h} rx="6"
+        fill={r.color} fillOpacity={shade(v)}
+        stroke={hover===r.key ? "#111827" : "#ffffff"} strokeWidth={hover===r.key ? 2.2 : 1.5}/>
+      <text x={x+w/2} y={y+h/2-6} textAnchor="middle" fontSize="10.5" fontWeight="800" fill="#0f172a">{r.label}</text>
+      <text x={x+w/2} y={y+h/2+11} textAnchor="middle" fontSize="13" fontWeight="800" fill="#0f172a">{v.toLocaleString()}</text>
+    </g>
+  );
+  const get = (k) => +(data?.[k]) || 0;
+  return (
+    <div style={{width:"100%"}}>
+      <svg viewBox="0 0 320 260" style={{width:"100%",maxWidth:420,display:"block",margin:"0 auto"}}>
+        {/* 東北・北海道（右上） */}
+        <Region r={BEENET_REGIONS[0]} v={get("siteTohoku")}         x={205} y={10}  w={100} h={62}/>
+        {/* 関東（中央右） */}
+        <Region r={BEENET_REGIONS[1]} v={get("siteKanto")}          x={205} y={80}  w={100} h={62}/>
+        {/* 中部（中央） */}
+        <Region r={BEENET_REGIONS[2]} v={get("siteChubu")}          x={120} y={80}  w={78}  h={62}/>
+        {/* 関西（中央左） */}
+        <Region r={BEENET_REGIONS[3]} v={get("siteKansai")}         x={120} y={150} w={78}  h={62}/>
+        {/* 中国・四国（左） */}
+        <Region r={BEENET_REGIONS[4]} v={get("siteChugokuShikoku")} x={15}  y={150} w={98}  h={62}/>
+        {/* 九州（左下） */}
+        <Region r={BEENET_REGIONS[5]} v={get("siteKyushu")}         x={15}  y={80}  w={98}  h={62}/>
+        {/* 合計 */}
+        <text x="60" y="35" fontSize="10" fontWeight="700" fill={C.textSub}>全国合計</text>
+        <text x="60" y="56" fontSize="19" fontWeight="800" fill={C.text}>{total.toLocaleString()}</text>
+      </svg>
+      <div style={{display:"flex",flexWrap:"wrap",gap:"0.35rem",justifyContent:"center",marginTop:"0.5rem"}}>
+        {BEENET_REGIONS.map(r=>{
+          const v = get(r.key);
+          const pct = total ? Math.round(v/total*100) : 0;
+          return (
+            <div key={r.key} style={{display:"flex",alignItems:"center",gap:5,padding:"0.2rem 0.5rem",background:C.bg,border:`1px solid ${C.borderLight}`,borderRadius:999,fontSize:"0.68rem"}}>
+              <span style={{width:9,height:9,borderRadius:3,background:r.color,display:"inline-block"}}/>
+              <span style={{fontWeight:700,color:C.text}}>{r.label}</span>
+              <span style={{color:C.textSub}}>{v.toLocaleString()}（{pct}%）</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 function getMonthKey(d=new Date()){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;}
 function getYearKey(d=new Date()){return `${d.getFullYear()}`;}
@@ -31310,6 +31380,34 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
           {/* ── bee-net (月別: 排出事業者 / 排出事業場 / 委託業者 / 流通額) ── */}
           {sys==="beenet" && (
               <div>
+                {/* ✅ v258: 地方別拠点数（日本地図） */}
+                <div style={{marginBottom:"1.25rem"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"0.35rem 0",borderBottom:`2px solid ${C.accent}`,marginBottom:"0.6rem"}}>
+                    <div style={{fontSize:"0.7rem",fontWeight:800,color:C.textSub,textTransform:"uppercase",letterSpacing:"0.05em"}}>🗾 地方別 拠点数</div>
+                    <div style={{fontSize:"0.72rem",fontWeight:800,color:C.text}}>
+                      全国 {BEENET_REGIONS.reduce((s,r)=>s+(+d[r.key]||0),0).toLocaleString()} 拠点
+                    </div>
+                  </div>
+                  {editing ? (
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:"0.5rem"}}>
+                      {BEENET_REGIONS.map(r=>(
+                        <div key={r.key} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:"0.4rem",padding:"0.4rem 0.6rem",background:C.bg,border:`1px solid ${C.borderLight}`,borderRadius:8}}>
+                          <span style={{display:"flex",alignItems:"center",gap:6,fontSize:"0.8rem",color:C.text,fontWeight:600}}>
+                            <span style={{width:9,height:9,borderRadius:3,background:r.color,display:"inline-block"}}/>
+                            {r.label}
+                          </span>
+                          <div style={{display:"flex",alignItems:"center",gap:"0.3rem"}}>
+                            <InputNum value={d[r.key]??0} onChange={v=>setD({[r.key]:v})}/>
+                            <span style={{fontSize:"0.72rem",color:C.textSub}}>拠点</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <JapanRegionMap data={d} C={C}/>
+                  )}
+                </div>
+
                 <div style={{marginBottom:"1.25rem"}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"0.35rem 0",borderBottom:`2px solid ${C.accent}`,marginBottom:"0.1rem"}}>
                     <div style={{fontSize:"0.7rem",fontWeight:800,color:C.textSub,textTransform:"uppercase",letterSpacing:"0.05em"}}>📊 主要指標</div>
