@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-11-v258-beenet-map"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-11-v259-japan-map"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -28576,56 +28576,93 @@ const BEENET_REGIONS = [
   {key:"siteKyushu",         label:"九州",         color:"#fb923c"},
 ];
 
-// ✅ v258: 日本地図（地方別拠点数を色の濃さで表示）
+// ✅ v259: 日本地図（実際の日本列島の形・地方別に拠点数を濃淡表示）
+const JAPAN_REGION_PATHS = {
+  // 北海道＋東北（右上）
+  siteTohoku: "M352,20 L392,10 L410,30 L404,58 L378,70 L360,60 L348,42 Z M330,84 L356,76 L368,92 L372,124 L364,152 L340,160 L326,140 L322,110 Z",
+  // 関東（中央右）
+  siteKanto: "M330,166 L360,158 L372,172 L368,196 L344,206 L326,196 L320,178 Z",
+  // 中部（中央）
+  siteChubu: "M268,150 L316,142 L326,166 L318,192 L286,200 L262,184 L256,164 Z",
+  // 関西（中央左）
+  siteKansai: "M222,178 L258,168 L268,188 L258,210 L228,214 L212,198 Z",
+  // 中国・四国（左）
+  siteChugokuShikoku: "M140,182 L212,176 L220,196 L206,212 L150,216 L134,202 Z M168,224 L206,220 L212,238 L188,246 L164,238 Z",
+  // 九州（左下）
+  siteKyushu: "M74,208 L118,198 L134,216 L128,254 L104,276 L74,268 L60,240 Z",
+};
+
 function JapanRegionMap({ data, C }) {
-  const vals = BEENET_REGIONS.map(r => +(data?.[r.key]) || 0);
+  const get = (k) => +(data?.[k]) || 0;
+  const vals = BEENET_REGIONS.map(r => get(r.key));
   const max = Math.max(1, ...vals);
   const total = vals.reduce((a,b)=>a+b, 0);
   const [hover, setHover] = React.useState(null);
-  // 地方ごとの簡易ブロック配置（日本列島の並びを模した配置）
-  const shade = (v) => {
-    const t = max ? v / max : 0;
-    const alpha = 0.15 + t * 0.85;
-    return alpha;
+  const opacityOf = (v) => 0.18 + (max ? (v / max) : 0) * 0.82;
+  // ラベル位置（各地方の重心あたり）
+  const LABEL_POS = {
+    siteTohoku: [366, 118], siteKanto: [346, 184], siteChubu: [292, 172],
+    siteKansai: [240, 194], siteChugokuShikoku: [176, 198], siteKyushu: [98, 238],
   };
-  const Region = ({ r, v, x, y, w, h }) => (
-    <g onMouseEnter={()=>setHover(r.key)} onMouseLeave={()=>setHover(null)} style={{cursor:"pointer"}}>
-      <rect x={x} y={y} width={w} height={h} rx="6"
-        fill={r.color} fillOpacity={shade(v)}
-        stroke={hover===r.key ? "#111827" : "#ffffff"} strokeWidth={hover===r.key ? 2.2 : 1.5}/>
-      <text x={x+w/2} y={y+h/2-6} textAnchor="middle" fontSize="10.5" fontWeight="800" fill="#0f172a">{r.label}</text>
-      <text x={x+w/2} y={y+h/2+11} textAnchor="middle" fontSize="13" fontWeight="800" fill="#0f172a">{v.toLocaleString()}</text>
-    </g>
-  );
-  const get = (k) => +(data?.[k]) || 0;
   return (
     <div style={{width:"100%"}}>
-      <svg viewBox="0 0 320 260" style={{width:"100%",maxWidth:420,display:"block",margin:"0 auto"}}>
-        {/* 東北・北海道（右上） */}
-        <Region r={BEENET_REGIONS[0]} v={get("siteTohoku")}         x={205} y={10}  w={100} h={62}/>
-        {/* 関東（中央右） */}
-        <Region r={BEENET_REGIONS[1]} v={get("siteKanto")}          x={205} y={80}  w={100} h={62}/>
-        {/* 中部（中央） */}
-        <Region r={BEENET_REGIONS[2]} v={get("siteChubu")}          x={120} y={80}  w={78}  h={62}/>
-        {/* 関西（中央左） */}
-        <Region r={BEENET_REGIONS[3]} v={get("siteKansai")}         x={120} y={150} w={78}  h={62}/>
-        {/* 中国・四国（左） */}
-        <Region r={BEENET_REGIONS[4]} v={get("siteChugokuShikoku")} x={15}  y={150} w={98}  h={62}/>
-        {/* 九州（左下） */}
-        <Region r={BEENET_REGIONS[5]} v={get("siteKyushu")}         x={15}  y={80}  w={98}  h={62}/>
-        {/* 合計 */}
-        <text x="60" y="35" fontSize="10" fontWeight="700" fill={C.textSub}>全国合計</text>
-        <text x="60" y="56" fontSize="19" fontWeight="800" fill={C.text}>{total.toLocaleString()}</text>
+      <svg viewBox="0 0 430 300" style={{width:"100%",maxWidth:560,display:"block",margin:"0 auto"}}>
+        <rect x="0" y="0" width="430" height="300" fill="#f0f9ff" rx="10"/>
+        {BEENET_REGIONS.map(r=>{
+          const v = get(r.key);
+          const isHover = hover === r.key;
+          return (
+            <g key={r.key} onMouseEnter={()=>setHover(r.key)} onMouseLeave={()=>setHover(null)} style={{cursor:"pointer"}}>
+              <path d={JAPAN_REGION_PATHS[r.key]} fill={r.color} fillOpacity={opacityOf(v)}
+                stroke={isHover ? "#0f172a" : "#ffffff"} strokeWidth={isHover ? 2.4 : 1.4} strokeLinejoin="round"/>
+            </g>
+          );
+        })}
+        {BEENET_REGIONS.map(r=>{
+          const v = get(r.key);
+          const [lx, ly] = LABEL_POS[r.key];
+          return (
+            <g key={"lbl-"+r.key} pointerEvents="none">
+              <text x={lx} y={ly-4} textAnchor="middle" fontSize="9.5" fontWeight="800" fill="#0f172a"
+                stroke="#ffffff" strokeWidth="2.4" paintOrder="stroke">{r.label}</text>
+              <text x={lx} y={ly+11} textAnchor="middle" fontSize="12.5" fontWeight="800" fill="#0f172a"
+                stroke="#ffffff" strokeWidth="2.6" paintOrder="stroke">{v.toLocaleString()}</text>
+            </g>
+          );
+        })}
+        {/* 全国合計 */}
+        <g pointerEvents="none">
+          <rect x="16" y="16" width="126" height="54" rx="8" fill="#ffffff" fillOpacity="0.9" stroke="#bae6fd"/>
+          <text x="79" y="38" textAnchor="middle" fontSize="10" fontWeight="700" fill="#0369a1">全国合計（拠点数）</text>
+          <text x="79" y="60" textAnchor="middle" fontSize="20" fontWeight="800" fill="#0c4a6e">{total.toLocaleString()}</text>
+        </g>
       </svg>
-      <div style={{display:"flex",flexWrap:"wrap",gap:"0.35rem",justifyContent:"center",marginTop:"0.5rem"}}>
+      <div style={{display:"flex",flexWrap:"wrap",gap:"0.35rem",justifyContent:"center",marginTop:"0.55rem"}}>
         {BEENET_REGIONS.map(r=>{
           const v = get(r.key);
           const pct = total ? Math.round(v/total*100) : 0;
           return (
-            <div key={r.key} style={{display:"flex",alignItems:"center",gap:5,padding:"0.2rem 0.5rem",background:C.bg,border:`1px solid ${C.borderLight}`,borderRadius:999,fontSize:"0.68rem"}}>
+            <div key={r.key} onMouseEnter={()=>setHover(r.key)} onMouseLeave={()=>setHover(null)}
+              style={{display:"flex",alignItems:"center",gap:5,padding:"0.22rem 0.55rem",background:hover===r.key?"#e0f2fe":C.bg,border:`1px solid ${hover===r.key?"#7dd3fc":C.borderLight}`,borderRadius:999,fontSize:"0.68rem",cursor:"pointer"}}>
               <span style={{width:9,height:9,borderRadius:3,background:r.color,display:"inline-block"}}/>
               <span style={{fontWeight:700,color:C.text}}>{r.label}</span>
               <span style={{color:C.textSub}}>{v.toLocaleString()}（{pct}%）</span>
+            </div>
+          );
+        })}
+      </div>
+      {/* 地方別バー（比較しやすいように） */}
+      <div style={{marginTop:"0.6rem",display:"flex",flexDirection:"column",gap:"0.3rem"}}>
+        {BEENET_REGIONS.map(r=>{
+          const v = get(r.key);
+          const w = max ? Math.round(v/max*100) : 0;
+          return (
+            <div key={"bar-"+r.key} style={{display:"flex",alignItems:"center",gap:8}}>
+              <span style={{fontSize:"0.68rem",fontWeight:700,color:C.textSub,width:82,textAlign:"right",flexShrink:0}}>{r.label}</span>
+              <div style={{flex:1,height:14,background:C.bg,borderRadius:999,overflow:"hidden",border:`1px solid ${C.borderLight}`}}>
+                <div style={{width:`${w}%`,height:"100%",background:r.color,borderRadius:999,transition:"width 0.3s"}}/>
+              </div>
+              <span style={{fontSize:"0.7rem",fontWeight:800,color:C.text,width:52,flexShrink:0}}>{v.toLocaleString()}</span>
             </div>
           );
         })}
