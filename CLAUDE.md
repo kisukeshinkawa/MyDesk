@@ -4,7 +4,7 @@
 
 ## 最重要ルール
 1. 単一ファイル構成: フロントは dashboard.jsx（React単一ファイル、約34,600行）。分割しない。
-2. ビルド識別子: dashboard.jsx 102行目付近の const MYDESK_BUILD = "YYYY-MM-DD-vNNN-説明"; を編集ごとに更新。現在 2026-07-11-v259-japan-map。次は v260。
+2. ビルド識別子: dashboard.jsx 102行目付近の const MYDESK_BUILD = "YYYY-MM-DD-vNNN-説明"; を編集ごとに更新。現在 2026-07-16-v260-japan-map-real。次は v261。
 3. 構文チェック必須: 編集後は必ず Babel でパースチェックしてから完了。壊れた状態で渡さない。
 4. 巨大ファイルなので慎重に: 一度に大改造せず1機能ずつ。str_replaceは前後の文脈を十分含めてユニークに。
 5. デプロイ: git commit → push → AWS Amplify 自動ビルド（3〜5分）→ ⌘+Shift+R。URL: https://main.d13ehj6n3bh94.amplifyapp.com
@@ -32,7 +32,8 @@ DB_API_BASE, DB_API_SECRET(=mydesk2026secret), FETCH_EMAILS_URL, EMAIL_AI_API_UR
 返信フォーム→sendEmailNow→MAIL_SENDER_URL(SMTP)。to/cc/bccは{name,email}配列→メール文字列配列に正規化。attachments:[{s3Key,filename}]。新規/AI作成の一部はまだDB_API_BASE/send-email残存。
 
 ## 実装履歴（新しい順）
-- v259: bee-net分析に地方別拠点数＋日本地図(JapanRegionMap/JAPAN_REGION_PATHS/BEENET_REGIONS)＋横棒グラフ。地図SVGは手描き近似で不正確。
+- v260: bee-net日本地図を実際の都道府県輪郭(Geolonia パブリックドメイン)に差し替え。地方別に統合し全transformを座標へ焼き込み(JAPAN_MAP_VIEWBOX="0 0 1009 1016"/JAPAN_REGION_PATHS/JAPAN_REGION_LABELS)。都道府県境も表示、合計ボックスは右下の余白へ。微小離島はしきい値で除去。dashboard.jsxはCRLF改行なので編集時に維持すること(全行差分に注意)。
+- v259: bee-net分析に地方別拠点数＋日本地図(JapanRegionMap/JAPAN_REGION_PATHS/BEENET_REGIONS)＋横棒グラフ。地図SVGは手描き近似で不正確。→v260で正確化。
 - v257: 返信フォーム開いたら自動スクロール(replyFormRef)
 - v256: AI返信フォームの指示・添付を折りたたみ(showAdvanced)
 - v255: 本文URLをlinkifyToNodesでリンク化
@@ -44,7 +45,7 @@ DB_API_BASE, DB_API_SECRET(=mydesk2026secret), FETCH_EMAILS_URL, EMAIL_AI_API_UR
 
 ## 進行中／未完タスク
 1. 【メール判定・最優先】人間の取引先から私(To)宛は基本すべて要返信にする。現状v13でTSR久原(eiji.kuhara@tsr-net.co.jp)の日次報告や網岡さんの会議依頼が「共有(返信不要)」になる→要返信にしたい。方針(確認済): 人間の実在担当者から私宛は報告・共有・お礼でもshould_reply=true。ただしnoreply系・「返信はできません」明記のシステム通知(ジョブカン/クラウドサイン)はfalse＋作業はタスク化(これは正しく動作中)。→mydesk-email-ai-analyzeのpromptを調整しv14にして3人分reanalyzeAll。
-2. bee-net地図をより正確な日本地図にするか検討(v259は近似)
+2. ✅完了(v260): bee-net地図を実際の都道府県輪郭に差し替え済み。
 3. メールUI: 横並び分割ビュー(幅広時に受信と返信を左右)。送信済みで何を送ったか見やすく。
 4. 宛名の細かい精度: 気になるメールを{emailIds:[id],force:true}で再分析しつつprompt微調整。
 
