@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-17-v262-ui-mobile-search-compact"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-17-v263-operating-filter"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -17372,6 +17372,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   React.useEffect(()=>{ localStorage.setItem("md_vendFilterStatuses", JSON.stringify(vendFilterStatuses||[])); }, [vendFilterStatuses]);
   const [vendFilterPermits, setVendFilterPermits] = useState(()=>_parseMultiFilter("md_vendFilterPermits"));
   React.useEffect(()=>{ localStorage.setItem("md_vendFilterPermits", JSON.stringify(vendFilterPermits||[])); }, [vendFilterPermits]);
+  const [vendFilterOperating, setVendFilterOperating] = useState(()=>_parseMultiFilter("md_vendFilterOperating"));
+  React.useEffect(()=>{ localStorage.setItem("md_vendFilterOperating", JSON.stringify(vendFilterOperating||[])); }, [vendFilterOperating]);
   const [vendFilterBeeNets, setVendFilterBeeNets] = useState(()=>_parseMultiFilter("md_vendFilterBeeNets"));
   React.useEffect(()=>{ localStorage.setItem("md_vendFilterBeeNets", JSON.stringify(vendFilterBeeNets||[])); }, [vendFilterBeeNets]);
   const [vendFilterAssignees, setVendFilterAssignees] = useState(()=>_parseMultiFilter("md_vendFilterAssignees"));
@@ -19371,6 +19373,23 @@ ${recentLogs}
         const vp = v.permitTypes||[];
         if(!vendFilterPermits.every(fp => vp.includes(fp))) return false;
       }
+      // 稼働状況（○×）: 選択自治体×選択許可（未選択なら業者の保有分すべて）で判定。
+      //   op_yes=その範囲で稼働(○)がある業者 / op_no=非稼働(×)がある業者
+      if(vendFilterOperating.length > 0){
+        const opMap = v.permitOperating||{};
+        const held = v.permitTypes||[];
+        const vMunis = (v.municipalityIds||[]).map(String);
+        const targetMunis = vendFilterMunis.length>0 ? vendFilterMunis.map(String).filter(m=>vMunis.includes(m)) : vMunis;
+        const targetPermits = vendFilterPermits.length>0 ? vendFilterPermits.filter(p=>held.includes(p)) : held;
+        let hasOp=false, hasX=false;
+        for(let mi=0; mi<targetMunis.length; mi++){
+          for(let pi=0; pi<targetPermits.length; pi++){
+            if(opMap[`${targetMunis[mi]}::${targetPermits[pi]}`]!==false) hasOp=true; else hasX=true;
+          }
+        }
+        if(vendFilterOperating.includes("op_yes") && !hasOp) return false;
+        if(vendFilterOperating.includes("op_no") && !hasX) return false;
+      }
       // bee-net加入（複数選択: 排他なのでOR維持）
       if(vendFilterBeeNets.length > 0){
         const matchAny = vendFilterBeeNets.some(fb => {
@@ -19391,7 +19410,7 @@ ${recentLogs}
       }
       return true;
     });
-  }, [vendors, vendFilterPrefs, vendFilterMunis, vendFilterStatuses, vendFilterPermits, vendFilterBeeNets, vendFilterAssignees, currentUser?.id, muniIdToPrefIdMap]);
+  }, [vendors, vendFilterPrefs, vendFilterMunis, vendFilterStatuses, vendFilterPermits, vendFilterOperating, vendFilterBeeNets, vendFilterAssignees, currentUser?.id, muniIdToPrefIdMap]);
   const _normVSearch = s => (s||"").replace(/[\s\u3000]/g,"").toLowerCase();
   const searchedVendors = React.useMemo(
     () => debouncedVendSearch ? filteredVendors.filter(v=>_normVSearch(v.name).includes(_normVSearch(debouncedVendSearch))) : null,
@@ -21984,7 +22003,7 @@ ${orig}`})
         })()}
         {/* 絞り込みフィルタ（複数選択化） */}
         {(()=>{
-          const hasFilter = vendFilterPrefs.length||vendFilterMunis.length||vendFilterStatuses.length||vendFilterPermits.length||vendFilterBeeNets.length||vendFilterAssignees.length;
+          const hasFilter = vendFilterPrefs.length||vendFilterMunis.length||vendFilterStatuses.length||vendFilterPermits.length||vendFilterOperating.length||vendFilterBeeNets.length||vendFilterAssignees.length;
           const fvCount = filteredVendors.length;
           const permitCounts = hasFilter ? PERMIT_TYPES.map(p=>{
             const n = filteredVendors.filter(v=>(v.permitTypes||[]).includes(p)).length;
@@ -21996,7 +22015,7 @@ ${orig}`})
             : munis;
           const clearAll = ()=>{
             setVendFilterPrefs([]); setVendFilterMunis([]); setVendFilterStatuses([]);
-            setVendFilterPermits([]); setVendFilterBeeNets([]); setVendFilterAssignees([]);
+            setVendFilterPermits([]); setVendFilterOperating([]); setVendFilterBeeNets([]); setVendFilterAssignees([]);
           };
           
           // MultiChipFilter: 値配列、setter、選択肢、ラベル、表示変換
@@ -22017,6 +22036,10 @@ ${orig}`})
           });
           vendFilterPermits.forEach(p => {
             selChips.push({label:`📋 ${p}`, key:`permit-${p}`, remove:()=>setVendFilterPermits(vendFilterPermits.filter(x=>x!==p))});
+          });
+          vendFilterOperating.forEach(o => {
+            const nm = o==="op_yes" ? "稼働(○)" : "非稼働(×)";
+            selChips.push({label:`🟢 ${nm}`, key:`op-${o}`, remove:()=>setVendFilterOperating(vendFilterOperating.filter(x=>x!==o))});
           });
           vendFilterBeeNets.forEach(b => {
             selChips.push({label:`🔷 ${b}`, key:`bee-${b}`, remove:()=>setVendFilterBeeNets(vendFilterBeeNets.filter(x=>x!==b))});
@@ -22051,6 +22074,9 @@ ${orig}`})
                 <MultiChipFilter label="許可種別" icon="📋" C={C}
                   values={vendFilterPermits} setValues={setVendFilterPermits}
                   options={PERMIT_TYPES.map(p=>({value:p, label:p}))}/>
+                <MultiChipFilter label="稼働状況" icon="🟢" C={C}
+                  values={vendFilterOperating} setValues={setVendFilterOperating}
+                  options={[{value:"op_yes", label:"稼働(○)"},{value:"op_no", label:"非稼働(×)"}]}/>
                 <MultiChipFilter label="bee-net" icon="🔷" C={C}
                   values={vendFilterBeeNets} setValues={setVendFilterBeeNets}
                   options={[{value:"加入済み", label:"加入済み"},{value:"未加入", label:"未加入"}]}/>
