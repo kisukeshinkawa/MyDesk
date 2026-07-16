@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-17-v261-permit-operating-matrix"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-17-v262-ui-mobile-search-compact"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -21722,38 +21722,46 @@ ${orig}`})
                 </div>
               );
             })()}
-            {/* 許可×エリア 稼働状況（○×）: タップで実稼働を切り替え。v.permitOperating["自治体id::許可種別"]===false で×、既定は○ */}
+            {/* 許可×エリア 稼働状況（○×）: 許可種別ごとに自治体チップをタップで○×。v.permitOperating["自治体id::許可種別"]===false で× */}
             {(()=>{
               const heldPermits = PERMIT_TYPES.filter(pt=>(v.permitTypes||[]).includes(pt));
               const areas = vmunis;
               if(heldPermits.length===0 || areas.length===0) return null;
               const opMap = v.permitOperating||{};
               const isOp = (mid,pt)=> opMap[`${mid}::${pt}`]!==false; // 既定○
-              const toggle = (mid,pt)=>{
-                const key=`${mid}::${pt}`;
-                const nextMap={...opMap, [key]: !(opMap[key]!==false)};
-                save({...data,vendors:vendors.map(x=>x.id===v.id?{...x,permitOperating:nextMap,updatedAt:new Date().toISOString().slice(0,10)}:x)});
-              };
+              const setOp = (nextMap)=> save({...data,vendors:vendors.map(x=>x.id===v.id?{...x,permitOperating:nextMap,updatedAt:new Date().toISOString().slice(0,10)}:x)});
+              const toggle = (mid,pt)=>{ const key=`${mid}::${pt}`; setOp({...opMap,[key]:!(opMap[key]!==false)}); };
+              const setAll = (pt,val)=>{ const nm={...opMap}; areas.forEach(m=>{ nm[`${m.id}::${pt}`]=val; }); setOp(nm); };
               return (
                 <div style={{marginBottom:"0.5rem"}}>
                   <div style={{fontSize:"0.6rem",fontWeight:700,color:"#0369a1",marginBottom:"0.3rem",letterSpacing:"0.04em"}}>📍 許可 × エリア 稼働状況（タップで ○×）</div>
-                  <div style={{display:"flex",flexDirection:"column",gap:"0.3rem"}}>
-                    {areas.map(m=>(
-                      <div key={m.id} style={{display:"flex",alignItems:"center",gap:"0.4rem",flexWrap:"wrap",background:"#f8fafc",border:`1px solid ${C.borderLight}`,borderRadius:"0.4rem",padding:"0.3rem 0.45rem"}}>
-                        <span style={{fontSize:"0.66rem",fontWeight:700,color:C.accentDark,minWidth:60,flexShrink:0}}>{m.name}</span>
-                        <div style={{display:"flex",gap:"0.3rem",flexWrap:"wrap"}}>
-                          {heldPermits.map(pt=>{
-                            const op=isOp(m.id,pt);
-                            return (
-                              <button key={pt} onClick={e=>{e.stopPropagation();toggle(m.id,pt);}}
-                                style={{display:"inline-flex",alignItems:"center",gap:"0.2rem",padding:"0.25rem 0.55rem",borderRadius:999,cursor:"pointer",fontFamily:"inherit",fontSize:"0.68rem",fontWeight:700,border:`1px solid ${op?"#34d399":"#e5e7eb"}`,background:op?"#d1fae5":"#f3f4f6",color:op?"#065f46":"#9ca3af",textDecoration:op?"none":"line-through"}}>
-                                <span style={{fontSize:"0.78rem",textDecoration:"none"}}>{op?"○":"×"}</span>{pt}
-                              </button>
-                            );
-                          })}
+                  <div style={{display:"flex",flexDirection:"column",gap:"0.35rem"}}>
+                    {heldPermits.map(pt=>{
+                      const onCnt = areas.filter(m=>isOp(m.id,pt)).length;
+                      return (
+                        <div key={pt} style={{background:"#f8fafc",border:`1px solid ${C.borderLight}`,borderRadius:"0.5rem",padding:"0.4rem 0.5rem"}}>
+                          <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginBottom:"0.3rem"}}>
+                            <span style={{fontSize:"0.64rem",fontWeight:700,color:"#5b21b6"}}>📋 {pt}</span>
+                            <span style={{fontSize:"0.58rem",color:C.textMuted}}>稼働 {onCnt}/{areas.length}</span>
+                            <div style={{marginLeft:"auto",display:"flex",gap:"0.25rem"}}>
+                              <button onClick={e=>{e.stopPropagation();setAll(pt,true);}} style={{fontSize:"0.56rem",fontWeight:700,color:"#065f46",background:"#d1fae5",border:"none",borderRadius:999,padding:"0.12rem 0.45rem",cursor:"pointer",fontFamily:"inherit"}}>全○</button>
+                              <button onClick={e=>{e.stopPropagation();setAll(pt,false);}} style={{fontSize:"0.56rem",fontWeight:700,color:"#6b7280",background:"#f3f4f6",border:"none",borderRadius:999,padding:"0.12rem 0.45rem",cursor:"pointer",fontFamily:"inherit"}}>全×</button>
+                            </div>
+                          </div>
+                          <div style={{display:"flex",gap:"0.3rem",flexWrap:"wrap"}}>
+                            {areas.map(m=>{
+                              const op=isOp(m.id,pt);
+                              return (
+                                <button key={m.id} onClick={e=>{e.stopPropagation();toggle(m.id,pt);}}
+                                  style={{display:"inline-flex",alignItems:"center",gap:"0.2rem",padding:"0.25rem 0.5rem",borderRadius:999,cursor:"pointer",fontFamily:"inherit",fontSize:"0.66rem",fontWeight:700,border:`1px solid ${op?"#34d399":"#e5e7eb"}`,background:op?"#d1fae5":"#f3f4f6",color:op?"#065f46":"#9ca3af"}}>
+                                  <span style={{fontSize:"0.74rem"}}>{op?"○":"×"}</span>{m.name}
+                                </button>
+                              );
+                            })}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               );
@@ -22109,8 +22117,8 @@ ${orig}`})
             </div>
           );
         })()}
-        <div style={{display:"flex",gap:"0.5rem",marginBottom:"0.75rem",alignItems:"center"}}>
-          <div style={{position:"relative",flex:1}}>
+        <div style={{display:"flex",gap:"0.5rem",marginBottom:"0.75rem",alignItems:"center",flexWrap:"wrap"}}>
+          <div style={{position:"relative",flex:isPC?1:"1 1 100%"}}>
             <span style={{position:"absolute",left:isPC?"0.625rem":"0.8rem",top:"50%",transform:"translateY(-50%)",color:C.textMuted,fontSize:isPC?"0.85rem":"1.1rem",pointerEvents:"none"}}>🔍</span>
             <input value={vendSearch} onChange={e=>setVendSearch(e.target.value)} placeholder="業者名で検索"
               style={{width:"100%",padding:isPC?"0.5rem 0.5rem 0.5rem 2rem":"0.75rem 0.75rem 0.75rem 2.6rem",borderRadius:"8px",border:`1.5px solid ${C.border}`,fontSize:isPC?"0.85rem":"16px",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
