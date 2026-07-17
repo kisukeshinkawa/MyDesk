@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-17-v265-chunked-save-fix"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-17-v266-memo-loss-fix"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -1597,6 +1597,36 @@ async function sbSetMainChunked(d) {
   const ok = await sbSet("main", mainLite);
   if (ok) console.log(`[MyDesk] 分割保存OK: 業者${vendors.length}件を${nChunks}チャンクで保存`);
   return ok;
+}
+
+// ✅ v266: メモ消失防止 — メモ/履歴など「追記型配列」は必ず両者のunionを取る。
+//   複数人が同じデータを編集した際、片方の追記(メモ等)が置換で消えるのを防ぐ。
+const APPEND_ONLY_FIELDS = ["memos","chat","approachLogs","mtgLogs","changeLogs","files","comments"];
+function _unionById(a, b) {
+  const out = []; const seen = new Set();
+  const src = [];
+  if (Array.isArray(a)) src.push(...a);
+  if (Array.isArray(b)) src.push(...b);
+  for (const it of src) {
+    if (it == null) continue;
+    const k = (it.id !== undefined && it.id !== null) ? ("id:" + String(it.id)) : ("j:" + JSON.stringify(it));
+    if (seen.has(k)) continue;
+    seen.add(k); out.push(it);
+  }
+  return out;
+}
+function _entityHasLogs(e) {
+  return APPEND_ONLY_FIELDS.some(f => Array.isArray(e[f]) && e[f].length > 0);
+}
+// base=スカラー基準(新しい方), other=もう片方。追記型配列は必ずunion。
+function _mergeEntityPreserveLogs(base, other) {
+  const out = { ...base };
+  for (const f of APPEND_ONLY_FIELDS) {
+    if (Array.isArray(base[f]) || Array.isArray(other[f])) {
+      out[f] = _unionById(base[f], other[f]);
+    }
+  }
+  return out;
 }
 
 async function loadData() {
@@ -33924,15 +33954,17 @@ export default function App() {
                 // ローカルにない → サーバーのまま追加
                 result.push(s);
               } else {
-                // 両方にある → updatedAt 比較。ローカルが新しいならローカル優先
+                // 両方にある → スカラーは新しい方を基準にするが、
+                // メモ/履歴などの追記型配列は「必ず両者のunion」を取る（消失防止）
                 const lTs = l.updatedAt || l.lastEditedAt || l.modifiedAt || "";
                 const sTs = s.updatedAt || s.lastEditedAt || s.modifiedAt || "";
-                if (lTs && sTs && lTs > sTs) {
-                  result.push(l); // ローカルが新しい
-                } else if (lTs && !sTs) {
-                  result.push(l); // ローカルに更新あり、サーバーには未反映
+                const localNewer = !!lTs && (!sTs || lTs >= sTs);
+                const base  = localNewer ? l : s;
+                const other = localNewer ? s : l;
+                if (!_entityHasLogs(l) && !_entityHasLogs(s)) {
+                  result.push(base);
                 } else {
-                  result.push(s); // サーバー優先（または同時）
+                  result.push(_mergeEntityPreserveLogs(base, other));
                 }
               }
               seen.add(sId);
