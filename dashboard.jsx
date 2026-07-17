@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-17-v268-snapshot-chunk-throttle"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-17-v269-search-fullwidth"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -22313,10 +22313,11 @@ ${orig}`})
           );
         })()}
         <div style={{display:"flex",gap:"0.5rem",marginBottom:"0.75rem",alignItems:"center",flexWrap:"wrap"}}>
-          <div style={{position:"relative",flex:isPC?1:"1 1 100%"}}>
-            <span style={{position:"absolute",left:isPC?"0.625rem":"0.8rem",top:"50%",transform:"translateY(-50%)",color:C.textMuted,fontSize:isPC?"0.85rem":"1.1rem",pointerEvents:"none"}}>🔍</span>
+          {/* ✅ v269: 検索窓は常に独立した全幅の行に（分割ビューで列が狭くても潰れない） */}
+          <div style={{position:"relative",flex:"1 1 100%",minWidth:0}}>
+            <span style={{position:"absolute",left:"0.75rem",top:"50%",transform:"translateY(-50%)",color:C.textMuted,fontSize:"1rem",pointerEvents:"none"}}>🔍</span>
             <input value={vendSearch} onChange={e=>setVendSearch(e.target.value)} placeholder="業者名で検索"
-              style={{width:"100%",padding:isPC?"0.5rem 0.5rem 0.5rem 2rem":"0.75rem 0.75rem 0.75rem 2.6rem",borderRadius:"8px",border:`1.5px solid ${C.border}`,fontSize:isPC?"0.85rem":"16px",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
+              style={{width:"100%",padding:"0.6rem 0.75rem 0.6rem 2.4rem",borderRadius:"8px",border:`1.5px solid ${C.border}`,fontSize:"16px",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
           </div>
           <button onClick={()=>setBulkMode(v=>{if(v){resetBulk();return false;}setBulkSelected(new Set());return true;})}
             style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:`1.5px solid ${bulkMode?"#2563eb":C.border}`,background:bulkMode?"#eff6ff":"white",color:bulkMode?"#1d4ed8":C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>☑️</button>
