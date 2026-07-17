@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-17-v267-grade-and-mergesave"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-17-v268-snapshot-chunk-throttle"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -1867,9 +1867,14 @@ async function saveData(d) {
   }
   console.log(`[MyDesk] saveData → quotes: ${(d.quotes||[]).length}件, companies: ${(d.companies||[]).length}, vendors: ${(d.vendors||[]).length}, munis: ${(d.municipalities||[]).length}, tasks: ${(d.tasks||[]).length}`);
   // ✅ v267: 保存直前にサーバー最新のメモ/履歴をunion（記入したものを絶対に消さない）
+  // ✅ v268: 直近2秒以内に同期済みなら再取得を省略（連続保存を軽量化。メモ追加は離散操作なので毎回取得される）
   try {
-    const srv = await _fetchServerForMerge();
-    if (srv) d = _mergeServerLogsIntoLocal(d, srv);
+    const _mnow = (typeof window !== "undefined" && window.__myDeskLastMergeSaveAt) || 0;
+    if (Date.now() - _mnow >= 2000) {
+      const srv = await _fetchServerForMerge();
+      if (srv) d = _mergeServerLogsIntoLocal(d, srv);
+      if (typeof window !== "undefined") window.__myDeskLastMergeSaveAt = Date.now();
+    }
   } catch (e) {
     console.warn("[MyDesk] merge-on-save skipped (通常保存にフォールバック):", e?.message || e);
   }
@@ -1895,13 +1900,28 @@ async function saveData(d) {
 // saveData 呼び出しごとに自動実行。最大 SNAP_MAX 件をローリング保持。
 const SNAP_MAX = 500;
 
+// ✅ v268: スナップショットも業者を分割保存し6MB(413)を回避
+async function _saveSnapshotChunked(key, meta, d) {
+  const vendors = Array.isArray(d.vendors) ? d.vendors : [];
+  if (vendors.length <= VENDOR_CHUNK_SIZE) {
+    return await sbSet(key, { ...meta, data: d });
+  }
+  const nChunks = Math.ceil(vendors.length / VENDOR_CHUNK_SIZE);
+  for (let i = 0; i < nChunks; i++) {
+    const ok = await sbSet(`${key}_v${i}`, vendors.slice(i * VENDOR_CHUNK_SIZE, (i + 1) * VENDOR_CHUNK_SIZE));
+    if (!ok) { console.warn(`[MyDesk] snapshot chunk ${i} 保存失敗`); return false; }
+  }
+  return await sbSet(key, { ...meta, data: { ...d, vendors: [], _vchunks: nChunks } });
+}
+
 async function autoSnapshot(d) {
   try {
     const ts  = new Date().toISOString();
     // キーに使えない文字を除去
     const key = "snap_" + ts.replace(/[:.]/g, "-");
-    // スナップショット本体を保存
-    await sbSet(key, { savedAt: ts, auto: true, data: d });
+    // スナップショット本体を保存（業者はチャンク分割）
+    const okSnap = await _saveSnapshotChunked(key, { savedAt: ts, auto: true }, d);
+    if (!okSnap) { console.warn("[MyDesk] autoSnapshot 本体保存失敗、索引は更新しません"); return; }
     // インデックスを読んで末尾に追記、古いものを削除
     const idxRes = await sbGet("snap_index");
     const idx = Array.isArray(idxRes?._rawData) ? idxRes._rawData : [];
@@ -1920,7 +1940,8 @@ async function saveSnapshot(d, label) {
   try {
     const ts  = new Date().toISOString();
     const key = "snap_" + ts.replace(/[:.]/g, "-");
-    await sbSet(key, { savedAt: ts, auto: false, label, data: d });
+    const okSnap = await _saveSnapshotChunked(key, { savedAt: ts, auto: false, label }, d);
+    if (!okSnap) { console.error("snapshot save failed (chunk)"); return null; }
     const idxRes = await sbGet("snap_index");
     const idx = Array.isArray(idxRes?._rawData) ? idxRes._rawData : [];
     const newIdx = [...idx, { key, savedAt: ts, auto: false, label }].slice(-SNAP_MAX);
@@ -1940,7 +1961,21 @@ async function loadSnapshotIndex() {
 async function loadSnapshot(key) {
   try {
     const r = await sbGet(key);
-    if (r?._rawData) return r._rawData;
+    if (r?._rawData) {
+      const obj = r._rawData;
+      // ✅ v268: 分割保存された業者チャンクを結合
+      if (obj?.data?._vchunks && Number.isInteger(obj.data._vchunks) && obj.data._vchunks > 0) {
+        const allV = [];
+        for (let i = 0; i < obj.data._vchunks; i++) {
+          const cr = await sbGet(`${key}_v${i}`);
+          if (!cr || !Array.isArray(cr._rawData)) { console.error(`[MyDesk] snapshot chunk ${i} 欠損`); return null; }
+          allV.push(...cr._rawData);
+        }
+        obj.data.vendors = allV;
+        delete obj.data._vchunks;
+      }
+      return obj;
+    }
   } catch {}
   return null;
 }
