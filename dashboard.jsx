@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-17-v263-operating-filter"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-17-v264-tsr-import"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -22153,6 +22153,8 @@ ${orig}`})
             style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:`1.5px solid ${bulkMode?"#2563eb":C.border}`,background:bulkMode?"#eff6ff":"white",color:bulkMode?"#1d4ed8":C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>☑️</button>
           <button onClick={()=>setSheet("importVendor")} title="CSV取込"
             style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📥</button>
+          <button onClick={()=>{setImportPreview(null);setImportErr("");setSheet("importTsr");}} title="TSR架電結果CSVを取込（ステータス・アプローチ・失注理由を反映）"
+            style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:"1.5px solid #0891b2",background:"#ecfeff",color:"#0e7490",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📞TSR</button>
           <button onClick={()=>{
             // フィルター条件に該当する業者リストを取得
             const list = bulkMode && bulkSelected.size>0
@@ -22375,6 +22377,110 @@ ${orig}`})
             </div>
           </Sheet>
         )}
+        {sheet==="importTsr"&&(()=>{
+          const preview=importPreview; const setPreview=setImportPreview;
+          const err=importErr; const setErr=setImportErr;
+          const TSR_STATUS_MAP={"メール了承":"仮登録","HPお問い合わせフォーム誘導":"仮登録","担当お断り":"断り","受付お断り":"断り","連絡拒否":"断り","不在・多忙":"断り","他社・他家":"見送り","着信拒否":"見送り","NTTアナウンス":"見送り","その他":"見送り","架電除外先":"見送り","不通":"見送り"};
+          const fmtD=(s)=>{ if(!s)return ""; const t=String(s).trim(); const m=t.match(/(\d{4})[\/\-年](\d{1,2})[\/\-月](\d{1,2})/); if(m)return `${m[1]}-${String(m[2]).padStart(2,"0")}-${String(m[3]).padStart(2,"0")}`; return t.slice(0,10); };
+          const mkNote=(bikou,user)=>{ const u=(user||"").trim(); const b=(bikou||"").trim(); const tag=`TSR テレアポ（${u||"-"}）`; return b?`${b}\n${tag}`:tag; };
+          const handleFile=async(e)=>{
+            const file=e.target.files?.[0]; if(e.target)e.target.value="";
+            if(!file)return; setErr(""); setPreview(null);
+            const yield_=()=>new Promise(r=>setTimeout(r,0));
+            try{
+              setImportProgress("ファイルを読み込み中…"); await yield_();
+              const txt=await readFileAsText(file); await yield_();
+              setImportProgress("CSVを解析中…"); await yield_();
+              const rows=parseCSV(txt);
+              const dataRows=rows.filter(r=>{ const c0=(r[0]||"").trim(); const c1=(r[1]||"").trim(); if(!c1)return false; if(c0==="no"||c1==="業者名")return false; return true; });
+              setImportProgress("既存業者と照合中…"); await yield_();
+              const nameIdx=new Map();
+              for(let i=0;i<vendors.length;i+=3000){ vendors.slice(i,i+3000).forEach((v,j)=>{ const k=normBizName(v.name); if(!k)return; if(!nameIdx.has(k))nameIdx.set(k,i+j); }); await yield_(); }
+              const mapped=[]; const unmapped=new Set();
+              for(let i=0;i<dataRows.length;i+=400){
+                for(const r of dataRows.slice(i,i+400)){
+                  const name=(r[1]||"").trim(); if(!name)continue;
+                  const rStatus=(r[17]||"").trim();
+                  const mStatus=TSR_STATUS_MAP[rStatus]; if(rStatus&&!mStatus)unmapped.add(rStatus);
+                  const approaches=[];
+                  if((r[22]||"").trim()||(r[23]||"").trim()) approaches.push({note:mkNote(r[22],r[23]),date:fmtD(r[20])});
+                  if((r[26]||"").trim()||(r[27]||"").trim()) approaches.push({note:mkNote(r[26],r[27]),date:fmtD(r[24])});
+                  const mi=nameIdx.get(normBizName(name));
+                  mapped.push({ name, phone:(r[2]||"").trim(), address:(r[8]||"").trim(), rStatus, status:mStatus||null, finalNote:(r[18]||"").trim(), approaches, matchIdx: mi===undefined?-1:mi });
+                }
+                setImportProgress(`整形中… ${Math.min(i+400,dataRows.length)}/${dataRows.length}`); await yield_();
+              }
+              setImportProgress(""); setPreview({rows:mapped, unmapped:[...unmapped]});
+            }catch(e){ console.error("[MyDesk] TSR import error:",e); setImportProgress(""); setErr("読み込みに失敗しました。CSV形式・文字コードをご確認ください。"); }
+          };
+          const doImport=()=>{
+            if(!preview?.rows?.length)return;
+            const today=new Date().toISOString().slice(0,10); const nowISO=new Date().toISOString(); const uid=currentUser?.id;
+            const mkLog=(a,k)=>({id:"tsr_"+Date.now()+"_"+k+"_"+Math.random().toString(36).slice(2,8),type:"電話",note:a.note,date:a.date||today,createdAt:nowISO,userId:uid,createdBy:uid,_tsr:true});
+            const patchByIdx=new Map(); const newVendors=[]; let updN=0,newN=0,logN=0;
+            preview.rows.forEach((row,ri)=>{
+              const logs=row.approaches.map((a,k)=>mkLog(a,ri+"_"+k)); logN+=logs.length;
+              const closed=CLOSED_STATUSES.has(row.status);
+              if(row.matchIdx>=0){ patchByIdx.set(row.matchIdx,{row,logs,closed}); updN++; }
+              else { newN++; newVendors.push({ id:"v_"+Date.now()+"_"+ri+"_"+Math.random().toString(36).slice(2,9), name:row.name, status:row.status||"電話済", phone:row.phone||"", address:row.address||"", municipalityIds:[], assigneeIds:[], permitTypes:[], memos:[], chat:[], approachLogs:logs, ...(closed?{lossReason:row.finalNote||row.rStatus||"",lossAt:nowISO}:{}), createdAt:nowISO, updatedAt:today }); }
+            });
+            const updatedVendors=vendors.map((v,idx)=>{
+              const p=patchByIdx.get(idx); if(!p)return v;
+              const seen=new Set((v.approachLogs||[]).map(l=>l.note));
+              const addLogs=p.logs.filter(l=>!seen.has(l.note));
+              return {...v, status: p.row.status||v.status, approachLogs:[...(v.approachLogs||[]),...addLogs], ...(p.closed?{lossReason:p.row.finalNote||p.row.rStatus||"",lossAt:nowISO}:{}), updatedAt:today };
+            });
+            const newData={...data,vendors:[...updatedVendors,...newVendors]};
+            setImporting(true); setData(newData);
+            (async()=>{ const ok=await saveData(newData); setImporting(false); if(ok){ setSheet(null); setPreview(null); window.alert(`✅ 取込完了\n更新 ${updN}件 / 新規 ${newN}件 / アプローチ ${logN}件`); } else { setData(data); window.alert("保存に失敗しました。時間をおいて再度お試しください。"); } })();
+          };
+          const stats=preview?(()=>{ const s={upd:0,neo:0}; const byS={}; preview.rows.forEach(r=>{ if(r.matchIdx>=0)s.upd++; else s.neo++; const k=r.status||"(変更なし)"; byS[k]=(byS[k]||0)+1; }); return {...s,byS}; })():null;
+          return (
+            <Sheet title="📞 TSR架電結果 取込" onClose={()=>{setSheet(null);setPreview(null);setErr("");}}>
+              <div style={{fontSize:"0.78rem",color:C.text,lineHeight:1.6,marginBottom:"0.75rem"}}>
+                Excelの<strong>「架電結果」シート</strong>をCSV（UTF-8）で書き出して選択してください。<br/>
+                <span style={{fontSize:"0.72rem",color:C.textSub}}>・R列(最終ステータス)→MyDeskステータスに変換／備考1・2＋架電ユーザーをアプローチに追加／断り・見送りは最終備考(S)を失注理由に反映。業者名で既存に照合し、無ければ新規作成します。</span>
+              </div>
+              <label style={{display:"inline-flex",alignItems:"center",gap:"0.4rem",padding:"0.6rem 1rem",background:"#ecfeff",border:"1.5px solid #0891b2",borderRadius:"8px",color:"#0e7490",fontWeight:700,fontSize:"0.82rem",cursor:"pointer"}}>
+                📄 CSVファイルを選択
+                <input type="file" accept=".csv,text/csv" onChange={handleFile} style={{display:"none"}}/>
+              </label>
+              {importProgress&&<div style={{marginTop:"0.75rem",fontSize:"0.78rem",color:"#0e7490",fontWeight:700}}>⏳ {importProgress}</div>}
+              {err&&<div style={{marginTop:"0.75rem",fontSize:"0.78rem",color:"#dc2626",fontWeight:700}}>⚠️ {err}</div>}
+              {preview&&stats&&(
+                <div style={{marginTop:"1rem"}}>
+                  <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap",marginBottom:"0.75rem"}}>
+                    <div style={{flex:1,minWidth:100,background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:"8px",padding:"0.5rem 0.7rem"}}><div style={{fontSize:"0.62rem",color:"#1d4ed8",fontWeight:700}}>既存を更新</div><div style={{fontSize:"1.3rem",fontWeight:800,color:"#1e3a8a"}}>{stats.upd}</div></div>
+                    <div style={{flex:1,minWidth:100,background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:"8px",padding:"0.5rem 0.7rem"}}><div style={{fontSize:"0.62rem",color:"#15803d",fontWeight:700}}>新規作成</div><div style={{fontSize:"1.3rem",fontWeight:800,color:"#166534"}}>{stats.neo}</div></div>
+                    <div style={{flex:1,minWidth:100,background:"#f8fafc",border:`1px solid ${C.border}`,borderRadius:"8px",padding:"0.5rem 0.7rem"}}><div style={{fontSize:"0.62rem",color:C.textSub,fontWeight:700}}>合計行</div><div style={{fontSize:"1.3rem",fontWeight:800,color:C.text}}>{preview.rows.length}</div></div>
+                  </div>
+                  <div style={{fontSize:"0.72rem",color:C.textSub,fontWeight:700,marginBottom:"0.3rem"}}>ステータス内訳</div>
+                  <div style={{display:"flex",gap:"0.35rem",flexWrap:"wrap",marginBottom:"0.75rem"}}>
+                    {Object.entries(stats.byS).map(([k,n])=>(<span key={k} style={{fontSize:"0.68rem",fontWeight:700,padding:"0.15rem 0.5rem",borderRadius:999,background:(VENDOR_STATUS[k]?.bg)||"#f1f5f9",color:(VENDOR_STATUS[k]?.color)||C.textSub}}>{k} {n}</span>))}
+                  </div>
+                  {preview.unmapped.length>0&&(<div style={{marginBottom:"0.75rem",fontSize:"0.72rem",color:"#92400e",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:"6px",padding:"0.4rem 0.6rem"}}>⚠️ 未対応のステータス（変更なしで取込）: {preview.unmapped.join("、")}</div>)}
+                  <div style={{fontSize:"0.72rem",color:C.textSub,fontWeight:700,marginBottom:"0.3rem"}}>プレビュー（先頭8件）</div>
+                  <div style={{maxHeight:220,overflowY:"auto",border:`1px solid ${C.borderLight}`,borderRadius:"6px"}}>
+                    {preview.rows.slice(0,8).map((r,i)=>(
+                      <div key={i} style={{padding:"0.4rem 0.6rem",borderTop:i>0?`1px solid ${C.borderLight}`:"none",fontSize:"0.72rem"}}>
+                        <div style={{display:"flex",gap:"0.4rem",alignItems:"center"}}>
+                          <span style={{fontWeight:700,color:C.text}}>{r.name}</span>
+                          <span style={{fontSize:"0.6rem",fontWeight:700,padding:"0.05rem 0.35rem",borderRadius:999,background:r.matchIdx>=0?"#dbeafe":"#dcfce7",color:r.matchIdx>=0?"#1d4ed8":"#166534"}}>{r.matchIdx>=0?"更新":"新規"}</span>
+                          {r.status&&<span style={{fontSize:"0.6rem",fontWeight:700,padding:"0.05rem 0.35rem",borderRadius:999,background:(VENDOR_STATUS[r.status]?.bg)||"#f1f5f9",color:(VENDOR_STATUS[r.status]?.color)||C.textSub}}>{r.status}</span>}
+                        </div>
+                        {r.approaches.map((a,k)=>(<div key={k} style={{color:C.textMuted,whiteSpace:"pre-wrap",marginTop:"0.15rem",paddingLeft:"0.3rem",borderLeft:`2px solid ${C.borderLight}`}}>{a.note}{a.date?`  (${a.date})`:""}</div>))}
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{display:"flex",gap:"0.5rem",marginTop:"1rem"}}>
+                    <Btn variant="secondary" style={{flex:1}} onClick={()=>{setPreview(null);}}>やり直す</Btn>
+                    <Btn style={{flex:2}} onClick={doImport} disabled={importing}>{importing?"取込中…":`この内容で取込（更新${stats.upd}・新規${stats.neo}）`}</Btn>
+                  </div>
+                </div>
+              )}
+            </Sheet>
+          );
+        })()}
         {sheet==="importVendor"&&(()=>{
           const preview=importPreview; const setPreview=setImportPreview;
           const err=importErr; const setErr=setImportErr;
