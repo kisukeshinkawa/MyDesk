@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-17-v264-tsr-import"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-17-v265-chunked-save-fix"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -1574,6 +1574,31 @@ function addNotif(data, {type, title, body, toUserIds=[], fromUserId=null, entit
   return newData;
 }
 
+// ✅ v265: 業者が多くLambda 6MB制限を超える場合、業者を分割して別キーで保存する。
+//   チャンクを全て保存できた場合のみ main を書き換える（失敗時に既存mainを壊さない）。
+const VENDOR_CHUNK_SIZE = 8000;
+async function sbSetMainChunked(d) {
+  const vendors = Array.isArray(d.vendors) ? d.vendors : [];
+  if (vendors.length <= VENDOR_CHUNK_SIZE) {
+    // 小規模: 従来通り単一保存（_vchunks を残さない）
+    return await sbSet("main", d);
+  }
+  const nChunks = Math.ceil(vendors.length / VENDOR_CHUNK_SIZE);
+  for (let i = 0; i < nChunks; i++) {
+    const chunk = vendors.slice(i * VENDOR_CHUNK_SIZE, (i + 1) * VENDOR_CHUNK_SIZE);
+    const ok = await sbSet(`mainv_${i}`, chunk);
+    if (!ok) {
+      console.error(`[MyDesk] 業者チャンク ${i}/${nChunks} の保存に失敗。mainは更新しません（既存データ保護）。`);
+      return false;
+    }
+  }
+  // 全チャンク保存成功 → main は vendors を空にして _vchunks を記録
+  const mainLite = { ...d, vendors: [], _vchunks: nChunks };
+  const ok = await sbSet("main", mainLite);
+  if (ok) console.log(`[MyDesk] 分割保存OK: 業者${vendors.length}件を${nChunks}チャンクで保存`);
+  return ok;
+}
+
 async function loadData() {
   // ★ 重要: ネット失敗時は INIT を返さない。失敗を明示的に返す。
   // 過去のバージョンでは失敗時に INIT を返していたが、これが「データ消失」の原因だった：
@@ -1587,6 +1612,21 @@ async function loadData() {
     if(result && result._rawData !== undefined) {
       const raw = result._rawData;
       if(raw && typeof raw === "object" && !Array.isArray(raw)) {
+        // ✅ v265: 分割保存された業者チャンクを結合（旧形式(_vchunks無し)はそのまま）
+        if (raw._vchunks && Number.isInteger(raw._vchunks) && raw._vchunks > 0) {
+          const allV = [];
+          for (let i = 0; i < raw._vchunks; i++) {
+            const cr = await sbGet(`mainv_${i}`);
+            if (!cr || !Array.isArray(cr._rawData)) {
+              console.error(`[MyDesk] 業者チャンク ${i} の読込に失敗。データ保護のためエラー扱いにします。`);
+              return { error: true, errorType: "chunk_missing", updated_at: null };
+            }
+            allV.push(...cr._rawData);
+          }
+          raw.vendors = allV;
+          delete raw._vchunks;
+          console.log(`[MyDesk] 業者チャンク結合完了: ${allV.length}件`);
+        }
         const merged = {...INIT, ...raw};
         
         // ✅ v190: 未来日時のデータを「現在時刻」に補正（古いテストデータ対策）
@@ -1756,7 +1796,7 @@ async function saveData(d) {
     }
   }
   console.log(`[MyDesk] saveData → quotes: ${(d.quotes||[]).length}件, companies: ${(d.companies||[]).length}, vendors: ${(d.vendors||[]).length}, munis: ${(d.municipalities||[]).length}, tasks: ${(d.tasks||[]).length}`);
-  const ok = await sbSet("main", d);
+  const ok = await sbSetMainChunked(d);
   if(!ok) {
     window.__myDeskSaveError = "データの保存に失敗しました（3回リトライ済）。ネットワークを確認してください。";
     window.dispatchEvent(new Event("mydesk-save-error"));
@@ -19475,7 +19515,10 @@ ${recentLogs}
   const vendorOf   = React.useCallback(id => vendorMap.get(id), [vendorMap]);
   const companyOf  = React.useCallback(id => companyMap.get(id), [companyMap]);
   const muniVendors= React.useCallback(mid => muniToVendorsMap.get(String(mid)) || [], [muniToVendorsMap]);
-  const vendorMunis= React.useCallback(v => (v.municipalityIds||[]).map(id => muniMap.get(String(id))).filter(Boolean), [muniMap]);
+  const vendorMunis= React.useCallback(v => {
+    const seen=new Set();
+    return (v.municipalityIds||[]).filter(id=>{const k=String(id); if(seen.has(k))return false; seen.add(k); return true;}).map(id => muniMap.get(String(id))).filter(Boolean);
+  }, [muniMap]);
   const checkDup   = (name,list)=>list.find(x=>x.name?.trim()===name?.trim());
   const userMap = React.useMemo(() => {
     const m = new Map();
