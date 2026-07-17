@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-17-v268-snapshot-chunk-throttle"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-17-v270-ui-collapse-labels"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -17495,6 +17495,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   });
   React.useEffect(()=>{ localStorage.setItem("md_compFilter", JSON.stringify(compFilter)); }, [compFilter]);
   const [vendSearch,   setVendSearch]   = useState(()=>localStorage.getItem("md_vendSearch")||"");
+  const [vendOxOpen,setVendOxOpen]=useState(false); // 許可×エリア稼働状況の折りたたみ(既定:閉)
   React.useEffect(()=>{ localStorage.setItem("md_vendSearch", vendSearch||""); }, [vendSearch]);
   const [debouncedVendSearch, setDebouncedVendSearch] = useState(vendSearch);
   // 業者名検索の debounce: 入力停止後 300ms で実際のフィルタ対象を更新
@@ -21461,7 +21462,7 @@ ${orig}`})
           <button onClick={()=>setBulkMode(v=>{if(v){resetBulk();return false;}setBulkSelected(new Set());return true;})}
             style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:`1.5px solid ${bulkMode?"#2563eb":C.border}`,background:bulkMode?"#eff6ff":"white",color:bulkMode?"#1d4ed8":C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>☑️</button>
           <button onClick={()=>setSheet("importCompany")}
-            style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📥</button>
+            style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📥 取込</button>
           <button onClick={()=>{
             const list = bulkMode && bulkSelected.size>0
               ? companies.filter(c=>bulkSelected.has(c.id))
@@ -21472,7 +21473,7 @@ ${orig}`})
               : "全件";
             exportCompanyList(list, desc);
           }} title="エクセル出力（フィルター済み・全アプローチ含む）"
-            style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:"1.5px solid #10b981",background:"#ecfdf5",color:"#059669",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📊</button>
+            style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:"1.5px solid #10b981",background:"#ecfdf5",color:"#059669",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📊 出力</button>
           <button onClick={backfillAssigneesFromApproach} title="記録者を担当者に一括補完（業者・企業・自治体すべて）"
             style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:"1.5px solid #f59e0b",background:"#fffbeb",color:"#92400e",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🔄</button>
           <button onClick={()=>{setDeleteModal({type:"company"});setDmSearch("");setDmFilter("");setDmSelected(new Set());}}
@@ -21920,10 +21921,16 @@ ${orig}`})
               const setOp = (nextMap)=> save({...data,vendors:vendors.map(x=>x.id===v.id?{...x,permitOperating:nextMap,updatedAt:new Date().toISOString().slice(0,10)}:x)});
               const toggle = (mid,pt)=>{ const key=`${mid}::${pt}`; setOp({...opMap,[key]:!(opMap[key]!==false)}); };
               const setAll = (pt,val)=>{ const nm={...opMap}; areas.forEach(m=>{ nm[`${m.id}::${pt}`]=val; }); setOp(nm); };
+              const _xCnt = heldPermits.reduce((acc,pt)=>acc+areas.filter(m=>!isOp(m.id,pt)).length,0);
               return (
                 <div style={{marginBottom:"0.5rem"}}>
-                  <div style={{fontSize:"0.6rem",fontWeight:700,color:"#0369a1",marginBottom:"0.3rem",letterSpacing:"0.04em"}}>📍 許可 × エリア 稼働状況（タップで ○×）</div>
-                  <div style={{display:"flex",flexDirection:"column",gap:"0.35rem"}}>
+                  <button onClick={()=>setVendOxOpen(o=>!o)} style={{display:"flex",alignItems:"center",gap:"0.4rem",width:"100%",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",padding:"0.15rem 0",textAlign:"left"}}>
+                    <span style={{fontSize:"0.6rem",fontWeight:700,color:"#0369a1",letterSpacing:"0.04em"}}>📍 許可 × エリア 稼働状況</span>
+                    <span style={{fontSize:"0.58rem",fontWeight:700,color:_xCnt>0?"#b45309":C.textMuted}}>{_xCnt>0?`稼働外(×) ${_xCnt}件`:"全て稼働○"}</span>
+                    <span style={{marginLeft:"auto",fontSize:"0.62rem",color:C.textMuted}}>{vendOxOpen?"▲ 閉じる":"▼ 開いて編集"}</span>
+                  </button>
+                  {vendOxOpen && (
+                  <div style={{display:"flex",flexDirection:"column",gap:"0.35rem",marginTop:"0.3rem"}}>
                     {heldPermits.map(pt=>{
                       const onCnt = areas.filter(m=>isOp(m.id,pt)).length;
                       return (
@@ -21951,6 +21958,7 @@ ${orig}`})
                       );
                     })}
                   </div>
+                  )}
                 </div>
               );
             })()}
@@ -22313,15 +22321,16 @@ ${orig}`})
           );
         })()}
         <div style={{display:"flex",gap:"0.5rem",marginBottom:"0.75rem",alignItems:"center",flexWrap:"wrap"}}>
-          <div style={{position:"relative",flex:isPC?1:"1 1 100%"}}>
-            <span style={{position:"absolute",left:isPC?"0.625rem":"0.8rem",top:"50%",transform:"translateY(-50%)",color:C.textMuted,fontSize:isPC?"0.85rem":"1.1rem",pointerEvents:"none"}}>🔍</span>
+          {/* ✅ v269: 検索窓は常に独立した全幅の行に（分割ビューで列が狭くても潰れない） */}
+          <div style={{position:"relative",flex:"1 1 100%",minWidth:0}}>
+            <span style={{position:"absolute",left:"0.75rem",top:"50%",transform:"translateY(-50%)",color:C.textMuted,fontSize:"1rem",pointerEvents:"none"}}>🔍</span>
             <input value={vendSearch} onChange={e=>setVendSearch(e.target.value)} placeholder="業者名で検索"
-              style={{width:"100%",padding:isPC?"0.5rem 0.5rem 0.5rem 2rem":"0.75rem 0.75rem 0.75rem 2.6rem",borderRadius:"8px",border:`1.5px solid ${C.border}`,fontSize:isPC?"0.85rem":"16px",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
+              style={{width:"100%",padding:"0.6rem 0.75rem 0.6rem 2.4rem",borderRadius:"8px",border:`1.5px solid ${C.border}`,fontSize:"16px",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
           </div>
           <button onClick={()=>setBulkMode(v=>{if(v){resetBulk();return false;}setBulkSelected(new Set());return true;})}
             style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:`1.5px solid ${bulkMode?"#2563eb":C.border}`,background:bulkMode?"#eff6ff":"white",color:bulkMode?"#1d4ed8":C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>☑️</button>
           <button onClick={()=>setSheet("importVendor")} title="CSV取込"
-            style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📥</button>
+            style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📥 取込</button>
           <button onClick={()=>{setImportPreview(null);setImportErr("");setSheet("importTsr");}} title="TSR架電結果CSVを取込（ステータス・アプローチ・失注理由を反映）"
             style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:"1.5px solid #0891b2",background:"#ecfeff",color:"#0e7490",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📞TSR</button>
           <button onClick={()=>{
@@ -22339,7 +22348,7 @@ ${orig}`})
               : "全件";
             exportVendorList(list, desc);
           }} title="エクセル出力（フィルター済み・全アプローチ含む）"
-            style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:"1.5px solid #10b981",background:"#ecfdf5",color:"#059669",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📊</button>
+            style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:"1.5px solid #10b981",background:"#ecfdf5",color:"#059669",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📊 出力</button>
           <button onClick={backfillAssigneesFromApproach} title="アプローチ実行者を担当者に一括補完（業者・企業・自治体すべて）"
             style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:"1.5px solid #f59e0b",background:"#fffbeb",color:"#92400e",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🔄</button>
           <button onClick={()=>{setDeleteModal({type:"vendor"});setDmSearch("");setDmFilter("");setDmSelected(new Set());}}
@@ -23467,7 +23476,7 @@ ${orig}`})
         <button onClick={()=>{setDeleteModal({type:"muni"});setDmSearch("");setDmFilter("");setDmSelected(new Set());}}
           style={{padding:"0.5rem 0.75rem",borderRadius:"6px",border:"1.5px solid #fca5a5",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>🗑 削除</button>
         <button onClick={()=>setSheet("importMuni")}
-          style={{padding:"0.5rem 0.625rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📥</button>
+          style={{padding:"0.5rem 0.625rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📥 取込</button>
         <button onClick={()=>setShowGSheetImport(true)}
           style={{padding:"0.5rem 0.625rem",borderRadius:"6px",border:"1.5px solid #bfdbfe",background:"#eff6ff",color:"#2563eb",fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>📊 GSheet</button>
         <button onClick={exportMuniStatusReport}
