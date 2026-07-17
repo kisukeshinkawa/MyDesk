@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-17-v266-memo-loss-fix"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-17-v267-grade-and-mergesave"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -1182,6 +1182,8 @@ const VENDOR_STATUS = {
   "断り":    { color:"#da1e28", bg:"#fff1f1", dot:true },
   "見送り":  { color:"#6b6b69", bg:"#f4f4f2", dot:true },
 };
+// 社内グレード（★1〜3）: 3=対応◎/頼れる/見積り早い, 2=普通, 1=渋い
+const VENDOR_GRADE_LABEL = { 3:"対応◎・頼れる", 2:"普通", 1:"渋い" };
 const COMPANY_STATUS = {
   "未接触":  { color:"#8b8b89", bg:"#f4f4f2", dot:true },
   "電話済":  { color:"#0f62fe", bg:"#edf5ff", dot:true },
@@ -1784,6 +1786,44 @@ async function loadData() {
 // 最後にロード/保存に成功した「正常データ」を記憶（縮退検知用）
 let __myDeskLastKnownGoodData = null;
 
+// ✅ v267: 保存直前にサーバー最新の追記型データ(メモ/履歴)をunionする「絶対に消さない」保証。
+//   サーバーにしか無いメモを取り込んでから保存するため、同時編集の一瞬の隙でもメモが消えない。
+async function _fetchServerForMerge() {
+  const result = await sbGet("main");
+  if (!result || result._rawData === undefined) return null;
+  const raw = result._rawData;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  if (raw._vchunks && Number.isInteger(raw._vchunks) && raw._vchunks > 0) {
+    const allV = [];
+    for (let i = 0; i < raw._vchunks; i++) {
+      const cr = await sbGet(`mainv_${i}`);
+      if (!cr || !Array.isArray(cr._rawData)) return null; // 不完全 → マージ中止(通常保存へ)
+      allV.push(...cr._rawData);
+    }
+    raw.vendors = allV;
+  }
+  return raw;
+}
+// local を基準に、server にしか無いメモ/履歴を各エンティティへ取り込む(entityの増減はしない=削除も尊重)
+function _mergeServerLogsIntoLocal(local, server) {
+  const out = { ...local };
+  const ENTITY_ARRAYS = ["tasks","projects","companies","vendors","municipalities","businessCards"];
+  for (const key of ENTITY_ARRAYS) {
+    const lArr = Array.isArray(local[key]) ? local[key] : null;
+    if (!lArr) continue;
+    const sArr = Array.isArray(server[key]) ? server[key] : [];
+    if (sArr.length === 0) continue;
+    const sMap = new Map(sArr.map(x => [String(x.id), x]));
+    out[key] = lArr.map(l => {
+      const s = sMap.get(String(l.id));
+      if (!s) return l;
+      if (!_entityHasLogs(l) && !_entityHasLogs(s)) return l;
+      return _mergeEntityPreserveLogs(l, s); // base=local(スカラー), 追記配列はunion
+    });
+  }
+  return out;
+}
+
 async function saveData(d) {
   // ★ ロード失敗中は絶対に保存しない（既存データを INIT で上書きするのを防ぐ）
   if (typeof window !== "undefined" && window.__myDeskLoadError) {
@@ -1826,6 +1866,13 @@ async function saveData(d) {
     }
   }
   console.log(`[MyDesk] saveData → quotes: ${(d.quotes||[]).length}件, companies: ${(d.companies||[]).length}, vendors: ${(d.vendors||[]).length}, munis: ${(d.municipalities||[]).length}, tasks: ${(d.tasks||[]).length}`);
+  // ✅ v267: 保存直前にサーバー最新のメモ/履歴をunion（記入したものを絶対に消さない）
+  try {
+    const srv = await _fetchServerForMerge();
+    if (srv) d = _mergeServerLogsIntoLocal(d, srv);
+  } catch (e) {
+    console.warn("[MyDesk] merge-on-save skipped (通常保存にフォールバック):", e?.message || e);
+  }
   const ok = await sbSetMainChunked(d);
   if(!ok) {
     window.__myDeskSaveError = "データの保存に失敗しました（3回リトライ済）。ネットワークを確認してください。";
@@ -21778,6 +21825,20 @@ ${orig}`})
                 </div>
               </div>
             )}
+            {/* 社内グレード（★1〜3・タップで設定/もう一度で解除） */}
+            <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem",flexWrap:"wrap"}}>
+              <span style={{fontSize:"0.6rem",fontWeight:700,color:C.textSub,letterSpacing:"0.04em"}}>社内グレード</span>
+              <div style={{display:"flex",gap:"0.1rem"}}>
+                {[1,2,3].map(n=>{
+                  const on=(v.grade||0)>=n;
+                  return (
+                    <button key={n} title={VENDOR_GRADE_LABEL[n]} onClick={()=>{const ng=(v.grade===n)?0:n; save({...data,vendors:vendors.map(x=>x.id===v.id?{...x,grade:ng,updatedAt:new Date().toISOString().slice(0,10)}:x)});}}
+                      style={{background:"none",border:"none",cursor:"pointer",fontSize:"1.35rem",lineHeight:1,padding:"0 0.05rem",color:on?"#f59e0b":"#d1d5db"}}>{on?"★":"☆"}</button>
+                  );
+                })}
+              </div>
+              {(v.grade||0)>0&&<span style={{fontSize:"0.66rem",fontWeight:700,color:"#b45309"}}>{VENDOR_GRADE_LABEL[v.grade]}</span>}
+            </div>
             {/* 許可エリア（タグ） */}
             {vmunis.length>0&&(
               <div style={{display:"flex",alignItems:"center",gap:"0.4rem",flexWrap:"wrap",marginBottom:"0.5rem"}}>
@@ -22380,6 +22441,7 @@ ${orig}`})
                               <div style={{display:"flex",alignItems:"center",gap:"0.5rem",minWidth:0}}>
                                 {bulkMode&&<input type="checkbox" checked={bulkSelected.has(v.id)} readOnly style={{width:15,height:15,accentColor:C.accent,flexShrink:0}}/>}
                                 <div style={{flex:1,minWidth:0,fontWeight:700,fontSize:"0.88rem",color:C.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{v.name}</div>
+                                {(v.grade||0)>0&&<span style={{flexShrink:0,color:"#f59e0b",fontSize:"0.72rem",letterSpacing:"-1px"}} title={VENDOR_GRADE_LABEL[v.grade]}>{"★".repeat(v.grade)}</span>}
                                 {(v.contacts||[]).length>0&&<span style={{fontSize:"0.62rem",color:C.textMuted,flexShrink:0}}>👤 {(v.contacts[0].name||"無名")}{v.contacts.length>1?`+${v.contacts.length-1}`:""}</span>}
                                 <div style={{flexShrink:0}}><AssigneeRow ids={v.assigneeIds}/></div>
                               </div>
