@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-17-v270-ui-collapse-labels"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-18-v271-contact-kana-note"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -17412,6 +17412,7 @@ function ContactBadge({contact, color="#0369a1", bg="#dbeafe"}) {
       {open && (
         <div style={{position:"absolute", top:"calc(100% + 4px)", left:0, zIndex:50, background:"white", border:`1.5px solid ${bg}`, borderRadius:"0.5rem", boxShadow:"0 6px 16px rgba(0,0,0,0.12)", padding:"0.7rem 0.85rem", minWidth:240}}>
           <div style={{fontSize:"0.92rem", fontWeight:800, color, marginBottom:"0.35rem"}}>{name}{contact.role && <span style={{marginLeft:"0.4rem", fontSize:"0.7rem", background:bg, color, padding:"0.1rem 0.4rem", borderRadius:"0.25rem", fontWeight:600}}>{contact.role}</span>}</div>
+          {contact.kana && <div style={{fontSize:"0.66rem", color:"#94a3b8", marginBottom:"0.35rem"}}>{contact.kana}</div>}
           {contact.dept && <div style={{fontSize:"0.7rem", color:"#64748b", marginBottom:"0.3rem"}}>📁 {contact.dept}</div>}
           {contact.phone && (
             <a href={`tel:${contact.phone}`} style={{display:"flex", alignItems:"center", gap:"0.45rem", padding:"0.4rem 0.5rem", marginTop:"0.3rem", background:"#f0f9ff", borderRadius:"0.35rem", textDecoration:"none", color:"#0369a1", fontSize:"0.82rem", fontWeight:700}}>
@@ -17425,6 +17426,7 @@ function ContactBadge({contact, color="#0369a1", bg="#dbeafe"}) {
               <span style={{overflow:"hidden", textOverflow:"ellipsis"}}>{contact.email}</span>
             </a>
           )}
+          {contact.note && <div style={{fontSize:"0.72rem", color:"#475569", marginTop:"0.4rem", padding:"0.4rem 0.5rem", background:"#f8fafc", borderRadius:"0.35rem", whiteSpace:"pre-wrap"}}>📝 {contact.note}</div>}
           {!contact.phone && !contact.email && (
             <div style={{fontSize:"0.72rem", color:"#94a3b8", padding:"0.3rem 0",}}>連絡先未登録</div>
           )}
@@ -21313,12 +21315,16 @@ ${orig}`})
                         <div style={{display:"flex",flexDirection:"column",gap:"0.35rem"}}>
                           <input value={c.name||""} onChange={e=>updateAt(idx,"name",e.target.value)} placeholder="名前（例：山田 太郎）"
                             style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
+                          <input value={c.kana||""} onChange={e=>updateAt(idx,"kana",e.target.value)} placeholder="振り仮名（例：やまだ たろう）"
+                            style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
                           <input value={c.role||""} onChange={e=>updateAt(idx,"role",e.target.value)} placeholder="役職・部署（例：営業部長）"
                             style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
                           <input value={c.phone||""} onChange={e=>updateAt(idx,"phone",formatPhone(e.target.value))} placeholder="電話番号（半角に自動変換）" type="tel"
                             style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
                           <input value={c.email||""} onChange={e=>updateAt(idx,"email",e.target.value)} placeholder="メールアドレス"
                             style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
+                          <textarea value={c.note||""} onChange={e=>updateAt(idx,"note",e.target.value)} placeholder="備考（名刺未取得・仮登録メモなど）" rows={2}
+                            style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box",resize:"vertical"}}/>
                         </div>
                       </div>
                     ))}
@@ -22082,12 +22088,16 @@ ${orig}`})
                           <div style={{display:"flex",flexDirection:"column",gap:"0.35rem"}}>
                             <input value={c.name||""} onChange={e=>updateAt(idx,"name",e.target.value)} placeholder="名前（例：山田 太郎）"
                               style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
+                            <input value={c.kana||""} onChange={e=>updateAt(idx,"kana",e.target.value)} placeholder="振り仮名（例：やまだ たろう）"
+                              style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
                             <input value={c.role||""} onChange={e=>updateAt(idx,"role",e.target.value)} placeholder="役職・部署（例：営業部長）"
                               style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
                             <input value={c.phone||""} onChange={e=>updateAt(idx,"phone",formatPhone(e.target.value))} placeholder="電話番号（半角に自動変換）" type="tel"
                               style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
                             <input value={c.email||""} onChange={e=>updateAt(idx,"email",e.target.value)} placeholder="メールアドレス"
                               style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
+                            <textarea value={c.note||""} onChange={e=>updateAt(idx,"note",e.target.value)} placeholder="備考（名刺未取得・仮登録メモなど）" rows={2}
+                              style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box",resize:"vertical"}}/>
                           </div>
                         </div>
                       ))}
@@ -22985,6 +22995,7 @@ ${orig}`})
                   {allContacts.map(c=>(
                     <div key={c.id} style={{fontSize:"0.72rem",color:"#0c4a6e",display:"flex",flexWrap:"wrap",alignItems:"center",gap:"0.4rem"}}>
                       <span style={{fontWeight:700}}>{c.name||"（名前未設定）"}</span>
+                      {c.kana&&<span style={{fontSize:"0.6rem",color:"#94a3b8"}}>{c.kana}</span>}
                       {c.role&&<span style={{fontSize:"0.62rem",background:"#fef3c7",color:"#92400e",padding:"0.05rem 0.35rem",borderRadius:3,fontWeight:700}}>{c.role}</span>}
                       {c.phone&&<a href={`tel:${c.phone.replace(/[^0-9+]/g,"")}`} style={{color:"#0369a1",textDecoration:"none"}}>📞 {c.phone}</a>}
                       {c.email&&onNavigateToEmail&&(
@@ -22992,6 +23003,7 @@ ${orig}`})
                           style={{background:"#dbeafe",color:"#1d4ed8",border:"none",borderRadius:"0.3rem",padding:"0.1rem 0.4rem",fontSize:"0.62rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>📧 メール作成</button>
                       )}
                       {c.email&&<a href={`mailto:${c.email}`} style={{color:"#0369a1",textDecoration:"none",fontSize:"0.66rem"}}>✉️ {c.email}</a>}
+                      {c.note&&<span style={{fontSize:"0.66rem",color:"#475569",flexBasis:"100%",whiteSpace:"pre-wrap"}}>📝 {c.note}</span>}
                     </div>
                   ))}
                 </div>
@@ -23235,12 +23247,16 @@ ${orig}`})
                         <div style={{display:"flex",flexDirection:"column",gap:"0.35rem"}}>
                           <input value={c.name} onChange={e=>updateAt(idx,"name",e.target.value)} placeholder="名前（例：田中 太郎）"
                             style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
+                          <input value={c.kana||""} onChange={e=>updateAt(idx,"kana",e.target.value)} placeholder="振り仮名（例：やまだ たろう）"
+                            style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
                           <input value={c.role} onChange={e=>updateAt(idx,"role",e.target.value)} placeholder="役職・ラベル（例：施設担当 / 廃棄物課長）"
                             style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
                           <input value={c.email} onChange={e=>updateAt(idx,"email",e.target.value)} placeholder="メールアドレス"
                             style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
                           <input value={c.phone} onChange={e=>updateAt(idx,"phone",e.target.value)} placeholder="電話番号"
                             style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
+                          <textarea value={c.note||""} onChange={e=>updateAt(idx,"note",e.target.value)} placeholder="備考（名刺未取得・仮登録メモなど）" rows={2}
+                            style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box",resize:"vertical"}}/>
                         </div>
                       </div>
                     ))}
