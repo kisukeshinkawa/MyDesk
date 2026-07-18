@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-18-v271-contact-kana-note"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-18-v272-vendor-csv-operating"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -19211,17 +19211,27 @@ ${recentLogs}
     
     const headers = [
       "業者名","ステータス","bee-net","代表電話","住所",
-      "許可種別","対応自治体","自社担当","先方担当",
+      "許可種別","対応自治体","稼働状況(許可×エリア)","自社担当","先方担当",
       "最終接触日","アプローチ履歴(全件)",
       "備考","登録日","最終更新"
     ];
     // 業者名は広く、アプローチ履歴は超広く、その他は中間
-    const colWidths = [22, 10, 8, 14, 28, 16, 24, 14, 28, 11, 60, 24, 11, 11];
+    const colWidths = [22, 10, 8, 14, 28, 16, 24, 34, 14, 28, 11, 60, 24, 11, 11];
     
     const rows = vendorList.map(v => {
       const vmunis2 = vendorMunis(v);
       const muniNames = vmunis2.map(m=>m.name).join("、");
       const permits = (v.permitTypes||[]).join("、");
+      const opMapX = v.permitOperating||{};
+      const heldPermitsX = PERMIT_TYPES.filter(pt=>(v.permitTypes||[]).includes(pt));
+      const opStatus = heldPermitsX.map(pt=>{
+        const ons = vmunis2.filter(m=>opMapX[`${m.id}::${pt}`]!==false).map(m=>m.name);
+        const offs = vmunis2.filter(m=>opMapX[`${m.id}::${pt}`]===false).map(m=>m.name);
+        const lines=[pt];
+        if(ons.length) lines.push(`　○ ${ons.join("、")}`);
+        if(offs.length) lines.push(`　× ${offs.join("、")}`);
+        return lines.join("\n");
+      }).join("\n\n");
       const assignees = (v.assigneeIds||[]).map(userName).filter(Boolean).join("、");
       const contacts = (v.contacts||[]).map(c=>{
         const parts=[c.name, c.role, toHankakuPhone(c.phone), c.email].filter(Boolean);
@@ -19240,7 +19250,7 @@ ${recentLogs}
       
       return [
         v.name||"", v.status||"", v.beeNet?"✓":"", toHankakuPhone(v.phone||""), v.address||"",
-        permits, muniNames, assignees, contacts,
+        permits, muniNames, opStatus, assignees, contacts,
         lastDate, approachHistory,
         v.notes||"", (v.createdAt||"").slice(0,10), v.updatedAt||"",
       ];
