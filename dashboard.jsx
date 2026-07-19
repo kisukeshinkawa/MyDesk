@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-19-v273-reply-label-inline"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-19-v274-list-company-name"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -12054,16 +12054,17 @@ function EmailView({data,setData,currentUser=null}) {
   const getDisplayName = React.useCallback((email, fallbackName) => {
     if (!email) return fallbackName || "不明";
     const lc = email.toLowerCase().trim();
+    const hdr = (fallbackName || "").trim();
     const bc = bizcardByEmail.get(lc);
     if (bc) {
       const companyName = bc.salesRef?.name || bc.companyName || "";
-      const personName = bc.name || "";
+      const personName = bc.name || hdr || "";  // 名刺に氏名が無ければヘッダー名で補完
       if (companyName && personName) return `${companyName} ${personName}`;
       if (personName) return personName;
       if (companyName) return companyName;
     }
     // 名刺なし → ヘッダー名 → メアド
-    if (fallbackName && fallbackName.trim()) return fallbackName.trim();
+    if (hdr) return hdr;
     return email;
   }, [bizcardByEmail]);
 
