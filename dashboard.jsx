@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-19-v274-list-company-name"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-19-v275-sender-company-from-ai"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -11384,6 +11384,7 @@ function EmailView({data,setData,currentUser=null}) {
             ai_analyzed_at:  r.ai_analyzed_at,
             ai_should_reply: r.ai_should_reply,
             ai_should_reply_reason: r.ai_should_reply_reason,
+            ai_recipient_header: r.ai_recipient_header,
             isSpam: r.is_spam || false,
             spamReason: r.spam_reason || "",
             _fromDb: true,
@@ -11899,6 +11900,7 @@ function EmailView({data,setData,currentUser=null}) {
         ai_analyzed_at:  r.ai_analyzed_at,
         ai_should_reply: r.ai_should_reply,
         ai_should_reply_reason: r.ai_should_reply_reason,
+        ai_recipient_header: r.ai_recipient_header,
         isSpam: r.is_spam || false,
         spamReason: r.spam_reason || "",
         _fromDb: true,  // DB由来マーク
@@ -12066,6 +12068,34 @@ function EmailView({data,setData,currentUser=null}) {
     // 名刺なし → ヘッダー名 → メアド
     if (hdr) return hdr;
     return email;
+  }, [bizcardByEmail]);
+
+  // 一覧の送信者表示: 名刺 → AIが署名から抽出した宛名(会社名+氏名) → ヘッダー名 → メアド
+  const senderLabel = React.useCallback((e) => {
+    const email = (e?.from?.email || "");
+    const hdr = (e?.from?.name || "").trim();
+    const lc = email.toLowerCase().trim();
+    const bc = bizcardByEmail.get(lc);
+    if (bc) {
+      const company = bc.salesRef?.name || bc.companyName || "";
+      const person = bc.name || hdr || "";
+      const lbl = [company, person].filter(Boolean).join(" ");
+      if (lbl) return lbl;
+    }
+    // 名刺が無ければ、AIが署名から抽出した宛名(会社名+氏名の2行構成)を使う
+    const rh = (e?.ai_recipient_header || "").trim();
+    if (rh) {
+      const lines = rh.split("\n").map(s => s.trim()).filter(Boolean);
+      if (lines.length >= 2) {
+        const company = lines[0];
+        let person = lines[lines.length - 1].replace(/[\s\u3000]*(様|御中|さん)[\s\u3000]*$/, "").trim();
+        if ((!person || person === "ご担当者") && hdr) person = hdr;
+        const lbl = [company, person].filter(Boolean).join(" ");
+        if (lbl) return lbl;
+      }
+    }
+    if (hdr) return hdr;
+    return email || "不明";
   }, [bizcardByEmail]);
 
   // 自動紐付け（DB由来メールに linkedDisplay が空の場合、from_email でマッチング）
@@ -12628,7 +12658,7 @@ ${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
                     </div>
                   ) : list.map(e=>{
                     const isUnread = e.direction==="inbound" && !e.isRead;
-                    const peer = e.direction==="inbound" ? getDisplayName(e.from?.email, e.from?.name) : getDisplayName((e.to||[])[0]?.email, (e.to||[])[0]?.name);
+                    const peer = e.direction==="inbound" ? senderLabel(e) : getDisplayName((e.to||[])[0]?.email, (e.to||[])[0]?.name);
                     const needsRep = needsReplySoon(e);
                     const isSelected = mbSelectedId === e.id;
                     // 自分が To に入ってる受信メール = 要返信候補
@@ -12903,7 +12933,7 @@ ${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
               <div style={{display:"flex",flexDirection:"column",gap:"0.35rem"}}>
                 {list.map(e=>{
                   const isUnread = e.direction==="inbound" && !e.isRead;
-                  const peer = e.direction==="inbound" ? getDisplayName(e.from?.email, e.from?.name) : getDisplayName((e.to||[])[0]?.email, (e.to||[])[0]?.name);
+                  const peer = e.direction==="inbound" ? senderLabel(e) : getDisplayName((e.to||[])[0]?.email, (e.to||[])[0]?.name);
                   const needsRep = needsReplySoon(e);
                   return (
                     <div key={e.id} data-email-id={e.id} onClick={()=>selectEmailWithDelayedRead(e.id, isUnread)}
