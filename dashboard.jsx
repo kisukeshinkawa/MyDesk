@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-19-v278-dustalk-palette"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-19-v279-dustalk-reconcile"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -17422,16 +17422,21 @@ function CompactStatusPicker({map, value, onChange, getLabel, colors}) {
       </button>
       {open && onChange && (
         <div style={{position:"absolute", top:"calc(100% + 4px)", left:0, zIndex:50, background:"white", border:`1.5px solid ${C.border}`, borderRadius:"0.625rem", boxShadow:"0 4px 12px rgba(0,0,0,0.12)", padding:"0.4rem", display:"flex", flexDirection:"column", gap:"0.25rem", minWidth:180, maxHeight:300, overflowY:"auto"}}>
-          {Object.entries(map).map(([s, m]) => (
-            <button key={s} onClick={() => { onChange(s); setOpen(false); }} type="button"
-              style={{padding:"0.45rem 0.7rem", borderRadius:"0.5rem", border:"none", background: value === s ? (m.bg || C.accentBg) : "white", color: m.color || C.text, fontWeight:700, fontSize:"0.8rem", cursor:"pointer", textAlign:"left", fontFamily:"inherit", display:"flex", alignItems:"center", gap:"0.45rem"}}
-              onMouseEnter={e => { if (value !== s) e.currentTarget.style.background = C.bg; }}
-              onMouseLeave={e => { if (value !== s) e.currentTarget.style.background = "white"; }}>
+          {Object.entries(map).map(([s, m]) => {
+            const locked = s === "加入済"; // 加入済はDUSTALK同期でのみ付与（手動選択不可）
+            return (
+            <button key={s} onClick={() => { if (locked) return; onChange(s); setOpen(false); }} type="button"
+              disabled={locked} title={locked ? "DUSTALK同期で自動設定（手動では選べません）" : undefined}
+              style={{padding:"0.45rem 0.7rem", borderRadius:"0.5rem", border:"none", background: value === s ? (m.bg || C.accentBg) : "white", color: m.color || C.text, fontWeight:700, fontSize:"0.8rem", cursor: locked ? "not-allowed" : "pointer", opacity: locked ? 0.5 : 1, textAlign:"left", fontFamily:"inherit", display:"flex", alignItems:"center", gap:"0.45rem"}}
+              onMouseEnter={e => { if (!locked && value !== s) e.currentTarget.style.background = C.bg; }}
+              onMouseLeave={e => { if (!locked && value !== s) e.currentTarget.style.background = "white"; }}>
               {m.icon && <span>{m.icon}</span>}
               <span>{getLabel ? getLabel(s, m) : s}</span>
-              {value === s && <span style={{marginLeft:"auto", fontSize:"0.85rem"}}>✓</span>}
+              {locked && <span style={{marginLeft:"auto", fontSize:"0.7rem"}}>🔒</span>}
+              {value === s && !locked && <span style={{marginLeft:"auto", fontSize:"0.85rem"}}>✓</span>}
             </button>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -22402,6 +22407,8 @@ ${orig}`})
             style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📥 取込</button>
           <button onClick={()=>{setImportPreview(null);setImportErr("");setSheet("importTsr");}} title="TSR架電結果CSVを取込（ステータス・アプローチ・失注理由を反映）"
             style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:"1.5px solid #0891b2",background:"#ecfeff",color:"#0e7490",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📞TSR</button>
+          <button onClick={()=>{setImportPreview(null);setImportErr("");setSheet("importDustalk");}} title="DUSTALK(Bubble)の登録業者と突合して加入済/仮登録を更新"
+            style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:"1.5px solid #2563eb",background:"#eff6ff",color:"#1d4ed8",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🚚DUSTALK</button>
           <button onClick={()=>{
             // フィルター条件に該当する業者リストを取得
             const list = bulkMode && bulkSelected.size>0
@@ -22723,6 +22730,109 @@ ${orig}`})
                   <div style={{display:"flex",gap:"0.5rem",marginTop:"1rem"}}>
                     <Btn variant="secondary" style={{flex:1}} onClick={()=>{setPreview(null);}}>やり直す</Btn>
                     <Btn style={{flex:2}} onClick={doImport} disabled={importing}>{importing?"取込中…":`この内容で取込（更新${stats.upd}・新規${stats.neo}）`}</Btn>
+                  </div>
+                </div>
+              )}
+            </Sheet>
+          );
+        })()}
+        {sheet==="importDustalk"&&(()=>{
+          const preview=importPreview; const setPreview=setImportPreview;
+          const err=importErr; const setErr=setImportErr;
+          const normPhone=(s)=>String(s||"").replace(/[^0-9]/g,"");
+          const handleFile=async(e)=>{
+            const file=e.target.files?.[0]; if(e.target)e.target.value="";
+            if(!file)return; setErr(""); setPreview(null);
+            const yield_=()=>new Promise(r=>setTimeout(r,0));
+            try{
+              setImportProgress("ファイルを読み込み中…"); await yield_();
+              const txt=await readFileAsText(file); await yield_();
+              setImportProgress("CSVを解析中…"); await yield_();
+              const rows=parseCSV(txt);
+              if(!rows.length){ setErr("CSVが空です。"); setImportProgress(""); return; }
+              const header=rows[0].map(h=>String(h||"").trim().toLowerCase().replace(/^﻿/,""));
+              const ci=(n)=>header.indexOf(n);
+              const iName=ci("company_name"), iPR=ci("phone_rep"), iPL=ci("phone_login"), iStatus=ci("status"), iActive=ci("active");
+              if(iName<0){ setErr("company_name 列が見つかりません。fetch_dustalk.py が出力したCSVを選択してください。"); setImportProgress(""); return; }
+              const activeName=new Set(), inactiveName=new Set(), activePhone=new Set(), inactivePhone=new Set();
+              let duActive=0, duTotal=0;
+              for(let i=1;i<rows.length;i++){
+                const r=rows[i]; const nm=(r[iName]||"").trim(); if(!nm)continue; duTotal++;
+                const isActive = iActive>=0 ? (String(r[iActive]).trim()==="1") : ((r[iStatus]||"").trim()==="アクティブ");
+                const nkey=normBizName(nm);
+                const phones=[iPR>=0?normPhone(r[iPR]):"", iPL>=0?normPhone(r[iPL]):""].filter(p=>p.length>=9);
+                if(isActive){ duActive++; if(nkey)activeName.add(nkey); phones.forEach(p=>activePhone.add(p)); }
+                else { if(nkey)inactiveName.add(nkey); phones.forEach(p=>inactivePhone.add(p)); }
+                if(i%1000===0){ setImportProgress(`DUSTALK解析中… ${i}/${rows.length}`); await yield_(); }
+              }
+              const changes=[]; const matchedActive=new Set();
+              for(let i=0;i<vendors.length;i+=3000){
+                vendors.slice(i,i+3000).forEach((v,j)=>{
+                  const idx=i+j; const nkey=normBizName(v.name);
+                  const vph=[normPhone(v.phone)].filter(p=>p.length>=9);
+                  const activeMatch=(nkey&&activeName.has(nkey))||vph.some(p=>activePhone.has(p));
+                  const inactiveMatch=(nkey&&inactiveName.has(nkey))||vph.some(p=>inactivePhone.has(p));
+                  let to=null;
+                  if(activeMatch){ to="加入済"; if(nkey)matchedActive.add(nkey); }
+                  else if(inactiveMatch){ to="仮登録"; }
+                  else if((v.status||"")==="加入済"){ to="仮登録"; }
+                  if(to && to!==(v.status||"")) changes.push({idx, name:v.name, from:v.status||"(未設定)", to});
+                });
+                setImportProgress(`MyDesk業者と照合中… ${Math.min(i+3000,vendors.length)}/${vendors.length}`); await yield_();
+              }
+              const unmatchedActive=[];
+              for(let i=1;i<rows.length;i++){
+                const r=rows[i]; const nm=(r[iName]||"").trim(); if(!nm)continue;
+                const isActive= iActive>=0 ? (String(r[iActive]).trim()==="1") : ((r[iStatus]||"").trim()==="アクティブ");
+                if(isActive && !matchedActive.has(normBizName(nm))) unmatchedActive.push(nm);
+              }
+              setImportProgress(""); setPreview({changes, duActive, duTotal, unmatchedActive});
+            }catch(e){ console.error("[MyDesk] DUSTALK import error:",e); setImportProgress(""); setErr("読み込みに失敗しました。CSV形式・文字コードをご確認ください。"); }
+          };
+          const doImport=()=>{
+            if(!preview)return;
+            const today=new Date().toISOString().slice(0,10);
+            const toMap=new Map(preview.changes.map(c=>[c.idx,c.to]));
+            const updatedVendors=vendors.map((v,idx)=> toMap.has(idx) ? {...v, status:toMap.get(idx), updatedAt:today} : v);
+            const newData={...data,vendors:updatedVendors};
+            setImporting(true); setData(newData);
+            (async()=>{ const ok=await saveData(newData); setImporting(false); if(ok){ setSheet(null); setPreview(null); window.alert(`✅ DUSTALK突合 完了\n加入済 ${preview.changes.filter(c=>c.to==="加入済").length}件 / 仮登録 ${preview.changes.filter(c=>c.to==="仮登録").length}件 に更新`); } else { setData(data); window.alert("保存に失敗しました。時間をおいて再度お試しください。"); } })();
+          };
+          const st=preview?{ join:preview.changes.filter(c=>c.to==="加入済").length, prov:preview.changes.filter(c=>c.to==="仮登録").length }:null;
+          return (
+            <Sheet title="🚚 DUSTALK突合 取込" onClose={()=>{setSheet(null);setPreview(null);setErr("");}}>
+              <div style={{fontSize:"0.78rem",color:C.text,lineHeight:1.6,marginBottom:"0.75rem"}}>
+                Macで <code>fetch_dustalk.py</code> を実行して出力した <strong>dustalk_companies.csv</strong> を選択してください。<br/>
+                <span style={{fontSize:"0.72rem",color:C.textSub}}>DUSTALKで<strong>アクティブ</strong>→<strong>加入済</strong>／登録あるが非アクティブ→<strong>仮登録</strong>／現在「加入済」でDUSTALKに無い→<strong>仮登録</strong>に降格。断り・見送り等は変更しません。会社名（正規化）＋電話で照合。</span>
+              </div>
+              <label style={{display:"inline-flex",alignItems:"center",gap:"0.4rem",padding:"0.6rem 1rem",background:"#eff6ff",border:"1.5px solid #2563eb",borderRadius:"8px",color:"#1d4ed8",fontWeight:700,fontSize:"0.82rem",cursor:"pointer"}}>
+                📄 CSVファイルを選択
+                <input type="file" accept=".csv,text/csv" onChange={handleFile} style={{display:"none"}}/>
+              </label>
+              {importProgress&&<div style={{marginTop:"0.75rem",fontSize:"0.78rem",color:"#1d4ed8",fontWeight:700}}>⏳ {importProgress}</div>}
+              {err&&<div style={{marginTop:"0.75rem",fontSize:"0.78rem",color:"#dc2626",fontWeight:700}}>⚠️ {err}</div>}
+              {preview&&st&&(
+                <div style={{marginTop:"1rem"}}>
+                  <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap",marginBottom:"0.75rem"}}>
+                    <div style={{flex:1,minWidth:90,background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:"8px",padding:"0.5rem 0.7rem"}}><div style={{fontSize:"0.62rem",color:"#15803d",fontWeight:700}}>→ 加入済</div><div style={{fontSize:"1.3rem",fontWeight:800,color:"#166534"}}>{st.join}</div></div>
+                    <div style={{flex:1,minWidth:90,background:"#ecfeff",border:"1px solid #a5f3fc",borderRadius:"8px",padding:"0.5rem 0.7rem"}}><div style={{fontSize:"0.62rem",color:"#0e7490",fontWeight:700}}>→ 仮登録</div><div style={{fontSize:"1.3rem",fontWeight:800,color:"#155e75"}}>{st.prov}</div></div>
+                    <div style={{flex:1,minWidth:90,background:"#f8fafc",border:`1px solid ${C.border}`,borderRadius:"8px",padding:"0.5rem 0.7rem"}}><div style={{fontSize:"0.62rem",color:C.textSub,fontWeight:700}}>DUSTALK(内アクティブ)</div><div style={{fontSize:"1.3rem",fontWeight:800,color:C.text}}>{preview.duTotal}<span style={{fontSize:"0.7rem",color:C.textMuted}}>({preview.duActive})</span></div></div>
+                  </div>
+                  {preview.unmatchedActive.length>0&&(<div style={{marginBottom:"0.75rem",fontSize:"0.72rem",color:"#92400e",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:"6px",padding:"0.4rem 0.6rem"}}>⚠️ DUSTALKでアクティブだがMyDesk未登録: {preview.unmatchedActive.length}件<br/><span style={{color:"#a16207"}}>{preview.unmatchedActive.slice(0,20).join("、")}{preview.unmatchedActive.length>20?" …":""}</span></div>)}
+                  <div style={{fontSize:"0.72rem",color:C.textSub,fontWeight:700,marginBottom:"0.3rem"}}>変更プレビュー（先頭10件 / 全{preview.changes.length}件）</div>
+                  <div style={{maxHeight:220,overflowY:"auto",border:`1px solid ${C.borderLight}`,borderRadius:"6px"}}>
+                    {preview.changes.slice(0,10).map((c,i)=>(
+                      <div key={i} style={{padding:"0.35rem 0.6rem",borderTop:i>0?`1px solid ${C.borderLight}`:"none",fontSize:"0.72rem",display:"flex",gap:"0.4rem",alignItems:"center",flexWrap:"wrap"}}>
+                        <span style={{fontWeight:700,color:C.text}}>{c.name}</span>
+                        <span style={{color:C.textMuted}}>{c.from}</span><span style={{color:C.textMuted}}>→</span>
+                        <span style={{fontSize:"0.62rem",fontWeight:700,padding:"0.05rem 0.4rem",borderRadius:999,background:(VENDOR_STATUS[c.to]?.bg)||"#f1f5f9",color:(VENDOR_STATUS[c.to]?.color)||C.textSub}}>{c.to}</span>
+                      </div>
+                    ))}
+                    {preview.changes.length===0&&<div style={{padding:"0.6rem",fontSize:"0.72rem",color:C.textMuted}}>変更対象はありません（既に一致しています）。</div>}
+                  </div>
+                  <div style={{display:"flex",gap:"0.5rem",marginTop:"1rem"}}>
+                    <Btn variant="secondary" style={{flex:1}} onClick={()=>{setPreview(null);}}>やり直す</Btn>
+                    <Btn style={{flex:2}} onClick={doImport} disabled={importing||preview.changes.length===0}>{importing?"反映中…":`この内容で反映（加入済${st.join}・仮登録${st.prov}）`}</Btn>
                   </div>
                 </div>
               )}
