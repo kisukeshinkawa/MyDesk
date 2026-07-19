@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-19-v276-sender-sama-draft-header"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-19-v277-internal-san"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -12071,11 +12071,12 @@ function EmailView({data,setData,currentUser=null}) {
   }, [bizcardByEmail]);
 
   // 一覧の送信者表示: 名刺 → AI宛名(recipient_header/返信ドラフト先頭) → ヘッダー名 → メアド。氏名/会社に「様」付与
-  const _samaLabel = (company, person) => {
+  const _samaLabel = (company, person, suf) => {
+    const s = suf || "様";
     const p = (person || "").replace(/[\s\u3000]*(様|御中|さん)[\s\u3000]*$/, "").trim();
-    if (company && p) return company + " " + p + " 様";
-    if (p) return p + " 様";
-    if (company) return company + " 様";
+    if (company && p) return company + " " + p + " " + s;
+    if (p) return p + " " + s;
+    if (company) return company + " " + s;
     return "";
   };
   const _draftHeaderLines = (draft) => {
@@ -12093,12 +12094,13 @@ function EmailView({data,setData,currentUser=null}) {
   const senderLabel = React.useCallback((e) => {
     const email = (e?.from?.email || "");
     const hdr = (e?.from?.name || "").trim();
+    const suf = /@beetle-ems\.com$/i.test(email) ? "さん" : "様";
     const lc = email.toLowerCase().trim();
     const bc = bizcardByEmail.get(lc);
     if (bc) {
       const company = bc.salesRef?.name || bc.companyName || "";
       const person = bc.name || hdr || "";
-      const lbl = _samaLabel(company, person);
+      const lbl = _samaLabel(company, person, suf);
       if (lbl) return lbl;
     }
     // AI宛名: recipient_header 優先、無ければ返信ドラフト先頭の宛名を使う
@@ -12107,13 +12109,13 @@ function EmailView({data,setData,currentUser=null}) {
     if (lines.length >= 2) {
       let person = lines[lines.length - 1];
       if (/ご担当者/.test(person) && hdr) person = hdr;
-      const lbl = _samaLabel(lines[0], person);
+      const lbl = _samaLabel(lines[0], person, suf);
       if (lbl) return lbl;
     } else if (lines.length === 1 && !/ご担当者/.test(lines[0])) {
-      const lbl = _samaLabel("", lines[0]);
+      const lbl = _samaLabel("", lines[0], suf);
       if (lbl) return lbl;
     }
-    if (hdr) return _samaLabel("", hdr) || hdr;
+    if (hdr) return _samaLabel("", hdr, suf) || hdr;
     return email || "不明";
   }, [bizcardByEmail]);
 
