@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-18-v272-vendor-csv-operating"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-19-v273-reply-label-inline"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -12643,7 +12643,12 @@ ${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
                         <div style={{flex:1,minWidth:0}}>
                           <div style={{display:"flex",alignItems:"center",gap:"0.4rem"}}>
                             {isUnread && <span style={{width:6,height:6,borderRadius:"50%",background:"#ea580c",flexShrink:0}}/>}
-                            <span style={{fontSize:"0.78rem",fontWeight:isUnread?800:600,color:C.text,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{peer}</span>
+                            <span style={{fontSize:"0.78rem",fontWeight:isUnread?800:600,color:C.text,flex:"0 1 auto",minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{peer}</span>
+                            {needsRep && <span style={{fontSize:"0.58rem",fontWeight:800,padding:"0.05rem 0.35rem",borderRadius:4,background:"#fee2e2",color:"#b91c1c",flexShrink:0,whiteSpace:"nowrap"}}>要返信 {daysSince(e.receivedAt||e.createdAt)}日</span>}
+                            {needsAction && !needsRep && !(e.isReplied||repliedToIds.has(e.id)) && <span style={{fontSize:"0.58rem",fontWeight:800,padding:"0.05rem 0.35rem",borderRadius:4,background:"#fef3c7",color:"#92400e",flexShrink:0,whiteSpace:"nowrap"}}>✉️要返信</span>}
+                            {(e.isReplied||repliedToIds.has(e.id)) && <span style={{fontSize:"0.58rem",fontWeight:800,padding:"0.05rem 0.35rem",borderRadius:4,background:"#d1fae5",color:"#065f46",flexShrink:0,whiteSpace:"nowrap"}}>✓ 返信済</span>}
+                            {e.status==="failed" && <span style={{fontSize:"0.58rem",fontWeight:800,padding:"0.05rem 0.35rem",borderRadius:4,background:"#fee2e2",color:"#b91c1c",flexShrink:0,whiteSpace:"nowrap"}}>⚠️ 送信失敗</span>}
+                            <span style={{flex:1}}/>
                             <span style={{fontSize:"0.62rem",color:C.textMuted,flexShrink:0,fontVariantNumeric:"tabular-nums"}}>{fmtMbDate(e.sentAt||e.receivedAt||e.createdAt)}</span>
                           </div>
                           <div style={{display:"flex",alignItems:"center",gap:6,marginTop:"0.1rem"}}>
@@ -12659,14 +12664,6 @@ ${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
                           <div style={{fontSize:"0.66rem",color:e.ai_summary?"#1e40af":C.textMuted,marginTop:"0.05rem",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontWeight:e.ai_summary?500:400}}>
                             {e.ai_summary || (e.body||"").slice(0,80)}
                           </div>
-                          {(needsRep || needsAction || e.status==="failed" || e.isReplied) && (
-                            <div style={{display:"flex",gap:4,marginTop:"0.25rem",flexWrap:"wrap"}}>
-                              {needsRep && <span style={{fontSize:"0.58rem",fontWeight:700,padding:"0.05rem 0.35rem",borderRadius:4,background:"#fee2e2",color:"#b91c1c"}}>要返信 {daysSince(e.receivedAt||e.createdAt)}日</span>}
-                              {needsAction && !needsRep && !(e.isReplied||repliedToIds.has(e.id)) && <span style={{fontSize:"0.58rem",fontWeight:700,padding:"0.05rem 0.35rem",borderRadius:4,background:"#fef3c7",color:"#92400e"}}>✉️ 要返信</span>}
-                              {(e.isReplied||repliedToIds.has(e.id)) && <span style={{fontSize:"0.58rem",fontWeight:700,padding:"0.05rem 0.35rem",borderRadius:4,background:"#d1fae5",color:"#065f46"}}>✓ 返信済</span>}
-                              {e.status==="failed" && <span style={{fontSize:"0.58rem",fontWeight:700,padding:"0.05rem 0.35rem",borderRadius:4,background:"#fee2e2",color:"#b91c1c"}}>⚠️ 送信失敗</span>}
-                            </div>
-                          )}
                         </div>
                       </div>
                     );
