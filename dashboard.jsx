@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-19-v275-sender-company-from-ai"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-19-v276-sender-sama-draft-header"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -12070,7 +12070,26 @@ function EmailView({data,setData,currentUser=null}) {
     return email;
   }, [bizcardByEmail]);
 
-  // 一覧の送信者表示: 名刺 → AIが署名から抽出した宛名(会社名+氏名) → ヘッダー名 → メアド
+  // 一覧の送信者表示: 名刺 → AI宛名(recipient_header/返信ドラフト先頭) → ヘッダー名 → メアド。氏名/会社に「様」付与
+  const _samaLabel = (company, person) => {
+    const p = (person || "").replace(/[\s\u3000]*(様|御中|さん)[\s\u3000]*$/, "").trim();
+    if (company && p) return company + " " + p + " 様";
+    if (p) return p + " 様";
+    if (company) return company + " 様";
+    return "";
+  };
+  const _draftHeaderLines = (draft) => {
+    if (!draft) return [];
+    const out = [];
+    for (const ln of String(draft).split("\n")) {
+      const t = ln.trim();
+      if (!t) { if (out.length) break; else continue; }
+      if (/^(お世話に|いつも|拝啓|平素|ご連絡|ご返信|ご質問|この度|先日|突然)/.test(t)) break;
+      out.push(t);
+      if (out.length >= 3) break;
+    }
+    return out;
+  };
   const senderLabel = React.useCallback((e) => {
     const email = (e?.from?.email || "");
     const hdr = (e?.from?.name || "").trim();
@@ -12079,22 +12098,22 @@ function EmailView({data,setData,currentUser=null}) {
     if (bc) {
       const company = bc.salesRef?.name || bc.companyName || "";
       const person = bc.name || hdr || "";
-      const lbl = [company, person].filter(Boolean).join(" ");
+      const lbl = _samaLabel(company, person);
       if (lbl) return lbl;
     }
-    // 名刺が無ければ、AIが署名から抽出した宛名(会社名+氏名の2行構成)を使う
-    const rh = (e?.ai_recipient_header || "").trim();
-    if (rh) {
-      const lines = rh.split("\n").map(s => s.trim()).filter(Boolean);
-      if (lines.length >= 2) {
-        const company = lines[0];
-        let person = lines[lines.length - 1].replace(/[\s\u3000]*(様|御中|さん)[\s\u3000]*$/, "").trim();
-        if ((!person || person === "ご担当者") && hdr) person = hdr;
-        const lbl = [company, person].filter(Boolean).join(" ");
-        if (lbl) return lbl;
-      }
+    // AI宛名: recipient_header 優先、無ければ返信ドラフト先頭の宛名を使う
+    let lines = (e?.ai_recipient_header || "").trim().split("\n").map(s => s.trim()).filter(Boolean);
+    if (lines.length === 0) lines = _draftHeaderLines(e?.ai_draft_reply);
+    if (lines.length >= 2) {
+      let person = lines[lines.length - 1];
+      if (/ご担当者/.test(person) && hdr) person = hdr;
+      const lbl = _samaLabel(lines[0], person);
+      if (lbl) return lbl;
+    } else if (lines.length === 1 && !/ご担当者/.test(lines[0])) {
+      const lbl = _samaLabel("", lines[0]);
+      if (lbl) return lbl;
     }
-    if (hdr) return hdr;
+    if (hdr) return _samaLabel("", hdr) || hdr;
     return email || "不明";
   }, [bizcardByEmail]);
 
