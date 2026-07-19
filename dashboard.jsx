@@ -52,54 +52,54 @@ const S = {
 
 const C = {
   // ── Base surfaces ──────────────────────────────
-  bg:"#F5F6F8",           // Cool light gray-blue (画像準拠)
+  bg:"#F4F7FB",           // Cool light gray-blue (画像準拠)
   surface:"#ffffff",
-  surfaceHover:"#F8FAFC",
-  overlay:"rgba(15,23,42,0.5)",
+  surfaceHover:"#EEF5FC",
+  overlay:"rgba(16,35,64,0.5)",
 
   // ── Border system ──────────────────────────────
-  border:"#E2E8F0",       // slate-200
-  borderLight:"#F1F5F9",  // slate-100
+  border:"#DCE3EA",       // slate-200
+  borderLight:"#EEF1F5",  // slate-100
 
   // ── Text hierarchy (3 levels) ───────────────────
-  text:"#0F172A",         // slate-900
-  textSub:"#475569",      // slate-600
-  textMuted:"#94A3B8",    // slate-400
+  text:"#1B2A41",         // slate-900
+  textSub:"#516074",      // slate-600
+  textMuted:"#94A3B4",    // slate-400
 
   // ── Accent — Bright Blue ──────────────────────
-  accent:"#3B82F6",       // blue-500 (画像のアクセント青)
-  accentDark:"#2563EB",   // blue-600
-  accentBg:"#EFF6FF",     // blue-50
-  accentLight:"rgba(59,130,246,0.08)",
+  accent:"#2F6FE0",       // blue-500 (画像のアクセント青)
+  accentDark:"#1E56C0",   // blue-600
+  accentBg:"#E8F1FD",     // blue-50
+  accentLight:"rgba(47,111,224,0.08)",
 
   // ── Semantic ────────────────────────────────────
-  blue:"#3B82F6",   blueBg:"#DBEAFE",     // blue-100
-  green:"#10B981",  greenBg:"#D1FAE5",    // emerald-100
-  yellow:"#F59E0B", yellowBg:"#FEF3C7",   // amber-100
-  red:"#EF4444",    redBg:"#FEE2E2",      // red-100
-  purple:"#8B5CF6", purpleBg:"#EDE9FE",   // violet-100
-  orange:"#F97316", orangeBg:"#FFEDD5",   // orange-100
+  blue:"#2F6FE0",   blueBg:"#DCEAFB",     // blue-100
+  green:"#1FA463",  greenBg:"#DBF2E5",    // emerald-100
+  yellow:"#E68A0C", yellowBg:"#FBEBCF",   // amber-100
+  red:"#E24B4B",    redBg:"#FFDBDB",      // red-100
+  purple:"#7A5AD9", purpleBg:"#E9E2FA",   // violet-100
+  orange:"#F2820C", orangeBg:"#FCE7CE",   // orange-100
 
   // ── Navigation (NOW WHITE) ──────────────────────
   nav:"#ffffff",
-  navBorder:"#E2E8F0",
-  navText:"#475569",
-  navTextSub:"#94A3B8",
-  navActive:"#EFF6FF",
-  navActiveText:"#3B82F6",
+  navBorder:"#E5EAF0",
+  navText:"#516074",
+  navTextSub:"#94A3B4",
+  navActive:"#E8F1FD",
+  navActiveText:"#1E56C0",
 
   // ── Elevation (subtle, modern) ──────────────────
-  shadow:"0 1px 3px rgba(15,23,42,0.04),0 1px 2px rgba(15,23,42,0.06)",
-  shadowMd:"0 4px 12px rgba(15,23,42,0.08)",
-  shadowLg:"0 8px 24px rgba(15,23,42,0.12)",
-  shadowFloat:"0 16px 40px rgba(15,23,42,0.18)",
+  shadow:"0 1px 3px rgba(16,35,64,0.05),0 1px 2px rgba(16,35,64,0.06)",
+  shadowMd:"0 4px 12px rgba(16,35,64,0.08)",
+  shadowLg:"0 8px 24px rgba(16,35,64,0.12)",
+  shadowFloat:"0 16px 40px rgba(16,35,64,0.18)",
 };
 
 // ─── STORAGE ──────────────────────────────────────────────────────────────────
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-19-v277-internal-san"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-19-v278-dustalk-palette"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
