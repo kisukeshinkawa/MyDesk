@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-20-v286-dustalk-autosync"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-20-v287-lock-joined-bulk"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -19993,7 +19993,7 @@ ${recentLogs}
             <select value={bulkStatus} onChange={e=>{setBulkTarget(field||"status");setBulkStatus(e.target.value);}}
               style={{padding:"0.3rem 0.5rem",borderRadius:"0.5rem",border:"1px solid #93c5fd",fontSize:"0.75rem",fontFamily:"inherit",background:"white",flex:1,minWidth:0}}>
               <option value="">── ステータス選択 ──</option>
-              {Object.keys(statusMap).map(s=><option key={s} value={s}>{s}</option>)}
+              {Object.keys(statusMap).filter(s=>s!=="加入済").map(s=><option key={s} value={s}>{s}</option>)}
             </select>
           )}
           {(applyFn&&statusMap)&&<Btn size="sm" onClick={applyFn} disabled={!bulkStatus||bulkSelected.size===0}>✅ 一括変更</Btn>}
