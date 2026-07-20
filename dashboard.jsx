@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-20-v291-ai-sections-collapse"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-20-v292-mail-html-images"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -10182,6 +10182,7 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onMarkSpam,
     return () => { cancelAnimationFrame(t1); clearTimeout(t2); clearTimeout(t3); };
   }, [email?.id]);
   const [linkType, setLinkType] = React.useState(null); // 企業/業者/自治体/タスク/プロジェクト/名刺
+  const [showHtml, setShowHtml] = React.useState(null); // 本文表示: null=自動 / true=HTML / false=テキスト
   const [aiAnalysisOpen, setAiAnalysisOpen] = React.useState(true); // ✨AI分析の折りたたみ
   const [linkSearch, setLinkSearch] = React.useState("");
   const [replyMode, setReplyMode] = React.useState(null); // null | "reply" | "replyAll" | "forward"
@@ -10995,7 +10996,23 @@ ${latestBody.slice(0, 1500)}
         </div>
       )}
       {/* 本文 */}
-      <div style={{padding:"0.75rem 0.9rem",background:C.bg,borderRadius:8,border:`1px solid ${C.borderLight}`,fontSize:"0.83rem",lineHeight:1.7,color:C.text,whiteSpace:"pre-wrap",marginBottom:"0.85rem",wordBreak:"break-word"}}>{linkifyToNodes(email.body)}</div>
+      {(()=>{
+        const hasHtml = !!(email.bodyHtml && email.bodyHtml.trim());
+        const textEmpty = !(email.body && email.body.trim());
+        const effHtml = showHtml===null ? (textEmpty && hasHtml) : showHtml;
+        return (<>
+          {effHtml
+            ? <iframe title="mailbody" sandbox="allow-popups allow-popups-to-escape-sandbox" srcDoc={email.bodyHtml}
+                style={{width:"100%",height:520,border:`1px solid ${C.borderLight}`,borderRadius:8,marginBottom:"0.4rem",background:"white",display:"block"}}/>
+            : <div style={{padding:"0.75rem 0.9rem",background:C.bg,borderRadius:8,border:`1px solid ${C.borderLight}`,fontSize:"0.83rem",lineHeight:1.7,color:C.text,whiteSpace:"pre-wrap",marginBottom:"0.4rem",wordBreak:"break-word"}}>{linkifyToNodes(email.body)}</div>}
+          {hasHtml && (
+            <button onClick={()=>setShowHtml(v=> v===null ? !(textEmpty&&hasHtml) : !v )}
+              style={{marginBottom:"0.85rem",padding:"0.25rem 0.65rem",fontSize:"0.68rem",fontWeight:700,border:`1px solid ${C.border}`,borderRadius:6,background:"white",color:C.textSub,cursor:"pointer",fontFamily:"inherit"}}>
+              {effHtml ? "📝 テキストで表示" : "🖼 画像付き(HTML)で表示"}
+            </button>
+          )}
+        </>);
+      })()}
 
 
       {/* ✅ v207: エンティティ連携 UI - モーダル化（自動候補付き） */}
@@ -11367,6 +11384,7 @@ function EmailView({data,setData,currentUser=null}) {
             bcc: r.bcc_recipients || [],
             subject: r.subject||"(件名なし)",
             body: r.body||"",
+            bodyHtml: r.body_html||"",
             receivedAt: r.received_at,
             sentAt: r.sent_at,
             isRead: r.is_read,
@@ -11882,6 +11900,7 @@ function EmailView({data,setData,currentUser=null}) {
         bcc: r.bcc_recipients || [],
         subject: r.subject||"(件名なし)",
         body: r.body||"",
+        bodyHtml: r.body_html||"",
         receivedAt: r.received_at,
         sentAt: r.sent_at,
         isRead: r.is_read,
