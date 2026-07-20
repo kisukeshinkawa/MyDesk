@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-20-v285-actions-under-header"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-20-v286-dustalk-autosync"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -34026,6 +34026,83 @@ export default function App() {
       window.removeEventListener("mydesk-save-state",onSaveState);
       window.removeEventListener("beforeunload",onBeforeUnload);
     };
+  }, [data]);
+
+  // ✅ v286: DUSTALK自動同期（起動時1日1回・安全ガード付き）
+  // アクティブ→加入済 / 登録あり非アクティブ→仮登録 / 加入済だがDUSTALKに無い→仮登録(降格は暴発ガード)
+  React.useEffect(() => {
+    try {
+      if (!data || !Array.isArray(data.vendors) || data.vendors.length === 0) return;
+      if (typeof window !== "undefined" && window.__dustalkAutosyncBusy) return;
+      const LASTKEY = "mydesk_dustalk_autosync_at", ACTKEY = "mydesk_dustalk_last_active";
+      let last = 0; try { last = parseInt(localStorage.getItem(LASTKEY) || "0", 10) || 0; } catch (_) {}
+      if (Date.now() - last < 20 * 60 * 60 * 1000) return; // 1日1回
+      if (typeof window !== "undefined") window.__dustalkAutosyncBusy = true;
+      try { localStorage.setItem(LASTKEY, String(Date.now())); } catch (_) {}
+      (async () => {
+        try {
+          const res = await fetch(`${DUSTALK_SYNC_URL}/dustalk-companies`, { headers: DB_API_HEADERS });
+          if (!res.ok) { console.warn("[DUSTALK autosync] HTTP " + res.status); return; }
+          const j = await res.json();
+          if (!j || j.ok !== true || !Array.isArray(j.companies)) { console.warn("[DUSTALK autosync] bad response"); return; }
+          const total = j.count || j.companies.length;
+          const active = j.active || j.companies.filter(c => c && c.active).length;
+          if (total < 200 || active < 20) { console.warn(`[DUSTALK autosync] 会社数が少なすぎ(total=${total}, active=${active}) — 中止`); return; }
+          let prevActive = 0; try { prevActive = parseInt(localStorage.getItem(ACTKEY) || "0", 10) || 0; } catch (_) {}
+          if (prevActive > 0 && active < prevActive * 0.6) { console.warn(`[DUSTALK autosync] アクティブ数が大幅減 ${prevActive}→${active} — 中止(部分取得の可能性)`); return; }
+          const _norm = (s) => (s || "")
+            .replace(/\s*(株式会社|有限会社|合同会社|一般社団法人|一般財団法人|公益社団法人|公益財団法人|特定非営利活動法人|NPO法人|社会福祉法人|学校法人|宗教法人|医療法人)\s*/gi, "")
+            .replace(/[（(]株[)）]|[（(]有[)）]|[（(]合[)）]|[（(]社[)）]/g, "")
+            .replace(/[Ａ-Ｚａ-ｚ０-９]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0))
+            .replace(/[ァ-ン]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0x60))
+            .replace(/[\s\u3000・　]/g, "").replace(/[-－ー〜～、。・]/g, "").toLowerCase();
+          const _phone = (s) => String(s || "").replace(/[^0-9]/g, "");
+          const aName = new Set(), iName = new Set(), aPhone = new Set(), iPhone = new Set();
+          for (const c of j.companies) {
+            const nm = _norm(c.name);
+            const ph = [_phone(c.phone_rep), _phone(c.phone_login)].filter(p => p.length >= 9);
+            if (c.active) { if (nm) aName.add(nm); ph.forEach(p => aPhone.add(p)); }
+            else { if (nm) iName.add(nm); ph.forEach(p => iPhone.add(p)); }
+          }
+          const base = (typeof window !== "undefined" && typeof window.__myDeskGetData === "function") ? (window.__myDeskGetData() || data) : data;
+          const vendors = Array.isArray(base.vendors) ? base.vendors : [];
+          if (!vendors.length) return;
+          const intent = vendors.map(v => {
+            const nm = _norm(v.name);
+            const vph = [_phone(v.phone)].filter(p => p.length >= 9);
+            const aM = (nm && aName.has(nm)) || vph.some(p => aPhone.has(p));
+            const iM = (nm && iName.has(nm)) || vph.some(p => iPhone.has(p));
+            if (aM) return "加入済";
+            if (iM) return "仮登録";
+            if ((v.status || "") === "加入済") return "仮登録";
+            return null;
+          });
+          let promo = 0, demo = 0;
+          intent.forEach((to, i) => { if (to && to !== (vendors[i].status || "")) { if (to === "加入済") promo++; else demo++; } });
+          const curJoined = vendors.filter(v => (v.status || "") === "加入済").length;
+          const applyDemote = demo <= Math.max(30, Math.floor(curJoined * 0.15));
+          try { localStorage.setItem(ACTKEY, String(active)); } catch (_) {}
+          const today = new Date().toISOString().slice(0, 10);
+          let changed = 0;
+          const newVendors = vendors.map((v, i) => {
+            const to = intent[i];
+            if (!to || to === (v.status || "")) return v;
+            if (to === "仮登録" && !applyDemote) return v;
+            changed++;
+            return { ...v, status: to, updatedAt: today };
+          });
+          if (!changed) { console.log("[DUSTALK autosync] 変更なし（同期済み）"); return; }
+          const newData = { ...base, vendors: newVendors };
+          setData(newData);
+          const ok = await saveData(newData);
+          console.log(`[DUSTALK autosync] ${ok ? "保存OK" : "保存NG"} — 加入済+${promo}${applyDemote ? ` / 仮登録+${demo}` : ` / 降格${demo}件は暴発ガードでスキップ（手動🚚DUSTALKで確認を）`}`);
+        } catch (e) {
+          console.warn("[DUSTALK autosync] error:", e);
+        } finally {
+          if (typeof window !== "undefined") window.__dustalkAutosyncBusy = false;
+        }
+      })();
+    } catch (e) { console.warn("[DUSTALK autosync] outer error:", e); }
   }, [data]);
   const [saveState,setSaveState] = useState(""); // 保存インジケータ(saving/saved/error)
   const [notifFilter,setNotifFilter] = useState("all");
