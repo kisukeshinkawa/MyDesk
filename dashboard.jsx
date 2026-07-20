@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-19-v279-dustalk-reconcile"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-20-v280-muni-search-textarea-cap"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -8688,7 +8688,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
         })}
       </div>
       <div style={{display:"flex",gap:"0.4rem"}}>
-        <textarea value={tMemoIn[entityId]||""} onChange={e=>{setTMemoIn(p=>({...p,[entityId]:e.target.value}));e.target.style.height="auto";e.target.style.height=e.target.scrollHeight+"px";}}
+        <textarea value={tMemoIn[entityId]||""} onChange={e=>{setTMemoIn(p=>({...p,[entityId]:e.target.value}));e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,300)+"px";}}
           placeholder="メモを追加... (Shift+Enterで改行)"
           style={{flex:1,padding:"0.5rem 0.75rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none",resize:"none",minHeight:60,lineHeight:1.5,overflow:"hidden"}}/>
         <button onClick={()=>addTMemo(entityKey,entityId,tMemoIn[entityId]||"")} disabled={!(tMemoIn[entityId]||"").trim()}
@@ -8726,7 +8726,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
                 {!isMe&&<div style={{fontSize:"0.6rem",color:C.textMuted,marginBottom:"0.1rem",fontWeight:600}}>{cu?.name}</div>}
                 {isEditing?(
                   <div style={{display:"flex",flexDirection:"column",gap:"0.3rem",minWidth:200}}>
-                    <textarea value={tChatEdit.text} onChange={e=>{setTChatEdit(p=>({...p,text:e.target.value}));e.target.style.height="auto";e.target.style.height=e.target.scrollHeight+"px";}}
+                    <textarea value={tChatEdit.text} onChange={e=>{setTChatEdit(p=>({...p,text:e.target.value}));e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,300)+"px";}}
                       style={{padding:"0.4rem 0.6rem",borderRadius:"0.5rem",border:`1.5px solid ${C.accent}`,fontSize:"0.85rem",fontFamily:"inherit",resize:"none",minHeight:40,outline:"none",lineHeight:1.5,overflow:"hidden",boxSizing:"border-box"}}/>
                     <div style={{display:"flex",gap:"0.3rem",justifyContent:isMe?"flex-end":"flex-start"}}>
                       <button onClick={()=>setTChatEdit(null)} style={{padding:"0.2rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✕</button>
@@ -17499,6 +17499,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   const [activePref,   setActivePref]   = useState(null);
   const [activeMuni,   setActiveMuni]   = useState(null);
   const [muniPickerPref, setMuniPickerPref] = useState(""); // stable state for MuniPicker
+  const [muniSearch, setMuniSearch] = useState(""); // 自治体名の検索追加
   const [activeVendor, setActiveVendor] = useState(null);
   const [activeCompany,setActiveCompany]= useState(null);
   const [vendorDetailModal, setVendorDetailModal] = useState(null); // {vendorId, vendorName, tab}
@@ -20282,6 +20283,30 @@ ${recentLogs}
     const allSelected=prefMunis.length>0&&prefMunis.every(m=>(ids||[]).includes(m.id));
     return (
       <div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
+        {/* 自治体名で検索して直接追加（都道府県を選ばなくてもOK） */}
+        <input value={muniSearch} onChange={e=>setMuniSearch(e.target.value)} placeholder="🔍 自治体名で検索して追加（例: 京田辺）"
+          style={{width:"100%",padding:"0.45rem 0.625rem",borderRadius:"0.625rem",border:`1.5px solid ${C.border}`,fontSize:"0.82rem",fontFamily:"inherit",outline:"none",background:"white",boxSizing:"border-box"}}/>
+        {muniSearch.trim()&&(()=>{
+          const q=muniSearch.trim().toLowerCase();
+          const hits=munis.filter(m=>String(m.name||"").toLowerCase().includes(q)).slice(0,40);
+          return (
+            <div style={{border:`1.5px solid ${C.accent}`,borderRadius:"6px",maxHeight:220,overflowY:"auto",background:"white"}}>
+              {hits.length===0&&<div style={{padding:"0.6rem",fontSize:"0.78rem",color:C.textMuted,textAlign:"center"}}>該当する自治体がありません</div>}
+              {hits.map(m=>{
+                const sel=(ids||[]).includes(m.id);
+                const pn=prefs.find(p=>String(p.id)===String(m.prefectureId))?.name||"";
+                return (
+                  <button key={m.id} type="button" onClick={()=>toggleMuni(m.id)}
+                    style={{display:"flex",alignItems:"center",gap:"0.5rem",width:"100%",padding:"0.4rem 0.6rem",border:"none",borderBottom:`1px solid ${C.borderLight}`,background:sel?C.accentBg:"white",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+                    <span style={{fontSize:"0.9rem",color:sel?C.accent:C.textMuted,width:16,flexShrink:0,fontWeight:800}}>{sel?"✓":"＋"}</span>
+                    <span style={{fontSize:"0.62rem",color:C.textMuted,flexShrink:0}}>{pn}</span>
+                    <span style={{fontSize:"0.83rem",fontWeight:sel?700:500,color:sel?C.accentDark:C.text}}>{m.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+          );
+        })()}
         {/* 都道府県ドロップダウン */}
         <select value={muniPickerPref} onChange={e=>setMuniPickerPref(e.target.value)}
           style={{width:"100%",padding:"0.45rem 0.625rem",borderRadius:"0.625rem",border:`1.5px solid ${C.border}`,fontSize:"0.82rem",fontFamily:"inherit",outline:"none",background:"white",cursor:"pointer"}}>
@@ -20362,7 +20387,7 @@ ${recentLogs}
               {isEditing?(
                 <div style={{display:"flex",flexDirection:"column",gap:"0.4rem"}}>
                   <textarea value={memoEdit.text}
-                    onChange={e=>{setMemoEdit(p=>({...p,text:e.target.value}));e.target.style.height="auto";e.target.style.height=e.target.scrollHeight+"px";}}
+                    onChange={e=>{setMemoEdit(p=>({...p,text:e.target.value}));e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,300)+"px";}}
                     style={{width:"100%",padding:"0.5rem",borderRadius:"0.5rem",border:`1.5px solid ${C.accent}`,fontSize:"0.85rem",fontFamily:"inherit",resize:"none",minHeight:60,outline:"none",boxSizing:"border-box",lineHeight:1.5,overflow:"hidden"}}/>
                   <div style={{display:"flex",gap:"0.4rem",justifyContent:"flex-end"}}>
                     <button onClick={()=>setMemoEdit(null)} style={{padding:"0.3rem 0.75rem",borderRadius:"0.5rem",border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>キャンセル</button>
@@ -20379,7 +20404,7 @@ ${recentLogs}
         {!(memos||[]).length&&<div style={{textAlign:"center",padding:"1.25rem",color:C.textMuted,background:C.bg,borderRadius:"8px",fontSize:"0.82rem"}}>メモがありません</div>}
       </div>
       <div style={{display:"flex",gap:"0.5rem"}}>
-        <textarea data-memoid={entityId} value={memoInputs[entityId]||""} onChange={e=>{setMemoInputs(p=>({...p,[entityId]:e.target.value}));e.target.style.height="auto";e.target.style.height=e.target.scrollHeight+"px";}} onBlur={e=>{if(!e.target.value.trim())e.target.style.height="";e.target.style.height="auto";if(e.target.value)e.target.style.height=e.target.scrollHeight+"px";}}
+        <textarea data-memoid={entityId} value={memoInputs[entityId]||""} onChange={e=>{setMemoInputs(p=>({...p,[entityId]:e.target.value}));e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,300)+"px";}} onBlur={e=>{if(!e.target.value.trim())e.target.style.height="";e.target.style.height="auto";if(e.target.value)e.target.style.height=Math.min(e.target.scrollHeight,300)+"px";}}
           placeholder="メモを追加... (Shift+Enterで改行)"
           style={{flex:1,padding:"0.625rem 0.75rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",resize:"none",minHeight:60,outline:"none",lineHeight:1.5,overflow:"hidden"}}/>
         <button onClick={()=>addMemo(entityKey,entityId,memoInputs[entityId]||"")} disabled={!(memoInputs[entityId]||"").trim()}
@@ -20421,7 +20446,7 @@ ${recentLogs}
                   {isEditing?(
                     <div style={{display:"flex",flexDirection:"column",gap:"0.3rem",minWidth:200}}>
                       <textarea value={chatEdit.text}
-                        onChange={e=>{setChatEdit(p=>({...p,text:e.target.value}));e.target.style.height="auto";e.target.style.height=e.target.scrollHeight+"px";}}
+                        onChange={e=>{setChatEdit(p=>({...p,text:e.target.value}));e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,300)+"px";}}
                         style={{padding:"0.4rem 0.6rem",borderRadius:"0.5rem",border:`1.5px solid ${C.accent}`,fontSize:"0.85rem",fontFamily:"inherit",resize:"none",minHeight:40,outline:"none",lineHeight:1.5,overflow:"hidden",boxSizing:"border-box"}}/>
                       <div style={{display:"flex",gap:"0.3rem",justifyContent:isMe?"flex-end":"flex-start"}}>
                         <button onClick={()=>setChatEdit(null)} style={{padding:"0.2rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✕</button>
