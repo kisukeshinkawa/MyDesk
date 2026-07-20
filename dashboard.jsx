@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-20-v290-sync-toast-permit-lock"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-20-v291-ai-sections-collapse"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -9510,6 +9510,7 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
   // 「全員に返信」を初期値にするか個別かを設定（CC があれば自動で全員に返信モード）
   const hasCc = (email.cc || []).length > 0;
   const [mode, setMode] = React.useState(hasCc ? "replyAll" : "reply");
+  const [formOpen, setFormOpen] = React.useState(true); // ✨AI返信の折りたたみ
   const [body, setBody] = React.useState(aiDraft ? appendSignature(aiDraft) : "");
   const [editing, setEditing] = React.useState(false);
   const [sending, setSending] = React.useState(false);
@@ -9736,7 +9737,8 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
     <div style={{background:"white",borderRadius:8,padding:"0.75rem",border:"2px solid #10b981",boxShadow:"0 2px 6px rgba(16,185,129,0.1)"}}>
       {/* ヘッダー: モード切替 */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:"0.5rem",marginBottom:"0.6rem",flexWrap:"wrap"}}>
-        <div style={{fontSize:"0.75rem",fontWeight:800,color:"#059669",display:"flex",alignItems:"center",gap:6}}>
+        <div onClick={()=>setFormOpen(o=>!o)} style={{fontSize:"0.75rem",fontWeight:800,color:"#059669",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>
+          <span style={{transition:"transform 0.15s",transform:formOpen?"rotate(90deg)":"rotate(0deg)",display:"inline-block",fontSize:"0.7rem"}}>▶</span>
           ✨ AI 返信
         </div>
         {/* モード切替タブ */}
@@ -9754,6 +9756,7 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
         </div>
       </div>
       
+      {formOpen && (<>
       {/* ✅ v282: アクションボタン（AI返信の直下・常に見える位置） */}
       <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap"}}>
         <button
@@ -10146,6 +10149,7 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
       </div>
 
       {/* v285: 送信/リセット/⚙️詳細/📋/📎添付/指示 は ✨AI返信ヘッダー直下へ移動 */}
+      </>)}
     </div>
   );
 }
@@ -10178,6 +10182,7 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onMarkSpam,
     return () => { cancelAnimationFrame(t1); clearTimeout(t2); clearTimeout(t3); };
   }, [email?.id]);
   const [linkType, setLinkType] = React.useState(null); // 企業/業者/自治体/タスク/プロジェクト/名刺
+  const [aiAnalysisOpen, setAiAnalysisOpen] = React.useState(true); // ✨AI分析の折りたたみ
   const [linkSearch, setLinkSearch] = React.useState("");
   const [replyMode, setReplyMode] = React.useState(null); // null | "reply" | "replyAll" | "forward"
   const replyFormRef = React.useRef(null);
@@ -10764,7 +10769,8 @@ ${latestBody.slice(0, 1500)}
       {/* ✨ AI 分析パネル */}
       {(aiData.ai_summary || aiData.ai_priority || (aiData.ai_suggestions||[]).length > 0 || aiData.ai_draft_reply) && (
         <div style={{background:"linear-gradient(135deg, #eff6ff 0%, #f0f9ff 100%)",borderRadius:8,padding:"0.7rem 0.85rem",border:"1px solid #bfdbfe",marginBottom:"0.65rem"}}>
-          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:"0.5rem"}}>
+          <div onClick={()=>setAiAnalysisOpen(o=>!o)} style={{display:"flex",alignItems:"center",gap:6,marginBottom:"0.5rem",cursor:"pointer"}}>
+            <span style={{transition:"transform 0.15s",transform:aiAnalysisOpen?"rotate(90deg)":"rotate(0deg)",display:"inline-block",fontSize:"0.7rem",color:"#1e40af"}}>▶</span>
             <span style={{fontSize:"0.78rem",fontWeight:800,color:"#1e40af"}}>✨ AI 分析</span>
             {aiData.ai_priority && (
               <span style={{fontSize:"0.65rem",fontWeight:700,padding:"0.15rem 0.55rem",borderRadius:999,
@@ -10784,13 +10790,13 @@ ${latestBody.slice(0, 1500)}
               </span>
             )}
           </div>
-          {aiData.ai_summary && (
+          {aiAnalysisOpen && aiData.ai_summary && (
             <div style={{fontSize:"0.8rem",color:"#1e40af",fontWeight:600,marginBottom:"0.5rem",lineHeight:1.5,padding:"0.4rem 0.6rem",background:"white",borderRadius:5,borderLeft:"3px solid #2563eb"}}>
               {aiData.ai_summary}
             </div>
           )}
           {/* 提案 */}
-          {(aiData.ai_suggestions||[]).length > 0 && (
+          {aiAnalysisOpen && (aiData.ai_suggestions||[]).length > 0 && (
             <div style={{display:"flex",flexDirection:"column",gap:5,marginBottom:aiData.ai_draft_reply?"0.5rem":0}}>
               {(aiData.ai_suggestions||[]).map((s, i) => {
                 const icon = s.type==="task" ? "📝" : s.type==="project_link" ? "📁" : s.type==="company_link" ? "🏢" : "💡";
