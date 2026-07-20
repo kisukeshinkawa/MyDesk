@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-20-v281-save-indicator"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-20-v283-muni-focus-save-pill"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -22144,7 +22144,7 @@ ${orig}`})
               <FieldLbl label="業者名 *"><Input value={form.name||""} onChange={e=>setForm({...form,name:e.target.value})} autoFocus/></FieldLbl>
               <FieldLbl label="ステータス"><StatusPicker map={VENDOR_STATUS} value={form.status||"未接触"} onChange={s=>setForm({...form,status:s})}/></FieldLbl>
               <FieldLbl label="許可エリア（自治体）">
-                <MuniPicker ids={form.municipalityIds||[]} onChange={ids=>setForm({...form,municipalityIds:ids})}/>
+                {MuniPicker({ids:form.municipalityIds||[],onChange:ids=>setForm({...form,municipalityIds:ids})})}
               </FieldLbl>
               <FieldLbl label="担当者">{AssigneePicker({ids:form.assigneeIds||[],onChange:ids=>setForm({...form,assigneeIds:ids})})}</FieldLbl>
               <FieldLbl label="代表電話番号（任意）"><Input value={form.phone||""} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="092-xxx-xxxx" type="tel"/></FieldLbl>
@@ -22628,7 +22628,7 @@ ${orig}`})
             <FieldLbl label="業者名 *"><Input value={form.name||""} onChange={e=>setForm({...form,name:e.target.value})} autoFocus/></FieldLbl>
             <FieldLbl label="ステータス"><StatusPicker map={VENDOR_STATUS} value={form.status||"未接触"} onChange={s=>setForm({...form,status:s})}/></FieldLbl>
             <FieldLbl label="許可エリア（自治体）">
-              <MuniPicker ids={form.municipalityIds||[]} onChange={ids=>setForm({...form,municipalityIds:ids})}/>
+              {MuniPicker({ids:form.municipalityIds||[],onChange:ids=>setForm({...form,municipalityIds:ids})})}
             </FieldLbl>
             <FieldLbl label="担当者">{AssigneePicker({ids:form.assigneeIds||[],onChange:ids=>setForm({...form,assigneeIds:ids})})}</FieldLbl>
             <FieldLbl label="電話番号（任意）"><Input value={form.phone||""} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="092-xxx-xxxx" type="tel"/></FieldLbl>
@@ -35188,7 +35188,7 @@ export default function App() {
       )}
       {/* 保存インジケータ（右下） */}
       {(saveState==="saving"||saveState==="saved")&&(
-        <div style={{position:"fixed",right:"1rem",bottom:"1rem",zIndex:1002,padding:"0.4rem 0.8rem",borderRadius:999,fontSize:"0.75rem",fontWeight:800,boxShadow:C.shadowMd,display:"flex",alignItems:"center",gap:"0.35rem",background:saveState==="saving"?"#e0f2fe":"#dcfce7",color:saveState==="saving"?"#0369a1":"#166534",border:`1px solid ${saveState==="saving"?"#7dd3fc":"#86efac"}`,transition:"opacity 0.3s"}}>
+        <div style={{position:"fixed",left:"50%",transform:"translateX(-50%)",bottom:"1.25rem",zIndex:2147483001,padding:"0.4rem 0.8rem",borderRadius:999,fontSize:"0.75rem",fontWeight:800,boxShadow:C.shadowMd,display:"flex",alignItems:"center",gap:"0.35rem",background:saveState==="saving"?"#e0f2fe":"#dcfce7",color:saveState==="saving"?"#0369a1":"#166534",border:`1px solid ${saveState==="saving"?"#7dd3fc":"#86efac"}`,transition:"opacity 0.3s"}}>
           {saveState==="saving"?"💾 保存中…":"✓ 保存済み"}
         </div>
       )}
