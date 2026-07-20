@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-20-v288-joined-lock-popup"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-20-v289-dustalk-sync-each-open"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -34028,17 +34028,14 @@ export default function App() {
     };
   }, [data]);
 
-  // ✅ v286: DUSTALK自動同期（起動時1日1回・安全ガード付き）
+  // ✅ v286/v289: DUSTALK自動同期（開くたび1回・安全ガード付き）
   // アクティブ→加入済 / 登録あり非アクティブ→仮登録 / 加入済だがDUSTALKに無い→仮登録(降格は暴発ガード)
   React.useEffect(() => {
     try {
       if (!data || !Array.isArray(data.vendors) || data.vendors.length === 0) return;
-      if (typeof window !== "undefined" && window.__dustalkAutosyncBusy) return;
-      const LASTKEY = "mydesk_dustalk_autosync_at", ACTKEY = "mydesk_dustalk_last_active";
-      let last = 0; try { last = parseInt(localStorage.getItem(LASTKEY) || "0", 10) || 0; } catch (_) {}
-      if (Date.now() - last < 20 * 60 * 60 * 1000) return; // 1日1回
-      if (typeof window !== "undefined") window.__dustalkAutosyncBusy = true;
-      try { localStorage.setItem(LASTKEY, String(Date.now())); } catch (_) {}
+      if (typeof window !== "undefined" && (window.__dustalkAutosyncBusy || window.__dustalkAutosyncDone)) return;
+      const ACTKEY = "mydesk_dustalk_last_active";
+      if (typeof window !== "undefined") { window.__dustalkAutosyncDone = true; window.__dustalkAutosyncBusy = true; } // 開くたび1回（このページ表示中は再実行しない）
       (async () => {
         try {
           const res = await fetch(`${DUSTALK_SYNC_URL}/dustalk-companies`, { headers: DB_API_HEADERS });
