@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-20-v287-lock-joined-bulk"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-20-v288-joined-lock-popup"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -17424,8 +17424,8 @@ function CompactStatusPicker({map, value, onChange, getLabel, colors}) {
           {Object.entries(map).map(([s, m]) => {
             const locked = s === "加入済"; // 加入済はDUSTALK同期でのみ付与（手動選択不可）
             return (
-            <button key={s} onClick={() => { if (locked) return; onChange(s); setOpen(false); }} type="button"
-              disabled={locked} title={locked ? "DUSTALK同期で自動設定（手動では選べません）" : undefined}
+            <button key={s} onClick={() => { if (locked) { window.alert("DUSTALKに加入後、加入済へ自動で変更されます"); return; } onChange(s); setOpen(false); }} type="button"
+              title={locked ? "DUSTALKに加入後、加入済へ自動で変更されます" : undefined}
               style={{padding:"0.45rem 0.7rem", borderRadius:"0.5rem", border:"none", background: value === s ? (m.bg || C.accentBg) : "white", color: m.color || C.text, fontWeight:700, fontSize:"0.8rem", cursor: locked ? "not-allowed" : "pointer", opacity: locked ? 0.5 : 1, textAlign:"left", fontFamily:"inherit", display:"flex", alignItems:"center", gap:"0.45rem"}}
               onMouseEnter={e => { if (!locked && value !== s) e.currentTarget.style.background = C.bg; }}
               onMouseLeave={e => { if (!locked && value !== s) e.currentTarget.style.background = "white"; }}>
