@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-20-v284-quick-reply-ui"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-20-v285-actions-under-header"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -9754,6 +9754,130 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
         </div>
       </div>
       
+      {/* ✅ v282: アクションボタン（AI返信の直下・常に見える位置） */}
+      <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap"}}>
+        <button
+          onClick={handleSend}
+          disabled={sending || !body.trim()}
+          style={{
+            padding:"0.55rem 1.2rem",
+            borderRadius:6,
+            border:"none",
+            background:sending?"#9ca3af":"#059669",
+            color:"white",
+            fontSize:"0.8rem",
+            fontWeight:800,
+            cursor:sending?"default":"pointer",
+            fontFamily:"inherit",
+            display:"flex",
+            alignItems:"center",
+            gap:6,
+          }}
+        >
+          {sending ? "送信中…" : "📤 この内容で送信"}
+        </button>
+        <button
+          onClick={() => { setShowAdvanced(v => { if(!v){ setBody(aiDraft ? appendSignature(aiDraft) : ""); setEditing(false); } return !v; }); }}
+          title="AIの下書きに戻して、指示を入れて作り直せます"
+          style={{
+            padding:"0.55rem 0.9rem",
+            borderRadius:6,
+            border:`1px solid ${showAdvanced?"#7c3aed":C.border}`,
+            background:showAdvanced?"#f5f3ff":"white",
+            color:showAdvanced?"#6d28d9":C.textSub,
+            fontSize:"0.75rem",
+            fontWeight:700,
+            cursor:"pointer",
+            fontFamily:"inherit",
+          }}
+        >
+          🔄 AI案にリセット
+        </button>
+        <button
+          onClick={() => onSwitchToFullForm(mode, body)}
+          style={{
+            padding:"0.55rem 0.9rem",
+            borderRadius:6,
+            border:`1px solid ${C.border}`,
+            background:"white",
+            color:C.textSub,
+            fontSize:"0.75rem",
+            fontWeight:700,
+            cursor:"pointer",
+            fontFamily:"inherit",
+          }}
+        >
+          ⚙️ 詳細編集
+        </button>
+        <button
+          onClick={() => {
+            if (navigator.clipboard) {
+              navigator.clipboard.writeText(body);
+              alert("コピーしました");
+            }
+          }}
+          style={{
+            padding:"0.55rem 0.9rem",
+            borderRadius:6,
+            border:`1px solid ${C.border}`,
+            background:"white",
+            color:C.textSub,
+            fontSize:"0.75rem",
+            fontWeight:700,
+            cursor:"pointer",
+            fontFamily:"inherit",
+          }}
+        >
+          📋
+        </button>
+      </div>
+
+      {/* ✅ v282: 返信の指示・方向性（🔄 AI案にリセット で開閉） */}
+      {showAdvanced && (
+        <div style={{marginTop:"0.5rem",padding:"0.5rem 0.65rem",background:"#f5f3ff",border:`1px solid #ddd6fe`,borderRadius:8}}>
+          <div style={{fontSize:"0.7rem",fontWeight:800,color:"#6d28d9",marginBottom:"0.3rem",display:"flex",alignItems:"center",gap:5}}>
+            🧭 返信の指示・方向性（AIが判断できない点を伝えて作り直せます）
+          </div>
+          <textarea value={instruction} onChange={e=>setInstruction(e.target.value)}
+            placeholder="例：今回は丁重にお断りする方向で／見積は来週提出予定と伝える／日程は7/10午後を提案 など"
+            rows={2}
+            style={{width:"100%",boxSizing:"border-box",padding:"0.45rem 0.6rem",fontSize:"0.78rem",borderRadius:6,border:`1px solid ${C.border}`,fontFamily:"inherit",resize:"vertical"}} />
+          <div style={{display:"flex",gap:6,marginTop:"0.4rem",alignItems:"center"}}>
+            <button onClick={regenerateReply} disabled={regenBusy}
+              style={{padding:"0.4rem 0.9rem",borderRadius:6,border:"none",background:regenBusy?"#c4b5fd":"#7c3aed",color:"white",fontSize:"0.75rem",fontWeight:800,cursor:regenBusy?"default":"pointer",fontFamily:"inherit"}}>
+              {regenBusy ? "作り直し中…" : "🔁 この指示で返信を作り直す"}
+            </button>
+            {instruction && <button onClick={()=>setInstruction("")}
+              style={{padding:"0.4rem 0.7rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>クリア</button>}
+          </div>
+        </div>
+      )}
+
+      {/* ✅ v282: ファイル添付（常に表示） */}
+      <div style={{marginTop:"0.6rem"}}>
+        <input ref={fileInputRef} type="file" multiple style={{display:"none"}} onChange={onPickFiles} />
+        <button onClick={()=>fileInputRef.current&&fileInputRef.current.click()} disabled={attachBusy}
+          style={{padding:"0.4rem 0.8rem",borderRadius:6,border:`1px dashed ${C.border}`,background:"white",color:C.textSub,fontSize:"0.75rem",fontWeight:700,cursor:attachBusy?"default":"pointer",fontFamily:"inherit"}}>
+          {attachBusy ? "アップロード中…" : "📎 ファイルを添付"}
+        </button>
+        {attachedFiles.length > 0 && (
+          <div style={{display:"flex",flexDirection:"column",gap:"0.3rem",marginTop:"0.4rem"}}>
+            {attachedFiles.map((a,i)=>{
+              const sz = a.size ? (a.size>1048576 ? (a.size/1048576).toFixed(1)+"MB" : Math.max(1,Math.round(a.size/1024))+"KB") : "";
+              return (
+                <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"0.35rem 0.55rem",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:6}}>
+                  <span style={{fontSize:"0.95rem"}}>📎</span>
+                  <span style={{flex:1,wordBreak:"break-all",fontSize:"0.76rem",fontWeight:600,color:C.text}}>{a.filename}</span>
+                  {sz && <span style={{fontSize:"0.66rem",color:C.textMuted}}>{sz}</span>}
+                  <button onClick={()=>setAttachedFiles(prev=>prev.filter((_,j)=>j!==i))}
+                    style={{border:"none",background:"none",cursor:"pointer",color:"#dc2626",fontSize:"0.95rem",lineHeight:1,padding:0}}>×</button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       {/* 返信先プレビュー（追加・削除可能）*/}
       <div style={{background:"#f0fdf4",borderRadius:6,padding:"0.5rem 0.65rem",marginBottom:"0.5rem",fontSize:"0.72rem",lineHeight:1.6,border:"1px solid #bbf7d0"}}>
         {/* To 行 */}
@@ -10021,129 +10145,7 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
         <span>送信時に自動で署名が付加されます</span>
       </div>
 
-      {/* ✅ v282: アクションボタン（AI返信の直下・常に見える位置） */}
-      <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap"}}>
-        <button
-          onClick={handleSend}
-          disabled={sending || !body.trim()}
-          style={{
-            padding:"0.55rem 1.2rem",
-            borderRadius:6,
-            border:"none",
-            background:sending?"#9ca3af":"#059669",
-            color:"white",
-            fontSize:"0.8rem",
-            fontWeight:800,
-            cursor:sending?"default":"pointer",
-            fontFamily:"inherit",
-            display:"flex",
-            alignItems:"center",
-            gap:6,
-          }}
-        >
-          {sending ? "送信中…" : "📤 この内容で送信"}
-        </button>
-        <button
-          onClick={() => { setShowAdvanced(v => { if(!v){ setBody(aiDraft ? appendSignature(aiDraft) : ""); setEditing(false); } return !v; }); }}
-          title="AIの下書きに戻して、指示を入れて作り直せます"
-          style={{
-            padding:"0.55rem 0.9rem",
-            borderRadius:6,
-            border:`1px solid ${showAdvanced?"#7c3aed":C.border}`,
-            background:showAdvanced?"#f5f3ff":"white",
-            color:showAdvanced?"#6d28d9":C.textSub,
-            fontSize:"0.75rem",
-            fontWeight:700,
-            cursor:"pointer",
-            fontFamily:"inherit",
-          }}
-        >
-          🔄 AI案にリセット
-        </button>
-        <button
-          onClick={() => onSwitchToFullForm(mode, body)}
-          style={{
-            padding:"0.55rem 0.9rem",
-            borderRadius:6,
-            border:`1px solid ${C.border}`,
-            background:"white",
-            color:C.textSub,
-            fontSize:"0.75rem",
-            fontWeight:700,
-            cursor:"pointer",
-            fontFamily:"inherit",
-          }}
-        >
-          ⚙️ 詳細編集
-        </button>
-        <button
-          onClick={() => {
-            if (navigator.clipboard) {
-              navigator.clipboard.writeText(body);
-              alert("コピーしました");
-            }
-          }}
-          style={{
-            padding:"0.55rem 0.9rem",
-            borderRadius:6,
-            border:`1px solid ${C.border}`,
-            background:"white",
-            color:C.textSub,
-            fontSize:"0.75rem",
-            fontWeight:700,
-            cursor:"pointer",
-            fontFamily:"inherit",
-          }}
-        >
-          📋
-        </button>
-      </div>
-
-      {/* ✅ v282: 返信の指示・方向性（🔄 AI案にリセット で開閉） */}
-      {showAdvanced && (
-        <div style={{marginTop:"0.5rem",padding:"0.5rem 0.65rem",background:"#f5f3ff",border:`1px solid #ddd6fe`,borderRadius:8}}>
-          <div style={{fontSize:"0.7rem",fontWeight:800,color:"#6d28d9",marginBottom:"0.3rem",display:"flex",alignItems:"center",gap:5}}>
-            🧭 返信の指示・方向性（AIが判断できない点を伝えて作り直せます）
-          </div>
-          <textarea value={instruction} onChange={e=>setInstruction(e.target.value)}
-            placeholder="例：今回は丁重にお断りする方向で／見積は来週提出予定と伝える／日程は7/10午後を提案 など"
-            rows={2}
-            style={{width:"100%",boxSizing:"border-box",padding:"0.45rem 0.6rem",fontSize:"0.78rem",borderRadius:6,border:`1px solid ${C.border}`,fontFamily:"inherit",resize:"vertical"}} />
-          <div style={{display:"flex",gap:6,marginTop:"0.4rem",alignItems:"center"}}>
-            <button onClick={regenerateReply} disabled={regenBusy}
-              style={{padding:"0.4rem 0.9rem",borderRadius:6,border:"none",background:regenBusy?"#c4b5fd":"#7c3aed",color:"white",fontSize:"0.75rem",fontWeight:800,cursor:regenBusy?"default":"pointer",fontFamily:"inherit"}}>
-              {regenBusy ? "作り直し中…" : "🔁 この指示で返信を作り直す"}
-            </button>
-            {instruction && <button onClick={()=>setInstruction("")}
-              style={{padding:"0.4rem 0.7rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>クリア</button>}
-          </div>
-        </div>
-      )}
-
-      {/* ✅ v282: ファイル添付（常に表示） */}
-      <div style={{marginTop:"0.6rem"}}>
-        <input ref={fileInputRef} type="file" multiple style={{display:"none"}} onChange={onPickFiles} />
-        <button onClick={()=>fileInputRef.current&&fileInputRef.current.click()} disabled={attachBusy}
-          style={{padding:"0.4rem 0.8rem",borderRadius:6,border:`1px dashed ${C.border}`,background:"white",color:C.textSub,fontSize:"0.75rem",fontWeight:700,cursor:attachBusy?"default":"pointer",fontFamily:"inherit"}}>
-          {attachBusy ? "アップロード中…" : "📎 ファイルを添付"}
-        </button>
-        {attachedFiles.length > 0 && (
-          <div style={{display:"flex",flexDirection:"column",gap:"0.3rem",marginTop:"0.4rem"}}>
-            {attachedFiles.map((a,i)=>{
-              const sz = a.size ? (a.size>1048576 ? (a.size/1048576).toFixed(1)+"MB" : Math.max(1,Math.round(a.size/1024))+"KB") : "";
-              return (
-                <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"0.35rem 0.55rem",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:6}}>
-                  <span style={{fontSize:"0.95rem"}}>📎</span>
-                  <span style={{flex:1,wordBreak:"break-all",fontSize:"0.76rem",fontWeight:600,color:C.text}}>{a.filename}</span>
-                  {sz && <span style={{fontSize:"0.66rem",color:C.textMuted}}>{sz}</span>}
-                  <button onClick={()=>setAttachedFiles(prev=>prev.filter((_,j)=>j!==i))}
-                    style={{border:"none",background:"none",cursor:"pointer",color:"#dc2626",fontSize:"0.95rem",lineHeight:1,padding:0}}>×</button>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+      {/* v285: 送信/リセット/⚙️詳細/📋/📎添付/指示 は ✨AI返信ヘッダー直下へ移動 */}
     </div>
   );
 }
