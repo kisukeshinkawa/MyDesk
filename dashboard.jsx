@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-20-v289-dustalk-sync-each-open"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-20-v290-sync-toast-permit-lock"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -21993,6 +21993,7 @@ ${orig}`})
                         <div key={pt} style={{background:salesColors[salesStatus],border:`1px solid ${salesTextColors[salesStatus]+"30"}`,borderRadius:"0.4rem",padding:"0.35rem 0.45rem"}}>
                           <div style={{fontSize:"0.62rem",fontWeight:700,color:"#374151"}}>✓ {pt}</div>
                           <select value={salesStatus} onClick={e=>e.stopPropagation()} onChange={e=>{
+                            if(e.target.value==="加入済"){ window.alert("DUSTALKに加入後、加入済へ自動で変更されます"); return; }
                             const nd={...data,vendors:vendors.map(x=>x.id===v.id?{...x,permitSales:{...(x.permitSales||{}),[pt]:e.target.value}}:x)};
                             save(nd);
                           }} style={{fontSize:"0.6rem",border:"none",background:"transparent",color:salesTextColors[salesStatus],fontWeight:700,cursor:"pointer",fontFamily:"inherit",padding:"0.05rem 0",width:"100%",marginTop:"0.15rem",appearance:"none",WebkitAppearance:"none",MozAppearance:"none",lineHeight:"1.2",boxSizing:"border-box"}}>
@@ -34018,12 +34019,15 @@ export default function App() {
     window.addEventListener("offline", goOffline);
     window.addEventListener("online",  goOnline);
     window.addEventListener("mydesk-save-error", onSaveErr);
+    const onDustalkSynced = (ev) => { const m = (ev && ev.detail) || ""; if (m) { setDustalkMsg(m); setTimeout(()=>setDustalkMsg(v=>v===m?"":v), 6000); } };
     window.addEventListener("mydesk-save-state", onSaveState);
+    window.addEventListener("mydesk-dustalk-synced", onDustalkSynced);
     return ()=>{
       window.removeEventListener("offline",goOffline);
       window.removeEventListener("online",goOnline);
       window.removeEventListener("mydesk-save-error",onSaveErr);
       window.removeEventListener("mydesk-save-state",onSaveState);
+      window.removeEventListener("mydesk-dustalk-synced",onDustalkSynced);
       window.removeEventListener("beforeunload",onBeforeUnload);
     };
   }, [data]);
@@ -34093,6 +34097,7 @@ export default function App() {
           setData(newData);
           const ok = await saveData(newData);
           console.log(`[DUSTALK autosync] ${ok ? "保存OK" : "保存NG"} — 加入済+${promo}${applyDemote ? ` / 仮登録+${demo}` : ` / 降格${demo}件は暴発ガードでスキップ（手動🚚DUSTALKで確認を）`}`);
+          if (typeof window !== "undefined" && ok && (promo > 0 || (applyDemote && demo > 0))) window.dispatchEvent(new CustomEvent("mydesk-dustalk-synced", { detail: `🚚 DUSTALK同期: 加入済+${promo}${applyDemote ? ` / 仮登録+${demo}` : ""}` }));
         } catch (e) {
           console.warn("[DUSTALK autosync] error:", e);
         } finally {
@@ -34102,6 +34107,7 @@ export default function App() {
     } catch (e) { console.warn("[DUSTALK autosync] outer error:", e); }
   }, [data]);
   const [saveState,setSaveState] = useState(""); // 保存インジケータ(saving/saved/error)
+  const [dustalkMsg,setDustalkMsg] = useState(""); // DUSTALK同期トースト(v290)
   const [notifFilter,setNotifFilter] = useState("all");
   const contentRef = useRef(null);
   const scrollPos  = useRef({});   // tab → scrollY
@@ -35254,6 +35260,12 @@ export default function App() {
           ⚠️ 保存に失敗しました
           <button onClick={()=>{setSaveError(""); window.__myDeskLastSave=0; window.location.reload();}} style={{background:"#dc2626",border:"none",cursor:"pointer",color:"white",fontWeight:700,fontSize:"0.7rem",padding:"0.2rem 0.5rem",borderRadius:"0.4rem"}}>再読み込み</button>
           <button onClick={()=>setSaveError("")} style={{background:"none",border:"none",cursor:"pointer",color:"#991b1b",fontWeight:800,fontSize:"1rem",padding:"0 0.1rem",lineHeight:1}}>✕</button>
+        </div>
+      )}
+      {/* 🚚 DUSTALK同期トースト（v290・上中央） */}
+      {dustalkMsg&&(
+        <div style={{position:"fixed",left:"50%",transform:"translateX(-50%)",top:"1rem",zIndex:2147483002,padding:"0.5rem 1rem",borderRadius:10,fontSize:"0.8rem",fontWeight:800,boxShadow:C.shadowMd,display:"flex",alignItems:"center",gap:"0.4rem",background:"#eef2ff",color:"#3730a3",border:"1px solid #c7d2fe"}}>
+          {dustalkMsg}
         </div>
       )}
       {/* 保存インジケータ（右下） */}
