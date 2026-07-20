@@ -34047,7 +34047,7 @@ export default function App() {
           if (!j || j.ok !== true || !Array.isArray(j.companies)) { console.warn("[DUSTALK autosync] bad response"); return; }
           const total = j.count || j.companies.length;
           const active = j.active || j.companies.filter(c => c && c.active).length;
-          if (total < 200 || active < 20) { console.warn(`[DUSTALK autosync] 会社数が少なすぎ(total=${total}, active=${active}) — 中止`); return; }
+          if (total < 100 || active < 15) { console.warn(`[DUSTALK autosync] 会社数が少なすぎ(total=${total}, active=${active}) — 中止`); return; }
           let prevActive = 0; try { prevActive = parseInt(localStorage.getItem(ACTKEY) || "0", 10) || 0; } catch (_) {}
           if (prevActive > 0 && active < prevActive * 0.6) { console.warn(`[DUSTALK autosync] アクティブ数が大幅減 ${prevActive}→${active} — 中止(部分取得の可能性)`); return; }
           const _norm = (s) => (s || "")
