@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-20-v280-muni-search-textarea-cap"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-20-v281-save-indicator"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -1866,6 +1866,7 @@ async function saveData(d) {
     }
   }
   console.log(`[MyDesk] saveData → quotes: ${(d.quotes||[]).length}件, companies: ${(d.companies||[]).length}, vendors: ${(d.vendors||[]).length}, munis: ${(d.municipalities||[]).length}, tasks: ${(d.tasks||[]).length}`);
+  if(typeof window!=="undefined"){ window.__myDeskSaveState="saving"; window.dispatchEvent(new CustomEvent("mydesk-save-state",{detail:"saving"})); }
   // ✅ v267: 保存直前にサーバー最新のメモ/履歴をunion（記入したものを絶対に消さない）
   // ✅ v268: 直近2秒以内に同期済みなら再取得を省略（連続保存を軽量化。メモ追加は離散操作なので毎回取得される）
   try {
@@ -1882,9 +1883,11 @@ async function saveData(d) {
   if(!ok) {
     window.__myDeskSaveError = "データの保存に失敗しました（3回リトライ済）。ネットワークを確認してください。";
     window.dispatchEvent(new Event("mydesk-save-error"));
+    if(typeof window!=="undefined"){ window.__myDeskSaveState="error"; window.dispatchEvent(new CustomEvent("mydesk-save-state",{detail:"error"})); }
   } else {
     // 保存成功時に「正常データ」を更新
     __myDeskLastKnownGoodData = d;
+    if(typeof window!=="undefined"){ window.__myDeskSaveState="saved"; window.dispatchEvent(new CustomEvent("mydesk-save-state",{detail:"saved"})); }
   }
   // 自動スナップショット（3分に1回スロットリング、非同期・非ブロッキング）
   const now = Date.now();
@@ -34011,16 +34014,24 @@ export default function App() {
       setSaveError(window.__myDeskSaveError || "保存に失敗しました");
       setTimeout(()=>setSaveError(""), 8000);
     };
+    const onSaveState = (ev) => {
+      const s = (ev && ev.detail) || window.__myDeskSaveState || "";
+      setSaveState(s);
+      if (s === "saved") setTimeout(()=>setSaveState(v=>v==="saved"?"":v), 2500);
+    };
     window.addEventListener("offline", goOffline);
     window.addEventListener("online",  goOnline);
     window.addEventListener("mydesk-save-error", onSaveErr);
+    window.addEventListener("mydesk-save-state", onSaveState);
     return ()=>{
       window.removeEventListener("offline",goOffline);
       window.removeEventListener("online",goOnline);
       window.removeEventListener("mydesk-save-error",onSaveErr);
+      window.removeEventListener("mydesk-save-state",onSaveState);
       window.removeEventListener("beforeunload",onBeforeUnload);
     };
   }, [data]);
+  const [saveState,setSaveState] = useState(""); // 保存インジケータ(saving/saved/error)
   const [notifFilter,setNotifFilter] = useState("all");
   const contentRef = useRef(null);
   const scrollPos  = useRef({});   // tab → scrollY
@@ -35173,6 +35184,12 @@ export default function App() {
           ⚠️ 保存に失敗しました
           <button onClick={()=>{setSaveError(""); window.__myDeskLastSave=0; window.location.reload();}} style={{background:"#dc2626",border:"none",cursor:"pointer",color:"white",fontWeight:700,fontSize:"0.7rem",padding:"0.2rem 0.5rem",borderRadius:"0.4rem"}}>再読み込み</button>
           <button onClick={()=>setSaveError("")} style={{background:"none",border:"none",cursor:"pointer",color:"#991b1b",fontWeight:800,fontSize:"1rem",padding:"0 0.1rem",lineHeight:1}}>✕</button>
+        </div>
+      )}
+      {/* 保存インジケータ（右下） */}
+      {(saveState==="saving"||saveState==="saved")&&(
+        <div style={{position:"fixed",right:"1rem",bottom:"1rem",zIndex:1002,padding:"0.4rem 0.8rem",borderRadius:999,fontSize:"0.75rem",fontWeight:800,boxShadow:C.shadowMd,display:"flex",alignItems:"center",gap:"0.35rem",background:saveState==="saving"?"#e0f2fe":"#dcfce7",color:saveState==="saving"?"#0369a1":"#166534",border:`1px solid ${saveState==="saving"?"#7dd3fc":"#86efac"}`,transition:"opacity 0.3s"}}>
+          {saveState==="saving"?"💾 保存中…":"✓ 保存済み"}
         </div>
       )}
       {/* ④ グローバル検索モーダル */}
