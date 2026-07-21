@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-20-v292-mail-html-images"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-20-v293-company-sales-sheet"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -19385,6 +19385,49 @@ ${recentLogs}
     await downloadXLSX(filename, headers, rows, colWidths, "企業一覧");
   };
 
+  // ── 営業管理シート様式でExcel出力（No./企業名/店舗数/目安単価/ステータス/進捗/メモ・見込み総額つき） ──
+  const exportCompanySalesSheet = async (compList, filterDesc="") => {
+    if(!compList.length){ window.alert("出力する企業がありません。"); return; }
+    const today = new Date().toISOString().slice(0,10);
+    const PROG = {"未接触":0,"電話済":0.2,"資料送付":0.4,"商談中":0.7,"成約":1,"失注":0,"見送り":0};
+    const bar = (r)=>{ const n=Math.max(0,Math.min(10,Math.round(r*10))); return "■".repeat(n)+"□".repeat(10-n)+" "+Math.round(r*100)+"%"; };
+    let totalStores=0, totalValue=0;
+    const dataRows = compList.map((c,i)=>{
+      const scRaw = (c.storeCount===0||c.storeCount) ? String(c.storeCount) : "";
+      const upRaw = (c.unitPrice===0||c.unitPrice) ? String(c.unitPrice) : "";
+      const sc = Number(scRaw)||0, up = Number(upRaw)||0;
+      totalStores += sc;
+      if(sc&&up) totalValue += sc*up;
+      const r = PROG[c.status||"未接触"] ?? 0;
+      return [i+1, c.name||"", scRaw?sc:"", upRaw?up:"", c.status||"", bar(r), (c.notes||"").replace(/\r?\n/g," ")];
+    });
+    try {
+      const XLSX = await loadXLSX();
+      const aoa = [
+        ["営業進捗管理表"],
+        ["店舗数合計", totalStores, "見込み総額（店舗数×単価）", "", totalValue],
+        ["No.","企業名","店舗数","目安単価（年）","ステータス","進捗","メモ"],
+        ...dataRows,
+      ];
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      ws['!cols']=[{wch:5},{wch:32},{wch:9},{wch:14},{wch:11},{wch:18},{wch:50}];
+      const hdrStyle={font:{bold:true,color:{rgb:"FFFFFF"},sz:11},fill:{fgColor:{rgb:"2563EB"},patternType:"solid"},alignment:{horizontal:"center",vertical:"center"}};
+      for(let c=0;c<7;c++){ const ref=XLSX.utils.encode_cell({r:2,c}); if(ws[ref]) ws[ref].s=hdrStyle; }
+      const t0=XLSX.utils.encode_cell({r:0,c:0}); if(ws[t0]) ws[t0].s={font:{bold:true,sz:14}};
+      [[1,0],[1,2]].forEach(([R,Cc])=>{ const ref=XLSX.utils.encode_cell({r:R,c:Cc}); if(ws[ref]) ws[ref].s={font:{bold:true}}; });
+      const yen='"¥"#,##0';
+      const vCell=XLSX.utils.encode_cell({r:1,c:4}); if(ws[vCell]) ws[vCell].z=yen;
+      for(let R=3;R<aoa.length;R++){
+        const upc=XLSX.utils.encode_cell({r:R,c:3}); if(ws[upc]&&typeof ws[upc].v==="number") ws[upc].z=yen;
+        const scc=XLSX.utils.encode_cell({r:R,c:2}); if(ws[scc]&&typeof ws[scc].v==="number") ws[scc].z='#,##0';
+      }
+      ws['!freeze']={xSplit:0,ySplit:3};
+      ws['!views']=[{state:"frozen",ySplit:3,topLeftCell:"A4",activePane:"bottomLeft"}];
+      const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "営業管理");
+      XLSX.writeFile(wb, `営業進捗管理表_${filterDesc?filterDesc+"_":""}${today}.xlsx`);
+    } catch(e){ console.error("sales sheet export failed",e); window.alert("Excel出力に失敗しました: "+e.message); }
+  };
+
   // ── 全自治体展開状況 一括出力 ──────────────────────────────────────────
   const exportMuniStatusReport = () => {
     const today = new Date();
@@ -21396,6 +21439,8 @@ ${orig}`})
             <FieldLbl label="担当者">{AssigneePicker({ids:form.assigneeIds||[],onChange:ids=>setForm({...form,assigneeIds:ids})})}</FieldLbl>
             <FieldLbl label="代表電話番号（任意）"><Input value={form.phone||""} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="092-xxx-xxxx" type="tel"/></FieldLbl>
             <FieldLbl label="代表メールアドレス（任意）"><Input value={form.email||""} onChange={e=>setForm({...form,email:e.target.value})} placeholder="example@mail.com"/></FieldLbl>
+            <FieldLbl label="店舗数（営業管理シート用）"><Input value={form.storeCount??""} onChange={e=>setForm({...form,storeCount:e.target.value.replace(/[^0-9]/g,"")})} placeholder="例: 120" type="number"/></FieldLbl>
+            <FieldLbl label="目安単価（年・円）"><Input value={form.unitPrice??""} onChange={e=>setForm({...form,unitPrice:e.target.value.replace(/[^0-9]/g,"")})} placeholder="例: 420000" type="number"/></FieldLbl>
             {/* 先方担当者リスト */}
             <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:"0.625rem",padding:"0.625rem 0.75rem",marginBottom:"0.5rem"}}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.4rem"}}>
@@ -21593,6 +21638,14 @@ ${orig}`})
             exportCompanyList(list, desc);
           }} title="エクセル出力（フィルター済み・全アプローチ含む）"
             style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:"1.5px solid #10b981",background:"#ecfdf5",color:"#059669",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📊 出力</button>
+          <button onClick={()=>{
+            const list = bulkMode && bulkSelected.size>0
+              ? companies.filter(c=>bulkSelected.has(c.id))
+              : (compSearch ? searchedComps : compFilteredBase);
+            const desc = bulkMode && bulkSelected.size>0 ? `選択${bulkSelected.size}件` : compSearch ? `検索_${compSearch}` : "全件";
+            exportCompanySalesSheet(list, desc);
+          }} title="営業管理シート様式でExcel出力（店舗数×単価の見込み総額つき）"
+            style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:"1.5px solid #7c3aed",background:"#f5f3ff",color:"#6d28d9",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📈 営業管理</button>
           <button onClick={backfillAssigneesFromApproach} title="記録者を担当者に一括補完（業者・企業・自治体すべて）"
             style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:"1.5px solid #f59e0b",background:"#fffbeb",color:"#92400e",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🔄</button>
           <button onClick={()=>{setDeleteModal({type:"company"});setDmSearch("");setDmFilter("");setDmSelected(new Set());}}
@@ -21752,6 +21805,8 @@ ${orig}`})
             <FieldLbl label="担当者">{AssigneePicker({ids:form.assigneeIds||[],onChange:ids=>setForm({...form,assigneeIds:ids})})}</FieldLbl>
             <FieldLbl label="電話番号（任意）"><Input value={form.phone||""} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="000-0000-0000"/></FieldLbl>
             <FieldLbl label="メールアドレス（任意）"><Input value={form.email||""} onChange={e=>setForm({...form,email:e.target.value})} placeholder="example@mail.com"/></FieldLbl>
+            <FieldLbl label="店舗数（営業管理シート用）"><Input value={form.storeCount??""} onChange={e=>setForm({...form,storeCount:e.target.value.replace(/[^0-9]/g,"")})} placeholder="例: 120" type="number"/></FieldLbl>
+            <FieldLbl label="目安単価（年・円）"><Input value={form.unitPrice??""} onChange={e=>setForm({...form,unitPrice:e.target.value.replace(/[^0-9]/g,"")})} placeholder="例: 420000" type="number"/></FieldLbl>
             <FieldLbl label="電話番号（任意）"><Input value={form.phone||""} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="092-xxx-xxxx" type="tel"/></FieldLbl>
             <FieldLbl label="郵便番号（任意）"><Input value={form.zip||""} onChange={e=>setForm({...form,zip:e.target.value})} placeholder="例: 100-0001"/></FieldLbl>
             <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
