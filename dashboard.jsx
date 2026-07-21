@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-20-v293-company-sales-sheet"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-20-v294-sales-sheet-import"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -21646,6 +21646,8 @@ ${orig}`})
             exportCompanySalesSheet(list, desc);
           }} title="営業管理シート様式でExcel出力（店舗数×単価の見込み総額つき）"
             style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:"1.5px solid #7c3aed",background:"#f5f3ff",color:"#6d28d9",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📈 営業管理</button>
+          <button onClick={()=>{setImportPreview(null);setImportErr("");setSheet("importSales");}} title="営業管理シートのCSVを取込んで店舗数・単価・ステータス・メモを反映"
+            style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:"1.5px solid #7c3aed",background:"white",color:"#6d28d9",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📈 資料反映</button>
           <button onClick={backfillAssigneesFromApproach} title="記録者を担当者に一括補完（業者・企業・自治体すべて）"
             style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:"1.5px solid #f59e0b",background:"#fffbeb",color:"#92400e",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🔄</button>
           <button onClick={()=>{setDeleteModal({type:"company"});setDmSearch("");setDmFilter("");setDmSelected(new Set());}}
@@ -21817,6 +21819,84 @@ ${orig}`})
             </div>
           </Sheet>
         )}
+        {sheet==="importSales"&&(()=>{
+          const preview=importPreview; const setPreview=setImportPreview;
+          const err=importErr; const setErr=setImportErr;
+          const mapStatus=(s)=>{ s=(s||"").trim(); if(COMPANY_STATUS[s]) return s; if(s==="未対応"||s==="未着手"||s==="") return "未接触"; if(s==="成約済"||s==="加入済") return "成約"; return "未接触"; };
+          const num=(v)=>{ const d=String(v==null?"":v).replace(/[^0-9]/g,""); return d?Number(d):null; };
+          const handleFile=async(e)=>{
+            const file=e.target.files?.[0]; if(e.target)e.target.value=""; if(!file){return;} setErr(""); setPreview(null);
+            try{
+              const txt=await readFileAsText(file); const rows=parseCSV(txt);
+              if(!rows.length){ setErr("CSVが空です。"); return; }
+              const header=rows[0].map(h=>String(h||"").trim().toLowerCase().replace(/^﻿/,""));
+              const ci=(...names)=>{ for(const n of names){ const i=header.indexOf(String(n).toLowerCase()); if(i>=0) return i; } return -1; };
+              const iName=ci("企業名","会社名","name","company"), iStore=ci("店舗数","store","stores"), iPrice=ci("目安単価","目安単価（年）","単価","price","unitprice"), iStatus=ci("ステータス","status"), iMemo=ci("メモ","memo","備考","notes");
+              if(iName<0){ setErr("『企業名』列が見つかりません。営業管理シート_取込用.csv を選択してください。"); return; }
+              const byNorm=new Map(); companies.forEach((c,idx)=>{ const k=normBizName(c.name); if(k&&!byNorm.has(k)) byNorm.set(k,idx); });
+              const items=[]; let upd=0,neu=0;
+              for(let i=1;i<rows.length;i++){ const r=rows[i]; const nm=(r[iName]||"").trim(); if(!nm) continue;
+                const it={ name:nm, storeCount:iStore>=0?num(r[iStore]):null, unitPrice:iPrice>=0?num(r[iPrice]):null, status:iStatus>=0?mapStatus(r[iStatus]):"", memo:iMemo>=0?(r[iMemo]||"").trim():"" };
+                const idx=byNorm.get(normBizName(nm));
+                if(idx!=null){ upd++; it.mode="更新"; it.idx=idx; it.current=(companies[idx].name||""); } else { neu++; it.mode="新規"; }
+                items.push(it);
+              }
+              setPreview({items,upd,neu}); setErr("");
+            }catch(ex){ console.error("[importSales]",ex); setErr("読み込みに失敗しました。CSV形式・文字コードをご確認ください。"); }
+          };
+          const doImport=()=>{
+            if(!preview) return;
+            const today=new Date().toISOString().slice(0,10);
+            const comps=[...companies];
+            preview.items.forEach(it=>{
+              const patch={updatedAt:today};
+              if(it.storeCount!=null) patch.storeCount=it.storeCount;
+              if(it.unitPrice!=null) patch.unitPrice=it.unitPrice;
+              if(it.status) patch.status=it.status;
+              if(it.memo) patch.notes=it.memo;
+              if(it.mode==="更新"){ comps[it.idx]={...comps[it.idx],...patch}; }
+              else { comps.push({ id:Date.now()+Math.random(), name:it.name.trim(), status:it.status||"未接触", storeCount:it.storeCount??undefined, unitPrice:it.unitPrice??undefined, notes:it.memo||"", assigneeIds:[], memos:[], chat:[], createdAt:new Date().toISOString() }); }
+            });
+            save({...data,companies:comps});
+            window.alert(`✅ 資料の数字を反映しました\n更新 ${preview.upd}件 / 新規 ${preview.neu}件`);
+            setSheet(null); setPreview(null);
+          };
+          return (
+            <Sheet title="📈 営業管理シート取込（数字を反映）" onClose={()=>{setSheet(null);setPreview(null);setErr("");}}>
+              <div style={{fontSize:"0.78rem",color:C.text,lineHeight:1.6,marginBottom:"0.75rem"}}>
+                <strong>営業管理シート_取込用.csv</strong> を選択してください。<br/>
+                <span style={{fontSize:"0.72rem",color:C.textSub}}>企業名で照合し、<strong>既存企業は更新</strong>／無ければ<strong>新規追加</strong>。店舗数・目安単価・ステータス・メモを反映します（会社名を正規化して照合）。</span>
+              </div>
+              <label style={{display:"inline-flex",alignItems:"center",gap:"0.4rem",padding:"0.6rem 1rem",background:"#f5f3ff",border:"1.5px solid #7c3aed",borderRadius:"8px",color:"#6d28d9",fontWeight:700,fontSize:"0.82rem",cursor:"pointer"}}>
+                📄 CSVファイルを選択
+                <input type="file" accept=".csv,text/csv" onChange={handleFile} style={{display:"none"}}/>
+              </label>
+              {err&&<div style={{marginTop:"0.75rem",fontSize:"0.78rem",color:"#dc2626",fontWeight:700}}>⚠️ {err}</div>}
+              {preview&&(
+                <div style={{marginTop:"1rem"}}>
+                  <div style={{display:"flex",gap:"0.5rem",marginBottom:"0.75rem"}}>
+                    <div style={{flex:1,background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:"8px",padding:"0.5rem 0.7rem"}}><div style={{fontSize:"0.62rem",color:"#1d4ed8",fontWeight:700}}>更新（既存）</div><div style={{fontSize:"1.3rem",fontWeight:800,color:"#1e40af"}}>{preview.upd}</div></div>
+                    <div style={{flex:1,background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:"8px",padding:"0.5rem 0.7rem"}}><div style={{fontSize:"0.62rem",color:"#15803d",fontWeight:700}}>新規追加</div><div style={{fontSize:"1.3rem",fontWeight:800,color:"#166534"}}>{preview.neu}</div></div>
+                  </div>
+                  <div style={{fontSize:"0.72rem",color:C.textSub,fontWeight:700,marginBottom:"0.3rem"}}>プレビュー（先頭12件 / 全{preview.items.length}件）</div>
+                  <div style={{maxHeight:240,overflowY:"auto",border:`1px solid ${C.borderLight}`,borderRadius:"6px"}}>
+                    {preview.items.slice(0,12).map((it,i)=>(
+                      <div key={i} style={{padding:"0.4rem 0.6rem",borderTop:i>0?`1px solid ${C.borderLight}`:"none",fontSize:"0.72rem",display:"flex",gap:"0.4rem",alignItems:"center",flexWrap:"wrap"}}>
+                        <span style={{fontSize:"0.6rem",fontWeight:700,padding:"0.05rem 0.35rem",borderRadius:999,background:it.mode==="更新"?"#dbeafe":"#dcfce7",color:it.mode==="更新"?"#1e40af":"#166534"}}>{it.mode}</span>
+                        <span style={{fontWeight:700,color:C.text}}>{it.name}</span>
+                        <span style={{color:C.textMuted}}>店舗{it.storeCount??"-"} / ¥{it.unitPrice!=null?it.unitPrice.toLocaleString():"-"} / {it.status||"-"}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{display:"flex",gap:"0.5rem",marginTop:"0.75rem"}}>
+                    <Btn variant="secondary" style={{flex:1}} onClick={()=>{setPreview(null);setErr("");}}>やり直す</Btn>
+                    <Btn style={{flex:2}} onClick={doImport}>この内容で反映（更新{preview.upd}・新規{preview.neu}）</Btn>
+                  </div>
+                </div>
+              )}
+            </Sheet>
+          );
+        })()}
         {sheet==="importCompany"&&(()=>{
           const preview=importPreview; const setPreview=setImportPreview;
           const err=importErr; const setErr=setImportErr;
