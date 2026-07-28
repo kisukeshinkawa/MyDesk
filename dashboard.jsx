@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-20-v294-sales-sheet-import"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-20-v295-permit-vendor-import"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -22594,6 +22594,8 @@ ${orig}`})
             style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:"1.5px solid #0891b2",background:"#ecfeff",color:"#0e7490",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📞TSR</button>
           <button onClick={()=>{setImportPreview(null);setImportErr("");setSheet("importDustalk");}} title="DUSTALK(Bubble)の登録業者と突合して加入済/仮登録を更新"
             style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:"1.5px solid #2563eb",background:"#eff6ff",color:"#1d4ed8",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🚚DUSTALK</button>
+          <button onClick={()=>{setImportPreview(null);setImportErr("");setSheet("importPermitVendors");}} title="許可業者一覧CSVを取込（住所・電話・対応自治体・備考を上書き追加、ステータスは維持）"
+            style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:"1.5px solid #ef4444",background:"#fef2f2",color:"#b91c1c",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🚮 許可取込</button>
           <button onClick={()=>{
             // フィルター条件に該当する業者リストを取得
             const list = bulkMode && bulkSelected.size>0
@@ -22915,6 +22917,98 @@ ${orig}`})
                   <div style={{display:"flex",gap:"0.5rem",marginTop:"1rem"}}>
                     <Btn variant="secondary" style={{flex:1}} onClick={()=>{setPreview(null);}}>やり直す</Btn>
                     <Btn style={{flex:2}} onClick={doImport} disabled={importing}>{importing?"取込中…":`この内容で取込（更新${stats.upd}・新規${stats.neo}）`}</Btn>
+                  </div>
+                </div>
+              )}
+            </Sheet>
+          );
+        })()}
+        {sheet==="importPermitVendors"&&(()=>{
+          const preview=importPreview; const setPreview=setImportPreview;
+          const err=importErr; const setErr=setImportErr;
+          const handleFile=async(e)=>{
+            const file=e.target.files?.[0]; if(e.target)e.target.value=""; if(!file){return;} setErr(""); setPreview(null);
+            try{
+              const txt=await readFileAsText(file); const rows=parseCSV(txt);
+              if(!rows.length){ setErr("CSVが空です。"); return; }
+              const header=rows[0].map(h=>String(h||"").trim().toLowerCase().replace(/^﻿/,""));
+              const ci=(...names)=>{ for(const n of names){ const i=header.indexOf(String(n).toLowerCase()); if(i>=0) return i; } return -1; };
+              const iName=ci("業者名","会社名","name"), iAddr=ci("住所","所在地","address"), iTel=ci("電話番号","電話","代表電話","phone"), iFax=ci("fax","ファックス"), iMuni=ci("対応自治体","自治体","許可自治体"), iPerm=ci("許可種別","permit"), iBiko=ci("備考","メモ","取扱区分・備考","notes");
+              if(iName<0){ setErr("『業者名』列が見つかりません。許可業者_取込用.csv を選択してください。"); return; }
+              const muniByName=new Map(); munis.forEach(m=>{ const nm=String(m.name||"").trim(); if(nm&&!muniByName.has(nm)) muniByName.set(nm, m.id); });
+              const byNorm=new Map(); vendors.forEach((v,idx)=>{ const k=normBizName(v.name); if(k&&!byNorm.has(k)) byNorm.set(k,idx); });
+              const items=[]; let upd=0,neu=0; const unmatchedMunis=new Set();
+              for(let i=1;i<rows.length;i++){ const r=rows[i]; const nm=(r[iName]||"").trim(); if(!nm) continue;
+                const muniNames=(iMuni>=0?(r[iMuni]||""):"").split(/[、,\/／]+/).map(s=>s.trim()).filter(Boolean);
+                const muniIds=[]; muniNames.forEach(mn=>{ const id=muniByName.get(mn); if(id!=null) muniIds.push(id); else unmatchedMunis.add(mn); });
+                const permits=(iPerm>=0?(r[iPerm]||"一廃収運"):"一廃収運").split(/[、,\/／]+/).map(s=>s.trim()).filter(p=>PERMIT_TYPES.includes(p));
+                if(permits.length===0) permits.push("一廃収運");
+                const fax=iFax>=0?(r[iFax]||"").trim():"";
+                const biko=iBiko>=0?(r[iBiko]||"").trim():"";
+                const notes=[biko, fax?("FAX: "+fax):""].filter(Boolean).join(" ");
+                const it={ name:nm, address:iAddr>=0?(r[iAddr]||"").trim():"", phone:iTel>=0?(r[iTel]||"").trim():"", muniIds, permits, notes };
+                const idx=byNorm.get(normBizName(nm));
+                if(idx!=null){ upd++; it.mode="更新"; it.idx=idx; } else { neu++; it.mode="新規"; }
+                items.push(it);
+              }
+              setPreview({items,upd,neu,unmatchedMunis:[...unmatchedMunis]}); setErr("");
+            }catch(ex){ console.error("[importPermit]",ex); setErr("読み込みに失敗しました。CSV形式・文字コードをご確認ください。"); }
+          };
+          const doImport=()=>{
+            if(!preview) return;
+            const today=new Date().toISOString().slice(0,10);
+            const vs=[...vendors];
+            preview.items.forEach(it=>{
+              if(it.mode==="更新"){
+                const v=vs[it.idx];
+                vs[it.idx]={...v,
+                  ...(it.address?{address:it.address}:{}),
+                  ...(it.phone?{phone:it.phone}:{}),
+                  municipalityIds:[...new Set([...(v.municipalityIds||[]),...it.muniIds])],
+                  permitTypes:[...new Set([...(v.permitTypes||[]),...it.permits])],
+                  ...(it.notes?{notes:it.notes}:{}),
+                  updatedAt:today };
+              } else {
+                vs.push({ id:Date.now()+Math.random(), name:it.name.trim(), status:"未接触",
+                  phone:it.phone||"", address:it.address||"", municipalityIds:it.muniIds, permitTypes:it.permits,
+                  notes:it.notes||"", memos:[], approachLogs:[], chat:[], createdAt:new Date().toISOString(), updatedAt:today });
+              }
+            });
+            save({...data,vendors:vs});
+            window.alert(`✅ 許可業者を取り込みました\n更新 ${preview.upd}件 / 新規 ${preview.neu}件${preview.unmatchedMunis.length?`\n\n⚠️ MyDeskに無い自治体（対応自治体に未設定）:\n`+preview.unmatchedMunis.join("、"):""}`);
+            setSheet(null); setPreview(null);
+          };
+          return (
+            <Sheet title="🚮 許可業者取込（上書き追加）" onClose={()=>{setSheet(null);setPreview(null);setErr("");}}>
+              <div style={{fontSize:"0.78rem",color:C.text,lineHeight:1.6,marginBottom:"0.75rem"}}>
+                <strong>許可業者_取込用.csv</strong> を選択してください。<br/>
+                <span style={{fontSize:"0.72rem",color:C.textSub}}>業者名で照合し、<strong>既存は上書き更新</strong>（住所・電話・備考を上書き、対応自治体・許可種別は追加）／無ければ<strong>新規追加</strong>。<strong>ステータスは既存のまま</strong>（加入済ロックを守る）。対応自治体はシートの各◯列を名前でMyDeskの自治体に照合します。</span>
+              </div>
+              <label style={{display:"inline-flex",alignItems:"center",gap:"0.4rem",padding:"0.6rem 1rem",background:"#fef2f2",border:"1.5px solid #ef4444",borderRadius:"8px",color:"#b91c1c",fontWeight:700,fontSize:"0.82rem",cursor:"pointer"}}>
+                📄 CSVファイルを選択
+                <input type="file" accept=".csv,text/csv" onChange={handleFile} style={{display:"none"}}/>
+              </label>
+              {err&&<div style={{marginTop:"0.75rem",fontSize:"0.78rem",color:"#dc2626",fontWeight:700}}>⚠️ {err}</div>}
+              {preview&&(
+                <div style={{marginTop:"1rem"}}>
+                  <div style={{display:"flex",gap:"0.5rem",marginBottom:"0.75rem"}}>
+                    <div style={{flex:1,background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:"8px",padding:"0.5rem 0.7rem"}}><div style={{fontSize:"0.62rem",color:"#1d4ed8",fontWeight:700}}>更新（上書き）</div><div style={{fontSize:"1.3rem",fontWeight:800,color:"#1e40af"}}>{preview.upd}</div></div>
+                    <div style={{flex:1,background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:"8px",padding:"0.5rem 0.7rem"}}><div style={{fontSize:"0.62rem",color:"#15803d",fontWeight:700}}>新規追加</div><div style={{fontSize:"1.3rem",fontWeight:800,color:"#166534"}}>{preview.neu}</div></div>
+                  </div>
+                  {preview.unmatchedMunis.length>0&&(<div style={{marginBottom:"0.75rem",fontSize:"0.72rem",color:"#92400e",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:"6px",padding:"0.4rem 0.6rem"}}>⚠️ MyDeskに無い自治体（未設定になります）: {preview.unmatchedMunis.join("、")}</div>)}
+                  <div style={{fontSize:"0.72rem",color:C.textSub,fontWeight:700,marginBottom:"0.3rem"}}>プレビュー（先頭12件 / 全{preview.items.length}件）</div>
+                  <div style={{maxHeight:240,overflowY:"auto",border:`1px solid ${C.borderLight}`,borderRadius:"6px"}}>
+                    {preview.items.slice(0,12).map((it,i)=>(
+                      <div key={i} style={{padding:"0.4rem 0.6rem",borderTop:i>0?`1px solid ${C.borderLight}`:"none",fontSize:"0.72rem",display:"flex",gap:"0.4rem",alignItems:"center",flexWrap:"wrap"}}>
+                        <span style={{fontSize:"0.6rem",fontWeight:700,padding:"0.05rem 0.35rem",borderRadius:999,background:it.mode==="更新"?"#dbeafe":"#dcfce7",color:it.mode==="更新"?"#1e40af":"#166534"}}>{it.mode}</span>
+                        <span style={{fontWeight:700,color:C.text}}>{it.name}</span>
+                        <span style={{color:C.textMuted}}>{it.phone||"-"} / 自治体{it.muniIds.length}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{display:"flex",gap:"0.5rem",marginTop:"0.75rem"}}>
+                    <Btn variant="secondary" style={{flex:1}} onClick={()=>{setPreview(null);setErr("");}}>やり直す</Btn>
+                    <Btn style={{flex:2}} onClick={doImport}>この内容で取込（更新{preview.upd}・新規{preview.neu}）</Btn>
                   </div>
                 </div>
               )}
