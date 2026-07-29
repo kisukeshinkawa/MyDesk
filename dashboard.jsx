@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-20-v295-permit-vendor-import"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-20-v296-vendor-import-append"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -23188,16 +23188,16 @@ ${orig}`})
                   (nameMap.get(rName)||[]).forEach(i2=>cand.add(i2));
                   if(rPhone.length>=7)(phoneMap.get(rPhone)||[]).forEach(i2=>cand.add(i2));
                   if(rAddr.length>=10)(addrMap.get(rAddr)||[]).forEach(i2=>cand.add(i2));
-                  let dup=false;
+                  let dup=false, dupIdx=null;
                   for(const ci of cand){
                     const v=vendors[ci];
                     let hits=0;
                     if(rName && normStr2(v.name)===rName) hits++;
                     if(rPhone.length>=7 && normPhone2(v.phone||"")===rPhone) hits++;
                     if(rAddr.length>=10 && normStr2(v.address||"")===rAddr) hits++;
-                    if(hits>=2){ dup=true; break; }
+                    if(hits>=2){ dup=true; dupIdx=ci; break; }
                   }
-                  row._dup=dup;
+                  row._dup=dup; row._dupIdx=dupIdx;
                 }
                 setImportProgress(`重複チェック中… ${Math.min(i+500,mapped.length)}/${mapped.length}`);
                 await yield_();
@@ -23212,41 +23212,48 @@ ${orig}`})
           };
           const doImport=()=>{
             if(!preview?.length)return;
-            // ★重複判定はファイル読込時に計算済み（row._dup）。ここでは再計算しない（フリーズ防止）。
-            const isDupVendor = r => vendorDedup && !!r._dup;
+            const today=new Date().toISOString().slice(0,10);
+            const OKP=["家庭収運","事業収運","一廃収運","産廃収運","産廃処分","産廃収運処分"];
+            const resolveMids = r => r.muniNames.map(mn=>munis.find(m=>m.name===mn)?.id).filter(Boolean);
+            const resolvePerms = r => (r.permitTypeNames||[]).filter(pt=>OKP.includes(pt));
+            const isDupVendor = r => vendorDedup && !!r._dup && r._dupIdx!=null;
+            // 新規追加（重複でない行）
             const toAdd=preview.filter(r=>!isDupVendor(r)).map((r,idx)=>{
-              // Resolve municipality IDs from names
-              const mids=r.muniNames.map(mn=>munis.find(m=>m.name===mn)?.id).filter(Boolean);
+              const mids=resolveMids(r);
               const uid = "v_"+Date.now()+"_"+idx+"_"+Math.random().toString(36).slice(2,11);
               return {
-                id:uid,
-                name:r.name, status:r.status||"未接触",
-                phone:r.phone||"",
-                municipalityIds:mids, assigneeIds:[],
-                address:r.address||"",
-                permitTypes:(r.permitTypeNames||[]).filter(pt=>["家庭収運","事業収運","一廃収運","産廃収運","産廃処分","産廃収運処分"].includes(pt)),
-                beeNet:!!r.beeNet,
+                id:uid, name:r.name, status:r.status||"未接触", phone:r.phone||"",
+                municipalityIds:mids, assigneeIds:[], address:r.address||"",
+                permitTypes:resolvePerms(r), beeNet:!!r.beeNet,
                 memos:r.notes?[{id:"mn_"+Date.now()+"_"+idx+"_"+Math.random().toString(36).slice(2,11),text:r.notes,userId:currentUser?.id,date:new Date().toISOString()}]:[],
                 chat:[], createdAt:new Date().toISOString()
               };
             });
-            // ★大量インポート対策: デバウンス保存ではなく即座に awaited 保存し、
-            //   保存の成否を確認する。失敗時はデータを巻き戻し、明確なエラーを出す。
-            const newData={...data,vendors:[...vendors,...toAdd]};
+            // 既存へ書き足し（重複行・消さず追加）: 自治体/許可は追加、住所/電話は空欄のみ補完、備考はメモ追記、ステータスは既存維持
+            const updMap=new Map();
+            preview.filter(r=>isDupVendor(r)).forEach((r,k)=>{
+              const base = updMap.get(r._dupIdx) || vendors[r._dupIdx];
+              const mids=resolveMids(r); const perms=resolvePerms(r);
+              const merged={...base};
+              merged.municipalityIds=[...new Set([...(base.municipalityIds||[]),...mids])];
+              merged.permitTypes=[...new Set([...(base.permitTypes||[]),...perms])];
+              if(!base.address && r.address) merged.address=r.address;
+              if(!base.phone && r.phone) merged.phone=r.phone;
+              if(r.beeNet) merged.beeNet=true;
+              if(r.notes && !(base.memos||[]).some(m=>(m.text||"")===r.notes)) merged.memos=[...(base.memos||[]),{id:"mn_"+Date.now()+"_"+k+"_"+Math.random().toString(36).slice(2,11),text:r.notes,userId:currentUser?.id,date:new Date().toISOString()}];
+              merged.updatedAt=today;
+              updMap.set(r._dupIdx, merged);
+            });
+            const mergedVendors = updMap.size ? vendors.map((v,i)=> updMap.has(i)?updMap.get(i):v) : vendors;
+            const newData={...data,vendors:[...mergedVendors,...toAdd]};
             setImporting(true);
-            setData(newData); // 画面即時反映
+            setData(newData);
             (async()=>{
               const ok = await saveData(newData);
               setImporting(false);
-              if(ok===false){
-                // 保存失敗（おそらくデータ量過大）→ ロールバック
-                setData(data);
-                setErr(`保存に失敗しました（${toAdd.length}件）。一度に追加する件数を減らすか、時間をおいて再試行してください。`);
-                return;
-              }
-              setBulkDone({added:toAdd.length,dupes:preview.length-toAdd.length});
-              setPreview(null);
-              setSheet("importDone");
+              if(ok===false){ setData(data); setErr(`保存に失敗しました（新規${toAdd.length}/書き足し${updMap.size}件）。件数を減らして再試行してください。`); return; }
+              window.alert(`✅ 取込完了\n新規追加: ${toAdd.length}件\n既存に書き足し: ${updMap.size}件`);
+              setPreview(null); setSheet(null);
             })();
           };
           // 重複判定は計算済みフラグを参照するだけ（O(1)）
@@ -23281,8 +23288,8 @@ ${orig}`})
                   <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem",flexWrap:"wrap"}}>
                     <span style={{fontWeight:700,fontSize:"0.82rem",color:C.text}}>プレビュー</span>
                     <span style={{background:"#d1fae5",color:"#065f46",borderRadius:999,fontSize:"0.7rem",fontWeight:700,padding:"0.1rem 0.5rem"}}>全{preview.length}件</span>
-                    <span style={{background:"#dbeafe",color:"#1e40af",borderRadius:999,fontSize:"0.7rem",fontWeight:700,padding:"0.1rem 0.5rem"}}>追加{addCount}件</span>
-                    {preview.length-addCount>0&&<span style={{background:"#fef3c7",color:"#92400e",borderRadius:999,fontSize:"0.7rem",fontWeight:700,padding:"0.1rem 0.5rem"}}>重複{preview.length-addCount}件</span>}
+                    <span style={{background:"#dbeafe",color:"#1e40af",borderRadius:999,fontSize:"0.7rem",fontWeight:700,padding:"0.1rem 0.5rem"}}>新規追加{addCount}件</span>
+                    {preview.length-addCount>0&&<span style={{background:"#e0e7ff",color:"#3730a3",borderRadius:999,fontSize:"0.7rem",fontWeight:700,padding:"0.1rem 0.5rem"}}>既存に書き足し{preview.length-addCount}件</span>}
                   </div>
                   {/* 重複チェックON/OFFトグル */}
                   <label style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.625rem",cursor:"pointer",fontSize:"0.76rem",color:C.textSub,background:vendorDedup?"#f8fafc":"#fef2f2",border:`1px solid ${vendorDedup?C.borderLight:"#fecaca"}`,borderRadius:"0.5rem",padding:"0.5rem 0.7rem"}}>
@@ -23290,7 +23297,7 @@ ${orig}`})
                     <span>
                       <span style={{fontWeight:700,color:vendorDedup?C.text:"#dc2626"}}>{vendorDedup?"重複チェックON":"重複チェックOFF（全件追加）"}</span>
                       <span style={{display:"block",fontSize:"0.68rem",color:C.textMuted,marginTop:"0.1rem"}}>
-                        {vendorDedup?"名前・電話・住所のうち2つ以上が一致する業者のみスキップします":"既存と重複していても全て追加します"}
+                        {vendorDedup?"名前・電話・住所のうち2つ以上一致する既存業者には書き足し（消さず追加）します":"既存と重複していても全て新規追加します"}
                       </span>
                     </span>
                   </label>
@@ -23302,7 +23309,7 @@ ${orig}`})
                           <span style={{flex:1,fontSize:"0.82rem",fontWeight:600}}>{r.name}</span>
                           <span style={{fontSize:"0.68rem",background:VENDOR_STATUS[r.status]?.bg||C.bg,color:VENDOR_STATUS[r.status]?.color||C.textMuted,borderRadius:999,padding:"0.1rem 0.4rem",fontWeight:700}}>{r.status}</span>
                           {r.muniNames.length>0&&<span style={{fontSize:"0.65rem",color:C.textMuted}}>{r.muniNames.join("・")}</span>}
-                          {dup&&<span style={{fontSize:"0.65rem",color:"#92400e",background:"#fef3c7",borderRadius:999,padding:"0.1rem 0.35rem"}}>重複</span>}
+                          {dup&&<span style={{fontSize:"0.65rem",color:"#3730a3",background:"#e0e7ff",borderRadius:999,padding:"0.1rem 0.35rem"}}>書き足し</span>}
                         </div>
                       );
                     })}
@@ -23310,8 +23317,8 @@ ${orig}`})
                   </div>
                   <div style={{display:"flex",gap:"0.625rem",marginTop:"0.75rem"}}>
                     <Btn variant="secondary" style={{flex:1}} onClick={()=>setPreview(null)} disabled={importing}>クリア</Btn>
-                    <Btn style={{flex:2}} onClick={doImport} disabled={!addCount||importing}>
-                      {importing?`保存中… (${addCount}件)`:`${addCount}件をインポート`}
+                    <Btn style={{flex:2}} onClick={doImport} disabled={!preview.length||importing}>
+                      {importing?`保存中… (${preview.length}件)`:`${preview.length}件を取込（新規${addCount}・書き足し${preview.length-addCount}）`}
                     </Btn>
                   </div>
                   {importing&&<div style={{marginTop:"0.5rem",fontSize:"0.72rem",color:C.textMuted,textAlign:"center"}}>件数が多いと保存に数十秒かかることがあります。画面を閉じずにお待ちください。</div>}
