@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-28-v305-quote-keynav-groupbulk-import"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-29-v306-quote-template-dl"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -33969,7 +33969,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
 
       <div style={{display:"flex",flexDirection:"column",gap:"0.75rem"}}>
         {(p.vendors||[]).map(qv=>(
-          <VendorQuoteCard key={qv.id} qv={qv} rows={rows} vrec={vendors.find(v=>String(v.id)===String(qv.vendorId))} C={C} rid={rid} mapsUrl={mapsUrl} portalBusy={portalBusy} PORTAL_ON={PORTAL_ON}
+          <VendorQuoteCard key={qv.id} qv={qv} rows={rows} stores={p.stores} vrec={vendors.find(v=>String(v.id)===String(qv.vendorId))} C={C} rid={rid} mapsUrl={mapsUrl} portalBusy={portalBusy} PORTAL_ON={PORTAL_ON}
             onChange={patch=>patchVendor(qv.id,patch)} onRemove={()=>setVendors((p.vendors||[]).filter(x=>x.id!==qv.id))}
             onIssue={()=>issueLink(qv)} onCopy={()=>copyLink(qv)} onFetch={()=>fetchResp(qv)} onAddNote={t=>addVendorNote(qv,t)}/>
         ))}
@@ -33980,7 +33980,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
 }
 
 // 対象業者カード（折りたたみ・見積表[出来高/定額]・一括・ポータル・業者情報・通話メモ）
-function VendorQuoteCard({ qv, rows, vrec, C, rid, mapsUrl, portalBusy, PORTAL_ON, onChange, onRemove, onIssue, onCopy, onFetch, onAddNote }){
+function VendorQuoteCard({ qv, rows, stores=[], vrec, C, rid, mapsUrl, portalBusy, PORTAL_ON, onChange, onRemove, onIssue, onCopy, onFetch, onAddNote }){
   const REQ=["未依頼","依頼済","回答済","辞退"];
   const METHODS=["出来高","定額","その他"];
   const [open,setOpen]=React.useState(true);
@@ -33989,6 +33989,7 @@ function VendorQuoteCard({ qv, rows, vrec, C, rid, mapsUrl, portalBusy, PORTAL_O
   const [note,setNote]=React.useState("");
   const [showInfo,setShowInfo]=React.useState(false);
   const [impV,setImpV]=React.useState(false);
+  const [impMenuV,setImpMenuV]=React.useState(false);
   const importRef=React.useRef(null);
   const N=v=>{const n=parseFloat(String(v==null?"":v).replace(/[^0-9.]/g,""));return isNaN(n)?0:n;};
   const yen=n=>"¥"+Math.round(N(n)).toLocaleString();
@@ -34014,6 +34015,32 @@ function VendorQuoteCard({ qv, rows, vrec, C, rid, mapsUrl, portalBusy, PORTAL_O
   const selectGroup=(field,val)=>{ const c={}; rows.forEach(r=>{ if(String(r[field]||"")===String(val)) c[r.itemId]=true; }); setChecked(c); };
   // 見積Excel取込（返送シート→店舗×品目で照合）
   const normS=s=>String(s==null?"":s).replace(/[\s\u3000]/g,"").replace(/（.*?）|\(.*?\)/g,"").toLowerCase();
+  const downloadQuoteTemplate=async()=>{
+    setImpMenuV(false);
+    try{
+      const xm=await import("https://esm.sh/xlsx@0.18.5"); const xlsx=xm.default||xm;
+      const NN=v=>{const n=parseFloat(String(v==null?"":v).replace(/[^0-9.]/g,""));return isNaN(n)?0:n;};
+      const header=["番号","業態","エリア","物件名／店舗名","住所","保管場所・ダストボックス情報／鍵番号","排出品目","回収頻度","1回あたり数量","1袋・1個あたり重量","備考","料金方式","単価","単位","単位種別","単価総額","運搬費","処分費","定額料金","諸経費（月額）","見積金額（自動）","回収条件","見積備考"];
+      const note=["※水色(A〜K)＝依頼者記入済／オレンジ(L〜V)＝回収業者様ご記入。単価総額=単価×単位、見積金額=単価総額+運搬費+処分費+定額料金+諸経費。分かる範囲・概算でOK。"];
+      const aoa=[note,[],header];
+      const src=(stores&&stores.length)?stores:[];
+      src.forEach((st,si)=>{
+        const its=(st.items&&st.items.length)?st.items:[{id:st.id+":0"}];
+        its.forEach((it,ii)=>{
+          const pr=(qv.prices||{})[it.id]||{};
+          const sub=NN(pr.unit)*NN(pr.qty); const tot=sub+NN(pr.transport)+NN(pr.disposal)+NN(pr.flat)+NN(pr.overhead);
+          const head=ii===0?[si+1,st.bizType||"",st.area||"",st.name||"",st.address||"",st.storage||""]:["","","","","",""];
+          aoa.push([...head, it.kind||"", it.freq||"", it.qty||"", it.weight||"", ii===0?(st.memo||""):"", pr.method||"", pr.unit||"", pr.qty||"", pr.unitType||"", sub||"", pr.transport||"", pr.disposal||"", pr.flat||"", pr.overhead||"", tot||"", pr.condition||"", pr.note||""]);
+        });
+      });
+      if(src.length===0) aoa.push([1,"","","（対象店舗未登録：先に店舗を登録してください）"]);
+      const ws=xlsx.utils.aoa_to_sheet(aoa);
+      ws["!cols"]=header.map((h,i)=>({wch:(i===3||i===4||i===5||i===22)?22:(i>=11?11:12)}));
+      const wb=xlsx.utils.book_new(); xlsx.utils.book_append_sheet(wb,ws,"記入シート");
+      const nm=(qv.vendorName||"業者").replace(/[\\/:*?"<>|]/g,"");
+      xlsx.writeFile(wb,"見積依頼シート_"+nm+".xlsx");
+    }catch(e){ window.alert("テンプレの生成に失敗しました: "+(e&&e.message||e)); }
+  };
   const handleQuoteExcel=async(e)=>{
     const file=e.target.files?.[0]; if(e.target)e.target.value=""; if(!file)return; setImpV(true);
     try{
@@ -34094,7 +34121,15 @@ function VendorQuoteCard({ qv, rows, vrec, C, rid, mapsUrl, portalBusy, PORTAL_O
             <button disabled={portalBusy===qv.id} onClick={onIssue} title="対象店舗の最新内容でリンクを更新" style={{padding:"0.25rem 0.55rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textMuted,fontWeight:700,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit"}}>↻ 更新</button>
           </React.Fragment>
         )}
-        <button disabled={impV} onClick={()=>importRef.current&&importRef.current.click()} title="返送された見積Excel(依頼シート)を取込んで単価を反映" style={{padding:"0.25rem 0.55rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit"}}>{impV?"取込中…":"📥 見積Excl取込"}</button>
+        <div style={{position:"relative"}}>
+          <button disabled={impV} onClick={()=>setImpMenuV(v=>!v)} style={{padding:"0.25rem 0.55rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit"}}>{impV?"取込中…":"📊 見積Excel ▾"}</button>
+          {impMenuV&&(
+            <div style={{position:"absolute",top:"100%",left:0,zIndex:40,background:"white",border:`1px solid ${C.border}`,borderRadius:8,boxShadow:C.shadowMd,marginTop:4,minWidth:250,overflow:"hidden"}}>
+              <button onClick={downloadQuoteTemplate} style={{display:"block",width:"100%",textAlign:"left",padding:"0.5rem 0.7rem",border:"none",background:"white",cursor:"pointer",fontFamily:"inherit",fontSize:"0.74rem",color:C.text}}>📄 見積依頼シートをダウンロード</button>
+              <button onClick={()=>{setImpMenuV(false); if(importRef.current)importRef.current.click();}} style={{display:"block",width:"100%",textAlign:"left",padding:"0.5rem 0.7rem",border:"none",borderTop:`1px solid ${C.borderLight}`,background:"white",cursor:"pointer",fontFamily:"inherit",fontSize:"0.74rem",color:C.text}}>⬆️ 見積Excelを取込（反映）</button>
+            </div>
+          )}
+        </div>
         <input type="file" ref={importRef} accept=".xlsx,.xls" onChange={handleQuoteExcel} style={{display:"none"}}/>
         {!PORTAL_ON&&<span style={{fontSize:"0.62rem",color:"#b45309"}}>⚠️ ポータルURL未設定</span>}
       </div>
