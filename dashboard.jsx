@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-22-v298-quote-stores-vendor-filter"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-23-v299-quote-portal-link"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -181,6 +181,8 @@ if (typeof window !== "undefined") {
 }
 const DB_API_BASE   = "https://zv3hlppejxw32cjxhn2mnsdgqq0sxeqa.lambda-url.ap-northeast-1.on.aws";
 const DUSTALK_SYNC_URL = "https://36w7fx2ywn7t4raggrbwe65ili0fddnr.lambda-url.ap-northeast-1.on.aws";
+// 見積依頼ポータル（mydesk-quote-portal）Function URL。デプロイ後にここへ貼り付け。
+const QUOTE_PORTAL_URL = "";
 const DB_API_SECRET = "mydesk2026secret";
 const DB_API_HEADERS = {
   "Content-Type": "application/json",
@@ -33606,6 +33608,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
   const [imp, setImp] = React.useState(null);           // Excel取込プレビュー
   const [impErr, setImpErr] = React.useState("");
   const [impBusy, setImpBusy] = React.useState(false);
+  const [portalBusy, setPortalBusy] = React.useState("");
 
   const persist = (next) => { const nd = { ...data, quoteProjects: next }; setData(nd); if (typeof scheduleSaveData === "function") scheduleSaveData(nd); };
   const upd = (id, patch) => persist(projects.map(p => p.id===id ? { ...p, ...patch, updatedAt:new Date().toISOString() } : p));
@@ -33677,6 +33680,48 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
   const addVendor = (v) => { if((p.vendors||[]).some(x=>String(x.vendorId)===String(v.id))) return; setVendors([...(p.vendors||[]), { id:rid("qv"), vendorId:v.id, vendorName:v.name, assignee:"", contact:"", status:"未依頼", lines:[] }]); };
   const totalOf = (qv) => (qv.lines||[]).reduce((s,l)=> s + (Number(l.amount)||0), 0);
   const addedIds = new Set((p.vendors||[]).map(x=>String(x.vendorId)));
+
+  // ===== 見積依頼ポータル（リンク方式）=====
+  const PORTAL_ON = !!(typeof QUOTE_PORTAL_URL!=="undefined" && QUOTE_PORTAL_URL);
+  const buildReqItems = () => {
+    const rows=[];
+    (p.stores||[]).forEach(st=>{
+      const its=(st.items&&st.items.length)?st.items:[{id:rid("it"),kind:"",freq:"",qty:"",weight:""}];
+      its.forEach(it=>rows.push({ id:it.id, storeId:st.id, storeName:st.name||"", area:st.area||"", bizType:st.bizType||"", address:st.address||"", kind:it.kind||"", freq:it.freq||"", qty:it.qty||"", weight:it.weight||"" }));
+    });
+    return rows;
+  };
+  const portalPost = async (bodyObj) => {
+    const r=await fetch(QUOTE_PORTAL_URL,{method:"POST",headers:{"content-type":"application/json","x-mydesk-secret":DB_API_SECRET},body:JSON.stringify(bodyObj)});
+    return await r.json();
+  };
+  const issueLink = async (qv) => {
+    if(!PORTAL_ON){ window.alert("見積ポータルURL（QUOTE_PORTAL_URL）が未設定です。Lambdaデプロイ後にコード先頭の定数へ貼り付けてください。"); return; }
+    if(!(p.stores||[]).length){ if(!window.confirm("対象店舗が未登録です。空のフォームで発行しますか？")) return; }
+    setPortalBusy(qv.id);
+    try{
+      const payload={ projectId:p.id, projectName:p.name, company:p.companyName||"", vendorId:qv.vendorId, vendorName:qv.vendorName, items:buildReqItems() };
+      const j=await portalPost({action:"create", token:qv.portalToken||undefined, payload});
+      if(j&&j.ok){ setVendors((p.vendors||[]).map(x=>x.id===qv.id?{...x,portalToken:j.token,portalUrl:j.url,status:x.status==="回答済"?x.status:"依頼済"}:x)); }
+      else window.alert("リンク発行に失敗しました。");
+    }catch(e){ window.alert("通信エラー: "+(e&&e.message||e)); }
+    setPortalBusy("");
+  };
+  const fetchResp = async (qv) => {
+    if(!qv.portalToken) return;
+    setPortalBusy(qv.id);
+    try{
+      const j=await portalPost({action:"fetch", tokens:[qv.portalToken]});
+      const req=(j&&j.requests&&j.requests[0]);
+      if(req&&req.status==="responded"&&req.response){
+        const lines=(req.response.lines||[]).map(l=>({ id:rid("ln"), item:[l.storeName,l.kind].filter(Boolean).join(" / ")||l.kind||"", method:l.method||"", unit:l.unit||"", amount:String(l.amount||"").replace(/[^0-9]/g,""), note:l.note||"" }));
+        setVendors((p.vendors||[]).map(x=>x.id===qv.id?{...x,lines,status:"回答済",respondedAt:req.respondedAt,vendorNote:(req.response.vendorNote||"")}:x));
+        window.alert("✅ 回答を取り込みました（"+lines.length+"品目）"+((req.response.vendorNote)?("\n\n連絡: "+req.response.vendorNote):""));
+      } else { window.alert("まだ回答がありません（未回答）。"); }
+    }catch(e){ window.alert("通信エラー: "+(e&&e.message||e)); }
+    setPortalBusy("");
+  };
+  const copyLink = (qv) => { if(qv.portalUrl){ try{navigator.clipboard.writeText(qv.portalUrl);}catch(e){} window.prompt("依頼リンク（コピーして業者へ共有）", qv.portalUrl); } };
 
   // 業者候補（名前・エリア・許可でAND、各条件内はOR）
   const nq = vName.trim().toLowerCase();
@@ -33928,6 +33973,21 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
               <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap",marginBottom:"0.5rem"}}>
                 <input value={qv.assignee||""} onChange={e=>setQV({assignee:e.target.value})} placeholder="先方担当者" style={{flex:1,minWidth:120,padding:"0.35rem 0.55rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.76rem",fontFamily:"inherit"}}/>
                 <input value={qv.contact||""} onChange={e=>setQV({contact:e.target.value})} placeholder="連絡先(メール/TEL)" style={{flex:1,minWidth:120,padding:"0.35rem 0.55rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.76rem",fontFamily:"inherit"}}/>
+              </div>
+              {/* 見積依頼ポータル（リンク方式） */}
+              <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap",alignItems:"center",marginBottom:"0.5rem",padding:"0.4rem 0.5rem",background:C.bg,borderRadius:8}}>
+                {!qv.portalToken ? (
+                  <button disabled={portalBusy===qv.id} onClick={()=>issueLink(qv)} style={{padding:"0.3rem 0.7rem",borderRadius:6,border:`1.5px solid ${C.accent}`,background:C.accentBg,color:C.accentDark,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}}>{portalBusy===qv.id?"発行中…":"🔗 依頼リンクを発行"}</button>
+                ) : (
+                  <React.Fragment>
+                    <span style={{fontSize:"0.64rem",color:C.textMuted,maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{qv.portalUrl}</span>
+                    <button onClick={()=>copyLink(qv)} style={{padding:"0.25rem 0.55rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit"}}>📋 コピー</button>
+                    <button disabled={portalBusy===qv.id} onClick={()=>fetchResp(qv)} style={{padding:"0.25rem 0.55rem",borderRadius:6,border:`1px solid ${C.accent}`,background:"white",color:C.accentDark,fontWeight:700,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit"}}>{portalBusy===qv.id?"取得中…":"🔄 回答取得"}</button>
+                    <button disabled={portalBusy===qv.id} onClick={()=>issueLink(qv)} title="対象店舗の最新内容でリンクを更新" style={{padding:"0.25rem 0.55rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textMuted,fontWeight:700,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit"}}>↻ 更新</button>
+                    {qv.respondedAt&&<span style={{fontSize:"0.64rem",color:"#16a34a",fontWeight:700}}>✅ 回答済 {String(qv.respondedAt).slice(0,10)}</span>}
+                  </React.Fragment>
+                )}
+                {!PORTAL_ON&&<span style={{fontSize:"0.62rem",color:"#b45309"}}>⚠️ ポータルURL未設定（コード先頭 QUOTE_PORTAL_URL）</span>}
               </div>
               <div style={{border:`1px solid ${C.borderLight}`,borderRadius:8,overflow:"hidden"}}>
                 <div style={{display:"flex",gap:"0.3rem",padding:"0.3rem 0.5rem",background:C.bg,fontSize:"0.62rem",fontWeight:700,color:C.textSub}}>
