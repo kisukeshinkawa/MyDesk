@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-25-v302-store-import-template"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-26-v303-quote-cost-breakdown"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -33717,7 +33717,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
   const mergeResp = (qv, req) => {
     if(!(req && req.status==="responded" && req.response)) return null;
     const prices={...(qv.prices||{})};
-    (req.response.lines||[]).forEach(l=>{ if(l&&l.itemId!=null) prices[l.itemId]={method:l.method||"",unit:l.unit||"",amount:String(l.amount||"").replace(/[^0-9]/g,""),note:l.note||""}; });
+    (req.response.lines||[]).forEach(l=>{ if(l&&l.itemId!=null) prices[l.itemId]={method:l.method||"",unit:l.unit||"",qty:l.qty||"",transport:l.transport||"",disposal:l.disposal||"",flat:l.flat||"",overhead:l.overhead||"",condition:l.condition||l.note||"",note:l.note||"",amount:l.amount||""}; });
     return {...qv, prices, status:"回答済", respondedAt:req.respondedAt, vendorNote:(req.response.vendorNote||"")};
   };
   const issueLink = async (qv, silent) => {
@@ -33979,41 +33979,53 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
   );
 }
 
-// 対象業者カード（見積表・一括単価・ポータル・業者情報・通話メモ）
+// 対象業者カード（折りたたみ・見積表[出来高/定額]・一括・ポータル・業者情報・通話メモ）
 function VendorQuoteCard({ qv, rows, vrec, C, rid, mapsUrl, portalBusy, PORTAL_ON, onChange, onRemove, onIssue, onCopy, onFetch, onAddNote }){
   const REQ=["未依頼","依頼済","回答済","辞退"];
   const METHODS=["出来高","定額","その他"];
+  const [open,setOpen]=React.useState(true);
   const [checked,setChecked]=React.useState({});
-  const [bulk,setBulk]=React.useState({method:"",unit:"",amount:""});
+  const [bulk,setBulk]=React.useState({method:"",unit:"",transport:"",disposal:"",overhead:"",flat:""});
   const [note,setNote]=React.useState("");
   const [showInfo,setShowInfo]=React.useState(false);
-  const [showNotes,setShowNotes]=React.useState(false);
-  const yen=n=>"¥"+Number(n||0).toLocaleString();
+  const N=v=>{const n=parseFloat(String(v==null?"":v).replace(/[^0-9.]/g,""));return isNaN(n)?0:n;};
+  const yen=n=>"¥"+Math.round(N(n)).toLocaleString();
   const prices=qv.prices||{};
   const setPrice=(itemId,patch)=>onChange({prices:{...(qv.prices||{}),[itemId]:{...(qv.prices||{})[itemId],...patch}}});
-  const total=rows.reduce((s,r)=>s+(Number(prices[r.itemId]?.amount)||0),0)+(qv.extraLines||[]).reduce((s,l)=>s+(Number(l.amount)||0),0);
+  const subTotal=pr=>N(pr&&pr.unit)*N(pr&&pr.qty);
+  const lineTotal=pr=>subTotal(pr)+N(pr&&pr.transport)+N(pr&&pr.disposal)+N(pr&&pr.flat)+N(pr&&pr.overhead);
+  const total=rows.reduce((s,r)=>s+lineTotal(prices[r.itemId]),0)+(qv.extraLines||[]).reduce((s,l)=>s+N(l.amount),0);
   const checkedIds=Object.keys(checked).filter(k=>checked[k]);
   const allChecked=rows.length>0&&checkedIds.length===rows.length;
-  const applyBulk=()=>{ if(!checkedIds.length){window.alert("店舗（行）にチェックを入れてください。");return;} const np={...(qv.prices||{})}; checkedIds.forEach(id=>{ np[id]={...np[id], ...(bulk.method?{method:bulk.method}:{}), ...(bulk.unit?{unit:bulk.unit}:{}), ...(bulk.amount?{amount:bulk.amount.replace(/[^0-9]/g,"")}:{})}; }); onChange({prices:np}); };
-  const grade = vrec&&vrec.grade;
+  const applyBulk=()=>{ if(!checkedIds.length){window.alert("店舗（行）にチェックを入れてください。");return;} const np={...(qv.prices||{})}; checkedIds.forEach(id=>{ const cur={...np[id]}; ["method","unit","transport","disposal","overhead","flat"].forEach(k=>{ if(bulk[k]!=="") cur[k]=(k==="method"?bulk[k]:bulk[k].replace(/[^0-9.]/g,"")); }); np[id]=cur; }); onChange({prices:np}); };
+  const grade=vrec&&vrec.grade;
   const setExtra=lines=>onChange({extraLines:lines});
+  const NUM={width:"100%",boxSizing:"border-box",padding:"0.25rem 0.3rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit",textAlign:"right"};
+  const AUTO={fontSize:"0.72rem",color:C.text,textAlign:"right",fontWeight:700};
+  const HcolNum={width:70,flex:"none",textAlign:"right"};
+  const CcolNum={width:70,flex:"none"};
 
   return (
-    <div style={{background:"white",border:`1px solid ${C.border}`,borderRadius:10,padding:"0.75rem 0.9rem"}}>
-      <div style={{display:"flex",alignItems:"center",gap:"0.5rem",flexWrap:"wrap",marginBottom:"0.4rem"}}>
+    <div style={{background:"white",border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden"}}>
+      {/* ヘッダー（常時表示・クリックで折りたたみ） */}
+      <div style={{display:"flex",alignItems:"center",gap:"0.5rem",flexWrap:"wrap",padding:"0.6rem 0.9rem",cursor:"pointer"}} onClick={()=>setOpen(o=>!o)}>
+        <span style={{fontSize:"0.72rem",color:C.textMuted}}>{open?"▼":"▶"}</span>
         <span style={{fontWeight:800,fontSize:"0.9rem",color:C.text}}>{qv.vendorName}</span>
         {grade&&<span style={{fontSize:"0.66rem",color:"#b45309"}}>{"★".repeat(grade)}</span>}
-        <select value={qv.status||"未依頼"} onChange={e=>onChange({status:e.target.value})} style={{padding:"0.2rem 0.5rem",borderRadius:999,border:`1px solid ${C.border}`,fontSize:"0.68rem",fontWeight:700,fontFamily:"inherit",background:"white"}}>{REQ.map(s=><option key={s} value={s}>{s}</option>)}</select>
-        <span style={{marginLeft:"auto",fontSize:"0.82rem",fontWeight:800,color:C.accentDark}}>合計 {yen(total)}</span>
-        <button onClick={onRemove} style={{border:"none",background:"none",color:"#dc2626",cursor:"pointer",fontSize:"0.9rem",fontFamily:"inherit"}}>×</button>
+        <select value={qv.status||"未依頼"} onClick={e=>e.stopPropagation()} onChange={e=>onChange({status:e.target.value})} style={{padding:"0.2rem 0.5rem",borderRadius:999,border:`1px solid ${C.border}`,fontSize:"0.68rem",fontWeight:700,fontFamily:"inherit",background:"white"}}>{REQ.map(s=><option key={s} value={s}>{s}</option>)}</select>
+        {qv.respondedAt&&<span style={{fontSize:"0.62rem",color:"#16a34a",fontWeight:700}}>✅{String(qv.respondedAt).slice(5,10)}</span>}
+        <span style={{marginLeft:"auto",fontSize:"0.82rem",fontWeight:800,color:C.accentDark}}>見積 {yen(total)}</span>
+        <button onClick={e=>{e.stopPropagation();onRemove();}} style={{border:"none",background:"none",color:"#dc2626",cursor:"pointer",fontSize:"0.9rem",fontFamily:"inherit"}}>×</button>
       </div>
 
+      {open&&(
+      <div style={{padding:"0 0.9rem 0.8rem"}}>
       {/* 業者情報（MyDeskデータ） */}
       <div style={{display:"flex",gap:"0.6rem",flexWrap:"wrap",alignItems:"center",fontSize:"0.72rem",color:C.textSub,marginBottom:"0.5rem"}}>
         {vrec&&vrec.phone&&<a href={"tel:"+vrec.phone} style={{color:C.accentDark,textDecoration:"none",fontWeight:700}}>📞 {vrec.phone}</a>}
         {vrec&&vrec.address&&<a href={mapsUrl(vrec.address)} target="_blank" rel="noreferrer" style={{color:C.textSub,textDecoration:"none"}}>📍 {vrec.address}</a>}
         {vrec&&(vrec.permitTypes||[]).length>0&&<span>{(vrec.permitTypes||[]).join("・")}</span>}
-        <button onClick={()=>setShowInfo(v=>!v)} style={{border:"none",background:"none",color:C.accent,cursor:"pointer",fontFamily:"inherit",fontSize:"0.7rem"}}>{showInfo?"▲業者メモを隠す":"▼通話・見積メモ"}</button>
+        <button onClick={()=>setShowInfo(v=>!v)} style={{border:"none",background:"none",color:C.accent,cursor:"pointer",fontFamily:"inherit",fontSize:"0.7rem"}}>{showInfo?"▲メモを隠す":"▼通話・見積メモ"}</button>
       </div>
       {showInfo&&(
         <div style={{background:C.bg,borderRadius:8,padding:"0.5rem 0.6rem",marginBottom:"0.5rem"}}>
@@ -34040,43 +34052,60 @@ function VendorQuoteCard({ qv, rows, vrec, C, rid, mapsUrl, portalBusy, PORTAL_O
             <button onClick={onCopy} style={{padding:"0.25rem 0.55rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit"}}>📋 コピー</button>
             <button disabled={portalBusy===qv.id} onClick={onFetch} style={{padding:"0.25rem 0.55rem",borderRadius:6,border:`1px solid ${C.accent}`,background:"white",color:C.accentDark,fontWeight:700,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit"}}>{portalBusy===qv.id?"取得中…":"🔄 回答取得"}</button>
             <button disabled={portalBusy===qv.id} onClick={onIssue} title="対象店舗の最新内容でリンクを更新" style={{padding:"0.25rem 0.55rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textMuted,fontWeight:700,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit"}}>↻ 更新</button>
-            {qv.respondedAt&&<span style={{fontSize:"0.64rem",color:"#16a34a",fontWeight:700}}>✅ 回答済 {String(qv.respondedAt).slice(0,10)}</span>}
           </React.Fragment>
         )}
         {!PORTAL_ON&&<span style={{fontSize:"0.62rem",color:"#b45309"}}>⚠️ ポータルURL未設定</span>}
       </div>
 
-      {/* 一括単価バー */}
+      {/* 一括バー */}
       {rows.length>0&&(
         <div style={{display:"flex",gap:"0.35rem",flexWrap:"wrap",alignItems:"center",marginBottom:"0.4rem",padding:"0.4rem 0.5rem",background:"#fff7ed",border:"1px solid #fed7aa",borderRadius:8}}>
           <span style={{fontSize:"0.66rem",fontWeight:700,color:"#9a3412"}}>選択に一括：</span>
           <select value={bulk.method} onChange={e=>setBulk({...bulk,method:e.target.value})} style={{padding:"0.25rem 0.4rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.7rem",fontFamily:"inherit",background:"white"}}><option value="">方式</option>{METHODS.map(m=><option key={m} value={m}>{m}</option>)}</select>
-          <input value={bulk.unit} onChange={e=>setBulk({...bulk,unit:e.target.value})} placeholder="単価" style={{width:90,padding:"0.25rem 0.4rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.7rem",fontFamily:"inherit"}}/>
-          <input value={bulk.amount} onChange={e=>setBulk({...bulk,amount:e.target.value})} placeholder="金額" inputMode="numeric" style={{width:90,padding:"0.25rem 0.4rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.7rem",fontFamily:"inherit"}}/>
-          <button onClick={applyBulk} style={{padding:"0.25rem 0.7rem",borderRadius:5,border:"none",background:"#ea580c",color:"white",fontWeight:700,fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit"}}>チェック店舗に適用（{checkedIds.length}）</button>
+          <input value={bulk.unit} onChange={e=>setBulk({...bulk,unit:e.target.value})} placeholder="単価" style={{width:70,padding:"0.25rem 0.4rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.7rem",fontFamily:"inherit"}}/>
+          <input value={bulk.transport} onChange={e=>setBulk({...bulk,transport:e.target.value})} placeholder="運搬費" style={{width:70,padding:"0.25rem 0.4rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.7rem",fontFamily:"inherit"}}/>
+          <input value={bulk.disposal} onChange={e=>setBulk({...bulk,disposal:e.target.value})} placeholder="処分費" style={{width:70,padding:"0.25rem 0.4rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.7rem",fontFamily:"inherit"}}/>
+          <input value={bulk.overhead} onChange={e=>setBulk({...bulk,overhead:e.target.value})} placeholder="諸経費" style={{width:70,padding:"0.25rem 0.4rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.7rem",fontFamily:"inherit"}}/>
+          <input value={bulk.flat} onChange={e=>setBulk({...bulk,flat:e.target.value})} placeholder="定額料金" style={{width:78,padding:"0.25rem 0.4rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.7rem",fontFamily:"inherit"}}/>
+          <button onClick={applyBulk} style={{padding:"0.25rem 0.7rem",borderRadius:5,border:"none",background:"#ea580c",color:"white",fontWeight:700,fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit"}}>チェックに適用（{checkedIds.length}）</button>
         </div>
       )}
 
-      {/* 店舗×品目 見積表 */}
+      {/* 店舗×品目 見積表（横スクロール） */}
       {rows.length>0?(
-        <div style={{border:`1px solid ${C.borderLight}`,borderRadius:8,overflow:"hidden"}}>
-          <div style={{display:"flex",gap:"0.3rem",padding:"0.3rem 0.5rem",background:C.bg,fontSize:"0.62rem",fontWeight:700,color:C.textSub,alignItems:"center"}}>
-            <input type="checkbox" checked={allChecked} onChange={e=>{const c={};if(e.target.checked)rows.forEach(r=>c[r.itemId]=true);setChecked(c);}} style={{width:14,height:14}}/>
-            <span style={{flex:2}}>店舗 / 品目</span><span style={{width:64}}>方式</span><span style={{width:74}}>単価</span><span style={{width:84}}>金額</span><span style={{flex:1}}>条件</span>
-          </div>
-          {rows.map(r=>{ const pr=prices[r.itemId]||{}; return (
-            <div key={r.itemId} style={{display:"flex",gap:"0.3rem",padding:"0.3rem 0.5rem",borderTop:`1px solid ${C.borderLight}`,alignItems:"center"}}>
-              <input type="checkbox" checked={!!checked[r.itemId]} onChange={e=>setChecked({...checked,[r.itemId]:e.target.checked})} style={{width:14,height:14}}/>
-              <div style={{flex:2,minWidth:0}}>
-                <div style={{fontSize:"0.72rem",fontWeight:600,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.storeName||"（拠点）"}{r.address?<a href={mapsUrl(r.address)} target="_blank" rel="noreferrer" style={{marginLeft:4,textDecoration:"none"}} title="Googleマップで開く">📍</a>:null}</div>
-                <div style={{fontSize:"0.64rem",color:C.textMuted}}>{r.kind||"（品目）"}{r.freq?` / ${r.freq}`:""}</div>
-              </div>
-              <select value={pr.method||""} onChange={e=>setPrice(r.itemId,{method:e.target.value})} style={{width:64,padding:"0.25rem 0.15rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.68rem",fontFamily:"inherit",background:"white"}}><option value=""></option>{METHODS.map(m=><option key={m} value={m}>{m}</option>)}</select>
-              <input value={pr.unit||""} onChange={e=>setPrice(r.itemId,{unit:e.target.value})} placeholder="単価" style={{width:74,padding:"0.25rem 0.35rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit"}}/>
-              <input value={pr.amount||""} onChange={e=>setPrice(r.itemId,{amount:e.target.value.replace(/[^0-9]/g,"")})} placeholder="金額" inputMode="numeric" style={{width:84,padding:"0.25rem 0.35rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit"}}/>
-              <input value={pr.note||""} onChange={e=>setPrice(r.itemId,{note:e.target.value})} placeholder="条件" style={{flex:1,minWidth:0,padding:"0.25rem 0.35rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit"}}/>
+        <div style={{overflowX:"auto",border:`1px solid ${C.borderLight}`,borderRadius:8}}>
+          <div style={{minWidth:1040}}>
+            <div style={{display:"flex",gap:"0.25rem",padding:"0.3rem 0.5rem",background:C.bg,fontSize:"0.6rem",fontWeight:700,color:C.textSub,alignItems:"center"}}>
+              <span style={{width:18,flex:"none"}}><input type="checkbox" checked={allChecked} onChange={e=>{const c={};if(e.target.checked)rows.forEach(r=>c[r.itemId]=true);setChecked(c);}} style={{width:14,height:14}}/></span>
+              <span style={{width:150,flex:"none"}}>店舗 / 品目</span>
+              <span style={{width:60,flex:"none"}}>方式</span>
+              <span style={HcolNum}>単価</span><span style={{width:48,flex:"none",textAlign:"right"}}>単位</span>
+              <span style={{width:76,flex:"none",textAlign:"right"}}>単価総額</span>
+              <span style={HcolNum}>運搬費</span><span style={HcolNum}>処分費</span>
+              <span style={{width:78,flex:"none",textAlign:"right"}}>定額料金</span><span style={HcolNum}>諸経費</span>
+              <span style={{width:86,flex:"none",textAlign:"right"}}>見積金額</span>
+              <span style={{width:150,flex:"none"}}>回収条件 / 備考</span>
             </div>
-          );})}
+            {rows.map(r=>{ const pr=prices[r.itemId]||{}; return (
+              <div key={r.itemId} style={{display:"flex",gap:"0.25rem",padding:"0.3rem 0.5rem",borderTop:`1px solid ${C.borderLight}`,alignItems:"center"}}>
+                <span style={{width:18,flex:"none"}}><input type="checkbox" checked={!!checked[r.itemId]} onChange={e=>setChecked({...checked,[r.itemId]:e.target.checked})} style={{width:14,height:14}}/></span>
+                <div style={{width:150,flex:"none",minWidth:0}}>
+                  <div style={{fontSize:"0.72rem",fontWeight:600,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.storeName||"（拠点）"}{r.address?<a href={mapsUrl(r.address)} target="_blank" rel="noreferrer" style={{marginLeft:4,textDecoration:"none"}} title="Googleマップ">📍</a>:null}</div>
+                  <div style={{fontSize:"0.62rem",color:C.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.kind||"（品目）"}{r.freq?` / ${r.freq}`:""}</div>
+                </div>
+                <select value={pr.method||""} onChange={e=>setPrice(r.itemId,{method:e.target.value})} style={{width:60,flex:"none",padding:"0.25rem 0.1rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.68rem",fontFamily:"inherit",background:"white"}}><option value=""></option>{METHODS.map(m=><option key={m} value={m}>{m}</option>)}</select>
+                <span style={CcolNum}><input value={pr.unit||""} onChange={e=>setPrice(r.itemId,{unit:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="単価" style={NUM}/></span>
+                <span style={{width:48,flex:"none"}}><input value={pr.qty||""} onChange={e=>setPrice(r.itemId,{qty:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="単位" style={NUM}/></span>
+                <span style={{width:76,flex:"none",...AUTO}}>{subTotal(pr)?Math.round(subTotal(pr)).toLocaleString():""}</span>
+                <span style={CcolNum}><input value={pr.transport||""} onChange={e=>setPrice(r.itemId,{transport:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="運搬" style={NUM}/></span>
+                <span style={CcolNum}><input value={pr.disposal||""} onChange={e=>setPrice(r.itemId,{disposal:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="処分" style={NUM}/></span>
+                <span style={{width:78,flex:"none"}}><input value={pr.flat||""} onChange={e=>setPrice(r.itemId,{flat:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="定額" style={NUM}/></span>
+                <span style={CcolNum}><input value={pr.overhead||""} onChange={e=>setPrice(r.itemId,{overhead:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="諸経費" style={NUM}/></span>
+                <span style={{width:86,flex:"none",...AUTO,color:C.accentDark}}>{lineTotal(pr)?Math.round(lineTotal(pr)).toLocaleString():""}</span>
+                <span style={{width:150,flex:"none"}}><input value={pr.condition||pr.note||""} onChange={e=>setPrice(r.itemId,{condition:e.target.value})} placeholder="回収条件・備考" style={{width:"100%",boxSizing:"border-box",padding:"0.25rem 0.3rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit"}}/></span>
+              </div>
+            );})}
+          </div>
         </div>
       ):(
         <div style={{fontSize:"0.72rem",color:C.textMuted,padding:"0.4rem 0"}}>対象店舗を登録すると、店舗ごとの見積入力ができます。</div>
@@ -34097,6 +34126,8 @@ function VendorQuoteCard({ qv, rows, vrec, C, rid, mapsUrl, portalBusy, PORTAL_O
           <button onClick={()=>setExtra([...(qv.extraLines||[]),{id:rid("ex"),item:"",method:"",unit:"",amount:"",note:""}])} style={{alignSelf:"flex-start",padding:"0.2rem 0.6rem",border:"none",background:C.bg,color:C.accent,fontWeight:700,fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit",borderRadius:5}}>＋ 明細行を追加</button>
         </div>
       </details>
+      </div>
+      )}
     </div>
   );
 }
