@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-23-v299-quote-portal-link"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-23-v300-quote-portal-nopreflight"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -33692,7 +33692,8 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
     return rows;
   };
   const portalPost = async (bodyObj) => {
-    const r=await fetch(QUOTE_PORTAL_URL,{method:"POST",headers:{"content-type":"application/json","x-mydesk-secret":DB_API_SECRET},body:JSON.stringify(bodyObj)});
+    // CORSプリフライトを避けるため text/plain + 秘密キーは本文に入れる（カスタムヘッダーを使わない）
+    const r=await fetch(QUOTE_PORTAL_URL,{method:"POST",headers:{"content-type":"text/plain;charset=UTF-8"},body:JSON.stringify({...bodyObj,secret:DB_API_SECRET})});
     return await r.json();
   };
   const issueLink = async (qv) => {
