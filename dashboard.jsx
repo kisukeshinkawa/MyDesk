@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-24-v301-quote-store-pricing"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-25-v302-store-import-template"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -33609,6 +33609,8 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
   const [impErr, setImpErr] = React.useState("");
   const [impBusy, setImpBusy] = React.useState(false);
   const [portalBusy, setPortalBusy] = React.useState("");
+  const [impMenu, setImpMenu] = React.useState(false);
+  const fileRef = React.useRef(null);
 
   const persistData = (nd) => { setData(nd); if (typeof scheduleSaveData === "function") scheduleSaveData(nd); };
   const persist = (next) => persistData({ ...data, quoteProjects: next });
@@ -33800,6 +33802,21 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
     FIELD_DEFS.forEach(fd=>{ for(let ci=0;ci<headerRow.length;ci++){ if(used.has(ci))continue; const h=String(headerRow[ci]==null?"":headerRow[ci]).trim(); if(!h)continue; if(fd.kw.some(re=>re.test(h))){ map[fd.key]=ci; used.add(ci); break; } } });
     return map;
   };
+  const downloadTemplate = async () => {
+    setImpMenu(false);
+    try{
+      const xlsxMod=await import("https://esm.sh/xlsx@0.18.5"); const xlsx=xlsxMod.default||xlsxMod;
+      const header=["番号","業態","エリア（都道府県・市区町村）","拠点名／店舗名","住所","保管場所・ダストボックス情報／鍵番号","排出品目","回収頻度","1回あたり数量","1袋・1個あたり重量","備考（席数・従業員数・特記事項）"];
+      const ex1=["1","店舗（飲食）","福岡県北九州市","○○店 小倉","〒802-0001 北九州市小倉北区1-2-3","裏口ダストボックス（鍵1234）","可燃ごみ","週3回","2袋","5kg/袋","席数30／従業員6名"];
+      const ex1b=["","","","","","","不燃ごみ","週1回","1袋","3kg/袋","↑同じ拠点の2品目め。A〜F列は空欄でOK"];
+      const ex2=["2","事務所","福岡県福岡市","○○オフィス","〒812-0011 福岡市博多区4-5-6","1F 集積所","古紙","月2回","5束","10kg/束",""];
+      const rows=[header,ex1,ex1b,ex2];
+      const ws=xlsx.utils.aoa_to_sheet(rows);
+      ws["!cols"]=header.map((h,i)=>({wch:(i===3||i===4)?24:(i>=6?14:12)}));
+      const wb=xlsx.utils.book_new(); xlsx.utils.book_append_sheet(wb,ws,"記入シート");
+      xlsx.writeFile(wb,"店舗インポートテンプレ.xlsx");
+    }catch(e){ window.alert("テンプレの生成に失敗しました: "+(e&&e.message||e)); }
+  };
   const handleExcel = async (e) => {
     const file=e.target.files?.[0]; if(e.target)e.target.value=""; if(!file)return;
     setImpErr(""); setImp(null); setImpBusy(true);
@@ -33867,11 +33884,17 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
         <div style={{fontWeight:800,fontSize:"0.9rem",color:C.text}}>🏪 対象店舗</div>
         <span style={{fontSize:"0.7rem",color:C.textMuted}}>{storeTotal}件 / 品目{itemTotal}行</span>
         <div style={{marginLeft:"auto",display:"flex",gap:"0.4rem"}}>
-          <label style={{display:"inline-flex",alignItems:"center",gap:"0.3rem",padding:"0.35rem 0.7rem",borderRadius:8,border:`1.5px solid ${C.accent}`,background:C.accentBg,color:C.accentDark,fontWeight:700,fontSize:"0.72rem",cursor:"pointer"}}>
-            {impBusy?"読込中…":"🤖 Excel取込（様式自動判定）"}
-            <input type="file" accept=".xlsx,.xls" onChange={handleExcel} style={{display:"none"}} disabled={impBusy}/>
-          </label>
+          <div style={{position:"relative"}}>
+            <button onClick={()=>setImpMenu(v=>!v)} style={{padding:"0.35rem 0.7rem",borderRadius:8,border:`1.5px solid ${C.accent}`,background:C.accentBg,color:C.accentDark,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}}>{impBusy?"読込中…":"📥 店舗インポート ▾"}</button>
+            {impMenu&&(
+              <div style={{position:"absolute",top:"100%",right:0,zIndex:40,background:"white",border:`1px solid ${C.border}`,borderRadius:8,boxShadow:C.shadowMd,marginTop:4,minWidth:230,overflow:"hidden"}}>
+                <button onClick={downloadTemplate} style={{display:"block",width:"100%",textAlign:"left",padding:"0.55rem 0.75rem",border:"none",background:"white",cursor:"pointer",fontFamily:"inherit",fontSize:"0.76rem",color:C.text}}>📄 取込テンプレをダウンロード</button>
+                <button onClick={()=>{setImpMenu(false); if(fileRef.current) fileRef.current.click();}} style={{display:"block",width:"100%",textAlign:"left",padding:"0.55rem 0.75rem",border:"none",borderTop:`1px solid ${C.borderLight}`,background:"white",cursor:"pointer",fontFamily:"inherit",fontSize:"0.76rem",color:C.text}}>⬆️ ファイルを選んで取込（様式自動判定）</button>
+              </div>
+            )}
+          </div>
           <button onClick={()=>setStoreAdd(v=>!v)} style={{padding:"0.35rem 0.7rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}}>＋ 手動で追加</button>
+          <input type="file" ref={fileRef} accept=".xlsx,.xls" onChange={handleExcel} style={{display:"none"}}/>
         </div>
       </div>
       {impErr&&<div style={{fontSize:"0.76rem",color:"#dc2626",fontWeight:700,marginBottom:"0.5rem"}}>⚠️ {impErr}</div>}
