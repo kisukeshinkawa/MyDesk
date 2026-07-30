@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-20-v296-vendor-import-append"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-21-v297-quote-module-foundation"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -621,7 +621,7 @@ if (typeof window !== "undefined" && !window.__myDeskFlushListenerAdded) {
   });
 }
 
-const INIT = { tasks:[], projects:[], emails:[], emailStyles:[], prefectures:[], municipalities:[], vendors:[], companies:[], businessCards:[], notifications:[], changeLogs:[], analytics:{}, emailTemplates:[], quotes:[] };
+const INIT = { tasks:[], projects:[], emails:[], emailStyles:[], prefectures:[], municipalities:[], vendors:[], companies:[], businessCards:[], notifications:[], changeLogs:[], analytics:{}, emailTemplates:[], quotes:[], quoteProjects:[] };
 
 // ─── ユーザー氏名ヘルパー（姓・名の分割／合成）────────────────────────────────
 // 既存ユーザーは name（例「新川 希亮」または「新川希亮」）のみ持つため、
@@ -1841,7 +1841,7 @@ async function saveData(d) {
     console.error("[MyDesk] saveData rejected — no INIT keys found", d); return;
   }
   // 配列フィールドがすべて空で、かつ現在のDBに保存済みデータがある場合は書き込まない
-  const ARRAY_KEYS = ["tasks","projects","companies","vendors","municipalities","businessCards","quotes"];
+  const ARRAY_KEYS = ["tasks","projects","companies","vendors","municipalities","businessCards","quotes","quoteProjects"];
   const allArraysEmpty = ARRAY_KEYS.every(k => !Array.isArray(d[k]) || d[k].length === 0);
   const hasAnalyticsData = d.analytics && typeof d.analytics === "object" && Object.keys(d.analytics).length > 0;
   if (allArraysEmpty && !hasAnalyticsData) {
@@ -33585,6 +33585,163 @@ function AgentFAB({ data, currentUser, users, onAction }) {
 }
 
 
+
+// ─── QUOTE PROJECTS VIEW: 見積案件（業者見積の依頼・単価管理） ───────────────
+function QuoteProjectsView({ data, setData, currentUser, users=[] }){
+  const projects = data.quoteProjects || [];
+  const companies = data.companies || [];
+  const vendors = data.vendors || [];
+  const [activeId, setActiveId] = React.useState(null);
+  const [creating, setCreating] = React.useState(false);
+  const [form, setForm] = React.useState({name:"", companyId:"", memo:""});
+  const [vSearch, setVSearch] = React.useState("");
+  const persist = (next) => { const nd = { ...data, quoteProjects: next }; setData(nd); if (typeof scheduleSaveData === "function") scheduleSaveData(nd); };
+  const upd = (id, patch) => persist(projects.map(p => p.id===id ? { ...p, ...patch, updatedAt:new Date().toISOString() } : p));
+  const active = projects.find(p => p.id===activeId);
+  const QSTATUS = ["見積依頼中","回収中","比較中","完了"];
+  const REQ = ["未依頼","依頼済","回答済","辞退"];
+  const METHODS = ["出来高","定額","その他"];
+  const yen = n => (n||n===0) ? "¥"+Number(n).toLocaleString() : "";
+
+  // ---- 一覧 ----
+  if(!active){
+    return (
+      <div style={{padding:"1rem 1.25rem",maxWidth:1100,margin:"0 auto"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"1rem",flexWrap:"wrap",gap:"0.5rem"}}>
+          <div style={{fontSize:"1.15rem",fontWeight:800,color:C.text}}>💰 見積案件</div>
+          <button onClick={()=>{setCreating(v=>!v);setForm({name:"",companyId:"",memo:""});}} style={{padding:"0.5rem 1rem",borderRadius:8,border:"none",background:C.accent,color:"white",fontWeight:800,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>＋ 案件を作成</button>
+        </div>
+        {creating&&(
+          <div style={{background:"white",border:`1px solid ${C.border}`,borderRadius:10,padding:"0.9rem 1rem",marginBottom:"1rem",boxShadow:C.shadow}}>
+            <div style={{fontWeight:800,fontSize:"0.85rem",color:C.text,marginBottom:"0.6rem"}}>新規見積案件</div>
+            <div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
+              <input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="案件名（例：RIZAP 131店舗 見積）" style={{padding:"0.5rem 0.7rem",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit"}}/>
+              <select value={form.companyId} onChange={e=>setForm({...form,companyId:e.target.value})} style={{padding:"0.5rem 0.7rem",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",background:"white"}}>
+                <option value="">紐付け企業（クライアント）を選択…</option>
+                {companies.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              <textarea value={form.memo} onChange={e=>setForm({...form,memo:e.target.value})} placeholder="メモ" rows={2} style={{padding:"0.5rem 0.7rem",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",resize:"vertical"}}/>
+              <div style={{display:"flex",gap:"0.5rem"}}>
+                <button onClick={()=>setCreating(false)} style={{flex:1,padding:"0.5rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit"}}>キャンセル</button>
+                <button disabled={!form.name.trim()} onClick={()=>{
+                  const comp=companies.find(c=>String(c.id)===String(form.companyId));
+                  const p={ id:"qp_"+Date.now()+"_"+Math.random().toString(36).slice(2,8), name:form.name.trim(), companyId:form.companyId||null, companyName:comp?.name||"", memo:form.memo||"", status:"見積依頼中", vendors:[], stores:[], createdAt:new Date().toISOString(), updatedAt:new Date().toISOString() };
+                  persist([p, ...projects]); setCreating(false); setActiveId(p.id);
+                }} style={{flex:2,padding:"0.5rem",borderRadius:8,border:"none",background:form.name.trim()?C.accent:"#cbd5e1",color:"white",fontWeight:800,fontSize:"0.8rem",cursor:form.name.trim()?"pointer":"default",fontFamily:"inherit"}}>作成</button>
+              </div>
+            </div>
+          </div>
+        )}
+        {projects.length===0&&!creating&&(<div style={{textAlign:"center",color:C.textMuted,padding:"3rem 1rem",fontSize:"0.85rem"}}>まだ見積案件がありません。「＋ 案件を作成」から始めてください。</div>)}
+        <div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
+          {projects.map(p=>(
+            <button key={p.id} onClick={()=>setActiveId(p.id)} style={{textAlign:"left",background:"white",border:`1px solid ${C.border}`,borderRadius:10,padding:"0.75rem 0.9rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"0.75rem"}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontWeight:800,fontSize:"0.9rem",color:C.text}}>{p.name}</div>
+                <div style={{fontSize:"0.72rem",color:C.textSub,marginTop:2}}>{p.companyName||"（企業未紐付け）"} ・ 対象業者 {(p.vendors||[]).length}社</div>
+              </div>
+              <span style={{fontSize:"0.68rem",fontWeight:700,padding:"0.15rem 0.55rem",borderRadius:999,background:C.accentBg,color:C.accentDark}}>{p.status||"見積依頼中"}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // ---- 詳細 ----
+  const p = active;
+  const setVendors = (vs) => upd(p.id, { vendors: vs });
+  const addVendor = (v) => { if((p.vendors||[]).some(x=>String(x.vendorId)===String(v.id))) return; setVendors([...(p.vendors||[]), { id:"qv_"+Date.now()+"_"+Math.random().toString(36).slice(2,8), vendorId:v.id, vendorName:v.name, assignee:"", contact:"", status:"未依頼", lines:[] }]); setVSearch(""); };
+  const vHits = vSearch.trim() ? vendors.filter(v=>String(v.name||"").toLowerCase().includes(vSearch.trim().toLowerCase())).slice(0,20) : [];
+  const totalOf = (qv) => (qv.lines||[]).reduce((s,l)=> s + (Number(l.amount)||0), 0);
+
+  return (
+    <div style={{padding:"1rem 1.25rem",maxWidth:1100,margin:"0 auto"}}>
+      <button onClick={()=>setActiveId(null)} style={{background:"none",border:"none",color:C.accent,fontWeight:700,fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit",marginBottom:"0.6rem"}}>‹ 見積案件一覧</button>
+      <div style={{background:"white",border:`1px solid ${C.border}`,borderRadius:10,padding:"0.9rem 1rem",marginBottom:"1rem"}}>
+        <input value={p.name} onChange={e=>upd(p.id,{name:e.target.value})} style={{width:"100%",boxSizing:"border-box",fontWeight:800,fontSize:"1rem",color:C.text,border:"none",outline:"none",fontFamily:"inherit",marginBottom:"0.4rem"}}/>
+        <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap",alignItems:"center"}}>
+          <select value={p.companyId||""} onChange={e=>{const c=companies.find(x=>String(x.id)===String(e.target.value));upd(p.id,{companyId:e.target.value||null,companyName:c?.name||""});}} style={{padding:"0.35rem 0.6rem",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:"0.8rem",fontFamily:"inherit",background:"white"}}>
+            <option value="">企業未紐付け</option>
+            {companies.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          <select value={p.status||"見積依頼中"} onChange={e=>upd(p.id,{status:e.target.value})} style={{padding:"0.35rem 0.6rem",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:"0.8rem",fontFamily:"inherit",background:"white"}}>
+            {QSTATUS.map(s=><option key={s} value={s}>{s}</option>)}
+          </select>
+          <button onClick={()=>{ if(window.confirm("この見積案件を削除しますか？")){ persist(projects.filter(x=>x.id!==p.id)); setActiveId(null); } }} style={{marginLeft:"auto",padding:"0.35rem 0.7rem",borderRadius:8,border:"1px solid #fca5a5",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}}>🗑 削除</button>
+        </div>
+        <textarea value={p.memo||""} onChange={e=>upd(p.id,{memo:e.target.value})} placeholder="メモ" rows={2} style={{width:"100%",boxSizing:"border-box",marginTop:"0.5rem",padding:"0.4rem 0.6rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.8rem",fontFamily:"inherit",resize:"vertical"}}/>
+      </div>
+
+      {/* 対象業者 */}
+      <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem"}}>
+        <div style={{fontWeight:800,fontSize:"0.9rem",color:C.text}}>対象業者 ＆ 見積</div>
+        <span style={{fontSize:"0.7rem",color:C.textMuted}}>{(p.vendors||[]).length}社</span>
+      </div>
+      <div style={{position:"relative",marginBottom:"0.75rem"}}>
+        <input value={vSearch} onChange={e=>setVSearch(e.target.value)} placeholder="🔍 業者名で検索して対象に追加" style={{width:"100%",boxSizing:"border-box",padding:"0.5rem 0.7rem",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:"0.83rem",fontFamily:"inherit"}}/>
+        {vHits.length>0&&(
+          <div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:20,background:"white",border:`1.5px solid ${C.accent}`,borderRadius:8,maxHeight:240,overflowY:"auto",marginTop:2,boxShadow:C.shadowMd}}>
+            {vHits.map(v=>(
+              <button key={v.id} onClick={()=>addVendor(v)} style={{display:"flex",alignItems:"center",gap:"0.5rem",width:"100%",padding:"0.45rem 0.7rem",border:"none",borderBottom:`1px solid ${C.borderLight}`,background:"white",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+                <span style={{fontSize:"0.82rem",fontWeight:600,color:C.text,flex:1}}>{v.name}</span>
+                <span style={{fontSize:"0.66rem",color:C.textMuted}}>{v.status||""}</span>
+                <span style={{fontSize:"0.8rem",color:C.accent,fontWeight:800}}>＋</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div style={{display:"flex",flexDirection:"column",gap:"0.75rem"}}>
+        {(p.vendors||[]).map(qv=>{
+          const setQV = patch => setVendors((p.vendors||[]).map(x=>x.id===qv.id?{...x,...patch}:x));
+          const setLines = lines => setQV({lines});
+          return (
+            <div key={qv.id} style={{background:"white",border:`1px solid ${C.border}`,borderRadius:10,padding:"0.75rem 0.9rem"}}>
+              <div style={{display:"flex",alignItems:"center",gap:"0.5rem",flexWrap:"wrap",marginBottom:"0.5rem"}}>
+                <span style={{fontWeight:800,fontSize:"0.88rem",color:C.text}}>{qv.vendorName}</span>
+                <select value={qv.status||"未依頼"} onChange={e=>setQV({status:e.target.value})} style={{padding:"0.2rem 0.5rem",borderRadius:999,border:`1px solid ${C.border}`,fontSize:"0.68rem",fontWeight:700,fontFamily:"inherit",background:"white"}}>
+                  {REQ.map(s=><option key={s} value={s}>{s}</option>)}
+                </select>
+                <span style={{marginLeft:"auto",fontSize:"0.8rem",fontWeight:800,color:C.accentDark}}>合計 {yen(totalOf(qv))}</span>
+                <button onClick={()=>setVendors((p.vendors||[]).filter(x=>x.id!==qv.id))} style={{border:"none",background:"none",color:"#dc2626",cursor:"pointer",fontSize:"0.9rem",fontFamily:"inherit"}}>×</button>
+              </div>
+              <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap",marginBottom:"0.5rem"}}>
+                <input value={qv.assignee||""} onChange={e=>setQV({assignee:e.target.value})} placeholder="先方担当者" style={{flex:1,minWidth:120,padding:"0.35rem 0.55rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.76rem",fontFamily:"inherit"}}/>
+                <input value={qv.contact||""} onChange={e=>setQV({contact:e.target.value})} placeholder="連絡先(メール/TEL)" style={{flex:1,minWidth:120,padding:"0.35rem 0.55rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.76rem",fontFamily:"inherit"}}/>
+              </div>
+              {/* 見積明細（自由行） */}
+              <div style={{border:`1px solid ${C.borderLight}`,borderRadius:8,overflow:"hidden"}}>
+                <div style={{display:"flex",gap:"0.3rem",padding:"0.3rem 0.5rem",background:C.bg,fontSize:"0.62rem",fontWeight:700,color:C.textSub}}>
+                  <span style={{flex:2}}>品目</span><span style={{width:70}}>料金方式</span><span style={{width:80}}>単価</span><span style={{width:90}}>金額</span><span style={{flex:2}}>条件・備考</span><span style={{width:20}}/>
+                </div>
+                {(qv.lines||[]).map(l=>{
+                  const setL=patch=>setLines((qv.lines||[]).map(x=>x.id===l.id?{...x,...patch}:x));
+                  return (
+                    <div key={l.id} style={{display:"flex",gap:"0.3rem",padding:"0.3rem 0.5rem",borderTop:`1px solid ${C.borderLight}`,alignItems:"center"}}>
+                      <input value={l.item||""} onChange={e=>setL({item:e.target.value})} placeholder="可燃/不燃/古紙…" style={{flex:2,minWidth:0,padding:"0.3rem 0.4rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.74rem",fontFamily:"inherit"}}/>
+                      <select value={l.method||""} onChange={e=>setL({method:e.target.value})} style={{width:70,padding:"0.3rem 0.2rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.7rem",fontFamily:"inherit",background:"white"}}>
+                        <option value=""></option>{METHODS.map(m=><option key={m} value={m}>{m}</option>)}
+                      </select>
+                      <input value={l.unit||""} onChange={e=>setL({unit:e.target.value})} placeholder="単価" inputMode="numeric" style={{width:80,padding:"0.3rem 0.4rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.74rem",fontFamily:"inherit"}}/>
+                      <input value={l.amount||""} onChange={e=>setL({amount:e.target.value.replace(/[^0-9]/g,"")})} placeholder="金額" inputMode="numeric" style={{width:90,padding:"0.3rem 0.4rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.74rem",fontFamily:"inherit"}}/>
+                      <input value={l.note||""} onChange={e=>setL({note:e.target.value})} placeholder="条件・備考" style={{flex:2,minWidth:0,padding:"0.3rem 0.4rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.74rem",fontFamily:"inherit"}}/>
+                      <button onClick={()=>setLines((qv.lines||[]).filter(x=>x.id!==l.id))} style={{width:20,border:"none",background:"none",color:"#dc2626",cursor:"pointer",fontFamily:"inherit"}}>×</button>
+                    </div>
+                  );
+                })}
+                <button onClick={()=>setLines([...(qv.lines||[]),{id:"ln_"+Date.now()+"_"+Math.random().toString(36).slice(2,8),item:"",method:"",unit:"",amount:"",note:""}])} style={{width:"100%",padding:"0.35rem",border:"none",borderTop:`1px solid ${C.borderLight}`,background:C.bg,color:C.accent,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}}>＋ 明細行を追加</button>
+              </div>
+            </div>
+          );
+        })}
+        {(p.vendors||[]).length===0&&<div style={{textAlign:"center",color:C.textMuted,padding:"1.5rem",fontSize:"0.8rem"}}>上の検索から対象業者を追加してください。</div>}
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   // ━━━━ QR 公開フォームルート（業者がスキャンしてアクセス）━━━━
   // 通常のMyDeskアプリより前に判定し、フォーム画面に切り替える
@@ -35052,9 +35209,9 @@ export default function App() {
 
   const TABS=[
     {id:"tasks",    emoji:"✅", label:"タスク"},
-    {id:"schedule", emoji:"📅", label:"スケジュール"},
     {id:"email",    emoji:"✉️", label:"メール"},
     {id:"sales",    emoji:"💼", label:"営業"},
+    {id:"quotes",   emoji:"💰", label:"見積"},
     {id:"analytics",emoji:"📊", label:"分析"},
     {id:"mypage",   emoji:"⚙️", label:"設定"},
   ];
@@ -35142,6 +35299,11 @@ export default function App() {
 
             {/* Notification bell + User menu */}
             <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:"0.5rem",position:"relative"}}>
+              {/* ⚙️ 設定 */}
+              <button onClick={()=>persistTab("md_tab","mypage",setTab)} title="設定"
+                style={{width:38,height:38,borderRadius:"50%",background:C.bg,border:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0,fontSize:"1rem",color:C.textSub}}>
+                ⚙️
+              </button>
               {/* ④ グローバル検索 */}
               <button onClick={()=>setGlobalSearch("")}
                 style={{width:38,height:38,borderRadius:"50%",background:C.bg,border:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0,fontSize:"1rem",color:C.textSub,transition:"all 0.15s"}}>
@@ -35372,6 +35534,7 @@ export default function App() {
               onNavigateToProject={(pjId)=>{ setNavTarget({type:"project",id:pjId}); }}
               navTarget={navTarget} clearNavTarget={()=>setNavTarget(null)}/>}
             {tab==="schedule"  && <ScheduleView/>}
+            {tab==="quotes"    && <QuoteProjectsView data={data} setData={setData} currentUser={currentUser} users={users}/>}
             {tab==="email"     && <EmailView     data={data} setData={setData} currentUser={currentUser}/>}
             {tab==="sales"     && <SalesView     data={data} setData={setData} currentUser={currentUser} users={users} isPC={isPC}
               salesTab={salesTab} setSalesTab={(v)=>persistTab("md_salesTab",v,setSalesTab)}
