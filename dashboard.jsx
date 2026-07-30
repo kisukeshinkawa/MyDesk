@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-23-v300-quote-portal-nopreflight"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-24-v301-quote-store-pricing"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -33588,7 +33588,7 @@ function AgentFAB({ data, currentUser, users, onAction }) {
 
 
 
-// ─── QUOTE PROJECTS VIEW: 見積案件（業者見積の依頼・単価・対象店舗管理） ───────────
+// ─── QUOTE PROJECTS VIEW: 見積案件（店舗ベース見積・依頼ポータル・業者管理） ───────────
 function QuoteProjectsView({ data, setData, currentUser, users=[] }){
   const projects = data.quoteProjects || [];
   const companies = data.companies || [];
@@ -33598,28 +33598,36 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
   const [activeId, setActiveId] = React.useState(null);
   const [creating, setCreating] = React.useState(false);
   const [form, setForm] = React.useState({name:"", companyId:"", companyName:"", memo:""});
-  const [compQ, setCompQ] = React.useState("");        // 案件作成の企業検索
-  const [dCompQ, setDCompQ] = React.useState("");       // 詳細の企業検索
-  const [vName, setVName] = React.useState("");         // 業者名検索
-  const [areaFilter, setAreaFilter] = React.useState([]);// 自治体id[]
-  const [permFilter, setPermFilter] = React.useState([]);// 許可種別[]
-  const [areaQ, setAreaQ] = React.useState("");         // 自治体検索
-  const [storeAdd, setStoreAdd] = React.useState(false); // 店舗手動追加フォーム表示
-  const [imp, setImp] = React.useState(null);           // Excel取込プレビュー
+  const [compQ, setCompQ] = React.useState("");
+  const [dCompQ, setDCompQ] = React.useState("");
+  const [vName, setVName] = React.useState("");
+  const [areaFilter, setAreaFilter] = React.useState([]);
+  const [permFilter, setPermFilter] = React.useState([]);
+  const [areaQ, setAreaQ] = React.useState("");
+  const [storeAdd, setStoreAdd] = React.useState(false);
+  const [imp, setImp] = React.useState(null);
   const [impErr, setImpErr] = React.useState("");
   const [impBusy, setImpBusy] = React.useState(false);
   const [portalBusy, setPortalBusy] = React.useState("");
 
-  const persist = (next) => { const nd = { ...data, quoteProjects: next }; setData(nd); if (typeof scheduleSaveData === "function") scheduleSaveData(nd); };
+  const persistData = (nd) => { setData(nd); if (typeof scheduleSaveData === "function") scheduleSaveData(nd); };
+  const persist = (next) => persistData({ ...data, quoteProjects: next });
   const upd = (id, patch) => persist(projects.map(p => p.id===id ? { ...p, ...patch, updatedAt:new Date().toISOString() } : p));
   const active = projects.find(p => p.id===activeId);
   const QSTATUS = ["見積依頼中","回収中","比較中","完了"];
-  const REQ = ["未依頼","依頼済","回答済","辞退"];
-  const METHODS = ["出来高","定額","その他"];
-  const yen = n => (n||n===0) ? "¥"+Number(n).toLocaleString() : "";
+  const yen = n => (n||n===0) ? "¥"+Number(n).toLocaleString() : "¥0";
   const muniName = id => munis.find(m=>String(m.id)===String(id))?.name || "";
   const rid = pre => pre+"_"+Date.now()+"_"+Math.random().toString(36).slice(2,8);
   const compHits = q => { const s=String(q||"").trim().toLowerCase(); return s? companies.filter(c=>String(c.name||"").toLowerCase().includes(s)).slice(0,20):[]; };
+  const mapsUrl = a => "https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(a||"");
+  const rowsOf = (stores) => {
+    const out=[];
+    (stores||[]).forEach(st=>{
+      const its=(st.items&&st.items.length)?st.items:[{id:st.id+":0",kind:"",freq:"",qty:"",weight:""}];
+      its.forEach(it=>out.push({ itemId:it.id, storeId:st.id, storeName:st.name||"", area:st.area||"", address:st.address||"", bizType:st.bizType||"", kind:it.kind||"", freq:it.freq||"", qty:it.qty||"", weight:it.weight||"" }));
+    });
+    return out;
+  };
 
   // ---- 一覧 ----
   if(!active){
@@ -33634,7 +33642,6 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
             <div style={{fontWeight:800,fontSize:"0.85rem",color:C.text,marginBottom:"0.6rem"}}>新規見積案件</div>
             <div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
               <input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="案件名（例：RIZAP 131店舗 見積）" style={{padding:"0.5rem 0.7rem",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit"}}/>
-              {/* 企業検索 */}
               <div style={{position:"relative"}}>
                 <input value={form.companyId?form.companyName:compQ} onChange={e=>{setCompQ(e.target.value);setForm({...form,companyId:"",companyName:""});}} placeholder="🔍 紐付け企業（クライアント）を検索…" style={{width:"100%",boxSizing:"border-box",padding:"0.5rem 0.7rem",borderRadius:8,border:`1.5px solid ${form.companyId?C.accent:C.border}`,fontSize:"0.85rem",fontFamily:"inherit"}}/>
                 {form.companyId&&<button onClick={()=>{setForm({...form,companyId:"",companyName:""});setCompQ("");}} style={{position:"absolute",right:8,top:8,border:"none",background:"none",color:C.textMuted,cursor:"pointer",fontFamily:"inherit"}}>×</button>}
@@ -33659,15 +33666,17 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
         )}
         {projects.length===0&&!creating&&(<div style={{textAlign:"center",color:C.textMuted,padding:"3rem 1rem",fontSize:"0.85rem"}}>まだ見積案件がありません。「＋ 案件を作成」から始めてください。</div>)}
         <div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
-          {projects.map(p=>(
+          {projects.map(p=>{
+            const vs=p.vendors||[]; const answered=vs.filter(v=>v.status==="回答済").length;
+            return (
             <button key={p.id} onClick={()=>setActiveId(p.id)} style={{textAlign:"left",background:"white",border:`1px solid ${C.border}`,borderRadius:10,padding:"0.75rem 0.9rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"0.75rem"}}>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontWeight:800,fontSize:"0.9rem",color:C.text}}>{p.name}</div>
-                <div style={{fontSize:"0.72rem",color:C.textSub,marginTop:2}}>{p.companyName||"（企業未紐付け）"} ・ 対象業者 {(p.vendors||[]).length}社 ・ 対象店舗 {(p.stores||[]).length}件</div>
+                <div style={{fontSize:"0.72rem",color:C.textSub,marginTop:2}}>{p.companyName||"（企業未紐付け）"} ・ 店舗{(p.stores||[]).length} ・ 業者{vs.length}社{vs.length?`（回答 ${answered}/${vs.length}）`:""}</div>
               </div>
               <span style={{fontSize:"0.68rem",fontWeight:700,padding:"0.15rem 0.55rem",borderRadius:999,background:C.accentBg,color:C.accentDark}}>{p.status||"見積依頼中"}</span>
             </button>
-          ))}
+          );})}
         </div>
       </div>
     );
@@ -33677,52 +33686,11 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
   const p = active;
   const setVendors = (vs) => upd(p.id, { vendors: vs });
   const setStores = (ss) => upd(p.id, { stores: ss });
-  const addVendor = (v) => { if((p.vendors||[]).some(x=>String(x.vendorId)===String(v.id))) return; setVendors([...(p.vendors||[]), { id:rid("qv"), vendorId:v.id, vendorName:v.name, assignee:"", contact:"", status:"未依頼", lines:[] }]); };
-  const totalOf = (qv) => (qv.lines||[]).reduce((s,l)=> s + (Number(l.amount)||0), 0);
+  const patchVendor = (qvId, patch) => setVendors((p.vendors||[]).map(x=>x.id===qvId?{...x,...patch}:x));
+  const addVendor = (v) => { if((p.vendors||[]).some(x=>String(x.vendorId)===String(v.id))) return; setVendors([...(p.vendors||[]), { id:rid("qv"), vendorId:v.id, vendorName:v.name, assignee:"", contact:"", status:"未依頼", prices:{}, extraLines:[], callNotes:[] }]); };
   const addedIds = new Set((p.vendors||[]).map(x=>String(x.vendorId)));
-
-  // ===== 見積依頼ポータル（リンク方式）=====
-  const PORTAL_ON = !!(typeof QUOTE_PORTAL_URL!=="undefined" && QUOTE_PORTAL_URL);
-  const buildReqItems = () => {
-    const rows=[];
-    (p.stores||[]).forEach(st=>{
-      const its=(st.items&&st.items.length)?st.items:[{id:rid("it"),kind:"",freq:"",qty:"",weight:""}];
-      its.forEach(it=>rows.push({ id:it.id, storeId:st.id, storeName:st.name||"", area:st.area||"", bizType:st.bizType||"", address:st.address||"", kind:it.kind||"", freq:it.freq||"", qty:it.qty||"", weight:it.weight||"" }));
-    });
-    return rows;
-  };
-  const portalPost = async (bodyObj) => {
-    // CORSプリフライトを避けるため text/plain + 秘密キーは本文に入れる（カスタムヘッダーを使わない）
-    const r=await fetch(QUOTE_PORTAL_URL,{method:"POST",headers:{"content-type":"text/plain;charset=UTF-8"},body:JSON.stringify({...bodyObj,secret:DB_API_SECRET})});
-    return await r.json();
-  };
-  const issueLink = async (qv) => {
-    if(!PORTAL_ON){ window.alert("見積ポータルURL（QUOTE_PORTAL_URL）が未設定です。Lambdaデプロイ後にコード先頭の定数へ貼り付けてください。"); return; }
-    if(!(p.stores||[]).length){ if(!window.confirm("対象店舗が未登録です。空のフォームで発行しますか？")) return; }
-    setPortalBusy(qv.id);
-    try{
-      const payload={ projectId:p.id, projectName:p.name, company:p.companyName||"", vendorId:qv.vendorId, vendorName:qv.vendorName, items:buildReqItems() };
-      const j=await portalPost({action:"create", token:qv.portalToken||undefined, payload});
-      if(j&&j.ok){ setVendors((p.vendors||[]).map(x=>x.id===qv.id?{...x,portalToken:j.token,portalUrl:j.url,status:x.status==="回答済"?x.status:"依頼済"}:x)); }
-      else window.alert("リンク発行に失敗しました。");
-    }catch(e){ window.alert("通信エラー: "+(e&&e.message||e)); }
-    setPortalBusy("");
-  };
-  const fetchResp = async (qv) => {
-    if(!qv.portalToken) return;
-    setPortalBusy(qv.id);
-    try{
-      const j=await portalPost({action:"fetch", tokens:[qv.portalToken]});
-      const req=(j&&j.requests&&j.requests[0]);
-      if(req&&req.status==="responded"&&req.response){
-        const lines=(req.response.lines||[]).map(l=>({ id:rid("ln"), item:[l.storeName,l.kind].filter(Boolean).join(" / ")||l.kind||"", method:l.method||"", unit:l.unit||"", amount:String(l.amount||"").replace(/[^0-9]/g,""), note:l.note||"" }));
-        setVendors((p.vendors||[]).map(x=>x.id===qv.id?{...x,lines,status:"回答済",respondedAt:req.respondedAt,vendorNote:(req.response.vendorNote||"")}:x));
-        window.alert("✅ 回答を取り込みました（"+lines.length+"品目）"+((req.response.vendorNote)?("\n\n連絡: "+req.response.vendorNote):""));
-      } else { window.alert("まだ回答がありません（未回答）。"); }
-    }catch(e){ window.alert("通信エラー: "+(e&&e.message||e)); }
-    setPortalBusy("");
-  };
-  const copyLink = (qv) => { if(qv.portalUrl){ try{navigator.clipboard.writeText(qv.portalUrl);}catch(e){} window.prompt("依頼リンク（コピーして業者へ共有）", qv.portalUrl); } };
+  const rows = rowsOf(p.stores);
+  const answered = (p.vendors||[]).filter(v=>v.status==="回答済").length;
 
   // 業者候補（名前・エリア・許可でAND、各条件内はOR）
   const nq = vName.trim().toLowerCase();
@@ -33737,30 +33705,99 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
   }).slice(0,60);
   const areaHits = areaQ.trim() ? munis.filter(m=>String(m.name||"").includes(areaQ.trim()) && !selAreas.has(String(m.id))).slice(0,12) : [];
 
-  // ===== Excel 取込（スマート様式判定＋列マッピング） =====
+  // ===== 見積依頼ポータル =====
+  const PORTAL_ON = !!(typeof QUOTE_PORTAL_URL!=="undefined" && QUOTE_PORTAL_URL);
+  const buildReqItems = () => rowsOf(p.stores).map(r=>({ id:r.itemId, storeId:r.storeId, storeName:r.storeName, area:r.area, bizType:r.bizType, address:r.address, kind:r.kind, freq:r.freq, qty:r.qty, weight:r.weight }));
+  const portalPost = async (bodyObj) => {
+    const r=await fetch(QUOTE_PORTAL_URL,{method:"POST",headers:{"content-type":"text/plain;charset=UTF-8"},body:JSON.stringify({...bodyObj,secret:DB_API_SECRET})});
+    return await r.json();
+  };
+  const mergeResp = (qv, req) => {
+    if(!(req && req.status==="responded" && req.response)) return null;
+    const prices={...(qv.prices||{})};
+    (req.response.lines||[]).forEach(l=>{ if(l&&l.itemId!=null) prices[l.itemId]={method:l.method||"",unit:l.unit||"",amount:String(l.amount||"").replace(/[^0-9]/g,""),note:l.note||""}; });
+    return {...qv, prices, status:"回答済", respondedAt:req.respondedAt, vendorNote:(req.response.vendorNote||"")};
+  };
+  const issueLink = async (qv, silent) => {
+    if(!PORTAL_ON){ if(!silent) window.alert("見積ポータルURL（QUOTE_PORTAL_URL）が未設定です。"); return; }
+    setPortalBusy(qv.id);
+    try{
+      const payload={ projectId:p.id, projectName:p.name, company:p.companyName||"", vendorId:qv.vendorId, vendorName:qv.vendorName, items:buildReqItems() };
+      const j=await portalPost({action:"create", token:qv.portalToken||undefined, payload});
+      if(j&&j.ok){
+        const patch={portalToken:j.token,portalUrl:j.url,status:qv.status==="回答済"?qv.status:"依頼済"};
+        // 発行したら案件を「回収中」に自動遷移
+        const nextProjects=projects.map(x=>{ if(x.id!==p.id) return x; const nv=(x.vendors||[]).map(y=>y.id===qv.id?{...y,...patch}:y); return {...x, vendors:nv, status:(x.status==="見積依頼中"?"回収中":x.status), updatedAt:new Date().toISOString()}; });
+        persist(nextProjects);
+      } else if(!silent) window.alert("リンク発行に失敗しました。");
+    }catch(e){ if(!silent) window.alert("通信エラー: "+(e&&e.message||e)); }
+    setPortalBusy("");
+  };
+  const fetchResp = async (qv) => {
+    if(!qv.portalToken) return;
+    setPortalBusy(qv.id);
+    try{
+      const j=await portalPost({action:"fetch", tokens:[qv.portalToken]});
+      const merged=mergeResp(qv, j&&j.requests&&j.requests[0]);
+      if(merged){ patchVendor(qv.id, merged); window.alert("✅ 回答を取り込みました"+(merged.vendorNote?("\\n連絡: "+merged.vendorNote):"")); }
+      else window.alert("まだ回答がありません（未回答）。");
+    }catch(e){ window.alert("通信エラー: "+(e&&e.message||e)); }
+    setPortalBusy("");
+  };
+  const copyLink = (qv) => { if(qv.portalUrl){ try{navigator.clipboard.writeText(qv.portalUrl);}catch(e){} window.prompt("依頼リンク（コピーして業者へ共有）", qv.portalUrl); } };
+  // 全リンク最新化＆回答取得（店舗を後から足した場合の反映）
+  const syncAll = async () => {
+    const withTok=(p.vendors||[]).filter(v=>v.portalToken);
+    if(!PORTAL_ON){ window.alert("ポータルURLが未設定です。"); return; }
+    if(!withTok.length){ window.alert("発行済みリンクがありません。先に各業者でリンクを発行してください。"); return; }
+    setPortalBusy("__all__");
+    let updated=0;
+    let cur=(p.vendors||[]);
+    try{
+      const items=buildReqItems();
+      for(const qv of withTok){
+        await portalPost({action:"create", token:qv.portalToken, payload:{ projectId:p.id, projectName:p.name, company:p.companyName||"", vendorId:qv.vendorId, vendorName:qv.vendorName, items }});
+        const j=await portalPost({action:"fetch", tokens:[qv.portalToken]});
+        const merged=mergeResp(qv, j&&j.requests&&j.requests[0]);
+        if(merged){ cur=cur.map(x=>x.id===qv.id?merged:x); updated++; }
+      }
+      upd(p.id,{vendors:cur});
+      window.alert(`🔄 リンクを最新化しました（回答反映 ${updated}件 / 対象 ${withTok.length}件）`);
+    }catch(e){ window.alert("通信エラー: "+(e&&e.message||e)); }
+    setPortalBusy("");
+  };
+
+  // 電話・見積メモを業者レコードにも【見積:案件名】付きで書き戻す
+  const addVendorNote = (qv, text) => {
+    const t=String(text||"").trim(); if(!t) return;
+    const now=new Date().toISOString();
+    const noteObj={ id:rid("cn"), text:t, date:now, userId:currentUser?.id };
+    const nextProjects=projects.map(x=>x.id!==p.id?x:{...x, vendors:(x.vendors||[]).map(y=>y.id===qv.id?{...y,callNotes:[...(y.callNotes||[]),noteObj]}:y), updatedAt:now});
+    const memoText="【見積:"+p.name+"】"+t;
+    const nextVendors=vendors.map(v=>String(v.id)===String(qv.vendorId)?{...v, memos:[...(v.memos||[]), {id:rid("mn"),text:memoText,userId:currentUser?.id,date:now}]}:v);
+    persistData({ ...data, quoteProjects:nextProjects, vendors:nextVendors });
+  };
+
+  const storeTotal = (p.stores||[]).length;
+  const itemTotal = (p.stores||[]).reduce((s,x)=>s+(x.items?.length||0),0);
+
+  // ===== Excel 取込 =====
   const FIELD_DEFS = [
-    {key:"no",     label:"番号",   kw:[/番号/,/^no\.?$/i,/^#/]},
-    {key:"biz",    label:"業態",   kw:[/業態/,/業種/]},
-    {key:"area",   label:"エリア", kw:[/エリア/,/地域/,/都道府県/,/市区/]},
-    {key:"name",   label:"拠点名/店舗名", kw:[/拠点名/,/店舗名/,/拠点/,/店舗/,/名称/,/施設名/]},
-    {key:"address",label:"住所",   kw:[/住所/,/所在/]},
+    {key:"no",label:"番号",kw:[/番号/,/^no\.?$/i,/^#/]},
+    {key:"biz",label:"業態",kw:[/業態/,/業種/]},
+    {key:"area",label:"エリア",kw:[/エリア/,/地域/,/都道府県/,/市区/]},
+    {key:"name",label:"拠点名/店舗名",kw:[/拠点名/,/店舗名/,/拠点/,/店舗/,/名称/,/施設名/]},
+    {key:"address",label:"住所",kw:[/住所/,/所在/]},
     {key:"storage",label:"保管場所",kw:[/保管/,/ダスト/,/鍵/,/置き場/]},
-    {key:"kind",   label:"排出品目",kw:[/品目/,/ごみ/,/廃棄/,/種別/,/種類/]},
-    {key:"freq",   label:"回収頻度",kw:[/頻度/,/回収頻度/]},
-    {key:"qty",    label:"数量",   kw:[/数量/,/回あたり/,/1回/]},
-    {key:"weight", label:"重量",   kw:[/重量/,/重さ/,/kg/i,/袋あたり/,/個あたり/]},
-    {key:"note",   label:"備考",   kw:[/備考/,/特記/,/メモ/,/席数/,/従業員/]},
+    {key:"kind",label:"排出品目",kw:[/品目/,/ごみ/,/廃棄/,/種別/,/種類/]},
+    {key:"freq",label:"回収頻度",kw:[/頻度/,/回収頻度/]},
+    {key:"qty",label:"数量",kw:[/数量/,/回あたり/,/1回/]},
+    {key:"weight",label:"重量",kw:[/重量/,/重さ/,/kg/i,/袋あたり/,/個あたり/]},
+    {key:"note",label:"備考",kw:[/備考/,/特記/,/メモ/,/席数/,/従業員/]},
   ];
   const autoMap = (headerRow) => {
     const map={}; const used=new Set();
-    FIELD_DEFS.forEach(fd=>{
-      for(let ci=0; ci<headerRow.length; ci++){
-        if(used.has(ci)) continue;
-        const h=String(headerRow[ci]==null?"":headerRow[ci]).trim();
-        if(!h) continue;
-        if(fd.kw.some(re=>re.test(h))){ map[fd.key]=ci; used.add(ci); break; }
-      }
-    });
+    FIELD_DEFS.forEach(fd=>{ for(let ci=0;ci<headerRow.length;ci++){ if(used.has(ci))continue; const h=String(headerRow[ci]==null?"":headerRow[ci]).trim(); if(!h)continue; if(fd.kw.some(re=>re.test(h))){ map[fd.key]=ci; used.add(ci); break; } } });
     return map;
   };
   const handleExcel = async (e) => {
@@ -33771,17 +33808,11 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
       const ab=await file.arrayBuffer(); const wb=xlsx.read(ab,{type:"array"});
       const ws=wb.Sheets[wb.SheetNames[0]]; if(!ws)throw new Error("シートが読み取れません");
       const grid=xlsx.utils.sheet_to_json(ws,{header:1,defval:null,blankrows:false});
-      // ヘッダー行を推定：最も多くのフィールドkwにヒットする行
       let bestRow=0,bestScore=-1;
-      for(let ri=0; ri<Math.min(grid.length,25); ri++){
-        const row=grid[ri]||[]; let sc=0;
-        FIELD_DEFS.forEach(fd=>{ if(row.some(c=>{const h=String(c==null?"":c).trim(); return h&&fd.kw.some(re=>re.test(h));})) sc++; });
-        if(sc>bestScore){ bestScore=sc; bestRow=ri; }
-      }
+      for(let ri=0;ri<Math.min(grid.length,25);ri++){ const row=grid[ri]||[]; let sc=0; FIELD_DEFS.forEach(fd=>{ if(row.some(c=>{const h=String(c==null?"":c).trim();return h&&fd.kw.some(re=>re.test(h));}))sc++; }); if(sc>bestScore){bestScore=sc;bestRow=ri;} }
       const headerRow=(grid[bestRow]||[]).map(c=>String(c==null?"":c).trim());
-      const map=autoMap(headerRow);
-      setImp({ fileName:file.name, grid, headerRow, headerIdx:bestRow, map, ncol:Math.max(headerRow.length,...grid.slice(bestRow+1,bestRow+40).map(r=>(r||[]).length),1) });
-    }catch(ex){ console.error("[quote import]",ex); setImpErr("Excelの読み込みに失敗しました。ファイル形式をご確認ください。"); }
+      setImp({ fileName:file.name, grid, headerRow, headerIdx:bestRow, map:autoMap(headerRow), ncol:Math.max(headerRow.length,...grid.slice(bestRow+1,bestRow+40).map(r=>(r||[]).length),1) });
+    }catch(ex){ console.error("[quote import]",ex); setImpErr("Excelの読み込みに失敗しました。"); }
     setImpBusy(false);
   };
   const buildStoresFromImp = () => {
@@ -33789,34 +33820,23 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
     const {grid,headerIdx,map}=imp;
     const get=(row,key)=>{ const ci=map[key]; if(ci==null)return ""; const v=row[ci]; return v==null?"":String(v).trim().replace(/　/g," "); };
     const out=[]; let cur=null;
-    for(let ri=headerIdx+1; ri<grid.length; ri++){
-      const row=grid[ri]||[]; if(!row.some(c=>c!=null&&String(c).trim()!=="")) continue;
-      const name=get(row,"name"), no=get(row,"no"), addr=get(row,"address");
-      const kind=get(row,"kind"), freq=get(row,"freq"), qty=get(row,"qty"), weight=get(row,"weight");
-      const isNew = !!name || (!!no && !cur) || (!cur && (!!addr||!!kind));
-      if(isNew){
-        // 記入例の行は除外（拠点名に「サンプル」等を含む見出しはそのまま取り込む・判定は緩め）
-        cur={ id:rid("st"), no, bizType:get(row,"biz"), area:get(row,"area"), name:name||("拠点"+(out.length+1)), address:addr, storage:get(row,"storage"), memo:get(row,"note"), items:[] };
-        out.push(cur);
-      }
-      if(kind||freq||qty||weight){
-        cur = cur || (()=>{ const c={id:rid("st"),no:"",bizType:"",area:"",name:"拠点"+(out.length+1),address:"",storage:"",memo:"",items:[]}; out.push(c); return c; })();
-        cur.items.push({ id:rid("it"), kind, freq, qty, weight, note:kind?get(row,"note"):"" });
-      }
+    for(let ri=headerIdx+1;ri<grid.length;ri++){
+      const row=grid[ri]||[]; if(!row.some(c=>c!=null&&String(c).trim()!==""))continue;
+      const name=get(row,"name"),no=get(row,"no"),addr=get(row,"address");
+      const kind=get(row,"kind"),freq=get(row,"freq"),qty=get(row,"qty"),weight=get(row,"weight");
+      const isNew=!!name||(!!no&&!cur)||(!cur&&(!!addr||!!kind));
+      if(isNew){ cur={ id:rid("st"),no,bizType:get(row,"biz"),area:get(row,"area"),name:name||("拠点"+(out.length+1)),address:addr,storage:get(row,"storage"),memo:get(row,"note"),items:[] }; out.push(cur); }
+      if(kind||freq||qty||weight){ cur=cur||(()=>{const c={id:rid("st"),no:"",bizType:"",area:"",name:"拠点"+(out.length+1),address:"",storage:"",memo:"",items:[]};out.push(c);return c;})(); cur.items.push({ id:rid("it"),kind,freq,qty,weight,note:kind?get(row,"note"):"" }); }
     }
     return out;
   };
   const previewStores = imp ? buildStoresFromImp() : [];
   const doImportStores = () => {
     const ss=buildStoresFromImp();
-    if(!ss.length){ setImpErr("取り込める店舗が見つかりませんでした。列の対応を確認してください。"); return; }
-    setStores([...(p.stores||[]), ...ss]);
-    setImp(null); setImpErr("");
+    if(!ss.length){ setImpErr("取り込める店舗が見つかりませんでした。"); return; }
+    setStores([...(p.stores||[]), ...ss]); setImp(null); setImpErr("");
     window.alert(`✅ ${ss.length}件の店舗を取り込みました（品目 ${ss.reduce((s,x)=>s+(x.items?.length||0),0)}行）`);
   };
-
-  const storeTotal = (p.stores||[]).length;
-  const itemTotal = (p.stores||[]).reduce((s,x)=>s+(x.items?.length||0),0);
 
   return (
     <div style={{padding:"1rem 1.25rem",maxWidth:1100,margin:"0 auto"}}>
@@ -33824,21 +33844,19 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
       <div style={{background:"white",border:`1px solid ${C.border}`,borderRadius:10,padding:"0.9rem 1rem",marginBottom:"1rem"}}>
         <input value={p.name} onChange={e=>upd(p.id,{name:e.target.value})} style={{width:"100%",boxSizing:"border-box",fontWeight:800,fontSize:"1rem",color:C.text,border:"none",outline:"none",fontFamily:"inherit",marginBottom:"0.4rem"}}/>
         <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap",alignItems:"center"}}>
-          {/* 企業紐付け（検索式） */}
           <div style={{position:"relative",minWidth:220}}>
             <input value={p.companyId?p.companyName:dCompQ} onChange={e=>{setDCompQ(e.target.value);if(p.companyId)upd(p.id,{companyId:null,companyName:""});}} placeholder="🔍 企業を検索して紐付け" style={{width:"100%",boxSizing:"border-box",padding:"0.35rem 0.6rem",borderRadius:8,border:`1.5px solid ${p.companyId?C.accent:C.border}`,fontSize:"0.8rem",fontFamily:"inherit"}}/>
             {p.companyId&&<button onClick={()=>{upd(p.id,{companyId:null,companyName:""});setDCompQ("");}} style={{position:"absolute",right:6,top:6,border:"none",background:"none",color:C.textMuted,cursor:"pointer",fontFamily:"inherit"}}>×</button>}
             {!p.companyId&&compHits(dCompQ).length>0&&(
               <div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:30,background:"white",border:`1.5px solid ${C.accent}`,borderRadius:8,maxHeight:220,overflowY:"auto",marginTop:2,boxShadow:C.shadowMd}}>
-                {compHits(dCompQ).map(c=>(
-                  <button key={c.id} onClick={()=>{upd(p.id,{companyId:c.id,companyName:c.name});setDCompQ("");}} style={{display:"block",width:"100%",textAlign:"left",padding:"0.4rem 0.6rem",border:"none",borderBottom:`1px solid ${C.borderLight}`,background:"white",cursor:"pointer",fontFamily:"inherit",fontSize:"0.8rem",color:C.text}}>{c.name}</button>
-                ))}
+                {compHits(dCompQ).map(c=>(<button key={c.id} onClick={()=>{upd(p.id,{companyId:c.id,companyName:c.name});setDCompQ("");}} style={{display:"block",width:"100%",textAlign:"left",padding:"0.4rem 0.6rem",border:"none",borderBottom:`1px solid ${C.borderLight}`,background:"white",cursor:"pointer",fontFamily:"inherit",fontSize:"0.8rem",color:C.text}}>{c.name}</button>))}
               </div>
             )}
           </div>
           <select value={p.status||"見積依頼中"} onChange={e=>upd(p.id,{status:e.target.value})} style={{padding:"0.35rem 0.6rem",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:"0.8rem",fontFamily:"inherit",background:"white"}}>
             {QSTATUS.map(s=><option key={s} value={s}>{s}</option>)}
           </select>
+          {(p.vendors||[]).length>0&&<span style={{fontSize:"0.72rem",color:C.textSub,fontWeight:700}}>回答 {answered}/{(p.vendors||[]).length}</span>}
           <button onClick={()=>{ if(window.confirm("この見積案件を削除しますか？")){ persist(projects.filter(x=>x.id!==p.id)); setActiveId(null); } }} style={{marginLeft:"auto",padding:"0.35rem 0.7rem",borderRadius:8,border:"1px solid #fca5a5",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}}>🗑 削除</button>
         </div>
         <textarea value={p.memo||""} onChange={e=>upd(p.id,{memo:e.target.value})} placeholder="メモ" rows={2} style={{width:"100%",boxSizing:"border-box",marginTop:"0.5rem",padding:"0.4rem 0.6rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.8rem",fontFamily:"inherit",resize:"vertical"}}/>
@@ -33857,8 +33875,6 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
         </div>
       </div>
       {impErr&&<div style={{fontSize:"0.76rem",color:"#dc2626",fontWeight:700,marginBottom:"0.5rem"}}>⚠️ {impErr}</div>}
-
-      {/* Excel取込プレビュー＆列マッピング */}
       {imp&&(
         <div style={{background:"#f8fafc",border:`1.5px solid ${C.accent}`,borderRadius:10,padding:"0.8rem 0.9rem",marginBottom:"1rem"}}>
           <div style={{fontWeight:800,fontSize:"0.82rem",color:C.text,marginBottom:"0.5rem"}}>📄 {imp.fileName} の列を割り当て <span style={{fontWeight:600,color:C.textSub,fontSize:"0.72rem"}}>（自動判定済み・必要なら修正）</span></div>
@@ -33875,12 +33891,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
           </div>
           <div style={{fontSize:"0.72rem",color:C.textSub,fontWeight:700,marginBottom:"0.3rem"}}>プレビュー：{previewStores.length}店舗 / 品目{previewStores.reduce((s,x)=>s+x.items.length,0)}行</div>
           <div style={{maxHeight:200,overflowY:"auto",border:`1px solid ${C.borderLight}`,borderRadius:6,background:"white"}}>
-            {previewStores.slice(0,15).map((st,i)=>(
-              <div key={st.id} style={{padding:"0.35rem 0.6rem",borderTop:i>0?`1px solid ${C.borderLight}`:"none",fontSize:"0.72rem"}}>
-                <span style={{fontWeight:700,color:C.text}}>{st.name}</span>
-                <span style={{color:C.textMuted}}> ／ {st.area||"-"} ／ {st.bizType||"-"} ／ 品目{st.items.length}</span>
-              </div>
-            ))}
+            {previewStores.slice(0,15).map((st,i)=>(<div key={st.id} style={{padding:"0.35rem 0.6rem",borderTop:i>0?`1px solid ${C.borderLight}`:"none",fontSize:"0.72rem"}}><span style={{fontWeight:700,color:C.text}}>{st.name}</span><span style={{color:C.textMuted}}> ／ {st.area||"-"} ／ {st.bizType||"-"} ／ 品目{st.items.length}</span></div>))}
             {previewStores.length===0&&<div style={{padding:"0.6rem",fontSize:"0.72rem",color:C.textMuted}}>該当なし。「拠点名/店舗名」の列を割り当ててください。</div>}
           </div>
           <div style={{display:"flex",gap:"0.5rem",marginTop:"0.6rem"}}>
@@ -33889,55 +33900,31 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
           </div>
         </div>
       )}
-
-      {/* 手動追加フォーム */}
-      {storeAdd&&(
-        <StoreEditor onSave={(st)=>{setStores([...(p.stores||[]),{...st,id:rid("st")}]);setStoreAdd(false);}} onCancel={()=>setStoreAdd(false)} rid={rid} C={C}/>
-      )}
-
-      {/* 店舗リスト */}
+      {storeAdd&&(<StoreEditor onSave={(st)=>{setStores([...(p.stores||[]),{...st,id:rid("st")}]);setStoreAdd(false);}} onCancel={()=>setStoreAdd(false)} rid={rid} C={C}/>)}
       <div style={{display:"flex",flexDirection:"column",gap:"0.5rem",marginBottom:"1.25rem"}}>
-        {(p.stores||[]).map(st=>(
-          <StoreRow key={st.id} st={st} C={C} rid={rid}
-            onChange={ns=>setStores((p.stores||[]).map(x=>x.id===st.id?ns:x))}
-            onDelete={()=>setStores((p.stores||[]).filter(x=>x.id!==st.id))}/>
-        ))}
+        {(p.stores||[]).map(st=>(<StoreRow key={st.id} st={st} C={C} rid={rid} mapsUrl={mapsUrl} onChange={ns=>setStores((p.stores||[]).map(x=>x.id===st.id?ns:x))} onDelete={()=>setStores((p.stores||[]).filter(x=>x.id!==st.id))}/>))}
         {storeTotal===0&&!imp&&!storeAdd&&<div style={{textAlign:"center",color:C.textMuted,padding:"1rem",fontSize:"0.8rem"}}>Excel取込（様式自動判定）または「＋手動で追加」で対象店舗を登録してください。</div>}
       </div>
 
       {/* ===== 対象業者 ＆ 見積 ===== */}
-      <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem"}}>
+      <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem",flexWrap:"wrap"}}>
         <div style={{fontWeight:800,fontSize:"0.9rem",color:C.text}}>🚚 対象業者 ＆ 見積</div>
         <span style={{fontSize:"0.7rem",color:C.textMuted}}>{(p.vendors||[]).length}社</span>
+        {(p.vendors||[]).some(v=>v.portalToken)&&<button disabled={portalBusy==="__all__"} onClick={syncAll} title="対象店舗を全リンクに反映し、回答も取得" style={{marginLeft:"auto",padding:"0.3rem 0.7rem",borderRadius:8,border:`1.5px solid ${C.accent}`,background:C.accentBg,color:C.accentDark,fontWeight:700,fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit"}}>{portalBusy==="__all__"?"最新化中…":"🔄 全リンク最新化＆回答取得"}</button>}
       </div>
 
-      {/* 絞り込み：エリア＋許可（OR）＋名前 */}
       <div style={{background:"white",border:`1px solid ${C.border}`,borderRadius:10,padding:"0.7rem 0.8rem",marginBottom:"0.75rem"}}>
         <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap",alignItems:"center",marginBottom:"0.5rem"}}>
           <input value={vName} onChange={e=>setVName(e.target.value)} placeholder="🔍 業者名" style={{flex:1,minWidth:140,padding:"0.4rem 0.6rem",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:"0.8rem",fontFamily:"inherit"}}/>
           <div style={{position:"relative",flex:1,minWidth:140}}>
             <input value={areaQ} onChange={e=>setAreaQ(e.target.value)} placeholder="🗺 エリア（自治体）を追加" style={{width:"100%",boxSizing:"border-box",padding:"0.4rem 0.6rem",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:"0.8rem",fontFamily:"inherit"}}/>
-            {areaHits.length>0&&(
-              <div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:25,background:"white",border:`1.5px solid ${C.accent}`,borderRadius:8,maxHeight:200,overflowY:"auto",marginTop:2,boxShadow:C.shadowMd}}>
-                {areaHits.map(m=>(
-                  <button key={m.id} onClick={()=>{setAreaFilter([...areaFilter,m.id]);setAreaQ("");}} style={{display:"block",width:"100%",textAlign:"left",padding:"0.35rem 0.6rem",border:"none",borderBottom:`1px solid ${C.borderLight}`,background:"white",cursor:"pointer",fontFamily:"inherit",fontSize:"0.78rem",color:C.text}}>{m.name}</button>
-                ))}
-              </div>
-            )}
+            {areaHits.length>0&&(<div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:25,background:"white",border:`1.5px solid ${C.accent}`,borderRadius:8,maxHeight:200,overflowY:"auto",marginTop:2,boxShadow:C.shadowMd}}>{areaHits.map(m=>(<button key={m.id} onClick={()=>{setAreaFilter([...areaFilter,m.id]);setAreaQ("");}} style={{display:"block",width:"100%",textAlign:"left",padding:"0.35rem 0.6rem",border:"none",borderBottom:`1px solid ${C.borderLight}`,background:"white",cursor:"pointer",fontFamily:"inherit",fontSize:"0.78rem",color:C.text}}>{m.name}</button>))}</div>)}
           </div>
         </div>
-        {areaFilter.length>0&&(
-          <div style={{display:"flex",gap:"0.3rem",flexWrap:"wrap",marginBottom:"0.5rem"}}>
-            {areaFilter.map(id=>(
-              <span key={id} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:"0.7rem",background:C.accentBg,color:C.accentDark,borderRadius:999,padding:"0.15rem 0.5rem",fontWeight:700}}>{muniName(id)}<button onClick={()=>setAreaFilter(areaFilter.filter(x=>String(x)!==String(id)))} style={{border:"none",background:"none",color:C.accentDark,cursor:"pointer",fontFamily:"inherit",padding:0}}>×</button></span>
-            ))}
-          </div>
-        )}
+        {areaFilter.length>0&&(<div style={{display:"flex",gap:"0.3rem",flexWrap:"wrap",marginBottom:"0.5rem"}}>{areaFilter.map(id=>(<span key={id} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:"0.7rem",background:C.accentBg,color:C.accentDark,borderRadius:999,padding:"0.15rem 0.5rem",fontWeight:700}}>{muniName(id)}<button onClick={()=>setAreaFilter(areaFilter.filter(x=>String(x)!==String(id)))} style={{border:"none",background:"none",color:C.accentDark,cursor:"pointer",fontFamily:"inherit",padding:0}}>×</button></span>))}</div>)}
         <div style={{display:"flex",gap:"0.3rem",flexWrap:"wrap",alignItems:"center"}}>
           <span style={{fontSize:"0.68rem",color:C.textSub,fontWeight:700}}>許可(いずれか):</span>
-          {PT.map(pt=>{ const on=selPerms.has(pt); return (
-            <button key={pt} onClick={()=>setPermFilter(on?permFilter.filter(x=>x!==pt):[...permFilter,pt])} style={{fontSize:"0.68rem",fontWeight:700,padding:"0.2rem 0.55rem",borderRadius:999,border:`1px solid ${on?C.accent:C.border}`,background:on?C.accent:"white",color:on?"white":C.textSub,cursor:"pointer",fontFamily:"inherit"}}>{pt}</button>
-          );})}
+          {PT.map(pt=>{ const on=selPerms.has(pt); return (<button key={pt} onClick={()=>setPermFilter(on?permFilter.filter(x=>x!==pt):[...permFilter,pt])} style={{fontSize:"0.68rem",fontWeight:700,padding:"0.2rem 0.55rem",borderRadius:999,border:`1px solid ${on?C.accent:C.border}`,background:on?C.accent:"white",color:on?"white":C.textSub,cursor:"pointer",fontFamily:"inherit"}}>{pt}</button>);})}
           {(areaFilter.length>0||permFilter.length>0||vName)&&<button onClick={()=>{setVName("");setAreaFilter([]);setPermFilter([]);}} style={{marginLeft:"auto",fontSize:"0.68rem",color:C.textMuted,border:"none",background:"none",cursor:"pointer",fontFamily:"inherit"}}>絞り込み解除</button>}
         </div>
         {filtersActive&&(
@@ -33947,7 +33934,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
               <div key={v.id} style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.4rem 0.6rem",borderTop:`1px solid ${C.borderLight}`}}>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:"0.8rem",fontWeight:600,color:C.text}}>{v.name}</div>
-                  <div style={{fontSize:"0.64rem",color:C.textMuted}}>{(v.permitTypes||[]).join("・")||"許可未設定"}{(v.municipalityIds||[]).length?` ／ ${(v.municipalityIds||[]).length}自治体`:""}</div>
+                  <div style={{fontSize:"0.64rem",color:C.textMuted}}>{(v.permitTypes||[]).join("・")||"許可未設定"}{v.phone?` ／ ${v.phone}`:""}</div>
                 </div>
                 <button disabled={added} onClick={()=>addVendor(v)} style={{padding:"0.25rem 0.6rem",borderRadius:6,border:"none",background:added?"#e5e7eb":C.accent,color:added?C.textMuted:"white",fontWeight:700,fontSize:"0.7rem",cursor:added?"default":"pointer",fontFamily:"inherit"}}>{added?"追加済":"＋追加"}</button>
               </div>
@@ -33958,70 +33945,141 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
       </div>
 
       <div style={{display:"flex",flexDirection:"column",gap:"0.75rem"}}>
-        {(p.vendors||[]).map(qv=>{
-          const setQV = patch => setVendors((p.vendors||[]).map(x=>x.id===qv.id?{...x,...patch}:x));
-          const setLines = lines => setQV({lines});
-          return (
-            <div key={qv.id} style={{background:"white",border:`1px solid ${C.border}`,borderRadius:10,padding:"0.75rem 0.9rem"}}>
-              <div style={{display:"flex",alignItems:"center",gap:"0.5rem",flexWrap:"wrap",marginBottom:"0.5rem"}}>
-                <span style={{fontWeight:800,fontSize:"0.88rem",color:C.text}}>{qv.vendorName}</span>
-                <select value={qv.status||"未依頼"} onChange={e=>setQV({status:e.target.value})} style={{padding:"0.2rem 0.5rem",borderRadius:999,border:`1px solid ${C.border}`,fontSize:"0.68rem",fontWeight:700,fontFamily:"inherit",background:"white"}}>
-                  {REQ.map(s=><option key={s} value={s}>{s}</option>)}
-                </select>
-                <span style={{marginLeft:"auto",fontSize:"0.8rem",fontWeight:800,color:C.accentDark}}>合計 {yen(totalOf(qv))}</span>
-                <button onClick={()=>setVendors((p.vendors||[]).filter(x=>x.id!==qv.id))} style={{border:"none",background:"none",color:"#dc2626",cursor:"pointer",fontSize:"0.9rem",fontFamily:"inherit"}}>×</button>
-              </div>
-              <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap",marginBottom:"0.5rem"}}>
-                <input value={qv.assignee||""} onChange={e=>setQV({assignee:e.target.value})} placeholder="先方担当者" style={{flex:1,minWidth:120,padding:"0.35rem 0.55rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.76rem",fontFamily:"inherit"}}/>
-                <input value={qv.contact||""} onChange={e=>setQV({contact:e.target.value})} placeholder="連絡先(メール/TEL)" style={{flex:1,minWidth:120,padding:"0.35rem 0.55rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.76rem",fontFamily:"inherit"}}/>
-              </div>
-              {/* 見積依頼ポータル（リンク方式） */}
-              <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap",alignItems:"center",marginBottom:"0.5rem",padding:"0.4rem 0.5rem",background:C.bg,borderRadius:8}}>
-                {!qv.portalToken ? (
-                  <button disabled={portalBusy===qv.id} onClick={()=>issueLink(qv)} style={{padding:"0.3rem 0.7rem",borderRadius:6,border:`1.5px solid ${C.accent}`,background:C.accentBg,color:C.accentDark,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}}>{portalBusy===qv.id?"発行中…":"🔗 依頼リンクを発行"}</button>
-                ) : (
-                  <React.Fragment>
-                    <span style={{fontSize:"0.64rem",color:C.textMuted,maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{qv.portalUrl}</span>
-                    <button onClick={()=>copyLink(qv)} style={{padding:"0.25rem 0.55rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit"}}>📋 コピー</button>
-                    <button disabled={portalBusy===qv.id} onClick={()=>fetchResp(qv)} style={{padding:"0.25rem 0.55rem",borderRadius:6,border:`1px solid ${C.accent}`,background:"white",color:C.accentDark,fontWeight:700,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit"}}>{portalBusy===qv.id?"取得中…":"🔄 回答取得"}</button>
-                    <button disabled={portalBusy===qv.id} onClick={()=>issueLink(qv)} title="対象店舗の最新内容でリンクを更新" style={{padding:"0.25rem 0.55rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textMuted,fontWeight:700,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit"}}>↻ 更新</button>
-                    {qv.respondedAt&&<span style={{fontSize:"0.64rem",color:"#16a34a",fontWeight:700}}>✅ 回答済 {String(qv.respondedAt).slice(0,10)}</span>}
-                  </React.Fragment>
-                )}
-                {!PORTAL_ON&&<span style={{fontSize:"0.62rem",color:"#b45309"}}>⚠️ ポータルURL未設定（コード先頭 QUOTE_PORTAL_URL）</span>}
-              </div>
-              <div style={{border:`1px solid ${C.borderLight}`,borderRadius:8,overflow:"hidden"}}>
-                <div style={{display:"flex",gap:"0.3rem",padding:"0.3rem 0.5rem",background:C.bg,fontSize:"0.62rem",fontWeight:700,color:C.textSub}}>
-                  <span style={{flex:2}}>品目</span><span style={{width:70}}>料金方式</span><span style={{width:80}}>単価</span><span style={{width:90}}>金額</span><span style={{flex:2}}>条件・備考</span><span style={{width:20}}/>
-                </div>
-                {(qv.lines||[]).map(l=>{
-                  const setL=patch=>setLines((qv.lines||[]).map(x=>x.id===l.id?{...x,...patch}:x));
-                  return (
-                    <div key={l.id} style={{display:"flex",gap:"0.3rem",padding:"0.3rem 0.5rem",borderTop:`1px solid ${C.borderLight}`,alignItems:"center"}}>
-                      <input value={l.item||""} onChange={e=>setL({item:e.target.value})} placeholder="可燃/不燃/古紙…" style={{flex:2,minWidth:0,padding:"0.3rem 0.4rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.74rem",fontFamily:"inherit"}}/>
-                      <select value={l.method||""} onChange={e=>setL({method:e.target.value})} style={{width:70,padding:"0.3rem 0.2rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.7rem",fontFamily:"inherit",background:"white"}}>
-                        <option value=""></option>{METHODS.map(m=><option key={m} value={m}>{m}</option>)}
-                      </select>
-                      <input value={l.unit||""} onChange={e=>setL({unit:e.target.value})} placeholder="単価" inputMode="numeric" style={{width:80,padding:"0.3rem 0.4rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.74rem",fontFamily:"inherit"}}/>
-                      <input value={l.amount||""} onChange={e=>setL({amount:e.target.value.replace(/[^0-9]/g,"")})} placeholder="金額" inputMode="numeric" style={{width:90,padding:"0.3rem 0.4rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.74rem",fontFamily:"inherit"}}/>
-                      <input value={l.note||""} onChange={e=>setL({note:e.target.value})} placeholder="条件・備考" style={{flex:2,minWidth:0,padding:"0.3rem 0.4rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.74rem",fontFamily:"inherit"}}/>
-                      <button onClick={()=>setLines((qv.lines||[]).filter(x=>x.id!==l.id))} style={{width:20,border:"none",background:"none",color:"#dc2626",cursor:"pointer",fontFamily:"inherit"}}>×</button>
-                    </div>
-                  );
-                })}
-                <button onClick={()=>setLines([...(qv.lines||[]),{id:rid("ln"),item:"",method:"",unit:"",amount:"",note:""}])} style={{width:"100%",padding:"0.35rem",border:"none",borderTop:`1px solid ${C.borderLight}`,background:C.bg,color:C.accent,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}}>＋ 明細行を追加</button>
-              </div>
-            </div>
-          );
-        })}
+        {(p.vendors||[]).map(qv=>(
+          <VendorQuoteCard key={qv.id} qv={qv} rows={rows} vrec={vendors.find(v=>String(v.id)===String(qv.vendorId))} C={C} rid={rid} mapsUrl={mapsUrl} portalBusy={portalBusy} PORTAL_ON={PORTAL_ON}
+            onChange={patch=>patchVendor(qv.id,patch)} onRemove={()=>setVendors((p.vendors||[]).filter(x=>x.id!==qv.id))}
+            onIssue={()=>issueLink(qv)} onCopy={()=>copyLink(qv)} onFetch={()=>fetchResp(qv)} onAddNote={t=>addVendorNote(qv,t)}/>
+        ))}
         {(p.vendors||[]).length===0&&<div style={{textAlign:"center",color:C.textMuted,padding:"1.5rem",fontSize:"0.8rem"}}>上の絞り込み（エリア・許可・業者名）から対象業者を追加してください。</div>}
       </div>
     </div>
   );
 }
 
+// 対象業者カード（見積表・一括単価・ポータル・業者情報・通話メモ）
+function VendorQuoteCard({ qv, rows, vrec, C, rid, mapsUrl, portalBusy, PORTAL_ON, onChange, onRemove, onIssue, onCopy, onFetch, onAddNote }){
+  const REQ=["未依頼","依頼済","回答済","辞退"];
+  const METHODS=["出来高","定額","その他"];
+  const [checked,setChecked]=React.useState({});
+  const [bulk,setBulk]=React.useState({method:"",unit:"",amount:""});
+  const [note,setNote]=React.useState("");
+  const [showInfo,setShowInfo]=React.useState(false);
+  const [showNotes,setShowNotes]=React.useState(false);
+  const yen=n=>"¥"+Number(n||0).toLocaleString();
+  const prices=qv.prices||{};
+  const setPrice=(itemId,patch)=>onChange({prices:{...(qv.prices||{}),[itemId]:{...(qv.prices||{})[itemId],...patch}}});
+  const total=rows.reduce((s,r)=>s+(Number(prices[r.itemId]?.amount)||0),0)+(qv.extraLines||[]).reduce((s,l)=>s+(Number(l.amount)||0),0);
+  const checkedIds=Object.keys(checked).filter(k=>checked[k]);
+  const allChecked=rows.length>0&&checkedIds.length===rows.length;
+  const applyBulk=()=>{ if(!checkedIds.length){window.alert("店舗（行）にチェックを入れてください。");return;} const np={...(qv.prices||{})}; checkedIds.forEach(id=>{ np[id]={...np[id], ...(bulk.method?{method:bulk.method}:{}), ...(bulk.unit?{unit:bulk.unit}:{}), ...(bulk.amount?{amount:bulk.amount.replace(/[^0-9]/g,"")}:{})}; }); onChange({prices:np}); };
+  const grade = vrec&&vrec.grade;
+  const setExtra=lines=>onChange({extraLines:lines});
+
+  return (
+    <div style={{background:"white",border:`1px solid ${C.border}`,borderRadius:10,padding:"0.75rem 0.9rem"}}>
+      <div style={{display:"flex",alignItems:"center",gap:"0.5rem",flexWrap:"wrap",marginBottom:"0.4rem"}}>
+        <span style={{fontWeight:800,fontSize:"0.9rem",color:C.text}}>{qv.vendorName}</span>
+        {grade&&<span style={{fontSize:"0.66rem",color:"#b45309"}}>{"★".repeat(grade)}</span>}
+        <select value={qv.status||"未依頼"} onChange={e=>onChange({status:e.target.value})} style={{padding:"0.2rem 0.5rem",borderRadius:999,border:`1px solid ${C.border}`,fontSize:"0.68rem",fontWeight:700,fontFamily:"inherit",background:"white"}}>{REQ.map(s=><option key={s} value={s}>{s}</option>)}</select>
+        <span style={{marginLeft:"auto",fontSize:"0.82rem",fontWeight:800,color:C.accentDark}}>合計 {yen(total)}</span>
+        <button onClick={onRemove} style={{border:"none",background:"none",color:"#dc2626",cursor:"pointer",fontSize:"0.9rem",fontFamily:"inherit"}}>×</button>
+      </div>
+
+      {/* 業者情報（MyDeskデータ） */}
+      <div style={{display:"flex",gap:"0.6rem",flexWrap:"wrap",alignItems:"center",fontSize:"0.72rem",color:C.textSub,marginBottom:"0.5rem"}}>
+        {vrec&&vrec.phone&&<a href={"tel:"+vrec.phone} style={{color:C.accentDark,textDecoration:"none",fontWeight:700}}>📞 {vrec.phone}</a>}
+        {vrec&&vrec.address&&<a href={mapsUrl(vrec.address)} target="_blank" rel="noreferrer" style={{color:C.textSub,textDecoration:"none"}}>📍 {vrec.address}</a>}
+        {vrec&&(vrec.permitTypes||[]).length>0&&<span>{(vrec.permitTypes||[]).join("・")}</span>}
+        <button onClick={()=>setShowInfo(v=>!v)} style={{border:"none",background:"none",color:C.accent,cursor:"pointer",fontFamily:"inherit",fontSize:"0.7rem"}}>{showInfo?"▲業者メモを隠す":"▼通話・見積メモ"}</button>
+      </div>
+      {showInfo&&(
+        <div style={{background:C.bg,borderRadius:8,padding:"0.5rem 0.6rem",marginBottom:"0.5rem"}}>
+          <div style={{display:"flex",gap:"0.4rem"}}>
+            <input value={note} onChange={e=>setNote(e.target.value)} placeholder="電話内容・見積メモを記録（営業の業者側にも反映）" style={{flex:1,padding:"0.35rem 0.5rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.74rem",fontFamily:"inherit"}}/>
+            <button disabled={!note.trim()} onClick={()=>{onAddNote(note);setNote("");}} style={{padding:"0.35rem 0.7rem",borderRadius:6,border:"none",background:note.trim()?C.accent:"#cbd5e1",color:"white",fontWeight:700,fontSize:"0.72rem",cursor:note.trim()?"pointer":"default",fontFamily:"inherit"}}>追加</button>
+          </div>
+          {(qv.callNotes||[]).length>0&&<div style={{marginTop:"0.4rem",display:"flex",flexDirection:"column",gap:"0.25rem"}}>{(qv.callNotes||[]).slice().reverse().map(n=>(<div key={n.id} style={{fontSize:"0.7rem",color:C.text}}><span style={{color:C.textMuted}}>{String(n.date||"").slice(0,10)}</span>　{n.text}</div>))}</div>}
+        </div>
+      )}
+
+      <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap",marginBottom:"0.5rem"}}>
+        <input value={qv.assignee||""} onChange={e=>onChange({assignee:e.target.value})} placeholder="先方担当者" style={{flex:1,minWidth:120,padding:"0.35rem 0.55rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.76rem",fontFamily:"inherit"}}/>
+        <input value={qv.contact||""} onChange={e=>onChange({contact:e.target.value})} placeholder="連絡先(メール/TEL)" style={{flex:1,minWidth:120,padding:"0.35rem 0.55rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.76rem",fontFamily:"inherit"}}/>
+      </div>
+
+      {/* 依頼ポータル */}
+      <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap",alignItems:"center",marginBottom:"0.5rem",padding:"0.4rem 0.5rem",background:C.bg,borderRadius:8}}>
+        {!qv.portalToken ? (
+          <button disabled={portalBusy===qv.id} onClick={onIssue} style={{padding:"0.3rem 0.7rem",borderRadius:6,border:`1.5px solid ${C.accent}`,background:C.accentBg,color:C.accentDark,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}}>{portalBusy===qv.id?"発行中…":"🔗 依頼リンクを発行"}</button>
+        ) : (
+          <React.Fragment>
+            <span style={{fontSize:"0.64rem",color:C.textMuted,maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{qv.portalUrl}</span>
+            <button onClick={onCopy} style={{padding:"0.25rem 0.55rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit"}}>📋 コピー</button>
+            <button disabled={portalBusy===qv.id} onClick={onFetch} style={{padding:"0.25rem 0.55rem",borderRadius:6,border:`1px solid ${C.accent}`,background:"white",color:C.accentDark,fontWeight:700,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit"}}>{portalBusy===qv.id?"取得中…":"🔄 回答取得"}</button>
+            <button disabled={portalBusy===qv.id} onClick={onIssue} title="対象店舗の最新内容でリンクを更新" style={{padding:"0.25rem 0.55rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textMuted,fontWeight:700,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit"}}>↻ 更新</button>
+            {qv.respondedAt&&<span style={{fontSize:"0.64rem",color:"#16a34a",fontWeight:700}}>✅ 回答済 {String(qv.respondedAt).slice(0,10)}</span>}
+          </React.Fragment>
+        )}
+        {!PORTAL_ON&&<span style={{fontSize:"0.62rem",color:"#b45309"}}>⚠️ ポータルURL未設定</span>}
+      </div>
+
+      {/* 一括単価バー */}
+      {rows.length>0&&(
+        <div style={{display:"flex",gap:"0.35rem",flexWrap:"wrap",alignItems:"center",marginBottom:"0.4rem",padding:"0.4rem 0.5rem",background:"#fff7ed",border:"1px solid #fed7aa",borderRadius:8}}>
+          <span style={{fontSize:"0.66rem",fontWeight:700,color:"#9a3412"}}>選択に一括：</span>
+          <select value={bulk.method} onChange={e=>setBulk({...bulk,method:e.target.value})} style={{padding:"0.25rem 0.4rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.7rem",fontFamily:"inherit",background:"white"}}><option value="">方式</option>{METHODS.map(m=><option key={m} value={m}>{m}</option>)}</select>
+          <input value={bulk.unit} onChange={e=>setBulk({...bulk,unit:e.target.value})} placeholder="単価" style={{width:90,padding:"0.25rem 0.4rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.7rem",fontFamily:"inherit"}}/>
+          <input value={bulk.amount} onChange={e=>setBulk({...bulk,amount:e.target.value})} placeholder="金額" inputMode="numeric" style={{width:90,padding:"0.25rem 0.4rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.7rem",fontFamily:"inherit"}}/>
+          <button onClick={applyBulk} style={{padding:"0.25rem 0.7rem",borderRadius:5,border:"none",background:"#ea580c",color:"white",fontWeight:700,fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit"}}>チェック店舗に適用（{checkedIds.length}）</button>
+        </div>
+      )}
+
+      {/* 店舗×品目 見積表 */}
+      {rows.length>0?(
+        <div style={{border:`1px solid ${C.borderLight}`,borderRadius:8,overflow:"hidden"}}>
+          <div style={{display:"flex",gap:"0.3rem",padding:"0.3rem 0.5rem",background:C.bg,fontSize:"0.62rem",fontWeight:700,color:C.textSub,alignItems:"center"}}>
+            <input type="checkbox" checked={allChecked} onChange={e=>{const c={};if(e.target.checked)rows.forEach(r=>c[r.itemId]=true);setChecked(c);}} style={{width:14,height:14}}/>
+            <span style={{flex:2}}>店舗 / 品目</span><span style={{width:64}}>方式</span><span style={{width:74}}>単価</span><span style={{width:84}}>金額</span><span style={{flex:1}}>条件</span>
+          </div>
+          {rows.map(r=>{ const pr=prices[r.itemId]||{}; return (
+            <div key={r.itemId} style={{display:"flex",gap:"0.3rem",padding:"0.3rem 0.5rem",borderTop:`1px solid ${C.borderLight}`,alignItems:"center"}}>
+              <input type="checkbox" checked={!!checked[r.itemId]} onChange={e=>setChecked({...checked,[r.itemId]:e.target.checked})} style={{width:14,height:14}}/>
+              <div style={{flex:2,minWidth:0}}>
+                <div style={{fontSize:"0.72rem",fontWeight:600,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.storeName||"（拠点）"}{r.address?<a href={mapsUrl(r.address)} target="_blank" rel="noreferrer" style={{marginLeft:4,textDecoration:"none"}} title="Googleマップで開く">📍</a>:null}</div>
+                <div style={{fontSize:"0.64rem",color:C.textMuted}}>{r.kind||"（品目）"}{r.freq?` / ${r.freq}`:""}</div>
+              </div>
+              <select value={pr.method||""} onChange={e=>setPrice(r.itemId,{method:e.target.value})} style={{width:64,padding:"0.25rem 0.15rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.68rem",fontFamily:"inherit",background:"white"}}><option value=""></option>{METHODS.map(m=><option key={m} value={m}>{m}</option>)}</select>
+              <input value={pr.unit||""} onChange={e=>setPrice(r.itemId,{unit:e.target.value})} placeholder="単価" style={{width:74,padding:"0.25rem 0.35rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit"}}/>
+              <input value={pr.amount||""} onChange={e=>setPrice(r.itemId,{amount:e.target.value.replace(/[^0-9]/g,"")})} placeholder="金額" inputMode="numeric" style={{width:84,padding:"0.25rem 0.35rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit"}}/>
+              <input value={pr.note||""} onChange={e=>setPrice(r.itemId,{note:e.target.value})} placeholder="条件" style={{flex:1,minWidth:0,padding:"0.25rem 0.35rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit"}}/>
+            </div>
+          );})}
+        </div>
+      ):(
+        <div style={{fontSize:"0.72rem",color:C.textMuted,padding:"0.4rem 0"}}>対象店舗を登録すると、店舗ごとの見積入力ができます。</div>
+      )}
+
+      {/* その他の明細（店舗に紐づかない項目） */}
+      <details style={{marginTop:"0.5rem"}}>
+        <summary style={{fontSize:"0.7rem",color:C.textSub,cursor:"pointer",fontWeight:700}}>その他の明細（{(qv.extraLines||[]).length}）</summary>
+        <div style={{marginTop:"0.35rem",display:"flex",flexDirection:"column",gap:"0.25rem"}}>
+          {(qv.extraLines||[]).map(l=>{ const setL=patch=>setExtra((qv.extraLines||[]).map(x=>x.id===l.id?{...x,...patch}:x)); return (
+            <div key={l.id} style={{display:"flex",gap:"0.3rem",alignItems:"center"}}>
+              <input value={l.item||""} onChange={e=>setL({item:e.target.value})} placeholder="品目" style={{flex:2,minWidth:0,padding:"0.25rem 0.35rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit"}}/>
+              <input value={l.amount||""} onChange={e=>setL({amount:e.target.value.replace(/[^0-9]/g,"")})} placeholder="金額" inputMode="numeric" style={{width:84,padding:"0.25rem 0.35rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit"}}/>
+              <input value={l.note||""} onChange={e=>setL({note:e.target.value})} placeholder="備考" style={{flex:1,minWidth:0,padding:"0.25rem 0.35rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit"}}/>
+              <button onClick={()=>setExtra((qv.extraLines||[]).filter(x=>x.id!==l.id))} style={{border:"none",background:"none",color:"#dc2626",cursor:"pointer",fontFamily:"inherit"}}>×</button>
+            </div>
+          );})}
+          <button onClick={()=>setExtra([...(qv.extraLines||[]),{id:rid("ex"),item:"",method:"",unit:"",amount:"",note:""}])} style={{alignSelf:"flex-start",padding:"0.2rem 0.6rem",border:"none",background:C.bg,color:C.accent,fontWeight:700,fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit",borderRadius:5}}>＋ 明細行を追加</button>
+        </div>
+      </details>
+    </div>
+  );
+}
+
 // 対象店舗の1行（折りたたみ編集）
-function StoreRow({ st, C, rid, onChange, onDelete }){
+function StoreRow({ st, C, rid, mapsUrl, onChange, onDelete }){
   const [open,setOpen]=React.useState(false);
   const set=patch=>onChange({...st,...patch});
   const setItems=items=>set({items});
@@ -34030,7 +34088,7 @@ function StoreRow({ st, C, rid, onChange, onDelete }){
       <div style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.55rem 0.8rem",cursor:"pointer"}} onClick={()=>setOpen(o=>!o)}>
         <span style={{fontSize:"0.72rem",color:C.textMuted}}>{open?"▼":"▶"}</span>
         <div style={{flex:1,minWidth:0}}>
-          <div style={{fontWeight:700,fontSize:"0.82rem",color:C.text}}>{st.name||"（拠点名なし）"}</div>
+          <div style={{fontWeight:700,fontSize:"0.82rem",color:C.text}}>{st.name||"（拠点名なし）"}{st.address?<a href={mapsUrl(st.address)} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{marginLeft:6,textDecoration:"none"}} title="Googleマップで開く">📍</a>:null}</div>
           <div style={{fontSize:"0.66rem",color:C.textMuted}}>{[st.area,st.bizType,st.address].filter(Boolean).join(" ／ ")||"—"}</div>
         </div>
         <span style={{fontSize:"0.66rem",color:C.textSub}}>品目{(st.items||[]).length}</span>
@@ -34050,18 +34108,15 @@ function StoreRow({ st, C, rid, onChange, onDelete }){
             <div style={{display:"flex",gap:"0.3rem",padding:"0.25rem 0.4rem",background:C.bg,fontSize:"0.6rem",fontWeight:700,color:C.textSub}}>
               <span style={{flex:2}}>排出品目</span><span style={{flex:1}}>回収頻度</span><span style={{flex:1}}>数量</span><span style={{flex:1}}>重量</span><span style={{width:18}}/>
             </div>
-            {(st.items||[]).map(it=>{
-              const setI=patch=>setItems((st.items||[]).map(x=>x.id===it.id?{...x,...patch}:x));
-              return (
-                <div key={it.id} style={{display:"flex",gap:"0.3rem",padding:"0.25rem 0.4rem",borderTop:`1px solid ${C.borderLight}`,alignItems:"center"}}>
-                  <input value={it.kind||""} onChange={e=>setI({kind:e.target.value})} placeholder="可燃/不燃/古紙" style={{flex:2,minWidth:0,padding:"0.25rem 0.35rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit"}}/>
-                  <input value={it.freq||""} onChange={e=>setI({freq:e.target.value})} placeholder="週2回" style={{flex:1,minWidth:0,padding:"0.25rem 0.35rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit"}}/>
-                  <input value={it.qty||""} onChange={e=>setI({qty:e.target.value})} placeholder="2袋" style={{flex:1,minWidth:0,padding:"0.25rem 0.35rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit"}}/>
-                  <input value={it.weight||""} onChange={e=>setI({weight:e.target.value})} placeholder="5kg" style={{flex:1,minWidth:0,padding:"0.25rem 0.35rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit"}}/>
-                  <button onClick={()=>setItems((st.items||[]).filter(x=>x.id!==it.id))} style={{width:18,border:"none",background:"none",color:"#dc2626",cursor:"pointer",fontFamily:"inherit"}}>×</button>
-                </div>
-              );
-            })}
+            {(st.items||[]).map(it=>{ const setI=patch=>setItems((st.items||[]).map(x=>x.id===it.id?{...x,...patch}:x)); return (
+              <div key={it.id} style={{display:"flex",gap:"0.3rem",padding:"0.25rem 0.4rem",borderTop:`1px solid ${C.borderLight}`,alignItems:"center"}}>
+                <input value={it.kind||""} onChange={e=>setI({kind:e.target.value})} placeholder="可燃/不燃/古紙" style={{flex:2,minWidth:0,padding:"0.25rem 0.35rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit"}}/>
+                <input value={it.freq||""} onChange={e=>setI({freq:e.target.value})} placeholder="週2回" style={{flex:1,minWidth:0,padding:"0.25rem 0.35rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit"}}/>
+                <input value={it.qty||""} onChange={e=>setI({qty:e.target.value})} placeholder="2袋" style={{flex:1,minWidth:0,padding:"0.25rem 0.35rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit"}}/>
+                <input value={it.weight||""} onChange={e=>setI({weight:e.target.value})} placeholder="5kg" style={{flex:1,minWidth:0,padding:"0.25rem 0.35rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit"}}/>
+                <button onClick={()=>setItems((st.items||[]).filter(x=>x.id!==it.id))} style={{width:18,border:"none",background:"none",color:"#dc2626",cursor:"pointer",fontFamily:"inherit"}}>×</button>
+              </div>
+            );})}
             <button onClick={()=>setItems([...(st.items||[]),{id:rid("it"),kind:"",freq:"",qty:"",weight:"",note:""}])} style={{width:"100%",padding:"0.3rem",border:"none",borderTop:`1px solid ${C.borderLight}`,background:C.bg,color:C.accent,fontWeight:700,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit"}}>＋ 品目を追加</button>
           </div>
         </div>
