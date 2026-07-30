@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-20-v293-company-sales-sheet"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-21-v297-quote-module-foundation"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -621,7 +621,7 @@ if (typeof window !== "undefined" && !window.__myDeskFlushListenerAdded) {
   });
 }
 
-const INIT = { tasks:[], projects:[], emails:[], emailStyles:[], prefectures:[], municipalities:[], vendors:[], companies:[], businessCards:[], notifications:[], changeLogs:[], analytics:{}, emailTemplates:[], quotes:[] };
+const INIT = { tasks:[], projects:[], emails:[], emailStyles:[], prefectures:[], municipalities:[], vendors:[], companies:[], businessCards:[], notifications:[], changeLogs:[], analytics:{}, emailTemplates:[], quotes:[], quoteProjects:[] };
 
 // ─── ユーザー氏名ヘルパー（姓・名の分割／合成）────────────────────────────────
 // 既存ユーザーは name（例「新川 希亮」または「新川希亮」）のみ持つため、
@@ -1841,7 +1841,7 @@ async function saveData(d) {
     console.error("[MyDesk] saveData rejected — no INIT keys found", d); return;
   }
   // 配列フィールドがすべて空で、かつ現在のDBに保存済みデータがある場合は書き込まない
-  const ARRAY_KEYS = ["tasks","projects","companies","vendors","municipalities","businessCards","quotes"];
+  const ARRAY_KEYS = ["tasks","projects","companies","vendors","municipalities","businessCards","quotes","quoteProjects"];
   const allArraysEmpty = ARRAY_KEYS.every(k => !Array.isArray(d[k]) || d[k].length === 0);
   const hasAnalyticsData = d.analytics && typeof d.analytics === "object" && Object.keys(d.analytics).length > 0;
   if (allArraysEmpty && !hasAnalyticsData) {
@@ -21646,6 +21646,8 @@ ${orig}`})
             exportCompanySalesSheet(list, desc);
           }} title="営業管理シート様式でExcel出力（店舗数×単価の見込み総額つき）"
             style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:"1.5px solid #7c3aed",background:"#f5f3ff",color:"#6d28d9",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📈 営業管理</button>
+          <button onClick={()=>{setImportPreview(null);setImportErr("");setSheet("importSales");}} title="営業管理シートのCSVを取込んで店舗数・単価・ステータス・メモを反映"
+            style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:"1.5px solid #7c3aed",background:"white",color:"#6d28d9",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📈 資料反映</button>
           <button onClick={backfillAssigneesFromApproach} title="記録者を担当者に一括補完（業者・企業・自治体すべて）"
             style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:"1.5px solid #f59e0b",background:"#fffbeb",color:"#92400e",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🔄</button>
           <button onClick={()=>{setDeleteModal({type:"company"});setDmSearch("");setDmFilter("");setDmSelected(new Set());}}
@@ -21817,6 +21819,84 @@ ${orig}`})
             </div>
           </Sheet>
         )}
+        {sheet==="importSales"&&(()=>{
+          const preview=importPreview; const setPreview=setImportPreview;
+          const err=importErr; const setErr=setImportErr;
+          const mapStatus=(s)=>{ s=(s||"").trim(); if(COMPANY_STATUS[s]) return s; if(s==="未対応"||s==="未着手"||s==="") return "未接触"; if(s==="成約済"||s==="加入済") return "成約"; return "未接触"; };
+          const num=(v)=>{ const d=String(v==null?"":v).replace(/[^0-9]/g,""); return d?Number(d):null; };
+          const handleFile=async(e)=>{
+            const file=e.target.files?.[0]; if(e.target)e.target.value=""; if(!file){return;} setErr(""); setPreview(null);
+            try{
+              const txt=await readFileAsText(file); const rows=parseCSV(txt);
+              if(!rows.length){ setErr("CSVが空です。"); return; }
+              const header=rows[0].map(h=>String(h||"").trim().toLowerCase().replace(/^﻿/,""));
+              const ci=(...names)=>{ for(const n of names){ const i=header.indexOf(String(n).toLowerCase()); if(i>=0) return i; } return -1; };
+              const iName=ci("企業名","会社名","name","company"), iStore=ci("店舗数","store","stores"), iPrice=ci("目安単価","目安単価（年）","単価","price","unitprice"), iStatus=ci("ステータス","status"), iMemo=ci("メモ","memo","備考","notes");
+              if(iName<0){ setErr("『企業名』列が見つかりません。営業管理シート_取込用.csv を選択してください。"); return; }
+              const byNorm=new Map(); companies.forEach((c,idx)=>{ const k=normBizName(c.name); if(k&&!byNorm.has(k)) byNorm.set(k,idx); });
+              const items=[]; let upd=0,neu=0;
+              for(let i=1;i<rows.length;i++){ const r=rows[i]; const nm=(r[iName]||"").trim(); if(!nm) continue;
+                const it={ name:nm, storeCount:iStore>=0?num(r[iStore]):null, unitPrice:iPrice>=0?num(r[iPrice]):null, status:iStatus>=0?mapStatus(r[iStatus]):"", memo:iMemo>=0?(r[iMemo]||"").trim():"" };
+                const idx=byNorm.get(normBizName(nm));
+                if(idx!=null){ upd++; it.mode="更新"; it.idx=idx; it.current=(companies[idx].name||""); } else { neu++; it.mode="新規"; }
+                items.push(it);
+              }
+              setPreview({items,upd,neu}); setErr("");
+            }catch(ex){ console.error("[importSales]",ex); setErr("読み込みに失敗しました。CSV形式・文字コードをご確認ください。"); }
+          };
+          const doImport=()=>{
+            if(!preview) return;
+            const today=new Date().toISOString().slice(0,10);
+            const comps=[...companies];
+            preview.items.forEach(it=>{
+              const patch={updatedAt:today};
+              if(it.storeCount!=null) patch.storeCount=it.storeCount;
+              if(it.unitPrice!=null) patch.unitPrice=it.unitPrice;
+              if(it.status) patch.status=it.status;
+              if(it.memo) patch.notes=it.memo;
+              if(it.mode==="更新"){ comps[it.idx]={...comps[it.idx],...patch}; }
+              else { comps.push({ id:Date.now()+Math.random(), name:it.name.trim(), status:it.status||"未接触", storeCount:it.storeCount??undefined, unitPrice:it.unitPrice??undefined, notes:it.memo||"", assigneeIds:[], memos:[], chat:[], createdAt:new Date().toISOString() }); }
+            });
+            save({...data,companies:comps});
+            window.alert(`✅ 資料の数字を反映しました\n更新 ${preview.upd}件 / 新規 ${preview.neu}件`);
+            setSheet(null); setPreview(null);
+          };
+          return (
+            <Sheet title="📈 営業管理シート取込（数字を反映）" onClose={()=>{setSheet(null);setPreview(null);setErr("");}}>
+              <div style={{fontSize:"0.78rem",color:C.text,lineHeight:1.6,marginBottom:"0.75rem"}}>
+                <strong>営業管理シート_取込用.csv</strong> を選択してください。<br/>
+                <span style={{fontSize:"0.72rem",color:C.textSub}}>企業名で照合し、<strong>既存企業は更新</strong>／無ければ<strong>新規追加</strong>。店舗数・目安単価・ステータス・メモを反映します（会社名を正規化して照合）。</span>
+              </div>
+              <label style={{display:"inline-flex",alignItems:"center",gap:"0.4rem",padding:"0.6rem 1rem",background:"#f5f3ff",border:"1.5px solid #7c3aed",borderRadius:"8px",color:"#6d28d9",fontWeight:700,fontSize:"0.82rem",cursor:"pointer"}}>
+                📄 CSVファイルを選択
+                <input type="file" accept=".csv,text/csv" onChange={handleFile} style={{display:"none"}}/>
+              </label>
+              {err&&<div style={{marginTop:"0.75rem",fontSize:"0.78rem",color:"#dc2626",fontWeight:700}}>⚠️ {err}</div>}
+              {preview&&(
+                <div style={{marginTop:"1rem"}}>
+                  <div style={{display:"flex",gap:"0.5rem",marginBottom:"0.75rem"}}>
+                    <div style={{flex:1,background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:"8px",padding:"0.5rem 0.7rem"}}><div style={{fontSize:"0.62rem",color:"#1d4ed8",fontWeight:700}}>更新（既存）</div><div style={{fontSize:"1.3rem",fontWeight:800,color:"#1e40af"}}>{preview.upd}</div></div>
+                    <div style={{flex:1,background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:"8px",padding:"0.5rem 0.7rem"}}><div style={{fontSize:"0.62rem",color:"#15803d",fontWeight:700}}>新規追加</div><div style={{fontSize:"1.3rem",fontWeight:800,color:"#166534"}}>{preview.neu}</div></div>
+                  </div>
+                  <div style={{fontSize:"0.72rem",color:C.textSub,fontWeight:700,marginBottom:"0.3rem"}}>プレビュー（先頭12件 / 全{preview.items.length}件）</div>
+                  <div style={{maxHeight:240,overflowY:"auto",border:`1px solid ${C.borderLight}`,borderRadius:"6px"}}>
+                    {preview.items.slice(0,12).map((it,i)=>(
+                      <div key={i} style={{padding:"0.4rem 0.6rem",borderTop:i>0?`1px solid ${C.borderLight}`:"none",fontSize:"0.72rem",display:"flex",gap:"0.4rem",alignItems:"center",flexWrap:"wrap"}}>
+                        <span style={{fontSize:"0.6rem",fontWeight:700,padding:"0.05rem 0.35rem",borderRadius:999,background:it.mode==="更新"?"#dbeafe":"#dcfce7",color:it.mode==="更新"?"#1e40af":"#166534"}}>{it.mode}</span>
+                        <span style={{fontWeight:700,color:C.text}}>{it.name}</span>
+                        <span style={{color:C.textMuted}}>店舗{it.storeCount??"-"} / ¥{it.unitPrice!=null?it.unitPrice.toLocaleString():"-"} / {it.status||"-"}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{display:"flex",gap:"0.5rem",marginTop:"0.75rem"}}>
+                    <Btn variant="secondary" style={{flex:1}} onClick={()=>{setPreview(null);setErr("");}}>やり直す</Btn>
+                    <Btn style={{flex:2}} onClick={doImport}>この内容で反映（更新{preview.upd}・新規{preview.neu}）</Btn>
+                  </div>
+                </div>
+              )}
+            </Sheet>
+          );
+        })()}
         {sheet==="importCompany"&&(()=>{
           const preview=importPreview; const setPreview=setImportPreview;
           const err=importErr; const setErr=setImportErr;
@@ -22514,6 +22594,8 @@ ${orig}`})
             style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:"1.5px solid #0891b2",background:"#ecfeff",color:"#0e7490",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📞TSR</button>
           <button onClick={()=>{setImportPreview(null);setImportErr("");setSheet("importDustalk");}} title="DUSTALK(Bubble)の登録業者と突合して加入済/仮登録を更新"
             style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:"1.5px solid #2563eb",background:"#eff6ff",color:"#1d4ed8",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🚚DUSTALK</button>
+          <button onClick={()=>{setImportPreview(null);setImportErr("");setSheet("importPermitVendors");}} title="許可業者一覧CSVを取込（住所・電話・対応自治体・備考を上書き追加、ステータスは維持）"
+            style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:"1.5px solid #ef4444",background:"#fef2f2",color:"#b91c1c",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🚮 許可取込</button>
           <button onClick={()=>{
             // フィルター条件に該当する業者リストを取得
             const list = bulkMode && bulkSelected.size>0
@@ -22841,6 +22923,98 @@ ${orig}`})
             </Sheet>
           );
         })()}
+        {sheet==="importPermitVendors"&&(()=>{
+          const preview=importPreview; const setPreview=setImportPreview;
+          const err=importErr; const setErr=setImportErr;
+          const handleFile=async(e)=>{
+            const file=e.target.files?.[0]; if(e.target)e.target.value=""; if(!file){return;} setErr(""); setPreview(null);
+            try{
+              const txt=await readFileAsText(file); const rows=parseCSV(txt);
+              if(!rows.length){ setErr("CSVが空です。"); return; }
+              const header=rows[0].map(h=>String(h||"").trim().toLowerCase().replace(/^﻿/,""));
+              const ci=(...names)=>{ for(const n of names){ const i=header.indexOf(String(n).toLowerCase()); if(i>=0) return i; } return -1; };
+              const iName=ci("業者名","会社名","name"), iAddr=ci("住所","所在地","address"), iTel=ci("電話番号","電話","代表電話","phone"), iFax=ci("fax","ファックス"), iMuni=ci("対応自治体","自治体","許可自治体"), iPerm=ci("許可種別","permit"), iBiko=ci("備考","メモ","取扱区分・備考","notes");
+              if(iName<0){ setErr("『業者名』列が見つかりません。許可業者_取込用.csv を選択してください。"); return; }
+              const muniByName=new Map(); munis.forEach(m=>{ const nm=String(m.name||"").trim(); if(nm&&!muniByName.has(nm)) muniByName.set(nm, m.id); });
+              const byNorm=new Map(); vendors.forEach((v,idx)=>{ const k=normBizName(v.name); if(k&&!byNorm.has(k)) byNorm.set(k,idx); });
+              const items=[]; let upd=0,neu=0; const unmatchedMunis=new Set();
+              for(let i=1;i<rows.length;i++){ const r=rows[i]; const nm=(r[iName]||"").trim(); if(!nm) continue;
+                const muniNames=(iMuni>=0?(r[iMuni]||""):"").split(/[、,\/／]+/).map(s=>s.trim()).filter(Boolean);
+                const muniIds=[]; muniNames.forEach(mn=>{ const id=muniByName.get(mn); if(id!=null) muniIds.push(id); else unmatchedMunis.add(mn); });
+                const permits=(iPerm>=0?(r[iPerm]||"一廃収運"):"一廃収運").split(/[、,\/／]+/).map(s=>s.trim()).filter(p=>PERMIT_TYPES.includes(p));
+                if(permits.length===0) permits.push("一廃収運");
+                const fax=iFax>=0?(r[iFax]||"").trim():"";
+                const biko=iBiko>=0?(r[iBiko]||"").trim():"";
+                const notes=[biko, fax?("FAX: "+fax):""].filter(Boolean).join(" ");
+                const it={ name:nm, address:iAddr>=0?(r[iAddr]||"").trim():"", phone:iTel>=0?(r[iTel]||"").trim():"", muniIds, permits, notes };
+                const idx=byNorm.get(normBizName(nm));
+                if(idx!=null){ upd++; it.mode="更新"; it.idx=idx; } else { neu++; it.mode="新規"; }
+                items.push(it);
+              }
+              setPreview({items,upd,neu,unmatchedMunis:[...unmatchedMunis]}); setErr("");
+            }catch(ex){ console.error("[importPermit]",ex); setErr("読み込みに失敗しました。CSV形式・文字コードをご確認ください。"); }
+          };
+          const doImport=()=>{
+            if(!preview) return;
+            const today=new Date().toISOString().slice(0,10);
+            const vs=[...vendors];
+            preview.items.forEach(it=>{
+              if(it.mode==="更新"){
+                const v=vs[it.idx];
+                vs[it.idx]={...v,
+                  ...(it.address?{address:it.address}:{}),
+                  ...(it.phone?{phone:it.phone}:{}),
+                  municipalityIds:[...new Set([...(v.municipalityIds||[]),...it.muniIds])],
+                  permitTypes:[...new Set([...(v.permitTypes||[]),...it.permits])],
+                  ...(it.notes?{notes:it.notes}:{}),
+                  updatedAt:today };
+              } else {
+                vs.push({ id:Date.now()+Math.random(), name:it.name.trim(), status:"未接触",
+                  phone:it.phone||"", address:it.address||"", municipalityIds:it.muniIds, permitTypes:it.permits,
+                  notes:it.notes||"", memos:[], approachLogs:[], chat:[], createdAt:new Date().toISOString(), updatedAt:today });
+              }
+            });
+            save({...data,vendors:vs});
+            window.alert(`✅ 許可業者を取り込みました\n更新 ${preview.upd}件 / 新規 ${preview.neu}件${preview.unmatchedMunis.length?`\n\n⚠️ MyDeskに無い自治体（対応自治体に未設定）:\n`+preview.unmatchedMunis.join("、"):""}`);
+            setSheet(null); setPreview(null);
+          };
+          return (
+            <Sheet title="🚮 許可業者取込（上書き追加）" onClose={()=>{setSheet(null);setPreview(null);setErr("");}}>
+              <div style={{fontSize:"0.78rem",color:C.text,lineHeight:1.6,marginBottom:"0.75rem"}}>
+                <strong>許可業者_取込用.csv</strong> を選択してください。<br/>
+                <span style={{fontSize:"0.72rem",color:C.textSub}}>業者名で照合し、<strong>既存は上書き更新</strong>（住所・電話・備考を上書き、対応自治体・許可種別は追加）／無ければ<strong>新規追加</strong>。<strong>ステータスは既存のまま</strong>（加入済ロックを守る）。対応自治体はシートの各◯列を名前でMyDeskの自治体に照合します。</span>
+              </div>
+              <label style={{display:"inline-flex",alignItems:"center",gap:"0.4rem",padding:"0.6rem 1rem",background:"#fef2f2",border:"1.5px solid #ef4444",borderRadius:"8px",color:"#b91c1c",fontWeight:700,fontSize:"0.82rem",cursor:"pointer"}}>
+                📄 CSVファイルを選択
+                <input type="file" accept=".csv,text/csv" onChange={handleFile} style={{display:"none"}}/>
+              </label>
+              {err&&<div style={{marginTop:"0.75rem",fontSize:"0.78rem",color:"#dc2626",fontWeight:700}}>⚠️ {err}</div>}
+              {preview&&(
+                <div style={{marginTop:"1rem"}}>
+                  <div style={{display:"flex",gap:"0.5rem",marginBottom:"0.75rem"}}>
+                    <div style={{flex:1,background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:"8px",padding:"0.5rem 0.7rem"}}><div style={{fontSize:"0.62rem",color:"#1d4ed8",fontWeight:700}}>更新（上書き）</div><div style={{fontSize:"1.3rem",fontWeight:800,color:"#1e40af"}}>{preview.upd}</div></div>
+                    <div style={{flex:1,background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:"8px",padding:"0.5rem 0.7rem"}}><div style={{fontSize:"0.62rem",color:"#15803d",fontWeight:700}}>新規追加</div><div style={{fontSize:"1.3rem",fontWeight:800,color:"#166534"}}>{preview.neu}</div></div>
+                  </div>
+                  {preview.unmatchedMunis.length>0&&(<div style={{marginBottom:"0.75rem",fontSize:"0.72rem",color:"#92400e",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:"6px",padding:"0.4rem 0.6rem"}}>⚠️ MyDeskに無い自治体（未設定になります）: {preview.unmatchedMunis.join("、")}</div>)}
+                  <div style={{fontSize:"0.72rem",color:C.textSub,fontWeight:700,marginBottom:"0.3rem"}}>プレビュー（先頭12件 / 全{preview.items.length}件）</div>
+                  <div style={{maxHeight:240,overflowY:"auto",border:`1px solid ${C.borderLight}`,borderRadius:"6px"}}>
+                    {preview.items.slice(0,12).map((it,i)=>(
+                      <div key={i} style={{padding:"0.4rem 0.6rem",borderTop:i>0?`1px solid ${C.borderLight}`:"none",fontSize:"0.72rem",display:"flex",gap:"0.4rem",alignItems:"center",flexWrap:"wrap"}}>
+                        <span style={{fontSize:"0.6rem",fontWeight:700,padding:"0.05rem 0.35rem",borderRadius:999,background:it.mode==="更新"?"#dbeafe":"#dcfce7",color:it.mode==="更新"?"#1e40af":"#166534"}}>{it.mode}</span>
+                        <span style={{fontWeight:700,color:C.text}}>{it.name}</span>
+                        <span style={{color:C.textMuted}}>{it.phone||"-"} / 自治体{it.muniIds.length}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{display:"flex",gap:"0.5rem",marginTop:"0.75rem"}}>
+                    <Btn variant="secondary" style={{flex:1}} onClick={()=>{setPreview(null);setErr("");}}>やり直す</Btn>
+                    <Btn style={{flex:2}} onClick={doImport}>この内容で取込（更新{preview.upd}・新規{preview.neu}）</Btn>
+                  </div>
+                </div>
+              )}
+            </Sheet>
+          );
+        })()}
         {sheet==="importDustalk"&&(()=>{
           const preview=importPreview; const setPreview=setImportPreview;
           const err=importErr; const setErr=setImportErr;
@@ -23014,16 +23188,16 @@ ${orig}`})
                   (nameMap.get(rName)||[]).forEach(i2=>cand.add(i2));
                   if(rPhone.length>=7)(phoneMap.get(rPhone)||[]).forEach(i2=>cand.add(i2));
                   if(rAddr.length>=10)(addrMap.get(rAddr)||[]).forEach(i2=>cand.add(i2));
-                  let dup=false;
+                  let dup=false, dupIdx=null;
                   for(const ci of cand){
                     const v=vendors[ci];
                     let hits=0;
                     if(rName && normStr2(v.name)===rName) hits++;
                     if(rPhone.length>=7 && normPhone2(v.phone||"")===rPhone) hits++;
                     if(rAddr.length>=10 && normStr2(v.address||"")===rAddr) hits++;
-                    if(hits>=2){ dup=true; break; }
+                    if(hits>=2){ dup=true; dupIdx=ci; break; }
                   }
-                  row._dup=dup;
+                  row._dup=dup; row._dupIdx=dupIdx;
                 }
                 setImportProgress(`重複チェック中… ${Math.min(i+500,mapped.length)}/${mapped.length}`);
                 await yield_();
@@ -23038,41 +23212,48 @@ ${orig}`})
           };
           const doImport=()=>{
             if(!preview?.length)return;
-            // ★重複判定はファイル読込時に計算済み（row._dup）。ここでは再計算しない（フリーズ防止）。
-            const isDupVendor = r => vendorDedup && !!r._dup;
+            const today=new Date().toISOString().slice(0,10);
+            const OKP=["家庭収運","事業収運","一廃収運","産廃収運","産廃処分","産廃収運処分"];
+            const resolveMids = r => r.muniNames.map(mn=>munis.find(m=>m.name===mn)?.id).filter(Boolean);
+            const resolvePerms = r => (r.permitTypeNames||[]).filter(pt=>OKP.includes(pt));
+            const isDupVendor = r => vendorDedup && !!r._dup && r._dupIdx!=null;
+            // 新規追加（重複でない行）
             const toAdd=preview.filter(r=>!isDupVendor(r)).map((r,idx)=>{
-              // Resolve municipality IDs from names
-              const mids=r.muniNames.map(mn=>munis.find(m=>m.name===mn)?.id).filter(Boolean);
+              const mids=resolveMids(r);
               const uid = "v_"+Date.now()+"_"+idx+"_"+Math.random().toString(36).slice(2,11);
               return {
-                id:uid,
-                name:r.name, status:r.status||"未接触",
-                phone:r.phone||"",
-                municipalityIds:mids, assigneeIds:[],
-                address:r.address||"",
-                permitTypes:(r.permitTypeNames||[]).filter(pt=>["家庭収運","事業収運","一廃収運","産廃収運","産廃処分","産廃収運処分"].includes(pt)),
-                beeNet:!!r.beeNet,
+                id:uid, name:r.name, status:r.status||"未接触", phone:r.phone||"",
+                municipalityIds:mids, assigneeIds:[], address:r.address||"",
+                permitTypes:resolvePerms(r), beeNet:!!r.beeNet,
                 memos:r.notes?[{id:"mn_"+Date.now()+"_"+idx+"_"+Math.random().toString(36).slice(2,11),text:r.notes,userId:currentUser?.id,date:new Date().toISOString()}]:[],
                 chat:[], createdAt:new Date().toISOString()
               };
             });
-            // ★大量インポート対策: デバウンス保存ではなく即座に awaited 保存し、
-            //   保存の成否を確認する。失敗時はデータを巻き戻し、明確なエラーを出す。
-            const newData={...data,vendors:[...vendors,...toAdd]};
+            // 既存へ書き足し（重複行・消さず追加）: 自治体/許可は追加、住所/電話は空欄のみ補完、備考はメモ追記、ステータスは既存維持
+            const updMap=new Map();
+            preview.filter(r=>isDupVendor(r)).forEach((r,k)=>{
+              const base = updMap.get(r._dupIdx) || vendors[r._dupIdx];
+              const mids=resolveMids(r); const perms=resolvePerms(r);
+              const merged={...base};
+              merged.municipalityIds=[...new Set([...(base.municipalityIds||[]),...mids])];
+              merged.permitTypes=[...new Set([...(base.permitTypes||[]),...perms])];
+              if(!base.address && r.address) merged.address=r.address;
+              if(!base.phone && r.phone) merged.phone=r.phone;
+              if(r.beeNet) merged.beeNet=true;
+              if(r.notes && !(base.memos||[]).some(m=>(m.text||"")===r.notes)) merged.memos=[...(base.memos||[]),{id:"mn_"+Date.now()+"_"+k+"_"+Math.random().toString(36).slice(2,11),text:r.notes,userId:currentUser?.id,date:new Date().toISOString()}];
+              merged.updatedAt=today;
+              updMap.set(r._dupIdx, merged);
+            });
+            const mergedVendors = updMap.size ? vendors.map((v,i)=> updMap.has(i)?updMap.get(i):v) : vendors;
+            const newData={...data,vendors:[...mergedVendors,...toAdd]};
             setImporting(true);
-            setData(newData); // 画面即時反映
+            setData(newData);
             (async()=>{
               const ok = await saveData(newData);
               setImporting(false);
-              if(ok===false){
-                // 保存失敗（おそらくデータ量過大）→ ロールバック
-                setData(data);
-                setErr(`保存に失敗しました（${toAdd.length}件）。一度に追加する件数を減らすか、時間をおいて再試行してください。`);
-                return;
-              }
-              setBulkDone({added:toAdd.length,dupes:preview.length-toAdd.length});
-              setPreview(null);
-              setSheet("importDone");
+              if(ok===false){ setData(data); setErr(`保存に失敗しました（新規${toAdd.length}/書き足し${updMap.size}件）。件数を減らして再試行してください。`); return; }
+              window.alert(`✅ 取込完了\n新規追加: ${toAdd.length}件\n既存に書き足し: ${updMap.size}件`);
+              setPreview(null); setSheet(null);
             })();
           };
           // 重複判定は計算済みフラグを参照するだけ（O(1)）
@@ -23107,8 +23288,8 @@ ${orig}`})
                   <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem",flexWrap:"wrap"}}>
                     <span style={{fontWeight:700,fontSize:"0.82rem",color:C.text}}>プレビュー</span>
                     <span style={{background:"#d1fae5",color:"#065f46",borderRadius:999,fontSize:"0.7rem",fontWeight:700,padding:"0.1rem 0.5rem"}}>全{preview.length}件</span>
-                    <span style={{background:"#dbeafe",color:"#1e40af",borderRadius:999,fontSize:"0.7rem",fontWeight:700,padding:"0.1rem 0.5rem"}}>追加{addCount}件</span>
-                    {preview.length-addCount>0&&<span style={{background:"#fef3c7",color:"#92400e",borderRadius:999,fontSize:"0.7rem",fontWeight:700,padding:"0.1rem 0.5rem"}}>重複{preview.length-addCount}件</span>}
+                    <span style={{background:"#dbeafe",color:"#1e40af",borderRadius:999,fontSize:"0.7rem",fontWeight:700,padding:"0.1rem 0.5rem"}}>新規追加{addCount}件</span>
+                    {preview.length-addCount>0&&<span style={{background:"#e0e7ff",color:"#3730a3",borderRadius:999,fontSize:"0.7rem",fontWeight:700,padding:"0.1rem 0.5rem"}}>既存に書き足し{preview.length-addCount}件</span>}
                   </div>
                   {/* 重複チェックON/OFFトグル */}
                   <label style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.625rem",cursor:"pointer",fontSize:"0.76rem",color:C.textSub,background:vendorDedup?"#f8fafc":"#fef2f2",border:`1px solid ${vendorDedup?C.borderLight:"#fecaca"}`,borderRadius:"0.5rem",padding:"0.5rem 0.7rem"}}>
@@ -23116,7 +23297,7 @@ ${orig}`})
                     <span>
                       <span style={{fontWeight:700,color:vendorDedup?C.text:"#dc2626"}}>{vendorDedup?"重複チェックON":"重複チェックOFF（全件追加）"}</span>
                       <span style={{display:"block",fontSize:"0.68rem",color:C.textMuted,marginTop:"0.1rem"}}>
-                        {vendorDedup?"名前・電話・住所のうち2つ以上が一致する業者のみスキップします":"既存と重複していても全て追加します"}
+                        {vendorDedup?"名前・電話・住所のうち2つ以上一致する既存業者には書き足し（消さず追加）します":"既存と重複していても全て新規追加します"}
                       </span>
                     </span>
                   </label>
@@ -23128,7 +23309,7 @@ ${orig}`})
                           <span style={{flex:1,fontSize:"0.82rem",fontWeight:600}}>{r.name}</span>
                           <span style={{fontSize:"0.68rem",background:VENDOR_STATUS[r.status]?.bg||C.bg,color:VENDOR_STATUS[r.status]?.color||C.textMuted,borderRadius:999,padding:"0.1rem 0.4rem",fontWeight:700}}>{r.status}</span>
                           {r.muniNames.length>0&&<span style={{fontSize:"0.65rem",color:C.textMuted}}>{r.muniNames.join("・")}</span>}
-                          {dup&&<span style={{fontSize:"0.65rem",color:"#92400e",background:"#fef3c7",borderRadius:999,padding:"0.1rem 0.35rem"}}>重複</span>}
+                          {dup&&<span style={{fontSize:"0.65rem",color:"#3730a3",background:"#e0e7ff",borderRadius:999,padding:"0.1rem 0.35rem"}}>書き足し</span>}
                         </div>
                       );
                     })}
@@ -23136,8 +23317,8 @@ ${orig}`})
                   </div>
                   <div style={{display:"flex",gap:"0.625rem",marginTop:"0.75rem"}}>
                     <Btn variant="secondary" style={{flex:1}} onClick={()=>setPreview(null)} disabled={importing}>クリア</Btn>
-                    <Btn style={{flex:2}} onClick={doImport} disabled={!addCount||importing}>
-                      {importing?`保存中… (${addCount}件)`:`${addCount}件をインポート`}
+                    <Btn style={{flex:2}} onClick={doImport} disabled={!preview.length||importing}>
+                      {importing?`保存中… (${preview.length}件)`:`${preview.length}件を取込（新規${addCount}・書き足し${preview.length-addCount}）`}
                     </Btn>
                   </div>
                   {importing&&<div style={{marginTop:"0.5rem",fontSize:"0.72rem",color:C.textMuted,textAlign:"center"}}>件数が多いと保存に数十秒かかることがあります。画面を閉じずにお待ちください。</div>}
@@ -33404,6 +33585,163 @@ function AgentFAB({ data, currentUser, users, onAction }) {
 }
 
 
+
+// ─── QUOTE PROJECTS VIEW: 見積案件（業者見積の依頼・単価管理） ───────────────
+function QuoteProjectsView({ data, setData, currentUser, users=[] }){
+  const projects = data.quoteProjects || [];
+  const companies = data.companies || [];
+  const vendors = data.vendors || [];
+  const [activeId, setActiveId] = React.useState(null);
+  const [creating, setCreating] = React.useState(false);
+  const [form, setForm] = React.useState({name:"", companyId:"", memo:""});
+  const [vSearch, setVSearch] = React.useState("");
+  const persist = (next) => { const nd = { ...data, quoteProjects: next }; setData(nd); if (typeof scheduleSaveData === "function") scheduleSaveData(nd); };
+  const upd = (id, patch) => persist(projects.map(p => p.id===id ? { ...p, ...patch, updatedAt:new Date().toISOString() } : p));
+  const active = projects.find(p => p.id===activeId);
+  const QSTATUS = ["見積依頼中","回収中","比較中","完了"];
+  const REQ = ["未依頼","依頼済","回答済","辞退"];
+  const METHODS = ["出来高","定額","その他"];
+  const yen = n => (n||n===0) ? "¥"+Number(n).toLocaleString() : "";
+
+  // ---- 一覧 ----
+  if(!active){
+    return (
+      <div style={{padding:"1rem 1.25rem",maxWidth:1100,margin:"0 auto"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"1rem",flexWrap:"wrap",gap:"0.5rem"}}>
+          <div style={{fontSize:"1.15rem",fontWeight:800,color:C.text}}>💰 見積案件</div>
+          <button onClick={()=>{setCreating(v=>!v);setForm({name:"",companyId:"",memo:""});}} style={{padding:"0.5rem 1rem",borderRadius:8,border:"none",background:C.accent,color:"white",fontWeight:800,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>＋ 案件を作成</button>
+        </div>
+        {creating&&(
+          <div style={{background:"white",border:`1px solid ${C.border}`,borderRadius:10,padding:"0.9rem 1rem",marginBottom:"1rem",boxShadow:C.shadow}}>
+            <div style={{fontWeight:800,fontSize:"0.85rem",color:C.text,marginBottom:"0.6rem"}}>新規見積案件</div>
+            <div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
+              <input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="案件名（例：RIZAP 131店舗 見積）" style={{padding:"0.5rem 0.7rem",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit"}}/>
+              <select value={form.companyId} onChange={e=>setForm({...form,companyId:e.target.value})} style={{padding:"0.5rem 0.7rem",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",background:"white"}}>
+                <option value="">紐付け企業（クライアント）を選択…</option>
+                {companies.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              <textarea value={form.memo} onChange={e=>setForm({...form,memo:e.target.value})} placeholder="メモ" rows={2} style={{padding:"0.5rem 0.7rem",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",resize:"vertical"}}/>
+              <div style={{display:"flex",gap:"0.5rem"}}>
+                <button onClick={()=>setCreating(false)} style={{flex:1,padding:"0.5rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit"}}>キャンセル</button>
+                <button disabled={!form.name.trim()} onClick={()=>{
+                  const comp=companies.find(c=>String(c.id)===String(form.companyId));
+                  const p={ id:"qp_"+Date.now()+"_"+Math.random().toString(36).slice(2,8), name:form.name.trim(), companyId:form.companyId||null, companyName:comp?.name||"", memo:form.memo||"", status:"見積依頼中", vendors:[], stores:[], createdAt:new Date().toISOString(), updatedAt:new Date().toISOString() };
+                  persist([p, ...projects]); setCreating(false); setActiveId(p.id);
+                }} style={{flex:2,padding:"0.5rem",borderRadius:8,border:"none",background:form.name.trim()?C.accent:"#cbd5e1",color:"white",fontWeight:800,fontSize:"0.8rem",cursor:form.name.trim()?"pointer":"default",fontFamily:"inherit"}}>作成</button>
+              </div>
+            </div>
+          </div>
+        )}
+        {projects.length===0&&!creating&&(<div style={{textAlign:"center",color:C.textMuted,padding:"3rem 1rem",fontSize:"0.85rem"}}>まだ見積案件がありません。「＋ 案件を作成」から始めてください。</div>)}
+        <div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
+          {projects.map(p=>(
+            <button key={p.id} onClick={()=>setActiveId(p.id)} style={{textAlign:"left",background:"white",border:`1px solid ${C.border}`,borderRadius:10,padding:"0.75rem 0.9rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"0.75rem"}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontWeight:800,fontSize:"0.9rem",color:C.text}}>{p.name}</div>
+                <div style={{fontSize:"0.72rem",color:C.textSub,marginTop:2}}>{p.companyName||"（企業未紐付け）"} ・ 対象業者 {(p.vendors||[]).length}社</div>
+              </div>
+              <span style={{fontSize:"0.68rem",fontWeight:700,padding:"0.15rem 0.55rem",borderRadius:999,background:C.accentBg,color:C.accentDark}}>{p.status||"見積依頼中"}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // ---- 詳細 ----
+  const p = active;
+  const setVendors = (vs) => upd(p.id, { vendors: vs });
+  const addVendor = (v) => { if((p.vendors||[]).some(x=>String(x.vendorId)===String(v.id))) return; setVendors([...(p.vendors||[]), { id:"qv_"+Date.now()+"_"+Math.random().toString(36).slice(2,8), vendorId:v.id, vendorName:v.name, assignee:"", contact:"", status:"未依頼", lines:[] }]); setVSearch(""); };
+  const vHits = vSearch.trim() ? vendors.filter(v=>String(v.name||"").toLowerCase().includes(vSearch.trim().toLowerCase())).slice(0,20) : [];
+  const totalOf = (qv) => (qv.lines||[]).reduce((s,l)=> s + (Number(l.amount)||0), 0);
+
+  return (
+    <div style={{padding:"1rem 1.25rem",maxWidth:1100,margin:"0 auto"}}>
+      <button onClick={()=>setActiveId(null)} style={{background:"none",border:"none",color:C.accent,fontWeight:700,fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit",marginBottom:"0.6rem"}}>‹ 見積案件一覧</button>
+      <div style={{background:"white",border:`1px solid ${C.border}`,borderRadius:10,padding:"0.9rem 1rem",marginBottom:"1rem"}}>
+        <input value={p.name} onChange={e=>upd(p.id,{name:e.target.value})} style={{width:"100%",boxSizing:"border-box",fontWeight:800,fontSize:"1rem",color:C.text,border:"none",outline:"none",fontFamily:"inherit",marginBottom:"0.4rem"}}/>
+        <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap",alignItems:"center"}}>
+          <select value={p.companyId||""} onChange={e=>{const c=companies.find(x=>String(x.id)===String(e.target.value));upd(p.id,{companyId:e.target.value||null,companyName:c?.name||""});}} style={{padding:"0.35rem 0.6rem",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:"0.8rem",fontFamily:"inherit",background:"white"}}>
+            <option value="">企業未紐付け</option>
+            {companies.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          <select value={p.status||"見積依頼中"} onChange={e=>upd(p.id,{status:e.target.value})} style={{padding:"0.35rem 0.6rem",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:"0.8rem",fontFamily:"inherit",background:"white"}}>
+            {QSTATUS.map(s=><option key={s} value={s}>{s}</option>)}
+          </select>
+          <button onClick={()=>{ if(window.confirm("この見積案件を削除しますか？")){ persist(projects.filter(x=>x.id!==p.id)); setActiveId(null); } }} style={{marginLeft:"auto",padding:"0.35rem 0.7rem",borderRadius:8,border:"1px solid #fca5a5",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}}>🗑 削除</button>
+        </div>
+        <textarea value={p.memo||""} onChange={e=>upd(p.id,{memo:e.target.value})} placeholder="メモ" rows={2} style={{width:"100%",boxSizing:"border-box",marginTop:"0.5rem",padding:"0.4rem 0.6rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.8rem",fontFamily:"inherit",resize:"vertical"}}/>
+      </div>
+
+      {/* 対象業者 */}
+      <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem"}}>
+        <div style={{fontWeight:800,fontSize:"0.9rem",color:C.text}}>対象業者 ＆ 見積</div>
+        <span style={{fontSize:"0.7rem",color:C.textMuted}}>{(p.vendors||[]).length}社</span>
+      </div>
+      <div style={{position:"relative",marginBottom:"0.75rem"}}>
+        <input value={vSearch} onChange={e=>setVSearch(e.target.value)} placeholder="🔍 業者名で検索して対象に追加" style={{width:"100%",boxSizing:"border-box",padding:"0.5rem 0.7rem",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:"0.83rem",fontFamily:"inherit"}}/>
+        {vHits.length>0&&(
+          <div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:20,background:"white",border:`1.5px solid ${C.accent}`,borderRadius:8,maxHeight:240,overflowY:"auto",marginTop:2,boxShadow:C.shadowMd}}>
+            {vHits.map(v=>(
+              <button key={v.id} onClick={()=>addVendor(v)} style={{display:"flex",alignItems:"center",gap:"0.5rem",width:"100%",padding:"0.45rem 0.7rem",border:"none",borderBottom:`1px solid ${C.borderLight}`,background:"white",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+                <span style={{fontSize:"0.82rem",fontWeight:600,color:C.text,flex:1}}>{v.name}</span>
+                <span style={{fontSize:"0.66rem",color:C.textMuted}}>{v.status||""}</span>
+                <span style={{fontSize:"0.8rem",color:C.accent,fontWeight:800}}>＋</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div style={{display:"flex",flexDirection:"column",gap:"0.75rem"}}>
+        {(p.vendors||[]).map(qv=>{
+          const setQV = patch => setVendors((p.vendors||[]).map(x=>x.id===qv.id?{...x,...patch}:x));
+          const setLines = lines => setQV({lines});
+          return (
+            <div key={qv.id} style={{background:"white",border:`1px solid ${C.border}`,borderRadius:10,padding:"0.75rem 0.9rem"}}>
+              <div style={{display:"flex",alignItems:"center",gap:"0.5rem",flexWrap:"wrap",marginBottom:"0.5rem"}}>
+                <span style={{fontWeight:800,fontSize:"0.88rem",color:C.text}}>{qv.vendorName}</span>
+                <select value={qv.status||"未依頼"} onChange={e=>setQV({status:e.target.value})} style={{padding:"0.2rem 0.5rem",borderRadius:999,border:`1px solid ${C.border}`,fontSize:"0.68rem",fontWeight:700,fontFamily:"inherit",background:"white"}}>
+                  {REQ.map(s=><option key={s} value={s}>{s}</option>)}
+                </select>
+                <span style={{marginLeft:"auto",fontSize:"0.8rem",fontWeight:800,color:C.accentDark}}>合計 {yen(totalOf(qv))}</span>
+                <button onClick={()=>setVendors((p.vendors||[]).filter(x=>x.id!==qv.id))} style={{border:"none",background:"none",color:"#dc2626",cursor:"pointer",fontSize:"0.9rem",fontFamily:"inherit"}}>×</button>
+              </div>
+              <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap",marginBottom:"0.5rem"}}>
+                <input value={qv.assignee||""} onChange={e=>setQV({assignee:e.target.value})} placeholder="先方担当者" style={{flex:1,minWidth:120,padding:"0.35rem 0.55rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.76rem",fontFamily:"inherit"}}/>
+                <input value={qv.contact||""} onChange={e=>setQV({contact:e.target.value})} placeholder="連絡先(メール/TEL)" style={{flex:1,minWidth:120,padding:"0.35rem 0.55rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.76rem",fontFamily:"inherit"}}/>
+              </div>
+              {/* 見積明細（自由行） */}
+              <div style={{border:`1px solid ${C.borderLight}`,borderRadius:8,overflow:"hidden"}}>
+                <div style={{display:"flex",gap:"0.3rem",padding:"0.3rem 0.5rem",background:C.bg,fontSize:"0.62rem",fontWeight:700,color:C.textSub}}>
+                  <span style={{flex:2}}>品目</span><span style={{width:70}}>料金方式</span><span style={{width:80}}>単価</span><span style={{width:90}}>金額</span><span style={{flex:2}}>条件・備考</span><span style={{width:20}}/>
+                </div>
+                {(qv.lines||[]).map(l=>{
+                  const setL=patch=>setLines((qv.lines||[]).map(x=>x.id===l.id?{...x,...patch}:x));
+                  return (
+                    <div key={l.id} style={{display:"flex",gap:"0.3rem",padding:"0.3rem 0.5rem",borderTop:`1px solid ${C.borderLight}`,alignItems:"center"}}>
+                      <input value={l.item||""} onChange={e=>setL({item:e.target.value})} placeholder="可燃/不燃/古紙…" style={{flex:2,minWidth:0,padding:"0.3rem 0.4rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.74rem",fontFamily:"inherit"}}/>
+                      <select value={l.method||""} onChange={e=>setL({method:e.target.value})} style={{width:70,padding:"0.3rem 0.2rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.7rem",fontFamily:"inherit",background:"white"}}>
+                        <option value=""></option>{METHODS.map(m=><option key={m} value={m}>{m}</option>)}
+                      </select>
+                      <input value={l.unit||""} onChange={e=>setL({unit:e.target.value})} placeholder="単価" inputMode="numeric" style={{width:80,padding:"0.3rem 0.4rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.74rem",fontFamily:"inherit"}}/>
+                      <input value={l.amount||""} onChange={e=>setL({amount:e.target.value.replace(/[^0-9]/g,"")})} placeholder="金額" inputMode="numeric" style={{width:90,padding:"0.3rem 0.4rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.74rem",fontFamily:"inherit"}}/>
+                      <input value={l.note||""} onChange={e=>setL({note:e.target.value})} placeholder="条件・備考" style={{flex:2,minWidth:0,padding:"0.3rem 0.4rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.74rem",fontFamily:"inherit"}}/>
+                      <button onClick={()=>setLines((qv.lines||[]).filter(x=>x.id!==l.id))} style={{width:20,border:"none",background:"none",color:"#dc2626",cursor:"pointer",fontFamily:"inherit"}}>×</button>
+                    </div>
+                  );
+                })}
+                <button onClick={()=>setLines([...(qv.lines||[]),{id:"ln_"+Date.now()+"_"+Math.random().toString(36).slice(2,8),item:"",method:"",unit:"",amount:"",note:""}])} style={{width:"100%",padding:"0.35rem",border:"none",borderTop:`1px solid ${C.borderLight}`,background:C.bg,color:C.accent,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}}>＋ 明細行を追加</button>
+              </div>
+            </div>
+          );
+        })}
+        {(p.vendors||[]).length===0&&<div style={{textAlign:"center",color:C.textMuted,padding:"1.5rem",fontSize:"0.8rem"}}>上の検索から対象業者を追加してください。</div>}
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   // ━━━━ QR 公開フォームルート（業者がスキャンしてアクセス）━━━━
   // 通常のMyDeskアプリより前に判定し、フォーム画面に切り替える
@@ -34871,9 +35209,9 @@ export default function App() {
 
   const TABS=[
     {id:"tasks",    emoji:"✅", label:"タスク"},
-    {id:"schedule", emoji:"📅", label:"スケジュール"},
     {id:"email",    emoji:"✉️", label:"メール"},
     {id:"sales",    emoji:"💼", label:"営業"},
+    {id:"quotes",   emoji:"💰", label:"見積"},
     {id:"analytics",emoji:"📊", label:"分析"},
     {id:"mypage",   emoji:"⚙️", label:"設定"},
   ];
@@ -34961,6 +35299,11 @@ export default function App() {
 
             {/* Notification bell + User menu */}
             <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:"0.5rem",position:"relative"}}>
+              {/* ⚙️ 設定 */}
+              <button onClick={()=>persistTab("md_tab","mypage",setTab)} title="設定"
+                style={{width:38,height:38,borderRadius:"50%",background:C.bg,border:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0,fontSize:"1rem",color:C.textSub}}>
+                ⚙️
+              </button>
               {/* ④ グローバル検索 */}
               <button onClick={()=>setGlobalSearch("")}
                 style={{width:38,height:38,borderRadius:"50%",background:C.bg,border:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0,fontSize:"1rem",color:C.textSub,transition:"all 0.15s"}}>
@@ -35191,6 +35534,7 @@ export default function App() {
               onNavigateToProject={(pjId)=>{ setNavTarget({type:"project",id:pjId}); }}
               navTarget={navTarget} clearNavTarget={()=>setNavTarget(null)}/>}
             {tab==="schedule"  && <ScheduleView/>}
+            {tab==="quotes"    && <QuoteProjectsView data={data} setData={setData} currentUser={currentUser} users={users}/>}
             {tab==="email"     && <EmailView     data={data} setData={setData} currentUser={currentUser}/>}
             {tab==="sales"     && <SalesView     data={data} setData={setData} currentUser={currentUser} users={users} isPC={isPC}
               salesTab={salesTab} setSalesTab={(v)=>persistTab("md_salesTab",v,setSalesTab)}
