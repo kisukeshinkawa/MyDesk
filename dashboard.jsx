@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-26-v303-quote-cost-breakdown"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-27-v304-quote-unittype"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -33717,7 +33717,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
   const mergeResp = (qv, req) => {
     if(!(req && req.status==="responded" && req.response)) return null;
     const prices={...(qv.prices||{})};
-    (req.response.lines||[]).forEach(l=>{ if(l&&l.itemId!=null) prices[l.itemId]={method:l.method||"",unit:l.unit||"",qty:l.qty||"",transport:l.transport||"",disposal:l.disposal||"",flat:l.flat||"",overhead:l.overhead||"",condition:l.condition||l.note||"",note:l.note||"",amount:l.amount||""}; });
+    (req.response.lines||[]).forEach(l=>{ if(l&&l.itemId!=null) prices[l.itemId]={method:l.method||"",unit:l.unit||"",qty:l.qty||"",unitType:l.unitType||"",transport:l.transport||"",disposal:l.disposal||"",flat:l.flat||"",overhead:l.overhead||"",condition:l.condition||l.note||"",note:l.note||"",amount:l.amount||""}; });
     return {...qv, prices, status:"回答済", respondedAt:req.respondedAt, vendorNote:(req.response.vendorNote||"")};
   };
   const issueLink = async (qv, silent) => {
@@ -33985,7 +33985,7 @@ function VendorQuoteCard({ qv, rows, vrec, C, rid, mapsUrl, portalBusy, PORTAL_O
   const METHODS=["出来高","定額","その他"];
   const [open,setOpen]=React.useState(true);
   const [checked,setChecked]=React.useState({});
-  const [bulk,setBulk]=React.useState({method:"",unit:"",transport:"",disposal:"",overhead:"",flat:""});
+  const [bulk,setBulk]=React.useState({method:"",unit:"",unitType:"",transport:"",disposal:"",overhead:"",flat:""});
   const [note,setNote]=React.useState("");
   const [showInfo,setShowInfo]=React.useState(false);
   const N=v=>{const n=parseFloat(String(v==null?"":v).replace(/[^0-9.]/g,""));return isNaN(n)?0:n;};
@@ -33997,7 +33997,7 @@ function VendorQuoteCard({ qv, rows, vrec, C, rid, mapsUrl, portalBusy, PORTAL_O
   const total=rows.reduce((s,r)=>s+lineTotal(prices[r.itemId]),0)+(qv.extraLines||[]).reduce((s,l)=>s+N(l.amount),0);
   const checkedIds=Object.keys(checked).filter(k=>checked[k]);
   const allChecked=rows.length>0&&checkedIds.length===rows.length;
-  const applyBulk=()=>{ if(!checkedIds.length){window.alert("店舗（行）にチェックを入れてください。");return;} const np={...(qv.prices||{})}; checkedIds.forEach(id=>{ const cur={...np[id]}; ["method","unit","transport","disposal","overhead","flat"].forEach(k=>{ if(bulk[k]!=="") cur[k]=(k==="method"?bulk[k]:bulk[k].replace(/[^0-9.]/g,"")); }); np[id]=cur; }); onChange({prices:np}); };
+  const applyBulk=()=>{ if(!checkedIds.length){window.alert("店舗（行）にチェックを入れてください。");return;} const np={...(qv.prices||{})}; checkedIds.forEach(id=>{ const cur={...np[id]}; ["method","unit","unitType","transport","disposal","overhead","flat"].forEach(k=>{ if(bulk[k]!=="") cur[k]=((k==="method"||k==="unitType")?bulk[k]:bulk[k].replace(/[^0-9.]/g,"")); }); np[id]=cur; }); onChange({prices:np}); };
   const grade=vrec&&vrec.grade;
   const setExtra=lines=>onChange({extraLines:lines});
   const NUM={width:"100%",boxSizing:"border-box",padding:"0.25rem 0.3rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit",textAlign:"right"};
@@ -34063,6 +34063,7 @@ function VendorQuoteCard({ qv, rows, vrec, C, rid, mapsUrl, portalBusy, PORTAL_O
           <span style={{fontSize:"0.66rem",fontWeight:700,color:"#9a3412"}}>選択に一括：</span>
           <select value={bulk.method} onChange={e=>setBulk({...bulk,method:e.target.value})} style={{padding:"0.25rem 0.4rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.7rem",fontFamily:"inherit",background:"white"}}><option value="">方式</option>{METHODS.map(m=><option key={m} value={m}>{m}</option>)}</select>
           <input value={bulk.unit} onChange={e=>setBulk({...bulk,unit:e.target.value})} placeholder="単価" style={{width:70,padding:"0.25rem 0.4rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.7rem",fontFamily:"inherit"}}/>
+          <input value={bulk.unitType} onChange={e=>setBulk({...bulk,unitType:e.target.value})} placeholder="種別(kg/㎥)" style={{width:78,padding:"0.25rem 0.4rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.7rem",fontFamily:"inherit"}}/>
           <input value={bulk.transport} onChange={e=>setBulk({...bulk,transport:e.target.value})} placeholder="運搬費" style={{width:70,padding:"0.25rem 0.4rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.7rem",fontFamily:"inherit"}}/>
           <input value={bulk.disposal} onChange={e=>setBulk({...bulk,disposal:e.target.value})} placeholder="処分費" style={{width:70,padding:"0.25rem 0.4rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.7rem",fontFamily:"inherit"}}/>
           <input value={bulk.overhead} onChange={e=>setBulk({...bulk,overhead:e.target.value})} placeholder="諸経費" style={{width:70,padding:"0.25rem 0.4rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.7rem",fontFamily:"inherit"}}/>
@@ -34074,12 +34075,12 @@ function VendorQuoteCard({ qv, rows, vrec, C, rid, mapsUrl, portalBusy, PORTAL_O
       {/* 店舗×品目 見積表（横スクロール） */}
       {rows.length>0?(
         <div style={{overflowX:"auto",border:`1px solid ${C.borderLight}`,borderRadius:8}}>
-          <div style={{minWidth:1040}}>
+          <div style={{minWidth:1086}}>
             <div style={{display:"flex",gap:"0.25rem",padding:"0.3rem 0.5rem",background:C.bg,fontSize:"0.6rem",fontWeight:700,color:C.textSub,alignItems:"center"}}>
               <span style={{width:18,flex:"none"}}><input type="checkbox" checked={allChecked} onChange={e=>{const c={};if(e.target.checked)rows.forEach(r=>c[r.itemId]=true);setChecked(c);}} style={{width:14,height:14}}/></span>
               <span style={{width:150,flex:"none"}}>店舗 / 品目</span>
               <span style={{width:60,flex:"none"}}>方式</span>
-              <span style={HcolNum}>単価</span><span style={{width:48,flex:"none",textAlign:"right"}}>単位</span>
+              <span style={HcolNum}>単価</span><span style={{width:48,flex:"none",textAlign:"right"}}>単位</span><span style={{width:46,flex:"none",textAlign:"center"}}>単位種別</span>
               <span style={{width:76,flex:"none",textAlign:"right"}}>単価総額</span>
               <span style={HcolNum}>運搬費</span><span style={HcolNum}>処分費</span>
               <span style={{width:78,flex:"none",textAlign:"right"}}>定額料金</span><span style={HcolNum}>諸経費</span>
@@ -34096,6 +34097,7 @@ function VendorQuoteCard({ qv, rows, vrec, C, rid, mapsUrl, portalBusy, PORTAL_O
                 <select value={pr.method||""} onChange={e=>setPrice(r.itemId,{method:e.target.value})} style={{width:60,flex:"none",padding:"0.25rem 0.1rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.68rem",fontFamily:"inherit",background:"white"}}><option value=""></option>{METHODS.map(m=><option key={m} value={m}>{m}</option>)}</select>
                 <span style={CcolNum}><input value={pr.unit||""} onChange={e=>setPrice(r.itemId,{unit:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="単価" style={NUM}/></span>
                 <span style={{width:48,flex:"none"}}><input value={pr.qty||""} onChange={e=>setPrice(r.itemId,{qty:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="単位" style={NUM}/></span>
+                <span style={{width:46,flex:"none"}}><input value={pr.unitType||""} onChange={e=>setPrice(r.itemId,{unitType:e.target.value})} placeholder="kg" style={{...NUM,textAlign:"center"}}/></span>
                 <span style={{width:76,flex:"none",...AUTO}}>{subTotal(pr)?Math.round(subTotal(pr)).toLocaleString():""}</span>
                 <span style={CcolNum}><input value={pr.transport||""} onChange={e=>setPrice(r.itemId,{transport:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="運搬" style={NUM}/></span>
                 <span style={CcolNum}><input value={pr.disposal||""} onChange={e=>setPrice(r.itemId,{disposal:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="処分" style={NUM}/></span>
