@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-29-v306-quote-template-dl"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-30-v307-vendor-collapse-areafilter"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -33692,6 +33692,12 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
   const addVendor = (v) => { if((p.vendors||[]).some(x=>String(x.vendorId)===String(v.id))) return; setVendors([...(p.vendors||[]), { id:rid("qv"), vendorId:v.id, vendorName:v.name, assignee:"", contact:"", status:"未依頼", prices:{}, extraLines:[], callNotes:[] }]); };
   const addedIds = new Set((p.vendors||[]).map(x=>String(x.vendorId)));
   const rows = rowsOf(p.stores);
+  const prefs = data.prefectures || [];
+  const prefName = id => (prefs.find(x=>String(x.id)===String(id))||{}).name || "";
+  const coverageNames = (vrec) => { if(!vrec) return []; const set=new Set(); (vrec.municipalityIds||[]).forEach(id=>{ const m=munis.find(x=>String(x.id)===String(id)); if(m){ if(m.name)set.add(m.name); const pn=prefName(m.prefectureId); if(pn)set.add(pn); } }); return [...set]; };
+  const inArea = (r,names) => { if(!names.length) return true; const hay=String((r.area||"")+" "+(r.address||"")); return names.some(n=>n&&hay.includes(n)); };
+  const vendorRows = (qv) => { if(qv.showAllStores) return rows; const vrec=vendors.find(v=>String(v.id)===String(qv.vendorId)); const cov=coverageNames(vrec); return cov.length? rows.filter(r=>inArea(r,cov)) : rows; };
+  const totalStoreCount = new Set(rows.map(r=>r.storeId)).size;
   const answered = (p.vendors||[]).filter(v=>v.status==="回答済").length;
 
   // 業者候補（名前・エリア・許可でAND、各条件内はOR）
@@ -33709,7 +33715,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
 
   // ===== 見積依頼ポータル =====
   const PORTAL_ON = !!(typeof QUOTE_PORTAL_URL!=="undefined" && QUOTE_PORTAL_URL);
-  const buildReqItems = () => rowsOf(p.stores).map(r=>({ id:r.itemId, storeId:r.storeId, storeName:r.storeName, area:r.area, bizType:r.bizType, address:r.address, kind:r.kind, freq:r.freq, qty:r.qty, weight:r.weight }));
+  const buildReqItemsFor = (qv) => vendorRows(qv).map(r=>({ id:r.itemId, storeId:r.storeId, storeName:r.storeName, area:r.area, bizType:r.bizType, address:r.address, kind:r.kind, freq:r.freq, qty:r.qty, weight:r.weight }));
   const portalPost = async (bodyObj) => {
     const r=await fetch(QUOTE_PORTAL_URL,{method:"POST",headers:{"content-type":"text/plain;charset=UTF-8"},body:JSON.stringify({...bodyObj,secret:DB_API_SECRET})});
     return await r.json();
@@ -33724,7 +33730,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
     if(!PORTAL_ON){ if(!silent) window.alert("見積ポータルURL（QUOTE_PORTAL_URL）が未設定です。"); return; }
     setPortalBusy(qv.id);
     try{
-      const payload={ projectId:p.id, projectName:p.name, company:p.companyName||"", vendorId:qv.vendorId, vendorName:qv.vendorName, items:buildReqItems() };
+      const payload={ projectId:p.id, projectName:p.name, company:p.companyName||"", vendorId:qv.vendorId, vendorName:qv.vendorName, items:buildReqItemsFor(qv) };
       const j=await portalPost({action:"create", token:qv.portalToken||undefined, payload});
       if(j&&j.ok){
         const patch={portalToken:j.token,portalUrl:j.url,status:qv.status==="回答済"?qv.status:"依頼済"};
@@ -33756,8 +33762,8 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
     let updated=0;
     let cur=(p.vendors||[]);
     try{
-      const items=buildReqItems();
       for(const qv of withTok){
+        const items=buildReqItemsFor(qv);
         await portalPost({action:"create", token:qv.portalToken, payload:{ projectId:p.id, projectName:p.name, company:p.companyName||"", vendorId:qv.vendorId, vendorName:qv.vendorName, items }});
         const j=await portalPost({action:"fetch", tokens:[qv.portalToken]});
         const merged=mergeResp(qv, j&&j.requests&&j.requests[0]);
@@ -33969,7 +33975,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
 
       <div style={{display:"flex",flexDirection:"column",gap:"0.75rem"}}>
         {(p.vendors||[]).map(qv=>(
-          <VendorQuoteCard key={qv.id} qv={qv} rows={rows} stores={p.stores} vrec={vendors.find(v=>String(v.id)===String(qv.vendorId))} C={C} rid={rid} mapsUrl={mapsUrl} portalBusy={portalBusy} PORTAL_ON={PORTAL_ON}
+          <VendorQuoteCard key={qv.id} qv={qv} rows={vendorRows(qv)} stores={p.stores} totalStores={totalStoreCount} showAll={!!qv.showAllStores} onToggleAll={()=>patchVendor(qv.id,{showAllStores:!qv.showAllStores})} vrec={vendors.find(v=>String(v.id)===String(qv.vendorId))} C={C} rid={rid} mapsUrl={mapsUrl} portalBusy={portalBusy} PORTAL_ON={PORTAL_ON}
             onChange={patch=>patchVendor(qv.id,patch)} onRemove={()=>setVendors((p.vendors||[]).filter(x=>x.id!==qv.id))}
             onIssue={()=>issueLink(qv)} onCopy={()=>copyLink(qv)} onFetch={()=>fetchResp(qv)} onAddNote={t=>addVendorNote(qv,t)}/>
         ))}
@@ -33980,10 +33986,10 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
 }
 
 // 対象業者カード（折りたたみ・見積表[出来高/定額]・一括・ポータル・業者情報・通話メモ）
-function VendorQuoteCard({ qv, rows, stores=[], vrec, C, rid, mapsUrl, portalBusy, PORTAL_ON, onChange, onRemove, onIssue, onCopy, onFetch, onAddNote }){
+function VendorQuoteCard({ qv, rows, stores=[], totalStores=0, showAll=false, onToggleAll, vrec, C, rid, mapsUrl, portalBusy, PORTAL_ON, onChange, onRemove, onIssue, onCopy, onFetch, onAddNote }){
   const REQ=["未依頼","依頼済","回答済","辞退"];
   const METHODS=["出来高","定額","その他"];
-  const [open,setOpen]=React.useState(true);
+  const [open,setOpen]=React.useState(false);
   const [checked,setChecked]=React.useState({});
   const [bulk,setBulk]=React.useState({method:"",unit:"",unitType:"",transport:"",disposal:"",overhead:"",flat:""});
   const [note,setNote]=React.useState("");
@@ -33998,6 +34004,8 @@ function VendorQuoteCard({ qv, rows, stores=[], vrec, C, rid, mapsUrl, portalBus
   const subTotal=pr=>N(pr&&pr.unit)*N(pr&&pr.qty);
   const lineTotal=pr=>subTotal(pr)+N(pr&&pr.transport)+N(pr&&pr.disposal)+N(pr&&pr.flat)+N(pr&&pr.overhead);
   const total=rows.reduce((s,r)=>s+lineTotal(prices[r.itemId]),0)+(qv.extraLines||[]).reduce((s,l)=>s+N(l.amount),0);
+  const storeIds=[...new Set(rows.map(r=>r.storeId))];
+  const pricedStores=new Set(rows.filter(r=>{const pr=prices[r.itemId]||{};return N(pr.unit)||N(pr.flat)||N(pr.amount)||(pr.method&&pr.method!=="");}).map(r=>r.storeId));
   const checkedIds=Object.keys(checked).filter(k=>checked[k]);
   const allChecked=rows.length>0&&checkedIds.length===rows.length;
   const applyBulk=()=>{ if(!checkedIds.length){window.alert("店舗（行）にチェックを入れてください。");return;} const np={...(qv.prices||{})}; checkedIds.forEach(id=>{ const cur={...np[id]}; ["method","unit","unitType","transport","disposal","overhead","flat"].forEach(k=>{ if(bulk[k]!=="") cur[k]=((k==="method"||k==="unitType")?bulk[k]:bulk[k].replace(/[^0-9.]/g,"")); }); np[id]=cur; }); onChange({prices:np}); };
@@ -34081,12 +34089,19 @@ function VendorQuoteCard({ qv, rows, stores=[], vrec, C, rid, mapsUrl, portalBus
         {grade&&<span style={{fontSize:"0.66rem",color:"#b45309"}}>{"★".repeat(grade)}</span>}
         <select value={qv.status||"未依頼"} onClick={e=>e.stopPropagation()} onChange={e=>onChange({status:e.target.value})} style={{padding:"0.2rem 0.5rem",borderRadius:999,border:`1px solid ${C.border}`,fontSize:"0.68rem",fontWeight:700,fontFamily:"inherit",background:"white"}}>{REQ.map(s=><option key={s} value={s}>{s}</option>)}</select>
         {qv.respondedAt&&<span style={{fontSize:"0.62rem",color:"#16a34a",fontWeight:700}}>✅{String(qv.respondedAt).slice(5,10)}</span>}
-        <span style={{marginLeft:"auto",fontSize:"0.82rem",fontWeight:800,color:C.accentDark}}>見積 {yen(total)}</span>
+        <span style={{marginLeft:"auto",fontSize:"0.7rem",color:C.textSub,fontWeight:700}} title="見積済店舗/対象店舗">🏪 {pricedStores.size}/{storeIds.length}店舗</span>
+        <span style={{fontSize:"0.82rem",fontWeight:800,color:C.accentDark}}>見積 {yen(total)}</span>
         <button onClick={e=>{e.stopPropagation();onRemove();}} style={{border:"none",background:"none",color:"#dc2626",cursor:"pointer",fontSize:"0.9rem",fontFamily:"inherit"}}>×</button>
       </div>
 
       {open&&(
       <div style={{padding:"0 0.9rem 0.8rem"}}>
+      {totalStores>0 && (storeIds.length<totalStores || showAll) && (
+        <div style={{display:"flex",alignItems:"center",gap:"0.4rem",flexWrap:"wrap",fontSize:"0.68rem",color:C.textSub,background:C.bg,borderRadius:8,padding:"0.35rem 0.55rem",marginBottom:"0.5rem"}}>
+          {showAll ? <span>🗺 全店舗を表示中（{totalStores}店舗）</span> : <span>🗺 業者の対応地域で絞込中：<b>{storeIds.length}/{totalStores}店舗</b></span>}
+          <button onClick={onToggleAll} style={{marginLeft:"auto",border:"none",background:"none",color:C.accent,fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.68rem"}}>{showAll?"対応地域のみ":"全店舗を表示"}</button>
+        </div>
+      )}
       {/* 業者情報（MyDeskデータ） */}
       <div style={{display:"flex",gap:"0.6rem",flexWrap:"wrap",alignItems:"center",fontSize:"0.72rem",color:C.textSub,marginBottom:"0.5rem"}}>
         {vrec&&vrec.phone&&<a href={"tel:"+vrec.phone} style={{color:C.accentDark,textDecoration:"none",fontWeight:700}}>📞 {vrec.phone}</a>}
@@ -34196,7 +34211,7 @@ function VendorQuoteCard({ qv, rows, stores=[], vrec, C, rid, mapsUrl, portalBus
           </div>
         </div>
       ):(
-        <div style={{fontSize:"0.72rem",color:C.textMuted,padding:"0.4rem 0"}}>対象店舗を登録すると、店舗ごとの見積入力ができます。</div>
+        <div style={{fontSize:"0.72rem",color:C.textMuted,padding:"0.4rem 0"}}>{totalStores>0&&!showAll?"この業者の対応地域に該当する店舗がありません。上の「全店舗を表示」で全件表示できます。":"対象店舗を登録すると、店舗ごとの見積入力ができます。"}</div>
       )}
 
       {/* その他の明細（店舗に紐づかない項目） */}
