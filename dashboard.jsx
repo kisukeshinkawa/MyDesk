@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-31-v308-store-groups-zebra"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-01-v309-quote-compare-matrix"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -33609,6 +33609,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
   const [impErr, setImpErr] = React.useState("");
   const [impBusy, setImpBusy] = React.useState(false);
   const [portalBusy, setPortalBusy] = React.useState("");
+  const [showCompare, setShowCompare] = React.useState(false);
   const [impMenu, setImpMenu] = React.useState(false);
   const fileRef = React.useRef(null);
 
@@ -33885,6 +33886,13 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
         <textarea value={p.memo||""} onChange={e=>upd(p.id,{memo:e.target.value})} placeholder="メモ" rows={2} style={{width:"100%",boxSizing:"border-box",marginTop:"0.5rem",padding:"0.4rem 0.6rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.8rem",fontFamily:"inherit",resize:"vertical"}}/>
       </div>
 
+      {/* ===== 見積比較表 ===== */}
+      {(p.vendors||[]).length>0 && (p.stores||[]).length>0 && (
+        <div style={{marginBottom:"1rem"}}>
+          <button onClick={()=>setShowCompare(v=>!v)} style={{display:"inline-flex",alignItems:"center",gap:"0.4rem",padding:"0.45rem 0.9rem",borderRadius:8,border:`1.5px solid ${C.accent}`,background:showCompare?C.accent:C.accentBg,color:showCompare?"white":C.accentDark,fontWeight:800,fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit"}}>{showCompare?"▲ 比較表を閉じる":"📊 見積比較表（どの業者がどこにいくら／未回答）"}</button>
+          {showCompare && <ComparisonMatrix stores={p.stores||[]} vlist={p.vendors||[]} vendorRows={vendorRows} C={C}/>}
+        </div>
+      )}
       {/* ===== 対象店舗 ===== */}
       <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem",flexWrap:"wrap"}}>
         <div style={{fontWeight:800,fontSize:"0.9rem",color:C.text}}>🏪 対象店舗</div>
@@ -33980,6 +33988,68 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
             onIssue={()=>issueLink(qv)} onCopy={()=>copyLink(qv)} onFetch={()=>fetchResp(qv)} onAddNote={t=>addVendorNote(qv,t)}/>
         ))}
         {(p.vendors||[]).length===0&&<div style={{textAlign:"center",color:C.textMuted,padding:"1.5rem",fontSize:"0.8rem"}}>上の絞り込み（エリア・許可・業者名）から対象業者を追加してください。</div>}
+      </div>
+    </div>
+  );
+}
+
+// 見積比較マトリクス（店舗 × 業者）
+function ComparisonMatrix({ stores, vlist, vendorRows, C }){
+  const N=v=>{const n=parseFloat(String(v==null?"":v).replace(/[^0-9.]/g,""));return isNaN(n)?0:n;};
+  const lineTotal=pr=>pr?(N(pr.unit)*N(pr.qty)+N(pr.transport)+N(pr.disposal)+N(pr.flat)+N(pr.overhead)):0;
+  const yen=n=>"¥"+Math.round(N(n)).toLocaleString();
+  const storeTotal=(qv,st)=>{ const its=(st.items&&st.items.length)?st.items:[{id:st.id+":0"}]; let sum=0,has=false; its.forEach(it=>{ const pr=(qv.prices||{})[it.id]; if(pr){ const lt=lineTotal(pr); if(lt>0||(pr.method&&pr.method!=="")){ sum+=lt; has=true; } } }); return has?sum:null; };
+  const coverSets = vlist.map(qv=>{ const vr=vendorRows(qv)||[]; return new Set(vr.map(r=>String(r.storeId))); });
+  const covers=(vi,st)=>coverSets[vi].has(String(st.id));
+  const colTotals = vlist.map((qv)=> stores.reduce((s,st)=>s+(storeTotal(qv,st)||0),0));
+  const th={position:"sticky",top:0,background:"#eef2f7",zIndex:2,padding:"0.4rem 0.5rem",fontSize:"0.66rem",fontWeight:800,color:C.textSub,borderBottom:`2px solid ${C.border}`,whiteSpace:"nowrap"};
+  const stCol={position:"sticky",left:0,background:"white",zIndex:1,padding:"0.35rem 0.5rem",borderRight:`1px solid ${C.border}`,minWidth:150,maxWidth:180};
+  const stColH={...th,left:0,zIndex:3,minWidth:150};
+  const cell={padding:"0.3rem 0.5rem",textAlign:"right",fontSize:"0.72rem",borderBottom:`1px solid ${C.borderLight}`,whiteSpace:"nowrap"};
+  return (
+    <div style={{marginTop:"0.6rem",border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden"}}>
+      <div style={{display:"flex",gap:"0.8rem",flexWrap:"wrap",padding:"0.5rem 0.7rem",fontSize:"0.68rem",color:C.textSub,background:C.bg,borderBottom:`1px solid ${C.border}`}}>
+        <span><b style={{color:"#166534"}}>緑=最安</b></span><span>数字=1回あたり金額</span><span style={{color:"#b45309"}}>未=未回答</span><span style={{color:C.textMuted}}>―=対応地域外</span>
+      </div>
+      <div style={{overflowX:"auto",maxHeight:520,overflowY:"auto"}}>
+        <table style={{borderCollapse:"collapse",width:"max-content",minWidth:"100%"}}>
+          <thead>
+            <tr>
+              <th style={stColH}>店舗（{stores.length}）</th>
+              {vlist.map(qv=><th key={qv.id} style={th} title={qv.vendorName}>{(qv.vendorName||"").length>8?(qv.vendorName.slice(0,8)+"…"):qv.vendorName}</th>)}
+              <th style={th}>回答</th><th style={th}>最安</th>
+            </tr>
+          </thead>
+          <tbody>
+            {stores.map((st,ri)=>{
+              const vals=vlist.map((qv,vi)=>({cover:covers(vi,st), val:storeTotal(qv,st)}));
+              const answered=vals.filter(v=>v.val!=null);
+              const min=answered.length?Math.min(...answered.map(v=>v.val)):null;
+              const coverCnt=vals.filter(v=>v.cover).length;
+              const bg=ri%2?C.bg:"white";
+              return (
+                <tr key={st.id}>
+                  <td style={{...stCol,background:bg}}><div style={{fontWeight:700,fontSize:"0.74rem",color:C.text,overflow:"hidden",textOverflow:"ellipsis"}}>{st.name||"（拠点）"}</div><div style={{fontSize:"0.62rem",color:C.textMuted}}>{st.area||""}</div></td>
+                  {vals.map((v,vi)=>{
+                    if(!v.cover) return <td key={vi} style={{...cell,background:bg,color:C.textMuted,textAlign:"center"}}>―</td>;
+                    if(v.val==null) return <td key={vi} style={{...cell,background:"#fffbeb",color:"#b45309",textAlign:"center",fontWeight:700}}>未</td>;
+                    const cheap=v.val===min;
+                    return <td key={vi} style={{...cell,background:cheap?"#dcfce7":bg,color:cheap?"#166534":C.text,fontWeight:cheap?800:500}}>{yen(v.val)}</td>;
+                  })}
+                  <td style={{...cell,background:bg,textAlign:"center",color:C.textSub}}>{answered.length}/{coverCnt}</td>
+                  <td style={{...cell,background:bg,fontWeight:700,color:C.accentDark}}>{min!=null?yen(min):"—"}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td style={{...stCol,background:"#eef2f7",fontWeight:800,fontSize:"0.72rem"}}>合計（全店舗）</td>
+              {colTotals.map((t,vi)=><td key={vi} style={{...cell,background:"#eef2f7",fontWeight:800}}>{yen(t)}</td>)}
+              <td style={{...cell,background:"#eef2f7"}}/><td style={{...cell,background:"#eef2f7"}}/>
+            </tr>
+          </tfoot>
+        </table>
       </div>
     </div>
   );
