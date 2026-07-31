@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-07-30-v307-vendor-collapse-areafilter"; // ビルド識別子
+const MYDESK_BUILD = "2026-07-31-v308-store-groups-zebra"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -33931,7 +33931,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
       )}
       {storeAdd&&(<StoreEditor onSave={(st)=>{setStores([...(p.stores||[]),{...st,id:rid("st")}]);setStoreAdd(false);}} onCancel={()=>setStoreAdd(false)} rid={rid} C={C}/>)}
       <div style={{display:"flex",flexDirection:"column",gap:"0.5rem",marginBottom:"1.25rem"}}>
-        {(p.stores||[]).map(st=>(<StoreRow key={st.id} st={st} C={C} rid={rid} mapsUrl={mapsUrl} onChange={ns=>setStores((p.stores||[]).map(x=>x.id===st.id?ns:x))} onDelete={()=>setStores((p.stores||[]).filter(x=>x.id!==st.id))}/>))}
+        <StoreGroups stores={p.stores||[]} C={C} rid={rid} mapsUrl={mapsUrl} setStores={setStores}/>
         {storeTotal===0&&!imp&&!storeAdd&&<div style={{textAlign:"center",color:C.textMuted,padding:"1rem",fontSize:"0.8rem"}}>Excel取込（様式自動判定）または「＋手動で追加」で対象店舗を登録してください。</div>}
       </div>
 
@@ -33981,6 +33981,36 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
         ))}
         {(p.vendors||[]).length===0&&<div style={{textAlign:"center",color:C.textMuted,padding:"1.5rem",fontSize:"0.8rem"}}>上の絞り込み（エリア・許可・業者名）から対象業者を追加してください。</div>}
       </div>
+    </div>
+  );
+}
+
+// 対象店舗のグループ表示（都道府県ごとに折りたたみ）
+function StoreGroups({ stores, C, rid, mapsUrl, setStores }){
+  const [openG,setOpenG]=React.useState({});
+  const prefOf=st=>String(st.area||"").trim()||"（エリア未設定）";
+  const groups={}; const order=[];
+  (stores||[]).forEach(st=>{ const k=prefOf(st); if(!groups[k]){groups[k]=[];order.push(k);} groups[k].push(st); });
+  const upd=ns=>setStores((stores||[]).map(x=>x.id===ns.id?ns:x));
+  const del=id=>setStores((stores||[]).filter(x=>x.id!==id));
+  const defOpen=(stores||[]).length<=10;
+  if(order.length<=1){
+    return (<div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>{(stores||[]).map(st=>(<StoreRow key={st.id} st={st} C={C} rid={rid} mapsUrl={mapsUrl} onChange={upd} onDelete={()=>del(st.id)}/>))}</div>);
+  }
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:"0.4rem"}}>
+      {order.map(k=>{ const isOpen=openG[k]===undefined?defOpen:openG[k]; return (
+        <div key={k}>
+          <button onClick={()=>setOpenG({...openG,[k]:!isOpen})} style={{display:"flex",alignItems:"center",gap:"0.5rem",width:"100%",textAlign:"left",padding:"0.45rem 0.7rem",borderRadius:8,border:`1px solid ${C.border}`,background:C.bg,cursor:"pointer",fontFamily:"inherit"}}>
+            <span style={{fontSize:"0.72rem",color:C.textMuted}}>{isOpen?"▼":"▶"}</span>
+            <span style={{fontWeight:800,fontSize:"0.82rem",color:C.text}}>{k}</span>
+            <span style={{fontSize:"0.7rem",color:C.textSub}}>{groups[k].length}件</span>
+          </button>
+          {isOpen&&<div style={{display:"flex",flexDirection:"column",gap:"0.4rem",margin:"0.4rem 0 0.2rem 0.6rem"}}>
+            {groups[k].map(st=>(<StoreRow key={st.id} st={st} C={C} rid={rid} mapsUrl={mapsUrl} onChange={upd} onDelete={()=>del(st.id)}/>))}
+          </div>}
+        </div>
+      );})}
     </div>
   );
 }
@@ -34189,7 +34219,7 @@ function VendorQuoteCard({ qv, rows, stores=[], totalStores=0, showAll=false, on
               <span style={{width:150,flex:"none"}}>回収条件 / 備考</span>
             </div>
             {rows.map((r,ri)=>{ const pr=prices[r.itemId]||{}; return (
-              <div key={r.itemId} style={{display:"flex",gap:"0.25rem",padding:"0.3rem 0.5rem",borderTop:`1px solid ${C.borderLight}`,alignItems:"center"}}>
+              <div key={r.itemId} style={{display:"flex",gap:"0.25rem",padding:"0.3rem 0.5rem",borderTop:`1px solid ${C.borderLight}`,alignItems:"center",background:ri%2?C.bg:"white"}}>
                 <span style={{width:18,flex:"none"}}><input type="checkbox" checked={!!checked[r.itemId]} onChange={e=>setChecked({...checked,[r.itemId]:e.target.checked})} style={{width:14,height:14}}/></span>
                 <div style={{width:150,flex:"none",minWidth:0}}>
                   <div style={{fontSize:"0.72rem",fontWeight:600,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.storeName||"（拠点）"}{r.address?<a href={mapsUrl(r.address)} target="_blank" rel="noreferrer" style={{marginLeft:4,textDecoration:"none"}} title="Googleマップ">📍</a>:null}</div>
