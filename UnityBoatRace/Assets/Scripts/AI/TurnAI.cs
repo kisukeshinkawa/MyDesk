@@ -1,0 +1,60 @@
+using UnityEngine;
+using BoatRace.Boat;
+using BoatRace.Core;
+
+namespace BoatRace.AI
+{
+    /// <summary>
+    /// ターンAI。TrackPathの周回ラインをpure pursuitで追従し、
+    /// 戦術(StrategyAI)に応じて旋回半径を変える。
+    /// </summary>
+    public class TurnAI
+    {
+        public float laneRadius = 16f;     // 自艇の基準レーン半径
+        public float radiusFactor = 1f;    // 戦術による旋回半径倍率
+        const float Lookahead = 14f;       // 先読み距離(m)
+
+        public void Configure(int course, Tactic tactic)
+        {
+            laneRadius = 12f + course * 1.6f;
+            switch (tactic)
+            {
+                case Tactic.Nige:        radiusFactor = 0.90f; break;
+                case Tactic.Sashi:       radiusFactor = 0.80f; break; // 内を鋭く差す
+                case Tactic.Makuri:      radiusFactor = 1.35f; break; // 外を全速で回す
+                case Tactic.MakuriSashi: radiusFactor = 1.10f; break;
+                default:                 radiusFactor = 1f;    break;
+            }
+        }
+
+        /// <summary>現在位置から追従目標へ向かう舵入力を返す。</summary>
+        public float GetSteer(BoatPhysicsEngine engine)
+        {
+            float r = EffectiveRadius(engine);
+            float s = TrackPath.GetProgress(engine.Position, r);
+            Vector3 target = TrackPath.PointAt(s + Lookahead, r);
+
+            Vector3 to = target - engine.Position;
+            float desiredHeading = Mathf.Atan2(to.x, to.z) * Mathf.Rad2Deg;
+            float diff = Mathf.DeltaAngle(engine.HeadingDeg, desiredHeading);
+            return Mathf.Clamp(diff / 30f, -1f, 1f);
+        }
+
+        /// <summary>ターン中のスロットル。旋回半径が小さいほど緩める(握り込みは戦術次第)。</summary>
+        public float GetThrottle(BoatPhysicsEngine engine)
+        {
+            bool inTurn = TrackPath.InTurn1Zone(engine.Position) || TrackPath.InTurn2Zone(engine.Position);
+            if (!inTurn) return 1f;
+
+            // まくり(半径大)は全開維持、差し(半径小)は一瞬緩めて向きを変える
+            float ease = Mathf.InverseLerp(1.4f, 0.75f, radiusFactor);
+            return Mathf.Lerp(1f, 0.62f, ease * 0.9f);
+        }
+
+        float EffectiveRadius(BoatPhysicsEngine engine)
+        {
+            float physicalMin = Physics.TurnPhysics.TurnRadius(engine.Speed, engine.stats.EffectiveTurnPower);
+            return Mathf.Max(physicalMin * 0.6f, laneRadius * radiusFactor);
+        }
+    }
+}

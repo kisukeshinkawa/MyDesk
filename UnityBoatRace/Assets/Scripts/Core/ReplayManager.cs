@@ -1,0 +1,125 @@
+using System.Collections.Generic;
+using UnityEngine;
+using BoatRace.Boat;
+
+namespace BoatRace.Core
+{
+    /// <summary>
+    /// レースリプレイ。10Hzで全艇の位置・向き・速度・周回を記録し、
+    /// タイムライン再生(倍速可)とカメラ切替を提供する。
+    /// </summary>
+    public class ReplayManager : MonoBehaviour
+    {
+        public struct Frame
+        {
+            public float t;
+            public Vector3[] positions;
+            public float[] headings;
+            public float[] speeds;
+            public int[] laps;
+        }
+
+        public const float RecordHz = 10f;
+        public float playbackSpeed = 1f;
+        public bool IsPlaying { get; private set; }
+
+        RaceManager race;
+        readonly List<Frame> frames = new List<Frame>(4096);
+        float recordTimer;
+        float playTime;
+        int camMode; // 0=俯瞰 1=リーダー追走
+        Camera cam;
+
+        public void Initialize(RaceManager race, Camera cam)
+        {
+            this.race = race;
+            this.cam = cam;
+        }
+
+        void FixedUpdate()
+        {
+            if (race == null || IsPlaying) return;
+            if (race.state.phase != RacePhase.Racing && race.state.phase != RacePhase.Finished) return;
+            if (race.state.phase == RacePhase.Finished) return;
+
+            recordTimer -= Time.fixedDeltaTime;
+            if (recordTimer > 0f) return;
+            recordTimer = 1f / RecordHz;
+
+            int n = race.boats.Count;
+            var f = new Frame
+            {
+                t = race.state.raceTime,
+                positions = new Vector3[n],
+                headings = new float[n],
+                speeds = new float[n],
+                laps = new int[n],
+            };
+            for (int i = 0; i < n; i++)
+            {
+                f.positions[i] = race.boats[i].engine.Position;
+                f.headings[i] = race.boats[i].engine.HeadingDeg;
+                f.speeds[i] = race.boats[i].engine.Speed;
+                f.laps[i] = race.state.Get(i).lap;
+            }
+            frames.Add(f);
+        }
+
+        public void StartPlayback()
+        {
+            if (frames.Count < 2) return;
+            IsPlaying = true;
+            playTime = 0f;
+            race.simulationPaused = true;
+            foreach (var b in race.boats) b.replayMode = true;
+        }
+
+        public void StopPlayback()
+        {
+            IsPlaying = false;
+            race.simulationPaused = false;
+            foreach (var b in race.boats) b.replayMode = false;
+        }
+
+        public void ToggleCamera() => camMode = (camMode + 1) % 2;
+
+        void Update()
+        {
+            if (!IsPlaying) return;
+            playTime += Time.deltaTime * playbackSpeed;
+            float last = frames[frames.Count - 1].t;
+            if (playTime >= last) { playTime = last; }
+
+            // フレーム補間
+            int hi = frames.FindIndex(fr => fr.t >= playTime);
+            if (hi <= 0) hi = 1;
+            Frame a = frames[hi - 1], b = frames[hi];
+            float u = Mathf.InverseLerp(a.t, b.t, playTime);
+
+            int leader = 0; float best = float.MinValue;
+            for (int i = 0; i < race.boats.Count; i++)
+            {
+                Vector3 pos = Vector3.Lerp(a.positions[i], b.positions[i], u);
+                float heading = Mathf.LerpAngle(a.headings[i], b.headings[i], u);
+                race.boats[i].ApplyReplayFrame(pos, heading);
+                if (pos.x > best) { best = pos.x; leader = i; }
+            }
+
+            // カメラ
+            if (cam != null)
+            {
+                if (camMode == 0)
+                {
+                    cam.transform.position = new Vector3(-150f, 220f, -120f);
+                    cam.transform.LookAt(new Vector3(-150f, 0f, 0f));
+                }
+                else
+                {
+                    var t = race.boats[leader].transform;
+                    cam.transform.position = t.position - t.forward * 18f + Vector3.up * 8f;
+                    cam.transform.LookAt(t.position + t.forward * 10f);
+                }
+            }
+        }
+    }
+}
