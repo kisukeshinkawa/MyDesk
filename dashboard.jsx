@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-03-v311-quote-cell-range"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-03-v312-quote-paste-fill-ime"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -34148,11 +34148,12 @@ function VendorQuoteCard({ qv, rows, stores=[], totalStores=0, showAll=false, on
   const focusCell=(ri,ci)=>{ if(ri<0||ri>=rows.length||ci<0||ci>=NAVCOLS) return; const el=document.querySelector('[data-nav="'+qv.id+'_'+ri+'_'+ci+'"]'); if(el){ el.focus(); if(el.select) try{el.select();}catch(_){} } };
   const onDown=(e,ri,ci)=>{ if(e.shiftKey&&sel){ setSel({...sel,br:ri,bc:ci}); } else { setSel({ar:ri,ac:ci,br:ri,bc:ci}); } dragRef.current=true; };
   const onEnter=(ri,ci)=>{ if(dragRef.current){ setSel(x=> x?{...x,br:ri,bc:ci}:{ar:ri,ac:ci,br:ri,bc:ci}); try{window.getSelection().removeAllRanges();}catch(_){} } };
-  const copyRange=()=>{ if(!sel)return; const R=rectOf(sel); const out=[]; for(let r=R.r1;r<=R.r2;r++){ const row=[]; for(let c=R.c1;c<=R.c2;c++){ const pr=(qv.prices||{})[rows[r].itemId]||{}; const v=pr[GRIDCOLS[c]]; row.push(v!=null?String(v):""); } out.push(row.join("\t")); } const tsv=out.join("\n"); copyBuf.current=tsv; try{navigator.clipboard&&navigator.clipboard.writeText&&navigator.clipboard.writeText(tsv);}catch(_){} };
-  const fillFrom=(text,ar,ac)=>{ const grid=String(text||"").replace(/\r/g,"").split("\n").map(l=>l.split("\t")); if(!grid.length)return; const np={...(qv.prices||{})}; grid.forEach((line,dr)=>{ line.forEach((val,dc)=>{ const r=ar+dr,c=ac+dc; if(r>=0&&r<rows.length&&c>=0&&c<GRIDCOLS.length){ const key=GRIDCOLS[c]; const v=NUMCOLS.has(key)?String(val).replace(/[^0-9.]/g,""):val; const id=rows[r].itemId; np[id]={...np[id],[key]:v}; } }); }); onChange({prices:np}); };
-  const pasteRange=(ri,ci)=>{ const a= sel?rectOf(sel):{r1:ri,c1:ci}; const doIt=t=>fillFrom(t,a.r1,a.c1); if(navigator.clipboard&&navigator.clipboard.readText){ navigator.clipboard.readText().then(t=>doIt(t||copyBuf.current)).catch(()=>doIt(copyBuf.current)); } else doIt(copyBuf.current); };
+  const copyRange=()=>{ if(!sel)return; const R=rectOf(sel); const out=[]; for(let r=R.r1;r<=R.r2;r++){ const row=[]; for(let c=R.c1;c<=R.c2;c++){ const pr=(qv.prices||{})[rows[r].itemId]||{}; const gk=GRIDCOLS[c]; const v=(gk==="condition")?(pr.condition||pr.note||""):pr[gk]; row.push(v!=null?String(v):""); } out.push(row.join("\t")); } const tsv=out.join("\n"); copyBuf.current=tsv; try{navigator.clipboard&&navigator.clipboard.writeText&&navigator.clipboard.writeText(tsv);}catch(_){} };
+  const fillFrom=(text,ar,ac)=>{ const grid=String(text||"").replace(/\r/g,"").split("\n").map(l=>l.split("\t")); while(grid.length>1&&grid[grid.length-1].length===1&&grid[grid.length-1][0]===""){grid.pop();} if(!grid.length)return; const gr=grid.length, gc=grid.reduce((m,l)=>Math.max(m,l.length),1); const S= sel?rectOf(sel):{r1:ar,c1:ac,r2:ar,c2:ac}; const height=Math.max(S.r2-S.r1+1,gr), width=Math.max(S.c2-S.c1+1,gc); const np={...(qv.prices||{})}; for(let dr=0;dr<height;dr++){ for(let dc=0;dc<width;dc++){ const r=S.r1+dr, c=S.c1+dc; if(r<0||r>=rows.length||c<0||c>=GRIDCOLS.length) continue; const line=grid[dr%gr]||[]; let val=line[dc%gc]; if(val==null) val=""; const key=GRIDCOLS[c]; const v=NUMCOLS.has(key)?String(val).replace(/[^0-9.]/g,""):val; const id=rows[r].itemId; np[id]={...np[id],[key]:v}; } } onChange({prices:np}); };
+  const pasteRange=(ri,ci)=>{ const doIt=t=>fillFrom(t,ri,ci); if(navigator.clipboard&&navigator.clipboard.readText){ navigator.clipboard.readText().then(t=>doIt((t&&t.length)?t:copyBuf.current)).catch(()=>doIt(copyBuf.current)); } else doIt(copyBuf.current); };
   const clearRange=()=>{ if(!sel)return; const R=rectOf(sel); const np={...(qv.prices||{})}; for(let r=R.r1;r<=R.r2;r++){ for(let c=R.c1;c<=R.c2;c++){ const id=rows[r].itemId; np[id]={...np[id],[GRIDCOLS[c]]:""}; } } onChange({prices:np}); };
   const onKey=(e,ri,ci)=>{
+    if(e.isComposing||e.keyCode===229) return;
     const meta=e.metaKey||e.ctrlKey;
     if(meta&&(e.key==="c"||e.key==="C")){ e.preventDefault(); copyRange(); return; }
     if(meta&&(e.key==="v"||e.key==="V")){ e.preventDefault(); pasteRange(ri,ci); return; }
