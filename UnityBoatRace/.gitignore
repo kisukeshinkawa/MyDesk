@@ -1,0 +1,14 @@
+# Unity生成物(コミット不要)
+Library/
+Temp/
+Obj/
+Logs/
+UserSettings/
+MemoryCaptures/
+Build/
+Builds/
+*.csproj
+*.sln
+*.user
+.vs/
+.idea/

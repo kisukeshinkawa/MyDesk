@@ -1,17 +1,32 @@
 # BOATRACE REALISM – Unity競艇シミュレーションゲーム
 
 Unity 2022 LTS向けのリアル競艇レースシミュレーション。
-**空のシーンに `RaceBootstrap` を1つ置いてPlayするだけで、6艇のフルレース（ピット離れ→待機行動→スタート→3周→ゴール→リプレイ）が動きます。**
+**このフォルダ自体がUnityプロジェクトです。開いて▶ Playを押すだけ**で、6艇のフルレース（ピット離れ→待機行動→スタート→3周→ゴール→リプレイ）が自動で始まります（`AutoLaunch.cs` がシーンに `RaceBootstrap` を自動生成）。
 
-## セットアップ手順（15分で動く）
+## セットアップ手順（ターミナル版・Mac）
 
-1. **Unity Hubで Unity 2022.3 LTS をインストール**（モジュール追加は不要）
-2. **新規プロジェクト作成** → テンプレートは「3D (Built-in)」または「3D (URP)」どちらでも可
-3. このリポジトリの `UnityBoatRace/Assets/Scripts` フォルダを、作成したプロジェクトの `Assets/` 配下にそのままコピー
-4. コンパイル完了を待つ（Console にエラーが無いことを確認）
-5. 空のシーンで **GameObject → Create Empty** → 名前を `Game` に
-6. `Game` に **RaceBootstrap** コンポーネントを追加（Inspector で venueId / seed を変更可能。venueId 1〜24 = 桐生〜大村）
-7. **▶ Play** → レースが自動進行。終了後 HUD の「▶ リプレイ再生」でリプレイ
+```bash
+# 1. Unity Hub をインストール (Homebrew)
+brew install --cask unity-hub
+
+# 2. コードを取得
+git clone -b claude/unity-boatrace-game-r2id9e \
+  https://github.com/kisukeshinkawa/MyDesk.git ~/BoatRace
+
+# 3. Unity Hub を開いてエディタをインストール (GUIで2クリック)
+#    「インストール」→「エディターをインストール」→ 2022.3 LTS
+open -a "Unity Hub"
+
+# 4. プロジェクトを直接起動 (バージョン番号は自分が入れたものに読み替え)
+#    初回はインポートに数分かかる。バージョン確認ダイアログが出たら「続行」でOK
+/Applications/Unity/Hub/Editor/2022.3.*/Unity.app/Contents/MacOS/Unity \
+  -projectPath ~/BoatRace/UnityBoatRace
+```
+
+5. Unityが開いたら **▶ Play** → レースが自動進行。終了後 HUD の「▶ リプレイ再生」でリプレイ
+6. 設定を変えたい場合のみ: Hierarchyに `Game` オブジェクトを作り `RaceBootstrap` を付ければ Inspector で venueId(1〜24=桐生〜大村)/seed を変更可能
+
+※ GUI派の場合は Unity Hub「プロジェクト」→「追加」→「ディスクから追加」で `~/BoatRace/UnityBoatRace` を選んでもOK。
 
 ## 実装済み機能（仕様書の全20章に対応）
 
