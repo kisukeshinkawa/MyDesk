@@ -17,6 +17,7 @@ namespace BoatRace.UI
         readonly Text clockText;
         readonly Text windArrow;
         readonly RectTransform windArrowRT;
+        readonly Text centerText;   // カウントダウン/スタート表示
         readonly Text[] standingRows = new Text[6];
         readonly Image[] rowChips = new Image[6];
         readonly Text commentaryText;
@@ -68,6 +69,11 @@ namespace BoatRace.UI
             commentary.OnLine += _ => RefreshCommentary(commentary);
             RefreshCommentary(commentary);
 
+            // 中央のカウントダウン/スタート表示
+            centerText = UiKit.MakeText(root.transform, "", 130, UiKit.Yellow, TextAnchor.MiddleCenter,
+                new Vector2(0.2f, 0.45f), new Vector2(0.8f, 0.75f), Vector2.zero, Vector2.zero,
+                bold: true, shadow: true, outline: true);
+
             // 視点切替ボタン(追尾→選手目線→俯瞰)
             var viewBtn = UiKit.MakeButton(root.transform, $"視点: {raceCam.ModeLabel()}", UiKit.Cyan, 22,
                 new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-230f, 122f), new Vector2(-16f, 176f),
@@ -102,6 +108,23 @@ namespace BoatRace.UI
             windArrowRT.localEulerAngles = new Vector3(0f, 0f, Mathf.Atan2(cosD, sinD) * Mathf.Rad2Deg);
 
             headerText.text = $"{race.venue.name}  {windName} {race.wind.speed:F1}m  {phaseName}";
+
+            // カウントダウン(-3.5〜0秒)→「スタート」フラッシュ(0〜1.3秒)
+            float ck = race.state.clock;
+            bool inStartWindow = (race.state.phase == RacePhase.Approach || race.state.phase == RacePhase.Racing)
+                                 && ck >= -3.5f && ck < 1.3f;
+            if (inStartWindow)
+            {
+                centerText.text = ck < 0f ? Mathf.CeilToInt(-ck).ToString() : "スタート！！";
+                centerText.fontSize = ck < 0f ? 150 : 96;
+                var cc = centerText.color;
+                cc.a = ck < 0f ? 0.9f : Mathf.Clamp01((1.3f - ck) / 0.6f);
+                centerText.color = cc;
+            }
+            else if (centerText.text.Length > 0)
+            {
+                centerText.text = "";
+            }
             clockText.text = race.state.phase == RacePhase.Racing || race.state.phase == RacePhase.Finished
                 ? $"⏱ {race.state.raceTime:F1}s"
                 : $"大時計 {race.state.clock:F1}";

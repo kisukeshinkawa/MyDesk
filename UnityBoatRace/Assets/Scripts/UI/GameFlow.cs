@@ -24,6 +24,7 @@ namespace BoatRace.UI
         GameObject ffButton;
         Text ffLabel;
         Text titleBlink;
+        RectTransform titleLogoRT;
         float resultTimer = -1f;
         bool wasReplaying;
 
@@ -51,6 +52,11 @@ namespace BoatRace.UI
             ffButton.SetActive(false);
 
             race.OnRaceFinished += () => { resultTimer = 3f; RecordStats(); };
+            race.OnFinalLap += () => ShowFlash("最終周回！", new Color(0.9f, 0.62f, 0.05f));
+            race.OnBoatFinished += (idx, place) =>
+            {
+                if (place == 1) ShowFlash($"ゴール！ {idx + 1}号艇！", UiKit.Red);
+            };
             ShowTitle();
         }
 
@@ -82,13 +88,45 @@ namespace BoatRace.UI
                 ffLabel.text = "⏩ 早送り";
             }
 
-            // タイトルの「タップでスタート」点滅
+            // タイトルの「タップでスタート」点滅とロゴの揺れ
             if (titleBlink != null)
             {
                 var c = titleBlink.color;
                 c.a = 0.45f + 0.55f * Mathf.Abs(Mathf.Sin(Time.time * 2.2f));
                 titleBlink.color = c;
             }
+            if (titleLogoRT != null)
+            {
+                float bob = 1f + Mathf.Sin(Time.time * 1.4f) * 0.015f;
+                titleLogoRT.localScale = new Vector3(bob, bob, 1f);
+            }
+        }
+
+        /// <summary>画面中央のフラッシュバナー(最終周回・ゴールなどの速報演出)。</summary>
+        void ShowFlash(string text, Color color)
+        {
+            var banner = UiKit.MakePanel(canvas.transform, color, 18,
+                new Vector2(0.20f, 0.62f), new Vector2(0.80f, 0.76f), Vector2.zero, Vector2.zero);
+            banner.GetComponent<RectTransform>().localEulerAngles = new Vector3(0f, 0f, -1.5f);
+            UiKit.AddStripeOverlay(banner, Color.white, 0.10f);
+            UiKit.MakeText(banner.transform, text, 52, Color.white, TextAnchor.MiddleCenter,
+                Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, bold: true, shadow: true, outline: true);
+            var group = banner.AddComponent<CanvasGroup>();
+            StartCoroutine(FlashRoutine(banner, group));
+        }
+
+        System.Collections.IEnumerator FlashRoutine(GameObject banner, CanvasGroup group)
+        {
+            var rt = banner.GetComponent<RectTransform>();
+            for (float t = 0f; t < 1.9f; t += Time.deltaTime)
+            {
+                if (banner == null) yield break;
+                float appear = Mathf.Clamp01(t / 0.15f);
+                rt.localScale = Vector3.one * Mathf.Lerp(1.5f, 1f, appear);
+                group.alpha = t < 1.4f ? appear : Mathf.Clamp01((1.9f - t) / 0.5f);
+                yield return null;
+            }
+            if (banner != null) Destroy(banner);
         }
 
         void ClearScreen()
@@ -96,6 +134,7 @@ namespace BoatRace.UI
             if (currentScreen != null) Destroy(currentScreen);
             currentScreen = null;
             titleBlink = null;
+            titleLogoRT = null;
         }
 
         GameObject NewScreen(string name)
@@ -106,23 +145,39 @@ namespace BoatRace.UI
             return currentScreen;
         }
 
-        // ================= タイトル =================
+        // ================= タイトル(3D会場が背景のロゴ画面) =================
         void ShowTitle()
         {
             var s = NewScreen("TitleScreen");
-            UiKit.MakeFullscreenGradient(s.transform, UiKit.Sky, UiKit.Navy);
-            UiKit.AddStripeOverlay(s, Color.white, 0.06f);
+            // シネマティックカメラの3D会場を透かせ、下ほど濃い紺のベールで文字を立たせる
+            UiKit.MakeFullscreenGradient(s.transform,
+                new Color(0.03f, 0.10f, 0.28f, 0.20f), new Color(0.02f, 0.06f, 0.18f, 0.92f));
+            UiKit.AddStripeOverlay(s, Color.white, 0.045f);
 
-            UiKit.MakeText(s.transform, "BOATRACE", 110, Color.white, TextAnchor.MiddleCenter,
-                new Vector2(0f, 0.60f), new Vector2(1f, 0.85f), Vector2.zero, Vector2.zero,
+            // ロゴ(レイヤー構成: 落ち影→本体→帯→サブタイトル)
+            var logo = new GameObject("Logo");
+            titleLogoRT = UiKit.Place(logo, s.transform,
+                new Vector2(0f, 0.42f), new Vector2(1f, 0.88f), Vector2.zero, Vector2.zero);
+            UiKit.MakeText(logo.transform, "BOATRACE", 118, new Color(0f, 0.1f, 0.3f, 0.55f),
+                TextAnchor.MiddleCenter,
+                new Vector2(0f, 0.42f), new Vector2(1f, 0.95f), new Vector2(6f, -6f), new Vector2(6f, -6f), bold: true);
+            UiKit.MakeText(logo.transform, "BOATRACE", 118, Color.white, TextAnchor.MiddleCenter,
+                new Vector2(0f, 0.42f), new Vector2(1f, 0.95f), Vector2.zero, Vector2.zero,
                 bold: true, shadow: true, outline: true);
-            UiKit.MakeText(s.transform, "R E A L I S M", 44, UiKit.Yellow, TextAnchor.MiddleCenter,
-                new Vector2(0f, 0.50f), new Vector2(1f, 0.62f), Vector2.zero, Vector2.zero,
-                bold: true, shadow: true, outline: true);
-            UiKit.MakeText(s.transform, "リアル競艇シミュレーション", 26, Color.white, TextAnchor.MiddleCenter,
-                new Vector2(0f, 0.43f), new Vector2(1f, 0.50f), Vector2.zero, Vector2.zero);
+            var ribbon = UiKit.MakePanel(logo.transform, UiKit.Red, 12,
+                new Vector2(0.30f, 0.20f), new Vector2(0.70f, 0.42f), Vector2.zero, Vector2.zero);
+            ribbon.GetComponent<RectTransform>().localEulerAngles = new Vector3(0f, 0f, -1.6f);
+            UiKit.AddStripeOverlay(ribbon, Color.white, 0.08f);
+            UiKit.MakeText(ribbon.transform, "R E A L I S M", 40, UiKit.Yellow, TextAnchor.MiddleCenter,
+                Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, bold: true, shadow: true, outline: true);
+            UiKit.MakeChip(logo.transform, "リアル競艇シミュレーション", new Color(0f, 0f, 0f, 0.35f), Color.white, 22,
+                new Vector2(0.36f, 0.02f), new Vector2(0.64f, 0.17f), Vector2.zero, Vector2.zero);
+
             titleBlink = UiKit.MakeText(s.transform, "－ タップでスタート －", 34, Color.white, TextAnchor.MiddleCenter,
-                new Vector2(0f, 0.16f), new Vector2(1f, 0.26f), Vector2.zero, Vector2.zero, bold: true, shadow: true);
+                new Vector2(0f, 0.15f), new Vector2(1f, 0.25f), Vector2.zero, Vector2.zero, bold: true, shadow: true);
+            UiKit.MakeText(s.transform, "Ver 1.0　BOATRACE REALISM Project", 16,
+                new Color(1f, 1f, 1f, 0.55f), TextAnchor.MiddleCenter,
+                new Vector2(0f, 0.02f), new Vector2(1f, 0.07f), Vector2.zero, Vector2.zero);
 
             // 全画面透明ボタン
             var tap = new GameObject("Tap");
@@ -317,6 +372,15 @@ namespace BoatRace.UI
                 var bs = race.state.Get(idx);
                 var st = race.statsList[idx];
                 float top = 0.98f - i * 0.155f;
+
+                // 1着ハイライト
+                if (i == 0 && bs.finished && bs.finalPlace == 1)
+                {
+                    var hl = UiKit.MakePanel(panel.transform, new Color(1f, 0.85f, 0.2f, 0.18f), 12,
+                        new Vector2(0.02f, top - 0.15f), new Vector2(0.98f, top + 0.005f), Vector2.zero, Vector2.zero);
+                    UiKit.MakeChip(hl.transform, "WIN", UiKit.Yellow, UiKit.Navy, 20,
+                        new Vector2(0.88f, 0.15f), new Vector2(0.99f, 0.85f), Vector2.zero, Vector2.zero);
+                }
 
                 var chip = new GameObject("Chip");
                 UiKit.Place(chip, panel.transform, new Vector2(0.04f, top - 0.13f), new Vector2(0.10f, top - 0.02f),

@@ -17,6 +17,7 @@ namespace BoatRace.Boat
         public bool replayMode;
 
         VenueData venue;
+        ParticleSystem spray;
         float waveTime;
 
         public void Initialize(int index, BoatStats stats, VenueData venue,
@@ -26,6 +27,9 @@ namespace BoatRace.Boat
             engine = new BoatPhysicsEngine(index, stats, venue, wind, current, wake);
             startAI = new StartAI();
             turnAI = new TurnAI();
+            if (spray == null) spray = GetComponentInChildren<ParticleSystem>();
+            var trail = GetComponentInChildren<TrailRenderer>();
+            if (trail != null) trail.Clear();
         }
 
         /// <summary>物理1ステップ実行(RaceManagerが呼ぶ)。</summary>
@@ -46,6 +50,13 @@ namespace BoatRace.Boat
                 Mathf.Sin(waveTime * 2.1f) * venue.waveHeight * 8f,
                 engine.HeadingDeg,
                 -engine.Steer * 14f); // 旋回時のバンク
+
+            // 水しぶき: 速度に比例し、ターン中は倍増
+            if (spray != null)
+            {
+                var emission = spray.emission;
+                emission.rateOverTime = engine.Speed * (2.2f + Mathf.Abs(engine.Steer) * 9f);
+            }
         }
 
         /// <summary>リプレイ再生時に外部から姿勢を適用する。</summary>

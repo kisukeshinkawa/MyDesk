@@ -221,6 +221,29 @@ namespace BoatRace.Core
                 trail.startColor = new Color(1f, 1f, 1f, 0.55f);
                 trail.endColor = new Color(1f, 1f, 1f, 0f);
 
+                // 水しぶき(速度・ターンで増える)
+                var sprayGo = new GameObject("Spray");
+                sprayGo.transform.SetParent(root.transform, false);
+                sprayGo.transform.localPosition = new Vector3(0f, 0.05f, 1.5f);
+                sprayGo.transform.localRotation = Quaternion.Euler(-55f, 0f, 0f);
+                var ps = sprayGo.AddComponent<ParticleSystem>();
+                var main = ps.main;
+                main.startLifetime = 0.45f;
+                main.startSpeed = new ParticleSystem.MinMaxCurve(2.5f, 5.5f);
+                main.startSize = new ParticleSystem.MinMaxCurve(0.12f, 0.45f);
+                main.startColor = new Color(1f, 1f, 1f, 0.6f);
+                main.gravityModifier = 1.3f;
+                main.maxParticles = 200;
+                main.simulationSpace = ParticleSystemSimulationSpace.World;
+                var emission = ps.emission;
+                emission.rateOverTime = 0f;
+                var shape = ps.shape;
+                shape.shapeType = ParticleSystemShapeType.Cone;
+                shape.angle = 42f;
+                shape.radius = 0.3f;
+                var psr = sprayGo.GetComponent<ParticleSystemRenderer>();
+                psr.material = new Material(Shader.Find("Sprites/Default"));
+
                 var boat = root.AddComponent<BoatController>();
                 race.RegisterBoat(boat);
             }
@@ -263,6 +286,15 @@ namespace BoatRace.Core
             light.type = LightType.Directional;
             light.transform.rotation = Quaternion.Euler(55f, -30f, 0f);
             light.intensity = 1.15f;
+            light.shadows = LightShadows.Soft;   // 影で立体感を出す
+            light.shadowStrength = 0.55f;
+
+            // 遠景を空気感でぼかす(フォグ)
+            RenderSettings.fog = true;
+            RenderSettings.fogMode = FogMode.Linear;
+            RenderSettings.fogStartDistance = 260f;
+            RenderSettings.fogEndDistance = 950f;
+            RenderSettings.fogColor = new Color(0.68f, 0.82f, 0.92f);
             return cam;
         }
 
