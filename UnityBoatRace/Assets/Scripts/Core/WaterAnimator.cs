@@ -11,10 +11,10 @@ namespace BoatRace.Core
         Material mat;
         Vector2 offset;
 
-        public void Initialize(Material material)
+        public void Initialize(Material material, Color baseColor)
         {
             mat = material;
-            mat.mainTexture = GenerateWaveTexture();
+            mat.mainTexture = GenerateWaveTexture(baseColor);
             mat.mainTextureScale = new Vector2(14f, 7f);
         }
 
@@ -25,13 +25,13 @@ namespace BoatRace.Core
             mat.mainTextureOffset = offset;
         }
 
-        static Texture2D GenerateWaveTexture()
+        static Texture2D GenerateWaveTexture(Color baseColor)
         {
             const int size = 256;
             var tex = new Texture2D(size, size, TextureFormat.RGB24, true);
-            var deep = new Color(0.02f, 0.26f, 0.47f);
-            var mid = new Color(0.05f, 0.36f, 0.60f);
-            var light = new Color(0.35f, 0.62f, 0.80f);
+            var deep = baseColor * 0.82f;
+            var mid = baseColor * 1.15f;
+            var light = Color.Lerp(baseColor, Color.white, 0.42f);
 
             for (int y = 0; y < size; y++)
                 for (int x = 0; x < size; x++)

@@ -42,6 +42,7 @@ namespace BoatRace.Core
         public event Action OnRaceFinished;
 
         System.Random rng;
+        PreRaceChoreography choreo;
         float[] pitDelays;
         float[] startProgressOffset;
         float[] prevS;
@@ -90,6 +91,7 @@ namespace BoatRace.Core
             int[] courses = WaitingSystem.AssignCourses(statsList, pitDelays, rng);
 
             state = new RaceState();
+            state.clock = -45f; // ピット離れ〜待機行動〜スタートまで45秒
             armed = false;
             finishCounter = 0;
             lastLeader = -1;
@@ -115,6 +117,14 @@ namespace BoatRace.Core
                     boats[i].SyncTransform();
                 }
             }
+
+            // ピット離れ〜進入隊形の振り付け経路を事前計算
+            choreo = new PreRaceChoreography(BoatCount);
+            for (int i = 0; i < BoatCount; i++)
+                choreo.Build(i, PitExitSystem.PitPosition(i),
+                    WaitingSystem.ApproachStartPosition(courses[i]), courses[i],
+                    pitDelays[i], PitExitSystem.DashPower(statsList[i]));
+
             SetPhase(RacePhase.PitOut);
         }
 
@@ -148,51 +158,51 @@ namespace BoatRace.Core
                 case RacePhase.Racing:   StepRacing(dt); break;
             }
 
-            foreach (var b in boats) b.SimStep(dt);
+            // 物理シミュレーションはスタート助走以降。それ以前は振り付け(choreo)が
+            // 位置・向きを直接制御するので物理は動かさない
+            if (state.phase == RacePhase.Approach || state.phase == RacePhase.Racing ||
+                state.phase == RacePhase.Finished)
+            {
+                foreach (var b in boats) b.SimStep(dt);
+            }
         }
 
-        // ---- ピット離れ: 各艇が遅延後に飛び出し、助走開始位置へ向かう ----
+        // ---- ピット離れ: 事前計算経路に沿って待機水面へ(左回り) ----
         void StepPitOut(float dt)
         {
             bool allArrived = true;
+            float sincePit = state.clock + 45f;
             for (int i = 0; i < BoatCount; i++)
             {
-                var b = boats[i];
-                var bs = state.Get(i);
-                float sincePit = state.clock - (-25f);
-                Vector3 slot = WaitingSystem.ApproachStartPosition(bs.course);
-                float dist = Vector3.Distance(b.engine.Position, slot);
-
-                if (sincePit < pitDelays[i]) { b.engine.Throttle = 0f; allArrived = false; continue; }
-                if (dist > 3f)
-                {
-                    allArrived = false;
-                    SeekTowards(b.engine, slot, 0.5f * PitExitSystem.DashPower(statsList[i]));
-                }
-                else
-                {
-                    b.engine.Throttle = 0f;
-                    b.engine.Steer = 0f;
-                }
+                bool done = choreo.Update(i, boats[i].engine, dt, sincePit);
+                allArrived &= done;
+                boats[i].SyncTransform();
             }
-            if (allArrived || state.clock >= -12f) SetPhase(RacePhase.Waiting);
+            if (allArrived || state.clock >= -13f) SetPhase(RacePhase.Waiting);
         }
 
-        // ---- 待機行動: スタート位置で待つ ----
+        // ---- 待機行動: 隊形を整えて静止(未到達艇は経路を続行) ----
         void StepWaiting(float dt)
         {
+            float sincePit = state.clock + 45f;
             for (int i = 0; i < BoatCount; i++)
             {
-                var b = boats[i];
-                Vector3 slot = WaitingSystem.ApproachStartPosition(state.Get(i).course);
-                if (Vector3.Distance(b.engine.Position, slot) > 2f)
-                    SeekTowards(b.engine, slot, 0.25f);
-                else { b.engine.Throttle = 0f; b.engine.Steer = 0f; b.engine.Speed *= 0.95f; }
+                choreo.Update(i, boats[i].engine, dt, sincePit);
+                boats[i].SyncTransform();
             }
             if (state.clock >= -8f)
             {
+                // 進入位置へ正確にスナップして物理制御に引き継ぐ
                 for (int i = 0; i < BoatCount; i++)
+                {
+                    var e = boats[i].engine;
+                    e.Position = WaitingSystem.ApproachStartPosition(state.Get(i).course);
+                    e.HeadingDeg = 90f;
+                    e.Speed = 0f;
+                    e.Steer = 0f;
                     boats[i].startAI.Plan(statsList[i], state.Get(i).course, rng);
+                    boats[i].SyncTransform();
+                }
                 SetPhase(RacePhase.Approach);
             }
         }
@@ -313,15 +323,6 @@ namespace BoatRace.Core
                 if (lastLeader >= 0) OnLeaderChanged?.Invoke(leader);
                 lastLeader = leader;
             }
-        }
-
-        void SeekTowards(BoatPhysicsEngine engine, Vector3 target, float throttle)
-        {
-            Vector3 to = target - engine.Position;
-            float desired = Mathf.Atan2(to.x, to.z) * Mathf.Rad2Deg;
-            float diff = Mathf.DeltaAngle(engine.HeadingDeg, desired);
-            engine.Steer = Mathf.Clamp(diff / 40f, -1f, 1f);
-            engine.Throttle = throttle;
         }
 
         void SetPhase(RacePhase p)

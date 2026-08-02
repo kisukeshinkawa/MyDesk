@@ -1,4 +1,5 @@
 using UnityEngine;
+using BoatRace.Data;
 using BoatRace.UI;
 
 namespace BoatRace.Core
@@ -11,10 +12,14 @@ namespace BoatRace.Core
     public static class VenueBuilder
     {
         static Transform root;
+        static float hw;        // 水面のz方向半幅(会場ごとに違う)
+        static Color accent;    // 会場アクセント色
 
         public static void Build(RaceManager race)
         {
             root = new GameObject("Venue").transform;
+            hw = VenueTraits.WaterHalfWidth(race.venueId);
+            accent = VenueTraits.AccentColor(race.venueId);
 
             BuildPerimeter();
             BuildWaveBreakers();
@@ -30,10 +35,10 @@ namespace BoatRace.Core
         static void BuildPerimeter()
         {
             var gray = new Color(0.55f, 0.58f, 0.62f);
-            MakeBox("WallSouth", new Vector3(-150f, 1.5f, -172f), new Vector3(650f, 3f, 2f), gray);
-            MakeBox("WallNorth", new Vector3(-150f, 1.5f, 172f), new Vector3(650f, 3f, 2f), gray);
-            MakeBox("WallWest", new Vector3(-476f, 1.5f, 0f), new Vector3(2f, 3f, 346f), gray);
-            MakeBox("WallEast", new Vector3(176f, 1.5f, 0f), new Vector3(2f, 3f, 346f), gray);
+            MakeBox("WallSouth", new Vector3(-150f, 1.5f, -(hw + 2f)), new Vector3(650f, 3f, 2f), gray);
+            MakeBox("WallNorth", new Vector3(-150f, 1.5f, hw + 2f), new Vector3(650f, 3f, 2f), gray);
+            MakeBox("WallWest", new Vector3(-476f, 1.5f, 0f), new Vector3(2f, 3f, hw * 2f + 6f), gray);
+            MakeBox("WallEast", new Vector3(176f, 1.5f, 0f), new Vector3(2f, 3f, hw * 2f + 6f), gray);
         }
 
         // ---- 消波装置(オレンジのフロート) ----
@@ -42,12 +47,13 @@ namespace BoatRace.Core
             var orange = new Color(1f, 0.5f, 0.05f);
             var parent = new GameObject("WaveBreakers").transform;
             parent.SetParent(root, false);
+            float zEdge = hw - 6f;
             for (float x = -460f; x <= 160f; x += 14f)
             {
-                MakeBox("wb", new Vector3(x, 0.25f, -166f), new Vector3(3.2f, 0.5f, 1.1f), orange, parent);
-                MakeBox("wb", new Vector3(x, 0.25f, 166f), new Vector3(3.2f, 0.5f, 1.1f), orange, parent);
+                MakeBox("wb", new Vector3(x, 0.25f, -zEdge), new Vector3(3.2f, 0.5f, 1.1f), orange, parent);
+                MakeBox("wb", new Vector3(x, 0.25f, zEdge), new Vector3(3.2f, 0.5f, 1.1f), orange, parent);
             }
-            for (float z = -155f; z <= 155f; z += 14f)
+            for (float z = -(zEdge - 10f); z <= zEdge - 10f; z += 14f)
             {
                 MakeBox("wb", new Vector3(-468f, 0.25f, z), new Vector3(1.1f, 0.5f, 3.2f), orange, parent);
                 MakeBox("wb", new Vector3(168f, 0.25f, z), new Vector3(1.1f, 0.5f, 3.2f), orange, parent);
@@ -94,7 +100,7 @@ namespace BoatRace.Core
             for (int t = 0; t < 5; t++)
             {
                 float y = 1.1f + t * 2.4f;
-                float z = -182f - t * 9f;
+                float z = -(hw + 12f) - t * 9f;
                 MakeBox($"Tier{t}", new Vector3(-150f, y, z), new Vector3(460f, 2.2f, 9f), tierColor, stand);
 
                 // 観客(カラフルなキューブ)
@@ -106,11 +112,11 @@ namespace BoatRace.Core
                 }
             }
 
-            // 屋根と背面壁
-            MakeBox("Roof", new Vector3(-150f, 14.5f, -203f), new Vector3(475f, 0.9f, 58f), new Color(0.35f, 0.38f, 0.45f), stand);
-            MakeBox("BackWall", new Vector3(-150f, 7f, -229f), new Vector3(470f, 15f, 2f), new Color(0.65f, 0.68f, 0.72f), stand);
+            // 屋根(会場アクセント色)と背面壁
+            MakeBox("Roof", new Vector3(-150f, 14.5f, -(hw + 33f)), new Vector3(475f, 0.9f, 58f), accent, stand);
+            MakeBox("BackWall", new Vector3(-150f, 7f, -(hw + 59f)), new Vector3(470f, 15f, 2f), new Color(0.65f, 0.68f, 0.72f), stand);
             for (float x = -370f; x <= 70f; x += 55f)
-                MakeBox("Pillar", new Vector3(x, 7f, -177.5f), new Vector3(1.2f, 14f, 1.2f), new Color(0.5f, 0.52f, 0.56f), stand);
+                MakeBox("Pillar", new Vector3(x, 7f, -(hw + 7.5f)), new Vector3(1.2f, 14f, 1.2f), new Color(0.5f, 0.52f, 0.56f), stand);
         }
 
         // ---- 広告壁(架空スポンサー) ----
@@ -121,8 +127,8 @@ namespace BoatRace.Core
             for (int i = 0; i < 10; i++)
             {
                 float x = -420f + i * 60f;
-                var bg = MakeBox("Ad", new Vector3(x, 2.6f, -171f), new Vector3(48f, 2.6f, 0.6f), bgs[i % bgs.Length]);
-                MakeText3D(brands[i % brands.Length], new Vector3(x, 2.6f, -170.5f), Quaternion.identity, 2.0f, Color.white);
+                MakeBox("Ad", new Vector3(x, 2.6f, -(hw + 1f)), new Vector3(48f, 2.6f, 0.6f), bgs[i % bgs.Length]);
+                MakeText3D(brands[i % brands.Length], new Vector3(x, 2.6f, -(hw + 0.5f)), Quaternion.identity, 2.0f, Color.white);
             }
         }
 
@@ -131,7 +137,7 @@ namespace BoatRace.Core
         {
             var clock = new GameObject("BigClock");
             clock.transform.SetParent(root, false);
-            clock.transform.position = new Vector3(TrackPath.StartLineX, 0f, -160f);
+            clock.transform.position = new Vector3(TrackPath.StartLineX, 0f, -(hw - 10f));
 
             MakeBox("Pole", new Vector3(0f, 5f, 0f), new Vector3(1.1f, 10f, 1.1f), new Color(0.85f, 0.85f, 0.88f), clock.transform);
 
@@ -166,16 +172,17 @@ namespace BoatRace.Core
         // ---- 電光掲示板(バックストレッチ側) ----
         static void BuildScoreboard(RaceManager race)
         {
+            float bz = hw + 8f;
             var board = new GameObject("Scoreboard");
             board.transform.SetParent(root, false);
-            board.transform.position = new Vector3(-150f, 0f, 178f);
+            board.transform.position = new Vector3(-150f, 0f, bz);
 
             MakeBox("Leg", new Vector3(-18f, 4f, 0f), new Vector3(1.5f, 8f, 1.5f), new Color(0.4f, 0.4f, 0.45f), board.transform);
             MakeBox("Leg", new Vector3(18f, 4f, 0f), new Vector3(1.5f, 8f, 1.5f), new Color(0.4f, 0.4f, 0.45f), board.transform);
             MakeBox("Panel", new Vector3(0f, 13f, 0f), new Vector3(60f, 12f, 1.2f), new Color(0.05f, 0.06f, 0.12f), board.transform);
-            MakeText3D($"BOATRACE {race.venue.name}", new Vector3(-150f, 16f, 177f),
+            MakeText3D($"BOATRACE {race.venue.name}", new Vector3(-150f, 16f, bz - 1f),
                 Quaternion.Euler(0f, 180f, 0f), 3.2f, new Color(1f, 0.85f, 0.2f));
-            MakeText3D("第 1 レース", new Vector3(-150f, 11f, 177f),
+            MakeText3D("第 1 レース", new Vector3(-150f, 11f, bz - 1f),
                 Quaternion.Euler(0f, 180f, 0f), 2.6f, Color.white);
         }
 

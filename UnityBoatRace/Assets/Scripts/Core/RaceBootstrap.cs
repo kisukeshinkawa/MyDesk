@@ -26,7 +26,7 @@ namespace BoatRace.Core
             race.seed = seed;
             race.SetupRace();
 
-            BuildWater();
+            BuildWater(race);
             BuildStartLine();
             BuildBoats(race);
             VenueBuilder.Build(race);
@@ -43,16 +43,18 @@ namespace BoatRace.Core
             flow.Initialize(race, replay, new CommentarySystem(race), raceCam);
         }
 
-        void BuildWater()
+        void BuildWater(RaceManager race)
         {
+            float hw = Data.VenueTraits.WaterHalfWidth(race.venueId);
+            Color baseColor = Data.VenueTraits.WaterBaseColor(race.venue);
             var water = GameObject.CreatePrimitive(PrimitiveType.Cube);
             water.name = "Water";
             water.transform.position = new Vector3(-150f, -0.55f, 0f);
-            water.transform.localScale = new Vector3(640f, 1f, 340f);
-            var mat = Paint(water, new Color(0.03f, 0.32f, 0.55f));
+            water.transform.localScale = new Vector3(640f, 1f, hw * 2f + 8f);
+            var mat = Paint(water, baseColor);
             if (mat.HasProperty("_Glossiness")) mat.SetFloat("_Glossiness", 0.85f);
             if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", 0.85f);
-            water.AddComponent<WaterAnimator>().Initialize(mat);
+            water.AddComponent<WaterAnimator>().Initialize(mat, baseColor);
         }
 
         void BuildStartLine()
