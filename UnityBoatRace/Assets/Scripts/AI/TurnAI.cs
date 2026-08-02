@@ -12,7 +12,6 @@ namespace BoatRace.AI
     {
         public float laneRadius = 16f;     // 自艇の基準レーン半径
         public float radiusFactor = 1f;    // 戦術による旋回半径倍率
-        const float Lookahead = 14f;       // 先読み距離(m)
 
         public void Configure(int course, Tactic tactic)
         {
@@ -32,7 +31,10 @@ namespace BoatRace.AI
         {
             float r = EffectiveRadius(engine);
             float s = TrackPath.GetProgress(engine.Position, r);
-            Vector3 target = TrackPath.PointAt(s + Lookahead, r);
+            // 先読み距離は速度に比例(速いほど遠くを見る)。低速時の過敏な蛇行と
+            // 高速時の反応遅れの両方を防ぐ
+            float lookahead = Mathf.Clamp(engine.Speed * 0.85f, 8f, 22f);
+            Vector3 target = TrackPath.PointAt(s + lookahead, r);
 
             Vector3 to = target - engine.Position;
             float desiredHeading = Mathf.Atan2(to.x, to.z) * Mathf.Rad2Deg;

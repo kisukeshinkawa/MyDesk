@@ -16,6 +16,9 @@ namespace BoatRace.Core
         public int venueId = 24;   // 大村
         public int seed = 12345;
 
+        [Header("デバッグ")]
+        public bool showRacingLine = true; // AIが追う走行ラインを表示(調整用)
+
         void Awake()
         {
             var race = gameObject.AddComponent<RaceManager>();
@@ -27,6 +30,7 @@ namespace BoatRace.Core
             BuildStartLine();
             BuildBoats(race);
             VenueBuilder.Build(race);
+            if (showRacingLine) BuildRacingLine();
 
             var cam = SetupCamera();
             var replay = gameObject.AddComponent<ReplayManager>();
@@ -139,6 +143,25 @@ namespace BoatRace.Core
                 var boat = root.AddComponent<BoatController>();
                 race.RegisterBoat(boat);
             }
+        }
+
+        /// <summary>AIが追う走行ライン(1コース基準)を水面に描く。調整・検証用。</summary>
+        void BuildRacingLine()
+        {
+            const float r = 16f;
+            var go = new GameObject("RacingLine");
+            var lr = go.AddComponent<LineRenderer>();
+            const int points = 240;
+            lr.positionCount = points;
+            lr.loop = true;
+            lr.startWidth = 0.35f;
+            lr.endWidth = 0.35f;
+            lr.material = new Material(Shader.Find("Sprites/Default"));
+            lr.startColor = new Color(0.2f, 1f, 0.9f, 0.45f);
+            lr.endColor = new Color(0.2f, 1f, 0.9f, 0.45f);
+            float lap = TrackPath.LapLength(r);
+            for (int i = 0; i < points; i++)
+                lr.SetPosition(i, TrackPath.PointAt(lap * i / points, r) + Vector3.up * 0.05f);
         }
 
         Camera SetupCamera()

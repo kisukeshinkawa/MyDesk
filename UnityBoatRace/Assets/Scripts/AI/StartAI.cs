@@ -31,11 +31,14 @@ namespace BoatRace.AI
             return 1f;
         }
 
-        /// <summary>助走中はレーン維持のためラインへ直進する舵。</summary>
+        /// <summary>
+        /// 助走中はレーン維持のためラインへ直進する舵。
+        /// heading90°=+X。zを増やしたい(左へ寄る)ときはheadingを90°より小さく。
+        /// </summary>
         public float GetSteer(BoatPhysicsEngine engine, float laneZ)
         {
             float zError = laneZ - engine.Position.z;
-            float desiredHeading = 90f - Mathf.Clamp(zError * -4f, -20f, 20f);
+            float desiredHeading = 90f - Mathf.Clamp(zError * 4f, -25f, 25f);
             float diff = Mathf.DeltaAngle(engine.HeadingDeg, desiredHeading);
             return Mathf.Clamp(diff / 25f, -1f, 1f);
         }

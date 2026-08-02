@@ -20,30 +20,30 @@ namespace BoatRace.Core
 
         /// <summary>
         /// 位置から周回進行度 s (m) を求める。半径Rのレーン基準。
-        /// s=0 はホームストレッチの2マーク側起点。
+        /// s=0 はホームストレッチの2マーク側起点。全域で連続・単調になるよう
+        /// 4区間(ホーム/1M旋回/バック/2M旋回)を厳密に場合分けする。
         /// </summary>
         public static float GetProgress(Vector3 pos, float r)
         {
             float piR = Mathf.PI * r;
-            if (pos.x >= Mark2.x && pos.x <= Mark1.x)
-            {
-                if (pos.z < 0f) return pos.x - Mark2.x;                          // ホーム(+X方向)
-                return StraightLength + piR + (Mark1.x - pos.x);                 // バック(-X方向)
-            }
+
             if (pos.x > Mark1.x)
             {
-                // 1マーク旋回: φ -90°(手前)→+90°(明け)
-                float phi = Mathf.Atan2(pos.z, pos.x - Mark1.x); // -π..π
-                float t = Mathf.Clamp01((phi + Mathf.PI * 0.5f) / Mathf.PI);
+                // 1M旋回(右半平面): φは-90°(進入)→+90°(旋回明け)で連続
+                float phi = Mathf.Atan2(pos.z, pos.x - Mark1.x);
+                float t = Mathf.InverseLerp(-Mathf.PI * 0.5f, Mathf.PI * 0.5f, phi);
                 return StraightLength + t * piR;
             }
-            // 2マーク旋回
-            float phi2 = Mathf.Atan2(pos.z, pos.x - Mark2.x);
-            // z>0側 φ=+90°から回り z<0側 φ=-90°(=270°)で明け
-            float t2 = (phi2 > Mathf.PI * 0.5f || phi2 < -Mathf.PI * 0.5f)
-                ? Mathf.Clamp01((Mathf.PI - Mathf.Abs(phi2)) / (Mathf.PI * 0.5f)) * 0.5f + (phi2 > 0 ? 0f : 0.5f)
-                : (phi2 > 0f ? 0f : 1f);
-            return 2f * StraightLength + piR + t2 * piR;
+            if (pos.x < Mark2.x)
+            {
+                // 2M旋回(左半平面): φを0..360°に正規化すると90°(進入)→270°(明け)で連続
+                float deg = Mathf.Atan2(pos.z, pos.x - Mark2.x) * Mathf.Rad2Deg;
+                float psi = deg < 0f ? deg + 360f : deg;   // 90..270
+                float t = Mathf.Clamp01((psi - 90f) / 180f);
+                return 2f * StraightLength + piR + t * piR;
+            }
+            if (pos.z < 0f) return pos.x - Mark2.x;                  // ホーム(+X方向)
+            return StraightLength + piR + (Mark1.x - pos.x);         // バック(-X方向)
         }
 
         /// <summary>進行度 s (m) → レーン半径R上の座標。</summary>
