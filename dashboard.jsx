@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-04-v321-store-qty3-template"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-04-v322-grid-keys-paste"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -34252,9 +34252,11 @@ function VendorQuoteCard({ qv, rows, stores=[], totalStores=0, showAll=false, on
   const grade=vrec&&vrec.grade;
   const setExtra=lines=>onChange({extraLines:lines});
   // Excel風キー移動
-  const NAVCOLS=8;
-  const GRIDCOLS=["unit","unitType","transport","disposal","disposalUnit","flat","overhead","condition"];
+  const NAVCOLS=10;
+  const GRIDCOLS=["method","unit","unitType","transport","disposal","disposalUnit","flat","overhead","taxMode","condition"];
   const NUMCOLS=new Set(["unit","transport","disposal","flat","overhead"]);
+  const OPT_METHOD=["込","別","定額"]; const OPT_TAX=["税抜","税込"];
+  const validCell=(key,val,r)=>{ const v=String(val==null?"":val).trim(); if(NUMCOLS.has(key)) return v.replace(/[^0-9.]/g,""); if(key==="method") return OPT_METHOD.indexOf(v)>=0?v:""; if(key==="taxMode") return OPT_TAX.indexOf(v)>=0?v:""; if(key==="disposalUnit"){ const us=((r&&r.qtys)||[]).map(x=>String(x.u)); return us.indexOf(v)>=0?v:""; } return val; };
   const [sel,setSel]=React.useState(null);
   const dragRef=React.useRef(false);
   const copyBuf=React.useRef("");
@@ -34265,8 +34267,8 @@ function VendorQuoteCard({ qv, rows, stores=[], totalStores=0, showAll=false, on
   const focusCell=(ri,ci)=>{ if(ri<0||ri>=rows.length||ci<0||ci>=NAVCOLS) return; const el=document.querySelector('[data-nav="'+qv.id+'_'+ri+'_'+ci+'"]'); if(el){ el.focus(); if(el.select) try{el.select();}catch(_){} } };
   const onDown=(e,ri,ci)=>{ if(e.shiftKey&&sel){ setSel({...sel,br:ri,bc:ci}); } else { setSel({ar:ri,ac:ci,br:ri,bc:ci}); } dragRef.current=true; };
   const onEnter=(ri,ci)=>{ if(dragRef.current){ setSel(x=> x?{...x,br:ri,bc:ci}:{ar:ri,ac:ci,br:ri,bc:ci}); try{window.getSelection().removeAllRanges();}catch(_){} } };
-  const copyRange=()=>{ if(!sel)return; const R=rectOf(sel); const out=[]; for(let r=R.r1;r<=R.r2;r++){ const row=[]; for(let c=R.c1;c<=R.c2;c++){ const pr=(qv.prices||{})[rows[r].itemId]||{}; const gk=GRIDCOLS[c]; const v=(gk==="condition")?(pr.condition||pr.note||""):pr[gk]; row.push(v!=null?String(v):""); } out.push(row.join("\t")); } const tsv=out.join("\n"); copyBuf.current=tsv; try{navigator.clipboard&&navigator.clipboard.writeText&&navigator.clipboard.writeText(tsv);}catch(_){} };
-  const fillFrom=(text,ar,ac)=>{ const grid=String(text||"").replace(/\r/g,"").split("\n").map(l=>l.split("\t")); while(grid.length>1&&grid[grid.length-1].length===1&&grid[grid.length-1][0]===""){grid.pop();} if(!grid.length)return; const gr=grid.length, gc=grid.reduce((m,l)=>Math.max(m,l.length),1); const S= sel?rectOf(sel):{r1:ar,c1:ac,r2:ar,c2:ac}; const height=Math.max(S.r2-S.r1+1,gr), width=Math.max(S.c2-S.c1+1,gc); const np={...(qv.prices||{})}; for(let dr=0;dr<height;dr++){ for(let dc=0;dc<width;dc++){ const r=S.r1+dr, c=S.c1+dc; if(r<0||r>=rows.length||c<0||c>=GRIDCOLS.length) continue; const line=grid[dr%gr]||[]; let val=line[dc%gc]; if(val==null) val=""; const key=GRIDCOLS[c]; const v=NUMCOLS.has(key)?String(val).replace(/[^0-9.]/g,""):val; const id=rows[r].itemId; np[id]={...np[id],[key]:v}; } } onChange({prices:np}); };
+  const copyRange=()=>{ if(!sel)return; const R=rectOf(sel); const out=[]; for(let r=R.r1;r<=R.r2;r++){ const row=[]; for(let c=R.c1;c<=R.c2;c++){ const pr=(qv.prices||{})[rows[r].itemId]||{}; const gk=GRIDCOLS[c]; const v=(gk==="condition")?(pr.condition||pr.note||""):(gk==="taxMode")?(pr.taxMode||"税抜"):pr[gk]; row.push(v!=null?String(v):""); } out.push(row.join("\t")); } const tsv=out.join("\n"); copyBuf.current=tsv; try{navigator.clipboard&&navigator.clipboard.writeText&&navigator.clipboard.writeText(tsv);}catch(_){} };
+  const fillFrom=(text,ar,ac)=>{ const grid=String(text||"").replace(/\r/g,"").split("\n").map(l=>l.split("\t")); while(grid.length>1&&grid[grid.length-1].length===1&&grid[grid.length-1][0]===""){grid.pop();} if(!grid.length)return; const gr=grid.length, gc=grid.reduce((m,l)=>Math.max(m,l.length),1); const S= sel?rectOf(sel):{r1:ar,c1:ac,r2:ar,c2:ac}; const height=Math.max(S.r2-S.r1+1,gr), width=Math.max(S.c2-S.c1+1,gc); const np={...(qv.prices||{})}; for(let dr=0;dr<height;dr++){ for(let dc=0;dc<width;dc++){ const r=S.r1+dr, c=S.c1+dc; if(r<0||r>=rows.length||c<0||c>=GRIDCOLS.length) continue; const line=grid[dr%gr]||[]; let val=line[dc%gc]; if(val==null) val=""; const key=GRIDCOLS[c]; const v=validCell(key,val,rows[r]); const id=rows[r].itemId; np[id]={...np[id],[key]:v}; } } onChange({prices:np}); };
   const pasteRange=(ri,ci)=>{ const doIt=t=>fillFrom(t,ri,ci); if(navigator.clipboard&&navigator.clipboard.readText){ navigator.clipboard.readText().then(t=>doIt((t&&t.length)?t:copyBuf.current)).catch(()=>doIt(copyBuf.current)); } else doIt(copyBuf.current); };
   const clearRange=()=>{ if(!sel)return; const R=rectOf(sel); const np={...(qv.prices||{})}; for(let r=R.r1;r<=R.r2;r++){ for(let c=R.c1;c<=R.c2;c++){ const id=rows[r].itemId; np[id]={...np[id],[GRIDCOLS[c]]:""}; } } onChange({prices:np}); };
   const onKey=(e,ri,ci)=>{
@@ -34275,8 +34277,15 @@ function VendorQuoteCard({ qv, rows, stores=[], totalStores=0, showAll=false, on
     if(meta&&(e.key==="c"||e.key==="C")){ e.preventDefault(); copyRange(); return; }
     if(meta&&(e.key==="v"||e.key==="V")){ e.preventDefault(); pasteRange(ri,ci); return; }
     if((e.key==="Delete"||e.key==="Backspace")&&rectSize()>1){ e.preventDefault(); clearRange(); return; }
-    if(e.key==="Enter"||e.key==="ArrowDown"){ e.preventDefault(); focusCell(ri+1,ci); setSel({ar:ri+1,ac:ci,br:ri+1,bc:ci}); }
-    else if(e.key==="ArrowUp"){ e.preventDefault(); focusCell(ri-1,ci); setSel({ar:ri-1,ac:ci,br:ri-1,bc:ci}); }
+    const has=(r,c)=>!!document.querySelector('[data-nav="'+qv.id+'_'+r+'_'+c+'"]');
+    const step=(r,c,dr,dc)=>{ let nr=r+dr,nc=c+dc; while(nr>=0&&nr<rows.length&&nc>=0&&nc<NAVCOLS){ if(has(nr,nc)) return [nr,nc]; nr+=dr;nc+=dc; } return null; };
+    const go=(t)=>{ if(!t)return; focusCell(t[0],t[1]); setSel({ar:t[0],ac:t[1],br:t[0],bc:t[1]}); };
+    const isSel=e.target&&e.target.tagName==="SELECT";
+    if(e.key==="Enter"||e.key==="ArrowDown"){ e.preventDefault(); go(step(ri,ci,1,0)); }
+    else if(e.key==="ArrowUp"){ e.preventDefault(); go(step(ri,ci,-1,0)); }
+    else if(e.key==="Tab"){ e.preventDefault(); const dir=e.shiftKey?-1:1; let t=step(ri,ci,0,dir); if(!t){ const nr=ri+dir; if(nr>=0&&nr<rows.length) t=(dir>0)?step(nr,-1,0,1):step(nr,NAVCOLS,0,-1); } go(t); }
+    else if(isSel&&e.key==="ArrowLeft"){ e.preventDefault(); go(step(ri,ci,0,-1)); }
+    else if(isSel&&e.key==="ArrowRight"){ e.preventDefault(); go(step(ri,ci,0,1)); }
   };
   const cellProps=(ri,ci)=>({ "data-nav":qv.id+"_"+ri+"_"+ci, onKeyDown:e=>onKey(e,ri,ci), onMouseDown:e=>onDown(e,ri,ci), onMouseEnter:()=>onEnter(ri,ci) });
   const cs=(ri,ci,base)=> inSel(ri,ci)?{...base,background:"#dbeafe",outline:"1.5px solid #2563eb",outlineOffset:"-1px"}:base;
@@ -34471,19 +34480,19 @@ function VendorQuoteCard({ qv, rows, stores=[], totalStores=0, showAll=false, on
                   <div style={{fontSize:"0.72rem",fontWeight:600,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.storeName||"（拠点）"}{r.address?<a href={mapsUrl(r.address)} target="_blank" rel="noreferrer" style={{marginLeft:4,textDecoration:"none"}} title="Googleマップ">📍</a>:null}</div>
                   <div style={{fontSize:"0.62rem",color:C.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.kind||"（品目）"}{r.freq?` / ${r.freq}`:""}{(r.qtys&&r.qtys.length)?(" ／ "+r.qtys.map(q=>q.q+q.u).join("・")):""}</div>
                 </div>
-                <select value={m} onChange={e=>setPrice(r.itemId,{method:e.target.value})} style={{width:96,flex:"none",padding:"0.25rem 0.1rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.64rem",fontFamily:"inherit",background:"white"}}><option value=""></option>{METHODS.map(x=><option key={x.v} value={x.v}>{x.t}</option>)}</select>
-                <span style={CcolNum}>{ok("unit")?<input {...cellProps(ri,0)} value={pr.unit||""} onChange={e=>setPrice(r.itemId,{unit:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="単価" style={cs(ri,0,NUM)}/>:null}</span>
-                <span style={{width:54,flex:"none"}}>{ok("unitType")?<input {...cellProps(ri,1)} value={pr.unitType||""} onChange={e=>setPrice(r.itemId,{unitType:e.target.value})} placeholder="立米/kg" style={cs(ri,1,{...NUM,textAlign:"center"})}/>:null}</span>
-                <span style={CcolNum}>{ok("transport")?<input {...cellProps(ri,2)} value={pr.transport||""} onChange={e=>setPrice(r.itemId,{transport:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="運搬固定" style={cs(ri,2,NUM)}/>:null}</span>
-                <span style={CcolNum}>{ok("disposal")?<input {...cellProps(ri,3)} value={pr.disposal||""} onChange={e=>setPrice(r.itemId,{disposal:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="処分単価" style={cs(ri,3,NUM)}/>:null}</span>
-                <span style={{width:54,flex:"none"}}>{ok("disposalUnit")?<select value={pr.disposalUnit||""} onChange={e=>setPrice(r.itemId,{disposalUnit:e.target.value})} title="店舗の数量に登録した単位から選択" style={{width:"100%",boxSizing:"border-box",padding:"0.22rem 0.05rem",borderRadius:5,border:`1px solid ${((r.qtys||[]).length? C.border : "#fca5a5")}`,fontSize:"0.6rem",fontFamily:"inherit",background:"white"}}><option value="">単位</option>{(r.qtys||[]).map((qq,qi)=><option key={qi} value={qq.u}>{qq.u||"(未設定)"}</option>)}</select>:null}</span>
-                <span style={{width:78,flex:"none"}}>{ok("flat")?<input {...cellProps(ri,5)} value={pr.flat||""} onChange={e=>setPrice(r.itemId,{flat:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="定額" style={cs(ri,5,NUM)}/>:null}</span>
-                <span style={CcolNum}><input {...cellProps(ri,6)} value={pr.overhead||""} onChange={e=>setPrice(r.itemId,{overhead:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="諸経費" style={cs(ri,6,NUM)}/></span>
-                <select value={pr.taxMode||"税抜"} onChange={e=>setPrice(r.itemId,{taxMode:e.target.value})} style={{width:58,flex:"none",padding:"0.25rem 0.05rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.64rem",fontFamily:"inherit",background:"white"}}>{TAXES.map(t=><option key={t} value={t}>{t}</option>)}</select>
+                <select {...cellProps(ri,0)} value={m} onChange={e=>setPrice(r.itemId,{method:e.target.value})} style={cs(ri,0,{width:96,flex:"none",padding:"0.25rem 0.1rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.64rem",fontFamily:"inherit",background:"white"})}><option value=""></option>{METHODS.map(x=><option key={x.v} value={x.v}>{x.t}</option>)}</select>
+                <span style={CcolNum}>{ok("unit")?<input {...cellProps(ri,1)} value={pr.unit||""} onChange={e=>setPrice(r.itemId,{unit:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="単価" style={cs(ri,1,NUM)}/>:null}</span>
+                <span style={{width:54,flex:"none"}}>{ok("unitType")?<input {...cellProps(ri,2)} value={pr.unitType||""} onChange={e=>setPrice(r.itemId,{unitType:e.target.value})} placeholder="立米/kg" style={cs(ri,2,{...NUM,textAlign:"center"})}/>:null}</span>
+                <span style={CcolNum}>{ok("transport")?<input {...cellProps(ri,3)} value={pr.transport||""} onChange={e=>setPrice(r.itemId,{transport:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="運搬固定" style={cs(ri,3,NUM)}/>:null}</span>
+                <span style={CcolNum}>{ok("disposal")?<input {...cellProps(ri,4)} value={pr.disposal||""} onChange={e=>setPrice(r.itemId,{disposal:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="処分単価" style={cs(ri,4,NUM)}/>:null}</span>
+                <span style={{width:54,flex:"none"}}>{ok("disposalUnit")?<select {...cellProps(ri,5)} value={pr.disposalUnit||""} onChange={e=>setPrice(r.itemId,{disposalUnit:e.target.value})} title="店舗の数量に登録した単位から選択" style={cs(ri,5,{width:"100%",boxSizing:"border-box",padding:"0.22rem 0.05rem",borderRadius:5,border:`1px solid ${((r.qtys||[]).length? C.border : "#fca5a5")}`,fontSize:"0.6rem",fontFamily:"inherit",background:"white"})}><option value="">単位</option>{(r.qtys||[]).map((qq,qi)=><option key={qi} value={qq.u}>{qq.u||"(未設定)"}</option>)}</select>:null}</span>
+                <span style={{width:78,flex:"none"}}>{ok("flat")?<input {...cellProps(ri,6)} value={pr.flat||""} onChange={e=>setPrice(r.itemId,{flat:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="定額" style={cs(ri,6,NUM)}/>:null}</span>
+                <span style={CcolNum}><input {...cellProps(ri,7)} value={pr.overhead||""} onChange={e=>setPrice(r.itemId,{overhead:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="諸経費" style={cs(ri,7,NUM)}/></span>
+                <select {...cellProps(ri,8)} value={pr.taxMode||"税抜"} onChange={e=>setPrice(r.itemId,{taxMode:e.target.value})} style={cs(ri,8,{width:58,flex:"none",padding:"0.25rem 0.05rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.64rem",fontFamily:"inherit",background:"white"})}>{TAXES.map(t=><option key={t} value={t}>{t}</option>)}</select>
                 <span style={{width:80,flex:"none",...AUTO}}>{baseOf(r,pr)?Math.round(baseOf(r,pr)).toLocaleString():""}</span>
                 <span style={{width:80,flex:"none",...AUTO,color:C.textSub}}>{baseOf(r,pr)?Math.round(taxInOf(r,pr)).toLocaleString():""}</span>
                 <span style={{width:96,flex:"none",...AUTO,color:C.accentDark,fontWeight:800}}>{baseOf(r,pr)?("¥"+Math.round(custOf(r,pr)).toLocaleString()):""}</span>
-                <span style={{width:150,flex:"none"}}><input {...cellProps(ri,7)} value={pr.condition||pr.note||""} onChange={e=>setPrice(r.itemId,{condition:e.target.value})} placeholder="回収条件・備考" style={cs(ri,7,{width:"100%",boxSizing:"border-box",padding:"0.25rem 0.3rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit"})}/></span>
+                <span style={{width:150,flex:"none"}}><input {...cellProps(ri,9)} value={pr.condition||pr.note||""} onChange={e=>setPrice(r.itemId,{condition:e.target.value})} placeholder="回収条件・備考" style={cs(ri,9,{width:"100%",boxSizing:"border-box",padding:"0.25rem 0.3rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit"})}/></span>
               </div>
             );})}
           </div>
