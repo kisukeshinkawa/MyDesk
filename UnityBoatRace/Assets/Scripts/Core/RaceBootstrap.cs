@@ -1,26 +1,20 @@
 using UnityEngine;
+using UnityEngine.EventSystems;
 using BoatRace.Boat;
 using BoatRace.Commentary;
+using BoatRace.UI;
 
 namespace BoatRace.Core
 {
     /// <summary>
     /// シーン自動構築。空のシーンにこのコンポーネントを1つ置いてPlayするだけで
-    /// 水面・マーク・スタートライン・6艇・カメラ・HUD・リプレイが揃う。
-    /// (本格的な3Dモデル/水シェーダーは後からこの生成物と差し替える)
+    /// 水面・マーク・6艇・演出カメラ・スマホゲー風UI(GameFlow)・リプレイが揃う。
     /// </summary>
     public class RaceBootstrap : MonoBehaviour
     {
         [Header("レース設定")]
         public int venueId = 24;   // 大村
         public int seed = 12345;
-
-        // 艇色: 1白 2黒 3赤 4青 5黄 6緑
-        static readonly Color[] BoatColors =
-        {
-            Color.white, new Color(0.15f, 0.15f, 0.15f), new Color(0.9f, 0.15f, 0.1f),
-            new Color(0.1f, 0.3f, 0.9f), new Color(0.95f, 0.85f, 0.1f), new Color(0.1f, 0.7f, 0.25f),
-        };
 
         void Awake()
         {
@@ -37,18 +31,23 @@ namespace BoatRace.Core
             var cam = SetupCamera();
             var replay = gameObject.AddComponent<ReplayManager>();
             replay.Initialize(race, cam);
+            var raceCam = cam.gameObject.AddComponent<RaceCamera>();
+            raceCam.Initialize(race, replay);
 
-            var hud = gameObject.AddComponent<RaceHUD>();
-            hud.Initialize(race, replay, new CommentarySystem(race));
+            EnsureEventSystem();
+            var flow = gameObject.AddComponent<GameFlow>();
+            flow.Initialize(race, replay, new CommentarySystem(race));
         }
 
         void BuildWater()
         {
             var water = GameObject.CreatePrimitive(PrimitiveType.Cube);
             water.name = "Water";
-            water.transform.position = new Vector3(-150f, -0.5f, 0f);
-            water.transform.localScale = new Vector3(600f, 1f, 300f);
-            Paint(water, new Color(0.05f, 0.28f, 0.45f));
+            water.transform.position = new Vector3(-150f, -0.55f, 0f);
+            water.transform.localScale = new Vector3(640f, 1f, 340f);
+            var mat = Paint(water, new Color(0.03f, 0.32f, 0.55f));
+            if (mat.HasProperty("_Glossiness")) mat.SetFloat("_Glossiness", 0.85f);
+            if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", 0.85f);
         }
 
         void BuildMarks()
@@ -58,7 +57,7 @@ namespace BoatRace.Core
                 var mark = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
                 mark.name = name;
                 mark.transform.position = pos + Vector3.up * 0.8f;
-                mark.transform.localScale = new Vector3(1.6f, 0.8f, 1.6f);
+                mark.transform.localScale = new Vector3(1.8f, 0.9f, 1.8f);
                 Paint(mark, new Color(1f, 0.45f, 0f)); // オレンジブイ
             }
         }
@@ -68,7 +67,7 @@ namespace BoatRace.Core
             var line = GameObject.CreatePrimitive(PrimitiveType.Cube);
             line.name = "StartLine";
             line.transform.position = new Vector3(TrackPath.StartLineX, 0.02f, -22f);
-            line.transform.localScale = new Vector3(0.5f, 0.05f, 36f);
+            line.transform.localScale = new Vector3(0.5f, 0.05f, 40f);
             Paint(line, Color.white);
         }
 
@@ -76,19 +75,54 @@ namespace BoatRace.Core
         {
             for (int i = 0; i < RaceManager.BoatCount; i++)
             {
+                Color c = UiKit.BoatColors[i];
                 var root = new GameObject($"Boat{i + 1}");
+
                 var hull = GameObject.CreatePrimitive(PrimitiveType.Cube);
                 hull.name = "Hull";
                 hull.transform.SetParent(root.transform, false);
-                hull.transform.localScale = new Vector3(1.3f, 0.5f, 3.2f);
-                Paint(hull, BoatColors[i]);
+                hull.transform.localScale = new Vector3(1.4f, 0.45f, 3.4f);
+                Paint(hull, c);
 
                 var nose = GameObject.CreatePrimitive(PrimitiveType.Cube);
                 nose.name = "Nose";
                 nose.transform.SetParent(root.transform, false);
-                nose.transform.localPosition = new Vector3(0f, 0f, 1.8f);
-                nose.transform.localScale = new Vector3(0.8f, 0.35f, 0.9f);
-                Paint(nose, BoatColors[i]);
+                nose.transform.localPosition = new Vector3(0f, -0.02f, 1.9f);
+                nose.transform.localScale = new Vector3(0.85f, 0.32f, 1.0f);
+                Paint(nose, c);
+
+                var cowl = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                cowl.name = "Cowl";
+                cowl.transform.SetParent(root.transform, false);
+                cowl.transform.localPosition = new Vector3(0f, 0.35f, -0.9f);
+                cowl.transform.localScale = new Vector3(0.8f, 0.45f, 1.1f);
+                Paint(cowl, new Color(0.2f, 0.2f, 0.25f));
+
+                // 艇番表示(3Dテキスト)
+                var numGo = new GameObject("Number");
+                numGo.transform.SetParent(root.transform, false);
+                numGo.transform.localPosition = new Vector3(0f, 1.4f, 0f);
+                numGo.transform.localScale = Vector3.one * 0.65f;
+                var tm = numGo.AddComponent<TextMesh>();
+                tm.text = (i + 1).ToString();
+                tm.fontSize = 64;
+                tm.characterSize = 0.28f;
+                tm.anchor = TextAnchor.MiddleCenter;
+                tm.color = i == 0 ? new Color(0.1f, 0.1f, 0.1f) : c;
+                tm.font = UiKit.JpFont();
+                numGo.GetComponent<MeshRenderer>().material = tm.font.material;
+
+                // 引き波(航跡)ビジュアル
+                var trailGo = new GameObject("WakeTrail");
+                trailGo.transform.SetParent(root.transform, false);
+                trailGo.transform.localPosition = new Vector3(0f, -0.15f, -1.7f);
+                var trail = trailGo.AddComponent<TrailRenderer>();
+                trail.time = 2.6f;
+                trail.startWidth = 1.4f;
+                trail.endWidth = 0.15f;
+                trail.material = new Material(Shader.Find("Sprites/Default"));
+                trail.startColor = new Color(1f, 1f, 1f, 0.55f);
+                trail.endColor = new Color(1f, 1f, 1f, 0f);
 
                 var boat = root.AddComponent<BoatController>();
                 race.RegisterBoat(boat);
@@ -105,25 +139,34 @@ namespace BoatRace.Core
                 cam = go.AddComponent<Camera>();
                 go.AddComponent<AudioListener>();
             }
-            cam.transform.position = new Vector3(-150f, 200f, -160f);
-            cam.transform.LookAt(new Vector3(-150f, 0f, -10f));
-            cam.backgroundColor = new Color(0.55f, 0.75f, 0.9f);
+            cam.transform.position = new Vector3(-90f, 60f, -110f);
+            cam.transform.LookAt(new Vector3(-120f, 0f, -30f));
+            cam.fieldOfView = 50f;
 
             var light = new GameObject("Sun").AddComponent<Light>();
             light.type = LightType.Directional;
             light.transform.rotation = Quaternion.Euler(55f, -30f, 0f);
-            light.intensity = 1.1f;
+            light.intensity = 1.15f;
             return cam;
         }
 
+        static void EnsureEventSystem()
+        {
+            if (Object.FindObjectOfType<EventSystem>() != null) return;
+            var es = new GameObject("EventSystem");
+            es.AddComponent<EventSystem>();
+            es.AddComponent<StandaloneInputModule>();
+        }
+
         /// <summary>Built-in / URP どちらでも動くようシェーダーを自動選択。</summary>
-        static void Paint(GameObject go, Color color)
+        static Material Paint(GameObject go, Color color)
         {
             var shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
             var mat = new Material(shader);
             if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", color);
             if (mat.HasProperty("_Color")) mat.SetColor("_Color", color);
             go.GetComponent<Renderer>().material = mat;
+            return mat;
         }
     }
 }

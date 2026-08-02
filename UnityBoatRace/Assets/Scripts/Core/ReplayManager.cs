@@ -34,6 +34,11 @@ namespace BoatRace.Core
         {
             this.race = race;
             this.cam = cam;
+            // 新しいレースが始まったら前レースの記録を破棄
+            race.OnPhaseChanged += p =>
+            {
+                if (p == RacePhase.PitOut && !IsPlaying) frames.Clear();
+            };
         }
 
         void FixedUpdate()

@@ -30,6 +30,7 @@ namespace BoatRace.Core
         [NonSerialized] public List<BoatStats> statsList = new List<BoatStats>();
         [NonSerialized] public float[] exhibitionTimes;
         [NonSerialized] public bool simulationPaused;
+        [NonSerialized] public bool armed; // GameFlowの「レーススタート！」で true になるまで進行停止
 
         // ---- イベント(実況・HUD・リプレイが購読) ----
         public event Action<RacePhase> OnPhaseChanged;
@@ -89,6 +90,9 @@ namespace BoatRace.Core
             int[] courses = WaitingSystem.AssignCourses(statsList, pitDelays, rng);
 
             state = new RaceState();
+            armed = false;
+            finishCounter = 0;
+            lastLeader = -1;
             startProgressOffset = new float[BoatCount];
             prevS = new float[BoatCount];
             inTurn1 = new bool[BoatCount];
@@ -127,7 +131,7 @@ namespace BoatRace.Core
 
         void FixedUpdate()
         {
-            if (simulationPaused || boats.Count < BoatCount) return;
+            if (!armed || simulationPaused || boats.Count < BoatCount) return;
             float dt = Time.fixedDeltaTime;
 
             wind.Step(dt);

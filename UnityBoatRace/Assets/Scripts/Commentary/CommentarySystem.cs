@@ -56,9 +56,11 @@ namespace BoatRace.Commentary
             learning = new CommentaryLearning();
             learning.Load();
 
+            bool firstMark1Done = false;
+
             race.OnPhaseChanged += phase =>
             {
-                if (phase == RacePhase.PitOut) Say("pit_out");
+                if (phase == RacePhase.PitOut) { firstMark1Done = false; Say("pit_out"); }
                 if (phase == RacePhase.Approach) Say("approach");
                 if (phase == RacePhase.Finished) { Say("finish"); learning.RecordRace(race); learning.Save(); }
             };
@@ -76,7 +78,6 @@ namespace BoatRace.Commentary
                     Say("start", best + 1, race.statsList[best].player.playerName, bestST);
             };
 
-            bool firstMark1Done = false;
             race.OnMarkRounded += (idx, mark, lap) =>
             {
                 if (mark == 1 && lap == 1 && !firstMark1Done)

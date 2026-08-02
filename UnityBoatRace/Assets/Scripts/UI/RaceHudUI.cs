@@ -1,0 +1,113 @@
+using UnityEngine;
+using UnityEngine.UI;
+using BoatRace.Core;
+using BoatRace.AI;
+using BoatRace.Commentary;
+
+namespace BoatRace.UI
+{
+    /// <summary>
+    /// レース中HUD(uGUI)。大時計・順位表・実況テロップをスマホゲー風に表示。
+    /// </summary>
+    public class RaceHudUI
+    {
+        readonly RaceManager race;
+        readonly GameObject root;
+        readonly Text headerText;
+        readonly Text clockText;
+        readonly Text[] standingRows = new Text[6];
+        readonly Image[] rowChips = new Image[6];
+        readonly Text commentaryText;
+
+        public RaceHudUI(RaceManager race, CommentarySystem commentary, Transform canvas)
+        {
+            this.race = race;
+            root = new GameObject("RaceHUD");
+            UiKit.Place(root, canvas, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+
+            // 上部バー: 場名・フェーズ・大時計
+            var top = UiKit.MakePanel(root.transform, new Color(0.05f, 0.12f, 0.3f, 0.85f), 16,
+                new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(16f, -96f), new Vector2(470f, -14f));
+            headerText = UiKit.MakeText(top.transform, "", 22, Color.white, TextAnchor.MiddleLeft,
+                Vector2.zero, Vector2.one, new Vector2(16f, 40f), new Vector2(-10f, -4f), bold: true);
+            clockText = UiKit.MakeText(top.transform, "", 26, UiKit.Yellow, TextAnchor.MiddleLeft,
+                Vector2.zero, Vector2.one, new Vector2(16f, 2f), new Vector2(-10f, -44f), bold: true);
+
+            // 右側: 順位表
+            var board = UiKit.MakePanel(root.transform, new Color(0.05f, 0.12f, 0.3f, 0.85f), 16,
+                new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-450f, -370f), new Vector2(-14f, -14f));
+            UiKit.MakeText(board.transform, "レース順位", 22, UiKit.Sky, TextAnchor.MiddleLeft,
+                new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(16f, -44f), new Vector2(-10f, -8f), bold: true);
+            for (int i = 0; i < 6; i++)
+            {
+                float y = -52f - i * 48f;
+                var chipGo = new GameObject("Chip");
+                UiKit.Place(chipGo, board.transform, new Vector2(0f, 1f), new Vector2(0f, 1f),
+                    new Vector2(14f, y - 40f), new Vector2(52f, y - 6f));
+                rowChips[i] = chipGo.AddComponent<Image>();
+                rowChips[i].sprite = UiKit.Rounded(10);
+                rowChips[i].type = Image.Type.Sliced;
+                standingRows[i] = UiKit.MakeText(board.transform, "", 21, Color.white, TextAnchor.MiddleLeft,
+                    new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(62f, y - 42f), new Vector2(-8f, -4f + y - 42f + 38f));
+            }
+
+            // 下部: 実況テロップ
+            var ticker = UiKit.MakePanel(root.transform, new Color(0.05f, 0.12f, 0.3f, 0.85f), 16,
+                new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(16f, 14f), new Vector2(-16f, 108f));
+            commentaryText = UiKit.MakeText(ticker.transform, "", 22, Color.white, TextAnchor.MiddleLeft,
+                Vector2.zero, Vector2.one, new Vector2(18f, 6f), new Vector2(-14f, -6f));
+            commentary.OnLine += _ => RefreshCommentary(commentary);
+            RefreshCommentary(commentary);
+        }
+
+        public void SetVisible(bool visible) => root.SetActive(visible);
+
+        void RefreshCommentary(CommentarySystem commentary)
+        {
+            int n = commentary.history.Count;
+            string lines = "";
+            for (int i = Mathf.Max(0, n - 3); i < n; i++)
+                lines += "🎙 " + commentary.history[i] + "\n";
+            commentaryText.text = lines.TrimEnd('\n');
+        }
+
+        /// <summary>毎フレーム更新(GameFlowが呼ぶ)。</summary>
+        public void Tick()
+        {
+            if (!root.activeSelf) return;
+
+            headerText.text = $"{race.venue.name}  風 {race.wind.speed:F1}m  {PhaseName(race.state.phase)}";
+            clockText.text = race.state.phase == RacePhase.Racing || race.state.phase == RacePhase.Finished
+                ? $"⏱ {race.state.raceTime:F1}s"
+                : $"大時計 {race.state.clock:F1}";
+
+            for (int i = 0; i < 6; i++)
+            {
+                if (i >= race.state.standings.Count) { standingRows[i].text = ""; continue; }
+                int idx = race.state.standings[i];
+                var bs = race.state.Get(idx);
+                rowChips[i].color = UiKit.BoatColors[idx];
+                string st = bs.crossedStart
+                    ? (bs.startFlag == StartFlag.Flying ? "F" : $".{Mathf.RoundToInt(Mathf.Abs(bs.st) * 100f):00}")
+                    : "--";
+                string place = bs.finished ? $"{bs.finalPlace}着 " : $"{i + 1}位 ";
+                string lap = bs.finished ? "" : $" {bs.lap + 1}周目";
+                standingRows[i].text =
+                    $"{place}{race.statsList[idx].player.playerName}  ST{st} {StrategyAI.TacticName(bs.tactic)}{lap}";
+            }
+        }
+
+        static string PhaseName(RacePhase p)
+        {
+            switch (p)
+            {
+                case RacePhase.PitOut: return "ピット離れ";
+                case RacePhase.Waiting: return "待機行動";
+                case RacePhase.Approach: return "スタート進入";
+                case RacePhase.Racing: return "レース中";
+                case RacePhase.Finished: return "レース終了";
+                default: return "";
+            }
+        }
+    }
+}
