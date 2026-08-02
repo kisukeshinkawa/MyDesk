@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-02-v310-store-photos"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-03-v311-quote-cell-range"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -182,7 +182,7 @@ if (typeof window !== "undefined") {
 const DB_API_BASE   = "https://zv3hlppejxw32cjxhn2mnsdgqq0sxeqa.lambda-url.ap-northeast-1.on.aws";
 const DUSTALK_SYNC_URL = "https://36w7fx2ywn7t4raggrbwe65ili0fddnr.lambda-url.ap-northeast-1.on.aws";
 // 見積依頼ポータル（mydesk-quote-portal）Function URL。デプロイ後にここへ貼り付け。
-const QUOTE_PORTAL_URL = "https://wccz6ebtueeo5kkwnr44fnjkqq0lyqqp.lambda-url.ap-northeast-1.on.aws/";
+const QUOTE_PORTAL_URL = "";
 const DB_API_SECRET = "mydesk2026secret";
 const DB_API_HEADERS = {
   "Content-Type": "application/json",
@@ -34136,9 +34136,32 @@ function VendorQuoteCard({ qv, rows, stores=[], totalStores=0, showAll=false, on
   const setExtra=lines=>onChange({extraLines:lines});
   // Excel風キー移動
   const NAVCOLS=8;
+  const GRIDCOLS=["unit","qty","unitType","transport","disposal","flat","overhead","condition"];
+  const NUMCOLS=new Set(["unit","qty","transport","disposal","flat","overhead"]);
+  const [sel,setSel]=React.useState(null);
+  const dragRef=React.useRef(false);
+  const copyBuf=React.useRef("");
+  React.useEffect(()=>{ const up=()=>{dragRef.current=false;}; window.addEventListener("mouseup",up); return ()=>window.removeEventListener("mouseup",up); },[]);
+  const rectOf=x=>({r1:Math.min(x.ar,x.br),r2:Math.max(x.ar,x.br),c1:Math.min(x.ac,x.bc),c2:Math.max(x.ac,x.bc)});
+  const inSel=(ri,ci)=>{ if(!sel)return false; const R=rectOf(sel); return ri>=R.r1&&ri<=R.r2&&ci>=R.c1&&ci<=R.c2; };
+  const rectSize=()=>{ if(!sel)return 0; const R=rectOf(sel); return (R.r2-R.r1+1)*(R.c2-R.c1+1); };
   const focusCell=(ri,ci)=>{ if(ri<0||ri>=rows.length||ci<0||ci>=NAVCOLS) return; const el=document.querySelector('[data-nav="'+qv.id+'_'+ri+'_'+ci+'"]'); if(el){ el.focus(); if(el.select) try{el.select();}catch(_){} } };
-  const onKey=(e,ri,ci)=>{ if(e.key==="Enter"||e.key==="ArrowDown"){ e.preventDefault(); focusCell(ri+1,ci); } else if(e.key==="ArrowUp"){ e.preventDefault(); focusCell(ri-1,ci); } };
-  const cellProps=(ri,ci)=>({ "data-nav":qv.id+"_"+ri+"_"+ci, onKeyDown:e=>onKey(e,ri,ci) });
+  const onDown=(e,ri,ci)=>{ if(e.shiftKey&&sel){ setSel({...sel,br:ri,bc:ci}); } else { setSel({ar:ri,ac:ci,br:ri,bc:ci}); } dragRef.current=true; };
+  const onEnter=(ri,ci)=>{ if(dragRef.current){ setSel(x=> x?{...x,br:ri,bc:ci}:{ar:ri,ac:ci,br:ri,bc:ci}); try{window.getSelection().removeAllRanges();}catch(_){} } };
+  const copyRange=()=>{ if(!sel)return; const R=rectOf(sel); const out=[]; for(let r=R.r1;r<=R.r2;r++){ const row=[]; for(let c=R.c1;c<=R.c2;c++){ const pr=(qv.prices||{})[rows[r].itemId]||{}; const v=pr[GRIDCOLS[c]]; row.push(v!=null?String(v):""); } out.push(row.join("\t")); } const tsv=out.join("\n"); copyBuf.current=tsv; try{navigator.clipboard&&navigator.clipboard.writeText&&navigator.clipboard.writeText(tsv);}catch(_){} };
+  const fillFrom=(text,ar,ac)=>{ const grid=String(text||"").replace(/\r/g,"").split("\n").map(l=>l.split("\t")); if(!grid.length)return; const np={...(qv.prices||{})}; grid.forEach((line,dr)=>{ line.forEach((val,dc)=>{ const r=ar+dr,c=ac+dc; if(r>=0&&r<rows.length&&c>=0&&c<GRIDCOLS.length){ const key=GRIDCOLS[c]; const v=NUMCOLS.has(key)?String(val).replace(/[^0-9.]/g,""):val; const id=rows[r].itemId; np[id]={...np[id],[key]:v}; } }); }); onChange({prices:np}); };
+  const pasteRange=(ri,ci)=>{ const a= sel?rectOf(sel):{r1:ri,c1:ci}; const doIt=t=>fillFrom(t,a.r1,a.c1); if(navigator.clipboard&&navigator.clipboard.readText){ navigator.clipboard.readText().then(t=>doIt(t||copyBuf.current)).catch(()=>doIt(copyBuf.current)); } else doIt(copyBuf.current); };
+  const clearRange=()=>{ if(!sel)return; const R=rectOf(sel); const np={...(qv.prices||{})}; for(let r=R.r1;r<=R.r2;r++){ for(let c=R.c1;c<=R.c2;c++){ const id=rows[r].itemId; np[id]={...np[id],[GRIDCOLS[c]]:""}; } } onChange({prices:np}); };
+  const onKey=(e,ri,ci)=>{
+    const meta=e.metaKey||e.ctrlKey;
+    if(meta&&(e.key==="c"||e.key==="C")){ e.preventDefault(); copyRange(); return; }
+    if(meta&&(e.key==="v"||e.key==="V")){ e.preventDefault(); pasteRange(ri,ci); return; }
+    if((e.key==="Delete"||e.key==="Backspace")&&rectSize()>1){ e.preventDefault(); clearRange(); return; }
+    if(e.key==="Enter"||e.key==="ArrowDown"){ e.preventDefault(); focusCell(ri+1,ci); setSel({ar:ri+1,ac:ci,br:ri+1,bc:ci}); }
+    else if(e.key==="ArrowUp"){ e.preventDefault(); focusCell(ri-1,ci); setSel({ar:ri-1,ac:ci,br:ri-1,bc:ci}); }
+  };
+  const cellProps=(ri,ci)=>({ "data-nav":qv.id+"_"+ri+"_"+ci, onKeyDown:e=>onKey(e,ri,ci), onMouseDown:e=>onDown(e,ri,ci), onMouseEnter:()=>onEnter(ri,ci) });
+  const cs=(ri,ci,base)=> inSel(ri,ci)?{...base,background:"#dbeafe",outline:"1.5px solid #2563eb",outlineOffset:"-1px"}:base;
   // グループ選択
   const uniq=arr=>[...new Set(arr.filter(Boolean))];
   const bizTypes=uniq(rows.map(r=>r.bizType));
@@ -34296,6 +34319,15 @@ function VendorQuoteCard({ qv, rows, stores=[], totalStores=0, showAll=false, on
         </div>
       )}
 
+      {rows.length>0&&(
+        <div style={{display:"flex",gap:"0.4rem",alignItems:"center",flexWrap:"wrap",marginBottom:"0.35rem",fontSize:"0.66rem",color:C.textMuted}}>
+          <span>📐 セル範囲: ドラッグ/Shift＋クリックで選択</span>
+          <button onClick={copyRange} disabled={!sel} style={{padding:"0.15rem 0.5rem",borderRadius:5,border:`1px solid ${C.border}`,background:"white",color:C.textSub,cursor:sel?"pointer":"default",fontFamily:"inherit",fontSize:"0.66rem"}}>📋 コピー</button>
+          <button onClick={()=>pasteRange(0,0)} style={{padding:"0.15rem 0.5rem",borderRadius:5,border:`1px solid ${C.border}`,background:"white",color:C.textSub,cursor:"pointer",fontFamily:"inherit",fontSize:"0.66rem"}}>📥 貼付</button>
+          <button onClick={clearRange} disabled={!sel} style={{padding:"0.15rem 0.5rem",borderRadius:5,border:`1px solid #fca5a5`,background:"#fff1f2",color:"#dc2626",cursor:sel?"pointer":"default",fontFamily:"inherit",fontSize:"0.66rem"}}>🗑 クリア</button>
+          {sel&&rectSize()>1&&<span style={{color:C.accentDark,fontWeight:700}}>選択 {rectSize()}セル（⌘C/⌘V/Delete も可）</span>}
+        </div>
+      )}
       {/* 店舗×品目 見積表（横スクロール） */}
       {rows.length>0?(
         <div style={{overflowX:"auto",border:`1px solid ${C.borderLight}`,borderRadius:8}}>
@@ -34319,16 +34351,16 @@ function VendorQuoteCard({ qv, rows, stores=[], totalStores=0, showAll=false, on
                   <div style={{fontSize:"0.62rem",color:C.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.kind||"（品目）"}{r.freq?` / ${r.freq}`:""}</div>
                 </div>
                 <select value={pr.method||""} onChange={e=>setPrice(r.itemId,{method:e.target.value})} style={{width:60,flex:"none",padding:"0.25rem 0.1rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.68rem",fontFamily:"inherit",background:"white"}}><option value=""></option>{METHODS.map(m=><option key={m} value={m}>{m}</option>)}</select>
-                <span style={CcolNum}><input {...cellProps(ri,0)} value={pr.unit||""} onChange={e=>setPrice(r.itemId,{unit:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="単価" style={NUM}/></span>
-                <span style={{width:48,flex:"none"}}><input {...cellProps(ri,1)} value={pr.qty||""} onChange={e=>setPrice(r.itemId,{qty:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="単位" style={NUM}/></span>
-                <span style={{width:46,flex:"none"}}><input {...cellProps(ri,2)} value={pr.unitType||""} onChange={e=>setPrice(r.itemId,{unitType:e.target.value})} placeholder="kg" style={{...NUM,textAlign:"center"}}/></span>
+                <span style={CcolNum}><input {...cellProps(ri,0)} value={pr.unit||""} onChange={e=>setPrice(r.itemId,{unit:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="単価" style={cs(ri,0,NUM)}/></span>
+                <span style={{width:48,flex:"none"}}><input {...cellProps(ri,1)} value={pr.qty||""} onChange={e=>setPrice(r.itemId,{qty:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="単位" style={cs(ri,1,NUM)}/></span>
+                <span style={{width:46,flex:"none"}}><input {...cellProps(ri,2)} value={pr.unitType||""} onChange={e=>setPrice(r.itemId,{unitType:e.target.value})} placeholder="kg" style={cs(ri,2,{...NUM,textAlign:"center"})}/></span>
                 <span style={{width:76,flex:"none",...AUTO}}>{subTotal(pr)?Math.round(subTotal(pr)).toLocaleString():""}</span>
-                <span style={CcolNum}><input {...cellProps(ri,3)} value={pr.transport||""} onChange={e=>setPrice(r.itemId,{transport:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="運搬" style={NUM}/></span>
-                <span style={CcolNum}><input {...cellProps(ri,4)} value={pr.disposal||""} onChange={e=>setPrice(r.itemId,{disposal:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="処分" style={NUM}/></span>
-                <span style={{width:78,flex:"none"}}><input {...cellProps(ri,5)} value={pr.flat||""} onChange={e=>setPrice(r.itemId,{flat:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="定額" style={NUM}/></span>
-                <span style={CcolNum}><input {...cellProps(ri,6)} value={pr.overhead||""} onChange={e=>setPrice(r.itemId,{overhead:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="諸経費" style={NUM}/></span>
+                <span style={CcolNum}><input {...cellProps(ri,3)} value={pr.transport||""} onChange={e=>setPrice(r.itemId,{transport:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="運搬" style={cs(ri,3,NUM)}/></span>
+                <span style={CcolNum}><input {...cellProps(ri,4)} value={pr.disposal||""} onChange={e=>setPrice(r.itemId,{disposal:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="処分" style={cs(ri,4,NUM)}/></span>
+                <span style={{width:78,flex:"none"}}><input {...cellProps(ri,5)} value={pr.flat||""} onChange={e=>setPrice(r.itemId,{flat:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="定額" style={cs(ri,5,NUM)}/></span>
+                <span style={CcolNum}><input {...cellProps(ri,6)} value={pr.overhead||""} onChange={e=>setPrice(r.itemId,{overhead:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="諸経費" style={cs(ri,6,NUM)}/></span>
                 <span style={{width:86,flex:"none",...AUTO,color:C.accentDark}}>{lineTotal(pr)?Math.round(lineTotal(pr)).toLocaleString():""}</span>
-                <span style={{width:150,flex:"none"}}><input {...cellProps(ri,7)} value={pr.condition||pr.note||""} onChange={e=>setPrice(r.itemId,{condition:e.target.value})} placeholder="回収条件・備考" style={{width:"100%",boxSizing:"border-box",padding:"0.25rem 0.3rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit"}}/></span>
+                <span style={{width:150,flex:"none"}}><input {...cellProps(ri,7)} value={pr.condition||pr.note||""} onChange={e=>setPrice(r.itemId,{condition:e.target.value})} placeholder="回収条件・備考" style={cs(ri,7,{width:"100%",boxSizing:"border-box",padding:"0.25rem 0.3rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit"})}/></span>
               </div>
             );})}
           </div>
@@ -35157,7 +35189,7 @@ export default function App() {
           if (!j || j.ok !== true || !Array.isArray(j.companies)) { console.warn("[DUSTALK autosync] bad response"); return; }
           const total = j.count || j.companies.length;
           const active = j.active || j.companies.filter(c => c && c.active).length;
-          if (total < 200 || active < 20) { console.warn(`[DUSTALK autosync] 会社数が少なすぎ(total=${total}, active=${active}) — 中止`); return; }
+          if (total < 100 || active < 15) { console.warn(`[DUSTALK autosync] 会社数が少なすぎ(total=${total}, active=${active}) — 中止`); return; }
           let prevActive = 0; try { prevActive = parseInt(localStorage.getItem(ACTKEY) || "0", 10) || 0; } catch (_) {}
           if (prevActive > 0 && active < prevActive * 0.6) { console.warn(`[DUSTALK autosync] アクティブ数が大幅減 ${prevActive}→${active} — 中止(部分取得の可能性)`); return; }
           const _norm = (s) => (s || "")
