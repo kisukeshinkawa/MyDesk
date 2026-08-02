@@ -22,10 +22,11 @@ namespace BoatRace.UI
         public static readonly Color PanelWhite = new Color(1f, 1f, 1f, 0.96f);
         public static readonly Color TextDark = new Color(0.12f, 0.17f, 0.28f);
 
+        // アニメ調の鮮やかな艇色(1白 2黒 3赤 4青 5黄 6緑)
         public static readonly Color[] BoatColors =
         {
-            Color.white, new Color(0.15f, 0.15f, 0.15f), new Color(0.9f, 0.15f, 0.1f),
-            new Color(0.1f, 0.3f, 0.9f), new Color(0.95f, 0.8f, 0.1f), new Color(0.1f, 0.7f, 0.25f),
+            Color.white, new Color(0.16f, 0.17f, 0.20f), new Color(1f, 0.16f, 0.12f),
+            new Color(0.05f, 0.38f, 1f), new Color(1f, 0.86f, 0.05f), new Color(0.05f, 0.8f, 0.32f),
         };
 
         /// <summary>日本語が出るフォント(Macのヒラギノ等→無ければ内蔵フォント)。</summary>

@@ -73,6 +73,7 @@ namespace BoatRace.Core
             var mat = Paint(water, baseColor);
             if (mat.HasProperty("_Glossiness")) mat.SetFloat("_Glossiness", 0.85f);
             if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", 0.85f);
+            if (mat.HasProperty("_OutlineWidth")) mat.SetFloat("_OutlineWidth", 0f); // 水面に輪郭線は不要
             water.AddComponent<WaterAnimator>().Initialize(mat, baseColor);
         }
 
@@ -117,7 +118,15 @@ namespace BoatRace.Core
                 bowTip.transform.localPosition = new Vector3(0f, 0.24f, 2.15f);
                 bowTip.transform.localRotation = Quaternion.Euler(-9f, 45f, 0f);
                 bowTip.transform.localScale = new Vector3(0.72f, 0.22f, 0.72f);
-                Paint(bowTip, white);
+                Paint(bowTip, c); // 艇首は艇色(正面からも見分けがつく)
+
+                // 尾翼フィン(艇色のアクセント)
+                var fin = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                fin.name = "TailFin";
+                fin.transform.SetParent(root.transform, false);
+                fin.transform.localPosition = new Vector3(0f, 0.42f, -1.62f);
+                fin.transform.localScale = new Vector3(0.08f, 0.4f, 0.5f);
+                Paint(fin, c);
 
                 // デッキの艇色ライン(左右)
                 foreach (var sx in new[] { -0.58f, 0.58f })
@@ -199,8 +208,8 @@ namespace BoatRace.Core
                 var helmet = GameObject.CreatePrimitive(PrimitiveType.Sphere);
                 helmet.name = "Helmet";
                 helmet.transform.SetParent(root.transform, false);
-                helmet.transform.localPosition = new Vector3(0f, 0.92f, -0.18f);
-                helmet.transform.localScale = Vector3.one * 0.42f;
+                helmet.transform.localPosition = new Vector3(0f, 0.94f, -0.18f);
+                helmet.transform.localScale = Vector3.one * 0.5f; // アニメ調に少し大きめの頭身
                 Paint(helmet, lightColor && i == 0 ? Color.white : c);
                 var visor = GameObject.CreatePrimitive(PrimitiveType.Cube);
                 visor.name = "Visor";
@@ -289,12 +298,12 @@ namespace BoatRace.Core
             light.shadows = LightShadows.Soft;   // 影で立体感を出す
             light.shadowStrength = 0.55f;
 
-            // 遠景を空気感でぼかす(フォグ)
+            // 遠景を空気感でぼかす(フォグ・アニメ調の明るい空色)
             RenderSettings.fog = true;
             RenderSettings.fogMode = FogMode.Linear;
-            RenderSettings.fogStartDistance = 260f;
-            RenderSettings.fogEndDistance = 950f;
-            RenderSettings.fogColor = new Color(0.68f, 0.82f, 0.92f);
+            RenderSettings.fogStartDistance = 280f;
+            RenderSettings.fogEndDistance = 1000f;
+            RenderSettings.fogColor = new Color(0.72f, 0.87f, 0.98f);
             return cam;
         }
 
@@ -306,10 +315,11 @@ namespace BoatRace.Core
             es.AddComponent<StandaloneInputModule>();
         }
 
-        /// <summary>Built-in / URP どちらでも動くようシェーダーを自動選択。</summary>
+        /// <summary>トゥーンシェーダー優先(イナイレ風セルシェーディング)。</summary>
         static Material Paint(GameObject go, Color color)
         {
-            var shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
+            var shader = Shader.Find("BoatRace/Toon")
+                ?? Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
             var mat = new Material(shader);
             if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", color);
             if (mat.HasProperty("_Color")) mat.SetColor("_Color", color);

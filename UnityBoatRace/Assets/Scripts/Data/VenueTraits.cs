@@ -27,15 +27,15 @@ namespace BoatRace.Data
             }
         }
 
-        /// <summary>水の色。河川=濁り、淡水=緑がかった青、海水=青、汽水=中間。</summary>
+        /// <summary>水の色(アニメ調の鮮やかトーン)。河川=濁り、淡水=緑寄り、海水=青、汽水=中間。</summary>
         public static Color WaterBaseColor(VenueData v)
         {
             switch (v.waterType)
             {
-                case WaterType.Tidal:     return new Color(0.16f, 0.30f, 0.30f); // 江戸川の濁り
-                case WaterType.Freshwater: return new Color(0.05f, 0.32f, 0.42f);
-                case WaterType.Brackish:  return new Color(0.05f, 0.33f, 0.50f);
-                default:                  return new Color(0.02f, 0.30f, 0.56f); // 海水
+                case WaterType.Tidal:     return new Color(0.20f, 0.42f, 0.42f); // 江戸川の濁り
+                case WaterType.Freshwater: return new Color(0.05f, 0.46f, 0.58f);
+                case WaterType.Brackish:  return new Color(0.04f, 0.47f, 0.68f);
+                default:                  return new Color(0.02f, 0.44f, 0.78f); // 海水
             }
         }
 
