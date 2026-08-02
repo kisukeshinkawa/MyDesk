@@ -24,6 +24,7 @@ namespace BoatRace.UI
         readonly GameObject spGauge;
         readonly Image spFill;
         readonly Text spText;
+        readonly GameObject controlsRoot;   // 画面操作ボタン(ストーリーモード)
         readonly Text[] standingRows = new Text[6];
         readonly Image[] rowChips = new Image[6];
         readonly Text commentaryText;
@@ -97,6 +98,36 @@ namespace BoatRace.UI
                 new Vector2(0.80f, 0f), new Vector2(0.98f, 1f), Vector2.zero, Vector2.zero, bold: true);
             spGauge.SetActive(false);
 
+            // 画面操作ボタン(押している間だけ効くホールド式)
+            controlsRoot = new GameObject("Controls");
+            UiKit.Place(controlsRoot, root.transform, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+            GameObject MakeHold(string label, HoldButton.Kind kind, Color color,
+                Vector2 anchor, Vector2 offMin, Vector2 offMax, int fontSize)
+            {
+                var go = new GameObject("Hold_" + kind);
+                UiKit.Place(go, controlsRoot.transform, anchor, anchor, offMin, offMax);
+                var img = go.AddComponent<Image>();
+                img.sprite = UiKit.Rounded(60);
+                img.type = Image.Type.Sliced;
+                img.color = color;
+                var sh = go.AddComponent<Shadow>();
+                sh.effectColor = new Color(0f, 0f, 0f, 0.35f);
+                sh.effectDistance = new Vector2(0f, -4f);
+                var hb = go.AddComponent<HoldButton>();
+                hb.kind = kind;
+                UiKit.MakeText(go.transform, label, fontSize, Color.white, TextAnchor.MiddleCenter,
+                    Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, bold: true, shadow: true, outline: true);
+                return go;
+            }
+            // 左下: 舵 ◀▶ / 右下: 全開(大きな赤ボタン)
+            MakeHold("◀", HoldButton.Kind.SteerLeft, new Color(0.15f, 0.55f, 0.95f, 0.88f),
+                new Vector2(0f, 0f), new Vector2(26f, 196f), new Vector2(146f, 316f), 46);
+            MakeHold("▶", HoldButton.Kind.SteerRight, new Color(0.15f, 0.55f, 0.95f, 0.88f),
+                new Vector2(0f, 0f), new Vector2(162f, 196f), new Vector2(282f, 316f), 46);
+            MakeHold("全開", HoldButton.Kind.Throttle, new Color(0.92f, 0.2f, 0.15f, 0.92f),
+                new Vector2(1f, 0f), new Vector2(-216f, 196f), new Vector2(-36f, 376f), 42);
+            controlsRoot.SetActive(false);
+
             // プレイヤー操作ガイド(ストーリーモード)
             hintText = UiKit.MakeText(root.transform, "", 24, UiKit.Yellow, TextAnchor.MiddleCenter,
                 new Vector2(0.15f, 0.13f), new Vector2(0.85f, 0.20f), Vector2.zero, Vector2.zero,
@@ -159,6 +190,7 @@ namespace BoatRace.UI
             bool showSp = race.playerBoatIndex >= 0 &&
                 (race.state.phase == RacePhase.Approach || race.state.phase == RacePhase.Racing);
             if (spGauge.activeSelf != showSp) spGauge.SetActive(showSp);
+            if (controlsRoot.activeSelf != showSp) controlsRoot.SetActive(showSp);
             if (showSp)
             {
                 float t = race.playerSP / 100f;

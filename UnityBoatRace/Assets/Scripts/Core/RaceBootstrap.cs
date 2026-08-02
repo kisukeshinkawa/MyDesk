@@ -294,9 +294,15 @@ namespace BoatRace.Core
             var light = new GameObject("Sun").AddComponent<Light>();
             light.type = LightType.Directional;
             light.transform.rotation = Quaternion.Euler(55f, -30f, 0f);
-            light.intensity = 1.15f;
+            light.intensity = 1.28f;             // アニメ調のパキッとした明るさ
             light.shadows = LightShadows.Soft;   // 影で立体感を出す
-            light.shadowStrength = 0.55f;
+            light.shadowStrength = 0.6f;
+
+            // 画質を鮮明に: MSAA 4x・影距離・異方性フィルタ
+            QualitySettings.antiAliasing = 4;
+            QualitySettings.shadowDistance = 350f;
+            QualitySettings.anisotropicFiltering = AnisotropicFiltering.ForceEnable;
+            cam.allowMSAA = true;
 
             // 遠景を空気感でぼかす(フォグ・アニメ調の明るい空色)
             RenderSettings.fog = true;

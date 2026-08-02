@@ -15,7 +15,7 @@ namespace BoatRace.Core
         {
             mat = material;
             mat.mainTexture = GenerateWaveTexture(baseColor);
-            mat.mainTextureScale = new Vector2(14f, 7f);
+            mat.mainTextureScale = new Vector2(20f, 10f); // 波模様を細かく=鮮明に
         }
 
         void Update()
@@ -29,9 +29,9 @@ namespace BoatRace.Core
         {
             const int size = 256;
             var tex = new Texture2D(size, size, TextureFormat.RGB24, true);
-            var deep = baseColor * 0.82f;
-            var mid = baseColor * 1.15f;
-            var light = Color.Lerp(baseColor, Color.white, 0.42f);
+            var deep = baseColor * 0.72f;                       // コントラスト強め=くっきり
+            var mid = baseColor * 1.18f;
+            var light = Color.Lerp(baseColor, Color.white, 0.55f);
 
             for (int y = 0; y < size; y++)
                 for (int x = 0; x < size; x++)

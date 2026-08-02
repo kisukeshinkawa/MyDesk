@@ -78,9 +78,9 @@ Shader "BoatRace/Toon"
                 float3 n = normalize(i.normal);
                 float ndl = dot(n, _WorldSpaceLightPos0.xyz) * 0.5 + 0.5;
 
-                // 3段トゥーンランプ(アニメ塗り)
-                float band = ndl > 0.66 ? 1.0 : (ndl > 0.38 ? 0.74 : 0.48);
-                float3 light = _LightColor0.rgb * band + float3(0.36, 0.39, 0.44);
+                // 3段トゥーンランプ(アニメ塗り・コントラスト強めでパキッと)
+                float band = ndl > 0.64 ? 1.05 : (ndl > 0.36 ? 0.72 : 0.44);
+                float3 light = _LightColor0.rgb * band + float3(0.34, 0.37, 0.42);
 
                 // リムライト(輪郭を白く光らせてセル画っぽく)
                 float3 viewDir = normalize(_WorldSpaceCameraPos - i.world);
