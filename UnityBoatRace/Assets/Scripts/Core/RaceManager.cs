@@ -343,7 +343,7 @@ namespace BoatRace.Core
             {
                 var b = boats[i];
                 var bs = state.Get(i);
-                if (bs.finished) { b.engine.Throttle = 0.15f; b.engine.Steer = boats[i].turnAI.GetSteer(b.engine); continue; }
+                if (bs.finished) { b.engine.Throttle = 0.15f; b.engine.Steer = b.turnAI.GetSteer(b.engine, WaitingSystem.LaneZ(bs.course)); continue; }
 
                 b.engine.Steer = b.turnAI.GetSteer(b.engine, WaitingSystem.LaneZ(bs.course));
                 b.engine.Throttle = b.turnAI.GetThrottle(b.engine);

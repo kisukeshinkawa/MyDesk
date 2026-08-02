@@ -12,7 +12,7 @@ namespace BoatRace.Core
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void EnsureBootstrap()
         {
-            if (Object.FindObjectOfType<RaceBootstrap>() != null) return;
+            if (Object.FindFirstObjectByType<RaceBootstrap>() != null) return;
             new GameObject("Game").AddComponent<RaceBootstrap>();
         }
     }
