@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-03-v317-quote-report-excel"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-03-v318-report-anon-format"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -33713,29 +33713,32 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
   const quoteStats = (()=>{ const vs=p.vendors||[], sts=p.stores||[]; let pairs=0, lines=0; const vendSet=new Set();
     vs.forEach(qv=>{ let vHas=false; sts.forEach(st=>{ let sHas=false; _storeItems(st).forEach(it=>{ if(_hasPr((qv.prices||{})[it.id])){ lines++; sHas=true; } }); if(sHas){ pairs++; vHas=true; } }); if(vHas) vendSet.add(qv.id); });
     return { vendors: vs.length, answered: vs.filter(v=>v.status==="回答済").length, quotedVendors: vendSet.size, pairs, lines, stores: sts.length }; })();
+  const _alias = i => i<26 ? String.fromCharCode(65+i)+"社" : "第"+(i+1)+"社";
   const exportCustomerReport = async () => {
     const vs=p.vendors||[], sts=p.stores||[];
     if(!vs.length || !sts.length){ window.alert("業者と対象店舗を登録してから出力してください。"); return; }
     try{
       const xm=await import("https://esm.sh/xlsx@0.18.5"); const xlsx=xm.default||xm;
+      const AL=vs.map((_,i)=>_alias(i));
+      const fmt=(ws)=>{ const ref=ws["!ref"]; if(!ref)return; const R=xlsx.utils.decode_range(ref); for(let r=R.s.r;r<=R.e.r;r++){ for(let c=R.s.c;c<=R.e.c;c++){ const cell=ws[xlsx.utils.encode_cell({r,c})]; if(cell&&cell.t==="n") cell.z="#,##0"; } } };
       const wb=xlsx.utils.book_new();
-      const h1=["番号","エリア","院名",...vs.map(v=>v.vendorName||"業者"),"回答社数","最安業者","最安(1回)","最高(1回)"];
+      const h1=["番号","エリア","院名",...AL,"回答社数","最安業者","最安(1回)","最高(1回)","差額(最高-最安)"];
       const rows1=[]; const totals=vs.map(()=>0);
       sts.forEach((st,i)=>{ const cells=vs.map(qv=>_stoAmt(qv,st,_cust)); cells.forEach((c,vi)=>{ if(c!=null) totals[vi]+=c; });
-        const ans=cells.map((c,vi)=>({c,name:vs[vi].vendorName||""})).filter(x=>x.c!=null);
+        const ans=cells.map((c,vi)=>({c,name:AL[vi]})).filter(x=>x.c!=null);
         const min=ans.length?Math.min(...ans.map(x=>x.c)):null, max=ans.length?Math.max(...ans.map(x=>x.c)):null;
-        rows1.push([st.no||i+1, st.area||"", st.name||"", ...cells.map(c=>c==null?"":c), ans.length, (ans.find(x=>x.c===min)||{}).name||"", min==null?"":min, max==null?"":max]); });
-      const aoa1=[["相見積比較（お客様提示額・税込・DUSTALK手数料5%込／1回あたり）"],["会社："+(p.companyName||"")+"　案件："+(p.name||"")+"　対象店舗："+sts.length+"　業者："+vs.length],[],h1,...rows1,[],["","","合計（全店舗）",...totals,"","","",""]];
-      const ws1=xlsx.utils.aoa_to_sheet(aoa1); ws1["!cols"]=[{wch:6},{wch:11},{wch:22},...vs.map(()=>({wch:14})),{wch:8},{wch:16},{wch:12},{wch:12}]; xlsx.utils.book_append_sheet(wb,ws1,"相見積比較");
+        rows1.push([st.no||i+1, st.area||"", st.name||"", ...cells.map(c=>c==null?"":c), ans.length, (ans.find(x=>x.c===min)||{}).name||"", min==null?"":min, max==null?"":max, (min!=null&&max!=null)?(max-min):""]); });
+      const aoa1=[["相見積比較（お客様提示額・税込・DUSTALK手数料5%込／1回あたり）"],["会社："+(p.companyName||"")+"　案件："+(p.name||"")+"　対象店舗："+sts.length+"　業者："+vs.length+"　※業者名は伏せています（A社・B社…）"],[],h1,...rows1,[],["","","合計（全店舗）",...totals,"","","","",""]];
+      const ws1=xlsx.utils.aoa_to_sheet(aoa1); ws1["!cols"]=[{wch:6},{wch:11},{wch:22},...vs.map(()=>({wch:12})),{wch:8},{wch:10},{wch:12},{wch:12},{wch:14}]; fmt(ws1); xlsx.utils.book_append_sheet(wb,ws1,"相見積比較");
       const M={"込":"出来高(運搬・処分込)","別":"出来高(運搬固定+処分単価)","定額":"定額"};
       const h2=["業者","番号","エリア","院名","品目","方式","単価","運搬費(固)","処分単価","処分単位","諸経費","見積(税抜)","税込","お客様提示","回収条件・備考"];
-      const rows2=[]; vs.forEach(qv=>{ sts.forEach((st,i)=>{ _storeItems(st).forEach(it=>{ const pr=(qv.prices||{})[it.id]; if(!_hasPr(pr))return;
-        rows2.push([qv.vendorName||"", st.no||i+1, st.area||"", st.name||"", it.kind||"", M[pr.method]||pr.method||"", pr.unit?_N(pr.unit):"", pr.transport?_N(pr.transport):"", pr.disposal?_N(pr.disposal):"", pr.disposalUnit||pr.unitType||"", pr.overhead?_N(pr.overhead):"", _base(pr), _taxIn(pr), _cust(pr), pr.condition||pr.note||""]); }); }); });
-      const ws2=xlsx.utils.aoa_to_sheet([["内訳比較（業者×拠点×品目）　金額は1回あたり"],[],h2,...rows2]); ws2["!cols"]=[{wch:16},{wch:5},{wch:10},{wch:20},{wch:16},{wch:22},{wch:9},{wch:10},{wch:9},{wch:8},{wch:9},{wch:11},{wch:11},{wch:12},{wch:34}]; xlsx.utils.book_append_sheet(wb,ws2,"内訳比較");
-      const h3=["業者","担当","状況","税区分(代表)","見積店舗数","お客様提示合計(1回)","連絡事項"];
-      const rows3=vs.map(qv=>{ let cnt=0,tot=0; const taxSet=new Set(); sts.forEach(st=>{ const a=_stoAmt(qv,st,_cust); if(a!=null){cnt++;tot+=a;} _storeItems(st).forEach(it=>{const pr=(qv.prices||{})[it.id]; if(_hasPr(pr)&&pr.taxMode)taxSet.add(pr.taxMode);}); });
-        return [qv.vendorName||"", qv.assignee||"", qv.status||"", [...taxSet].join("/")||"税抜", cnt, tot, qv.vendorNote||""]; });
-      const ws3=xlsx.utils.aoa_to_sheet([["業者サマリー"],[],h3,...rows3]); ws3["!cols"]=[{wch:18},{wch:12},{wch:8},{wch:12},{wch:10},{wch:16},{wch:36}]; xlsx.utils.book_append_sheet(wb,ws3,"業者サマリー");
+      const rows2=[]; vs.forEach((qv,vi)=>{ sts.forEach((st,i)=>{ _storeItems(st).forEach(it=>{ const pr=(qv.prices||{})[it.id]; if(!_hasPr(pr))return;
+        rows2.push([AL[vi], st.no||i+1, st.area||"", st.name||"", it.kind||"", M[pr.method]||pr.method||"", pr.unit?_N(pr.unit):"", pr.transport?_N(pr.transport):"", pr.disposal?_N(pr.disposal):"", pr.disposalUnit||pr.unitType||"", pr.overhead?_N(pr.overhead):"", _base(pr), _taxIn(pr), _cust(pr), pr.condition||pr.note||""]); }); }); });
+      const ws2=xlsx.utils.aoa_to_sheet([["内訳比較（業者×拠点×品目）　金額は1回あたり　※業者名は伏せています"],[],h2,...rows2]); ws2["!cols"]=[{wch:8},{wch:5},{wch:10},{wch:20},{wch:16},{wch:22},{wch:9},{wch:10},{wch:9},{wch:8},{wch:9},{wch:11},{wch:11},{wch:12},{wch:34}]; fmt(ws2); xlsx.utils.book_append_sheet(wb,ws2,"内訳比較");
+      const h3=["業者","状況","税区分(代表)","見積店舗数","お客様提示合計(1回)","連絡事項"];
+      const rows3=vs.map((qv,vi)=>{ let cnt=0,tot=0; const taxSet=new Set(); sts.forEach(st=>{ const a=_stoAmt(qv,st,_cust); if(a!=null){cnt++;tot+=a;} _storeItems(st).forEach(it=>{const pr=(qv.prices||{})[it.id]; if(_hasPr(pr)&&pr.taxMode)taxSet.add(pr.taxMode);}); });
+        return [AL[vi], qv.status||"", [...taxSet].join("/")||"税抜", cnt, tot, qv.vendorNote||""]; });
+      const ws3=xlsx.utils.aoa_to_sheet([["業者サマリー　※業者名は伏せています（A社=どの業者かはMyDesk画面の対応表参照）"],[],h3,...rows3]); ws3["!cols"]=[{wch:8},{wch:8},{wch:12},{wch:10},{wch:16},{wch:40}]; fmt(ws3); xlsx.utils.book_append_sheet(wb,ws3,"業者サマリー");
       const fn=(p.companyName||p.name||"見積").split("/").join("_")+"_お客様報告.xlsx";
       xlsx.writeFile(wb, fn);
     }catch(e){ window.alert("Excel出力に失敗しました: "+(e&&e.message||e)); }
@@ -33921,7 +33924,6 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
             {QSTATUS.map(s=><option key={s} value={s}>{s}</option>)}
           </select>
           {(p.vendors||[]).length>0&&<span style={{fontSize:"0.72rem",color:C.textSub,fontWeight:700}}>回答 {answered}/{(p.vendors||[]).length}</span>}
-          {(p.vendors||[]).length>0&&<span style={{fontSize:"0.68rem",color:C.accentDark,fontWeight:800,background:C.accentBg,padding:"0.18rem 0.55rem",borderRadius:6}}>📥 見積 {quoteStats.pairs}件（{quoteStats.quotedVendors}/{quoteStats.vendors}業者・{quoteStats.lines}明細）</span>}
           <button onClick={()=>{ if(window.confirm("この見積案件を削除しますか？")){ persist(projects.filter(x=>x.id!==p.id)); setActiveId(null); } }} style={{marginLeft:"auto",padding:"0.35rem 0.7rem",borderRadius:8,border:"1px solid #fca5a5",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}}>🗑 削除</button>
         </div>
         <textarea value={p.memo||""} onChange={e=>upd(p.id,{memo:e.target.value})} placeholder="メモ" rows={2} style={{width:"100%",boxSizing:"border-box",marginTop:"0.5rem",padding:"0.4rem 0.6rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.8rem",fontFamily:"inherit",resize:"vertical"}}/>
@@ -33930,9 +33932,14 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
       {/* ===== 見積比較表 ===== */}
       {(p.vendors||[]).length>0 && (p.stores||[]).length>0 && (
         <div style={{marginBottom:"1rem"}}>
-          <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap",alignItems:"center"}}>
+          <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap",alignItems:"center",marginBottom:"0.45rem"}}>
+            <span style={{fontSize:"0.8rem",fontWeight:800,color:C.accentDark,background:C.accentBg,padding:"0.35rem 0.75rem",borderRadius:8}}>📥 見積 {quoteStats.pairs}件（{quoteStats.quotedVendors}/{quoteStats.vendors}業者・{quoteStats.lines}明細）</span>
             <button onClick={()=>setShowCompare(v=>!v)} style={{display:"inline-flex",alignItems:"center",gap:"0.4rem",padding:"0.45rem 0.9rem",borderRadius:8,border:`1.5px solid ${C.accent}`,background:showCompare?C.accent:C.accentBg,color:showCompare?"white":C.accentDark,fontWeight:800,fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit"}}>{showCompare?"▲ 比較表を閉じる":"📊 見積比較表（どの業者がどこにいくら／未回答）"}</button>
             <button onClick={exportCustomerReport} style={{display:"inline-flex",alignItems:"center",gap:"0.4rem",padding:"0.45rem 0.9rem",borderRadius:8,border:`1.5px solid #16a34a`,background:"#f0fdf4",color:"#166534",fontWeight:800,fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit"}}>📊 お客様報告用Excelを出力</button>
+          </div>
+          <div style={{display:"flex",gap:"0.4rem 0.9rem",flexWrap:"wrap",alignItems:"center",padding:"0.45rem 0.7rem",background:C.bg,border:`1px solid ${C.borderLight}`,borderRadius:8,fontSize:"0.7rem",color:C.textSub,marginBottom:"0.5rem"}}>
+            <span style={{fontWeight:800}}>🔒 匿名対応表（お客様Excelは伏せ名で出力）：</span>
+            {(p.vendors||[]).map((qv,i)=>(<span key={qv.id}><b style={{color:C.accentDark}}>{i<26?String.fromCharCode(65+i)+"社":"第"+(i+1)+"社"}</b>＝{qv.vendorName||"—"}</span>))}
           </div>
           {showCompare && <ComparisonMatrix stores={p.stores||[]} vlist={p.vendors||[]} vendorRows={vendorRows} C={C}/>}
         </div>
