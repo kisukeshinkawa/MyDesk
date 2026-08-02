@@ -9,16 +9,26 @@ namespace BoatRace.Start
     /// </summary>
     public static class PitExitSystem
     {
+        /// <summary>ピットスタールの横間隔(m)。6艇が横一列に並ぶ。</summary>
+        public const float StallSpacing = 7.5f;
+
+        /// <summary>ピット全体の中心x座標。場によって2マーク側/1マーク側が違う。</summary>
+        public static float PitCenterX(int venueId)
+        {
+            return Data.VenueTraits.PitNear2Mark(venueId) ? -245f : -55f;
+        }
+
         /// <summary>
-        /// ピット位置(艇番順に並ぶ)。場によってピットの位置が違う:
-        /// 2マーク側ピット(徳山・大村など)=進入位置に近く枠なりになりやすい /
-        /// 1マーク側ピット=2Mまで距離があり前づけ(コース取り合戦)が起きやすい。
+        /// ピットスタール位置。実際の競艇と同じく岸側に6艇が横一列で
+        /// コース(+Z)を向いて格納され、ピット離れで全艇一斉に前へ飛び出す。
+        /// 2マーク側ピット(大村・徳山など)=進入まで近く枠なり /
+        /// 1マーク側ピット=前づけが起きやすい。
         /// </summary>
         public static Vector3 PitPosition(int boatIndex, int venueId)
         {
-            return Data.VenueTraits.PitNear2Mark(venueId)
-                ? new Vector3(-240f + boatIndex * 6f, 0f, -42f)  // 2マーク側
-                : new Vector3(-60f + boatIndex * 6f, 0f, -42f);  // 1マーク側
+            float hw = Data.VenueTraits.WaterHalfWidth(venueId);
+            float x = PitCenterX(venueId) + (boatIndex - 2.5f) * StallSpacing;
+            return new Vector3(x, 0f, -(hw - 22f));
         }
 
         /// <summary>ピット離れの反応遅延(秒)。小さいほど好ダッシュ。</summary>

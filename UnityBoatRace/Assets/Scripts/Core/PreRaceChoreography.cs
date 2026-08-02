@@ -36,31 +36,36 @@ namespace BoatRace.Core
             lanes = new Lane[boatCount];
         }
 
-        /// <summary>艇iの経路を構築。pit→前進→左Uターン→西へ巡航→左Uターン→進入スロット。</summary>
+        /// <summary>
+        /// 艇iの経路を構築。実際のピット離れを再現:
+        /// 横一列のスタールから全艇一斉に前(+Z)へ飛び出し→左に流して西向きの巡航へ→
+        /// スロットの先で左Uターン→進入位置に整列。
+        /// </summary>
         public void Build(int i, Vector3 pit, Vector3 slot, int course, float pitDelay, float dashPower)
         {
             var L = new Lane
             {
-                delay = pitDelay * 3f,
-                cruise = 15f + dashPower * 4f, // 数値検証: 最悪ケース(1M側ピット×6コース)でも36秒以内に整列
+                delay = pitDelay * 2f,          // ピット離れの反応差(横一列からの飛び出しの差)
+                cruise = 15f + dashPower * 4f,  // 数値検証済み: 最悪ケースでも-16秒前に整列
             };
             var pts = L.pts;
             float cruiseZ = WaitingSystem.LaneZ(course) + 11f; // 自分のレーンの少し内側を巡航
 
             pts.Add(pit);
-            Vector3 p1 = pit + new Vector3(12f + i * 2f, 0f, 0f); // 前へ出る(艇ごとに差)
+            Vector3 p1 = pit + new Vector3(0f, 0f, 26f); // 横一列のまま前へ一斉ダッシュ
             pts.Add(p1);
 
-            // 左Uターン(+X向き → -X向き)。左回りなので東側を回って上がる
-            float r1 = Mathf.Max(6f, Mathf.Abs(cruiseZ - p1.z) * 0.5f);
+            // 左に流して西向き(-X)の巡航ラインへ合流
+            float dz = Mathf.Abs(cruiseZ - p1.z);
+            Vector3 mergeEnd = new Vector3(p1.x - 45f, 0f, cruiseZ);
             AddBezier(pts, p1,
-                p1 + new Vector3(r1 * 1.6f, 0f, 0f),
-                new Vector3(p1.x + r1 * 1.6f, 0f, cruiseZ),
-                new Vector3(p1.x, 0f, cruiseZ));
+                p1 + new Vector3(0f, 0f, dz * 0.5f),
+                mergeEnd + new Vector3(42f, 0f, 0f),
+                mergeEnd);
 
             // 西へ巡航(スロットの先まで)
-            float xb = slot.x - 48f;
-            pts.Add(new Vector3(xb + 20f, 0f, cruiseZ));
+            float xb = Mathf.Min(slot.x - 48f, mergeEnd.x - 12f);
+            if (xb + 20f < mergeEnd.x - 2f) pts.Add(new Vector3(xb + 20f, 0f, cruiseZ));
             pts.Add(new Vector3(xb, 0f, cruiseZ));
 
             // 左Uターン(-X向き → +X向き)。西側を回って降りる

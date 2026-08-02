@@ -1,5 +1,6 @@
 using UnityEngine;
 using BoatRace.Data;
+using BoatRace.Start;
 using BoatRace.UI;
 
 namespace BoatRace.Core
@@ -28,7 +29,9 @@ namespace BoatRace.Core
             BuildAdWalls();
             BuildBigClock(race);
             BuildScoreboard(race);
-            BuildPitBuilding();
+            BuildPitStalls(race);
+            BuildWindNets();
+            BuildDangerLights();
         }
 
         // ---- 外周壁 ----
@@ -179,20 +182,68 @@ namespace BoatRace.Core
 
             MakeBox("Leg", new Vector3(-18f, 4f, 0f), new Vector3(1.5f, 8f, 1.5f), new Color(0.4f, 0.4f, 0.45f), board.transform);
             MakeBox("Leg", new Vector3(18f, 4f, 0f), new Vector3(1.5f, 8f, 1.5f), new Color(0.4f, 0.4f, 0.45f), board.transform);
-            MakeBox("Panel", new Vector3(0f, 13f, 0f), new Vector3(60f, 12f, 1.2f), new Color(0.05f, 0.06f, 0.12f), board.transform);
-            MakeText3D($"BOATRACE {race.venue.name}", new Vector3(-150f, 16f, bz - 1f),
-                Quaternion.Euler(0f, 180f, 0f), 3.2f, new Color(1f, 0.85f, 0.2f));
-            MakeText3D("第 1 レース", new Vector3(-150f, 11f, bz - 1f),
+            MakeBox("Panel", new Vector3(0f, 14f, 0f), new Vector3(84f, 16f, 1.2f), new Color(0.05f, 0.06f, 0.12f), board.transform);
+            MakeText3D($"BOATRACE {race.venue.name}", new Vector3(-150f, 18f, bz - 1f),
+                Quaternion.Euler(0f, 180f, 0f), 3.4f, new Color(1f, 0.85f, 0.2f));
+            MakeText3D("第 1 レース　大型映像", new Vector3(-150f, 12f, bz - 1f),
                 Quaternion.Euler(0f, 180f, 0f), 2.6f, Color.white);
         }
 
-        // ---- ピット建屋 ----
-        static void BuildPitBuilding()
+        // ---- 本番ピット(水面図準拠: 岸側に6艇が横一列のスタール式) ----
+        static void BuildPitStalls(RaceManager race)
         {
-            MakeBox("PitRoof", new Vector3(-45f, 4.6f, -50f), new Vector3(50f, 0.6f, 9f), new Color(0.3f, 0.34f, 0.42f));
-            for (float x = -68f; x <= -22f; x += 15f)
-                MakeBox("PitPillar", new Vector3(x, 2.3f, -53f), new Vector3(0.8f, 4.6f, 0.8f), new Color(0.6f, 0.62f, 0.66f));
-            MakeText3D("P I T", new Vector3(-45f, 3.4f, -45.4f), Quaternion.identity, 2.2f, Color.white);
+            var deckColor = new Color(0.45f, 0.47f, 0.52f);
+            var roofColor = new Color(0.25f, 0.28f, 0.34f);
+            var dividerColor = new Color(0.7f, 0.72f, 0.76f);
+
+            Vector3 p0 = PitExitSystem.PitPosition(0, race.venueId);
+            float cx = PitExitSystem.PitCenterX(race.venueId);
+            float stallZ = p0.z;              // 艇の格納z
+            float width = PitExitSystem.StallSpacing * 6f + 8f;
+
+            // 岸側の桟橋デッキと屋根
+            MakeBox("PitDeck", new Vector3(cx, 0.45f, stallZ - 7f), new Vector3(width, 0.9f, 8f), deckColor);
+            MakeBox("PitRoof", new Vector3(cx, 6.2f, stallZ - 4f), new Vector3(width, 0.5f, 14f), roofColor);
+            for (int k = 0; k <= 6; k++)
+            {
+                float x = cx + (k - 3f) * PitExitSystem.StallSpacing;
+                MakeBox("PitPillar", new Vector3(x, 3.1f, stallZ - 9.5f), new Vector3(0.5f, 6.2f, 0.5f), dividerColor);
+                // スタール仕切り(艇と艇の間の桟橋)
+                MakeBox("PitDivider", new Vector3(x, 0.3f, stallZ), new Vector3(0.5f, 0.6f, 7.5f), dividerColor);
+            }
+
+            // 各スタールの艇番プレート(コース側から読める向き)
+            for (int i = 0; i < 6; i++)
+            {
+                Vector3 sp = PitExitSystem.PitPosition(i, race.venueId);
+                MakeText3D((i + 1).ToString(), new Vector3(sp.x, 5f, stallZ - 3.5f),
+                    Quaternion.Euler(0f, 180f, 0f), 2.4f, UiKit.BoatColors[i] == Color.white ? Color.white : UiKit.BoatColors[i]);
+            }
+            MakeText3D("本番ピット", new Vector3(cx, 7.4f, stallZ - 4f),
+                Quaternion.Euler(0f, 180f, 0f), 2.4f, Color.white);
+        }
+
+        // ---- 防風ネット(バック側の緑のネット) ----
+        static void BuildWindNets()
+        {
+            var netGreen = new Color(0.25f, 0.55f, 0.3f, 1f);
+            foreach (var x in new[] { -350f, -150f, 50f })
+                MakeBox("WindNet", new Vector3(x, 6.5f, hw + 3f), new Vector3(160f, 7f, 0.5f), netGreen);
+        }
+
+        // ---- 危険信号灯(水面図: 東西両端) ----
+        static void BuildDangerLights()
+        {
+            foreach (var x in new[] { -470f, 170f })
+            {
+                MakeBox("SignalPole", new Vector3(x, 4f, 0f), new Vector3(0.7f, 8f, 0.7f), new Color(0.75f, 0.75f, 0.78f));
+                var lamp = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                lamp.name = "SignalLamp";
+                lamp.transform.SetParent(root, false);
+                lamp.transform.position = new Vector3(x, 8.6f, 0f);
+                lamp.transform.localScale = Vector3.one * 1.6f;
+                Paint(lamp, new Color(0.95f, 0.1f, 0.08f));
+            }
         }
 
         // ---- 小物ヘルパー ----

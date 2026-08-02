@@ -113,7 +113,7 @@ namespace BoatRace.Core
                 {
                     boats[i].Initialize(i, statsList[i], venue, wind, current, wake);
                     boats[i].engine.Position = PitExitSystem.PitPosition(i, venueId);
-                    boats[i].engine.HeadingDeg = 90f; // +X向き
+                    boats[i].engine.HeadingDeg = 0f; // ピットスタールでコース(+Z)向き
                     boats[i].SyncTransform();
                 }
             }
@@ -135,7 +135,7 @@ namespace BoatRace.Core
             int i = boats.Count - 1;
             boat.Initialize(i, statsList[i], venue, wind, current, wake);
             boat.engine.Position = PitExitSystem.PitPosition(i, venueId);
-            boat.engine.HeadingDeg = 90f;
+            boat.engine.HeadingDeg = 0f; // ピットスタールでコース(+Z)向き
             boat.SyncTransform();
         }
 
