@@ -19,7 +19,7 @@ namespace BoatRace.UI
         readonly Image[] rowChips = new Image[6];
         readonly Text commentaryText;
 
-        public RaceHudUI(RaceManager race, CommentarySystem commentary, Transform canvas)
+        public RaceHudUI(RaceManager race, CommentarySystem commentary, Transform canvas, RaceCamera raceCam)
         {
             this.race = race;
             root = new GameObject("RaceHUD");
@@ -58,6 +58,13 @@ namespace BoatRace.UI
                 Vector2.zero, Vector2.one, new Vector2(18f, 6f), new Vector2(-14f, -6f));
             commentary.OnLine += _ => RefreshCommentary(commentary);
             RefreshCommentary(commentary);
+
+            // 視点切替ボタン(追尾→選手目線→俯瞰)
+            var viewBtn = UiKit.MakeButton(root.transform, $"視点: {raceCam.ModeLabel()}", UiKit.Cyan, 22,
+                new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-230f, 122f), new Vector2(-16f, 176f),
+                () => { });
+            var viewLabel = viewBtn.GetComponentInChildren<Text>();
+            viewBtn.onClick.AddListener(() => viewLabel.text = $"視点: {raceCam.CycleMode()}");
         }
 
         public void SetVisible(bool visible) => root.SetActive(visible);

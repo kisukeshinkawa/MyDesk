@@ -24,14 +24,14 @@ namespace BoatRace.UI
         float resultTimer = -1f;
         bool wasReplaying;
 
-        public void Initialize(RaceManager race, ReplayManager replay, CommentarySystem commentary)
+        public void Initialize(RaceManager race, ReplayManager replay, CommentarySystem commentary, RaceCamera raceCam)
         {
             this.race = race;
             this.replay = replay;
             this.commentary = commentary;
 
             canvas = UiKit.MakeCanvas();
-            hud = new RaceHudUI(race, commentary, canvas.transform);
+            hud = new RaceHudUI(race, commentary, canvas.transform, raceCam);
             hud.SetVisible(false);
             BuildReplayOverlay();
 
