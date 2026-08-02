@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-01-v309-quote-compare-matrix"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-02-v310-store-photos"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -33627,7 +33627,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
     const out=[];
     (stores||[]).forEach(st=>{
       const its=(st.items&&st.items.length)?st.items:[{id:st.id+":0",kind:"",freq:"",qty:"",weight:""}];
-      its.forEach(it=>out.push({ itemId:it.id, storeId:st.id, storeName:st.name||"", area:st.area||"", address:st.address||"", bizType:st.bizType||"", kind:it.kind||"", freq:it.freq||"", qty:it.qty||"", weight:it.weight||"" }));
+      its.forEach(it=>out.push({ itemId:it.id, storeId:st.id, storeName:st.name||"", area:st.area||"", address:st.address||"", bizType:st.bizType||"", kind:it.kind||"", freq:it.freq||"", qty:it.qty||"", weight:it.weight||"", dustPhoto:st.dustPhoto||"", overallPhoto:st.overallPhoto||"" }));
     });
     return out;
   };
@@ -33716,7 +33716,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
 
   // ===== 見積依頼ポータル =====
   const PORTAL_ON = !!(typeof QUOTE_PORTAL_URL!=="undefined" && QUOTE_PORTAL_URL);
-  const buildReqItemsFor = (qv) => vendorRows(qv).map(r=>({ id:r.itemId, storeId:r.storeId, storeName:r.storeName, area:r.area, bizType:r.bizType, address:r.address, kind:r.kind, freq:r.freq, qty:r.qty, weight:r.weight }));
+  const buildReqItemsFor = (qv) => vendorRows(qv).map(r=>({ id:r.itemId, storeId:r.storeId, storeName:r.storeName, area:r.area, bizType:r.bizType, address:r.address, kind:r.kind, freq:r.freq, qty:r.qty, weight:r.weight, dustPhoto:r.dustPhoto||"", overallPhoto:r.overallPhoto||"" }));
   const portalPost = async (bodyObj) => {
     const r=await fetch(QUOTE_PORTAL_URL,{method:"POST",headers:{"content-type":"text/plain;charset=UTF-8"},body:JSON.stringify({...bodyObj,secret:DB_API_SECRET})});
     return await r.json();
@@ -34055,6 +34055,29 @@ function ComparisonMatrix({ stores, vlist, vendorRows, C }){
   );
 }
 
+// 店舗写真スロット（S3アップロード＋サムネイル表示）
+function PhotoSlot({ label, url, onSet, C, storeId }){
+  const [busy,setBusy]=React.useState(false);
+  const ref=React.useRef(null);
+  const pick=async(e)=>{ const f=e.target.files?.[0]; if(e.target)e.target.value=""; if(!f)return; setBusy(true);
+    try{ const res=await uploadFileToSupabase(f,"quote-store",storeId||"s"); onSet(res&&res.url?res.url:""); }
+    catch(ex){ window.alert("写真アップロード失敗: "+(ex&&ex.message||ex)); } setBusy(false); };
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:3}}>
+      <span style={{fontSize:"0.66rem",color:C.textSub,fontWeight:700}}>{label}</span>
+      {url ? (
+        <div style={{position:"relative",width:104}}>
+          <a href={url} target="_blank" rel="noreferrer"><img src={url} alt="" style={{width:104,height:78,objectFit:"cover",borderRadius:6,border:`1px solid ${C.border}`,display:"block"}}/></a>
+          <button onClick={()=>{if(window.confirm("写真を外しますか？"))onSet("");}} style={{position:"absolute",top:-8,right:-8,width:20,height:20,borderRadius:"50%",border:"none",background:"#dc2626",color:"white",cursor:"pointer",fontSize:"0.7rem",fontFamily:"inherit",lineHeight:1}}>×</button>
+        </div>
+      ) : (
+        <button onClick={()=>ref.current&&ref.current.click()} disabled={busy} style={{width:104,height:78,borderRadius:6,border:`1.5px dashed ${C.border}`,background:C.bg,color:C.textMuted,cursor:"pointer",fontSize:"0.72rem",fontFamily:"inherit"}}>{busy?"⏳ 送信中":"＋ 写真"}</button>
+      )}
+      <input type="file" accept="image/*" ref={ref} onChange={pick} style={{display:"none"}}/>
+    </div>
+  );
+}
+
 // 対象店舗のグループ表示（都道府県ごとに折りたたみ）
 function StoreGroups({ stores, C, rid, mapsUrl, setStores }){
   const [openG,setOpenG]=React.useState({});
@@ -34348,6 +34371,7 @@ function StoreRow({ st, C, rid, mapsUrl, onChange, onDelete }){
           <div style={{fontWeight:700,fontSize:"0.82rem",color:C.text}}>{st.name||"（拠点名なし）"}{st.address?<a href={mapsUrl(st.address)} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{marginLeft:6,textDecoration:"none"}} title="Googleマップで開く">📍</a>:null}</div>
           <div style={{fontSize:"0.66rem",color:C.textMuted}}>{[st.area,st.bizType,st.address].filter(Boolean).join(" ／ ")||"—"}</div>
         </div>
+        {(st.dustPhoto||st.overallPhoto)&&<span title="写真あり" style={{fontSize:"0.72rem"}}>📷</span>}
         <span style={{fontSize:"0.66rem",color:C.textSub}}>品目{(st.items||[]).length}</span>
         <button onClick={e=>{e.stopPropagation();if(window.confirm("この店舗を削除しますか？"))onDelete();}} style={{border:"none",background:"none",color:"#dc2626",cursor:"pointer",fontSize:"0.85rem",fontFamily:"inherit"}}>🗑</button>
       </div>
@@ -34375,6 +34399,10 @@ function StoreRow({ st, C, rid, mapsUrl, onChange, onDelete }){
               </div>
             );})}
             <button onClick={()=>setItems([...(st.items||[]),{id:rid("it"),kind:"",freq:"",qty:"",weight:"",note:""}])} style={{width:"100%",padding:"0.3rem",border:"none",borderTop:`1px solid ${C.borderLight}`,background:C.bg,color:C.accent,fontWeight:700,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit"}}>＋ 品目を追加</button>
+          </div>
+          <div style={{display:"flex",gap:"0.8rem",marginTop:"0.6rem",flexWrap:"wrap"}}>
+            <PhotoSlot label="🗑 ダストボックス/ゴミ庫" url={st.dustPhoto} onSet={u=>set({dustPhoto:u})} C={C} storeId={st.id}/>
+            <PhotoSlot label="🏢 全体写真" url={st.overallPhoto} onSet={u=>set({overallPhoto:u})} C={C} storeId={st.id}/>
           </div>
         </div>
       )}
