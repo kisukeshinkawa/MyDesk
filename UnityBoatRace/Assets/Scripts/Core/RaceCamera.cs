@@ -14,6 +14,7 @@ namespace BoatRace.Core
     {
         public enum Mode { Follow, Onboard, Overhead }
         public Mode mode = Mode.Follow;
+        public int focusBoat = -1;   // ストーリーモードでプレイヤー艇を注視(-1=先頭艇)
 
         RaceManager race;
         ReplayManager replay;
@@ -88,6 +89,10 @@ namespace BoatRace.Core
             foreach (var b in race.boats)
                 spread = Mathf.Max(spread, Vector3.Distance(center, b.engine.Position));
 
+            // プレイヤー艇がいる場合はそちらへ寄せる
+            if (focusBoat >= 0 && focusBoat < race.boats.Count)
+                center = Vector3.Lerp(center, race.boats[focusBoat].engine.Position, 0.55f);
+
             float dist = Mathf.Clamp(spread * 1.5f + 28f, 45f, 160f);
             Vector3 dir = new Vector3(-0.12f, 0.72f, -1f).normalized;
             Vector3 targetPos = center + dir * dist;
@@ -100,7 +105,8 @@ namespace BoatRace.Core
         // ---- 選手目線(先頭艇) ----
         void OnboardCam()
         {
-            int focus = race.state.standings.Count > 0 ? race.state.standings[0] : 0;
+            int focus = focusBoat >= 0 ? focusBoat
+                : race.state.standings.Count > 0 ? race.state.standings[0] : 0;
             var e = race.boats[focus].engine;
             Vector3 fwd = e.Forward;
 

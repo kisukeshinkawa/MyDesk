@@ -18,6 +18,7 @@ namespace BoatRace.UI
         readonly Text windArrow;
         readonly RectTransform windArrowRT;
         readonly Text centerText;   // カウントダウン/スタート表示
+        readonly Text hintText;     // プレイヤー操作ガイド
         readonly Text[] standingRows = new Text[6];
         readonly Image[] rowChips = new Image[6];
         readonly Text commentaryText;
@@ -74,6 +75,11 @@ namespace BoatRace.UI
                 new Vector2(0.2f, 0.45f), new Vector2(0.8f, 0.75f), Vector2.zero, Vector2.zero,
                 bold: true, shadow: true, outline: true);
 
+            // プレイヤー操作ガイド(ストーリーモード)
+            hintText = UiKit.MakeText(root.transform, "", 24, UiKit.Yellow, TextAnchor.MiddleCenter,
+                new Vector2(0.15f, 0.13f), new Vector2(0.85f, 0.20f), Vector2.zero, Vector2.zero,
+                bold: true, shadow: true, outline: true);
+
             // 視点切替ボタン(追尾→選手目線→俯瞰)
             var viewBtn = UiKit.MakeButton(root.transform, $"視点: {raceCam.ModeLabel()}", UiKit.Cyan, 22,
                 new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-230f, 122f), new Vector2(-16f, 176f),
@@ -125,6 +131,21 @@ namespace BoatRace.UI
             {
                 centerText.text = "";
             }
+
+            // プレイヤー操作ガイド
+            if (race.playerBoatIndex >= 0)
+            {
+                if (race.state.phase == RacePhase.Approach && ck < 0.5f)
+                    hintText.text = "[スペース] 全開！大時計0秒ちょうどにライン通過！(早いとF)";
+                else if (race.state.phase == RacePhase.Racing && race.state.raceTime < 12f)
+                    hintText.text = "[←][→] 舵　[スペース] 全開　1マークを攻めろ！";
+                else if (hintText.text.Length > 0)
+                    hintText.text = "";
+            }
+            else if (hintText.text.Length > 0)
+            {
+                hintText.text = "";
+            }
             clockText.text = race.state.phase == RacePhase.Racing || race.state.phase == RacePhase.Finished
                 ? $"⏱ {race.state.raceTime:F1}s"
                 : $"大時計 {race.state.clock:F1}";
@@ -143,8 +164,10 @@ namespace BoatRace.UI
                     : "--";
                 string place = disq ? "欠場 " : bs.finished ? $"{bs.finalPlace}着 " : $"{i + 1}位 ";
                 string lap = bs.finished || disq ? "" : $" {bs.lap + 1}周目";
+                string you = idx == race.playerBoatIndex ? "▶" : "";
                 standingRows[i].text =
-                    $"{place}{race.statsList[idx].player.playerName}  ST{st} {StrategyAI.TacticName(bs.tactic)}{lap}";
+                    $"{you}{place}{race.statsList[idx].player.playerName}  ST{st} {StrategyAI.TacticName(bs.tactic)}{lap}";
+                standingRows[i].color = idx == race.playerBoatIndex ? UiKit.Yellow : Color.white;
             }
         }
 

@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using BoatRace.Career;
 using BoatRace.Core;
 using BoatRace.Commentary;
 using BoatRace.Data;
@@ -17,6 +18,19 @@ namespace BoatRace.UI
         ReplayManager replay;
         CommentarySystem commentary;
         RaceHudUI hud;
+        RaceCamera raceCam;
+
+        // ストーリーモード
+        CareerData career;
+        int lastCareerPlace;
+        int lastCareerPrize;
+        (string, string)[] pendingStory;
+        GameObject dialogGo;
+        Text dialogSpeaker;
+        Text dialogBody;
+        (string, string)[] dialogLines;
+        int dialogIdx;
+        System.Action dialogDone;
 
         Canvas canvas;
         GameObject currentScreen;
@@ -33,6 +47,8 @@ namespace BoatRace.UI
             this.race = race;
             this.replay = replay;
             this.commentary = commentary;
+            this.raceCam = raceCam;
+            career = CareerData.Load();
 
             canvas = UiKit.MakeCanvas();
             hud = new RaceHudUI(race, commentary, canvas.transform, raceCam);
@@ -244,22 +260,27 @@ namespace BoatRace.UI
             var nav = UiKit.MakePanel(s.transform, new Color(0.05f, 0.12f, 0.30f, 0.93f), 12,
                 new Vector2(0f, 0f), new Vector2(1f, 0.125f), new Vector2(-6f, -4f), new Vector2(6f, 0f));
             UiKit.AddStripeOverlay(nav, Color.white, 0.05f);
-            UiKit.MakeButton(nav.transform, "タイトルへ", new Color(0.45f, 0.5f, 0.58f), 22,
-                new Vector2(0.02f, 0.16f), new Vector2(0.16f, 0.84f), Vector2.zero, Vector2.zero, ShowTitle);
-            UiKit.MakeButton(nav.transform, "戦績", new Color(0.1f, 0.62f, 0.35f), 22,
-                new Vector2(0.18f, 0.16f), new Vector2(0.32f, 0.84f), Vector2.zero, Vector2.zero,
+            UiKit.MakeButton(nav.transform, "タイトルへ", new Color(0.45f, 0.5f, 0.58f), 20,
+                new Vector2(0.02f, 0.16f), new Vector2(0.13f, 0.84f), Vector2.zero, Vector2.zero, ShowTitle);
+            UiKit.MakeButton(nav.transform, "戦績", new Color(0.1f, 0.62f, 0.35f), 20,
+                new Vector2(0.145f, 0.16f), new Vector2(0.245f, 0.84f), Vector2.zero, Vector2.zero,
                 () => ShowStatsPopup(s.transform));
-            UiKit.MakeButton(nav.transform, "出走表へ　▶", UiKit.Red, 30,
-                new Vector2(0.36f, 0.10f), new Vector2(0.64f, 0.90f), Vector2.zero, Vector2.zero,
+            UiKit.MakeButton(nav.transform, "★ ストーリー", new Color(0.62f, 0.2f, 0.75f), 26,
+                new Vector2(0.27f, 0.10f), new Vector2(0.47f, 0.90f), Vector2.zero, Vector2.zero, ShowCareer);
+            UiKit.MakeButton(nav.transform, "観戦レース　▶", UiKit.Red, 26,
+                new Vector2(0.50f, 0.10f), new Vector2(0.72f, 0.90f), Vector2.zero, Vector2.zero,
                 () =>
                 {
+                    race.playerBoatIndex = -1;
+                    race.playerOverride = null;
+                    if (raceCam != null) raceCam.focusBoat = -1;
                     race.seed = System.Environment.TickCount;
                     race.SetupRace();
                     if (RaceBootstrap.Instance != null) RaceBootstrap.Instance.RebuildEnvironment(race);
                     ShowEntry();
                 });
-            UiKit.MakeChip(nav.transform, "選手・モーター・ペラは毎レース抽選", new Color(0f, 0f, 0f, 0.25f), Color.white, 16,
-                new Vector2(0.68f, 0.22f), new Vector2(0.98f, 0.78f), Vector2.zero, Vector2.zero);
+            UiKit.MakeChip(nav.transform, "選手・モーター・ペラは毎レース抽選", new Color(0f, 0f, 0f, 0.25f), Color.white, 15,
+                new Vector2(0.74f, 0.22f), new Vector2(0.99f, 0.78f), Vector2.zero, Vector2.zero);
         }
 
         void ShowStatsPopup(Transform parent)
@@ -276,6 +297,131 @@ namespace BoatRace.UI
             UiKit.MakeButton(pop.transform, "閉じる", UiKit.Cyan, 22,
                 new Vector2(0.32f, 0.05f), new Vector2(0.68f, 0.22f), Vector2.zero, Vector2.zero,
                 () => Destroy(pop));
+        }
+
+        // ================= ストーリーモード: マイレーサー =================
+        void ShowCareer()
+        {
+            var s = NewScreen("CareerScreen");
+            UiKit.MakeFullscreenGradient(s.transform, new Color(0.16f, 0.08f, 0.25f, 0.55f),
+                new Color(0.05f, 0.03f, 0.12f, 0.92f));
+            UiKit.AddStripeOverlay(s, Color.white, 0.05f);
+            UiKit.MakeBanner(s.transform, "マイレーサー　ストーリーモード", 30,
+                new Vector2(0.22f, 0.90f), new Vector2(0.78f, 0.98f), tilt: -1.2f);
+
+            // 左: レーサーカード
+            var card = UiKit.MakePanel(s.transform, UiKit.PanelWhite, 20,
+                new Vector2(0.05f, 0.28f), new Vector2(0.48f, 0.86f), Vector2.zero, Vector2.zero);
+            UiKit.AddStripeOverlay(card, UiKit.Sky, 0.10f);
+            UiKit.MakeText(card.transform, career.racerName, 40, UiKit.TextDark, TextAnchor.MiddleLeft,
+                new Vector2(0.06f, 0.80f), new Vector2(0.72f, 0.98f), Vector2.zero, Vector2.zero, bold: true);
+            UiKit.MakeChip(card.transform, $"{career.Rank}級", UiKit.Red, Color.white, 26,
+                new Vector2(0.74f, 0.80f), new Vector2(0.96f, 0.96f), Vector2.zero, Vector2.zero);
+            UiKit.MakeText(card.transform,
+                $"出走　{career.races} 回\n勝利　{career.wins} 勝　(3着内 {career.top3})\n獲得賞金　{career.money:N0} 万円\n" +
+                (career.WinsToNextRank > 0 ? $"次の昇格まで　あと {career.WinsToNextRank} 勝" : "最高峰 A1 到達！ 目指せ賞金王！"),
+                24, UiKit.TextDark, TextAnchor.UpperLeft,
+                new Vector2(0.06f, 0.10f), new Vector2(0.94f, 0.76f), Vector2.zero, Vector2.zero, bold: true);
+
+            // 右: スキルと練習
+            var skill = UiKit.MakePanel(s.transform, UiKit.PanelWhite, 20,
+                new Vector2(0.52f, 0.28f), new Vector2(0.95f, 0.86f), Vector2.zero, Vector2.zero);
+            UiKit.MakeText(skill.transform,
+                $"スタート技術　{career.startSkill * 100f:F0}\n旋回技術　{career.turnSkill * 100f:F0}\nメンタル　{career.mental * 100f:F0}",
+                26, UiKit.TextDark, TextAnchor.UpperLeft,
+                new Vector2(0.07f, 0.55f), new Vector2(0.93f, 0.96f), Vector2.zero, Vector2.zero, bold: true);
+            void Train(string label, int cost, System.Action apply, float y)
+            {
+                UiKit.MakeButton(skill.transform, $"{label} ({cost}万)", UiKit.Cyan, 20,
+                    new Vector2(0.07f, y), new Vector2(0.93f, y + 0.13f), Vector2.zero, Vector2.zero,
+                    () =>
+                    {
+                        if (career.money < cost) return;
+                        career.money -= cost;
+                        apply();
+                        career.Save();
+                        ShowCareer();
+                    });
+            }
+            Train("スタート練習 +3", 100, () => career.startSkill = Mathf.Min(0.95f, career.startSkill + 0.03f), 0.38f);
+            Train("旋回練習 +3", 100, () => career.turnSkill = Mathf.Min(0.95f, career.turnSkill + 0.03f), 0.22f);
+            Train("メンタル強化 +3", 80, () => career.mental = Mathf.Min(0.95f, career.mental + 0.03f), 0.06f);
+
+            UiKit.MakeButton(s.transform, "レースに出走する　▶", UiKit.Red, 34,
+                new Vector2(0.30f, 0.10f), new Vector2(0.70f, 0.24f), Vector2.zero, Vector2.zero, StartCareerRace);
+            UiKit.MakeButton(s.transform, "↩ ホーム", UiKit.Cyan, 22,
+                new Vector2(0.04f, 0.11f), new Vector2(0.18f, 0.21f), Vector2.zero, Vector2.zero, ShowHome);
+
+            if (!career.debutDone)
+            {
+                career.debutDone = true;
+                career.Save();
+                ShowDialog(CareerStory.Debut(career.racerName), null);
+            }
+        }
+
+        void StartCareerRace()
+        {
+            race.playerOverride = career.ToStats();
+            race.playerBoatIndex = career.DrawBoatIndex(new System.Random(System.Environment.TickCount));
+            race.seed = System.Environment.TickCount;
+            race.SetupRace();
+            if (RaceBootstrap.Instance != null) RaceBootstrap.Instance.RebuildEnvironment(race);
+            if (raceCam != null)
+            {
+                raceCam.focusBoat = race.playerBoatIndex;
+                raceCam.mode = RaceCamera.Mode.Follow;
+            }
+            ShowEntry();
+        }
+
+        // ================= 会話ウィンドウ =================
+        void ShowDialog((string, string)[] lines, System.Action onDone)
+        {
+            if (lines == null || lines.Length == 0) { onDone?.Invoke(); return; }
+            if (dialogGo != null) Destroy(dialogGo);
+            dialogLines = lines;
+            dialogIdx = 0;
+            dialogDone = onDone;
+
+            dialogGo = new GameObject("Dialog");
+            UiKit.Place(dialogGo, canvas.transform, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+            var dim = dialogGo.AddComponent<Image>();
+            dim.color = new Color(0f, 0f, 0f, 0.35f);
+            dialogGo.AddComponent<Button>().onClick.AddListener(AdvanceDialog);
+
+            var panel = UiKit.MakePanel(dialogGo.transform, new Color(0.05f, 0.10f, 0.28f, 0.97f), 20,
+                new Vector2(0.08f, 0.05f), new Vector2(0.92f, 0.30f), Vector2.zero, Vector2.zero);
+            UiKit.AddStripeOverlay(panel, Color.white, 0.05f);
+            var chip = UiKit.MakeChip(panel.transform, "", UiKit.Yellow, UiKit.Navy, 22,
+                new Vector2(0.02f, 0.72f), new Vector2(0.24f, 0.98f), Vector2.zero, Vector2.zero);
+            dialogSpeaker = chip.GetComponentInChildren<Text>();
+            dialogBody = UiKit.MakeText(panel.transform, "", 26, Color.white, TextAnchor.UpperLeft,
+                new Vector2(0.03f, 0.10f), new Vector2(0.97f, 0.68f), Vector2.zero, Vector2.zero, bold: true);
+            UiKit.MakeText(panel.transform, "▼ タップで進む", 18, new Color(1f, 1f, 1f, 0.6f), TextAnchor.LowerRight,
+                new Vector2(0.6f, 0.02f), new Vector2(0.97f, 0.14f), Vector2.zero, Vector2.zero);
+            RenderDialogLine();
+        }
+
+        void RenderDialogLine()
+        {
+            dialogSpeaker.text = dialogLines[dialogIdx].Item1;
+            dialogBody.text = dialogLines[dialogIdx].Item2;
+        }
+
+        void AdvanceDialog()
+        {
+            dialogIdx++;
+            if (dialogIdx >= dialogLines.Length)
+            {
+                Destroy(dialogGo);
+                dialogGo = null;
+                var done = dialogDone;
+                dialogDone = null;
+                done?.Invoke();
+                return;
+            }
+            RenderDialogLine();
         }
 
         // ================= 出走表 =================
@@ -317,6 +463,10 @@ namespace BoatRace.UI
                     lightRibbon ? UiKit.Navy : Color.white, TextAnchor.MiddleLeft,
                     Vector2.zero, Vector2.one, new Vector2(16f, 0f), new Vector2(-8f, 0f),
                     bold: true, shadow: !lightRibbon);
+
+                if (i == race.playerBoatIndex)
+                    UiKit.MakeChip(card.transform, "YOU", UiKit.Red, Color.white, 20,
+                        new Vector2(0.80f, 0.70f), new Vector2(0.97f, 0.94f), Vector2.zero, Vector2.zero);
 
                 string entry = BoatRace.Start.WaitingSystem.IsSlowStart(bs.course) ? "スロー" : "ダッシュ";
                 string grade = MotorGrade(st.motor.OverallScore);
@@ -414,15 +564,43 @@ namespace BoatRace.UI
                     Vector2.zero, Vector2.zero, bold: true, shadow: true);
             }
 
+            // ストーリーモード: 自分の成績と賞金
+            bool careerRace = race.playerBoatIndex >= 0;
+            if (careerRace)
+            {
+                string res = lastCareerPlace >= 1 ? $"{lastCareerPlace}着" : "F/L 返還";
+                UiKit.MakeText(s.transform,
+                    $"あなた({career.racerName})　{res}　賞金 +{lastCareerPrize}万円　通算 {career.wins}勝",
+                    26, Color.white, TextAnchor.MiddleCenter,
+                    new Vector2(0f, 0.155f), new Vector2(1f, 0.205f), Vector2.zero, Vector2.zero,
+                    bold: true, shadow: true, outline: true);
+            }
+
             UiKit.MakeButton(s.transform, "▶ リプレイ", UiKit.Cyan, 28,
                 new Vector2(0.16f, 0.05f), new Vector2(0.38f, 0.16f), Vector2.zero, Vector2.zero,
                 () => { ClearScreen(); replay.StartPlayback(); });
-            UiKit.MakeButton(s.transform, "もう一度", UiKit.Red, 28,
-                new Vector2(0.40f, 0.05f), new Vector2(0.60f, 0.16f), Vector2.zero, Vector2.zero,
-                () => { race.seed = System.Environment.TickCount; race.SetupRace(); ShowEntry(); });
+            if (careerRace)
+            {
+                UiKit.MakeButton(s.transform, "★ ストーリーへ", new Color(0.62f, 0.2f, 0.75f), 26,
+                    new Vector2(0.40f, 0.05f), new Vector2(0.60f, 0.16f), Vector2.zero, Vector2.zero, ShowCareer);
+            }
+            else
+            {
+                UiKit.MakeButton(s.transform, "もう一度", UiKit.Red, 28,
+                    new Vector2(0.40f, 0.05f), new Vector2(0.60f, 0.16f), Vector2.zero, Vector2.zero,
+                    () => { race.seed = System.Environment.TickCount; race.SetupRace(); ShowEntry(); });
+            }
             UiKit.MakeButton(s.transform, "ホームへ", UiKit.Yellow, 28,
                 new Vector2(0.62f, 0.05f), new Vector2(0.84f, 0.16f), Vector2.zero, Vector2.zero,
                 () => { race.SetupRace(); ShowHome(); }).GetComponentInChildren<Text>().color = UiKit.Navy;
+
+            // 昇格・初勝利などのストーリー会話
+            if (pendingStory != null)
+            {
+                var story = pendingStory;
+                pendingStory = null;
+                ShowDialog(story, null);
+            }
         }
 
         // ================= リプレイ操作 =================
@@ -463,6 +641,27 @@ namespace BoatRace.UI
                     PlayerPrefs.SetInt("br_best", payout);
             }
             PlayerPrefs.Save();
+
+            // ストーリーモード: 賞金・勝利数・昇格・会話イベント
+            if (race.playerBoatIndex >= 0 && career != null)
+            {
+                var pbs = race.state.Get(race.playerBoatIndex);
+                bool pDisq = pbs.startFlag == StartFlag.Flying || pbs.startFlag == StartFlag.Late;
+                lastCareerPlace = pDisq || pbs.finalPlace < 1 ? -1 : pbs.finalPlace;
+                lastCareerPrize = lastCareerPlace > 0 ? career.PrizeFor(lastCareerPlace) : 0;
+
+                career.races++;
+                career.money += lastCareerPrize;
+                if (lastCareerPlace == 1) career.wins++;
+                if (lastCareerPlace >= 1 && lastCareerPlace <= 3) career.top3++;
+
+                pendingStory = null;
+                if (!career.a1Done && career.wins >= 15) { career.a1Done = true; pendingStory = CareerStory.PromoteA1(career.racerName); }
+                else if (!career.a2Done && career.wins >= 8) { career.a2Done = true; pendingStory = CareerStory.PromoteA2(career.racerName); }
+                else if (!career.b1Done && career.wins >= 3) { career.b1Done = true; pendingStory = CareerStory.PromoteB1(career.racerName); }
+                else if (!career.firstWinDone && career.wins >= 1) { career.firstWinDone = true; pendingStory = CareerStory.FirstWin(career.racerName); }
+                career.Save();
+            }
         }
 
         int ComputePayout(int first, int second, int third)

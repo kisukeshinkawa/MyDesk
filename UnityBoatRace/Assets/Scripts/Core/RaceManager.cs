@@ -21,6 +21,10 @@ namespace BoatRace.Core
         public int seed = 12345;
         public const int BoatCount = 6;
 
+        // ストーリーモード: プレイヤーが操縦する艇(-1=観戦モード)
+        [NonSerialized] public int playerBoatIndex = -1;
+        [NonSerialized] public Player.PlayerStats playerOverride;
+
         [NonSerialized] public VenueData venue;
         [NonSerialized] public WindSystem wind;
         [NonSerialized] public CurrentSystem current;
@@ -74,6 +78,10 @@ namespace BoatRace.Core
             var players = PlayerDatabase.PickSix(rng);
             var motors = MotorDatabase.RandomAssign(
                 MotorDatabase.GenerateSeasonMotors(60, seed), BoatCount, rng);
+
+            // ストーリーモード: プレイヤーを指定艇に乗せる
+            if (playerOverride != null && playerBoatIndex >= 0 && playerBoatIndex < BoatCount)
+                players[playerBoatIndex] = playerOverride;
 
             statsList.Clear();
             for (int i = 0; i < BoatCount; i++)
@@ -296,8 +304,18 @@ namespace BoatRace.Core
                 allCrossed = false;
 
                 float laneZ = WaitingSystem.LaneZ(bs.course);
-                b.engine.Throttle = b.startAI.GetThrottle(state.clock, b.engine.Speed);
-                b.engine.Steer = b.startAI.GetSteer(b.engine, laneZ);
+                if (i == playerBoatIndex)
+                {
+                    // プレイヤー: 自分の指でスタートを合わせる(握りが早いとF!)
+                    b.engine.Throttle = Player.PlayerBoatInput.Throttle();
+                    float axis = Player.PlayerBoatInput.SteerAxis();
+                    b.engine.Steer = axis != 0f ? axis * 0.6f : b.startAI.GetSteer(b.engine, laneZ);
+                }
+                else
+                {
+                    b.engine.Throttle = b.startAI.GetThrottle(state.clock, b.engine.Speed);
+                    b.engine.Steer = b.startAI.GetSteer(b.engine, laneZ);
+                }
 
                 float prevX = b.engine.Position.x - b.engine.Forward.x * b.engine.Speed * dt;
                 if (prevX < TrackPath.StartLineX && b.engine.Position.x >= TrackPath.StartLineX)
@@ -345,10 +363,19 @@ namespace BoatRace.Core
                 var bs = state.Get(i);
                 if (bs.finished) { b.engine.Throttle = 0.15f; b.engine.Steer = b.turnAI.GetSteer(b.engine, WaitingSystem.LaneZ(bs.course)); continue; }
 
-                b.engine.Steer = b.turnAI.GetSteer(b.engine, WaitingSystem.LaneZ(bs.course));
-                b.engine.Throttle = b.turnAI.GetThrottle(b.engine);
-                // F/L艇は欠場扱い: 走行は続けるが流す(仕様書: 走るが失格表示)
-                if (IsDisqualified(bs)) b.engine.Throttle = Mathf.Min(b.engine.Throttle, 0.55f);
+                if (i == playerBoatIndex && !IsDisqualified(bs))
+                {
+                    // プレイヤー操縦: 舵は手動、スロットルは握りっぱなし推奨
+                    b.engine.Steer = Player.PlayerBoatInput.SteerAxis();
+                    b.engine.Throttle = Player.PlayerBoatInput.Throttle();
+                }
+                else
+                {
+                    b.engine.Steer = b.turnAI.GetSteer(b.engine, WaitingSystem.LaneZ(bs.course));
+                    b.engine.Throttle = b.turnAI.GetThrottle(b.engine);
+                    // F/L艇は欠場扱い: 走行は続けるが流す(仕様書: 走るが失格表示)
+                    if (IsDisqualified(bs)) b.engine.Throttle = Mathf.Min(b.engine.Throttle, 0.55f);
+                }
 
                 // 進行度更新(周回ラップ検出)
                 float r = b.turnAI.laneRadius;
