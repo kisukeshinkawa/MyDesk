@@ -309,23 +309,31 @@ namespace BoatRace.UI
             UiKit.MakeBanner(s.transform, "マイレーサー　ストーリーモード", 30,
                 new Vector2(0.22f, 0.90f), new Vector2(0.78f, 0.98f), tilt: -1.2f);
 
+            // 現在の章(仕様書の8章構成)
+            var ch = career.Current;
+            string goal = ch.requiredPlace >= 6 ? "完走" : ch.requiredPlace == 1 ? "優勝" : $"{ch.requiredPlace}着以内";
+            string chapterInfo = career.allClear
+                ? "全章クリア！ SG覇者としてフリー挑戦中"
+                : $"第{career.chapter}章「{ch.title}」　{CourseDatabase.Get(ch.venueId).name} / {ch.grade}戦　目標: {goal}";
+            UiKit.MakeChip(s.transform, chapterInfo, new Color(0f, 0f, 0f, 0.45f), UiKit.Yellow, 22,
+                new Vector2(0.12f, 0.845f), new Vector2(0.88f, 0.895f), Vector2.zero, Vector2.zero);
+
             // 左: レーサーカード
             var card = UiKit.MakePanel(s.transform, UiKit.PanelWhite, 20,
-                new Vector2(0.05f, 0.28f), new Vector2(0.48f, 0.86f), Vector2.zero, Vector2.zero);
+                new Vector2(0.05f, 0.28f), new Vector2(0.48f, 0.83f), Vector2.zero, Vector2.zero);
             UiKit.AddStripeOverlay(card, UiKit.Sky, 0.10f);
             UiKit.MakeText(card.transform, career.racerName, 40, UiKit.TextDark, TextAnchor.MiddleLeft,
                 new Vector2(0.06f, 0.80f), new Vector2(0.72f, 0.98f), Vector2.zero, Vector2.zero, bold: true);
-            UiKit.MakeChip(card.transform, $"{career.Rank}級", UiKit.Red, Color.white, 26,
+            UiKit.MakeChip(card.transform, career.RankLabel, UiKit.Red, Color.white, 26,
                 new Vector2(0.74f, 0.80f), new Vector2(0.96f, 0.96f), Vector2.zero, Vector2.zero);
             UiKit.MakeText(card.transform,
-                $"出走　{career.races} 回\n勝利　{career.wins} 勝　(3着内 {career.top3})\n獲得賞金　{career.money:N0} 万円\n" +
-                (career.WinsToNextRank > 0 ? $"次の昇格まで　あと {career.WinsToNextRank} 勝" : "最高峰 A1 到達！ 目指せ賞金王！"),
+                $"出走　{career.races} 回\n勝利　{career.wins} 勝　(3着内 {career.top3})\n獲得賞金　{career.money:N0} 万円",
                 24, UiKit.TextDark, TextAnchor.UpperLeft,
                 new Vector2(0.06f, 0.10f), new Vector2(0.94f, 0.76f), Vector2.zero, Vector2.zero, bold: true);
 
             // 右: スキルと練習
             var skill = UiKit.MakePanel(s.transform, UiKit.PanelWhite, 20,
-                new Vector2(0.52f, 0.28f), new Vector2(0.95f, 0.86f), Vector2.zero, Vector2.zero);
+                new Vector2(0.52f, 0.28f), new Vector2(0.95f, 0.83f), Vector2.zero, Vector2.zero);
             UiKit.MakeText(skill.transform,
                 $"スタート技術　{career.startSkill * 100f:F0}\n旋回技術　{career.turnSkill * 100f:F0}\nメンタル　{career.mental * 100f:F0}",
                 26, UiKit.TextDark, TextAnchor.UpperLeft,
@@ -347,7 +355,8 @@ namespace BoatRace.UI
             Train("旋回練習 +3", 100, () => career.turnSkill = Mathf.Min(0.95f, career.turnSkill + 0.03f), 0.22f);
             Train("メンタル強化 +3", 80, () => career.mental = Mathf.Min(0.95f, career.mental + 0.03f), 0.06f);
 
-            UiKit.MakeButton(s.transform, "レースに出走する　▶", UiKit.Red, 34,
+            string raceLabel = career.allClear ? "SG覇者として出走　▶" : $"第{career.chapter}章に出走　▶";
+            UiKit.MakeButton(s.transform, raceLabel, UiKit.Red, 34,
                 new Vector2(0.30f, 0.10f), new Vector2(0.70f, 0.24f), Vector2.zero, Vector2.zero, StartCareerRace);
             UiKit.MakeButton(s.transform, "↩ ホーム", UiKit.Cyan, 22,
                 new Vector2(0.04f, 0.11f), new Vector2(0.18f, 0.21f), Vector2.zero, Vector2.zero, ShowHome);
@@ -362,6 +371,7 @@ namespace BoatRace.UI
 
         void StartCareerRace()
         {
+            if (!career.allClear) race.venueId = career.Current.venueId; // 章の指定会場
             race.playerOverride = career.ToStats();
             race.playerBoatIndex = career.DrawBoatIndex(new System.Random(System.Environment.TickCount));
             race.seed = System.Environment.TickCount;
@@ -655,11 +665,23 @@ namespace BoatRace.UI
                 if (lastCareerPlace == 1) career.wins++;
                 if (lastCareerPlace >= 1 && lastCareerPlace <= 3) career.top3++;
 
+                // 章クリア判定(仕様書の目標着順)
                 pendingStory = null;
-                if (!career.a1Done && career.wins >= 15) { career.a1Done = true; pendingStory = CareerStory.PromoteA1(career.racerName); }
-                else if (!career.a2Done && career.wins >= 8) { career.a2Done = true; pendingStory = CareerStory.PromoteA2(career.racerName); }
-                else if (!career.b1Done && career.wins >= 3) { career.b1Done = true; pendingStory = CareerStory.PromoteB1(career.racerName); }
-                else if (!career.firstWinDone && career.wins >= 1) { career.firstWinDone = true; pendingStory = CareerStory.FirstWin(career.racerName); }
+                if (!career.allClear)
+                {
+                    var chNow = career.Current;
+                    bool cleared = lastCareerPlace >= 1 && lastCareerPlace <= chNow.requiredPlace;
+                    if (cleared)
+                    {
+                        pendingStory = CareerStory.ChapterClear(career.chapter, career.racerName);
+                        if (career.chapter >= 8) career.allClear = true;
+                        else career.chapter++;
+                    }
+                    else
+                    {
+                        pendingStory = CareerStory.Retry(career.racerName);
+                    }
+                }
                 career.Save();
             }
         }

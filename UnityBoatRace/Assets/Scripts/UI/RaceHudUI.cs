@@ -19,6 +19,8 @@ namespace BoatRace.UI
         readonly RectTransform windArrowRT;
         readonly Text centerText;   // カウントダウン/スタート表示
         readonly Text hintText;     // プレイヤー操作ガイド
+        readonly Text viewLabel;    // 視点表示(Cキー切替と連動)
+        readonly RaceCamera raceCam;
         readonly Text[] standingRows = new Text[6];
         readonly Image[] rowChips = new Image[6];
         readonly Text commentaryText;
@@ -80,12 +82,12 @@ namespace BoatRace.UI
                 new Vector2(0.15f, 0.13f), new Vector2(0.85f, 0.20f), Vector2.zero, Vector2.zero,
                 bold: true, shadow: true, outline: true);
 
-            // 視点切替ボタン(追尾→選手目線→俯瞰)
-            var viewBtn = UiKit.MakeButton(root.transform, $"視点: {raceCam.ModeLabel()}", UiKit.Cyan, 22,
+            // 視点切替ボタン(クリック or Cキー: 追尾→選手目線→俯瞰)
+            this.raceCam = raceCam;
+            var viewBtn = UiKit.MakeButton(root.transform, $"視点: {raceCam.ModeLabel()} [C]", UiKit.Cyan, 20,
                 new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-230f, 122f), new Vector2(-16f, 176f),
-                () => { });
-            var viewLabel = viewBtn.GetComponentInChildren<Text>();
-            viewBtn.onClick.AddListener(() => viewLabel.text = $"視点: {raceCam.CycleMode()}");
+                () => raceCam.CycleMode());
+            viewLabel = viewBtn.GetComponentInChildren<Text>();
         }
 
         public void SetVisible(bool visible) => root.SetActive(visible);
@@ -103,6 +105,7 @@ namespace BoatRace.UI
         public void Tick()
         {
             if (root == null || !root.activeSelf) return;
+            if (raceCam != null) viewLabel.text = $"視点: {raceCam.ModeLabel()} [C]";
 
             string phaseName = race.state.phase == RacePhase.PitOut && race.state.clock < -60f
                 ? "ピット係留" : PhaseName(race.state.phase);

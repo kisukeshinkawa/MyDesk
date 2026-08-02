@@ -3,14 +3,25 @@ using BoatRace.Player;
 
 namespace BoatRace.Career
 {
+    /// <summary>ストーリーの章定義(仕様書 第9章準拠)。</summary>
+    public struct Chapter
+    {
+        public string title;
+        public int venueId;
+        public string grade;      // 新人/B2/B1/G3/G2/SG
+        public int requiredPlace; // クリアに必要な着順(6=完走でOK, 1=優勝)
+        public Chapter(string t, int v, string g, int p) { title = t; venueId = v; grade = g; requiredPlace = p; }
+    }
+
     /// <summary>
-    /// マイレーサーのキャリアデータ。名前・戦績・賞金・スキルを永続保存し、
-    /// 勝利数で級別が昇格していく(B2→B1→A2→A1)。
+    /// マイレーサーのキャリアデータ。仕様書の8章構成:
+    /// 新人(桐生・戸田)→B2(浜名湖・尼崎)→B1(住之江)→G3(丸亀)→G2(住之江)→SG(蒲郡)。
     /// </summary>
     [System.Serializable]
     public class CareerData
     {
         public string racerName = "新川 希亮";
+        public int chapter = 1;         // 現在の章(1-8)。9=全章クリア
         public int races;
         public int wins;
         public int top3;
@@ -18,30 +29,55 @@ namespace BoatRace.Career
         public float startSkill = 0.55f;
         public float turnSkill = 0.55f;
         public float mental = 0.60f;
-
-        // ストーリー進行フラグ
         public bool debutDone;
-        public bool firstWinDone;
-        public bool b1Done;
-        public bool a2Done;
-        public bool a1Done;
+        public bool allClear;
 
-        public RacerRank Rank =>
-            wins >= 15 ? RacerRank.A1 :
-            wins >= 8 ? RacerRank.A2 :
-            wins >= 3 ? RacerRank.B1 : RacerRank.B2;
+        public static readonly Chapter[] Chapters =
+        {
+            new Chapter("デビュー戦",     1,  "新人", 6),  // 桐生: 完走でクリア
+            new Chapter("初勝利を目指して", 2,  "新人", 1),  // 戸田: 優勝
+            new Chapter("B2昇格戦",       6,  "B2",  3),  // 浜名湖: 3着以内
+            new Chapter("地方巡業",       13, "B2",  3),  // 尼崎: 3着以内
+            new Chapter("B1への挑戦",     12, "B1",  2),  // 住之江: 2着以内
+            new Chapter("G3記念",         15, "G3",  3),  // 丸亀: 3着以内
+            new Chapter("地区選手権",     12, "G2",  2),  // 住之江: 2着以内
+            new Chapter("クラシック",     7,  "SG",  1),  // 蒲郡: 優勝=SG制覇!
+        };
 
-        /// <summary>次の昇格までの勝利数。</summary>
-        public int WinsToNextRank =>
-            wins >= 15 ? 0 : wins >= 8 ? 15 - wins : wins >= 3 ? 8 - wins : 3 - wins;
+        public Chapter Current => Chapters[Mathf.Clamp(chapter, 1, 8) - 1];
 
-        /// <summary>レース用の選手データに変換。</summary>
+        /// <summary>ランク表示(仕様書: 新人→B2→B1→A2→A1→SG)。</summary>
+        public string RankLabel
+        {
+            get
+            {
+                if (allClear) return "SG覇者";
+                if (chapter <= 2) return "新人";
+                if (chapter <= 4) return "B2";
+                if (chapter == 5) return "B1";
+                if (chapter == 6) return "A2";
+                if (chapter == 7) return "A1";
+                return "A1";
+            }
+        }
+
+        RacerRank RankEnum
+        {
+            get
+            {
+                if (chapter <= 4) return RacerRank.B2;
+                if (chapter == 5) return RacerRank.B1;
+                if (chapter <= 7) return RacerRank.A2;
+                return RacerRank.A1;
+            }
+        }
+
         public PlayerStats ToStats()
         {
             return new PlayerStats
             {
                 playerName = racerName,
-                rank = Rank,
+                rank = RankEnum,
                 startSkill = startSkill,
                 turnSkill = turnSkill,
                 reactionTimeMean = Mathf.Lerp(0.19f, 0.11f, startSkill),
@@ -56,22 +92,17 @@ namespace BoatRace.Career
         public int PrizeFor(int place)
         {
             if (place < 1 || place > 6) return 0;
-            float mult = Rank == RacerRank.A1 ? 2.5f :
-                         Rank == RacerRank.A2 ? 1.8f :
-                         Rank == RacerRank.B1 ? 1.3f : 1f;
+            float mult = 1f + (Mathf.Clamp(chapter, 1, 8) - 1) * 0.35f; // 章が進むほど高額
             return Mathf.RoundToInt(BasePrize[place - 1] * mult);
         }
 
-        /// <summary>級別に応じた配枠(強い選手ほど内枠がもらえる)。boatIndex 0-5。</summary>
+        /// <summary>章のグレードに応じた配枠(格上の節ほど厳しい枠になる)。</summary>
         public int DrawBoatIndex(System.Random rng)
         {
-            switch (Rank)
-            {
-                case RacerRank.A1: return rng.Next(0, 3);  // 1-3号艇
-                case RacerRank.A2: return rng.Next(1, 4);
-                case RacerRank.B1: return rng.Next(2, 5);
-                default:           return rng.Next(3, 6);  // 4-6号艇
-            }
+            if (chapter <= 2) return rng.Next(3, 6);   // 新人: 4-6号艇
+            if (chapter <= 4) return rng.Next(2, 5);   // B2: 3-5号艇
+            if (chapter <= 6) return rng.Next(1, 4);   // B1/G3: 2-4号艇
+            return rng.Next(0, 3);                     // G2/SG: 1-3号艇
         }
 
         const string Key = "br_career";
@@ -86,46 +117,79 @@ namespace BoatRace.Career
         {
             var json = PlayerPrefs.GetString(Key, "");
             if (string.IsNullOrEmpty(json)) return new CareerData();
-            try { return JsonUtility.FromJson<CareerData>(json) ?? new CareerData(); }
+            try
+            {
+                var d = JsonUtility.FromJson<CareerData>(json) ?? new CareerData();
+                if (d.chapter < 1) d.chapter = 1;
+                return d;
+            }
             catch { return new CareerData(); }
         }
     }
 
-    /// <summary>ストーリー台本。イベントごとの会話(話者, セリフ)。</summary>
+    /// <summary>ストーリー台本(章ごとの導入と支部長の会話)。</summary>
     public static class CareerStory
     {
         public static (string, string)[] Debut(string name) => new[]
         {
-            ("支部長", $"{name}、いよいよデビュー戦だ。緊張してるか?"),
+            ("支部長", $"{name}、いよいよデビュー戦だ。舞台は桐生。緊張してるか?"),
             (name, "…正直、手が震えてます。"),
-            ("支部長", "いい緊張だ。まずは完走、そしてスタートを合わせろ。大時計の針が12時ちょうど、それがすべてだ。"),
-            ("支部長", "操作は簡単だ。[スペース]で全開、[←][→]で舵。フライングだけはするなよ!"),
+            ("支部長", "いい緊張だ。デビュー戦の目標はまず完走。スタートは大時計の針が12時ちょうど、それがすべてだ。"),
+            ("支部長", "操作は[スペース]で全開、[←][→]で舵。フライングだけはするなよ!"),
         };
 
-        public static (string, string)[] FirstWin(string name) => new[]
+        public static (string, string)[] ChapterClear(int clearedChapter, string name)
         {
-            ("支部長", $"初勝利おめでとう、{name}!! 水神祭だ!"),
-            (name, "ありがとうございます…! 1マークで前が見えた瞬間、無我夢中でした。"),
-            ("支部長", "その感覚を忘れるな。勝てるスタートは練習でしか作れんぞ。賞金でスタート練習を積め。"),
-        };
+            switch (clearedChapter)
+            {
+                case 1: return new[]
+                {
+                    ("支部長", $"完走おめでとう、{name}! これでお前もプロのレーサーだ。"),
+                    (name, "水面の景色…忘れません。次は勝ちます。"),
+                    ("支部長", "次戦は戸田。狭い水面だ。初勝利、獲ってこい!"),
+                };
+                case 2: return new[]
+                {
+                    ("支部長", $"初勝利!! やったな{name}! 水神祭だ!"),
+                    (name, "1マークで前が空いた瞬間、無我夢中でした…!"),
+                    ("支部長", "次は浜名湖でB2昇格戦だ。賞金で練習も忘れるな。"),
+                };
+                case 3: return new[]
+                {
+                    ("支部長", "B2昇格だ! 配枠も内寄りがもらえるようになる。"),
+                    (name, "コースが変われば戦い方も変わりますね。"),
+                };
+                case 4: return new[]
+                {
+                    ("支部長", "地方巡業お疲れさん。地力がついてきたな。次は住之江、B1への挑戦だ。"),
+                };
+                case 5: return new[]
+                {
+                    ("支部長", $"B1昇格! {name}、ここからは記念レーサーの世界だ。丸亀のG3に招待が来てるぞ。"),
+                };
+                case 6: return new[]
+                {
+                    ("支部長", "G3制覇! 見事だ! 次は地区選手権(G2)、住之江のナイターだ。"),
+                };
+                case 7: return new[]
+                {
+                    ("支部長", "地区選手権突破…! ついに来たぞ、SG「クラシック」の出場権だ!"),
+                    (name, "蒲郡…! 競艇界の頂点に、挑みます!"),
+                };
+                case 8: return new[]
+                {
+                    ("実況", $"ゴォォール!! 制したのは{name}!! SGクラシック、新王者の誕生です!!"),
+                    ("支部長", $"…やったな。{name}、お前は日本一のレーサーだ。"),
+                    (name, "ここまで来られたのは、みんなのおかげです。…次は賞金王、獲ります!"),
+                };
+                default: return null;
+            }
+        }
 
-        public static (string, string)[] PromoteB1(string name) => new[]
+        public static (string, string)[] Retry(string name) => new[]
         {
-            ("支部長", $"{name}、B1昇格だ! 配枠も少し内側がもらえるようになる。"),
-            (name, "インコースの世界…戦い方が変わりますね。"),
-        };
-
-        public static (string, string)[] PromoteA2(string name) => new[]
-        {
-            ("支部長", "A2昇格! ここからは記念レースも見えてくる。ライバルも本気だぞ。"),
-            (name, "望むところです。"),
-        };
-
-        public static (string, string)[] PromoteA1(string name) => new[]
-        {
-            ("支部長", $"…ついにA1だ。{name}、お前はもうトップレーサーの一人だ。"),
-            (name, "ここからが本当のスタートです。SGのタイトル、獲りにいきます!"),
-            ("支部長", "ああ。次の目標は賞金王だ。走り続けろ!"),
+            ("支部長", "惜しかったな。だがレースは水物だ。整備と練習で次に備えろ。"),
+            (name, "…もう一度、挑戦します!"),
         };
     }
 }

@@ -44,6 +44,12 @@ namespace BoatRace.Core
             }
         }
 
+        void Update()
+        {
+            // 仕様書: PCはCキーでカメラ切替
+            if (race != null && race.armed && Input.GetKeyDown(KeyCode.C)) CycleMode();
+        }
+
         void LateUpdate()
         {
             if (race == null || race.boats.Count == 0 || cam == null) return;
