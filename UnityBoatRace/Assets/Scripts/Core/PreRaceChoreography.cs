@@ -45,39 +45,40 @@ namespace BoatRace.Core
         {
             var L = new Lane
             {
-                delay = pitDelay,             // 1号艇から順の隊列(入れ替わりなし)
-                cruise = 12f + dashPower * 2f,
+                delay = pitDelay,               // 1号艇から順の隊列(入れ替わりなし)
+                cruise = 14.5f + dashPower * 2f,
             };
             var pts = L.pts;
-            // 1号艇が最も内(小回り)、後の艇ほど前の艇の外側を回る同心円状の隊列
-            float cruiseZ = -8f + (course - 1) * 3f;
+            // 1号艇が最内、後艇ほど前の艇の外側を回る同心円の周回ライン半径
+            float rLane = 22f + (course - 1) * 2.5f;
 
             pts.Add(pit);
             Vector3 p1 = pit + new Vector3(0f, 0f, 26f); // 横一列のまま前へ一斉ダッシュ
             pts.Add(p1);
 
-            // 左に流して西向き(-X)の巡航ラインへ合流
-            float dz = Mathf.Abs(cruiseZ - p1.z);
-            Vector3 mergeEnd = new Vector3(p1.x - 45f, 0f, cruiseZ);
+            // 左旋回してバックストレッチ(西向き)の周回ラインへ合流。
+            // 以降は実際の待機行動と同じく左回りで周回し、ターンマークの外側しか通らない
+            Vector3 join = new Vector3(pit.x - 30f, 0f, rLane);
             AddBezier(pts, p1,
-                p1 + new Vector3(0f, 0f, dz * 0.5f),
-                mergeEnd + new Vector3(42f, 0f, 0f),
-                mergeEnd);
+                p1 + new Vector3(0f, 0f, (rLane - p1.z) * 0.45f),
+                join + new Vector3(45f, 0f, 0f),
+                join);
 
-            // 西へ巡航(スロットの先まで)
-            float xb = Mathf.Min(slot.x - 48f, mergeEnd.x - 12f);
-            if (xb + 20f < mergeEnd.x - 2f) pts.Add(new Vector3(xb + 20f, 0f, cruiseZ));
-            pts.Add(new Vector3(xb, 0f, cruiseZ));
+            // 周回ライン(TrackPath)に沿って左回り: バック→2Mの外→ホームストレッチ
+            float lap = TrackPath.LapLength(rLane);
+            float sJoin = TrackPath.GetProgress(join, rLane);
+            float settleX = Mathf.Max(slot.x - 55f, TrackPath.Mark2.x + 8f);
+            float dist = (lap - sJoin) + (settleX - TrackPath.Mark2.x);
+            for (float d = 10f; d < dist; d += 10f)
+                pts.Add(TrackPath.PointAt(sJoin + d, rLane));
 
-            // 左Uターン(-X向き → +X向き)。西側を回って降りる
-            float r2 = Mathf.Max(7f, Mathf.Abs(slot.z - cruiseZ) * 0.5f);
-            AddBezier(pts, new Vector3(xb, 0f, cruiseZ),
-                new Vector3(xb - r2 * 1.6f, 0f, cruiseZ),
-                new Vector3(xb - r2 * 1.6f, 0f, slot.z),
-                new Vector3(xb, 0f, slot.z));
-
-            // スロットへ直進して停止
-            pts.Add(slot);
+            // ホーム直線上からスロットへ整流して停止(距離標識ポールの内側は通らない)
+            Vector3 settle = new Vector3(settleX, 0f, -rLane);
+            pts.Add(settle);
+            AddBezier(pts, settle,
+                settle + new Vector3(18f, 0f, 0f),
+                new Vector3(slot.x - 14f, 0f, slot.z),
+                slot);
 
             // 距離テーブル
             L.cum = new float[pts.Count];

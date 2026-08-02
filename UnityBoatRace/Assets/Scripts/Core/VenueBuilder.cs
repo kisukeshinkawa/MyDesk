@@ -279,15 +279,15 @@ namespace BoatRace.Core
                 MakeBox("PitDivider", new Vector3(x, 0.3f, stallZ), new Vector3(0.5f, 0.6f, 7.5f), dividerColor);
             }
 
-            // 各スタールの艇番プレート(コース側から読める向き)
+            // 各スタールの艇番プレート
             for (int i = 0; i < 6; i++)
             {
                 Vector3 sp = PitExitSystem.PitPosition(i, race.venueId);
                 MakeText3D((i + 1).ToString(), new Vector3(sp.x, 5f, stallZ - 3.5f),
-                    Quaternion.Euler(0f, 180f, 0f), 2.4f, UiKit.BoatColors[i] == Color.white ? Color.white : UiKit.BoatColors[i]);
+                    Quaternion.identity, 2.4f, UiKit.BoatColors[i] == Color.white ? Color.white : UiKit.BoatColors[i]);
             }
             MakeText3D("本番ピット", new Vector3(cx, 7.4f, stallZ - 4f),
-                Quaternion.Euler(0f, 180f, 0f), 2.4f, Color.white);
+                Quaternion.identity, 2.4f, Color.white);
         }
 
         // ---- 防風ネット(バック側の緑のネット) ----

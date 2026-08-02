@@ -30,6 +30,7 @@ namespace BoatRace.UI
             // 上部バー: 場名・フェーズ・大時計
             var top = UiKit.MakePanel(root.transform, new Color(0.05f, 0.12f, 0.3f, 0.85f), 16,
                 new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(16f, -96f), new Vector2(470f, -14f));
+            UiKit.AddStripeOverlay(top, Color.white, 0.05f);
             headerText = UiKit.MakeText(top.transform, "", 22, Color.white, TextAnchor.MiddleLeft,
                 Vector2.zero, Vector2.one, new Vector2(16f, 40f), new Vector2(-64f, -4f), bold: true);
             clockText = UiKit.MakeText(top.transform, "", 26, UiKit.Yellow, TextAnchor.MiddleLeft,
@@ -43,6 +44,7 @@ namespace BoatRace.UI
             // 右側: 順位表
             var board = UiKit.MakePanel(root.transform, new Color(0.05f, 0.12f, 0.3f, 0.85f), 16,
                 new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-450f, -370f), new Vector2(-14f, -14f));
+            UiKit.AddStripeOverlay(board, Color.white, 0.04f);
             UiKit.MakeText(board.transform, "レース順位", 22, UiKit.Sky, TextAnchor.MiddleLeft,
                 new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(16f, -44f), new Vector2(-10f, -8f), bold: true);
             for (int i = 0; i < 6; i++)

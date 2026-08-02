@@ -49,13 +49,33 @@ namespace BoatRace.Core
             if (replay != null && replay.IsPlaying) return;
 
             float targetFov = 50f;
-            switch (mode)
+            if (!race.armed)
             {
-                case Mode.Follow: targetFov = 50f; FollowCam(); break;
-                case Mode.Onboard: targetFov = 78f; OnboardCam(); break;
-                case Mode.Overhead: targetFov = 52f; OverheadCam(); break;
+                // レース開始前(タイトル/ロビー/出走表)は会場をゆっくり周回するシネマティックカメラ
+                targetFov = 46f;
+                CinematicOrbit();
+            }
+            else
+            {
+                switch (mode)
+                {
+                    case Mode.Follow: targetFov = 50f; FollowCam(); break;
+                    case Mode.Onboard: targetFov = 78f; OnboardCam(); break;
+                    case Mode.Overhead: targetFov = 52f; OverheadCam(); break;
+                }
             }
             cam.fieldOfView = Mathf.Lerp(cam.fieldOfView, targetFov, Time.deltaTime * 3f);
+        }
+
+        // ---- ロビー演出: 会場をゆっくり旋回 ----
+        void CinematicOrbit()
+        {
+            float a = Time.time * 0.05f;
+            Vector3 center = new Vector3(-150f, 0f, -30f);
+            Vector3 targetPos = center + new Vector3(Mathf.Cos(a) * 250f, 85f, Mathf.Sin(a) * 190f);
+            transform.position = Vector3.Lerp(transform.position, targetPos, Time.deltaTime * 1.2f);
+            var look = Quaternion.LookRotation(center + Vector3.up * 4f - transform.position);
+            transform.rotation = Quaternion.Slerp(transform.rotation, look, Time.deltaTime * 2f);
         }
 
         // ---- 中継風追尾 ----

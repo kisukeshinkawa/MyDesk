@@ -87,75 +87,135 @@ namespace BoatRace.Core
 
         void BuildBoats(RaceManager race)
         {
+            var white = new Color(0.96f, 0.96f, 0.98f);
+            var dark = new Color(0.13f, 0.14f, 0.18f);
             for (int i = 0; i < RaceManager.BoatCount; i++)
             {
                 Color c = UiKit.BoatColors[i];
+                bool lightColor = c.r * 0.6f + c.g * 0.3f + c.b * 0.1f > 0.6f;
                 var root = new GameObject($"Boat{i + 1}");
 
+                // ---- 艇体(実艇プロポーション: 全長3.4m級・低く平たい) ----
                 var hull = GameObject.CreatePrimitive(PrimitiveType.Cube);
                 hull.name = "Hull";
                 hull.transform.SetParent(root.transform, false);
-                hull.transform.localScale = new Vector3(1.4f, 0.45f, 3.4f);
-                Paint(hull, c);
+                hull.transform.localPosition = new Vector3(0f, 0.02f, -0.3f);
+                hull.transform.localScale = new Vector3(1.35f, 0.34f, 2.6f);
+                Paint(hull, white);
 
-                var nose = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                nose.name = "Nose";
-                nose.transform.SetParent(root.transform, false);
-                nose.transform.localPosition = new Vector3(0f, -0.02f, 1.9f);
-                nose.transform.localScale = new Vector3(0.85f, 0.32f, 1.0f);
-                Paint(nose, c);
+                // 尖った艇首(上に反ったウェッジ)
+                var bow = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                bow.name = "Bow";
+                bow.transform.SetParent(root.transform, false);
+                bow.transform.localPosition = new Vector3(0f, 0.14f, 1.45f);
+                bow.transform.localRotation = Quaternion.Euler(-9f, 0f, 0f);
+                bow.transform.localScale = new Vector3(1.0f, 0.24f, 1.5f);
+                Paint(bow, white);
+                var bowTip = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                bowTip.name = "BowTip";
+                bowTip.transform.SetParent(root.transform, false);
+                bowTip.transform.localPosition = new Vector3(0f, 0.24f, 2.15f);
+                bowTip.transform.localRotation = Quaternion.Euler(-9f, 45f, 0f);
+                bowTip.transform.localScale = new Vector3(0.72f, 0.22f, 0.72f);
+                Paint(bowTip, white);
 
-                var cowl = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                // デッキの艇色ライン(左右)
+                foreach (var sx in new[] { -0.58f, 0.58f })
+                {
+                    var stripeGo = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                    stripeGo.name = "DeckStripe";
+                    stripeGo.transform.SetParent(root.transform, false);
+                    stripeGo.transform.localPosition = new Vector3(sx, 0.21f, 0.1f);
+                    stripeGo.transform.localScale = new Vector3(0.18f, 0.05f, 3.1f);
+                    Paint(stripeGo, c);
+                }
+
+                // カウリング(エンジンカバー: 丸みのあるカプセル・艇色)
+                var cowl = GameObject.CreatePrimitive(PrimitiveType.Capsule);
                 cowl.name = "Cowl";
                 cowl.transform.SetParent(root.transform, false);
-                cowl.transform.localPosition = new Vector3(0f, 0.35f, -0.9f);
-                cowl.transform.localScale = new Vector3(0.8f, 0.45f, 1.1f);
-                Paint(cowl, new Color(0.2f, 0.2f, 0.25f));
+                cowl.transform.localPosition = new Vector3(0f, 0.42f, -1.05f);
+                cowl.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+                cowl.transform.localScale = new Vector3(0.75f, 0.65f, 0.62f);
+                Paint(cowl, c);
 
-                // 艇番表示(3Dテキスト)
-                var numGo = new GameObject("Number");
-                numGo.transform.SetParent(root.transform, false);
-                numGo.transform.localPosition = new Vector3(0f, 1.4f, 0f);
-                numGo.transform.localScale = Vector3.one * 0.65f;
-                var tm = numGo.AddComponent<TextMesh>();
-                tm.text = (i + 1).ToString();
-                tm.fontSize = 64;
-                tm.characterSize = 0.28f;
-                tm.anchor = TextAnchor.MiddleCenter;
-                tm.color = i == 0 ? new Color(0.1f, 0.1f, 0.1f) : c;
-                tm.font = UiKit.JpFont();
-                numGo.GetComponent<MeshRenderer>().material = tm.font.material;
+                // 両舷の艇番プレート(白地に黒番号)
+                foreach (var side in new[] { -1f, 1f })
+                {
+                    var plate = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                    plate.name = "NumberPlate";
+                    plate.transform.SetParent(root.transform, false);
+                    plate.transform.localPosition = new Vector3(side * 0.41f, 0.42f, -1.05f);
+                    plate.transform.localScale = new Vector3(0.03f, 0.34f, 0.4f);
+                    Paint(plate, Color.white);
+                    var numGo = new GameObject("Num");
+                    numGo.transform.SetParent(root.transform, false);
+                    numGo.transform.localPosition = new Vector3(side * 0.44f, 0.42f, -1.05f);
+                    numGo.transform.localRotation = Quaternion.Euler(0f, side * 90f, 0f);
+                    var tm = numGo.AddComponent<TextMesh>();
+                    tm.text = (i + 1).ToString();
+                    tm.fontSize = 64;
+                    tm.characterSize = 0.16f;
+                    tm.anchor = TextAnchor.MiddleCenter;
+                    tm.fontStyle = FontStyle.Bold;
+                    tm.color = dark;
+                    tm.font = UiKit.JpFont();
+                    numGo.GetComponent<MeshRenderer>().material = tm.font.material;
+                }
 
-                // 選手フィギュア(乗艇姿勢: 白いスーツ＋艇色ヘルメット)
+                // ハンドル
+                var handleBar = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                handleBar.name = "Handle";
+                handleBar.transform.SetParent(root.transform, false);
+                handleBar.transform.localPosition = new Vector3(0f, 0.52f, 0.45f);
+                handleBar.transform.localScale = new Vector3(0.72f, 0.07f, 0.07f);
+                Paint(handleBar, dark);
+
+                // ---- 選手(前傾の乗艇姿勢・カポックは白＋艇色) ----
                 var body = GameObject.CreatePrimitive(PrimitiveType.Capsule);
                 body.name = "RacerBody";
                 body.transform.SetParent(root.transform, false);
-                body.transform.localPosition = new Vector3(0f, 0.55f, -0.75f);
-                body.transform.localRotation = Quaternion.Euler(35f, 0f, 0f);
-                body.transform.localScale = new Vector3(0.45f, 0.42f, 0.45f);
-                Paint(body, new Color(0.92f, 0.92f, 0.95f));
-
+                body.transform.localPosition = new Vector3(0f, 0.52f, -0.45f);
+                body.transform.localRotation = Quaternion.Euler(42f, 0f, 0f);
+                body.transform.localScale = new Vector3(0.42f, 0.45f, 0.4f);
+                Paint(body, new Color(0.94f, 0.94f, 0.96f));
+                var chest = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                chest.name = "Chest";
+                chest.transform.SetParent(root.transform, false);
+                chest.transform.localPosition = new Vector3(0f, 0.62f, -0.35f);
+                chest.transform.localRotation = Quaternion.Euler(42f, 0f, 0f);
+                chest.transform.localScale = new Vector3(0.4f, 0.3f, 0.28f);
+                Paint(chest, c);
+                foreach (var side in new[] { -1f, 1f })
+                {
+                    var arm = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+                    arm.name = "Arm";
+                    arm.transform.SetParent(root.transform, false);
+                    arm.transform.localPosition = new Vector3(side * 0.3f, 0.62f, 0.05f);
+                    arm.transform.localRotation = Quaternion.Euler(72f, 0f, side * -10f);
+                    arm.transform.localScale = new Vector3(0.12f, 0.42f, 0.12f);
+                    Paint(arm, new Color(0.94f, 0.94f, 0.96f));
+                }
                 var helmet = GameObject.CreatePrimitive(PrimitiveType.Sphere);
                 helmet.name = "Helmet";
                 helmet.transform.SetParent(root.transform, false);
-                helmet.transform.localPosition = new Vector3(0f, 0.95f, -0.5f);
-                helmet.transform.localScale = Vector3.one * 0.45f;
-                Paint(helmet, c);
-
-                var handle = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                handle.name = "Handle";
-                handle.transform.SetParent(root.transform, false);
-                handle.transform.localPosition = new Vector3(0f, 0.45f, 0.5f);
-                handle.transform.localScale = new Vector3(0.7f, 0.08f, 0.08f);
-                Paint(handle, new Color(0.15f, 0.15f, 0.15f));
+                helmet.transform.localPosition = new Vector3(0f, 0.92f, -0.18f);
+                helmet.transform.localScale = Vector3.one * 0.42f;
+                Paint(helmet, lightColor && i == 0 ? Color.white : c);
+                var visor = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                visor.name = "Visor";
+                visor.transform.SetParent(root.transform, false);
+                visor.transform.localPosition = new Vector3(0f, 0.90f, 0.02f);
+                visor.transform.localScale = new Vector3(0.34f, 0.14f, 0.1f);
+                Paint(visor, dark);
 
                 // 引き波(航跡)ビジュアル
                 var trailGo = new GameObject("WakeTrail");
                 trailGo.transform.SetParent(root.transform, false);
-                trailGo.transform.localPosition = new Vector3(0f, -0.15f, -1.7f);
+                trailGo.transform.localPosition = new Vector3(0f, -0.12f, -1.65f);
                 var trail = trailGo.AddComponent<TrailRenderer>();
                 trail.time = 2.6f;
-                trail.startWidth = 1.4f;
+                trail.startWidth = 1.5f;
                 trail.endWidth = 0.15f;
                 trail.material = new Material(Shader.Find("Sprites/Default"));
                 trail.startColor = new Color(1f, 1f, 1f, 0.55f);
