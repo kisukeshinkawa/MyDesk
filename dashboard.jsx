@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-04-v320-store-quotes-report"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-04-v321-store-qty3-template"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -33890,6 +33890,12 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
     {key:"storage",label:"保管場所",kw:[/保管/,/ダスト/,/鍵/,/置き場/]},
     {key:"kind",label:"排出品目",kw:[/品目/,/ごみ/,/廃棄/,/種別/,/種類/]},
     {key:"freq",label:"回収頻度",kw:[/頻度/,/回収頻度/]},
+    {key:"q1",label:"数量1",kw:[/数量1/,/数量①/]},
+    {key:"u1",label:"単位1",kw:[/単位1/,/単位①/]},
+    {key:"q2",label:"数量2",kw:[/数量2/,/数量②/]},
+    {key:"u2",label:"単位2",kw:[/単位2/,/単位②/]},
+    {key:"q3",label:"数量3",kw:[/数量3/,/数量③/]},
+    {key:"u3",label:"単位3",kw:[/単位3/,/単位③/]},
     {key:"qty",label:"数量",kw:[/数量/,/回あたり/,/1回/]},
     {key:"weight",label:"重量",kw:[/重量/,/重さ/,/kg/i,/袋あたり/,/個あたり/]},
     {key:"note",label:"備考",kw:[/備考/,/特記/,/メモ/,/席数/,/従業員/]},
@@ -33903,13 +33909,14 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
     setImpMenu(false);
     try{
       const xlsxMod=await import("https://esm.sh/xlsx@0.18.5"); const xlsx=xlsxMod.default||xlsxMod;
-      const header=["番号","業態","エリア（都道府県・市区町村）","拠点名／店舗名","住所","保管場所・ダストボックス情報／鍵番号","排出品目","回収頻度","1回あたり数量","1袋・1個あたり重量","備考（席数・従業員数・特記事項）"];
-      const ex1=["1","店舗（飲食）","福岡県北九州市","○○店 小倉","〒802-0001 北九州市小倉北区1-2-3","裏口ダストボックス（鍵1234）","可燃ごみ","週3回","2袋","5kg/袋","席数30／従業員6名"];
-      const ex1b=["","","","","","","不燃ごみ","週1回","1袋","3kg/袋","↑同じ拠点の2品目め。A〜F列は空欄でOK"];
-      const ex2=["2","事務所","福岡県福岡市","○○オフィス","〒812-0011 福岡市博多区4-5-6","1F 集積所","古紙","月2回","5束","10kg/束",""];
-      const rows=[header,ex1,ex1b,ex2];
+      const header=["番号","業態","エリア（都道府県・市区町村）","拠点名／店舗名","住所","保管場所・ダストボックス情報／鍵番号","排出品目","回収頻度","数量1","単位1","数量2","単位2","数量3","単位3","備考（席数・従業員数・特記事項）"];
+      const ex1=["1","店舗（飲食）","福岡県北九州市","○○店 小倉","〒802-0001 北九州市小倉北区1-2-3","裏口ダストボックス（鍵1234）","可燃ごみ","週3回","100","kg","1","立米","","","席数30／従業員6名"];
+      const ex1b=["","","","","","","不燃ごみ","週1回","50","kg","","","","","↑同じ拠点の2品目め。A〜F列は空欄でOK"];
+      const ex2=["2","事務所","福岡県福岡市","○○オフィス","〒812-0011 福岡市博多区4-5-6","1F 集積所","古紙","月2回","5","袋","","","","",""];
+      const note=["※数量は最大3パターン登録できます（例：100 kg と 1 立米）。単位は kg / 立米 / 袋 など。業者の見積は、一致する単位の数量で自動計算されます。"];
+      const rows=[header,ex1,ex1b,ex2,[],note];
       const ws=xlsx.utils.aoa_to_sheet(rows);
-      ws["!cols"]=header.map((h,i)=>({wch:(i===3||i===4)?24:(i>=6?14:12)}));
+      ws["!cols"]=header.map((h,i)=>({wch:(i===3||i===4)?24:((i===8||i===10||i===12)?8:((i===9||i===11||i===13)?7:((i===6||i===7||i===14)?16:12)))}));
       const wb=xlsx.utils.book_new(); xlsx.utils.book_append_sheet(wb,ws,"記入シート");
       xlsx.writeFile(wb,"店舗インポートテンプレ.xlsx");
     }catch(e){ window.alert("テンプレの生成に失敗しました: "+(e&&e.message||e)); }
@@ -33938,9 +33945,11 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
       const row=grid[ri]||[]; if(!row.some(c=>c!=null&&String(c).trim()!==""))continue;
       const name=get(row,"name"),no=get(row,"no"),addr=get(row,"address");
       const kind=get(row,"kind"),freq=get(row,"freq"),qty=get(row,"qty"),weight=get(row,"weight");
+      const _qp=[["q1","u1"],["q2","u2"],["q3","u3"]].map(([qk,uk])=>({q:get(row,qk).replace(/[^0-9.]/g,""),u:get(row,uk)})).filter(x=>x.q||x.u);
+      const qtys=_qp.length?_qp:parseQtyList(qty);
       const isNew=!!name||(!!no&&!cur)||(!cur&&(!!addr||!!kind));
       if(isNew){ cur={ id:rid("st"),no,bizType:get(row,"biz"),area:get(row,"area"),name:name||("拠点"+(out.length+1)),address:addr,storage:get(row,"storage"),memo:get(row,"note"),items:[] }; out.push(cur); }
-      if(kind||freq||qty||weight){ cur=cur||(()=>{const c={id:rid("st"),no:"",bizType:"",area:"",name:"拠点"+(out.length+1),address:"",storage:"",memo:"",items:[]};out.push(c);return c;})(); cur.items.push({ id:rid("it"),kind,freq,qty,weight,note:kind?get(row,"note"):"" }); }
+      if(kind||freq||qty||weight||qtys.length){ cur=cur||(()=>{const c={id:rid("st"),no:"",bizType:"",area:"",name:"拠点"+(out.length+1),address:"",storage:"",memo:"",items:[]};out.push(c);return c;})(); cur.items.push({ id:rid("it"),kind,freq,qty,weight,qtys,note:kind?get(row,"note"):"" }); }
     }
     return out;
   };
