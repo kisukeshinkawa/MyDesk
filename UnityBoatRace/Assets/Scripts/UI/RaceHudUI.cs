@@ -88,7 +88,7 @@ namespace BoatRace.UI
         /// <summary>毎フレーム更新(GameFlowが呼ぶ)。</summary>
         public void Tick()
         {
-            if (!root.activeSelf) return;
+            if (root == null || !root.activeSelf) return;
 
             string phaseName = race.state.phase == RacePhase.PitOut && race.state.clock < -60f
                 ? "ピット係留" : PhaseName(race.state.phase);

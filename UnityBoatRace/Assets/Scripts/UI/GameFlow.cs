@@ -56,6 +56,9 @@ namespace BoatRace.UI
 
         void Update()
         {
+            // Play中のスクリプト差し替え(ドメインリロード)でInitialize前の状態になった場合は何もしない
+            if (hud == null || race == null || replay == null) return;
+
             hud.Tick();
 
             if (resultTimer > 0f)

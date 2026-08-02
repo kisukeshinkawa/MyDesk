@@ -31,7 +31,7 @@ namespace BoatRace.Boat
         /// <summary>物理1ステップ実行(RaceManagerが呼ぶ)。</summary>
         public void SimStep(float dt)
         {
-            if (replayMode) return;
+            if (replayMode || engine == null) return;
             engine.Step(dt);
             SyncTransform();
         }
