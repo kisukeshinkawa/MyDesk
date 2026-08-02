@@ -119,7 +119,7 @@ namespace BoatRace.UI
 
         public static Text MakeText(Transform parent, string str, int size, Color color,
             TextAnchor anchor, Vector2 anchorMin, Vector2 anchorMax, Vector2 offsetMin, Vector2 offsetMax,
-            bool bold = false, bool shadow = false)
+            bool bold = false, bool shadow = false, bool outline = false)
         {
             var go = new GameObject("Text");
             Place(go, parent, anchorMin, anchorMax, offsetMin, offsetMax);
@@ -132,6 +132,12 @@ namespace BoatRace.UI
             text.fontStyle = bold ? FontStyle.Bold : FontStyle.Normal;
             text.horizontalOverflow = HorizontalWrapMode.Overflow;
             text.verticalOverflow = VerticalWrapMode.Overflow;
+            if (outline)
+            {
+                var ol = go.AddComponent<Outline>();
+                ol.effectColor = new Color(0.05f, 0.1f, 0.25f, 0.95f);
+                ol.effectDistance = new Vector2(2f, 2f);
+            }
             if (shadow)
             {
                 var sh = go.AddComponent<Shadow>();
@@ -141,6 +147,7 @@ namespace BoatRace.UI
             return text;
         }
 
+        /// <summary>スマホゲー風ツートンボタン(上ハイライト・下シェード・縁取り文字)。</summary>
         public static Button MakeButton(Transform parent, string label, Color bg, int fontSize,
             Vector2 anchorMin, Vector2 anchorMax, Vector2 offsetMin, Vector2 offsetMax,
             UnityEngine.Events.UnityAction onClick)
@@ -153,13 +160,53 @@ namespace BoatRace.UI
             img.color = bg;
             var sh = go.AddComponent<Shadow>();
             sh.effectColor = new Color(0f, 0f, 0f, 0.35f);
-            sh.effectDistance = new Vector2(0f, -4f);
+            sh.effectDistance = new Vector2(0f, -5f);
+
+            // 下部シェード(ツートン)
+            var dark = new GameObject("Shade");
+            Place(dark, go.transform, new Vector2(0f, 0f), new Vector2(1f, 0.30f),
+                new Vector2(3f, 3f), new Vector2(-3f, 0f));
+            var darkImg = dark.AddComponent<Image>();
+            darkImg.sprite = Rounded(12);
+            darkImg.type = Image.Type.Sliced;
+            darkImg.color = new Color(bg.r * 0.68f, bg.g * 0.68f, bg.b * 0.68f, bg.a);
+            darkImg.raycastTarget = false;
+
+            // 上部ハイライト
+            var shine = new GameObject("Shine");
+            Place(shine, go.transform, new Vector2(0f, 0.58f), new Vector2(1f, 1f),
+                new Vector2(4f, 0f), new Vector2(-4f, -3f));
+            var shineImg = shine.AddComponent<Image>();
+            shineImg.sprite = Rounded(12);
+            shineImg.type = Image.Type.Sliced;
+            shineImg.color = new Color(1f, 1f, 1f, 0.20f);
+            shineImg.raycastTarget = false;
+
             var btn = go.AddComponent<Button>();
             btn.targetGraphic = img;
             btn.onClick.AddListener(onClick);
             MakeText(go.transform, label, fontSize, Color.white, TextAnchor.MiddleCenter,
-                Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, bold: true, shadow: true);
+                Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero,
+                bold: true, shadow: true, outline: true);
             return btn;
+        }
+
+        /// <summary>見出しバナー(紺帯＋黄色アクセント＋縁取り文字)。</summary>
+        public static GameObject MakeBanner(Transform parent, string title, int fontSize,
+            Vector2 anchorMin, Vector2 anchorMax)
+        {
+            var bar = MakePanel(parent, Navy, 14, anchorMin, anchorMax, Vector2.zero, Vector2.zero);
+            var accent = new GameObject("Accent");
+            Place(accent, bar.transform, new Vector2(0f, 0f), new Vector2(0f, 1f),
+                new Vector2(6f, 6f), new Vector2(16f, -6f));
+            var accImg = accent.AddComponent<Image>();
+            accImg.sprite = Rounded(5);
+            accImg.type = Image.Type.Sliced;
+            accImg.color = Yellow;
+            MakeText(bar.transform, title, fontSize, Color.white, TextAnchor.MiddleCenter,
+                Vector2.zero, Vector2.one, new Vector2(20f, 0f), new Vector2(-8f, 0f),
+                bold: true, shadow: true, outline: true);
+            return bar;
         }
 
         public static GameObject MakeFullscreenGradient(Transform parent, Color top, Color bottom)

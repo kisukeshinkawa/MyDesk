@@ -45,11 +45,12 @@ namespace BoatRace.Core
         {
             var L = new Lane
             {
-                delay = pitDelay,               // 仕様書式のピット離れタイム(約0.5〜1.3秒)
-                cruise = 8.5f + dashPower * 2.5f, // 待機行動はレースより低速で航走(T-100開始で余裕あり)
+                delay = pitDelay,             // 1号艇から順の隊列(入れ替わりなし)
+                cruise = 12f + dashPower * 2f,
             };
             var pts = L.pts;
-            float cruiseZ = WaitingSystem.LaneZ(course) + 11f; // 自分のレーンの少し内側を巡航
+            // 1号艇が最も内(小回り)、後の艇ほど前の艇の外側を回る同心円状の隊列
+            float cruiseZ = -8f + (course - 1) * 3f;
 
             pts.Add(pit);
             Vector3 p1 = pit + new Vector3(0f, 0f, 26f); // 横一列のまま前へ一斉ダッシュ

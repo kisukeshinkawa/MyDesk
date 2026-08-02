@@ -110,9 +110,11 @@ namespace BoatRace.UI
             UiKit.MakeFullscreenGradient(s.transform, UiKit.Sky, UiKit.Navy);
 
             UiKit.MakeText(s.transform, "BOATRACE", 110, Color.white, TextAnchor.MiddleCenter,
-                new Vector2(0f, 0.60f), new Vector2(1f, 0.85f), Vector2.zero, Vector2.zero, bold: true, shadow: true);
+                new Vector2(0f, 0.60f), new Vector2(1f, 0.85f), Vector2.zero, Vector2.zero,
+                bold: true, shadow: true, outline: true);
             UiKit.MakeText(s.transform, "R E A L I S M", 44, UiKit.Yellow, TextAnchor.MiddleCenter,
-                new Vector2(0f, 0.50f), new Vector2(1f, 0.62f), Vector2.zero, Vector2.zero, bold: true, shadow: true);
+                new Vector2(0f, 0.50f), new Vector2(1f, 0.62f), Vector2.zero, Vector2.zero,
+                bold: true, shadow: true, outline: true);
             UiKit.MakeText(s.transform, "リアル競艇シミュレーション", 26, Color.white, TextAnchor.MiddleCenter,
                 new Vector2(0f, 0.43f), new Vector2(1f, 0.50f), Vector2.zero, Vector2.zero);
             titleBlink = UiKit.MakeText(s.transform, "－ タップでスタート －", 34, Color.white, TextAnchor.MiddleCenter,
@@ -132,8 +134,8 @@ namespace BoatRace.UI
             var s = NewScreen("HomeScreen");
             UiKit.MakeFullscreenGradient(s.transform, new Color(0.85f, 0.95f, 1f), UiKit.Sky);
 
-            UiKit.MakeText(s.transform, "BOATRACE REALISM", 40, UiKit.Navy, TextAnchor.MiddleCenter,
-                new Vector2(0f, 0.88f), new Vector2(1f, 0.98f), Vector2.zero, Vector2.zero, bold: true);
+            UiKit.MakeBanner(s.transform, "BOATRACE REALISM", 34,
+                new Vector2(0.22f, 0.88f), new Vector2(0.78f, 0.97f));
 
             // 開催場セレクタ
             var panel = UiKit.MakePanel(s.transform, UiKit.PanelWhite, 22,
@@ -179,8 +181,8 @@ namespace BoatRace.UI
             var s = NewScreen("EntryScreen");
             UiKit.MakeFullscreenGradient(s.transform, new Color(0.85f, 0.95f, 1f), UiKit.Sky);
 
-            UiKit.MakeText(s.transform, $"出走表　{race.venue.name}", 38, UiKit.Navy, TextAnchor.MiddleCenter,
-                new Vector2(0f, 0.90f), new Vector2(1f, 1f), Vector2.zero, Vector2.zero, bold: true);
+            UiKit.MakeBanner(s.transform, $"出走表　{race.venue.name}", 30,
+                new Vector2(0.25f, 0.905f), new Vector2(0.75f, 0.985f));
 
             for (int i = 0; i < 6; i++)
             {
@@ -246,9 +248,8 @@ namespace BoatRace.UI
             string header = valid.Count == 0
                 ? $"レース結果　{race.venue.name}　レース不成立(全艇返還)"
                 : $"レース結果　{race.venue.name}　決まり手: {race.kimarite}";
-            UiKit.MakeText(s.transform, header, 40, UiKit.Yellow,
-                TextAnchor.MiddleCenter,
-                new Vector2(0f, 0.89f), new Vector2(1f, 0.99f), Vector2.zero, Vector2.zero, bold: true, shadow: true);
+            UiKit.MakeBanner(s.transform, header, 30,
+                new Vector2(0.14f, 0.895f), new Vector2(0.86f, 0.975f));
 
             var panel = UiKit.MakePanel(s.transform, new Color(1f, 1f, 1f, 0.10f), 22,
                 new Vector2(0.16f, 0.30f), new Vector2(0.84f, 0.87f), Vector2.zero, Vector2.zero);

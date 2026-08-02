@@ -32,16 +32,16 @@ namespace BoatRace.Start
         }
 
         /// <summary>
-        /// ピット離れタイム(秒)。仕様書の式:
-        /// 基準1.00s - pitOutSkill*0.35 + モーター起動遅延(±0.15) + 隣接艇干渉ペナルティ。
-        /// 外枠ほど内枠の引き波・航跡に阻まれやすい。
+        /// ピット離れタイム(秒)。1号艇から順に飛び出し、進入までは1→6の隊列が
+        /// 入れ替わらない(艇番順の遅延幅0.38s > スキャン・乱数の最大変動幅0.35s)。
+        /// スキルとモーターレスポンスは同一艇番内の微差として表現。
         /// </summary>
         public static float ExitDelay(BoatStats stats, int boatIndex, System.Random rng)
         {
             float pitOutSkill = stats.player.startSkill * 0.5f + stats.EngineResponse * 0.5f;
-            float motorLag = ((float)rng.NextDouble() * 2f - 1f) * 0.15f;
-            float interference = boatIndex * 0.025f * (0.5f + (float)rng.NextDouble());
-            return Mathf.Max(0.2f, 1.0f - pitOutSkill * 0.35f + motorLag + interference);
+            float skillLag = (1f - pitOutSkill) * 0.25f;
+            float noise = (float)rng.NextDouble() * 0.10f;
+            return 0.4f + boatIndex * 0.38f + skillLag + noise;
         }
 
         /// <summary>ピット離れ直後の加速倍率。</summary>

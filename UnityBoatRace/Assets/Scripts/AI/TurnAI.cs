@@ -12,9 +12,11 @@ namespace BoatRace.AI
     {
         public float laneRadius = 16f;     // 自艇の基準レーン半径
         public float radiusFactor = 1f;    // 戦術による旋回半径倍率
+        bool reachedFirstTurn;             // 1周1Mに到達するまでは車線キープ
 
         public void Configure(int course, Tactic tactic)
         {
+            reachedFirstTurn = false;
             laneRadius = 12f + course * 1.6f;
             switch (tactic)
             {
@@ -26,9 +28,28 @@ namespace BoatRace.AI
             }
         }
 
-        /// <summary>現在位置から追従目標へ向かう舵入力を返す。</summary>
-        public float GetSteer(BoatPhysicsEngine engine)
+        /// <summary>
+        /// 現在位置から追従目標へ向かう舵入力を返す。
+        /// スタート〜1周1Mまでは実際の競艇同様、自分のコースの車線を直進キープし、
+        /// 位置取り勝負(戦術による内外の駆け引き)は1マークから始まる。
+        /// </summary>
+        public float GetSteer(BoatPhysicsEngine engine, float laneZ)
         {
+            if (!reachedFirstTurn)
+            {
+                if (TrackPath.InTurn1Zone(engine.Position))
+                {
+                    reachedFirstTurn = true;
+                }
+                else
+                {
+                    // 車線キープ(90°=+X直進、ズレたぶんだけ緩やかに戻す)
+                    float zError = laneZ - engine.Position.z;
+                    float desired = 90f - Mathf.Clamp(zError * 4f, -20f, 20f);
+                    return Mathf.Clamp(Mathf.DeltaAngle(engine.HeadingDeg, desired) / 30f, -1f, 1f);
+                }
+            }
+
             float r = EffectiveRadius(engine);
             float s = TrackPath.GetProgress(engine.Position, r);
             // 先読み距離は速度に比例(速いほど遠くを見る)。低速時の過敏な蛇行と

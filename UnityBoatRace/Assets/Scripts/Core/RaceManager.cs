@@ -98,9 +98,9 @@ namespace BoatRace.Core
             int[] courses = WaitingSystem.AssignCourses(statsList, pitDelays, venueId, rng);
 
             state = new RaceState();
-            // 発走シーケンス仕様書のタイムライン: T-105係留 → T-100ピット離れ →
-            // 進入攻防 → T-12黄針始動=物理引き継ぎ → T=0スタート
-            state.clock = -105f;
+            // タイムライン(ゲームテンポ版): T-62係留 → T-60ピット離れ →
+            // 隊列で待機水面へ → T-12黄針始動=物理引き継ぎ → T=0スタート
+            state.clock = -62f;
             armed = false;
             finishCounter = 0;
             lastLeader = -1;
@@ -214,24 +214,24 @@ namespace BoatRace.Core
         // ---- ピット係留(T-105〜-100)→ピット離れ: 経路に沿って待機水面へ(左回り) ----
         void StepPitOut(float dt)
         {
-            if (state.clock < -100f) return; // PitStandby: エンジンアイドリングで係留
+            if (state.clock < -60f) return; // PitStandby: エンジンアイドリングで係留
             if (!pitOpenFired) { pitOpenFired = true; OnPitOpen?.Invoke(); }
 
             bool allArrived = true;
-            float sincePit = state.clock + 100f;
+            float sincePit = state.clock + 60f;
             for (int i = 0; i < BoatCount; i++)
             {
                 bool done = choreo.Update(i, boats[i].engine, dt, sincePit);
                 allArrived &= done;
                 boats[i].SyncTransform();
             }
-            if (allArrived || state.clock >= -40f) SetPhase(RacePhase.Waiting);
+            if (allArrived || state.clock >= -20f) SetPhase(RacePhase.Waiting);
         }
 
         // ---- 待機行動: 隊形確定。モーター停止禁止のため微速前進で待つ ----
         void StepWaiting(float dt)
         {
-            float sincePit = state.clock + 100f;
+            float sincePit = state.clock + 60f;
             for (int i = 0; i < BoatCount; i++)
             {
                 bool done = choreo.Update(i, boats[i].engine, dt, sincePit);
@@ -345,7 +345,7 @@ namespace BoatRace.Core
                 var bs = state.Get(i);
                 if (bs.finished) { b.engine.Throttle = 0.15f; b.engine.Steer = boats[i].turnAI.GetSteer(b.engine); continue; }
 
-                b.engine.Steer = b.turnAI.GetSteer(b.engine);
+                b.engine.Steer = b.turnAI.GetSteer(b.engine, WaitingSystem.LaneZ(bs.course));
                 b.engine.Throttle = b.turnAI.GetThrottle(b.engine);
                 // F/L艇は欠場扱い: 走行は続けるが流す(仕様書: 走るが失格表示)
                 if (IsDisqualified(bs)) b.engine.Throttle = Mathf.Min(b.engine.Throttle, 0.55f);

@@ -15,6 +15,8 @@ namespace BoatRace.UI
         readonly GameObject root;
         readonly Text headerText;
         readonly Text clockText;
+        readonly Text windArrow;
+        readonly RectTransform windArrowRT;
         readonly Text[] standingRows = new Text[6];
         readonly Image[] rowChips = new Image[6];
         readonly Text commentaryText;
@@ -29,9 +31,14 @@ namespace BoatRace.UI
             var top = UiKit.MakePanel(root.transform, new Color(0.05f, 0.12f, 0.3f, 0.85f), 16,
                 new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(16f, -96f), new Vector2(470f, -14f));
             headerText = UiKit.MakeText(top.transform, "", 22, Color.white, TextAnchor.MiddleLeft,
-                Vector2.zero, Vector2.one, new Vector2(16f, 40f), new Vector2(-10f, -4f), bold: true);
+                Vector2.zero, Vector2.one, new Vector2(16f, 40f), new Vector2(-64f, -4f), bold: true);
             clockText = UiKit.MakeText(top.transform, "", 26, UiKit.Yellow, TextAnchor.MiddleLeft,
                 Vector2.zero, Vector2.one, new Vector2(16f, 2f), new Vector2(-10f, -44f), bold: true);
+
+            // 風向き矢印(コース座標: 右=1マーク方向, 上=バック側)
+            windArrow = UiKit.MakeText(top.transform, "➤", 30, UiKit.Yellow, TextAnchor.MiddleCenter,
+                new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-54f, -44f), new Vector2(-12f, -6f), bold: true);
+            windArrowRT = windArrow.GetComponent<RectTransform>();
 
             // 右側: 順位表
             var board = UiKit.MakePanel(root.transform, new Color(0.05f, 0.12f, 0.3f, 0.85f), 16,
@@ -83,9 +90,16 @@ namespace BoatRace.UI
         {
             if (!root.activeSelf) return;
 
-            string phaseName = race.state.phase == RacePhase.PitOut && race.state.clock < -100f
+            string phaseName = race.state.phase == RacePhase.PitOut && race.state.clock < -60f
                 ? "ピット係留" : PhaseName(race.state.phase);
-            headerText.text = $"{race.venue.name}  風 {race.wind.speed:F1}m  {phaseName}";
+
+            // 風向き: スタート進行方向(+X)に対して追い風/向かい風/横風
+            float rad = race.wind.directionDeg * Mathf.Deg2Rad;
+            float sinD = Mathf.Sin(rad), cosD = Mathf.Cos(rad);
+            string windName = sinD > 0.4f ? "追い風" : sinD < -0.4f ? "向かい風" : "横風";
+            windArrowRT.localEulerAngles = new Vector3(0f, 0f, Mathf.Atan2(cosD, sinD) * Mathf.Rad2Deg);
+
+            headerText.text = $"{race.venue.name}  {windName} {race.wind.speed:F1}m  {phaseName}";
             clockText.text = race.state.phase == RacePhase.Racing || race.state.phase == RacePhase.Finished
                 ? $"⏱ {race.state.raceTime:F1}s"
                 : $"大時計 {race.state.clock:F1}";

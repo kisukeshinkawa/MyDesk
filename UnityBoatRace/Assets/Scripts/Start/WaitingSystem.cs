@@ -45,10 +45,10 @@ namespace BoatRace.Start
         }
 
         /// <summary>
-        /// コースごとの標準助走距離「起こし位置」(m)。発走シーケンス仕様書の推奨値。
-        /// 1コース最短(深インは致命的)〜6コース最長(トップスピードで突っ込める)。
+        /// コースごとの標準助走距離「起こし位置」(m)。
+        /// スロー勢(1-3コース)は横一線、ダッシュ勢(4-6コース)はその後方で横一線に揃う。
         /// </summary>
-        public static readonly float[] BaseRunUp = { 70f, 80f, 95f, 105f, 115f, 128f };
+        public static readonly float[] BaseRunUp = { 80f, 80f, 80f, 125f, 125f, 125f };
 
         public static float ApproachDistance(int course)
         {
