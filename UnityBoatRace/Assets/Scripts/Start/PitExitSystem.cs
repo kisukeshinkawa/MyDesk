@@ -9,10 +9,16 @@ namespace BoatRace.Start
     /// </summary>
     public static class PitExitSystem
     {
-        /// <summary>ピット位置(艇番順にホームストレッチ外側へ並ぶ)。</summary>
-        public static Vector3 PitPosition(int boatIndex)
+        /// <summary>
+        /// ピット位置(艇番順に並ぶ)。場によってピットの位置が違う:
+        /// 2マーク側ピット(徳山・大村など)=進入位置に近く枠なりになりやすい /
+        /// 1マーク側ピット=2Mまで距離があり前づけ(コース取り合戦)が起きやすい。
+        /// </summary>
+        public static Vector3 PitPosition(int boatIndex, int venueId)
         {
-            return new Vector3(-60f + boatIndex * 6f, 0f, -42f);
+            return Data.VenueTraits.PitNear2Mark(venueId)
+                ? new Vector3(-240f + boatIndex * 6f, 0f, -42f)  // 2マーク側
+                : new Vector3(-60f + boatIndex * 6f, 0f, -42f);  // 1マーク側
         }
 
         /// <summary>ピット離れの反応遅延(秒)。小さいほど好ダッシュ。</summary>

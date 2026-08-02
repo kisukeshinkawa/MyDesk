@@ -88,10 +88,10 @@ namespace BoatRace.Core
             pitDelays = new float[BoatCount];
             for (int i = 0; i < BoatCount; i++)
                 pitDelays[i] = PitExitSystem.ExitDelay(statsList[i], rng);
-            int[] courses = WaitingSystem.AssignCourses(statsList, pitDelays, rng);
+            int[] courses = WaitingSystem.AssignCourses(statsList, pitDelays, venueId, rng);
 
             state = new RaceState();
-            state.clock = -45f; // ピット離れ〜待機行動〜スタートまで45秒
+            state.clock = -55f; // ピット離れ〜待機行動〜スタートまで55秒(ダッシュ勢の深い進入対応)
             armed = false;
             finishCounter = 0;
             lastLeader = -1;
@@ -112,7 +112,7 @@ namespace BoatRace.Core
                 if (i < boats.Count)
                 {
                     boats[i].Initialize(i, statsList[i], venue, wind, current, wake);
-                    boats[i].engine.Position = PitExitSystem.PitPosition(i);
+                    boats[i].engine.Position = PitExitSystem.PitPosition(i, venueId);
                     boats[i].engine.HeadingDeg = 90f; // +X向き
                     boats[i].SyncTransform();
                 }
@@ -121,7 +121,7 @@ namespace BoatRace.Core
             // ピット離れ〜進入隊形の振り付け経路を事前計算
             choreo = new PreRaceChoreography(BoatCount);
             for (int i = 0; i < BoatCount; i++)
-                choreo.Build(i, PitExitSystem.PitPosition(i),
+                choreo.Build(i, PitExitSystem.PitPosition(i, venueId),
                     WaitingSystem.ApproachStartPosition(courses[i]), courses[i],
                     pitDelays[i], PitExitSystem.DashPower(statsList[i]));
 
@@ -134,7 +134,7 @@ namespace BoatRace.Core
             boats.Add(boat);
             int i = boats.Count - 1;
             boat.Initialize(i, statsList[i], venue, wind, current, wake);
-            boat.engine.Position = PitExitSystem.PitPosition(i);
+            boat.engine.Position = PitExitSystem.PitPosition(i, venueId);
             boat.engine.HeadingDeg = 90f;
             boat.SyncTransform();
         }
@@ -164,6 +164,36 @@ namespace BoatRace.Core
                 state.phase == RacePhase.Finished)
             {
                 foreach (var b in boats) b.SimStep(dt);
+                ResolveBoatOverlaps();
+            }
+        }
+
+        /// <summary>
+        /// 艇同士の重なり解消。艇の全長約3mを考慮した最小間隔を保ち、
+        /// 後ろから突っ込んだ側が減速する(接触・引き波リスクの再現)。
+        /// </summary>
+        void ResolveBoatOverlaps()
+        {
+            const float minDist = 3.0f;
+            for (int i = 0; i < BoatCount; i++)
+            {
+                for (int j = i + 1; j < BoatCount; j++)
+                {
+                    var ei = boats[i].engine;
+                    var ej = boats[j].engine;
+                    Vector3 d = ej.Position - ei.Position;
+                    d.y = 0f;
+                    float dist = d.magnitude;
+                    if (dist >= minDist || dist < 0.001f) continue;
+
+                    Vector3 push = d.normalized * (minDist - dist) * 0.5f;
+                    ei.Position -= push;
+                    ej.Position += push;
+
+                    // 相手に向かって進んでいる側(後方から突っ込んだ側)が減速
+                    if (Vector3.Dot(ei.Forward, d) > 0f) ei.Speed *= 0.975f;
+                    if (Vector3.Dot(ej.Forward, -d) > 0f) ej.Speed *= 0.975f;
+                }
             }
         }
 
@@ -171,26 +201,27 @@ namespace BoatRace.Core
         void StepPitOut(float dt)
         {
             bool allArrived = true;
-            float sincePit = state.clock + 45f;
+            float sincePit = state.clock + 55f;
             for (int i = 0; i < BoatCount; i++)
             {
                 bool done = choreo.Update(i, boats[i].engine, dt, sincePit);
                 allArrived &= done;
                 boats[i].SyncTransform();
             }
-            if (allArrived || state.clock >= -13f) SetPhase(RacePhase.Waiting);
+            if (allArrived || state.clock >= -22f) SetPhase(RacePhase.Waiting);
         }
 
         // ---- 待機行動: 隊形を整えて静止(未到達艇は経路を続行) ----
         void StepWaiting(float dt)
         {
-            float sincePit = state.clock + 45f;
+            float sincePit = state.clock + 55f;
             for (int i = 0; i < BoatCount; i++)
             {
                 choreo.Update(i, boats[i].engine, dt, sincePit);
                 boats[i].SyncTransform();
             }
-            if (state.clock >= -8f)
+            // ダッシュ勢は助走200m超=全開で約13秒かかるため-16秒で物理制御へ
+            if (state.clock >= -16f)
             {
                 // 進入位置へ正確にスナップして物理制御に引き継ぐ
                 for (int i = 0; i < BoatCount; i++)

@@ -44,5 +44,22 @@ namespace BoatRace.Data
         {
             return Color.HSVToRGB((venueId * 0.618034f) % 1f, 0.62f, 0.82f);
         }
+
+        /// <summary>
+        /// ピットが2マーク側にある場か。実際の競艇ではピットと2Mの距離が場ごとに違い、
+        /// ピットが2Mに近い場(徳山・大村・住之江など)は前づけが起きにくく枠なり進入が多い
+        /// →イン有利の一因。ここではイン天国とされる場を2M側ピットとしてモデル化。
+        /// </summary>
+        public static bool PitNear2Mark(int venueId)
+        {
+            switch (venueId)
+            {
+                case 7:  case 12: case 18: case 19:
+                case 20: case 21: case 24:
+                    return true;   // 蒲郡・住之江・徳山・下関・若松・芦屋・大村
+                default:
+                    return false;  // 1マーク側ピット(前づけが起きやすい)
+            }
+        }
     }
 }

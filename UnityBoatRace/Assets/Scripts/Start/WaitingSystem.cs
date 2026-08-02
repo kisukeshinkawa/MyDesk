@@ -13,20 +13,22 @@ namespace BoatRace.Start
     {
         /// <summary>
         /// 進入コース決定。基本は枠なり。前づけ志向の選手がピット離れで勝つと内へ。
+        /// ピットが2マーク側の場は進入まで距離がなく前づけが起きにくい(枠なり率が上がる)。
         /// 戻り値: boatIndex順の進入コース(1-6)。
         /// </summary>
-        public static int[] AssignCourses(List<BoatStats> boats, float[] pitDelays, System.Random rng)
+        public static int[] AssignCourses(List<BoatStats> boats, float[] pitDelays, int venueId, System.Random rng)
         {
             int n = boats.Count;
             var order = new List<int>();
             for (int i = 0; i < n; i++) order.Add(i);
 
             // 前づけ判定: 内志向が強く、かつピット離れが速ければ内のコースを奪う
+            float maezukeFactor = Data.VenueTraits.PitNear2Mark(venueId) ? 0.3f : 1f;
             for (int i = 1; i < n; i++)
             {
                 int idx = order[i];
                 float desire = CourseAI.InsideDesire(boats[idx]);
-                if (desire > 0.75f && rng.NextDouble() < desire - 0.5f)
+                if (desire > 0.75f && rng.NextDouble() < (desire - 0.5f) * maezukeFactor)
                 {
                     int target = order[i - 1];
                     if (pitDelays[idx] < pitDelays[target])
@@ -42,11 +44,19 @@ namespace BoatRace.Start
             return courses;
         }
 
-        /// <summary>コースごとの助走距離(m)。深インは短く、ダッシュ勢は長い。</summary>
+        /// <summary>
+        /// コースごとの助走距離(m)。実際の競艇の2段進入:
+        /// スロー勢(1-3コース)=150m以内の短い助走 / ダッシュ勢(4-6コース)=200m以上の全速助走。
+        /// </summary>
         public static float ApproachDistance(int course)
         {
-            return 55f + course * 13f; // 1コース≈68m、6コース≈133m
+            return course <= 3
+                ? 75f + course * 10f    // スロー: 85/95/105m
+                : 165f + course * 10f;  // ダッシュ: 205/215/225m
         }
+
+        /// <summary>スロー勢かどうか。</summary>
+        public static bool IsSlowStart(int course) => course <= 3;
 
         /// <summary>助走開始位置。スタートラインの手前、コースなりのレーン。</summary>
         public static Vector3 ApproachStartPosition(int course)

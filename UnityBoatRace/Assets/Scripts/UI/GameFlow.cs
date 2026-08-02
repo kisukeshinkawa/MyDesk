@@ -140,6 +140,7 @@ namespace BoatRace.UI
                 {
                     race.seed = System.Environment.TickCount;
                     race.SetupRace();
+                    if (RaceBootstrap.Instance != null) RaceBootstrap.Instance.RebuildEnvironment(race);
                     ShowEntry();
                 }).GetComponentInChildren<Text>().color = UiKit.Navy;
 
@@ -179,8 +180,9 @@ namespace BoatRace.UI
                 UiKit.MakeText(card.transform, $"{i + 1}号艇  {st.player.playerName}", 26, UiKit.TextDark,
                     TextAnchor.MiddleLeft, new Vector2(0f, 0.62f), new Vector2(1f, 0.95f),
                     new Vector2(28f, 0f), new Vector2(-8f, 0f), bold: true);
+                string entry = BoatRace.Start.WaitingSystem.IsSlowStart(bs.course) ? "スロー" : "ダッシュ";
                 UiKit.MakeText(card.transform,
-                    $"級別 {st.player.rank}　進入 {bs.course}コース　平均ST .{Mathf.RoundToInt(st.player.reactionTimeMean * 100f):00}",
+                    $"級別 {st.player.rank}　{bs.course}コース({entry})　平均ST .{Mathf.RoundToInt(st.player.reactionTimeMean * 100f):00}",
                     20, UiKit.TextDark, TextAnchor.MiddleLeft,
                     new Vector2(0f, 0.34f), new Vector2(1f, 0.60f), new Vector2(28f, 0f), new Vector2(-8f, 0f));
                 UiKit.MakeText(card.transform,

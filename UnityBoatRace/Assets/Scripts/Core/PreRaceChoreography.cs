@@ -42,7 +42,7 @@ namespace BoatRace.Core
             var L = new Lane
             {
                 delay = pitDelay * 3f,
-                cruise = 12.5f + dashPower * 4f, // 数値検証: 最遅の6コース艇でも33秒以内に整列
+                cruise = 15f + dashPower * 4f, // 数値検証: 最悪ケース(1M側ピット×6コース)でも36秒以内に整列
             };
             var pts = L.pts;
             float cruiseZ = WaitingSystem.LaneZ(course) + 11f; // 自分のレーンの少し内側を巡航

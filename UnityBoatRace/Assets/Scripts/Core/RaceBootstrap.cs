@@ -17,20 +17,20 @@ namespace BoatRace.Core
         public int seed = 12345;
 
         [Header("デバッグ")]
-        public bool showRacingLine = true; // AIが追う走行ラインを表示(調整用)
+        public bool showRacingLine = false; // AIが追う走行ラインを表示(調整用)
+
+        public static RaceBootstrap Instance { get; private set; }
 
         void Awake()
         {
+            Instance = this;
             var race = gameObject.AddComponent<RaceManager>();
             race.venueId = venueId;
             race.seed = seed;
             race.SetupRace();
 
-            BuildWater(race);
-            BuildStartLine();
+            BuildEnvironment(race);
             BuildBoats(race);
-            VenueBuilder.Build(race);
-            if (showRacingLine) BuildRacingLine();
 
             var cam = SetupCamera();
             var replay = gameObject.AddComponent<ReplayManager>();
@@ -41,6 +41,25 @@ namespace BoatRace.Core
             EnsureEventSystem();
             var flow = gameObject.AddComponent<GameFlow>();
             flow.Initialize(race, replay, new CommentarySystem(race), raceCam);
+        }
+
+        void BuildEnvironment(RaceManager race)
+        {
+            BuildWater(race);
+            BuildStartLine();
+            VenueBuilder.Build(race);
+            if (showRacingLine) BuildRacingLine();
+        }
+
+        /// <summary>開催場変更時に水面・会場を作り直す(GameFlowが呼ぶ)。</summary>
+        public void RebuildEnvironment(RaceManager race)
+        {
+            foreach (var name in new[] { "Water", "StartLine", "Venue", "RacingLine" })
+            {
+                var old = GameObject.Find(name);
+                if (old != null) Destroy(old);
+            }
+            BuildEnvironment(race);
         }
 
         void BuildWater(RaceManager race)
