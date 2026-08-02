@@ -31,6 +31,8 @@ namespace BoatRace.UI
         (string, string)[] dialogLines;
         int dialogIdx;
         System.Action dialogDone;
+        GameObject movePanelGo;
+        Coroutine moveTimeoutCo;
 
         Canvas canvas;
         GameObject currentScreen;
@@ -69,6 +71,7 @@ namespace BoatRace.UI
 
             race.OnRaceFinished += () => { resultTimer = 3f; RecordStats(); };
             race.OnFinalLap += () => ShowFlash("最終周回！", new Color(0.9f, 0.62f, 0.05f));
+            race.OnPlayerTurnEntry += OnPlayerTurnEntry;
             race.OnBoatFinished += (idx, place) =>
             {
                 if (place == 1) ShowFlash($"ゴール！ {idx + 1}号艇！", UiKit.Red);
@@ -95,14 +98,19 @@ namespace BoatRace.UI
             wasReplaying = replay.IsPlaying;
 
             // 早送りボタン: スタート前のみ有効。T-14以降は自動で等速へ
+            // (技選択パネル表示中のスロー演出はリセットしない)
             bool preRace = race.armed && race.state.clock < -14f &&
                 (race.state.phase == RacePhase.PitOut || race.state.phase == RacePhase.Waiting);
             ffButton.SetActive(preRace);
-            if (!preRace && Time.timeScale != 1f)
+            if (!preRace && movePanelGo == null && Time.timeScale != 1f)
             {
                 Time.timeScale = 1f;
                 ffLabel.text = "⏩ 早送り";
             }
+
+            // レースが終わったのに技選択が開いていたら閉じる
+            if (movePanelGo != null && race.state.phase == RacePhase.Finished)
+                CloseMovePanel();
 
             // タイトルの「タップでスタート」点滅とロゴの揺れ
             if (titleBlink != null)
@@ -116,6 +124,61 @@ namespace BoatRace.UI
                 float bob = 1f + Mathf.Sin(Time.time * 1.4f) * 0.015f;
                 titleLogoRT.localScale = new Vector3(bob, bob, 1f);
             }
+        }
+
+        // ================= 必殺技選択(ターン突入でスロー演出) =================
+        void OnPlayerTurnEntry(int markNo)
+        {
+            if (movePanelGo != null || race.PlayerMoveActive || replay.IsPlaying) return;
+            if (race.state.phase != RacePhase.Racing) return;
+
+            Time.timeScale = 0.15f; // イナイレ的なタメのスロー
+
+            movePanelGo = UiKit.MakePanel(canvas.transform, new Color(0.05f, 0.10f, 0.28f, 0.95f), 20,
+                new Vector2(0.14f, 0.20f), new Vector2(0.86f, 0.44f), Vector2.zero, Vector2.zero);
+            UiKit.AddStripeOverlay(movePanelGo, Color.white, 0.06f);
+            UiKit.MakeText(movePanelGo.transform, $"{markNo}マーク！　技を選べ！　(SP {race.playerSP:F0})", 26,
+                UiKit.Yellow, TextAnchor.MiddleCenter,
+                new Vector2(0f, 0.72f), new Vector2(1f, 0.98f), Vector2.zero, Vector2.zero,
+                bold: true, shadow: true, outline: true);
+
+            var moves = SkillMove.UnlockedAt(career != null ? career.chapter : 1);
+            float w = 0.92f / moves.Count;
+            for (int k = 0; k < moves.Count; k++)
+            {
+                var m = moves[k];
+                bool usable = race.playerSP >= m.cost; // SPが足りない必殺技は選べない(基本技のみ)
+                string label = m.cost > 0 ? $"{m.name}\nSP{m.cost}" : m.name;
+                Color bg = usable ? Color.Lerp(m.color, UiKit.Navy, 0.25f) : new Color(0.35f, 0.37f, 0.42f);
+                var btn = UiKit.MakeButton(movePanelGo.transform, label, bg, 22,
+                    new Vector2(0.04f + k * w, 0.08f), new Vector2(0.04f + k * w + w - 0.015f, 0.66f),
+                    Vector2.zero, Vector2.zero,
+                    () => { if (usable) PickMove(m); });
+                if (!usable) btn.GetComponentInChildren<Text>().color = new Color(1f, 1f, 1f, 0.45f);
+            }
+            moveTimeoutCo = StartCoroutine(MoveTimeout());
+        }
+
+        System.Collections.IEnumerator MoveTimeout()
+        {
+            yield return new WaitForSecondsRealtime(2.5f);
+            PickMove(SkillMove.All[0]); // 時間切れは「差し」
+        }
+
+        void PickMove(SkillMove m)
+        {
+            if (movePanelGo == null) return;
+            CloseMovePanel();
+            race.ApplyPlayerMove(m);
+            ShowFlash(m.name, m.color);
+        }
+
+        void CloseMovePanel()
+        {
+            if (moveTimeoutCo != null) { StopCoroutine(moveTimeoutCo); moveTimeoutCo = null; }
+            if (movePanelGo != null) Destroy(movePanelGo);
+            movePanelGo = null;
+            Time.timeScale = 1f;
         }
 
         /// <summary>画面中央のフラッシュバナー(最終周回・ゴールなどの速報演出)。</summary>
@@ -334,9 +397,13 @@ namespace BoatRace.UI
             // 右: スキルと練習
             var skill = UiKit.MakePanel(s.transform, UiKit.PanelWhite, 20,
                 new Vector2(0.52f, 0.28f), new Vector2(0.95f, 0.83f), Vector2.zero, Vector2.zero);
+            var learned = new List<string>();
+            foreach (var m in SkillMove.UnlockedAt(career.chapter))
+                if (m.cost > 0) learned.Add(m.name);
+            string moveLine = learned.Count > 0 ? string.Join("　", learned) : "(章クリアで習得)";
             UiKit.MakeText(skill.transform,
-                $"スタート技術　{career.startSkill * 100f:F0}\n旋回技術　{career.turnSkill * 100f:F0}\nメンタル　{career.mental * 100f:F0}",
-                26, UiKit.TextDark, TextAnchor.UpperLeft,
+                $"スタート技術　{career.startSkill * 100f:F0}\n旋回技術　{career.turnSkill * 100f:F0}\nメンタル　{career.mental * 100f:F0}\n必殺技　{moveLine}",
+                24, UiKit.TextDark, TextAnchor.UpperLeft,
                 new Vector2(0.07f, 0.55f), new Vector2(0.93f, 0.96f), Vector2.zero, Vector2.zero, bold: true);
             void Train(string label, int cost, System.Action apply, float y)
             {
@@ -360,6 +427,9 @@ namespace BoatRace.UI
                 new Vector2(0.30f, 0.10f), new Vector2(0.70f, 0.24f), Vector2.zero, Vector2.zero, StartCareerRace);
             UiKit.MakeButton(s.transform, "↩ ホーム", UiKit.Cyan, 22,
                 new Vector2(0.04f, 0.11f), new Vector2(0.18f, 0.21f), Vector2.zero, Vector2.zero, ShowHome);
+            UiKit.MakeButton(s.transform, "🛒 ショップ", new Color(0.9f, 0.55f, 0.1f), 22,
+                new Vector2(0.80f, 0.11f), new Vector2(0.96f, 0.21f), Vector2.zero, Vector2.zero,
+                () => ShowShopPopup(s.transform));
 
             if (!career.debutDone)
             {
@@ -369,10 +439,62 @@ namespace BoatRace.UI
             }
         }
 
+        /// <summary>ショップ(アイテムは次のレースで自動消費)。</summary>
+        void ShowShopPopup(Transform parent)
+        {
+            var pop = UiKit.MakePanel(parent, UiKit.PanelWhite, 22,
+                new Vector2(0.24f, 0.22f), new Vector2(0.76f, 0.80f), Vector2.zero, Vector2.zero);
+            UiKit.MakeBanner(pop.transform, $"ショップ　所持金 {career.money:N0}万円", 24,
+                new Vector2(0.10f, 0.85f), new Vector2(0.90f, 0.99f));
+
+            void Item(string label, string desc, int cost, int owned, System.Action buy, float y)
+            {
+                UiKit.MakeText(pop.transform, $"{label}　所持{owned}\n{desc}", 20, UiKit.TextDark,
+                    TextAnchor.MiddleLeft,
+                    new Vector2(0.06f, y), new Vector2(0.66f, y + 0.18f), Vector2.zero, Vector2.zero, bold: true);
+                UiKit.MakeButton(pop.transform, $"{cost}万で購入", career.money >= cost ? UiKit.Cyan : new Color(0.5f, 0.5f, 0.55f), 18,
+                    new Vector2(0.68f, y + 0.02f), new Vector2(0.94f, y + 0.15f), Vector2.zero, Vector2.zero,
+                    () =>
+                    {
+                        if (career.money < cost) return;
+                        career.money -= cost;
+                        buy();
+                        career.Save();
+                        Destroy(pop);
+                        ShowShopPopup(parent);
+                    });
+            }
+            Item("エナジードリンク", "次レースの初期SP+30(必殺技が早く使える)", 200, career.itemDrink,
+                () => career.itemDrink++, 0.60f);
+            Item("新品ペラ", "次レースのモーターを強化(出足・伸びUP)", 300, career.itemProp,
+                () => career.itemProp++, 0.38f);
+            Item("勝守り", "次レースのST安定＋メンタルUP", 150, career.itemCharm,
+                () => career.itemCharm++, 0.16f);
+
+            UiKit.MakeButton(pop.transform, "閉じる", UiKit.Navy, 20,
+                new Vector2(0.36f, 0.02f), new Vector2(0.64f, 0.12f), Vector2.zero, Vector2.zero,
+                () => Destroy(pop));
+        }
+
         void StartCareerRace()
         {
             if (!career.allClear) race.venueId = career.Current.venueId; // 章の指定会場
-            race.playerOverride = career.ToStats();
+
+            // アイテム自動消費
+            race.playerSPInit = 50f;
+            if (career.itemDrink > 0) { career.itemDrink--; race.playerSPInit = 80f; }
+            race.playerMotorBoost = career.itemProp > 0;
+            if (career.itemProp > 0) career.itemProp--;
+            var stats = career.ToStats();
+            if (career.itemCharm > 0)
+            {
+                career.itemCharm--;
+                stats.mental = Mathf.Min(0.98f, stats.mental + 0.15f);
+                stats.startSkill = Mathf.Min(0.97f, stats.startSkill + 0.04f);
+            }
+            career.Save();
+
+            race.playerOverride = stats;
             race.playerBoatIndex = career.DrawBoatIndex(new System.Random(System.Environment.TickCount));
             race.seed = System.Environment.TickCount;
             race.SetupRace();
@@ -676,6 +798,17 @@ namespace BoatRace.UI
                         pendingStory = CareerStory.ChapterClear(career.chapter, career.racerName);
                         if (career.chapter >= 8) career.allClear = true;
                         else career.chapter++;
+
+                        // 新必殺技の習得アナウンス
+                        var newMove = SkillMove.NewlyUnlocked(career.chapter);
+                        if (newMove != null && pendingStory != null)
+                        {
+                            var extended = new (string, string)[pendingStory.Length + 1];
+                            pendingStory.CopyTo(extended, 0);
+                            extended[extended.Length - 1] =
+                                ("システム", $"必殺技『{newMove.name}』を習得！！ ターン突入時に発動できるぞ！(SP{newMove.cost}消費)");
+                            pendingStory = extended;
+                        }
                     }
                     else
                     {

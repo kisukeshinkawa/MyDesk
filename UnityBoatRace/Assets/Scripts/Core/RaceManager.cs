@@ -25,6 +25,16 @@ namespace BoatRace.Core
         [NonSerialized] public int playerBoatIndex = -1;
         [NonSerialized] public Player.PlayerStats playerOverride;
 
+        // 必殺技システム: SPゲージとターン突入通知
+        [NonSerialized] public float playerSP;
+        [NonSerialized] public float playerSPInit = 50f;      // アイテムで増える
+        [NonSerialized] public bool playerMotorBoost;          // 新品ペラ(次レース限り)
+        public event Action<int> OnPlayerTurnEntry;            // markNo(1/2)
+        float playerMoveTimer;
+        float playerMoveRadius = 1f;
+        float playerMoveThrottle = 1f;
+        public bool PlayerMoveActive => playerMoveTimer > 0f;
+
         [NonSerialized] public VenueData venue;
         [NonSerialized] public WindSystem wind;
         [NonSerialized] public CurrentSystem current;
@@ -81,7 +91,18 @@ namespace BoatRace.Core
 
             // ストーリーモード: プレイヤーを指定艇に乗せる
             if (playerOverride != null && playerBoatIndex >= 0 && playerBoatIndex < BoatCount)
+            {
                 players[playerBoatIndex] = playerOverride;
+                // アイテム「新品ペラ」: このレースだけモーター強化
+                if (playerMotorBoost)
+                {
+                    motors[playerBoatIndex].acceleration += 0.35f;
+                    motors[playerBoatIndex].topSpeed += 0.5f;
+                    playerMotorBoost = false;
+                }
+            }
+            playerSP = playerSPInit;
+            playerMoveTimer = 0f;
 
             statsList.Clear();
             for (int i = 0; i < BoatCount; i++)
@@ -324,6 +345,9 @@ namespace BoatRace.Core
                     bs.st = st;
                     bs.startFlag = flag;
                     bs.crossedStart = true;
+                    // 好スタートでSP大回復
+                    if (i == playerBoatIndex && flag == StartFlag.Normal && st <= 0.12f)
+                        playerSP = Mathf.Min(100f, playerSP + 25f);
                     float r = b.turnAI.laneRadius;
                     startProgressOffset[i] = TrackPath.GetProgress(b.engine.Position, r);
                     prevS[i] = startProgressOffset[i];
@@ -365,9 +389,23 @@ namespace BoatRace.Core
 
                 if (i == playerBoatIndex && !IsDisqualified(bs))
                 {
-                    // プレイヤー操縦: 舵は手動、スロットルは握りっぱなし推奨
-                    b.engine.Steer = Player.PlayerBoatInput.SteerAxis();
-                    b.engine.Throttle = Player.PlayerBoatInput.Throttle();
+                    // SPは走行中じわじわ回復
+                    playerSP = Mathf.Min(100f, playerSP + dt * 1.0f);
+
+                    if (playerMoveTimer > 0f)
+                    {
+                        // 必殺技/基本技の発動中は半オート(技のライン取りで旋回)
+                        playerMoveTimer -= dt;
+                        b.turnAI.radiusFactor = playerMoveRadius;
+                        b.engine.Steer = b.turnAI.GetSteer(b.engine, WaitingSystem.LaneZ(bs.course));
+                        b.engine.Throttle = playerMoveThrottle;
+                    }
+                    else
+                    {
+                        // 直線は手動操縦
+                        b.engine.Steer = Player.PlayerBoatInput.SteerAxis();
+                        b.engine.Throttle = Player.PlayerBoatInput.Throttle();
+                    }
                 }
                 else
                 {
@@ -387,7 +425,10 @@ namespace BoatRace.Core
                 bs.totalProgress += Mathf.Max(0f, delta);
                 prevS[i] = s;
                 bs.progress = s;
-                bs.lap = (int)(bs.totalProgress / lapLen);
+                int newLap = (int)(bs.totalProgress / lapLen);
+                if (i == playerBoatIndex && newLap > bs.lap)
+                    playerSP = Mathf.Min(100f, playerSP + 12f); // 周回走破でSP回復
+                bs.lap = newLap;
 
                 // マーク旋回イベント(1周1Mの先マイ艇を決まり手判定用に記録)
                 bool t1 = TrackPath.InTurn1Zone(b.engine.Position);
@@ -395,10 +436,17 @@ namespace BoatRace.Core
                 {
                     if (bs.lap == 0 && firstTurnLeader < 0 && !IsDisqualified(bs)) firstTurnLeader = i;
                     OnMarkRounded?.Invoke(i, 1, bs.lap + 1);
+                    if (i == playerBoatIndex && !IsDisqualified(bs) && !bs.finished)
+                        OnPlayerTurnEntry?.Invoke(1); // 技選択(GameFlowがスロー表示)
                 }
                 inTurn1[i] = t1;
                 bool t2 = TrackPath.InTurn2Zone(b.engine.Position);
-                if (t2 && !inTurn2[i]) OnMarkRounded?.Invoke(i, 2, bs.lap + 1);
+                if (t2 && !inTurn2[i])
+                {
+                    OnMarkRounded?.Invoke(i, 2, bs.lap + 1);
+                    if (i == playerBoatIndex && !IsDisqualified(bs) && !bs.finished)
+                        OnPlayerTurnEntry?.Invoke(2);
+                }
                 inTurn2[i] = t2;
 
                 // 最終周回灯点灯
@@ -427,6 +475,21 @@ namespace BoatRace.Core
 
             if (state.boats.All(b => b.finished || IsDisqualified(b)) || state.raceTime > 240f)
                 SetPhase(RacePhase.Finished);
+        }
+
+        /// <summary>技の発動(GameFlowの技選択パネルから呼ばれる)。</summary>
+        public void ApplyPlayerMove(Career.SkillMove move)
+        {
+            if (playerBoatIndex < 0) return;
+            playerSP = Mathf.Max(0f, playerSP - move.cost);
+            playerMoveTimer = move.duration;
+            playerMoveRadius = move.radiusFactor;
+            playerMoveThrottle = move.throttle;
+            var e = boats[playerBoatIndex].engine;
+            e.BoostTime = move.duration;
+            e.BoostTopMul = move.topMul;
+            e.BoostAccelMul = move.accelMul;
+            e.BoostWakeImmune = move.wakeImmune;
         }
 
         /// <summary>決まり手判定: 逃げ/差し/まくり/まくり差し/抜き/恵まれ。</summary>

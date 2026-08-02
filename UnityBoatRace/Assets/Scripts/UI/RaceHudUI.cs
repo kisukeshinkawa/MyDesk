@@ -21,6 +21,9 @@ namespace BoatRace.UI
         readonly Text hintText;     // プレイヤー操作ガイド
         readonly Text viewLabel;    // 視点表示(Cキー切替と連動)
         readonly RaceCamera raceCam;
+        readonly GameObject spGauge;
+        readonly Image spFill;
+        readonly Text spText;
         readonly Text[] standingRows = new Text[6];
         readonly Image[] rowChips = new Image[6];
         readonly Text commentaryText;
@@ -76,6 +79,23 @@ namespace BoatRace.UI
             centerText = UiKit.MakeText(root.transform, "", 130, UiKit.Yellow, TextAnchor.MiddleCenter,
                 new Vector2(0.2f, 0.45f), new Vector2(0.8f, 0.75f), Vector2.zero, Vector2.zero,
                 bold: true, shadow: true, outline: true);
+
+            // SPゲージ(必殺技エネルギー・ストーリーモードのみ)
+            spGauge = UiKit.MakePanel(root.transform, new Color(0.05f, 0.12f, 0.3f, 0.9f), 12,
+                new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(16f, 122f), new Vector2(300f, 168f));
+            UiKit.MakeText(spGauge.transform, "SP", 22, UiKit.Yellow, TextAnchor.MiddleLeft,
+                new Vector2(0f, 0f), new Vector2(0.16f, 1f), new Vector2(12f, 0f), Vector2.zero, bold: true);
+            var fillBg = UiKit.MakePanel(spGauge.transform, new Color(0f, 0f, 0f, 0.5f), 8,
+                new Vector2(0.17f, 0.22f), new Vector2(0.80f, 0.78f), Vector2.zero, Vector2.zero);
+            var fillGo = new GameObject("Fill");
+            UiKit.Place(fillGo, fillBg.transform, Vector2.zero, Vector2.one, new Vector2(3f, 3f), new Vector2(-3f, -3f));
+            spFill = fillGo.AddComponent<Image>();
+            spFill.sprite = UiKit.Rounded(6);
+            spFill.type = Image.Type.Filled;
+            spFill.fillMethod = Image.FillMethod.Horizontal;
+            spText = UiKit.MakeText(spGauge.transform, "50", 22, Color.white, TextAnchor.MiddleRight,
+                new Vector2(0.80f, 0f), new Vector2(0.98f, 1f), Vector2.zero, Vector2.zero, bold: true);
+            spGauge.SetActive(false);
 
             // プレイヤー操作ガイド(ストーリーモード)
             hintText = UiKit.MakeText(root.transform, "", 24, UiKit.Yellow, TextAnchor.MiddleCenter,
@@ -133,6 +153,20 @@ namespace BoatRace.UI
             else if (centerText.text.Length > 0)
             {
                 centerText.text = "";
+            }
+
+            // SPゲージ更新
+            bool showSp = race.playerBoatIndex >= 0 &&
+                (race.state.phase == RacePhase.Approach || race.state.phase == RacePhase.Racing);
+            if (spGauge.activeSelf != showSp) spGauge.SetActive(showSp);
+            if (showSp)
+            {
+                float t = race.playerSP / 100f;
+                spFill.fillAmount = t;
+                spFill.color = t > 0.35f
+                    ? Color.Lerp(UiKit.Yellow, new Color(0.2f, 0.95f, 1f), (t - 0.35f) / 0.65f)
+                    : Color.Lerp(UiKit.Red, UiKit.Yellow, t / 0.35f);
+                spText.text = $"{race.playerSP:F0}";
             }
 
             // プレイヤー操作ガイド

@@ -32,6 +32,11 @@ namespace BoatRace.Career
         public bool debutDone;
         public bool allClear;
 
+        // アイテム所持数(次レースで自動消費)
+        public int itemDrink;   // エナジードリンク: 初期SP+30
+        public int itemProp;    // 新品ペラ: モーター強化
+        public int itemCharm;   // 勝守り: ST安定+メンタルUP
+
         public static readonly Chapter[] Chapters =
         {
             new Chapter("デビュー戦",     1,  "新人", 6),  // 桐生: 完走でクリア

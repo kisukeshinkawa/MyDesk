@@ -26,6 +26,12 @@ namespace BoatRace.Boat
         public float Steer;                   // -1(左)〜+1(右)
         public float LastWakeDrag { get; private set; }
 
+        // 必殺技ブースト(SkillMove発動中のみ有効)
+        public float BoostTime;
+        public float BoostTopMul = 1f;
+        public float BoostAccelMul = 1f;
+        public bool BoostWakeImmune;
+
         public Vector3 Forward => Quaternion.Euler(0f, HeadingDeg, 0f) * Vector3.forward;
 
         public BoatPhysicsEngine(int index, BoatStats stats, VenueData venue,
@@ -43,12 +49,15 @@ namespace BoatRace.Boat
         public void Step(float dt)
         {
             Vector3 fwd = Forward;
+            bool boosting = BoostTime > 0f;
+            if (boosting) BoostTime -= dt;
 
-            // ---- 引き波 ----
-            LastWakeDrag = wake.GetWakeDrag(index, Position);
+            // ---- 引き波(必殺技で無効化されることがある) ----
+            LastWakeDrag = boosting && BoostWakeImmune ? 0f : wake.GetWakeDrag(index, Position);
 
             // ---- 加速 ----
             float accel = stats.EffectiveAcceleration * fuel.AccelerationModifier * Mathf.Clamp01(Throttle);
+            if (boosting) accel *= BoostAccelMul;
             Speed += accel * dt;
 
             // ---- 水抵抗 + 引き波抵抗 ----
@@ -60,6 +69,7 @@ namespace BoatRace.Boat
 
             // ---- 最高速制限(燃料減衰で終盤わずかに伸びる) ----
             float top = stats.EffectiveTopSpeed * fuel.SpeedModifier;
+            if (boosting) top *= BoostTopMul;
             Speed = Mathf.Clamp(Speed, 0f, top);
 
             // ---- 旋回 ----
