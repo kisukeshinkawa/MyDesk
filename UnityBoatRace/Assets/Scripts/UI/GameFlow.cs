@@ -50,7 +50,7 @@ namespace BoatRace.UI
             ffButton = ffBtn.gameObject;
             ffButton.SetActive(false);
 
-            race.OnRaceFinished += () => resultTimer = 3f;
+            race.OnRaceFinished += () => { resultTimer = 3f; RecordStats(); };
             ShowTitle();
         }
 
@@ -108,6 +108,7 @@ namespace BoatRace.UI
         {
             var s = NewScreen("TitleScreen");
             UiKit.MakeFullscreenGradient(s.transform, UiKit.Sky, UiKit.Navy);
+            UiKit.AddStripeOverlay(s, Color.white, 0.06f);
 
             UiKit.MakeText(s.transform, "BOATRACE", 110, Color.white, TextAnchor.MiddleCenter,
                 new Vector2(0f, 0.60f), new Vector2(1f, 0.85f), Vector2.zero, Vector2.zero,
@@ -128,51 +129,95 @@ namespace BoatRace.UI
             tap.AddComponent<Button>().onClick.AddListener(ShowHome);
         }
 
-        // ================= ホーム =================
+        // ================= ホーム(3D会場が見えるロビー) =================
         void ShowHome()
         {
             var s = NewScreen("HomeScreen");
-            UiKit.MakeFullscreenGradient(s.transform, new Color(0.85f, 0.95f, 1f), UiKit.Sky);
+            // 背景に3D会場と艇がそのまま見える(全画面グラデは敷かない)
 
-            UiKit.MakeBanner(s.transform, "BOATRACE REALISM", 34,
-                new Vector2(0.22f, 0.88f), new Vector2(0.78f, 0.97f));
+            // 上部バー: ロゴ＋通算成績チップ
+            var topBar = UiKit.MakePanel(s.transform, new Color(0.05f, 0.12f, 0.30f, 0.93f), 12,
+                new Vector2(0f, 0.925f), new Vector2(1f, 1f), new Vector2(-6f, 0f), new Vector2(6f, 4f));
+            UiKit.AddStripeOverlay(topBar, Color.white, 0.05f);
+            UiKit.MakeText(topBar.transform, "⚡ BOATRACE REALISM", 30, Color.white, TextAnchor.MiddleLeft,
+                new Vector2(0f, 0f), new Vector2(0.5f, 1f), new Vector2(24f, 0f), Vector2.zero,
+                bold: true, shadow: true, outline: true);
+            int totalRaces = PlayerPrefs.GetInt("br_races", 0);
+            int bestPayout = PlayerPrefs.GetInt("br_best", 0);
+            UiKit.MakeChip(topBar.transform, $"通算 {totalRaces}R", UiKit.Yellow, UiKit.Navy, 20,
+                new Vector2(0.62f, 0.18f), new Vector2(0.79f, 0.82f), Vector2.zero, Vector2.zero);
+            UiKit.MakeChip(topBar.transform, $"最高払戻 ¥{bestPayout:N0}", UiKit.Cyan, Color.white, 20,
+                new Vector2(0.81f, 0.18f), new Vector2(0.99f, 0.82f), Vector2.zero, Vector2.zero);
 
-            // 開催場セレクタ
-            var panel = UiKit.MakePanel(s.transform, UiKit.PanelWhite, 22,
-                new Vector2(0.25f, 0.50f), new Vector2(0.75f, 0.82f), Vector2.zero, Vector2.zero);
-            UiKit.MakeText(panel.transform, "開催場", 24, UiKit.TextDark, TextAnchor.MiddleCenter,
-                new Vector2(0f, 0.72f), new Vector2(1f, 0.95f), Vector2.zero, Vector2.zero, bold: true);
-            var venueLabel = UiKit.MakeText(panel.transform, "", 40, UiKit.Cyan, TextAnchor.MiddleCenter,
-                new Vector2(0.2f, 0.38f), new Vector2(0.8f, 0.70f), Vector2.zero, Vector2.zero, bold: true);
-            var infoLabel = UiKit.MakeText(panel.transform, "", 20, UiKit.TextDark, TextAnchor.MiddleCenter,
-                new Vector2(0f, 0.08f), new Vector2(1f, 0.36f), Vector2.zero, Vector2.zero);
-
+            // 開催場カード(コンパクト・上中央)
+            var vCard = UiKit.MakePanel(s.transform, UiKit.PanelWhite, 18,
+                new Vector2(0.33f, 0.70f), new Vector2(0.67f, 0.905f), Vector2.zero, Vector2.zero);
+            UiKit.MakeText(vCard.transform, "開催場", 18, UiKit.Cyan, TextAnchor.MiddleCenter,
+                new Vector2(0f, 0.74f), new Vector2(1f, 0.98f), Vector2.zero, Vector2.zero, bold: true);
+            var venueLabel = UiKit.MakeText(vCard.transform, "", 34, UiKit.TextDark, TextAnchor.MiddleCenter,
+                new Vector2(0.16f, 0.36f), new Vector2(0.84f, 0.74f), Vector2.zero, Vector2.zero, bold: true);
+            var infoLabel = UiKit.MakeText(vCard.transform, "", 17, UiKit.TextDark, TextAnchor.MiddleCenter,
+                new Vector2(0f, 0.04f), new Vector2(1f, 0.34f), Vector2.zero, Vector2.zero);
             void RefreshVenue()
             {
                 var v = CourseDatabase.Get(race.venueId);
                 venueLabel.text = $"{v.id}. {v.name}";
-                infoLabel.text = $"風影響 {Stars(v.windEffect)}　波 {v.waveHeight * 100f:F0}cm\nイン有利度 {Stars(v.insideAdvantage)}";
+                infoLabel.text = $"風 {Stars(v.windEffect)}　波 {v.waveHeight * 100f:F0}cm　イン {Stars(v.insideAdvantage)}";
             }
-            UiKit.MakeButton(panel.transform, "◀", UiKit.Cyan, 30,
-                new Vector2(0.03f, 0.42f), new Vector2(0.17f, 0.66f), Vector2.zero, Vector2.zero,
+            UiKit.MakeButton(vCard.transform, "◀", UiKit.Cyan, 26,
+                new Vector2(0.02f, 0.30f), new Vector2(0.14f, 0.78f), Vector2.zero, Vector2.zero,
                 () => { race.venueId = race.venueId <= 1 ? 24 : race.venueId - 1; RefreshVenue(); });
-            UiKit.MakeButton(panel.transform, "▶", UiKit.Cyan, 30,
-                new Vector2(0.83f, 0.42f), new Vector2(0.97f, 0.66f), Vector2.zero, Vector2.zero,
+            UiKit.MakeButton(vCard.transform, "▶", UiKit.Cyan, 26,
+                new Vector2(0.86f, 0.30f), new Vector2(0.98f, 0.78f), Vector2.zero, Vector2.zero,
                 () => { race.venueId = race.venueId >= 24 ? 1 : race.venueId + 1; RefreshVenue(); });
             RefreshVenue();
 
-            UiKit.MakeButton(s.transform, "出走表へ ▶", UiKit.Yellow, 36,
-                new Vector2(0.30f, 0.28f), new Vector2(0.70f, 0.42f), Vector2.zero, Vector2.zero,
+            // NEXTレースバナー(左)
+            var next = UiKit.MakePanel(s.transform, UiKit.PanelWhite, 16,
+                new Vector2(0.03f, 0.30f), new Vector2(0.30f, 0.44f), Vector2.zero, Vector2.zero);
+            UiKit.AddStripeOverlay(next, UiKit.Sky, 0.15f);
+            UiKit.MakeChip(next.transform, "NEXT ▶", UiKit.Yellow, UiKit.Navy, 18,
+                new Vector2(0.04f, 0.58f), new Vector2(0.44f, 0.94f), Vector2.zero, Vector2.zero);
+            UiKit.MakeText(next.transform, $"第{totalRaces + 1}R  {race.venue.name}", 24, UiKit.TextDark,
+                TextAnchor.MiddleLeft,
+                new Vector2(0.06f, 0.06f), new Vector2(1f, 0.55f), Vector2.zero, Vector2.zero, bold: true);
+
+            // 下部ナビバー
+            var nav = UiKit.MakePanel(s.transform, new Color(0.05f, 0.12f, 0.30f, 0.93f), 12,
+                new Vector2(0f, 0f), new Vector2(1f, 0.125f), new Vector2(-6f, -4f), new Vector2(6f, 0f));
+            UiKit.AddStripeOverlay(nav, Color.white, 0.05f);
+            UiKit.MakeButton(nav.transform, "タイトルへ", new Color(0.45f, 0.5f, 0.58f), 22,
+                new Vector2(0.02f, 0.16f), new Vector2(0.16f, 0.84f), Vector2.zero, Vector2.zero, ShowTitle);
+            UiKit.MakeButton(nav.transform, "戦績", new Color(0.1f, 0.62f, 0.35f), 22,
+                new Vector2(0.18f, 0.16f), new Vector2(0.32f, 0.84f), Vector2.zero, Vector2.zero,
+                () => ShowStatsPopup(s.transform));
+            UiKit.MakeButton(nav.transform, "出走表へ　▶", UiKit.Red, 30,
+                new Vector2(0.36f, 0.10f), new Vector2(0.64f, 0.90f), Vector2.zero, Vector2.zero,
                 () =>
                 {
                     race.seed = System.Environment.TickCount;
                     race.SetupRace();
                     if (RaceBootstrap.Instance != null) RaceBootstrap.Instance.RebuildEnvironment(race);
                     ShowEntry();
-                }).GetComponentInChildren<Text>().color = UiKit.Navy;
+                });
+            UiKit.MakeChip(nav.transform, "選手・モーター・ペラは毎レース抽選", new Color(0f, 0f, 0f, 0.25f), Color.white, 16,
+                new Vector2(0.68f, 0.22f), new Vector2(0.98f, 0.78f), Vector2.zero, Vector2.zero);
+        }
 
-            UiKit.MakeText(s.transform, "選手×モーター×プロペラ抽選は毎レース変わります", 20, UiKit.Navy, TextAnchor.MiddleCenter,
-                new Vector2(0f, 0.18f), new Vector2(1f, 0.26f), Vector2.zero, Vector2.zero);
+        void ShowStatsPopup(Transform parent)
+        {
+            var pop = UiKit.MakePanel(parent, UiKit.PanelWhite, 22,
+                new Vector2(0.32f, 0.30f), new Vector2(0.68f, 0.72f), Vector2.zero, Vector2.zero);
+            UiKit.MakeBanner(pop.transform, "戦績", 26, new Vector2(0.2f, 0.82f), new Vector2(0.8f, 0.99f));
+            UiKit.MakeText(pop.transform,
+                $"通算レース数　{PlayerPrefs.GetInt("br_races", 0)} レース\n" +
+                $"最高払戻　¥{PlayerPrefs.GetInt("br_best", 0):N0}\n" +
+                $"フライング目撃数　{PlayerPrefs.GetInt("br_f", 0)} 回",
+                24, UiKit.TextDark, TextAnchor.MiddleCenter,
+                new Vector2(0f, 0.25f), new Vector2(1f, 0.80f), Vector2.zero, Vector2.zero, bold: true);
+            UiKit.MakeButton(pop.transform, "閉じる", UiKit.Cyan, 22,
+                new Vector2(0.32f, 0.05f), new Vector2(0.68f, 0.22f), Vector2.zero, Vector2.zero,
+                () => Destroy(pop));
         }
 
         // ================= 出走表 =================
@@ -180,9 +225,10 @@ namespace BoatRace.UI
         {
             var s = NewScreen("EntryScreen");
             UiKit.MakeFullscreenGradient(s.transform, new Color(0.85f, 0.95f, 1f), UiKit.Sky);
+            UiKit.AddStripeOverlay(s, Color.white, 0.07f);
 
             UiKit.MakeBanner(s.transform, $"出走表　{race.venue.name}", 30,
-                new Vector2(0.25f, 0.905f), new Vector2(0.75f, 0.985f));
+                new Vector2(0.25f, 0.905f), new Vector2(0.75f, 0.985f), tilt: -1.2f);
 
             for (int i = 0; i < 6; i++)
             {
@@ -191,31 +237,39 @@ namespace BoatRace.UI
                     new Vector2(0.05f + col * 0.475f, 0.645f - row * 0.235f),
                     new Vector2(0.475f + col * 0.475f, 0.865f - row * 0.235f),
                     Vector2.zero, Vector2.zero);
-
-                // 艇色バー
-                var bar = new GameObject("Bar");
-                UiKit.Place(bar, card.transform, new Vector2(0f, 0f), new Vector2(0f, 1f),
-                    new Vector2(0f, 4f), new Vector2(14f, -4f));
-                var barImg = bar.AddComponent<Image>();
-                barImg.sprite = UiKit.Rounded(6);
-                barImg.type = Image.Type.Sliced;
-                barImg.color = UiKit.BoatColors[i];
+                var cardShadow = card.AddComponent<Shadow>();
+                cardShadow.effectColor = new Color(0f, 0f, 0f, 0.25f);
+                cardShadow.effectDistance = new Vector2(0f, -5f);
 
                 var st = race.statsList[i];
                 var bs = race.state.Get(i);
-                string grade = MotorGrade(st.motor.OverallScore);
-                UiKit.MakeText(card.transform, $"{i + 1}号艇  {st.player.playerName}", 26, UiKit.TextDark,
-                    TextAnchor.MiddleLeft, new Vector2(0f, 0.62f), new Vector2(1f, 0.95f),
-                    new Vector2(28f, 0f), new Vector2(-8f, 0f), bold: true);
+                Color bc = UiKit.BoatColors[i];
+                bool lightRibbon = bc.r * 0.6f + bc.g * 0.3f + bc.b * 0.1f > 0.6f;
+
+                // 上部の艇色リボン(チケット風)
+                var ribbon = new GameObject("Ribbon");
+                UiKit.Place(ribbon, card.transform, new Vector2(0f, 0.66f), new Vector2(1f, 1f),
+                    new Vector2(4f, 0f), new Vector2(-4f, -4f));
+                var ribImg = ribbon.AddComponent<Image>();
+                ribImg.sprite = UiKit.Rounded(14);
+                ribImg.type = Image.Type.Sliced;
+                ribImg.color = bc;
+                UiKit.AddStripeOverlay(ribbon, lightRibbon ? Color.black : Color.white, 0.06f);
+                UiKit.MakeText(ribbon.transform, $"{i + 1}号艇　{st.player.playerName}", 25,
+                    lightRibbon ? UiKit.Navy : Color.white, TextAnchor.MiddleLeft,
+                    Vector2.zero, Vector2.one, new Vector2(16f, 0f), new Vector2(-8f, 0f),
+                    bold: true, shadow: !lightRibbon);
+
                 string entry = BoatRace.Start.WaitingSystem.IsSlowStart(bs.course) ? "スロー" : "ダッシュ";
+                string grade = MotorGrade(st.motor.OverallScore);
                 UiKit.MakeText(card.transform,
                     $"級別 {st.player.rank}　{bs.course}コース({entry})　平均ST .{Mathf.RoundToInt(st.player.reactionTimeMean * 100f):00}",
                     20, UiKit.TextDark, TextAnchor.MiddleLeft,
-                    new Vector2(0f, 0.34f), new Vector2(1f, 0.60f), new Vector2(28f, 0f), new Vector2(-8f, 0f));
+                    new Vector2(0f, 0.34f), new Vector2(1f, 0.62f), new Vector2(18f, 0f), new Vector2(-8f, 0f));
                 UiKit.MakeText(card.transform,
                     $"モーター評価 {grade}　展示タイム {bs.exhibitionTime:F2}",
                     20, UiKit.Cyan, TextAnchor.MiddleLeft,
-                    new Vector2(0f, 0.06f), new Vector2(1f, 0.32f), new Vector2(28f, 0f), new Vector2(-8f, 0f), bold: true);
+                    new Vector2(0f, 0.06f), new Vector2(1f, 0.32f), new Vector2(18f, 0f), new Vector2(-8f, 0f), bold: true);
             }
 
             UiKit.MakeButton(s.transform, "レーススタート！", UiKit.Red, 38,
@@ -249,7 +303,7 @@ namespace BoatRace.UI
                 ? $"レース結果　{race.venue.name}　レース不成立(全艇返還)"
                 : $"レース結果　{race.venue.name}　決まり手: {race.kimarite}";
             UiKit.MakeBanner(s.transform, header, 30,
-                new Vector2(0.14f, 0.895f), new Vector2(0.86f, 0.975f));
+                new Vector2(0.14f, 0.895f), new Vector2(0.86f, 0.975f), tilt: -1f);
 
             var panel = UiKit.MakePanel(s.transform, new Color(1f, 1f, 1f, 0.10f), 22,
                 new Vector2(0.16f, 0.30f), new Vector2(0.84f, 0.87f), Vector2.zero, Vector2.zero);
@@ -318,6 +372,30 @@ namespace BoatRace.UI
                 new Vector2(0.86f, 0.90f), new Vector2(0.97f, 0.98f), Vector2.zero, Vector2.zero,
                 () => replay.StopPlayback());
             replayOverlay.SetActive(false);
+        }
+
+        /// <summary>レース終了ごとの戦績記録(通算R数・最高払戻・F目撃数)。</summary>
+        void RecordStats()
+        {
+            PlayerPrefs.SetInt("br_races", PlayerPrefs.GetInt("br_races", 0) + 1);
+
+            int flyings = 0;
+            var valid = new List<int>();
+            foreach (int idx in race.state.standings)
+            {
+                var bs = race.state.Get(idx);
+                if (bs.startFlag == StartFlag.Flying) flyings++;
+                if (bs.startFlag != StartFlag.Flying && bs.startFlag != StartFlag.Late) valid.Add(idx);
+            }
+            if (flyings > 0)
+                PlayerPrefs.SetInt("br_f", PlayerPrefs.GetInt("br_f", 0) + flyings);
+            if (valid.Count >= 3)
+            {
+                int payout = ComputePayout(valid[0], valid[1], valid[2]);
+                if (payout > PlayerPrefs.GetInt("br_best", 0))
+                    PlayerPrefs.SetInt("br_best", payout);
+            }
+            PlayerPrefs.Save();
         }
 
         int ComputePayout(int first, int second, int third)

@@ -33,8 +33,10 @@ namespace BoatRace.UI
         {
             if (jpFont != null) return jpFont;
             var installed = new HashSet<string>(Font.GetOSInstalledFontNames());
-            string[] candidates = { "Hiragino Sans", "Hiragino Kaku Gothic ProN", "ヒラギノ角ゴシック",
-                                    "Yu Gothic", "Meiryo", "Noto Sans CJK JP", "Arial Unicode MS" };
+            // 丸ゴシックを最優先(スマホゲーらしい柔らかい太字になる)
+            string[] candidates = { "Hiragino Maru Gothic ProN", "Hiragino Maru Gothic Pro",
+                                    "ヒラギノ丸ゴ ProN", "Hiragino Sans", "Hiragino Kaku Gothic ProN",
+                                    "ヒラギノ角ゴシック", "Yu Gothic", "Meiryo", "Noto Sans CJK JP" };
             foreach (var name in candidates)
             {
                 if (!installed.Contains(name)) continue;
@@ -66,6 +68,48 @@ namespace BoatRace.UI
                 SpriteMeshType.FullRect, new Vector4(radius + 2, radius + 2, radius + 2, radius + 2));
             roundedCache[radius] = sp;
             return sp;
+        }
+
+        static Sprite stripesCache;
+
+        /// <summary>斜めストライプ(タイル用)。背景に薄く敷くとスポーツゲーらしくなる。</summary>
+        public static Sprite Stripes()
+        {
+            if (stripesCache != null) return stripesCache;
+            const int size = 64, period = 32;
+            var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+            for (int y = 0; y < size; y++)
+                for (int x = 0; x < size; x++)
+                {
+                    bool on = ((x + y) / (period / 2)) % 2 == 0;
+                    tex.SetPixel(x, y, new Color(1f, 1f, 1f, on ? 1f : 0f));
+                }
+            tex.Apply();
+            tex.wrapMode = TextureWrapMode.Repeat;
+            stripesCache = Sprite.Create(tex, new Rect(0, 0, size, size), Vector2.one * 0.5f, 64f);
+            return stripesCache;
+        }
+
+        /// <summary>薄いストライプのオーバーレイを敷く(クリックは透過)。</summary>
+        public static void AddStripeOverlay(GameObject target, Color color, float alpha)
+        {
+            var go = new GameObject("Stripes");
+            Place(go, target.transform, Vector2.zero, Vector2.one, new Vector2(3f, 3f), new Vector2(-3f, -3f));
+            var img = go.AddComponent<Image>();
+            img.sprite = Stripes();
+            img.type = Image.Type.Tiled;
+            img.color = new Color(color.r, color.g, color.b, alpha);
+            img.raycastTarget = false;
+        }
+
+        /// <summary>小さな情報チップ(角丸背景+太字テキスト)。</summary>
+        public static GameObject MakeChip(Transform parent, string text, Color bg, Color fg, int fontSize,
+            Vector2 anchorMin, Vector2 anchorMax, Vector2 offsetMin, Vector2 offsetMax)
+        {
+            var chip = MakePanel(parent, bg, 14, anchorMin, anchorMax, offsetMin, offsetMax);
+            MakeText(chip.transform, text, fontSize, fg, TextAnchor.MiddleCenter,
+                Vector2.zero, Vector2.one, new Vector2(10f, 0f), new Vector2(-10f, 0f), bold: true);
+            return chip;
         }
 
         /// <summary>縦グラデーションスプライト。</summary>
@@ -191,11 +235,13 @@ namespace BoatRace.UI
             return btn;
         }
 
-        /// <summary>見出しバナー(紺帯＋黄色アクセント＋縁取り文字)。</summary>
+        /// <summary>見出しバナー(紺帯＋黄色アクセント＋縁取り文字。tiltで少し傾けると躍動感)。</summary>
         public static GameObject MakeBanner(Transform parent, string title, int fontSize,
-            Vector2 anchorMin, Vector2 anchorMax)
+            Vector2 anchorMin, Vector2 anchorMax, float tilt = 0f)
         {
             var bar = MakePanel(parent, Navy, 14, anchorMin, anchorMax, Vector2.zero, Vector2.zero);
+            if (tilt != 0f) bar.GetComponent<RectTransform>().localEulerAngles = new Vector3(0f, 0f, tilt);
+            AddStripeOverlay(bar, Color.white, 0.06f);
             var accent = new GameObject("Accent");
             Place(accent, bar.transform, new Vector2(0f, 0f), new Vector2(0f, 1f),
                 new Vector2(6f, 6f), new Vector2(16f, -6f));
