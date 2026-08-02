@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-03-v318-report-anon-format"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-04-v319-qty-units-exceljs"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -33626,8 +33626,8 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
   const rowsOf = (stores) => {
     const out=[];
     (stores||[]).forEach(st=>{
-      const its=(st.items&&st.items.length)?st.items:[{id:st.id+":0",kind:"",freq:"",qty:"",weight:""}];
-      its.forEach(it=>out.push({ itemId:it.id, storeId:st.id, storeName:st.name||"", area:st.area||"", address:st.address||"", bizType:st.bizType||"", kind:it.kind||"", freq:it.freq||"", qty:it.qty||"", weight:it.weight||"", dustPhoto:st.dustPhoto||"", overallPhoto:st.overallPhoto||"" }));
+      const its=(st.items&&st.items.length)?st.items:[{id:st.id+":0",kind:"",freq:"",qty:"",weight:"",qtys:[]}];
+      its.forEach(it=>out.push({ itemId:it.id, storeId:st.id, storeName:st.name||"", area:st.area||"", address:st.address||"", bizType:st.bizType||"", kind:it.kind||"", freq:it.freq||"", qty:it.qty||"", weight:it.weight||"", qtys:((it.qtys&&it.qtys.length)?it.qtys:parseQtyList(it.qty)), dustPhoto:st.dustPhoto||"", overallPhoto:st.overallPhoto||"" }));
     });
     return out;
   };
@@ -33703,13 +33703,14 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
 
   // ===== 見積の集計・お客様報告Excel（v317）=====
   const _N = v => { const n=parseFloat(String(v==null?"":v).replace(/[^0-9.]/g,"")); return isNaN(n)?0:n; };
-  const _sub = pr => { if(!pr) return 0; const m=pr.method; if(m==="込") return _N(pr.unit); if(m==="別") return _N(pr.transport)+_N(pr.disposal); if(m==="定額") return _N(pr.flat); return _N(pr.unit)+_N(pr.transport)+_N(pr.disposal)+_N(pr.flat); };
-  const _base = pr => _sub(pr)+_N(pr&&pr.overhead);
-  const _hasPr = pr => !!pr && (_base(pr)>0 || (pr.method&&pr.method!==""));
-  const _taxIn = pr => { const b=_base(pr); return (pr&&pr.taxMode==="税込")?b:Math.round(b*1.1); };
-  const _cust = pr => Math.round(_taxIn(pr)*1.05);
+  const _qtyOf = (it,u)=>{ const list=(it&&it.qtys&&it.qtys.length)?it.qtys:parseQtyList(it&&it.qty); const f=(list||[]).find(x=>String(x.u)===String(u)); return f?_N(f.q):0; };
+  const _sub = (it,pr) => { if(!pr) return 0; const m=pr.method; if(m==="込") return _N(pr.unit); if(m==="別") return _N(pr.transport)+_N(pr.disposal)*_qtyOf(it,pr.disposalUnit); if(m==="定額") return _N(pr.flat); return _N(pr.unit)+_N(pr.transport)+_N(pr.disposal)+_N(pr.flat); };
+  const _base = (it,pr) => _sub(it,pr)+_N(pr&&pr.overhead);
+  const _hasPr = pr => !!pr && ((pr.method&&pr.method!=="") || _N(pr.unit) || _N(pr.transport) || _N(pr.disposal) || _N(pr.flat));
+  const _taxIn = (it,pr) => { const b=_base(it,pr); return (pr&&pr.taxMode==="税込")?b:Math.round(b*1.1); };
+  const _cust = (it,pr) => Math.round(_taxIn(it,pr)*1.05);
   const _storeItems = st => (st.items&&st.items.length)?st.items:[{id:st.id+":0"}];
-  const _stoAmt = (qv,st,fn)=>{ let sum=0,has=false; _storeItems(st).forEach(it=>{ const pr=(qv.prices||{})[it.id]; if(_hasPr(pr)){ sum+=fn(pr); has=true; } }); return has?sum:null; };
+  const _stoAmt = (qv,st,fn)=>{ let sum=0,has=false; _storeItems(st).forEach(it=>{ const pr=(qv.prices||{})[it.id]; if(_hasPr(pr)){ sum+=fn(it,pr); has=true; } }); return has?sum:null; };
   const quoteStats = (()=>{ const vs=p.vendors||[], sts=p.stores||[]; let pairs=0, lines=0; const vendSet=new Set();
     vs.forEach(qv=>{ let vHas=false; sts.forEach(st=>{ let sHas=false; _storeItems(st).forEach(it=>{ if(_hasPr((qv.prices||{})[it.id])){ lines++; sHas=true; } }); if(sHas){ pairs++; vHas=true; } }); if(vHas) vendSet.add(qv.id); });
     return { vendors: vs.length, answered: vs.filter(v=>v.status==="回答済").length, quotedVendors: vendSet.size, pairs, lines, stores: sts.length }; })();
@@ -33718,29 +33719,62 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
     const vs=p.vendors||[], sts=p.stores||[];
     if(!vs.length || !sts.length){ window.alert("業者と対象店舗を登録してから出力してください。"); return; }
     try{
-      const xm=await import("https://esm.sh/xlsx@0.18.5"); const xlsx=xm.default||xm;
+      const mod=await import("https://esm.sh/exceljs@4.4.0"); const ExcelJS=mod.default||mod;
       const AL=vs.map((_,i)=>_alias(i));
-      const fmt=(ws)=>{ const ref=ws["!ref"]; if(!ref)return; const R=xlsx.utils.decode_range(ref); for(let r=R.s.r;r<=R.e.r;r++){ for(let c=R.s.c;c<=R.e.c;c++){ const cell=ws[xlsx.utils.encode_cell({r,c})]; if(cell&&cell.t==="n") cell.z="#,##0"; } } };
-      const wb=xlsx.utils.book_new();
-      const h1=["番号","エリア","院名",...AL,"回答社数","最安業者","最安(1回)","最高(1回)","差額(最高-最安)"];
-      const rows1=[]; const totals=vs.map(()=>0);
+      const wb=new ExcelJS.Workbook();
+      const HF={type:"pattern",pattern:"solid",fgColor:{argb:"FF1F4E79"}};
+      const HFONT={bold:true,color:{argb:"FFFFFFFF"},size:10};
+      const MINF={type:"pattern",pattern:"solid",fgColor:{argb:"FFC6EFCE"}};
+      const ZEB={type:"pattern",pattern:"solid",fgColor:{argb:"FFF2F6FB"}};
+      const bd={style:"thin",color:{argb:"FFD0D7DE"}};
+      const BORDER={top:bd,left:bd,bottom:bd,right:bd};
+      const M={"込":"出来高(運搬・処分込)","別":"出来高(運搬固定+処分単価)","定額":"定額"};
+      // Sheet1 相見積比較
+      const ws1=wb.addWorksheet("相見積比較");
+      ws1.addRow(["相見積比較（お客様提示額・税込・DUSTALK手数料5%込／1回あたり）"]);
+      ws1.addRow(["会社："+(p.companyName||"")+"　案件："+(p.name||"")+"　対象店舗："+sts.length+"　業者："+vs.length+"　※業者名は伏せています（A社・B社…）"]);
+      ws1.addRow([]);
+      const hr1=ws1.addRow(["番号","エリア","院名",...AL,"回答社数","最安業者","最安(1回)","最高(1回)","差額(最高-最安)"]);
+      hr1.eachCell(c=>{c.fill=HF;c.font=HFONT;c.alignment={horizontal:"center"};c.border=BORDER;});
+      const totals=vs.map(()=>0);
       sts.forEach((st,i)=>{ const cells=vs.map(qv=>_stoAmt(qv,st,_cust)); cells.forEach((c,vi)=>{ if(c!=null) totals[vi]+=c; });
         const ans=cells.map((c,vi)=>({c,name:AL[vi]})).filter(x=>x.c!=null);
-        const min=ans.length?Math.min(...ans.map(x=>x.c)):null, max=ans.length?Math.max(...ans.map(x=>x.c)):null;
-        rows1.push([st.no||i+1, st.area||"", st.name||"", ...cells.map(c=>c==null?"":c), ans.length, (ans.find(x=>x.c===min)||{}).name||"", min==null?"":min, max==null?"":max, (min!=null&&max!=null)?(max-min):""]); });
-      const aoa1=[["相見積比較（お客様提示額・税込・DUSTALK手数料5%込／1回あたり）"],["会社："+(p.companyName||"")+"　案件："+(p.name||"")+"　対象店舗："+sts.length+"　業者："+vs.length+"　※業者名は伏せています（A社・B社…）"],[],h1,...rows1,[],["","","合計（全店舗）",...totals,"","","","",""]];
-      const ws1=xlsx.utils.aoa_to_sheet(aoa1); ws1["!cols"]=[{wch:6},{wch:11},{wch:22},...vs.map(()=>({wch:12})),{wch:8},{wch:10},{wch:12},{wch:12},{wch:14}]; fmt(ws1); xlsx.utils.book_append_sheet(wb,ws1,"相見積比較");
-      const M={"込":"出来高(運搬・処分込)","別":"出来高(運搬固定+処分単価)","定額":"定額"};
-      const h2=["業者","番号","エリア","院名","品目","方式","単価","運搬費(固)","処分単価","処分単位","諸経費","見積(税抜)","税込","お客様提示","回収条件・備考"];
-      const rows2=[]; vs.forEach((qv,vi)=>{ sts.forEach((st,i)=>{ _storeItems(st).forEach(it=>{ const pr=(qv.prices||{})[it.id]; if(!_hasPr(pr))return;
-        rows2.push([AL[vi], st.no||i+1, st.area||"", st.name||"", it.kind||"", M[pr.method]||pr.method||"", pr.unit?_N(pr.unit):"", pr.transport?_N(pr.transport):"", pr.disposal?_N(pr.disposal):"", pr.disposalUnit||pr.unitType||"", pr.overhead?_N(pr.overhead):"", _base(pr), _taxIn(pr), _cust(pr), pr.condition||pr.note||""]); }); }); });
-      const ws2=xlsx.utils.aoa_to_sheet([["内訳比較（業者×拠点×品目）　金額は1回あたり　※業者名は伏せています"],[],h2,...rows2]); ws2["!cols"]=[{wch:8},{wch:5},{wch:10},{wch:20},{wch:16},{wch:22},{wch:9},{wch:10},{wch:9},{wch:8},{wch:9},{wch:11},{wch:11},{wch:12},{wch:34}]; fmt(ws2); xlsx.utils.book_append_sheet(wb,ws2,"内訳比較");
-      const h3=["業者","状況","税区分(代表)","見積店舗数","お客様提示合計(1回)","連絡事項"];
-      const rows3=vs.map((qv,vi)=>{ let cnt=0,tot=0; const taxSet=new Set(); sts.forEach(st=>{ const a=_stoAmt(qv,st,_cust); if(a!=null){cnt++;tot+=a;} _storeItems(st).forEach(it=>{const pr=(qv.prices||{})[it.id]; if(_hasPr(pr)&&pr.taxMode)taxSet.add(pr.taxMode);}); });
-        return [AL[vi], qv.status||"", [...taxSet].join("/")||"税抜", cnt, tot, qv.vendorNote||""]; });
-      const ws3=xlsx.utils.aoa_to_sheet([["業者サマリー　※業者名は伏せています（A社=どの業者かはMyDesk画面の対応表参照）"],[],h3,...rows3]); ws3["!cols"]=[{wch:8},{wch:8},{wch:12},{wch:10},{wch:16},{wch:40}]; fmt(ws3); xlsx.utils.book_append_sheet(wb,ws3,"業者サマリー");
-      const fn=(p.companyName||p.name||"見積").split("/").join("_")+"_お客様報告.xlsx";
-      xlsx.writeFile(wb, fn);
+        const mn=ans.length?Math.min(...ans.map(x=>x.c)):null, mx=ans.length?Math.max(...ans.map(x=>x.c)):null;
+        const row=ws1.addRow([st.no||i+1, st.area||"", st.name||"", ...cells.map(c=>c==null?"":c), ans.length, (ans.find(x=>x.c===mn)||{}).name||"", mn==null?"":mn, mx==null?"":mx, (mn!=null&&mx!=null)?(mx-mn):""]);
+        row.eachCell({includeEmpty:true},(c,cn)=>{ c.border=BORDER; if(cn>3&&typeof c.value==="number") c.numFmt="#,##0"; if(i%2===1&&c.value!=null&&!c.fill) c.fill=ZEB; });
+        cells.forEach((c,vi)=>{ if(c!=null&&c===mn){ const cc=row.getCell(4+vi); cc.fill=MINF; cc.font={bold:true,color:{argb:"FF166534"}}; } });
+      });
+      ws1.addRow([]);
+      const tr=ws1.addRow(["","","合計（全店舗）",...totals,"","","","",""]); tr.eachCell({includeEmpty:true},(c,cn)=>{ c.font={bold:true}; if(cn>3&&typeof c.value==="number")c.numFmt="#,##0"; });
+      ws1.columns=[{width:6},{width:11},{width:22},...vs.map(()=>({width:12})),{width:9},{width:12},{width:12},{width:12},{width:14}];
+      ws1.views=[{state:"frozen",xSplit:3,ySplit:4}];
+      // Sheet2 内訳比較
+      const ws2=wb.addWorksheet("内訳比較");
+      ws2.addRow(["内訳比較（業者×拠点×品目）　金額は1回あたり　※業者名は伏せています"]); ws2.addRow([]);
+      const hr2=ws2.addRow(["業者","番号","エリア","院名","品目","方式","単価","運搬費(固)","処分単価","処分単位","数量","諸経費","見積(税抜)","税込","お客様提示","回収条件・備考"]);
+      hr2.eachCell(c=>{c.fill=HF;c.font=HFONT;c.alignment={horizontal:"center"};c.border=BORDER;});
+      let rc=0;
+      vs.forEach((qv,vi)=>{ sts.forEach((st,i)=>{ _storeItems(st).forEach(it=>{ const pr=(qv.prices||{})[it.id]; if(!_hasPr(pr))return;
+        const qy=(pr.method==="別")?_qtyOf(it,pr.disposalUnit):"";
+        const row=ws2.addRow([AL[vi], st.no||i+1, st.area||"", st.name||"", it.kind||"", M[pr.method]||pr.method||"", pr.unit?_N(pr.unit):"", pr.transport?_N(pr.transport):"", pr.disposal?_N(pr.disposal):"", pr.disposalUnit||"", qy||"", pr.overhead?_N(pr.overhead):"", _base(it,pr), _taxIn(it,pr), _cust(it,pr), pr.condition||pr.note||""]);
+        row.eachCell({includeEmpty:true},(c,cn)=>{ c.border=BORDER; if([7,8,9,11,12,13,14,15].indexOf(cn)>=0&&typeof c.value==="number")c.numFmt="#,##0"; if(rc%2===1&&!c.fill)c.fill=ZEB; }); rc++;
+      }); }); });
+      ws2.columns=[{width:8},{width:5},{width:10},{width:20},{width:16},{width:22},{width:9},{width:10},{width:9},{width:8},{width:7},{width:9},{width:11},{width:11},{width:12},{width:34}];
+      ws2.views=[{state:"frozen",ySplit:3}];
+      // Sheet3 業者サマリー
+      const ws3=wb.addWorksheet("業者サマリー");
+      ws3.addRow(["業者サマリー　※業者名は伏せています（A社=どの業者かはMyDesk画面の対応表参照）"]); ws3.addRow([]);
+      const hr3=ws3.addRow(["業者","状況","税区分(代表)","見積店舗数","お客様提示合計(1回)","連絡事項"]);
+      hr3.eachCell(c=>{c.fill=HF;c.font=HFONT;c.alignment={horizontal:"center"};c.border=BORDER;});
+      vs.forEach((qv,vi)=>{ let cnt=0,tot=0; const taxSet=new Set(); sts.forEach(st=>{ const a=_stoAmt(qv,st,_cust); if(a!=null){cnt++;tot+=a;} _storeItems(st).forEach(it=>{const pr=(qv.prices||{})[it.id]; if(_hasPr(pr)&&pr.taxMode)taxSet.add(pr.taxMode);}); });
+        const row=ws3.addRow([AL[vi], qv.status||"", [...taxSet].join("/")||"税抜", cnt, tot, qv.vendorNote||""]);
+        row.eachCell({includeEmpty:true},(c,cn)=>{ c.border=BORDER; if([4,5].indexOf(cn)>=0&&typeof c.value==="number")c.numFmt="#,##0"; if(vi%2===1&&!c.fill)c.fill=ZEB; });
+      });
+      ws3.columns=[{width:8},{width:9},{width:12},{width:11},{width:18},{width:42}];
+      ws3.views=[{state:"frozen",ySplit:3}];
+      const buf=await wb.xlsx.writeBuffer();
+      const blob=new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+      const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download=(p.companyName||p.name||"見積").split("/").join("_")+"_お客様報告.xlsx"; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
     }catch(e){ window.alert("Excel出力に失敗しました: "+(e&&e.message||e)); }
   };
 
@@ -33934,14 +33968,12 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
         <div style={{marginBottom:"1rem"}}>
           <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap",alignItems:"center",marginBottom:"0.45rem"}}>
             <span style={{fontSize:"0.8rem",fontWeight:800,color:C.accentDark,background:C.accentBg,padding:"0.35rem 0.75rem",borderRadius:8}}>📥 見積 {quoteStats.pairs}件（{quoteStats.quotedVendors}/{quoteStats.vendors}業者・{quoteStats.lines}明細）</span>
-            <button onClick={()=>setShowCompare(v=>!v)} style={{display:"inline-flex",alignItems:"center",gap:"0.4rem",padding:"0.45rem 0.9rem",borderRadius:8,border:`1.5px solid ${C.accent}`,background:showCompare?C.accent:C.accentBg,color:showCompare?"white":C.accentDark,fontWeight:800,fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit"}}>{showCompare?"▲ 比較表を閉じる":"📊 見積比較表（どの業者がどこにいくら／未回答）"}</button>
             <button onClick={exportCustomerReport} style={{display:"inline-flex",alignItems:"center",gap:"0.4rem",padding:"0.45rem 0.9rem",borderRadius:8,border:`1.5px solid #16a34a`,background:"#f0fdf4",color:"#166534",fontWeight:800,fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit"}}>📊 お客様報告用Excelを出力</button>
           </div>
           <div style={{display:"flex",gap:"0.4rem 0.9rem",flexWrap:"wrap",alignItems:"center",padding:"0.45rem 0.7rem",background:C.bg,border:`1px solid ${C.borderLight}`,borderRadius:8,fontSize:"0.7rem",color:C.textSub,marginBottom:"0.5rem"}}>
             <span style={{fontWeight:800}}>🔒 匿名対応表（お客様Excelは伏せ名で出力）：</span>
             {(p.vendors||[]).map((qv,i)=>(<span key={qv.id}><b style={{color:C.accentDark}}>{i<26?String.fromCharCode(65+i)+"社":"第"+(i+1)+"社"}</b>＝{qv.vendorName||"—"}</span>))}
           </div>
-          {showCompare && <ComparisonMatrix stores={p.stores||[]} vlist={p.vendors||[]} vendorRows={vendorRows} C={C}/>}
         </div>
       )}
       {/* ===== 対象店舗 ===== */}
@@ -34159,6 +34191,8 @@ function StoreGroups({ stores, C, rid, mapsUrl, setStores }){
   );
 }
 
+// 数量文字列（例「約100kg/箇所」）を [{q,u}] に解釈（旧データ互換）
+const parseQtyList = s => { const t=String(s==null?"":s); if(!t.trim()) return []; const units=["立米","㎥","m3","kg","㎏","袋","個","台","本","箱"]; let num=""; for(let i=0;i<t.length;i++){ const ch=t[i]; if((ch>="0"&&ch<="9")||ch===".") num+=ch; else if(num) break; } if(!num) return []; let u=""; for(const uu of units){ if(t.indexOf(uu)>=0){ u=uu; break; } } u=u.replace("㎏","kg").replace("㎥","立米").replace("m3","立米"); return [{q:num,u:u}]; };
 // 対象業者カード（折りたたみ・見積表[出来高/定額]・一括・ポータル・業者情報・通話メモ）
 function VendorQuoteCard({ qv, rows, stores=[], totalStores=0, showAll=false, onToggleAll, vrec, C, rid, mapsUrl, portalBusy, PORTAL_ON, onChange, onRemove, onIssue, onCopy, onFetch, onAddNote }){
   const REQ=["未依頼","依頼済","回答済","辞退"];
@@ -34182,7 +34216,12 @@ function VendorQuoteCard({ qv, rows, stores=[], totalStores=0, showAll=false, on
   const lineTotal=pr=>baseAmt(pr);
   const taxIn=pr=>{ const b=baseAmt(pr); return (pr&&pr.taxMode==="税込")?b:Math.round(b*(1+TAX_RATE)); };
   const custAmt=pr=>Math.round(taxIn(pr)*(1+DUSTALK_FEE));
-  const total=rows.reduce((s,r)=>s+custAmt(prices[r.itemId]),0)+(qv.extraLines||[]).reduce((s,l)=>s+N(l.amount),0);
+  const qtyFor=(r,u)=>{ const f=((r&&r.qtys)||[]).find(x=>String(x.u)===String(u)); return f?N(f.q):0; };
+  const subOf=(r,pr)=>{ if(!pr)return 0; const m=pr.method; if(m==="込")return N(pr.unit); if(m==="別")return N(pr.transport)+N(pr.disposal)*qtyFor(r,pr.disposalUnit); if(m==="定額")return N(pr.flat); return N(pr.unit)+N(pr.transport)+N(pr.disposal)+N(pr.flat); };
+  const baseOf=(r,pr)=>subOf(r,pr)+N(pr&&pr.overhead);
+  const taxInOf=(r,pr)=>{ const b=baseOf(r,pr); return (pr&&pr.taxMode==="税込")?b:Math.round(b*(1+TAX_RATE)); };
+  const custOf=(r,pr)=>Math.round(taxInOf(r,pr)*(1+DUSTALK_FEE));
+  const total=rows.reduce((s,r)=>s+custOf(r,prices[r.itemId]),0)+(qv.extraLines||[]).reduce((s,l)=>s+N(l.amount),0);
   const storeIds=[...new Set(rows.map(r=>r.storeId))];
   const pricedStores=new Set(rows.filter(r=>{const pr=prices[r.itemId]||{};return N(pr.unit)||N(pr.flat)||N(pr.amount)||(pr.method&&pr.method!=="");}).map(r=>r.storeId));
   const checkedIds=Object.keys(checked).filter(k=>checked[k]);
@@ -34408,20 +34447,20 @@ function VendorQuoteCard({ qv, rows, stores=[], totalStores=0, showAll=false, on
                 <span style={{width:18,flex:"none"}}><input type="checkbox" checked={!!checked[r.itemId]} onChange={e=>setChecked({...checked,[r.itemId]:e.target.checked})} style={{width:14,height:14}}/></span>
                 <div style={{width:150,flex:"none",minWidth:0}}>
                   <div style={{fontSize:"0.72rem",fontWeight:600,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.storeName||"（拠点）"}{r.address?<a href={mapsUrl(r.address)} target="_blank" rel="noreferrer" style={{marginLeft:4,textDecoration:"none"}} title="Googleマップ">📍</a>:null}</div>
-                  <div style={{fontSize:"0.62rem",color:C.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.kind||"（品目）"}{r.freq?` / ${r.freq}`:""}</div>
+                  <div style={{fontSize:"0.62rem",color:C.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.kind||"（品目）"}{r.freq?` / ${r.freq}`:""}{(r.qtys&&r.qtys.length)?(" ／ "+r.qtys.map(q=>q.q+q.u).join("・")):""}</div>
                 </div>
                 <select value={m} onChange={e=>setPrice(r.itemId,{method:e.target.value})} style={{width:96,flex:"none",padding:"0.25rem 0.1rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.64rem",fontFamily:"inherit",background:"white"}}><option value=""></option>{METHODS.map(x=><option key={x.v} value={x.v}>{x.t}</option>)}</select>
                 <span style={CcolNum}>{ok("unit")?<input {...cellProps(ri,0)} value={pr.unit||""} onChange={e=>setPrice(r.itemId,{unit:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="単価" style={cs(ri,0,NUM)}/>:null}</span>
                 <span style={{width:54,flex:"none"}}>{ok("unitType")?<input {...cellProps(ri,1)} value={pr.unitType||""} onChange={e=>setPrice(r.itemId,{unitType:e.target.value})} placeholder="立米/kg" style={cs(ri,1,{...NUM,textAlign:"center"})}/>:null}</span>
                 <span style={CcolNum}>{ok("transport")?<input {...cellProps(ri,2)} value={pr.transport||""} onChange={e=>setPrice(r.itemId,{transport:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="運搬固定" style={cs(ri,2,NUM)}/>:null}</span>
                 <span style={CcolNum}>{ok("disposal")?<input {...cellProps(ri,3)} value={pr.disposal||""} onChange={e=>setPrice(r.itemId,{disposal:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="処分単価" style={cs(ri,3,NUM)}/>:null}</span>
-                <span style={{width:54,flex:"none"}}>{ok("disposalUnit")?<input {...cellProps(ri,4)} value={pr.disposalUnit||""} onChange={e=>setPrice(r.itemId,{disposalUnit:e.target.value})} placeholder="立米/kg" style={cs(ri,4,{...NUM,textAlign:"center"})}/>:null}</span>
+                <span style={{width:54,flex:"none"}}>{ok("disposalUnit")?<select value={pr.disposalUnit||""} onChange={e=>setPrice(r.itemId,{disposalUnit:e.target.value})} title="店舗の数量に登録した単位から選択" style={{width:"100%",boxSizing:"border-box",padding:"0.22rem 0.05rem",borderRadius:5,border:`1px solid ${((r.qtys||[]).length? C.border : "#fca5a5")}`,fontSize:"0.6rem",fontFamily:"inherit",background:"white"}}><option value="">単位</option>{(r.qtys||[]).map((qq,qi)=><option key={qi} value={qq.u}>{qq.u||"(未設定)"}</option>)}</select>:null}</span>
                 <span style={{width:78,flex:"none"}}>{ok("flat")?<input {...cellProps(ri,5)} value={pr.flat||""} onChange={e=>setPrice(r.itemId,{flat:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="定額" style={cs(ri,5,NUM)}/>:null}</span>
                 <span style={CcolNum}><input {...cellProps(ri,6)} value={pr.overhead||""} onChange={e=>setPrice(r.itemId,{overhead:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="諸経費" style={cs(ri,6,NUM)}/></span>
                 <select value={pr.taxMode||"税抜"} onChange={e=>setPrice(r.itemId,{taxMode:e.target.value})} style={{width:58,flex:"none",padding:"0.25rem 0.05rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.64rem",fontFamily:"inherit",background:"white"}}>{TAXES.map(t=><option key={t} value={t}>{t}</option>)}</select>
-                <span style={{width:80,flex:"none",...AUTO}}>{baseAmt(pr)?Math.round(baseAmt(pr)).toLocaleString():""}</span>
-                <span style={{width:80,flex:"none",...AUTO,color:C.textSub}}>{baseAmt(pr)?Math.round(taxIn(pr)).toLocaleString():""}</span>
-                <span style={{width:96,flex:"none",...AUTO,color:C.accentDark,fontWeight:800}}>{baseAmt(pr)?("¥"+Math.round(custAmt(pr)).toLocaleString()):""}</span>
+                <span style={{width:80,flex:"none",...AUTO}}>{baseOf(r,pr)?Math.round(baseOf(r,pr)).toLocaleString():""}</span>
+                <span style={{width:80,flex:"none",...AUTO,color:C.textSub}}>{baseOf(r,pr)?Math.round(taxInOf(r,pr)).toLocaleString():""}</span>
+                <span style={{width:96,flex:"none",...AUTO,color:C.accentDark,fontWeight:800}}>{baseOf(r,pr)?("¥"+Math.round(custOf(r,pr)).toLocaleString()):""}</span>
                 <span style={{width:150,flex:"none"}}><input {...cellProps(ri,7)} value={pr.condition||pr.note||""} onChange={e=>setPrice(r.itemId,{condition:e.target.value})} placeholder="回収条件・備考" style={cs(ri,7,{width:"100%",boxSizing:"border-box",padding:"0.25rem 0.3rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit"})}/></span>
               </div>
             );})}
@@ -34481,18 +34520,22 @@ function StoreRow({ st, C, rid, mapsUrl, onChange, onDelete }){
           </div>
           <div style={{border:`1px solid ${C.borderLight}`,borderRadius:6,overflow:"hidden"}}>
             <div style={{display:"flex",gap:"0.3rem",padding:"0.25rem 0.4rem",background:C.bg,fontSize:"0.6rem",fontWeight:700,color:C.textSub}}>
-              <span style={{flex:2}}>排出品目</span><span style={{flex:1}}>回収頻度</span><span style={{flex:1}}>数量</span><span style={{flex:1}}>重量</span><span style={{width:18}}/>
+              <span style={{flex:2}}>排出品目</span><span style={{flex:1}}>回収頻度</span><span style={{flex:3}}>数量（単位別・複数可）</span><span style={{width:18}}/>
             </div>
             {(st.items||[]).map(it=>{ const setI=patch=>setItems((st.items||[]).map(x=>x.id===it.id?{...x,...patch}:x)); return (
               <div key={it.id} style={{display:"flex",gap:"0.3rem",padding:"0.25rem 0.4rem",borderTop:`1px solid ${C.borderLight}`,alignItems:"center"}}>
                 <input value={it.kind||""} onChange={e=>setI({kind:e.target.value})} placeholder="可燃/不燃/古紙" style={{flex:2,minWidth:0,padding:"0.25rem 0.35rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit"}}/>
                 <input value={it.freq||""} onChange={e=>setI({freq:e.target.value})} placeholder="週2回" style={{flex:1,minWidth:0,padding:"0.25rem 0.35rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit"}}/>
-                <input value={it.qty||""} onChange={e=>setI({qty:e.target.value})} placeholder="2袋" style={{flex:1,minWidth:0,padding:"0.25rem 0.35rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit"}}/>
-                <input value={it.weight||""} onChange={e=>setI({weight:e.target.value})} placeholder="5kg" style={{flex:1,minWidth:0,padding:"0.25rem 0.35rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit"}}/>
+                <div style={{flex:3,display:"flex",flexWrap:"wrap",gap:"0.25rem",alignItems:"center"}}>
+                  {(function(){ const ql=(it.qtys&&it.qtys.length)?it.qtys:parseQtyList(it.qty); const setQ=(qi,patch)=>setI({qtys:ql.map((x,j)=>j===qi?{...x,...patch}:x)}); return (<React.Fragment>
+                  {ql.map((qq,qi)=>(<span key={qi} style={{display:"inline-flex",alignItems:"center",gap:1,background:"white",border:`1px solid ${C.border}`,borderRadius:5,padding:"1px 3px"}}><input value={qq.q||""} onChange={e=>setQ(qi,{q:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="数量" style={{width:42,border:"none",outline:"none",fontSize:"0.7rem",fontFamily:"inherit",textAlign:"right"}}/><input value={qq.u||""} onChange={e=>setQ(qi,{u:e.target.value})} placeholder="kg" style={{width:38,border:"none",outline:"none",fontSize:"0.7rem",fontFamily:"inherit"}}/><button onClick={()=>setI({qtys:ql.filter((x,j)=>j!==qi)})} style={{border:"none",background:"none",color:"#dc2626",cursor:"pointer",fontFamily:"inherit",fontSize:"0.7rem",lineHeight:1}}>×</button></span>))}
+                  <button onClick={()=>setI({qtys:[...ql,{q:"",u:""}]})} style={{border:`1px dashed ${C.border}`,background:C.bg,color:C.accent,borderRadius:5,padding:"1px 6px",fontSize:"0.66rem",cursor:"pointer",fontFamily:"inherit"}}>＋数量</button>
+                  </React.Fragment>); })()}
+                </div>
                 <button onClick={()=>setItems((st.items||[]).filter(x=>x.id!==it.id))} style={{width:18,border:"none",background:"none",color:"#dc2626",cursor:"pointer",fontFamily:"inherit"}}>×</button>
               </div>
             );})}
-            <button onClick={()=>setItems([...(st.items||[]),{id:rid("it"),kind:"",freq:"",qty:"",weight:"",note:""}])} style={{width:"100%",padding:"0.3rem",border:"none",borderTop:`1px solid ${C.borderLight}`,background:C.bg,color:C.accent,fontWeight:700,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit"}}>＋ 品目を追加</button>
+            <button onClick={()=>setItems([...(st.items||[]),{id:rid("it"),kind:"",freq:"",qty:"",weight:"",note:"",qtys:[]}])} style={{width:"100%",padding:"0.3rem",border:"none",borderTop:`1px solid ${C.borderLight}`,background:C.bg,color:C.accent,fontWeight:700,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit"}}>＋ 品目を追加</button>
           </div>
           <div style={{display:"flex",gap:"0.8rem",marginTop:"0.6rem",flexWrap:"wrap"}}>
             <PhotoSlot label="🗑 ダストボックス/ゴミ庫" url={st.dustPhoto} onSet={u=>set({dustPhoto:u})} C={C} storeId={st.id}/>
