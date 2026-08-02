@@ -8,22 +8,26 @@ namespace BoatRace.Physics
     {
         public const float BaseResistance = 0.055f;
 
-        /// <summary>速度に対する減速量 (m/s^2)。</summary>
-        public static float ComputeDrag(float speed, VenueData venue)
+        /// <summary>会場の水質・波による抵抗倍率(基準1.0)。STの逆算にも使う。</summary>
+        public static float ResistanceFactor(VenueData venue)
         {
-            float resistance = BaseResistance;
-
+            float f = 1f;
             // 海水は浮力が高く抵抗わずかに減、汽水は中間
             switch (venue.waterType)
             {
-                case WaterType.Seawater: resistance *= 0.96f; break;
-                case WaterType.Brackish: resistance *= 0.98f; break;
-                case WaterType.Tidal:    resistance *= 0.97f; break;
+                case WaterType.Seawater: f *= 0.96f; break;
+                case WaterType.Brackish: f *= 0.98f; break;
+                case WaterType.Tidal:    f *= 0.97f; break;
             }
-
             // 波が高いほど抵抗増
-            resistance *= 1f + venue.waveHeight * 2.5f;
+            f *= 1f + venue.waveHeight * 2.5f;
+            return f;
+        }
 
+        /// <summary>速度に対する減速量 (m/s^2)。</summary>
+        public static float ComputeDrag(float speed, VenueData venue)
+        {
+            float resistance = BaseResistance * ResistanceFactor(venue);
             return speed * resistance + speed * speed * 0.0035f;
         }
 

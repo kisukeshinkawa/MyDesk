@@ -10,6 +10,8 @@ namespace BoatRace.AI
     /// </summary>
     public class StartAI
     {
+        public const float HoldSpeed = 1.6f; // 起こし前の待機速度(モーター停止禁止)
+
         public float targetST;     // この艇が狙うST(選手スキルから生成)
         public float goTime;       // 大時計上の全開開始時刻(負値)
         float runTime;
@@ -18,25 +20,40 @@ namespace BoatRace.AI
         /// actualDistance = 起こし位置からラインまでの実距離。
         /// 待機行動で前へ流れた分だけ助走が浅くなる(モーター停止禁止のジレンマ)。
         /// </summary>
-        public void Plan(BoatStats stats, int course, System.Random rng, float actualDistance)
+        public void Plan(BoatStats stats, int course, System.Random rng, float actualDistance,
+            float venueDragFactor = 1f)
         {
-            // 目標ST: 上手い選手ほど攻める(0.10前後)。慎重派は0.15〜0.20
-            targetST = Mathf.Max(0.05f, stats.player.ComputeST(rng, pressure: course >= 5 ? 0.2f : 0f));
+            // 目標ST: 実戦の平均.15前後。上手い選手ほど攻める、Fを恐れて.08より早くは狙わない
+            targetST = Mathf.Clamp(
+                0.04f + stats.player.ComputeST(rng, pressure: course >= 5 ? 0.2f : 0f),
+                0.08f, 0.35f);
 
             // 助走が浅いと加速しきれずST精度も落ちる
             float standard = WaitingSystem.ApproachDistance(course);
             if (actualDistance < standard * 0.8f)
                 targetST += (standard * 0.8f - actualDistance) * 0.004f; // 深イン化ペナルティ
 
-            runTime = StartSystem.EstimateRunTime(actualDistance, stats.EffectiveAcceleration, stats.EffectiveTopSpeed,
-                initialSpeed: 1.1f);
-            goTime = targetST - runTime;
+            // 「いつ握るか」の逆算。握るまでは待機速度で前進し続けて助走が
+            // 減っていくため、固定点反復で自己整合させる
+            goTime = -6f;
+            for (int iter = 0; iter < 4; iter++)
+            {
+                float distAtGo = actualDistance - HoldSpeed * (goTime + 12f);
+                runTime = StartSystem.EstimateRunTime(
+                    Mathf.Max(20f, distAtGo), stats.EffectiveAcceleration, stats.EffectiveTopSpeed,
+                    initialSpeed: HoldSpeed, dragFactor: venueDragFactor);
+                goTime = Mathf.Clamp(targetST - runTime, -11.5f, -1f);
+            }
         }
 
-        /// <summary>助走中のスロットル。goTimeまで待機微速→以降全開。</summary>
-        public float GetThrottle(float clock)
+        /// <summary>
+        /// 助走中のスロットル。goTimeまで待機速度(約1.6m/s)を保持→以降全開。
+        /// ※固定スロットルだと艇は際限なく加速してしまうため速度制御にする
+        /// </summary>
+        public float GetThrottle(float clock, float currentSpeed)
         {
-            if (clock < goTime) return 0.12f;   // 待機中の微速前進
+            if (clock < goTime)
+                return currentSpeed > HoldSpeed ? 0f : 0.18f; // 速度保持
             return 1f;
         }
 

@@ -273,7 +273,8 @@ namespace BoatRace.Core
                     e.Steer = 0f;
 
                     float actualDist = TrackPath.StartLineX - e.Position.x;
-                    boats[i].startAI.Plan(statsList[i], bs.course, rng, actualDist);
+                    boats[i].startAI.Plan(statsList[i], bs.course, rng, actualDist,
+                        WaterPhysics.ResistanceFactor(venue));
                     boats[i].SyncTransform();
                 }
                 SetPhase(RacePhase.Approach);
@@ -295,7 +296,7 @@ namespace BoatRace.Core
                 allCrossed = false;
 
                 float laneZ = WaitingSystem.LaneZ(bs.course);
-                b.engine.Throttle = b.startAI.GetThrottle(state.clock);
+                b.engine.Throttle = b.startAI.GetThrottle(state.clock, b.engine.Speed);
                 b.engine.Steer = b.startAI.GetSteer(b.engine, laneZ);
 
                 float prevX = b.engine.Position.x - b.engine.Forward.x * b.engine.Speed * dt;

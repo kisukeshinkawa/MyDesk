@@ -32,6 +32,37 @@ namespace BoatRace.Core
             BuildPitStalls(race);
             BuildWindNets();
             BuildDangerLights();
+            BuildDistanceMarkers();
+        }
+
+        // ---- 距離標識ポール(スタートラインまで 200/150/100/80/45/5m) ----
+        static void BuildDistanceMarkers()
+        {
+            // 実物: 内側に縞模様のポールが並び、選手が助走距離の目安にする
+            (float dist, Color stripe)[] markers =
+            {
+                (200f, new Color(0.2f, 0.2f, 0.2f)),   // 黒(ダッシュ勢の目安)
+                (150f, new Color(1f, 0.5f, 0f)),        // オレンジ(見透し線)
+                (100f, new Color(0.95f, 0.8f, 0.1f)),   // 黄
+                (80f,  new Color(0.95f, 0.8f, 0.1f)),   // 黄
+                (45f,  new Color(0.9f, 0.15f, 0.1f)),   // 赤
+                (5f,   new Color(0.9f, 0.15f, 0.1f)),   // 赤
+            };
+            foreach (var (dist, stripe) in markers)
+            {
+                float x = TrackPath.StartLineX - dist;
+                // 内側(マーク寄り)にポール
+                for (int seg = 0; seg < 4; seg++)
+                {
+                    var band = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                    band.name = $"Marker{dist}m";
+                    band.transform.SetParent(root, false);
+                    band.transform.position = new Vector3(x, 0.5f + seg * 0.8f, -5f);
+                    band.transform.localScale = new Vector3(0.45f, 0.4f, 0.45f);
+                    Paint(band, seg % 2 == 0 ? stripe : Color.white);
+                }
+                MakeText3D($"{dist:F0}", new Vector3(x, 4.2f, -5f), Quaternion.identity, 1.6f, Color.white);
+            }
         }
 
         // ---- 外周壁 ----

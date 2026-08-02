@@ -235,7 +235,18 @@ namespace BoatRace.UI
             var s = NewScreen("ResultScreen");
             UiKit.MakeFullscreenGradient(s.transform, UiKit.Navy, new Color(0.02f, 0.06f, 0.16f));
 
-            UiKit.MakeText(s.transform, $"レース結果　{race.venue.name}　決まり手: {race.kimarite}", 40, UiKit.Yellow,
+            var valid = new List<int>();
+            foreach (int idx2 in race.state.standings)
+            {
+                var b2 = race.state.Get(idx2);
+                if (b2.startFlag != StartFlag.Flying && b2.startFlag != StartFlag.Late)
+                    valid.Add(idx2);
+            }
+
+            string header = valid.Count == 0
+                ? $"レース結果　{race.venue.name}　レース不成立(全艇返還)"
+                : $"レース結果　{race.venue.name}　決まり手: {race.kimarite}";
+            UiKit.MakeText(s.transform, header, 40, UiKit.Yellow,
                 TextAnchor.MiddleCenter,
                 new Vector2(0f, 0.89f), new Vector2(1f, 0.99f), Vector2.zero, Vector2.zero, bold: true, shadow: true);
 
@@ -272,13 +283,6 @@ namespace BoatRace.UI
             }
 
             // 3連単風の払戻表示(F/L欠場艇は除外した有効着順から)
-            var valid = new List<int>();
-            foreach (int idx2 in race.state.standings)
-            {
-                var b2 = race.state.Get(idx2);
-                if (b2.startFlag != StartFlag.Flying && b2.startFlag != StartFlag.Late)
-                    valid.Add(idx2);
-            }
             if (valid.Count >= 3)
             {
                 int a = valid[0], b = valid[1], c = valid[2];
