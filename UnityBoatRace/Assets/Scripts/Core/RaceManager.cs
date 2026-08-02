@@ -39,7 +39,11 @@ namespace BoatRace.Core
         public event Action<int, int, int> OnMarkRounded;   // boatIndex, markNo(1/2), lap
         public event Action<int> OnLeaderChanged;           // 新リーダーboatIndex
         public event Action<int, int> OnBoatFinished;       // boatIndex, place
+        public event Action OnPitOpen;                      // T-100 ピットアウト信号
+        public event Action OnFinalLap;                     // 最終周回突入
         public event Action OnRaceFinished;
+
+        [NonSerialized] public string kimarite = "-";       // 決まり手
 
         System.Random rng;
         PreRaceChoreography choreo;
@@ -49,6 +53,9 @@ namespace BoatRace.Core
         bool[] inTurn1, inTurn2;
         int lastLeader = -1;
         int finishCounter;
+        int firstTurnLeader = -1;   // 1周1Mを先マイした艇(決まり手判定用)
+        bool finalLapFired;
+        bool pitOpenFired;
 
         void Awake()
         {
@@ -87,14 +94,21 @@ namespace BoatRace.Core
             // ピット離れ・進入コース
             pitDelays = new float[BoatCount];
             for (int i = 0; i < BoatCount; i++)
-                pitDelays[i] = PitExitSystem.ExitDelay(statsList[i], rng);
+                pitDelays[i] = PitExitSystem.ExitDelay(statsList[i], i, rng);
             int[] courses = WaitingSystem.AssignCourses(statsList, pitDelays, venueId, rng);
 
             state = new RaceState();
-            state.clock = -55f; // ピット離れ〜待機行動〜スタートまで55秒(ダッシュ勢の深い進入対応)
+            // 発走シーケンス仕様書のタイムライン: T-105係留 → T-100ピット離れ →
+            // 進入攻防 → T-12黄針始動=物理引き継ぎ → T=0スタート
+            state.clock = -105f;
             armed = false;
             finishCounter = 0;
             lastLeader = -1;
+            firstTurnLeader = -1;
+            finalLapFired = false;
+            pitOpenFired = false;
+            kimarite = "-";
+            VenueBuilder.SetFinalLamp(false);
             startProgressOffset = new float[BoatCount];
             prevS = new float[BoatCount];
             inTurn1 = new bool[BoatCount];
@@ -197,46 +211,77 @@ namespace BoatRace.Core
             }
         }
 
-        // ---- ピット離れ: 事前計算経路に沿って待機水面へ(左回り) ----
+        // ---- ピット係留(T-105〜-100)→ピット離れ: 経路に沿って待機水面へ(左回り) ----
         void StepPitOut(float dt)
         {
+            if (state.clock < -100f) return; // PitStandby: エンジンアイドリングで係留
+            if (!pitOpenFired) { pitOpenFired = true; OnPitOpen?.Invoke(); }
+
             bool allArrived = true;
-            float sincePit = state.clock + 55f;
+            float sincePit = state.clock + 100f;
             for (int i = 0; i < BoatCount; i++)
             {
                 bool done = choreo.Update(i, boats[i].engine, dt, sincePit);
                 allArrived &= done;
                 boats[i].SyncTransform();
             }
-            if (allArrived || state.clock >= -22f) SetPhase(RacePhase.Waiting);
+            if (allArrived || state.clock >= -40f) SetPhase(RacePhase.Waiting);
         }
 
-        // ---- 待機行動: 隊形を整えて静止(未到達艇は経路を続行) ----
+        // ---- 待機行動: 隊形確定。モーター停止禁止のため微速前進で待つ ----
         void StepWaiting(float dt)
         {
-            float sincePit = state.clock + 55f;
+            float sincePit = state.clock + 100f;
             for (int i = 0; i < BoatCount; i++)
             {
-                choreo.Update(i, boats[i].engine, dt, sincePit);
+                bool done = choreo.Update(i, boats[i].engine, dt, sincePit);
+                var e = boats[i].engine;
+                if (done)
+                {
+                    // モーター停止は禁止 → 微速前進し続ける = 待つほど助走(起こし位置)が浅くなる。
+                    // 熟練選手ほど蛇行で距離を殺し、規定助走の75%を下回るほど深くはしない
+                    var bs2 = state.Get(i);
+                    float remaining = TrackPath.StartLineX - e.Position.x;
+                    float minDist = WaitingSystem.ApproachDistance(bs2.course) * 0.75f;
+                    if (remaining > minDist)
+                    {
+                        float creep = 0.4f * (1.2f - statsList[i].player.experience * 0.6f);
+                        e.Position += e.Forward * creep * dt;
+                        e.Speed = creep;
+                    }
+                    else
+                    {
+                        e.Speed = 0.3f; // 蛇行で前進距離を殺している状態
+                    }
+                }
                 boats[i].SyncTransform();
             }
-            // ダッシュ勢は助走200m超=全開で約13秒かかるため-16秒で物理制御へ
-            if (state.clock >= -16f)
+
+            // T-12: 黄針(12秒針)始動と同時に物理制御へ引き継ぎ(回頭→助走)
+            if (state.clock >= -12f)
             {
-                // 進入位置へ正確にスナップして物理制御に引き継ぐ
                 for (int i = 0; i < BoatCount; i++)
                 {
                     var e = boats[i].engine;
-                    e.Position = WaitingSystem.ApproachStartPosition(state.Get(i).course);
-                    e.HeadingDeg = 90f;
-                    e.Speed = 0f;
+                    var bs = state.Get(i);
+                    Vector3 slot = WaitingSystem.ApproachStartPosition(bs.course);
+                    // 経路未達なら整列位置へ。到達済みなら微速前進で深くなったx位置を維持
+                    if (Vector3.Distance(e.Position, slot) > 10f) e.Position = slot;
+                    e.Position = new Vector3(e.Position.x, 0f, slot.z);
+                    e.HeadingDeg = 90f; // 回頭: スタートラインに正対
+                    e.Speed = Mathf.Max(e.Speed, 1f);
                     e.Steer = 0f;
-                    boats[i].startAI.Plan(statsList[i], state.Get(i).course, rng);
+
+                    float actualDist = TrackPath.StartLineX - e.Position.x;
+                    boats[i].startAI.Plan(statsList[i], bs.course, rng, actualDist);
                     boats[i].SyncTransform();
                 }
                 SetPhase(RacePhase.Approach);
             }
         }
+
+        static bool IsDisqualified(BoatRaceState bs) =>
+            bs.startFlag == StartFlag.Flying || bs.startFlag == StartFlag.Late;
 
         // ---- 助走〜スタートライン通過(ST判定) ----
         void StepApproach(float dt)
@@ -301,6 +346,8 @@ namespace BoatRace.Core
 
                 b.engine.Steer = b.turnAI.GetSteer(b.engine);
                 b.engine.Throttle = b.turnAI.GetThrottle(b.engine);
+                // F/L艇は欠場扱い: 走行は続けるが流す(仕様書: 走るが失格表示)
+                if (IsDisqualified(bs)) b.engine.Throttle = Mathf.Min(b.engine.Throttle, 0.55f);
 
                 // 進行度更新(周回ラップ検出)
                 float r = b.turnAI.laneRadius;
@@ -314,38 +361,75 @@ namespace BoatRace.Core
                 bs.progress = s;
                 bs.lap = (int)(bs.totalProgress / lapLen);
 
-                // マーク旋回イベント
+                // マーク旋回イベント(1周1Mの先マイ艇を決まり手判定用に記録)
                 bool t1 = TrackPath.InTurn1Zone(b.engine.Position);
-                if (t1 && !inTurn1[i]) OnMarkRounded?.Invoke(i, 1, bs.lap + 1);
+                if (t1 && !inTurn1[i])
+                {
+                    if (bs.lap == 0 && firstTurnLeader < 0 && !IsDisqualified(bs)) firstTurnLeader = i;
+                    OnMarkRounded?.Invoke(i, 1, bs.lap + 1);
+                }
                 inTurn1[i] = t1;
                 bool t2 = TrackPath.InTurn2Zone(b.engine.Position);
                 if (t2 && !inTurn2[i]) OnMarkRounded?.Invoke(i, 2, bs.lap + 1);
                 inTurn2[i] = t2;
 
-                // ゴール判定(3周)
+                // 最終周回灯点灯
+                if (!finalLapFired && !IsDisqualified(bs) && bs.lap >= TrackPath.TotalLaps - 1)
+                {
+                    finalLapFired = true;
+                    VenueBuilder.SetFinalLamp(true);
+                    OnFinalLap?.Invoke();
+                }
+
+                // ゴール判定(3周)。F/L欠場艇は着順に入らない
                 if (bs.totalProgress >= TrackPath.TotalLaps * lapLen)
                 {
                     bs.finished = true;
                     bs.finishTime = state.raceTime;
-                    bs.finalPlace = ++finishCounter;
-                    OnBoatFinished?.Invoke(i, bs.finalPlace);
+                    if (!IsDisqualified(bs))
+                    {
+                        bs.finalPlace = ++finishCounter;
+                        if (bs.finalPlace == 1) DecideKimarite(i);
+                        OnBoatFinished?.Invoke(i, bs.finalPlace);
+                    }
                 }
             }
 
             UpdateStandings();
 
-            if (state.boats.All(b => b.finished) || state.raceTime > 240f)
+            if (state.boats.All(b => b.finished || IsDisqualified(b)) || state.raceTime > 240f)
                 SetPhase(RacePhase.Finished);
+        }
+
+        /// <summary>決まり手判定: 逃げ/差し/まくり/まくり差し/抜き/恵まれ。</summary>
+        void DecideKimarite(int winnerIdx)
+        {
+            var w = state.Get(winnerIdx);
+            if (winnerIdx == firstTurnLeader)
+            {
+                kimarite = w.course == 1 ? "逃げ" : AI.StrategyAI.TacticName(w.tactic);
+            }
+            else if (firstTurnLeader >= 0 && IsDisqualified(state.Get(firstTurnLeader)))
+            {
+                kimarite = "恵まれ";
+            }
+            else
+            {
+                kimarite = "抜き";
+            }
         }
 
         void UpdateStandings()
         {
+            // グループ順: 有効艇(完走→走行中) → F/L欠場艇は最下位固定
+            int Group(BoatRaceState s) => IsDisqualified(s) ? 2 : (s.finished ? 0 : 1);
             state.standings.Sort((a, b) =>
             {
                 var A = state.Get(a); var B = state.Get(b);
-                if (A.finished && B.finished) return A.finalPlace.CompareTo(B.finalPlace);
-                if (A.finished) return -1;
-                if (B.finished) return 1;
+                int g = Group(A).CompareTo(Group(B));
+                if (g != 0) return g;
+                if (A.finished && B.finished && !IsDisqualified(A))
+                    return A.finalPlace.CompareTo(B.finalPlace);
                 return B.totalProgress.CompareTo(A.totalProgress);
             });
             int leader = state.standings[0];

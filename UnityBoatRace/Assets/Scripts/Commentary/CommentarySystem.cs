@@ -21,9 +21,18 @@ namespace BoatRace.Commentary
 
         static readonly Dictionary<string, string[]> Templates = new Dictionary<string, string[]>
         {
+            ["standby"] = new[] {
+                "各艇エンジン始動。間もなくピットアウトです。",
+                "選手たちがピットで待機。緊張の時間です。" },
             ["pit_out"] = new[] {
-                "さあ6艇、一斉にピットを離れました！",
+                "ピットアウト！ 6艇一斉にピットを離れました！",
                 "ピット離れ！ コース取りに注目です！" },
+            ["late"] = new[] {
+                "{0}号艇、出遅れ(L)！ 返還・欠場となります。",
+                "おっと{0}号艇、スタートに間に合わない！ 出遅れです！" },
+            ["final_lap"] = new[] {
+                "最終周回灯が点灯！ 勝負はあと1周！",
+                "さあ最終周回！ 逃げ切るか、捉えるか！" },
             ["approach"] = new[] {
                 "全艇、スタートへ向けて助走に入ります！",
                 "大時計が回り始めた！ スタート勝負です！" },
@@ -43,8 +52,8 @@ namespace BoatRace.Commentary
                 "{0}周目に入ります。トップは{1}号艇！",
                 "バックストレッチ、{1}号艇がリードを保っています。" },
             ["goal_first"] = new[] {
-                "ゴールイン！ 1着は{0}号艇 {1}！ 勝ちタイム {2:F1}秒！",
-                "決まったーッ！ {0}号艇 {1}が1着でゴールです！" },
+                "ゴールイン！ 1着は{0}号艇 {1}！ 決まり手は{3}！ 勝ちタイム {2:F1}秒！",
+                "決まったーッ！ {0}号艇 {1}が{3}で1着ゴールです！" },
             ["finish"] = new[] {
                 "全艇ゴール。レース終了です。",
                 "白熱したレースでした。確定までしばらくお待ちください。" },
@@ -60,10 +69,13 @@ namespace BoatRace.Commentary
 
             race.OnPhaseChanged += phase =>
             {
-                if (phase == RacePhase.PitOut) { firstMark1Done = false; Say("pit_out"); }
+                if (phase == RacePhase.PitOut) { firstMark1Done = false; Say("standby"); }
                 if (phase == RacePhase.Approach) Say("approach");
                 if (phase == RacePhase.Finished) { Say("finish"); learning.RecordRace(race); learning.Save(); }
             };
+
+            race.OnPitOpen += () => Say("pit_out");
+            race.OnFinalLap += () => Say("final_lap");
 
             race.OnStartResults += () =>
             {
@@ -72,6 +84,7 @@ namespace BoatRace.Commentary
                 {
                     var bs = race.state.Get(i);
                     if (bs.startFlag == StartFlag.Flying) Say("flying", bs.boatNumber);
+                    else if (bs.startFlag == StartFlag.Late) Say("late", bs.boatNumber);
                     else if (bs.st < bestST) { bestST = bs.st; best = i; }
                 }
                 if (best >= 0)
@@ -100,7 +113,8 @@ namespace BoatRace.Commentary
             {
                 if (place == 1)
                     Say("goal_first", race.state.Get(idx).boatNumber,
-                        race.statsList[idx].player.playerName, race.state.Get(idx).finishTime);
+                        race.statsList[idx].player.playerName, race.state.Get(idx).finishTime,
+                        race.kimarite);
             };
         }
 

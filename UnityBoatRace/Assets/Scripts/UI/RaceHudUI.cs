@@ -83,7 +83,9 @@ namespace BoatRace.UI
         {
             if (!root.activeSelf) return;
 
-            headerText.text = $"{race.venue.name}  風 {race.wind.speed:F1}m  {PhaseName(race.state.phase)}";
+            string phaseName = race.state.phase == RacePhase.PitOut && race.state.clock < -100f
+                ? "ピット係留" : PhaseName(race.state.phase);
+            headerText.text = $"{race.venue.name}  風 {race.wind.speed:F1}m  {phaseName}";
             clockText.text = race.state.phase == RacePhase.Racing || race.state.phase == RacePhase.Finished
                 ? $"⏱ {race.state.raceTime:F1}s"
                 : $"大時計 {race.state.clock:F1}";
@@ -94,11 +96,14 @@ namespace BoatRace.UI
                 int idx = race.state.standings[i];
                 var bs = race.state.Get(idx);
                 rowChips[i].color = UiKit.BoatColors[idx];
+                bool disq = bs.startFlag == StartFlag.Flying || bs.startFlag == StartFlag.Late;
                 string st = bs.crossedStart
-                    ? (bs.startFlag == StartFlag.Flying ? "F" : $".{Mathf.RoundToInt(Mathf.Abs(bs.st) * 100f):00}")
+                    ? (bs.startFlag == StartFlag.Flying ? "F"
+                       : bs.startFlag == StartFlag.Late ? "L"
+                       : $".{Mathf.RoundToInt(Mathf.Abs(bs.st) * 100f):00}")
                     : "--";
-                string place = bs.finished ? $"{bs.finalPlace}着 " : $"{i + 1}位 ";
-                string lap = bs.finished ? "" : $" {bs.lap + 1}周目";
+                string place = disq ? "欠場 " : bs.finished ? $"{bs.finalPlace}着 " : $"{i + 1}位 ";
+                string lap = bs.finished || disq ? "" : $" {bs.lap + 1}周目";
                 standingRows[i].text =
                     $"{place}{race.statsList[idx].player.playerName}  ST{st} {StrategyAI.TacticName(bs.tactic)}{lap}";
             }
@@ -108,9 +113,9 @@ namespace BoatRace.UI
         {
             switch (p)
             {
-                case RacePhase.PitOut: return "ピット離れ";
+                case RacePhase.PitOut: return "ピット離れ・進入";
                 case RacePhase.Waiting: return "待機行動";
-                case RacePhase.Approach: return "スタート進入";
+                case RacePhase.Approach: return "回頭・助走";
                 case RacePhase.Racing: return "レース中";
                 case RacePhase.Finished: return "レース終了";
                 default: return "";

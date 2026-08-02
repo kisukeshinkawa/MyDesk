@@ -158,18 +158,54 @@ namespace BoatRace.Core
             face.transform.localScale = new Vector3(7.6f, 0.25f, 7.6f);
             Paint(face, Color.white);
 
-            // 針(pivotを回す)
-            var pivot = new GameObject("NeedlePivot");
-            pivot.transform.SetParent(clock.transform, false);
-            pivot.transform.localPosition = new Vector3(0f, 13.5f, 0.7f);
-            var needle = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            needle.transform.SetParent(pivot.transform, false);
-            needle.transform.localPosition = new Vector3(0f, 1.55f, 0f);
-            needle.transform.localScale = new Vector3(0.35f, 3.1f, 0.12f);
-            Paint(needle, new Color(0.1f, 0.1f, 0.1f));
+            // 白針(60秒針・長針): T-75に45秒位置から始動し、12時=スタート
+            var whitePivot = new GameObject("WhiteNeedlePivot");
+            whitePivot.transform.SetParent(clock.transform, false);
+            whitePivot.transform.localPosition = new Vector3(0f, 13.5f, 0.7f);
+            var whiteNeedle = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            whiteNeedle.transform.SetParent(whitePivot.transform, false);
+            whiteNeedle.transform.localPosition = new Vector3(0f, 1.6f, 0f);
+            whiteNeedle.transform.localScale = new Vector3(0.32f, 3.2f, 0.12f);
+            Paint(whiteNeedle, Color.white);
+            var whiteRim = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            whiteRim.transform.SetParent(whitePivot.transform, false);
+            whiteRim.transform.localPosition = new Vector3(0f, 3.1f, 0f);
+            whiteRim.transform.localScale = new Vector3(0.55f, 0.55f, 0.13f);
+            Paint(whiteRim, new Color(0.1f, 0.1f, 0.1f)); // 針先の視認マーク
+
+            // 黄針(12秒針・短針): T-12に始動。選手が実際に見るのはこちら
+            var yellowPivot = new GameObject("YellowNeedlePivot");
+            yellowPivot.transform.SetParent(clock.transform, false);
+            yellowPivot.transform.localPosition = new Vector3(0f, 13.5f, 0.9f);
+            var yellowNeedle = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            yellowNeedle.transform.SetParent(yellowPivot.transform, false);
+            yellowNeedle.transform.localPosition = new Vector3(0f, 1.1f, 0f);
+            yellowNeedle.transform.localScale = new Vector3(0.42f, 2.2f, 0.12f);
+            Paint(yellowNeedle, new Color(1f, 0.85f, 0.1f));
 
             var driver = clock.AddComponent<BigClockNeedle>();
-            driver.Initialize(race, pivot.transform);
+            driver.Initialize(race, whitePivot.transform, yellowPivot.transform);
+
+            // 最終周回灯(大時計付近)
+            var lamp = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            lamp.name = "FinalLapLamp";
+            lamp.transform.SetParent(clock.transform, false);
+            lamp.transform.localPosition = new Vector3(0f, 19.2f, 0f);
+            lamp.transform.localScale = Vector3.one * 1.8f;
+            finalLampMat = Paint2(lamp, FinalLampOff);
+        }
+
+        static Material finalLampMat;
+        static readonly Color FinalLampOff = new Color(0.25f, 0.2f, 0.05f);
+        static readonly Color FinalLampOn = new Color(1f, 0.75f, 0.05f);
+
+        /// <summary>最終周回灯の点灯/消灯(RaceManagerが呼ぶ)。</summary>
+        public static void SetFinalLamp(bool lit)
+        {
+            if (finalLampMat == null) return;
+            Color c = lit ? FinalLampOn : FinalLampOff;
+            if (finalLampMat.HasProperty("_BaseColor")) finalLampMat.SetColor("_BaseColor", c);
+            if (finalLampMat.HasProperty("_Color")) finalLampMat.SetColor("_Color", c);
         }
 
         // ---- 電光掲示板(バックストレッチ側) ----
@@ -278,31 +314,52 @@ namespace BoatRace.Core
 
         static void Paint(GameObject go, Color color)
         {
+            Paint2(go, color);
+        }
+
+        static Material Paint2(GameObject go, Color color)
+        {
             var shader = Shader.Find("Universal Render Pipeline/Lit") ?? Shader.Find("Standard");
             var mat = new Material(shader);
             if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", color);
             if (mat.HasProperty("_Color")) mat.SetColor("_Color", color);
             go.GetComponent<Renderer>().material = mat;
+            return mat;
         }
     }
 
-    /// <summary>大時計の針。大時計は12秒で1周し、針が12時ちょうど=スタート時刻(clock=0)。</summary>
+    /// <summary>
+    /// 大時計の2針駆動。
+    /// 白針(60秒針): T-75に45秒位置から始動し1周60秒、12時ちょうど=スタート成立時刻。
+    /// 黄針(12秒針): T-12に12時から始動し1周12秒。選手が起こしで見るのはこちら。
+    /// </summary>
     public class BigClockNeedle : MonoBehaviour
     {
         RaceManager race;
-        Transform pivot;
+        Transform whitePivot;
+        Transform yellowPivot;
 
-        public void Initialize(RaceManager race, Transform pivot)
+        public void Initialize(RaceManager race, Transform whitePivot, Transform yellowPivot)
         {
             this.race = race;
-            this.pivot = pivot;
+            this.whitePivot = whitePivot;
+            this.yellowPivot = yellowPivot;
         }
 
         void Update()
         {
-            if (race == null || pivot == null) return;
-            float angle = race.state.clock * 30f; // 360°/12s
-            pivot.localRotation = Quaternion.Euler(0f, 0f, -angle);
+            if (race == null) return;
+            float clock = race.state.clock;
+            if (whitePivot != null)
+            {
+                float wc = Mathf.Max(clock, -75f);   // T-75で45秒位置(-450°≡-90°)に静止→始動
+                whitePivot.localRotation = Quaternion.Euler(0f, 0f, -wc * 6f);
+            }
+            if (yellowPivot != null)
+            {
+                float yc = Mathf.Max(clock, -12f);   // T-12まで12時に静止→始動
+                yellowPivot.localRotation = Quaternion.Euler(0f, 0f, -yc * 30f);
+            }
         }
     }
 }

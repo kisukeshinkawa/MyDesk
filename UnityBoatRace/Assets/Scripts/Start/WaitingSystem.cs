@@ -45,14 +45,14 @@ namespace BoatRace.Start
         }
 
         /// <summary>
-        /// コースごとの助走距離(m)。実際の競艇の2段進入:
-        /// スロー勢(1-3コース)=150m以内の短い助走 / ダッシュ勢(4-6コース)=200m以上の全速助走。
+        /// コースごとの標準助走距離「起こし位置」(m)。発走シーケンス仕様書の推奨値。
+        /// 1コース最短(深インは致命的)〜6コース最長(トップスピードで突っ込める)。
         /// </summary>
+        public static readonly float[] BaseRunUp = { 70f, 80f, 95f, 105f, 115f, 128f };
+
         public static float ApproachDistance(int course)
         {
-            return course <= 3
-                ? 75f + course * 10f    // スロー: 85/95/105m
-                : 165f + course * 10f;  // ダッシュ: 205/215/225m
+            return BaseRunUp[Mathf.Clamp(course - 1, 0, 5)];
         }
 
         /// <summary>スロー勢かどうか。</summary>

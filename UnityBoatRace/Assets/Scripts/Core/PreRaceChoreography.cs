@@ -45,8 +45,8 @@ namespace BoatRace.Core
         {
             var L = new Lane
             {
-                delay = pitDelay * 2f,          // ピット離れの反応差(横一列からの飛び出しの差)
-                cruise = 15f + dashPower * 4f,  // 数値検証済み: 最悪ケースでも-16秒前に整列
+                delay = pitDelay,               // 仕様書式のピット離れタイム(約0.5〜1.3秒)
+                cruise = 8.5f + dashPower * 2.5f, // 待機行動はレースより低速で航走(T-100開始で余裕あり)
             };
             var pts = L.pts;
             float cruiseZ = WaitingSystem.LaneZ(course) + 11f; // 自分のレーンの少し内側を巡航

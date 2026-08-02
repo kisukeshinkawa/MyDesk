@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using BoatRace.Core;
@@ -20,6 +21,8 @@ namespace BoatRace.UI
         Canvas canvas;
         GameObject currentScreen;
         GameObject replayOverlay;
+        GameObject ffButton;
+        Text ffLabel;
         Text titleBlink;
         float resultTimer = -1f;
         bool wasReplaying;
@@ -34,6 +37,18 @@ namespace BoatRace.UI
             hud = new RaceHudUI(race, commentary, canvas.transform, raceCam);
             hud.SetVisible(false);
             BuildReplayOverlay();
+
+            // ピット離れ〜待機行動(T-100〜-14)は実時間で長いので早送りできるように
+            var ffBtn = UiKit.MakeButton(canvas.transform, "⏩ 早送り", UiKit.Navy, 22,
+                new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-230f, 186f), new Vector2(-16f, 234f),
+                () =>
+                {
+                    Time.timeScale = Time.timeScale > 1f ? 1f : 5f;
+                    ffLabel.text = Time.timeScale > 1f ? "▶ 等速に戻す" : "⏩ 早送り";
+                });
+            ffLabel = ffBtn.GetComponentInChildren<Text>();
+            ffButton = ffBtn.gameObject;
+            ffButton.SetActive(false);
 
             race.OnRaceFinished += () => resultTimer = 3f;
             ShowTitle();
@@ -53,6 +68,16 @@ namespace BoatRace.UI
             replayOverlay.SetActive(replay.IsPlaying);
             if (wasReplaying && !replay.IsPlaying) ShowResult();
             wasReplaying = replay.IsPlaying;
+
+            // 早送りボタン: スタート前のみ有効。T-14以降は自動で等速へ
+            bool preRace = race.armed && race.state.clock < -14f &&
+                (race.state.phase == RacePhase.PitOut || race.state.phase == RacePhase.Waiting);
+            ffButton.SetActive(preRace);
+            if (!preRace && Time.timeScale != 1f)
+            {
+                Time.timeScale = 1f;
+                ffLabel.text = "⏩ 早送り";
+            }
 
             // タイトルの「タップでスタート」点滅
             if (titleBlink != null)
@@ -210,7 +235,8 @@ namespace BoatRace.UI
             var s = NewScreen("ResultScreen");
             UiKit.MakeFullscreenGradient(s.transform, UiKit.Navy, new Color(0.02f, 0.06f, 0.16f));
 
-            UiKit.MakeText(s.transform, $"レース結果　{race.venue.name}", 42, UiKit.Yellow, TextAnchor.MiddleCenter,
+            UiKit.MakeText(s.transform, $"レース結果　{race.venue.name}　決まり手: {race.kimarite}", 40, UiKit.Yellow,
+                TextAnchor.MiddleCenter,
                 new Vector2(0f, 0.89f), new Vector2(1f, 0.99f), Vector2.zero, Vector2.zero, bold: true, shadow: true);
 
             var panel = UiKit.MakePanel(s.transform, new Color(1f, 1f, 1f, 0.10f), 22,
@@ -231,18 +257,31 @@ namespace BoatRace.UI
                 ci.type = Image.Type.Sliced;
                 ci.color = UiKit.BoatColors[idx];
 
-                string stStr = bs.startFlag == StartFlag.Flying ? "F" : $".{Mathf.RoundToInt(Mathf.Abs(bs.st) * 100f):00}";
-                string time = bs.finished ? $"{bs.finishTime:F1}s" : "－";
+                bool disq = bs.startFlag == StartFlag.Flying || bs.startFlag == StartFlag.Late;
+                string stStr = bs.startFlag == StartFlag.Flying ? "F"
+                    : bs.startFlag == StartFlag.Late ? "L"
+                    : $".{Mathf.RoundToInt(Mathf.Abs(bs.st) * 100f):00}";
+                string placeStr = disq
+                    ? (bs.startFlag == StartFlag.Flying ? "Ｆ欠場" : "Ｌ出遅")
+                    : $"{bs.finalPlace}着";
+                string time = disq ? "返還" : bs.finished ? $"{bs.finishTime:F1}s" : "－";
                 UiKit.MakeText(panel.transform,
-                    $"{i + 1}着　{idx + 1}号艇 {st.player.playerName}　ST{stStr}　{AI.StrategyAI.TacticName(bs.tactic)}　{time}",
-                    26, Color.white, TextAnchor.MiddleLeft,
+                    $"{placeStr}　{idx + 1}号艇 {st.player.playerName}　ST{stStr}　{AI.StrategyAI.TacticName(bs.tactic)}　{time}",
+                    26, disq ? new Color(1f, 0.45f, 0.4f) : Color.white, TextAnchor.MiddleLeft,
                     new Vector2(0.13f, top - 0.14f), new Vector2(0.98f, top), Vector2.zero, Vector2.zero, bold: i == 0);
             }
 
-            // 3連単風の払戻表示(お楽しみ要素)
-            if (race.state.standings.Count >= 3)
+            // 3連単風の払戻表示(F/L欠場艇は除外した有効着順から)
+            var valid = new List<int>();
+            foreach (int idx2 in race.state.standings)
             {
-                int a = race.state.standings[0], b = race.state.standings[1], c = race.state.standings[2];
+                var b2 = race.state.Get(idx2);
+                if (b2.startFlag != StartFlag.Flying && b2.startFlag != StartFlag.Late)
+                    valid.Add(idx2);
+            }
+            if (valid.Count >= 3)
+            {
+                int a = valid[0], b = valid[1], c = valid[2];
                 int payout = ComputePayout(a, b, c);
                 UiKit.MakeText(s.transform, $"3連単 {a + 1}-{b + 1}-{c + 1}　払戻 ¥{payout:N0}", 30, UiKit.Yellow,
                     TextAnchor.MiddleCenter, new Vector2(0f, 0.21f), new Vector2(1f, 0.29f),

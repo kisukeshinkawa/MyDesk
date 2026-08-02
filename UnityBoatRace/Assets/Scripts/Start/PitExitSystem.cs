@@ -31,12 +31,17 @@ namespace BoatRace.Start
             return new Vector3(x, 0f, -(hw - 22f));
         }
 
-        /// <summary>ピット離れの反応遅延(秒)。小さいほど好ダッシュ。</summary>
-        public static float ExitDelay(BoatStats stats, System.Random rng)
+        /// <summary>
+        /// ピット離れタイム(秒)。仕様書の式:
+        /// 基準1.00s - pitOutSkill*0.35 + モーター起動遅延(±0.15) + 隣接艇干渉ペナルティ。
+        /// 外枠ほど内枠の引き波・航跡に阻まれやすい。
+        /// </summary>
+        public static float ExitDelay(BoatStats stats, int boatIndex, System.Random rng)
         {
-            float baseDelay = 0.35f - stats.EngineResponse * 0.2f - stats.player.startSkill * 0.1f;
-            float noise = (float)rng.NextDouble() * 0.1f;
-            return Mathf.Max(0.05f, baseDelay + noise);
+            float pitOutSkill = stats.player.startSkill * 0.5f + stats.EngineResponse * 0.5f;
+            float motorLag = ((float)rng.NextDouble() * 2f - 1f) * 0.15f;
+            float interference = boatIndex * 0.025f * (0.5f + (float)rng.NextDouble());
+            return Mathf.Max(0.2f, 1.0f - pitOutSkill * 0.35f + motorLag + interference);
         }
 
         /// <summary>ピット離れ直後の加速倍率。</summary>
