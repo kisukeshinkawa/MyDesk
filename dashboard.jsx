@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-04-v319-qty-units-exceljs"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-04-v320-store-quotes-report"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -33711,6 +33711,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
   const _cust = (it,pr) => Math.round(_taxIn(it,pr)*1.05);
   const _storeItems = st => (st.items&&st.items.length)?st.items:[{id:st.id+":0"}];
   const _stoAmt = (qv,st,fn)=>{ let sum=0,has=false; _storeItems(st).forEach(it=>{ const pr=(qv.prices||{})[it.id]; if(_hasPr(pr)){ sum+=fn(it,pr); has=true; } }); return has?sum:null; };
+  const storeQuotes = st => { const arr=(p.vendors||[]).map(qv=>({name:qv.vendorName||"", amount:_stoAmt(qv,st,_cust)})).filter(x=>x.amount!=null).sort((a,b)=>a.amount-b.amount); const mn=arr.length?arr[0].amount:null; return arr.map(x=>({...x,cheapest:x.amount===mn})); };
   const quoteStats = (()=>{ const vs=p.vendors||[], sts=p.stores||[]; let pairs=0, lines=0; const vendSet=new Set();
     vs.forEach(qv=>{ let vHas=false; sts.forEach(st=>{ let sHas=false; _storeItems(st).forEach(it=>{ if(_hasPr((qv.prices||{})[it.id])){ lines++; sHas=true; } }); if(sHas){ pairs++; vHas=true; } }); if(vHas) vendSet.add(qv.id); });
     return { vendors: vs.length, answered: vs.filter(v=>v.status==="回答済").length, quotedVendors: vendSet.size, pairs, lines, stores: sts.length }; })();
@@ -33721,60 +33722,72 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
     try{
       const mod=await import("https://esm.sh/exceljs@4.4.0"); const ExcelJS=mod.default||mod;
       const AL=vs.map((_,i)=>_alias(i));
-      const wb=new ExcelJS.Workbook();
-      const HF={type:"pattern",pattern:"solid",fgColor:{argb:"FF1F4E79"}};
-      const HFONT={bold:true,color:{argb:"FFFFFFFF"},size:10};
+      const today=(()=>{ try{ const d=new Date(); return d.getFullYear()+"年"+(d.getMonth()+1)+"月"+d.getDate()+"日"; }catch(_){ return ""; } })();
+      const M={"込":"出来高（運搬・処分込）","別":"出来高（運搬＋処分単価）","定額":"定額"};
+      const NAVY={type:"pattern",pattern:"solid",fgColor:{argb:"FF1F3864"}};
+      const SUBBG={type:"pattern",pattern:"solid",fgColor:{argb:"FFE9EFF7"}};
       const MINF={type:"pattern",pattern:"solid",fgColor:{argb:"FFC6EFCE"}};
-      const ZEB={type:"pattern",pattern:"solid",fgColor:{argb:"FFF2F6FB"}};
-      const bd={style:"thin",color:{argb:"FFD0D7DE"}};
+      const ZEB={type:"pattern",pattern:"solid",fgColor:{argb:"FFF4F7FB"}};
+      const HFONT={bold:true,color:{argb:"FFFFFFFF"},size:10};
+      const TITLEF={bold:true,size:15,color:{argb:"FF1F3864"}};
+      const SUBF={size:9,color:{argb:"FF666666"}};
+      const bd={style:"thin",color:{argb:"FFD9DEE6"}};
       const BORDER={top:bd,left:bd,bottom:bd,right:bd};
-      const M={"込":"出来高(運搬・処分込)","別":"出来高(運搬固定+処分単価)","定額":"定額"};
-      // Sheet1 相見積比較
-      const ws1=wb.addWorksheet("相見積比較");
-      ws1.addRow(["相見積比較（お客様提示額・税込・DUSTALK手数料5%込／1回あたり）"]);
-      ws1.addRow(["会社："+(p.companyName||"")+"　案件："+(p.name||"")+"　対象店舗："+sts.length+"　業者："+vs.length+"　※業者名は伏せています（A社・B社…）"]);
+      const NUM="#,##0";
+      const wb=new ExcelJS.Workbook();
+      wb.creator="DUSTALK"; wb.created=new Date();
+      // ===== 相見積比較 =====
+      const ws1=wb.addWorksheet("相見積比較",{views:[{state:"frozen",xSplit:3,ySplit:5}],properties:{defaultRowHeight:16}});
+      const nc=3+vs.length+4;
+      const mt=(r,txt,font,align)=>{ ws1.mergeCells(r,1,r,nc); const c=ws1.getCell(r,1); c.value=txt; if(font)c.font=font; c.alignment={horizontal:align||"center",vertical:"middle"}; return c; };
+      mt(1,"相 見 積 比 較 表",TITLEF); ws1.getRow(1).height=26;
+      mt(2,(p.companyName||"")+"　"+(p.name||"")+"　／　対象拠点 "+sts.length+" 件　／　金額は税込・1回あたり（単位：円）"+(today?("　／　作成日 "+today):""),SUBF);
+      mt(3,"※ 各拠点の最安値を緑で表示。業者名は非公開（A社・B社…）。",SUBF);
       ws1.addRow([]);
-      const hr1=ws1.addRow(["番号","エリア","院名",...AL,"回答社数","最安業者","最安(1回)","最高(1回)","差額(最高-最安)"]);
-      hr1.eachCell(c=>{c.fill=HF;c.font=HFONT;c.alignment={horizontal:"center"};c.border=BORDER;});
-      const totals=vs.map(()=>0);
+      const hr1=ws1.addRow(["No.","エリア","拠点名",...AL,"回答","最安業者","最安","最高"]);
+      hr1.eachCell(c=>{c.fill=NAVY;c.font=HFONT;c.alignment={horizontal:"center",vertical:"middle"};c.border=BORDER;}); hr1.height=22;
+      const totals=vs.map(()=>0); let recoTotal=0;
       sts.forEach((st,i)=>{ const cells=vs.map(qv=>_stoAmt(qv,st,_cust)); cells.forEach((c,vi)=>{ if(c!=null) totals[vi]+=c; });
-        const ans=cells.map((c,vi)=>({c,name:AL[vi]})).filter(x=>x.c!=null);
-        const mn=ans.length?Math.min(...ans.map(x=>x.c)):null, mx=ans.length?Math.max(...ans.map(x=>x.c)):null;
-        const row=ws1.addRow([st.no||i+1, st.area||"", st.name||"", ...cells.map(c=>c==null?"":c), ans.length, (ans.find(x=>x.c===mn)||{}).name||"", mn==null?"":mn, mx==null?"":mx, (mn!=null&&mx!=null)?(mx-mn):""]);
-        row.eachCell({includeEmpty:true},(c,cn)=>{ c.border=BORDER; if(cn>3&&typeof c.value==="number") c.numFmt="#,##0"; if(i%2===1&&c.value!=null&&!c.fill) c.fill=ZEB; });
+        const ans=cells.filter(c=>c!=null); const mn=ans.length?Math.min(...ans):null, mx=ans.length?Math.max(...ans):null; if(mn!=null)recoTotal+=mn;
+        const mvi=cells.findIndex(c=>c===mn); const mnName=mvi>=0?AL[mvi]:"";
+        const row=ws1.addRow([st.no||i+1, st.area||"", st.name||"", ...cells.map(c=>c==null?"":c), ans.length, mnName, mn==null?"":mn, mx==null?"":mx]);
+        row.eachCell({includeEmpty:true},(c,cn)=>{ c.border=BORDER; c.alignment={vertical:"middle"}; if(cn>3&&typeof c.value==="number") c.numFmt=NUM; if(i%2===1&&!c.fill)c.fill=ZEB; });
         cells.forEach((c,vi)=>{ if(c!=null&&c===mn){ const cc=row.getCell(4+vi); cc.fill=MINF; cc.font={bold:true,color:{argb:"FF166534"}}; } });
       });
+      const tr=ws1.addRow(["","","合計（全拠点）",...totals,"","","",""]); tr.eachCell({includeEmpty:true},(c,cn)=>{ c.font={bold:true}; c.border=BORDER; c.fill=SUBBG; if(cn>3&&typeof c.value==="number")c.numFmt=NUM; });
       ws1.addRow([]);
-      const tr=ws1.addRow(["","","合計（全店舗）",...totals,"","","","",""]); tr.eachCell({includeEmpty:true},(c,cn)=>{ c.font={bold:true}; if(cn>3&&typeof c.value==="number")c.numFmt="#,##0"; });
-      ws1.columns=[{width:6},{width:11},{width:22},...vs.map(()=>({width:12})),{width:9},{width:12},{width:12},{width:12},{width:14}];
-      ws1.views=[{state:"frozen",xSplit:3,ySplit:4}];
-      // Sheet2 内訳比較
-      const ws2=wb.addWorksheet("内訳比較");
-      ws2.addRow(["内訳比較（業者×拠点×品目）　金額は1回あたり　※業者名は伏せています"]); ws2.addRow([]);
-      const hr2=ws2.addRow(["業者","番号","エリア","院名","品目","方式","単価","運搬費(固)","処分単価","処分単位","数量","諸経費","見積(税抜)","税込","お客様提示","回収条件・備考"]);
-      hr2.eachCell(c=>{c.fill=HF;c.font=HFONT;c.alignment={horizontal:"center"};c.border=BORDER;});
+      const rn=ws1.rowCount+1; ws1.mergeCells(rn,1,rn,3); const rl=ws1.getCell(rn,1); rl.value="推奨採用（各拠点で最安値を採用した場合）合計"; rl.font={bold:true,color:{argb:"FF1F3864"}}; rl.alignment={horizontal:"right",vertical:"middle"};
+      const rv=ws1.getCell(rn,4); rv.value=recoTotal; rv.numFmt=NUM; rv.font={bold:true,size:12,color:{argb:"FF166534"}};
+      ws1.columns=[{width:5},{width:12},{width:22},...vs.map(()=>({width:12})),{width:6},{width:10},{width:11},{width:11}];
+      // ===== 見積内訳 =====
+      const ws2=wb.addWorksheet("見積内訳",{views:[{state:"frozen",ySplit:4}]});
+      const nc2=16; ws2.mergeCells(1,1,1,nc2); const t2=ws2.getCell(1,1); t2.value="見 積 内 訳（拠点別・業者別）"; t2.font=TITLEF; ws2.getRow(1).height=24; t2.alignment={horizontal:"center"};
+      ws2.mergeCells(2,1,2,nc2); const s2=ws2.getCell(2,1); s2.value="金額は税込・1回あたり（単位：円）　業者名は非公開（A社・B社…）"; s2.font=SUBF; s2.alignment={horizontal:"center"};
+      ws2.addRow([]);
+      const hr2=ws2.addRow(["業者","No.","エリア","拠点名","品目","料金方式","単価","運搬費(固)","処分単価","処分単位","数量","諸経費","税抜","税込","お客様提示","備考"]);
+      hr2.eachCell(c=>{c.fill=NAVY;c.font=HFONT;c.alignment={horizontal:"center",vertical:"middle"};c.border=BORDER;}); hr2.height=22;
       let rc=0;
       vs.forEach((qv,vi)=>{ sts.forEach((st,i)=>{ _storeItems(st).forEach(it=>{ const pr=(qv.prices||{})[it.id]; if(!_hasPr(pr))return;
         const qy=(pr.method==="別")?_qtyOf(it,pr.disposalUnit):"";
         const row=ws2.addRow([AL[vi], st.no||i+1, st.area||"", st.name||"", it.kind||"", M[pr.method]||pr.method||"", pr.unit?_N(pr.unit):"", pr.transport?_N(pr.transport):"", pr.disposal?_N(pr.disposal):"", pr.disposalUnit||"", qy||"", pr.overhead?_N(pr.overhead):"", _base(it,pr), _taxIn(it,pr), _cust(it,pr), pr.condition||pr.note||""]);
-        row.eachCell({includeEmpty:true},(c,cn)=>{ c.border=BORDER; if([7,8,9,11,12,13,14,15].indexOf(cn)>=0&&typeof c.value==="number")c.numFmt="#,##0"; if(rc%2===1&&!c.fill)c.fill=ZEB; }); rc++;
+        row.eachCell({includeEmpty:true},(c,cn)=>{ c.border=BORDER; c.alignment={vertical:"middle"}; if([7,8,9,11,12,13,14,15].indexOf(cn)>=0&&typeof c.value==="number")c.numFmt=NUM; if(rc%2===1&&!c.fill)c.fill=ZEB; }); rc++;
       }); }); });
-      ws2.columns=[{width:8},{width:5},{width:10},{width:20},{width:16},{width:22},{width:9},{width:10},{width:9},{width:8},{width:7},{width:9},{width:11},{width:11},{width:12},{width:34}];
-      ws2.views=[{state:"frozen",ySplit:3}];
-      // Sheet3 業者サマリー
-      const ws3=wb.addWorksheet("業者サマリー");
-      ws3.addRow(["業者サマリー　※業者名は伏せています（A社=どの業者かはMyDesk画面の対応表参照）"]); ws3.addRow([]);
-      const hr3=ws3.addRow(["業者","状況","税区分(代表)","見積店舗数","お客様提示合計(1回)","連絡事項"]);
-      hr3.eachCell(c=>{c.fill=HF;c.font=HFONT;c.alignment={horizontal:"center"};c.border=BORDER;});
-      vs.forEach((qv,vi)=>{ let cnt=0,tot=0; const taxSet=new Set(); sts.forEach(st=>{ const a=_stoAmt(qv,st,_cust); if(a!=null){cnt++;tot+=a;} _storeItems(st).forEach(it=>{const pr=(qv.prices||{})[it.id]; if(_hasPr(pr)&&pr.taxMode)taxSet.add(pr.taxMode);}); });
-        const row=ws3.addRow([AL[vi], qv.status||"", [...taxSet].join("/")||"税抜", cnt, tot, qv.vendorNote||""]);
-        row.eachCell({includeEmpty:true},(c,cn)=>{ c.border=BORDER; if([4,5].indexOf(cn)>=0&&typeof c.value==="number")c.numFmt="#,##0"; if(vi%2===1&&!c.fill)c.fill=ZEB; });
+      ws2.columns=[{width:6},{width:5},{width:11},{width:20},{width:18},{width:20},{width:9},{width:10},{width:9},{width:8},{width:7},{width:9},{width:11},{width:11},{width:12},{width:34}];
+      // ===== 業者別サマリー =====
+      const ws3=wb.addWorksheet("業者別サマリー",{views:[{state:"frozen",ySplit:4}]});
+      ws3.mergeCells(1,1,1,4); const t3=ws3.getCell(1,1); t3.value="業 者 別 サマリー"; t3.font=TITLEF; ws3.getRow(1).height=24; t3.alignment={horizontal:"center"};
+      ws3.mergeCells(2,1,2,4); const s3=ws3.getCell(2,1); s3.value="金額は税込・1回あたり（単位：円）　業者名は非公開（A社・B社…）"; s3.font=SUBF; s3.alignment={horizontal:"center"};
+      ws3.addRow([]);
+      const hr3=ws3.addRow(["業者","見積対象拠点数","お客様提示合計","特記事項"]);
+      hr3.eachCell(c=>{c.fill=NAVY;c.font=HFONT;c.alignment={horizontal:"center",vertical:"middle"};c.border=BORDER;}); hr3.height=22;
+      vs.forEach((qv,vi)=>{ let cnt=0,tot=0; sts.forEach(st=>{ const a=_stoAmt(qv,st,_cust); if(a!=null){cnt++;tot+=a;} });
+        const row=ws3.addRow([AL[vi], cnt, tot, qv.vendorNote||""]);
+        row.eachCell({includeEmpty:true},(c,cn)=>{ c.border=BORDER; c.alignment={vertical:"middle"}; if([2,3].indexOf(cn)>=0&&typeof c.value==="number")c.numFmt=NUM; if(vi%2===1&&!c.fill)c.fill=ZEB; });
       });
-      ws3.columns=[{width:8},{width:9},{width:12},{width:11},{width:18},{width:42}];
-      ws3.views=[{state:"frozen",ySplit:3}];
+      ws3.columns=[{width:8},{width:16},{width:18},{width:50}];
       const buf=await wb.xlsx.writeBuffer();
       const blob=new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
-      const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download=(p.companyName||p.name||"見積").split("/").join("_")+"_お客様報告.xlsx"; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download=(p.companyName||p.name||"見積").split("/").join("_")+"_相見積比較.xlsx"; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
     }catch(e){ window.alert("Excel出力に失敗しました: "+(e&&e.message||e)); }
   };
 
@@ -34022,7 +34035,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
       )}
       {storeAdd&&(<StoreEditor onSave={(st)=>{setStores([...(p.stores||[]),{...st,id:rid("st")}]);setStoreAdd(false);}} onCancel={()=>setStoreAdd(false)} rid={rid} C={C}/>)}
       <div style={{display:"flex",flexDirection:"column",gap:"0.5rem",marginBottom:"1.25rem"}}>
-        <StoreGroups stores={p.stores||[]} C={C} rid={rid} mapsUrl={mapsUrl} setStores={setStores}/>
+        <StoreGroups stores={p.stores||[]} C={C} rid={rid} mapsUrl={mapsUrl} setStores={setStores} storeQuotes={storeQuotes}/>
         {storeTotal===0&&!imp&&!storeAdd&&<div style={{textAlign:"center",color:C.textMuted,padding:"1rem",fontSize:"0.8rem"}}>Excel取込（様式自動判定）または「＋手動で追加」で対象店舗を登録してください。</div>}
       </div>
 
@@ -34162,7 +34175,7 @@ function PhotoSlot({ label, url, onSet, C, storeId }){
 }
 
 // 対象店舗のグループ表示（都道府県ごとに折りたたみ）
-function StoreGroups({ stores, C, rid, mapsUrl, setStores }){
+function StoreGroups({ stores, C, rid, mapsUrl, setStores, storeQuotes }){
   const [openG,setOpenG]=React.useState({});
   const prefOf=st=>String(st.area||"").trim()||"（エリア未設定）";
   const groups={}; const order=[];
@@ -34171,7 +34184,7 @@ function StoreGroups({ stores, C, rid, mapsUrl, setStores }){
   const del=id=>setStores((stores||[]).filter(x=>x.id!==id));
   const defOpen=(stores||[]).length<=10;
   if(order.length<=1){
-    return (<div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>{(stores||[]).map(st=>(<StoreRow key={st.id} st={st} C={C} rid={rid} mapsUrl={mapsUrl} onChange={upd} onDelete={()=>del(st.id)}/>))}</div>);
+    return (<div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>{(stores||[]).map(st=>(<StoreRow key={st.id} st={st} C={C} rid={rid} mapsUrl={mapsUrl} onChange={upd} onDelete={()=>del(st.id)} storeQuotes={storeQuotes}/>))}</div>);
   }
   return (
     <div style={{display:"flex",flexDirection:"column",gap:"0.4rem"}}>
@@ -34183,7 +34196,7 @@ function StoreGroups({ stores, C, rid, mapsUrl, setStores }){
             <span style={{fontSize:"0.7rem",color:C.textSub}}>{groups[k].length}件</span>
           </button>
           {isOpen&&<div style={{display:"flex",flexDirection:"column",gap:"0.4rem",margin:"0.4rem 0 0.2rem 0.6rem"}}>
-            {groups[k].map(st=>(<StoreRow key={st.id} st={st} C={C} rid={rid} mapsUrl={mapsUrl} onChange={upd} onDelete={()=>del(st.id)}/>))}
+            {groups[k].map(st=>(<StoreRow key={st.id} st={st} C={C} rid={rid} mapsUrl={mapsUrl} onChange={upd} onDelete={()=>del(st.id)} storeQuotes={storeQuotes}/>))}
           </div>}
         </div>
       );})}
@@ -34492,7 +34505,7 @@ function VendorQuoteCard({ qv, rows, stores=[], totalStores=0, showAll=false, on
 }
 
 // 対象店舗の1行（折りたたみ編集）
-function StoreRow({ st, C, rid, mapsUrl, onChange, onDelete }){
+function StoreRow({ st, C, rid, mapsUrl, onChange, onDelete, storeQuotes }){
   const [open,setOpen]=React.useState(false);
   const set=patch=>onChange({...st,...patch});
   const setItems=items=>set({items});
@@ -34504,12 +34517,18 @@ function StoreRow({ st, C, rid, mapsUrl, onChange, onDelete }){
           <div style={{fontWeight:700,fontSize:"0.82rem",color:C.text}}>{st.name||"（拠点名なし）"}{st.address?<a href={mapsUrl(st.address)} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{marginLeft:6,textDecoration:"none"}} title="Googleマップで開く">📍</a>:null}</div>
           <div style={{fontSize:"0.66rem",color:C.textMuted}}>{[st.area,st.bizType,st.address].filter(Boolean).join(" ／ ")||"—"}</div>
         </div>
+        {(function(){ const qs=storeQuotes?storeQuotes(st):[]; return qs.length?<span title="この店舗に見積した業者数" style={{fontSize:"0.64rem",fontWeight:800,color:C.accentDark,background:C.accentBg,padding:"1px 8px",borderRadius:999}}>見積 {qs.length}社{qs[0]?(" ・ 最安¥"+Math.round(qs[0].amount).toLocaleString()):""}</span>:null; })()}
         {(st.dustPhoto||st.overallPhoto)&&<span title="写真あり" style={{fontSize:"0.72rem"}}>📷</span>}
         <span style={{fontSize:"0.66rem",color:C.textSub}}>品目{(st.items||[]).length}</span>
         <button onClick={e=>{e.stopPropagation();if(window.confirm("この店舗を削除しますか？"))onDelete();}} style={{border:"none",background:"none",color:"#dc2626",cursor:"pointer",fontSize:"0.85rem",fontFamily:"inherit"}}>🗑</button>
       </div>
       {open&&(
         <div style={{padding:"0.6rem 0.8rem",borderTop:`1px solid ${C.borderLight}`,background:"#fafbfc"}}>
+          {(function(){ const qs=storeQuotes?storeQuotes(st):[]; if(!qs.length) return null; return (
+            <div style={{marginBottom:"0.6rem",border:`1px solid ${C.borderLight}`,borderRadius:8,overflow:"hidden"}}>
+              <div style={{padding:"0.3rem 0.55rem",background:C.bg,fontSize:"0.68rem",fontWeight:800,color:C.textSub}}>業者別見積（この店舗）　{qs.length}社</div>
+              {qs.map((x,i)=>(<div key={i} style={{display:"flex",justifyContent:"space-between",gap:"0.5rem",padding:"0.28rem 0.55rem",borderTop:`1px solid ${C.borderLight}`,background:x.cheapest?"#dcfce7":"white",fontSize:"0.74rem"}}><span style={{color:x.cheapest?"#166534":C.text,fontWeight:x.cheapest?800:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{x.cheapest?"🏆 ":""}{x.name||"（業者）"}</span><span style={{fontWeight:700,color:x.cheapest?"#166534":C.text,flex:"none"}}>¥{Math.round(x.amount).toLocaleString()}</span></div>))}
+            </div>); })()}
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:"0.4rem",marginBottom:"0.5rem"}}>
             <input value={st.name||""} onChange={e=>set({name:e.target.value})} placeholder="拠点名/店舗名" style={{padding:"0.35rem 0.5rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.76rem",fontFamily:"inherit"}}/>
             <input value={st.bizType||""} onChange={e=>set({bizType:e.target.value})} placeholder="業態" style={{padding:"0.35rem 0.5rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.76rem",fontFamily:"inherit"}}/>
