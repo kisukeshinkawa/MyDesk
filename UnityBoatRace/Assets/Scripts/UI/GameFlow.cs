@@ -531,9 +531,9 @@ namespace BoatRace.UI
             var s = NewScreen("TitleScreen");
             if (raceCam != null) raceCam.heroView = true; // 艇に寄ったキービジュアル風の画
 
-            // 3D会場を透かせる青のベール(イナイレのタイトルの暗めブルー)
+            // 3D会場を透かせる青のベール(暗めに締めて背景の雑味を隠す)
             UiKit.MakeFullscreenGradient(s.transform,
-                new Color(0.06f, 0.16f, 0.45f, 0.35f), new Color(0.01f, 0.04f, 0.16f, 0.88f));
+                new Color(0.03f, 0.10f, 0.34f, 0.55f), new Color(0.01f, 0.03f, 0.13f, 0.96f));
 
             // 全画面透明ボタン(先に敷き、上のボタンには奪わせない)
             var tap = new GameObject("Tap");
@@ -549,11 +549,11 @@ namespace BoatRace.UI
                 var ray = new GameObject("Ray");
                 titleRays[i] = UiKit.Place(ray, s.transform,
                     new Vector2(0.5f, 0.62f), new Vector2(0.5f, 0.62f),
-                    new Vector2(-110f, -620f), new Vector2(110f, 620f));
+                    new Vector2(-70f, -620f), new Vector2(70f, 620f));
                 titleRays[i].localEulerAngles = new Vector3(0f, 0f, i == 0 ? 38f : -38f);
                 var ri = ray.AddComponent<Image>();
                 ri.sprite = UiKit.VerticalGradient(
-                    new Color(0.25f, 0.85f, 1f, 0f), new Color(0.35f, 0.85f, 1f, 0.30f));
+                    new Color(0.30f, 0.85f, 1f, 0f), new Color(0.45f, 0.88f, 1f, 0.13f));
                 ri.raycastTarget = false;
             }
 

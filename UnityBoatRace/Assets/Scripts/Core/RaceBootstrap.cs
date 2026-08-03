@@ -403,19 +403,24 @@ namespace BoatRace.Core
                 m.GetComponent<MeshRenderer>().shadowCastingMode = ShadowCastingMode.Off;
             }
 
-            // 雲(白い扁平球を高い空に。巨大な影を落とさないようにする)
-            for (int i = 0; i < 12; i++)
+            // 雲(遠く高くに薄く。数個の球を重ねて雲らしい輪郭にする)
+            for (int i = 0; i < 8; i++)
             {
                 float ang = R(0f, Mathf.PI * 2f);
-                float r = R(420f, 1100f);
-                var c = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-                c.name = "Cloud";
-                c.transform.SetParent(root.transform, false);
-                c.transform.position = new Vector3(-150f + Mathf.Cos(ang) * r, R(160f, 300f), Mathf.Sin(ang) * r);
-                c.transform.localScale = new Vector3(R(130f, 280f), R(20f, 38f), R(80f, 160f));
-                var cm = Paint(c, Color.white);
-                if (cm.HasProperty("_OutlineWidth")) cm.SetFloat("_OutlineWidth", 0f);
-                c.GetComponent<MeshRenderer>().shadowCastingMode = ShadowCastingMode.Off;
+                float r = R(750f, 1350f);
+                Vector3 basePos = new Vector3(-150f + Mathf.Cos(ang) * r, R(240f, 380f), Mathf.Sin(ang) * r);
+                float baseW = R(90f, 170f);
+                for (int p = 0; p < 3; p++)
+                {
+                    var c = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                    c.name = "Cloud";
+                    c.transform.SetParent(root.transform, false);
+                    c.transform.position = basePos + new Vector3(R(-0.5f, 0.5f) * baseW, R(-6f, 8f), R(-18f, 18f));
+                    c.transform.localScale = new Vector3(baseW * R(0.5f, 0.9f), R(12f, 20f), R(40f, 80f));
+                    var cm = Paint(c, new Color(0.97f, 0.98f, 1f));
+                    if (cm.HasProperty("_OutlineWidth")) cm.SetFloat("_OutlineWidth", 0f);
+                    c.GetComponent<MeshRenderer>().shadowCastingMode = ShadowCastingMode.Off;
+                }
             }
         }
 

@@ -99,16 +99,16 @@ namespace BoatRace.Core
         // ---- ロビー演出: 会場をゆっくり旋回 ----
         void CinematicOrbit()
         {
-            // ヒーロービュー: ピットの艇団に低い視点で寄ってゆっくり回る
+            // ヒーロービュー: 艇団へ大きく寄る低視点(キャラが大写しになるロビー画)
             if (heroView && race.boats.Count > 0)
             {
-                Vector3 hc = Vector3.zero;
-                foreach (var b in race.boats) hc += b.engine.Position;
-                hc /= race.boats.Count;
-                float ha = Time.time * 0.12f;
-                Vector3 hp = hc + new Vector3(Mathf.Cos(ha) * 26f, 3.2f, Mathf.Sin(ha) * 26f);
+                // 中央付近の1艇を主役にして寄る(全体平均だと遠くなるため)
+                var hero = race.boats[Mathf.Min(2, race.boats.Count - 1)].engine;
+                Vector3 hc = hero.Position;
+                float ha = Time.time * 0.09f;
+                Vector3 hp = hc + new Vector3(Mathf.Cos(ha) * 11f, 2.0f, Mathf.Sin(ha) * 11f);
                 transform.position = Vector3.Lerp(transform.position, hp, Time.deltaTime * 1.6f);
-                var hl = Quaternion.LookRotation(hc + Vector3.up * 0.8f - transform.position);
+                var hl = Quaternion.LookRotation(hc + Vector3.up * 1.1f - transform.position);
                 transform.rotation = Quaternion.Slerp(transform.rotation, hl, Time.deltaTime * 2.5f);
                 return;
             }

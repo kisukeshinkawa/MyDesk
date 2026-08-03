@@ -202,6 +202,9 @@ namespace BoatRace.UI
             text.fontStyle = bold ? FontStyle.Bold : FontStyle.Normal;
             text.horizontalOverflow = HorizontalWrapMode.Overflow;
             text.verticalOverflow = VerticalWrapMode.Overflow;
+            // テキストはクリック判定を持たない(下のボタンへのタップを遮らない)。
+            // ボタン類は自身のImageがレイキャスト対象なので影響しない。
+            text.raycastTarget = false;
             if (outline)
             {
                 var ol = go.AddComponent<Outline>();
