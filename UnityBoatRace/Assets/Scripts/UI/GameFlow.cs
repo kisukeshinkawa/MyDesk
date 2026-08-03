@@ -35,6 +35,8 @@ namespace BoatRace.UI
         Coroutine moveTimeoutCo;
         RectTransform moveLinesRT;   // 技選択背景の集中線(回転)
         bool specialSeqActive;       // 必殺技のタメ演出中
+        Text moveTimerText;          // 技選択の残り時間サークル
+        float moveDeadline;
 
         // 展開予想システム(展開/2着/荒れ度を予想→的中で賞金ボーナス)
         string predictedKimarite;
@@ -261,6 +263,8 @@ namespace BoatRace.UI
             // 技選択の集中線をゆっくり回転(スロー中もunscaledで動く)
             if (moveLinesRT != null)
                 moveLinesRT.Rotate(0f, 0f, 26f * Time.unscaledDeltaTime);
+            if (movePanelGo != null && moveTimerText != null)
+                moveTimerText.text = Mathf.Max(0f, moveDeadline - Time.unscaledTime).ToString("F1");
 
             // レースが終わったのに技選択が開いていたら閉じる
             if (movePanelGo != null && race.state.phase == RacePhase.Finished)
@@ -320,109 +324,154 @@ namespace BoatRace.UI
             linesImg.color = new Color(1f, 1f, 1f, 0.35f);
             linesImg.raycastTarget = false;
 
-            // 上部: マーク名バナー + プレイヤー体力バー
-            UiKit.MakeBanner(movePanelGo.transform, $"{markNo}マーク攻防！　技を選択", 30,
-                new Vector2(0.24f, 0.86f), new Vector2(0.76f, 0.95f), tilt: -1.5f);
-            var pChip = UiKit.MakePanel(movePanelGo.transform, new Color(0.05f, 0.10f, 0.28f, 0.95f), 12,
-                new Vector2(0.24f, 0.775f), new Vector2(0.76f, 0.845f), Vector2.zero, Vector2.zero);
-            var pcSq = new GameObject("Sq");
-            UiKit.Place(pcSq, pChip.transform, new Vector2(0f, 0f), new Vector2(0f, 1f),
-                new Vector2(8f, 8f), new Vector2(40f, -8f));
-            var pcImg = pcSq.AddComponent<Image>();
-            pcImg.sprite = UiKit.Rounded(8);
-            pcImg.type = Image.Type.Sliced;
-            pcImg.color = UiKit.BoatColors[race.playerBoatIndex];
-            UiKit.MakeText(pChip.transform,
-                $"{career.racerName}　体力 {race.playerSP:F0}/{race.playerSPMax:F0}", 22, Color.white,
-                TextAnchor.MiddleLeft, new Vector2(0f, 0f), new Vector2(1f, 1f),
-                new Vector2(50f, 0f), new Vector2(-10f, 0f), bold: true, shadow: true);
+            // ---- TEIDOモック「1M攻防」下部シート ----
+            // 敵情報: 自分以外の最上位艇(読み合いの相手)
+            int enemyIdx = -1;
+            foreach (var bi in race.state.standings)
+                if (bi != race.playerBoatIndex) { enemyIdx = bi; break; }
+            var advScores = EntryScores();
+            float psc = advScores[race.playerBoatIndex];
+            float esc = enemyIdx >= 0 ? advScores[enemyIdx] : psc;
+            int advPct = Mathf.RoundToInt(psc / Mathf.Max(0.01f, psc + esc) * 100f);
 
-            // 技カード(基本技=小さめグレー / 必殺技=大きく発光色)
+            var sheet = UiKit.MakePanel(movePanelGo.transform, new Color(0.88f, 0.94f, 0.99f, 0.97f), 26,
+                new Vector2(0f, 0f), new Vector2(1f, 0.47f), new Vector2(6f, -30f), new Vector2(-6f, 0f));
+
+            // ヘッダ: 自分(顔+青帯名+体力バー) vs 敵(赤タグ+パワー)
+            var (mfs, mfh) = FaceOf(career.racerName);
+            UiKit.MakeFace(sheet.transform, mfs, mfh,
+                new Vector2(0.015f, 0.72f), new Vector2(0.115f, 0.99f));
+            UiKit.MakeTag(sheet.transform, $"{career.racerName}　{race.playerBoatIndex + 1}号艇",
+                UiKit.Cyan, Color.white, 19,
+                new Vector2(0.125f, 0.86f), new Vector2(0.43f, 0.985f), skew: 10f);
+            UiKit.MakeText(sheet.transform, $"体力 {race.playerSP:F0}/{race.playerSPMax:F0}", 14,
+                UiKit.Navy, TextAnchor.MiddleLeft,
+                new Vector2(0.13f, 0.795f), new Vector2(0.36f, 0.855f), Vector2.zero, Vector2.zero, bold: true);
+            var tpBg = UiKit.MakePanel(sheet.transform, new Color(0.78f, 0.84f, 0.90f), 6,
+                new Vector2(0.13f, 0.735f), new Vector2(0.37f, 0.79f), Vector2.zero, Vector2.zero);
+            var tpFill = UiKit.MakePanel(tpBg.transform, UiKit.Emerald, 6,
+                new Vector2(0.02f, 0.14f),
+                new Vector2(Mathf.Clamp01(race.playerSP / Mathf.Max(1f, race.playerSPMax)) * 0.96f + 0.02f, 0.86f),
+                Vector2.zero, Vector2.zero);
+            tpFill.GetComponent<Image>().raycastTarget = false;
+            UiKit.MakeChip(sheet.transform, $"優勢度 {advPct}%",
+                advPct >= 50 ? UiKit.Cyan : UiKit.Red, Color.white, 14,
+                new Vector2(0.39f, 0.735f), new Vector2(0.55f, 0.845f), Vector2.zero, Vector2.zero);
+
+            string eName = enemyIdx >= 0 ? race.statsList[enemyIdx].player.playerName : "―";
+            string eTac = enemyIdx >= 0 ? AI.StrategyAI.TacticName(race.state.Get(enemyIdx).tactic) : "";
+            int ePow = enemyIdx >= 0
+                ? Mathf.RoundToInt((race.statsList[enemyIdx].player.turnSkill
+                    + race.statsList[enemyIdx].player.speedSkill) * 300f)
+                : 0;
+            UiKit.MakeTag(sheet.transform, $"{eName}：{eTac}", UiKit.Red, Color.white, 15,
+                new Vector2(0.57f, 0.875f), new Vector2(0.985f, 0.985f), skew: -10f);
+            UiKit.MakeText(sheet.transform, $"{ePow}", 30, UiKit.Red, TextAnchor.MiddleRight,
+                new Vector2(0.70f, 0.72f), new Vector2(0.975f, 0.87f), Vector2.zero, Vector2.zero,
+                bold: true, shadow: true, outline: true);
+
+            // プロンプト+残り時間サークル
+            UiKit.MakeText(sheet.transform, $"{markNo}マーク！ 技を選択しろ！", 20, UiKit.Navy,
+                TextAnchor.MiddleCenter,
+                new Vector2(0.04f, 0.62f), new Vector2(0.80f, 0.71f), Vector2.zero, Vector2.zero, bold: true);
+            var timerOuter = UiKit.MakePanel(sheet.transform, UiKit.Navy, 40,
+                new Vector2(0.845f, 0.575f), new Vector2(0.955f, 0.735f), Vector2.zero, Vector2.zero);
+            var timerInner = UiKit.MakePanel(timerOuter.transform, Color.white, 36,
+                Vector2.zero, Vector2.one, new Vector2(4f, 4f), new Vector2(-4f, -4f));
+            timerInner.GetComponent<Image>().raycastTarget = false;
+            moveTimerText = UiKit.MakeText(timerInner.transform, "4.0", 22, UiKit.Orange,
+                TextAnchor.MiddleCenter, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, bold: true);
+            moveDeadline = Time.unscaledTime + 4f;
+
+            // 技カード2列(TEIDOモック: 白カード+上端ストライプ+TP緑+パワー橙)+温存カード
             var moves = SkillMove.UnlockedAt(career != null ? career.chapter : 1);
-            int n = moves.Count;
-            int cols = Mathf.Min(n, 3);
-            int rows = Mathf.CeilToInt(n / (float)cols);
-            float cw = 0.72f / cols;
-            for (int k = 0; k < n; k++)
+            int slot = 0;
+            void CardAt(int index, System.Action<GameObject> build)
             {
-                var m = moves[k];
-                int idx = SkillMove.All.IndexOf(m);
-                int lv = career != null ? career.MoveLv(idx) : 1;
-                int cost = m.CostAt(lv);
-                bool special = m.cost > 0;
-                bool usable = race.playerSP >= cost;
-                int col = k % cols, row = k / cols;
-                float x0 = 0.14f + col * cw + 0.008f;
-                float y1 = 0.70f - row * 0.26f;
-                float y0 = y1 - (special ? 0.235f : 0.19f);
-
-                // イナイレ式カード: 紺ボディ+白の太枠(必殺技は技色の外光をさらに一段)
-                var frame = UiKit.MakePanel(movePanelGo.transform,
-                    usable ? (special ? m.color : new Color(0.55f, 0.62f, 0.72f)) : new Color(0.35f, 0.38f, 0.44f),
-                    18, new Vector2(x0, y0), new Vector2(x0 + cw - 0.016f, y1), Vector2.zero, Vector2.zero);
-                var white = UiKit.MakePanel(frame.transform, Color.white, 14,
-                    Vector2.zero, Vector2.one, new Vector2(3.5f, 3.5f), new Vector2(-3.5f, -3.5f));
-                var inner = UiKit.MakePanel(white.transform,
-                    special ? new Color(0.10f, 0.16f, 0.38f, 0.98f) : new Color(0.22f, 0.28f, 0.40f, 0.98f), 11,
-                    Vector2.zero, Vector2.one, new Vector2(3f, 3f), new Vector2(-3f, -3f));
-
-                // 技名行: 技色の■アイコン+白太字(必殺技は右上に黄色の≫)
-                var sq = UiKit.MakePanel(inner.transform, special ? m.color : new Color(0.6f, 0.66f, 0.75f), 5,
-                    new Vector2(0.05f, 0.66f), new Vector2(0.14f, 0.92f), Vector2.zero, Vector2.zero);
-                sq.GetComponent<Image>().raycastTarget = false;
-                UiKit.MakeText(inner.transform, m.name, special ? 23 : 21, Color.white, TextAnchor.MiddleLeft,
-                    new Vector2(0.17f, 0.60f), new Vector2(0.85f, 0.98f), Vector2.zero, Vector2.zero,
-                    bold: true, shadow: true);
-                if (special)
-                    UiKit.MakeText(inner.transform, "≫", 26, UiKit.Yellow, TextAnchor.MiddleRight,
-                        new Vector2(0.80f, 0.66f), new Vector2(0.96f, 0.98f), Vector2.zero, Vector2.zero,
-                        bold: true, shadow: true);
-                else
-                    UiKit.MakeText(inner.transform, "ノーマル", 13, new Color(0.75f, 0.80f, 0.88f),
-                        TextAnchor.MiddleRight,
-                        new Vector2(0.60f, 0.66f), new Vector2(0.96f, 0.98f), Vector2.zero, Vector2.zero,
-                        bold: true);
-                if (special)
-                    UiKit.MakeText(inner.transform, $"Lv {new string('★', lv)}", 14, UiKit.Yellow,
-                        TextAnchor.MiddleLeft,
-                        new Vector2(0.06f, 0.44f), new Vector2(0.70f, 0.62f), Vector2.zero, Vector2.zero,
-                        bold: true);
-
-                // 下段バー: 緑の体力チップ+オレンジの威力バー+大きな白数字(参考画面の文法)
-                int power = Mathf.RoundToInt((m.AccelAt(lv) + m.TopAt(lv) - 2f) * 400f + 130f + lv * 30f);
-                var tp = UiKit.MakePanel(inner.transform,
-                    special ? new Color(0.15f, 0.72f, 0.30f) : new Color(0.45f, 0.52f, 0.60f), 8,
-                    new Vector2(0.05f, 0.10f), new Vector2(0.40f, 0.40f), Vector2.zero, Vector2.zero);
-                tp.GetComponent<Image>().raycastTarget = false;
-                UiKit.MakeText(tp.transform, $"体力 {cost}", 17, Color.white, TextAnchor.MiddleCenter,
-                    Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, bold: true, shadow: true);
-                var pw = UiKit.MakePanel(inner.transform, new Color(1f, 0.55f, 0.05f), 8,
-                    new Vector2(0.42f, 0.10f), new Vector2(0.95f, 0.40f), Vector2.zero, Vector2.zero);
-                pw.GetComponent<Image>().raycastTarget = false;
-                var shine = UiKit.MakePanel(pw.transform, new Color(1f, 1f, 1f, 0.25f), 6,
-                    new Vector2(0f, 0.55f), new Vector2(1f, 1f), new Vector2(3f, 0f), new Vector2(-3f, -2f));
-                shine.GetComponent<Image>().raycastTarget = false;
-                UiKit.MakeText(pw.transform, $"{power}", 26, Color.white, TextAnchor.MiddleRight,
-                    Vector2.zero, Vector2.one, new Vector2(6f, 0f), new Vector2(-10f, 0f),
-                    bold: true, shadow: true, outline: true);
-
-                // クリック
-                var btn = frame.AddComponent<Button>();
-                btn.onClick.AddListener(() => { if (usable) PickMove(m, lv); });
-                if (!usable)
-                {
-                    var dim = UiKit.MakePanel(frame.transform, new Color(0f, 0f, 0f, 0.55f), 14,
-                        Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
-                    dim.GetComponent<Image>().raycastTarget = false;
-                }
+                int col = index % 2, row = index / 2;
+                float x0 = 0.03f + col * 0.485f;
+                float y1 = 0.585f - row * 0.19f;
+                var frame = UiKit.MakePanel(sheet.transform, UiKit.Navy, 18,
+                    new Vector2(x0, y1 - 0.175f), new Vector2(x0 + 0.455f, y1), Vector2.zero, Vector2.zero);
+                var sh2 = frame.AddComponent<Shadow>();
+                sh2.effectColor = new Color(0.02f, 0.08f, 0.20f, 0.35f);
+                sh2.effectDistance = new Vector2(0f, -4f);
+                build(frame);
             }
+            foreach (var m in moves)
+            {
+                var mv = m;
+                int idx = SkillMove.All.IndexOf(mv);
+                int lv = career != null ? career.MoveLv(idx) : 1;
+                int cost = mv.CostAt(lv);
+                bool special = mv.cost > 0;
+                bool usable = race.playerSP >= cost;
+                int power = Mathf.RoundToInt((mv.AccelAt(lv) + mv.TopAt(lv) - 2f) * 400f + 130f + lv * 30f);
+                CardAt(slot++, frame =>
+                {
+                    var inner = UiKit.MakePanel(frame.transform, Color.white, 14,
+                        Vector2.zero, Vector2.one, new Vector2(3.5f, 3.5f), new Vector2(-3.5f, -3.5f));
+                    var strip = UiKit.MakePanel(inner.transform,
+                        special ? mv.color : new Color(0.72f, 0.78f, 0.86f), 6,
+                        new Vector2(0f, 0.86f), new Vector2(1f, 1f), new Vector2(3f, 0f), new Vector2(-3f, -2f));
+                    UiKit.AddStripeOverlay(strip, Color.white, 0.30f);
+                    strip.GetComponent<Image>().raycastTarget = false;
+                    UiKit.MakeText(inner.transform,
+                        special ? $"{mv.name}  Lv{lv}" : $"{mv.name} (ノーマル)",
+                        special ? 19 : 17, UiKit.Navy, TextAnchor.MiddleLeft,
+                        new Vector2(0.05f, 0.42f), new Vector2(0.95f, 0.84f), Vector2.zero, Vector2.zero,
+                        bold: true);
+                    UiKit.MakeText(inner.transform, $"TP {cost}", 16,
+                        special ? new Color(0f, 0.47f, 0.42f) : new Color(0.45f, 0.52f, 0.60f),
+                        TextAnchor.MiddleLeft,
+                        new Vector2(0.06f, 0.05f), new Vector2(0.45f, 0.40f), Vector2.zero, Vector2.zero,
+                        bold: true);
+                    UiKit.MakeText(inner.transform, $"{power}", 28, UiKit.Orange, TextAnchor.MiddleRight,
+                        new Vector2(0.45f, 0.02f), new Vector2(0.94f, 0.42f), Vector2.zero, Vector2.zero,
+                        bold: true, shadow: true);
+                    var btn = frame.AddComponent<Button>();
+                    btn.onClick.AddListener(() => { if (usable) PickMove(mv, lv); });
+                    if (!usable)
+                    {
+                        var dim = UiKit.MakePanel(frame.transform, new Color(0f, 0f, 0f, 0.5f), 16,
+                            Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+                        dim.GetComponent<Image>().raycastTarget = false;
+                    }
+                });
+            }
+            // 温存カード(TEIDOモック: 紺地「技を使用しない」)
+            CardAt(slot, frame =>
+            {
+                var inner = UiKit.MakePanel(frame.transform, new Color(0.07f, 0.19f, 0.37f), 14,
+                    Vector2.zero, Vector2.one, new Vector2(3.5f, 3.5f), new Vector2(-3.5f, -3.5f));
+                UiKit.MakeText(inner.transform, "■ 技を使用しない", 18, Color.white, TextAnchor.MiddleLeft,
+                    new Vector2(0.06f, 0.42f), new Vector2(0.95f, 0.90f), Vector2.zero, Vector2.zero, bold: true);
+                UiKit.MakeText(inner.transform, "温存 (体力回復に専念)", 14, new Color(0.62f, 0.76f, 0.91f),
+                    TextAnchor.MiddleLeft,
+                    new Vector2(0.06f, 0.06f), new Vector2(0.95f, 0.40f), Vector2.zero, Vector2.zero, bold: true);
+                frame.AddComponent<Button>().onClick.AddListener(PickNone);
+            });
             moveTimeoutCo = StartCoroutine(MoveTimeout());
         }
 
         System.Collections.IEnumerator MoveTimeout()
         {
             yield return new WaitForSecondsRealtime(4f);
-            PickMove(SkillMove.All[0], 1); // 時間切れは「差し」
+            PickNone(); // 時間切れは「温存」
+        }
+
+        /// <summary>温存: 技を使わずターンに入る(体力を守る選択)。</summary>
+        void PickNone()
+        {
+            if (movePanelGo == null) return;
+            if (moveTimeoutCo != null) { StopCoroutine(moveTimeoutCo); moveTimeoutCo = null; }
+            Destroy(movePanelGo);
+            movePanelGo = null;
+            moveLinesRT = null;
+            moveTimerText = null;
+            if (raceCam != null) raceCam.selectView = false;
+            Time.timeScale = raceSpeed;
+            ShowFlash("温存！", new Color(0.10f, 0.25f, 0.50f));
         }
 
         void PickMove(SkillMove m, int lv)
@@ -432,6 +481,7 @@ namespace BoatRace.UI
             Destroy(movePanelGo);
             movePanelGo = null;
             moveLinesRT = null;
+            moveTimerText = null;
 
             if (m.cost > 0)
             {
@@ -519,6 +569,7 @@ namespace BoatRace.UI
             if (movePanelGo != null) Destroy(movePanelGo);
             movePanelGo = null;
             moveLinesRT = null;
+            moveTimerText = null;
             if (raceCam != null) raceCam.selectView = false;
             Time.timeScale = 1f;
         }
@@ -717,25 +768,34 @@ namespace BoatRace.UI
             int totalRaces = PlayerPrefs.GetInt("br_races", 0);
             int bestPayout = PlayerPrefs.GetInt("br_best", 0);
 
-            // 左上: チーム総合能力風の通算表示(白文字+紺縁で3Dの上に直乗せ)
-            UiKit.MakeText(s.transform, "通算レース", 20, Color.white, TextAnchor.MiddleLeft,
-                new Vector2(0.02f, 0.935f), new Vector2(0.30f, 0.985f), Vector2.zero, Vector2.zero,
+            // 左上: チーム総合能力(TEIDOモック: 数字が画面の主役)
+            int totalPower = Mathf.RoundToInt(
+                (career.startSkill + career.turnSkill + career.speedSkill +
+                 career.mental + career.mechanicSkill) * 40000f + career.level * 800f);
+            UiKit.MakeText(s.transform, "チーム総合能力", 18, Color.white, TextAnchor.MiddleLeft,
+                new Vector2(0.02f, 0.945f), new Vector2(0.32f, 0.99f), Vector2.zero, Vector2.zero,
                 bold: true, shadow: true, outline: true);
-            var bigNum = UiKit.MakeLogoText(s.transform, $"{totalRaces} R", 46,
-                Color.white, new Color(0.70f, 0.90f, 1f), UiKit.Border, 0f,
-                new Vector2(0.02f, 0.855f), new Vector2(0.30f, 0.935f));
+            var bigNum = UiKit.MakeLogoText(s.transform, $"{totalPower:N0}", 44,
+                Color.white, new Color(0.51f, 0.91f, 1f), UiKit.Border, 0f,
+                new Vector2(0.02f, 0.865f), new Vector2(0.34f, 0.945f));
             bigNum.alignment = TextAnchor.MiddleLeft;
 
-            // 右上: 金タグ+白ピルの実績(通貨表示風)
-            UiKit.MakeTag(s.transform, "マイレーサー始動", new Color(1f, 0.78f, 0.20f), UiKit.Border, 17,
-                new Vector2(0.74f, 0.945f), new Vector2(0.985f, 0.99f), skew: 10f);
-            var payInner = UiKit.MakeCard(s.transform,
-                new Vector2(0.74f, 0.885f), new Vector2(0.985f, 0.94f), Vector2.zero, Vector2.zero, 0.95f);
-            UiKit.MakeText(payInner.transform,
-                bestPayout > 0 ? $"最高払戻  ¥{bestPayout:N0}" : "最高払戻  ―　(観戦レースで記録)",
-                17, UiKit.Border,
-                TextAnchor.MiddleCenter, Vector2.zero, Vector2.one,
-                new Vector2(8f, 0f), new Vector2(-8f, 0f), bold: true);
+            // 右上: コインピル2段(資金/BC)+シーズンバナー(TEIDOモック)
+            void CoinPill(string txt, float y0, float y1)
+            {
+                var p = UiKit.MakePanel(s.transform, new Color(0.024f, 0.118f, 0.235f, 0.78f), 18,
+                    new Vector2(0.76f, y0), new Vector2(0.985f, y1), Vector2.zero, Vector2.zero);
+                var po = p.AddComponent<Outline>();
+                po.effectColor = Color.white;
+                po.effectDistance = new Vector2(2f, 2f);
+                UiKit.MakeText(p.transform, txt, 16, Color.white, TextAnchor.MiddleCenter,
+                    Vector2.zero, Vector2.one, new Vector2(8f, 0f), new Vector2(-8f, 0f), bold: true);
+            }
+            CoinPill($"¥ {career.money:N0}万", 0.945f, 0.99f);
+            CoinPill($"BC {PlayerPrefs.GetInt("br_betcoin", 1000):N0}", 0.895f, 0.94f);
+            UiKit.MakeTag(s.transform, $"⚡開催中: 第{career.seasonNo}シーズン",
+                new Color(1f, 0.78f, 0.20f), new Color(0.35f, 0.21f, 0f), 15,
+                new Vector2(0.72f, 0.84f), new Vector2(0.985f, 0.885f), skew: 8f);
 
             // 上中央: 開催場カード(白カード+紺枠+黄斜めタグ)
             UiKit.MakeTag(s.transform, "開催場", UiKit.Yellow, UiKit.Border, 18,
@@ -776,45 +836,72 @@ namespace BoatRace.UI
             nextBtn.targetGraphic = nextOuter.GetComponent<Image>();
             nextBtn.onClick.AddListener(ShowCareer);
 
-            // 下部: 水色フッター+イナイレ式アイコンボタン
-            var foot = UiKit.MakePanel(s.transform, new Color(0.55f, 0.80f, 0.98f, 0.90f), 12,
-                new Vector2(0f, 0f), new Vector2(1f, 0.14f), new Vector2(-6f, -6f), new Vector2(6f, 0f));
-            UiKit.AddStripeOverlay(foot, Color.white, 0.18f);
-            UiKit.MakeIconNav(foot.transform, "◀", "タイトル", new Color(0.45f, 0.55f, 0.70f),
-                new Vector2(0.015f, 0.10f), new Vector2(0.145f, 0.93f), ShowTitle);
-            UiKit.MakeIconNav(foot.transform, "★", "ストーリー", new Color(0.85f, 0.30f, 0.70f),
-                new Vector2(0.16f, 0.10f), new Vector2(0.29f, 0.93f), ShowCareer);
-            UiKit.MakeIconNav(foot.transform, "▶", "観戦レース", UiKit.Red,
-                new Vector2(0.305f, 0.10f), new Vector2(0.435f, 0.93f),
-                () =>
+            // 下部5連タブ(TEIDO設計書4-2: 台形斜めカット、選択中=白地+黄上ライン)
+            System.Action spectate = () =>
+            {
+                race.playerBoatIndex = -1;
+                race.playerOverride = null;
+                if (raceCam != null) { raceCam.focusBoat = -1; raceCam.heroView = false; }
+                race.seed = System.Environment.TickCount;
+                race.SetupRace();
+                if (RaceBootstrap.Instance != null) RaceBootstrap.Instance.RebuildEnvironment(race);
+                // 実在モデルのレジェンド級が2〜4名ゲスト参戦(舟券の狙い目になる)
+                var lrng = new System.Random(race.seed);
+                var usedBoat = new List<int>();
+                var usedLeg = new List<int>();
+                int guests = 2 + lrng.Next(0, 3);
+                for (int k = 0; k < guests * 2 && usedBoat.Count < guests; k++)
                 {
-                    race.playerBoatIndex = -1;
-                    race.playerOverride = null;
-                    if (raceCam != null) { raceCam.focusBoat = -1; raceCam.heroView = false; }
-                    race.seed = System.Environment.TickCount;
-                    race.SetupRace();
-                    if (RaceBootstrap.Instance != null) RaceBootstrap.Instance.RebuildEnvironment(race);
-                    // 実在モデルのレジェンド級が2〜4名ゲスト参戦(舟券の狙い目になる)
-                    var lrng = new System.Random(race.seed);
-                    var usedBoat = new List<int>();
-                    var usedLeg = new List<int>();
-                    int guests = 2 + lrng.Next(0, 3);
-                    for (int k = 0; k < guests * 2 && usedBoat.Count < guests; k++)
-                    {
-                        int bi = lrng.Next(6);
-                        int li = lrng.Next(LegendRacer.All.Length);
-                        if (usedBoat.Contains(bi) || usedLeg.Contains(li)) continue;
-                        usedBoat.Add(bi);
-                        usedLeg.Add(li);
-                        ApplyLegend(race.statsList[bi], LegendRacer.All[li]);
-                    }
-                    ShowEntry();
+                    int bi = lrng.Next(6);
+                    int li = lrng.Next(LegendRacer.All.Length);
+                    if (usedBoat.Contains(bi) || usedLeg.Contains(li)) continue;
+                    usedBoat.Add(bi);
+                    usedLeg.Add(li);
+                    ApplyLegend(race.statsList[bi], LegendRacer.All[li]);
+                }
+                ShowEntry();
+            };
+            var foot = UiKit.MakePanel(s.transform, new Color(0.024f, 0.34f, 0.66f), 0,
+                new Vector2(0f, 0f), new Vector2(1f, 0.115f), new Vector2(-6f, -6f), new Vector2(6f, 0f));
+            var whiteLine = UiKit.MakePanel(foot.transform, Color.white, 0,
+                new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, -4f), new Vector2(0f, 0f));
+            whiteLine.GetComponent<Image>().raycastTarget = false;
+            string[] tabLabels = { "ラウンジ", "戦績", "ストーリー", "観戦", "ストア" };
+            string[] tabIcons = { "★", "▤", "▶", "◎", "¥" };
+            System.Action[] tabActs =
+            {
+                ShowTitle,
+                () => ShowStatsPopup(s.transform),
+                ShowCareer,
+                spectate,
+                () => ShowShopPopup(s.transform),
+            };
+            for (int t = 0; t < 5; t++)
+            {
+                int ti = t;
+                bool active = t == 2; // 中央「ストーリー」が選択中
+                var tb = UiKit.MakePanel(foot.transform,
+                    active ? Color.white : new Color(1f, 1f, 1f, 0.02f), 10,
+                    new Vector2(0.004f + t * 0.199f, 0.06f), new Vector2(0.195f + t * 0.199f, 0.97f),
+                    Vector2.zero, Vector2.zero);
+                tb.AddComponent<SkewFx>().skewX = 9f; // 台形斜めカット
+                if (active)
+                {
+                    var yLine = UiKit.MakePanel(tb.transform, UiKit.Yellow, 4,
+                        new Vector2(0.15f, 0.90f), new Vector2(0.85f, 0.99f), Vector2.zero, Vector2.zero);
+                    yLine.GetComponent<Image>().raycastTarget = false;
+                }
+                Color fg = active ? UiKit.Cyan : new Color(0.81f, 0.91f, 1f);
+                UiKit.MakeText(tb.transform, tabIcons[t], 24, fg, TextAnchor.MiddleCenter,
+                    new Vector2(0f, 0.42f), new Vector2(1f, 0.95f), Vector2.zero, Vector2.zero, bold: true);
+                UiKit.MakeText(tb.transform, tabLabels[t], 15, fg, TextAnchor.MiddleCenter,
+                    new Vector2(0f, 0.04f), new Vector2(1f, 0.42f), Vector2.zero, Vector2.zero, bold: true);
+                tb.AddComponent<Button>().onClick.AddListener(() =>
+                {
+                    AudioKit.Click();
+                    tabActs[ti]();
                 });
-            UiKit.MakeIconNav(foot.transform, "■", "戦績", new Color(0.10f, 0.62f, 0.35f),
-                new Vector2(0.45f, 0.10f), new Vector2(0.58f, 0.93f), () => ShowStatsPopup(s.transform));
-            UiKit.MakeChip(foot.transform, "選手・モーター・ペラは毎レース抽選", new Color(1f, 1f, 1f, 0.85f),
-                UiKit.Border, 14,
-                new Vector2(0.60f, 0.28f), new Vector2(0.985f, 0.72f), Vector2.zero, Vector2.zero);
+            }
         }
 
         void ShowStatsPopup(Transform parent)

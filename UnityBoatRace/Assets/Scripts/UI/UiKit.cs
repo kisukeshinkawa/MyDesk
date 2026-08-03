@@ -13,20 +13,26 @@ namespace BoatRace.UI
         static Font jpFont;
         static readonly Dictionary<int, Sprite> roundedCache = new Dictionary<int, Sprite>();
 
-        // ---- 配色(ポップなスポーツゲー風) ----
-        public static readonly Color Navy = new Color(0.07f, 0.16f, 0.35f);
-        public static readonly Color Sky = new Color(0.42f, 0.78f, 0.98f);
-        public static readonly Color Cyan = new Color(0.20f, 0.60f, 0.95f);
-        public static readonly Color Yellow = new Color(1f, 0.83f, 0.15f);
-        public static readonly Color Red = new Color(0.95f, 0.25f, 0.20f);
+        // ---- 配色(TEIDOアートディレクション: HEX指定準拠) ----
+        public static readonly Color Navy = new Color(0.051f, 0.169f, 0.322f);    // #0D2B52 ディープネイビー
+        public static readonly Color Sky = new Color(0.310f, 0.765f, 0.969f);     // #4FC3F7 スカイシアン
+        public static readonly Color Cyan = new Color(0.039f, 0.431f, 0.812f);    // #0A6ECF テイドブルー
+        public static readonly Color Yellow = new Color(1f, 0.839f, 0f);          // #FFD600 サンイエロー
+        public static readonly Color Red = new Color(0.898f, 0.224f, 0.208f);     // #E53935 アラートレッド
+        public static readonly Color Orange = new Color(1f, 0.541f, 0f);          // #FF8A00 ビクトリーオレンジ
+        public static readonly Color Emerald = new Color(0f, 0.749f, 0.647f);     // #00BFA5 ウォーターエメラルド
         public static readonly Color PanelWhite = new Color(1f, 1f, 1f, 0.96f);
-        public static readonly Color TextDark = new Color(0.12f, 0.17f, 0.28f);
+        public static readonly Color TextDark = new Color(0.051f, 0.169f, 0.322f);
 
-        // アニメ調の鮮やかな艇色(1白 2黒 3赤 4青 5黄 6緑)
+        // 6艇カラー(TEIDO設計書2-2: 実艇準拠・彩度+15%)
         public static readonly Color[] BoatColors =
         {
-            Color.white, new Color(0.16f, 0.17f, 0.20f), new Color(1f, 0.16f, 0.12f),
-            new Color(0.05f, 0.38f, 1f), new Color(1f, 0.86f, 0.05f), new Color(0.05f, 0.8f, 0.32f),
+            new Color(0.961f, 0.961f, 0.961f),  // 1号 #F5F5F5 白
+            new Color(0.102f, 0.102f, 0.102f),  // 2号 #1A1A1A 黒
+            new Color(0.898f, 0.224f, 0.208f),  // 3号 #E53935 赤
+            new Color(0.118f, 0.420f, 0.878f),  // 4号 #1E6BE0 青
+            new Color(1f, 0.769f, 0f),          // 5号 #FFC400 黄
+            new Color(0.180f, 0.620f, 0.310f),  // 6号 #2E9E4F 緑
         };
 
         /// <summary>日本語が出るフォント(Macのヒラギノ等→無ければ内蔵フォント)。</summary>
@@ -311,8 +317,8 @@ namespace BoatRace.UI
 
         // ============ イナイレ風デザイン部品(白カード+紺枠・斜めタグ・グラデロゴ) ============
 
-        /// <summary>枠線の紺(イナイレの白カードを縁取る色)。</summary>
-        public static readonly Color Border = new Color(0.13f, 0.25f, 0.50f);
+        /// <summary>枠線の紺(TEIDO: #0D2B52 ディープネイビー)。</summary>
+        public static readonly Color Border = new Color(0.051f, 0.169f, 0.322f);
 
         /// <summary>白カード+紺の太ボーダー+影(イナイレの基本パネル)。戻り値は内側の白パネル。</summary>
         public static GameObject MakeCard(Transform parent, Vector2 anchorMin, Vector2 anchorMax,

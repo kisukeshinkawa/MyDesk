@@ -86,5 +86,18 @@ namespace BoatRace.Boat
             transform.position = pos + Vector3.up * 0.25f;
             transform.rotation = Quaternion.Euler(0f, headingDeg, 0f);
         }
+
+        // ロビー等で停止中の浮遊アニメ(TEIDO設計: ±3cm/周期3秒。愛着形成)
+        void Update()
+        {
+            if (replayMode || engine == null || engine.Speed > 0.5f) return;
+            waveTime += Time.deltaTime;
+            float bob = Mathf.Sin(waveTime * 2.09f) * 0.03f;
+            transform.position = engine.Position + Vector3.up * (0.25f + bob);
+            transform.rotation = Quaternion.Euler(
+                Mathf.Sin(waveTime * 0.7f) * 1.2f,
+                engine.HeadingDeg,
+                Mathf.Sin(waveTime * 0.9f) * 1.5f);
+        }
     }
 }
