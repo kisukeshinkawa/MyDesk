@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-04-v322-grid-keys-paste"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-04-v323-min-charge"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -33705,7 +33705,8 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
   const _N = v => { const n=parseFloat(String(v==null?"":v).replace(/[^0-9.]/g,"")); return isNaN(n)?0:n; };
   const _qtyOf = (it,u)=>{ const list=(it&&it.qtys&&it.qtys.length)?it.qtys:parseQtyList(it&&it.qty); const f=(list||[]).find(x=>String(x.u)===String(u)); return f?_N(f.q):0; };
   const _sub = (it,pr) => { if(!pr) return 0; const m=pr.method; if(m==="込") return _N(pr.unit); if(m==="別") return _N(pr.transport)+_N(pr.disposal)*_qtyOf(it,pr.disposalUnit); if(m==="定額") return _N(pr.flat); return _N(pr.unit)+_N(pr.transport)+_N(pr.disposal)+_N(pr.flat); };
-  const _base = (it,pr) => _sub(it,pr)+_N(pr&&pr.overhead);
+  const _eff = (it,pr) => { const s=_sub(it,pr); return ((pr&&(pr.method==="込"||pr.method==="別"))&&s>0)?Math.max(s,_N(pr&&pr.minCharge)):s; };
+  const _base = (it,pr) => _eff(it,pr)+_N(pr&&pr.overhead);
   const _hasPr = pr => !!pr && ((pr.method&&pr.method!=="") || _N(pr.unit) || _N(pr.transport) || _N(pr.disposal) || _N(pr.flat));
   const _taxIn = (it,pr) => { const b=_base(it,pr); return (pr&&pr.taxMode==="税込")?b:Math.round(b*1.1); };
   const _cust = (it,pr) => Math.round(_taxIn(it,pr)*1.05);
@@ -33764,15 +33765,15 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
       const nc2=16; ws2.mergeCells(1,1,1,nc2); const t2=ws2.getCell(1,1); t2.value="見 積 内 訳（拠点別・業者別）"; t2.font=TITLEF; ws2.getRow(1).height=24; t2.alignment={horizontal:"center"};
       ws2.mergeCells(2,1,2,nc2); const s2=ws2.getCell(2,1); s2.value="金額は税込・1回あたり（単位：円）　業者名は非公開（A社・B社…）"; s2.font=SUBF; s2.alignment={horizontal:"center"};
       ws2.addRow([]);
-      const hr2=ws2.addRow(["業者","No.","エリア","拠点名","品目","料金方式","単価","運搬費(固)","処分単価","処分単位","数量","諸経費","税抜","税込","お客様提示","備考"]);
+      const hr2=ws2.addRow(["業者","No.","エリア","拠点名","品目","料金方式","単価","運搬費(固)","処分単価","処分単位","数量","諸経費","最低料金","税抜","税込","お客様提示","備考"]);
       hr2.eachCell(c=>{c.fill=NAVY;c.font=HFONT;c.alignment={horizontal:"center",vertical:"middle"};c.border=BORDER;}); hr2.height=22;
       let rc=0;
       vs.forEach((qv,vi)=>{ sts.forEach((st,i)=>{ _storeItems(st).forEach(it=>{ const pr=(qv.prices||{})[it.id]; if(!_hasPr(pr))return;
         const qy=(pr.method==="別")?_qtyOf(it,pr.disposalUnit):"";
-        const row=ws2.addRow([AL[vi], st.no||i+1, st.area||"", st.name||"", it.kind||"", M[pr.method]||pr.method||"", pr.unit?_N(pr.unit):"", pr.transport?_N(pr.transport):"", pr.disposal?_N(pr.disposal):"", pr.disposalUnit||"", qy||"", pr.overhead?_N(pr.overhead):"", _base(it,pr), _taxIn(it,pr), _cust(it,pr), pr.condition||pr.note||""]);
-        row.eachCell({includeEmpty:true},(c,cn)=>{ c.border=BORDER; c.alignment={vertical:"middle"}; if([7,8,9,11,12,13,14,15].indexOf(cn)>=0&&typeof c.value==="number")c.numFmt=NUM; if(rc%2===1&&!c.fill)c.fill=ZEB; }); rc++;
+        const row=ws2.addRow([AL[vi], st.no||i+1, st.area||"", st.name||"", it.kind||"", M[pr.method]||pr.method||"", pr.unit?_N(pr.unit):"", pr.transport?_N(pr.transport):"", pr.disposal?_N(pr.disposal):"", pr.disposalUnit||"", qy||"", pr.overhead?_N(pr.overhead):"", pr.minCharge?_N(pr.minCharge):"", _base(it,pr), _taxIn(it,pr), _cust(it,pr), pr.condition||pr.note||""]);
+        row.eachCell({includeEmpty:true},(c,cn)=>{ c.border=BORDER; c.alignment={vertical:"middle"}; if([7,8,9,11,12,13,14,15,16].indexOf(cn)>=0&&typeof c.value==="number")c.numFmt=NUM; if(rc%2===1&&!c.fill)c.fill=ZEB; }); rc++;
       }); }); });
-      ws2.columns=[{width:6},{width:5},{width:11},{width:20},{width:18},{width:20},{width:9},{width:10},{width:9},{width:8},{width:7},{width:9},{width:11},{width:11},{width:12},{width:34}];
+      ws2.columns=[{width:6},{width:5},{width:11},{width:20},{width:18},{width:20},{width:9},{width:10},{width:9},{width:8},{width:7},{width:9},{width:9},{width:11},{width:11},{width:12},{width:34}];
       // ===== 業者別サマリー =====
       const ws3=wb.addWorksheet("業者別サマリー",{views:[{state:"frozen",ySplit:4}]});
       ws3.mergeCells(1,1,1,4); const t3=ws3.getCell(1,1); t3.value="業 者 別 サマリー"; t3.font=TITLEF; ws3.getRow(1).height=24; t3.alignment={horizontal:"center"};
@@ -34240,7 +34241,8 @@ function VendorQuoteCard({ qv, rows, stores=[], totalStores=0, showAll=false, on
   const custAmt=pr=>Math.round(taxIn(pr)*(1+DUSTALK_FEE));
   const qtyFor=(r,u)=>{ const f=((r&&r.qtys)||[]).find(x=>String(x.u)===String(u)); return f?N(f.q):0; };
   const subOf=(r,pr)=>{ if(!pr)return 0; const m=pr.method; if(m==="込")return N(pr.unit); if(m==="別")return N(pr.transport)+N(pr.disposal)*qtyFor(r,pr.disposalUnit); if(m==="定額")return N(pr.flat); return N(pr.unit)+N(pr.transport)+N(pr.disposal)+N(pr.flat); };
-  const baseOf=(r,pr)=>subOf(r,pr)+N(pr&&pr.overhead);
+  const effSub=(r,pr)=>{ const s=subOf(r,pr); return ((pr&&(pr.method==="込"||pr.method==="別"))&&s>0)?Math.max(s,N(pr&&pr.minCharge)):s; };
+  const baseOf=(r,pr)=>effSub(r,pr)+N(pr&&pr.overhead);
   const taxInOf=(r,pr)=>{ const b=baseOf(r,pr); return (pr&&pr.taxMode==="税込")?b:Math.round(b*(1+TAX_RATE)); };
   const custOf=(r,pr)=>Math.round(taxInOf(r,pr)*(1+DUSTALK_FEE));
   const total=rows.reduce((s,r)=>s+custOf(r,prices[r.itemId]),0)+(qv.extraLines||[]).reduce((s,l)=>s+N(l.amount),0);
@@ -34252,9 +34254,9 @@ function VendorQuoteCard({ qv, rows, stores=[], totalStores=0, showAll=false, on
   const grade=vrec&&vrec.grade;
   const setExtra=lines=>onChange({extraLines:lines});
   // Excel風キー移動
-  const NAVCOLS=10;
-  const GRIDCOLS=["method","unit","unitType","transport","disposal","disposalUnit","flat","overhead","taxMode","condition"];
-  const NUMCOLS=new Set(["unit","transport","disposal","flat","overhead"]);
+  const NAVCOLS=11;
+  const GRIDCOLS=["method","unit","unitType","transport","disposal","disposalUnit","flat","overhead","minCharge","taxMode","condition"];
+  const NUMCOLS=new Set(["unit","transport","disposal","flat","overhead","minCharge"]);
   const OPT_METHOD=["込","別","定額"]; const OPT_TAX=["税抜","税込"];
   const validCell=(key,val,r)=>{ const v=String(val==null?"":val).trim(); if(NUMCOLS.has(key)) return v.replace(/[^0-9.]/g,""); if(key==="method") return OPT_METHOD.indexOf(v)>=0?v:""; if(key==="taxMode") return OPT_TAX.indexOf(v)>=0?v:""; if(key==="disposalUnit"){ const us=((r&&r.qtys)||[]).map(x=>String(x.u)); return us.indexOf(v)>=0?v:""; } return val; };
   const [sel,setSel]=React.useState(null);
@@ -34466,7 +34468,7 @@ function VendorQuoteCard({ qv, rows, stores=[], totalStores=0, showAll=false, on
               <span style={{width:96,flex:"none"}}>方式</span>
               <span style={HcolNum}>単価(込)</span><span style={{width:54,flex:"none",textAlign:"center"}}>単位</span>
               <span style={HcolNum}>運搬費(固)</span><span style={HcolNum}>処分単価</span><span style={{width:54,flex:"none",textAlign:"center"}}>処分単位</span>
-              <span style={{width:78,flex:"none",textAlign:"right"}}>定額</span><span style={HcolNum}>諸経費</span>
+              <span style={{width:78,flex:"none",textAlign:"right"}}>定額</span><span style={HcolNum}>諸経費</span><span style={HcolNum}>最低料金</span>
               <span style={{width:58,flex:"none",textAlign:"center"}}>税区分</span>
               <span style={{width:80,flex:"none",textAlign:"right"}}>見積金額</span>
               <span style={{width:80,flex:"none",textAlign:"right"}}>税込</span>
@@ -34488,11 +34490,12 @@ function VendorQuoteCard({ qv, rows, stores=[], totalStores=0, showAll=false, on
                 <span style={{width:54,flex:"none"}}>{ok("disposalUnit")?<select {...cellProps(ri,5)} value={pr.disposalUnit||""} onChange={e=>setPrice(r.itemId,{disposalUnit:e.target.value})} title="店舗の数量に登録した単位から選択" style={cs(ri,5,{width:"100%",boxSizing:"border-box",padding:"0.22rem 0.05rem",borderRadius:5,border:`1px solid ${((r.qtys||[]).length? C.border : "#fca5a5")}`,fontSize:"0.6rem",fontFamily:"inherit",background:"white"})}><option value="">単位</option>{(r.qtys||[]).map((qq,qi)=><option key={qi} value={qq.u}>{qq.u||"(未設定)"}</option>)}</select>:null}</span>
                 <span style={{width:78,flex:"none"}}>{ok("flat")?<input {...cellProps(ri,6)} value={pr.flat||""} onChange={e=>setPrice(r.itemId,{flat:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="定額" style={cs(ri,6,NUM)}/>:null}</span>
                 <span style={CcolNum}><input {...cellProps(ri,7)} value={pr.overhead||""} onChange={e=>setPrice(r.itemId,{overhead:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="諸経費" style={cs(ri,7,NUM)}/></span>
-                <select {...cellProps(ri,8)} value={pr.taxMode||"税抜"} onChange={e=>setPrice(r.itemId,{taxMode:e.target.value})} style={cs(ri,8,{width:58,flex:"none",padding:"0.25rem 0.05rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.64rem",fontFamily:"inherit",background:"white"})}>{TAXES.map(t=><option key={t} value={t}>{t}</option>)}</select>
+                <span style={CcolNum}><input {...cellProps(ri,8)} value={pr.minCharge||""} onChange={e=>setPrice(r.itemId,{minCharge:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="最低料金" style={cs(ri,8,NUM)}/></span>
+                <select {...cellProps(ri,9)} value={pr.taxMode||"税抜"} onChange={e=>setPrice(r.itemId,{taxMode:e.target.value})} style={cs(ri,9,{width:58,flex:"none",padding:"0.25rem 0.05rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.64rem",fontFamily:"inherit",background:"white"})}>{TAXES.map(t=><option key={t} value={t}>{t}</option>)}</select>
                 <span style={{width:80,flex:"none",...AUTO}}>{baseOf(r,pr)?Math.round(baseOf(r,pr)).toLocaleString():""}</span>
                 <span style={{width:80,flex:"none",...AUTO,color:C.textSub}}>{baseOf(r,pr)?Math.round(taxInOf(r,pr)).toLocaleString():""}</span>
                 <span style={{width:96,flex:"none",...AUTO,color:C.accentDark,fontWeight:800}}>{baseOf(r,pr)?("¥"+Math.round(custOf(r,pr)).toLocaleString()):""}</span>
-                <span style={{width:150,flex:"none"}}><input {...cellProps(ri,9)} value={pr.condition||pr.note||""} onChange={e=>setPrice(r.itemId,{condition:e.target.value})} placeholder="回収条件・備考" style={cs(ri,9,{width:"100%",boxSizing:"border-box",padding:"0.25rem 0.3rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit"})}/></span>
+                <span style={{width:150,flex:"none"}}><input {...cellProps(ri,10)} value={pr.condition||pr.note||""} onChange={e=>setPrice(r.itemId,{condition:e.target.value})} placeholder="回収条件・備考" style={cs(ri,10,{width:"100%",boxSizing:"border-box",padding:"0.25rem 0.3rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit"})}/></span>
               </div>
             );})}
           </div>
