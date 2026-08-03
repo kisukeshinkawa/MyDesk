@@ -33,6 +33,8 @@ namespace BoatRace.UI
         System.Action dialogDone;
         GameObject movePanelGo;
         Coroutine moveTimeoutCo;
+        RectTransform moveLinesRT;   // 技選択背景の集中線(回転)
+        bool specialSeqActive;       // 必殺技のタメ演出中
 
         Canvas canvas;
         GameObject currentScreen;
@@ -102,11 +104,15 @@ namespace BoatRace.UI
             bool preRace = race.armed && race.state.clock < -14f &&
                 (race.state.phase == RacePhase.PitOut || race.state.phase == RacePhase.Waiting);
             ffButton.SetActive(preRace);
-            if (!preRace && movePanelGo == null && Time.timeScale != 1f)
+            if (!preRace && movePanelGo == null && !specialSeqActive && Time.timeScale != 1f)
             {
                 Time.timeScale = 1f;
                 ffLabel.text = "⏩ 早送り";
             }
+
+            // 技選択の集中線をゆっくり回転(スロー中もunscaledで動く)
+            if (moveLinesRT != null)
+                moveLinesRT.Rotate(0f, 0f, 26f * Time.unscaledDeltaTime);
 
             // レースが終わったのに技選択が開いていたら閉じる
             if (movePanelGo != null && race.state.phase == RacePhase.Finished)
@@ -132,57 +138,148 @@ namespace BoatRace.UI
             if (movePanelGo != null || race.PlayerMoveActive || replay.IsPlaying) return;
             if (race.state.phase != RacePhase.Racing) return;
 
-            Time.timeScale = 0.15f; // イナイレ的なタメのスロー
+            Time.timeScale = 0.05f; // 深いスローで完全に「タメ」の画にする
+            if (raceCam != null) raceCam.selectView = true;
 
-            movePanelGo = UiKit.MakePanel(canvas.transform, new Color(0.05f, 0.10f, 0.28f, 0.95f), 20,
-                new Vector2(0.14f, 0.20f), new Vector2(0.86f, 0.44f), Vector2.zero, Vector2.zero);
-            UiKit.AddStripeOverlay(movePanelGo, Color.white, 0.06f);
-            UiKit.MakeText(movePanelGo.transform,
-                $"{markNo}マーク！　技を選べ！　(体力 {race.playerSP:F0}/{race.playerSPMax:F0})", 26,
-                UiKit.Yellow, TextAnchor.MiddleCenter,
-                new Vector2(0f, 0.72f), new Vector2(1f, 0.98f), Vector2.zero, Vector2.zero,
-                bold: true, shadow: true, outline: true);
+            // 全画面のイナイレ式技選択スクリーン
+            movePanelGo = new GameObject("MoveSelect");
+            UiKit.Place(movePanelGo, canvas.transform, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+            UiKit.MakeFullscreenGradient(movePanelGo.transform,
+                new Color(0f, 0f, 0f, 0.10f), new Color(0f, 0.02f, 0.10f, 0.72f));
 
+            // 回転する集中線(3D越しにドラマを作る)
+            var linesGo = new GameObject("Lines");
+            moveLinesRT = UiKit.Place(linesGo, movePanelGo.transform, Vector2.zero, Vector2.one,
+                new Vector2(-260f, -260f), new Vector2(260f, 260f));
+            var linesImg = linesGo.AddComponent<Image>();
+            linesImg.sprite = UiKit.SpeedLines();
+            linesImg.color = new Color(1f, 1f, 1f, 0.35f);
+            linesImg.raycastTarget = false;
+
+            // 上部: マーク名バナー + プレイヤー体力バー
+            UiKit.MakeBanner(movePanelGo.transform, $"{markNo}マーク攻防！　技を選択", 30,
+                new Vector2(0.24f, 0.86f), new Vector2(0.76f, 0.95f), tilt: -1.5f);
+            var pChip = UiKit.MakePanel(movePanelGo.transform, new Color(0.05f, 0.10f, 0.28f, 0.95f), 12,
+                new Vector2(0.24f, 0.775f), new Vector2(0.76f, 0.845f), Vector2.zero, Vector2.zero);
+            var pcSq = new GameObject("Sq");
+            UiKit.Place(pcSq, pChip.transform, new Vector2(0f, 0f), new Vector2(0f, 1f),
+                new Vector2(8f, 8f), new Vector2(40f, -8f));
+            var pcImg = pcSq.AddComponent<Image>();
+            pcImg.sprite = UiKit.Rounded(8);
+            pcImg.type = Image.Type.Sliced;
+            pcImg.color = UiKit.BoatColors[race.playerBoatIndex];
+            UiKit.MakeText(pChip.transform,
+                $"{career.racerName}　体力 {race.playerSP:F0}/{race.playerSPMax:F0}", 22, Color.white,
+                TextAnchor.MiddleLeft, new Vector2(0f, 0f), new Vector2(1f, 1f),
+                new Vector2(50f, 0f), new Vector2(-10f, 0f), bold: true, shadow: true);
+
+            // 技カード(基本技=小さめグレー / 必殺技=大きく発光色)
             var moves = SkillMove.UnlockedAt(career != null ? career.chapter : 1);
-            float w = 0.92f / moves.Count;
-            for (int k = 0; k < moves.Count; k++)
+            int n = moves.Count;
+            int cols = Mathf.Min(n, 3);
+            int rows = Mathf.CeilToInt(n / (float)cols);
+            float cw = 0.72f / cols;
+            for (int k = 0; k < n; k++)
             {
                 var m = moves[k];
                 int idx = SkillMove.All.IndexOf(m);
                 int lv = career != null ? career.MoveLv(idx) : 1;
                 int cost = m.CostAt(lv);
-                bool usable = race.playerSP >= cost; // 体力が足りない技は選べない(基本技のみになる)
-                string label = m.cost > 0 ? $"{m.name} Lv{lv}\n体力{cost}" : m.name;
-                Color bg = usable ? Color.Lerp(m.color, UiKit.Navy, 0.25f) : new Color(0.35f, 0.37f, 0.42f);
-                var btn = UiKit.MakeButton(movePanelGo.transform, label, bg, 22,
-                    new Vector2(0.04f + k * w, 0.08f), new Vector2(0.04f + k * w + w - 0.015f, 0.66f),
-                    Vector2.zero, Vector2.zero,
-                    () => { if (usable) PickMove(m, lv); });
-                if (!usable) btn.GetComponentInChildren<Text>().color = new Color(1f, 1f, 1f, 0.45f);
+                bool special = m.cost > 0;
+                bool usable = race.playerSP >= cost;
+                int col = k % cols, row = k / cols;
+                float x0 = 0.14f + col * cw + 0.008f;
+                float y1 = 0.70f - row * 0.26f;
+                float y0 = y1 - (special ? 0.235f : 0.19f);
+
+                // 外枠(必殺技は技色の発光フレーム)
+                var frame = UiKit.MakePanel(movePanelGo.transform,
+                    usable ? (special ? m.color : new Color(0.5f, 0.55f, 0.62f)) : new Color(0.3f, 0.32f, 0.36f),
+                    16, new Vector2(x0, y0), new Vector2(x0 + cw - 0.016f, y1), Vector2.zero, Vector2.zero);
+                if (special && usable) UiKit.AddStripeOverlay(frame, Color.white, 0.14f);
+                var inner = UiKit.MakePanel(frame.transform, new Color(0.05f, 0.09f, 0.22f, 0.96f), 12,
+                    Vector2.zero, Vector2.one, new Vector2(5f, 5f), new Vector2(-5f, -5f));
+
+                // 技名ヘッダー帯
+                var head = UiKit.MakePanel(inner.transform,
+                    special ? Color.Lerp(m.color, Color.black, 0.25f) : new Color(0.35f, 0.4f, 0.5f), 8,
+                    new Vector2(0f, 0.62f), new Vector2(1f, 0.98f), new Vector2(4f, 0f), new Vector2(-4f, -3f));
+                UiKit.MakeText(head.transform, special ? $"{m.name}" : m.name, special ? 22 : 20,
+                    Color.white, TextAnchor.MiddleLeft,
+                    Vector2.zero, Vector2.one, new Vector2(10f, 0f), new Vector2(-6f, 0f),
+                    bold: true, shadow: true, outline: special);
+
+                // コスト・威力・Lv
+                int power = Mathf.RoundToInt((m.AccelAt(lv) + m.TopAt(lv) - 2f) * 400f + 130f + lv * 30f);
+                UiKit.MakeChip(inner.transform, special ? $"体力{cost}" : "体力0",
+                    special ? UiKit.Yellow : new Color(0.5f, 0.55f, 0.62f),
+                    special ? UiKit.Navy : Color.white, 16,
+                    new Vector2(0.05f, 0.30f), new Vector2(0.48f, 0.56f), Vector2.zero, Vector2.zero);
+                UiKit.MakeText(inner.transform, $"{power}", 30,
+                    special ? UiKit.Yellow : new Color(0.8f, 0.85f, 0.9f), TextAnchor.LowerRight,
+                    new Vector2(0.4f, 0.03f), new Vector2(0.95f, 0.55f), Vector2.zero, Vector2.zero,
+                    bold: true, shadow: true, outline: true);
+                if (special)
+                    UiKit.MakeText(inner.transform, new string('★', lv), 15, UiKit.Yellow, TextAnchor.LowerLeft,
+                        new Vector2(0.06f, 0.03f), new Vector2(0.6f, 0.26f), Vector2.zero, Vector2.zero, bold: true);
+
+                // クリック
+                var btn = frame.AddComponent<Button>();
+                btn.onClick.AddListener(() => { if (usable) PickMove(m, lv); });
+                if (!usable)
+                {
+                    var dim = UiKit.MakePanel(frame.transform, new Color(0f, 0f, 0f, 0.55f), 14,
+                        Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+                    dim.GetComponent<Image>().raycastTarget = false;
+                }
             }
             moveTimeoutCo = StartCoroutine(MoveTimeout());
         }
 
         System.Collections.IEnumerator MoveTimeout()
         {
-            yield return new WaitForSecondsRealtime(2.5f);
+            yield return new WaitForSecondsRealtime(4f);
             PickMove(SkillMove.All[0], 1); // 時間切れは「差し」
         }
 
         void PickMove(SkillMove m, int lv)
         {
             if (movePanelGo == null) return;
-            CloseMovePanel();
-            race.ApplyPlayerMove(m, lv);
+            if (moveTimeoutCo != null) { StopCoroutine(moveTimeoutCo); moveTimeoutCo = null; }
+            Destroy(movePanelGo);
+            movePanelGo = null;
+            moveLinesRT = null;
+
             if (m.cost > 0)
             {
-                ShowMoveCutIn($"{m.name} Lv{lv}", m.color); // 必殺技はフルカットイン
-                if (raceCam != null) raceCam.Punch(14f);
+                // 必殺技: タメ→カットイン→解放の3段演出
+                StartCoroutine(SpecialMoveSequence(m, lv));
             }
             else
             {
+                // 基本技: 演出なしでサッと発動(差をつける)
+                if (raceCam != null) raceCam.selectView = false;
+                Time.timeScale = 1f;
+                race.ApplyPlayerMove(m, lv);
                 ShowFlash(m.name, m.color);
             }
+        }
+
+        System.Collections.IEnumerator SpecialMoveSequence(SkillMove m, int lv)
+        {
+            specialSeqActive = true;
+            Time.timeScale = 0.10f; // タメたままカットイン
+            ShowMoveCutIn($"{m.name}", m.color);
+            yield return new WaitForSecondsRealtime(0.95f);
+
+            // 解放!!
+            if (raceCam != null) raceCam.selectView = false;
+            Time.timeScale = 1f;
+            race.ApplyPlayerMove(m, lv);
+            if (race.playerBoatIndex >= 0 && race.playerBoatIndex < race.boats.Count)
+                race.boats[race.playerBoatIndex].BurstSpray(70);
+            if (raceCam != null) raceCam.Punch(17f);
+            specialSeqActive = false;
         }
 
         /// <summary>必殺技カットイン: 集中線+色フラッシュ+技名スライドイン(イナイレ演出)。</summary>
@@ -201,11 +298,19 @@ namespace BoatRace.UI
             li.color = new Color(color.r, color.g, color.b, 0.9f);
             li.raycastTarget = false;
 
-            var band = UiKit.MakePanel(overlay.transform, new Color(0f, 0f, 0f, 0.55f), 8,
-                new Vector2(0f, 0.56f), new Vector2(1f, 0.74f), Vector2.zero, Vector2.zero);
-            band.GetComponent<RectTransform>().localEulerAngles = new Vector3(0f, 0f, -2f);
-            var txt = UiKit.MakeText(band.transform, name, 72, Color.white, TextAnchor.MiddleCenter,
+            var band = UiKit.MakePanel(overlay.transform, new Color(0f, 0f, 0f, 0.62f), 8,
+                new Vector2(-0.05f, 0.54f), new Vector2(1.05f, 0.74f), Vector2.zero, Vector2.zero);
+            band.GetComponent<RectTransform>().localEulerAngles = new Vector3(0f, 0f, -2.5f);
+            UiKit.AddStripeOverlay(band, color, 0.25f);
+            var txt = UiKit.MakeText(band.transform, name, 76, Color.white, TextAnchor.MiddleCenter,
                 Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, bold: true, shadow: true, outline: true);
+
+            var band2 = UiKit.MakePanel(overlay.transform, color, 8,
+                new Vector2(0.30f, 0.42f), new Vector2(0.70f, 0.52f), Vector2.zero, Vector2.zero);
+            band2.GetComponent<RectTransform>().localEulerAngles = new Vector3(0f, 0f, 2f);
+            UiKit.MakeText(band2.transform, "発　動　！！", 34, Color.white, TextAnchor.MiddleCenter,
+                Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, bold: true, shadow: true, outline: true);
+
             var group = overlay.AddComponent<CanvasGroup>();
             StartCoroutine(CutInRoutine(overlay, group, txt.GetComponent<RectTransform>()));
         }
@@ -228,6 +333,8 @@ namespace BoatRace.UI
             if (moveTimeoutCo != null) { StopCoroutine(moveTimeoutCo); moveTimeoutCo = null; }
             if (movePanelGo != null) Destroy(movePanelGo);
             movePanelGo = null;
+            moveLinesRT = null;
+            if (raceCam != null) raceCam.selectView = false;
             Time.timeScale = 1f;
         }
 

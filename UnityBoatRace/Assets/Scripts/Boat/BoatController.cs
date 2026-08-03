@@ -25,6 +25,12 @@ namespace BoatRace.Boat
         /// <summary>必殺技発動中の航跡色。</summary>
         public void SetBoostColor(Color c) => boostColor = c;
 
+        /// <summary>必殺技解放の水しぶき爆発。</summary>
+        public void BurstSpray(int count)
+        {
+            if (spray != null) spray.Emit(count);
+        }
+
         public void Initialize(int index, BoatStats stats, VenueData venue,
             WindSystem wind, CurrentSystem current, WakePhysics wake)
         {

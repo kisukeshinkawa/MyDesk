@@ -15,6 +15,7 @@ namespace BoatRace.Core
         public enum Mode { Follow, Onboard, Overhead }
         public Mode mode = Mode.Follow;
         public int focusBoat = -1;   // ストーリーモードでプレイヤー艇を注視(-1=先頭艇)
+        public bool selectView;      // 技選択中: 自艇に寄るドラマチックカメラ
 
         RaceManager race;
         ReplayManager replay;
@@ -58,6 +59,21 @@ namespace BoatRace.Core
         {
             if (race == null || race.boats.Count == 0 || cam == null) return;
             if (replay != null && replay.IsPlaying) return;
+
+            // 技選択中: スローの中で自艇へ寄る(イナイレのタメ画)。unscaled時間で動かす
+            if (selectView && race.playerBoatIndex >= 0 && race.playerBoatIndex < race.boats.Count)
+            {
+                var pe = race.boats[race.playerBoatIndex].engine;
+                Vector3 pfwd = pe.Forward;
+                Vector3 pside = Vector3.Cross(Vector3.up, pfwd);
+                Vector3 targetP = pe.Position + pfwd * 7.5f + pside * 4.5f + Vector3.up * 2.2f;
+                float udt = Time.unscaledDeltaTime;
+                transform.position = Vector3.Lerp(transform.position, targetP, udt * 4.5f);
+                var lookP = Quaternion.LookRotation(pe.Position + Vector3.up * 0.6f - transform.position);
+                transform.rotation = Quaternion.Slerp(transform.rotation, lookP, udt * 5f);
+                cam.fieldOfView = Mathf.Lerp(cam.fieldOfView, 34f, udt * 4f);
+                return;
+            }
 
             float targetFov = 50f;
             if (!race.armed)
