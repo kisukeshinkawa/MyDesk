@@ -25,10 +25,12 @@ namespace BoatRace.Core
         [NonSerialized] public int playerBoatIndex = -1;
         [NonSerialized] public Player.PlayerStats playerOverride;
 
-        // 必殺技システム: SPゲージとターン突入通知
-        [NonSerialized] public float playerSP;
-        [NonSerialized] public float playerSPInit = 50f;      // アイテムで増える
+        // 必殺技システム: 体力ゲージとターン突入通知
+        [NonSerialized] public float playerSP;                 // 現在体力
+        [NonSerialized] public float playerSPMax = 100f;       // 最大体力(レベルで成長)
+        [NonSerialized] public float playerSPInit = 100f;      // 開始時体力(アイテムで増える)
         [NonSerialized] public bool playerMotorBoost;          // 新品ペラ(次レース限り)
+        [NonSerialized] public float pAccelBonus, pTopBonus, pTurnBonus; // ガチャ装備ボーナス
         public event Action<int> OnPlayerTurnEntry;            // markNo(1/2)
         float playerMoveTimer;
         float playerMoveRadius = 1f;
@@ -100,8 +102,12 @@ namespace BoatRace.Core
                     motors[playerBoatIndex].topSpeed += 0.5f;
                     playerMotorBoost = false;
                 }
+                // ガチャ装備(プロペラ/チルト)のボーナス: 型が出る
+                motors[playerBoatIndex].acceleration += pAccelBonus;
+                motors[playerBoatIndex].topSpeed += pTopBonus;
+                motors[playerBoatIndex].turnPower += pTurnBonus;
             }
-            playerSP = playerSPInit;
+            playerSP = Mathf.Min(playerSPInit, 230f);
             playerMoveTimer = 0f;
 
             statsList.Clear();
@@ -324,19 +330,10 @@ namespace BoatRace.Core
                 if (bs.crossedStart) continue;
                 allCrossed = false;
 
+                // 走行は全艇オート(プレイヤーの操作はターンの技選択のみ)
                 float laneZ = WaitingSystem.LaneZ(bs.course);
-                if (i == playerBoatIndex)
-                {
-                    // プレイヤー: 自分の指でスタートを合わせる(握りが早いとF!)
-                    b.engine.Throttle = Player.PlayerBoatInput.Throttle();
-                    float axis = Player.PlayerBoatInput.SteerAxis();
-                    b.engine.Steer = axis != 0f ? axis * 0.6f : b.startAI.GetSteer(b.engine, laneZ);
-                }
-                else
-                {
-                    b.engine.Throttle = b.startAI.GetThrottle(state.clock, b.engine.Speed);
-                    b.engine.Steer = b.startAI.GetSteer(b.engine, laneZ);
-                }
+                b.engine.Throttle = b.startAI.GetThrottle(state.clock, b.engine.Speed);
+                b.engine.Steer = b.startAI.GetSteer(b.engine, laneZ);
 
                 float prevX = b.engine.Position.x - b.engine.Forward.x * b.engine.Speed * dt;
                 if (prevX < TrackPath.StartLineX && b.engine.Position.x >= TrackPath.StartLineX)
@@ -345,9 +342,9 @@ namespace BoatRace.Core
                     bs.st = st;
                     bs.startFlag = flag;
                     bs.crossedStart = true;
-                    // 好スタートでSP大回復
+                    // 好スタートで体力回復
                     if (i == playerBoatIndex && flag == StartFlag.Normal && st <= 0.12f)
-                        playerSP = Mathf.Min(100f, playerSP + 25f);
+                        playerSP = Mathf.Min(playerSPMax, playerSP + 15f);
                     float r = b.turnAI.laneRadius;
                     startProgressOffset[i] = TrackPath.GetProgress(b.engine.Position, r);
                     prevS[i] = startProgressOffset[i];
@@ -389,12 +386,12 @@ namespace BoatRace.Core
 
                 if (i == playerBoatIndex && !IsDisqualified(bs))
                 {
-                    // SPは走行中じわじわ回復
-                    playerSP = Mathf.Min(100f, playerSP + dt * 1.0f);
+                    // 体力は走行中じわじわ回復(最大値まで)
+                    playerSP = Mathf.Min(playerSPMax, playerSP + dt * 0.6f);
 
                     if (playerMoveTimer > 0f)
                     {
-                        // 必殺技/基本技の発動中は半オート(技のライン取りで旋回)
+                        // 技の発動中は選んだ技のライン取りで旋回
                         playerMoveTimer -= dt;
                         b.turnAI.radiusFactor = playerMoveRadius;
                         b.engine.Steer = b.turnAI.GetSteer(b.engine, WaitingSystem.LaneZ(bs.course));
@@ -402,9 +399,9 @@ namespace BoatRace.Core
                     }
                     else
                     {
-                        // 直線は手動操縦
-                        b.engine.Steer = Player.PlayerBoatInput.SteerAxis();
-                        b.engine.Throttle = Player.PlayerBoatInput.Throttle();
+                        // それ以外はオート走行(操作は技選択のみ)
+                        b.engine.Steer = b.turnAI.GetSteer(b.engine, WaitingSystem.LaneZ(bs.course));
+                        b.engine.Throttle = b.turnAI.GetThrottle(b.engine);
                     }
                 }
                 else
@@ -427,7 +424,7 @@ namespace BoatRace.Core
                 bs.progress = s;
                 int newLap = (int)(bs.totalProgress / lapLen);
                 if (i == playerBoatIndex && newLap > bs.lap)
-                    playerSP = Mathf.Min(100f, playerSP + 12f); // 周回走破でSP回復
+                    playerSP = Mathf.Min(playerSPMax, playerSP + 8f); // 周回走破で体力回復
                 bs.lap = newLap;
 
                 // マーク旋回イベント(1周1Mの先マイ艇を決まり手判定用に記録)
@@ -477,18 +474,19 @@ namespace BoatRace.Core
                 SetPhase(RacePhase.Finished);
         }
 
-        /// <summary>技の発動(GameFlowの技選択パネルから呼ばれる)。</summary>
-        public void ApplyPlayerMove(Career.SkillMove move)
+        /// <summary>技の発動(GameFlowの技選択パネルから呼ばれる)。体力を削って発動。</summary>
+        public void ApplyPlayerMove(Career.SkillMove move, int moveLevel)
         {
             if (playerBoatIndex < 0) return;
-            playerSP = Mathf.Max(0f, playerSP - move.cost);
-            playerMoveTimer = move.duration;
-            playerMoveRadius = move.radiusFactor;
+            playerSP = Mathf.Max(0f, playerSP - move.CostAt(moveLevel));
+            float dur = move.DurationAt(moveLevel);
+            playerMoveTimer = dur;
+            playerMoveRadius = move.RadiusAt(moveLevel);
             playerMoveThrottle = move.throttle;
             var e = boats[playerBoatIndex].engine;
-            e.BoostTime = move.duration;
-            e.BoostTopMul = move.topMul;
-            e.BoostAccelMul = move.accelMul;
+            e.BoostTime = dur;
+            e.BoostTopMul = move.TopAt(moveLevel);
+            e.BoostAccelMul = move.AccelAt(moveLevel);
             e.BoostWakeImmune = move.wakeImmune;
         }
 

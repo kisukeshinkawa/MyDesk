@@ -57,5 +57,16 @@ namespace BoatRace.Career
                 if (m.unlockChapter == chapter) return m;
             return null;
         }
+
+        // ---- 技レベル(Lv1-5)によるスケーリング。強くなるほど消費体力も増える ----
+        public const int MaxLv = 5;
+        public int CostAt(int lv) => Mathf.RoundToInt(cost * (1f + 0.25f * (lv - 1)));
+        public float AccelAt(int lv) => accelMul + 0.08f * (lv - 1);
+        public float TopAt(int lv) => topMul + 0.02f * (lv - 1);
+        public float RadiusAt(int lv) =>
+            radiusFactor < 1f ? radiusFactor * (1f - 0.04f * (lv - 1))   // 差し系はより鋭く
+                              : radiusFactor + 0.03f * (lv - 1);          // まくり系はより大きく速く
+        public float DurationAt(int lv) => duration + 0.3f * (lv - 1);
+        public int UpgradeCost(int currentLv) => 200 + currentLv * 150;   // 万円
     }
 }

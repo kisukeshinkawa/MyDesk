@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using BoatRace.Player;
 
@@ -33,9 +34,68 @@ namespace BoatRace.Career
         public bool allClear;
 
         // アイテム所持数(次レースで自動消費)
-        public int itemDrink;   // エナジードリンク: 初期SP+30
+        public int itemDrink;   // エナジードリンク: 初期体力+30
         public int itemProp;    // 新品ペラ: モーター強化
         public int itemCharm;   // 勝守り: ST安定+メンタルUP
+
+        // レベル成長(XPはレース結果で獲得。レベルで体力最大値が伸びる)
+        public int level = 1;
+        public int xp;
+        public int XpNeed => 80 + level * 40;
+        public int MaxStamina => Mathf.Min(200, 100 + (level - 1) * 10);
+        public bool AddXp(int amount)
+        {
+            xp += amount;
+            bool leveled = false;
+            while (xp >= XpNeed) { xp -= XpNeed; level++; leveled = true; }
+            return leveled;
+        }
+
+        // 技レベル(SkillMove.All と同じ並び)
+        public int[] moveLv = new int[8];
+        public int MoveLv(int moveIndex)
+        {
+            if (moveLv == null || moveIndex >= moveLv.Length) return 1;
+            return Mathf.Max(1, moveLv[moveIndex]);
+        }
+
+        // ガチャ装備: プロペラ/チルト
+        [System.Serializable]
+        public class PartData
+        {
+            public int kind;    // 0=プロペラ 1=チルト
+            public int arch;    // 0=スタート型 1=ターン型 2=スピード型
+            public int rarity;  // 1-3(★)
+        }
+        public List<PartData> parts = new List<PartData>();
+        public int equipProp = -1;
+        public int equipTilt = -1;
+
+        public static string PartName(PartData p)
+        {
+            string stars = new string('★', p.rarity);
+            string kind = p.kind == 0 ? "ペラ" : "チルト";
+            string arch = p.arch == 0 ? "スタート型" : p.arch == 1 ? "ターン型" : "スピード型";
+            return $"{stars} {kind}({arch})";
+        }
+
+        /// <summary>装備中パーツの合計ボーナス(accel, top, turn, startSkill)。</summary>
+        public (float accel, float top, float turn, float start) PartBonus()
+        {
+            float a = 0f, t = 0f, tr = 0f, st = 0f;
+            void Apply(int idx)
+            {
+                if (idx < 0 || idx >= parts.Count) return;
+                var p = parts[idx];
+                float r = p.rarity;
+                if (p.arch == 0) { a += 0.13f * r; st += 0.015f * r; }
+                else if (p.arch == 1) { tr += 0.035f * r; }
+                else { t += 0.22f * r; }
+            }
+            Apply(equipProp);
+            Apply(equipTilt);
+            return (a, t, tr, st);
+        }
 
         public static readonly Chapter[] Chapters =
         {

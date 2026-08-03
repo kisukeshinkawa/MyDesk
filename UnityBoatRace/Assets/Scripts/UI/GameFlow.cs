@@ -137,7 +137,8 @@ namespace BoatRace.UI
             movePanelGo = UiKit.MakePanel(canvas.transform, new Color(0.05f, 0.10f, 0.28f, 0.95f), 20,
                 new Vector2(0.14f, 0.20f), new Vector2(0.86f, 0.44f), Vector2.zero, Vector2.zero);
             UiKit.AddStripeOverlay(movePanelGo, Color.white, 0.06f);
-            UiKit.MakeText(movePanelGo.transform, $"{markNo}マーク！　技を選べ！　(SP {race.playerSP:F0})", 26,
+            UiKit.MakeText(movePanelGo.transform,
+                $"{markNo}マーク！　技を選べ！　(体力 {race.playerSP:F0}/{race.playerSPMax:F0})", 26,
                 UiKit.Yellow, TextAnchor.MiddleCenter,
                 new Vector2(0f, 0.72f), new Vector2(1f, 0.98f), Vector2.zero, Vector2.zero,
                 bold: true, shadow: true, outline: true);
@@ -147,13 +148,16 @@ namespace BoatRace.UI
             for (int k = 0; k < moves.Count; k++)
             {
                 var m = moves[k];
-                bool usable = race.playerSP >= m.cost; // SPが足りない必殺技は選べない(基本技のみ)
-                string label = m.cost > 0 ? $"{m.name}\nSP{m.cost}" : m.name;
+                int idx = SkillMove.All.IndexOf(m);
+                int lv = career != null ? career.MoveLv(idx) : 1;
+                int cost = m.CostAt(lv);
+                bool usable = race.playerSP >= cost; // 体力が足りない技は選べない(基本技のみになる)
+                string label = m.cost > 0 ? $"{m.name} Lv{lv}\n体力{cost}" : m.name;
                 Color bg = usable ? Color.Lerp(m.color, UiKit.Navy, 0.25f) : new Color(0.35f, 0.37f, 0.42f);
                 var btn = UiKit.MakeButton(movePanelGo.transform, label, bg, 22,
                     new Vector2(0.04f + k * w, 0.08f), new Vector2(0.04f + k * w + w - 0.015f, 0.66f),
                     Vector2.zero, Vector2.zero,
-                    () => { if (usable) PickMove(m); });
+                    () => { if (usable) PickMove(m, lv); });
                 if (!usable) btn.GetComponentInChildren<Text>().color = new Color(1f, 1f, 1f, 0.45f);
             }
             moveTimeoutCo = StartCoroutine(MoveTimeout());
@@ -162,15 +166,15 @@ namespace BoatRace.UI
         System.Collections.IEnumerator MoveTimeout()
         {
             yield return new WaitForSecondsRealtime(2.5f);
-            PickMove(SkillMove.All[0]); // 時間切れは「差し」
+            PickMove(SkillMove.All[0], 1); // 時間切れは「差し」
         }
 
-        void PickMove(SkillMove m)
+        void PickMove(SkillMove m, int lv)
         {
             if (movePanelGo == null) return;
             CloseMovePanel();
-            race.ApplyPlayerMove(m);
-            ShowFlash(m.name, m.color);
+            race.ApplyPlayerMove(m, lv);
+            ShowFlash(m.cost > 0 ? $"{m.name} Lv{lv}" : m.name, m.color);
         }
 
         void CloseMovePanel()
@@ -390,9 +394,13 @@ namespace BoatRace.UI
             UiKit.MakeChip(card.transform, career.RankLabel, UiKit.Red, Color.white, 26,
                 new Vector2(0.74f, 0.80f), new Vector2(0.96f, 0.96f), Vector2.zero, Vector2.zero);
             UiKit.MakeText(card.transform,
-                $"出走　{career.races} 回\n勝利　{career.wins} 勝　(3着内 {career.top3})\n獲得賞金　{career.money:N0} 万円",
-                24, UiKit.TextDark, TextAnchor.UpperLeft,
-                new Vector2(0.06f, 0.10f), new Vector2(0.94f, 0.76f), Vector2.zero, Vector2.zero, bold: true);
+                $"Lv.{career.level}　体力 {career.MaxStamina}　(XP {career.xp}/{career.XpNeed})\n" +
+                $"出走 {career.races} 回　勝利 {career.wins} 勝 (3着内 {career.top3})\n" +
+                $"獲得賞金 {career.money:N0} 万円\n" +
+                $"装備 {(career.equipProp >= 0 && career.equipProp < career.parts.Count ? CareerData.PartName(career.parts[career.equipProp]) : "ペラなし")}" +
+                $" / {(career.equipTilt >= 0 && career.equipTilt < career.parts.Count ? CareerData.PartName(career.parts[career.equipTilt]) : "チルトなし")}",
+                22, UiKit.TextDark, TextAnchor.UpperLeft,
+                new Vector2(0.06f, 0.08f), new Vector2(0.94f, 0.76f), Vector2.zero, Vector2.zero, bold: true);
 
             // 右: スキルと練習
             var skill = UiKit.MakePanel(s.transform, UiKit.PanelWhite, 20,
@@ -422,13 +430,19 @@ namespace BoatRace.UI
             Train("旋回練習 +3", 100, () => career.turnSkill = Mathf.Min(0.95f, career.turnSkill + 0.03f), 0.22f);
             Train("メンタル強化 +3", 80, () => career.mental = Mathf.Min(0.95f, career.mental + 0.03f), 0.06f);
 
-            string raceLabel = career.allClear ? "SG覇者として出走　▶" : $"第{career.chapter}章に出走　▶";
-            UiKit.MakeButton(s.transform, raceLabel, UiKit.Red, 34,
-                new Vector2(0.30f, 0.10f), new Vector2(0.70f, 0.24f), Vector2.zero, Vector2.zero, StartCareerRace);
-            UiKit.MakeButton(s.transform, "↩ ホーム", UiKit.Cyan, 22,
-                new Vector2(0.04f, 0.11f), new Vector2(0.18f, 0.21f), Vector2.zero, Vector2.zero, ShowHome);
-            UiKit.MakeButton(s.transform, "🛒 ショップ", new Color(0.9f, 0.55f, 0.1f), 22,
-                new Vector2(0.80f, 0.11f), new Vector2(0.96f, 0.21f), Vector2.zero, Vector2.zero,
+            string raceLabel = career.allClear ? "SG覇者として出走▶" : $"第{career.chapter}章に出走▶";
+            UiKit.MakeButton(s.transform, "↩ ホーム", UiKit.Cyan, 20,
+                new Vector2(0.03f, 0.11f), new Vector2(0.145f, 0.22f), Vector2.zero, Vector2.zero, ShowHome);
+            UiKit.MakeButton(s.transform, "技強化", new Color(0.62f, 0.2f, 0.75f), 22,
+                new Vector2(0.16f, 0.11f), new Vector2(0.29f, 0.22f), Vector2.zero, Vector2.zero,
+                () => ShowMoveUpgradePopup(s.transform));
+            UiKit.MakeButton(s.transform, "🎰 ガチャ・装備", new Color(0.9f, 0.35f, 0.55f), 22,
+                new Vector2(0.305f, 0.11f), new Vector2(0.465f, 0.22f), Vector2.zero, Vector2.zero,
+                () => ShowGachaPopup(s.transform, ""));
+            UiKit.MakeButton(s.transform, raceLabel, UiKit.Red, 30,
+                new Vector2(0.48f, 0.10f), new Vector2(0.79f, 0.235f), Vector2.zero, Vector2.zero, StartCareerRace);
+            UiKit.MakeButton(s.transform, "🛒 ショップ", new Color(0.9f, 0.55f, 0.1f), 20,
+                new Vector2(0.805f, 0.11f), new Vector2(0.965f, 0.22f), Vector2.zero, Vector2.zero,
                 () => ShowShopPopup(s.transform));
 
             if (!career.debutDone)
@@ -476,16 +490,143 @@ namespace BoatRace.UI
                 () => Destroy(pop));
         }
 
+        /// <summary>技強化: 賞金で技レベルUP(効果も消費体力も上がる)。</summary>
+        void ShowMoveUpgradePopup(Transform parent)
+        {
+            var pop = UiKit.MakePanel(parent, UiKit.PanelWhite, 22,
+                new Vector2(0.20f, 0.16f), new Vector2(0.80f, 0.84f), Vector2.zero, Vector2.zero);
+            UiKit.MakeBanner(pop.transform, $"技強化　所持金 {career.money:N0}万円", 24,
+                new Vector2(0.10f, 0.87f), new Vector2(0.90f, 0.99f));
+
+            float y = 0.62f;
+            foreach (var m in SkillMove.All)
+            {
+                if (m.cost == 0) continue;
+                int idx = SkillMove.All.IndexOf(m);
+                int lv = career.MoveLv(idx);
+                bool unlocked = m.unlockChapter <= career.chapter;
+                bool maxed = lv >= SkillMove.MaxLv;
+                int upCost = m.UpgradeCost(lv);
+                string info = unlocked
+                    ? $"{m.name}　Lv{lv}{(maxed ? "(MAX)" : "")}\n体力{m.CostAt(lv)}消費 / 加速x{m.AccelAt(lv):F2} 最高速x{m.TopAt(lv):F2}"
+                    : $"{m.name}　(第{m.unlockChapter}章で習得)";
+                UiKit.MakeText(pop.transform, info, 19, unlocked ? UiKit.TextDark : new Color(0.6f, 0.6f, 0.65f),
+                    TextAnchor.MiddleLeft,
+                    new Vector2(0.06f, y), new Vector2(0.64f, y + 0.19f), Vector2.zero, Vector2.zero, bold: true);
+                if (unlocked && !maxed)
+                    UiKit.MakeButton(pop.transform, $"{upCost}万で強化",
+                        career.money >= upCost ? new Color(0.62f, 0.2f, 0.75f) : new Color(0.5f, 0.5f, 0.55f), 17,
+                        new Vector2(0.66f, y + 0.03f), new Vector2(0.94f, y + 0.16f), Vector2.zero, Vector2.zero,
+                        () =>
+                        {
+                            if (career.money < upCost) return;
+                            career.money -= upCost;
+                            if (career.moveLv == null || career.moveLv.Length < SkillMove.All.Count)
+                                career.moveLv = new int[SkillMove.All.Count];
+                            career.moveLv[idx] = lv + 1;
+                            career.Save();
+                            Destroy(pop);
+                            ShowMoveUpgradePopup(parent);
+                        });
+                y -= 0.21f;
+            }
+            UiKit.MakeButton(pop.transform, "閉じる", UiKit.Navy, 20,
+                new Vector2(0.36f, 0.02f), new Vector2(0.64f, 0.11f), Vector2.zero, Vector2.zero,
+                () => Destroy(pop));
+        }
+
+        /// <summary>ガチャ: プロペラ/チルトを入手して装備。型(スタート/ターン/スピード)を作る。</summary>
+        void ShowGachaPopup(Transform parent, string resultMsg)
+        {
+            var pop = UiKit.MakePanel(parent, UiKit.PanelWhite, 22,
+                new Vector2(0.14f, 0.10f), new Vector2(0.86f, 0.88f), Vector2.zero, Vector2.zero);
+            UiKit.MakeBanner(pop.transform, $"ガチャ・装備　所持金 {career.money:N0}万円", 24,
+                new Vector2(0.10f, 0.89f), new Vector2(0.90f, 0.995f));
+
+            UiKit.MakeButton(pop.transform, "🎰 ガチャを回す (100万)",
+                career.money >= 100 ? new Color(0.9f, 0.35f, 0.55f) : new Color(0.5f, 0.5f, 0.55f), 22,
+                new Vector2(0.26f, 0.76f), new Vector2(0.74f, 0.87f), Vector2.zero, Vector2.zero,
+                () =>
+                {
+                    if (career.money < 100) return;
+                    career.money -= 100;
+                    var rng = new System.Random(System.Environment.TickCount);
+                    double r = rng.NextDouble();
+                    var part = new CareerData.PartData
+                    {
+                        kind = rng.Next(0, 2),
+                        arch = rng.Next(0, 3),
+                        rarity = r < 0.60 ? 1 : r < 0.90 ? 2 : 3,
+                    };
+                    career.parts.Add(part);
+                    career.Save();
+                    Destroy(pop);
+                    ShowGachaPopup(parent, $"{CareerData.PartName(part)} をゲット！{(part.rarity >= 3 ? "　激レア!!" : "")}");
+                });
+            if (!string.IsNullOrEmpty(resultMsg))
+                UiKit.MakeText(pop.transform, resultMsg, 22, UiKit.Red, TextAnchor.MiddleCenter,
+                    new Vector2(0f, 0.68f), new Vector2(1f, 0.76f), Vector2.zero, Vector2.zero,
+                    bold: true, shadow: true);
+
+            // 所持パーツ(レア度順に各6件まで表示)。クリックで装備
+            void Column(int kind, float xMin, float xMax)
+            {
+                UiKit.MakeText(pop.transform, kind == 0 ? "プロペラ" : "チルト", 20, UiKit.Cyan,
+                    TextAnchor.MiddleCenter,
+                    new Vector2(xMin, 0.60f), new Vector2(xMax, 0.67f), Vector2.zero, Vector2.zero, bold: true);
+                var indices = new List<int>();
+                for (int i = 0; i < career.parts.Count; i++)
+                    if (career.parts[i].kind == kind) indices.Add(i);
+                indices.Sort((a, b) => career.parts[b].rarity.CompareTo(career.parts[a].rarity));
+                float y = 0.50f;
+                foreach (int i in indices.GetRange(0, Mathf.Min(6, indices.Count)))
+                {
+                    bool equipped = kind == 0 ? career.equipProp == i : career.equipTilt == i;
+                    var p = career.parts[i];
+                    UiKit.MakeButton(pop.transform,
+                        $"{CareerData.PartName(p)}{(equipped ? " ●装備中" : "")}",
+                        equipped ? new Color(0.1f, 0.62f, 0.35f) : UiKit.Cyan, 15,
+                        new Vector2(xMin, y), new Vector2(xMax, y + 0.075f), Vector2.zero, Vector2.zero,
+                        () =>
+                        {
+                            if (kind == 0) career.equipProp = i; else career.equipTilt = i;
+                            career.Save();
+                            Destroy(pop);
+                            ShowGachaPopup(parent, "");
+                        });
+                    y -= 0.085f;
+                }
+                if (indices.Count == 0)
+                    UiKit.MakeText(pop.transform, "(未所持)", 17, new Color(0.6f, 0.6f, 0.65f),
+                        TextAnchor.MiddleCenter,
+                        new Vector2(xMin, 0.48f), new Vector2(xMax, 0.56f), Vector2.zero, Vector2.zero);
+            }
+            Column(0, 0.05f, 0.48f);
+            Column(1, 0.52f, 0.95f);
+
+            UiKit.MakeButton(pop.transform, "閉じる", UiKit.Navy, 20,
+                new Vector2(0.38f, 0.015f), new Vector2(0.62f, 0.09f), Vector2.zero, Vector2.zero,
+                () => Destroy(pop));
+        }
+
         void StartCareerRace()
         {
             if (!career.allClear) race.venueId = career.Current.venueId; // 章の指定会場
 
-            // アイテム自動消費
-            race.playerSPInit = 50f;
-            if (career.itemDrink > 0) { career.itemDrink--; race.playerSPInit = 80f; }
+            // レベルに応じた体力 + アイテム自動消費
+            race.playerSPMax = career.MaxStamina;
+            race.playerSPInit = career.MaxStamina;
+            if (career.itemDrink > 0) { career.itemDrink--; race.playerSPInit = career.MaxStamina + 30f; }
+
+            // ガチャ装備(プロペラ/チルト)で「型」を作る
+            var (pa, pt, ptr, pst) = career.PartBonus();
+            race.pAccelBonus = pa;
+            race.pTopBonus = pt;
+            race.pTurnBonus = ptr;
             race.playerMotorBoost = career.itemProp > 0;
             if (career.itemProp > 0) career.itemProp--;
             var stats = career.ToStats();
+            stats.startSkill = Mathf.Min(0.97f, stats.startSkill + pst); // スタート型装備の効果
             if (career.itemCharm > 0)
             {
                 career.itemCharm--;
@@ -787,6 +928,11 @@ namespace BoatRace.UI
                 if (lastCareerPlace == 1) career.wins++;
                 if (lastCareerPlace >= 1 && lastCareerPlace <= 3) career.top3++;
 
+                // XP獲得とレベルアップ(体力最大値が伸びる)
+                int[] xpTable = { 60, 42, 32, 24, 18, 14 };
+                int xpGain = lastCareerPlace >= 1 ? xpTable[Mathf.Clamp(lastCareerPlace - 1, 0, 5)] : 10;
+                bool leveled = career.AddXp(xpGain);
+
                 // 章クリア判定(仕様書の目標着順)
                 pendingStory = null;
                 if (!career.allClear)
@@ -813,6 +959,18 @@ namespace BoatRace.UI
                     else
                     {
                         pendingStory = CareerStory.Retry(career.racerName);
+                    }
+                }
+                if (leveled)
+                {
+                    var line = ("システム", $"レベルアップ！！ Lv{career.level}になった！ 体力最大値が {career.MaxStamina} に成長！");
+                    if (pendingStory == null) pendingStory = new[] { line };
+                    else
+                    {
+                        var e = new (string, string)[pendingStory.Length + 1];
+                        pendingStory.CopyTo(e, 0);
+                        e[e.Length - 1] = line;
+                        pendingStory = e;
                     }
                 }
                 career.Save();
