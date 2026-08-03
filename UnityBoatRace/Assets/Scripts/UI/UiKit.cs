@@ -304,5 +304,143 @@ namespace BoatRace.UI
             img.sprite = VerticalGradient(top, bottom);
             return go;
         }
+
+        // ============ イナイレ風デザイン部品(白カード+紺枠・斜めタグ・グラデロゴ) ============
+
+        /// <summary>枠線の紺(イナイレの白カードを縁取る色)。</summary>
+        public static readonly Color Border = new Color(0.13f, 0.25f, 0.50f);
+
+        /// <summary>白カード+紺の太ボーダー+影(イナイレの基本パネル)。戻り値は内側の白パネル。</summary>
+        public static GameObject MakeCard(Transform parent, Vector2 anchorMin, Vector2 anchorMax,
+            Vector2 offsetMin, Vector2 offsetMax, float fillAlpha = 0.97f)
+        {
+            var outer = MakePanel(parent, Border, 18, anchorMin, anchorMax, offsetMin, offsetMax);
+            var sh = outer.AddComponent<Shadow>();
+            sh.effectColor = new Color(0.02f, 0.08f, 0.20f, 0.30f);
+            sh.effectDistance = new Vector2(0f, -4f);
+            var inner = MakePanel(outer.transform, new Color(1f, 1f, 1f, fillAlpha), 14,
+                Vector2.zero, Vector2.one, new Vector2(3.5f, 3.5f), new Vector2(-3.5f, -3.5f));
+            inner.name = "CardInner";
+            return inner;
+        }
+
+        /// <summary>斜めタグ(平行四辺形+太字)。「ストーリー」「報酬」等の見出しに。</summary>
+        public static GameObject MakeTag(Transform parent, string text, Color bg, Color fg, int fontSize,
+            Vector2 anchorMin, Vector2 anchorMax, float skew = 12f)
+        {
+            var go = MakePanel(parent, bg, 6, anchorMin, anchorMax, Vector2.zero, Vector2.zero);
+            go.AddComponent<SkewFx>().skewX = skew;
+            var sh = go.AddComponent<Shadow>();
+            sh.effectColor = new Color(0f, 0f, 0f, 0.25f);
+            sh.effectDistance = new Vector2(2f, -3f);
+            MakeText(go.transform, text, fontSize, fg, TextAnchor.MiddleCenter,
+                Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, bold: true);
+            return go;
+        }
+
+        /// <summary>イナイレ風ナビボタン: 白カード+紺枠、上端アクセント帯+記号アイコン+紺ラベル。</summary>
+        public static Button MakeIconNav(Transform parent, string icon, string label, Color accent,
+            Vector2 anchorMin, Vector2 anchorMax, UnityEngine.Events.UnityAction onClick)
+        {
+            var outer = MakePanel(parent, Border, 16, anchorMin, anchorMax, Vector2.zero, Vector2.zero);
+            var sh = outer.AddComponent<Shadow>();
+            sh.effectColor = new Color(0.02f, 0.08f, 0.20f, 0.30f);
+            sh.effectDistance = new Vector2(0f, -3f);
+            var inner = MakePanel(outer.transform, Color.white, 12,
+                Vector2.zero, Vector2.one, new Vector2(3f, 3f), new Vector2(-3f, -3f));
+            var strip = MakePanel(inner.transform, accent, 4,
+                new Vector2(0.10f, 0.895f), new Vector2(0.90f, 0.965f), Vector2.zero, Vector2.zero);
+            strip.GetComponent<Image>().raycastTarget = false;
+            MakeText(inner.transform, icon, 34, accent, TextAnchor.MiddleCenter,
+                new Vector2(0f, 0.32f), new Vector2(1f, 0.88f), Vector2.zero, Vector2.zero, bold: true);
+            MakeText(inner.transform, label, 18, Border, TextAnchor.MiddleCenter,
+                new Vector2(0f, 0.03f), new Vector2(1f, 0.32f), Vector2.zero, Vector2.zero, bold: true);
+            var btn = outer.AddComponent<Button>();
+            btn.targetGraphic = outer.GetComponent<Image>();
+            btn.onClick.AddListener(onClick);
+            return btn;
+        }
+
+        /// <summary>イナイレ風ロゴ文字: 斜体太字+縦グラデ+極太縁取り+傾き。</summary>
+        public static Text MakeLogoText(Transform parent, string str, int size, Color top, Color bottom,
+            Color edge, float tilt, Vector2 anchorMin, Vector2 anchorMax)
+        {
+            var t = MakeText(parent, str, size, Color.white, TextAnchor.MiddleCenter,
+                anchorMin, anchorMax, Vector2.zero, Vector2.zero);
+            t.fontStyle = FontStyle.BoldAndItalic;
+            var g = t.gameObject.AddComponent<TextGradientFx>();
+            g.top = top; g.bottom = bottom;
+            // Outlineを3枚重ねて極太の縁取りにする(グラデ→縁取りの順で適用)
+            foreach (var d in new[] { new Vector2(5f, 5f), new Vector2(6f, 1.5f), new Vector2(1.5f, 6f) })
+            {
+                var ol = t.gameObject.AddComponent<Outline>();
+                ol.effectColor = edge;
+                ol.effectDistance = d;
+            }
+            var sh = t.gameObject.AddComponent<Shadow>();
+            sh.effectColor = new Color(0f, 0f, 0f, 0.45f);
+            sh.effectDistance = new Vector2(4f, -6f);
+            if (tilt != 0f) t.rectTransform.localEulerAngles = new Vector3(0f, 0f, tilt);
+            return t;
+        }
+    }
+
+    /// <summary>テキスト/画像の頂点カラーを縦グラデにする(イナイレのロゴ・数字表現)。</summary>
+    public class TextGradientFx : BaseMeshEffect
+    {
+        public Color top = Color.white;
+        public Color bottom = Color.white;
+
+        public override void ModifyMesh(VertexHelper vh)
+        {
+            if (!IsActive() || vh.currentVertCount == 0) return;
+            var verts = new List<UIVertex>();
+            vh.GetUIVertexStream(verts);
+            float minY = float.MaxValue, maxY = float.MinValue;
+            for (int i = 0; i < verts.Count; i++)
+            {
+                minY = Mathf.Min(minY, verts[i].position.y);
+                maxY = Mathf.Max(maxY, verts[i].position.y);
+            }
+            float h = Mathf.Max(0.001f, maxY - minY);
+            for (int i = 0; i < verts.Count; i++)
+            {
+                var v = verts[i];
+                float u = (v.position.y - minY) / h;
+                v.color = Color.Lerp(bottom, top, u) * (Color)v.color;
+                verts[i] = v;
+            }
+            vh.Clear();
+            vh.AddUIVertexStream(verts);
+        }
+    }
+
+    /// <summary>矩形を平行四辺形に歪める(イナイレの斜めタグ/バナー)。</summary>
+    public class SkewFx : BaseMeshEffect
+    {
+        public float skewX = 12f;
+
+        public override void ModifyMesh(VertexHelper vh)
+        {
+            if (!IsActive() || vh.currentVertCount == 0) return;
+            var verts = new List<UIVertex>();
+            vh.GetUIVertexStream(verts);
+            float minY = float.MaxValue, maxY = float.MinValue;
+            for (int i = 0; i < verts.Count; i++)
+            {
+                minY = Mathf.Min(minY, verts[i].position.y);
+                maxY = Mathf.Max(maxY, verts[i].position.y);
+            }
+            float h = Mathf.Max(0.001f, maxY - minY);
+            for (int i = 0; i < verts.Count; i++)
+            {
+                var v = verts[i];
+                float u = (v.position.y - minY) / h;
+                v.position.x += (u - 0.5f) * 2f * skewX;
+                verts[i] = v;
+            }
+            vh.Clear();
+            vh.AddUIVertexStream(verts);
+        }
     }
 }

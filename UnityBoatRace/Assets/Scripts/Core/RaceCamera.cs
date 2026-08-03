@@ -16,6 +16,7 @@ namespace BoatRace.Core
         public Mode mode = Mode.Follow;
         public int focusBoat = -1;   // ストーリーモードでプレイヤー艇を注視(-1=先頭艇)
         public bool selectView;      // 技選択中: 自艇に寄るドラマチックカメラ
+        public bool heroView;        // タイトル/ホーム: 艇に大きく寄る(イナイレのロビー画)
 
         RaceManager race;
         ReplayManager replay;
@@ -98,6 +99,20 @@ namespace BoatRace.Core
         // ---- ロビー演出: 会場をゆっくり旋回 ----
         void CinematicOrbit()
         {
+            // ヒーロービュー: ピットの艇団に低い視点で寄ってゆっくり回る
+            if (heroView && race.boats.Count > 0)
+            {
+                Vector3 hc = Vector3.zero;
+                foreach (var b in race.boats) hc += b.engine.Position;
+                hc /= race.boats.Count;
+                float ha = Time.time * 0.12f;
+                Vector3 hp = hc + new Vector3(Mathf.Cos(ha) * 26f, 3.2f, Mathf.Sin(ha) * 26f);
+                transform.position = Vector3.Lerp(transform.position, hp, Time.deltaTime * 1.6f);
+                var hl = Quaternion.LookRotation(hc + Vector3.up * 0.8f - transform.position);
+                transform.rotation = Quaternion.Slerp(transform.rotation, hl, Time.deltaTime * 2.5f);
+                return;
+            }
+
             float a = Time.time * 0.05f;
             Vector3 center = new Vector3(-150f, 0f, -30f);
             Vector3 targetPos = center + new Vector3(Mathf.Cos(a) * 250f, 85f, Mathf.Sin(a) * 190f);
