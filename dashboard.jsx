@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-05-v325-kome-unit-qty"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-05-v326-export-name-choice"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -33610,6 +33610,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
   const [impBusy, setImpBusy] = React.useState(false);
   const [portalBusy, setPortalBusy] = React.useState("");
   const [showCompare, setShowCompare] = React.useState(false);
+  const [expMenu, setExpMenu] = React.useState(false);
   const [impMenu, setImpMenu] = React.useState(false);
   const fileRef = React.useRef(null);
 
@@ -33723,12 +33724,12 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
     vs.forEach(qv=>{ let vHas=false; sts.forEach(st=>{ let sHas=false; _storeItems(st).forEach(it=>{ if(_hasPr((qv.prices||{})[it.id])){ lines++; sHas=true; } }); if(sHas){ pairs++; vHas=true; } }); if(vHas) vendSet.add(qv.id); });
     return { vendors: vs.length, answered: vs.filter(v=>v.status==="回答済").length, quotedVendors: vendSet.size, pairs, lines, stores: sts.length }; })();
   const _alias = i => i<26 ? String.fromCharCode(65+i)+"社" : "第"+(i+1)+"社";
-  const exportCustomerReport = async () => {
+  const exportCustomerReport = async (anon=true) => {
     const vs=p.vendors||[], sts=p.stores||[];
     if(!vs.length || !sts.length){ window.alert("業者と対象店舗を登録してから出力してください。"); return; }
     try{
       const mod=await import("https://esm.sh/exceljs@4.4.0"); const ExcelJS=mod.default||mod;
-      const AL=vs.map((_,i)=>_alias(i));
+      const AL=anon?vs.map((_,i)=>_alias(i)):vs.map(v=>v.vendorName||"業者");
       const today=(()=>{ try{ const d=new Date(); return d.getFullYear()+"年"+(d.getMonth()+1)+"月"+d.getDate()+"日"; }catch(_){ return ""; } })();
       const M={"込":"出来高（運搬・処分込）","別":"出来高（運搬＋処分単価）","定額":"定額"};
       const NAVY={type:"pattern",pattern:"solid",fgColor:{argb:"FF1F3864"}};
@@ -33749,7 +33750,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
       const mt=(r,txt,font,align)=>{ ws1.mergeCells(r,1,r,nc); const c=ws1.getCell(r,1); c.value=txt; if(font)c.font=font; c.alignment={horizontal:align||"center",vertical:"middle"}; return c; };
       mt(1,"相 見 積 比 較 表",TITLEF); ws1.getRow(1).height=26;
       mt(2,(p.companyName||"")+"　"+(p.name||"")+"　／　対象拠点 "+sts.length+" 件　／　金額は税込・1回あたり（単位：円）"+(today?("　／　作成日 "+today):""),SUBF);
-      mt(3,"※ 各拠点の最安値を緑で表示。業者名は非公開（A社・B社…）。",SUBF);
+      mt(3,anon?"※ 各拠点の最安値を緑で表示。業者名は非公開（A社・B社…）。":"※ 各拠点の最安値を緑で表示。",SUBF);
       ws1.addRow([]);
       const hr1=ws1.addRow(["No.","エリア","拠点名",...AL,"回答","最安業者","最安","最高"]);
       hr1.eachCell(c=>{c.fill=NAVY;c.font=HFONT;c.alignment={horizontal:"center",vertical:"middle"};c.border=BORDER;}); hr1.height=22;
@@ -33769,7 +33770,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
       // ===== 見積内訳 =====
       const ws2=wb.addWorksheet("見積内訳",{views:[{state:"frozen",ySplit:4}]});
       const nc2=16; ws2.mergeCells(1,1,1,nc2); const t2=ws2.getCell(1,1); t2.value="見 積 内 訳（拠点別・業者別）"; t2.font=TITLEF; ws2.getRow(1).height=24; t2.alignment={horizontal:"center"};
-      ws2.mergeCells(2,1,2,nc2); const s2=ws2.getCell(2,1); s2.value="金額は税込・1回あたり（単位：円）　業者名は非公開（A社・B社…）"; s2.font=SUBF; s2.alignment={horizontal:"center"};
+      ws2.mergeCells(2,1,2,nc2); const s2=ws2.getCell(2,1); s2.value="金額は税込・1回あたり（単位：円）"+(anon?"　業者名は非公開（A社・B社…）":""); s2.font=SUBF; s2.alignment={horizontal:"center"};
       ws2.addRow([]);
       const hr2=ws2.addRow(["業者","No.","エリア","拠点名","品目","料金方式","単価","運搬費(固)","処分単価","処分単位","数量","出来高小計","諸経費","最低料金","税区分","見積(税抜)","税込","お客様提示","備考"]);
       hr2.eachCell(c=>{c.fill=NAVY;c.font=HFONT;c.alignment={horizontal:"center",vertical:"middle"};c.border=BORDER;}); hr2.height=22;
@@ -33783,7 +33784,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
       // ===== 業者別サマリー =====
       const ws3=wb.addWorksheet("業者別サマリー",{views:[{state:"frozen",ySplit:4}]});
       ws3.mergeCells(1,1,1,4); const t3=ws3.getCell(1,1); t3.value="業 者 別 サマリー"; t3.font=TITLEF; ws3.getRow(1).height=24; t3.alignment={horizontal:"center"};
-      ws3.mergeCells(2,1,2,4); const s3=ws3.getCell(2,1); s3.value="金額は税込・1回あたり（単位：円）　業者名は非公開（A社・B社…）"; s3.font=SUBF; s3.alignment={horizontal:"center"};
+      ws3.mergeCells(2,1,2,4); const s3=ws3.getCell(2,1); s3.value="金額は税込・1回あたり（単位：円）"+(anon?"　業者名は非公開（A社・B社…）":""); s3.font=SUBF; s3.alignment={horizontal:"center"};
       ws3.addRow([]);
       const hr3=ws3.addRow(["業者","見積対象拠点数","お客様提示合計","特記事項"]);
       hr3.eachCell(c=>{c.fill=NAVY;c.font=HFONT;c.alignment={horizontal:"center",vertical:"middle"};c.border=BORDER;}); hr3.height=22;
@@ -33794,7 +33795,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
       ws3.columns=[{width:8},{width:16},{width:18},{width:50}];
       const buf=await wb.xlsx.writeBuffer();
       const blob=new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
-      const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download=(p.companyName||p.name||"見積").split("/").join("_")+"_相見積比較.xlsx"; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download=(p.companyName||p.name||"見積").split("/").join("_")+(anon?"_相見積比較.xlsx":"_相見積比較(社名入り).xlsx"); document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
     }catch(e){ window.alert("Excel出力に失敗しました: "+(e&&e.message||e)); }
   };
 
@@ -33997,7 +33998,15 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
         <div style={{marginBottom:"1rem"}}>
           <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap",alignItems:"center",marginBottom:"0.45rem"}}>
             <span style={{fontSize:"0.8rem",fontWeight:800,color:C.accentDark,background:C.accentBg,padding:"0.35rem 0.75rem",borderRadius:8}}>📥 見積 {quoteStats.pairs}件（{quoteStats.quotedVendors}/{quoteStats.vendors}業者・{quoteStats.lines}明細）</span>
-            <button onClick={exportCustomerReport} style={{display:"inline-flex",alignItems:"center",gap:"0.4rem",padding:"0.45rem 0.9rem",borderRadius:8,border:`1.5px solid #16a34a`,background:"#f0fdf4",color:"#166534",fontWeight:800,fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit"}}>📊 お客様報告用Excelを出力</button>
+            <div style={{position:"relative"}}>
+              <button onClick={()=>setExpMenu(v=>!v)} style={{display:"inline-flex",alignItems:"center",gap:"0.4rem",padding:"0.45rem 0.9rem",borderRadius:8,border:`1.5px solid #16a34a`,background:"#f0fdf4",color:"#166534",fontWeight:800,fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit"}}>📊 見積比較Excelを出力 ▾</button>
+              {expMenu&&(
+                <div style={{position:"absolute",top:"100%",left:0,zIndex:40,background:"white",border:`1px solid ${C.border}`,borderRadius:8,boxShadow:C.shadowMd,marginTop:4,minWidth:250,overflow:"hidden"}}>
+                  <button onClick={()=>{setExpMenu(false);exportCustomerReport(true);}} style={{display:"block",width:"100%",textAlign:"left",padding:"0.55rem 0.8rem",border:"none",background:"white",cursor:"pointer",fontFamily:"inherit",fontSize:"0.78rem",color:C.text}}>🔒 社名を伏せて出力（A社・B社…）</button>
+                  <button onClick={()=>{setExpMenu(false);exportCustomerReport(false);}} style={{display:"block",width:"100%",textAlign:"left",padding:"0.55rem 0.8rem",border:"none",borderTop:`1px solid ${C.borderLight}`,background:"white",cursor:"pointer",fontFamily:"inherit",fontSize:"0.78rem",color:C.text}}>🏢 社名を記載して出力</button>
+                </div>
+              )}
+            </div>
           </div>
           <div style={{display:"flex",gap:"0.4rem 0.9rem",flexWrap:"wrap",alignItems:"center",padding:"0.45rem 0.7rem",background:C.bg,border:`1px solid ${C.borderLight}`,borderRadius:8,fontSize:"0.7rem",color:C.textSub,marginBottom:"0.5rem"}}>
             <span style={{fontWeight:800}}>🔒 匿名対応表（お客様Excelは伏せ名で出力）：</span>
