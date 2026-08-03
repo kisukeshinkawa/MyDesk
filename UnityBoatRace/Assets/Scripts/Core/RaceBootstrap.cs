@@ -474,7 +474,8 @@ namespace BoatRace.Core
             float s = 4.0f / Mathf.Max(0.01f, Mathf.Max(b.size.z, b.size.x));
             model.localScale *= s;
             b = B();
-            model.position -= new Vector3(b.center.x, b.min.y - 0.05f, b.center.z);
+            // 喫水: 船底を水面下へ沈める(ルートが水面+0.25にあるため-0.33で船底≈水面下8cm)
+            model.position -= new Vector3(b.center.x, b.min.y + 0.33f, b.center.z);
 
             // トゥーンシェーダーに揃え、マテリアル名で塗り分け
             // livery/flag=艇色 / hull=白に艇色を薄く / canopy・engine・metalはそのまま

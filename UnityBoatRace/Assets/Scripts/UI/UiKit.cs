@@ -11,6 +11,7 @@ namespace BoatRace.UI
     public static class UiKit
     {
         static Font jpFont;
+        static bool bundledFont; // 同梱の極太フォント使用中(疑似ボールド二重掛けを避ける)
         static readonly Dictionary<int, Sprite> roundedCache = new Dictionary<int, Sprite>();
 
         // ---- 配色(TEIDOアートディレクション: HEX指定準拠) ----
@@ -41,7 +42,7 @@ namespace BoatRace.UI
             if (jpFont != null) return jpFont;
             // ゲーム用丸ゴ極太(Assets/Resources/Fonts/)。TEIDO設計書のタイポグラフィ指定
             jpFont = Resources.Load<Font>("Fonts/MPLUSRounded1c-ExtraBold");
-            if (jpFont != null) return jpFont;
+            if (jpFont != null) { bundledFont = true; return jpFont; }
             var installed = new HashSet<string>(Font.GetOSInstalledFontNames());
             // 丸ゴシックを最優先(スマホゲーらしい柔らかい太字になる)
             string[] candidates = { "Hiragino Maru Gothic ProN", "Hiragino Maru Gothic Pro",
@@ -208,7 +209,8 @@ namespace BoatRace.UI
             text.fontSize = size;
             text.color = color;
             text.alignment = anchor;
-            text.fontStyle = bold ? FontStyle.Bold : FontStyle.Normal;
+            // 同梱フォントは元からExtraBold。疑似ボールドを重ねると潰れて見づらくなる
+            text.fontStyle = bold && !bundledFont ? FontStyle.Bold : FontStyle.Normal;
             text.horizontalOverflow = HorizontalWrapMode.Overflow;
             text.verticalOverflow = VerticalWrapMode.Overflow;
             // テキストはクリック判定を持たない(下のボタンへのタップを遮らない)。
@@ -451,7 +453,7 @@ namespace BoatRace.UI
         {
             var t = MakeText(parent, str, size, Color.white, TextAnchor.MiddleCenter,
                 anchorMin, anchorMax, Vector2.zero, Vector2.zero);
-            t.fontStyle = FontStyle.BoldAndItalic;
+            t.fontStyle = bundledFont ? FontStyle.Italic : FontStyle.BoldAndItalic;
             var g = t.gameObject.AddComponent<TextGradientFx>();
             g.top = top; g.bottom = bottom;
             // Outlineを3枚重ねて極太の縁取りにする(グラデ→縁取りの順で適用)
