@@ -128,7 +128,7 @@ namespace BoatRace.Core
                     spon.transform.localPosition = new Vector3(sx, -0.03f, 0.80f);
                     spon.transform.localRotation = Quaternion.Euler(-4f, 0f, sx > 0f ? -4f : 4f);
                     spon.transform.localScale = new Vector3(0.30f, 0.24f, 1.95f);
-                    Paint(spon, white);
+                    Paint(spon, Color.Lerp(c, Color.white, 0.25f)); // スポンソンも艇色(シート準拠)
                     var sponTip = GameObject.CreatePrimitive(PrimitiveType.Sphere);
                     sponTip.name = "SponsonTip";
                     sponTip.transform.SetParent(root.transform, false);
@@ -137,22 +137,32 @@ namespace BoatRace.Core
                     Paint(sponTip, c); // 先端は艇色(正面から見分けがつく)
                 }
 
-                // デッキの斜めストライプ2本(YAMATO艇の塗り分け風: 艇色+淡色)
-                Color c2 = Color.Lerp(c, Color.white, 0.45f);
-                var stripeA = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                stripeA.name = "DeckStripeA";
-                stripeA.transform.SetParent(root.transform, false);
-                stripeA.transform.localPosition = new Vector3(0.16f, 0.225f, 0.75f);
-                stripeA.transform.localRotation = Quaternion.Euler(-6f, 14f, 0f);
-                stripeA.transform.localScale = new Vector3(0.17f, 0.02f, 1.85f);
-                Paint(stripeA, c);
-                var stripeB = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                stripeB.name = "DeckStripeB";
-                stripeB.transform.SetParent(root.transform, false);
-                stripeB.transform.localPosition = new Vector3(-0.14f, 0.225f, 0.75f);
-                stripeB.transform.localRotation = Quaternion.Euler(-6f, -12f, 0f);
-                stripeB.transform.localScale = new Vector3(0.13f, 0.02f, 1.80f);
-                Paint(stripeB, c2);
+                // デッキ全面リバリー(シート準拠: 上から見ても艇色が分かる大面積の塗り)
+                var deckPanel = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                deckPanel.name = "DeckLivery";
+                deckPanel.transform.SetParent(root.transform, false);
+                deckPanel.transform.localPosition = new Vector3(0f, 0.235f, 0.75f);
+                deckPanel.transform.localRotation = Quaternion.Euler(-6f, 0f, 0f);
+                deckPanel.transform.localScale = new Vector3(0.95f, 0.018f, 1.75f);
+                Paint(deckPanel, c);
+                // 白の稲妻アクセント1本
+                var deckAccent = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                deckAccent.name = "DeckAccent";
+                deckAccent.transform.SetParent(root.transform, false);
+                deckAccent.transform.localPosition = new Vector3(0.10f, 0.247f, 0.75f);
+                deckAccent.transform.localRotation = Quaternion.Euler(-6f, 14f, 0f);
+                deckAccent.transform.localScale = new Vector3(0.13f, 0.014f, 1.70f);
+                Paint(deckAccent, Color.white);
+                // コックピット脇の艇色レール
+                foreach (var sx2 in new[] { -0.37f, 0.37f })
+                {
+                    var rail = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                    rail.name = "CockpitRail";
+                    rail.transform.SetParent(root.transform, false);
+                    rail.transform.localPosition = new Vector3(sx2, 0.19f, -0.50f);
+                    rail.transform.localScale = new Vector3(0.07f, 0.09f, 1.15f);
+                    Paint(rail, c);
+                }
 
                 // コックピット開口(ダークの操縦席まわり)
                 var pit = GameObject.CreatePrimitive(PrimitiveType.Cube);
