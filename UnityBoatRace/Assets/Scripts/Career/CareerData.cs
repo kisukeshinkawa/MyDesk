@@ -55,6 +55,29 @@ namespace BoatRace.Career
         public string ConditionLabel => condition == 1 ? "スランプ" : condition == 2 ? "覚醒" : "通常";
         public float ConditionMul => condition == 1 ? 0.90f : condition == 2 ? 1.20f : 1f;
 
+        // 経営(仕様書⑦): ファン・疲労・スポンサー・専属整備士・整備ミニゲーム結果
+        public int fans = 300;          // ファン数(シナリオ: 初期300人)
+        public int fatigue;             // 疲労0-100。練習・出走で蓄積、60以上でレースに悪影響
+        public List<int> sponsorIds = new List<int>();
+        public bool hasMechanic;        // 専属整備士(整備ゾーン拡大。人件費8万/レース)
+        public int tuneQuality;         // ペラ調整結果(0=未実施 1=失敗 2=普通 3=良 4=完璧 -1=故障中)
+
+        // スポンサー定義(名前, 契約条件, 収入万円/レース)
+        public static readonly (string name, string cond, int income)[] SponsorDefs =
+        {
+            ("DUSTALK",      "通算3勝",       8),
+            ("BEETLE EMS",   "ファン2,000人", 12),
+            ("NISHIHARA HD", "第5章到達",     20),
+        };
+        public bool SponsorUnlocked(int id) =>
+            id == 0 ? wins >= 3 : id == 1 ? fans >= 2000 : chapter >= 5;
+        public int SponsorIncome
+        {
+            get { int s = 0; foreach (var id in sponsorIds) s += SponsorDefs[id].income; return s; }
+        }
+        // レースごとの支出(整備費5万+整備士の人件費)
+        public int RaceExpense => 5 + (hasMechanic ? 8 : 0);
+
         // レベル成長(XPはレース結果で獲得。レベルで体力最大値が伸びる)
         public int level = 1;
         public int xp;

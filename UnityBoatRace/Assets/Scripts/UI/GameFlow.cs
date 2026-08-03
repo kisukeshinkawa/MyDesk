@@ -41,6 +41,16 @@ namespace BoatRace.UI
         bool predictionHit;
         int predictionBonus;
 
+        // 舟券(観戦レース: ベットコインで2連単を購入)
+        int betFirst = -1, betSecond = -1;
+        int betAmount;
+        float betOdds;
+        bool betWon;
+        int betPayout;
+
+        // 演出: スタートスロー(大時計0秒付近をスローモーションで見せる)
+        bool startSlowActive, startSlowDone;
+
         Canvas canvas;
         GameObject currentScreen;
         GameObject replayOverlay;
@@ -81,7 +91,26 @@ namespace BoatRace.UI
             race.OnPlayerTurnEntry += OnPlayerTurnEntry;
             race.OnBoatFinished += (idx, place) =>
             {
-                if (place == 1) ShowFlash($"ゴール！ {idx + 1}号艇！", UiKit.Red);
+                if (place == 1)
+                {
+                    // 勝利カットイン(仕様書⑩): 自分が勝ったら必殺技級の演出
+                    if (idx == race.playerBoatIndex)
+                        ShowMoveCutIn("WINNER！！", new Color(1f, 0.78f, 0.10f));
+                    else
+                        ShowFlash($"ゴール！ {idx + 1}号艇！", UiKit.Red);
+                }
+                else if (place == 2)
+                {
+                    // 写真判定(仕様書⑩): 1-2着の着差0.15秒以内
+                    float t1 = -1f, t2 = race.state.Get(idx).finishTime;
+                    foreach (var bi in race.state.standings)
+                    {
+                        var bb = race.state.Get(bi);
+                        if (bb.finalPlace == 1) { t1 = bb.finishTime; break; }
+                    }
+                    if (t1 >= 0f && Mathf.Abs(t2 - t1) < 0.15f)
+                        ShowFlash("写真判定！！", new Color(0.25f, 0.30f, 0.45f));
+                }
             };
             ShowTitle();
         }
@@ -109,10 +138,28 @@ namespace BoatRace.UI
             bool preRace = race.armed && race.state.clock < -14f &&
                 (race.state.phase == RacePhase.PitOut || race.state.phase == RacePhase.Waiting);
             ffButton.SetActive(preRace);
-            if (!preRace && movePanelGo == null && !specialSeqActive && Time.timeScale != 1f)
+            if (!preRace && movePanelGo == null && !specialSeqActive && !startSlowActive && Time.timeScale != 1f)
             {
                 Time.timeScale = 1f;
                 ffLabel.text = "⏩ 早送り";
+            }
+
+            // 演出: スタートスロー(仕様書⑩)。大時計0秒の攻防をスローで見せる
+            if (!race.armed) { startSlowDone = false; startSlowActive = false; }
+            else if (!replay.IsPlaying && movePanelGo == null && !specialSeqActive &&
+                (race.state.phase == RacePhase.Approach || race.state.phase == RacePhase.Racing))
+            {
+                if (!startSlowDone && race.state.clock >= -0.05f)
+                {
+                    startSlowDone = true;
+                    startSlowActive = true;
+                    Time.timeScale = 0.35f;
+                }
+                if (startSlowActive && race.state.clock > 1.1f)
+                {
+                    startSlowActive = false;
+                    Time.timeScale = 1f;
+                }
             }
 
             // 技選択の集中線をゆっくり回転(スロー中もunscaledで動く)
@@ -701,13 +748,23 @@ namespace BoatRace.UI
                 new Vector2(0.06f, 0.80f), new Vector2(0.72f, 0.98f), Vector2.zero, Vector2.zero, bold: true);
             UiKit.MakeChip(card.transform, career.RankLabel, UiKit.Red, Color.white, 26,
                 new Vector2(0.74f, 0.80f), new Vector2(0.96f, 0.96f), Vector2.zero, Vector2.zero);
+            string sponsorNames = "なし";
+            if (career.sponsorIds.Count > 0)
+            {
+                sponsorNames = "";
+                foreach (var sp in career.sponsorIds)
+                    sponsorNames += (sponsorNames == "" ? "" : "・") + CareerData.SponsorDefs[sp].name;
+            }
             UiKit.MakeText(card.transform,
                 $"Lv.{career.level}　体力 {career.MaxStamina}　(XP {career.xp}/{career.XpNeed})\n" +
                 $"出走 {career.races} 回　勝利 {career.wins} 勝 (3着内 {career.top3})\n" +
-                $"獲得賞金 {career.money:N0} 万円\n" +
+                $"資金 {career.money:N0} 万円　ファン {career.fans:N0} 人\n" +
+                $"疲労 {career.fatigue}/100{(career.fatigue >= 60 ? " ⚠要休養!" : "")}　" +
+                $"支出 {career.RaceExpense}万/R　スポンサー収入 +{career.SponsorIncome}万/R\n" +
+                $"スポンサー: {sponsorNames}\n" +
                 $"装備 {(career.equipProp >= 0 && career.equipProp < career.parts.Count ? CareerData.PartName(career.parts[career.equipProp]) : "ペラなし")}" +
                 $" / {(career.equipTilt >= 0 && career.equipTilt < career.parts.Count ? CareerData.PartName(career.parts[career.equipTilt]) : "チルトなし")}",
-                22, UiKit.TextDark, TextAnchor.UpperLeft,
+                19, UiKit.TextDark, TextAnchor.UpperLeft,
                 new Vector2(0.06f, 0.08f), new Vector2(0.94f, 0.76f), Vector2.zero, Vector2.zero, bold: true);
 
             // 右: スキルと練習
@@ -721,22 +778,31 @@ namespace BoatRace.UI
                 new Vector2(0.07f, 0.56f), new Vector2(0.93f, 0.96f), Vector2.zero, Vector2.zero, bold: true);
             void Train(string label, int cost, System.Action apply, float y)
             {
-                UiKit.MakeButton(skill.transform, $"{label} ({cost}万)", UiKit.Cyan, 17,
-                    new Vector2(0.07f, y), new Vector2(0.93f, y + 0.095f), Vector2.zero, Vector2.zero,
+                UiKit.MakeButton(skill.transform, $"{label} ({cost}万)", UiKit.Cyan, 16,
+                    new Vector2(0.07f, y), new Vector2(0.93f, y + 0.082f), Vector2.zero, Vector2.zero,
                     () =>
                     {
                         if (career.money < cost) return;
                         career.money -= cost;
+                        career.fatigue = Mathf.Min(100, career.fatigue + 15); // 練習は疲労が溜まる
                         apply();
                         career.Save();
                         ShowCareer();
                     });
             }
-            Train("スタート練習 +3", 100, () => career.startSkill = Mathf.Min(0.95f, career.startSkill + 0.03f), 0.43f);
-            Train("旋回練習 +3", 100, () => career.turnSkill = Mathf.Min(0.95f, career.turnSkill + 0.03f), 0.325f);
-            Train("スピード練習 +3", 100, () => career.speedSkill = Mathf.Min(0.95f, career.speedSkill + 0.03f), 0.22f);
-            Train("メンタル強化 +3", 80, () => career.mental = Mathf.Min(0.95f, career.mental + 0.03f), 0.115f);
-            Train("整備研修 +3", 80, () => career.mechanicSkill = Mathf.Min(0.95f, career.mechanicSkill + 0.03f), 0.01f);
+            Train("スタート練習 +3", 100, () => career.startSkill = Mathf.Min(0.95f, career.startSkill + 0.03f), 0.445f);
+            Train("旋回練習 +3", 100, () => career.turnSkill = Mathf.Min(0.95f, career.turnSkill + 0.03f), 0.358f);
+            Train("スピード練習 +3", 100, () => career.speedSkill = Mathf.Min(0.95f, career.speedSkill + 0.03f), 0.271f);
+            Train("メンタル強化 +3", 80, () => career.mental = Mathf.Min(0.95f, career.mental + 0.03f), 0.184f);
+            Train("整備研修 +3", 80, () => career.mechanicSkill = Mathf.Min(0.95f, career.mechanicSkill + 0.03f), 0.097f);
+            UiKit.MakeButton(skill.transform, "休養する (無料・疲労回復)", new Color(0.10f, 0.62f, 0.35f), 16,
+                new Vector2(0.07f, 0.01f), new Vector2(0.93f, 0.092f), Vector2.zero, Vector2.zero,
+                () =>
+                {
+                    career.fatigue = 0;
+                    career.Save();
+                    ShowCareer();
+                });
 
             string raceLabel = career.allClear ? "SG覇者として出走▶" : $"第{career.chapter}章に出走▶";
             UiKit.MakeButton(s.transform, "↩ ホーム", UiKit.Cyan, 20,
@@ -772,16 +838,17 @@ namespace BoatRace.UI
             UiKit.MakeBanner(pop.transform, $"ショップ　所持金 {career.money:N0}万円", 24,
                 new Vector2(0.10f, 0.85f), new Vector2(0.90f, 0.99f));
 
-            void Item(string label, string desc, int cost, int owned, System.Action buy, float y)
+            void Item(string label, string desc, int cost, string ownedLabel, bool canBuy, System.Action buy, float y)
             {
-                UiKit.MakeText(pop.transform, $"{label}　所持{owned}\n{desc}", 20, UiKit.TextDark,
+                UiKit.MakeText(pop.transform, $"{label}　{ownedLabel}\n{desc}", 17, UiKit.TextDark,
                     TextAnchor.MiddleLeft,
-                    new Vector2(0.06f, y), new Vector2(0.66f, y + 0.18f), Vector2.zero, Vector2.zero, bold: true);
-                UiKit.MakeButton(pop.transform, $"{cost}万で購入", career.money >= cost ? UiKit.Cyan : new Color(0.5f, 0.5f, 0.55f), 18,
-                    new Vector2(0.68f, y + 0.02f), new Vector2(0.94f, y + 0.15f), Vector2.zero, Vector2.zero,
+                    new Vector2(0.06f, y), new Vector2(0.66f, y + 0.155f), Vector2.zero, Vector2.zero, bold: true);
+                UiKit.MakeButton(pop.transform, canBuy ? $"{cost}万で購入" : "－",
+                    canBuy && career.money >= cost ? UiKit.Cyan : new Color(0.5f, 0.5f, 0.55f), 16,
+                    new Vector2(0.68f, y + 0.02f), new Vector2(0.94f, y + 0.13f), Vector2.zero, Vector2.zero,
                     () =>
                     {
-                        if (career.money < cost) return;
+                        if (!canBuy || career.money < cost) return;
                         career.money -= cost;
                         buy();
                         career.Save();
@@ -789,12 +856,15 @@ namespace BoatRace.UI
                         ShowShopPopup(parent);
                     });
             }
-            Item("エナジードリンク", "次レースの初期SP+30(必殺技が早く使える)", 200, career.itemDrink,
-                () => career.itemDrink++, 0.60f);
-            Item("新品ペラ", "次レースのモーターを強化(出足・伸びUP)", 300, career.itemProp,
-                () => career.itemProp++, 0.38f);
-            Item("勝守り", "次レースのST安定＋メンタルUP", 150, career.itemCharm,
-                () => career.itemCharm++, 0.16f);
+            Item("エナジードリンク", "次レースの初期SP+30(必殺技が早く使える)", 200, $"所持{career.itemDrink}",
+                true, () => career.itemDrink++, 0.66f);
+            Item("新品ペラ", "次レースのモーターを強化(出足・伸びUP)", 300, $"所持{career.itemProp}",
+                true, () => career.itemProp++, 0.48f);
+            Item("勝守り", "次レースのST安定＋メンタルUP", 150, $"所持{career.itemCharm}",
+                true, () => career.itemCharm++, 0.30f);
+            Item("専属整備士と契約", "ペラ調整の成功ゾーン拡大(人件費8万/レース)", 500,
+                career.hasMechanic ? "契約済み" : "未契約",
+                !career.hasMechanic, () => career.hasMechanic = true, 0.12f);
 
             UiKit.MakeButton(pop.transform, "閉じる", UiKit.Navy, 20,
                 new Vector2(0.36f, 0.02f), new Vector2(0.64f, 0.12f), Vector2.zero, Vector2.zero,
@@ -1014,6 +1084,19 @@ namespace BoatRace.UI
                 stats.turnSkill = Mathf.Clamp(stats.turnSkill * cond, 0.20f, 0.97f);
                 stats.speedSkill = Mathf.Clamp(stats.speedSkill * cond, 0.20f, 0.97f);
             }
+
+            // 疲労(シナリオ第2章: 練習しすぎはミスの元)。60以上で体力2割減+メンタル低下
+            if (career.fatigue >= 60)
+            {
+                race.playerSPInit *= 0.8f;
+                stats.mental = Mathf.Max(0.20f, stats.mental - 0.12f);
+            }
+            // 故障中(ランダムイベント): 出足・伸びダウン
+            if (career.tuneQuality == -1)
+            {
+                race.pAccelBonus -= 0.10f;
+                race.pTopBonus -= 0.15f;
+            }
             if (career.itemCharm > 0)
             {
                 career.itemCharm--;
@@ -1094,6 +1177,13 @@ namespace BoatRace.UI
             UiKit.MakeBanner(s.transform, $"出走表　{race.venue.name}", 30,
                 new Vector2(0.25f, 0.905f), new Vector2(0.75f, 0.985f), tilt: -1.2f);
 
+            // AI予想(仕様書⑥): 総合スコア順に◎○▲△✕✕
+            float[] aiScores = EntryScores();
+            string[] aiMarks = AssignMarks(aiScores);
+            UiKit.MakeButton(s.transform, "データ分析", new Color(0.20f, 0.55f, 0.85f), 18,
+                new Vector2(0.855f, 0.915f), new Vector2(0.985f, 0.975f), Vector2.zero, Vector2.zero,
+                () => ShowAnalysisPopup(s.transform, aiScores, aiMarks));
+
             for (int i = 0; i < 6; i++)
             {
                 int col = i % 2, row = i / 2;
@@ -1128,6 +1218,12 @@ namespace BoatRace.UI
                     UiKit.MakeChip(card.transform, "YOU", UiKit.Red, Color.white, 20,
                         new Vector2(0.80f, 0.70f), new Vector2(0.97f, 0.94f), Vector2.zero, Vector2.zero);
 
+                // AI予想印(◎が本命)
+                UiKit.MakeChip(card.transform, aiMarks[i],
+                    aiMarks[i] == "◎" ? UiKit.Yellow : Color.white,
+                    aiMarks[i] == "◎" ? UiKit.Red : UiKit.Border, 22,
+                    new Vector2(0.66f, 0.70f), new Vector2(0.78f, 0.94f), Vector2.zero, Vector2.zero);
+
                 string entry = BoatRace.Start.WaitingSystem.IsSlowStart(bs.course) ? "スロー" : "ダッシュ";
                 string grade = MotorGrade(st.motor.OverallScore);
                 UiKit.MakeText(card.transform,
@@ -1143,18 +1239,18 @@ namespace BoatRace.UI
             // 展開予想(ストーリーモードのみ): 決まり手を当てると賞金ボーナス
             predictedKimarite = null;
             predictionHit = false;
+            betFirst = -1; betSecond = -1; betAmount = 0; betWon = false; betPayout = 0;
             if (race.playerBoatIndex >= 0)
             {
                 UiKit.MakeTag(s.transform, "展開予想", UiKit.Yellow, UiKit.Border, 18,
                     new Vector2(0.02f, 0.135f), new Vector2(0.16f, 0.18f));
                 var predInner = UiKit.MakeCard(s.transform,
-                    new Vector2(0.17f, 0.125f), new Vector2(0.70f, 0.19f), Vector2.zero, Vector2.zero, 0.95f);
-                UiKit.MakeText(predInner.transform, "1着の決まり手は？ 的中で賞金ボーナス！", 15, UiKit.TextDark,
+                    new Vector2(0.17f, 0.125f), new Vector2(0.60f, 0.19f), Vector2.zero, Vector2.zero, 0.95f);
+                UiKit.MakeText(predInner.transform, "1着の決まり手は？ 的中で賞金ボーナス！", 14, UiKit.TextDark,
                     TextAnchor.MiddleLeft, new Vector2(0.02f, 0.55f), new Vector2(0.98f, 0.98f),
                     Vector2.zero, Vector2.zero, bold: true);
                 string[] preds = { "逃げ", "まくり", "差し" };
                 var predImgs = new Image[3];
-                var predTxts = new Text[3];
                 for (int p = 0; p < 3; p++)
                 {
                     int pi = p;
@@ -1162,19 +1258,54 @@ namespace BoatRace.UI
                         new Vector2(0.03f + p * 0.33f, 0.06f), new Vector2(0.33f + p * 0.33f, 0.54f),
                         Vector2.zero, Vector2.zero);
                     predImgs[p] = pb.GetComponent<Image>();
-                    predTxts[p] = UiKit.MakeText(pb.transform, preds[p], 18, UiKit.Border,
+                    UiKit.MakeText(pb.transform, preds[p], 17, UiKit.Border,
                         TextAnchor.MiddleCenter, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero,
                         bold: true);
                     pb.AddComponent<Button>().onClick.AddListener(() =>
                     {
                         predictedKimarite = preds[pi];
                         for (int q = 0; q < 3; q++)
-                        {
                             predImgs[q].color = q == pi ? UiKit.Yellow : new Color(0.90f, 0.93f, 0.98f);
-                            predTxts[q].color = UiKit.Border;
-                        }
                     });
                 }
+
+                // 整備ミニゲーム(仕様書④): タイミング操作でペラ調整(1レース1回)
+                bool tuned = career.tuneQuality != 0;
+                var tuneBtn = UiKit.MakeButton(s.transform, tuned ? "整備済み" : "ペラ調整！",
+                    tuned ? new Color(0.55f, 0.60f, 0.68f) : new Color(0.95f, 0.60f, 0.05f), 19,
+                    new Vector2(0.615f, 0.125f), new Vector2(0.765f, 0.19f), Vector2.zero, Vector2.zero,
+                    () => { });
+                var tuneLabel = tuneBtn.GetComponentInChildren<Text>();
+                tuneBtn.onClick.AddListener(() =>
+                {
+                    if (career.tuneQuality == 0) ShowTunePopup(s.transform, tuneLabel);
+                });
+
+                // モーター抽選結果(シナリオ第3章: エース機/中堅機/ワースト機)
+                var pm = race.statsList[race.playerBoatIndex].motor;
+                string mGrade = pm.OverallScore >= 70f ? "エース機"
+                    : pm.OverallScore >= 40f ? "中堅機" : "ワースト機";
+                if (career.tuneQuality == -1) mGrade += "(故障中)";
+                UiKit.MakeChip(s.transform, $"モーター: {mGrade}",
+                    pm.OverallScore >= 70f ? UiKit.Yellow : new Color(1f, 1f, 1f, 0.92f),
+                    UiKit.Border, 15,
+                    new Vector2(0.775f, 0.13f), new Vector2(0.985f, 0.185f), Vector2.zero, Vector2.zero);
+            }
+            else
+            {
+                // 舟券(仕様書⑨): 観戦レースはベットコインで2連単を購入できる
+                UiKit.MakeTag(s.transform, "舟券", UiKit.Yellow, UiKit.Border, 18,
+                    new Vector2(0.02f, 0.135f), new Vector2(0.13f, 0.18f));
+                var wallet = UiKit.MakeChip(s.transform, $"BC {PlayerPrefs.GetInt("br_betcoin", 1000):N0}",
+                    new Color(1f, 1f, 1f, 0.92f), UiKit.Border, 17,
+                    new Vector2(0.40f, 0.13f), new Vector2(0.58f, 0.185f), Vector2.zero, Vector2.zero);
+                var betInfo = UiKit.MakeChip(s.transform, "未購入",
+                    new Color(1f, 1f, 1f, 0.92f), UiKit.Border, 15,
+                    new Vector2(0.59f, 0.13f), new Vector2(0.90f, 0.185f), Vector2.zero, Vector2.zero);
+                UiKit.MakeButton(s.transform, "舟券を買う(2連単) ▶", new Color(0.95f, 0.60f, 0.05f), 18,
+                    new Vector2(0.14f, 0.125f), new Vector2(0.39f, 0.19f), Vector2.zero, Vector2.zero,
+                    () => ShowBetPopup(s.transform, aiScores,
+                        wallet.GetComponentInChildren<Text>(), betInfo.GetComponentInChildren<Text>()));
             }
 
             UiKit.MakeButton(s.transform, "レーススタート！", UiKit.Red, 38,
@@ -1187,6 +1318,228 @@ namespace BoatRace.UI
                 });
             UiKit.MakeButton(s.transform, "↩ ホーム", UiKit.Cyan, 24,
                 new Vector2(0.02f, 0.02f), new Vector2(0.16f, 0.10f), Vector2.zero, Vector2.zero, ShowHome);
+        }
+
+        // ================= データ分析・整備・舟券(仕様書④⑥⑨) =================
+
+        /// <summary>AI総合スコア: ST+ターン+スピード+モーター+コース補正(仕様書②の合成式)。</summary>
+        float[] EntryScores()
+        {
+            var sc = new float[6];
+            for (int i = 0; i < 6; i++)
+            {
+                var st = race.statsList[i];
+                var bs = race.state.Get(i);
+                sc[i] = st.motor.OverallScore / 100f
+                      + st.player.startSkill * 0.9f
+                      + st.player.turnSkill * 0.7f
+                      + st.player.speedSkill * 0.5f
+                      + (6 - bs.course) * 0.14f * (0.5f + race.venue.insideAdvantage);
+            }
+            return sc;
+        }
+
+        /// <summary>スコア順位→予想印(◎○▲△✕✕)。</summary>
+        static string[] AssignMarks(float[] scores)
+        {
+            var order = new List<int>();
+            for (int i = 0; i < scores.Length; i++) order.Add(i);
+            order.Sort((a, b) => scores[b].CompareTo(scores[a]));
+            string[] symbols = { "◎", "○", "▲", "△", "✕", "✕" };
+            var marks = new string[scores.Length];
+            for (int r = 0; r < order.Count; r++) marks[order[r]] = symbols[Mathf.Min(r, 5)];
+            return marks;
+        }
+
+        /// <summary>データ分析ポップアップ: コース・平均ST・モーター・AI予想(仕様書⑥)。</summary>
+        void ShowAnalysisPopup(Transform parent, float[] scores, string[] marks)
+        {
+            var inner = UiKit.MakeCard(parent,
+                new Vector2(0.16f, 0.14f), new Vector2(0.84f, 0.86f), Vector2.zero, Vector2.zero);
+            var outer = inner.transform.parent.gameObject;
+            UiKit.MakeTag(inner.transform, "データ分析　AI予想", UiKit.Yellow, UiKit.Border, 22,
+                new Vector2(0.28f, 0.90f), new Vector2(0.72f, 0.99f));
+            for (int i = 0; i < 6; i++)
+            {
+                var st = race.statsList[i];
+                var bs = race.state.Get(i);
+                float top = 0.86f - i * 0.115f;
+                var sq = UiKit.MakePanel(inner.transform, UiKit.BoatColors[i], 6,
+                    new Vector2(0.04f, top - 0.085f), new Vector2(0.085f, top), Vector2.zero, Vector2.zero);
+                sq.GetComponent<Image>().raycastTarget = false;
+                UiKit.MakeText(inner.transform,
+                    $"{marks[i]}　{i + 1}号艇 {st.player.playerName}　{bs.course}コース　" +
+                    $"平均ST .{Mathf.RoundToInt(st.player.reactionTimeMean * 100f):00}　" +
+                    $"モーター{MotorGrade(st.motor.OverallScore)}({st.motor.OverallScore:F0})　" +
+                    $"展示{bs.exhibitionTime:F2}",
+                    19, marks[i] == "◎" ? new Color(0.80f, 0.20f, 0.10f) : UiKit.TextDark,
+                    TextAnchor.MiddleLeft,
+                    new Vector2(0.11f, top - 0.09f), new Vector2(0.97f, top), Vector2.zero, Vector2.zero,
+                    bold: marks[i] == "◎");
+            }
+            int best = 0;
+            for (int i = 1; i < 6; i++) if (scores[i] > scores[best]) best = i;
+            UiKit.MakeText(inner.transform,
+                $"AI予想: 本命は{best + 1}号艇。コース・モーター・STを総合評価。",
+                17, UiKit.Cyan, TextAnchor.MiddleCenter,
+                new Vector2(0.04f, 0.115f), new Vector2(0.96f, 0.165f), Vector2.zero, Vector2.zero, bold: true);
+            UiKit.MakeButton(inner.transform, "とじる", UiKit.Navy, 20,
+                new Vector2(0.38f, 0.02f), new Vector2(0.62f, 0.10f), Vector2.zero, Vector2.zero,
+                () => Destroy(outer));
+        }
+
+        /// <summary>整備ミニゲーム(仕様書④): 動くカーソルをゾーン内で止めてペラ調整。</summary>
+        void ShowTunePopup(Transform parent, Text tuneLabel)
+        {
+            var inner = UiKit.MakeCard(parent,
+                new Vector2(0.24f, 0.30f), new Vector2(0.76f, 0.72f), Vector2.zero, Vector2.zero);
+            var outer = inner.transform.parent.gameObject;
+            UiKit.MakeTag(inner.transform, "ペラ調整　タイミングでストップ！", UiKit.Yellow, UiKit.Border, 20,
+                new Vector2(0.16f, 0.86f), new Vector2(0.84f, 0.98f));
+            UiKit.MakeText(inner.transform,
+                career.hasMechanic ? "専属整備士のサポートで成功ゾーン拡大中！" : "中央の黄色ゾーンで止めろ！",
+                16, UiKit.TextDark, TextAnchor.MiddleCenter,
+                new Vector2(0.04f, 0.70f), new Vector2(0.96f, 0.84f), Vector2.zero, Vector2.zero, bold: true);
+
+            // バー+成功ゾーン+カーソル
+            var bar = UiKit.MakePanel(inner.transform, new Color(0.85f, 0.89f, 0.95f), 10,
+                new Vector2(0.08f, 0.42f), new Vector2(0.92f, 0.60f), Vector2.zero, Vector2.zero);
+            float zone = 0.16f + (career.hasMechanic ? 0.12f : 0f) + career.mechanicSkill * 0.10f;
+            var zoneGo = UiKit.MakePanel(bar.transform, UiKit.Yellow, 8,
+                new Vector2(0.5f - zone * 0.5f, 0.08f), new Vector2(0.5f + zone * 0.5f, 0.92f),
+                Vector2.zero, Vector2.zero);
+            zoneGo.GetComponent<Image>().raycastTarget = false;
+            var cursor = UiKit.MakePanel(bar.transform, UiKit.Red, 4,
+                new Vector2(0f, -0.15f), new Vector2(0f, 1.15f), new Vector2(-4f, 0f), new Vector2(4f, 0f));
+            cursor.GetComponent<Image>().raycastTarget = false;
+            var cursorRt = cursor.GetComponent<RectTransform>();
+
+            bool stopped = false;
+            float t0 = Time.unscaledTime;
+            var driver = outer.AddComponent<TuneDriver>();
+            driver.tick = () =>
+            {
+                if (stopped) return;
+                float u = Mathf.PingPong((Time.unscaledTime - t0) * 0.85f, 1f);
+                cursorRt.anchorMin = new Vector2(u, -0.15f);
+                cursorRt.anchorMax = new Vector2(u, 1.15f);
+            };
+            UiKit.MakeButton(inner.transform, "ストップ！", UiKit.Red, 26,
+                new Vector2(0.30f, 0.06f), new Vector2(0.70f, 0.30f), Vector2.zero, Vector2.zero,
+                () =>
+                {
+                    if (stopped) return;
+                    stopped = true;
+                    float u = cursorRt.anchorMin.x;
+                    float d = Mathf.Abs(u - 0.5f);
+                    int q = d <= zone * 0.175f ? 4 : d <= zone * 0.5f ? 3 : d <= zone * 1.1f ? 2 : 1;
+                    // 成功度に応じて次レースの出足・伸びが変動(失敗はマイナス)
+                    float ab = q == 4 ? 0.12f : q == 3 ? 0.07f : q == 2 ? 0.02f : -0.05f;
+                    float tb = q == 4 ? 0.18f : q == 3 ? 0.10f : q == 2 ? 0.03f : -0.06f;
+                    race.pAccelBonus += ab;
+                    race.pTopBonus += tb;
+                    career.tuneQuality = q;
+                    career.Save();
+                    string msg = q == 4 ? "パーフェクト！！ 出足も伸びも絶好調！"
+                        : q == 3 ? "グッド！ 仕上がり良好！"
+                        : q == 2 ? "まずまず。悪くない仕上がり。"
+                        : "失敗…ペラが歪んだ。出足ダウン…";
+                    if (tuneLabel != null) tuneLabel.text = "整備済み";
+                    Destroy(outer);
+                    ShowFlash(msg, q >= 3 ? new Color(0.95f, 0.60f, 0.05f) : new Color(0.45f, 0.50f, 0.62f));
+                });
+        }
+
+        /// <summary>舟券購入(仕様書⑨): 2連単・オッズは実力スコアの確率ベース。</summary>
+        void ShowBetPopup(Transform parent, float[] scores, Text walletText, Text infoText)
+        {
+            var inner = UiKit.MakeCard(parent,
+                new Vector2(0.18f, 0.12f), new Vector2(0.82f, 0.88f), Vector2.zero, Vector2.zero);
+            var outer = inner.transform.parent.gameObject;
+            UiKit.MakeTag(inner.transform, "舟券購入　2連単", UiKit.Yellow, UiKit.Border, 22,
+                new Vector2(0.30f, 0.90f), new Vector2(0.70f, 0.99f));
+
+            int selFirst = -1, selSecond = -1, amount = 100;
+            var oddsText = UiKit.MakeText(inner.transform, "1着と2着を選択", 22, UiKit.Border,
+                TextAnchor.MiddleCenter,
+                new Vector2(0.04f, 0.26f), new Vector2(0.96f, 0.34f), Vector2.zero, Vector2.zero, bold: true);
+
+            float Sum() { float s = 0f; foreach (var v in scores) s += v; return s; }
+            float OddsFor(int f, int sec)
+            {
+                float sum = Sum();
+                float p1 = scores[f] / sum;
+                float p2 = scores[sec] / (sum - scores[f]);
+                float p = Mathf.Max(0.002f, p1 * p2);
+                return Mathf.Clamp(Mathf.Round(0.80f / p * 10f) / 10f, 1.2f, 300f);
+            }
+            void Refresh()
+            {
+                if (selFirst >= 0 && selSecond >= 0)
+                    oddsText.text = $"2連単 {selFirst + 1}-{selSecond + 1}　オッズ {OddsFor(selFirst, selSecond):F1}倍　賭け金 {amount}BC";
+                else
+                    oddsText.text = $"1着と2着を選択　賭け金 {amount}BC";
+            }
+
+            var rowImgs = new Image[2][];
+            for (int row = 0; row < 2; row++)
+            {
+                rowImgs[row] = new Image[6];
+                UiKit.MakeText(inner.transform, row == 0 ? "1着" : "2着", 20, UiKit.Border,
+                    TextAnchor.MiddleLeft,
+                    new Vector2(0.04f, 0.72f - row * 0.17f), new Vector2(0.14f, 0.82f - row * 0.17f),
+                    Vector2.zero, Vector2.zero, bold: true);
+                for (int b = 0; b < 6; b++)
+                {
+                    int rb = row, bb = b;
+                    var pb = UiKit.MakePanel(inner.transform, new Color(0.90f, 0.93f, 0.98f), 10,
+                        new Vector2(0.15f + b * 0.135f, 0.70f - row * 0.17f),
+                        new Vector2(0.275f + b * 0.135f, 0.84f - row * 0.17f), Vector2.zero, Vector2.zero);
+                    rowImgs[row][b] = pb.GetComponent<Image>();
+                    UiKit.MakeText(pb.transform, $"{b + 1}", 22, UiKit.Border, TextAnchor.MiddleCenter,
+                        Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, bold: true);
+                    pb.AddComponent<Button>().onClick.AddListener(() =>
+                    {
+                        if (rb == 0) selFirst = bb; else selSecond = bb;
+                        if (selFirst == selSecond) { if (rb == 0) selSecond = -1; else selFirst = -1; }
+                        for (int r2 = 0; r2 < 2; r2++)
+                            for (int b2 = 0; b2 < 6; b2++)
+                                rowImgs[r2][b2].color =
+                                    (r2 == 0 && b2 == selFirst) || (r2 == 1 && b2 == selSecond)
+                                        ? UiKit.Yellow : new Color(0.90f, 0.93f, 0.98f);
+                        Refresh();
+                    });
+                }
+            }
+            int[] amounts = { 100, 300, 500 };
+            for (int a = 0; a < 3; a++)
+            {
+                int aa = amounts[a];
+                UiKit.MakeButton(inner.transform, $"{aa}BC", UiKit.Cyan, 17,
+                    new Vector2(0.10f + a * 0.20f, 0.14f), new Vector2(0.28f + a * 0.20f, 0.235f),
+                    Vector2.zero, Vector2.zero,
+                    () => { amount = aa; Refresh(); });
+            }
+            UiKit.MakeButton(inner.transform, "購入！", UiKit.Red, 22,
+                new Vector2(0.72f, 0.14f), new Vector2(0.94f, 0.235f), Vector2.zero, Vector2.zero,
+                () =>
+                {
+                    if (selFirst < 0 || selSecond < 0) return;
+                    int coins = PlayerPrefs.GetInt("br_betcoin", 1000);
+                    if (coins < amount) { oddsText.text = "ベットコインが足りない！"; return; }
+                    coins -= amount;
+                    PlayerPrefs.SetInt("br_betcoin", coins);
+                    PlayerPrefs.Save();
+                    betFirst = selFirst; betSecond = selSecond;
+                    betAmount = amount; betOdds = OddsFor(selFirst, selSecond);
+                    if (walletText != null) walletText.text = $"BC {coins:N0}";
+                    if (infoText != null)
+                        infoText.text = $"購入: {betFirst + 1}-{betSecond + 1} × {betAmount}BC ({betOdds:F1}倍)";
+                    Destroy(outer);
+                });
+            UiKit.MakeButton(inner.transform, "やめる", UiKit.Navy, 18,
+                new Vector2(0.04f, 0.02f), new Vector2(0.24f, 0.11f), Vector2.zero, Vector2.zero,
+                () => Destroy(outer));
         }
 
         // ================= 結果 =================
@@ -1282,6 +1635,17 @@ namespace BoatRace.UI
                         new Vector2(0f, 0.115f), new Vector2(1f, 0.155f), Vector2.zero, Vector2.zero,
                         bold: true, shadow: true);
                 }
+            }
+            else if (betAmount > 0)
+            {
+                // 舟券の精算結果
+                string bRes = betWon
+                    ? $"舟券的中！！ 2連単 {betFirst + 1}-{betSecond + 1}　払戻 +{betPayout:N0} BC"
+                    : $"舟券はずれ… (購入 {betFirst + 1}-{betSecond + 1} × {betAmount}BC)　残高 {PlayerPrefs.GetInt("br_betcoin", 1000):N0} BC";
+                UiKit.MakeText(s.transform, bRes, 24,
+                    betWon ? UiKit.Yellow : new Color(0.8f, 0.85f, 0.95f), TextAnchor.MiddleCenter,
+                    new Vector2(0f, 0.155f), new Vector2(1f, 0.205f), Vector2.zero, Vector2.zero,
+                    bold: true, shadow: true, outline: true);
             }
 
             UiKit.MakeButton(s.transform, "▶ リプレイ", UiKit.Cyan, 28,
@@ -1448,10 +1812,87 @@ namespace BoatRace.UI
                         pendingStory = e2;
                     }
                 }
-                // モーター整備は1節(1レース)限りで消費
+                // モーター整備・ペラ調整は1節(1レース)限りで消費
                 career.maintCarb = career.maintElec = career.maintGear = 0;
+                career.tuneQuality = 0;
+
+                // ---- 経営決算(仕様書⑦): 収入=賞金+スポンサー / 支出=整備費+人件費 ----
+                career.fatigue = Mathf.Min(100, career.fatigue + 8);
+                int sponsorIn = career.SponsorIncome;
+                int expense = career.RaceExpense;
+                career.money += sponsorIn - expense;
+
+                // ファン数(勝つほど増える。事故は激減)
+                int fanDelta = lastCareerPlace == 1 ? 150 + career.chapter * 30
+                    : lastCareerPlace >= 1 && lastCareerPlace <= 3 ? 50
+                    : lastCareerPlace >= 4 ? 10 : -100;
+                career.fans = Mathf.Max(0, career.fans + fanDelta);
+
+                // スポンサー契約(条件達成で自動オファー→契約)
+                for (int sp = 0; sp < CareerData.SponsorDefs.Length; sp++)
+                {
+                    if (career.sponsorIds.Contains(sp) || !career.SponsorUnlocked(sp)) continue;
+                    career.sponsorIds.Add(sp);
+                    var def = CareerData.SponsorDefs[sp];
+                    AppendStory(("マネージャー",
+                        $"『{def.name}』とスポンサー契約成立！！ 条件「{def.cond}」達成で毎レース+{def.income}万円だ！"));
+                }
+
+                // ランダムイベント(仕様書⑪): 故障/ファンイベント
+                var evRng = new System.Random(System.Environment.TickCount ^ career.races);
+                double roll = evRng.NextDouble();
+                if (roll < 0.08)
+                {
+                    career.tuneQuality = -1;
+                    AppendStory(("整備士", "まずい、モーターに異音が…故障だ！ 次のレースは出足が落ちる。ペラ調整でカバーしろ！"));
+                }
+                else if (roll < 0.16)
+                {
+                    career.fans += 200;
+                    career.money = Mathf.Max(0, career.money - 10);
+                    AppendStory(("マネージャー", "ファンイベント開催！ 参加費10万円かかったが、ファンが200人増えたぞ！"));
+                }
+
+                // 破産(仕様書⑦): 資金マイナスでゲームオーバー→再起
+                if (career.money < 0)
+                {
+                    career.money = 50;
+                    career.fans = Mathf.Max(100, career.fans / 2);
+                    career.condition = 1;
+                    career.sponsorIds.Clear();
+                    AppendStory(("記者", "資金がマイナスに…破産だ！！ スポンサーは全て離れ、ファンも激減…"));
+                    AppendStory(("マネージャー", "…だが再起のチャンスはある。手元の50万円からやり直しだ。"));
+                }
                 career.Save();
             }
+            else if (betAmount > 0)
+            {
+                // 観戦レースの舟券精算(仕様書⑨)
+                var valid2 = new List<int>();
+                foreach (int idx in race.state.standings)
+                {
+                    var bs2 = race.state.Get(idx);
+                    if (bs2.startFlag != StartFlag.Flying && bs2.startFlag != StartFlag.Late) valid2.Add(idx);
+                }
+                betWon = valid2.Count >= 2 && valid2[0] == betFirst && valid2[1] == betSecond;
+                betPayout = betWon ? Mathf.RoundToInt(betAmount * betOdds) : 0;
+                if (betWon)
+                {
+                    int coins = PlayerPrefs.GetInt("br_betcoin", 1000) + betPayout;
+                    PlayerPrefs.SetInt("br_betcoin", coins);
+                    PlayerPrefs.Save();
+                }
+            }
+        }
+
+        /// <summary>結果画面のストーリー会話に1行追加。</summary>
+        void AppendStory((string, string) line)
+        {
+            if (pendingStory == null) { pendingStory = new[] { line }; return; }
+            var e = new (string, string)[pendingStory.Length + 1];
+            pendingStory.CopyTo(e, 0);
+            e[e.Length - 1] = line;
+            pendingStory = e;
         }
 
         int ComputePayout(int first, int second, int third)
@@ -1478,5 +1919,12 @@ namespace BoatRace.UI
             int n = Mathf.Clamp(Mathf.RoundToInt(v01 * 5f), 1, 5);
             return new string('★', n) + new string('☆', 5 - n);
         }
+    }
+
+    /// <summary>整備ミニゲームのカーソル駆動(毎フレームtickを呼ぶだけの小型ドライバ)。</summary>
+    public class TuneDriver : MonoBehaviour
+    {
+        public System.Action tick;
+        void Update() => tick?.Invoke();
     }
 }
