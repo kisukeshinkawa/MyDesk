@@ -87,6 +87,43 @@ namespace BoatRace.UI
             p.experience = 0.95f;
         }
 
+        /// <summary>話者名→顔シートのスプライト(AI生成画像)。無ければnull。</summary>
+        Sprite FaceSpriteOf(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return null;
+            if (name.StartsWith("天才 ")) return FaceSpriteOf(name.Substring(3));
+            if (career != null && name == career.racerName) return FaceArt.Get(13);
+            for (int i = 0; i < LegendRacer.All.Length; i++)
+                if (LegendRacer.All[i].name == name) return FaceArt.Get(1 + i);
+            for (int i = 0; i < Rivals.Length; i++)
+                if (Rivals[i].name == name) return FaceArt.Get(14 + i);
+            return null;
+        }
+
+        /// <summary>顔を描く: AI生成の顔シートがあればそれ、無ければ手続き生成アニメ顔。</summary>
+        GameObject MakeFaceAt(Transform parent, string person, Vector2 aMin, Vector2 aMax)
+        {
+            var sp = FaceSpriteOf(person);
+            if (sp != null)
+            {
+                var frame = UiKit.MakePanel(parent, UiKit.Border, 20, aMin, aMax, Vector2.zero, Vector2.zero);
+                frame.GetComponent<Image>().raycastTarget = false;
+                var bg = UiKit.MakePanel(frame.transform, Color.white, 16,
+                    Vector2.zero, Vector2.one, new Vector2(3f, 3f), new Vector2(-3f, -3f));
+                bg.GetComponent<Image>().raycastTarget = false;
+                var imgGo = new GameObject("FaceImg");
+                UiKit.Place(imgGo, frame.transform, Vector2.zero, Vector2.one,
+                    new Vector2(3f, 3f), new Vector2(-3f, -3f));
+                var img = imgGo.AddComponent<Image>();
+                img.sprite = sp;
+                img.preserveAspect = true;
+                img.raycastTarget = false;
+                return frame;
+            }
+            var (seed, hair) = FaceOf(person);
+            return UiKit.MakeFace(parent, seed, hair, aMin, aMax);
+        }
+
         /// <summary>話者名→顔(シード+髪色)。同じ名前は常に同じ顔になる。</summary>
         (int seed, Color hair) FaceOf(string speaker)
         {
@@ -338,8 +375,7 @@ namespace BoatRace.UI
                 new Vector2(0f, 0f), new Vector2(1f, 0.47f), new Vector2(6f, -30f), new Vector2(-6f, 0f));
 
             // ヘッダ: 自分(顔+青帯名+体力バー) vs 敵(赤タグ+パワー)
-            var (mfs, mfh) = FaceOf(career.racerName);
-            UiKit.MakeFace(sheet.transform, mfs, mfh,
+            MakeFaceAt(sheet.transform, career.racerName,
                 new Vector2(0.015f, 0.72f), new Vector2(0.115f, 0.99f));
             UiKit.MakeTag(sheet.transform, $"{career.racerName}　{race.playerBoatIndex + 1}号艇",
                 UiKit.Cyan, Color.white, 19,
@@ -637,6 +673,19 @@ namespace BoatRace.UI
             UiKit.MakeFullscreenGradient(s.transform,
                 new Color(0.03f, 0.10f, 0.34f, 0.55f), new Color(0.01f, 0.03f, 0.13f, 0.96f));
 
+            // AI生成キービジュアル(Art/title_kv.png)。縦長絵を中央に高さフィットで置く
+            var kvSprite = FaceArt.LoadArt("title_kv");
+            if (kvSprite != null)
+            {
+                var kvGo = new GameObject("KeyVisual");
+                UiKit.Place(kvGo, s.transform, new Vector2(0.24f, 0f), new Vector2(0.76f, 1f),
+                    Vector2.zero, Vector2.zero);
+                var kvImg = kvGo.AddComponent<Image>();
+                kvImg.sprite = kvSprite;
+                kvImg.preserveAspect = true;
+                kvImg.raycastTarget = false;
+            }
+
             // 全画面透明ボタン(先に敷き、上のボタンには奪わせない)
             var tap = new GameObject("Tap");
             UiKit.Place(tap, s.transform, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
@@ -681,22 +730,40 @@ namespace BoatRace.UI
                 titleDotSpeed.Add(12f + (float)rng.NextDouble() * 26f);
             }
 
-            // ロゴ(イナイレ式: 黄→橙グラデ極太縁取りの斜体+重なるサブロゴ)
+            // ロゴ: AI生成「艇道」筆文字(Art/logo_teido.png)があればそれ、無ければテキストロゴ
             var logo = new GameObject("Logo");
             titleLogoRT = UiKit.Place(logo, s.transform,
                 new Vector2(0f, 0.36f), new Vector2(1f, 0.90f), Vector2.zero, Vector2.zero);
-            UiKit.MakeLogoText(logo.transform, "BOATRACE", 118,
-                new Color(1f, 0.93f, 0.28f), new Color(1f, 0.46f, 0.05f),
-                new Color(0.08f, 0.10f, 0.30f), -4f,
-                new Vector2(0f, 0.42f), new Vector2(1f, 0.95f));
-            UiKit.MakeLogoText(logo.transform, "REALISM", 62,
-                Color.white, new Color(0.25f, 0.72f, 1f),
-                new Color(0.08f, 0.10f, 0.30f), -4f,
-                new Vector2(0.18f, 0.14f), new Vector2(0.82f, 0.44f));
-            UiKit.MakeText(logo.transform, "リアル競艇シミュレーション", 20, Color.white,
-                TextAnchor.MiddleCenter,
-                new Vector2(0f, 0.00f), new Vector2(1f, 0.12f), Vector2.zero, Vector2.zero,
-                bold: true, shadow: true, outline: true);
+            var logoSprite = FaceArt.LoadArt("logo_teido");
+            if (logoSprite != null)
+            {
+                var lgGo = new GameObject("LogoImg");
+                UiKit.Place(lgGo, logo.transform, new Vector2(0.12f, 0.18f), new Vector2(0.88f, 1f),
+                    Vector2.zero, Vector2.zero);
+                var lgImg = lgGo.AddComponent<Image>();
+                lgImg.sprite = logoSprite;
+                lgImg.preserveAspect = true;
+                lgImg.raycastTarget = false;
+                UiKit.MakeText(logo.transform, "-TEIDO- リアル競艇シミュレーション", 22, Color.white,
+                    TextAnchor.MiddleCenter,
+                    new Vector2(0f, 0.02f), new Vector2(1f, 0.16f), Vector2.zero, Vector2.zero,
+                    bold: true, shadow: true, outline: true);
+            }
+            else
+            {
+                UiKit.MakeLogoText(logo.transform, "BOATRACE", 118,
+                    new Color(1f, 0.93f, 0.28f), new Color(1f, 0.46f, 0.05f),
+                    new Color(0.08f, 0.10f, 0.30f), -4f,
+                    new Vector2(0f, 0.42f), new Vector2(1f, 0.95f));
+                UiKit.MakeLogoText(logo.transform, "REALISM", 62,
+                    Color.white, new Color(0.25f, 0.72f, 1f),
+                    new Color(0.08f, 0.10f, 0.30f), -4f,
+                    new Vector2(0.18f, 0.14f), new Vector2(0.82f, 0.44f));
+                UiKit.MakeText(logo.transform, "リアル競艇シミュレーション", 20, Color.white,
+                    TextAnchor.MiddleCenter,
+                    new Vector2(0f, 0.00f), new Vector2(1f, 0.12f), Vector2.zero, Vector2.zero,
+                    bold: true, shadow: true, outline: true);
+            }
 
             // Ver表記(右上・イナイレと同じ位置)
             UiKit.MakeText(s.transform, "Ver.1.0", 18, new Color(1f, 1f, 1f, 0.85f), TextAnchor.MiddleRight,
@@ -966,9 +1033,8 @@ namespace BoatRace.UI
             UiKit.MakeChip(card.transform, mot, motC, Color.white, 20,
                 new Vector2(0.82f, 0.82f), new Vector2(0.97f, 0.97f), Vector2.zero, Vector2.zero);
 
-            // 自分の顔(立ち絵)
-            var (mySeed, myHair) = FaceOf(career.racerName);
-            UiKit.MakeFace(card.transform, mySeed, myHair,
+            // 自分の顔(AI生成→無ければ立ち絵)
+            MakeFaceAt(card.transform, career.racerName,
                 new Vector2(0.70f, 0.30f), new Vector2(0.955f, 0.76f));
 
             UiKit.MakeText(card.transform,
@@ -1525,12 +1591,12 @@ namespace BoatRace.UI
         {
             dialogSpeaker.text = dialogLines[dialogIdx].Item1;
             dialogBody.text = dialogLines[dialogIdx].Item2;
-            // 話者の立ち絵(アニメ顔)を差し替え
+            // 話者の立ち絵(AI生成顔→無ければアニメ顔)を差し替え
             if (dialogFaceHolder != null)
             {
                 foreach (Transform c in dialogFaceHolder.transform) Destroy(c.gameObject);
-                var (seed, hair) = FaceOf(dialogLines[dialogIdx].Item1);
-                UiKit.MakeFace(dialogFaceHolder.transform, seed, hair, Vector2.zero, Vector2.one);
+                MakeFaceAt(dialogFaceHolder.transform, dialogLines[dialogIdx].Item1,
+                    Vector2.zero, Vector2.one);
             }
         }
 
@@ -1611,9 +1677,8 @@ namespace BoatRace.UI
                     aiMarks[i] == "◎" ? UiKit.Red : UiKit.Border, 22,
                     new Vector2(0.66f, 0.70f), new Vector2(0.78f, 0.94f), Vector2.zero, Vector2.zero);
 
-                // 選手の顔(アニメ顔アバター。同名なら常に同じ顔)
-                var (fSeed, fHair) = FaceOf(st.player.playerName);
-                UiKit.MakeFace(card.transform, fSeed, fHair,
+                // 選手の顔(AI生成顔シート→無ければアニメ顔アバター)
+                MakeFaceAt(card.transform, st.player.playerName,
                     new Vector2(0.815f, 0.05f), new Vector2(0.965f, 0.62f));
 
                 string entry = BoatRace.Start.WaitingSystem.IsSlowStart(bs.course) ? "スロー" : "ダッシュ";

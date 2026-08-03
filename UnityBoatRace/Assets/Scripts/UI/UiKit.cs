@@ -35,9 +35,12 @@ namespace BoatRace.UI
             new Color(0.180f, 0.620f, 0.310f),  // 6号 #2E9E4F 緑
         };
 
-        /// <summary>日本語が出るフォント(Macのヒラギノ等→無ければ内蔵フォント)。</summary>
+        /// <summary>日本語フォント。M PLUS Rounded 1c(同梱)最優先→ヒラギノ等→内蔵。</summary>
         public static Font JpFont()
         {
+            if (jpFont != null) return jpFont;
+            // ゲーム用丸ゴ極太(Assets/Resources/Fonts/)。TEIDO設計書のタイポグラフィ指定
+            jpFont = Resources.Load<Font>("Fonts/MPLUSRounded1c-ExtraBold");
             if (jpFont != null) return jpFont;
             var installed = new HashSet<string>(Font.GetOSInstalledFontNames());
             // 丸ゴシックを最優先(スマホゲーらしい柔らかい太字になる)
