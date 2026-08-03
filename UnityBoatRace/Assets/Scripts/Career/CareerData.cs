@@ -48,6 +48,13 @@ namespace BoatRace.Career
         public int itemProp;    // 新品ペラ: モーター強化
         public int itemCharm;   // 勝守り: ST安定+メンタルUP
 
+        // スランプ・覚醒(連敗3でスランプ-10%、連続好走3で覚醒+20%)
+        public int winStreak;    // 2着以内の連続回数
+        public int loseStreak;   // 4着以下/事故の連続回数
+        public int condition;    // 0=通常 1=スランプ 2=覚醒
+        public string ConditionLabel => condition == 1 ? "スランプ" : condition == 2 ? "覚醒" : "通常";
+        public float ConditionMul => condition == 1 ? 0.90f : condition == 2 ? 1.20f : 1f;
+
         // レベル成長(XPはレース結果で獲得。レベルで体力最大値が伸びる)
         public int level = 1;
         public int xp;

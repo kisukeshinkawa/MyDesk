@@ -96,75 +96,122 @@ namespace BoatRace.Core
                 bool lightColor = c.r * 0.6f + c.g * 0.3f + c.b * 0.1f > 0.6f;
                 var root = new GameObject($"Boat{i + 1}");
 
-                // ---- 艇体(実艇プロポーション: 全長3.4m級・低く平たい) ----
+                // ---- 艇体(実艇YAMATO風: 白ベース・低平・前デッキ+左右スポンソン) ----
                 var hull = GameObject.CreatePrimitive(PrimitiveType.Cube);
                 hull.name = "Hull";
                 hull.transform.SetParent(root.transform, false);
-                hull.transform.localPosition = new Vector3(0f, 0.02f, -0.3f);
-                hull.transform.localScale = new Vector3(1.35f, 0.34f, 2.6f);
+                hull.transform.localPosition = new Vector3(0f, 0.00f, -0.35f);
+                hull.transform.localScale = new Vector3(1.18f, 0.28f, 2.5f);
                 Paint(hull, white);
 
-                // 尖った艇首(上に反ったウェッジ)
-                var bow = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                bow.name = "Bow";
-                bow.transform.SetParent(root.transform, false);
-                bow.transform.localPosition = new Vector3(0f, 0.14f, 1.45f);
-                bow.transform.localRotation = Quaternion.Euler(-9f, 0f, 0f);
-                bow.transform.localScale = new Vector3(1.0f, 0.24f, 1.5f);
-                Paint(bow, white);
-                var bowTip = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                bowTip.name = "BowTip";
-                bowTip.transform.SetParent(root.transform, false);
-                bowTip.transform.localPosition = new Vector3(0f, 0.24f, 2.15f);
-                bowTip.transform.localRotation = Quaternion.Euler(-9f, 45f, 0f);
-                bowTip.transform.localScale = new Vector3(0.72f, 0.22f, 0.72f);
-                Paint(bowTip, c); // 艇首は艇色(正面からも見分けがつく)
+                // 前デッキ(艇首へなだらかに上がる一枚板)
+                var deck = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                deck.name = "ForeDeck";
+                deck.transform.SetParent(root.transform, false);
+                deck.transform.localPosition = new Vector3(0f, 0.15f, 0.80f);
+                deck.transform.localRotation = Quaternion.Euler(-6f, 0f, 0f);
+                deck.transform.localScale = new Vector3(1.16f, 0.10f, 2.1f);
+                Paint(deck, white);
 
-                // 尾翼フィン(艇色のアクセント)
-                var fin = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                fin.name = "TailFin";
-                fin.transform.SetParent(root.transform, false);
-                fin.transform.localPosition = new Vector3(0f, 0.42f, -1.62f);
-                fin.transform.localScale = new Vector3(0.08f, 0.4f, 0.5f);
-                Paint(fin, c);
+                // 丸い艇首(球をつぶして滑らかな先端に)
+                var nose = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                nose.name = "Nose";
+                nose.transform.SetParent(root.transform, false);
+                nose.transform.localPosition = new Vector3(0f, 0.15f, 1.88f);
+                nose.transform.localScale = new Vector3(0.92f, 0.20f, 0.95f);
+                Paint(nose, white);
 
-                // デッキの艇色ライン(左右)
-                foreach (var sx in new[] { -0.58f, 0.58f })
+                // 左右スポンソン(前方に張り出す浮き。実艇のシルエットの要)
+                foreach (var sx in new[] { -0.68f, 0.68f })
                 {
-                    var stripeGo = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                    stripeGo.name = "DeckStripe";
-                    stripeGo.transform.SetParent(root.transform, false);
-                    stripeGo.transform.localPosition = new Vector3(sx, 0.21f, 0.1f);
-                    stripeGo.transform.localScale = new Vector3(0.18f, 0.05f, 3.1f);
-                    Paint(stripeGo, c);
+                    var spon = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                    spon.name = "Sponson";
+                    spon.transform.SetParent(root.transform, false);
+                    spon.transform.localPosition = new Vector3(sx, -0.03f, 0.80f);
+                    spon.transform.localRotation = Quaternion.Euler(-4f, 0f, sx > 0f ? -4f : 4f);
+                    spon.transform.localScale = new Vector3(0.30f, 0.24f, 1.95f);
+                    Paint(spon, white);
+                    var sponTip = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                    sponTip.name = "SponsonTip";
+                    sponTip.transform.SetParent(root.transform, false);
+                    sponTip.transform.localPosition = new Vector3(sx, 0.02f, 1.76f);
+                    sponTip.transform.localScale = new Vector3(0.30f, 0.20f, 0.5f);
+                    Paint(sponTip, c); // 先端は艇色(正面から見分けがつく)
                 }
 
-                // カウリング(エンジンカバー: 丸みのあるカプセル・艇色)
-                var cowl = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-                cowl.name = "Cowl";
-                cowl.transform.SetParent(root.transform, false);
-                cowl.transform.localPosition = new Vector3(0f, 0.42f, -1.05f);
-                cowl.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
-                cowl.transform.localScale = new Vector3(0.75f, 0.65f, 0.62f);
-                Paint(cowl, c);
+                // デッキの斜めストライプ2本(YAMATO艇の塗り分け風: 艇色+淡色)
+                Color c2 = Color.Lerp(c, Color.white, 0.45f);
+                var stripeA = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                stripeA.name = "DeckStripeA";
+                stripeA.transform.SetParent(root.transform, false);
+                stripeA.transform.localPosition = new Vector3(0.16f, 0.225f, 0.75f);
+                stripeA.transform.localRotation = Quaternion.Euler(-6f, 14f, 0f);
+                stripeA.transform.localScale = new Vector3(0.17f, 0.02f, 1.85f);
+                Paint(stripeA, c);
+                var stripeB = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                stripeB.name = "DeckStripeB";
+                stripeB.transform.SetParent(root.transform, false);
+                stripeB.transform.localPosition = new Vector3(-0.14f, 0.225f, 0.75f);
+                stripeB.transform.localRotation = Quaternion.Euler(-6f, -12f, 0f);
+                stripeB.transform.localScale = new Vector3(0.13f, 0.02f, 1.80f);
+                Paint(stripeB, c2);
 
-                // 両舷の艇番プレート(白地に黒番号)
+                // コックピット開口(ダークの操縦席まわり)
+                var pit = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                pit.name = "Cockpit";
+                pit.transform.SetParent(root.transform, false);
+                pit.transform.localPosition = new Vector3(0f, 0.13f, -0.55f);
+                pit.transform.localScale = new Vector3(0.66f, 0.10f, 1.25f);
+                Paint(pit, dark);
+
+                // 風防フェアリング(コックピット前の低い艇色パネル)
+                var fair = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                fair.name = "Fairing";
+                fair.transform.SetParent(root.transform, false);
+                fair.transform.localPosition = new Vector3(0f, 0.27f, 0.16f);
+                fair.transform.localRotation = Quaternion.Euler(-28f, 0f, 0f);
+                fair.transform.localScale = new Vector3(0.66f, 0.06f, 0.50f);
+                Paint(fair, c);
+
+                // モーター(船尾に露出。ダーク+艇色カバー+シルバーのシャフト)
+                var motor = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                motor.name = "Motor";
+                motor.transform.SetParent(root.transform, false);
+                motor.transform.localPosition = new Vector3(0f, 0.28f, -1.70f);
+                motor.transform.localScale = new Vector3(0.34f, 0.42f, 0.40f);
+                Paint(motor, dark);
+                var motorCover = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                motorCover.name = "MotorCover";
+                motorCover.transform.SetParent(root.transform, false);
+                motorCover.transform.localPosition = new Vector3(0f, 0.51f, -1.70f);
+                motorCover.transform.localScale = new Vector3(0.28f, 0.10f, 0.34f);
+                Paint(motorCover, c);
+                var shaft = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                shaft.name = "PropShaft";
+                shaft.transform.SetParent(root.transform, false);
+                shaft.transform.localPosition = new Vector3(0f, -0.06f, -1.94f);
+                shaft.transform.localRotation = Quaternion.Euler(70f, 0f, 0f);
+                shaft.transform.localScale = new Vector3(0.05f, 0.28f, 0.05f);
+                Paint(shaft, new Color(0.72f, 0.74f, 0.80f));
+
+                // 艇番プレート(実艇と同じく艇首の両舷。白地に黒番号)
                 foreach (var side in new[] { -1f, 1f })
                 {
                     var plate = GameObject.CreatePrimitive(PrimitiveType.Cube);
                     plate.name = "NumberPlate";
                     plate.transform.SetParent(root.transform, false);
-                    plate.transform.localPosition = new Vector3(side * 0.41f, 0.42f, -1.05f);
-                    plate.transform.localScale = new Vector3(0.03f, 0.34f, 0.4f);
+                    plate.transform.localPosition = new Vector3(side * 0.54f, 0.17f, 1.20f);
+                    plate.transform.localRotation = Quaternion.Euler(0f, 0f, side * -6f);
+                    plate.transform.localScale = new Vector3(0.03f, 0.24f, 0.48f);
                     Paint(plate, Color.white);
                     var numGo = new GameObject("Num");
                     numGo.transform.SetParent(root.transform, false);
-                    numGo.transform.localPosition = new Vector3(side * 0.44f, 0.42f, -1.05f);
+                    numGo.transform.localPosition = new Vector3(side * 0.575f, 0.17f, 1.20f);
                     numGo.transform.localRotation = Quaternion.Euler(0f, side * 90f, 0f);
                     var tm = numGo.AddComponent<TextMesh>();
                     tm.text = (i + 1).ToString();
                     tm.fontSize = 64;
-                    tm.characterSize = 0.16f;
+                    tm.characterSize = 0.13f;
                     tm.anchor = TextAnchor.MiddleCenter;
                     tm.fontStyle = FontStyle.Bold;
                     tm.color = dark;
@@ -176,8 +223,8 @@ namespace BoatRace.Core
                 var handleBar = GameObject.CreatePrimitive(PrimitiveType.Cube);
                 handleBar.name = "Handle";
                 handleBar.transform.SetParent(root.transform, false);
-                handleBar.transform.localPosition = new Vector3(0f, 0.52f, 0.45f);
-                handleBar.transform.localScale = new Vector3(0.72f, 0.07f, 0.07f);
+                handleBar.transform.localPosition = new Vector3(0f, 0.46f, 0.40f);
+                handleBar.transform.localScale = new Vector3(0.68f, 0.07f, 0.07f);
                 Paint(handleBar, dark);
 
                 // ---- 選手(前傾の乗艇姿勢・カポックは白＋艇色) ----

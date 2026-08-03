@@ -36,6 +36,11 @@ namespace BoatRace.UI
         RectTransform moveLinesRT;   // 技選択背景の集中線(回転)
         bool specialSeqActive;       // 必殺技のタメ演出中
 
+        // 展開予想システム(レース前に決まり手を予想→的中で賞金ボーナス)
+        string predictedKimarite;
+        bool predictionHit;
+        int predictionBonus;
+
         Canvas canvas;
         GameObject currentScreen;
         GameObject replayOverlay;
@@ -229,6 +234,11 @@ namespace BoatRace.UI
                     UiKit.MakeText(inner.transform, "≫", 26, UiKit.Yellow, TextAnchor.MiddleRight,
                         new Vector2(0.80f, 0.66f), new Vector2(0.96f, 0.98f), Vector2.zero, Vector2.zero,
                         bold: true, shadow: true);
+                else
+                    UiKit.MakeText(inner.transform, "ノーマル", 13, new Color(0.75f, 0.80f, 0.88f),
+                        TextAnchor.MiddleRight,
+                        new Vector2(0.60f, 0.66f), new Vector2(0.96f, 0.98f), Vector2.zero, Vector2.zero,
+                        bold: true);
                 if (special)
                     UiKit.MakeText(inner.transform, $"Lv {new string('★', lv)}", 14, UiKit.Yellow,
                         TextAnchor.MiddleLeft,
@@ -667,6 +677,12 @@ namespace BoatRace.UI
             UiKit.AddStripeOverlay(s, Color.white, 0.05f);
             UiKit.MakeBanner(s.transform, "マイレーサー　ストーリーモード", 30,
                 new Vector2(0.22f, 0.90f), new Vector2(0.78f, 0.98f), tilt: -1.2f);
+            if (career.condition != 0)
+                UiKit.MakeTag(s.transform,
+                    career.condition == 1 ? "スランプ中 -10%" : "覚醒中 +20%",
+                    career.condition == 1 ? new Color(0.45f, 0.50f, 0.62f) : new Color(1f, 0.55f, 0.10f),
+                    Color.white, 17,
+                    new Vector2(0.80f, 0.925f), new Vector2(0.985f, 0.97f));
 
             // 現在の章(仕様書の8章構成)
             var ch = career.Current;
@@ -989,6 +1005,15 @@ namespace BoatRace.UI
             if (career.itemProp > 0) career.itemProp--;
             var stats = career.ToStats();
             stats.startSkill = Mathf.Min(0.97f, stats.startSkill + pst); // スタート型装備の効果
+
+            // スランプ・覚醒(能力-10% / +20%)
+            float cond = career.ConditionMul;
+            if (cond != 1f)
+            {
+                stats.startSkill = Mathf.Clamp(stats.startSkill * cond, 0.20f, 0.97f);
+                stats.turnSkill = Mathf.Clamp(stats.turnSkill * cond, 0.20f, 0.97f);
+                stats.speedSkill = Mathf.Clamp(stats.speedSkill * cond, 0.20f, 0.97f);
+            }
             if (career.itemCharm > 0)
             {
                 career.itemCharm--;
@@ -1115,8 +1140,45 @@ namespace BoatRace.UI
                     new Vector2(0f, 0.06f), new Vector2(1f, 0.32f), new Vector2(18f, 0f), new Vector2(-8f, 0f), bold: true);
             }
 
+            // 展開予想(ストーリーモードのみ): 決まり手を当てると賞金ボーナス
+            predictedKimarite = null;
+            predictionHit = false;
+            if (race.playerBoatIndex >= 0)
+            {
+                UiKit.MakeTag(s.transform, "展開予想", UiKit.Yellow, UiKit.Border, 18,
+                    new Vector2(0.02f, 0.135f), new Vector2(0.16f, 0.18f));
+                var predInner = UiKit.MakeCard(s.transform,
+                    new Vector2(0.17f, 0.125f), new Vector2(0.70f, 0.19f), Vector2.zero, Vector2.zero, 0.95f);
+                UiKit.MakeText(predInner.transform, "1着の決まり手は？ 的中で賞金ボーナス！", 15, UiKit.TextDark,
+                    TextAnchor.MiddleLeft, new Vector2(0.02f, 0.55f), new Vector2(0.98f, 0.98f),
+                    Vector2.zero, Vector2.zero, bold: true);
+                string[] preds = { "逃げ", "まくり", "差し" };
+                var predImgs = new Image[3];
+                var predTxts = new Text[3];
+                for (int p = 0; p < 3; p++)
+                {
+                    int pi = p;
+                    var pb = UiKit.MakePanel(predInner.transform, new Color(0.90f, 0.93f, 0.98f), 10,
+                        new Vector2(0.03f + p * 0.33f, 0.06f), new Vector2(0.33f + p * 0.33f, 0.54f),
+                        Vector2.zero, Vector2.zero);
+                    predImgs[p] = pb.GetComponent<Image>();
+                    predTxts[p] = UiKit.MakeText(pb.transform, preds[p], 18, UiKit.Border,
+                        TextAnchor.MiddleCenter, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero,
+                        bold: true);
+                    pb.AddComponent<Button>().onClick.AddListener(() =>
+                    {
+                        predictedKimarite = preds[pi];
+                        for (int q = 0; q < 3; q++)
+                        {
+                            predImgs[q].color = q == pi ? UiKit.Yellow : new Color(0.90f, 0.93f, 0.98f);
+                            predTxts[q].color = UiKit.Border;
+                        }
+                    });
+                }
+            }
+
             UiKit.MakeButton(s.transform, "レーススタート！", UiKit.Red, 38,
-                new Vector2(0.30f, 0.02f), new Vector2(0.70f, 0.13f), Vector2.zero, Vector2.zero,
+                new Vector2(0.30f, 0.02f), new Vector2(0.70f, 0.12f), Vector2.zero, Vector2.zero,
                 () =>
                 {
                     ClearScreen();
@@ -1209,6 +1271,17 @@ namespace BoatRace.UI
                     26, Color.white, TextAnchor.MiddleCenter,
                     new Vector2(0f, 0.155f), new Vector2(1f, 0.205f), Vector2.zero, Vector2.zero,
                     bold: true, shadow: true, outline: true);
+                if (predictedKimarite != null)
+                {
+                    string pRes = predictionHit
+                        ? $"展開予想「{predictedKimarite}」的中！！ ボーナス +{predictionBonus}万円"
+                        : $"展開予想「{predictedKimarite}」はずれ… (決まり手: {race.kimarite})";
+                    UiKit.MakeText(s.transform, pRes, 22,
+                        predictionHit ? UiKit.Yellow : new Color(0.8f, 0.85f, 0.95f),
+                        TextAnchor.MiddleCenter,
+                        new Vector2(0f, 0.115f), new Vector2(1f, 0.155f), Vector2.zero, Vector2.zero,
+                        bold: true, shadow: true);
+                }
             }
 
             UiKit.MakeButton(s.transform, "▶ リプレイ", UiKit.Cyan, 28,
@@ -1290,6 +1363,28 @@ namespace BoatRace.UI
                 if (lastCareerPlace == 1) career.wins++;
                 if (lastCareerPlace >= 1 && lastCareerPlace <= 3) career.top3++;
 
+                // 展開予想の採点(的中で賞金ボーナス)
+                predictionBonus = 0;
+                if (predictedKimarite != null && valid.Count > 0 && !string.IsNullOrEmpty(race.kimarite))
+                {
+                    predictionHit = race.kimarite.Contains(predictedKimarite);
+                    if (predictionHit)
+                    {
+                        predictionBonus = 20 + career.chapter * 10; // 万円(章が進むほど増額)
+                        career.money += predictionBonus;
+                    }
+                }
+
+                // スランプ・覚醒: 連敗3で不調(-10%)、2着以内3連続で覚醒(+20%)
+                int prevCond = career.condition;
+                if (lastCareerPlace >= 1 && lastCareerPlace <= 2) { career.winStreak++; career.loseStreak = 0; }
+                else if (lastCareerPlace < 0 || lastCareerPlace >= 4) { career.loseStreak++; career.winStreak = 0; }
+                else { career.winStreak = 0; career.loseStreak = 0; }
+                if (career.condition == 1 && lastCareerPlace >= 1 && lastCareerPlace <= 3) career.condition = 0;
+                if (career.condition == 2 && (lastCareerPlace < 0 || lastCareerPlace >= 4)) career.condition = 0;
+                if (career.loseStreak >= 3) career.condition = 1;
+                else if (career.winStreak >= 3) career.condition = 2;
+
                 // XP獲得とレベルアップ(体力最大値が伸びる)
                 int[] xpTable = { 60, 42, 32, 24, 18, 14 };
                 int xpGain = lastCareerPlace >= 1 ? xpTable[Mathf.Clamp(lastCareerPlace - 1, 0, 5)] : 10;
@@ -1333,6 +1428,24 @@ namespace BoatRace.UI
                         pendingStory.CopyTo(e, 0);
                         e[e.Length - 1] = line;
                         pendingStory = e;
+                    }
+                }
+                if (career.condition != prevCond)
+                {
+                    var cLine = career.condition == 1
+                        ? ("記者", "連敗続きでスランプに突入…。能力-10%。1回好走すれば抜け出せるぞ！")
+                        : career.condition == 2
+                            ? ("記者", "3連続の好走で覚醒状態！！ 次のレースは能力+20%だ！")
+                            : prevCond == 1
+                                ? ("記者", "スランプ脱出！ 動きにキレが戻ってきた！")
+                                : ("記者", "覚醒状態が終了。平常心で次のレースへ。");
+                    if (pendingStory == null) pendingStory = new[] { cLine };
+                    else
+                    {
+                        var e2 = new (string, string)[pendingStory.Length + 1];
+                        pendingStory.CopyTo(e2, 0);
+                        e2[e2.Length - 1] = cLine;
+                        pendingStory = e2;
                     }
                 }
                 // モーター整備は1節(1レース)限りで消費
