@@ -137,32 +137,12 @@ namespace BoatRace.Core
                     Paint(sponTip, c); // 先端は艇色(正面から見分けがつく)
                 }
 
-                // デッキ全面リバリー(シート準拠: 上から見ても艇色が分かる大面積の塗り)
-                var deckPanel = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                deckPanel.name = "DeckLivery";
-                deckPanel.transform.SetParent(root.transform, false);
-                deckPanel.transform.localPosition = new Vector3(0f, 0.235f, 0.75f);
-                deckPanel.transform.localRotation = Quaternion.Euler(-6f, 0f, 0f);
-                deckPanel.transform.localScale = new Vector3(0.95f, 0.018f, 1.75f);
-                Paint(deckPanel, c);
-                // 白の稲妻アクセント1本
-                var deckAccent = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                deckAccent.name = "DeckAccent";
-                deckAccent.transform.SetParent(root.transform, false);
-                deckAccent.transform.localPosition = new Vector3(0.10f, 0.247f, 0.75f);
-                deckAccent.transform.localRotation = Quaternion.Euler(-6f, 14f, 0f);
-                deckAccent.transform.localScale = new Vector3(0.13f, 0.014f, 1.70f);
-                Paint(deckAccent, Color.white);
-                // コックピット脇の艇色レール
-                foreach (var sx2 in new[] { -0.37f, 0.37f })
-                {
-                    var rail = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                    rail.name = "CockpitRail";
-                    rail.transform.SetParent(root.transform, false);
-                    rail.transform.localPosition = new Vector3(sx2, 0.19f, -0.50f);
-                    rail.transform.localScale = new Vector3(0.07f, 0.09f, 1.15f);
-                    Paint(rail, c);
-                }
+                // 前デッキの塗装スキン(ハルに沿う艇色の大面積リバリー。箱パーツ不使用)
+                var deckSkin = new GameObject("DeckSkin");
+                deckSkin.transform.SetParent(root.transform, false);
+                deckSkin.AddComponent<MeshFilter>().sharedMesh = GetDeckMesh();
+                deckSkin.AddComponent<MeshRenderer>();
+                Paint(deckSkin, c);
 
                 // コックピット開口(ダークの操縦席まわり)
                 var pit = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -179,22 +159,6 @@ namespace BoatRace.Core
                 canopy.transform.localPosition = new Vector3(0f, 0.30f, 0.28f);
                 canopy.transform.localScale = new Vector3(0.55f, 0.22f, 0.62f);
                 Paint(canopy, new Color(0.07f, 0.09f, 0.13f));
-
-                // サイドリバリー(デザインシートの稲妻スラッシュ: 艇色2本+黒1本)
-                foreach (var side in new[] { -1f, 1f })
-                {
-                    float[] zSlash = { 0.55f, 0.05f, -0.45f };
-                    for (int sl = 0; sl < 3; sl++)
-                    {
-                        var slash = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                        slash.name = "Livery";
-                        slash.transform.SetParent(root.transform, false);
-                        slash.transform.localPosition = new Vector3(side * 0.585f, 0.03f, zSlash[sl]);
-                        slash.transform.localRotation = Quaternion.Euler(side * 28f, 0f, 0f);
-                        slash.transform.localScale = new Vector3(0.025f, 0.30f, 0.30f);
-                        Paint(slash, sl == 1 ? new Color(0.10f, 0.10f, 0.12f) : c);
-                    }
-                }
 
                 // 艇首フラッグ(デザインシートの艇色旗)
                 var pole = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
@@ -244,18 +208,18 @@ namespace BoatRace.Core
                     var plate = GameObject.CreatePrimitive(PrimitiveType.Cube);
                     plate.name = "NumberPlate";
                     plate.transform.SetParent(root.transform, false);
-                    plate.transform.localPosition = new Vector3(side * 0.54f, 0.17f, 1.20f);
+                    plate.transform.localPosition = new Vector3(side * 0.55f, 0.14f, 1.20f);
                     plate.transform.localRotation = Quaternion.Euler(0f, 0f, side * -6f);
-                    plate.transform.localScale = new Vector3(0.03f, 0.24f, 0.48f);
+                    plate.transform.localScale = new Vector3(0.03f, 0.30f, 0.46f);
                     Paint(plate, Color.white);
                     var numGo = new GameObject("Num");
                     numGo.transform.SetParent(root.transform, false);
-                    numGo.transform.localPosition = new Vector3(side * 0.575f, 0.17f, 1.20f);
+                    numGo.transform.localPosition = new Vector3(side * 0.575f, 0.14f, 1.20f);
                     numGo.transform.localRotation = Quaternion.Euler(0f, side * 90f, 0f);
                     var tm = numGo.AddComponent<TextMesh>();
                     tm.text = (i + 1).ToString();
                     tm.fontSize = 64;
-                    tm.characterSize = 0.13f;
+                    tm.characterSize = 0.040f; // プレート内に収める(はみ出すと裏から鏡文字に見える)
                     tm.anchor = TextAnchor.MiddleCenter;
                     tm.fontStyle = FontStyle.Bold;
                     tm.color = dark;
@@ -481,18 +445,25 @@ namespace BoatRace.Core
         }
 
         static Mesh hullMeshCache;
+        static Mesh deckMeshCache;
+
+        // ハルのステーション定義(11断面。艇首ほど細く上へ反る)
+        static readonly float[] HZ = { -1.85f, -1.45f, -1.00f, -0.55f, -0.10f, 0.35f, 0.80f, 1.20f, 1.55f, 1.85f, 2.10f };
+        static readonly float[] HW = { 0.50f, 0.55f, 0.585f, 0.61f, 0.635f, 0.655f, 0.66f, 0.62f, 0.52f, 0.36f, 0.14f };
+        static readonly float[] HD = { 0.155f, 0.16f, 0.168f, 0.175f, 0.185f, 0.198f, 0.215f, 0.235f, 0.255f, 0.275f, 0.295f };
+        static readonly float[] HK = { -0.14f, -0.15f, -0.155f, -0.16f, -0.16f, -0.158f, -0.148f, -0.125f, -0.085f, -0.025f, 0.14f };
 
         /// <summary>
-        /// 競艇ハルのロフト生成(断面リング8点×7ステーション+船尾/艇首キャップ)。
+        /// 競艇ハルのロフト生成(断面リング8点×11ステーション+船尾/艇首キャップ)。
         /// 三角形の巻き方向はPythonで外向き法線を数値検証済み。
         /// </summary>
         static Mesh GetHullMesh()
         {
             if (hullMeshCache != null) return hullMeshCache;
-            float[] zs = { -1.85f, -1.20f, -0.40f, 0.40f, 1.10f, 1.70f, 2.05f };
-            float[] ws = { 0.52f, 0.58f, 0.62f, 0.66f, 0.64f, 0.45f, 0.10f };
-            float[] dy = { 0.16f, 0.17f, 0.18f, 0.20f, 0.24f, 0.27f, 0.30f };
-            float[] ky = { -0.14f, -0.15f, -0.16f, -0.16f, -0.12f, -0.02f, 0.18f };
+            float[] zs = HZ;
+            float[] ws = HW;
+            float[] dy = HD;
+            float[] ky = HK;
             int S = zs.Length;
 
             var verts = new List<Vector3>();
@@ -543,6 +514,43 @@ namespace BoatRace.Core
             mesh.RecalculateNormals();
             mesh.RecalculateBounds();
             hullMeshCache = mesh;
+            return mesh;
+        }
+
+        /// <summary>
+        /// 前デッキの塗装スキン(艇色の大面積リバリー)。ハルと同じステーションの
+        /// 上面3点(左/中央クラウン/右)をロフトした薄い面。巻き方向は上向き法線を検証済み。
+        /// </summary>
+        static Mesh GetDeckMesh()
+        {
+            if (deckMeshCache != null) return deckMeshCache;
+            int s0 = 5, s1 = HZ.Length - 1; // コックピット前〜艇首
+            var verts = new List<Vector3>();
+            for (int s = s0; s <= s1; s++)
+            {
+                float w = HW[s] * 0.86f, d = HD[s];
+                verts.Add(new Vector3(-w, d + 0.012f, HZ[s]));       // L
+                verts.Add(new Vector3(0f, d + 0.042f, HZ[s]));       // C
+                verts.Add(new Vector3(w, d + 0.012f, HZ[s]));        // R
+            }
+            var tris = new List<int>();
+            int n = s1 - s0; // セグメント数
+            for (int s = 0; s < n; s++)
+            {
+                int L = s * 3, C = s * 3 + 1, R = s * 3 + 2;
+                int L1 = L + 3, C1 = C + 3, R1 = R + 3;
+                // Python検証済み(A巻き): 上向き法線
+                tris.Add(L); tris.Add(L1); tris.Add(C1);
+                tris.Add(L); tris.Add(C1); tris.Add(C);
+                tris.Add(C); tris.Add(C1); tris.Add(R1);
+                tris.Add(C); tris.Add(R1); tris.Add(R);
+            }
+            var mesh = new Mesh { name = "DeckSkin" };
+            mesh.SetVertices(verts);
+            mesh.SetTriangles(tris, 0);
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+            deckMeshCache = mesh;
             return mesh;
         }
 

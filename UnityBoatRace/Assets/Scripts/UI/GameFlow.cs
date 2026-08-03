@@ -15,7 +15,7 @@ namespace BoatRace.UI
     public class GameFlow : MonoBehaviour
     {
         /// <summary>ビルド識別子。画面右上に表示され、更新が届いたか一目で分かる。</summary>
-        public const string Build = "B14-艇カラー強化";
+        public const string Build = "B15-ハルv2";
 
         RaceManager race;
         ReplayManager replay;
