@@ -14,6 +14,9 @@ namespace BoatRace.UI
     /// </summary>
     public class GameFlow : MonoBehaviour
     {
+        /// <summary>ビルド識別子。画面右上に表示され、更新が届いたか一目で分かる。</summary>
+        public const string Build = "B12-素材PL";
+
         RaceManager race;
         ReplayManager replay;
         CommentarySystem commentary;
@@ -179,6 +182,13 @@ namespace BoatRace.UI
             this.commentary = commentary;
             this.raceCam = raceCam;
             career = CareerData.Load();
+
+            // 素材の読み込み状況をConsoleへ(トラブル時の一次診断)
+            Debug.Log($"[素材チェック] Build={Build} " +
+                $"フォント:{(Resources.Load<Font>("Fonts/MPLUSRounded1c-ExtraBold") != null ? "OK" : "なし")} " +
+                $"顔シート:{(Resources.Load<Texture2D>("Art/faces") != null ? "OK" : "なし")} " +
+                $"KV:{(Resources.Load<Texture2D>("Art/title_kv") != null ? "OK" : "なし")} " +
+                $"ロゴ:{(Resources.Load<Texture2D>("Art/logo_teido") != null ? "OK" : "なし")}");
 
             canvas = UiKit.MakeCanvas();
             hud = new RaceHudUI(race, commentary, canvas.transform, raceCam);
@@ -765,9 +775,10 @@ namespace BoatRace.UI
                     bold: true, shadow: true, outline: true);
             }
 
-            // Ver表記(右上・イナイレと同じ位置)
-            UiKit.MakeText(s.transform, "Ver.1.0", 18, new Color(1f, 1f, 1f, 0.85f), TextAnchor.MiddleRight,
-                new Vector2(0.80f, 0.955f), new Vector2(0.985f, 0.995f), Vector2.zero, Vector2.zero,
+            // Ver表記(右上)。ビルド番号入り=更新が届いたかここで確認できる
+            UiKit.MakeText(s.transform, $"Ver.1.0 [{Build}]", 17, new Color(1f, 1f, 1f, 0.85f),
+                TextAnchor.MiddleRight,
+                new Vector2(0.60f, 0.955f), new Vector2(0.985f, 0.995f), Vector2.zero, Vector2.zero,
                 bold: true, shadow: true);
 
             // タップでスタート(半透明帯+水色文字に白フチ)
