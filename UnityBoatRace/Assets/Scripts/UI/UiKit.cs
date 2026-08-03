@@ -361,6 +361,77 @@ namespace BoatRace.UI
             return btn;
         }
 
+        /// <summary>
+        /// アニメ顔アバターをスプライト合成で生成(ウマ娘/イナイレ風の立ち絵代わり)。
+        /// seedで髪型・肌・瞳が決まり、同じseedなら常に同じ顔になる。
+        /// </summary>
+        public static GameObject MakeFace(Transform parent, int seed, Color hair,
+            Vector2 anchorMin, Vector2 anchorMax)
+        {
+            var rng = new System.Random(seed);
+            var root = new GameObject("Face");
+            Place(root, parent, anchorMin, anchorMax, Vector2.zero, Vector2.zero);
+
+            GameObject Blob(Color c, Vector2 mn, Vector2 mx, int rad = 48)
+            {
+                var g = MakePanel(root.transform, c, rad, mn, mx, Vector2.zero, Vector2.zero);
+                g.GetComponent<Image>().raycastTarget = false;
+                return g;
+            }
+
+            // 輪郭リング(紺)→後ろ髪→顔→前髪→目→眉→口 の順に重ねる
+            Blob(Border, new Vector2(0f, 0f), Vector2.one);
+            Blob(hair, new Vector2(0.03f, 0.28f), new Vector2(0.97f, 1.00f));
+            Color[] skins =
+            {
+                new Color(1.00f, 0.88f, 0.76f),
+                new Color(0.98f, 0.82f, 0.66f),
+                new Color(0.92f, 0.74f, 0.58f),
+            };
+            Blob(skins[rng.Next(skins.Length)], new Vector2(0.08f, 0.05f), new Vector2(0.92f, 0.88f));
+
+            int bangs = rng.Next(3);
+            Blob(hair, new Vector2(0.08f, 0.70f), new Vector2(0.92f, 0.98f)); // ベース前髪
+            if (bangs == 0)
+            {
+                // ギザ前髪(イナイレ風)
+                for (int i = 0; i < 3; i++)
+                    Blob(hair, new Vector2(0.11f + i * 0.27f, 0.58f), new Vector2(0.35f + i * 0.27f, 0.80f), 24);
+            }
+            else if (bangs == 1)
+            {
+                // サイド流し
+                Blob(hair, new Vector2(0.08f, 0.60f), new Vector2(0.56f, 0.84f), 24);
+            }
+            else
+            {
+                // 両サイドロング(ウマ娘風)
+                Blob(hair, new Vector2(0.04f, 0.22f), new Vector2(0.20f, 0.82f), 24);
+                Blob(hair, new Vector2(0.80f, 0.22f), new Vector2(0.96f, 0.82f), 24);
+            }
+
+            // 大きなアニメ瞳(白目→虹彩→瞳孔→ハイライト)
+            Color[] irises =
+            {
+                new Color(0.15f, 0.38f, 0.78f), new Color(0.58f, 0.28f, 0.16f),
+                new Color(0.14f, 0.58f, 0.36f), new Color(0.60f, 0.30f, 0.68f),
+                new Color(0.85f, 0.45f, 0.15f),
+            };
+            Color iris = irises[rng.Next(irises.Length)];
+            foreach (var ex in new[] { 0.30f, 0.70f })
+            {
+                Blob(Color.white, new Vector2(ex - 0.115f, 0.28f), new Vector2(ex + 0.115f, 0.56f), 24);
+                Blob(iris, new Vector2(ex - 0.07f, 0.30f), new Vector2(ex + 0.07f, 0.54f), 24);
+                Blob(new Color(0.06f, 0.08f, 0.14f), new Vector2(ex - 0.032f, 0.33f), new Vector2(ex + 0.032f, 0.47f), 16);
+                Blob(Color.white, new Vector2(ex - 0.055f, 0.455f), new Vector2(ex - 0.005f, 0.52f), 12);
+            }
+            var brow = new Color(0.26f, 0.19f, 0.16f);
+            Blob(brow, new Vector2(0.185f, 0.585f), new Vector2(0.415f, 0.625f), 6);
+            Blob(brow, new Vector2(0.585f, 0.585f), new Vector2(0.815f, 0.625f), 6);
+            Blob(new Color(0.78f, 0.36f, 0.30f), new Vector2(0.43f, 0.12f), new Vector2(0.57f, 0.175f), 8);
+            return root;
+        }
+
         /// <summary>イナイレ風ロゴ文字: 斜体太字+縦グラデ+極太縁取り+傾き。</summary>
         public static Text MakeLogoText(Transform parent, string str, int size, Color top, Color bottom,
             Color edge, float tilt, Vector2 anchorMin, Vector2 anchorMax)

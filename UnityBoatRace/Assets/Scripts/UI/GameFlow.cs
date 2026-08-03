@@ -51,6 +51,55 @@ namespace BoatRace.UI
         // 演出: スタートスロー(大時計0秒付近をスローモーションで見せる)
         bool startSlowActive, startSlowDone;
 
+        // 固定ライバル名鑑(シナリオ第6章: 個性を持った実在感あるライバル)
+        static readonly (string name, Color hair, string line)[] Rivals =
+        {
+            ("赤城 烈",   new Color(0.85f, 0.20f, 0.15f), "イン逃げは俺の庭だ。1コースは誰にも渡さねぇ！"),
+            ("蒼井 隼人", new Color(0.20f, 0.45f, 0.90f), "…風が読める。今日のまくりは、決まるよ。"),
+            ("黄島 大河", new Color(0.95f, 0.75f, 0.15f), "ダッシュ勝負なら負けねぇぞ！ 外から全部飲み込んでやる！"),
+            ("緑川 静",   new Color(0.20f, 0.65f, 0.35f), "静かに、確実に。差しというのは芸術なんですよ。"),
+            ("黒部 剛",   new Color(0.20f, 0.22f, 0.28f), "パワーで押し切る。それだけだ。"),
+            ("白鳥 翔太", new Color(0.85f, 0.88f, 0.92f), "スタートは僕の世界。ST.10の景色、見せてあげるよ。"),
+            ("紫村 京",   new Color(0.60f, 0.30f, 0.70f), "ふふ…君と同じ節で走れるなんて、面白くなってきた。"),
+            ("橙田 昇",   new Color(0.95f, 0.50f, 0.15f), "熱くいこうぜ！！ 先輩の意地、見せてやるよ！"),
+        };
+
+        /// <summary>話者名→顔(シード+髪色)。同じ名前は常に同じ顔になる。</summary>
+        (int seed, Color hair) FaceOf(string speaker)
+        {
+            if (career != null && speaker == career.racerName)
+                return (2, new Color(0.16f, 0.30f, 0.62f));
+            for (int i = 0; i < Rivals.Length; i++)
+                if (Rivals[i].name == speaker) return (100 + i * 7, Rivals[i].hair);
+            switch (speaker)
+            {
+                case "記者": return (31, new Color(0.35f, 0.26f, 0.20f));
+                case "マネージャー": return (45, new Color(0.88f, 0.45f, 0.60f));
+                case "整備士": return (53, new Color(0.46f, 0.48f, 0.52f));
+                case "インタビュアー": return (61, new Color(0.62f, 0.46f, 0.28f));
+                case "システム": return (77, new Color(0.40f, 0.62f, 0.82f));
+            }
+            int h = 0;
+            foreach (char ch in speaker) h = h * 31 + ch;
+            h = Mathf.Abs(h);
+            var pal = new[]
+            {
+                new Color(0.45f, 0.30f, 0.20f), new Color(0.25f, 0.40f, 0.75f),
+                new Color(0.70f, 0.35f, 0.25f), new Color(0.30f, 0.55f, 0.40f),
+                new Color(0.55f, 0.40f, 0.65f), new Color(0.30f, 0.32f, 0.38f),
+            };
+            return (h, pal[h % pal.Length]);
+        }
+
+        /// <summary>能力値→ウマ娘風ランク(S/A/B/C/D/E)と色。</summary>
+        static (string rank, Color color) RankOf(float v) =>
+            v >= 0.90f ? ("S", new Color(1.00f, 0.72f, 0.10f)) :
+            v >= 0.80f ? ("A", new Color(0.95f, 0.35f, 0.25f)) :
+            v >= 0.70f ? ("B", new Color(0.75f, 0.35f, 0.80f)) :
+            v >= 0.60f ? ("C", new Color(0.25f, 0.70f, 0.35f)) :
+            v >= 0.50f ? ("D", new Color(0.30f, 0.55f, 0.90f)) :
+                         ("E", new Color(0.55f, 0.58f, 0.64f));
+
         Canvas canvas;
         GameObject currentScreen;
         GameObject replayOverlay;
@@ -740,42 +789,69 @@ namespace BoatRace.UI
             UiKit.MakeChip(s.transform, chapterInfo, new Color(0f, 0f, 0f, 0.45f), UiKit.Yellow, 22,
                 new Vector2(0.12f, 0.845f), new Vector2(0.88f, 0.895f), Vector2.zero, Vector2.zero);
 
-            // 左: レーサーカード
+            // 左: レーサーカード(顔+やる気チップ=ウマ娘の育成カード風)
             var card = UiKit.MakePanel(s.transform, UiKit.PanelWhite, 20,
                 new Vector2(0.05f, 0.28f), new Vector2(0.48f, 0.83f), Vector2.zero, Vector2.zero);
             UiKit.AddStripeOverlay(card, UiKit.Sky, 0.10f);
-            UiKit.MakeText(card.transform, career.racerName, 40, UiKit.TextDark, TextAnchor.MiddleLeft,
-                new Vector2(0.06f, 0.80f), new Vector2(0.72f, 0.98f), Vector2.zero, Vector2.zero, bold: true);
-            UiKit.MakeChip(card.transform, career.RankLabel, UiKit.Red, Color.white, 26,
-                new Vector2(0.74f, 0.80f), new Vector2(0.96f, 0.96f), Vector2.zero, Vector2.zero);
-            string sponsorNames = "なし";
-            if (career.sponsorIds.Count > 0)
-            {
-                sponsorNames = "";
-                foreach (var sp in career.sponsorIds)
-                    sponsorNames += (sponsorNames == "" ? "" : "・") + CareerData.SponsorDefs[sp].name;
-            }
+            UiKit.MakeText(card.transform, career.racerName, 36, UiKit.TextDark, TextAnchor.MiddleLeft,
+                new Vector2(0.06f, 0.80f), new Vector2(0.60f, 0.98f), Vector2.zero, Vector2.zero, bold: true);
+            UiKit.MakeChip(card.transform, career.RankLabel, UiKit.Red, Color.white, 24,
+                new Vector2(0.62f, 0.82f), new Vector2(0.80f, 0.97f), Vector2.zero, Vector2.zero);
+
+            // やる気(ウマ娘の絶好調〜絶不調)
+            string mot; Color motC;
+            if (career.condition == 2) { mot = "絶好調↑↑"; motC = new Color(1f, 0.50f, 0.10f); }
+            else if (career.condition == 1) { mot = "絶不調↓↓"; motC = new Color(0.35f, 0.40f, 0.55f); }
+            else if (career.fatigue >= 60) { mot = "不調↓"; motC = new Color(0.35f, 0.55f, 0.80f); }
+            else if (career.fatigue <= 20) { mot = "好調↑"; motC = new Color(0.55f, 0.80f, 0.20f); }
+            else { mot = "普通→"; motC = new Color(0.60f, 0.62f, 0.68f); }
+            UiKit.MakeChip(card.transform, mot, motC, Color.white, 20,
+                new Vector2(0.82f, 0.82f), new Vector2(0.97f, 0.97f), Vector2.zero, Vector2.zero);
+
+            // 自分の顔(立ち絵)
+            var (mySeed, myHair) = FaceOf(career.racerName);
+            UiKit.MakeFace(card.transform, mySeed, myHair,
+                new Vector2(0.70f, 0.30f), new Vector2(0.955f, 0.76f));
+
             UiKit.MakeText(card.transform,
                 $"Lv.{career.level}　体力 {career.MaxStamina}　(XP {career.xp}/{career.XpNeed})\n" +
                 $"出走 {career.races} 回　勝利 {career.wins} 勝 (3着内 {career.top3})\n" +
                 $"資金 {career.money:N0} 万円　ファン {career.fans:N0} 人\n" +
-                $"疲労 {career.fatigue}/100{(career.fatigue >= 60 ? " ⚠要休養!" : "")}　" +
-                $"支出 {career.RaceExpense}万/R　スポンサー収入 +{career.SponsorIncome}万/R\n" +
-                $"スポンサー: {sponsorNames}\n" +
+                $"疲労 {career.fatigue}/100{(career.fatigue >= 60 ? " ⚠要休養!" : "")}\n" +
+                $"スポンサー {career.sponsorIds.Count} 社 (+{career.SponsorIncome}万/R)　支出 {career.RaceExpense}万/R\n" +
                 $"装備 {(career.equipProp >= 0 && career.equipProp < career.parts.Count ? CareerData.PartName(career.parts[career.equipProp]) : "ペラなし")}" +
                 $" / {(career.equipTilt >= 0 && career.equipTilt < career.parts.Count ? CareerData.PartName(career.parts[career.equipTilt]) : "チルトなし")}",
-                19, UiKit.TextDark, TextAnchor.UpperLeft,
-                new Vector2(0.06f, 0.08f), new Vector2(0.94f, 0.76f), Vector2.zero, Vector2.zero, bold: true);
+                18, UiKit.TextDark, TextAnchor.UpperLeft,
+                new Vector2(0.06f, 0.08f), new Vector2(0.68f, 0.76f), Vector2.zero, Vector2.zero, bold: true);
 
-            // 右: スキルと練習
+            // 右: 能力(ウマ娘風ランクチップ+バー)と練習
             var skill = UiKit.MakePanel(s.transform, UiKit.PanelWhite, 20,
                 new Vector2(0.52f, 0.28f), new Vector2(0.95f, 0.83f), Vector2.zero, Vector2.zero);
+            void StatRow(string label, float v, float y)
+            {
+                UiKit.MakeText(skill.transform, label, 16, UiKit.TextDark, TextAnchor.MiddleLeft,
+                    new Vector2(0.06f, y), new Vector2(0.28f, y + 0.065f), Vector2.zero, Vector2.zero, bold: true);
+                var (rk, rc) = RankOf(v);
+                UiKit.MakeChip(skill.transform, rk, rc, Color.white, 17,
+                    new Vector2(0.285f, y), new Vector2(0.365f, y + 0.065f), Vector2.zero, Vector2.zero);
+                var barBg = UiKit.MakePanel(skill.transform, new Color(0.88f, 0.91f, 0.95f), 8,
+                    new Vector2(0.385f, y + 0.008f), new Vector2(0.87f, y + 0.057f), Vector2.zero, Vector2.zero);
+                var fill = UiKit.MakePanel(barBg.transform, rc, 8,
+                    new Vector2(0.012f, 0.12f), new Vector2(Mathf.Clamp01(v) * 0.976f + 0.012f, 0.88f),
+                    Vector2.zero, Vector2.zero);
+                fill.GetComponent<Image>().raycastTarget = false;
+                UiKit.MakeText(skill.transform, $"{v * 100f:F0}", 15, UiKit.TextDark, TextAnchor.MiddleRight,
+                    new Vector2(0.875f, y), new Vector2(0.94f, y + 0.065f), Vector2.zero, Vector2.zero, bold: true);
+            }
+            StatRow("スタート", career.startSkill, 0.905f);
+            StatRow("ターン", career.turnSkill, 0.830f);
+            StatRow("スピード", career.speedSkill, 0.755f);
+            StatRow("メンタル", career.mental, 0.680f);
+            StatRow("整備力", career.mechanicSkill, 0.605f);
             UiKit.MakeText(skill.transform,
-                $"スタート {career.startSkill * 100f:F0}　ターン {career.turnSkill * 100f:F0}　スピード {career.speedSkill * 100f:F0}\n" +
-                $"メンタル {career.mental * 100f:F0}　整備力 {career.mechanicSkill * 100f:F0}\n" +
                 $"整備: キャブ{career.maintCarb} 電装{career.maintElec} ギア{career.maintGear} / ペラ P{career.propPitch} D{career.propDia} B{career.propBal}",
-                19, UiKit.TextDark, TextAnchor.UpperLeft,
-                new Vector2(0.07f, 0.56f), new Vector2(0.93f, 0.96f), Vector2.zero, Vector2.zero, bold: true);
+                13, new Color(0.45f, 0.50f, 0.58f), TextAnchor.MiddleLeft,
+                new Vector2(0.06f, 0.540f), new Vector2(0.94f, 0.595f), Vector2.zero, Vector2.zero);
             void Train(string label, int cost, System.Action apply, float y)
             {
                 UiKit.MakeButton(skill.transform, $"{label} ({cost}万)", UiKit.Cyan, 16,
@@ -786,8 +862,17 @@ namespace BoatRace.UI
                         career.money -= cost;
                         career.fatigue = Mathf.Min(100, career.fatigue + 15); // 練習は疲労が溜まる
                         apply();
+                        // 練習イベント(ウマ娘のトレーニングイベント風・たまに発生)
+                        bool fanEvent = new System.Random(System.Environment.TickCount ^ cost)
+                            .NextDouble() < 0.22;
+                        if (fanEvent) career.fans += 50;
                         career.Save();
                         ShowCareer();
+                        if (fanEvent)
+                            ShowDialog(new[]
+                            {
+                                ("マネージャー", "練習を見学に来てたファンが盛り上がってたぞ！ ファン+50人だ！"),
+                            }, null);
                     });
             }
             Train("スタート練習 +3", 100, () => career.startSkill = Mathf.Min(0.95f, career.startSkill + 0.03f), 0.445f);
@@ -1115,7 +1200,31 @@ namespace BoatRace.UI
                 raceCam.focusBoat = race.playerBoatIndex;
                 raceCam.mode = RaceCamera.Mode.Follow;
             }
-            ShowEntry();
+
+            // 固定ライバルを対戦相手に配役(章ごとに顔ぶれが変わる)
+            var lineup = new List<int>();
+            for (int i = 0; i < race.statsList.Count && lineup.Count < 5; i++)
+            {
+                if (i == race.playerBoatIndex) continue;
+                int rid = (career.chapter * 2 + i * 3) % Rivals.Length;
+                while (lineup.Contains(rid)) rid = (rid + 1) % Rivals.Length;
+                lineup.Add(rid);
+                race.statsList[i].player.playerName = Rivals[rid].name;
+            }
+
+            // パドックの意気込み会話(ウマ娘のレース前口上風)→ 出走表へ
+            if (lineup.Count >= 2)
+            {
+                var r1 = Rivals[lineup[0]];
+                var r2 = Rivals[lineup[1]];
+                ShowDialog(new[]
+                {
+                    (r1.name, r1.line),
+                    (r2.name, r2.line),
+                    (career.racerName, "……望むところだ。今日の1着は俺が獲る！"),
+                }, ShowEntry);
+            }
+            else ShowEntry();
         }
 
         // ================= 会話ウィンドウ =================
@@ -1137,19 +1246,31 @@ namespace BoatRace.UI
                 new Vector2(0.08f, 0.05f), new Vector2(0.92f, 0.30f), Vector2.zero, Vector2.zero);
             UiKit.AddStripeOverlay(panel, Color.white, 0.05f);
             var chip = UiKit.MakeChip(panel.transform, "", UiKit.Yellow, UiKit.Navy, 22,
-                new Vector2(0.02f, 0.72f), new Vector2(0.24f, 0.98f), Vector2.zero, Vector2.zero);
+                new Vector2(0.145f, 0.72f), new Vector2(0.38f, 0.98f), Vector2.zero, Vector2.zero);
             dialogSpeaker = chip.GetComponentInChildren<Text>();
             dialogBody = UiKit.MakeText(panel.transform, "", 26, Color.white, TextAnchor.UpperLeft,
-                new Vector2(0.03f, 0.10f), new Vector2(0.97f, 0.68f), Vector2.zero, Vector2.zero, bold: true);
+                new Vector2(0.155f, 0.10f), new Vector2(0.97f, 0.68f), Vector2.zero, Vector2.zero, bold: true);
             UiKit.MakeText(panel.transform, "▼ タップで進む", 18, new Color(1f, 1f, 1f, 0.6f), TextAnchor.LowerRight,
                 new Vector2(0.6f, 0.02f), new Vector2(0.97f, 0.14f), Vector2.zero, Vector2.zero);
+            dialogFaceHolder = new GameObject("FaceHolder");
+            UiKit.Place(dialogFaceHolder, panel.transform,
+                new Vector2(0.012f, 0.08f), new Vector2(0.135f, 0.96f), Vector2.zero, Vector2.zero);
             RenderDialogLine();
         }
+
+        GameObject dialogFaceHolder;
 
         void RenderDialogLine()
         {
             dialogSpeaker.text = dialogLines[dialogIdx].Item1;
             dialogBody.text = dialogLines[dialogIdx].Item2;
+            // 話者の立ち絵(アニメ顔)を差し替え
+            if (dialogFaceHolder != null)
+            {
+                foreach (Transform c in dialogFaceHolder.transform) Destroy(c.gameObject);
+                var (seed, hair) = FaceOf(dialogLines[dialogIdx].Item1);
+                UiKit.MakeFace(dialogFaceHolder.transform, seed, hair, Vector2.zero, Vector2.one);
+            }
         }
 
         void AdvanceDialog()
@@ -1224,16 +1345,21 @@ namespace BoatRace.UI
                     aiMarks[i] == "◎" ? UiKit.Red : UiKit.Border, 22,
                     new Vector2(0.66f, 0.70f), new Vector2(0.78f, 0.94f), Vector2.zero, Vector2.zero);
 
+                // 選手の顔(アニメ顔アバター。同名なら常に同じ顔)
+                var (fSeed, fHair) = FaceOf(st.player.playerName);
+                UiKit.MakeFace(card.transform, fSeed, fHair,
+                    new Vector2(0.815f, 0.05f), new Vector2(0.965f, 0.62f));
+
                 string entry = BoatRace.Start.WaitingSystem.IsSlowStart(bs.course) ? "スロー" : "ダッシュ";
                 string grade = MotorGrade(st.motor.OverallScore);
                 UiKit.MakeText(card.transform,
                     $"級別 {st.player.rank}　{bs.course}コース({entry})　平均ST .{Mathf.RoundToInt(st.player.reactionTimeMean * 100f):00}",
-                    20, UiKit.TextDark, TextAnchor.MiddleLeft,
-                    new Vector2(0f, 0.34f), new Vector2(1f, 0.62f), new Vector2(18f, 0f), new Vector2(-8f, 0f));
+                    19, UiKit.TextDark, TextAnchor.MiddleLeft,
+                    new Vector2(0f, 0.34f), new Vector2(0.80f, 0.62f), new Vector2(18f, 0f), new Vector2(-4f, 0f));
                 UiKit.MakeText(card.transform,
                     $"モーター評価 {grade}　展示タイム {bs.exhibitionTime:F2}",
-                    20, UiKit.Cyan, TextAnchor.MiddleLeft,
-                    new Vector2(0f, 0.06f), new Vector2(1f, 0.32f), new Vector2(18f, 0f), new Vector2(-8f, 0f), bold: true);
+                    19, UiKit.Cyan, TextAnchor.MiddleLeft,
+                    new Vector2(0f, 0.06f), new Vector2(0.80f, 0.32f), new Vector2(18f, 0f), new Vector2(-4f, 0f), bold: true);
             }
 
             // 展開予想(ストーリーモードのみ): 決まり手を当てると賞金ボーナス
@@ -1811,6 +1937,15 @@ namespace BoatRace.UI
                         e2[e2.Length - 1] = cLine;
                         pendingStory = e2;
                     }
+                }
+
+                // 優勝インタビュー(ウマ娘のウイニング演出風)
+                if (lastCareerPlace == 1)
+                {
+                    AppendStory(("インタビュアー",
+                        $"優勝インタビューです！ {career.racerName}選手、見事な{race.kimarite}でした！"));
+                    AppendStory((career.racerName,
+                        "応援ありがとうございます！！ 次のレースも、全力で1着を獲りにいきます！"));
                 }
                 // モーター整備・ペラ調整は1節(1レース)限りで消費
                 career.maintCarb = career.maintElec = career.maintGear = 0;
