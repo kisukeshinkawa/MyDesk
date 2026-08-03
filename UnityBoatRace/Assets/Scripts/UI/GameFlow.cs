@@ -15,7 +15,7 @@ namespace BoatRace.UI
     public class GameFlow : MonoBehaviour
     {
         /// <summary>ビルド識別子。画面右上に表示され、更新が届いたか一目で分かる。</summary>
-        public const string Build = "B15-ハルv2";
+        public const string Build = "B16-モデル対応";
 
         RaceManager race;
         ReplayManager replay;
@@ -189,7 +189,8 @@ namespace BoatRace.UI
                 $"顔シート:{(Resources.Load<Texture2D>("Art/faces") != null ? "OK" : "なし")} " +
                 $"KV:{(Resources.Load<Texture2D>("Art/title_kv") != null ? "OK" : "なし")} " +
                 $"ロゴ:{(Resources.Load<Texture2D>("Art/logo_teido") != null ? "OK" : "なし")} " +
-                $"艇シート:{(Resources.Load<Texture2D>("Art/boats") != null ? "OK" : "なし")}");
+                $"艇シート:{(Resources.Load<Texture2D>("Art/boats") != null ? "OK" : "なし")} " +
+                $"3Dモデル:{(Resources.Load<GameObject>("Models/boat") != null ? "OK" : "なし")}");
 
             canvas = UiKit.MakeCanvas();
             hud = new RaceHudUI(race, commentary, canvas.transform, raceCam);

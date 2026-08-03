@@ -106,11 +106,21 @@ namespace BoatRace.Core
         {
             var white = new Color(0.96f, 0.96f, 0.98f);
             var dark = new Color(0.13f, 0.14f, 0.18f);
+            // 外部3Dモデル(Assets/Resources/Models/boat)があれば手続き生成の代わりに使う
+            var customBoat = Resources.Load<GameObject>("Models/boat");
             for (int i = 0; i < RaceManager.BoatCount; i++)
             {
                 Color c = UiKit.BoatColors[i];
                 bool lightColor = c.r * 0.6f + c.g * 0.3f + c.b * 0.1f > 0.6f;
                 var root = new GameObject($"Boat{i + 1}");
+
+                if (customBoat != null)
+                {
+                    var model = Instantiate(customBoat, root.transform);
+                    FitBoatModel(model.transform, c);
+                }
+                else
+                {
 
                 // ---- 艇体(ロフト生成の滑らか曲面ハル: 丸い艇首・チャイン・トランサム) ----
                 var hull = new GameObject("Hull");
@@ -272,6 +282,8 @@ namespace BoatRace.Core
                 visor.transform.localPosition = new Vector3(0f, 0.90f, 0.02f);
                 visor.transform.localScale = new Vector3(0.34f, 0.14f, 0.1f);
                 Paint(visor, dark);
+
+                } // customBoat == null (手続き生成の艇はここまで)
 
                 // 引き波(航跡)ビジュアル
                 var trailGo = new GameObject("WakeTrail");
@@ -442,6 +454,36 @@ namespace BoatRace.Core
             var es = new GameObject("EventSystem");
             es.AddComponent<EventSystem>();
             es.AddComponent<StandaloneInputModule>();
+        }
+
+        /// <summary>外部3D艇モデルを全長3.6mへ自動フィットし、艇色にティントする。</summary>
+        static void FitBoatModel(Transform model, Color c)
+        {
+            var rends = model.GetComponentsInChildren<Renderer>();
+            if (rends.Length == 0) return;
+            Bounds B()
+            {
+                var b0 = rends[0].bounds;
+                foreach (var r in rends) b0.Encapsulate(r.bounds);
+                return b0;
+            }
+            var b = B();
+            // 長辺を進行方向(+Z)へ向ける
+            if (b.size.x > b.size.z) model.Rotate(0f, 90f, 0f, Space.World);
+            b = B();
+            float s = 3.6f / Mathf.Max(0.01f, Mathf.Max(b.size.z, b.size.x));
+            model.localScale *= s;
+            b = B();
+            model.position -= new Vector3(b.center.x, b.min.y - 0.05f, b.center.z);
+            // 1〜6号艇の見分け: 艇色に軽くティント
+            foreach (var r in rends)
+                foreach (var m in r.materials)
+                {
+                    if (m.HasProperty("_Color"))
+                        m.color = Color.Lerp(m.color, c, 0.45f);
+                    else if (m.HasProperty("_BaseColor"))
+                        m.SetColor("_BaseColor", Color.Lerp(m.GetColor("_BaseColor"), c, 0.45f));
+                }
         }
 
         static Mesh hullMeshCache;

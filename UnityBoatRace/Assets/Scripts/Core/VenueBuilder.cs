@@ -162,7 +162,9 @@ namespace BoatRace.Core
             {
                 float x = -420f + i * 60f;
                 MakeBox("Ad", new Vector3(x, 2.6f, -(hw + 1f)), new Vector3(48f, 2.6f, 0.6f), bgs[i % bgs.Length]);
-                MakeText3D(brands[i % brands.Length], new Vector3(x, 2.6f, -(hw + 0.5f)), Quaternion.identity, 2.0f, Color.white);
+                // コース内側から読める向き(identityだと内側から鏡文字に見える)
+                MakeText3D(brands[i % brands.Length], new Vector3(x, 2.6f, -(hw + 0.5f)),
+                    Quaternion.Euler(0f, 180f, 0f), 2.0f, Color.white);
             }
         }
 
