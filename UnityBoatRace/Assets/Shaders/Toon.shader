@@ -8,6 +8,7 @@ Shader "BoatRace/Toon"
         _MainTex ("Texture", 2D) = "white" {}
         _OutlineWidth ("Outline Width", Range(0, 0.01)) = 0.0025
         _OutlineColor ("Outline Color", Color) = (0.06, 0.09, 0.18, 1)
+        _SpecStrength ("Specular Strength", Range(0, 1)) = 0.28
     }
     SubShader
     {
@@ -53,6 +54,7 @@ Shader "BoatRace/Toon"
             sampler2D _MainTex;
             float4 _MainTex_ST;
             fixed4 _Color;
+            float _SpecStrength;
 
             struct v2f
             {
@@ -86,7 +88,12 @@ Shader "BoatRace/Toon"
                 float3 viewDir = normalize(_WorldSpaceCameraPos - i.world);
                 float rim = pow(1.0 - saturate(dot(viewDir, n)), 3.0) * 0.22;
 
-                float3 col = tex.rgb * saturate(light) + rim;
+                // トゥーン調スペキュラ(カウルや水しぶきに艶のハイライト)
+                float3 h = normalize(_WorldSpaceLightPos0.xyz + viewDir);
+                float spec = smoothstep(0.86, 0.93, saturate(dot(n, h)));
+
+                float3 col = tex.rgb * saturate(light) + rim
+                           + _LightColor0.rgb * spec * _SpecStrength;
                 return fixed4(col, 1.0);
             }
             ENDCG

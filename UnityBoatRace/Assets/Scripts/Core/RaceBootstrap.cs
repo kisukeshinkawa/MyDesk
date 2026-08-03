@@ -1,5 +1,7 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.Rendering;
 using BoatRace.Boat;
 using BoatRace.Commentary;
 using BoatRace.UI;
@@ -70,11 +72,24 @@ namespace BoatRace.Core
             water.name = "Water";
             water.transform.position = new Vector3(-150f, -0.55f, 0f);
             water.transform.localScale = new Vector3(640f, 1f, hw * 2f + 8f);
-            var mat = Paint(water, baseColor);
-            if (mat.HasProperty("_Glossiness")) mat.SetFloat("_Glossiness", 0.85f);
-            if (mat.HasProperty("_Smoothness")) mat.SetFloat("_Smoothness", 0.85f);
-            if (mat.HasProperty("_OutlineWidth")) mat.SetFloat("_OutlineWidth", 0f); // 水面に輪郭線は不要
-            water.AddComponent<WaterAnimator>().Initialize(mat, baseColor);
+
+            // リアル水面シェーダー: 動く波法線+太陽のギラつき+空の映り込み+艇の落ち影
+            var ws = Shader.Find("BoatRace/Water");
+            if (ws != null)
+            {
+                var wm = new Material(ws);
+                wm.SetColor("_Color", baseColor);
+                wm.SetColor("_DeepColor", Color.Lerp(baseColor, new Color(0.01f, 0.05f, 0.14f), 0.60f));
+                wm.SetColor("_SkyColor", new Color(0.74f, 0.88f, 0.99f));
+                water.GetComponent<MeshRenderer>().material = wm;
+            }
+            else
+            {
+                // フォールバック(シェーダー未コンパイル時)
+                var mat = Paint(water, baseColor);
+                if (mat.HasProperty("_OutlineWidth")) mat.SetFloat("_OutlineWidth", 0f);
+                water.AddComponent<WaterAnimator>().Initialize(mat, baseColor);
+            }
         }
 
         void BuildStartLine()
@@ -96,30 +111,12 @@ namespace BoatRace.Core
                 bool lightColor = c.r * 0.6f + c.g * 0.3f + c.b * 0.1f > 0.6f;
                 var root = new GameObject($"Boat{i + 1}");
 
-                // ---- 艇体(実艇YAMATO風: 白ベース・低平・前デッキ+左右スポンソン) ----
-                var hull = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                hull.name = "Hull";
+                // ---- 艇体(ロフト生成の滑らか曲面ハル: 丸い艇首・チャイン・トランサム) ----
+                var hull = new GameObject("Hull");
                 hull.transform.SetParent(root.transform, false);
-                hull.transform.localPosition = new Vector3(0f, 0.00f, -0.35f);
-                hull.transform.localScale = new Vector3(1.18f, 0.28f, 2.5f);
+                hull.AddComponent<MeshFilter>().sharedMesh = GetHullMesh();
+                hull.AddComponent<MeshRenderer>();
                 Paint(hull, white);
-
-                // 前デッキ(艇首へなだらかに上がる一枚板)
-                var deck = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                deck.name = "ForeDeck";
-                deck.transform.SetParent(root.transform, false);
-                deck.transform.localPosition = new Vector3(0f, 0.15f, 0.80f);
-                deck.transform.localRotation = Quaternion.Euler(-6f, 0f, 0f);
-                deck.transform.localScale = new Vector3(1.16f, 0.10f, 2.1f);
-                Paint(deck, white);
-
-                // 丸い艇首(球をつぶして滑らかな先端に)
-                var nose = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-                nose.name = "Nose";
-                nose.transform.SetParent(root.transform, false);
-                nose.transform.localPosition = new Vector3(0f, 0.15f, 1.88f);
-                nose.transform.localScale = new Vector3(0.92f, 0.20f, 0.95f);
-                Paint(nose, white);
 
                 // 左右スポンソン(前方に張り出す浮き。実艇のシルエットの要)
                 foreach (var sx in new[] { -0.68f, 0.68f })
@@ -345,19 +342,81 @@ namespace BoatRace.Core
             light.shadows = LightShadows.Soft;   // 影で立体感を出す
             light.shadowStrength = 0.6f;
 
-            // 画質を鮮明に: MSAA 4x・影距離・異方性フィルタ
+            // 画質を鮮明に: MSAA 4x・影距離・高解像度シャドウ・異方性フィルタ
             QualitySettings.antiAliasing = 4;
             QualitySettings.shadowDistance = 350f;
+            QualitySettings.shadowResolution = UnityEngine.ShadowResolution.VeryHigh;
+            QualitySettings.shadowCascades = 4;
             QualitySettings.anisotropicFiltering = AnisotropicFiltering.ForceEnable;
             cam.allowMSAA = true;
 
-            // 遠景を空気感でぼかす(フォグ・アニメ調の明るい空色)
+            // 空: 手続きスカイボックス(本物の太陽と大気散乱。3D感の土台)
+            cam.clearFlags = CameraClearFlags.Skybox;
+            var skyShader = Shader.Find("Skybox/Procedural");
+            if (skyShader != null)
+            {
+                var sky = new Material(skyShader);
+                sky.SetFloat("_SunSize", 0.04f);
+                sky.SetFloat("_AtmosphereThickness", 0.85f);
+                sky.SetColor("_SkyTint", new Color(0.46f, 0.66f, 0.95f));
+                sky.SetColor("_GroundColor", new Color(0.52f, 0.60f, 0.66f));
+                sky.SetFloat("_Exposure", 1.25f);
+                RenderSettings.skybox = sky;
+            }
+            RenderSettings.sun = light;
+            RenderSettings.ambientMode = AmbientMode.Trilight;
+            RenderSettings.ambientSkyColor = new Color(0.62f, 0.72f, 0.85f);
+            RenderSettings.ambientEquatorColor = new Color(0.55f, 0.60f, 0.66f);
+            RenderSettings.ambientGroundColor = new Color(0.30f, 0.34f, 0.38f);
+
+            // 遠景を空気感でぼかす(フォグ)。山並みがフォグ越しに霞む距離感
             RenderSettings.fog = true;
             RenderSettings.fogMode = FogMode.Linear;
             RenderSettings.fogStartDistance = 280f;
-            RenderSettings.fogEndDistance = 1000f;
+            RenderSettings.fogEndDistance = 1500f;
             RenderSettings.fogColor = new Color(0.72f, 0.87f, 0.98f);
+
+            BuildScenery();
             return cam;
+        }
+
+        /// <summary>遠景(山並みシルエット+雲)。フォグ越しに霞んで奥行きが出る。</summary>
+        void BuildScenery()
+        {
+            if (GameObject.Find("Scenery") != null) return;
+            var root = new GameObject("Scenery");
+            var rng = new System.Random(7);
+            float R(float a, float b) => a + (float)rng.NextDouble() * (b - a);
+
+            // 山並み(会場の周囲リング。輪郭線なし・影も落とさない)
+            for (int i = 0; i < 16; i++)
+            {
+                float ang = i / 16f * Mathf.PI * 2f + R(-0.10f, 0.10f);
+                float r = R(850f, 1150f);
+                var m = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                m.name = "Mountain";
+                m.transform.SetParent(root.transform, false);
+                m.transform.position = new Vector3(-150f + Mathf.Cos(ang) * r, -35f, Mathf.Sin(ang) * r);
+                m.transform.localScale = new Vector3(R(420f, 780f), R(120f, 260f), R(250f, 420f));
+                var mm = Paint(m, new Color(R(0.30f, 0.40f), R(0.46f, 0.56f), R(0.55f, 0.66f)));
+                if (mm.HasProperty("_OutlineWidth")) mm.SetFloat("_OutlineWidth", 0f);
+                m.GetComponent<MeshRenderer>().shadowCastingMode = ShadowCastingMode.Off;
+            }
+
+            // 雲(白い扁平球を高い空に。巨大な影を落とさないようにする)
+            for (int i = 0; i < 12; i++)
+            {
+                float ang = R(0f, Mathf.PI * 2f);
+                float r = R(420f, 1100f);
+                var c = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                c.name = "Cloud";
+                c.transform.SetParent(root.transform, false);
+                c.transform.position = new Vector3(-150f + Mathf.Cos(ang) * r, R(160f, 300f), Mathf.Sin(ang) * r);
+                c.transform.localScale = new Vector3(R(130f, 280f), R(20f, 38f), R(80f, 160f));
+                var cm = Paint(c, Color.white);
+                if (cm.HasProperty("_OutlineWidth")) cm.SetFloat("_OutlineWidth", 0f);
+                c.GetComponent<MeshRenderer>().shadowCastingMode = ShadowCastingMode.Off;
+            }
         }
 
         static void EnsureEventSystem()
@@ -366,6 +425,72 @@ namespace BoatRace.Core
             var es = new GameObject("EventSystem");
             es.AddComponent<EventSystem>();
             es.AddComponent<StandaloneInputModule>();
+        }
+
+        static Mesh hullMeshCache;
+
+        /// <summary>
+        /// 競艇ハルのロフト生成(断面リング8点×7ステーション+船尾/艇首キャップ)。
+        /// 三角形の巻き方向はPythonで外向き法線を数値検証済み。
+        /// </summary>
+        static Mesh GetHullMesh()
+        {
+            if (hullMeshCache != null) return hullMeshCache;
+            float[] zs = { -1.85f, -1.20f, -0.40f, 0.40f, 1.10f, 1.70f, 2.05f };
+            float[] ws = { 0.52f, 0.58f, 0.62f, 0.66f, 0.64f, 0.45f, 0.10f };
+            float[] dy = { 0.16f, 0.17f, 0.18f, 0.20f, 0.24f, 0.27f, 0.30f };
+            float[] ky = { -0.14f, -0.15f, -0.16f, -0.16f, -0.12f, -0.02f, 0.18f };
+            int S = zs.Length;
+
+            var verts = new List<Vector3>();
+            for (int s = 0; s < S; s++)
+            {
+                float w = ws[s], d = dy[s], k = ky[s], m = (d + k) * 0.5f;
+                verts.Add(new Vector3(0f, d + 0.03f, zs[s]));         // デッキ中央(クラウン)
+                verts.Add(new Vector3(0.85f * w, d, zs[s]));          // デッキ右端
+                verts.Add(new Vector3(w, m, zs[s]));                  // 右チャイン
+                verts.Add(new Vector3(0.55f * w, k, zs[s]));          // 右ボトム
+                verts.Add(new Vector3(0f, k - 0.02f, zs[s]));         // キール
+                verts.Add(new Vector3(-0.55f * w, k, zs[s]));         // 左ボトム
+                verts.Add(new Vector3(-w, m, zs[s]));                 // 左チャイン
+                verts.Add(new Vector3(-0.85f * w, d, zs[s]));         // デッキ左端
+            }
+
+            var tris = new List<int>();
+            for (int s = 0; s < S - 1; s++)
+                for (int i = 0; i < 8; i++)
+                {
+                    int a = s * 8 + i, b = s * 8 + (i + 1) % 8;
+                    int c = (s + 1) * 8 + (i + 1) % 8, d2 = (s + 1) * 8 + i;
+                    tris.Add(a); tris.Add(c); tris.Add(b);
+                    tris.Add(a); tris.Add(d2); tris.Add(c);
+                }
+
+            // トランサム(船尾の平面)
+            int stern = verts.Count;
+            verts.Add(new Vector3(0f, (dy[0] + ky[0]) * 0.5f, zs[0]));
+            for (int i = 0; i < 8; i++)
+            {
+                int a = i, b = (i + 1) % 8;
+                tris.Add(stern); tris.Add(a); tris.Add(b);
+            }
+            // ノーズ(丸い艇首の先端)
+            int noseIdx = verts.Count;
+            verts.Add(new Vector3(0f, dy[S - 1] - 0.02f, zs[S - 1] + 0.10f));
+            int last = (S - 1) * 8;
+            for (int i = 0; i < 8; i++)
+            {
+                int a = last + i, b = last + (i + 1) % 8;
+                tris.Add(noseIdx); tris.Add(b); tris.Add(a);
+            }
+
+            var mesh = new Mesh { name = "KyoteiHull" };
+            mesh.SetVertices(verts);
+            mesh.SetTriangles(tris, 0);
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+            hullMeshCache = mesh;
+            return mesh;
         }
 
         /// <summary>トゥーンシェーダー優先(イナイレ風セルシェーディング)。</summary>
