@@ -162,28 +162,64 @@ namespace BoatRace.Core
                 pit.transform.localScale = new Vector3(0.66f, 0.10f, 1.25f);
                 Paint(pit, dark);
 
-                // 風防フェアリング(コックピット前の低い艇色パネル)
-                var fair = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                fair.name = "Fairing";
-                fair.transform.SetParent(root.transform, false);
-                fair.transform.localPosition = new Vector3(0f, 0.27f, 0.16f);
-                fair.transform.localRotation = Quaternion.Euler(-28f, 0f, 0f);
-                fair.transform.localScale = new Vector3(0.66f, 0.06f, 0.50f);
-                Paint(fair, c);
+                // キャノピー風防(デザインシートの黒ガラス。トゥーンスペキュラで艶が出る)
+                var canopy = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                canopy.name = "Canopy";
+                canopy.transform.SetParent(root.transform, false);
+                canopy.transform.localPosition = new Vector3(0f, 0.30f, 0.28f);
+                canopy.transform.localScale = new Vector3(0.55f, 0.22f, 0.62f);
+                Paint(canopy, new Color(0.07f, 0.09f, 0.13f));
 
-                // モーター(船尾に露出。ダーク+艇色カバー+シルバーのシャフト)
+                // サイドリバリー(デザインシートの稲妻スラッシュ: 艇色2本+黒1本)
+                foreach (var side in new[] { -1f, 1f })
+                {
+                    float[] zSlash = { 0.55f, 0.05f, -0.45f };
+                    for (int sl = 0; sl < 3; sl++)
+                    {
+                        var slash = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                        slash.name = "Livery";
+                        slash.transform.SetParent(root.transform, false);
+                        slash.transform.localPosition = new Vector3(side * 0.585f, 0.03f, zSlash[sl]);
+                        slash.transform.localRotation = Quaternion.Euler(side * 28f, 0f, 0f);
+                        slash.transform.localScale = new Vector3(0.025f, 0.30f, 0.30f);
+                        Paint(slash, sl == 1 ? new Color(0.10f, 0.10f, 0.12f) : c);
+                    }
+                }
+
+                // 艇首フラッグ(デザインシートの艇色旗)
+                var pole = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                pole.name = "FlagPole";
+                pole.transform.SetParent(root.transform, false);
+                pole.transform.localPosition = new Vector3(-0.30f, 0.38f, 1.45f);
+                pole.transform.localScale = new Vector3(0.02f, 0.16f, 0.02f);
+                Paint(pole, new Color(0.75f, 0.78f, 0.82f));
+                var flagGo = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                flagGo.name = "Flag";
+                flagGo.transform.SetParent(root.transform, false);
+                flagGo.transform.localPosition = new Vector3(-0.30f, 0.50f, 1.36f);
+                flagGo.transform.localScale = new Vector3(0.02f, 0.10f, 0.20f);
+                Paint(flagGo, c);
+
+                // 大型モーター(ダーク本体+シルバーヘッド+艇色テールフィン)
                 var motor = GameObject.CreatePrimitive(PrimitiveType.Cube);
                 motor.name = "Motor";
                 motor.transform.SetParent(root.transform, false);
-                motor.transform.localPosition = new Vector3(0f, 0.28f, -1.70f);
-                motor.transform.localScale = new Vector3(0.34f, 0.42f, 0.40f);
+                motor.transform.localPosition = new Vector3(0f, 0.30f, -1.70f);
+                motor.transform.localScale = new Vector3(0.38f, 0.48f, 0.44f);
                 Paint(motor, dark);
                 var motorCover = GameObject.CreatePrimitive(PrimitiveType.Cube);
                 motorCover.name = "MotorCover";
                 motorCover.transform.SetParent(root.transform, false);
-                motorCover.transform.localPosition = new Vector3(0f, 0.51f, -1.70f);
-                motorCover.transform.localScale = new Vector3(0.28f, 0.10f, 0.34f);
-                Paint(motorCover, c);
+                motorCover.transform.localPosition = new Vector3(0f, 0.57f, -1.70f);
+                motorCover.transform.localScale = new Vector3(0.30f, 0.12f, 0.38f);
+                Paint(motorCover, new Color(0.78f, 0.80f, 0.85f));
+                var cowlFin = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                cowlFin.name = "CowlFin";
+                cowlFin.transform.SetParent(root.transform, false);
+                cowlFin.transform.localPosition = new Vector3(0f, 0.64f, -1.50f);
+                cowlFin.transform.localRotation = Quaternion.Euler(-12f, 0f, 0f);
+                cowlFin.transform.localScale = new Vector3(0.03f, 0.14f, 0.32f);
+                Paint(cowlFin, c);
                 var shaft = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
                 shaft.name = "PropShaft";
                 shaft.transform.SetParent(root.transform, false);

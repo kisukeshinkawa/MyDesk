@@ -52,6 +52,30 @@ namespace BoatRace.UI
             return cache[id];
         }
 
+        // ---- 艇デザインシート(Art/boats.png 3列×2段)からヒーロー絵を切り出す ----
+        static Texture2D boatSheet;
+        static bool boatTried;
+        static readonly Sprite[] boatCache = new Sprite[6];
+
+        public static Sprite Boat(int idx)
+        {
+            if (!boatTried)
+            {
+                boatTried = true;
+                boatSheet = Resources.Load<Texture2D>("Art/boats");
+            }
+            if (boatSheet == null || idx < 0 || idx > 5) return null;
+            if (boatCache[idx] != null) return boatCache[idx];
+            int col = idx % 3, row = idx / 3; // 上段=1-3号艇, 下段=4-6号艇
+            float u0 = col / 3f + 0.015f, u1 = col / 3f + 0.315f;
+            float v0 = row == 0 ? 0.60f : 0.10f;
+            float v1 = row == 0 ? 0.97f : 0.47f;
+            var rect = new Rect(u0 * boatSheet.width, v0 * boatSheet.height,
+                (u1 - u0) * boatSheet.width, (v1 - v0) * boatSheet.height);
+            boatCache[idx] = Sprite.Create(boatSheet, rect, new Vector2(0.5f, 0.5f), 100f);
+            return boatCache[idx];
+        }
+
         /// <summary>タイトル用アート(title_kv/logo_teido)。無ければnull。</summary>
         public static Sprite LoadArt(string name)
         {

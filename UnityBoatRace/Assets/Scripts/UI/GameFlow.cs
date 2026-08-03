@@ -15,7 +15,7 @@ namespace BoatRace.UI
     public class GameFlow : MonoBehaviour
     {
         /// <summary>ビルド識別子。画面右上に表示され、更新が届いたか一目で分かる。</summary>
-        public const string Build = "B12-素材PL";
+        public const string Build = "B13-艇デザイン";
 
         RaceManager race;
         ReplayManager replay;
@@ -188,7 +188,8 @@ namespace BoatRace.UI
                 $"フォント:{(Resources.Load<Font>("Fonts/MPLUSRounded1c-ExtraBold") != null ? "OK" : "なし")} " +
                 $"顔シート:{(Resources.Load<Texture2D>("Art/faces") != null ? "OK" : "なし")} " +
                 $"KV:{(Resources.Load<Texture2D>("Art/title_kv") != null ? "OK" : "なし")} " +
-                $"ロゴ:{(Resources.Load<Texture2D>("Art/logo_teido") != null ? "OK" : "なし")}");
+                $"ロゴ:{(Resources.Load<Texture2D>("Art/logo_teido") != null ? "OK" : "なし")} " +
+                $"艇シート:{(Resources.Load<Texture2D>("Art/boats") != null ? "OK" : "なし")}");
 
             canvas = UiKit.MakeCanvas();
             hud = new RaceHudUI(race, commentary, canvas.transform, raceCam);
@@ -1692,16 +1693,31 @@ namespace BoatRace.UI
                 MakeFaceAt(card.transform, st.player.playerName,
                     new Vector2(0.815f, 0.05f), new Vector2(0.965f, 0.62f));
 
+                // 艇のイラスト(Art/boats.pngがあれば表示)
+                var boatArt = FaceArt.Boat(i);
+                float infoW = 0.80f;
+                if (boatArt != null)
+                {
+                    infoW = 0.575f;
+                    var bGo = new GameObject("BoatArt");
+                    UiKit.Place(bGo, card.transform, new Vector2(0.585f, 0.04f), new Vector2(0.805f, 0.62f),
+                        Vector2.zero, Vector2.zero);
+                    var bImg = bGo.AddComponent<Image>();
+                    bImg.sprite = boatArt;
+                    bImg.preserveAspect = true;
+                    bImg.raycastTarget = false;
+                }
+
                 string entry = BoatRace.Start.WaitingSystem.IsSlowStart(bs.course) ? "スロー" : "ダッシュ";
                 string grade = MotorGrade(st.motor.OverallScore);
                 UiKit.MakeText(card.transform,
-                    $"級別 {st.player.rank}　{bs.course}コース({entry})　平均ST .{Mathf.RoundToInt(st.player.reactionTimeMean * 100f):00}",
-                    19, UiKit.TextDark, TextAnchor.MiddleLeft,
-                    new Vector2(0f, 0.34f), new Vector2(0.80f, 0.62f), new Vector2(18f, 0f), new Vector2(-4f, 0f));
+                    $"級別 {st.player.rank}　{bs.course}コース({entry})　ST .{Mathf.RoundToInt(st.player.reactionTimeMean * 100f):00}",
+                    18, UiKit.TextDark, TextAnchor.MiddleLeft,
+                    new Vector2(0f, 0.34f), new Vector2(infoW, 0.62f), new Vector2(18f, 0f), new Vector2(-4f, 0f));
                 UiKit.MakeText(card.transform,
-                    $"モーター評価 {grade}　展示タイム {bs.exhibitionTime:F2}",
-                    19, UiKit.Cyan, TextAnchor.MiddleLeft,
-                    new Vector2(0f, 0.06f), new Vector2(0.80f, 0.32f), new Vector2(18f, 0f), new Vector2(-4f, 0f), bold: true);
+                    $"艇「{BoatDesign.Names[i]}」　モーター{grade}　展示 {bs.exhibitionTime:F2}",
+                    18, UiKit.Cyan, TextAnchor.MiddleLeft,
+                    new Vector2(0f, 0.06f), new Vector2(infoW, 0.32f), new Vector2(18f, 0f), new Vector2(-4f, 0f), bold: true);
             }
 
             // 展開予想(ストーリーモードのみ): 展開/2着/荒れ度を予想して的中ボーナス

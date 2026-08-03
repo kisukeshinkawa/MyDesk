@@ -24,15 +24,15 @@ namespace BoatRace.UI
         public static readonly Color PanelWhite = new Color(1f, 1f, 1f, 0.96f);
         public static readonly Color TextDark = new Color(0.051f, 0.169f, 0.322f);
 
-        // 6艇カラー(TEIDO設計書2-2: 実艇準拠・彩度+15%)
+        // 6艇カラー(艇デザインシート準拠: 蒼天/紅焰/迅雷/碧波/紫電/銀翼)
         public static readonly Color[] BoatColors =
         {
-            new Color(0.961f, 0.961f, 0.961f),  // 1号 #F5F5F5 白
-            new Color(0.102f, 0.102f, 0.102f),  // 2号 #1A1A1A 黒
-            new Color(0.898f, 0.224f, 0.208f),  // 3号 #E53935 赤
-            new Color(0.118f, 0.420f, 0.878f),  // 4号 #1E6BE0 青
-            new Color(1f, 0.769f, 0f),          // 5号 #FFC400 黄
-            new Color(0.180f, 0.620f, 0.310f),  // 6号 #2E9E4F 緑
+            new Color(0.118f, 0.420f, 0.878f),  // 1号 蒼天 ブルー
+            new Color(0.898f, 0.224f, 0.208f),  // 2号 紅焰 レッド
+            new Color(1f, 0.769f, 0f),          // 3号 迅雷 イエロー
+            new Color(0.180f, 0.620f, 0.310f),  // 4号 碧波 グリーン
+            new Color(0.557f, 0.247f, 0.820f),  // 5号 紫電 パープル
+            new Color(0.788f, 0.812f, 0.855f),  // 6号 銀翼 シルバー
         };
 
         /// <summary>日本語フォント。M PLUS Rounded 1c(同梱)最優先→ヒラギノ等→内蔵。</summary>
