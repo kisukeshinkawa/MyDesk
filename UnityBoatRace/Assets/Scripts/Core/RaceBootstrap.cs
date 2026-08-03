@@ -471,18 +471,27 @@ namespace BoatRace.Core
             // 長辺を進行方向(+Z)へ向ける
             if (b.size.x > b.size.z) model.Rotate(0f, 90f, 0f, Space.World);
             b = B();
-            float s = 3.6f / Mathf.Max(0.01f, Mathf.Max(b.size.z, b.size.x));
+            float s = 4.0f / Mathf.Max(0.01f, Mathf.Max(b.size.z, b.size.x));
             model.localScale *= s;
             b = B();
             model.position -= new Vector3(b.center.x, b.min.y - 0.05f, b.center.z);
-            // 1〜6号艇の見分け: 艇色に軽くティント
+
+            // トゥーンシェーダーに揃え、マテリアル名で塗り分け
+            // livery/flag=艇色 / hull=白に艇色を薄く / canopy・engine・metalはそのまま
+            var toon = Shader.Find("BoatRace/Toon");
             foreach (var r in rends)
                 foreach (var m in r.materials)
                 {
-                    if (m.HasProperty("_Color"))
-                        m.color = Color.Lerp(m.color, c, 0.45f);
-                    else if (m.HasProperty("_BaseColor"))
-                        m.SetColor("_BaseColor", Color.Lerp(m.GetColor("_BaseColor"), c, 0.45f));
+                    Color baseCol = m.HasProperty("_Color") ? m.color
+                        : m.HasProperty("_BaseColor") ? m.GetColor("_BaseColor") : Color.white;
+                    if (toon != null) m.shader = toon;
+                    string nm = m.name.ToLowerInvariant();
+                    if (nm.Contains("livery") || nm.Contains("flag"))
+                        m.color = c;
+                    else if (nm.Contains("hull"))
+                        m.color = Color.Lerp(Color.white, c, 0.15f);
+                    else
+                        m.color = baseCol;
                 }
         }
 
