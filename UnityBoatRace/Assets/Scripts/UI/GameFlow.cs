@@ -71,6 +71,20 @@ namespace BoatRace.UI
             ("橙田 昇",   new Color(0.95f, 0.50f, 0.15f), "熱くいこうぜ！！ 先輩の意地、見せてやるよ！"),
         };
 
+        /// <summary>レジェンド選手のステータスを艇に適用(実在モデルの持ち味を反映)。</summary>
+        void ApplyLegend(BoatRace.Boat.BoatStats bs, LegendRacer l)
+        {
+            var p = bs.player;
+            p.playerName = l.name;
+            p.rank = BoatRace.Player.RacerRank.A1;
+            p.startSkill = l.start;
+            p.turnSkill = l.turn;
+            p.speedSkill = l.speed;
+            p.mental = l.mental;
+            p.reactionTimeMean = l.st;
+            p.experience = 0.95f;
+        }
+
         /// <summary>話者名→顔(シード+髪色)。同じ名前は常に同じ顔になる。</summary>
         (int seed, Color hair) FaceOf(string speaker)
         {
@@ -78,6 +92,8 @@ namespace BoatRace.UI
                 return (2, new Color(0.16f, 0.30f, 0.62f));
             for (int i = 0; i < Rivals.Length; i++)
                 if (Rivals[i].name == speaker) return (100 + i * 7, Rivals[i].hair);
+            for (int i = 0; i < LegendRacer.All.Length; i++)
+                if (LegendRacer.All[i].name == speaker) return (300 + i * 13, LegendRacer.All[i].hair);
             switch (speaker)
             {
                 case "記者": return (31, new Color(0.35f, 0.26f, 0.20f));
@@ -778,6 +794,20 @@ namespace BoatRace.UI
                     race.seed = System.Environment.TickCount;
                     race.SetupRace();
                     if (RaceBootstrap.Instance != null) RaceBootstrap.Instance.RebuildEnvironment(race);
+                    // 実在モデルのレジェンド級が2〜4名ゲスト参戦(舟券の狙い目になる)
+                    var lrng = new System.Random(race.seed);
+                    var usedBoat = new List<int>();
+                    var usedLeg = new List<int>();
+                    int guests = 2 + lrng.Next(0, 3);
+                    for (int k = 0; k < guests * 2 && usedBoat.Count < guests; k++)
+                    {
+                        int bi = lrng.Next(6);
+                        int li = lrng.Next(LegendRacer.All.Length);
+                        if (usedBoat.Contains(bi) || usedLeg.Contains(li)) continue;
+                        usedBoat.Add(bi);
+                        usedLeg.Add(li);
+                        ApplyLegend(race.statsList[bi], LegendRacer.All[li]);
+                    }
                     ShowEntry();
                 });
             UiKit.MakeIconNav(foot.transform, "■", "戦績", new Color(0.10f, 0.62f, 0.35f),
@@ -1310,15 +1340,35 @@ namespace BoatRace.UI
                 raceCam.mode = RaceCamera.Mode.Follow;
             }
 
-            // 固定ライバルを対戦相手に配役(章ごとに顔ぶれが変わる)
-            var lineup = new List<int>();
-            for (int i = 0; i < race.statsList.Count && lineup.Count < 5; i++)
+            // 対戦相手の配役: 序盤はライバル、章が進むほど実在モデルのレジェンド級が参戦
+            // (〜3章:ライバルのみ / 4章〜:1人 / G3(6章)〜:3人 / SG(8章):5人)
+            int legendCount = career.allClear ? 5
+                : career.chapter >= 8 ? 5 : career.chapter >= 6 ? 3 : career.chapter >= 4 ? 1 : 0;
+            var castLines = new List<(string, string)>();
+            var usedRival = new List<int>();
+            var usedLegend = new List<int>();
+            int opp = 0;
+            for (int i = 0; i < race.statsList.Count; i++)
             {
                 if (i == race.playerBoatIndex) continue;
-                int rid = (career.chapter * 2 + i * 3) % Rivals.Length;
-                while (lineup.Contains(rid)) rid = (rid + 1) % Rivals.Length;
-                lineup.Add(rid);
-                race.statsList[i].player.playerName = Rivals[rid].name;
+                if (opp < legendCount)
+                {
+                    int li = (career.chapter * 3 + opp * 5 + i) % LegendRacer.All.Length;
+                    while (usedLegend.Contains(li)) li = (li + 1) % LegendRacer.All.Length;
+                    usedLegend.Add(li);
+                    var l = LegendRacer.All[li];
+                    ApplyLegend(race.statsList[i], l);
+                    castLines.Add((l.name, l.line));
+                }
+                else
+                {
+                    int rid = (career.chapter * 2 + i * 3) % Rivals.Length;
+                    while (usedRival.Contains(rid)) rid = (rid + 1) % Rivals.Length;
+                    usedRival.Add(rid);
+                    race.statsList[i].player.playerName = Rivals[rid].name;
+                    castLines.Add((Rivals[rid].name, Rivals[rid].line));
+                }
+                opp++;
             }
 
             // 天才選手イベント(仕様書⑪): 強化ライバルが1人参戦
@@ -1338,15 +1388,13 @@ namespace BoatRace.UI
                 career.Save();
             }
 
-            // パドックの意気込み会話(ウマ娘のレース前口上風)→ 出走表へ
-            if (lineup.Count >= 2)
+            // パドックの意気込み会話(レジェンドがいれば必ず口上に登場)→ 出走表へ
+            if (castLines.Count >= 2)
             {
-                var r1 = Rivals[lineup[0]];
-                var r2 = Rivals[lineup[1]];
                 ShowDialog(new[]
                 {
-                    (r1.name, r1.line),
-                    (r2.name, r2.line),
+                    castLines[0],
+                    castLines[1],
                     (career.racerName, "……望むところだ。今日の1着は俺が獲る！"),
                 }, ShowEntry);
             }
@@ -1456,7 +1504,12 @@ namespace BoatRace.UI
                 ribImg.type = Image.Type.Sliced;
                 ribImg.color = bc;
                 UiKit.AddStripeOverlay(ribbon, lightRibbon ? Color.black : Color.white, 0.06f);
-                UiKit.MakeText(ribbon.transform, $"{i + 1}号艇　{st.player.playerName}", 25,
+                var leg = LegendRacer.Find(st.player.playerName);
+                UiKit.MakeText(ribbon.transform,
+                    leg != null
+                        ? $"{i + 1}号艇　{st.player.playerName}〈{leg.moniker}〉"
+                        : $"{i + 1}号艇　{st.player.playerName}",
+                    leg != null ? 22 : 25,
                     lightRibbon ? UiKit.Navy : Color.white, TextAnchor.MiddleLeft,
                     Vector2.zero, Vector2.one, new Vector2(16f, 0f), new Vector2(-8f, 0f),
                     bold: true, shadow: !lightRibbon);
