@@ -411,7 +411,7 @@ namespace BoatRace.UI
                 verts[i] = v;
             }
             vh.Clear();
-            vh.AddUIVertexStream(verts);
+            vh.AddUIVertexTriangleStream(verts);
         }
     }
 
@@ -440,7 +440,7 @@ namespace BoatRace.UI
                 verts[i] = v;
             }
             vh.Clear();
-            vh.AddUIVertexStream(verts);
+            vh.AddUIVertexTriangleStream(verts);
         }
     }
 }
