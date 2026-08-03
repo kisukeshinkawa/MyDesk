@@ -93,13 +93,17 @@ const C = {
   shadowMd:"0 4px 12px rgba(0,17,62,0.08)",
   shadowLg:"0 8px 24px rgba(0,17,62,0.12)",
   shadowFloat:"0 16px 40px rgba(0,17,62,0.18)",
+
+  // ── DUSTALK component tokens ──
+  shadowCard:"4px 4px 12px rgba(0,17,62,0.04)",   // shadow-dustalk-card
+  focusGlow:"0 0 8px rgba(0,112,212,0.18)",       // shadow-dustalk-input-focus
 };
 
 // ─── STORAGE ──────────────────────────────────────────────────────────────────
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-06-v327-dustalk-redesign"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-06-v328-dustalk-components"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -2347,16 +2351,16 @@ function isNearDue(task) {
 
 // ─── BASE COMPONENTS ──────────────────────────────────────────────────────────
 const Card = ({children, style={}, onClick}) => (
-  <div onClick={onClick} style={{background:C.surface,borderRadius:"12px",border:`1px solid ${C.border}`,boxShadow:C.shadow,...style}}>{children}</div>
+  <div onClick={onClick} style={{background:C.surface,borderRadius:"12px",border:`1px solid ${C.border}`,boxShadow:C.shadowCard,...style}}>{children}</div>
 );
 
 const Btn = ({children,onClick,variant="primary",size="md",style={},disabled=false}) => {
-  const base = {border:"none",borderRadius:"7px",fontWeight:500,cursor:disabled?"not-allowed":"pointer",fontFamily:"'DM Sans',inherit",opacity:disabled?0.4:1,transition:"all 0.12s",lineHeight:"1.4",letterSpacing:"-0.01em",display:"inline-flex",alignItems:"center",gap:"0.375rem",...style};
+  const base = {border:"none",borderRadius:"8px",fontWeight:700,cursor:disabled?"not-allowed":"pointer",fontFamily:"inherit",opacity:disabled?0.4:1,transition:"all 0.12s",lineHeight:"1.4",letterSpacing:"0.01em",display:"inline-flex",alignItems:"center",justifyContent:"center",gap:"0.375rem",...style};
   const sz = size==="sm"?{padding:"0.3rem 0.75rem",fontSize:"0.8rem"}
            : size==="lg"?{padding:"0.7rem 1.5rem",fontSize:"0.925rem"}
            : {padding:"0.45rem 1rem",fontSize:"0.85rem"};
-  const vc = variant==="primary"   ? {background:C.accent,color:"#fff",boxShadow:"0 1px 2px rgba(59,130,246,0.25),0 2px 4px rgba(59,130,246,0.15)"}
-           : variant==="secondary" ? {background:C.borderLight,color:C.text,border:`1px solid ${C.border}`}
+  const vc = variant==="primary"   ? {background:C.accent,color:"#fff",boxShadow:"0 1px 2px rgba(0,112,212,0.25),0 2px 6px rgba(0,112,212,0.18)"}
+           : variant==="secondary" ? {background:"#fff",color:C.text,border:`1px solid ${C.border}`}
            : variant==="ghost"     ? {background:"transparent",color:C.textSub}
            : variant==="danger"    ? {background:C.redBg,color:C.red,border:`1px solid ${C.red}40`}
            : {background:C.accentBg,color:C.accent};
@@ -2365,15 +2369,15 @@ const Btn = ({children,onClick,variant="primary",size="md",style={},disabled=fal
 
 
 const Input = ({style={},...p}) => (
-  <input {...p} style={{width:"100%",padding:"0.625rem 0.875rem",borderRadius:"8px",border:`1px solid ${C.border}`,fontSize:"0.875rem",color:C.text,outline:"none",background:C.surface,boxSizing:"border-box",fontFamily:"inherit",lineHeight:"1.5",transition:"all 0.15s",...style}}/>
+  <input {...p} onFocus={e=>{e.target.style.borderColor=C.accent;e.target.style.boxShadow=C.focusGlow;p.onFocus&&p.onFocus(e);}} onBlur={e=>{e.target.style.borderColor=C.border;e.target.style.boxShadow="none";p.onBlur&&p.onBlur(e);}} style={{width:"100%",padding:"0.625rem 0.875rem",borderRadius:"8px",border:`1px solid ${C.border}`,fontSize:"0.875rem",color:C.text,outline:"none",background:C.surface,boxSizing:"border-box",fontFamily:"inherit",lineHeight:"1.5",transition:"all 0.15s",...style}}/>
 );
 
 const Textarea = ({style={},...p}) => (
-  <textarea {...p} style={{width:"100%",padding:"0.55rem 0.875rem",borderRadius:"6px",border:`1px solid ${C.border}`,fontSize:"0.875rem",color:C.text,outline:"none",resize:"vertical",background:C.surface,boxSizing:"border-box",fontFamily:"'DM Sans',inherit",lineHeight:"1.6",...style}}/>
+  <textarea {...p} onFocus={e=>{e.target.style.borderColor=C.accent;e.target.style.boxShadow=C.focusGlow;p.onFocus&&p.onFocus(e);}} onBlur={e=>{e.target.style.borderColor=C.border;e.target.style.boxShadow="none";p.onBlur&&p.onBlur(e);}} style={{width:"100%",padding:"0.55rem 0.875rem",borderRadius:"8px",border:`1px solid ${C.border}`,fontSize:"0.875rem",color:C.text,outline:"none",resize:"vertical",background:C.surface,boxSizing:"border-box",fontFamily:"inherit",lineHeight:"1.6",...style}}/>
 );
 
 const SelectEl = ({children,style={},...p}) => (
-  <select {...p} style={{width:"100%",padding:"0.65rem 0.875rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,fontSize:"0.9rem",color:C.text,outline:"none",background:"white",fontFamily:"inherit",...style}}>{children}</select>
+  <select {...p} onFocus={e=>{e.target.style.borderColor=C.accent;e.target.style.boxShadow=C.focusGlow;p.onFocus&&p.onFocus(e);}} onBlur={e=>{e.target.style.borderColor=C.border;e.target.style.boxShadow="none";p.onBlur&&p.onBlur(e);}} style={{width:"100%",padding:"0.65rem 0.875rem",borderRadius:"8px",border:`1.5px solid ${C.border}`,fontSize:"0.9rem",color:C.text,outline:"none",background:"white",fontFamily:"inherit",...style}}>{children}</select>
 );
 
 const FieldLbl = ({label,required,children}) => (
