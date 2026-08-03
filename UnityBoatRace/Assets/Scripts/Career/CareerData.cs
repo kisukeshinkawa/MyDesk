@@ -75,8 +75,25 @@ namespace BoatRace.Career
         {
             get { int s = 0; foreach (var id in sponsorIds) s += SponsorDefs[id].income; return s; }
         }
-        // レースごとの支出(整備費5万+整備士の人件費)
-        public int RaceExpense => 5 + (hasMechanic ? 8 : 0);
+        // 設備投資(シナリオ第10章): 各Lv0-3。維持費がかかる代わりに成長・整備が有利に
+        public int facTraining;   // トレーニング施設: 練習の疲労を軽減
+        public int facSim;        // シミュレーター: 獲得XP+15%/Lv
+        public int facGarage;     // 整備工場: ペラ調整の成功ゾーン拡大
+        public int facAnalysis;   // 分析AI: 展開予想的中ボーナス+10万/Lv
+        public int FacilityCount => facTraining + facSim + facGarage + facAnalysis;
+
+        // 天才選手イベント(次レースに強化ライバルが参戦)
+        public int geniusPending;
+
+        // シーズン制(12レース=1シーズン。終了時にランキングと称号)
+        public int seasonNo = 1;
+        public int seasonRaces;
+        public int seasonWins;
+        public int seasonPrize;
+        public List<string> titles = new List<string>();
+
+        // レースごとの支出(整備費5万+整備士の人件費+施設維持費3万/Lv)
+        public int RaceExpense => 5 + (hasMechanic ? 8 : 0) + FacilityCount * 3;
 
         // レベル成長(XPはレース結果で獲得。レベルで体力最大値が伸びる)
         public int level = 1;

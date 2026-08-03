@@ -26,6 +26,7 @@ namespace BoatRace.Core
         void Awake()
         {
             Instance = this;
+            AudioKit.Init(gameObject); // 合成SE/BGM(音源ファイル不要)
             var race = gameObject.AddComponent<RaceManager>();
             race.venueId = venueId;
             race.seed = seed;
@@ -298,6 +299,7 @@ namespace BoatRace.Core
                 psr.material = new Material(Shader.Find("Sprites/Default"));
 
                 var boat = root.AddComponent<BoatController>();
+                root.AddComponent<EngineAudio>(); // 速度連動のエンジン音(3D)
                 race.RegisterBoat(boat);
             }
         }

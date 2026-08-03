@@ -257,6 +257,7 @@ namespace BoatRace.UI
 
             var btn = go.AddComponent<Button>();
             btn.targetGraphic = img;
+            btn.onClick.AddListener(() => BoatRace.Core.AudioKit.Click()); // 全ボタン共通のクリック音
             btn.onClick.AddListener(onClick);
             MakeText(go.transform, label, fontSize, Color.white, TextAnchor.MiddleCenter,
                 Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero,
