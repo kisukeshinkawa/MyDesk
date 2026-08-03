@@ -99,7 +99,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-05-v324-store-level-fees"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-05-v325-kome-unit-qty"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -33704,7 +33704,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
   // ===== 見積の集計・お客様報告Excel（v317）=====
   const _N = v => { const n=parseFloat(String(v==null?"":v).replace(/[^0-9.]/g,"")); return isNaN(n)?0:n; };
   const _qtyOf = (it,u)=>{ const list=(it&&it.qtys&&it.qtys.length)?it.qtys:parseQtyList(it&&it.qty); const f=(list||[]).find(x=>String(x.u)===String(u)); return f?_N(f.q):0; };
-  const _sub = (it,pr) => { if(!pr) return 0; const m=pr.method; if(m==="込") return _N(pr.unit); if(m==="別") return _N(pr.transport)+_N(pr.disposal)*_qtyOf(it,pr.disposalUnit); if(m==="定額") return _N(pr.flat); return _N(pr.unit)+_N(pr.transport)+_N(pr.disposal)+_N(pr.flat); };
+  const _sub = (it,pr) => { if(!pr) return 0; const m=pr.method; if(m==="込"){ const q=_qtyOf(it,pr.unitType); return q>0?_N(pr.unit)*q:_N(pr.unit); } if(m==="別") return _N(pr.transport)+_N(pr.disposal)*_qtyOf(it,pr.disposalUnit); if(m==="定額") return _N(pr.flat); return _N(pr.unit)+_N(pr.transport)+_N(pr.disposal)+_N(pr.flat); };
   const _eff = (it,pr) => { const s=_sub(it,pr); return ((pr&&(pr.method==="込"||pr.method==="別"))&&s>0)?Math.max(s,_N(pr&&pr.minCharge)):s; };
   const _base = (it,pr) => _eff(it,pr)+_N(pr&&pr.overhead);
   const _hasPr = pr => !!pr && ((pr.method&&pr.method!=="") || _N(pr.unit) || _N(pr.transport) || _N(pr.disposal) || _N(pr.flat));
@@ -33775,8 +33775,8 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
       hr2.eachCell(c=>{c.fill=NAVY;c.font=HFONT;c.alignment={horizontal:"center",vertical:"middle"};c.border=BORDER;}); hr2.height=22;
       let rc=0;
       vs.forEach((qv,vi)=>{ sts.forEach((st,i)=>{ const mt=_metaOf(qv,st); let firstItem=true; _storeItems(st).forEach(it=>{ const pr=(qv.prices||{})[it.id]; if(!_hasPr(pr))return;
-        const qy=(pr.method==="別")?_qtyOf(it,pr.disposalUnit):""; const isF=firstItem; firstItem=false;
-        const row=ws2.addRow([AL[vi], st.no||i+1, st.area||"", st.name||"", it.kind||"", M[pr.method]||pr.method||"", pr.unit?_N(pr.unit):"", pr.transport?_N(pr.transport):"", pr.disposal?_N(pr.disposal):"", pr.disposalUnit||"", qy||"", _sub(it,pr), isF?(mt.overhead?_N(mt.overhead):""):"", isF?(mt.minCharge?_N(mt.minCharge):""):"", isF?(mt.taxMode||"税抜"):"", isF?(_storeBase(qv,st)||""):"", isF?(_storeTaxIn(qv,st)||""):"", isF?(_storeCust(qv,st)||""):"", pr.condition||pr.note||""]);
+        const qy=(pr.method==="別")?_qtyOf(it,pr.disposalUnit):(pr.method==="込")?_qtyOf(it,pr.unitType):""; const isF=firstItem; firstItem=false;
+        const row=ws2.addRow([AL[vi], st.no||i+1, st.area||"", st.name||"", it.kind||"", M[pr.method]||pr.method||"", pr.unit?_N(pr.unit):"", pr.transport?_N(pr.transport):"", pr.disposal?_N(pr.disposal):"", pr.disposalUnit||pr.unitType||"", qy||"", _sub(it,pr), isF?(mt.overhead?_N(mt.overhead):""):"", isF?(mt.minCharge?_N(mt.minCharge):""):"", isF?(mt.taxMode||"税抜"):"", isF?(_storeBase(qv,st)||""):"", isF?(_storeTaxIn(qv,st)||""):"", isF?(_storeCust(qv,st)||""):"", pr.condition||pr.note||""]);
         row.eachCell({includeEmpty:true},(c,cn)=>{ c.border=BORDER; c.alignment={vertical:"middle"}; if([7,8,9,11,12,13,14,16,17,18].indexOf(cn)>=0&&typeof c.value==="number")c.numFmt=NUM; if(rc%2===1&&!c.fill)c.fill=ZEB; }); rc++;
       }); }); });
       ws2.columns=[{width:6},{width:5},{width:11},{width:20},{width:18},{width:20},{width:9},{width:10},{width:9},{width:8},{width:7},{width:10},{width:9},{width:9},{width:8},{width:11},{width:11},{width:12},{width:34}];
@@ -34246,7 +34246,7 @@ function VendorQuoteCard({ qv, rows, stores=[], totalStores=0, showAll=false, on
   const taxIn=pr=>{ const b=baseAmt(pr); return (pr&&pr.taxMode==="税込")?b:Math.round(b*(1+TAX_RATE)); };
   const custAmt=pr=>Math.round(taxIn(pr)*(1+DUSTALK_FEE));
   const qtyFor=(r,u)=>{ const f=((r&&r.qtys)||[]).find(x=>String(x.u)===String(u)); return f?N(f.q):0; };
-  const subOf=(r,pr)=>{ if(!pr)return 0; const m=pr.method; if(m==="込")return N(pr.unit); if(m==="別")return N(pr.transport)+N(pr.disposal)*qtyFor(r,pr.disposalUnit); if(m==="定額")return N(pr.flat); return N(pr.unit)+N(pr.transport)+N(pr.disposal)+N(pr.flat); };
+  const subOf=(r,pr)=>{ if(!pr)return 0; const m=pr.method; if(m==="込"){ const q=qtyFor(r,pr.unitType); return q>0?N(pr.unit)*q:N(pr.unit); } if(m==="別")return N(pr.transport)+N(pr.disposal)*qtyFor(r,pr.disposalUnit); if(m==="定額")return N(pr.flat); return N(pr.unit)+N(pr.transport)+N(pr.disposal)+N(pr.flat); };
   const rowsOfStore=sid=>rows.filter(r=>String(r.storeId)===String(sid));
   const metaOf=sid=>{ const m=(qv.stoMeta||{})[sid]; if(m) return m; for(const r of rowsOfStore(sid)){ const p2=prices[r.itemId]; if(p2&&(p2.overhead||p2.minCharge||p2.taxMode)) return {overhead:p2.overhead||"",minCharge:p2.minCharge||"",taxMode:p2.taxMode||""}; } return {}; };
   const setMeta=(sid,patch)=>onChange({stoMeta:{...(qv.stoMeta||{}),[sid]:{...metaOf(sid),...patch}}});
@@ -34270,7 +34270,7 @@ function VendorQuoteCard({ qv, rows, stores=[], totalStores=0, showAll=false, on
   const GRIDCOLS=["method","unit","unitType","transport","disposal","disposalUnit","flat","condition"];
   const NUMCOLS=new Set(["unit","transport","disposal","flat"]);
   const OPT_METHOD=["込","別","定額"]; const OPT_TAX=["税抜","税込"];
-  const validCell=(key,val,r)=>{ const v=String(val==null?"":val).trim(); if(NUMCOLS.has(key)) return v.replace(/[^0-9.]/g,""); if(key==="method") return OPT_METHOD.indexOf(v)>=0?v:""; if(key==="taxMode") return OPT_TAX.indexOf(v)>=0?v:""; if(key==="disposalUnit"){ const us=((r&&r.qtys)||[]).map(x=>String(x.u)); return us.indexOf(v)>=0?v:""; } return val; };
+  const validCell=(key,val,r)=>{ const v=String(val==null?"":val).trim(); if(NUMCOLS.has(key)) return v.replace(/[^0-9.]/g,""); if(key==="method") return OPT_METHOD.indexOf(v)>=0?v:""; if(key==="taxMode") return OPT_TAX.indexOf(v)>=0?v:""; if(key==="disposalUnit"||key==="unitType"){ const us=((r&&r.qtys)||[]).map(x=>String(x.u)); return us.indexOf(v)>=0?v:""; } return val; };
   const [sel,setSel]=React.useState(null);
   const dragRef=React.useRef(false);
   const copyBuf=React.useRef("");
@@ -34496,7 +34496,7 @@ function VendorQuoteCard({ qv, rows, stores=[], totalStores=0, showAll=false, on
                 </div>
                 <select {...cellProps(ri,0)} value={m} onChange={e=>setPrice(r.itemId,{method:e.target.value})} style={cs(ri,0,{width:96,flex:"none",padding:"0.25rem 0.1rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.64rem",fontFamily:"inherit",background:"white"})}><option value=""></option>{METHODS.map(x=><option key={x.v} value={x.v}>{x.t}</option>)}</select>
                 <span style={CcolNum}>{ok("unit")?<input {...cellProps(ri,1)} value={pr.unit||""} onChange={e=>setPrice(r.itemId,{unit:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="単価" style={cs(ri,1,NUM)}/>:null}</span>
-                <span style={{width:54,flex:"none"}}>{ok("unitType")?<input {...cellProps(ri,2)} value={pr.unitType||""} onChange={e=>setPrice(r.itemId,{unitType:e.target.value})} placeholder="立米/kg" style={cs(ri,2,{...NUM,textAlign:"center"})}/>:null}</span>
+                <span style={{width:54,flex:"none"}}>{ok("unitType")?<select {...cellProps(ri,2)} value={pr.unitType||""} onChange={e=>setPrice(r.itemId,{unitType:e.target.value})} title="店舗の数量に登録した単位から選択（単価×数量）" style={cs(ri,2,{width:"100%",boxSizing:"border-box",padding:"0.22rem 0.05rem",borderRadius:5,border:`1px solid ${((r.qtys||[]).length? C.border : "#fca5a5")}`,fontSize:"0.6rem",fontFamily:"inherit",background:"white"})}><option value="">単位</option>{(r.qtys||[]).map((qq,qi)=><option key={qi} value={qq.u}>{qq.u||"(未設定)"}</option>)}</select>:null}</span>
                 <span style={CcolNum}>{ok("transport")?<input {...cellProps(ri,3)} value={pr.transport||""} onChange={e=>setPrice(r.itemId,{transport:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="運搬固定" style={cs(ri,3,NUM)}/>:null}</span>
                 <span style={CcolNum}>{ok("disposal")?<input {...cellProps(ri,4)} value={pr.disposal||""} onChange={e=>setPrice(r.itemId,{disposal:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="処分単価" style={cs(ri,4,NUM)}/>:null}</span>
                 <span style={{width:54,flex:"none"}}>{ok("disposalUnit")?<select {...cellProps(ri,5)} value={pr.disposalUnit||""} onChange={e=>setPrice(r.itemId,{disposalUnit:e.target.value})} title="店舗の数量に登録した単位から選択" style={cs(ri,5,{width:"100%",boxSizing:"border-box",padding:"0.22rem 0.05rem",borderRadius:5,border:`1px solid ${((r.qtys||[]).length? C.border : "#fca5a5")}`,fontSize:"0.6rem",fontFamily:"inherit",background:"white"})}><option value="">単位</option>{(r.qtys||[]).map((qq,qi)=><option key={qi} value={qq.u}>{qq.u||"(未設定)"}</option>)}</select>:null}</span>
