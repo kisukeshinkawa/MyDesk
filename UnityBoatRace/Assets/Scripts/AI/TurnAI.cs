@@ -13,10 +13,12 @@ namespace BoatRace.AI
         public float laneRadius = 16f;     // 自艇の基準レーン半径
         public float radiusFactor = 1f;    // 戦術による旋回半径倍率
         bool reachedFirstTurn;             // 1周1Mに到達するまでは車線キープ
+        float currentR = -1f;              // 現在の追従半径(ターン⇔直線で滑らかに遷移)
 
         public void Configure(int course, Tactic tactic)
         {
             reachedFirstTurn = false;
+            currentR = -1f;
             laneRadius = 12f + course * 1.6f;
             switch (tactic)
             {
@@ -76,8 +78,15 @@ namespace BoatRace.AI
 
         float EffectiveRadius(BoatPhysicsEngine engine)
         {
+            // 実艇のセオリー: 戦術による内外の差はターン中だけ。
+            // ターンを抜けたら全艇がインのラインへ寄って直線を最短で走る
+            bool inTurn = TrackPath.InTurn1Zone(engine.Position) || TrackPath.InTurn2Zone(engine.Position);
+            float target = inTurn ? laneRadius * radiusFactor
+                                  : 9f + laneRadius * 0.25f;   // 直線はイン寄り(コース差は僅か)
+            if (currentR < 0f) currentR = target;
+            currentR = Mathf.MoveTowards(currentR, target, 0.12f); // 斜めに滑らかへ寄せる
             float physicalMin = Physics.TurnPhysics.TurnRadius(engine.Speed, engine.stats.EffectiveTurnPower);
-            return Mathf.Max(physicalMin * 0.6f, laneRadius * radiusFactor);
+            return Mathf.Max(physicalMin * 0.6f, currentR);
         }
     }
 }
