@@ -30,6 +30,16 @@ namespace BoatRace.Career
         public float startSkill = 0.55f;
         public float turnSkill = 0.55f;
         public float mental = 0.60f;
+        public float speedSkill = 0.55f;
+        public float mechanicSkill = 0.50f;
+
+        // ガレージ: モーター整備(次レース1節限り・レベル0-4)とペラ調整(永続セッティング)
+        public int maintCarb;    // キャブ整備 → 出足
+        public int maintElec;    // 電装整備 → 回り足
+        public int maintGear;    // ギア整備 → ターン
+        public int propPitch;    // -5〜+5 大=伸び重視/小=出足重視
+        public int propDia;      // -5〜+5 大=トップスピード
+        public int propBal;      // -3〜+3 ターン安定性
         public bool debutDone;
         public bool allClear;
 
@@ -149,6 +159,8 @@ namespace BoatRace.Career
                 mental = mental,
                 experience = Mathf.Clamp01(races * 0.02f),
                 weight = 52f,
+                speedSkill = speedSkill,
+                mechanicSkill = mechanicSkill,
             };
         }
 

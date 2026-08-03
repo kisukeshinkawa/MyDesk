@@ -39,6 +39,9 @@ namespace BoatRace.Commentary
             ["start"] = new[] {
                 "スタートしました！ {0}号艇 {1} トップスタート、ST {2:F2}！",
                 "一斉にスタート！ 最速は{0}号艇 {1}、ST {2:F2}です！" },
+            ["start_super"] = new[] {
+                "超好スタート！！ {0}号艇 {1}、ST {2:F2}の完璧な飛び出しだーッ！！",
+                "なんというスタート！ {0}号艇 {1}がST {2:F2}で突き抜けた！" },
             ["flying"] = new[] {
                 "おっと！ {0}号艇 フライングか！？",
                 "{0}号艇、勇み足！ フライングの模様です！" },
@@ -88,7 +91,8 @@ namespace BoatRace.Commentary
                     else if (bs.st < bestST) { bestST = bs.st; best = i; }
                 }
                 if (best >= 0)
-                    Say("start", best + 1, race.statsList[best].player.playerName, bestST);
+                    Say(bestST <= 0.05f ? "start_super" : "start",
+                        best + 1, race.statsList[best].player.playerName, bestST);
             };
 
             race.OnMarkRounded += (idx, mark, lap) =>

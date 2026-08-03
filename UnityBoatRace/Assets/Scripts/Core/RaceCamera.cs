@@ -20,6 +20,10 @@ namespace BoatRace.Core
         ReplayManager replay;
         Camera cam;
         Vector3 velocity;
+        float fovPunch;
+
+        /// <summary>技発動時のFOVパンチ(一瞬広角になって疾走感が出る)。</summary>
+        public void Punch(float amount) => fovPunch = amount;
 
         public void Initialize(RaceManager race, ReplayManager replay)
         {
@@ -71,7 +75,8 @@ namespace BoatRace.Core
                     case Mode.Overhead: targetFov = 52f; OverheadCam(); break;
                 }
             }
-            cam.fieldOfView = Mathf.Lerp(cam.fieldOfView, targetFov, Time.deltaTime * 3f);
+            fovPunch = Mathf.Lerp(fovPunch, 0f, Time.deltaTime * 2.2f);
+            cam.fieldOfView = Mathf.Lerp(cam.fieldOfView, targetFov + fovPunch, Time.deltaTime * 5f);
         }
 
         // ---- ロビー演出: 会場をゆっくり旋回 ----

@@ -24,6 +24,9 @@ namespace BoatRace.UI
         readonly GameObject spGauge;
         readonly Image spFill;
         readonly Text spText;
+        readonly Image[] top3Chips = new Image[3];
+        readonly Text[] top3Nums = new Text[3];
+        readonly Text speedText;
         readonly Text[] standingRows = new Text[6];
         readonly Image[] rowChips = new Image[6];
         readonly Text commentaryText;
@@ -53,7 +56,20 @@ namespace BoatRace.UI
                 new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-450f, -370f), new Vector2(-14f, -14f));
             UiKit.AddStripeOverlay(board, Color.white, 0.04f);
             UiKit.MakeText(board.transform, "レース順位", 22, UiKit.Sky, TextAnchor.MiddleLeft,
-                new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(16f, -44f), new Vector2(-10f, -8f), bold: true);
+                new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(16f, -44f), new Vector2(-160f, -8f), bold: true);
+            // TV中継スタイル: 上位3艇カラーボックス(仕様書11章)
+            for (int k = 0; k < 3; k++)
+            {
+                float x = -136f + k * 42f;
+                var boxGo = new GameObject($"Top3_{k}");
+                UiKit.Place(boxGo, board.transform, new Vector2(1f, 1f), new Vector2(1f, 1f),
+                    new Vector2(x, -42f), new Vector2(x + 36f, -8f));
+                top3Chips[k] = boxGo.AddComponent<Image>();
+                top3Chips[k].sprite = UiKit.Rounded(8);
+                top3Chips[k].type = Image.Type.Sliced;
+                top3Nums[k] = UiKit.MakeText(boxGo.transform, "", 20, Color.white, TextAnchor.MiddleCenter,
+                    Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, bold: true, shadow: true);
+            }
             for (int i = 0; i < 6; i++)
             {
                 float y = -52f - i * 48f;
@@ -95,6 +111,9 @@ namespace BoatRace.UI
             spFill.fillMethod = Image.FillMethod.Horizontal;
             spText = UiKit.MakeText(spGauge.transform, "50", 22, Color.white, TextAnchor.MiddleRight,
                 new Vector2(0.80f, 0f), new Vector2(0.98f, 1f), Vector2.zero, Vector2.zero, bold: true);
+            speedText = UiKit.MakeText(spGauge.transform, "", 24, Color.white, TextAnchor.MiddleLeft,
+                new Vector2(1f, 0f), new Vector2(1f, 1f), new Vector2(10f, 0f), new Vector2(150f, 0f),
+                bold: true, shadow: true, outline: true);
             spGauge.SetActive(false);
 
             // プレイヤー操作ガイド(ストーリーモード)
@@ -167,6 +186,19 @@ namespace BoatRace.UI
                     ? Color.Lerp(UiKit.Yellow, new Color(0.2f, 0.95f, 1f), (t - 0.35f) / 0.65f)
                     : Color.Lerp(UiKit.Red, UiKit.Yellow, t / 0.35f);
                 spText.text = $"{race.playerSP:F0}";
+                speedText.text = $"{race.boats[race.playerBoatIndex].engine.Speed * 3.6f:F0}km/h";
+            }
+
+            // 上位3艇カラーボックス更新
+            for (int k = 0; k < 3; k++)
+            {
+                if (k < race.state.standings.Count)
+                {
+                    int idx3 = race.state.standings[k];
+                    top3Chips[k].color = UiKit.BoatColors[idx3];
+                    top3Nums[k].text = (idx3 + 1).ToString();
+                    top3Nums[k].color = idx3 == 0 || idx3 == 4 ? new Color(0.1f, 0.12f, 0.2f) : Color.white;
+                }
             }
 
             // プレイヤー操作ガイド

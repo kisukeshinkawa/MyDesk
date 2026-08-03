@@ -39,6 +39,29 @@ namespace BoatRace.Core
             {
                 if (p == RacePhase.PitOut && !IsPlaying) frames.Clear();
             };
+            // 仕様書12章: レース終了時にJSON形式で保存
+            race.OnRaceFinished += SaveJson;
+        }
+
+        [System.Serializable]
+        class JFrame { public float t; public Vector3[] p; public float[] h; public float[] v; public int[] lap; }
+        [System.Serializable]
+        class JReplay { public string venue; public System.Collections.Generic.List<JFrame> frames = new System.Collections.Generic.List<JFrame>(); }
+
+        void SaveJson()
+        {
+            try
+            {
+                var jr = new JReplay { venue = race.venue.name };
+                foreach (var f in frames)
+                    jr.frames.Add(new JFrame { t = f.t, p = f.positions, h = f.headings, v = f.speeds, lap = f.laps });
+                string path = System.IO.Path.Combine(Application.persistentDataPath, "replay_last.json");
+                System.IO.File.WriteAllText(path, JsonUtility.ToJson(jr));
+            }
+            catch (System.Exception ex)
+            {
+                Debug.LogWarning("リプレイ保存失敗: " + ex.Message);
+            }
         }
 
         void FixedUpdate()

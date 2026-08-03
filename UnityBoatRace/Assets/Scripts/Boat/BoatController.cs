@@ -18,7 +18,12 @@ namespace BoatRace.Boat
 
         VenueData venue;
         ParticleSystem spray;
+        TrailRenderer trail;
+        Color boostColor = Color.white;
         float waveTime;
+
+        /// <summary>必殺技発動中の航跡色。</summary>
+        public void SetBoostColor(Color c) => boostColor = c;
 
         public void Initialize(int index, BoatStats stats, VenueData venue,
             WindSystem wind, CurrentSystem current, WakePhysics wake)
@@ -28,7 +33,7 @@ namespace BoatRace.Boat
             startAI = new StartAI();
             turnAI = new TurnAI();
             if (spray == null) spray = GetComponentInChildren<ParticleSystem>();
-            var trail = GetComponentInChildren<TrailRenderer>();
+            if (trail == null) trail = GetComponentInChildren<TrailRenderer>();
             if (trail != null) trail.Clear();
         }
 
@@ -51,11 +56,21 @@ namespace BoatRace.Boat
                 engine.HeadingDeg,
                 -engine.Steer * 14f); // 旋回時のバンク
 
-            // 水しぶき: 速度に比例し、ターン中は倍増
+            // 水しぶき: 速度に比例し、ターン中は倍増。技発動中はさらに激しく
             if (spray != null)
             {
                 var emission = spray.emission;
-                emission.rateOverTime = engine.Speed * (2.2f + Mathf.Abs(engine.Steer) * 9f);
+                float boost = engine.BoostTime > 0f ? 2.2f : 1f;
+                emission.rateOverTime = engine.Speed * (2.2f + Mathf.Abs(engine.Steer) * 9f) * boost;
+            }
+            // 技発動中は航跡が技の色に光る(イナイレ的オーラ)
+            if (trail != null)
+            {
+                bool boosting = engine.BoostTime > 0f;
+                trail.startColor = boosting
+                    ? new Color(boostColor.r, boostColor.g, boostColor.b, 0.85f)
+                    : new Color(1f, 1f, 1f, 0.55f);
+                trail.startWidth = boosting ? 2.2f : 1.5f;
             }
         }
 

@@ -30,7 +30,8 @@ namespace BoatRace.Core
         [NonSerialized] public float playerSPMax = 100f;       // 最大体力(レベルで成長)
         [NonSerialized] public float playerSPInit = 100f;      // 開始時体力(アイテムで増える)
         [NonSerialized] public bool playerMotorBoost;          // 新品ペラ(次レース限り)
-        [NonSerialized] public float pAccelBonus, pTopBonus, pTurnBonus; // ガチャ装備ボーナス
+        [NonSerialized] public float pAccelBonus, pTopBonus, pTurnBonus; // ガチャ装備+整備ボーナス
+        [NonSerialized] public Setup.PropellerSetting playerPropOverride; // ガレージのペラ調整
         public event Action<int> OnPlayerTurnEntry;            // markNo(1/2)
         float playerMoveTimer;
         float playerMoveRadius = 1f;
@@ -102,7 +103,7 @@ namespace BoatRace.Core
                     motors[playerBoatIndex].topSpeed += 0.5f;
                     playerMotorBoost = false;
                 }
-                // ガチャ装備(プロペラ/チルト)のボーナス: 型が出る
+                // ガチャ装備(プロペラ/チルト)+ガレージ整備のボーナス: 型が出る
                 motors[playerBoatIndex].acceleration += pAccelBonus;
                 motors[playerBoatIndex].topSpeed += pTopBonus;
                 motors[playerBoatIndex].turnPower += pTurnBonus;
@@ -121,6 +122,9 @@ namespace BoatRace.Core
                     propeller = Setup.PropellerSetting.RandomTuned(rng, players[i].experience),
                 });
             }
+            // ガレージのペラ調整(プレイヤーの永続セッティング)
+            if (playerPropOverride != null && playerBoatIndex >= 0 && playerBoatIndex < BoatCount)
+                statsList[playerBoatIndex].propeller = playerPropOverride;
 
             // 展示タイム
             var (times, _) = ExhibitionSystem.RunExhibition(statsList, venue, wind, rng);
@@ -488,6 +492,7 @@ namespace BoatRace.Core
             e.BoostTopMul = move.TopAt(moveLevel);
             e.BoostAccelMul = move.AccelAt(moveLevel);
             e.BoostWakeImmune = move.wakeImmune;
+            boats[playerBoatIndex].SetBoostColor(move.color); // 航跡が技の色に光る
         }
 
         /// <summary>決まり手判定: 逃げ/差し/まくり/まくり差し/抜き/恵まれ。</summary>

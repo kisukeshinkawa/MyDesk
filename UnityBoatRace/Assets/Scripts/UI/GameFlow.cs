@@ -174,7 +174,53 @@ namespace BoatRace.UI
             if (movePanelGo == null) return;
             CloseMovePanel();
             race.ApplyPlayerMove(m, lv);
-            ShowFlash(m.cost > 0 ? $"{m.name} Lv{lv}" : m.name, m.color);
+            if (m.cost > 0)
+            {
+                ShowMoveCutIn($"{m.name} Lv{lv}", m.color); // 必殺技はフルカットイン
+                if (raceCam != null) raceCam.Punch(14f);
+            }
+            else
+            {
+                ShowFlash(m.name, m.color);
+            }
+        }
+
+        /// <summary>必殺技カットイン: 集中線+色フラッシュ+技名スライドイン(イナイレ演出)。</summary>
+        void ShowMoveCutIn(string name, Color color)
+        {
+            var overlay = new GameObject("CutIn");
+            UiKit.Place(overlay, canvas.transform, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+            var tint = overlay.AddComponent<Image>();
+            tint.color = new Color(color.r, color.g, color.b, 0.22f);
+            tint.raycastTarget = false;
+
+            var lines = new GameObject("SpeedLines");
+            UiKit.Place(lines, overlay.transform, Vector2.zero, Vector2.one, new Vector2(-120f, -120f), new Vector2(120f, 120f));
+            var li = lines.AddComponent<Image>();
+            li.sprite = UiKit.SpeedLines();
+            li.color = new Color(color.r, color.g, color.b, 0.9f);
+            li.raycastTarget = false;
+
+            var band = UiKit.MakePanel(overlay.transform, new Color(0f, 0f, 0f, 0.55f), 8,
+                new Vector2(0f, 0.56f), new Vector2(1f, 0.74f), Vector2.zero, Vector2.zero);
+            band.GetComponent<RectTransform>().localEulerAngles = new Vector3(0f, 0f, -2f);
+            var txt = UiKit.MakeText(band.transform, name, 72, Color.white, TextAnchor.MiddleCenter,
+                Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, bold: true, shadow: true, outline: true);
+            var group = overlay.AddComponent<CanvasGroup>();
+            StartCoroutine(CutInRoutine(overlay, group, txt.GetComponent<RectTransform>()));
+        }
+
+        System.Collections.IEnumerator CutInRoutine(GameObject overlay, CanvasGroup group, RectTransform nameRt)
+        {
+            for (float t = 0f; t < 1.5f; t += Time.unscaledDeltaTime)
+            {
+                if (overlay == null) yield break;
+                float slide = Mathf.Lerp(900f, 0f, Mathf.Clamp01(t / 0.18f));       // 技名が右から滑り込む
+                nameRt.anchoredPosition = new Vector2(slide, 0f);
+                group.alpha = t < 1.0f ? 1f : Mathf.Clamp01((1.5f - t) / 0.5f);      // 最後にフェード
+                yield return null;
+            }
+            if (overlay != null) Destroy(overlay);
         }
 
         void CloseMovePanel()
@@ -405,18 +451,16 @@ namespace BoatRace.UI
             // 右: スキルと練習
             var skill = UiKit.MakePanel(s.transform, UiKit.PanelWhite, 20,
                 new Vector2(0.52f, 0.28f), new Vector2(0.95f, 0.83f), Vector2.zero, Vector2.zero);
-            var learned = new List<string>();
-            foreach (var m in SkillMove.UnlockedAt(career.chapter))
-                if (m.cost > 0) learned.Add(m.name);
-            string moveLine = learned.Count > 0 ? string.Join("　", learned) : "(章クリアで習得)";
             UiKit.MakeText(skill.transform,
-                $"スタート技術　{career.startSkill * 100f:F0}\n旋回技術　{career.turnSkill * 100f:F0}\nメンタル　{career.mental * 100f:F0}\n必殺技　{moveLine}",
-                24, UiKit.TextDark, TextAnchor.UpperLeft,
-                new Vector2(0.07f, 0.55f), new Vector2(0.93f, 0.96f), Vector2.zero, Vector2.zero, bold: true);
+                $"スタート {career.startSkill * 100f:F0}　ターン {career.turnSkill * 100f:F0}　スピード {career.speedSkill * 100f:F0}\n" +
+                $"メンタル {career.mental * 100f:F0}　整備力 {career.mechanicSkill * 100f:F0}\n" +
+                $"整備: キャブ{career.maintCarb} 電装{career.maintElec} ギア{career.maintGear} / ペラ P{career.propPitch} D{career.propDia} B{career.propBal}",
+                19, UiKit.TextDark, TextAnchor.UpperLeft,
+                new Vector2(0.07f, 0.56f), new Vector2(0.93f, 0.96f), Vector2.zero, Vector2.zero, bold: true);
             void Train(string label, int cost, System.Action apply, float y)
             {
-                UiKit.MakeButton(skill.transform, $"{label} ({cost}万)", UiKit.Cyan, 20,
-                    new Vector2(0.07f, y), new Vector2(0.93f, y + 0.13f), Vector2.zero, Vector2.zero,
+                UiKit.MakeButton(skill.transform, $"{label} ({cost}万)", UiKit.Cyan, 17,
+                    new Vector2(0.07f, y), new Vector2(0.93f, y + 0.095f), Vector2.zero, Vector2.zero,
                     () =>
                     {
                         if (career.money < cost) return;
@@ -426,9 +470,11 @@ namespace BoatRace.UI
                         ShowCareer();
                     });
             }
-            Train("スタート練習 +3", 100, () => career.startSkill = Mathf.Min(0.95f, career.startSkill + 0.03f), 0.38f);
-            Train("旋回練習 +3", 100, () => career.turnSkill = Mathf.Min(0.95f, career.turnSkill + 0.03f), 0.22f);
-            Train("メンタル強化 +3", 80, () => career.mental = Mathf.Min(0.95f, career.mental + 0.03f), 0.06f);
+            Train("スタート練習 +3", 100, () => career.startSkill = Mathf.Min(0.95f, career.startSkill + 0.03f), 0.43f);
+            Train("旋回練習 +3", 100, () => career.turnSkill = Mathf.Min(0.95f, career.turnSkill + 0.03f), 0.325f);
+            Train("スピード練習 +3", 100, () => career.speedSkill = Mathf.Min(0.95f, career.speedSkill + 0.03f), 0.22f);
+            Train("メンタル強化 +3", 80, () => career.mental = Mathf.Min(0.95f, career.mental + 0.03f), 0.115f);
+            Train("整備研修 +3", 80, () => career.mechanicSkill = Mathf.Min(0.95f, career.mechanicSkill + 0.03f), 0.01f);
 
             string raceLabel = career.allClear ? "SG覇者として出走▶" : $"第{career.chapter}章に出走▶";
             UiKit.MakeButton(s.transform, "↩ ホーム", UiKit.Cyan, 20,
@@ -436,11 +482,14 @@ namespace BoatRace.UI
             UiKit.MakeButton(s.transform, "技強化", new Color(0.62f, 0.2f, 0.75f), 22,
                 new Vector2(0.16f, 0.11f), new Vector2(0.29f, 0.22f), Vector2.zero, Vector2.zero,
                 () => ShowMoveUpgradePopup(s.transform));
-            UiKit.MakeButton(s.transform, "🎰 ガチャ・装備", new Color(0.9f, 0.35f, 0.55f), 22,
-                new Vector2(0.305f, 0.11f), new Vector2(0.465f, 0.22f), Vector2.zero, Vector2.zero,
+            UiKit.MakeButton(s.transform, "🎰 ガチャ", new Color(0.9f, 0.35f, 0.55f), 20,
+                new Vector2(0.305f, 0.11f), new Vector2(0.42f, 0.22f), Vector2.zero, Vector2.zero,
                 () => ShowGachaPopup(s.transform, ""));
-            UiKit.MakeButton(s.transform, raceLabel, UiKit.Red, 30,
-                new Vector2(0.48f, 0.10f), new Vector2(0.79f, 0.235f), Vector2.zero, Vector2.zero, StartCareerRace);
+            UiKit.MakeButton(s.transform, "🔧 ガレージ", new Color(0.35f, 0.42f, 0.55f), 20,
+                new Vector2(0.435f, 0.11f), new Vector2(0.565f, 0.22f), Vector2.zero, Vector2.zero,
+                () => ShowGaragePopup(s.transform));
+            UiKit.MakeButton(s.transform, raceLabel, UiKit.Red, 28,
+                new Vector2(0.58f, 0.10f), new Vector2(0.79f, 0.235f), Vector2.zero, Vector2.zero, StartCareerRace);
             UiKit.MakeButton(s.transform, "🛒 ショップ", new Color(0.9f, 0.55f, 0.1f), 20,
                 new Vector2(0.805f, 0.11f), new Vector2(0.965f, 0.22f), Vector2.zero, Vector2.zero,
                 () => ShowShopPopup(s.transform));
@@ -609,6 +658,66 @@ namespace BoatRace.UI
                 () => Destroy(pop));
         }
 
+        /// <summary>ガレージ(仕様書6章): モーター整備(次レース1節限り)とペラ調整(永続)。</summary>
+        void ShowGaragePopup(Transform parent)
+        {
+            var pop = UiKit.MakePanel(parent, UiKit.PanelWhite, 22,
+                new Vector2(0.16f, 0.10f), new Vector2(0.84f, 0.88f), Vector2.zero, Vector2.zero);
+            UiKit.MakeBanner(pop.transform, $"ガレージ　所持金 {career.money:N0}万円　(整備力 {career.mechanicSkill * 100f:F0})", 22,
+                new Vector2(0.08f, 0.89f), new Vector2(0.92f, 0.995f));
+
+            // モーター整備(レベル0-4・次レースで消費)
+            void Maint(string label, string effect, System.Func<int> get, System.Action inc, float y)
+            {
+                UiKit.MakeText(pop.transform, $"{label}　Lv{get()}/4　({effect})", 19, UiKit.TextDark,
+                    TextAnchor.MiddleLeft,
+                    new Vector2(0.06f, y), new Vector2(0.66f, y + 0.09f), Vector2.zero, Vector2.zero, bold: true);
+                bool can = get() < 4 && career.money >= 5;
+                UiKit.MakeButton(pop.transform, "5万で整備",
+                    can ? UiKit.Cyan : new Color(0.5f, 0.5f, 0.55f), 16,
+                    new Vector2(0.68f, y + 0.005f), new Vector2(0.94f, y + 0.085f), Vector2.zero, Vector2.zero,
+                    () =>
+                    {
+                        if (get() >= 4 || career.money < 5) return;
+                        career.money -= 5;
+                        inc();
+                        career.Save();
+                        Destroy(pop);
+                        ShowGaragePopup(parent);
+                    });
+            }
+            UiKit.MakeText(pop.transform, "■ モーター整備(次レース限り・整備力で効果UP)", 18, UiKit.Cyan,
+                TextAnchor.MiddleLeft, new Vector2(0.06f, 0.78f), new Vector2(0.94f, 0.86f),
+                Vector2.zero, Vector2.zero, bold: true);
+            Maint("キャブ整備", "出足UP", () => career.maintCarb, () => career.maintCarb++, 0.68f);
+            Maint("電装整備", "回り足UP", () => career.maintElec, () => career.maintElec++, 0.58f);
+            Maint("ギア整備", "ターンUP", () => career.maintGear, () => career.maintGear++, 0.48f);
+
+            // ペラ調整(永続セッティング)
+            UiKit.MakeText(pop.transform, "■ プロペラ調整(あなたの永続セッティング)", 18, UiKit.Cyan,
+                TextAnchor.MiddleLeft, new Vector2(0.06f, 0.38f), new Vector2(0.94f, 0.46f),
+                Vector2.zero, Vector2.zero, bold: true);
+            void Tune(string label, System.Func<int> get, System.Action<int> set, int min, int max, string hint, float y)
+            {
+                UiKit.MakeText(pop.transform, $"{label} {get():+0;-0;0}　{hint}", 18, UiKit.TextDark,
+                    TextAnchor.MiddleLeft,
+                    new Vector2(0.06f, y), new Vector2(0.62f, y + 0.08f), Vector2.zero, Vector2.zero, bold: true);
+                UiKit.MakeButton(pop.transform, "−", UiKit.Navy, 20,
+                    new Vector2(0.66f, y), new Vector2(0.76f, y + 0.08f), Vector2.zero, Vector2.zero,
+                    () => { set(Mathf.Max(min, get() - 1)); career.Save(); Destroy(pop); ShowGaragePopup(parent); });
+                UiKit.MakeButton(pop.transform, "＋", UiKit.Navy, 20,
+                    new Vector2(0.79f, y), new Vector2(0.89f, y + 0.08f), Vector2.zero, Vector2.zero,
+                    () => { set(Mathf.Min(max, get() + 1)); career.Save(); Destroy(pop); ShowGaragePopup(parent); });
+            }
+            Tune("ピッチ", () => career.propPitch, v => career.propPitch = v, -5, 5, "大=伸び/小=出足", 0.29f);
+            Tune("直径", () => career.propDia, v => career.propDia = v, -5, 5, "大=最高速", 0.20f);
+            Tune("バランス", () => career.propBal, v => career.propBal = v, -3, 3, "ターン安定", 0.11f);
+
+            UiKit.MakeButton(pop.transform, "閉じる", UiKit.Navy, 20,
+                new Vector2(0.38f, 0.015f), new Vector2(0.62f, 0.09f), Vector2.zero, Vector2.zero,
+                () => Destroy(pop));
+        }
+
         void StartCareerRace()
         {
             if (!career.allClear) race.venueId = career.Current.venueId; // 章の指定会場
@@ -618,11 +727,18 @@ namespace BoatRace.UI
             race.playerSPInit = career.MaxStamina;
             if (career.itemDrink > 0) { career.itemDrink--; race.playerSPInit = career.MaxStamina + 30f; }
 
-            // ガチャ装備(プロペラ/チルト)で「型」を作る
+            // ガチャ装備(プロペラ/チルト)+ガレージ整備で「型」を作る。整備力で効果が変わる
             var (pa, pt, ptr, pst) = career.PartBonus();
-            race.pAccelBonus = pa;
+            float mech = 0.8f + career.mechanicSkill * 0.7f;
+            race.pAccelBonus = pa + career.maintCarb * 0.07f * mech;
             race.pTopBonus = pt;
-            race.pTurnBonus = ptr;
+            race.pTurnBonus = ptr + (career.maintElec * 0.020f + career.maintGear * 0.020f) * mech;
+            race.playerPropOverride = new BoatRace.Setup.PropellerSetting
+            {
+                pitch = Mathf.Clamp(career.propPitch * 0.5f, -3f, 3f),
+                diameter = Mathf.Clamp(career.propDia * 0.35f, -2f, 2f),
+                balance = Mathf.Clamp01(0.62f + career.propBal * 0.09f + career.mechanicSkill * 0.12f),
+            };
             race.playerMotorBoost = career.itemProp > 0;
             if (career.itemProp > 0) career.itemProp--;
             var stats = career.ToStats();
@@ -973,6 +1089,8 @@ namespace BoatRace.UI
                         pendingStory = e;
                     }
                 }
+                // モーター整備は1節(1レース)限りで消費
+                career.maintCarb = career.maintElec = career.maintGear = 0;
                 career.Save();
             }
         }

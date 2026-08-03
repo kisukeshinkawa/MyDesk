@@ -22,9 +22,9 @@ namespace BoatRace.Boat
         public float EffectiveAcceleration =>
             motor.acceleration * propeller.AccelerationModifier * player.WeightAccelModifier;
 
-        /// <summary>実効最高速 (m/s)。</summary>
+        /// <summary>実効最高速 (m/s)。選手のスピードスキルも影響(仕様書5章)。</summary>
         public float EffectiveTopSpeed =>
-            motor.topSpeed * propeller.TopSpeedModifier;
+            motor.topSpeed * propeller.TopSpeedModifier * (0.95f + 0.10f * player.speedSkill);
 
         /// <summary>実効旋回力。TurnPhysicsの turnRadius = speed / turnPower に使う。</summary>
         public float EffectiveTurnPower =>

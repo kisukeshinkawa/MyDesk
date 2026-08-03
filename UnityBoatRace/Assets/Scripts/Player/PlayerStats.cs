@@ -14,6 +14,8 @@ namespace BoatRace.Player
         public float mental;           // メンタル 0-1 (低いとST・攻防でブレる)
         public float experience;       // 経験値 0-1 (展開判断に影響)
         public float weight;           // 体重(kg) 47〜57 (軽いほど加速有利)
+        public float speedSkill = 0.55f;    // スピード 0-1 (直線の最高速に影響)
+        public float mechanicSkill = 0.5f;  // 整備力 0-1 (モーター整備の効果に影響)
 
         /// <summary>
         /// ST計算: ST = reactionTime + randomVariance。

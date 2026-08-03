@@ -113,6 +113,31 @@ namespace BoatRace.UI
             return chip;
         }
 
+        static Sprite speedLinesCache;
+
+        /// <summary>集中線スプライト(必殺技カットイン用)。中心から放射状の白線。</summary>
+        public static Sprite SpeedLines()
+        {
+            if (speedLinesCache != null) return speedLinesCache;
+            const int size = 512;
+            var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+            var clear = new Color(1f, 1f, 1f, 0f);
+            for (int y = 0; y < size; y++)
+                for (int x = 0; x < size; x++)
+                {
+                    float dx = x - size * 0.5f, dy = y - size * 0.5f;
+                    float dist = Mathf.Sqrt(dx * dx + dy * dy) / (size * 0.5f);
+                    float ang = Mathf.Atan2(dy, dx);
+                    // 角度で細い線を刻み、外周ほど濃く中心は透明
+                    float line = Mathf.PerlinNoise(ang * 9.5f, 0.5f) > 0.62f ? 1f : 0f;
+                    float a = line * Mathf.SmoothStep(0f, 1f, (dist - 0.35f) / 0.5f);
+                    tex.SetPixel(x, y, a > 0f ? new Color(1f, 1f, 1f, a * 0.85f) : clear);
+                }
+            tex.Apply();
+            speedLinesCache = Sprite.Create(tex, new Rect(0, 0, size, size), Vector2.one * 0.5f);
+            return speedLinesCache;
+        }
+
         /// <summary>縦グラデーションスプライト。</summary>
         public static Sprite VerticalGradient(Color top, Color bottom)
         {
