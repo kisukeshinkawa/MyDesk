@@ -225,31 +225,31 @@ namespace BoatRace.UI
             var go = new GameObject("Button_" + label);
             Place(go, parent, anchorMin, anchorMax, offsetMin, offsetMax);
             var img = go.AddComponent<Image>();
-            img.sprite = Rounded(18);
+            img.sprite = Rounded(26);            // ピル型(現代アニメアプリ調)
             img.type = Image.Type.Sliced;
             img.color = bg;
             var sh = go.AddComponent<Shadow>();
-            sh.effectColor = new Color(0f, 0f, 0f, 0.35f);
-            sh.effectDistance = new Vector2(0f, -5f);
+            sh.effectColor = new Color(0f, 0f, 0f, 0.22f);
+            sh.effectDistance = new Vector2(0f, -3f);
 
-            // 下部シェード(ツートン)
+            // ソフトな下部シェード(控えめなツートン)
             var dark = new GameObject("Shade");
-            Place(dark, go.transform, new Vector2(0f, 0f), new Vector2(1f, 0.30f),
+            Place(dark, go.transform, new Vector2(0f, 0f), new Vector2(1f, 0.34f),
                 new Vector2(3f, 3f), new Vector2(-3f, 0f));
             var darkImg = dark.AddComponent<Image>();
-            darkImg.sprite = Rounded(12);
+            darkImg.sprite = Rounded(20);
             darkImg.type = Image.Type.Sliced;
-            darkImg.color = new Color(bg.r * 0.68f, bg.g * 0.68f, bg.b * 0.68f, bg.a);
+            darkImg.color = new Color(bg.r * 0.84f, bg.g * 0.84f, bg.b * 0.84f, bg.a);
             darkImg.raycastTarget = false;
 
-            // 上部ハイライト
+            // 上部ハイライト(薄いガラス感)
             var shine = new GameObject("Shine");
-            Place(shine, go.transform, new Vector2(0f, 0.58f), new Vector2(1f, 1f),
+            Place(shine, go.transform, new Vector2(0f, 0.55f), new Vector2(1f, 1f),
                 new Vector2(4f, 0f), new Vector2(-4f, -3f));
             var shineImg = shine.AddComponent<Image>();
-            shineImg.sprite = Rounded(12);
+            shineImg.sprite = Rounded(20);
             shineImg.type = Image.Type.Sliced;
-            shineImg.color = new Color(1f, 1f, 1f, 0.20f);
+            shineImg.color = new Color(1f, 1f, 1f, 0.13f);
             shineImg.raycastTarget = false;
 
             var btn = go.AddComponent<Button>();
@@ -279,6 +279,21 @@ namespace BoatRace.UI
                 Vector2.zero, Vector2.one, new Vector2(20f, 0f), new Vector2(-8f, 0f),
                 bold: true, shadow: true, outline: true);
             return bar;
+        }
+
+        /// <summary>ガラスパネル(半透明+上辺の細いハイライトライン)。現代アプリUIの定番。</summary>
+        public static GameObject MakeGlass(Transform parent, float darkness,
+            Vector2 anchorMin, Vector2 anchorMax, Vector2 offsetMin, Vector2 offsetMax)
+        {
+            var go = MakePanel(parent, new Color(0.02f, 0.05f, 0.14f, darkness), 18,
+                anchorMin, anchorMax, offsetMin, offsetMax);
+            var line = new GameObject("TopLine");
+            Place(line, go.transform, new Vector2(0f, 1f), new Vector2(1f, 1f),
+                new Vector2(14f, -2f), new Vector2(-14f, 0f));
+            var li = line.AddComponent<Image>();
+            li.color = new Color(1f, 1f, 1f, 0.22f);
+            li.raycastTarget = false;
+            return go;
         }
 
         public static GameObject MakeFullscreenGradient(Transform parent, Color top, Color bottom)
