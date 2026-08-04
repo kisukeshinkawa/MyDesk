@@ -15,7 +15,7 @@ namespace BoatRace.UI
     public class GameFlow : MonoBehaviour
     {
         /// <summary>ビルド識別子。画面右上に表示され、更新が届いたか一目で分かる。</summary>
-        public const string Build = "B26-本物の日本地図";
+        public const string Build = "B27-UI品質向上";
 
         RaceManager race;
         ReplayManager replay;
@@ -877,7 +877,22 @@ namespace BoatRace.UI
             ClearScreen();
             currentScreen = new GameObject(name);
             UiKit.Place(currentScreen, canvas.transform, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+            // 画面切替の軽いフェードイン(全画面共通の質感)
+            var cg = currentScreen.AddComponent<CanvasGroup>();
+            cg.alpha = 0f;
+            StartCoroutine(FadeInScreen(cg));
             return currentScreen;
+        }
+
+        System.Collections.IEnumerator FadeInScreen(CanvasGroup cg)
+        {
+            for (float t = 0f; t < 0.16f; t += Time.unscaledDeltaTime)
+            {
+                if (cg == null) yield break;
+                cg.alpha = t / 0.16f;
+                yield return null;
+            }
+            if (cg != null) cg.alpha = 1f;
         }
 
         // ================= タイトル(現代アニメアプリ調) =================
@@ -1429,27 +1444,28 @@ namespace BoatRace.UI
                     ShowCareer();
                 });
 
-            string raceLabel = career.allClear ? "SG覇者として出走▶" : $"ツアーマップ▶ 第{career.chapter}章";
-            UiKit.MakeButton(s.transform, "↩ ホーム", UiKit.Cyan, 17,
-                new Vector2(0.02f, 0.11f), new Vector2(0.115f, 0.22f), Vector2.zero, Vector2.zero, ShowHome);
-            UiKit.MakeButton(s.transform, "技強化", new Color(0.62f, 0.2f, 0.75f), 18,
-                new Vector2(0.125f, 0.11f), new Vector2(0.235f, 0.22f), Vector2.zero, Vector2.zero,
-                () => ShowMoveUpgradePopup(s.transform));
-            UiKit.MakeButton(s.transform, "ガチャ", new Color(0.9f, 0.35f, 0.55f), 18,
-                new Vector2(0.245f, 0.11f), new Vector2(0.35f, 0.22f), Vector2.zero, Vector2.zero,
-                () => ShowGachaPopup(s.transform, ""));
-            UiKit.MakeButton(s.transform, "ガレージ", new Color(0.35f, 0.42f, 0.55f), 18,
-                new Vector2(0.36f, 0.11f), new Vector2(0.475f, 0.22f), Vector2.zero, Vector2.zero,
-                () => ShowGaragePopup(s.transform));
-            UiKit.MakeButton(s.transform, "施設", new Color(0.15f, 0.55f, 0.60f), 18,
-                new Vector2(0.485f, 0.11f), new Vector2(0.585f, 0.22f), Vector2.zero, Vector2.zero,
-                () => ShowFacilityPopup(s.transform));
-            UiKit.MakeButton(s.transform, raceLabel, UiKit.Red, 24,
-                new Vector2(0.595f, 0.10f), new Vector2(0.815f, 0.235f), Vector2.zero, Vector2.zero,
+            // ---- 下部メニュー: アイコン付き均等タイル+大きな出走ボタン(押しやすさ優先) ----
+            UiKit.MakeButton(s.transform, "↩\nホーム", UiKit.Cyan, 15,
+                new Vector2(0.015f, 0.10f), new Vector2(0.095f, 0.24f), Vector2.zero, Vector2.zero, ShowHome);
+            (string icon, string label, Color c, UnityEngine.Events.UnityAction act)[] tiles =
+            {
+                ("▲", "技強化", new Color(0.62f, 0.2f, 0.75f), () => ShowMoveUpgradePopup(s.transform)),
+                ("★", "ガチャ", new Color(0.9f, 0.35f, 0.55f), () => ShowGachaPopup(s.transform, "")),
+                ("▤", "ガレージ", new Color(0.35f, 0.42f, 0.55f), () => ShowGaragePopup(s.transform)),
+                ("■", "施設", new Color(0.15f, 0.55f, 0.60f), () => ShowFacilityPopup(s.transform)),
+                ("¥", "ショップ", new Color(0.9f, 0.55f, 0.1f), () => ShowShopPopup(s.transform)),
+            };
+            for (int t = 0; t < tiles.Length; t++)
+            {
+                float x0 = 0.105f + t * 0.099f;
+                UiKit.MakeButton(s.transform, $"{tiles[t].icon}\n{tiles[t].label}", tiles[t].c, 15,
+                    new Vector2(x0, 0.10f), new Vector2(x0 + 0.092f, 0.24f), Vector2.zero, Vector2.zero,
+                    tiles[t].act);
+            }
+            string raceLabel = career.allClear ? "SG覇者として出走 ▶" : $"ツアーマップへ ▶\n第{career.chapter}章「{career.Current.title}」";
+            UiKit.MakeButton(s.transform, raceLabel, UiKit.Red, career.allClear ? 24 : 19,
+                new Vector2(0.61f, 0.10f), new Vector2(0.985f, 0.24f), Vector2.zero, Vector2.zero,
                 career.allClear ? (UnityEngine.Events.UnityAction)StartCareerRace : ShowTourMap);
-            UiKit.MakeButton(s.transform, "ショップ", new Color(0.9f, 0.55f, 0.1f), 18,
-                new Vector2(0.825f, 0.11f), new Vector2(0.965f, 0.22f), Vector2.zero, Vector2.zero,
-                () => ShowShopPopup(s.transform));
 
             if (!career.debutDone)
             {
@@ -2231,29 +2247,27 @@ namespace BoatRace.UI
             betAmount = 0; betWon = false; betPayout = 0;
             if (race.playerBoatIndex >= 0)
             {
-                // ストーリー: 予想+舟券+ペラ調整+モーターを1列に(舟券は全レースで買える)
-                UiKit.MakeTag(s.transform, "予想・舟券", UiKit.Yellow, UiKit.Border, 15,
-                    new Vector2(0.02f, 0.135f), new Vector2(0.155f, 0.18f));
+                // ストーリー: 予想+舟券+ペラ調整+モーターを等高の1列に整列(操作しやすさ優先)
                 var predInfo = UiKit.MakeChip(s.transform, "未予想",
                     new Color(1f, 1f, 1f, 0.92f), UiKit.Border, 13,
-                    new Vector2(0.315f, 0.13f), new Vector2(0.425f, 0.185f), Vector2.zero, Vector2.zero);
-                UiKit.MakeButton(s.transform, "予想 ▶", new Color(0.20f, 0.55f, 0.85f), 16,
-                    new Vector2(0.165f, 0.125f), new Vector2(0.31f, 0.19f), Vector2.zero, Vector2.zero,
+                    new Vector2(0.16f, 0.122f), new Vector2(0.29f, 0.19f), Vector2.zero, Vector2.zero);
+                UiKit.MakeButton(s.transform, "予想 ▶", new Color(0.20f, 0.55f, 0.85f), 17,
+                    new Vector2(0.02f, 0.122f), new Vector2(0.155f, 0.19f), Vector2.zero, Vector2.zero,
                     () => ShowPredictPopup(s.transform, predInfo.GetComponentInChildren<Text>()));
                 var betInfo = UiKit.MakeChip(s.transform,
                     $"BC {PlayerPrefs.GetInt("br_betcoin", 1000):N0}",
                     new Color(1f, 1f, 1f, 0.92f), UiKit.Border, 13,
-                    new Vector2(0.575f, 0.13f), new Vector2(0.72f, 0.185f), Vector2.zero, Vector2.zero);
-                UiKit.MakeButton(s.transform, "舟券 ▶", new Color(0.95f, 0.60f, 0.05f), 16,
-                    new Vector2(0.43f, 0.125f), new Vector2(0.57f, 0.19f), Vector2.zero, Vector2.zero,
+                    new Vector2(0.44f, 0.122f), new Vector2(0.575f, 0.19f), Vector2.zero, Vector2.zero);
+                UiKit.MakeButton(s.transform, "舟券 ▶", new Color(0.95f, 0.60f, 0.05f), 17,
+                    new Vector2(0.30f, 0.122f), new Vector2(0.435f, 0.19f), Vector2.zero, Vector2.zero,
                     () => ShowBetPopup(s.transform, aiScores, null,
                         betInfo.GetComponentInChildren<Text>()));
 
                 // 整備ミニゲーム(仕様書④): タイミング操作でペラ調整(1レース1回)
                 bool tuned = career.tuneQuality != 0;
                 var tuneBtn = UiKit.MakeButton(s.transform, tuned ? "整備済" : "ペラ調整",
-                    tuned ? new Color(0.55f, 0.60f, 0.68f) : new Color(0.95f, 0.45f, 0.10f), 16,
-                    new Vector2(0.725f, 0.125f), new Vector2(0.85f, 0.19f), Vector2.zero, Vector2.zero,
+                    tuned ? new Color(0.55f, 0.60f, 0.68f) : new Color(0.95f, 0.45f, 0.10f), 17,
+                    new Vector2(0.585f, 0.122f), new Vector2(0.72f, 0.19f), Vector2.zero, Vector2.zero,
                     () => { });
                 var tuneLabel = tuneBtn.GetComponentInChildren<Text>();
                 tuneBtn.onClick.AddListener(() =>
@@ -2269,10 +2283,10 @@ namespace BoatRace.UI
                 // マイレーサー画面で見られるように今節モーターを記録
                 PlayerPrefs.SetString("br_last_motor",
                     $"M{pm.motorNumber}〈{mGrade}〉2連率{pm.winRate2:F0}%");
-                UiKit.MakeChip(s.transform, mGrade,
+                UiKit.MakeChip(s.transform, $"M{pm.motorNumber} {mGrade} 2連率{pm.winRate2:F0}%",
                     pm.OverallScore >= 70f ? UiKit.Yellow : new Color(1f, 1f, 1f, 0.92f),
-                    UiKit.Border, 14,
-                    new Vector2(0.855f, 0.13f), new Vector2(0.985f, 0.185f), Vector2.zero, Vector2.zero);
+                    UiKit.Border, 13,
+                    new Vector2(0.73f, 0.122f), new Vector2(0.985f, 0.19f), Vector2.zero, Vector2.zero);
             }
             else
             {

@@ -268,6 +268,12 @@ namespace BoatRace.UI
 
             var btn = go.AddComponent<Button>();
             btn.targetGraphic = img;
+            // 押した感触(ホバーで少し明るく、押下で沈む色)
+            var cb = btn.colors;
+            cb.highlightedColor = new Color(1.07f, 1.07f, 1.07f, 1f);
+            cb.pressedColor = new Color(0.80f, 0.80f, 0.80f, 1f);
+            cb.fadeDuration = 0.07f;
+            btn.colors = cb;
             btn.onClick.AddListener(() => BoatRace.Core.AudioKit.Click()); // 全ボタン共通のクリック音
             btn.onClick.AddListener(onClick);
             MakeText(go.transform, label, fontSize, Color.white, TextAnchor.MiddleCenter,
