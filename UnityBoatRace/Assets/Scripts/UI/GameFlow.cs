@@ -15,7 +15,7 @@ namespace BoatRace.UI
     public class GameFlow : MonoBehaviour
     {
         /// <summary>ビルド識別子。画面右上に表示され、更新が届いたか一目で分かる。</summary>
-        public const string Build = "B22-サイズ調整+技選択モック";
+        public const string Build = "B23-タイトル全幅デザイン";
 
         RaceManager race;
         ReplayManager replay;
@@ -891,16 +891,44 @@ namespace BoatRace.UI
             AudioKit.Bgm(true);
             AudioKit.Crowd(0f);
 
-            // 3D会場を透かせる青のベール(暗めに締めて背景の雑味を隠す)
-            UiKit.MakeFullscreenGradient(s.transform,
-                new Color(0.03f, 0.10f, 0.34f, 0.55f), new Color(0.01f, 0.03f, 0.13f, 0.96f));
-
-            // AI生成キービジュアル(Art/title_kv.png)。縦長絵を中央に高さフィットで置く
+            // ---- 全画面幅のタイトル構成 ----
+            // 1) KVを全幅に引き伸ばした「アンビエント背景」(青く沈めて敷く)
             var kvSprite = FaceArt.LoadArt("title_kv");
             if (kvSprite != null)
             {
+                var amb = new GameObject("KVAmbient");
+                UiKit.Place(amb, s.transform, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+                var ambImg = amb.AddComponent<Image>();
+                ambImg.sprite = kvSprite;
+                ambImg.color = new Color(0.42f, 0.50f, 0.68f, 1f);
+                ambImg.raycastTarget = false;
+            }
+
+            // 2) 青のベール(3D/アンビエントを締める)
+            UiKit.MakeFullscreenGradient(s.transform,
+                new Color(0.03f, 0.10f, 0.34f, kvSprite != null ? 0.35f : 0.55f),
+                new Color(0.01f, 0.03f, 0.13f, kvSprite != null ? 0.88f : 0.96f));
+
+            // 3) 左右端の斜めスピードストライプ(全幅を締めるTEIDOアクセント)
+            foreach (var (x0, x1, sc) in new (float, float, Color)[]
+            {
+                (0.012f, 0.032f, new Color(0.31f, 0.66f, 0.97f, 0.50f)),
+                (0.042f, 0.052f, new Color(1f, 0.84f, 0f, 0.40f)),
+                (0.968f, 0.988f, new Color(0.31f, 0.66f, 0.97f, 0.50f)),
+                (0.948f, 0.958f, new Color(1f, 0.84f, 0f, 0.40f)),
+            })
+            {
+                var bar = UiKit.MakePanel(s.transform, sc, 0,
+                    new Vector2(x0, -0.08f), new Vector2(x1, 1.08f), Vector2.zero, Vector2.zero);
+                bar.AddComponent<SkewFx>().skewX = 16f;
+                bar.GetComponent<Image>().raycastTarget = false;
+            }
+
+            // 4) 中央の鮮明キービジュアル(広めに配置)
+            if (kvSprite != null)
+            {
                 var kvGo = new GameObject("KeyVisual");
-                UiKit.Place(kvGo, s.transform, new Vector2(0.24f, 0f), new Vector2(0.76f, 1f),
+                UiKit.Place(kvGo, s.transform, new Vector2(0.17f, 0f), new Vector2(0.83f, 1f),
                     Vector2.zero, Vector2.zero);
                 var kvImg = kvGo.AddComponent<Image>();
                 kvImg.sprite = kvSprite;
@@ -960,7 +988,7 @@ namespace BoatRace.UI
             if (logoSprite != null)
             {
                 var lgGo = new GameObject("LogoImg");
-                UiKit.Place(lgGo, logo.transform, new Vector2(0.12f, 0.18f), new Vector2(0.88f, 1f),
+                UiKit.Place(lgGo, logo.transform, new Vector2(0.06f, 0.18f), new Vector2(0.94f, 1f),
                     Vector2.zero, Vector2.zero);
                 var lgImg = lgGo.AddComponent<Image>();
                 lgImg.sprite = logoSprite;
@@ -1015,15 +1043,14 @@ namespace BoatRace.UI
                 () => ShowInfoPopup("あそびかた", "レース中の操作はターン進入時の\n「技の選択」だけ！\n\n体力を使って必殺技を放ち、\n1着を勝ち取ろう。"),
                 () => ShowStatsPopup(s.transform),
             };
+            // 全幅に広げた下部メニュー(半透明の斜めプレート)
             for (int i = 0; i < 3; i++)
             {
                 int mi = i;
-                var mb = new GameObject("Menu_" + menuLabels[i]);
-                UiKit.Place(mb, s.transform,
-                    new Vector2(0.26f + i * 0.17f, 0.065f), new Vector2(0.41f + i * 0.17f, 0.115f),
+                var mb = UiKit.MakePanel(s.transform, new Color(1f, 1f, 1f, 0.10f), 10,
+                    new Vector2(0.135f + i * 0.30f, 0.060f), new Vector2(0.295f + i * 0.30f, 0.118f),
                     Vector2.zero, Vector2.zero);
-                var mimg = mb.AddComponent<Image>();
-                mimg.color = new Color(0f, 0f, 0f, 0f);
+                mb.AddComponent<SkewFx>().skewX = 10f;
                 mb.AddComponent<Button>().onClick.AddListener(() => menuActs[mi]());
                 UiKit.MakeText(mb.transform, menuLabels[i], 20, Color.white, TextAnchor.MiddleCenter,
                     Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, bold: true, shadow: true);
