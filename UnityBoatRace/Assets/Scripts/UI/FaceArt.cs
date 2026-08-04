@@ -66,10 +66,12 @@ namespace BoatRace.UI
             }
             if (boatSheet == null || idx < 0 || idx > 5) return null;
             if (boatCache[idx] != null) return boatCache[idx];
+            // シート構成: 3列×2段。各パネル上部の大きなヒーロー艇だけを切り出す
+            // (下半分の小さい5面図は含めない)
             int col = idx % 3, row = idx / 3; // 上段=1-3号艇, 下段=4-6号艇
-            float u0 = col / 3f + 0.015f, u1 = col / 3f + 0.315f;
-            float v0 = row == 0 ? 0.60f : 0.10f;
-            float v1 = row == 0 ? 0.97f : 0.47f;
+            float u0 = col / 3f + 0.02f, u1 = col / 3f + 0.325f;
+            float v0 = row == 0 ? 0.755f : 0.255f;
+            float v1 = row == 0 ? 0.985f : 0.485f;
             var rect = new Rect(u0 * boatSheet.width, v0 * boatSheet.height,
                 (u1 - u0) * boatSheet.width, (v1 - v0) * boatSheet.height);
             boatCache[idx] = Sprite.Create(boatSheet, rect, new Vector2(0.5f, 0.5f), 100f);
