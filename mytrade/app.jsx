@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 // MyTrade — 投資専用スタンドアロンアプリ (MyDeskから分離)
 // バックエンド: mydesk-stock-analysis Lambda (共用・変更不要)
 // ═══════════════════════════════════════════════════════════════
-const MYTRADE_BUILD = "2026-08-06-v1-standalone";
+const MYTRADE_BUILD = "2026-08-06-v2-tabbed-ui";
 if (typeof window !== "undefined") {
   window.__MYTRADE_BUILD = MYTRADE_BUILD;
   console.log(`[MyTrade] Build: ${MYTRADE_BUILD}`);
@@ -177,6 +177,7 @@ function StockScoreBar({label,score,signal}) {
 }
 
 function StockView({currentUser}) {
+  const [view, setView]           = useState(()=>localStorage.getItem("mt_view")||"home"); // home|analyze|portfolio|learn|settings
   const [apiUrl, setApiUrl]       = useState(()=>localStorage.getItem("md_stock_api_url")||STOCK_API_URL);
   const [urlInput, setUrlInput]   = useState("");
   const [watchlist, setWatchlist] = useState(()=>{try{return JSON.parse(localStorage.getItem("md_stock_watchlist")||"[]");}catch{return [];}});
@@ -192,16 +193,16 @@ function StockView({currentUser}) {
   const [mktFilter, setMktFilter] = useState("all");
   const [errMsg, setErrMsg]       = useState("");
   const [perf, setPerf]           = useState(null);  // {stats, config} 学習・成績
-  const [showLearn, setShowLearn] = useState(false);
+  const [showLearn, setShowLearn] = useState(true);
   const [btRep, setBtRep]         = useState(null);  // 10年バックテスト結果
   const [screenRes, setScreenRes] = useState(null);  // スクリーニング結果
   const [report, setReport]       = useState(null);  // 朝レポート
-  const [showReport, setShowReport] = useState(false);
+  const [showReport, setShowReport] = useState(true);
   const [holdEdit, setHoldEdit]   = useState(false); // 保有登録フォーム表示
   const [holdForm, setHoldForm]   = useState({price:"",qty:""});
   const [pfBrain, setPfBrain]     = useState(null);  // ポートフォリオAI診断
   const [journal, setJournal]     = useState(null);  // トレード日誌 {trades,stats}
-  const [showJournal, setShowJournal] = useState(false);
+  const [showJournal, setShowJournal] = useState(true);
   const [capital, setCapital]     = useState(()=>localStorage.getItem("md_stock_capital")||"");  // 万(銘柄通貨建て)
   const [riskPct, setRiskPct]     = useState(()=>localStorage.getItem("md_stock_risk")||"2");
 
@@ -252,6 +253,13 @@ function StockView({currentUser}) {
     } catch(e){ /* 旧Lambda(watchlist未対応)でも動くようフォールバック */ }
     refreshAll();
   })(); /* eslint-disable-next-line */ },[]);
+
+  // タブ切替時に必要なデータを自動ロード
+  useEffect(()=>{ if(!apiUrl) return;
+    if(view==="home"&&!report&&!busy.report) loadReport(false);
+    if(view==="portfolio"&&!journal&&!busy.journal) loadJournal();
+    if(view==="learn"&&!perf&&!busy.perf) loadPerf();
+  /* eslint-disable-next-line */ },[view]);
 
   const searchStock = async () => {
     if(!query.trim()) return;
@@ -420,25 +428,23 @@ function StockView({currentUser}) {
 
   return (
     <div style={{paddingBottom:"1.5rem"}}>
-      {/* ヘッダー */}
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:"0.6rem",marginBottom:"1rem"}}>
-        <div style={{fontWeight:800,fontSize:"1.1rem",color:C.text}}>📈 株式分析 <span style={{fontSize:"0.7rem",fontWeight:600,color:C.textMuted}}>プロトレーダーダッシュボード</span></div>
-        <div style={{display:"flex",alignItems:"center",gap:"0.6rem",flexWrap:"wrap"}}>
-          <div style={{display:"flex",alignItems:"center",gap:"0.35rem",fontSize:"0.7rem",fontWeight:700,color:C.textSub}}>
-            長期
-            <input type="range" min="0" max="100" step="10" value={weight}
-              onChange={e=>{const v=parseInt(e.target.value,10);setWeight(v);localStorage.setItem("md_stock_weight",String(v));}}
-              style={{width:90,accentColor:C.accent}}/>
-            短期 <span style={{color:C.accent}}>{weight}%</span>
-          </div>
-          <button onClick={()=>refreshAll()} disabled={busy.all}
-            style={{padding:"0.5rem 0.9rem",borderRadius:8,border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",opacity:busy.all?0.6:1}}>
-            {busy.all?"分析中...":"🔄 全銘柄を再分析"}
+      {/* タブナビ */}
+      <div style={{display:"flex",gap:"0.25rem",marginBottom:"1rem",background:"white",borderRadius:12,padding:"0.3rem",border:`1px solid ${C.border}`,overflowX:"auto",WebkitOverflowScrolling:"touch",position:"sticky",top:52,zIndex:40,boxShadow:C.shadow}}>
+        {[["home","🏠","ホーム"],["analyze","🔍","分析"],["portfolio","💼","ポートフォリオ"],["learn","🎓","学習・検証"],["settings","⚙️","設定"]].map(([v,ic,l])=>(
+          <button key={v} onClick={()=>{setView(v);localStorage.setItem("mt_view",v);}}
+            style={{flexShrink:0,display:"flex",alignItems:"center",gap:"0.35rem",padding:"0.5rem 0.9rem",borderRadius:9,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:"0.8rem",fontWeight:view===v?800:600,background:view===v?C.accent:"transparent",color:view===v?"white":C.textSub,transition:"all 0.15s"}}>
+            <span>{ic}</span><span style={{whiteSpace:"nowrap"}}>{l}</span>
           </button>
-        </div>
+        ))}
+        <div style={{flex:1}}/>
+        <button onClick={()=>refreshAll()} disabled={busy.all}
+          style={{flexShrink:0,padding:"0.5rem 0.9rem",borderRadius:9,border:"none",background:C.accentBg,color:C.accentDark,fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",opacity:busy.all?0.6:1}}>
+          {busy.all?"更新中...":"🔄 全銘柄更新"}
+        </button>
       </div>
-
       {errMsg&&<div style={{padding:"0.6rem 0.85rem",borderRadius:8,background:C.redBg,color:C.red,fontSize:"0.78rem",fontWeight:600,marginBottom:"0.85rem"}}>{errMsg}</div>}
+
+      {view==="home"&&(<>
 
       {/* 地合いパネル */}
       {market&&(
@@ -463,136 +469,101 @@ function StockView({currentUser}) {
         </div>
       )}
 
-      {/* 🎓 AI学習・成績パネル */}
+      {/* 📰 朝レポート */}
       <div style={{...card,marginBottom:"0.85rem",padding:"0.85rem 1rem"}}>
-        <div onClick={()=>{const next=!showLearn; setShowLearn(next); if(next&&!perf&&!busy.perf) loadPerf();}}
+        <div onClick={()=>{const n=!showReport; setShowReport(n); if(n&&!report&&!busy.report) loadReport(false);}}
           style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"}}>
-          <div style={{fontWeight:800,fontSize:"0.85rem",color:C.text}}>🎓 AI学習・成績 <span style={{fontSize:"0.68rem",fontWeight:600,color:C.textMuted}}>過去の判定実績とバックテストで精度を自動改善</span></div>
-          <span style={{fontSize:"0.8rem",color:C.textMuted}}>{showLearn?"▲":"▼"}</span>
+          <div style={{fontWeight:800,fontSize:"0.85rem",color:C.text}}>📰 朝レポート <span style={{fontSize:"0.68rem",fontWeight:600,color:C.textMuted}}>全銘柄スキャン・シグナル変化と保有損益のアラート(毎朝自動化可)</span></div>
+          <span style={{fontSize:"0.8rem",color:C.textMuted}}>{showReport?"▲":"▼"}</span>
         </div>
-        {showLearn&&(
+        {showReport&&(
           <div style={{marginTop:"0.75rem"}}>
-            <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap",marginBottom:"0.75rem"}}>
-              <button onClick={runLearn} disabled={busy.learn}
-                style={{padding:"0.5rem 0.95rem",borderRadius:8,border:"none",background:"linear-gradient(135deg,#7A5AD9,#0070D4)",color:"white",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",opacity:busy.learn?0.6:1}}>
-                {busy.learn?"学習中(1〜2分)...":"📚 過去実績＋バックテストで学習"}
+            <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap",marginBottom:"0.6rem"}}>
+              <button onClick={()=>loadReport(true)} disabled={busy.report}
+                style={{padding:"0.5rem 0.95rem",borderRadius:8,border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",opacity:busy.report?0.6:1}}>
+                {busy.report?"生成中...":"▶ 今すぐ生成"}
               </button>
-              <button onClick={runBacktest} disabled={busy.bt}
-                style={{padding:"0.5rem 0.95rem",borderRadius:8,border:"none",background:C.text,color:"white",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",opacity:busy.bt?0.6:1}}>
-                {busy.bt?"検証中(2〜4分)...":"📊 過去10年で検証(ウォークフォワード)"}
-              </button>
-              <button onClick={loadPerf} disabled={busy.perf}
+              <button onClick={()=>loadReport(false)} disabled={busy.report}
                 style={{padding:"0.5rem 0.95rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}}>
-                {busy.perf?"取得中...":"🔄 成績を更新"}
+                🔄 最新を表示
               </button>
             </div>
-            {btRep&&(()=>{
-              const fmt = s=>s?`${s.n}件 / 勝率${s.winRate}% / 平均${s.avgRet>=0?"+":""}${s.avgRet}% / 対指数${s.avgExcess>=0?"+":""}${s.avgExcess}%`:"—";
-              const rows = [
-                ["① 素点のまま", btRep.testRaw&&btRep.testRaw.buy],
-                ["② 因子重み学習後", btRep.testWeighted&&btRep.testWeighted.buy],
-                ["③ ②＋地合いフィルタ", btRep.testWeightedRegime&&btRep.testWeightedRegime.buy],
-              ];
-              return (
-                <div style={{marginBottom:"0.75rem",padding:"0.7rem 0.85rem",background:C.bg,borderRadius:8,border:`1px solid ${C.borderLight}`}}>
-                  <div style={{fontSize:"0.75rem",fontWeight:800,color:C.text,marginBottom:"0.3rem"}}>
-                    📊 10年ウォークフォワード検証結果
-                    <span style={{fontWeight:600,color:C.textMuted,marginLeft:"0.4rem"}}>
-                      {btRep.period.from}〜{btRep.period.to} / {btRep.samples}サンプル / {btRep.period.trainTestSplit}以降は学習に使っていない未知データで測定
-                    </span>
-                  </div>
-                  <div style={{fontSize:"0.7rem",fontWeight:700,color:C.textSub,marginBottom:"0.15rem"}}>「買い(70点以上)」シグナルの20営業日後成績(検証期間のみ):</div>
-                  {rows.map(([l,s])=>(
-                    <div key={l} style={{fontSize:"0.72rem",color:C.text,lineHeight:1.7,display:"flex",gap:"0.5rem"}}>
-                      <span style={{minWidth:150,fontWeight:700,color:C.textSub}}>{l}</span><span>{fmt(s)}</span>
-                    </div>
-                  ))}
-                  {btRep.thresholds&&Object.keys(btRep.thresholds).length>0&&(
-                    <div style={{marginTop:"0.4rem"}}>
-                      <div style={{fontSize:"0.7rem",fontWeight:700,color:C.textSub,marginBottom:"0.15rem"}}>買い閾値別(③条件下):</div>
-                      <div style={{display:"flex",gap:"0.35rem",flexWrap:"wrap"}}>
-                        {Object.entries(btRep.thresholds).map(([th,s])=>(
-                          <span key={th} style={S.chip(s.winRate>=55?C.greenBg:C.borderLight, s.winRate>=55?C.green:C.textSub)}>
-                            {th}点↑: 勝率{s.winRate}% ({s.n}件)
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  <div style={{fontSize:"0.66rem",color:C.textMuted,marginTop:"0.4rem"}}>
-                    ✓ 検証済みの因子重みと地合いフィルタは本番スコアリングに自動適用されました
-                  </div>
-                </div>
-              );
-            })()}
-            {!perf&&!busy.perf&&<div style={{fontSize:"0.75rem",color:C.textMuted,lineHeight:1.6}}>
-              分析するたびに予測が自動記録され、5営業日後・20営業日後に答え合わせされます。<br/>
-              「学習」を実行すると過去2年分のバックテストで因子の重みを最適化し、外れた判定から教訓を抽出してAI判定に反映します。
-            </div>}
-            {perf&&(()=>{
-              const cfg = perf.config||{};
-              const st = perf.stats||cfg.stats||{};
-              const SIG_LABEL = {buy:"🟢買い候補",watch:"🟡監視",avoid:"⚪見送り"};
-              const VD_LABEL = {strong_buy:"🚀強い買い",buy:"🟢買い",hold:"🟡様子見",avoid:"⚪見送り",sell:"🔴売り"};
-              const statTable = (title,obj,labels)=>obj&&Object.keys(obj).length>0&&(
-                <div style={{flex:"1 1 220px",minWidth:0}}>
-                  <div style={{fontSize:"0.72rem",fontWeight:800,color:C.textSub,marginBottom:"0.3rem"}}>{title}</div>
-                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:"0.72rem"}}>
-                    <tbody>
-                      {Object.entries(obj).map(([k,v])=>(
-                        <tr key={k} style={{borderBottom:`1px solid ${C.borderLight}`}}>
-                          <td style={{padding:"0.3rem 0.2rem",fontWeight:700,color:C.text}}>{labels[k]||k}</td>
-                          <td style={{padding:"0.3rem 0.2rem",textAlign:"right",color:C.textMuted}}>{v.n}件</td>
-                          <td style={{padding:"0.3rem 0.2rem",textAlign:"right",fontWeight:800,color:v.winRate>=55?C.green:(v.winRate>=45?C.yellow:C.red)}}>勝率{v.winRate}%</td>
-                          <td style={{padding:"0.3rem 0.2rem",textAlign:"right",fontWeight:700,color:v.avgRet>=0?C.green:C.red}}>{v.avgRet>=0?"+":""}{v.avgRet}%</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              );
-              return (
-                <div>
-                  {cfg.updatedAt&&(
-                    <div style={{fontSize:"0.68rem",color:C.textMuted,marginBottom:"0.5rem"}}>
-                      最終学習: {new Date(cfg.updatedAt).toLocaleString("ja-JP")} / バックテスト{cfg.backtestSamples||0}サンプル＋実運用{cfg.liveSamples||0}件 / 記録済み予測{st.total||0}件(答え合わせ済{st.evaluated||0}件)
-                    </div>
-                  )}
-                  {cfg.factor_weights&&(
-                    <div style={{marginBottom:"0.6rem"}}>
-                      <div style={{fontSize:"0.72rem",fontWeight:800,color:C.textSub,marginBottom:"0.3rem"}}>⚖️ 学習済み因子重み(短期スコアに自動適用中)</div>
-                      <div style={{display:"flex",gap:"0.35rem",flexWrap:"wrap"}}>
-                        {Object.entries(cfg.factor_weights).map(([k,v])=>(
-                          <span key={k} style={S.chip(v>1.05?C.greenBg:(v<0.95?C.redBg:C.borderLight), v>1.05?C.green:(v<0.95?C.red:C.textSub))}>
-                            {k} ×{v}{cfg.factor_ic&&cfg.factor_ic[k]!=null?` (IC ${cfg.factor_ic[k]>=0?"+":""}${cfg.factor_ic[k]})`:""}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  <div style={{display:"flex",gap:"1rem",flexWrap:"wrap",marginBottom:"0.6rem"}}>
-                    {statTable("短期シグナル別成績(5日後)", st.bySignal5d, SIG_LABEL)}
-                    {statTable("AI判定別成績(5日後)", st.byVerdict5d, VD_LABEL)}
-                    {statTable("短期シグナル別成績(20日後)", st.bySignal20d, SIG_LABEL)}
-                    {statTable("AI判定別成績(20日後)", st.byVerdict20d, VD_LABEL)}
-                  </div>
-                  {(!st.evaluated||st.evaluated===0)&&(
-                    <div style={{fontSize:"0.72rem",color:C.textMuted,marginBottom:"0.5rem"}}>
-                      ※実運用の答え合わせはまだありません(予測記録から5営業日後に自動確定)。それまでは過去2年のバックテストが学習を担います。
-                    </div>
-                  )}
-                  {cfg.lessons&&cfg.lessons.length>0&&(
-                    <div style={{padding:"0.6rem 0.8rem",background:C.purpleBg,borderRadius:8}}>
-                      <div style={{fontSize:"0.72rem",fontWeight:800,color:C.purple,marginBottom:"0.25rem"}}>📖 AIが実績から学んだ教訓(次回の判定に自動反映)</div>
-                      {cfg.lessons.map((l,i)=><div key={i} style={{fontSize:"0.73rem",color:C.text,lineHeight:1.6}}>・{l}</div>)}
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
+            {report&&report.alerts&&report.alerts.length>0&&(
+              <div style={{padding:"0.5rem 0.7rem",background:C.orangeBg,borderRadius:8,marginBottom:"0.5rem"}}>
+                {report.alerts.map((a,i)=><div key={i} style={{fontSize:"0.76rem",fontWeight:700,color:C.orange,lineHeight:1.6}}>{a}</div>)}
+              </div>
+            )}
+            {report&&report.body
+              ? <pre style={{margin:0,padding:"0.6rem 0.8rem",background:C.bg,borderRadius:8,fontSize:"0.72rem",lineHeight:1.65,color:C.text,whiteSpace:"pre-wrap",fontFamily:"inherit",border:`1px solid ${C.borderLight}`}}>{report.body}</pre>
+              : <div style={{fontSize:"0.75rem",color:C.textMuted}}>{busy.report?"":"レポートがまだありません。「今すぐ生成」を押すか、EventBridgeで毎朝の自動生成を設定してください(README参照)"}</div>}
           </div>
         )}
       </div>
+
+      {/* ウォッチリスト */}
+      <div style={{...card,marginBottom:"0.85rem",padding:0,overflow:"hidden"}}>
+        <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:"0.8rem",minWidth:640}}>
+            <thead>
+              <tr style={{background:C.bg}}>
+                {["銘柄","現在値","前日比","損益","短期","長期","総合","判定",""].map((h,i)=>(
+                  <th key={i} style={{padding:"0.55rem 0.7rem",textAlign:i===0?"left":"right",fontSize:"0.68rem",fontWeight:700,color:C.textMuted,whiteSpace:"nowrap",borderBottom:`1px solid ${C.border}`}}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.length===0&&(
+                <tr><td colSpan={9} style={{padding:"1.5rem",textAlign:"center",color:C.textMuted,fontSize:"0.82rem"}}>
+                  ウォッチリストが空です。上の検索から銘柄を追加してください
+                </td></tr>
+              )}
+              {rows.map(({ticker,name,market:mkt,a,holding})=>{
+                const q = a?STOCK_QUAD_META[a.quadrant]:null;
+                const pnl = (holding&&holding.price&&a)?(a.price/holding.price-1)*100:null;
+                return (
+                  <tr key={ticker} onClick={()=>{setSelected(ticker); setHoldEdit(false); if(!newsMap[ticker]) loadNews(ticker); setView("analyze"); localStorage.setItem("mt_view","analyze");}}
+                    style={{cursor:"pointer",background:selected===ticker?C.surfaceHover:"white",borderBottom:`1px solid ${C.borderLight}`}}>
+                    <td style={{padding:"0.6rem 0.7rem"}}>
+                      <div style={{fontWeight:700,color:C.text,whiteSpace:"nowrap"}}>{mkt==="JP"?"🇯🇵":"🇺🇸"} {a?.name||name}{holding?" 💼":""}</div>
+                      <div style={{fontSize:"0.68rem",color:C.textMuted}}>{ticker}{a?.sector?` / ${a.sector}`:""}</div>
+                    </td>
+                    <td style={{padding:"0.6rem 0.7rem",textAlign:"right",fontWeight:700,color:C.text,whiteSpace:"nowrap"}}>{a?Number(a.price).toLocaleString():"—"}</td>
+                    <td style={{padding:"0.6rem 0.7rem",textAlign:"right",fontWeight:700,whiteSpace:"nowrap",color:a?(a.chg1d>=0?C.green:C.red):C.textMuted}}>{a?`${a.chg1d>=0?"+":""}${a.chg1d}%`:"—"}</td>
+                    <td style={{padding:"0.6rem 0.7rem",textAlign:"right",fontWeight:800,whiteSpace:"nowrap",color:pnl==null?C.textMuted:(pnl>=0?C.green:C.red)}}>{pnl==null?"—":`${pnl>=0?"+":""}${pnl.toFixed(1)}%`}</td>
+                    <td style={{padding:"0.6rem 0.7rem",textAlign:"right",fontWeight:800,color:a?(a.short.score>=70?C.green:(a.short.score>=45?C.yellow:C.textMuted)):C.textMuted}}>{a?a.short.score:"—"}</td>
+                    <td style={{padding:"0.6rem 0.7rem",textAlign:"right",fontWeight:800,color:a?(a.long.score>=70?C.green:(a.long.score>=50?C.yellow:C.textMuted)):C.textMuted}}>{a?a.long.score:"—"}</td>
+                    <td style={{padding:"0.6rem 0.7rem",textAlign:"right",fontWeight:800,color:C.accent}}>{a?weighted(a):"—"}</td>
+                    <td style={{padding:"0.6rem 0.7rem",textAlign:"right"}}>{q&&<span style={S.chip(q.bg,q.color)}>{a.quadrant}</span>}</td>
+                    <td style={{padding:"0.6rem 0.5rem",textAlign:"right"}}>
+                      <button onClick={e=>{e.stopPropagation();if(confirm(`${name} をウォッチリストから削除しますか？`))removeStock(ticker);}}
+                        style={{...S.iconBtn,color:C.textMuted,fontSize:"0.8rem"}}>✕</button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      </>)}
+
+      {view==="analyze"&&(<>
+
+      {/* 分析: 銘柄切替チップ */}
+      {watchlist.length>0&&(
+        <div style={{display:"flex",gap:"0.35rem",flexWrap:"wrap",marginBottom:"0.85rem"}}>
+          {watchlist.map(w=>{
+            const a = results[w.ticker];
+            return (
+              <button key={w.ticker} onClick={()=>{setSelected(w.ticker);setHoldEdit(false);if(!newsMap[w.ticker])loadNews(w.ticker);}}
+                style={{padding:"0.4rem 0.75rem",borderRadius:999,border:`1.5px solid ${selected===w.ticker?C.accent:C.border}`,cursor:"pointer",fontFamily:"inherit",fontSize:"0.75rem",fontWeight:selected===w.ticker?800:600,background:selected===w.ticker?C.accentBg:"white",color:selected===w.ticker?C.accentDark:C.textSub}}>
+                {w.market==="JP"?"🇯🇵":"🇺🇸"} {(a&&a.name)||w.name}{w.holding?" 💼":""}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* 銘柄追加 + フィルタ */}
       <div style={{...card,marginBottom:"0.85rem",padding:"0.75rem 1rem"}}>
@@ -656,194 +627,6 @@ function StockView({currentUser}) {
             ))}
           </div>
         )}
-      </div>
-
-      {/* 📰 朝レポート */}
-      <div style={{...card,marginBottom:"0.85rem",padding:"0.85rem 1rem"}}>
-        <div onClick={()=>{const n=!showReport; setShowReport(n); if(n&&!report&&!busy.report) loadReport(false);}}
-          style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"}}>
-          <div style={{fontWeight:800,fontSize:"0.85rem",color:C.text}}>📰 朝レポート <span style={{fontSize:"0.68rem",fontWeight:600,color:C.textMuted}}>全銘柄スキャン・シグナル変化と保有損益のアラート(毎朝自動化可)</span></div>
-          <span style={{fontSize:"0.8rem",color:C.textMuted}}>{showReport?"▲":"▼"}</span>
-        </div>
-        {showReport&&(
-          <div style={{marginTop:"0.75rem"}}>
-            <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap",marginBottom:"0.6rem"}}>
-              <button onClick={()=>loadReport(true)} disabled={busy.report}
-                style={{padding:"0.5rem 0.95rem",borderRadius:8,border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",opacity:busy.report?0.6:1}}>
-                {busy.report?"生成中...":"▶ 今すぐ生成"}
-              </button>
-              <button onClick={()=>loadReport(false)} disabled={busy.report}
-                style={{padding:"0.5rem 0.95rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}}>
-                🔄 最新を表示
-              </button>
-            </div>
-            {report&&report.alerts&&report.alerts.length>0&&(
-              <div style={{padding:"0.5rem 0.7rem",background:C.orangeBg,borderRadius:8,marginBottom:"0.5rem"}}>
-                {report.alerts.map((a,i)=><div key={i} style={{fontSize:"0.76rem",fontWeight:700,color:C.orange,lineHeight:1.6}}>{a}</div>)}
-              </div>
-            )}
-            {report&&report.body
-              ? <pre style={{margin:0,padding:"0.6rem 0.8rem",background:C.bg,borderRadius:8,fontSize:"0.72rem",lineHeight:1.65,color:C.text,whiteSpace:"pre-wrap",fontFamily:"inherit",border:`1px solid ${C.borderLight}`}}>{report.body}</pre>
-              : <div style={{fontSize:"0.75rem",color:C.textMuted}}>{busy.report?"":"レポートがまだありません。「今すぐ生成」を押すか、EventBridgeで毎朝の自動生成を設定してください(README参照)"}</div>}
-          </div>
-        )}
-      </div>
-
-      {/* 💼 ポートフォリオ全体ビュー(保有がある時のみ) */}
-      {(()=>{
-        const holds = watchlist.filter(w=>w.holding&&w.holding.price).map(w=>({...w, a:results[w.ticker]}));
-        if(!holds.length) return null;
-        const withQty = holds.filter(h=>h.holding.qty&&h.a);
-        const totalCost = withQty.reduce((s,h)=>s+h.holding.price*h.holding.qty,0);
-        const totalVal  = withQty.reduce((s,h)=>s+h.a.price*h.holding.qty,0);
-        const bySector = {};
-        withQty.forEach(h=>{ const k=(h.a&&h.a.sector)||"その他"; bySector[k]=(bySector[k]||0)+h.a.price*h.holding.qty; });
-        const warns = [];
-        Object.entries(bySector).forEach(([k,v])=>{ if(totalVal>0&&v/totalVal>0.5) warns.push(`セクター集中: ${k}が${Math.round(v/totalVal*100)}%`); });
-        withQty.forEach(h=>{ if(totalVal>0&&h.a.price*h.holding.qty/totalVal>0.4) warns.push(`1銘柄集中: ${h.a.name}が${Math.round(h.a.price*h.holding.qty/totalVal*100)}%`); });
-        for(let i=0;i<holds.length;i++) for(let j=i+1;j<holds.length;j++){
-          if(holds[i].a&&holds[j].a&&holds[i].a.spark&&holds[j].a.spark){
-            const c = corrOf(holds[i].a.spark, holds[j].a.spark);
-            if(c>0.85) warns.push(`高相関: ${holds[i].a.name}×${holds[j].a.name}(${c.toFixed(2)}) 分散効果なし`);
-          }
-        }
-        return (
-          <div style={{...card,marginBottom:"0.85rem",padding:"0.85rem 1rem"}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:"0.5rem",marginBottom:"0.5rem"}}>
-              <div style={{fontWeight:800,fontSize:"0.85rem",color:C.text}}>💼 ポートフォリオ <span style={{fontSize:"0.68rem",fontWeight:600,color:C.textMuted}}>{holds.length}銘柄保有</span></div>
-              <button onClick={runPfBrain} disabled={busy.pf}
-                style={{padding:"0.45rem 0.85rem",borderRadius:8,border:"none",background:"linear-gradient(135deg,#7A5AD9,#0070D4)",color:"white",fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",opacity:busy.pf?0.6:1}}>
-                {busy.pf?"診断中(〜1分)...":"🧠 ポートフォリオAI診断"}
-              </button>
-            </div>
-            {withQty.length>0&&(
-              <div style={{display:"flex",gap:"1.25rem",flexWrap:"wrap",fontSize:"0.78rem",marginBottom:warns.length?"0.5rem":0}}>
-                <span style={{color:C.textSub}}>評価額 <b style={{color:C.text}}>{Math.round(totalVal).toLocaleString()}</b></span>
-                <span style={{color:C.textSub}}>評価損益 <b style={{color:totalVal>=totalCost?C.green:C.red}}>{totalVal>=totalCost?"+":""}{Math.round(totalVal-totalCost).toLocaleString()} ({((totalVal/totalCost-1)*100).toFixed(1)}%)</b></span>
-                {Object.entries(bySector).sort((a,b)=>b[1]-a[1]).slice(0,4).map(([k,v])=>(
-                  <span key={k} style={{color:C.textMuted}}>{k} {Math.round(v/totalVal*100)}%</span>
-                ))}
-              </div>
-            )}
-            {warns.length>0&&(
-              <div style={{padding:"0.45rem 0.7rem",background:C.orangeBg,borderRadius:8,marginBottom:pfBrain?"0.5rem":0}}>
-                {warns.map((w,i)=><div key={i} style={{fontSize:"0.73rem",fontWeight:700,color:C.orange,lineHeight:1.6}}>⚠️ {w}</div>)}
-              </div>
-            )}
-            {pfBrain&&pfBrain.brain&&(()=>{
-              const b = pfBrain.brain;
-              return (
-                <div style={{marginTop:"0.5rem",padding:"0.7rem 0.85rem",background:C.bg,borderRadius:8,border:`1px solid ${C.borderLight}`}}>
-                  {b.health_score!=null&&(
-                    <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.4rem"}}>
-                      <span style={{fontWeight:800,fontSize:"0.8rem",color:C.text}}>健全度</span>
-                      <div style={{flex:1,maxWidth:200,height:8,borderRadius:4,background:C.borderLight,overflow:"hidden"}}>
-                        <div style={{width:`${Math.min(100,b.health_score)}%`,height:"100%",background:b.health_score>=70?C.green:(b.health_score>=45?C.yellow:C.red)}}/>
-                      </div>
-                      <span style={{fontWeight:800,fontSize:"0.85rem",color:b.health_score>=70?C.green:(b.health_score>=45?C.yellow:C.red)}}>{b.health_score}点</span>
-                    </div>
-                  )}
-                  <div style={{fontSize:"0.78rem",color:C.text,lineHeight:1.65,marginBottom:"0.4rem",whiteSpace:"pre-wrap"}}>{b.summary}</div>
-                  {b.biggest_risk&&<div style={{fontSize:"0.74rem",color:C.red,fontWeight:700,marginBottom:"0.35rem"}}>⚠️ 最大リスク: {b.biggest_risk}</div>}
-                  {(b.actions||[]).map((a,i)=>(
-                    <div key={i} style={{fontSize:"0.73rem",color:C.text,lineHeight:1.6}}>・<b>{a.ticker}</b>: {a.advice}</div>
-                  ))}
-                  {b.habit_feedback&&b.habit_feedback!=="null"&&(
-                    <div style={{marginTop:"0.4rem",padding:"0.45rem 0.65rem",background:C.purpleBg,borderRadius:8,fontSize:"0.73rem",color:C.text,lineHeight:1.6}}>
-                      <b style={{color:C.purple}}>📒 売買のクセ: </b>{b.habit_feedback}
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
-          </div>
-        );
-      })()}
-
-      {/* 📒 トレード日誌 */}
-      <div style={{...card,marginBottom:"0.85rem",padding:"0.85rem 1rem"}}>
-        <div onClick={()=>{const n=!showJournal; setShowJournal(n); if(n&&!journal&&!busy.journal) loadJournal();}}
-          style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"}}>
-          <div style={{fontWeight:800,fontSize:"0.85rem",color:C.text}}>📒 トレード日誌 <span style={{fontSize:"0.68rem",fontWeight:600,color:C.textMuted}}>決済のたびに実現損益を自動記録・勝率とクセを可視化</span></div>
-          <span style={{fontSize:"0.8rem",color:C.textMuted}}>{showJournal?"▲":"▼"}</span>
-        </div>
-        {showJournal&&(
-          <div style={{marginTop:"0.75rem"}}>
-            {busy.journal&&<div style={{fontSize:"0.75rem",color:C.textMuted}}>取得中...</div>}
-            {journal&&!journal.stats&&<div style={{fontSize:"0.75rem",color:C.textMuted,lineHeight:1.6}}>
-              まだ決済記録がありません。保有銘柄を「解除」する際に決済価格を入力すると自動で記録されます。
-            </div>}
-            {journal&&journal.stats&&(()=>{
-              const s = journal.stats;
-              return (
-                <div>
-                  <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap",marginBottom:"0.6rem"}}>
-                    <span style={S.chip(C.borderLight,C.textSub)}>{s.n}トレード</span>
-                    <span style={S.chip(s.winRate>=50?C.greenBg:C.redBg, s.winRate>=50?C.green:C.red)}>勝率{s.winRate}%</span>
-                    <span style={S.chip(C.greenBg,C.green)}>平均利益+{s.avgWin}%</span>
-                    <span style={S.chip(C.redBg,C.red)}>平均損失{s.avgLoss}%</span>
-                    {s.profitFactor!=null&&<span style={S.chip(s.profitFactor>=1.5?C.greenBg:(s.profitFactor>=1?C.yellowBg:C.redBg), s.profitFactor>=1.5?C.green:(s.profitFactor>=1?C.yellow:C.red))}>PF {s.profitFactor}</span>}
-                    {s.totalAmount!==0&&<span style={S.chip(s.totalAmount>0?C.greenBg:C.redBg, s.totalAmount>0?C.green:C.red)}>累計 {s.totalAmount>0?"+":""}{Number(s.totalAmount).toLocaleString()}</span>}
-                  </div>
-                  {(journal.trades||[]).map((t,i)=>(
-                    <div key={i} style={{display:"flex",justifyContent:"space-between",gap:"0.5rem",fontSize:"0.74rem",padding:"0.35rem 0",borderBottom:`1px solid ${C.borderLight}`}}>
-                      <span style={{color:C.text,fontWeight:700}}>{t.name} <span style={{color:C.textMuted,fontWeight:500}}>{t.entryDate||"?"}→{t.exitDate}</span></span>
-                      <span style={{color:C.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,textAlign:"right"}}>{t.reason||""}</span>
-                      <b style={{color:t.pnlPct>=0?C.green:C.red,flexShrink:0}}>{t.pnlPct>=0?"+":""}{t.pnlPct}%</b>
-                    </div>
-                  ))}
-                  <div style={{fontSize:"0.66rem",color:C.textMuted,marginTop:"0.4rem"}}>※PF(プロフィットファクター)=総利益÷総損失。1.5以上で優秀。この成績はAIの教訓生成・ポートフォリオ診断にも使われます</div>
-                </div>
-              );
-            })()}
-          </div>
-        )}
-      </div>
-
-      {/* ウォッチリスト */}
-      <div style={{...card,marginBottom:"0.85rem",padding:0,overflow:"hidden"}}>
-        <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
-          <table style={{width:"100%",borderCollapse:"collapse",fontSize:"0.8rem",minWidth:640}}>
-            <thead>
-              <tr style={{background:C.bg}}>
-                {["銘柄","現在値","前日比","損益","短期","長期","総合","判定",""].map((h,i)=>(
-                  <th key={i} style={{padding:"0.55rem 0.7rem",textAlign:i===0?"left":"right",fontSize:"0.68rem",fontWeight:700,color:C.textMuted,whiteSpace:"nowrap",borderBottom:`1px solid ${C.border}`}}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.length===0&&(
-                <tr><td colSpan={9} style={{padding:"1.5rem",textAlign:"center",color:C.textMuted,fontSize:"0.82rem"}}>
-                  ウォッチリストが空です。上の検索から銘柄を追加してください
-                </td></tr>
-              )}
-              {rows.map(({ticker,name,market:mkt,a,holding})=>{
-                const q = a?STOCK_QUAD_META[a.quadrant]:null;
-                const pnl = (holding&&holding.price&&a)?(a.price/holding.price-1)*100:null;
-                return (
-                  <tr key={ticker} onClick={()=>{setSelected(ticker); setHoldEdit(false); if(!newsMap[ticker]) loadNews(ticker);}}
-                    style={{cursor:"pointer",background:selected===ticker?C.surfaceHover:"white",borderBottom:`1px solid ${C.borderLight}`}}>
-                    <td style={{padding:"0.6rem 0.7rem"}}>
-                      <div style={{fontWeight:700,color:C.text,whiteSpace:"nowrap"}}>{mkt==="JP"?"🇯🇵":"🇺🇸"} {a?.name||name}{holding?" 💼":""}</div>
-                      <div style={{fontSize:"0.68rem",color:C.textMuted}}>{ticker}{a?.sector?` / ${a.sector}`:""}</div>
-                    </td>
-                    <td style={{padding:"0.6rem 0.7rem",textAlign:"right",fontWeight:700,color:C.text,whiteSpace:"nowrap"}}>{a?Number(a.price).toLocaleString():"—"}</td>
-                    <td style={{padding:"0.6rem 0.7rem",textAlign:"right",fontWeight:700,whiteSpace:"nowrap",color:a?(a.chg1d>=0?C.green:C.red):C.textMuted}}>{a?`${a.chg1d>=0?"+":""}${a.chg1d}%`:"—"}</td>
-                    <td style={{padding:"0.6rem 0.7rem",textAlign:"right",fontWeight:800,whiteSpace:"nowrap",color:pnl==null?C.textMuted:(pnl>=0?C.green:C.red)}}>{pnl==null?"—":`${pnl>=0?"+":""}${pnl.toFixed(1)}%`}</td>
-                    <td style={{padding:"0.6rem 0.7rem",textAlign:"right",fontWeight:800,color:a?(a.short.score>=70?C.green:(a.short.score>=45?C.yellow:C.textMuted)):C.textMuted}}>{a?a.short.score:"—"}</td>
-                    <td style={{padding:"0.6rem 0.7rem",textAlign:"right",fontWeight:800,color:a?(a.long.score>=70?C.green:(a.long.score>=50?C.yellow:C.textMuted)):C.textMuted}}>{a?a.long.score:"—"}</td>
-                    <td style={{padding:"0.6rem 0.7rem",textAlign:"right",fontWeight:800,color:C.accent}}>{a?weighted(a):"—"}</td>
-                    <td style={{padding:"0.6rem 0.7rem",textAlign:"right"}}>{q&&<span style={S.chip(q.bg,q.color)}>{a.quadrant}</span>}</td>
-                    <td style={{padding:"0.6rem 0.5rem",textAlign:"right"}}>
-                      <button onClick={e=>{e.stopPropagation();if(confirm(`${name} をウォッチリストから削除しますか？`))removeStock(ticker);}}
-                        style={{...S.iconBtn,color:C.textMuted,fontSize:"0.8rem"}}>✕</button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
       </div>
 
       {/* 銘柄詳細 */}
@@ -1085,6 +868,317 @@ function StockView({currentUser}) {
           </div>
         </div>
       )}
+
+      {!sel&&(
+        <div style={{background:"white",borderRadius:"1rem",padding:"2rem",border:`1px solid ${C.border}`,textAlign:"center",color:C.textMuted,fontSize:"0.85rem"}}>
+          上のチップから銘柄を選ぶか、検索・スキャンで銘柄を追加してください
+        </div>
+      )}
+
+      </>)}
+
+      {view==="portfolio"&&(<>
+
+      {/* 💼 ポートフォリオ全体ビュー(保有がある時のみ) */}
+      {(()=>{
+        const holds = watchlist.filter(w=>w.holding&&w.holding.price).map(w=>({...w, a:results[w.ticker]}));
+        if(!holds.length) return (
+          <div style={{...card,marginBottom:"0.85rem",padding:"1.5rem",textAlign:"center",color:C.textMuted,fontSize:"0.85rem"}}>
+            保有銘柄がまだありません。分析タブで銘柄を開き「💼 保有を登録」すると、損益追跡・ポートフォリオ診断・AI売り時判断が使えます
+          </div>
+        );
+        const withQty = holds.filter(h=>h.holding.qty&&h.a);
+        const totalCost = withQty.reduce((s,h)=>s+h.holding.price*h.holding.qty,0);
+        const totalVal  = withQty.reduce((s,h)=>s+h.a.price*h.holding.qty,0);
+        const bySector = {};
+        withQty.forEach(h=>{ const k=(h.a&&h.a.sector)||"その他"; bySector[k]=(bySector[k]||0)+h.a.price*h.holding.qty; });
+        const warns = [];
+        Object.entries(bySector).forEach(([k,v])=>{ if(totalVal>0&&v/totalVal>0.5) warns.push(`セクター集中: ${k}が${Math.round(v/totalVal*100)}%`); });
+        withQty.forEach(h=>{ if(totalVal>0&&h.a.price*h.holding.qty/totalVal>0.4) warns.push(`1銘柄集中: ${h.a.name}が${Math.round(h.a.price*h.holding.qty/totalVal*100)}%`); });
+        for(let i=0;i<holds.length;i++) for(let j=i+1;j<holds.length;j++){
+          if(holds[i].a&&holds[j].a&&holds[i].a.spark&&holds[j].a.spark){
+            const c = corrOf(holds[i].a.spark, holds[j].a.spark);
+            if(c>0.85) warns.push(`高相関: ${holds[i].a.name}×${holds[j].a.name}(${c.toFixed(2)}) 分散効果なし`);
+          }
+        }
+        return (
+          <div style={{...card,marginBottom:"0.85rem",padding:"0.85rem 1rem"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:"0.5rem",marginBottom:"0.5rem"}}>
+              <div style={{fontWeight:800,fontSize:"0.85rem",color:C.text}}>💼 ポートフォリオ <span style={{fontSize:"0.68rem",fontWeight:600,color:C.textMuted}}>{holds.length}銘柄保有</span></div>
+              <button onClick={runPfBrain} disabled={busy.pf}
+                style={{padding:"0.45rem 0.85rem",borderRadius:8,border:"none",background:"linear-gradient(135deg,#7A5AD9,#0070D4)",color:"white",fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",opacity:busy.pf?0.6:1}}>
+                {busy.pf?"診断中(〜1分)...":"🧠 ポートフォリオAI診断"}
+              </button>
+            </div>
+            {withQty.length>0&&(
+              <div style={{display:"flex",gap:"1.25rem",flexWrap:"wrap",fontSize:"0.78rem",marginBottom:warns.length?"0.5rem":0}}>
+                <span style={{color:C.textSub}}>評価額 <b style={{color:C.text}}>{Math.round(totalVal).toLocaleString()}</b></span>
+                <span style={{color:C.textSub}}>評価損益 <b style={{color:totalVal>=totalCost?C.green:C.red}}>{totalVal>=totalCost?"+":""}{Math.round(totalVal-totalCost).toLocaleString()} ({((totalVal/totalCost-1)*100).toFixed(1)}%)</b></span>
+                {Object.entries(bySector).sort((a,b)=>b[1]-a[1]).slice(0,4).map(([k,v])=>(
+                  <span key={k} style={{color:C.textMuted}}>{k} {Math.round(v/totalVal*100)}%</span>
+                ))}
+              </div>
+            )}
+            {warns.length>0&&(
+              <div style={{padding:"0.45rem 0.7rem",background:C.orangeBg,borderRadius:8,marginBottom:pfBrain?"0.5rem":0}}>
+                {warns.map((w,i)=><div key={i} style={{fontSize:"0.73rem",fontWeight:700,color:C.orange,lineHeight:1.6}}>⚠️ {w}</div>)}
+              </div>
+            )}
+            {pfBrain&&pfBrain.brain&&(()=>{
+              const b = pfBrain.brain;
+              return (
+                <div style={{marginTop:"0.5rem",padding:"0.7rem 0.85rem",background:C.bg,borderRadius:8,border:`1px solid ${C.borderLight}`}}>
+                  {b.health_score!=null&&(
+                    <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.4rem"}}>
+                      <span style={{fontWeight:800,fontSize:"0.8rem",color:C.text}}>健全度</span>
+                      <div style={{flex:1,maxWidth:200,height:8,borderRadius:4,background:C.borderLight,overflow:"hidden"}}>
+                        <div style={{width:`${Math.min(100,b.health_score)}%`,height:"100%",background:b.health_score>=70?C.green:(b.health_score>=45?C.yellow:C.red)}}/>
+                      </div>
+                      <span style={{fontWeight:800,fontSize:"0.85rem",color:b.health_score>=70?C.green:(b.health_score>=45?C.yellow:C.red)}}>{b.health_score}点</span>
+                    </div>
+                  )}
+                  <div style={{fontSize:"0.78rem",color:C.text,lineHeight:1.65,marginBottom:"0.4rem",whiteSpace:"pre-wrap"}}>{b.summary}</div>
+                  {b.biggest_risk&&<div style={{fontSize:"0.74rem",color:C.red,fontWeight:700,marginBottom:"0.35rem"}}>⚠️ 最大リスク: {b.biggest_risk}</div>}
+                  {(b.actions||[]).map((a,i)=>(
+                    <div key={i} style={{fontSize:"0.73rem",color:C.text,lineHeight:1.6}}>・<b>{a.ticker}</b>: {a.advice}</div>
+                  ))}
+                  {b.habit_feedback&&b.habit_feedback!=="null"&&(
+                    <div style={{marginTop:"0.4rem",padding:"0.45rem 0.65rem",background:C.purpleBg,borderRadius:8,fontSize:"0.73rem",color:C.text,lineHeight:1.6}}>
+                      <b style={{color:C.purple}}>📒 売買のクセ: </b>{b.habit_feedback}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+        );
+      })()}
+
+      {/* 📒 トレード日誌 */}
+      <div style={{...card,marginBottom:"0.85rem",padding:"0.85rem 1rem"}}>
+        <div onClick={()=>{const n=!showJournal; setShowJournal(n); if(n&&!journal&&!busy.journal) loadJournal();}}
+          style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"}}>
+          <div style={{fontWeight:800,fontSize:"0.85rem",color:C.text}}>📒 トレード日誌 <span style={{fontSize:"0.68rem",fontWeight:600,color:C.textMuted}}>決済のたびに実現損益を自動記録・勝率とクセを可視化</span></div>
+          <span style={{fontSize:"0.8rem",color:C.textMuted}}>{showJournal?"▲":"▼"}</span>
+        </div>
+        {showJournal&&(
+          <div style={{marginTop:"0.75rem"}}>
+            {busy.journal&&<div style={{fontSize:"0.75rem",color:C.textMuted}}>取得中...</div>}
+            {journal&&!journal.stats&&<div style={{fontSize:"0.75rem",color:C.textMuted,lineHeight:1.6}}>
+              まだ決済記録がありません。保有銘柄を「解除」する際に決済価格を入力すると自動で記録されます。
+            </div>}
+            {journal&&journal.stats&&(()=>{
+              const s = journal.stats;
+              return (
+                <div>
+                  <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap",marginBottom:"0.6rem"}}>
+                    <span style={S.chip(C.borderLight,C.textSub)}>{s.n}トレード</span>
+                    <span style={S.chip(s.winRate>=50?C.greenBg:C.redBg, s.winRate>=50?C.green:C.red)}>勝率{s.winRate}%</span>
+                    <span style={S.chip(C.greenBg,C.green)}>平均利益+{s.avgWin}%</span>
+                    <span style={S.chip(C.redBg,C.red)}>平均損失{s.avgLoss}%</span>
+                    {s.profitFactor!=null&&<span style={S.chip(s.profitFactor>=1.5?C.greenBg:(s.profitFactor>=1?C.yellowBg:C.redBg), s.profitFactor>=1.5?C.green:(s.profitFactor>=1?C.yellow:C.red))}>PF {s.profitFactor}</span>}
+                    {s.totalAmount!==0&&<span style={S.chip(s.totalAmount>0?C.greenBg:C.redBg, s.totalAmount>0?C.green:C.red)}>累計 {s.totalAmount>0?"+":""}{Number(s.totalAmount).toLocaleString()}</span>}
+                  </div>
+                  {(journal.trades||[]).map((t,i)=>(
+                    <div key={i} style={{display:"flex",justifyContent:"space-between",gap:"0.5rem",fontSize:"0.74rem",padding:"0.35rem 0",borderBottom:`1px solid ${C.borderLight}`}}>
+                      <span style={{color:C.text,fontWeight:700}}>{t.name} <span style={{color:C.textMuted,fontWeight:500}}>{t.entryDate||"?"}→{t.exitDate}</span></span>
+                      <span style={{color:C.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,textAlign:"right"}}>{t.reason||""}</span>
+                      <b style={{color:t.pnlPct>=0?C.green:C.red,flexShrink:0}}>{t.pnlPct>=0?"+":""}{t.pnlPct}%</b>
+                    </div>
+                  ))}
+                  <div style={{fontSize:"0.66rem",color:C.textMuted,marginTop:"0.4rem"}}>※PF(プロフィットファクター)=総利益÷総損失。1.5以上で優秀。この成績はAIの教訓生成・ポートフォリオ診断にも使われます</div>
+                </div>
+              );
+            })()}
+          </div>
+        )}
+      </div>
+
+      </>)}
+
+      {view==="learn"&&(<>
+
+      {/* 🎓 AI学習・成績パネル */}
+      <div style={{...card,marginBottom:"0.85rem",padding:"0.85rem 1rem"}}>
+        <div onClick={()=>{const next=!showLearn; setShowLearn(next); if(next&&!perf&&!busy.perf) loadPerf();}}
+          style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"}}>
+          <div style={{fontWeight:800,fontSize:"0.85rem",color:C.text}}>🎓 AI学習・成績 <span style={{fontSize:"0.68rem",fontWeight:600,color:C.textMuted}}>過去の判定実績とバックテストで精度を自動改善</span></div>
+          <span style={{fontSize:"0.8rem",color:C.textMuted}}>{showLearn?"▲":"▼"}</span>
+        </div>
+        {showLearn&&(
+          <div style={{marginTop:"0.75rem"}}>
+            <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap",marginBottom:"0.75rem"}}>
+              <button onClick={runLearn} disabled={busy.learn}
+                style={{padding:"0.5rem 0.95rem",borderRadius:8,border:"none",background:"linear-gradient(135deg,#7A5AD9,#0070D4)",color:"white",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",opacity:busy.learn?0.6:1}}>
+                {busy.learn?"学習中(1〜2分)...":"📚 過去実績＋バックテストで学習"}
+              </button>
+              <button onClick={runBacktest} disabled={busy.bt}
+                style={{padding:"0.5rem 0.95rem",borderRadius:8,border:"none",background:C.text,color:"white",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",opacity:busy.bt?0.6:1}}>
+                {busy.bt?"検証中(2〜4分)...":"📊 過去10年で検証(ウォークフォワード)"}
+              </button>
+              <button onClick={loadPerf} disabled={busy.perf}
+                style={{padding:"0.5rem 0.95rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}}>
+                {busy.perf?"取得中...":"🔄 成績を更新"}
+              </button>
+            </div>
+            {btRep&&(()=>{
+              const fmt = s=>s?`${s.n}件 / 勝率${s.winRate}% / 平均${s.avgRet>=0?"+":""}${s.avgRet}% / 対指数${s.avgExcess>=0?"+":""}${s.avgExcess}%`:"—";
+              const rows = [
+                ["① 素点のまま", btRep.testRaw&&btRep.testRaw.buy],
+                ["② 因子重み学習後", btRep.testWeighted&&btRep.testWeighted.buy],
+                ["③ ②＋地合いフィルタ", btRep.testWeightedRegime&&btRep.testWeightedRegime.buy],
+              ];
+              return (
+                <div style={{marginBottom:"0.75rem",padding:"0.7rem 0.85rem",background:C.bg,borderRadius:8,border:`1px solid ${C.borderLight}`}}>
+                  <div style={{fontSize:"0.75rem",fontWeight:800,color:C.text,marginBottom:"0.3rem"}}>
+                    📊 10年ウォークフォワード検証結果
+                    <span style={{fontWeight:600,color:C.textMuted,marginLeft:"0.4rem"}}>
+                      {btRep.period.from}〜{btRep.period.to} / {btRep.samples}サンプル / {btRep.period.trainTestSplit}以降は学習に使っていない未知データで測定
+                    </span>
+                  </div>
+                  <div style={{fontSize:"0.7rem",fontWeight:700,color:C.textSub,marginBottom:"0.15rem"}}>「買い(70点以上)」シグナルの20営業日後成績(検証期間のみ):</div>
+                  {rows.map(([l,s])=>(
+                    <div key={l} style={{fontSize:"0.72rem",color:C.text,lineHeight:1.7,display:"flex",gap:"0.5rem"}}>
+                      <span style={{minWidth:150,fontWeight:700,color:C.textSub}}>{l}</span><span>{fmt(s)}</span>
+                    </div>
+                  ))}
+                  {btRep.thresholds&&Object.keys(btRep.thresholds).length>0&&(
+                    <div style={{marginTop:"0.4rem"}}>
+                      <div style={{fontSize:"0.7rem",fontWeight:700,color:C.textSub,marginBottom:"0.15rem"}}>買い閾値別(③条件下):</div>
+                      <div style={{display:"flex",gap:"0.35rem",flexWrap:"wrap"}}>
+                        {Object.entries(btRep.thresholds).map(([th,s])=>(
+                          <span key={th} style={S.chip(s.winRate>=55?C.greenBg:C.borderLight, s.winRate>=55?C.green:C.textSub)}>
+                            {th}点↑: 勝率{s.winRate}% ({s.n}件)
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <div style={{fontSize:"0.66rem",color:C.textMuted,marginTop:"0.4rem"}}>
+                    ✓ 検証済みの因子重みと地合いフィルタは本番スコアリングに自動適用されました
+                  </div>
+                </div>
+              );
+            })()}
+            {!perf&&!busy.perf&&<div style={{fontSize:"0.75rem",color:C.textMuted,lineHeight:1.6}}>
+              分析するたびに予測が自動記録され、5営業日後・20営業日後に答え合わせされます。<br/>
+              「学習」を実行すると過去2年分のバックテストで因子の重みを最適化し、外れた判定から教訓を抽出してAI判定に反映します。
+            </div>}
+            {perf&&(()=>{
+              const cfg = perf.config||{};
+              const st = perf.stats||cfg.stats||{};
+              const SIG_LABEL = {buy:"🟢買い候補",watch:"🟡監視",avoid:"⚪見送り"};
+              const VD_LABEL = {strong_buy:"🚀強い買い",buy:"🟢買い",hold:"🟡様子見",avoid:"⚪見送り",sell:"🔴売り"};
+              const statTable = (title,obj,labels)=>obj&&Object.keys(obj).length>0&&(
+                <div style={{flex:"1 1 220px",minWidth:0}}>
+                  <div style={{fontSize:"0.72rem",fontWeight:800,color:C.textSub,marginBottom:"0.3rem"}}>{title}</div>
+                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:"0.72rem"}}>
+                    <tbody>
+                      {Object.entries(obj).map(([k,v])=>(
+                        <tr key={k} style={{borderBottom:`1px solid ${C.borderLight}`}}>
+                          <td style={{padding:"0.3rem 0.2rem",fontWeight:700,color:C.text}}>{labels[k]||k}</td>
+                          <td style={{padding:"0.3rem 0.2rem",textAlign:"right",color:C.textMuted}}>{v.n}件</td>
+                          <td style={{padding:"0.3rem 0.2rem",textAlign:"right",fontWeight:800,color:v.winRate>=55?C.green:(v.winRate>=45?C.yellow:C.red)}}>勝率{v.winRate}%</td>
+                          <td style={{padding:"0.3rem 0.2rem",textAlign:"right",fontWeight:700,color:v.avgRet>=0?C.green:C.red}}>{v.avgRet>=0?"+":""}{v.avgRet}%</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              );
+              return (
+                <div>
+                  {cfg.updatedAt&&(
+                    <div style={{fontSize:"0.68rem",color:C.textMuted,marginBottom:"0.5rem"}}>
+                      最終学習: {new Date(cfg.updatedAt).toLocaleString("ja-JP")} / バックテスト{cfg.backtestSamples||0}サンプル＋実運用{cfg.liveSamples||0}件 / 記録済み予測{st.total||0}件(答え合わせ済{st.evaluated||0}件)
+                    </div>
+                  )}
+                  {cfg.factor_weights&&(
+                    <div style={{marginBottom:"0.6rem"}}>
+                      <div style={{fontSize:"0.72rem",fontWeight:800,color:C.textSub,marginBottom:"0.3rem"}}>⚖️ 学習済み因子重み(短期スコアに自動適用中)</div>
+                      <div style={{display:"flex",gap:"0.35rem",flexWrap:"wrap"}}>
+                        {Object.entries(cfg.factor_weights).map(([k,v])=>(
+                          <span key={k} style={S.chip(v>1.05?C.greenBg:(v<0.95?C.redBg:C.borderLight), v>1.05?C.green:(v<0.95?C.red:C.textSub))}>
+                            {k} ×{v}{cfg.factor_ic&&cfg.factor_ic[k]!=null?` (IC ${cfg.factor_ic[k]>=0?"+":""}${cfg.factor_ic[k]})`:""}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <div style={{display:"flex",gap:"1rem",flexWrap:"wrap",marginBottom:"0.6rem"}}>
+                    {statTable("短期シグナル別成績(5日後)", st.bySignal5d, SIG_LABEL)}
+                    {statTable("AI判定別成績(5日後)", st.byVerdict5d, VD_LABEL)}
+                    {statTable("短期シグナル別成績(20日後)", st.bySignal20d, SIG_LABEL)}
+                    {statTable("AI判定別成績(20日後)", st.byVerdict20d, VD_LABEL)}
+                  </div>
+                  {(!st.evaluated||st.evaluated===0)&&(
+                    <div style={{fontSize:"0.72rem",color:C.textMuted,marginBottom:"0.5rem"}}>
+                      ※実運用の答え合わせはまだありません(予測記録から5営業日後に自動確定)。それまでは過去2年のバックテストが学習を担います。
+                    </div>
+                  )}
+                  {cfg.lessons&&cfg.lessons.length>0&&(
+                    <div style={{padding:"0.6rem 0.8rem",background:C.purpleBg,borderRadius:8}}>
+                      <div style={{fontSize:"0.72rem",fontWeight:800,color:C.purple,marginBottom:"0.25rem"}}>📖 AIが実績から学んだ教訓(次回の判定に自動反映)</div>
+                      {cfg.lessons.map((l,i)=><div key={i} style={{fontSize:"0.73rem",color:C.text,lineHeight:1.6}}>・{l}</div>)}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+        )}
+      </div>
+
+      </>)}
+
+      {view==="settings"&&(<>
+
+      {/* ⚙️ 設定 */}
+      <div style={{maxWidth:560}}>
+        <div style={{background:"white",borderRadius:"1rem",padding:"1.1rem",border:`1px solid ${C.border}`,boxShadow:C.shadow,marginBottom:"0.85rem"}}>
+          <div style={{fontWeight:800,fontSize:"0.9rem",color:C.text,marginBottom:"0.6rem"}}>🔌 API接続</div>
+          <div style={{fontSize:"0.72rem",color:C.textMuted,marginBottom:"0.35rem"}}>分析Lambda(mydesk-stock-analysis)のFunction URL</div>
+          <input type="text" defaultValue={apiUrl} onBlur={e=>{const u=e.target.value.trim(); if(u&&u.startsWith("https://")){localStorage.setItem("md_stock_api_url",u);setApiUrl(u);}}}
+            style={{width:"100%",padding:"0.6rem 0.75rem",borderRadius:"0.625rem",border:`1.5px solid ${C.border}`,fontSize:"0.8rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
+          <div style={{fontSize:"0.66rem",color:C.textMuted,marginTop:"0.3rem"}}>変更するとフォーカスを外した時に保存されます</div>
+        </div>
+        <div style={{background:"white",borderRadius:"1rem",padding:"1.1rem",border:`1px solid ${C.border}`,boxShadow:C.shadow,marginBottom:"0.85rem"}}>
+          <div style={{fontWeight:800,fontSize:"0.9rem",color:C.text,marginBottom:"0.6rem"}}>⚖️ 総合スコアの加重</div>
+          <div style={{display:"flex",alignItems:"center",gap:"0.5rem",fontSize:"0.78rem",fontWeight:700,color:C.textSub}}>
+            長期重視
+            <input type="range" min="0" max="100" step="10" value={weight}
+              onChange={e=>{const v=parseInt(e.target.value,10);setWeight(v);localStorage.setItem("md_stock_weight",String(v));}}
+              style={{flex:1,accentColor:C.accent}}/>
+            短期重視
+          </div>
+          <div style={{textAlign:"center",fontSize:"0.75rem",color:C.accent,fontWeight:800,marginTop:"0.3rem"}}>短期 {weight}% : 長期 {100-weight}%</div>
+        </div>
+        <div style={{background:"white",borderRadius:"1rem",padding:"1.1rem",border:`1px solid ${C.border}`,boxShadow:C.shadow,marginBottom:"0.85rem"}}>
+          <div style={{fontWeight:800,fontSize:"0.9rem",color:C.text,marginBottom:"0.6rem"}}>💰 資金管理(推奨ロット計算)</div>
+          <div style={{display:"flex",gap:"0.6rem",alignItems:"center",fontSize:"0.78rem",color:C.textSub,flexWrap:"wrap"}}>
+            投資資金
+            <input type="number" value={capital} onChange={e=>{setCapital(e.target.value);localStorage.setItem("md_stock_capital",e.target.value);}} placeholder="300"
+              style={{width:90,padding:"0.45rem 0.6rem",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:"0.8rem",fontFamily:"inherit",outline:"none"}}/>万
+            / 1トレード許容リスク
+            <select value={riskPct} onChange={e=>{setRiskPct(e.target.value);localStorage.setItem("md_stock_risk",e.target.value);}}
+              style={{padding:"0.45rem",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:"0.8rem",fontFamily:"inherit"}}>
+              {["1","2","3"].map(v=><option key={v} value={v}>{v}%</option>)}
+            </select>
+          </div>
+          <div style={{fontSize:"0.68rem",color:C.textMuted,marginTop:"0.4rem"}}>銘柄詳細の推奨ロット(2%ルール: 資金×リスク%÷損切り幅2ATR)に使われます</div>
+        </div>
+        <div style={{background:"white",borderRadius:"1rem",padding:"1.1rem",border:`1px solid ${C.border}`,boxShadow:C.shadow}}>
+          <div style={{fontWeight:800,fontSize:"0.9rem",color:C.text,marginBottom:"0.5rem"}}>ℹ️ MyTradeについて</div>
+          <div style={{fontSize:"0.74rem",color:C.textSub,lineHeight:1.8}}>
+            ビルド: {MYTRADE_BUILD}<br/>
+            データ: Yahoo Finance(日本株は約20分遅延) / Google News<br/>
+            AI: AWS Bedrock Claude(売買判定・学習・診断)<br/>
+            <span style={{color:C.textMuted}}>本アプリの情報は参考情報であり、投資勧誘・投資助言ではありません。投資判断はご自身の責任で行ってください。</span>
+          </div>
+        </div>
+      </div>
+
+      </>)}
 
       {/* 免責 */}
       <div style={{marginTop:"1rem",fontSize:"0.65rem",color:C.textMuted,textAlign:"center",lineHeight:1.6}}>

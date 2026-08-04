@@ -1,0 +1,11 @@
+{
+  "name": "MyTrade - 投資ダッシュボード",
+  "short_name": "MyTrade",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F9FAFE",
+  "theme_color": "#0070D4",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
