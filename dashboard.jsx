@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-06-v330-dustalk-global-base"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-06-v331-portal-guard"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -34072,7 +34072,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
       <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem",flexWrap:"wrap"}}>
         <div style={{fontWeight:800,fontSize:"0.9rem",color:C.text}}>🚚 対象業者 ＆ 見積</div>
         <span style={{fontSize:"0.7rem",color:C.textMuted}}>{(p.vendors||[]).length}社</span>
-        {(p.vendors||[]).some(v=>v.portalToken)&&<button disabled={portalBusy==="__all__"} onClick={syncAll} title="対象店舗を全リンクに反映し、回答も取得" style={{marginLeft:"auto",padding:"0.3rem 0.7rem",borderRadius:8,border:`1.5px solid ${C.accent}`,background:C.accentBg,color:C.accentDark,fontWeight:700,fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit"}}>{portalBusy==="__all__"?"最新化中…":"🔄 全リンク最新化＆回答取得"}</button>}
+        {PORTAL_ON&&(p.vendors||[]).some(v=>v.portalToken)&&<button disabled={portalBusy==="__all__"} onClick={syncAll} title="対象店舗を全リンクに反映し、回答も取得" style={{marginLeft:"auto",padding:"0.3rem 0.7rem",borderRadius:8,border:`1.5px solid ${C.accent}`,background:C.accentBg,color:C.accentDark,fontWeight:700,fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit"}}>{portalBusy==="__all__"?"最新化中…":"🔄 全リンク最新化＆回答取得"}</button>}
       </div>
 
       <div style={{background:"white",border:`1px solid ${C.border}`,borderRadius:10,padding:"0.7rem 0.8rem",marginBottom:"0.75rem"}}>
@@ -34426,7 +34426,7 @@ function VendorQuoteCard({ qv, rows, stores=[], totalStores=0, showAll=false, on
 
       {/* 依頼ポータル */}
       <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap",alignItems:"center",marginBottom:"0.5rem",padding:"0.4rem 0.5rem",background:C.bg,borderRadius:8}}>
-        {!qv.portalToken ? (
+        {PORTAL_ON && (!qv.portalToken ? (
           <button disabled={portalBusy===qv.id} onClick={onIssue} style={{padding:"0.3rem 0.7rem",borderRadius:8,border:`1.5px solid ${C.accent}`,background:C.accentBg,color:C.accentDark,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}}>{portalBusy===qv.id?"発行中…":"🔗 依頼リンクを発行"}</button>
         ) : (
           <React.Fragment>
@@ -34435,7 +34435,7 @@ function VendorQuoteCard({ qv, rows, stores=[], totalStores=0, showAll=false, on
             <button disabled={portalBusy===qv.id} onClick={onFetch} style={{padding:"0.25rem 0.55rem",borderRadius:8,border:`1px solid ${C.accent}`,background:"white",color:C.accentDark,fontWeight:700,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit"}}>{portalBusy===qv.id?"取得中…":"🔄 回答取得"}</button>
             <button disabled={portalBusy===qv.id} onClick={onIssue} title="対象店舗の最新内容でリンクを更新" style={{padding:"0.25rem 0.55rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textMuted,fontWeight:700,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit"}}>↻ 更新</button>
           </React.Fragment>
-        )}
+        ))}
         <div style={{position:"relative"}}>
           <button disabled={impV} onClick={()=>setImpMenuV(v=>!v)} style={{padding:"0.25rem 0.55rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit"}}>{impV?"取込中…":"📊 見積Excel ▾"}</button>
           {impMenuV&&(
@@ -34446,7 +34446,6 @@ function VendorQuoteCard({ qv, rows, stores=[], totalStores=0, showAll=false, on
           )}
         </div>
         <input type="file" ref={importRef} accept=".xlsx,.xls" onChange={handleQuoteExcel} style={{display:"none"}}/>
-        {!PORTAL_ON&&<span style={{fontSize:"0.62rem",color:"#b45309"}}>⚠️ ポータルURL未設定</span>}
       </div>
 
       {/* グループ選択（業態・エリアで一括チェック） */}
