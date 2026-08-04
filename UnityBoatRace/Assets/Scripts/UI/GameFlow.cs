@@ -15,7 +15,7 @@ namespace BoatRace.UI
     public class GameFlow : MonoBehaviour
     {
         /// <summary>ビルド識別子。画面右上に表示され、更新が届いたか一目で分かる。</summary>
-        public const string Build = "B31-マイレーサー再設計";
+        public const string Build = "B32-マップ実線+微調整";
 
         RaceManager race;
         ReplayManager replay;
@@ -333,21 +333,24 @@ namespace BoatRace.UI
             {
                 broadcastStrip = new GameObject("BroadcastStrip");
                 UiKit.Place(broadcastStrip, canvas.transform,
-                    new Vector2(0.005f, 0.28f), new Vector2(0.15f, 0.80f), Vector2.zero, Vector2.zero);
+                    new Vector2(0.006f, 0.36f), new Vector2(0.105f, 0.76f), Vector2.zero, Vector2.zero);
                 for (int i = 0; i < 6; i++)
                 {
                     Color bc = UiKit.BoatColors[i];
                     bool lightBc = bc.r * 0.6f + bc.g * 0.3f + bc.b * 0.1f > 0.6f;
                     float top = 1f - i * (1f / 6f);
-                    var plate = UiKit.MakePanel(broadcastStrip.transform, bc, 8,
-                        new Vector2(0f, top - 0.145f), new Vector2(1f, top - 0.01f),
+                    var plate = UiKit.MakePanel(broadcastStrip.transform, bc, 6,
+                        new Vector2(0f, top - 0.155f), new Vector2(1f, top - 0.012f),
                         Vector2.zero, Vector2.zero);
                     plate.GetComponent<Image>().raycastTarget = false;
-                    plate.AddComponent<SkewFx>().skewX = 6f;
+                    plate.AddComponent<SkewFx>().skewX = 5f;
+                    var pol = plate.AddComponent<Outline>();
+                    pol.effectColor = new Color(1f, 1f, 1f, 0.9f);
+                    pol.effectDistance = new Vector2(1.5f, -1.5f);
                     UiKit.MakeText(plate.transform,
-                        $"{i + 1} {race.statsList[i].player.playerName}", 17,
+                        $"{i + 1} {race.statsList[i].player.playerName}", 13,
                         lightBc ? UiKit.Navy : Color.white, TextAnchor.MiddleLeft,
-                        Vector2.zero, Vector2.one, new Vector2(10f, 0f), new Vector2(-4f, 0f),
+                        Vector2.zero, Vector2.one, new Vector2(8f, 0f), new Vector2(-2f, 0f),
                         bold: true, shadow: !lightBc);
                 }
             }
@@ -1112,10 +1115,13 @@ namespace BoatRace.UI
             for (int i = 0; i < 4; i++)
             {
                 int mi = i;
-                var mb = UiKit.MakePanel(s.transform, new Color(1f, 1f, 1f, 0.10f), 10,
+                var mb = UiKit.MakePanel(s.transform, new Color(0.06f, 0.14f, 0.32f, 0.62f), 10,
                     new Vector2(0.10f + i * 0.21f, 0.060f), new Vector2(0.27f + i * 0.21f, 0.118f),
                     Vector2.zero, Vector2.zero);
                 mb.AddComponent<SkewFx>().skewX = 10f;
+                var mo = mb.AddComponent<Outline>();
+                mo.effectColor = new Color(1f, 1f, 1f, 0.35f);
+                mo.effectDistance = new Vector2(1.5f, -1.5f);
                 mb.AddComponent<Button>().onClick.AddListener(() => menuActs[mi]());
                 UiKit.MakeText(mb.transform, menuLabels[i], 20, Color.white, TextAnchor.MiddleCenter,
                     Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, bold: true, shadow: true);
@@ -1521,24 +1527,24 @@ namespace BoatRace.UI
 
             // ステータスは「ラベル+数値」のグリッドで一目で読めるように(テキスト塊を廃止)
             var statGray = new Color(0.48f, 0.54f, 0.63f);
-            void StatCell(string label, string val, int colI, int rowI, Color? valCol = null)
+            void StatCell(string label, string val, int colI, int rowI, Color? valCol = null, int size = 18)
             {
                 float cx0 = 0.06f + colI * 0.32f, cx1 = cx0 + 0.31f;
                 float cy1 = 0.76f - rowI * 0.118f, cy0 = cy1 - 0.108f;
                 UiKit.MakeText(card.transform, label, 12, statGray, TextAnchor.LowerLeft,
                     new Vector2(cx0, cy0 + 0.052f), new Vector2(cx1, cy1), Vector2.zero, Vector2.zero, bold: true);
-                UiKit.MakeText(card.transform, val, 18, valCol ?? UiKit.TextDark, TextAnchor.UpperLeft,
+                UiKit.MakeText(card.transform, val, size, valCol ?? UiKit.TextDark, TextAnchor.UpperLeft,
                     new Vector2(cx0, cy0), new Vector2(cx1, cy0 + 0.055f), Vector2.zero, Vector2.zero, bold: true);
             }
-            StatCell("レベル", $"Lv.{career.level}  (XP {career.xp}/{career.XpNeed})", 0, 0);
+            StatCell("レベル", $"Lv.{career.level} (XP {career.xp}/{career.XpNeed})", 0, 0, null, 15);
             StatCell("体力", $"{career.MaxStamina}", 1, 0);
-            StatCell("出走 / 勝利", $"{career.races}回 / {career.wins}勝 (3着内{career.top3})", 0, 1);
+            StatCell("出走 / 勝利", $"{career.races}回 / {career.wins}勝 (3着内{career.top3})", 0, 1, null, 15);
             StatCell("ファン", $"{career.fans:N0} 人", 1, 1);
             StatCell("資金", $"{career.money:N0} 万円", 0, 2,
                 career.money < 20 ? UiKit.Red : (Color?)null);
-            StatCell("シーズン", $"第{career.seasonNo}S {career.seasonRaces}/12戦 {career.seasonWins}勝", 1, 2);
-            StatCell("スポンサー", $"{career.sponsorIds.Count}社 (+{career.SponsorIncome}万/R)", 0, 3);
-            StatCell("モーター", PlayerPrefs.GetString("br_last_motor", "未抽選"), 1, 3);
+            StatCell("シーズン", $"第{career.seasonNo}S {career.seasonRaces}/12戦 {career.seasonWins}勝", 1, 2, null, 14);
+            StatCell("スポンサー", $"{career.sponsorIds.Count}社 (+{career.SponsorIncome}万/R)", 0, 3, null, 15);
+            StatCell("モーター", PlayerPrefs.GetString("br_last_motor", "未抽選"), 1, 3, null, 14);
 
             // 疲労バー(60以上で赤+要休養)
             bool tired = career.fatigue >= 60;
@@ -2045,20 +2051,28 @@ namespace BoatRace.UI
                 return new Color(0.60f, 0.66f, 0.74f);
             }
 
-            // 進行ルート(章ノード間の点線。クリア済み区間は金)
-            for (int i = 0; i < chs.Length - 1; i++)
+            // 細い実線を引くヘルパー(点の散らばりではなく参考画像と同じ引き出し線)
+            void MapLine(Vector2 a, Vector2 b, Color lc2, float thick)
             {
-                Vector2 a = NodePos(i), b = NodePos(i + 1);
-                for (int d = 1; d <= 6; d++)
-                {
-                    Vector2 q = Vector2.Lerp(a, b, d / 7f);
-                    var dot = UiKit.MakePanel(map.transform,
-                        i + 1 < career.chapter ? new Color(1f, 0.84f, 0.20f, 0.9f) : new Color(1f, 1f, 1f, 0.45f),
-                        8, new Vector2(q.x - 0.0028f, q.y - 0.005f), new Vector2(q.x + 0.0028f, q.y + 0.005f),
-                        Vector2.zero, Vector2.zero);
-                    dot.GetComponent<Image>().raycastTarget = false;
-                }
+                const float pw = 0.94f * 1600f, ph = 0.71f * 900f; // マップパネルのpxサイズ
+                Vector2 d = new Vector2((b.x - a.x) * pw, (b.y - a.y) * ph);
+                var go = new GameObject("Line");
+                var rt = UiKit.Place(go, map.transform,
+                    new Vector2((a.x + b.x) * 0.5f, (a.y + b.y) * 0.5f),
+                    new Vector2((a.x + b.x) * 0.5f, (a.y + b.y) * 0.5f),
+                    Vector2.zero, Vector2.zero);
+                rt.sizeDelta = new Vector2(d.magnitude, thick);
+                rt.localEulerAngles = new Vector3(0f, 0f, Mathf.Atan2(d.y, d.x) * Mathf.Rad2Deg);
+                var img = go.AddComponent<Image>();
+                img.color = lc2;
+                img.raycastTarget = false;
             }
+
+            // 進行ルート(章ノード間。クリア済み区間は金)
+            for (int i = 0; i < chs.Length - 1; i++)
+                MapLine(NodePos(i), NodePos(i + 1),
+                    i + 1 < career.chapter ? new Color(1f, 0.84f, 0.20f, 0.85f) : new Color(1f, 1f, 1f, 0.40f),
+                    3f);
 
             // 左右のラベル列の割り当て(地図中心より西=左列/東=右列)、各列は北から順
             var leftIdx = new List<int>();
@@ -2078,17 +2092,10 @@ namespace BoatRace.UI
                 float cx0 = left ? 0.008f : 0.735f, cx1 = left ? 0.265f : 0.992f;
                 Vector2 p = NodePos(i);
 
-                // 引き出し線(チップ→会場の点。状態色の点線)
+                // 引き出し線(チップ→会場の点。参考画像と同じ細い実線)
                 Vector2 from = new Vector2(left ? cx1 + 0.003f : cx0 - 0.003f, cy);
                 Color lc = StateColor(i);
-                for (int d = 0; d <= 9; d++)
-                {
-                    Vector2 q = Vector2.Lerp(from, p, d / 9f);
-                    var dot = UiKit.MakePanel(map.transform, new Color(lc.r, lc.g, lc.b, 0.85f), 6,
-                        new Vector2(q.x - 0.0022f, q.y - 0.004f), new Vector2(q.x + 0.0022f, q.y + 0.004f),
-                        Vector2.zero, Vector2.zero);
-                    dot.GetComponent<Image>().raycastTarget = false;
-                }
+                MapLine(from, p, new Color(lc.r, lc.g, lc.b, 0.75f), 2f);
 
                 // ラベルチップ(紺。現在章=赤+黄フチで強調)
                 var chip = UiKit.MakePanel(map.transform,
