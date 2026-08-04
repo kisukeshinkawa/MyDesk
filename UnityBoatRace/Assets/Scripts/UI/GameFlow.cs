@@ -15,7 +15,7 @@ namespace BoatRace.UI
     public class GameFlow : MonoBehaviour
     {
         /// <summary>ビルド識別子。画面右上に表示され、更新が届いたか一目で分かる。</summary>
-        public const string Build = "B30-設定+ポーズ";
+        public const string Build = "B31-マイレーサー再設計";
 
         RaceManager race;
         ReplayManager replay;
@@ -1519,18 +1519,49 @@ namespace BoatRace.UI
             MakeFaceAt(card.transform, career.racerName,
                 new Vector2(0.70f, 0.30f), new Vector2(0.955f, 0.76f));
 
+            // ステータスは「ラベル+数値」のグリッドで一目で読めるように(テキスト塊を廃止)
+            var statGray = new Color(0.48f, 0.54f, 0.63f);
+            void StatCell(string label, string val, int colI, int rowI, Color? valCol = null)
+            {
+                float cx0 = 0.06f + colI * 0.32f, cx1 = cx0 + 0.31f;
+                float cy1 = 0.76f - rowI * 0.118f, cy0 = cy1 - 0.108f;
+                UiKit.MakeText(card.transform, label, 12, statGray, TextAnchor.LowerLeft,
+                    new Vector2(cx0, cy0 + 0.052f), new Vector2(cx1, cy1), Vector2.zero, Vector2.zero, bold: true);
+                UiKit.MakeText(card.transform, val, 18, valCol ?? UiKit.TextDark, TextAnchor.UpperLeft,
+                    new Vector2(cx0, cy0), new Vector2(cx1, cy0 + 0.055f), Vector2.zero, Vector2.zero, bold: true);
+            }
+            StatCell("レベル", $"Lv.{career.level}  (XP {career.xp}/{career.XpNeed})", 0, 0);
+            StatCell("体力", $"{career.MaxStamina}", 1, 0);
+            StatCell("出走 / 勝利", $"{career.races}回 / {career.wins}勝 (3着内{career.top3})", 0, 1);
+            StatCell("ファン", $"{career.fans:N0} 人", 1, 1);
+            StatCell("資金", $"{career.money:N0} 万円", 0, 2,
+                career.money < 20 ? UiKit.Red : (Color?)null);
+            StatCell("シーズン", $"第{career.seasonNo}S {career.seasonRaces}/12戦 {career.seasonWins}勝", 1, 2);
+            StatCell("スポンサー", $"{career.sponsorIds.Count}社 (+{career.SponsorIncome}万/R)", 0, 3);
+            StatCell("モーター", PlayerPrefs.GetString("br_last_motor", "未抽選"), 1, 3);
+
+            // 疲労バー(60以上で赤+要休養)
+            bool tired = career.fatigue >= 60;
+            UiKit.MakeText(card.transform, tired ? "疲労　⚠ 要休養！" : "疲労", 13,
+                tired ? UiKit.Red : statGray, TextAnchor.MiddleLeft,
+                new Vector2(0.06f, 0.205f), new Vector2(0.50f, 0.26f), Vector2.zero, Vector2.zero, bold: true);
+            var ftBg = UiKit.MakePanel(card.transform, new Color(0.88f, 0.91f, 0.95f), 8,
+                new Vector2(0.06f, 0.155f), new Vector2(0.80f, 0.205f), Vector2.zero, Vector2.zero);
+            var ftFill = UiKit.MakePanel(ftBg.transform,
+                tired ? UiKit.Red : career.fatigue >= 40 ? new Color(0.95f, 0.72f, 0.05f) : new Color(0.30f, 0.78f, 0.42f),
+                8, new Vector2(0.012f, 0.14f),
+                new Vector2(Mathf.Clamp01(career.fatigue / 100f) * 0.976f + 0.012f, 0.86f),
+                Vector2.zero, Vector2.zero);
+            ftFill.GetComponent<Image>().raycastTarget = false;
+            UiKit.MakeText(card.transform, $"{career.fatigue}/100", 14, UiKit.TextDark, TextAnchor.MiddleLeft,
+                new Vector2(0.815f, 0.15f), new Vector2(0.97f, 0.21f), Vector2.zero, Vector2.zero, bold: true);
+
+            // 装備(1行に集約)
             UiKit.MakeText(card.transform,
-                $"Lv.{career.level}　体力 {career.MaxStamina}　(XP {career.xp}/{career.XpNeed})\n" +
-                $"出走 {career.races} 回　勝利 {career.wins} 勝 (3着内 {career.top3})\n" +
-                $"資金 {career.money:N0} 万円　ファン {career.fans:N0} 人\n" +
-                $"疲労 {career.fatigue}/100{(career.fatigue >= 60 ? " ⚠要休養!" : "")}　" +
-                $"第{career.seasonNo}S {career.seasonRaces}/12戦{career.seasonWins}勝 称号{career.titles.Count}\n" +
-                $"スポンサー {career.sponsorIds.Count} 社 (+{career.SponsorIncome}万/R)　支出 {career.RaceExpense}万/R\n" +
-                $"装備 {(career.equipProp >= 0 && career.equipProp < career.parts.Count ? CareerData.PartName(career.parts[career.equipProp]) : "ペラなし")}" +
-                $" / {(career.equipTilt >= 0 && career.equipTilt < career.parts.Count ? CareerData.PartName(career.parts[career.equipTilt]) : "チルトなし")}\n" +
-                $"モーター {PlayerPrefs.GetString("br_last_motor", "未抽選 (出走表で抽選)")}",
-                18, UiKit.TextDark, TextAnchor.UpperLeft,
-                new Vector2(0.06f, 0.08f), new Vector2(0.68f, 0.76f), Vector2.zero, Vector2.zero, bold: true);
+                $"装備: {(career.equipProp >= 0 && career.equipProp < career.parts.Count ? CareerData.PartName(career.parts[career.equipProp]) : "ペラなし")}" +
+                $" / {(career.equipTilt >= 0 && career.equipTilt < career.parts.Count ? CareerData.PartName(career.parts[career.equipTilt]) : "チルトなし")}",
+                13, statGray, TextAnchor.MiddleLeft,
+                new Vector2(0.06f, 0.075f), new Vector2(0.97f, 0.135f), Vector2.zero, Vector2.zero);
 
             // 右: 能力(ウマ娘風ランクチップ+バー)と練習
             var skill = UiKit.MakePanel(s.transform, UiKit.PanelWhite, 20,
