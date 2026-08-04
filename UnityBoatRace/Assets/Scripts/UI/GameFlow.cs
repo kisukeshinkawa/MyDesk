@@ -15,7 +15,7 @@ namespace BoatRace.UI
     public class GameFlow : MonoBehaviour
     {
         /// <summary>ビルド識別子。画面右上に表示され、更新が届いたか一目で分かる。</summary>
-        public const string Build = "B24-日本地図ツアー+昇格";
+        public const string Build = "B24b-型エラー修正";
 
         RaceManager race;
         ReplayManager replay;
@@ -1446,7 +1446,7 @@ namespace BoatRace.UI
                 () => ShowFacilityPopup(s.transform));
             UiKit.MakeButton(s.transform, raceLabel, UiKit.Red, 24,
                 new Vector2(0.595f, 0.10f), new Vector2(0.815f, 0.235f), Vector2.zero, Vector2.zero,
-                career.allClear ? (System.Action)StartCareerRace : ShowTourMap);
+                career.allClear ? (UnityEngine.Events.UnityAction)StartCareerRace : ShowTourMap);
             UiKit.MakeButton(s.transform, "ショップ", new Color(0.9f, 0.55f, 0.1f), 18,
                 new Vector2(0.825f, 0.11f), new Vector2(0.965f, 0.22f), Vector2.zero, Vector2.zero,
                 () => ShowShopPopup(s.transform));
