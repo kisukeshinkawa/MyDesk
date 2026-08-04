@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 // MyTrade — 投資専用スタンドアロンアプリ (MyDeskから分離)
 // バックエンド: mydesk-stock-analysis Lambda (共用・変更不要)
 // ═══════════════════════════════════════════════════════════════
-const MYTRADE_BUILD = "2026-08-06-v2-tabbed-ui";
+const MYTRADE_BUILD = "2026-08-06-v3-longterm-learning";
 if (typeof window !== "undefined") {
   window.__MYTRADE_BUILD = MYTRADE_BUILD;
   console.log(`[MyTrade] Build: ${MYTRADE_BUILD}`);
@@ -194,7 +194,8 @@ function StockView({currentUser}) {
   const [errMsg, setErrMsg]       = useState("");
   const [perf, setPerf]           = useState(null);  // {stats, config} 学習・成績
   const [showLearn, setShowLearn] = useState(true);
-  const [btRep, setBtRep]         = useState(null);  // 10年バックテスト結果
+  const [btRep, setBtRep]         = useState(null);  // バックテスト結果
+  const [btYears, setBtYears]     = useState("10");  // 検証期間(年)
   const [screenRes, setScreenRes] = useState(null);  // スクリーニング結果
   const [report, setReport]       = useState(null);  // 朝レポート
   const [showReport, setShowReport] = useState(true);
@@ -311,7 +312,7 @@ function StockView({currentUser}) {
     setBusy(b=>({...b,bt:true})); setErrMsg("");
     try {
       // ウォッチリストが5銘柄未満なら日米主力20銘柄(Lambda側デフォルト)で検証
-      const payload = {action:"backtest", years:10, apply:true};
+      const payload = {action:"backtest", years:parseInt(btYears,10)||10, apply:true};
       if(watchlist.length>=5) payload.tickers = watchlist.map(w=>w.ticker);
       const rep = await api(payload, 300000);
       setBtRep(rep);
@@ -1012,10 +1013,16 @@ function StockView({currentUser}) {
                 style={{padding:"0.5rem 0.95rem",borderRadius:8,border:"none",background:"linear-gradient(135deg,#7A5AD9,#0070D4)",color:"white",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",opacity:busy.learn?0.6:1}}>
                 {busy.learn?"学習中(1〜2分)...":"📚 過去実績＋バックテストで学習"}
               </button>
-              <button onClick={runBacktest} disabled={busy.bt}
-                style={{padding:"0.5rem 0.95rem",borderRadius:8,border:"none",background:C.text,color:"white",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",opacity:busy.bt?0.6:1}}>
-                {busy.bt?"検証中(2〜4分)...":"📊 過去10年で検証(ウォークフォワード)"}
-              </button>
+              <div style={{display:"flex",gap:"0.35rem",alignItems:"center"}}>
+                <select value={btYears} onChange={e=>setBtYears(e.target.value)}
+                  style={{padding:"0.45rem",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"inherit",fontWeight:700}}>
+                  {[["10","過去10年"],["15","過去15年"],["20","過去20年"],["25","過去25年"]].map(([v,l])=><option key={v} value={v}>{l}</option>)}
+                </select>
+                <button onClick={runBacktest} disabled={busy.bt}
+                  style={{padding:"0.5rem 0.95rem",borderRadius:8,border:"none",background:C.text,color:"white",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",opacity:busy.bt?0.6:1}}>
+                  {busy.bt?"検証中(2〜5分)...":"📊 ウォークフォワード検証"}
+                </button>
+              </div>
               <button onClick={loadPerf} disabled={busy.perf}
                 style={{padding:"0.5rem 0.95rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}}>
                 {busy.perf?"取得中...":"🔄 成績を更新"}
@@ -1054,8 +1061,21 @@ function StockView({currentUser}) {
                       </div>
                     </div>
                   )}
+                  {btRep.byEra&&Object.keys(btRep.byEra).length>0&&(
+                    <div style={{marginTop:"0.4rem"}}>
+                      <div style={{fontSize:"0.7rem",fontWeight:700,color:C.textSub,marginBottom:"0.15rem"}}>時代別の買いシグナル成績(どの相場でも通用するか):</div>
+                      <div style={{display:"flex",gap:"0.35rem",flexWrap:"wrap"}}>
+                        {Object.entries(btRep.byEra).map(([era,s])=>(
+                          <span key={era} style={S.chip(s.winRate>=55?C.greenBg:(s.winRate>=45?C.yellowBg:C.redBg), s.winRate>=55?C.green:(s.winRate>=45?C.yellow:C.red))}>
+                            {era}年: 勝率{s.winRate}% ({s.n}件)
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   <div style={{fontSize:"0.66rem",color:C.textMuted,marginTop:"0.4rem"}}>
-                    ✓ 検証済みの因子重みと地合いフィルタは本番スコアリングに自動適用されました
+                    ✓ 検証済みの因子重みと地合いフィルタは本番スコアリングに自動適用されました(重み学習は半減期5年の直近重視)<br/>
+                    ※長期検証の注意: 対象は現在の主力銘柄のため、生き残った企業だけを見る分だけ成績が実際より良く出ます(サバイバーシップバイアス)
                   </div>
                 </div>
               );

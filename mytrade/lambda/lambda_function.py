@@ -95,7 +95,7 @@ def lambda_handler(event, context):
             return _res(200, run_learn(body.get("tickers")))
         if action == "backtest":
             return _res(200, run_backtest(body.get("tickers"),
-                                          int(body.get("years", 10)),
+                                          max(2, min(25, int(body.get("years", 10)))),
                                           bool(body.get("apply", False))))
         if action == "watchlist-get":
             return _res(200, {"items": _load_json_s3(WATCHLIST_KEY, [])})
@@ -209,11 +209,34 @@ def _pearson(xs, ys):
     return cov / math.sqrt(vx * vy) if vx > 0 and vy > 0 else 0.0
 
 
+def _pearson_w(xs, ys, ws):
+    """重み付き相関。長期学習で「直近の市場環境を重視」するために使う。"""
+    sw = sum(ws)
+    if len(xs) < 2 or sw <= 0:
+        return 0.0
+    mx = sum(x * w for x, w in zip(xs, ws)) / sw
+    my = sum(y * w for y, w in zip(ys, ws)) / sw
+    cov = sum(w * (x - mx) * (y - my) for x, y, w in zip(xs, ys, ws)) / sw
+    vx = sum(w * (x - mx) ** 2 for x, w in zip(xs, ws)) / sw
+    vy = sum(w * (y - my) ** 2 for y, w in zip(ys, ws)) / sw
+    return cov / math.sqrt(vx * vy) if vx > 0 and vy > 0 else 0.0
+
+
 # ═══════════════════════ データ取得 ═══════════════════════
 def fetch_history(ticker, period="400d"):
-    """日足OHLCV。yfinance。"""
+    """日足OHLCV。periodは "400d"/"10y"/"max" 形式。
+    Yahooのrangeパラメータは固定値(1y,2y,5y,10y,max等)しか受けないため、
+    "25y"のような任意期間は開始日指定に変換して取得する。"""
     import yfinance as yf
-    df = yf.Ticker(ticker).history(period=period, interval="1d", auto_adjust=True)
+    from datetime import timedelta
+    m = re.fullmatch(r"(\d+)([dy])", period)
+    if m:
+        n, unit = int(m.group(1)), m.group(2)
+        days = n if unit == "d" else int(n * 365.25) + 5
+        start = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+        df = yf.Ticker(ticker).history(start=start, interval="1d", auto_adjust=True)
+    else:
+        df = yf.Ticker(ticker).history(period=period, interval="1d", auto_adjust=True)
     if df is None or len(df) < 30:
         raise Exception(f"{ticker}: 価格データが取得できません")
     return df
@@ -984,8 +1007,8 @@ def run_backtest(tickers=None, years=10, apply_weights=False):
     train = [s for s in samples if s["date"] < split]
     test = [s for s in samples if s["date"] >= split]
 
-    # trainで重み学習(対指数超過リターンとのICベース=地合いに依存しない銘柄選択力)
-    weights, ics = derive_weights([{"factors": s["factors"], "ret": s["ex20"]} for s in train])
+    # trainで重み学習(対指数超過リターンとのICベース+直近重視の指数重み)
+    weights, ics = derive_weights([{"factors": s["factors"], "ret": s["ex20"], "date": s["date"]} for s in train])
 
     def stats_of(items, ret_key="fwd20"):
         out = {}
@@ -1027,6 +1050,21 @@ def run_backtest(tickers=None, years=10, apply_weights=False):
                 "avgRet": round(sum(s["fwd20"] for s in hits) / len(hits), 2),
                 "avgExcess": round(sum(s["ex20"] for s in hits) / len(hits), 2)}
 
+    # 時代別成績(5年区切り・全期間の素点買いシグナル+地合いフィルタ):
+    # どの相場環境でも通用する因子構成かを確認する(長期学習の安定性チェック)
+    by_era = {}
+    for s in samples:
+        if s["score"] >= 70 and s["regime"]:
+            y = int(s["date"][:4])
+            era = f"{y - y % 5}〜{y - y % 5 + 4}"
+            e = by_era.setdefault(era, {"n": 0, "win": 0, "sum": 0.0})
+            e["n"] += 1
+            e["win"] += 1 if s["fwd20"] > 0 else 0
+            e["sum"] += s["fwd20"]
+    report["byEra"] = {k: {"n": v["n"], "winRate": round(v["win"] / v["n"] * 100, 1),
+                           "avgRet": round(v["sum"] / v["n"], 2)}
+                       for k, v in sorted(by_era.items()) if v["n"] >= 10}
+
     if apply_weights:  # 検証済み重みを本番スコアリングに反映
         cfg = load_learn_config()
         cfg.update({"factor_weights": weights, "factor_ic": ics,
@@ -1040,14 +1078,28 @@ def run_backtest(tickers=None, years=10, apply_weights=False):
 FACTOR_CATS = ["トレンド", "モメンタム", "出来高", "価格位置", "相対力"]
 
 
-def derive_weights(samples):
+def derive_weights(samples, half_life_years=5.0):
     """因子スコアと将来リターンの相関(IC)から重みを算出。
-    IC正=予測に効く因子→重み増、IC負=逆効果→重み減。0.5〜1.5にクリップ。"""
+    IC正=予測に効く因子→重み増、IC負=逆効果→重み減。0.5〜1.5にクリップ。
+    サンプルにdateがあれば半減期5年の指数重みで直近の市場環境を重視
+    (10年超の長期学習でも、古い相場に引きずられて今効かない因子を過大評価しない)。"""
+    now = datetime.now(timezone.utc)
+
+    def recency(s):
+        d = s.get("date")
+        if not d:
+            return 1.0
+        try:
+            age = (now - datetime.strptime(d, "%Y-%m-%d").replace(tzinfo=timezone.utc)).days / 365.25
+            return 0.5 ** (age / half_life_years)
+        except Exception:
+            return 1.0
+
     weights, ics = {}, {}
     for c in FACTOR_CATS:
-        pairs = [(s["factors"][c], s["ret"]) for s in samples
-                 if c in s.get("factors", {}) and s.get("ret") is not None]
-        ic = _pearson([p[0] for p in pairs], [p[1] for p in pairs]) if len(pairs) >= 30 else 0.0
+        trip = [(s["factors"][c], s["ret"], recency(s)) for s in samples
+                if c in s.get("factors", {}) and s.get("ret") is not None]
+        ic = _pearson_w([t[0] for t in trip], [t[1] for t in trip], [t[2] for t in trip]) if len(trip) >= 30 else 0.0
         ics[c] = round(ic, 3)
         weights[c] = round(max(0.5, min(1.5, 1 + 2 * ic)), 2)
     return weights, ics
@@ -1092,7 +1144,7 @@ def run_learn(tickers=None):
     preds = evaluate_predictions()
     if not tickers:
         tickers = list(dict.fromkeys(p["ticker"] for p in reversed(preds)))[:8] or DEFAULT_UNIVERSE[:8]
-    bt = [{"factors": s["factors"], "ret": s["ex20"]}
+    bt = [{"factors": s["factors"], "ret": s["ex20"], "date": s["date"]}
           for s in backtest_universe(tickers, years=3)]
     live = [{"factors": p.get("factors", {}), "ret": p.get("ret5")}
             for p in preds if p.get("type") == "score" and p.get("ret5") is not None]
