@@ -373,7 +373,8 @@ namespace BoatRace.Core
             {
                 var bs = state.Get(i);
                 int stRank = stOrder.IndexOf(i);
-                bs.tactic = StrategyAI.Decide(statsList[i], bs.course, stRank, stList, rng);
+                bs.tactic = StrategyAI.Decide(statsList[i], bs.course, stRank, stList,
+                    venue, wind != null ? wind.WindVector : UnityEngine.Vector3.zero, rng);
                 boats[i].turnAI.Configure(bs.course, bs.tactic);
             }
             OnTacticsDecided?.Invoke();

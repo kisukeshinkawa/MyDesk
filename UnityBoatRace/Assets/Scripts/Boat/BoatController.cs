@@ -65,9 +65,10 @@ namespace BoatRace.Boat
             // 水しぶき: 速度に比例し、ターン中は倍増。技発動中はさらに激しく
             if (spray != null)
             {
+                // 実映像準拠: 全速航走で常に白い飛沫の柱、ターンでローステール倍増
                 var emission = spray.emission;
-                float boost = engine.BoostTime > 0f ? 2.2f : 1f;
-                emission.rateOverTime = engine.Speed * (2.2f + Mathf.Abs(engine.Steer) * 9f) * boost;
+                float boost = engine.BoostTime > 0f ? 2.4f : 1f;
+                emission.rateOverTime = engine.Speed * (4.5f + Mathf.Abs(engine.Steer) * 14f) * boost;
             }
             // 技発動中は航跡が技の色に光る(イナイレ的オーラ)
             if (trail != null)
@@ -75,8 +76,8 @@ namespace BoatRace.Boat
                 bool boosting = engine.BoostTime > 0f;
                 trail.startColor = boosting
                     ? new Color(boostColor.r, boostColor.g, boostColor.b, 0.85f)
-                    : new Color(1f, 1f, 1f, 0.55f);
-                trail.startWidth = boosting ? 2.2f : 1.5f;
+                    : new Color(1f, 1f, 1f, 0.75f);
+                trail.startWidth = boosting ? 3.2f : 2.6f;
             }
         }
 

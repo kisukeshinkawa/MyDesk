@@ -76,6 +76,29 @@ namespace BoatRace.UI
             return boatCache[idx];
         }
 
+        // ---- NPC顔シート(Art/npcs.png 2×2: 支部長/実況アナ/記者/整備士) ----
+        static Texture2D npcSheet;
+        static bool npcTried;
+        static readonly Sprite[] npcCache = new Sprite[4];
+
+        public static Sprite Npc(int idx)
+        {
+            if (!npcTried)
+            {
+                npcTried = true;
+                npcSheet = Resources.Load<Texture2D>("Art/npcs");
+            }
+            if (npcSheet == null || idx < 0 || idx > 3) return null;
+            if (npcCache[idx] != null) return npcCache[idx];
+            int col = idx % 2, row = idx / 2; // 左上=支部長, 右上=実況, 左下=記者, 右下=整備士
+            var rect = new Rect(
+                (col * 0.5f + 0.02f) * npcSheet.width,
+                (row == 0 ? 0.52f : 0.02f) * npcSheet.height, // テクスチャ座標は下基準
+                0.46f * npcSheet.width, 0.46f * npcSheet.height);
+            npcCache[idx] = Sprite.Create(npcSheet, rect, new Vector2(0.5f, 0.5f), 100f);
+            return npcCache[idx];
+        }
+
         /// <summary>タイトル用アート(title_kv/logo_teido)。無ければnull。</summary>
         public static Sprite LoadArt(string name)
         {

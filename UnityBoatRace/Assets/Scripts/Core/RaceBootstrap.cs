@@ -480,9 +480,9 @@ namespace BoatRace.Core
                 trailGo.transform.SetParent(root.transform, false);
                 trailGo.transform.localPosition = new Vector3(0f, -0.12f, -1.65f);
                 var trail = trailGo.AddComponent<TrailRenderer>();
-                trail.time = 2.6f;
-                trail.startWidth = 1.5f;
-                trail.endWidth = 0.15f;
+                trail.time = 3.8f;      // 実映像のように長く白い航跡を残す
+                trail.startWidth = 2.6f;
+                trail.endWidth = 0.3f;
                 trail.material = new Material(Shader.Find("Sprites/Default"));
                 trail.startColor = new Color(1f, 1f, 1f, 0.55f);
                 trail.endColor = new Color(1f, 1f, 1f, 0f);
@@ -494,12 +494,12 @@ namespace BoatRace.Core
                 sprayGo.transform.localRotation = Quaternion.Euler(-55f, 0f, 0f);
                 var ps = sprayGo.AddComponent<ParticleSystem>();
                 var main = ps.main;
-                main.startLifetime = 0.45f;
-                main.startSpeed = new ParticleSystem.MinMaxCurve(2.5f, 5.5f);
-                main.startSize = new ParticleSystem.MinMaxCurve(0.12f, 0.45f);
-                main.startColor = new Color(1f, 1f, 1f, 0.6f);
-                main.gravityModifier = 1.3f;
-                main.maxParticles = 200;
+                main.startLifetime = 0.6f;
+                main.startSpeed = new ParticleSystem.MinMaxCurve(3.0f, 7.0f);
+                main.startSize = new ParticleSystem.MinMaxCurve(0.15f, 0.8f); // 実映像の白い飛沫柱
+                main.startColor = new Color(1f, 1f, 1f, 0.7f);
+                main.gravityModifier = 1.2f;
+                main.maxParticles = 450;
                 main.simulationSpace = ParticleSystemSimulationSpace.World;
                 var emission = ps.emission;
                 emission.rateOverTime = 0f;

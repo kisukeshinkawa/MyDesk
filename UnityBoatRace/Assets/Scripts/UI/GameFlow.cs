@@ -15,7 +15,7 @@ namespace BoatRace.UI
     public class GameFlow : MonoBehaviour
     {
         /// <summary>ビルド識別子。画面右上に表示され、更新が届いたか一目で分かる。</summary>
-        public const string Build = "B19-大村実寸会場+ナイター";
+        public const string Build = "B20-実データ24場+中継カメラ";
 
         RaceManager race;
         ReplayManager replay;
@@ -63,6 +63,7 @@ namespace BoatRace.UI
         // 演出: スタートスロー(大時計0秒付近をスローモーションで見せる)
         bool startSlowActive, startSlowDone;
         bool stTelopPending; // スタート成立後にST一覧テロップを出す予約
+        GameObject broadcastStrip; // 実中継風の左端縦艇番プレート(スタート前のみ)
 
         // 固定ライバル名鑑(シナリオ第6章: 個性を持った実在感あるライバル)
         static readonly (string name, Color hair, string line)[] Rivals =
@@ -101,6 +102,11 @@ namespace BoatRace.UI
                 if (LegendRacer.All[i].name == name) return FaceArt.Get(1 + i);
             for (int i = 0; i < Rivals.Length; i++)
                 if (Rivals[i].name == name) return FaceArt.Get(14 + i);
+            // NPC(Art/npcs.pngがあれば): 支部長/実況アナ/記者/整備士
+            if (name.Contains("支部長") || name.Contains("会長")) return FaceArt.Npc(0);
+            if (name.Contains("実況") || name.Contains("アナ")) return FaceArt.Npc(1);
+            if (name.Contains("記者")) return FaceArt.Npc(2);
+            if (name.Contains("整備")) return FaceArt.Npc(3);
             return null;
         }
 
@@ -299,12 +305,44 @@ namespace BoatRace.UI
                 if (!racingNow) ffLabel.text = "⏩ 早送り";
             }
 
+            // 実中継風: スタート前だけ左端に縦の艇番プレート(1〜6+選手名)
+            bool preStart = race.armed && !replay.IsPlaying &&
+                (race.state.phase == RacePhase.PitOut || race.state.phase == RacePhase.Waiting ||
+                 race.state.phase == RacePhase.Approach);
+            if (preStart && broadcastStrip == null && movePanelGo == null)
+            {
+                broadcastStrip = new GameObject("BroadcastStrip");
+                UiKit.Place(broadcastStrip, canvas.transform,
+                    new Vector2(0.005f, 0.28f), new Vector2(0.15f, 0.80f), Vector2.zero, Vector2.zero);
+                for (int i = 0; i < 6; i++)
+                {
+                    Color bc = UiKit.BoatColors[i];
+                    bool lightBc = bc.r * 0.6f + bc.g * 0.3f + bc.b * 0.1f > 0.6f;
+                    float top = 1f - i * (1f / 6f);
+                    var plate = UiKit.MakePanel(broadcastStrip.transform, bc, 8,
+                        new Vector2(0f, top - 0.145f), new Vector2(1f, top - 0.01f),
+                        Vector2.zero, Vector2.zero);
+                    plate.GetComponent<Image>().raycastTarget = false;
+                    plate.AddComponent<SkewFx>().skewX = 6f;
+                    UiKit.MakeText(plate.transform,
+                        $"{i + 1} {race.statsList[i].player.playerName}", 17,
+                        lightBc ? UiKit.Navy : Color.white, TextAnchor.MiddleLeft,
+                        Vector2.zero, Vector2.one, new Vector2(10f, 0f), new Vector2(-4f, 0f),
+                        bold: true, shadow: !lightBc);
+                }
+            }
+            else if (!preStart && broadcastStrip != null)
+            {
+                Destroy(broadcastStrip);
+                broadcastStrip = null;
+            }
+
             // ST一覧テロップ: スタートスローが明けてから(絵コンテv3 CUT08)
             if (stTelopPending && race.armed && race.state.phase == RacePhase.Racing &&
                 race.state.clock > 1.4f && !startSlowActive && !replay.IsPlaying)
             {
                 stTelopPending = false;
-                ShowStTelop();
+                StartCoroutine(StTelopSeq());
             }
 
             // 演出: スタートスロー(仕様書⑩)。大時計0秒の攻防をスロー+ホーンで見せる
@@ -661,6 +699,23 @@ namespace BoatRace.UI
             ShowTelop($"進入確定　{slow} スロー ／ {dash} ダッシュ", UiKit.Navy);
         }
 
+        /// <summary>実中継の順序: 「スタート正常/フライング」→ 2.3秒後にST一覧。</summary>
+        System.Collections.IEnumerator StTelopSeq()
+        {
+            bool anyF = false, anyL = false;
+            for (int i = 0; i < 6; i++)
+            {
+                var f = race.state.Get(i).startFlag;
+                if (f == StartFlag.Flying) anyF = true;
+                if (f == StartFlag.Late) anyL = true;
+            }
+            ShowTelop(anyF ? "フライング発生！　該当艇は返還欠場" :
+                      anyL ? "出遅れ発生　該当艇は返還欠場" : "スタート正常",
+                anyF || anyL ? new Color(0.72f, 0.10f, 0.10f, 0.95f) : UiKit.Navy);
+            yield return new WaitForSecondsRealtime(2.3f);
+            ShowStTelop();
+        }
+
         /// <summary>ST一覧テロップ。コース順に .12 形式(F=フライング/L=出遅れ)。</summary>
         void ShowStTelop()
         {
@@ -963,6 +1018,13 @@ namespace BoatRace.UI
                 new Color(1f, 0.78f, 0.20f), new Color(0.35f, 0.21f, 0f), 15,
                 new Vector2(0.72f, 0.84f), new Vector2(0.985f, 0.885f), skew: 8f);
 
+            // ストーリー進行中はホームの開催場を次章の指定会場に同期(会場とストーリーの一致)
+            if (!career.allClear && race.venueId != career.Current.venueId)
+            {
+                race.venueId = career.Current.venueId;
+                if (RaceBootstrap.Instance != null) RaceBootstrap.Instance.RebuildEnvironment(race);
+            }
+
             // 上中央: 開催場カード(白カード+紺枠+黄斜めタグ)
             UiKit.MakeTag(s.transform, "開催場", UiKit.Yellow, UiKit.Border, 18,
                 new Vector2(0.43f, 0.905f), new Vector2(0.57f, 0.95f));
@@ -976,7 +1038,7 @@ namespace BoatRace.UI
             {
                 var v = CourseDatabase.Get(race.venueId);
                 venueLabel.text = $"{v.id}. {v.name}";
-                infoLabel.text = $"風 {Stars(v.windEffect)}　波 {v.waveHeight * 100f:F0}cm　イン {Stars(v.insideAdvantage)}";
+                infoLabel.text = $"〈{v.Character}〉イン{v.insideAdvantage * 100f:F0}%　風 {Stars(v.windEffect)}　波 {v.waveHeight * 100f:F0}cm";
             }
             UiKit.MakeButton(vInner.transform, "◀", UiKit.Cyan, 24,
                 new Vector2(0.02f, 0.34f), new Vector2(0.15f, 0.82f), Vector2.zero, Vector2.zero,
@@ -995,9 +1057,10 @@ namespace BoatRace.UI
             UiKit.MakeTag(nextInner.transform, "NEXT ▶", UiKit.Yellow, UiKit.Border, 15,
                 new Vector2(0.03f, 0.58f), new Vector2(0.30f, 0.94f), skew: 8f);
             string chTitle = career.allClear ? "フリー挑戦" :
-                $"第{career.chapter}章 「{career.Current.title}」";
-            UiKit.MakeText(nextInner.transform, chTitle, 21, UiKit.Border, TextAnchor.MiddleLeft,
-                new Vector2(0.05f, 0.06f), new Vector2(0.98f, 0.56f), Vector2.zero, Vector2.zero, bold: true);
+                $"第{career.chapter}章 「{career.Current.title}」\n" +
+                $"＠{CourseDatabase.Get(career.Current.venueId).name}・{career.Current.grade}戦";
+            UiKit.MakeText(nextInner.transform, chTitle, 17, UiKit.Border, TextAnchor.MiddleLeft,
+                new Vector2(0.05f, 0.03f), new Vector2(0.98f, 0.56f), Vector2.zero, Vector2.zero, bold: true);
             var nextBtn = nextOuter.AddComponent<Button>();
             nextBtn.targetGraphic = nextOuter.GetComponent<Image>();
             nextBtn.onClick.AddListener(ShowCareer);
@@ -1796,14 +1859,14 @@ namespace BoatRace.UI
                 }
 
                 string entry = BoatRace.Start.WaitingSystem.IsSlowStart(bs.course) ? "スロー" : "ダッシュ";
-                string grade = MotorGrade(st.motor.OverallScore);
+                // 実際の出走表と同じ情報構成: 級別・勝率・進入・平均ST / モーター番号・2連対率・展示
                 UiKit.MakeText(card.transform,
-                    $"級別 {st.player.rank}　{bs.course}コース({entry})　ST .{Mathf.RoundToInt(st.player.reactionTimeMean * 100f):00}",
-                    18, UiKit.TextDark, TextAnchor.MiddleLeft,
+                    $"{st.player.rank}級　勝率 {WinRateOf(st.player):F2}　{bs.course}コース({entry})　ST .{Mathf.RoundToInt(st.player.reactionTimeMean * 100f):00}",
+                    16, UiKit.TextDark, TextAnchor.MiddleLeft,
                     new Vector2(0f, 0.34f), new Vector2(infoW, 0.62f), new Vector2(18f, 0f), new Vector2(-4f, 0f));
                 UiKit.MakeText(card.transform,
-                    $"艇「{BoatDesign.Names[i]}」　モーター{grade}　展示 {bs.exhibitionTime:F2}",
-                    18, UiKit.Cyan, TextAnchor.MiddleLeft,
+                    $"M{st.motor.motorNumber}号機〈{MotorGrade(st.motor.OverallScore)}〉2連率 {st.motor.winRate2:F0}%　展示 {bs.exhibitionTime:F2}",
+                    16, UiKit.Cyan, TextAnchor.MiddleLeft,
                     new Vector2(0f, 0.06f), new Vector2(infoW, 0.32f), new Vector2(18f, 0f), new Vector2(-4f, 0f), bold: true);
             }
 
@@ -1891,6 +1954,10 @@ namespace BoatRace.UI
 
         // ================= データ分析・整備・舟券(仕様書④⑥⑨) =================
 
+        /// <summary>全国勝率(出走表表示用)。スキルを実艇スケール(3.5〜8.0前後)へ換算。</summary>
+        static float WinRateOf(BoatRace.Player.PlayerStats p) =>
+            3.2f + (p.startSkill + p.turnSkill + p.speedSkill + p.mental) * 1.2f;
+
         /// <summary>AI総合スコア: ST+ターン+スピード+モーター+コース補正(仕様書②の合成式)。</summary>
         float[] EntryScores()
         {
@@ -1932,7 +1999,7 @@ namespace BoatRace.UI
             {
                 var st = race.statsList[i];
                 var bs = race.state.Get(i);
-                float top = 0.86f - i * 0.115f;
+                float top = 0.86f - i * 0.105f;
                 var sq = UiKit.MakePanel(inner.transform, UiKit.BoatColors[i], 6,
                     new Vector2(0.04f, top - 0.085f), new Vector2(0.085f, top), Vector2.zero, Vector2.zero);
                 sq.GetComponent<Image>().raycastTarget = false;
@@ -1946,10 +2013,16 @@ namespace BoatRace.UI
                     new Vector2(0.11f, top - 0.09f), new Vector2(0.97f, top), Vector2.zero, Vector2.zero,
                     bold: marks[i] == "◎");
             }
+            // 会場特性(実場の傾向): 決まり手の出方と狙い目が変わる
+            var vd = race.venue;
+            UiKit.MakeText(inner.transform,
+                $"〈{vd.Character}〉{vd.trait}",
+                14, new Color(0.30f, 0.36f, 0.48f), TextAnchor.MiddleLeft,
+                new Vector2(0.04f, 0.19f), new Vector2(0.96f, 0.255f), Vector2.zero, Vector2.zero, bold: true);
             int best = 0;
             for (int i = 1; i < 6; i++) if (scores[i] > scores[best]) best = i;
             UiKit.MakeText(inner.transform,
-                $"AI予想: 本命は{best + 1}号艇。コース・モーター・STを総合評価。",
+                $"AI予想: 本命は{best + 1}号艇。コース・モーター・ST・会場傾向を総合評価。",
                 17, UiKit.Cyan, TextAnchor.MiddleCenter,
                 new Vector2(0.04f, 0.135f), new Vector2(0.96f, 0.185f), Vector2.zero, Vector2.zero, bold: true);
             // コース別1着率(これまでの全レースの蓄積データ)
@@ -2295,7 +2368,7 @@ namespace BoatRace.UI
                 new Vector2(0.14f, 0.895f), new Vector2(0.86f, 0.975f), tilt: -1f);
 
             var panel = UiKit.MakePanel(s.transform, new Color(1f, 1f, 1f, 0.10f), 22,
-                new Vector2(0.16f, 0.30f), new Vector2(0.84f, 0.87f), Vector2.zero, Vector2.zero);
+                new Vector2(0.16f, 0.315f), new Vector2(0.84f, 0.87f), Vector2.zero, Vector2.zero);
 
             for (int i = 0; i < race.state.standings.Count; i++)
             {
@@ -2340,8 +2413,8 @@ namespace BoatRace.UI
             {
                 int a = valid[0], b = valid[1], c = valid[2];
                 int payout = ComputePayout(a, b, c);
-                UiKit.MakeText(s.transform, $"3連単 {a + 1}-{b + 1}-{c + 1}　払戻 ¥{payout:N0}", 30, UiKit.Yellow,
-                    TextAnchor.MiddleCenter, new Vector2(0f, 0.21f), new Vector2(1f, 0.29f),
+                UiKit.MakeText(s.transform, $"3連単 {a + 1}-{b + 1}-{c + 1}　払戻 ¥{payout:N0}", 28, UiKit.Yellow,
+                    TextAnchor.MiddleCenter, new Vector2(0f, 0.25f), new Vector2(1f, 0.31f),
                     Vector2.zero, Vector2.zero, bold: true, shadow: true);
             }
 
@@ -2353,51 +2426,52 @@ namespace BoatRace.UI
                 string prz = lastCareerPrize > 0 ? $"賞金 +{lastCareerPrize}万円" : "賞金なし";
                 UiKit.MakeText(s.transform,
                     $"あなた({career.racerName})　{res}　{prz}　通算 {career.wins}勝",
-                    26, Color.white, TextAnchor.MiddleCenter,
-                    new Vector2(0f, 0.155f), new Vector2(1f, 0.205f), Vector2.zero, Vector2.zero,
+                    24, Color.white, TextAnchor.MiddleCenter,
+                    new Vector2(0f, 0.20f), new Vector2(1f, 0.25f), Vector2.zero, Vector2.zero,
                     bold: true, shadow: true, outline: true);
                 if (predictionSummary != null)
                 {
-                    UiKit.MakeText(s.transform, predictionSummary, 22,
+                    UiKit.MakeText(s.transform, predictionSummary, 20,
                         predictionBonus > 0 ? UiKit.Yellow : new Color(0.8f, 0.85f, 0.95f),
                         TextAnchor.MiddleCenter,
-                        new Vector2(0f, 0.115f), new Vector2(1f, 0.155f), Vector2.zero, Vector2.zero,
+                        new Vector2(0f, 0.16f), new Vector2(1f, 0.20f), Vector2.zero, Vector2.zero,
                         bold: true, shadow: true);
                 }
             }
             if (betAmount > 0)
             {
-                // 舟券の精算結果(2連単/3連単。ストーリーでは予想行の下に出す)
+                // 舟券の精算結果(2連単/3連単。ボタンと重ならない帯に出す)
                 string num = betType == 0 ? $"{betFirst + 1}-{betSecond + 1}"
                     : $"{betFirst + 1}-{betSecond + 1}-{betThird + 1}";
                 string kind = betType == 0 ? "2連単" : "3連単";
                 string bRes = betWon
                     ? $"舟券的中！！ {kind} {num}　払戻 +{betPayout:N0} BC"
                     : $"舟券はずれ… ({kind} {num} × {betAmount}BC)　残高 {PlayerPrefs.GetInt("br_betcoin", 1000):N0} BC";
-                float by0 = careerRace ? 0.075f : 0.155f;
-                float by1 = careerRace ? 0.115f : 0.205f;
-                UiKit.MakeText(s.transform, bRes, careerRace ? 20 : 24,
+                float by0 = careerRace ? 0.12f : 0.18f;
+                float by1 = careerRace ? 0.16f : 0.23f;
+                UiKit.MakeText(s.transform, bRes, 20,
                     betWon ? UiKit.Yellow : new Color(0.8f, 0.85f, 0.95f), TextAnchor.MiddleCenter,
                     new Vector2(0f, by0), new Vector2(1f, by1), Vector2.zero, Vector2.zero,
                     bold: true, shadow: true, outline: true);
             }
 
-            UiKit.MakeButton(s.transform, "▶ リプレイ", UiKit.Cyan, 28,
-                new Vector2(0.16f, 0.05f), new Vector2(0.38f, 0.16f), Vector2.zero, Vector2.zero,
+            // ボタン列は最下段に分離(テキストと重ならない)
+            UiKit.MakeButton(s.transform, "▶ リプレイ", UiKit.Cyan, 26,
+                new Vector2(0.16f, 0.015f), new Vector2(0.38f, 0.105f), Vector2.zero, Vector2.zero,
                 () => { ClearScreen(); replay.StartPlayback(); });
             if (careerRace)
             {
-                UiKit.MakeButton(s.transform, "★ ストーリーへ", new Color(0.62f, 0.2f, 0.75f), 26,
-                    new Vector2(0.40f, 0.05f), new Vector2(0.60f, 0.16f), Vector2.zero, Vector2.zero, ShowCareer);
+                UiKit.MakeButton(s.transform, "★ ストーリーへ", new Color(0.62f, 0.2f, 0.75f), 24,
+                    new Vector2(0.40f, 0.015f), new Vector2(0.60f, 0.105f), Vector2.zero, Vector2.zero, ShowCareer);
             }
             else
             {
-                UiKit.MakeButton(s.transform, "もう一度", UiKit.Red, 28,
-                    new Vector2(0.40f, 0.05f), new Vector2(0.60f, 0.16f), Vector2.zero, Vector2.zero,
+                UiKit.MakeButton(s.transform, "もう一度", UiKit.Red, 26,
+                    new Vector2(0.40f, 0.015f), new Vector2(0.60f, 0.105f), Vector2.zero, Vector2.zero,
                     () => { race.seed = System.Environment.TickCount; race.SetupRace(); ShowEntry(); });
             }
-            UiKit.MakeButton(s.transform, "ホームへ", UiKit.Yellow, 28,
-                new Vector2(0.62f, 0.05f), new Vector2(0.84f, 0.16f), Vector2.zero, Vector2.zero,
+            UiKit.MakeButton(s.transform, "ホームへ", UiKit.Yellow, 26,
+                new Vector2(0.62f, 0.015f), new Vector2(0.84f, 0.105f), Vector2.zero, Vector2.zero,
                 () => { race.SetupRace(); ShowHome(); }).GetComponentInChildren<Text>().color = UiKit.Navy;
 
             // 昇格・初勝利などのストーリー会話

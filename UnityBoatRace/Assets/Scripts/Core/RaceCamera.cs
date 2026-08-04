@@ -87,7 +87,7 @@ namespace BoatRace.Core
             {
                 switch (mode)
                 {
-                    case Mode.Follow: targetFov = 50f; FollowCam(); break;
+                    case Mode.Follow: FollowCam(); targetFov = followFov; break;
                     case Mode.Onboard: targetFov = 78f; OnboardCam(); break;
                     case Mode.Overhead: targetFov = 52f; OverheadCam(); break;
                 }
@@ -121,7 +121,11 @@ namespace BoatRace.Core
             transform.rotation = Quaternion.Slerp(transform.rotation, look, Time.deltaTime * 2f);
         }
 
-        // ---- 中継風追尾 ----
+        float followFov = 30f;
+
+        // ---- 中継風追尾(実際のレース中継準拠) ----
+        // スタンド側の高所カメラがパン+望遠ズームで艇団を追う。
+        // 圧縮効果で艇団が密集して見え、白い引き波が画面を横切る「あの画」になる。
         void FollowCam()
         {
             Vector3 center = Vector3.zero;
@@ -135,13 +139,17 @@ namespace BoatRace.Core
             if (focusBoat >= 0 && focusBoat < race.boats.Count)
                 center = Vector3.Lerp(center, race.boats[focusBoat].engine.Position, 0.55f);
 
-            float dist = Mathf.Clamp(spread * 1.5f + 28f, 45f, 160f);
-            Vector3 dir = new Vector3(-0.12f, 0.72f, -1f).normalized;
-            Vector3 targetPos = center + dir * dist;
+            // スタンド側(-Z)の高さ9mのカメラ台。x方向は艇団を少し先読みしてパン
+            Vector3 targetPos = new Vector3(center.x - 14f, 9f, Mathf.Min(center.z, 0f) - 76f);
+            transform.position = Vector3.SmoothDamp(transform.position, targetPos, ref velocity, 0.6f);
+            var look = Quaternion.LookRotation(center + Vector3.up * 0.8f - transform.position);
+            transform.rotation = Quaternion.Slerp(transform.rotation, look, Time.deltaTime * 4.5f);
 
-            transform.position = Vector3.SmoothDamp(transform.position, targetPos, ref velocity, 0.55f);
-            var look = Quaternion.LookRotation(center + Vector3.forward * 4f - transform.position);
-            transform.rotation = Quaternion.Slerp(transform.rotation, look, Time.deltaTime * 3f);
+            // 望遠ズーム: 艇団の広がりに応じて画角を調整(望遠=圧縮効果)
+            float dist = Vector3.Distance(transform.position, center);
+            followFov = Mathf.Clamp(
+                Mathf.Atan2(Mathf.Max(spread, 13f), Mathf.Max(dist, 30f)) * Mathf.Rad2Deg * 2.3f,
+                17f, 46f);
         }
 
         // ---- 選手目線(先頭艇) ----
@@ -168,12 +176,17 @@ namespace BoatRace.Core
             transform.rotation = Quaternion.Slerp(transform.rotation, look, Time.deltaTime * 14f);
         }
 
-        // ---- 俯瞰 ----
+        // ---- 俯瞰(艇団を追う低めのドローン視点) ----
         void OverheadCam()
         {
-            Vector3 targetPos = new Vector3(-150f, 245f, -150f);
-            transform.position = Vector3.SmoothDamp(transform.position, targetPos, ref velocity, 0.8f);
-            var look = Quaternion.LookRotation(new Vector3(-150f, 0f, 10f) - transform.position);
+            Vector3 center = Vector3.zero;
+            foreach (var b in race.boats) center += b.engine.Position;
+            center /= race.boats.Count;
+            if (focusBoat >= 0 && focusBoat < race.boats.Count)
+                center = Vector3.Lerp(center, race.boats[focusBoat].engine.Position, 0.5f);
+            Vector3 targetPos = center + new Vector3(0f, 130f, -55f);
+            transform.position = Vector3.SmoothDamp(transform.position, targetPos, ref velocity, 0.7f);
+            var look = Quaternion.LookRotation(center - transform.position);
             transform.rotation = Quaternion.Slerp(transform.rotation, look, Time.deltaTime * 3f);
         }
     }
