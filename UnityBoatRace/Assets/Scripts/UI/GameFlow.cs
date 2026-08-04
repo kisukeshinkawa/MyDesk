@@ -15,7 +15,7 @@ namespace BoatRace.UI
     public class GameFlow : MonoBehaviour
     {
         /// <summary>ビルド識別子。画面右上に表示され、更新が届いたか一目で分かる。</summary>
-        public const string Build = "B21b-コンパイル修正";
+        public const string Build = "B22-サイズ調整+技選択モック";
 
         RaceManager race;
         ReplayManager replay;
@@ -445,28 +445,81 @@ namespace BoatRace.UI
             float esc = enemyIdx >= 0 ? advScores[enemyIdx] : psc;
             int advPct = Mathf.RoundToInt(psc / Mathf.Max(0.01f, psc + esc) * 100f);
 
-            var sheet = UiKit.MakePanel(movePanelGo.transform, new Color(0.88f, 0.94f, 0.99f, 0.97f), 26,
-                new Vector2(0f, 0f), new Vector2(1f, 0.47f), new Vector2(6f, -30f), new Vector2(-6f, 0f));
+            // ---- 技選択モック準拠: 上=状況+優勢度バー / 中=プロンプト+VSプレート / 下=技カード ----
+            var root = movePanelGo.transform;
 
-            // ヘッダ: 自分(顔+青帯名+体力バー) vs 敵(赤タグ+パワー)
-            MakeFaceAt(sheet.transform, career.racerName,
-                new Vector2(0.015f, 0.72f), new Vector2(0.115f, 0.99f));
-            UiKit.MakeTag(sheet.transform, $"{career.racerName}　{race.playerBoatIndex + 1}号艇",
-                UiKit.Cyan, Color.white, 19,
-                new Vector2(0.125f, 0.86f), new Vector2(0.43f, 0.985f), skew: 10f);
-            UiKit.MakeText(sheet.transform, $"体力 {race.playerSP:F0}/{race.playerSPMax:F0}", 14,
-                UiKit.Navy, TextAnchor.MiddleLeft,
-                new Vector2(0.13f, 0.795f), new Vector2(0.36f, 0.855f), Vector2.zero, Vector2.zero, bold: true);
-            var tpBg = UiKit.MakePanel(sheet.transform, new Color(0.78f, 0.84f, 0.90f), 6,
-                new Vector2(0.13f, 0.735f), new Vector2(0.37f, 0.79f), Vector2.zero, Vector2.zero);
-            var tpFill = UiKit.MakePanel(tpBg.transform, UiKit.Emerald, 6,
-                new Vector2(0.02f, 0.14f),
-                new Vector2(Mathf.Clamp01(race.playerSP / Mathf.Max(1f, race.playerSPMax)) * 0.96f + 0.02f, 0.86f),
+            // 左上: レース状況チップ
+            var raceChip = UiKit.MakePanel(root, new Color(0.047f, 0.157f, 0.353f, 0.88f), 10,
+                new Vector2(0.015f, 0.925f), new Vector2(0.30f, 0.975f), Vector2.zero, Vector2.zero);
+            UiKit.MakeText(raceChip.transform,
+                $"{race.venue.name}　レース中 {race.state.raceTime:F1}s", 15, Color.white,
+                TextAnchor.MiddleCenter, Vector2.zero, Vector2.one,
+                new Vector2(8f, 0f), new Vector2(-8f, 0f), bold: true, shadow: true);
+
+            // 上中央: 優勢度バー(青vs赤のストライプ)
+            var advBar = UiKit.MakePanel(root, Color.white, 12,
+                new Vector2(0.33f, 0.925f), new Vector2(0.67f, 0.965f), Vector2.zero, Vector2.zero);
+            float advW = Mathf.Clamp01(advPct / 100f);
+            var advL = UiKit.MakePanel(advBar.transform, new Color(0.184f, 0.659f, 0.941f), 8,
+                new Vector2(0.008f, 0.14f), new Vector2(Mathf.Max(0.03f, advW - 0.004f), 0.86f),
                 Vector2.zero, Vector2.zero);
-            tpFill.GetComponent<Image>().raycastTarget = false;
-            UiKit.MakeChip(sheet.transform, $"優勢度 {advPct}%",
-                advPct >= 50 ? UiKit.Cyan : UiKit.Red, Color.white, 14,
-                new Vector2(0.39f, 0.735f), new Vector2(0.55f, 0.845f), Vector2.zero, Vector2.zero);
+            UiKit.AddStripeOverlay(advL, Color.white, 0.22f);
+            advL.GetComponent<Image>().raycastTarget = false;
+            var advR = UiKit.MakePanel(advBar.transform, new Color(0.910f, 0.271f, 0.184f), 8,
+                new Vector2(Mathf.Min(0.97f, advW + 0.004f), 0.14f), new Vector2(0.992f, 0.86f),
+                Vector2.zero, Vector2.zero);
+            UiKit.AddStripeOverlay(advR, Color.white, 0.22f);
+            advR.GetComponent<Image>().raycastTarget = false;
+            UiKit.MakeText(root, $"{advPct}%", 21, new Color(0.50f, 0.83f, 1f), TextAnchor.MiddleLeft,
+                new Vector2(0.33f, 0.875f), new Vector2(0.45f, 0.925f), Vector2.zero, Vector2.zero,
+                bold: true, shadow: true, outline: true);
+            UiKit.MakeText(root, "優勢度", 13, Color.white, TextAnchor.MiddleCenter,
+                new Vector2(0.45f, 0.875f), new Vector2(0.55f, 0.925f), Vector2.zero, Vector2.zero,
+                bold: true, shadow: true);
+            UiKit.MakeText(root, $"{100 - advPct}%", 21, new Color(1f, 0.69f, 0.56f), TextAnchor.MiddleRight,
+                new Vector2(0.55f, 0.875f), new Vector2(0.67f, 0.925f), Vector2.zero, Vector2.zero,
+                bold: true, shadow: true, outline: true);
+
+            // 中央: 黄色プロンプト(少し回転)+残り時間サークル
+            var prompt = UiKit.MakePanel(root, new Color(1f, 0.80f, 0.18f), 14,
+                new Vector2(0.30f, 0.78f), new Vector2(0.64f, 0.855f), Vector2.zero, Vector2.zero);
+            prompt.GetComponent<RectTransform>().localEulerAngles = new Vector3(0f, 0f, 2f);
+            var prSh = prompt.AddComponent<Shadow>();
+            prSh.effectColor = new Color(0.69f, 0.41f, 0f, 0.85f);
+            prSh.effectDistance = new Vector2(0f, -5f);
+            UiKit.MakeText(prompt.transform, $"{markNo}マーク！技を選択しろ！", 22,
+                new Color(0.35f, 0.18f, 0f), TextAnchor.MiddleCenter,
+                Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, bold: true);
+            var timerOuter = UiKit.MakePanel(root, new Color(0.06f, 0.12f, 0.28f, 0.85f), 40,
+                new Vector2(0.665f, 0.765f), new Vector2(0.735f, 0.885f), Vector2.zero, Vector2.zero);
+            var timerRing = UiKit.MakePanel(timerOuter.transform, new Color(1f, 0.31f, 0.19f), 36,
+                Vector2.zero, Vector2.one, new Vector2(4f, 4f), new Vector2(-4f, -4f));
+            var timerInner = UiKit.MakePanel(timerRing.transform, new Color(0.06f, 0.12f, 0.28f), 32,
+                Vector2.zero, Vector2.one, new Vector2(5f, 5f), new Vector2(-5f, -5f));
+            timerInner.GetComponent<Image>().raycastTarget = false;
+            moveTimerText = UiKit.MakeText(timerInner.transform, "4.0", 24, Color.white,
+                TextAnchor.MiddleCenter, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero,
+                bold: true, shadow: true);
+            moveDeadline = Time.unscaledTime + 4f;
+
+            // VSプレート: 左=自分(顔+青帯+体力バー) / 右=敵(顔+赤帯+戦法+パワー)
+            MakeFaceAt(root, career.racerName,
+                new Vector2(0.02f, 0.585f), new Vector2(0.095f, 0.72f));
+            UiKit.MakeTag(root, $"{career.racerName}　{race.playerBoatIndex + 1}号艇",
+                new Color(0.106f, 0.384f, 0.847f), Color.white, 18,
+                new Vector2(0.105f, 0.66f), new Vector2(0.36f, 0.72f), skew: 10f);
+            var hpRow = UiKit.MakePanel(root, new Color(0.04f, 0.10f, 0.22f, 0.85f), 10,
+                new Vector2(0.105f, 0.595f), new Vector2(0.36f, 0.65f), Vector2.zero, Vector2.zero);
+            UiKit.MakeText(hpRow.transform, $"体力 {race.playerSP:F0}/{race.playerSPMax:F0}", 13,
+                Color.white, TextAnchor.MiddleLeft, new Vector2(0f, 0f), new Vector2(0.48f, 1f),
+                new Vector2(10f, 0f), Vector2.zero, bold: true);
+            var hpBg = UiKit.MakePanel(hpRow.transform, new Color(0.07f, 0.19f, 0.37f), 5,
+                new Vector2(0.50f, 0.28f), new Vector2(0.97f, 0.72f), Vector2.zero, Vector2.zero);
+            var hpFill = UiKit.MakePanel(hpBg.transform, new Color(0.30f, 0.88f, 0.48f), 5,
+                new Vector2(0.01f, 0.10f),
+                new Vector2(Mathf.Clamp01(race.playerSP / Mathf.Max(1f, race.playerSPMax)) * 0.98f + 0.01f, 0.90f),
+                Vector2.zero, Vector2.zero);
+            hpFill.GetComponent<Image>().raycastTarget = false;
 
             string eName = enemyIdx >= 0 ? race.statsList[enemyIdx].player.playerName : "―";
             string eTac = enemyIdx >= 0 ? AI.StrategyAI.TacticName(race.state.Get(enemyIdx).tactic) : "";
@@ -474,39 +527,48 @@ namespace BoatRace.UI
                 ? Mathf.RoundToInt((race.statsList[enemyIdx].player.turnSkill
                     + race.statsList[enemyIdx].player.speedSkill) * 300f)
                 : 0;
-            UiKit.MakeTag(sheet.transform, $"{eName}：{eTac}", UiKit.Red, Color.white, 15,
-                new Vector2(0.57f, 0.875f), new Vector2(0.985f, 0.985f), skew: -10f);
-            UiKit.MakeText(sheet.transform, $"{ePow}", 30, UiKit.Red, TextAnchor.MiddleRight,
-                new Vector2(0.70f, 0.72f), new Vector2(0.975f, 0.87f), Vector2.zero, Vector2.zero,
+            if (enemyIdx >= 0)
+                MakeFaceAt(root, eName, new Vector2(0.905f, 0.585f), new Vector2(0.98f, 0.72f));
+            UiKit.MakeTag(root, $"{eName}　{(enemyIdx >= 0 ? enemyIdx + 1 : 0)}号艇",
+                new Color(0.886f, 0.227f, 0.180f), Color.white, 18,
+                new Vector2(0.64f, 0.66f), new Vector2(0.895f, 0.72f), skew: -10f);
+            UiKit.MakeChip(root, eTac, new Color(0.702f, 0.125f, 0.078f), Color.white, 14,
+                new Vector2(0.64f, 0.59f), new Vector2(0.735f, 0.65f), Vector2.zero, Vector2.zero);
+            UiKit.MakeText(root, $"{ePow}", 40, new Color(1f, 0.23f, 0.14f), TextAnchor.MiddleRight,
+                new Vector2(0.745f, 0.575f), new Vector2(0.895f, 0.665f), Vector2.zero, Vector2.zero,
                 bold: true, shadow: true, outline: true);
 
-            // プロンプト+残り時間サークル
-            UiKit.MakeText(sheet.transform, $"{markNo}マーク！ 技を選択しろ！", 20, UiKit.Navy,
-                TextAnchor.MiddleCenter,
-                new Vector2(0.04f, 0.62f), new Vector2(0.80f, 0.71f), Vector2.zero, Vector2.zero, bold: true);
-            var timerOuter = UiKit.MakePanel(sheet.transform, UiKit.Navy, 40,
-                new Vector2(0.845f, 0.575f), new Vector2(0.955f, 0.735f), Vector2.zero, Vector2.zero);
-            var timerInner = UiKit.MakePanel(timerOuter.transform, Color.white, 36,
-                Vector2.zero, Vector2.one, new Vector2(4f, 4f), new Vector2(-4f, -4f));
-            timerInner.GetComponent<Image>().raycastTarget = false;
-            moveTimerText = UiKit.MakeText(timerInner.transform, "4.0", 22, UiKit.Orange,
-                TextAnchor.MiddleCenter, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, bold: true);
-            moveDeadline = Time.unscaledTime + 4f;
-
-            // 技カード2列(TEIDOモック: 白カード+上端ストライプ+TP緑+パワー橙)+温存カード
+            // ---- 技カード(モック: 白縁の横型カード2×2。アイコン+技名+TP+パワー) ----
             var moves = SkillMove.UnlockedAt(career != null ? career.chapter : 1);
             int slot = 0;
             void CardAt(int index, System.Action<GameObject> build)
             {
                 int col = index % 2, row = index / 2;
-                float x0 = 0.03f + col * 0.485f;
-                float y1 = 0.585f - row * 0.19f;
-                var frame = UiKit.MakePanel(sheet.transform, UiKit.Navy, 18,
-                    new Vector2(x0, y1 - 0.175f), new Vector2(x0 + 0.455f, y1), Vector2.zero, Vector2.zero);
+                float x0 = 0.12f + col * 0.39f;
+                float y1 = 0.415f - row * 0.135f;
+                var frame = UiKit.MakePanel(root, Color.white, 16,
+                    new Vector2(x0, y1 - 0.115f), new Vector2(x0 + 0.37f, y1), Vector2.zero, Vector2.zero);
                 var sh2 = frame.AddComponent<Shadow>();
-                sh2.effectColor = new Color(0.02f, 0.08f, 0.20f, 0.35f);
-                sh2.effectDistance = new Vector2(0f, -4f);
+                sh2.effectColor = new Color(0.02f, 0.08f, 0.20f, 0.45f);
+                sh2.effectDistance = new Vector2(0f, -5f);
                 build(frame);
+            }
+            void CardInner(GameObject frame, Color bg, string icon, Color iconBg,
+                string name, Color nameCol, string typeLabel, Color typeCol)
+            {
+                var inner = UiKit.MakePanel(frame.transform, bg, 12,
+                    Vector2.zero, Vector2.one, new Vector2(4f, 4f), new Vector2(-4f, -4f));
+                var ic = UiKit.MakePanel(inner.transform, iconBg, 10,
+                    new Vector2(0.025f, 0.16f), new Vector2(0.115f, 0.84f), Vector2.zero, Vector2.zero);
+                ic.GetComponent<Image>().raycastTarget = false;
+                UiKit.MakeText(ic.transform, icon, 20, Color.white, TextAnchor.MiddleCenter,
+                    Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, bold: true, shadow: true);
+                UiKit.MakeText(inner.transform, name, 18, nameCol, TextAnchor.MiddleLeft,
+                    new Vector2(0.145f, 0.44f), new Vector2(0.58f, 0.94f), Vector2.zero, Vector2.zero,
+                    bold: true);
+                UiKit.MakeText(inner.transform, typeLabel, 11, typeCol, TextAnchor.MiddleLeft,
+                    new Vector2(0.145f, 0.06f), new Vector2(0.58f, 0.42f), Vector2.zero, Vector2.zero,
+                    bold: true);
             }
             foreach (var m in moves)
             {
@@ -519,51 +581,26 @@ namespace BoatRace.UI
                 int power = Mathf.RoundToInt((mv.AccelAt(lv) + mv.TopAt(lv) - 2f) * 400f + 130f + lv * 30f);
                 CardAt(slot++, frame =>
                 {
-                    // イナイレ風: 斜めカット+技色の縁ライン+大きな技名+POWERを主役に
-                    frame.AddComponent<SkewFx>().skewX = 7f;
-                    var inner = UiKit.MakePanel(frame.transform,
-                        special ? new Color(0.07f, 0.14f, 0.32f) : Color.white, 14,
-                        Vector2.zero, Vector2.one, new Vector2(3.5f, 3.5f), new Vector2(-3.5f, -3.5f));
-                    inner.AddComponent<SkewFx>().skewX = 7f;
-                    if (special) UiKit.AddStripeOverlay(inner, Color.white, 0.05f);
-                    // 左端の技色エッジ(必殺技は太く光る)
-                    var edge = UiKit.MakePanel(inner.transform,
-                        special ? mv.color : new Color(0.55f, 0.68f, 0.84f), 4,
-                        new Vector2(0f, 0f), new Vector2(special ? 0.055f : 0.035f, 1f),
-                        new Vector2(2f, 3f), new Vector2(0f, -3f));
-                    edge.GetComponent<Image>().raycastTarget = false;
-                    // 上端の技色ストライプ帯
-                    var strip = UiKit.MakePanel(inner.transform,
-                        special ? mv.color : new Color(0.72f, 0.78f, 0.86f), 6,
-                        new Vector2(0f, 0.84f), new Vector2(1f, 1f), new Vector2(3f, 0f), new Vector2(-3f, -2f));
-                    UiKit.AddStripeOverlay(strip, Color.white, 0.30f);
-                    strip.GetComponent<Image>().raycastTarget = false;
-                    UiKit.MakeText(strip.transform, special ? "必殺" : "ノーマル", 11,
-                        Color.white, TextAnchor.MiddleRight,
-                        Vector2.zero, Vector2.one, new Vector2(0f, 0f), new Vector2(-8f, 0f),
+                    string icon = special ? "⚡" : mv.name.Contains("差") ? "↩" : "⤴";
+                    CardInner(frame,
+                        special ? new Color(1f, 0.90f, 0.62f) : new Color(0.92f, 0.96f, 1f),
+                        icon,
+                        special ? new Color(0.95f, 0.62f, 0.05f) : new Color(0.24f, 0.55f, 1f),
+                        mv.name, new Color(0.07f, 0.23f, 0.48f),
+                        special ? $"Lv{lv}" : "ノーマル", new Color(0.36f, 0.47f, 0.66f));
+                    // TP緑チップ+パワー(紺の大数字。とくい技はオレンジ)
+                    var tp = UiKit.MakeChip(frame.transform, $"TP {cost}",
+                        new Color(0.118f, 0.62f, 0.30f), Color.white, 12,
+                        new Vector2(0.575f, 0.30f), new Vector2(0.705f, 0.70f), Vector2.zero, Vector2.zero);
+                    tp.GetComponent<Image>().raycastTarget = false;
+                    UiKit.MakeText(frame.transform, $"{power}", 30,
+                        special ? new Color(0.78f, 0.29f, 0f) : new Color(0.07f, 0.23f, 0.48f),
+                        TextAnchor.MiddleRight,
+                        new Vector2(0.71f, 0.08f), new Vector2(0.955f, 0.92f), Vector2.zero, Vector2.zero,
                         bold: true, shadow: true);
-                    // 技名(必殺は白抜き大文字で主役に)
-                    UiKit.MakeText(inner.transform,
-                        special ? $"{mv.name}  Lv{lv}" : mv.name,
-                        special ? 21 : 18,
-                        special ? Color.white : UiKit.Navy, TextAnchor.MiddleLeft,
-                        new Vector2(0.08f, 0.40f), new Vector2(0.95f, 0.82f), Vector2.zero, Vector2.zero,
-                        bold: true, shadow: special, outline: special);
-                    // TPコスト(チップ型)
-                    var tpChip = UiKit.MakeChip(inner.transform, $"TP {cost}",
-                        special ? UiKit.Emerald : new Color(0.88f, 0.92f, 0.97f),
-                        special ? Color.white : new Color(0.45f, 0.52f, 0.60f), 13,
-                        new Vector2(0.07f, 0.08f), new Vector2(0.34f, 0.36f), Vector2.zero, Vector2.zero);
-                    tpChip.GetComponent<Image>().raycastTarget = false;
-                    // POWER表記(オレンジの大数字+ラベル)
-                    UiKit.MakeText(inner.transform, "POWER", 10,
-                        special ? new Color(1f, 0.80f, 0.45f) : new Color(0.60f, 0.66f, 0.74f),
-                        TextAnchor.LowerRight,
-                        new Vector2(0.40f, 0.26f), new Vector2(0.93f, 0.40f), Vector2.zero, Vector2.zero,
-                        bold: true);
-                    UiKit.MakeText(inner.transform, $"{power}", 30, UiKit.Orange, TextAnchor.MiddleRight,
-                        new Vector2(0.40f, 0.00f), new Vector2(0.93f, 0.30f), Vector2.zero, Vector2.zero,
-                        bold: true, shadow: true, outline: special);
+                    if (special)
+                        UiKit.MakeTag(frame.transform, "とくい技", new Color(0.886f, 0.227f, 0.180f),
+                            Color.white, 11, new Vector2(0.03f, 0.86f), new Vector2(0.24f, 1.14f), skew: 6f);
                     var btn = frame.AddComponent<Button>();
                     btn.onClick.AddListener(() => { if (usable) PickMove(mv, lv); });
                     if (!usable)
@@ -577,18 +614,13 @@ namespace BoatRace.UI
                     }
                 });
             }
-            // 温存カード(TEIDOモック: 紺地「技を使用しない」)
+            // 温存カード(紺地「技を使用しない」)
             CardAt(slot, frame =>
             {
-                frame.AddComponent<SkewFx>().skewX = 7f;
-                var inner = UiKit.MakePanel(frame.transform, new Color(0.07f, 0.19f, 0.37f), 14,
-                    Vector2.zero, Vector2.one, new Vector2(3.5f, 3.5f), new Vector2(-3.5f, -3.5f));
-                inner.AddComponent<SkewFx>().skewX = 7f;
-                UiKit.MakeText(inner.transform, "■ 技を使用しない", 18, Color.white, TextAnchor.MiddleLeft,
-                    new Vector2(0.06f, 0.42f), new Vector2(0.95f, 0.90f), Vector2.zero, Vector2.zero, bold: true);
-                UiKit.MakeText(inner.transform, "温存 (体力回復に専念)", 14, new Color(0.62f, 0.76f, 0.91f),
-                    TextAnchor.MiddleLeft,
-                    new Vector2(0.06f, 0.06f), new Vector2(0.95f, 0.40f), Vector2.zero, Vector2.zero, bold: true);
+                CardInner(frame, new Color(0.10f, 0.19f, 0.36f),
+                    "■", new Color(0.30f, 0.42f, 0.62f),
+                    "技を使用しない", Color.white,
+                    "温存（体力回復に専念）", new Color(0.62f, 0.76f, 0.91f));
                 frame.AddComponent<Button>().onClick.AddListener(PickNone);
             });
             moveTimeoutCo = StartCoroutine(MoveTimeout());
@@ -1062,21 +1094,21 @@ namespace BoatRace.UI
                     new Vector2(0.015f, 0.90f), new Vector2(0.13f, 0.99f));
             }
             UiKit.MakeTag(s.transform, $"第{career.seasonNo}シーズン 開催中",
-                new Color(0.953f, 0.788f, 0.361f), new Color(0.29f, 0.184f, 0f), 14,
-                new Vector2(0.155f, 0.925f), new Vector2(0.315f, 0.975f), skew: 8f);
+                new Color(0.953f, 0.788f, 0.361f), new Color(0.29f, 0.184f, 0f), 12,
+                new Vector2(0.155f, 0.933f), new Vector2(0.285f, 0.972f), skew: 8f);
             void WalletChip(string label, string val, float x0, float x1)
             {
-                var p = UiKit.MakePanel(s.transform, new Color(1f, 1f, 1f, 0.90f), 10,
-                    new Vector2(x0, 0.925f), new Vector2(x1, 0.98f), Vector2.zero, Vector2.zero);
-                UiKit.MakeText(p.transform, label, 12, new Color(0.851f, 0.604f, 0.106f),
+                var p = UiKit.MakePanel(s.transform, new Color(1f, 1f, 1f, 0.90f), 8,
+                    new Vector2(x0, 0.930f), new Vector2(x1, 0.975f), Vector2.zero, Vector2.zero);
+                UiKit.MakeText(p.transform, label, 11, new Color(0.851f, 0.604f, 0.106f),
                     TextAnchor.MiddleLeft, Vector2.zero, Vector2.one,
-                    new Vector2(10f, 0f), new Vector2(-4f, 0f), bold: true);
-                UiKit.MakeText(p.transform, val, 16, new Color(0.078f, 0.188f, 0.369f),
+                    new Vector2(8f, 0f), new Vector2(-4f, 0f), bold: true);
+                UiKit.MakeText(p.transform, val, 14, new Color(0.078f, 0.188f, 0.369f),
                     TextAnchor.MiddleRight, Vector2.zero, Vector2.one,
-                    new Vector2(4f, 0f), new Vector2(-10f, 0f), bold: true);
+                    new Vector2(4f, 0f), new Vector2(-8f, 0f), bold: true);
             }
-            WalletChip("資金", $"¥ {career.money:N0}万", 0.66f, 0.83f);
-            WalletChip("BC", $"{PlayerPrefs.GetInt("br_betcoin", 1000):N0}", 0.84f, 0.985f);
+            WalletChip("資金", $"¥ {career.money:N0}万", 0.775f, 0.885f);
+            WalletChip("BC", $"{PlayerPrefs.GetInt("br_betcoin", 1000):N0}", 0.895f, 0.985f);
 
             // ---- 左カラム: 縦積み3カード(重なりなし) ----
             var ink = new Color(0.078f, 0.188f, 0.369f);
@@ -1092,78 +1124,78 @@ namespace BoatRace.UI
                 return c;
             }
 
-            // 1) プレイヤーカード: 顔+チーム総合能力
+            // 1) プレイヤーカード: 顔+チーム総合能力(モックの60px円相当のコンパクトさ)
             int totalPower = Mathf.RoundToInt(
                 (career.startSkill + career.turnSkill + career.speedSkill +
                  career.mental + career.mechanicSkill) * 40000f + career.level * 800f);
-            var pc = ColCard(0.695f, 0.875f);
-            MakeFaceAt(pc.transform, career.racerName, new Vector2(0.035f, 0.12f), new Vector2(0.235f, 0.90f));
-            UiKit.MakeText(pc.transform, $"{career.racerName}チーム", 13, sub, TextAnchor.MiddleLeft,
-                new Vector2(0.27f, 0.66f), new Vector2(0.97f, 0.92f), Vector2.zero, Vector2.zero);
-            UiKit.MakeText(pc.transform, "チーム総合能力", 11, gold, TextAnchor.MiddleLeft,
-                new Vector2(0.27f, 0.46f), new Vector2(0.97f, 0.66f), Vector2.zero, Vector2.zero, bold: true);
-            UiKit.MakeText(pc.transform, $"{totalPower:N0}", 30, ink, TextAnchor.MiddleLeft,
-                new Vector2(0.27f, 0.08f), new Vector2(0.72f, 0.46f), Vector2.zero, Vector2.zero, bold: true);
+            var pc = ColCard(0.735f, 0.875f);
+            MakeFaceAt(pc.transform, career.racerName, new Vector2(0.045f, 0.16f), new Vector2(0.20f, 0.84f));
+            UiKit.MakeText(pc.transform, $"{career.racerName}チーム", 12, sub, TextAnchor.MiddleLeft,
+                new Vector2(0.24f, 0.64f), new Vector2(0.97f, 0.90f), Vector2.zero, Vector2.zero);
+            UiKit.MakeText(pc.transform, "チーム総合能力", 10, gold, TextAnchor.MiddleLeft,
+                new Vector2(0.24f, 0.44f), new Vector2(0.97f, 0.64f), Vector2.zero, Vector2.zero, bold: true);
+            UiKit.MakeText(pc.transform, $"{totalPower:N0}", 25, ink, TextAnchor.MiddleLeft,
+                new Vector2(0.24f, 0.06f), new Vector2(0.62f, 0.44f), Vector2.zero, Vector2.zero, bold: true);
             int aceIdx = race.playerBoatIndex >= 0 ? race.playerBoatIndex : 0;
             UiKit.MakeText(pc.transform, $"／ エース艇 0{aceIdx + 1} {BoatDesign.Names[aceIdx]}",
-                12, sub, TextAnchor.LowerLeft,
-                new Vector2(0.70f, 0.10f), new Vector2(0.99f, 0.40f), Vector2.zero, Vector2.zero);
+                11, sub, TextAnchor.LowerLeft,
+                new Vector2(0.60f, 0.10f), new Vector2(0.99f, 0.40f), Vector2.zero, Vector2.zero);
 
             // 2) 開催場カード
-            var vc = ColCard(0.505f, 0.68f);
-            UiKit.MakeText(vc.transform, "開 催 場", 11, new Color(0.106f, 0.435f, 0.847f),
-                TextAnchor.MiddleLeft, new Vector2(0.05f, 0.72f), new Vector2(0.55f, 0.95f),
+            var vc = ColCard(0.575f, 0.72f);
+            UiKit.MakeText(vc.transform, "開 催 場", 10, new Color(0.106f, 0.435f, 0.847f),
+                TextAnchor.MiddleLeft, new Vector2(0.05f, 0.72f), new Vector2(0.55f, 0.94f),
                 Vector2.zero, Vector2.zero, bold: true);
-            var venueLabel = UiKit.MakeText(vc.transform, "", 26, ink, TextAnchor.MiddleLeft,
-                new Vector2(0.05f, 0.32f), new Vector2(0.70f, 0.74f), Vector2.zero, Vector2.zero, bold: true);
-            var infoLabel = UiKit.MakeText(vc.transform, "", 13, sub, TextAnchor.MiddleLeft,
-                new Vector2(0.05f, 0.04f), new Vector2(0.98f, 0.32f), Vector2.zero, Vector2.zero);
+            var venueLabel = UiKit.MakeText(vc.transform, "", 22, ink, TextAnchor.MiddleLeft,
+                new Vector2(0.05f, 0.30f), new Vector2(0.70f, 0.72f), Vector2.zero, Vector2.zero, bold: true);
+            var infoLabel = UiKit.MakeText(vc.transform, "", 12, sub, TextAnchor.MiddleLeft,
+                new Vector2(0.05f, 0.03f), new Vector2(0.98f, 0.30f), Vector2.zero, Vector2.zero);
             void RefreshVenue()
             {
                 var v = CourseDatabase.Get(race.venueId);
                 venueLabel.text = $"{v.id}. {v.name}";
                 infoLabel.text = $"〈{v.Character}〉イン{v.insideAdvantage * 100f:F0}%　風 {Stars(v.windEffect)}　波 {v.waveHeight * 100f:F0}cm";
             }
-            UiKit.MakeButton(vc.transform, "◀", new Color(1f, 1f, 1f, 0.95f), 16,
-                new Vector2(0.72f, 0.52f), new Vector2(0.84f, 0.92f), Vector2.zero, Vector2.zero,
+            UiKit.MakeButton(vc.transform, "◀", new Color(1f, 1f, 1f, 0.95f), 14,
+                new Vector2(0.73f, 0.56f), new Vector2(0.84f, 0.94f), Vector2.zero, Vector2.zero,
                 () => { race.venueId = race.venueId <= 1 ? 24 : race.venueId - 1; RefreshVenue(); })
                 .GetComponentInChildren<Text>().color = new Color(0.106f, 0.435f, 0.847f);
-            UiKit.MakeButton(vc.transform, "▶", new Color(1f, 1f, 1f, 0.95f), 16,
-                new Vector2(0.86f, 0.52f), new Vector2(0.98f, 0.92f), Vector2.zero, Vector2.zero,
+            UiKit.MakeButton(vc.transform, "▶", new Color(1f, 1f, 1f, 0.95f), 14,
+                new Vector2(0.86f, 0.56f), new Vector2(0.97f, 0.94f), Vector2.zero, Vector2.zero,
                 () => { race.venueId = race.venueId >= 24 ? 1 : race.venueId + 1; RefreshVenue(); })
                 .GetComponentInChildren<Text>().color = new Color(0.106f, 0.435f, 0.847f);
             RefreshVenue();
 
             // 3) ストーリーカード
-            var sc = ColCard(0.375f, 0.49f);
+            var sc = ColCard(0.475f, 0.565f);
             UiKit.MakeText(sc.transform,
-                career.allClear ? "STORY 全章クリア" : $"STORY 第{career.chapter}章", 11, gold,
-                TextAnchor.MiddleLeft, new Vector2(0.05f, 0.60f), new Vector2(0.70f, 0.90f),
+                career.allClear ? "STORY 全章クリア" : $"STORY 第{career.chapter}章", 10, gold,
+                TextAnchor.MiddleLeft, new Vector2(0.05f, 0.56f), new Vector2(0.70f, 0.88f),
                 Vector2.zero, Vector2.zero, bold: true);
             UiKit.MakeText(sc.transform,
                 career.allClear ? "フリー挑戦" :
                 $"「{career.Current.title}」＠{CourseDatabase.Get(career.Current.venueId).name}",
-                15, ink, TextAnchor.MiddleLeft,
-                new Vector2(0.05f, 0.10f), new Vector2(0.72f, 0.58f), Vector2.zero, Vector2.zero, bold: true);
-            var goBtn = UiKit.MakeButton(sc.transform, "NEXT ▶", new Color(0.106f, 0.435f, 0.847f), 14,
-                new Vector2(0.74f, 0.26f), new Vector2(0.97f, 0.76f), Vector2.zero, Vector2.zero, ShowCareer);
+                13, ink, TextAnchor.MiddleLeft,
+                new Vector2(0.05f, 0.08f), new Vector2(0.74f, 0.54f), Vector2.zero, Vector2.zero, bold: true);
+            UiKit.MakeButton(sc.transform, "NEXT ▶", new Color(0.106f, 0.435f, 0.847f), 12,
+                new Vector2(0.76f, 0.26f), new Vector2(0.97f, 0.74f), Vector2.zero, Vector2.zero, ShowCareer);
             var scBtn = sc.AddComponent<Button>();
             scBtn.targetGraphic = sc.GetComponent<Image>();
             scBtn.onClick.AddListener(ShowCareer);
 
-            // ---- 出走CTA(金の平行四辺形・鼓動) ----
+            // ---- 出走CTA(金の平行四辺形・鼓動)。モック比率: 幅18%・高さ11% ----
             var cta = UiKit.MakePanel(s.transform, new Color(0.953f, 0.788f, 0.361f), 8,
-                new Vector2(0.635f, 0.165f), new Vector2(0.945f, 0.315f), Vector2.zero, Vector2.zero);
-            cta.AddComponent<SkewFx>().skewX = 14f;
+                new Vector2(0.745f, 0.175f), new Vector2(0.945f, 0.29f), Vector2.zero, Vector2.zero);
+            cta.AddComponent<SkewFx>().skewX = 12f;
             UiKit.AddStripeOverlay(cta, Color.white, 0.12f);
             var ctaSh = cta.AddComponent<Shadow>();
             ctaSh.effectColor = new Color(0.85f, 0.60f, 0.11f, 0.55f);
-            ctaSh.effectDistance = new Vector2(0f, -7f);
-            UiKit.MakeText(cta.transform, "出　走", 38, new Color(0.29f, 0.165f, 0f),
+            ctaSh.effectDistance = new Vector2(0f, -6f);
+            UiKit.MakeText(cta.transform, "出　走", 30, new Color(0.29f, 0.165f, 0f),
                 TextAnchor.MiddleCenter, new Vector2(0f, 0.28f), new Vector2(1f, 0.95f),
                 Vector2.zero, Vector2.zero, bold: true);
-            UiKit.MakeText(cta.transform, "R A C E   S T A R T", 12, new Color(0.478f, 0.322f, 0f),
-                TextAnchor.MiddleCenter, new Vector2(0f, 0.05f), new Vector2(1f, 0.30f),
+            UiKit.MakeText(cta.transform, "R A C E   S T A R T", 10, new Color(0.478f, 0.322f, 0f),
+                TextAnchor.MiddleCenter, new Vector2(0f, 0.06f), new Vector2(1f, 0.30f),
                 Vector2.zero, Vector2.zero, bold: true);
             cta.AddComponent<Button>().onClick.AddListener(ShowCareer);
             homeCtaRT = cta.GetComponent<RectTransform>();
