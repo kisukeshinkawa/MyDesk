@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-06-v338-stock-eps-candles"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-06-v339-stock-pro-checklist"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -31925,6 +31925,33 @@ function StockView({currentUser}) {
               {sel.long.missing&&sel.long.missing.length>0&&(
                 <div style={{fontSize:"0.68rem",color:C.textMuted,marginTop:"0.3rem"}}>※データ取得不可: {sel.long.missing.join("、")}</div>
               )}
+              {sel.proChecklist&&sel.proChecklist.items&&sel.proChecklist.items.length>0&&(()=>{
+                const pc = sel.proChecklist;
+                const groups = [];
+                pc.items.forEach(i=>{ if(!groups.includes(i.group)) groups.push(i.group); });
+                const rate = pc.total>0 ? pc.passed/pc.total : 0;
+                return (
+                  <div style={{marginTop:"0.6rem",padding:"0.6rem 0.75rem",background:C.bg,borderRadius:8,border:`1px solid ${C.borderLight}`}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.35rem"}}>
+                      <span style={{fontSize:"0.78rem",fontWeight:800,color:C.text}}>✅ プロのチェックリスト</span>
+                      <span style={S.chip(rate>=0.75?C.greenBg:(rate>=0.5?C.yellowBg:C.redBg), rate>=0.75?C.green:(rate>=0.5?C.yellow:C.red))}>{pc.passed}/{pc.total} 合格</span>
+                    </div>
+                    {groups.map(g=>(
+                      <div key={g} style={{marginBottom:"0.35rem"}}>
+                        <div style={{fontSize:"0.68rem",fontWeight:800,color:C.textSub,marginBottom:"0.1rem"}}>
+                          {g==="トレンドテンプレート"?"📐 トレンドテンプレート(ミネルヴィニ)":g==="CAN-SLIM"?"🚀 CAN-SLIM(オニール)":"🌡️ 過熱度"}
+                        </div>
+                        {pc.items.filter(i=>i.group===g).map((i,k)=>(
+                          <div key={k} style={{fontSize:"0.7rem",lineHeight:1.6,color:i.pass===false?C.textMuted:C.textSub,display:"flex",gap:"0.35rem"}}>
+                            <span style={{flexShrink:0}}>{i.pass===true?"✅":i.pass===false?"❌":"➖"}</span>
+                            <span><b style={{color:i.pass===true?C.text:C.textMuted}}>{i.name}</b> <span style={{color:C.textMuted}}>{i.detail}</span></span>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
               {sel.finHistory&&sel.finHistory.years&&sel.finHistory.years.length>0&&(
                 <div style={{marginTop:"0.5rem",padding:"0.5rem 0.7rem",background:C.bg,borderRadius:8,fontSize:"0.7rem",color:C.textSub,lineHeight:1.7}}>
                   {sel.finHistory.eps.some(e=>e!=null)&&(

@@ -562,6 +562,76 @@ def score_long(info, fin=None):
     return {"score": total, "signal": signal, "breakdown": br, "missing": missing}
 
 
+# ═══════════════════════ プロのチェックリスト ═══════════════════════
+# 出典(ネット上のプロ手法のコンセンサス):
+# ・ミネルヴィニ「トレンドテンプレート」8条件(成長株投資法)
+# ・オニール「CAN-SLIM」(成長株発掘法)の定量化可能な項目
+# ・25日線乖離率±10%(国内証券各社が示す過熱/底値の目安)
+def build_pro_checklist(df, info, fin, rel3m, regime_on):
+    close = df["Close"]
+    price = float(close.iloc[-1])
+    items = []
+
+    def add(group, name, ok, detail):
+        items.append({"group": group, "name": name, "pass": ok, "detail": detail})
+
+    # ── ミネルヴィニ・トレンドテンプレート ──
+    G = "トレンドテンプレート"
+    if len(close) >= 200:
+        ma50 = float(close.rolling(50).mean().iloc[-1])
+        ma150 = float(close.rolling(150).mean().iloc[-1])
+        ma200 = close.rolling(200).mean()
+        ma200_now, ma200_prev = float(ma200.iloc[-1]), float(ma200.iloc[-21])
+        win = close.iloc[-250:] if len(close) >= 250 else close
+        hi52, lo52 = float(win.max()), float(win.min())
+        add(G, "株価が150日・200日線の上", price > ma150 and price > ma200_now,
+            f"株価{price:,.0f} / 150日線{ma150:,.0f} / 200日線{ma200_now:,.0f}")
+        add(G, "150日線 > 200日線", ma150 > ma200_now, "中期線が長期線の上=上昇の並び")
+        add(G, "200日線が1ヶ月以上上向き", ma200_now > ma200_prev,
+            f"200日線 1ヶ月前比{(ma200_now/ma200_prev-1)*100:+.1f}%")
+        add(G, "50日線 > 150日線 > 200日線", ma50 > ma150 > ma200_now, "パーフェクトオーダー")
+        add(G, "株価が50日線の上", price > ma50, f"50日線{ma50:,.0f}")
+        add(G, "52週安値から+30%以上", price >= lo52 * 1.3,
+            f"安値{lo52:,.0f}から{(price/lo52-1)*100:+.0f}%")
+        add(G, "52週高値から25%以内", price >= hi52 * 0.75,
+            f"高値{hi52:,.0f}まで{(1-price/hi52)*100:.0f}%")
+        add(G, "相対力: 3ヶ月で指数に勝つ(簡易版)", rel3m is not None and rel3m > 0,
+            f"対指数3ヶ月{rel3m:+.1f}%" if rel3m is not None else "算出不可")
+    # ── CAN-SLIM(定量化できる項目のみ) ──
+    G = "CAN-SLIM"
+    qeg = _g(info, "earningsQuarterlyGrowth")
+    add(G, "C: 四半期EPS成長+20%以上",
+        (qeg * 100 >= 20) if qeg is not None else None,
+        f"四半期利益成長{qeg*100:.0f}%" if qeg is not None else "データなし")
+    eps_hist = [e for e in (fin or {}).get("eps", []) if e is not None]
+    aeg = None
+    if len(eps_hist) >= 2 and eps_hist[-2] > 0:
+        aeg = (eps_hist[-1] / eps_hist[-2] - 1) * 100
+    roe_v = _g(info, "returnOnEquity")
+    add(G, "A: 年間EPS成長+25%かつROE17%以上",
+        (aeg >= 25 and roe_v is not None and roe_v * 100 >= 17) if aeg is not None else None,
+        (f"年間EPS成長{aeg:+.0f}% / ROE{roe_v*100:.0f}%" if aeg is not None and roe_v is not None
+         else f"年間EPS成長{aeg:+.0f}%" if aeg is not None else "データなし"))
+    if len(close) >= 200:
+        add(G, "N: 新高値圏(52週高値まで5%以内)", price >= hi52 * 0.95,
+            f"高値まで{(1-price/hi52)*100:.1f}%")
+    inst = _g(info, "heldPercentInstitutions")
+    if inst is not None:
+        add(G, "I: 機関投資家が保有(30%以上)", inst >= 0.3, f"機関保有{inst*100:.0f}%")
+    add(G, "M: 地合い(指数が200日線の上)", bool(regime_on), "市場全体が上昇局面か")
+    # ── 過熱度(25日線乖離率) ──
+    if len(close) >= 25:
+        ma25v = float(close.rolling(25).mean().iloc[-1])
+        dev = (price / ma25v - 1) * 100
+        add("過熱度", "25日線乖離率±10%以内", -10 <= dev <= 10,
+            f"乖離{dev:+.1f}%" + ("(買われすぎ・利確検討ゾーン)" if dev > 10 else "(売られすぎゾーン)" if dev < -10 else ""))
+
+    evaluable = [i for i in items if i["pass"] is not None]
+    return {"items": items,
+            "passed": sum(1 for i in evaluable if i["pass"]),
+            "total": len(evaluable)}
+
+
 # ═══════════════════════ 銘柄分析(analyze) ═══════════════════════
 def analyze_ticker(ticker):
     key = f"analyze/{ticker}.json"
@@ -575,7 +645,7 @@ def analyze_ticker(ticker):
 
     # 指数との相対力 + 地合いレジーム(指数200日線)
     idx_sym = "^N225" if is_jp else "^GSPC"
-    index_ret1m, regime_on = 0, True
+    index_ret1m, regime_on, rel3m = 0, True, None
     try:
         idx_df = fetch_history(idx_sym, "400d")
         idx_close = idx_df["Close"]
@@ -583,6 +653,10 @@ def analyze_ticker(ticker):
             index_ret1m = (float(idx_close.iloc[-1]) / float(idx_close.iloc[-21]) - 1) * 100
         if len(idx_close) >= 200:
             regime_on = float(idx_close.iloc[-1]) > float(idx_close.rolling(200).mean().iloc[-1])
+        if len(idx_close) >= 63 and len(df["Close"]) >= 63:
+            stock_r3 = (float(df["Close"].iloc[-1]) / float(df["Close"].iloc[-63]) - 1) * 100
+            idx_r3 = (float(idx_close.iloc[-1]) / float(idx_close.iloc[-63]) - 1) * 100
+            rel3m = stock_r3 - idx_r3
     except Exception:
         pass
 
@@ -634,6 +708,7 @@ def analyze_ticker(ticker):
                    "bench": "日経平均" if is_jp else "S&P500"},
         "spark": tech["spark"], "sparkMa25": tech["spark_ma25"],
         "finHistory": fin,  # 年次EPS/ROE推移
+        "proChecklist": build_pro_checklist(df, info, fin, rel3m, regime_on),
         "candles": [{"d": d.strftime("%m/%d"), "o": round(float(o), 2), "h": round(float(hi), 2),
                      "l": round(float(lo), 2), "c": round(float(cl), 2), "v": float(v)}
                     for d, o, hi, lo, cl, v in zip(df.index[-60:], df["Open"].iloc[-60:], df["High"].iloc[-60:],
@@ -1049,6 +1124,10 @@ BRAIN_SYSTEM = """あなたは機関投資家出身で20年のキャリアを持
    当たりやすいパターンでは確信度を上げ、外れやすいパターンの判定は慎重に修正する
 7. 長期の質は「EPSが複数年伸び続けているか」「ROE10%以上を安定維持しているか」を最重視する
    (EPS=1株あたり利益こそ投資家の実質的な取り分。増資による希薄化・自社株買いの効果も織り込まれる)
+8. エントリー提案は必ずリスクリワード比(利確幅÷損切り幅)が2倍以上になる価格設計にする。
+   2倍を確保できない位置なら、買い判定にせず「押し目待ち」または「見送り」とする(勝率4割でも資産が増えるライン)
+9. プロ手法チェックリスト(ミネルヴィニのトレンドテンプレート/オニールCAN-SLIM/乖離率)が与えられた場合は
+   合格状況を判定根拠に織り込む。特にトレンドテンプレート不合格の銘柄への強気判定は慎重に
 
 出力は必ず次のJSONのみ(コードブロック不要):
 {"verdict":"strong_buy|buy|hold|avoid|sell",
@@ -1091,6 +1170,12 @@ def brain_analysis(ticker, name="", holding=None):
 
 【直近ニュース】
 {news_text}"""
+
+    pc = analysis.get("proChecklist")
+    if pc and pc.get("items"):
+        user_prompt += f"\n\n【プロ手法チェックリスト(合格{pc['passed']}/{pc['total']})】\n" + "\n".join(
+            f"- [{'○' if i['pass'] else ('×' if i['pass'] is False else '?')}] {i['group']}/{i['name']}: {i['detail']}"
+            for i in pc["items"])
 
     fin = analysis.get("finHistory") or {}
     if fin.get("years"):
