@@ -8,7 +8,18 @@ MyDeskから分離した独立アプリ。国内株・米国株のプロトレ�
 - `lambda/` — 分析エンジン(AWS Lambda `mydesk-stock-analysis`・デプロイ手順は lambda/README.md)
 - `DESIGN.md` — ロジック設計書(v1〜v8の全履歴)
 
-## デプロイ(どちらか)
+## デプロイ
+
+**→ ターミナルから3コマンドで完結: [DEPLOY.md](./DEPLOY.md) を参照**
+
+```bash
+bash deploy/01-deploy-lambda.sh                    # 分析エンジン
+bash deploy/02-deploy-frontend.sh <Function URL>   # 画面
+bash deploy/03-setup-schedule.sh                   # 毎朝の自動化(任意)
+```
+
+<details><summary>GitHub連携で自動デプロイしたい場合(旧手順)</summary>
+
 
 ### 方法A: 専用リポジトリに分離(推奨・完全独立)
 
@@ -37,3 +48,5 @@ npm run dev   # http://localhost:5173
 ```
 
 編集ごとに app.jsx 冒頭の MYTRADE_BUILD を更新し、Babelパースチェックしてからpushすること(MyDeskと同じ運用)。
+
+</details>

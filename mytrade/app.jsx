@@ -15,8 +15,9 @@ const DB_API_HEADERS = {
   "Content-Type": "application/json",
   "x-mydesk-secret": DB_API_SECRET,
 };
-// 株式分析 Lambda（mydesk-stock-analysis）Function URL。直書きするか初回画面から貼り付け
-const STOCK_API_URL = "";
+// 分析Lambda(mytrade-analysis)のFunction URL。
+// デプロイ時に VITE_STOCK_API_URL で注入される(未設定なら初回画面から貼り付け→localStorage保存)
+const STOCK_API_URL = (typeof import.meta !== "undefined" && import.meta.env?.VITE_STOCK_API_URL) || "";
 
 class ErrorBoundary extends React.Component {
   constructor(props){super(props);this.state={hasError:false,error:""};}
