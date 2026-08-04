@@ -15,7 +15,7 @@ namespace BoatRace.UI
     public class GameFlow : MonoBehaviour
     {
         /// <summary>ビルド識別子。画面右上に表示され、更新が届いたか一目で分かる。</summary>
-        public const string Build = "B29-1M自動リプレイ";
+        public const string Build = "B30-設定+ポーズ";
 
         RaceManager race;
         ReplayManager replay;
@@ -63,6 +63,7 @@ namespace BoatRace.UI
         // 演出: スタートスロー(大時計0秒付近をスローモーションで見せる)
         bool startSlowActive, startSlowDone;
         bool goalSlowActive; // ゴール瞬間のスローモーション中
+        GameObject pauseButton, pausePopupGo; // レース中のポーズ(≡)
         bool stTelopPending; // スタート成立後にST一覧テロップを出す予約
         GameObject broadcastStrip; // 実中継風の左端縦艇番プレート(スタート前のみ)
         RectTransform homeCtaRT;   // ホームの出走CTA(鼓動アニメ)
@@ -232,6 +233,13 @@ namespace BoatRace.UI
             ffButton = ffBtn.gameObject;
             ffButton.SetActive(false);
 
+            // ポーズ(≡): レースをいつでも中断できる(リリース必須のUX)
+            var pBtn = UiKit.MakeButton(canvas.transform, "≡", UiKit.Navy, 26,
+                new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-292f, 122f), new Vector2(-238f, 176f),
+                ShowPausePopup);
+            pauseButton = pBtn.gameObject;
+            pauseButton.SetActive(false);
+
             race.OnRaceFinished += () =>
             {
                 resultTimer = -1f;
@@ -306,10 +314,12 @@ namespace BoatRace.UI
             bool racingNow = race.armed && !replay.IsPlaying &&
                 (race.state.phase == RacePhase.Approach || race.state.phase == RacePhase.Racing);
             ffButton.SetActive(preRace || racingNow);
+            if (pauseButton != null && pauseButton.activeSelf != (preRace || racingNow))
+                pauseButton.SetActive(preRace || racingNow);
             if (racingNow && !preRace) ffLabel.text = $"⏩ 倍速 x{raceSpeed:F0}";
             if (!race.armed) raceSpeed = 1f;
             if (!preRace && movePanelGo == null && !specialSeqActive && !startSlowActive &&
-                !goalSlowActive && Time.timeScale != raceSpeed)
+                !goalSlowActive && pausePopupGo == null && Time.timeScale != raceSpeed)
             {
                 Time.timeScale = raceSpeed;
                 if (!racingNow) ffLabel.text = "⏩ 早送り";
@@ -1090,19 +1100,20 @@ namespace BoatRace.UI
             blinkOl.effectDistance = new Vector2(2f, 2f);
 
             // 下部の小メニュー(イナイレのお知らせ列)
-            string[] menuLabels = { "お知らせ", "あそびかた", "戦績" };
+            string[] menuLabels = { "お知らせ", "あそびかた", "戦績", "設定" };
             System.Action[] menuActs =
             {
                 () => ShowInfoPopup("お知らせ", "BOATRACE REALISM へようこそ！\n\nストーリーモードで技を磨き、\nSG制覇を目指そう。"),
                 () => ShowInfoPopup("あそびかた", "レース中の操作はターン進入時の\n「技の選択」だけ！\n\n体力を使って必殺技を放ち、\n1着を勝ち取ろう。"),
                 () => ShowStatsPopup(s.transform),
+                () => ShowSettingsPopup(s.transform),
             };
             // 全幅に広げた下部メニュー(半透明の斜めプレート)
-            for (int i = 0; i < 3; i++)
+            for (int i = 0; i < 4; i++)
             {
                 int mi = i;
                 var mb = UiKit.MakePanel(s.transform, new Color(1f, 1f, 1f, 0.10f), 10,
-                    new Vector2(0.135f + i * 0.30f, 0.060f), new Vector2(0.295f + i * 0.30f, 0.118f),
+                    new Vector2(0.10f + i * 0.21f, 0.060f), new Vector2(0.27f + i * 0.21f, 0.118f),
                     Vector2.zero, Vector2.zero);
                 mb.AddComponent<SkewFx>().skewX = 10f;
                 mb.AddComponent<Button>().onClick.AddListener(() => menuActs[mi]());
@@ -1112,6 +1123,112 @@ namespace BoatRace.UI
             UiKit.MakeText(s.transform, "© BOATRACE REALISM Project", 14, new Color(1f, 1f, 1f, 0.65f),
                 TextAnchor.MiddleCenter,
                 new Vector2(0f, 0.008f), new Vector2(1f, 0.05f), Vector2.zero, Vector2.zero);
+        }
+
+        // ================= ポーズ(レース中断)と設定 =================
+
+        void ShowPausePopup()
+        {
+            if (pausePopupGo != null || !race.armed) return;
+            Time.timeScale = 0f;
+            pausePopupGo = new GameObject("PausePopup");
+            UiKit.Place(pausePopupGo, canvas.transform, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+            var dim = pausePopupGo.AddComponent<Image>();
+            dim.color = new Color(0f, 0f, 0f, 0.55f);
+            var inner = UiKit.MakeCard(pausePopupGo.transform,
+                new Vector2(0.34f, 0.28f), new Vector2(0.66f, 0.72f), Vector2.zero, Vector2.zero);
+            UiKit.MakeTag(inner.transform, "一時停止", UiKit.Yellow, UiKit.Border, 22,
+                new Vector2(0.28f, 0.87f), new Vector2(0.72f, 0.99f));
+            UiKit.MakeButton(inner.transform, "▶ レースに戻る", UiKit.Cyan, 20,
+                new Vector2(0.12f, 0.56f), new Vector2(0.88f, 0.76f), Vector2.zero, Vector2.zero,
+                () =>
+                {
+                    Destroy(pausePopupGo);
+                    pausePopupGo = null;
+                    Time.timeScale = 1f;
+                });
+            UiKit.MakeButton(inner.transform, "↩ レースを中断してホームへ", UiKit.Red, 18,
+                new Vector2(0.12f, 0.30f), new Vector2(0.88f, 0.50f), Vector2.zero, Vector2.zero,
+                () =>
+                {
+                    Destroy(pausePopupGo);
+                    pausePopupGo = null;
+                    Time.timeScale = 1f;
+                    raceSpeed = 1f;
+                    hud.SetVisible(false);
+                    race.SetupRace();
+                    ShowHome();
+                });
+            UiKit.MakeButton(inner.transform, "設定", new Color(0.35f, 0.42f, 0.55f), 18,
+                new Vector2(0.12f, 0.06f), new Vector2(0.88f, 0.24f), Vector2.zero, Vector2.zero,
+                () => ShowSettingsPopup(pausePopupGo.transform));
+        }
+
+        /// <summary>設定(音量・データ初期化)。タイトルメニューとポーズから開ける。</summary>
+        void ShowSettingsPopup(Transform parent)
+        {
+            var inner = UiKit.MakeCard(parent,
+                new Vector2(0.28f, 0.16f), new Vector2(0.72f, 0.84f), Vector2.zero, Vector2.zero);
+            var outer = inner.transform.parent.gameObject;
+            UiKit.MakeTag(inner.transform, "設定", UiKit.Yellow, UiKit.Border, 22,
+                new Vector2(0.32f, 0.90f), new Vector2(0.68f, 0.995f));
+
+            Text VolRow(string label, float y0, float y1, System.Func<float> get,
+                System.Action<float> set)
+            {
+                UiKit.MakeText(inner.transform, label, 18, UiKit.TextDark, TextAnchor.MiddleLeft,
+                    new Vector2(0.07f, y0), new Vector2(0.34f, y1), Vector2.zero, Vector2.zero, bold: true);
+                var valText = UiKit.MakeText(inner.transform, $"{get() * 100f:F0}%", 18, UiKit.Cyan,
+                    TextAnchor.MiddleCenter,
+                    new Vector2(0.52f, y0), new Vector2(0.72f, y1), Vector2.zero, Vector2.zero, bold: true);
+                UiKit.MakeButton(inner.transform, "－", UiKit.Navy, 18,
+                    new Vector2(0.37f, y0), new Vector2(0.50f, y1), Vector2.zero, Vector2.zero,
+                    () => { set(Mathf.Max(0f, get() - 0.1f)); valText.text = $"{get() * 100f:F0}%"; });
+                UiKit.MakeButton(inner.transform, "＋", UiKit.Navy, 18,
+                    new Vector2(0.74f, y0), new Vector2(0.87f, y1), Vector2.zero, Vector2.zero,
+                    () => { set(Mathf.Min(1f, get() + 0.1f)); valText.text = $"{get() * 100f:F0}%"; });
+                return valText;
+            }
+            VolRow("BGM音量", 0.72f, 0.85f, () => AudioKit.BgmVol, AudioKit.SetBgmVolume);
+            VolRow("効果音量", 0.55f, 0.68f, () => AudioKit.SeVol, AudioKit.SetSeVolume);
+
+            UiKit.MakeText(inner.transform, $"Ver.1.0 [{Build}]", 14,
+                new Color(0.45f, 0.50f, 0.58f), TextAnchor.MiddleCenter,
+                new Vector2(0f, 0.42f), new Vector2(1f, 0.52f), Vector2.zero, Vector2.zero);
+
+            UiKit.MakeButton(inner.transform, "セーブデータを初期化", new Color(0.72f, 0.15f, 0.12f), 16,
+                new Vector2(0.14f, 0.24f), new Vector2(0.86f, 0.38f), Vector2.zero, Vector2.zero,
+                () =>
+                {
+                    // 誤タップ防止の確認ダイアログ
+                    var confirm = UiKit.MakeCard(outer.transform,
+                        new Vector2(0.05f, 0.30f), new Vector2(0.95f, 0.70f), Vector2.zero, Vector2.zero);
+                    UiKit.MakeText(confirm.transform,
+                        "本当に初期化しますか？\nストーリー進行・資金・戦績がすべて消えます。",
+                        17, UiKit.TextDark, TextAnchor.MiddleCenter,
+                        new Vector2(0.04f, 0.44f), new Vector2(0.96f, 0.96f), Vector2.zero, Vector2.zero,
+                        bold: true);
+                    UiKit.MakeButton(confirm.transform, "やめる", UiKit.Cyan, 16,
+                        new Vector2(0.08f, 0.08f), new Vector2(0.46f, 0.38f), Vector2.zero, Vector2.zero,
+                        () => Destroy(confirm.transform.parent.gameObject));
+                    UiKit.MakeButton(confirm.transform, "初期化する", UiKit.Red, 16,
+                        new Vector2(0.54f, 0.08f), new Vector2(0.92f, 0.38f), Vector2.zero, Vector2.zero,
+                        () =>
+                        {
+                            PlayerPrefs.DeleteAll();
+                            PlayerPrefs.Save();
+                            career = CareerData.Load();
+                            AudioKit.LoadVolumes();
+                            Time.timeScale = 1f;
+                            raceSpeed = 1f;
+                            if (pausePopupGo != null) { Destroy(pausePopupGo); pausePopupGo = null; }
+                            race.SetupRace();
+                            ShowTitle();
+                        });
+                });
+            UiKit.MakeButton(inner.transform, "とじる", UiKit.Navy, 18,
+                new Vector2(0.32f, 0.04f), new Vector2(0.68f, 0.18f), Vector2.zero, Vector2.zero,
+                () => Destroy(outer));
         }
 
         /// <summary>白カード+紺枠の汎用ポップアップ(お知らせ/あそびかた)。</summary>

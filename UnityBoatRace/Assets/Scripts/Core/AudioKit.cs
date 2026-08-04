@@ -74,9 +74,44 @@ namespace BoatRace.Core
             foreach (var n in new[] { "se_click","se_whoosh","se_horn","se_fanfare","se_cheer","se_crowd","se_engine","bgm_menu","bgm_race" })
                 if (F(n) != null) files++;
             Debug.Log($"[音源チェック] Sounds/フォルダのファイル: {files}/9 (無い音は内蔵シンセで再生)");
+            LoadVolumes(); // 保存済みの音量設定を反映
         }
 
         static AudioClip raceBgmClip;
+
+        // ---- 音量設定(0-1。PlayerPrefsに保存され次回起動でも有効) ----
+        public static float BgmVol { get; private set; } = 1f;
+        public static float SeVol { get; private set; } = 1f;
+        static float crowdBase; // Crowd()で指定された基準音量
+
+        public static void LoadVolumes()
+        {
+            BgmVol = PlayerPrefs.GetFloat("br_vol_bgm", 1f);
+            SeVol = PlayerPrefs.GetFloat("br_vol_se", 1f);
+            ApplyVolumes();
+        }
+
+        public static void SetBgmVolume(float v)
+        {
+            BgmVol = Mathf.Clamp01(v);
+            PlayerPrefs.SetFloat("br_vol_bgm", BgmVol);
+            ApplyVolumes();
+        }
+
+        public static void SetSeVolume(float v)
+        {
+            SeVol = Mathf.Clamp01(v);
+            PlayerPrefs.SetFloat("br_vol_se", SeVol);
+            ApplyVolumes();
+        }
+
+        static void ApplyVolumes()
+        {
+            if (!ready) return;
+            bgmSrc.volume = 0.30f * BgmVol;
+            uiSrc.volume = SeVol;
+            ambSrc.volume = crowdBase * SeVol;
+        }
 
         /// <summary>波形関数からAudioClipを生成(lowpass=移動平均の窓幅)。</summary>
         static AudioClip Synth(string name, float dur, System.Func<float, float> wave, int lowpass = 0)
@@ -160,7 +195,12 @@ namespace BoatRace.Core
         }
 
         /// <summary>観客のざわめき音量(0でオフ)。</summary>
-        public static void Crowd(float vol) { if (ready) ambSrc.volume = Mathf.Clamp01(vol); }
+        public static void Crowd(float vol)
+        {
+            if (!ready) return;
+            crowdBase = Mathf.Clamp01(vol);
+            ambSrc.volume = crowdBase * SeVol;
+        }
     }
 
     /// <summary>艇のエンジン音(3D)。速度でピッチと音量が変わる。</summary>
@@ -188,7 +228,7 @@ namespace BoatRace.Core
             if (boat == null || boat.engine == null) { src.volume = 0f; return; }
             float sp = boat.engine.Speed;
             src.pitch = 0.7f + sp * 0.045f;
-            src.volume = Mathf.Clamp(0.08f + sp * 0.020f, 0.08f, 0.55f);
+            src.volume = Mathf.Clamp(0.08f + sp * 0.020f, 0.08f, 0.55f) * AudioKit.SeVol;
         }
     }
 }
