@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-06-v331-portal-guard"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-06-v332-portal-url"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -186,7 +186,7 @@ if (typeof window !== "undefined") {
 const DB_API_BASE   = "https://zv3hlppejxw32cjxhn2mnsdgqq0sxeqa.lambda-url.ap-northeast-1.on.aws";
 const DUSTALK_SYNC_URL = "https://36w7fx2ywn7t4raggrbwe65ili0fddnr.lambda-url.ap-northeast-1.on.aws";
 // 見積依頼ポータル（mydesk-quote-portal）Function URL。デプロイ後にここへ貼り付け。
-const QUOTE_PORTAL_URL = "";
+const QUOTE_PORTAL_URL = "https://wccz6ebtueeo5kkwnr44fnjkqq0lyqqp.lambda-url.ap-northeast-1.on.aws/";
 const DB_API_SECRET = "mydesk2026secret";
 const DB_API_HEADERS = {
   "Content-Type": "application/json",
