@@ -15,7 +15,7 @@ namespace BoatRace.UI
     public class GameFlow : MonoBehaviour
     {
         /// <summary>ビルド識別子。画面右上に表示され、更新が届いたか一目で分かる。</summary>
-        public const string Build = "B23-タイトル全幅デザイン";
+        public const string Build = "B24-日本地図ツアー+昇格";
 
         RaceManager race;
         ReplayManager replay;
@@ -65,6 +65,7 @@ namespace BoatRace.UI
         bool stTelopPending; // スタート成立後にST一覧テロップを出す予約
         GameObject broadcastStrip; // 実中継風の左端縦艇番プレート(スタート前のみ)
         RectTransform homeCtaRT;   // ホームの出走CTA(鼓動アニメ)
+        string pendingPromotion;   // 章クリアで級が上がった時の昇格カットイン予約
 
         // 固定ライバル名鑑(シナリオ第6章: 個性を持った実在感あるライバル)
         static readonly (string name, Color hair, string line)[] Rivals =
@@ -1090,18 +1091,10 @@ namespace BoatRace.UI
                 if (RaceBootstrap.Instance != null) RaceBootstrap.Instance.RebuildEnvironment(race);
             }
 
-            // ---- 背景: KVイラスト+白ウォッシュ(トップv2モック) ----
-            var kv = FaceArt.LoadArt("title_kv");
-            if (kv != null)
-            {
-                var bgGo = new GameObject("HomeKV");
-                UiKit.Place(bgGo, s.transform, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
-                var bgImg = bgGo.AddComponent<Image>();
-                bgImg.sprite = kv;
-                bgImg.raycastTarget = false;
-            }
+            // ---- 背景: モックv3準拠=3D会場(ピットの艇団)を透かして白ウォッシュだけ乗せる ----
+            // KV画像は引き伸ばすと人物が歪むためホームでは使わない(タイトル専用)
             UiKit.MakeFullscreenGradient(s.transform,
-                new Color(1f, 1f, 1f, 0.55f), new Color(0.63f, 0.80f, 0.92f, 0.30f));
+                new Color(1f, 1f, 1f, 0.50f), new Color(0.63f, 0.80f, 0.92f, 0.28f));
 
             // ---- トップバー: ロゴ+シーズン金タグ+右ウォレット ----
             var logoSp = FaceArt.LoadArt("logo_teido");
@@ -1436,7 +1429,7 @@ namespace BoatRace.UI
                     ShowCareer();
                 });
 
-            string raceLabel = career.allClear ? "SG覇者として出走▶" : $"第{career.chapter}章に出走▶";
+            string raceLabel = career.allClear ? "SG覇者として出走▶" : $"ツアーマップ▶ 第{career.chapter}章";
             UiKit.MakeButton(s.transform, "↩ ホーム", UiKit.Cyan, 17,
                 new Vector2(0.02f, 0.11f), new Vector2(0.115f, 0.22f), Vector2.zero, Vector2.zero, ShowHome);
             UiKit.MakeButton(s.transform, "技強化", new Color(0.62f, 0.2f, 0.75f), 18,
@@ -1451,8 +1444,9 @@ namespace BoatRace.UI
             UiKit.MakeButton(s.transform, "施設", new Color(0.15f, 0.55f, 0.60f), 18,
                 new Vector2(0.485f, 0.11f), new Vector2(0.585f, 0.22f), Vector2.zero, Vector2.zero,
                 () => ShowFacilityPopup(s.transform));
-            UiKit.MakeButton(s.transform, raceLabel, UiKit.Red, 26,
-                new Vector2(0.595f, 0.10f), new Vector2(0.815f, 0.235f), Vector2.zero, Vector2.zero, StartCareerRace);
+            UiKit.MakeButton(s.transform, raceLabel, UiKit.Red, 24,
+                new Vector2(0.595f, 0.10f), new Vector2(0.815f, 0.235f), Vector2.zero, Vector2.zero,
+                career.allClear ? (System.Action)StartCareerRace : ShowTourMap);
             UiKit.MakeButton(s.transform, "ショップ", new Color(0.9f, 0.55f, 0.1f), 18,
                 new Vector2(0.825f, 0.11f), new Vector2(0.965f, 0.22f), Vector2.zero, Vector2.zero,
                 () => ShowShopPopup(s.transform));
@@ -1745,6 +1739,154 @@ namespace BoatRace.UI
             UiKit.MakeButton(pop.transform, "閉じる", UiKit.Navy, 20,
                 new Vector2(0.38f, 0.015f), new Vector2(0.62f, 0.09f), Vector2.zero, Vector2.zero,
                 () => Destroy(pop));
+        }
+
+        // ================= ストーリーツアーマップ(日本地図で章を進む) =================
+
+        /// <summary>会場の日本地図上の位置(マップパネル内の正規化座標・デフォルメ)。</summary>
+        static Vector2 VenueMapPos(int id)
+        {
+            switch (id)
+            {
+                case 1: return new Vector2(0.755f, 0.640f);  // 桐生
+                case 2: return new Vector2(0.775f, 0.560f);  // 戸田
+                case 3: return new Vector2(0.815f, 0.515f);  // 江戸川
+                case 4: return new Vector2(0.795f, 0.490f);  // 平和島
+                case 5: return new Vector2(0.762f, 0.520f);  // 多摩川
+                case 6: return new Vector2(0.660f, 0.435f);  // 浜名湖
+                case 7: return new Vector2(0.628f, 0.420f);  // 蒲郡
+                case 8: return new Vector2(0.602f, 0.395f);  // 常滑
+                case 9: return new Vector2(0.573f, 0.393f);  // 津
+                case 10: return new Vector2(0.545f, 0.610f); // 三国
+                case 11: return new Vector2(0.552f, 0.500f); // びわこ
+                case 12: return new Vector2(0.515f, 0.440f); // 住之江
+                case 13: return new Vector2(0.492f, 0.458f); // 尼崎
+                case 14: return new Vector2(0.445f, 0.372f); // 鳴門
+                case 15: return new Vector2(0.400f, 0.398f); // 丸亀
+                case 16: return new Vector2(0.422f, 0.452f); // 児島
+                case 17: return new Vector2(0.330f, 0.440f); // 宮島
+                case 18: return new Vector2(0.278f, 0.395f); // 徳山
+                case 19: return new Vector2(0.225f, 0.393f); // 下関
+                case 20: return new Vector2(0.195f, 0.358f); // 若松
+                case 21: return new Vector2(0.170f, 0.385f); // 芦屋
+                case 22: return new Vector2(0.148f, 0.338f); // 福岡
+                case 23: return new Vector2(0.108f, 0.350f); // 唐津
+                default: return new Vector2(0.085f, 0.278f); // 大村
+            }
+        }
+
+        /// <summary>
+        /// ストーリーツアーマップ。デフォルメ日本地図に章の会場ノードを置き、
+        /// 現在章をタップして出走。一周(全章)クリアで級が上がる(新人→B2→B1→A2→A1→SG)。
+        /// </summary>
+        void ShowTourMap()
+        {
+            var s = NewScreen("TourMapScreen");
+            UiKit.MakeFullscreenGradient(s.transform,
+                new Color(0.55f, 0.78f, 0.95f), new Color(0.13f, 0.38f, 0.68f));
+            UiKit.MakeBanner(s.transform, "ストーリーツアー　日本一周", 27,
+                new Vector2(0.24f, 0.905f), new Vector2(0.76f, 0.985f), tilt: -1f);
+            UiKit.MakeTag(s.transform, $"現在の級: {career.RankLabel}", UiKit.Yellow, UiKit.Border, 17,
+                new Vector2(0.015f, 0.905f), new Vector2(0.195f, 0.965f), skew: 8f);
+            UiKit.MakeText(s.transform,
+                "章をクリアして日本を一周！　級が昇格していく (新人 → B2 → B1 → A2 → A1 → SG制覇)",
+                15, Color.white, TextAnchor.MiddleCenter,
+                new Vector2(0f, 0.845f), new Vector2(1f, 0.895f), Vector2.zero, Vector2.zero,
+                bold: true, shadow: true);
+
+            var map = new GameObject("Map");
+            UiKit.Place(map, s.transform, new Vector2(0.03f, 0.13f), new Vector2(0.97f, 0.84f),
+                Vector2.zero, Vector2.zero);
+
+            // デフォルメ日本列島(角丸パネルの組合せ。緑の陸+濃い縁)
+            void Land(float x0, float y0, float x1, float y1, float rot)
+            {
+                var land = UiKit.MakePanel(map.transform, new Color(0.66f, 0.80f, 0.58f), 44,
+                    new Vector2(x0, y0), new Vector2(x1, y1), Vector2.zero, Vector2.zero);
+                land.GetComponent<RectTransform>().localEulerAngles = new Vector3(0f, 0f, rot);
+                land.GetComponent<Image>().raycastTarget = false;
+                var ol = land.AddComponent<Outline>();
+                ol.effectColor = new Color(0.25f, 0.42f, 0.32f, 0.8f);
+                ol.effectDistance = new Vector2(3f, -3f);
+            }
+            Land(0.055f, 0.18f, 0.205f, 0.47f, 8f);   // 九州
+            Land(0.175f, 0.34f, 0.505f, 0.50f, 5f);   // 中国
+            Land(0.365f, 0.26f, 0.525f, 0.375f, 3f);  // 四国
+            Land(0.455f, 0.34f, 0.725f, 0.66f, 18f);  // 近畿〜中部
+            Land(0.665f, 0.42f, 0.875f, 0.92f, 34f);  // 関東〜東北
+            Land(0.865f, 0.84f, 0.995f, 1.0f, -8f);   // 北海道
+
+            // 章ルート(点線)とノード
+            var chs = CareerData.Chapters;
+            Vector2 NodePos(int i)
+            {
+                var p = VenueMapPos(chs[i].venueId);
+                for (int k = 0; k < i; k++)  // 同一会場の重複章は少しずらす
+                    if (chs[k].venueId == chs[i].venueId) p += new Vector2(0.020f, -0.030f);
+                return p;
+            }
+            for (int i = 0; i < chs.Length - 1; i++)
+            {
+                Vector2 a = NodePos(i), b = NodePos(i + 1);
+                for (int d = 1; d <= 7; d++)
+                {
+                    Vector2 q = Vector2.Lerp(a, b, d / 8f);
+                    var dot = UiKit.MakePanel(map.transform,
+                        i + 1 < career.chapter ? new Color(1f, 0.84f, 0.20f, 0.95f) : new Color(1f, 1f, 1f, 0.55f),
+                        8, new Vector2(q.x - 0.004f, q.y - 0.007f), new Vector2(q.x + 0.004f, q.y + 0.007f),
+                        Vector2.zero, Vector2.zero);
+                    dot.GetComponent<Image>().raycastTarget = false;
+                }
+            }
+            for (int i = 0; i < chs.Length; i++)
+            {
+                int chNo = i + 1;
+                var v = CourseDatabase.Get(chs[i].venueId);
+                Vector2 p = NodePos(i);
+                bool clear = career.allClear || chNo < career.chapter;
+                bool now = !career.allClear && chNo == career.chapter;
+                float r = now ? 0.036f : 0.028f;
+                Color bg = clear ? new Color(1f, 0.80f, 0.15f) : now ? UiKit.Red : new Color(0.58f, 0.62f, 0.68f);
+                var node = UiKit.MakePanel(map.transform, bg, 60,
+                    new Vector2(p.x - r, p.y - r * 1.55f), new Vector2(p.x + r, p.y + r * 1.55f),
+                    Vector2.zero, Vector2.zero);
+                var nol = node.AddComponent<Outline>();
+                nol.effectColor = Color.white;
+                nol.effectDistance = new Vector2(3f, 3f);
+                UiKit.MakeText(node.transform, clear ? "✓" : chNo.ToString(), now ? 26 : 20,
+                    Color.white, TextAnchor.MiddleCenter, Vector2.zero, Vector2.one,
+                    Vector2.zero, Vector2.zero, bold: true, shadow: true);
+                UiKit.MakeText(map.transform, $"第{chNo}章 {v.name}\n{chs[i].grade}戦", 13,
+                    now ? Color.white : new Color(1f, 1f, 1f, 0.85f), TextAnchor.UpperCenter,
+                    new Vector2(p.x - 0.09f, p.y - r * 1.55f - 0.115f), new Vector2(p.x + 0.09f, p.y - r * 1.55f - 0.005f),
+                    Vector2.zero, Vector2.zero, bold: now, shadow: true);
+                if (now)
+                {
+                    UiKit.MakeTag(map.transform, "挑戦！", UiKit.Yellow, UiKit.Border, 14,
+                        new Vector2(p.x - 0.045f, p.y + r * 1.55f + 0.01f),
+                        new Vector2(p.x + 0.045f, p.y + r * 1.55f + 0.075f), skew: 8f);
+                    node.AddComponent<Button>().onClick.AddListener(StartCareerRace);
+                }
+            }
+
+            // 現在章の情報カード+出走ボタン
+            if (!career.allClear)
+            {
+                var ch = career.Current;
+                var vv = CourseDatabase.Get(ch.venueId);
+                var card = UiKit.MakeCard(s.transform,
+                    new Vector2(0.015f, 0.015f), new Vector2(0.55f, 0.125f), Vector2.zero, Vector2.zero);
+                UiKit.MakeText(card.transform,
+                    $"第{career.chapter}章「{ch.title}」　{vv.name}・{ch.grade}戦　目標: {(ch.requiredPlace >= 6 ? "完走" : ch.requiredPlace + "着以内")}",
+                    16, UiKit.Border, TextAnchor.MiddleLeft,
+                    new Vector2(0.03f, 0f), new Vector2(0.98f, 1f), Vector2.zero, Vector2.zero, bold: true);
+                UiKit.MakeButton(s.transform, $"第{career.chapter}章に出走▶", UiKit.Red, 22,
+                    new Vector2(0.57f, 0.015f), new Vector2(0.80f, 0.125f), Vector2.zero, Vector2.zero,
+                    StartCareerRace);
+            }
+            UiKit.MakeButton(s.transform, "↩ もどる", UiKit.Cyan, 18,
+                new Vector2(0.825f, 0.015f), new Vector2(0.965f, 0.125f), Vector2.zero, Vector2.zero,
+                ShowCareer);
         }
 
         void StartCareerRace()
@@ -2635,6 +2777,15 @@ namespace BoatRace.UI
                 new Vector2(0.62f, 0.015f), new Vector2(0.84f, 0.105f), Vector2.zero, Vector2.zero,
                 () => { race.SetupRace(); ShowHome(); }).GetComponentInChildren<Text>().color = UiKit.Navy;
 
+            // 昇格カットイン(級が上がった瞬間を派手に)
+            if (pendingPromotion != null)
+            {
+                string promo = pendingPromotion;
+                pendingPromotion = null;
+                ShowMoveCutIn(promo == "SG覇者" ? "SG制覇！！" : $"{promo} 昇格！！",
+                    new Color(1f, 0.78f, 0.10f));
+                AudioKit.Fanfare();
+            }
             // 昇格・初勝利などのストーリー会話
             if (pendingStory != null)
             {
@@ -2766,9 +2917,12 @@ namespace BoatRace.UI
                     bool cleared = lastCareerPlace >= 1 && lastCareerPlace <= chNow.requiredPlace;
                     if (cleared)
                     {
+                        string prevRank = career.RankLabel;
                         pendingStory = CareerStory.ChapterClear(career.chapter, career.racerName);
                         if (career.chapter >= 8) career.allClear = true;
                         else career.chapter++;
+                        // 一周(章クリア)で級が上がったら昇格カットイン(新人→B2→B1→A2→A1→SG)
+                        if (career.RankLabel != prevRank) pendingPromotion = career.RankLabel;
 
                         // 新必殺技の習得アナウンス
                         var newMove = SkillMove.NewlyUnlocked(career.chapter);
