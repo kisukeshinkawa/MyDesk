@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-06-v334-stock-learning"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-06-v335-stock-backtest10y"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -31132,6 +31132,7 @@ function StockView({currentUser}) {
   const [errMsg, setErrMsg]       = useState("");
   const [perf, setPerf]           = useState(null);  // {stats, config} 学習・成績
   const [showLearn, setShowLearn] = useState(false);
+  const [btRep, setBtRep]         = useState(null);  // 10年バックテスト結果
 
   const api = async (payload, timeoutMs=90000) => {
     const url = localStorage.getItem("md_stock_api_url")||STOCK_API_URL;
@@ -31211,6 +31212,19 @@ function StockView({currentUser}) {
       setPerf({stats:cfg.stats, config:cfg});
     } catch(e){ setErrMsg("学習エラー: "+e.message); }
     setBusy(b=>({...b,learn:false}));
+  };
+
+  const runBacktest = async () => {
+    setBusy(b=>({...b,bt:true})); setErrMsg("");
+    try {
+      // ウォッチリストが5銘柄未満なら日米主力20銘柄(Lambda側デフォルト)で検証
+      const payload = {action:"backtest", years:10, apply:true};
+      if(watchlist.length>=5) payload.tickers = watchlist.map(w=>w.ticker);
+      const rep = await api(payload, 300000);
+      setBtRep(rep);
+      setPerf(p=>({...(p||{}), config:{...((p&&p.config)||{}), factor_weights:rep.weights, factor_ic:rep.ics, backtestSamples:rep.samples, updatedAt:rep.updatedAt}}));
+    } catch(e){ setErrMsg("バックテストエラー: "+e.message); }
+    setBusy(b=>({...b,bt:false}));
   };
 
   const runBrain = async (ticker) => {
@@ -31317,11 +31331,54 @@ function StockView({currentUser}) {
                 style={{padding:"0.5rem 0.95rem",borderRadius:8,border:"none",background:"linear-gradient(135deg,#7A5AD9,#0070D4)",color:"white",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",opacity:busy.learn?0.6:1}}>
                 {busy.learn?"学習中(1〜2分)...":"📚 過去実績＋バックテストで学習"}
               </button>
+              <button onClick={runBacktest} disabled={busy.bt}
+                style={{padding:"0.5rem 0.95rem",borderRadius:8,border:"none",background:C.text,color:"white",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",opacity:busy.bt?0.6:1}}>
+                {busy.bt?"検証中(2〜4分)...":"📊 過去10年で検証(ウォークフォワード)"}
+              </button>
               <button onClick={loadPerf} disabled={busy.perf}
                 style={{padding:"0.5rem 0.95rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}}>
                 {busy.perf?"取得中...":"🔄 成績を更新"}
               </button>
             </div>
+            {btRep&&(()=>{
+              const fmt = s=>s?`${s.n}件 / 勝率${s.winRate}% / 平均${s.avgRet>=0?"+":""}${s.avgRet}% / 対指数${s.avgExcess>=0?"+":""}${s.avgExcess}%`:"—";
+              const rows = [
+                ["① 素点のまま", btRep.testRaw&&btRep.testRaw.buy],
+                ["② 因子重み学習後", btRep.testWeighted&&btRep.testWeighted.buy],
+                ["③ ②＋地合いフィルタ", btRep.testWeightedRegime&&btRep.testWeightedRegime.buy],
+              ];
+              return (
+                <div style={{marginBottom:"0.75rem",padding:"0.7rem 0.85rem",background:C.bg,borderRadius:8,border:`1px solid ${C.borderLight}`}}>
+                  <div style={{fontSize:"0.75rem",fontWeight:800,color:C.text,marginBottom:"0.3rem"}}>
+                    📊 10年ウォークフォワード検証結果
+                    <span style={{fontWeight:600,color:C.textMuted,marginLeft:"0.4rem"}}>
+                      {btRep.period.from}〜{btRep.period.to} / {btRep.samples}サンプル / {btRep.period.trainTestSplit}以降は学習に使っていない未知データで測定
+                    </span>
+                  </div>
+                  <div style={{fontSize:"0.7rem",fontWeight:700,color:C.textSub,marginBottom:"0.15rem"}}>「買い(70点以上)」シグナルの20営業日後成績(検証期間のみ):</div>
+                  {rows.map(([l,s])=>(
+                    <div key={l} style={{fontSize:"0.72rem",color:C.text,lineHeight:1.7,display:"flex",gap:"0.5rem"}}>
+                      <span style={{minWidth:150,fontWeight:700,color:C.textSub}}>{l}</span><span>{fmt(s)}</span>
+                    </div>
+                  ))}
+                  {btRep.thresholds&&Object.keys(btRep.thresholds).length>0&&(
+                    <div style={{marginTop:"0.4rem"}}>
+                      <div style={{fontSize:"0.7rem",fontWeight:700,color:C.textSub,marginBottom:"0.15rem"}}>買い閾値別(③条件下):</div>
+                      <div style={{display:"flex",gap:"0.35rem",flexWrap:"wrap"}}>
+                        {Object.entries(btRep.thresholds).map(([th,s])=>(
+                          <span key={th} style={S.chip(s.winRate>=55?C.greenBg:C.borderLight, s.winRate>=55?C.green:C.textSub)}>
+                            {th}点↑: 勝率{s.winRate}% ({s.n}件)
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <div style={{fontSize:"0.66rem",color:C.textMuted,marginTop:"0.4rem"}}>
+                    ✓ 検証済みの因子重みと地合いフィルタは本番スコアリングに自動適用されました
+                  </div>
+                </div>
+              );
+            })()}
             {!perf&&!busy.perf&&<div style={{fontSize:"0.75rem",color:C.textMuted,lineHeight:1.6}}>
               分析するたびに予測が自動記録され、5営業日後・20営業日後に答え合わせされます。<br/>
               「学習」を実行すると過去2年分のバックテストで因子の重みを最適化し、外れた判定から教訓を抽出してAI判定に反映します。
@@ -31486,7 +31543,10 @@ function StockView({currentUser}) {
                 </div>
                 <div style={{fontSize:"0.68rem",color:C.textMuted,marginTop:"0.15rem"}}>52週: {Number(sel.lo52).toLocaleString()}〜{Number(sel.hi52).toLocaleString()} / RSI {sel.rsi} / ATR {sel.atr}</div>
               </div>
-              {STOCK_QUAD_META[sel.quadrant]&&<span style={S.chip(STOCK_QUAD_META[sel.quadrant].bg,STOCK_QUAD_META[sel.quadrant].color)}>{sel.quadrant}</span>}
+              <div style={{display:"flex",flexDirection:"column",gap:"0.3rem",alignItems:"flex-end"}}>
+                {STOCK_QUAD_META[sel.quadrant]&&<span style={S.chip(STOCK_QUAD_META[sel.quadrant].bg,STOCK_QUAD_META[sel.quadrant].color)}>{sel.quadrant}</span>}
+                {sel.regime&&!sel.regime.benchAboveMa200&&<span style={S.chip(C.redBg,C.red)}>⚠️ {sel.regime.bench}200日線割れ</span>}
+              </div>
             </div>
             <div style={{margin:"0.5rem 0 0.75rem",padding:"0.5rem",background:C.bg,borderRadius:"0.625rem"}}>
               <StockSparkline spark={sel.spark} ma25={sel.sparkMa25}/>
@@ -31495,8 +31555,8 @@ function StockView({currentUser}) {
             <StockScoreBar label={`⚡ 短期テクニカル（${sel.short.signal==="buy"?"買い候補":sel.short.signal==="watch"?"監視":"見送り"}）`} score={sel.short.score}/>
             <div style={{marginBottom:"0.7rem"}}>
               {sel.short.breakdown.map((b,i)=>(
-                <div key={i} style={{fontSize:"0.72rem",color:C.textSub,lineHeight:1.55,marginTop:"0.2rem"}}>
-                  <b style={{color:C.text}}>{b.category} {b.points}/{b.max}</b>　{b.reason}
+                <div key={i} style={{fontSize:"0.72rem",color:b.max===0?C.red:C.textSub,lineHeight:1.55,marginTop:"0.2rem"}}>
+                  <b style={{color:b.max===0?C.red:C.text}}>{b.max===0?"⚠️ "+b.category:`${b.category} ${b.points}/${b.max}`}</b>　{b.reason}
                 </div>
               ))}
             </div>

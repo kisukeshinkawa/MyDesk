@@ -89,6 +89,10 @@ def lambda_handler(event, context):
             return _res(200, get_performance())
         if action == "learn":
             return _res(200, run_learn(body.get("tickers")))
+        if action == "backtest":
+            return _res(200, run_backtest(body.get("tickers"),
+                                          int(body.get("years", 10)),
+                                          bool(body.get("apply", False))))
         return _res(400, {"error": f"unknown action: {action}"})
     except Exception as e:
         import traceback
@@ -486,17 +490,29 @@ def analyze_ticker(ticker):
     df = fetch_history(ticker)
     tech = compute_technical(df)
 
-    # 指数との相対力
+    # 指数との相対力 + 地合いレジーム(指数200日線)
     idx_sym = "^N225" if is_jp else "^GSPC"
+    index_ret1m, regime_on = 0, True
     try:
-        idx_df = fetch_history(idx_sym, "90d")
+        idx_df = fetch_history(idx_sym, "400d")
         idx_close = idx_df["Close"]
-        index_ret1m = (float(idx_close.iloc[-1]) / float(idx_close.iloc[-21]) - 1) * 100 if len(idx_close) >= 21 else 0
+        if len(idx_close) >= 21:
+            index_ret1m = (float(idx_close.iloc[-1]) / float(idx_close.iloc[-21]) - 1) * 100
+        if len(idx_close) >= 200:
+            regime_on = float(idx_close.iloc[-1]) > float(idx_close.rolling(200).mean().iloc[-1])
     except Exception:
-        index_ret1m = 0
+        pass
 
     learn_cfg = load_learn_config()
     short = score_short(tech, index_ret1m, learn_cfg.get("factor_weights"))
+
+    # 地合いフィルタ: 指数が200日線割れの局面は買いシグナルのダマシが増える
+    # (10年バックテストの検証項目)ため、買いを保留に格下げして明示する
+    if not regime_on and short["signal"] == "buy":
+        short["signal"] = "watch"
+        short["breakdown"].append({
+            "category": "地合いフィルタ", "points": 0, "max": 0,
+            "reason": f"{'日経平均' if is_jp else 'S&P500'}が200日線割れのため買いシグナルを保留(弱地合いでは買いのダマシが増えるため)"})
 
     info = cache_get(f"info/{ticker}.json", SLOW_TTL)
     if info is None:
@@ -522,6 +538,8 @@ def analyze_ticker(ticker):
         "atr": round(tech["atr"], 2),
         "rsi": round(tech["rsi"], 1),
         "short": short, "long": long_, "quadrant": quadrant,
+        "regime": {"benchAboveMa200": regime_on,
+                   "bench": "日経平均" if is_jp else "S&P500"},
         "spark": tech["spark"], "sparkMa25": tech["spark_ma25"],
         "updatedAt": datetime.now(timezone.utc).isoformat(),
     }
@@ -662,28 +680,188 @@ def compute_stats(preds):
     }
 
 
-def backtest_factors(tickers):
-    """過去2年を週次サンプリングし、各テクニカル因子と20日後リターンの関係を収集。
-    実運用の予測が貯まる前から因子の有効性を学習できる。"""
+# 銘柄未指定時のバックテスト対象(日米の主力・流動性上位)
+DEFAULT_UNIVERSE = ["7203.T", "6758.T", "8306.T", "9984.T", "6501.T", "8058.T", "6981.T",
+                    "9433.T", "4063.T", "7974.T",
+                    "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "JPM", "JNJ", "XOM", "PG", "KO"]
+
+
+def build_indicator_frame(df):
+    """全営業日分のテクニカル指標を一括計算(ベクトル化)。
+    rolling/ewm/shiftは各行とも当日以前のデータのみ参照するため先読みバイアスなし。
+    これにより10年×20銘柄のバックテストがLambdaタイムアウト内で完走する。"""
+    import pandas as pd
+    close, vol = df["Close"], df["Volume"]
+    f = pd.DataFrame(index=df.index)
+    f["close"] = close
+    f["ma5"] = close.rolling(5).mean()
+    f["ma25"] = close.rolling(25).mean()
+    f["ma75"] = close.rolling(75).mean()
+    delta = close.diff()
+    gain = delta.clip(lower=0).rolling(14).mean()
+    loss = (-delta.clip(upper=0)).rolling(14).mean()
+    f["rsi"] = 100 - 100 / (1 + gain / loss.replace(0, float("nan")))
+    ema12 = close.ewm(span=12, adjust=False).mean()
+    ema26 = close.ewm(span=26, adjust=False).mean()
+    macd = ema12 - ema26
+    f["hist"] = macd - macd.ewm(span=9, adjust=False).mean()
+    mid = close.rolling(20).mean()
+    sd = close.rolling(20).std()
+    f["bb"] = (close - mid) / (2 * sd)
+    f["vr"] = vol.rolling(5).mean() / vol.rolling(20).mean()
+    f["chg1d"] = close.pct_change() * 100
+    f["ret1m"] = close.pct_change(20) * 100  # compute_technicalのiloc[-21]比と同一(20営業日前比)
+    gc = (f["ma5"] > f["ma25"]) & (f["ma5"].shift(1) <= f["ma25"].shift(1))
+    dc = (f["ma5"] < f["ma25"]) & (f["ma5"].shift(1) >= f["ma25"].shift(1))
+    f["gc5"] = gc.rolling(5).max()
+    f["dc5"] = dc.rolling(5).max()
+    return f
+
+
+def _row_to_tech(f, i):
+    """指標フレームのi行目をscore_short互換のdictへ変換"""
+    def v(col, default=None):
+        x = f[col].iloc[i]
+        return default if x is None or (isinstance(x, float) and math.isnan(x)) else float(x)
+    return {
+        "price": v("close"), "rsi": v("rsi", 50), "ret1m": v("ret1m", 0),
+        "ma5": v("ma5", 0), "ma25": v("ma25", 0), "ma75": v("ma75"),
+        "macd_hist": v("hist", 0),
+        "macd_hist_prev3": float(f["hist"].iloc[i - 3]) if i >= 3 and not math.isnan(f["hist"].iloc[i - 3]) else 0,
+        "bb_pos": v("bb", 0), "vol_ratio": v("vr", 1.0),
+        "cross": 1 if v("gc5", 0) else (-1 if v("dc5", 0) else 0),
+        "chg1d": v("chg1d", 0),
+    }
+
+
+def backtest_universe(tickers, years=10, step=5):
+    """週次サンプリングのバックテスト。各サンプルに
+    因子スコア・5/20日後リターン・対指数超過リターン・地合い(指数200日線)を記録。"""
     samples = []
-    for t in tickers[:8]:
+    bench_cache = {}
+
+    def get_bench(sym):
+        if sym not in bench_cache:
+            bdf = fetch_history(sym, f"{years}y")
+            bf = {"close": bdf["Close"],
+                  "ma200": bdf["Close"].rolling(200).mean(),
+                  "ret1m": bdf["Close"].pct_change(20) * 100,
+                  "dates": [d.strftime("%Y-%m-%d") for d in bdf.index]}
+            bf["pos"] = {d: i for i, d in enumerate(bf["dates"])}
+            bench_cache[sym] = bf
+        return bench_cache[sym]
+
+    for t in tickers[:20]:
         try:
-            df = fetch_history(t, "600d")
+            df = fetch_history(t, f"{years}y")
+            bench = get_bench("^N225" if t.endswith(".T") else "^GSPC")
+            f = build_indicator_frame(df)
         except Exception as e:
             print("backtest fetch failed:", t, e)
             continue
-        closes = [float(v) for v in df["Close"].tolist()]
-        for i in range(90, len(df) - 21, 5):
+        closes = [float(x) for x in df["Close"].tolist()]
+        dates = [d.strftime("%Y-%m-%d") for d in df.index]
+        for i in range(80, len(df) - 21, step):
             try:
-                tech = compute_technical(df.iloc[:i + 1])
-                sc = score_short(tech, 0)  # 素の因子スコア(重みなし)
-                fwd = (closes[i + 20] / closes[i] - 1) * 100
-                samples.append({"factors": {b["category"]: round(b["points"] / b["max"], 3)
-                                            for b in sc["breakdown"]},
-                                "ret": round(fwd, 2)})
+                d = dates[i]
+                bi = bench["pos"].get(d)
+                if bi is None:  # 休日ズレは直前の指数営業日を使う
+                    bi = max([j for j, bd in enumerate(bench["dates"]) if bd <= d] or [None])
+                if bi is None or bi + 20 >= len(bench["close"]):
+                    continue
+                b_ret1m = float(bench["ret1m"].iloc[bi]) if not math.isnan(bench["ret1m"].iloc[bi]) else 0
+                tech = _row_to_tech(f, i)
+                sc = score_short(tech, b_ret1m)  # 素点(重みなし)
+                fwd5 = (closes[i + 5] / closes[i] - 1) * 100
+                fwd20 = (closes[i + 20] / closes[i] - 1) * 100
+                b_fwd20 = (float(bench["close"].iloc[bi + 20]) / float(bench["close"].iloc[bi]) - 1) * 100
+                ma200 = bench["ma200"].iloc[bi]
+                regime_on = (not math.isnan(ma200)) and float(bench["close"].iloc[bi]) > float(ma200)
+                samples.append({
+                    "date": d, "ticker": t,
+                    "factors": {b["category"]: round(b["points"] / b["max"], 3) for b in sc["breakdown"]},
+                    "score": sc["score"], "signal": sc["signal"],
+                    "fwd5": round(fwd5, 2), "fwd20": round(fwd20, 2),
+                    "ex20": round(fwd20 - b_fwd20, 2), "regime": regime_on,
+                })
             except Exception:
                 continue
     return samples
+
+
+FACTOR_MAX = {"トレンド": 25, "モメンタム": 25, "出来高": 20, "価格位置": 15, "相対力": 15}
+
+
+def _weighted_score(factors, weights):
+    num = sum(factors.get(c, 0) * m * weights.get(c, 1.0) for c, m in FACTOR_MAX.items())
+    den = sum(m * weights.get(c, 1.0) for c, m in FACTOR_MAX.items())
+    return round(num / den * 100) if den else 0
+
+
+def run_backtest(tickers=None, years=10, apply_weights=False):
+    """10年ウォークフォワード検証。
+    期間の前70%(train)で因子重みを学習→後30%(test)で未知データ精度を測定。
+    地合いフィルタ(指数200日線)の有無も比較し、レポートを返す。"""
+    tickers = tickers or DEFAULT_UNIVERSE
+    samples = backtest_universe(tickers, years)
+    if len(samples) < 100:
+        raise Exception(f"サンプル不足({len(samples)}件)。銘柄・期間を確認してください")
+    samples.sort(key=lambda s: s["date"])
+    split = samples[int(len(samples) * 0.7)]["date"]
+    train = [s for s in samples if s["date"] < split]
+    test = [s for s in samples if s["date"] >= split]
+
+    # trainで重み学習(対指数超過リターンとのICベース=地合いに依存しない銘柄選択力)
+    weights, ics = derive_weights([{"factors": s["factors"], "ret": s["ex20"]} for s in train])
+
+    def stats_of(items, ret_key="fwd20"):
+        out = {}
+        for s in items:
+            k = "buy" if s["_score"] >= 70 else ("watch" if s["_score"] >= 45 else "avoid")
+            b = out.setdefault(k, {"n": 0, "win": 0, "sum": 0.0, "ex": 0.0})
+            b["n"] += 1
+            b["win"] += 1 if s[ret_key] > 0 else 0
+            b["sum"] += s[ret_key]
+            b["ex"] += s["ex20"]
+        return {k: {"n": v["n"], "winRate": round(v["win"] / v["n"] * 100, 1),
+                    "avgRet": round(v["sum"] / v["n"], 2), "avgExcess": round(v["ex"] / v["n"], 2)}
+                for k, v in out.items()}
+
+    for s in test:
+        s["_score"] = _weighted_score(s["factors"], weights)
+
+    report = {
+        "period": {"from": samples[0]["date"], "to": samples[-1]["date"], "trainTestSplit": split},
+        "tickers": tickers, "samples": len(samples), "trainSamples": len(train), "testSamples": len(test),
+        "weights": weights, "ics": ics,
+        # ① 素点のまま(重み学習なし)のtest成績 → ベースライン
+        "testRaw": stats_of([{**s, "_score": s["score"]} for s in test]),
+        # ② 学習済み重み適用後のtest成績
+        "testWeighted": stats_of(test),
+        # ③ さらに地合いフィルタ(指数200日線より上のときだけ買い)を掛けた成績
+        "testWeightedRegime": stats_of([s for s in test if s["regime"]]),
+        "testWeightedRegimeOff": stats_of([s for s in test if not s["regime"]]),
+        # ④ 買い閾値ごとの成績(閾値調整の材料)
+        "thresholds": {},
+        "updatedAt": datetime.now(timezone.utc).isoformat(),
+    }
+    for th in (60, 65, 70, 75, 80):
+        hits = [s for s in test if s["_score"] >= th and s["regime"]]
+        if hits:
+            report["thresholds"][str(th)] = {
+                "n": len(hits),
+                "winRate": round(sum(1 for s in hits if s["fwd20"] > 0) / len(hits) * 100, 1),
+                "avgRet": round(sum(s["fwd20"] for s in hits) / len(hits), 2),
+                "avgExcess": round(sum(s["ex20"] for s in hits) / len(hits), 2)}
+
+    if apply_weights:  # 検証済み重みを本番スコアリングに反映
+        cfg = load_learn_config()
+        cfg.update({"factor_weights": weights, "factor_ic": ics,
+                    "backtestSamples": len(samples), "backtestYears": years,
+                    "backtest_report": report,
+                    "updatedAt": datetime.now(timezone.utc).isoformat()})
+        _save_json_s3(CONFIG_KEY, cfg)
+    return report
 
 
 FACTOR_CATS = ["トレンド", "モメンタム", "出来高", "価格位置", "相対力"]
@@ -738,8 +916,9 @@ def run_learn(tickers=None):
     """学習の全工程: 答え合わせ→バックテスト→因子重み最適化→教訓抽出→保存。"""
     preds = evaluate_predictions()
     if not tickers:
-        tickers = list(dict.fromkeys(p["ticker"] for p in reversed(preds)))[:8]
-    bt = backtest_factors(tickers or [])
+        tickers = list(dict.fromkeys(p["ticker"] for p in reversed(preds)))[:8] or DEFAULT_UNIVERSE[:8]
+    bt = [{"factors": s["factors"], "ret": s["ex20"]}
+          for s in backtest_universe(tickers, years=3)]
     live = [{"factors": p.get("factors", {}), "ret": p.get("ret5")}
             for p in preds if p.get("type") == "score" and p.get("ret5") is not None]
     weights, ics = derive_weights(bt + live)

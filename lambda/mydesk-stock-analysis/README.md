@@ -64,7 +64,19 @@ curl -s -X POST $URL -H "content-type: application/json" -H "x-mydesk-secret: my
 # 成績確認
 curl -s -X POST $URL -H "content-type: application/json" -H "x-mydesk-secret: mydesk2026secret" \
   -d '{"action":"performance"}'
+# 10年ウォークフォワード検証（2〜4分。apply:trueで検証済み重みを本番に反映）
+curl -s -X POST $URL -H "content-type: application/json" -H "x-mydesk-secret: mydesk2026secret" \
+  -d '{"action":"backtest","years":10,"apply":true}'
 ```
+
+## 10年バックテスト（v335）
+
+- `backtest_universe`: ベクトル化した指標計算（rolling/ewmは当日以前のデータのみ参照＝先読みバイアスなし。従来のスライス方式とスコア完全一致を合成データで検証済み）で、10年×20銘柄を週次サンプリング（約2〜4分で完走）
+- **ウォークフォワード検証**: 期間の前70%で因子重みを学習→後30%の未知データで精度測定。表示される勝率は「学習に使っていない期間」の成績なので過学習の水増しがない
+- **地合いフィルタ**: 指数（日経平均/S&P500）が200日線割れの局面では買いシグナルを「保留」に自動格下げ（バックテストで有無の成績比較を表示）
+- 重みICは対指数**超過リターン**で計算（地合いに依存しない銘柄選択力を学習）
+- 銘柄未指定時は日米主力20銘柄（DEFAULT_UNIVERSE）で検証
+- `apply:true` で検証済み重みが `stock-learn/config.json` に保存され、以後の本番スコアに自動適用
 
 ## 学習の仕組み（v334）
 
