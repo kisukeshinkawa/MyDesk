@@ -15,6 +15,7 @@ namespace BoatRace.Start
         /// <summary>ピット全体の中心x座標。場によって2マーク側/1マーク側が違う。</summary>
         public static float PitCenterX(int venueId)
         {
+            if (Data.VenueTraits.UseRealVenue(venueId)) return -335f; // 実寸モデルの横ピット前
             return Data.VenueTraits.PitNear2Mark(venueId) ? -245f : -55f;
         }
 
@@ -26,8 +27,11 @@ namespace BoatRace.Start
         /// </summary>
         public static Vector3 PitPosition(int boatIndex, int venueId)
         {
-            float hw = Data.VenueTraits.WaterHalfWidth(venueId);
             float x = PitCenterX(venueId) + (boatIndex - 2.5f) * StallSpacing;
+            // 実寸会場モデル(大村)は水面が実寸140m幅なのでピットも実寸位置(2M側の横ピット前)
+            if (Data.VenueTraits.UseRealVenue(venueId))
+                return new Vector3(x, 0f, -42f);
+            float hw = Data.VenueTraits.WaterHalfWidth(venueId);
             return new Vector3(x, 0f, -(hw - 22f));
         }
 

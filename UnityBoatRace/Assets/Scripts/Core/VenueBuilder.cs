@@ -15,23 +15,29 @@ namespace BoatRace.Core
         static Transform root;
         static float hw;        // 水面のz方向半幅(会場ごとに違う)
         static Color accent;    // 会場アクセント色
+        static bool real;       // 実寸3D会場モデル使用中(重複する手続き生成物を省く)
 
         public static void Build(RaceManager race)
         {
             root = new GameObject("Venue").transform;
             hw = VenueTraits.WaterHalfWidth(race.venueId);
             accent = VenueTraits.AccentColor(race.venueId);
+            real = VenueTraits.UseRealVenue(race.venueId);
 
-            BuildPerimeter();
-            BuildWaveBreakers();
+            // 実寸モデルにはスタンド・ピット建屋・防風ネット・外周が含まれるためスキップ
+            if (!real)
+            {
+                BuildPerimeter();
+                BuildWaveBreakers();
+                BuildGrandstand();
+                BuildAdWalls();
+                BuildWindNets();
+                BuildDangerLights();
+            }
             BuildTurnMarks();
-            BuildGrandstand();
-            BuildAdWalls();
             BuildBigClock(race);
             BuildScoreboard(race);
             BuildPitStalls(race);
-            BuildWindNets();
-            BuildDangerLights();
             BuildDistanceMarkers();
         }
 
@@ -173,7 +179,8 @@ namespace BoatRace.Core
         {
             var clock = new GameObject("BigClock");
             clock.transform.SetParent(root, false);
-            clock.transform.position = new Vector3(TrackPath.StartLineX, 0f, -(hw - 10f));
+            // 実寸モデル時は実寸のホーム側水面際(審判塔ならび)へ
+            clock.transform.position = new Vector3(TrackPath.StartLineX, 0f, real ? -50f : -(hw - 10f));
 
             MakeBox("Pole", new Vector3(0f, 5f, 0f), new Vector3(1.1f, 10f, 1.1f), new Color(0.85f, 0.85f, 0.88f), clock.transform);
 
@@ -244,7 +251,7 @@ namespace BoatRace.Core
         // ---- 電光掲示板(バックストレッチ側) ----
         static void BuildScoreboard(RaceManager race)
         {
-            float bz = hw + 8f;
+            float bz = real ? 94f : hw + 8f; // 実寸モデル時は防風ネットの奥
             var board = new GameObject("Scoreboard");
             board.transform.SetParent(root, false);
             board.transform.position = new Vector3(-150f, 0f, bz);
@@ -270,26 +277,33 @@ namespace BoatRace.Core
             float stallZ = p0.z;              // 艇の格納z
             float width = PitExitSystem.StallSpacing * 6f + 8f;
 
-            // 岸側の桟橋デッキと屋根
-            MakeBox("PitDeck", new Vector3(cx, 0.45f, stallZ - 7f), new Vector3(width, 0.9f, 8f), deckColor);
-            MakeBox("PitRoof", new Vector3(cx, 6.2f, stallZ - 4f), new Vector3(width, 0.5f, 14f), roofColor);
+            // 岸側の桟橋デッキと屋根(実寸モデルはピット建屋込みなので仕切りと艇番のみ)
+            if (!real)
+            {
+                MakeBox("PitDeck", new Vector3(cx, 0.45f, stallZ - 7f), new Vector3(width, 0.9f, 8f), deckColor);
+                MakeBox("PitRoof", new Vector3(cx, 6.2f, stallZ - 4f), new Vector3(width, 0.5f, 14f), roofColor);
+            }
             for (int k = 0; k <= 6; k++)
             {
                 float x = cx + (k - 3f) * PitExitSystem.StallSpacing;
-                MakeBox("PitPillar", new Vector3(x, 3.1f, stallZ - 9.5f), new Vector3(0.5f, 6.2f, 0.5f), dividerColor);
+                if (!real)
+                    MakeBox("PitPillar", new Vector3(x, 3.1f, stallZ - 9.5f), new Vector3(0.5f, 6.2f, 0.5f), dividerColor);
                 // スタール仕切り(艇と艇の間の桟橋)
                 MakeBox("PitDivider", new Vector3(x, 0.3f, stallZ), new Vector3(0.5f, 0.6f, 7.5f), dividerColor);
             }
 
             // 各スタールの艇番プレート
+            float plateZ = real ? stallZ + 2.5f : stallZ - 3.5f; // 実寸時は建屋に埋もれない水面側へ
             for (int i = 0; i < 6; i++)
             {
                 Vector3 sp = PitExitSystem.PitPosition(i, race.venueId);
-                MakeText3D((i + 1).ToString(), new Vector3(sp.x, 5f, stallZ - 3.5f),
-                    Quaternion.identity, 2.4f, UiKit.BoatColors[i] == Color.white ? Color.white : UiKit.BoatColors[i]);
+                MakeText3D((i + 1).ToString(), new Vector3(sp.x, real ? 3.2f : 5f, plateZ),
+                    real ? Quaternion.Euler(0f, 180f, 0f) : Quaternion.identity, 2.4f,
+                    UiKit.BoatColors[i] == Color.white ? Color.white : UiKit.BoatColors[i]);
             }
-            MakeText3D("本番ピット", new Vector3(cx, 7.4f, stallZ - 4f),
-                Quaternion.identity, 2.4f, Color.white);
+            if (!real)
+                MakeText3D("本番ピット", new Vector3(cx, 7.4f, stallZ - 4f),
+                    Quaternion.identity, 2.4f, Color.white);
         }
 
         // ---- 防風ネット(バック側の緑のネット) ----

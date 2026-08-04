@@ -45,6 +45,32 @@ namespace BoatRace.Data
             return Color.HSVToRGB((venueId * 0.618034f) % 1f, 0.62f, 0.82f);
         }
 
+        static bool? realOmuraCache;
+
+        /// <summary>
+        /// 実寸3D会場モデル(Assets/Resources/Models/omura_venue)を使う場か。
+        /// モデルは1M=(0,0,0)/2M=(-300,0,0)に整列済み・水面520×140m実寸。
+        /// </summary>
+        public static bool UseRealVenue(int venueId)
+        {
+            if (venueId != 24) return false;
+            if (realOmuraCache == null)
+                realOmuraCache = Resources.Load<GameObject>("Models/omura_venue") != null;
+            return realOmuraCache.Value;
+        }
+
+        /// <summary>ナイター開催場(桐生・蒲郡・住之江・丸亀・下関・若松・大村)。</summary>
+        public static bool IsNightVenue(int venueId)
+        {
+            switch (venueId)
+            {
+                case 1: case 7: case 12: case 15: case 18: case 20: case 24:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
         /// <summary>
         /// ピットが2マーク側にある場か。実際の競艇ではピットと2Mの距離が場ごとに違い、
         /// ピットが2Mに近い場(徳山・大村・住之江など)は前づけが起きにくく枠なり進入が多い

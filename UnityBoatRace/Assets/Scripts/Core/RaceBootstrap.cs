@@ -36,6 +36,7 @@ namespace BoatRace.Core
             BuildBoats(race);
 
             var cam = SetupCamera();
+            ApplyAtmosphere(race); // Sun生成後に昼/ナイターを適用
             var replay = gameObject.AddComponent<ReplayManager>();
             replay.Initialize(race, cam);
             var raceCam = cam.gameObject.AddComponent<RaceCamera>();
@@ -50,6 +51,7 @@ namespace BoatRace.Core
         {
             BuildWater(race);
             BuildStartLine();
+            BuildRealVenue(race);   // 実寸3D会場モデル(あれば)
             VenueBuilder.Build(race);
             if (showRacingLine) BuildRacingLine();
         }
@@ -57,12 +59,191 @@ namespace BoatRace.Core
         /// <summary>開催場変更時に水面・会場を作り直す(GameFlowが呼ぶ)。</summary>
         public void RebuildEnvironment(RaceManager race)
         {
-            foreach (var name in new[] { "Water", "StartLine", "Venue", "RacingLine" })
+            foreach (var name in new[] { "Water", "StartLine", "Venue", "RacingLine", "VenueModel", "VenueGround", "NightLights" })
             {
                 var old = GameObject.Find(name);
                 if (old != null) Destroy(old);
             }
             BuildEnvironment(race);
+            ApplyAtmosphere(race);  // 昼/ナイターの切替(Sunは既存)
+        }
+
+        /// <summary>
+        /// 実寸3D会場モデル(Assets/Resources/Models/omura_venue)を配置する。
+        /// objは1M=(0,0,0)/2M=(-300,0,0)へ整列済み(Python前処理でZ-up→Y-up・
+        /// Unityのobjインポート時X反転も織込み)。水面・スタートライン・ブイ面は除去済み。
+        /// </summary>
+        void BuildRealVenue(RaceManager race)
+        {
+            if (!Data.VenueTraits.UseRealVenue(race.venueId)) return;
+            var prefab = Resources.Load<GameObject>("Models/omura_venue");
+            if (prefab == null) return;
+
+            var venue = Instantiate(prefab);
+            venue.name = "VenueModel";
+
+            // 万一インポート系でX反転されなかった場合の保険(コース中心は-150のはず)
+            var rends = venue.GetComponentsInChildren<Renderer>();
+            if (rends.Length > 0)
+            {
+                var b = rends[0].bounds;
+                foreach (var r in rends) b.Encapsulate(r.bounds);
+                if (b.center.x > 0f)
+                {
+                    venue.transform.rotation = Quaternion.Euler(0f, 180f, 0f);
+                    Debug.LogWarning("[会場モデル] X向きを180°回転で補正しました(ホームとバックが入替り)");
+                }
+            }
+
+            // マテリアル: 名前で塗り分け(トゥーン化+ネット/ガラスは半透明)
+            var toon = Shader.Find("BoatRace/Toon");
+            var transp = Shader.Find("Legacy Shaders/Transparent/Diffuse");
+            foreach (var r in rends)
+            {
+                foreach (var m in r.materials)
+                {
+                    string nm = m.name.ToLowerInvariant();
+                    Color col = VenueMatColor(nm, m);
+                    if ((nm.Contains("net") && !nm.Contains("post")) || nm.Contains("glass"))
+                    {
+                        if (transp != null) m.shader = transp;
+                        col.a = nm.Contains("glass") ? 0.45f : 0.30f;
+                    }
+                    else if (toon != null) m.shader = toon;
+                    if (m.HasProperty("_Color")) m.color = col;
+                    if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", col);
+                }
+            }
+            // 地面(スタンド・ピットの足元。水面の外側に薄く敷く)
+            var ground = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            ground.name = "VenueGround";
+            ground.transform.position = new Vector3(-150f, -1.3f, 10f);
+            ground.transform.localScale = new Vector3(760f, 1.6f, 340f);
+            Paint(ground, new Color(0.36f, 0.40f, 0.36f)); // 芝混じりの舗装色
+            ground.GetComponent<MeshRenderer>().shadowCastingMode = ShadowCastingMode.Off;
+        }
+
+        /// <summary>会場モデルのマテリアル名→色(mtl準拠。mtlが読めなかった時の保険も兼ねる)。</summary>
+        static Color VenueMatColor(string nm, Material m)
+        {
+            if (nm.Contains("buoy_red")) return new Color(0.85f, 0.22f, 0.24f);
+            if (nm.Contains("buoy_orange")) return new Color(0.92f, 0.55f, 0.18f);
+            if (nm.Contains("clock_hand")) return new Color(0.12f, 0.12f, 0.14f);
+            if (nm.Contains("clock")) return new Color(0.95f, 0.76f, 0.31f);
+            if (nm.Contains("net_post")) return new Color(0.40f, 0.42f, 0.46f);
+            if (nm.Contains("net")) return new Color(0.55f, 0.60f, 0.66f);
+            if (nm.Contains("glass")) return new Color(0.35f, 0.55f, 0.75f);
+            if (nm.Contains("pit")) return new Color(0.55f, 0.58f, 0.62f);
+            if (nm.Contains("stand")) return new Color(0.72f, 0.73f, 0.75f);
+            if (nm.Contains("roof")) return new Color(0.30f, 0.33f, 0.38f);
+            if (nm.Contains("tower")) return new Color(0.62f, 0.64f, 0.68f);
+            if (nm.Contains("light")) return new Color(0.98f, 0.96f, 0.85f);
+            return m.HasProperty("_Color") ? m.color : new Color(0.6f, 0.62f, 0.66f);
+        }
+
+        /// <summary>
+        /// 昼/ナイターの空気感切替。大村などナイター場は夜空+照明塔ライト+暗い水面
+        /// (絵コンテv3「ナイター照明の水面反射」)。
+        /// </summary>
+        public void ApplyAtmosphere(RaceManager race)
+        {
+            bool night = Data.VenueTraits.IsNightVenue(race.venueId);
+            var sunGo = GameObject.Find("Sun");
+            var sun = sunGo != null ? sunGo.GetComponent<Light>() : null;
+
+            var sky = RenderSettings.skybox;
+            if (night)
+            {
+                if (sun != null)
+                {
+                    sun.intensity = 0.34f;
+                    sun.color = new Color(0.62f, 0.68f, 0.90f); // 月明かり
+                    sun.shadowStrength = 0.35f;
+                }
+                if (sky != null)
+                {
+                    sky.SetFloat("_Exposure", 0.32f);
+                    sky.SetFloat("_AtmosphereThickness", 0.55f);
+                    sky.SetColor("_SkyTint", new Color(0.05f, 0.09f, 0.20f));
+                    sky.SetColor("_GroundColor", new Color(0.06f, 0.07f, 0.10f));
+                }
+                RenderSettings.ambientSkyColor = new Color(0.11f, 0.14f, 0.26f);
+                RenderSettings.ambientEquatorColor = new Color(0.09f, 0.11f, 0.19f);
+                RenderSettings.ambientGroundColor = new Color(0.04f, 0.05f, 0.09f);
+                RenderSettings.fogColor = new Color(0.03f, 0.05f, 0.12f);
+                RenderSettings.fogEndDistance = 1200f;
+                QualitySettings.pixelLightCount = 8; // 照明塔ライトを全部効かせる
+                BuildNightLights(race);
+            }
+            else
+            {
+                if (nightLightsGo != null) { Destroy(nightLightsGo); nightLightsGo = null; }
+                QualitySettings.pixelLightCount = 4;
+                if (sun != null)
+                {
+                    sun.intensity = 1.28f;
+                    sun.color = Color.white;
+                    sun.shadowStrength = 0.6f;
+                }
+                if (sky != null)
+                {
+                    sky.SetFloat("_Exposure", 1.25f);
+                    sky.SetFloat("_AtmosphereThickness", 0.85f);
+                    sky.SetColor("_SkyTint", new Color(0.46f, 0.66f, 0.95f));
+                    sky.SetColor("_GroundColor", new Color(0.52f, 0.60f, 0.66f));
+                }
+                RenderSettings.ambientSkyColor = new Color(0.62f, 0.72f, 0.85f);
+                RenderSettings.ambientEquatorColor = new Color(0.55f, 0.60f, 0.66f);
+                RenderSettings.ambientGroundColor = new Color(0.30f, 0.34f, 0.38f);
+                RenderSettings.fogColor = new Color(0.72f, 0.87f, 0.98f);
+                RenderSettings.fogEndDistance = 1500f;
+            }
+
+            // 水面の空映り込み色も昼夜で変える
+            var waterGo = GameObject.Find("Water");
+            if (waterGo != null)
+            {
+                var wm = waterGo.GetComponent<MeshRenderer>().material;
+                if (wm.HasProperty("_SkyColor"))
+                    wm.SetColor("_SkyColor", night ? new Color(0.09f, 0.13f, 0.28f) : new Color(0.74f, 0.88f, 0.99f));
+            }
+        }
+
+        /// <summary>ナイター照明塔のライト(実寸モデルの4基位置。無い場は汎用4隅)。</summary>
+        GameObject nightLightsGo;
+
+        void BuildNightLights(RaceManager race)
+        {
+            if (nightLightsGo != null) Destroy(nightLightsGo);
+            var root = new GameObject("NightLights");
+            nightLightsGo = root;
+            bool real = Data.VenueTraits.UseRealVenue(race.venueId);
+            float hw = Data.VenueTraits.WaterHalfWidth(race.venueId);
+            Vector3[] pts = real
+                ? new[] { new Vector3(-396f, 31f, -64f), new Vector3(-396f, 31f, 94f),
+                          new Vector3(96f, 31f, -64f),  new Vector3(96f, 31f, 94f) }
+                : new[] { new Vector3(-420f, 31f, -hw * 0.6f), new Vector3(-420f, 31f, hw * 0.6f),
+                          new Vector3(130f, 31f, -hw * 0.6f),  new Vector3(130f, 31f, hw * 0.6f) };
+            foreach (var p in pts)
+            {
+                var go = new GameObject("TowerLight");
+                go.transform.SetParent(root.transform, false);
+                go.transform.position = p;
+                var li = go.AddComponent<Light>();
+                li.type = LightType.Point;
+                li.range = 320f;
+                li.intensity = 1.5f;
+                li.color = new Color(1f, 0.95f, 0.82f); // ナトリウム灯寄りの暖色白
+                li.shadows = LightShadows.None;
+
+                // 光源の見た目(発光球)
+                var bulb = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                bulb.name = "Bulb";
+                bulb.transform.SetParent(go.transform, false);
+                bulb.transform.localScale = Vector3.one * 2.4f;
+                var bm = Paint(bulb, new Color(1f, 0.97f, 0.85f));
+                if (bm.HasProperty("_OutlineWidth")) bm.SetFloat("_OutlineWidth", 0f);
+            }
         }
 
         void BuildWater(RaceManager race)
@@ -71,8 +252,17 @@ namespace BoatRace.Core
             Color baseColor = Data.VenueTraits.WaterBaseColor(race.venue);
             var water = GameObject.CreatePrimitive(PrimitiveType.Cube);
             water.name = "Water";
-            water.transform.position = new Vector3(-150f, -0.55f, 0f);
-            water.transform.localScale = new Vector3(640f, 1f, hw * 2f + 8f);
+            if (Data.VenueTraits.UseRealVenue(race.venueId))
+            {
+                // 実寸3D会場モデルの水面footprint(520×140m・スタンド側が-55m)に合わせる
+                water.transform.position = new Vector3(-150f, -0.55f, 15f);
+                water.transform.localScale = new Vector3(524f, 1f, 146f);
+            }
+            else
+            {
+                water.transform.position = new Vector3(-150f, -0.55f, 0f);
+                water.transform.localScale = new Vector3(640f, 1f, hw * 2f + 8f);
+            }
 
             // リアル水面シェーダー: 動く波法線+太陽のギラつき+空の映り込み+艇の落ち影
             var ws = Shader.Find("BoatRace/Water");

@@ -15,7 +15,7 @@ namespace BoatRace.UI
     public class GameFlow : MonoBehaviour
     {
         /// <summary>ビルド識別子。画面右上に表示され、更新が届いたか一目で分かる。</summary>
-        public const string Build = "B18-艇スリム化+文字改善";
+        public const string Build = "B19-大村実寸会場+ナイター";
 
         RaceManager race;
         ReplayManager replay;
@@ -62,6 +62,7 @@ namespace BoatRace.UI
 
         // 演出: スタートスロー(大時計0秒付近をスローモーションで見せる)
         bool startSlowActive, startSlowDone;
+        bool stTelopPending; // スタート成立後にST一覧テロップを出す予約
 
         // 固定ライバル名鑑(シナリオ第6章: 個性を持った実在感あるライバル)
         static readonly (string name, Color hair, string line)[] Rivals =
@@ -190,7 +191,8 @@ namespace BoatRace.UI
                 $"KV:{(Resources.Load<Texture2D>("Art/title_kv") != null ? "OK" : "なし")} " +
                 $"ロゴ:{(Resources.Load<Texture2D>("Art/logo_teido") != null ? "OK" : "なし")} " +
                 $"艇シート:{(Resources.Load<Texture2D>("Art/boats") != null ? "OK" : "なし")} " +
-                $"3Dモデル:{(Resources.Load<GameObject>("Models/boat") != null ? "OK" : "なし")}");
+                $"3Dモデル:{(Resources.Load<GameObject>("Models/boat") != null ? "OK" : "なし")} " +
+                $"会場モデル:{(Resources.Load<GameObject>("Models/omura_venue") != null ? "OK" : "なし")}");
 
             canvas = UiKit.MakeCanvas();
             hud = new RaceHudUI(race, commentary, canvas.transform, raceCam);
@@ -223,6 +225,13 @@ namespace BoatRace.UI
 
             race.OnRaceFinished += () => { resultTimer = 3f; RecordStats(); };
             race.OnFinalLap += () => ShowFlash("最終周回！", new Color(0.9f, 0.62f, 0.05f));
+            // 絵コンテv3: 進入確定テロップ(助走開始時)とST一覧テロップ(スタート直後)
+            race.OnPhaseChanged += p =>
+            {
+                if (replay != null && replay.IsPlaying) return;
+                if (p == RacePhase.Approach) ShowEntryTelop();
+                if (p == RacePhase.Racing) stTelopPending = true;
+            };
             race.OnPlayerTurnEntry += OnPlayerTurnEntry;
             race.OnBoatFinished += (idx, place) =>
             {
@@ -290,8 +299,16 @@ namespace BoatRace.UI
                 if (!racingNow) ffLabel.text = "⏩ 早送り";
             }
 
+            // ST一覧テロップ: スタートスローが明けてから(絵コンテv3 CUT08)
+            if (stTelopPending && race.armed && race.state.phase == RacePhase.Racing &&
+                race.state.clock > 1.4f && !startSlowActive && !replay.IsPlaying)
+            {
+                stTelopPending = false;
+                ShowStTelop();
+            }
+
             // 演出: スタートスロー(仕様書⑩)。大時計0秒の攻防をスロー+ホーンで見せる
-            if (!race.armed) { startSlowDone = false; startSlowActive = false; }
+            if (!race.armed) { startSlowDone = false; startSlowActive = false; stTelopPending = false; }
             else if (!replay.IsPlaying && movePanelGo == null && !specialSeqActive &&
                 (race.state.phase == RacePhase.Approach || race.state.phase == RacePhase.Racing))
             {
@@ -623,6 +640,75 @@ namespace BoatRace.UI
         }
 
         /// <summary>画面中央のフラッシュバナー(最終周回・ゴールなどの速報演出)。</summary>
+        // ================= レーステロップ(絵コンテv3の下部帯) =================
+        static readonly string[] MaruNum = { "①", "②", "③", "④", "⑤", "⑥" };
+
+        /// <summary>進入確定テロップ。スロー勢(1-3コース)/ダッシュ勢(4-6コース)を艇番で表示。</summary>
+        void ShowEntryTelop()
+        {
+            var byCourse = new int[6];
+            for (int i = 0; i < 6; i++)
+            {
+                int c = Mathf.Clamp(race.state.Get(i).course, 1, 6);
+                byCourse[c - 1] = i;
+            }
+            string slow = "", dash = "";
+            for (int c = 0; c < 6; c++)
+            {
+                string s = MaruNum[byCourse[c]];
+                if (c < 3) slow += s; else dash += s;
+            }
+            ShowTelop($"進入確定　{slow} スロー ／ {dash} ダッシュ", UiKit.Navy);
+        }
+
+        /// <summary>ST一覧テロップ。コース順に .12 形式(F=フライング/L=出遅れ)。</summary>
+        void ShowStTelop()
+        {
+            var order = new List<int>();
+            for (int i = 0; i < 6; i++) order.Add(i);
+            order.Sort((a, b) => race.state.Get(a).course.CompareTo(race.state.Get(b).course));
+            var sb = new System.Text.StringBuilder("ST一覧　");
+            foreach (int i in order)
+            {
+                var bs = race.state.Get(i);
+                string stStr = bs.startFlag == StartFlag.Flying ? "F" :
+                               bs.startFlag == StartFlag.Late ? "L" :
+                               $".{Mathf.Clamp(Mathf.RoundToInt(bs.st * 100f), 0, 99):00}";
+                sb.Append($"{MaruNum[i]}{stStr}　");
+            }
+            ShowTelop(sb.ToString().TrimEnd('　'), new Color(0.04f, 0.10f, 0.22f, 0.94f));
+        }
+
+        /// <summary>画面下部の横帯テロップ(4秒で消える)。実況の邪魔をしない位置。</summary>
+        void ShowTelop(string text, Color bg)
+        {
+            var band = UiKit.MakePanel(canvas.transform, bg, 12,
+                new Vector2(0.02f, 0.315f), new Vector2(0.98f, 0.375f), Vector2.zero, Vector2.zero);
+            var edge = new GameObject("Edge");
+            UiKit.Place(edge, band.transform, new Vector2(0f, 0f), new Vector2(0.012f, 1f), Vector2.zero, Vector2.zero);
+            var ei = edge.AddComponent<Image>();
+            ei.color = UiKit.Yellow;
+            ei.raycastTarget = false;
+            UiKit.MakeText(band.transform, text, 30, Color.white, TextAnchor.MiddleCenter,
+                Vector2.zero, Vector2.one, new Vector2(18f, 0f), new Vector2(-8f, 0f), bold: true, shadow: true);
+            var group = band.AddComponent<CanvasGroup>();
+            StartCoroutine(TelopRoutine(band, group));
+        }
+
+        System.Collections.IEnumerator TelopRoutine(GameObject band, CanvasGroup group)
+        {
+            var rt = band.GetComponent<RectTransform>();
+            for (float t = 0f; t < 4.2f; t += Time.unscaledDeltaTime)
+            {
+                if (band == null) yield break;
+                float appear = Mathf.Clamp01(t / 0.20f);
+                rt.anchoredPosition = new Vector2(Mathf.Lerp(-60f, 0f, appear), rt.anchoredPosition.y);
+                group.alpha = t < 3.6f ? appear : Mathf.Clamp01((4.2f - t) / 0.6f);
+                yield return null;
+            }
+            if (band != null) Destroy(band);
+        }
+
         void ShowFlash(string text, Color color)
         {
             var banner = UiKit.MakePanel(canvas.transform, color, 18,
