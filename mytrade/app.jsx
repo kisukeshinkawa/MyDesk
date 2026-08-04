@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 // MyTrade — 投資専用スタンドアロンアプリ (MyDeskから分離)
 // バックエンド: mydesk-stock-analysis Lambda (共用・変更不要)
 // ═══════════════════════════════════════════════════════════════
-const MYTRADE_BUILD = "2026-08-06-v3-longterm-learning";
+const MYTRADE_BUILD = "2026-08-06-v4-auto-daily-learn";
 if (typeof window !== "undefined") {
   window.__MYTRADE_BUILD = MYTRADE_BUILD;
   console.log(`[MyTrade] Build: ${MYTRADE_BUILD}`);
@@ -281,6 +281,27 @@ function StockView({currentUser}) {
     setBusy(b=>({...b,all:false}));
   };
 
+  // 初回セットアップ用: 日米の主力銘柄をまとめて登録して一括分析
+  const STARTER_PACK = [
+    {ticker:"7203.T",name:"トヨタ自動車",market:"JP"},
+    {ticker:"6758.T",name:"ソニーグループ",market:"JP"},
+    {ticker:"8306.T",name:"三菱UFJフィナンシャル・グループ",market:"JP"},
+    {ticker:"8035.T",name:"東京エレクトロン",market:"JP"},
+    {ticker:"7974.T",name:"任天堂",market:"JP"},
+    {ticker:"AAPL", name:"Apple",market:"US"},
+    {ticker:"MSFT", name:"Microsoft",market:"US"},
+    {ticker:"NVDA", name:"NVIDIA",market:"US"},
+    {ticker:"GOOGL",name:"Alphabet",market:"US"},
+    {ticker:"AMZN", name:"Amazon",market:"US"},
+  ];
+  const addStarterPack = async () => {
+    const add = STARTER_PACK.filter(s=>!watchlist.some(w=>w.ticker===s.ticker));
+    if(!add.length) return;
+    const wl = [...watchlist, ...add];
+    saveWatchlist(wl);
+    await refreshAll(wl);
+  };
+
   const removeStock = (ticker) => {
     saveWatchlist(watchlist.filter(w=>w.ticker!==ticker));
     if(selected===ticker) setSelected(null);
@@ -515,8 +536,19 @@ function StockView({currentUser}) {
             </thead>
             <tbody>
               {rows.length===0&&(
-                <tr><td colSpan={9} style={{padding:"1.5rem",textAlign:"center",color:C.textMuted,fontSize:"0.82rem"}}>
-                  ウォッチリストが空です。上の検索から銘柄を追加してください
+                <tr><td colSpan={9} style={{padding:"1.75rem 1rem",textAlign:"center"}}>
+                  <div style={{color:C.textMuted,fontSize:"0.85rem",marginBottom:"0.9rem"}}>ウォッチリストが空です。まずは主力銘柄を入れて動かしてみてください</div>
+                  <div style={{display:"flex",gap:"0.5rem",justifyContent:"center",flexWrap:"wrap"}}>
+                    <button onClick={addStarterPack} disabled={busy.all}
+                      style={{padding:"0.65rem 1.1rem",borderRadius:9,border:"none",background:C.accent,color:"white",fontWeight:800,fontSize:"0.83rem",cursor:"pointer",fontFamily:"inherit",opacity:busy.all?0.6:1}}>
+                      {busy.all?"分析中...":"⚡ 日米の主力10銘柄をまとめて追加"}
+                    </button>
+                    <button onClick={()=>{setView("analyze");localStorage.setItem("mt_view","analyze");}}
+                      style={{padding:"0.65rem 1.1rem",borderRadius:9,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.83rem",cursor:"pointer",fontFamily:"inherit"}}>
+                      🔍 自分で検索して追加
+                    </button>
+                  </div>
+                  <div style={{fontSize:"0.68rem",color:C.textMuted,marginTop:"0.7rem"}}>トヨタ / ソニー / 三菱UFJ / 東京エレクトロン / 任天堂 / Apple / Microsoft / NVIDIA / Alphabet / Amazon</div>
                 </td></tr>
               )}
               {rows.map(({ticker,name,market:mkt,a,holding})=>{
@@ -872,8 +904,16 @@ function StockView({currentUser}) {
       )}
 
       {!sel&&(
-        <div style={{background:"white",borderRadius:"1rem",padding:"2rem",border:`1px solid ${C.border}`,textAlign:"center",color:C.textMuted,fontSize:"0.85rem"}}>
-          上のチップから銘柄を選ぶか、検索・スキャンで銘柄を追加してください
+        <div style={{background:"white",borderRadius:"1rem",padding:"2rem",border:`1px solid ${C.border}`,textAlign:"center"}}>
+          <div style={{color:C.textMuted,fontSize:"0.85rem",marginBottom:watchlist.length?0:"0.9rem"}}>
+            {watchlist.length?"上のチップから銘柄を選んでください":"銘柄を追加すると、ローソク足・スコア・プロのチェックリスト・AI売買判定が見られます"}
+          </div>
+          {!watchlist.length&&(
+            <button onClick={addStarterPack} disabled={busy.all}
+              style={{padding:"0.65rem 1.1rem",borderRadius:9,border:"none",background:C.accent,color:"white",fontWeight:800,fontSize:"0.83rem",cursor:"pointer",fontFamily:"inherit",opacity:busy.all?0.6:1}}>
+              {busy.all?"分析中...":"⚡ 日米の主力10銘柄をまとめて追加"}
+            </button>
+          )}
         </div>
       )}
 
@@ -1081,9 +1121,14 @@ function StockView({currentUser}) {
                 </div>
               );
             })()}
+            <div style={{padding:"0.55rem 0.75rem",background:C.greenBg,borderRadius:8,marginBottom:"0.6rem",fontSize:"0.72rem",color:C.text,lineHeight:1.7}}>
+              <b style={{color:C.green}}>🤖 全自動運用中</b>(手動操作は不要です)<br/>
+              毎朝 7:00 全銘柄スキャン＋予測の答え合わせ　/　毎朝 7:30 因子重みと教訓を再学習　/　毎月1日 長期10年で再検証<br/>
+              <span style={{color:C.textMuted}}>下のボタンは「今すぐ手動で回したい時」だけ使ってください</span>
+            </div>
             {!perf&&!busy.perf&&<div style={{fontSize:"0.75rem",color:C.textMuted,lineHeight:1.6}}>
               分析するたびに予測が自動記録され、5営業日後・20営業日後に答え合わせされます。<br/>
-              「学習」を実行すると過去2年分のバックテストで因子の重みを最適化し、外れた判定から教訓を抽出してAI判定に反映します。
+              学習は過去のバックテストで因子の重みを最適化し、外れた判定から教訓を抽出してAI判定に反映します。
             </div>}
             {perf&&(()=>{
               const cfg = perf.config||{};

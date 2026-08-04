@@ -52,9 +52,23 @@ MARKET_TICKERS = [
 
 
 def lambda_handler(event, context):
-    # EventBridge定期実行(毎朝スキャン→朝レポート生成→メール)
-    if event.get("source") == "aws.events":
-        return _res(200, run_daily_report())
+    # EventBridge定期実行。定数入力 {"job":"..."} でジョブを切り替える
+    #   job未指定 → 朝レポート(スキャン+答え合わせ)  … 毎朝7:00 JST
+    #   job=learn    → 因子重み再学習+教訓更新        … 毎朝7:30 JST
+    #   job=backtest → 長期ウォークフォワード再検証   … 毎月1日
+    job = event.get("job")
+    if job or event.get("source") == "aws.events":
+        try:
+            if job == "learn":
+                wl = _load_json_s3(WATCHLIST_KEY, [])
+                return _res(200, run_learn([w["ticker"] for w in wl] or None))
+            if job == "backtest":
+                return _res(200, run_backtest(None, int(event.get("years", 10)), True))
+            return _res(200, run_daily_report())
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return _res(500, {"error": str(e), "job": job or "report"})
     method = (event.get("requestContext", {}).get("http", {}) or {}).get("method", "POST")
     if method == "OPTIONS":
         return _res(200, {})
@@ -1372,18 +1386,12 @@ def run_daily_report(send_mail=True):
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     # 毎朝、過去予測の答え合わせを自動実行(実運用データが日々学習に蓄積される)
+    # 重み再学習はこの直後に別ジョブ(job=learn)が毎日走るのでここでは行わない
     try:
         evaluate_predictions()
     except Exception as e:
         print("auto evaluate failed:", e)
-    # UTC日曜(=JST月曜の朝)は週次自動学習: 重み最適化+教訓更新まで無人で回す
     learned = False
-    if datetime.now(timezone.utc).weekday() == 6:
-        try:
-            run_learn([w["ticker"] for w in wl] or None)
-            learned = True
-        except Exception as e:
-            print("auto learn failed:", e)
 
     SIG_JA = {"buy": "買い候補", "watch": "監視", "avoid": "見送り"}
     alerts, lines, cur = [], [], {}
@@ -1420,7 +1428,7 @@ def run_daily_report(send_mail=True):
                      f"短期{a['short']['score']}点/長期{a['long']['score']}点 [{a['quadrant']}]{pnl_txt}")
 
     _save_json_s3(SIGNALS_KEY, cur)
-    body = (f"【MyDesk 株式 朝レポート】{today}\n\n"
+    body = (f"【MyTrade 朝レポート】{today}\n\n"
             f"■ 地合い: {market['moodLabel']}\n\n"
             f"■ アラート\n" + ("\n".join(alerts) if alerts else "特になし") + "\n\n"
             f"■ ウォッチリスト({len(wl)}銘柄)\n" + ("\n".join(lines) if lines else "登録なし") + "\n\n"
