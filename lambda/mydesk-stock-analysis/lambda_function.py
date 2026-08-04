@@ -109,6 +109,12 @@ def lambda_handler(event, context):
             return _res(200, run_daily_report(send_mail=bool(body.get("sendMail", False))))
         if action == "report-latest":
             return _res(200, _load_json_s3(REPORT_KEY, {"body": "", "date": None}))
+        if action == "trade-log":
+            return _res(200, {"logged": log_trade(body)})
+        if action == "trade-stats":
+            return _res(200, trade_stats())
+        if action == "portfolio-brain":
+            return _res(200, portfolio_brain())
         return _res(400, {"error": f"unknown action: {action}"})
     except Exception as e:
         import traceback
@@ -147,6 +153,7 @@ CONFIG_KEY    = "stock-learn/config.json"        # 因子重み・教訓・成�
 WATCHLIST_KEY = "stock-learn/watchlist.json"     # ウォッチリスト(サーバー共有・保有情報含む)
 SIGNALS_KEY   = "stock-learn/last_signals.json"  # 前回シグナル(変化検知用)
 REPORT_KEY    = "stock-learn/daily_report.json"  # 最新の朝レポート
+TRADES_KEY    = "stock-learn/trades.json"        # トレード日誌(実現損益)
 
 
 def _load_json_s3(key, default):
@@ -560,6 +567,11 @@ def analyze_ticker(ticker):
         "earningsDate": (datetime.fromtimestamp(_g(info, "earningsTimestamp", "earningsTimestampStart"),
                                                 tz=timezone.utc).strftime("%Y-%m-%d")
                          if isinstance(_g(info, "earningsTimestamp", "earningsTimestampStart"), (int, float)) else None),
+        "exDividendDate": (datetime.fromtimestamp(_g(info, "exDividendDate"), tz=timezone.utc).strftime("%Y-%m-%d")
+                           if isinstance(_g(info, "exDividendDate"), (int, float)) else None),
+        "targetPrice": _g(info, "targetMeanPrice"),          # アナリスト平均目標株価
+        "analystRating": _g(info, "recommendationKey"),      # strong_buy/buy/hold/underperform/sell
+        "analystCount": _g(info, "numberOfAnalystOpinions"),
         "regime": {"benchAboveMa200": regime_on,
                    "bench": "日経平均" if is_jp else "S&P500"},
         "spark": tech["spark"], "sparkMa25": tech["spark_ma25"],
@@ -918,6 +930,8 @@ def generate_lessons(stats, preds):
 【個別ケース】
 {cases}
 
+{(lambda ts: f"【実際の売買成績】{ts['stats']['n']}回 勝率{ts['stats']['winRate']}% 平均利益{ts['stats']['avgWin']}% 平均損失{ts['stats']['avgLoss']}% PF{ts['stats']['profitFactor']}" if ts.get("stats") else "")(trade_stats())}
+
 この実績から、今後の判定精度を上げるための具体的な教訓を抽出してください。
 「どういう状況の判定が当たり/外れやすいか」「確信度の付け方の癖」など実践的に。
 出力はJSONのみ: {{"lessons":["教訓1","教訓2",...]}} (最大8個、各60文字以内)"""
@@ -1203,6 +1217,99 @@ def run_daily_report(send_mail=True):
             print("report mail failed:", e)
             report["mailed"] = False
     return report
+
+
+# ═══════════════════════ トレード日誌(実現損益と売買のクセ分析) ═══════════════════════
+def log_trade(t):
+    """決済記録: {ticker,name,entryPrice,exitPrice,qty,entryDate,exitDate,reason}"""
+    trades = _load_json_s3(TRADES_KEY, [])
+    entry, exit_ = float(t["entryPrice"]), float(t["exitPrice"])
+    rec = {"ticker": t["ticker"], "name": t.get("name", t["ticker"]),
+           "entryPrice": entry, "exitPrice": exit_,
+           "qty": float(t.get("qty") or 0),
+           "entryDate": t.get("entryDate"), "exitDate": t.get("exitDate") or datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+           "reason": (t.get("reason") or "")[:200],
+           "pnlPct": round((exit_ / entry - 1) * 100, 2),
+           "pnlAmount": round((exit_ - entry) * float(t.get("qty") or 0), 2)}
+    trades.append(rec)
+    _save_json_s3(TRADES_KEY, trades[-500:])
+    return rec
+
+
+def trade_stats():
+    trades = _load_json_s3(TRADES_KEY, [])
+    if not trades:
+        return {"trades": [], "stats": None}
+    wins = [t for t in trades if t["pnlPct"] > 0]
+    losses = [t for t in trades if t["pnlPct"] <= 0]
+    gross_win = sum(t["pnlPct"] for t in wins)
+    gross_loss = abs(sum(t["pnlPct"] for t in losses))
+    stats = {
+        "n": len(trades), "winRate": round(len(wins) / len(trades) * 100, 1),
+        "avgWin": round(gross_win / len(wins), 2) if wins else 0,
+        "avgLoss": round(-gross_loss / len(losses), 2) if losses else 0,
+        # プロフィットファクター: 総利益÷総損失。1.5超で優秀、1未満はトータル負け
+        "profitFactor": round(gross_win / gross_loss, 2) if gross_loss > 0 else None,
+        "best": max(trades, key=lambda t: t["pnlPct"])["pnlPct"],
+        "worst": min(trades, key=lambda t: t["pnlPct"])["pnlPct"],
+        "totalAmount": round(sum(t.get("pnlAmount") or 0 for t in trades), 0),
+    }
+    return {"trades": trades[-20:][::-1], "stats": stats}
+
+
+# ═══════════════════════ ポートフォリオAI診断 ═══════════════════════
+PORTFOLIO_SYSTEM = """あなたは機関投資家のポートフォリオマネージャーです。
+個別銘柄ではなくポートフォリオ全体を診断します。観点:
+1. 集中リスク(1銘柄/1セクター/1市場への偏り)と相関(似た値動きの銘柄ばかりでないか)
+2. 地合いに対するリスク量が適切か(弱地合いでフルポジションは危険)
+3. 含み損の放置・利益の早すぎる確定(損大利小)がないか。トレード日誌のクセも指摘
+4. ウォッチリストの高スコア銘柄で入れ替え候補があるか
+出力は必ず次のJSONのみ:
+{"health_score":0-100,
+ "summary":"3〜4行の総評",
+ "biggest_risk":"最大のリスク1つ",
+ "actions":[{"ticker":"銘柄","advice":"具体的アクション"}],
+ "habit_feedback":"トレード日誌から見た売買のクセへの助言(日誌が無ければnull)"}"""
+
+
+def portfolio_brain():
+    wl = _load_json_s3(WATCHLIST_KEY, [])
+    market = get_market_overview()
+    ts = trade_stats()
+    holds, watch = [], []
+    for w in wl[:30]:
+        try:
+            a = analyze_ticker(w["ticker"])
+        except Exception:
+            continue
+        h = w.get("holding")
+        if h and h.get("price"):
+            pct = (a["price"] / float(h["price"]) - 1) * 100
+            holds.append(f"- {a['name']}({a['ticker']}/{a['market']}/{a.get('sector') or '?'}): "
+                         f"損益{pct:+.1f}%{'・'+str(h.get('qty'))+'株' if h.get('qty') else ''} "
+                         f"短期{a['short']['score']}点/長期{a['long']['score']}点 [{a['quadrant']}]")
+        else:
+            watch.append(f"- {a['name']}({a['ticker']}): 短期{a['short']['score']}点/長期{a['long']['score']}点 [{a['quadrant']}]")
+
+    prompt = (f"【地合い】{market['moodLabel']}\n\n【保有ポジション】\n" + ("\n".join(holds) or "なし")
+              + "\n\n【ウォッチ中(未保有)】\n" + ("\n".join(watch[:15]) or "なし"))
+    if ts["stats"]:
+        s = ts["stats"]
+        prompt += (f"\n\n【トレード日誌の成績】{s['n']}トレード 勝率{s['winRate']}% "
+                   f"平均利益{s['avgWin']}% 平均損失{s['avgLoss']}% PF{s['profitFactor']}")
+        prompt += "\n直近の決済:\n" + "\n".join(
+            f"- {t['name']}: {t['pnlPct']:+}% ({t.get('reason') or '理由未記録'})" for t in ts["trades"][:8])
+
+    br = boto3.client("bedrock-runtime", region_name=BEDROCK_REGION)
+    resp = br.invoke_model(modelId=BEDROCK_MODEL, body=json.dumps({
+        "anthropic_version": "bedrock-2023-05-31", "max_tokens": 1200,
+        "system": PORTFOLIO_SYSTEM,
+        "messages": [{"role": "user", "content": prompt}]}))
+    raw = json.loads(resp["body"].read())["content"][0]["text"]
+    m = re.search(r"\{.*\}", raw, re.DOTALL)
+    brain = json.loads(m.group(0)) if m else {"summary": raw}
+    return {"brain": brain, "holdings": len(holds), "market": market["moodLabel"],
+            "updatedAt": datetime.now(timezone.utc).isoformat()}
 
 
 # ═══════════════════════ 銘柄検索 ═══════════════════════

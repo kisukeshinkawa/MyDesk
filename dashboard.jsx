@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-06-v336-stock-full"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-06-v337-stock-pro-complete"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -31138,6 +31138,11 @@ function StockView({currentUser}) {
   const [showReport, setShowReport] = useState(false);
   const [holdEdit, setHoldEdit]   = useState(false); // 保有登録フォーム表示
   const [holdForm, setHoldForm]   = useState({price:"",qty:""});
+  const [pfBrain, setPfBrain]     = useState(null);  // ポートフォリオAI診断
+  const [journal, setJournal]     = useState(null);  // トレード日誌 {trades,stats}
+  const [showJournal, setShowJournal] = useState(false);
+  const [capital, setCapital]     = useState(()=>localStorage.getItem("md_stock_capital")||"");  // 万(銘柄通貨建て)
+  const [riskPct, setRiskPct]     = useState(()=>localStorage.getItem("md_stock_risk")||"2");
 
   const api = async (payload, timeoutMs=90000) => {
     const url = localStorage.getItem("md_stock_api_url")||STOCK_API_URL;
@@ -31262,6 +31267,48 @@ function StockView({currentUser}) {
       setReport(r);
     } catch(e){ setErrMsg("レポートエラー: "+e.message); }
     setBusy(b=>({...b,report:false}));
+  };
+
+  const runPfBrain = async () => {
+    setBusy(b=>({...b,pf:true})); setErrMsg("");
+    try { const r = await api({action:"portfolio-brain"}, 300000); setPfBrain(r); }
+    catch(e){ setErrMsg("ポートフォリオ診断エラー: "+e.message); }
+    setBusy(b=>({...b,pf:false}));
+  };
+
+  const loadJournal = async () => {
+    setBusy(b=>({...b,journal:true}));
+    try { const r = await api({action:"trade-stats"}); setJournal(r); }
+    catch(e){ setErrMsg("日誌取得エラー: "+e.message); }
+    setBusy(b=>({...b,journal:false}));
+  };
+
+  // 決済: 実現損益をトレード日誌に記録して保有解除
+  const closePosition = async (w, h) => {
+    const cur = results[w.ticker] ? String(results[w.ticker].price) : "";
+    const exitStr = window.prompt(`${w.name} の決済価格を入力してください\n(実現損益をトレード日誌に記録します)`, cur);
+    if(exitStr===null) return;
+    const exitPrice = parseFloat(exitStr);
+    if(!exitPrice||exitPrice<=0){ alert("価格が不正です"); return; }
+    const reason = window.prompt("決済理由(任意・AIが売買のクセ分析に使います)\n例: 利確目標到達 / 損切りライン / 決算前手仕舞い","")||"";
+    try {
+      await api({action:"trade-log",ticker:w.ticker,name:w.name,entryPrice:h.price,exitPrice,qty:h.qty||0,entryDate:h.date,reason});
+    } catch(e){ setErrMsg("日誌記録エラー: "+e.message); }
+    saveWatchlist(watchlist.map(x=>{ if(x.ticker!==w.ticker) return x; const {holding,...rest}=x; return rest; }));
+    setJournal(null);
+    alert(`決済を記録しました: ${((exitPrice/h.price-1)*100).toFixed(1)}%`);
+  };
+
+  // 日次リターンの相関(保有銘柄の分散チェック用)
+  const corrOf = (sa, sb) => {
+    const ra=[], rb=[];
+    const n = Math.min(sa.length, sb.length);
+    for(let i=1;i<n;i++){ ra.push(sa[i]/sa[i-1]-1); rb.push(sb[i]/sb[i-1]-1); }
+    if(ra.length<20) return 0;
+    const ma=ra.reduce((s,v)=>s+v,0)/ra.length, mb=rb.reduce((s,v)=>s+v,0)/rb.length;
+    let cov=0,va=0,vb=0;
+    for(let i=0;i<ra.length;i++){ cov+=(ra[i]-ma)*(rb[i]-mb); va+=(ra[i]-ma)**2; vb+=(rb[i]-mb)**2; }
+    return va>0&&vb>0 ? cov/Math.sqrt(va*vb) : 0;
   };
 
   const runBrain = async (ticker) => {
@@ -31581,6 +31628,117 @@ function StockView({currentUser}) {
         )}
       </div>
 
+      {/* 💼 ポートフォリオ全体ビュー(保有がある時のみ) */}
+      {(()=>{
+        const holds = watchlist.filter(w=>w.holding&&w.holding.price).map(w=>({...w, a:results[w.ticker]}));
+        if(!holds.length) return null;
+        const withQty = holds.filter(h=>h.holding.qty&&h.a);
+        const totalCost = withQty.reduce((s,h)=>s+h.holding.price*h.holding.qty,0);
+        const totalVal  = withQty.reduce((s,h)=>s+h.a.price*h.holding.qty,0);
+        const bySector = {};
+        withQty.forEach(h=>{ const k=(h.a&&h.a.sector)||"その他"; bySector[k]=(bySector[k]||0)+h.a.price*h.holding.qty; });
+        const warns = [];
+        Object.entries(bySector).forEach(([k,v])=>{ if(totalVal>0&&v/totalVal>0.5) warns.push(`セクター集中: ${k}が${Math.round(v/totalVal*100)}%`); });
+        withQty.forEach(h=>{ if(totalVal>0&&h.a.price*h.holding.qty/totalVal>0.4) warns.push(`1銘柄集中: ${h.a.name}が${Math.round(h.a.price*h.holding.qty/totalVal*100)}%`); });
+        for(let i=0;i<holds.length;i++) for(let j=i+1;j<holds.length;j++){
+          if(holds[i].a&&holds[j].a&&holds[i].a.spark&&holds[j].a.spark){
+            const c = corrOf(holds[i].a.spark, holds[j].a.spark);
+            if(c>0.85) warns.push(`高相関: ${holds[i].a.name}×${holds[j].a.name}(${c.toFixed(2)}) 分散効果なし`);
+          }
+        }
+        return (
+          <div style={{...card,marginBottom:"0.85rem",padding:"0.85rem 1rem"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:"0.5rem",marginBottom:"0.5rem"}}>
+              <div style={{fontWeight:800,fontSize:"0.85rem",color:C.text}}>💼 ポートフォリオ <span style={{fontSize:"0.68rem",fontWeight:600,color:C.textMuted}}>{holds.length}銘柄保有</span></div>
+              <button onClick={runPfBrain} disabled={busy.pf}
+                style={{padding:"0.45rem 0.85rem",borderRadius:8,border:"none",background:"linear-gradient(135deg,#7A5AD9,#0070D4)",color:"white",fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",opacity:busy.pf?0.6:1}}>
+                {busy.pf?"診断中(〜1分)...":"🧠 ポートフォリオAI診断"}
+              </button>
+            </div>
+            {withQty.length>0&&(
+              <div style={{display:"flex",gap:"1.25rem",flexWrap:"wrap",fontSize:"0.78rem",marginBottom:warns.length?"0.5rem":0}}>
+                <span style={{color:C.textSub}}>評価額 <b style={{color:C.text}}>{Math.round(totalVal).toLocaleString()}</b></span>
+                <span style={{color:C.textSub}}>評価損益 <b style={{color:totalVal>=totalCost?C.green:C.red}}>{totalVal>=totalCost?"+":""}{Math.round(totalVal-totalCost).toLocaleString()} ({((totalVal/totalCost-1)*100).toFixed(1)}%)</b></span>
+                {Object.entries(bySector).sort((a,b)=>b[1]-a[1]).slice(0,4).map(([k,v])=>(
+                  <span key={k} style={{color:C.textMuted}}>{k} {Math.round(v/totalVal*100)}%</span>
+                ))}
+              </div>
+            )}
+            {warns.length>0&&(
+              <div style={{padding:"0.45rem 0.7rem",background:C.orangeBg,borderRadius:8,marginBottom:pfBrain?"0.5rem":0}}>
+                {warns.map((w,i)=><div key={i} style={{fontSize:"0.73rem",fontWeight:700,color:C.orange,lineHeight:1.6}}>⚠️ {w}</div>)}
+              </div>
+            )}
+            {pfBrain&&pfBrain.brain&&(()=>{
+              const b = pfBrain.brain;
+              return (
+                <div style={{marginTop:"0.5rem",padding:"0.7rem 0.85rem",background:C.bg,borderRadius:8,border:`1px solid ${C.borderLight}`}}>
+                  {b.health_score!=null&&(
+                    <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.4rem"}}>
+                      <span style={{fontWeight:800,fontSize:"0.8rem",color:C.text}}>健全度</span>
+                      <div style={{flex:1,maxWidth:200,height:8,borderRadius:4,background:C.borderLight,overflow:"hidden"}}>
+                        <div style={{width:`${Math.min(100,b.health_score)}%`,height:"100%",background:b.health_score>=70?C.green:(b.health_score>=45?C.yellow:C.red)}}/>
+                      </div>
+                      <span style={{fontWeight:800,fontSize:"0.85rem",color:b.health_score>=70?C.green:(b.health_score>=45?C.yellow:C.red)}}>{b.health_score}点</span>
+                    </div>
+                  )}
+                  <div style={{fontSize:"0.78rem",color:C.text,lineHeight:1.65,marginBottom:"0.4rem",whiteSpace:"pre-wrap"}}>{b.summary}</div>
+                  {b.biggest_risk&&<div style={{fontSize:"0.74rem",color:C.red,fontWeight:700,marginBottom:"0.35rem"}}>⚠️ 最大リスク: {b.biggest_risk}</div>}
+                  {(b.actions||[]).map((a,i)=>(
+                    <div key={i} style={{fontSize:"0.73rem",color:C.text,lineHeight:1.6}}>・<b>{a.ticker}</b>: {a.advice}</div>
+                  ))}
+                  {b.habit_feedback&&b.habit_feedback!=="null"&&(
+                    <div style={{marginTop:"0.4rem",padding:"0.45rem 0.65rem",background:C.purpleBg,borderRadius:8,fontSize:"0.73rem",color:C.text,lineHeight:1.6}}>
+                      <b style={{color:C.purple}}>📒 売買のクセ: </b>{b.habit_feedback}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+        );
+      })()}
+
+      {/* 📒 トレード日誌 */}
+      <div style={{...card,marginBottom:"0.85rem",padding:"0.85rem 1rem"}}>
+        <div onClick={()=>{const n=!showJournal; setShowJournal(n); if(n&&!journal&&!busy.journal) loadJournal();}}
+          style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"}}>
+          <div style={{fontWeight:800,fontSize:"0.85rem",color:C.text}}>📒 トレード日誌 <span style={{fontSize:"0.68rem",fontWeight:600,color:C.textMuted}}>決済のたびに実現損益を自動記録・勝率とクセを可視化</span></div>
+          <span style={{fontSize:"0.8rem",color:C.textMuted}}>{showJournal?"▲":"▼"}</span>
+        </div>
+        {showJournal&&(
+          <div style={{marginTop:"0.75rem"}}>
+            {busy.journal&&<div style={{fontSize:"0.75rem",color:C.textMuted}}>取得中...</div>}
+            {journal&&!journal.stats&&<div style={{fontSize:"0.75rem",color:C.textMuted,lineHeight:1.6}}>
+              まだ決済記録がありません。保有銘柄を「解除」する際に決済価格を入力すると自動で記録されます。
+            </div>}
+            {journal&&journal.stats&&(()=>{
+              const s = journal.stats;
+              return (
+                <div>
+                  <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap",marginBottom:"0.6rem"}}>
+                    <span style={S.chip(C.borderLight,C.textSub)}>{s.n}トレード</span>
+                    <span style={S.chip(s.winRate>=50?C.greenBg:C.redBg, s.winRate>=50?C.green:C.red)}>勝率{s.winRate}%</span>
+                    <span style={S.chip(C.greenBg,C.green)}>平均利益+{s.avgWin}%</span>
+                    <span style={S.chip(C.redBg,C.red)}>平均損失{s.avgLoss}%</span>
+                    {s.profitFactor!=null&&<span style={S.chip(s.profitFactor>=1.5?C.greenBg:(s.profitFactor>=1?C.yellowBg:C.redBg), s.profitFactor>=1.5?C.green:(s.profitFactor>=1?C.yellow:C.red))}>PF {s.profitFactor}</span>}
+                    {s.totalAmount!==0&&<span style={S.chip(s.totalAmount>0?C.greenBg:C.redBg, s.totalAmount>0?C.green:C.red)}>累計 {s.totalAmount>0?"+":""}{Number(s.totalAmount).toLocaleString()}</span>}
+                  </div>
+                  {(journal.trades||[]).map((t,i)=>(
+                    <div key={i} style={{display:"flex",justifyContent:"space-between",gap:"0.5rem",fontSize:"0.74rem",padding:"0.35rem 0",borderBottom:`1px solid ${C.borderLight}`}}>
+                      <span style={{color:C.text,fontWeight:700}}>{t.name} <span style={{color:C.textMuted,fontWeight:500}}>{t.entryDate||"?"}→{t.exitDate}</span></span>
+                      <span style={{color:C.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,textAlign:"right"}}>{t.reason||""}</span>
+                      <b style={{color:t.pnlPct>=0?C.green:C.red,flexShrink:0}}>{t.pnlPct>=0?"+":""}{t.pnlPct}%</b>
+                    </div>
+                  ))}
+                  <div style={{fontSize:"0.66rem",color:C.textMuted,marginTop:"0.4rem"}}>※PF(プロフィットファクター)=総利益÷総損失。1.5以上で優秀。この成績はAIの教訓生成・ポートフォリオ診断にも使われます</div>
+                </div>
+              );
+            })()}
+          </div>
+        )}
+      </div>
+
       {/* ウォッチリスト */}
       <div style={{...card,marginBottom:"0.85rem",padding:0,overflow:"hidden"}}>
         <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
@@ -31640,6 +31798,31 @@ function StockView({currentUser}) {
                   <span style={{marginLeft:"0.4rem",fontSize:"0.75rem",color:sel.chg1d>=0?C.green:C.red}}>{sel.chg1d>=0?"+":""}{sel.chg1d}%</span>
                 </div>
                 <div style={{fontSize:"0.68rem",color:C.textMuted,marginTop:"0.15rem"}}>52週: {Number(sel.lo52).toLocaleString()}〜{Number(sel.hi52).toLocaleString()} / RSI {sel.rsi} / ATR {sel.atr}</div>
+                {(sel.targetPrice||sel.analystRating)&&(
+                  <div style={{fontSize:"0.68rem",color:C.textMuted,marginTop:"0.15rem"}}>
+                    {sel.targetPrice?`🎯 アナリスト目標 ${Number(sel.targetPrice).toLocaleString()}(乖離${((sel.targetPrice/sel.price-1)*100).toFixed(1)}%)`:""}
+                    {sel.analystRating?` / 評価 ${({strong_buy:"強気買い",buy:"買い",hold:"中立",underperform:"やや弱気",sell:"売り"})[sel.analystRating]||sel.analystRating}${sel.analystCount?`(${sel.analystCount}名)`:""}`:""}
+                  </div>
+                )}
+                <div style={{marginTop:"0.4rem",fontSize:"0.7rem",color:C.textSub,display:"flex",alignItems:"center",gap:"0.3rem",flexWrap:"wrap"}}>
+                  💰 資金<input type="number" value={capital} onChange={e=>{setCapital(e.target.value);localStorage.setItem("md_stock_capital",e.target.value);}} placeholder="300"
+                    style={{width:64,padding:"0.2rem 0.4rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.7rem",fontFamily:"inherit",outline:"none"}}/>万
+                  <select value={riskPct} onChange={e=>{setRiskPct(e.target.value);localStorage.setItem("md_stock_risk",e.target.value);}}
+                    style={{padding:"0.2rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.7rem",fontFamily:"inherit"}}>
+                    {["1","2","3"].map(v=><option key={v} value={v}>リスク{v}%</option>)}
+                  </select>
+                  {(()=>{
+                    const cap = parseFloat(capital)*10000;
+                    if(!cap||!sel.atr) return <span style={{color:C.textMuted}}>→ 資金を入力すると推奨ロット表示</span>;
+                    const allowed = cap*parseFloat(riskPct)/100;   // 1トレード許容損失
+                    const stopW = 2*sel.atr;                        // 損切り幅=2ATR
+                    let sh = Math.floor(allowed/stopW);
+                    if(sel.market==="JP") sh = Math.floor(sh/100)*100;  // 単元株(100株)
+                    return sh>0
+                      ? <span style={{fontWeight:800,color:C.text}}>→ 推奨 {sh.toLocaleString()}株 <span style={{fontWeight:500,color:C.textMuted}}>(2ATR損切りで損失≦{Math.round(allowed).toLocaleString()} / 投入約{Math.round(sh*sel.price).toLocaleString()})</span></span>
+                      : <span style={{color:C.red,fontWeight:700}}>→ 1単元でリスク{riskPct}%超過(この銘柄は資金に対して値がさ)</span>;
+                  })()}
+                </div>
                 {(()=>{  // 💼 保有ポジション管理
                   const w = watchlist.find(x=>x.ticker===sel.ticker);
                   const h = w&&w.holding;
@@ -31666,7 +31849,7 @@ function StockView({currentUser}) {
                           <span style={{color:pct>=0?C.green:C.red,marginLeft:"0.25rem"}}>{pct>=0?"+":""}{pct.toFixed(1)}%{h.qty?`(${Math.round((sel.price-h.price)*h.qty).toLocaleString()}${sel.currency==="JPY"?"円":sel.currency})`:""}</span>
                         </span>
                         <button onClick={()=>{setHoldForm({price:String(h.price),qty:h.qty?String(h.qty):""});setHoldEdit(true);}} style={{...S.iconBtn,color:C.accent,fontSize:"0.7rem",fontWeight:700}}>編集</button>
-                        <button onClick={()=>{if(confirm("保有登録を解除しますか？"))saveWatchlist(watchlist.map(x=>{const{holding,...rest}=x;return x.ticker===sel.ticker?rest:x;}));}} style={{...S.iconBtn,color:C.textMuted,fontSize:"0.7rem",fontWeight:700}}>解除</button>
+                        <button onClick={()=>closePosition(w,h)} style={{...S.iconBtn,color:C.orange,fontSize:"0.7rem",fontWeight:700}}>決済(日誌に記録)</button>
                       </div>
                     );
                   }
@@ -31680,6 +31863,10 @@ function StockView({currentUser}) {
                 {sel.earningsDate&&(()=>{
                   const d=Math.ceil((new Date(sel.earningsDate)-Date.now())/86400000);
                   return d>=0&&d<=10?<span style={S.chip(C.yellowBg,C.yellow)}>📅 決算{sel.earningsDate}</span>:null;
+                })()}
+                {sel.exDividendDate&&(()=>{
+                  const d=Math.ceil((new Date(sel.exDividendDate)-Date.now())/86400000);
+                  return d>=0&&d<=7?<span style={S.chip(C.blueBg,C.blue)}>💰 配当落ち{sel.exDividendDate}</span>:null;
                 })()}
               </div>
             </div>

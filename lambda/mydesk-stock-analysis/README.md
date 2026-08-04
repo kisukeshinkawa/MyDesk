@@ -96,6 +96,8 @@ curl -s -X POST $URL -H "content-type: application/json" -H "x-mydesk-secret: my
 | `screen` | 日米主力65銘柄を短期スコアで一括採点し上位15を返す(`exclude`で登録済み除外、`market`でJP/US絞り込み) |
 | `daily-report` / `report-latest` | 朝レポート生成/取得。シグナル変化・保有損益±(利確+20%/損切り-8%)・決算接近を自動アラート |
 | `brain`に`holding` | 保有中と伝えると継続/利確/損切りの判断(`position_advice`)を返す |
+| `trade-log` / `trade-stats` (v337) | 決済記録(実現損益)と成績集計(勝率/PF/平均損益)。成績は教訓生成にも注入 |
+| `portfolio-brain` (v337) | 保有全体+日誌+地合いをAIが俯瞰診断(健全度/最大リスク/銘柄別アクション/クセ助言) |
 
 ### 毎朝の自動レポート設定（EventBridge）
 
