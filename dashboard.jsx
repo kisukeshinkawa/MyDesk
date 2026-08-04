@@ -19,10 +19,10 @@ class ErrorBoundary extends React.Component {
       return(
         <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:300,padding:"2rem",textAlign:"center"}}>
           <div style={{fontSize:"2.5rem",marginBottom:"1rem"}}>⚠️</div>
-          <div style={{fontWeight:800,fontSize:"1rem",color:"#dc2626",marginBottom:"0.5rem"}}>表示エラーが発生しました</div>
+          <div style={{fontWeight:800,fontSize:"1rem",color:"#DA1313",marginBottom:"0.5rem"}}>表示エラーが発生しました</div>
           <div style={{fontSize:"0.78rem",color:"#6b7280",marginBottom:"1.5rem",maxWidth:300}}>{this.state.error}</div>
           <button onClick={()=>this.setState({hasError:false,error:""})}
-            style={{padding:"0.625rem 1.5rem",borderRadius:"6px",border:"none",background:"#2563eb",color:"white",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+            style={{padding:"0.625rem 1.5rem",borderRadius:"8px",border:"none",background:"#0070D4",color:"white",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
             ← 戻る / 再試行
           </button>
         </div>
@@ -36,8 +36,8 @@ class ErrorBoundary extends React.Component {
 const STATUS_OPTIONS = ["未着手","進行中","先方待ち","保留","完了"];
 const STATUS_META = {
   "未着手":  { color:"#475569", bg:"#f1f5f9", dot:"#94a3b8" },
-  "進行中":  { color:"#1d4ed8", bg:"#e8f0fe", dot:"#3b82f6" },
-  "先方待ち":{ color:"#1d4ed8", bg:"#fef3c7", dot:"#f59e0b" },
+  "進行中":  { color:"#1563CA", bg:"#e8f0fe", dot:"#579AFF" },
+  "先方待ち":{ color:"#1563CA", bg:"#fef3c7", dot:"#f59e0b" },
   "保留":    { color:"#4b5563", bg:"#f1f3f4", dot:"#9ca3af" },
   "完了":    { color:"#065f46", bg:"#d1fae5", dot:"#10b981" },
 };
@@ -52,54 +52,58 @@ const S = {
 
 const C = {
   // ── Base surfaces ──────────────────────────────
-  bg:"#F4F7FB",           // Cool light gray-blue (画像準拠)
+  bg:"#F9FAFE",           // dustalk-surface
   surface:"#ffffff",
-  surfaceHover:"#EEF5FC",
-  overlay:"rgba(16,35,64,0.5)",
+  surfaceHover:"#F2F7FF",   // dustalk highlight lv1
+  overlay:"rgba(0,17,62,0.5)",   // dustalk-navy
 
   // ── Border system ──────────────────────────────
-  border:"#DCE3EA",       // slate-200
-  borderLight:"#EEF1F5",  // slate-100
+  border:"#DDE1EB",       // dustalk-border
+  borderLight:"#EEF1F7",  // dustalk border light
 
   // ── Text hierarchy (3 levels) ───────────────────
-  text:"#1B2A41",         // slate-900
-  textSub:"#516074",      // slate-600
-  textMuted:"#94A3B4",    // slate-400
+  text:"#212121",         // dustalk-text
+  textSub:"#4D4D4D",      // dustalk text-dark-main
+  textMuted:"#8A93A3",    // dustalk muted
 
   // ── Accent — Bright Blue ──────────────────────
-  accent:"#2F6FE0",       // blue-500 (画像のアクセント青)
-  accentDark:"#1E56C0",   // blue-600
-  accentBg:"#E8F1FD",     // blue-50
-  accentLight:"rgba(47,111,224,0.08)",
+  accent:"#0070D4",       // dustalk-blue
+  accentDark:"#1563CA",   // dustalk interactive-text
+  accentBg:"#E6F0FF",     // dustalk highlight lv2
+  accentLight:"rgba(0,112,212,0.08)",
 
   // ── Semantic ────────────────────────────────────
-  blue:"#2F6FE0",   blueBg:"#DCEAFB",     // blue-100
-  green:"#1FA463",  greenBg:"#DBF2E5",    // emerald-100
-  yellow:"#E68A0C", yellowBg:"#FBEBCF",   // amber-100
-  red:"#E24B4B",    redBg:"#FFDBDB",      // red-100
-  purple:"#7A5AD9", purpleBg:"#E9E2FA",   // violet-100
-  orange:"#F2820C", orangeBg:"#FCE7CE",   // orange-100
+  blue:"#0070D4",   blueBg:"#E6F0FF",     // dustalk blue
+  green:"#009122",  greenBg:"#DAF7E1",    // dustalk success
+  yellow:"#BE4A04", yellowBg:"#FDECCC",   // dustalk pending
+  red:"#DA1313",    redBg:"#FFDBDB",      // dustalk destructive
+  purple:"#7A5AD9", purpleBg:"#F8E5FF",   // dustalk progress
+  orange:"#FF6A00", orangeBg:"#FFE8CF",   // dustalk attention
 
   // ── Navigation (NOW WHITE) ──────────────────────
   nav:"#ffffff",
-  navBorder:"#E5EAF0",
-  navText:"#516074",
-  navTextSub:"#94A3B4",
-  navActive:"#E8F1FD",
-  navActiveText:"#1E56C0",
+  navBorder:"#DDE1EB",
+  navText:"#4D4D4D",
+  navTextSub:"#A6A6A6",
+  navActive:"#E6F0FF",
+  navActiveText:"#1563CA",
 
   // ── Elevation (subtle, modern) ──────────────────
-  shadow:"0 1px 3px rgba(16,35,64,0.05),0 1px 2px rgba(16,35,64,0.06)",
-  shadowMd:"0 4px 12px rgba(16,35,64,0.08)",
-  shadowLg:"0 8px 24px rgba(16,35,64,0.12)",
-  shadowFloat:"0 16px 40px rgba(16,35,64,0.18)",
+  shadow:"0 1px 3px rgba(0,17,62,0.05),0 1px 2px rgba(0,17,62,0.06)",
+  shadowMd:"0 4px 12px rgba(0,17,62,0.08)",
+  shadowLg:"0 8px 24px rgba(0,17,62,0.12)",
+  shadowFloat:"0 16px 40px rgba(0,17,62,0.18)",
+
+  // ── DUSTALK component tokens ──
+  shadowCard:"4px 4px 12px rgba(0,17,62,0.04)",   // shadow-dustalk-card
+  focusGlow:"0 0 8px rgba(0,112,212,0.18)",       // shadow-dustalk-input-focus
 };
 
 // ─── STORAGE ──────────────────────────────────────────────────────────────────
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-05-v326-export-name-choice"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-06-v332-portal-url"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -182,7 +186,7 @@ if (typeof window !== "undefined") {
 const DB_API_BASE   = "https://zv3hlppejxw32cjxhn2mnsdgqq0sxeqa.lambda-url.ap-northeast-1.on.aws";
 const DUSTALK_SYNC_URL = "https://36w7fx2ywn7t4raggrbwe65ili0fddnr.lambda-url.ap-northeast-1.on.aws";
 // 見積依頼ポータル（mydesk-quote-portal）Function URL。デプロイ後にここへ貼り付け。
-const QUOTE_PORTAL_URL = "";
+const QUOTE_PORTAL_URL = "https://wccz6ebtueeo5kkwnr44fnjkqq0lyqqp.lambda-url.ap-northeast-1.on.aws/";
 const DB_API_SECRET = "mydesk2026secret";
 const DB_API_HEADERS = {
   "Content-Type": "application/json",
@@ -730,9 +734,9 @@ async function licensesRenew(oldId, newData) {
 // 家庭系一廃 / 事業系一廃 / 産廃 / 特別管理産廃
 const DUSTALK_AREA_TYPES = [
   { key: "household_ippai",   label: "家庭系一廃", icon: "🏠", color: "#ea580c", bg: "#fff7ed", border: "#fed7aa" },
-  { key: "business_ippai",    label: "事業系一廃", icon: "🏢", color: "#16a34a", bg: "#f0fdf4", border: "#bbf7d0" },
-  { key: "sanpai",            label: "産廃",       icon: "🏭", color: "#2563eb", bg: "#eff6ff", border: "#bfdbfe" },
-  { key: "tokukan_sanpai",    label: "特管産廃",   icon: "⚠️", color: "#dc2626", bg: "#fef2f2", border: "#fecaca" },
+  { key: "business_ippai",    label: "事業系一廃", icon: "🏢", color: "#009122", bg: "#f0fdf4", border: "#bbf7d0" },
+  { key: "sanpai",            label: "産廃",       icon: "🏭", color: "#0070D4", bg: "#F2F7FF", border: "#bfdbfe" },
+  { key: "tokukan_sanpai",    label: "特管産廃",   icon: "⚠️", color: "#DA1313", bg: "#fef2f2", border: "#fecaca" },
 ];
 
 // 旧フィールドを新スキーマに移行
@@ -1164,15 +1168,15 @@ const PERMIT_TYPES = [
 ];
 
 const DUSTALK_STATUS = {
-  "展開":   { color:"#059669", bg:"#d1fae5", icon:"✅" },
+  "展開":   { color:"#009122", bg:"#d1fae5", icon:"✅" },
   "未展開": { color:"#6b7280", bg:"#f1f3f4", icon:"⬜" },
 };
 const TREATY_STATUS = {
   "未接触": { color:"#6b7280", bg:"#f1f3f4" },
-  "電話済": { color:"#2563eb", bg:"#e8f0fe" },
+  "電話済": { color:"#0070D4", bg:"#e8f0fe" },
   "資料送付":{ color:"#7c3aed", bg:"#ede9fe" },
   "商談中": { color:"#d97706", bg:"#fef3c7" },
-  "協定済": { color:"#059669", bg:"#d1fae5" },
+  "協定済": { color:"#009122", bg:"#d1fae5" },
 };
 const VENDOR_STATUS = {
   "未接触":  { color:"#8b8b89", bg:"#f4f4f2", dot:true },
@@ -1243,7 +1247,7 @@ function MultiChipFilter({label, icon, values, setValues, options, C}) {
   return (
     <div style={{position:"relative"}}>
       <button onClick={()=>setOpen(o=>!o)}
-        style={{padding:"0.3rem 0.5rem",borderRadius:"0.5rem",border:`1.5px solid ${isActive?C.accent:C.border}`,background:isActive?"#eff6ff":"white",color:isActive?C.accent:C.text,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"0.3rem",maxWidth:"100%"}}>
+        style={{padding:"0.3rem 0.5rem",borderRadius:"0.5rem",border:`1.5px solid ${isActive?C.accent:C.border}`,background:isActive?"#F2F7FF":"white",color:isActive?C.accent:C.text,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"0.3rem",maxWidth:"100%"}}>
         <span>{icon} {label}</span>
         {isActive && <span style={{background:C.accent,color:"white",borderRadius:999,padding:"0.05rem 0.4rem",fontSize:"0.6rem",fontWeight:800}}>{values.length}</span>}
         <span style={{fontSize:"0.55rem",color:isActive?C.accent:C.textMuted}}>▼</span>
@@ -1261,7 +1265,7 @@ function MultiChipFilter({label, icon, values, setValues, options, C}) {
                   onChange={e=>setSearchQ(e.target.value)}
                   onClick={ev=>ev.stopPropagation()}
                   autoFocus
-                  style={{width:"100%",padding:"0.35rem 0.55rem",borderRadius:"0.35rem",border:`1.5px solid ${C.border}`,fontSize:"0.75rem",fontFamily:"inherit",boxSizing:"border-box",outline:"none"}}
+                  style={{width:"100%",padding:"0.35rem 0.55rem",borderRadius:"0.5rem",border:`1.5px solid ${C.border}`,fontSize:"0.75rem",fontFamily:"inherit",boxSizing:"border-box",outline:"none"}}
                 />
               </div>
             )}
@@ -1270,7 +1274,7 @@ function MultiChipFilter({label, icon, values, setValues, options, C}) {
               {filteredOptions.map(opt => {
                 const sel = (values||[]).map(String).includes(String(opt.value));
                 return (
-                  <label key={String(opt.value)} style={{display:"flex",alignItems:"center",gap:"0.4rem",padding:"0.3rem 0.45rem",fontSize:"0.74rem",cursor:"pointer",borderRadius:"0.3rem",background:sel?"#eff6ff":"transparent"}}
+                  <label key={String(opt.value)} style={{display:"flex",alignItems:"center",gap:"0.4rem",padding:"0.3rem 0.45rem",fontSize:"0.74rem",cursor:"pointer",borderRadius:"0.5rem",background:sel?"#F2F7FF":"transparent"}}
                     onClick={ev=>{
                       ev.preventDefault();
                       ev.stopPropagation();
@@ -1285,7 +1289,7 @@ function MultiChipFilter({label, icon, values, setValues, options, C}) {
               })}
             </div>
             {(values||[]).length > 0 && (
-              <button onClick={ev=>{ev.stopPropagation(); setValues([]);}} style={{width:"100%",marginTop:"0.3rem",padding:"0.25rem",fontSize:"0.66rem",background:"#fef2f2",color:"#dc2626",border:"1px solid #fca5a5",borderRadius:4,cursor:"pointer",fontFamily:"inherit",fontWeight:700,flexShrink:0}}>このフィルターをクリア</button>
+              <button onClick={ev=>{ev.stopPropagation(); setValues([]);}} style={{width:"100%",marginTop:"0.3rem",padding:"0.25rem",fontSize:"0.66rem",background:"#fef2f2",color:"#DA1313",border:"1px solid #fca5a5",borderRadius:8,cursor:"pointer",fontFamily:"inherit",fontWeight:700,flexShrink:0}}>このフィルターをクリア</button>
             )}
           </div>
         </>
@@ -1303,7 +1307,7 @@ function FullWidthMultiFilter({label, icon, values, setValues, options, C, showM
   return (
     <div style={{position:"relative",marginBottom:"0.6rem"}}>
       <button onClick={()=>setOpen(o=>!o)}
-        style={{width:"100%",padding:"0.4rem 0.6rem",borderRadius:"0.5rem",border:`1.5px solid ${isActive?C.accent:C.border}`,background:isActive?"#eff6ff":"white",color:isActive?C.accent:C.text,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",fontWeight:isActive?700:500,display:"flex",alignItems:"center",justifyContent:"space-between",gap:"0.3rem"}}>
+        style={{width:"100%",padding:"0.4rem 0.6rem",borderRadius:"0.5rem",border:`1.5px solid ${isActive?C.accent:C.border}`,background:isActive?"#F2F7FF":"white",color:isActive?C.accent:C.text,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",fontWeight:isActive?700:500,display:"flex",alignItems:"center",justifyContent:"space-between",gap:"0.3rem"}}>
         <span>{icon} {label}{isActive ? `（${values.length}件）` : ""}</span>
         <span style={{fontSize:"0.6rem"}}>▼</span>
       </button>
@@ -1314,7 +1318,7 @@ function FullWidthMultiFilter({label, icon, values, setValues, options, C, showM
             {opts.map(opt => {
               const sel = (values||[]).map(String).includes(String(opt.value));
               return (
-                <label key={String(opt.value)} style={{display:"flex",alignItems:"center",gap:"0.4rem",padding:"0.3rem 0.45rem",fontSize:"0.78rem",cursor:"pointer",borderRadius:"0.3rem",background:sel?"#eff6ff":"transparent"}}
+                <label key={String(opt.value)} style={{display:"flex",alignItems:"center",gap:"0.4rem",padding:"0.3rem 0.45rem",fontSize:"0.78rem",cursor:"pointer",borderRadius:"0.5rem",background:sel?"#F2F7FF":"transparent"}}
                   onClick={ev=>{
                     ev.preventDefault();
                     ev.stopPropagation();
@@ -1328,7 +1332,7 @@ function FullWidthMultiFilter({label, icon, values, setValues, options, C, showM
               );
             })}
             {(values||[]).length > 0 && (
-              <button onClick={ev=>{ev.stopPropagation(); setValues([]);}} style={{width:"100%",marginTop:"0.3rem",padding:"0.25rem",fontSize:"0.66rem",background:"#fef2f2",color:"#dc2626",border:"1px solid #fca5a5",borderRadius:4,cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>このフィルターをクリア</button>
+              <button onClick={ev=>{ev.stopPropagation(); setValues([]);}} style={{width:"100%",marginTop:"0.3rem",padding:"0.25rem",fontSize:"0.66rem",background:"#fef2f2",color:"#DA1313",border:"1px solid #fca5a5",borderRadius:8,cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>このフィルターをクリア</button>
             )}
           </div>
         </>
@@ -1394,16 +1398,16 @@ function buildNotificationEmail(notif, recipientUser, fromUser, data) {
 
   // 通知タイプ別のラベル・絵文字
   const typeMeta = {
-    task_assign:    { emoji: "📌", label: "タスク割り当て",   color: "#2563eb" },
+    task_assign:    { emoji: "📌", label: "タスク割り当て",   color: "#0070D4" },
     task_status:    { emoji: "🔄", label: "ステータス変更",   color: "#0891b2" },
     task_comment:   { emoji: "💬", label: "コメント追加",     color: "#7c3aed" },
-    mention:        { emoji: "🔔", label: "メンション",       color: "#dc2626" },
-    memo:           { emoji: "📝", label: "メモ追加",         color: "#059669" },
-    deadline:       { emoji: "⏰", label: "期限通知",         color: "#dc2626" },
+    mention:        { emoji: "🔔", label: "メンション",       color: "#DA1313" },
+    memo:           { emoji: "📝", label: "メモ追加",         color: "#009122" },
+    deadline:       { emoji: "⏰", label: "期限通知",         color: "#DA1313" },
     sales_assign:   { emoji: "👤", label: "営業先担当割り当て", color: "#7c3aed" },
     review_request: { emoji: "🔍", label: "確認依頼",         color: "#0891b2" },
-    review_approve: { emoji: "✅", label: "承認",             color: "#059669" },
-    review_reject:  { emoji: "❌", label: "差し戻し",         color: "#dc2626" },
+    review_approve: { emoji: "✅", label: "承認",             color: "#009122" },
+    review_reject:  { emoji: "❌", label: "差し戻し",         color: "#DA1313" },
   };
   const meta = typeMeta[type] || { emoji: "📬", label: "通知", color: "#6b7280" };
 
@@ -1422,8 +1426,8 @@ function buildNotificationEmail(notif, recipientUser, fromUser, data) {
   let salesRefBadge = "";
   if (entityType === "task" && entity?.salesRef) {
     const sales = entity.salesRef;
-    const sColors = { "企業": "#2563eb", "業者": "#7c3aed", "自治体": "#059669" };
-    const sBgs = { "企業": "#dbeafe", "業者": "#ede9fe", "自治体": "#d1fae5" };
+    const sColors = { "企業": "#0070D4", "業者": "#7c3aed", "自治体": "#009122" };
+    const sBgs = { "企業": "#E6F0FF", "業者": "#ede9fe", "自治体": "#d1fae5" };
     const sc = sColors[sales.type] || "#6b7280";
     const sbg = sBgs[sales.type] || "#f3f4f6";
     salesRefBadge = `<div style="margin-top:8px;"><span style="display:inline-block;font-size:12px;font-weight:700;color:${sc};background:${sbg};padding:3px 10px;border-radius:999px;">${escapeHtml(sales.type)}・${escapeHtml(sales.name || "")}</span></div>`;
@@ -2108,7 +2112,7 @@ function buildGlobalActivities(data) {
 
   // 1. changeLogs（フィールド変更）
   for (const log of (data.changeLogs||[])) {
-    const tc = ({"タスク":"#1d4ed8","プロジェクト":"#7c3aed","企業":"#059669","業者":"#d97706","自治体":"#db2777"})[log.entityType] || "#475569";
+    const tc = ({"タスク":"#1563CA","プロジェクト":"#7c3aed","企業":"#009122","業者":"#d97706","自治体":"#db2777"})[log.entityType] || "#475569";
     const isLink = log.field === "名刺紐付け";
     const isUnlink = log.field === "名刺紐付け解除";
     // 伝播ログ（タスク/プロジェクトから営業先へ）の場合は、元情報を表示
@@ -2135,7 +2139,7 @@ function buildGlobalActivities(data) {
 
   // 2. 企業/業者/自治体: 作成・アプローチ・メモ・チャット・ファイル
   const collections = [
-    {key:"companies",     label:"企業",   icon:"🏢", color:"#059669"},
+    {key:"companies",     label:"企業",   icon:"🏢", color:"#009122"},
     {key:"vendors",       label:"業者",   icon:"🚚", color:"#d97706"},
     {key:"municipalities",label:"自治体", icon:"🏛️", color:"#db2777"},
   ];
@@ -2188,28 +2192,28 @@ function buildGlobalActivities(data) {
     if (tTs > 0) push({
       id: `task_${t.id}_new`, ts: tTs, date: t.createdAt || new Date(tTs).toISOString(),
       userId: t.createdBy, category: "タスク", action: "create",
-      icon: "📋", color: "#1d4ed8",
+      icon: "📋", color: "#1563CA",
       entityType: "タスク", entityId: t.id, entityName: t.title,
       title: "タスクを作成", detail: t.title||"",
     });
     for (const c of (t.comments||[])) push({
       id: `task_${t.id}_c_${c.id||c.createdAt}`, ts: tsOf(c.createdAt, c.date, c.id), date: c.createdAt||c.date,
       userId: c.userId||c.createdBy, category: "タスク", action: "comment",
-      icon: "💭", color: "#1d4ed8",
+      icon: "💭", color: "#1563CA",
       entityType: "タスク", entityId: t.id, entityName: t.title,
       title: "コメントを追加", detail: (c.content||c.text||"").slice(0,120),
     });
     for (const m of (t.memos||[])) push({
       id: `task_${t.id}_m_${m.id||m.createdAt}`, ts: tsOf(m.createdAt, m.date, m.id), date: m.createdAt||m.date,
       userId: m.createdBy, category: "タスク", action: "memo",
-      icon: "📝", color: "#1d4ed8",
+      icon: "📝", color: "#1563CA",
       entityType: "タスク", entityId: t.id, entityName: t.title,
       title: "メモを追加", detail: (m.content||"").slice(0,120),
     });
     for (const f of (t.files||[])) push({
       id: `task_${t.id}_f_${f.id||f.uploadedAt}`, ts: tsOf(f.uploadedAt, f.createdAt, f.id), date: f.uploadedAt||f.createdAt,
       userId: f.uploadedBy||f.createdBy, category: "タスク", action: "file_add",
-      icon: "📎", color: "#1d4ed8",
+      icon: "📎", color: "#1563CA",
       entityType: "タスク", entityId: t.id, entityName: t.title,
       title: "資料を追加", detail: f.name||"ファイル",
     });
@@ -2291,7 +2295,7 @@ function buildGlobalActivities(data) {
     if (bc.salesRef && bc.linkedAt) {
       const linkTs = tsOf(bc.linkedAt);
       const cat = bc.salesRef.type;
-      const col = ({"企業":"#059669","業者":"#d97706","自治体":"#db2777"})[cat] || "#0e7490";
+      const col = ({"企業":"#009122","業者":"#d97706","自治体":"#db2777"})[cat] || "#0e7490";
       push({
         id: `bc_${bc.id}_link`, ts: linkTs, date: bc.linkedAt,
         userId: bc.linkedBy, category: cat, action: "bizcard_link",
@@ -2347,16 +2351,16 @@ function isNearDue(task) {
 
 // ─── BASE COMPONENTS ──────────────────────────────────────────────────────────
 const Card = ({children, style={}, onClick}) => (
-  <div onClick={onClick} style={{background:C.surface,borderRadius:"12px",border:`1px solid ${C.border}`,boxShadow:C.shadow,...style}}>{children}</div>
+  <div onClick={onClick} style={{background:C.surface,borderRadius:"12px",border:`1px solid ${C.border}`,boxShadow:C.shadowCard,...style}}>{children}</div>
 );
 
 const Btn = ({children,onClick,variant="primary",size="md",style={},disabled=false}) => {
-  const base = {border:"none",borderRadius:"7px",fontWeight:500,cursor:disabled?"not-allowed":"pointer",fontFamily:"'DM Sans',inherit",opacity:disabled?0.4:1,transition:"all 0.12s",lineHeight:"1.4",letterSpacing:"-0.01em",display:"inline-flex",alignItems:"center",gap:"0.375rem",...style};
+  const base = {border:"none",borderRadius:"8px",fontWeight:700,cursor:disabled?"not-allowed":"pointer",fontFamily:"inherit",opacity:disabled?0.4:1,transition:"all 0.12s",lineHeight:"1.4",letterSpacing:"0.01em",display:"inline-flex",alignItems:"center",justifyContent:"center",gap:"0.375rem",...style};
   const sz = size==="sm"?{padding:"0.3rem 0.75rem",fontSize:"0.8rem"}
            : size==="lg"?{padding:"0.7rem 1.5rem",fontSize:"0.925rem"}
            : {padding:"0.45rem 1rem",fontSize:"0.85rem"};
-  const vc = variant==="primary"   ? {background:C.accent,color:"#fff",boxShadow:"0 1px 2px rgba(59,130,246,0.25),0 2px 4px rgba(59,130,246,0.15)"}
-           : variant==="secondary" ? {background:C.borderLight,color:C.text,border:`1px solid ${C.border}`}
+  const vc = variant==="primary"   ? {background:C.accent,color:"#fff",boxShadow:"0 1px 2px rgba(0,112,212,0.25),0 2px 6px rgba(0,112,212,0.18)"}
+           : variant==="secondary" ? {background:"#fff",color:C.text,border:`1px solid ${C.border}`}
            : variant==="ghost"     ? {background:"transparent",color:C.textSub}
            : variant==="danger"    ? {background:C.redBg,color:C.red,border:`1px solid ${C.red}40`}
            : {background:C.accentBg,color:C.accent};
@@ -2365,15 +2369,15 @@ const Btn = ({children,onClick,variant="primary",size="md",style={},disabled=fal
 
 
 const Input = ({style={},...p}) => (
-  <input {...p} style={{width:"100%",padding:"0.625rem 0.875rem",borderRadius:"8px",border:`1px solid ${C.border}`,fontSize:"0.875rem",color:C.text,outline:"none",background:C.surface,boxSizing:"border-box",fontFamily:"inherit",lineHeight:"1.5",transition:"all 0.15s",...style}}/>
+  <input {...p} onFocus={e=>{e.target.style.borderColor=C.accent;e.target.style.boxShadow=C.focusGlow;p.onFocus&&p.onFocus(e);}} onBlur={e=>{e.target.style.borderColor=C.border;e.target.style.boxShadow="none";p.onBlur&&p.onBlur(e);}} style={{width:"100%",padding:"0.625rem 0.875rem",borderRadius:"8px",border:`1px solid ${C.border}`,fontSize:"0.875rem",color:C.text,outline:"none",background:C.surface,boxSizing:"border-box",fontFamily:"inherit",lineHeight:"1.5",transition:"all 0.15s",...style}}/>
 );
 
 const Textarea = ({style={},...p}) => (
-  <textarea {...p} style={{width:"100%",padding:"0.55rem 0.875rem",borderRadius:"6px",border:`1px solid ${C.border}`,fontSize:"0.875rem",color:C.text,outline:"none",resize:"vertical",background:C.surface,boxSizing:"border-box",fontFamily:"'DM Sans',inherit",lineHeight:"1.6",...style}}/>
+  <textarea {...p} onFocus={e=>{e.target.style.borderColor=C.accent;e.target.style.boxShadow=C.focusGlow;p.onFocus&&p.onFocus(e);}} onBlur={e=>{e.target.style.borderColor=C.border;e.target.style.boxShadow="none";p.onBlur&&p.onBlur(e);}} style={{width:"100%",padding:"0.55rem 0.875rem",borderRadius:"8px",border:`1px solid ${C.border}`,fontSize:"0.875rem",color:C.text,outline:"none",resize:"vertical",background:C.surface,boxSizing:"border-box",fontFamily:"inherit",lineHeight:"1.6",...style}}/>
 );
 
 const SelectEl = ({children,style={},...p}) => (
-  <select {...p} style={{width:"100%",padding:"0.65rem 0.875rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,fontSize:"0.9rem",color:C.text,outline:"none",background:"white",fontFamily:"inherit",...style}}>{children}</select>
+  <select {...p} onFocus={e=>{e.target.style.borderColor=C.accent;e.target.style.boxShadow=C.focusGlow;p.onFocus&&p.onFocus(e);}} onBlur={e=>{e.target.style.borderColor=C.border;e.target.style.boxShadow="none";p.onBlur&&p.onBlur(e);}} style={{width:"100%",padding:"0.65rem 0.875rem",borderRadius:"8px",border:`1.5px solid ${C.border}`,fontSize:"0.9rem",color:C.text,outline:"none",background:"white",fontFamily:"inherit",...style}}>{children}</select>
 );
 
 const FieldLbl = ({label,required,children}) => (
@@ -2634,7 +2638,7 @@ function LicenseSection({ vendorId, vendorName, currentUserId }) {
           🪪 許可証 {licenses.length > 0 && `(${licenses.length}件)`}
         </div>
         <button onClick={() => setEditing("new")}
-          style={{padding:"0.2rem 0.6rem",fontSize:"0.7rem",fontWeight:700,background:"#16a34a",color:"white",border:"none",borderRadius:"4px",cursor:"pointer"}}>
+          style={{padding:"0.2rem 0.6rem",fontSize:"0.7rem",fontWeight:700,background:"#009122",color:"white",border:"none",borderRadius:"8px",cursor:"pointer"}}>
           + 追加
         </button>
       </div>
@@ -2643,7 +2647,7 @@ function LicenseSection({ vendorId, vendorName, currentUserId }) {
 
       {/* 期限アラートバナー（2ヶ月以内 or 期限切れ） */}
       {!loading && expiringLicenses.length > 0 && (
-        <div style={{marginBottom:"0.5rem",padding:"0.5rem 0.7rem",background:"#fef2f2",border:"1.5px solid #fecaca",borderRadius:"6px"}}>
+        <div style={{marginBottom:"0.5rem",padding:"0.5rem 0.7rem",background:"#fef2f2",border:"1.5px solid #fecaca",borderRadius:"8px"}}>
           <div style={{fontSize:"0.78rem",fontWeight:700,color:"#b91c1c",marginBottom:"0.25rem"}}>
             ⚠️ 期限が迫っている許可証 ({expiringLicenses.length}件)
           </div>
@@ -2715,7 +2719,7 @@ function RenewConfirmModal({ existing, newForm, onRenew, onAsNew, onCancel }) {
         <h3 style={{margin:0,marginBottom:"0.6rem",fontSize:"1rem",fontWeight:800,color:"#1f2937"}}>📜 同じ条件の許可証があります</h3>
         <div style={{fontSize:"0.78rem",color:"#374151",lineHeight:1.6,marginBottom:"0.8rem"}}>
           以下の条件が一致する既存の許可証が見つかりました：
-          <div style={{padding:"0.5rem 0.7rem",background:"#f3f4f6",borderRadius:"6px",marginTop:"0.4rem"}}>
+          <div style={{padding:"0.5rem 0.7rem",background:"#f3f4f6",borderRadius:"8px",marginTop:"0.4rem"}}>
             <div>🏷️ 廃棄区分: <strong>{existing.waste_category}</strong></div>
             <div>📋 業務区分: <strong>{existing.business_type}</strong></div>
             <div>📍 行政区: <strong>{existing.region}</strong></div>
@@ -2732,15 +2736,15 @@ function RenewConfirmModal({ existing, newForm, onRenew, onAsNew, onCancel }) {
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:"0.4rem"}}>
           <button onClick={onRenew}
-            style={{padding:"0.55rem 0.8rem",fontSize:"0.85rem",fontWeight:700,background:"#16a34a",color:"white",border:"none",borderRadius:"6px",cursor:"pointer"}}>
+            style={{padding:"0.55rem 0.8rem",fontSize:"0.85rem",fontWeight:700,background:"#009122",color:"white",border:"none",borderRadius:"8px",cursor:"pointer"}}>
             🔄 更新（既存を履歴へ移し、新しい許可証で置き換える）
           </button>
           <button onClick={onAsNew}
-            style={{padding:"0.55rem 0.8rem",fontSize:"0.85rem",fontWeight:700,background:"#3b82f6",color:"white",border:"none",borderRadius:"6px",cursor:"pointer"}}>
+            style={{padding:"0.55rem 0.8rem",fontSize:"0.85rem",fontWeight:700,background:"#579AFF",color:"white",border:"none",borderRadius:"8px",cursor:"pointer"}}>
             ➕ 新規（既存はそのまま、別の許可証として追加）
           </button>
           <button onClick={onCancel}
-            style={{padding:"0.5rem 0.8rem",fontSize:"0.8rem",fontWeight:600,background:"white",color:"#6b7280",border:"1px solid #d1d5db",borderRadius:"6px",cursor:"pointer"}}>
+            style={{padding:"0.5rem 0.8rem",fontSize:"0.8rem",fontWeight:600,background:"white",color:"#6b7280",border:"1px solid #d1d5db",borderRadius:"8px",cursor:"pointer"}}>
             キャンセル
           </button>
         </div>
@@ -2776,16 +2780,16 @@ function LicenseHistoryModal({ items, currentLicense, onClose }) {
           const isLatest = !lic.is_archived;
           return (
             <div key={lic.id} style={{
-              border: isLatest ? "2px solid #16a34a" : "1px solid #e5e7eb",
+              border: isLatest ? "2px solid #009122" : "1px solid #e5e7eb",
               background: isLatest ? "#f0fdf4" : "#f9fafb",
-              borderRadius:"6px",
+              borderRadius:"8px",
               padding:"0.6rem 0.75rem",
               marginBottom:"0.4rem"
             }}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.3rem"}}>
                 <div style={{display:"flex",alignItems:"center",gap:"0.4rem"}}>
-                  {isLatest && <span style={{fontSize:"0.62rem",fontWeight:700,color:"white",background:"#16a34a",padding:"0.1rem 0.4rem",borderRadius:"4px"}}>現在</span>}
-                  {!isLatest && <span style={{fontSize:"0.62rem",fontWeight:700,color:"#6b7280",background:"#e5e7eb",padding:"0.1rem 0.4rem",borderRadius:"4px"}}>履歴</span>}
+                  {isLatest && <span style={{fontSize:"0.62rem",fontWeight:700,color:"white",background:"#009122",padding:"0.1rem 0.4rem",borderRadius:"8px"}}>現在</span>}
+                  {!isLatest && <span style={{fontSize:"0.62rem",fontWeight:700,color:"#6b7280",background:"#e5e7eb",padding:"0.1rem 0.4rem",borderRadius:"8px"}}>履歴</span>}
                   <span style={{fontSize:"0.78rem",fontWeight:700}}>
                     {lic.license_number || "(番号なし)"}
                   </span>
@@ -2800,7 +2804,7 @@ function LicenseHistoryModal({ items, currentLicense, onClose }) {
             </div>
           );
         })}
-        <div style={{marginTop:"0.6rem",padding:"0.5rem 0.7rem",fontSize:"0.7rem",color:"#6b7280",background:"#f9fafb",borderRadius:"4px"}}>
+        <div style={{marginTop:"0.6rem",padding:"0.5rem 0.7rem",fontSize:"0.7rem",color:"#6b7280",background:"#f9fafb",borderRadius:"8px"}}>
           💡 「🔄 更新」で許可証を更新すると、古い情報がここに自動的に保存されます。
         </div>
       </div>
@@ -2827,7 +2831,7 @@ function LicenseCard({ license, onEdit, onDelete, onHistory }) {
     const allBullets = lines.every(l => l.startsWith("・") || l.startsWith("-"));
     if (allBullets && lines.length > 1) {
       return (
-        <div style={{marginTop:"0.25rem",padding:"0.35rem 0.5rem",background:"#f9fafb",borderLeft:"3px solid #d1d5db",borderRadius:"3px"}}>
+        <div style={{marginTop:"0.25rem",padding:"0.35rem 0.5rem",background:"#f9fafb",borderLeft:"3px solid #d1d5db",borderRadius:"8px"}}>
           <div style={{fontSize:"0.62rem",color:"#6b7280",fontWeight:700,marginBottom:"0.15rem"}}>💬 備考</div>
           {lines.map((line, idx) => (
             <div key={idx} style={{fontSize:"0.7rem",color:"#374151",lineHeight:1.5}}>
@@ -2841,30 +2845,30 @@ function LicenseCard({ license, onEdit, onDelete, onHistory }) {
   };
 
   return (
-    <div style={{background:"white",border:"1px solid #d1fae5",borderRadius:"6px",padding:"0.5rem 0.6rem",marginBottom:"0.35rem"}}>
+    <div style={{background:"white",border:"1px solid #d1fae5",borderRadius:"8px",padding:"0.5rem 0.6rem",marginBottom:"0.35rem"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:"0.4rem",marginBottom:"0.3rem"}}>
         <div style={{display:"flex",alignItems:"center",gap:"0.3rem",flexWrap:"wrap",flex:1,minWidth:0}}>
-          <span style={{fontSize:"0.68rem",fontWeight:700,color:"#166534",background:"#dcfce7",padding:"0.1rem 0.4rem",borderRadius:"4px"}}>
+          <span style={{fontSize:"0.68rem",fontWeight:700,color:"#166534",background:"#dcfce7",padding:"0.1rem 0.4rem",borderRadius:"8px"}}>
             {license.waste_category || "未分類"}
           </span>
           {license.business_type && (
-            <span style={{fontSize:"0.68rem",fontWeight:600,color:"#1e40af",background:"#dbeafe",padding:"0.1rem 0.4rem",borderRadius:"4px"}}>
+            <span style={{fontSize:"0.68rem",fontWeight:600,color:"#295FA6",background:"#E6F0FF",padding:"0.1rem 0.4rem",borderRadius:"8px"}}>
               {license.business_type}
             </span>
           )}
           {license.is_excellent_certified && (
-            <span style={{fontSize:"0.62rem",fontWeight:700,color:"#a16207",background:"#fef3c7",padding:"0.1rem 0.4rem",borderRadius:"4px"}}>
+            <span style={{fontSize:"0.62rem",fontWeight:700,color:"#a16207",background:"#fef3c7",padding:"0.1rem 0.4rem",borderRadius:"8px"}}>
               ⭐ 優良
             </span>
           )}
         </div>
         <div style={{display:"flex",gap:"0.25rem"}}>
           <button onClick={onHistory} title="更新履歴"
-            style={{padding:"0.15rem 0.4rem",fontSize:"0.7rem",background:"white",border:"1px solid #d1d5db",borderRadius:"3px",cursor:"pointer"}}>📜</button>
+            style={{padding:"0.15rem 0.4rem",fontSize:"0.7rem",background:"white",border:"1px solid #d1d5db",borderRadius:"8px",cursor:"pointer"}}>📜</button>
           <button onClick={onEdit} title="編集"
-            style={{padding:"0.15rem 0.4rem",fontSize:"0.7rem",background:"white",border:"1px solid #d1d5db",borderRadius:"3px",cursor:"pointer"}}>✏️</button>
+            style={{padding:"0.15rem 0.4rem",fontSize:"0.7rem",background:"white",border:"1px solid #d1d5db",borderRadius:"8px",cursor:"pointer"}}>✏️</button>
           <button onClick={onDelete} title="削除"
-            style={{padding:"0.15rem 0.4rem",fontSize:"0.7rem",background:"white",border:"1px solid #fecaca",color:"#dc2626",borderRadius:"3px",cursor:"pointer"}}>🗑</button>
+            style={{padding:"0.15rem 0.4rem",fontSize:"0.7rem",background:"white",border:"1px solid #fecaca",color:"#DA1313",borderRadius:"8px",cursor:"pointer"}}>🗑</button>
         </div>
       </div>
       <div style={{fontSize:"0.7rem",color:"#374151",lineHeight:1.5}}>
@@ -2874,7 +2878,7 @@ function LicenseCard({ license, onEdit, onDelete, onHistory }) {
         {license.expiry_date && (
           <div style={{display:"flex",alignItems:"center",gap:"0.3rem"}}>
             <span>⏰ 有効期限:</span>
-            <span style={{padding:"0.05rem 0.35rem",borderRadius:"3px",background:expColors.bg,color:expColors.fg,fontWeight:700}}>
+            <span style={{padding:"0.05rem 0.35rem",borderRadius:"8px",background:expColors.bg,color:expColors.fg,fontWeight:700}}>
               {license.expiry_date} {expiry && expiry.status !== "ok" ? `(${expiry.label})` : ""}
             </span>
           </div>
@@ -2888,7 +2892,7 @@ function LicenseCard({ license, onEdit, onDelete, onHistory }) {
 
         {/* ★ 特管品目（#6 改善） */}
         {Array.isArray(license.tokkan_items) && license.tokkan_items.length > 0 && (
-          <div style={{marginTop:"0.4rem",padding:"0.35rem 0.5rem",background:"#fef2f2",borderLeft:"3px solid #fca5a5",borderRadius:"3px"}}>
+          <div style={{marginTop:"0.4rem",padding:"0.35rem 0.5rem",background:"#fef2f2",borderLeft:"3px solid #fca5a5",borderRadius:"8px"}}>
             <div style={{fontSize:"0.62rem",color:"#991b1b",fontWeight:700,marginBottom:"0.15rem"}}>⚠️ 特管品目</div>
             <div style={{fontSize:"0.7rem",color:"#78716c"}}>{license.tokkan_items.join(", ")}</div>
           </div>
@@ -2899,7 +2903,7 @@ function LicenseCard({ license, onEdit, onDelete, onHistory }) {
           const facilities = migrateStorageFacilities(license);
           if (facilities.length === 0) return null;
           return (
-            <div style={{marginTop:"0.4rem",padding:"0.35rem 0.5rem",background:"#fef3c7",borderLeft:"3px solid #fbbf24",borderRadius:"3px"}}>
+            <div style={{marginTop:"0.4rem",padding:"0.35rem 0.5rem",background:"#fef3c7",borderLeft:"3px solid #fbbf24",borderRadius:"8px"}}>
               <div style={{fontSize:"0.62rem",color:"#92400e",fontWeight:700,marginBottom:"0.2rem"}}>🏭 積替保管 施設情報 ({facilities.length}件)</div>
               {facilities.map((fac, idx) => (
                 <div key={idx} style={{marginTop: idx > 0 ? "0.3rem" : 0, paddingTop: idx > 0 ? "0.3rem" : 0, borderTop: idx > 0 ? "1px dashed #fde68a" : "none"}}>
@@ -2920,7 +2924,7 @@ function LicenseCard({ license, onEdit, onDelete, onHistory }) {
           const facilities = migrateTreatmentFacilities(license);
           if (facilities.length === 0) return null;
           return (
-            <div style={{marginTop:"0.4rem",padding:"0.35rem 0.5rem",background:"#f3e8ff",borderLeft:"3px solid #c084fc",borderRadius:"3px"}}>
+            <div style={{marginTop:"0.4rem",padding:"0.35rem 0.5rem",background:"#f3e8ff",borderLeft:"3px solid #c084fc",borderRadius:"8px"}}>
               <div style={{fontSize:"0.62rem",color:"#6b21a8",fontWeight:700,marginBottom:"0.2rem"}}>🏭 処分施設情報 ({facilities.length}件)</div>
               {facilities.map((fac, idx) => (
                 <div key={idx} style={{fontSize:"0.7rem", marginTop: idx > 0 ? "0.15rem" : 0}}>
@@ -3220,7 +3224,7 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
               type="button"
               onClick={()=>fileInputRef.current?.click()}
               disabled={ocrLoading}
-              style={{padding:"0.45rem 0.9rem",fontSize:"0.78rem",fontWeight:700,background:ocrLoading?"#9ca3af":"#d97706",color:"white",border:"none",borderRadius:"6px",cursor:ocrLoading?"wait":"pointer",whiteSpace:"nowrap"}}>
+              style={{padding:"0.45rem 0.9rem",fontSize:"0.78rem",fontWeight:700,background:ocrLoading?"#9ca3af":"#d97706",color:"white",border:"none",borderRadius:"8px",cursor:ocrLoading?"wait":"pointer",whiteSpace:"nowrap"}}>
               {ocrLoading ? "⏳ 解析中..." : "📂 画像/PDFを選択"}
             </button>
             <input
@@ -3235,7 +3239,7 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
             📄 対応: JPEG / PNG / HEIC / PDF（PDFは1ページ目のみ）
           </div>
           {ocrError && (
-            <div style={{marginTop:"0.4rem",fontSize:"0.7rem",color:"#b91c1c",background:"#fee2e2",padding:"0.3rem 0.5rem",borderRadius:"4px"}}>
+            <div style={{marginTop:"0.4rem",fontSize:"0.7rem",color:"#b91c1c",background:"#fee2e2",padding:"0.3rem 0.5rem",borderRadius:"8px"}}>
               {ocrError}
             </div>
           )}
@@ -3244,11 +3248,11 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
         <div style={{display:"flex",flexDirection:"column",gap:"0.7rem"}}>
           {/* 廃棄区分 */}
           <div>
-            <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.3rem"}}>廃棄区分 <span style={{color:"#dc2626"}}>*</span></label>
+            <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.3rem"}}>廃棄区分 <span style={{color:"#DA1313"}}>*</span></label>
             <div style={{display:"flex",flexWrap:"wrap",gap:"0.4rem"}}>
               {WASTE_CATEGORIES.map(cat => (
-                <label key={cat} style={{display:"flex",alignItems:"center",gap:"0.3rem",cursor:"pointer",padding:"0.3rem 0.6rem",borderRadius:"4px",background:form.waste_category===cat?"#dcfce7":"white",border:`1.5px solid ${form.waste_category===cat?"#16a34a":"#e5e7eb"}`}}>
-                  <input type="radio" checked={form.waste_category===cat} onChange={()=>setCategory(cat)} style={{accentColor:"#16a34a"}}/>
+                <label key={cat} style={{display:"flex",alignItems:"center",gap:"0.3rem",cursor:"pointer",padding:"0.3rem 0.6rem",borderRadius:"8px",background:form.waste_category===cat?"#dcfce7":"white",border:`1.5px solid ${form.waste_category===cat?"#009122":"#e5e7eb"}`}}>
+                  <input type="radio" checked={form.waste_category===cat} onChange={()=>setCategory(cat)} style={{accentColor:"#009122"}}/>
                   <span style={{fontSize:"0.78rem",fontWeight:form.waste_category===cat?700:500}}>{cat}</span>
                 </label>
               ))}
@@ -3259,7 +3263,7 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
           <div>
             <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.3rem"}}>業者名</label>
             <input type="text" value={form.vendor_name||""} onChange={e=>setForm({...form,vendor_name:e.target.value})}
-              style={{width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #d1d5db",borderRadius:"4px",fontSize:"0.85rem",boxSizing:"border-box"}}/>
+              style={{width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #d1d5db",borderRadius:"8px",fontSize:"0.85rem",boxSizing:"border-box"}}/>
           </div>
 
           {/* ★ 業者の住所・代表者は #4 改善で削除（企業情報側で管理） */}
@@ -3268,7 +3272,7 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
           <div>
             <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.3rem"}}>行政区</label>
             <input type="text" value={form.region||""} onChange={e=>setForm({...form,region:e.target.value})} placeholder="例: 福岡市"
-              style={{width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #d1d5db",borderRadius:"4px",fontSize:"0.85rem",boxSizing:"border-box"}}/>
+              style={{width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #d1d5db",borderRadius:"8px",fontSize:"0.85rem",boxSizing:"border-box"}}/>
           </div>
 
           {/* 許可番号 */}
@@ -3277,7 +3281,7 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
               許可番号 <span style={{fontSize:"0.65rem",color:"#9ca3af",fontWeight:500}}>（保存時に「第00000000000号」形式に統一されます）</span>
             </label>
             <input type="text" value={form.license_number||""} onChange={e=>setForm({...form,license_number:e.target.value})} placeholder="例: 第04000123456号"
-              style={{width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #d1d5db",borderRadius:"4px",fontSize:"0.85rem",boxSizing:"border-box"}}/>
+              style={{width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #d1d5db",borderRadius:"8px",fontSize:"0.85rem",boxSizing:"border-box"}}/>
           </div>
 
           {/* 許可日・有効期限 */}
@@ -3285,12 +3289,12 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
             <div style={{flex:1}}>
               <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.3rem"}}>許可日</label>
               <input type="date" value={form.license_date||""} onChange={e=>setForm({...form,license_date:e.target.value})}
-                style={{width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #d1d5db",borderRadius:"4px",fontSize:"0.85rem",boxSizing:"border-box"}}/>
+                style={{width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #d1d5db",borderRadius:"8px",fontSize:"0.85rem",boxSizing:"border-box"}}/>
             </div>
             <div style={{flex:1}}>
               <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.3rem"}}>有効期限</label>
               <input type="date" value={form.expiry_date||""} onChange={e=>setForm({...form,expiry_date:e.target.value})}
-                style={{width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #d1d5db",borderRadius:"4px",fontSize:"0.85rem",boxSizing:"border-box"}}/>
+                style={{width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #d1d5db",borderRadius:"8px",fontSize:"0.85rem",boxSizing:"border-box"}}/>
             </div>
           </div>
 
@@ -3299,8 +3303,8 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
             <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.3rem"}}>業務区分</label>
             <div style={{display:"flex",flexWrap:"wrap",gap:"0.3rem"}}>
               {businessTypes.map(bt => (
-                <label key={bt} style={{display:"flex",alignItems:"center",gap:"0.3rem",cursor:"pointer",padding:"0.25rem 0.5rem",borderRadius:"4px",background:form.business_type===bt?"#dbeafe":"white",border:`1.5px solid ${form.business_type===bt?"#2563eb":"#e5e7eb"}`}}>
-                  <input type="radio" checked={form.business_type===bt} onChange={()=>setForm({...form,business_type:bt})} style={{accentColor:"#2563eb"}}/>
+                <label key={bt} style={{display:"flex",alignItems:"center",gap:"0.3rem",cursor:"pointer",padding:"0.25rem 0.5rem",borderRadius:"8px",background:form.business_type===bt?"#E6F0FF":"white",border:`1.5px solid ${form.business_type===bt?"#0070D4":"#e5e7eb"}`}}>
+                  <input type="radio" checked={form.business_type===bt} onChange={()=>setForm({...form,business_type:bt})} style={{accentColor:"#0070D4"}}/>
                   <span style={{fontSize:"0.74rem",fontWeight:form.business_type===bt?700:500}}>{bt}</span>
                 </label>
               ))}
@@ -3315,14 +3319,14 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
                 {(() => {
                   // ★ 自動判定の表示（#8 改善）
                   const inferred = inferExcellentCertified(form.license_date, form.expiry_date);
-                  if (inferred === true) return <span style={{fontSize:"0.65rem",color:"#059669",marginLeft:"0.4rem",fontWeight:600}}>（許可期間 7年 → 優良認定の可能性あり）</span>;
+                  if (inferred === true) return <span style={{fontSize:"0.65rem",color:"#009122",marginLeft:"0.4rem",fontWeight:600}}>（許可期間 7年 → 優良認定の可能性あり）</span>;
                   if (inferred === false) return <span style={{fontSize:"0.65rem",color:"#6b7280",marginLeft:"0.4rem"}}>（許可期間 5年 → 通常）</span>;
                   return null;
                 })()}
               </label>
               <div style={{display:"flex",gap:"0.4rem"}}>
                 {[{val:true,label:"あり"},{val:false,label:"なし"}].map(o => (
-                  <label key={String(o.val)} style={{display:"flex",alignItems:"center",gap:"0.3rem",cursor:"pointer",padding:"0.3rem 0.6rem",borderRadius:"4px",background:form.is_excellent_certified===o.val?"#fef3c7":"white",border:`1.5px solid ${form.is_excellent_certified===o.val?"#a16207":"#e5e7eb"}`}}>
+                  <label key={String(o.val)} style={{display:"flex",alignItems:"center",gap:"0.3rem",cursor:"pointer",padding:"0.3rem 0.6rem",borderRadius:"8px",background:form.is_excellent_certified===o.val?"#fef3c7":"white",border:`1.5px solid ${form.is_excellent_certified===o.val?"#a16207":"#e5e7eb"}`}}>
                     <input type="radio" checked={form.is_excellent_certified===o.val} onChange={()=>setForm({...form,is_excellent_certified:o.val})} style={{accentColor:"#a16207"}}/>
                     <span style={{fontSize:"0.78rem"}}>{o.label}</span>
                   </label>
@@ -3337,7 +3341,7 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
               <label style={{fontSize:"0.72rem",fontWeight:700,color:"#374151"}}>許可品目</label>
               {isSanpai && (
                 <button onClick={()=>setShowItemPicker(!showItemPicker)} type="button"
-                  style={{padding:"0.2rem 0.5rem",fontSize:"0.7rem",background:"#f3f4f6",border:"1px solid #d1d5db",borderRadius:"3px",cursor:"pointer"}}>
+                  style={{padding:"0.2rem 0.5rem",fontSize:"0.7rem",background:"#f3f4f6",border:"1px solid #d1d5db",borderRadius:"8px",cursor:"pointer"}}>
                   {showItemPicker ? "閉じる" : "+ 標準品目から選択"}
                 </button>
               )}
@@ -3346,21 +3350,21 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
             {(form.permitted_items || []).length > 0 && (
               <div style={{display:"flex",flexWrap:"wrap",gap:"0.25rem",marginBottom:"0.3rem"}}>
                 {form.permitted_items.map(item => (
-                  <span key={item} style={{fontSize:"0.7rem",background:"#dbeafe",color:"#1e40af",padding:"0.15rem 0.4rem",borderRadius:"3px",display:"inline-flex",alignItems:"center",gap:"0.25rem"}}>
+                  <span key={item} style={{fontSize:"0.7rem",background:"#E6F0FF",color:"#295FA6",padding:"0.15rem 0.4rem",borderRadius:"8px",display:"inline-flex",alignItems:"center",gap:"0.25rem"}}>
                     {item}
-                    <button onClick={()=>toggleItem(item)} type="button" style={{background:"none",border:"none",cursor:"pointer",padding:0,color:"#1e40af"}}>×</button>
+                    <button onClick={()=>toggleItem(item)} type="button" style={{background:"none",border:"none",cursor:"pointer",padding:0,color:"#295FA6"}}>×</button>
                   </span>
                 ))}
               </div>
             )}
             {/* 標準品目チェックボックス */}
             {isSanpai && showItemPicker && (
-              <div style={{padding:"0.5rem",background:"#f8fafc",border:"1px solid #e5e7eb",borderRadius:"4px",marginBottom:"0.3rem",display:"flex",flexWrap:"wrap",gap:"0.3rem"}}>
+              <div style={{padding:"0.5rem",background:"#f8fafc",border:"1px solid #e5e7eb",borderRadius:"8px",marginBottom:"0.3rem",display:"flex",flexWrap:"wrap",gap:"0.3rem"}}>
                 {SANPAI_ITEMS.map(item => {
                   const checked = (form.permitted_items||[]).includes(item);
                   return (
-                    <label key={item} style={{display:"flex",alignItems:"center",gap:"0.2rem",cursor:"pointer",fontSize:"0.7rem",padding:"0.2rem 0.4rem",borderRadius:"3px",background:checked?"#dbeafe":"white",border:`1px solid ${checked?"#2563eb":"#e5e7eb"}`}}>
-                      <input type="checkbox" checked={checked} onChange={()=>toggleItem(item)} style={{margin:0,accentColor:"#2563eb"}}/>
+                    <label key={item} style={{display:"flex",alignItems:"center",gap:"0.2rem",cursor:"pointer",fontSize:"0.7rem",padding:"0.2rem 0.4rem",borderRadius:"8px",background:checked?"#E6F0FF":"white",border:`1px solid ${checked?"#0070D4":"#e5e7eb"}`}}>
+                      <input type="checkbox" checked={checked} onChange={()=>toggleItem(item)} style={{margin:0,accentColor:"#0070D4"}}/>
                       <span>{item}</span>
                     </label>
                   );
@@ -3379,16 +3383,16 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
                   e.target.value = "";
                 }
               }}
-              style={{width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #d1d5db",borderRadius:"4px",fontSize:"0.8rem",boxSizing:"border-box"}}/>
+              style={{width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #d1d5db",borderRadius:"8px",fontSize:"0.8rem",boxSizing:"border-box"}}/>
           </div>
 
           {/* ★ 特管品目（特管産廃の場合のみ）#6 改善 */}
           {isTokkan && (
-            <div style={{padding:"0.6rem 0.7rem",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:"6px"}}>
+            <div style={{padding:"0.6rem 0.7rem",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:"8px"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.3rem"}}>
                 <label style={{fontSize:"0.72rem",fontWeight:700,color:"#991b1b"}}>⚠️ 特別管理産業廃棄物 品目</label>
                 <button onClick={()=>setShowTokkanPicker(!showTokkanPicker)} type="button"
-                  style={{padding:"0.2rem 0.5rem",fontSize:"0.7rem",background:"#fee2e2",border:"1px solid #fca5a5",color:"#991b1b",borderRadius:"3px",cursor:"pointer"}}>
+                  style={{padding:"0.2rem 0.5rem",fontSize:"0.7rem",background:"#fee2e2",border:"1px solid #fca5a5",color:"#991b1b",borderRadius:"8px",cursor:"pointer"}}>
                   {showTokkanPicker ? "閉じる" : "+ 特管標準品目から選択"}
                 </button>
               </div>
@@ -3396,7 +3400,7 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
               {(form.tokkan_items || []).length > 0 && (
                 <div style={{display:"flex",flexWrap:"wrap",gap:"0.25rem",marginBottom:"0.3rem"}}>
                   {form.tokkan_items.map(item => (
-                    <span key={item} style={{fontSize:"0.7rem",background:"#fee2e2",color:"#991b1b",padding:"0.15rem 0.4rem",borderRadius:"3px",display:"inline-flex",alignItems:"center",gap:"0.25rem",fontWeight:600}}>
+                    <span key={item} style={{fontSize:"0.7rem",background:"#fee2e2",color:"#991b1b",padding:"0.15rem 0.4rem",borderRadius:"8px",display:"inline-flex",alignItems:"center",gap:"0.25rem",fontWeight:600}}>
                       {item}
                       <button onClick={()=>setForm({...form,tokkan_items:form.tokkan_items.filter(x=>x!==item)})} type="button" style={{background:"none",border:"none",cursor:"pointer",padding:0,color:"#991b1b"}}>×</button>
                     </span>
@@ -3405,15 +3409,15 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
               )}
               {/* 標準特管品目チェックボックス */}
               {showTokkanPicker && (
-                <div style={{padding:"0.5rem",background:"white",border:"1px solid #fca5a5",borderRadius:"4px",marginBottom:"0.3rem",display:"flex",flexWrap:"wrap",gap:"0.3rem"}}>
+                <div style={{padding:"0.5rem",background:"white",border:"1px solid #fca5a5",borderRadius:"8px",marginBottom:"0.3rem",display:"flex",flexWrap:"wrap",gap:"0.3rem"}}>
                   {SANPAI_TOKKAN_ITEMS.map(item => {
                     const checked = (form.tokkan_items||[]).includes(item);
                     return (
-                      <label key={item} style={{display:"flex",alignItems:"center",gap:"0.2rem",cursor:"pointer",fontSize:"0.7rem",padding:"0.2rem 0.4rem",borderRadius:"3px",background:checked?"#fee2e2":"white",border:`1px solid ${checked?"#dc2626":"#e5e7eb"}`}}>
+                      <label key={item} style={{display:"flex",alignItems:"center",gap:"0.2rem",cursor:"pointer",fontSize:"0.7rem",padding:"0.2rem 0.4rem",borderRadius:"8px",background:checked?"#fee2e2":"white",border:`1px solid ${checked?"#DA1313":"#e5e7eb"}`}}>
                         <input type="checkbox" checked={checked} onChange={()=>{
                           const cur = form.tokkan_items||[];
                           setForm({...form,tokkan_items:cur.includes(item)?cur.filter(x=>x!==item):[...cur,item]});
-                        }} style={{margin:0,accentColor:"#dc2626"}}/>
+                        }} style={{margin:0,accentColor:"#DA1313"}}/>
                         <span>{item}</span>
                       </label>
                     );
@@ -3431,7 +3435,7 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
                     e.target.value = "";
                   }
                 }}
-                style={{width:"100%",padding:"0.35rem 0.5rem",border:"1px solid #fca5a5",borderRadius:"4px",fontSize:"0.78rem",boxSizing:"border-box",background:"white"}}/>
+                style={{width:"100%",padding:"0.35rem 0.5rem",border:"1px solid #fca5a5",borderRadius:"8px",fontSize:"0.78rem",boxSizing:"border-box",background:"white"}}/>
             </div>
           )}
 
@@ -3440,19 +3444,19 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
             <div>
               <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.3rem"}}>処理方法</label>
               <input type="text" value={form.treatment_method||""} onChange={e=>setForm({...form,treatment_method:e.target.value})} placeholder="例: 焼却、破砕、選別など"
-                style={{width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #d1d5db",borderRadius:"4px",fontSize:"0.85rem",boxSizing:"border-box"}}/>
+                style={{width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #d1d5db",borderRadius:"8px",fontSize:"0.85rem",boxSizing:"border-box"}}/>
             </div>
           )}
 
           {/* ★ 積替保管施設（複数登録可）— #1, #3 改善 */}
           {hasStorage && (
-            <div style={{padding:"0.6rem 0.7rem",background:"#fef3c7",border:"1px solid #fde68a",borderRadius:"6px",display:"flex",flexDirection:"column",gap:"0.5rem"}}>
+            <div style={{padding:"0.6rem 0.7rem",background:"#fef3c7",border:"1px solid #fde68a",borderRadius:"8px",display:"flex",flexDirection:"column",gap:"0.5rem"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                 <div style={{fontSize:"0.7rem",color:"#92400e",fontWeight:700}}>🏭 積替保管 施設情報 ({(form.storage_facilities||[]).length}件)</div>
                 <button type="button" onClick={()=>{
                   const cur = form.storage_facilities || [];
                   setForm({...form, storage_facilities:[...cur, {address:"", area:"", items:[]}]});
-                }} style={{padding:"0.2rem 0.55rem",fontSize:"0.7rem",fontWeight:700,background:"#d97706",color:"white",border:"none",borderRadius:"4px",cursor:"pointer"}}>+ 施設を追加</button>
+                }} style={{padding:"0.2rem 0.55rem",fontSize:"0.7rem",fontWeight:700,background:"#d97706",color:"white",border:"none",borderRadius:"8px",cursor:"pointer"}}>+ 施設を追加</button>
               </div>
               {(form.storage_facilities||[]).length === 0 && (
                 <div style={{fontSize:"0.72rem",color:"#92400e",fontStyle:"italic",padding:"0.3rem 0",textAlign:"center"}}>
@@ -3460,13 +3464,13 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
                 </div>
               )}
               {(form.storage_facilities||[]).map((fac, idx) => (
-                <div key={idx} style={{padding:"0.5rem 0.6rem",background:"white",border:"1px solid #fcd34d",borderRadius:"5px",display:"flex",flexDirection:"column",gap:"0.4rem"}}>
+                <div key={idx} style={{padding:"0.5rem 0.6rem",background:"white",border:"1px solid #fcd34d",borderRadius:"8px",display:"flex",flexDirection:"column",gap:"0.4rem"}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                     <span style={{fontSize:"0.7rem",fontWeight:700,color:"#92400e"}}>施設 {idx + 1}</span>
                     <button type="button" onClick={()=>{
                       const newList = form.storage_facilities.filter((_,i)=>i!==idx);
                       setForm({...form, storage_facilities:newList});
-                    }} style={{background:"none",border:"none",color:"#dc2626",cursor:"pointer",fontSize:"0.78rem",fontWeight:700,padding:"0.1rem 0.4rem"}}>🗑 削除</button>
+                    }} style={{background:"none",border:"none",color:"#DA1313",cursor:"pointer",fontSize:"0.78rem",fontWeight:700,padding:"0.1rem 0.4rem"}}>🗑 削除</button>
                   </div>
                   <div>
                     <label style={{display:"block",fontSize:"0.66rem",fontWeight:600,color:"#374151",marginBottom:"0.2rem"}}>所在地</label>
@@ -3477,7 +3481,7 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
                         setForm({...form, storage_facilities:newList});
                       }}
                       placeholder="例: 北九州市八幡西区陣原二丁目8番3"
-                      style={{width:"100%",padding:"0.35rem 0.55rem",border:"1px solid #fcd34d",borderRadius:"4px",fontSize:"0.82rem",boxSizing:"border-box",background:"white"}}/>
+                      style={{width:"100%",padding:"0.35rem 0.55rem",border:"1px solid #fcd34d",borderRadius:"8px",fontSize:"0.82rem",boxSizing:"border-box",background:"white"}}/>
                   </div>
                   <div>
                     <label style={{display:"block",fontSize:"0.66rem",fontWeight:600,color:"#374151",marginBottom:"0.2rem"}}>
@@ -3495,7 +3499,7 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
                         setForm({...form, storage_facilities:newList});
                       }}
                       placeholder="例: 55.1㎡（平米/平方メートル/m2 でも可）"
-                      style={{width:"100%",padding:"0.35rem 0.55rem",border:"1px solid #fcd34d",borderRadius:"4px",fontSize:"0.82rem",boxSizing:"border-box",background:"white"}}/>
+                      style={{width:"100%",padding:"0.35rem 0.55rem",border:"1px solid #fcd34d",borderRadius:"8px",fontSize:"0.82rem",boxSizing:"border-box",background:"white"}}/>
                   </div>
                   <div>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.2rem"}}>
@@ -3503,7 +3507,7 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
                       {isSanpai && (
                         <button type="button" onClick={()=>{
                           setStoragePickerOpen(prev=>({...prev, [idx]:!prev[idx]}));
-                        }} style={{padding:"0.15rem 0.45rem",fontSize:"0.65rem",background:"#f3f4f6",border:"1px solid #d1d5db",borderRadius:"3px",cursor:"pointer"}}>
+                        }} style={{padding:"0.15rem 0.45rem",fontSize:"0.65rem",background:"#f3f4f6",border:"1px solid #d1d5db",borderRadius:"8px",cursor:"pointer"}}>
                           {storagePickerOpen[idx] ? "閉じる" : "+ 標準品目から選択"}
                         </button>
                       )}
@@ -3512,7 +3516,7 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
                     {(fac.items||[]).length > 0 && (
                       <div style={{display:"flex",flexWrap:"wrap",gap:"0.2rem",marginBottom:"0.25rem"}}>
                         {fac.items.map((item, itemIdx) => (
-                          <span key={itemIdx} style={{display:"inline-flex",alignItems:"center",gap:"0.2rem",padding:"0.12rem 0.4rem",background:"#fbbf24",color:"#7c2d12",fontSize:"0.7rem",borderRadius:"3px",fontWeight:600}}>
+                          <span key={itemIdx} style={{display:"inline-flex",alignItems:"center",gap:"0.2rem",padding:"0.12rem 0.4rem",background:"#fbbf24",color:"#7c2d12",fontSize:"0.7rem",borderRadius:"8px",fontWeight:600}}>
                             {item}
                             <button type="button" onClick={()=>{
                               const newList = [...form.storage_facilities];
@@ -3525,7 +3529,7 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
                     )}
                     {/* 標準品目チェックボックス（#3 改善 + No.17 特管対応） */}
                     {isSanpai && storagePickerOpen[idx] && (
-                      <div style={{padding:"0.4rem",background:"#fef9c3",border:"1px solid #fde68a",borderRadius:"4px",marginBottom:"0.25rem",display:"flex",flexDirection:"column",gap:"0.35rem"}}>
+                      <div style={{padding:"0.4rem",background:"#fef9c3",border:"1px solid #fde68a",borderRadius:"8px",marginBottom:"0.25rem",display:"flex",flexDirection:"column",gap:"0.35rem"}}>
                         {/* 普通産廃品目 */}
                         <div>
                           <div style={{fontSize:"0.62rem",fontWeight:700,color:"#78350f",marginBottom:"0.2rem"}}>📦 普通産廃品目</div>
@@ -3533,7 +3537,7 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
                             {SANPAI_ITEMS.map(item => {
                               const checked = (fac.items||[]).includes(item);
                               return (
-                                <label key={item} style={{display:"flex",alignItems:"center",gap:"0.18rem",cursor:"pointer",fontSize:"0.65rem",padding:"0.15rem 0.35rem",borderRadius:"3px",background:checked?"#fbbf24":"white",border:`1px solid ${checked?"#d97706":"#e5e7eb"}`}}>
+                                <label key={item} style={{display:"flex",alignItems:"center",gap:"0.18rem",cursor:"pointer",fontSize:"0.65rem",padding:"0.15rem 0.35rem",borderRadius:"8px",background:checked?"#fbbf24":"white",border:`1px solid ${checked?"#d97706":"#e5e7eb"}`}}>
                                   <input type="checkbox" checked={checked} onChange={()=>{
                                     const newList = [...form.storage_facilities];
                                     const curItems = newList[idx].items || [];
@@ -3554,13 +3558,13 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
                               {SANPAI_TOKKAN_ITEMS.map(item => {
                                 const checked = (fac.items||[]).includes(item);
                                 return (
-                                  <label key={item} style={{display:"flex",alignItems:"center",gap:"0.18rem",cursor:"pointer",fontSize:"0.65rem",padding:"0.15rem 0.35rem",borderRadius:"3px",background:checked?"#fca5a5":"white",border:`1px solid ${checked?"#dc2626":"#e5e7eb"}`}}>
+                                  <label key={item} style={{display:"flex",alignItems:"center",gap:"0.18rem",cursor:"pointer",fontSize:"0.65rem",padding:"0.15rem 0.35rem",borderRadius:"8px",background:checked?"#fca5a5":"white",border:`1px solid ${checked?"#DA1313":"#e5e7eb"}`}}>
                                     <input type="checkbox" checked={checked} onChange={()=>{
                                       const newList = [...form.storage_facilities];
                                       const curItems = newList[idx].items || [];
                                       newList[idx] = {...newList[idx], items: curItems.includes(item) ? curItems.filter(x=>x!==item) : [...curItems, item]};
                                       setForm({...form, storage_facilities:newList});
-                                    }} style={{margin:0,accentColor:"#dc2626"}}/>
+                                    }} style={{margin:0,accentColor:"#DA1313"}}/>
                                     <span>{item}</span>
                                   </label>
                                 );
@@ -3572,7 +3576,7 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
                     )}
                     {/* 自由入力 */}
                     <input type="text" placeholder="品目を入力してEnter"
-                      style={{width:"100%",padding:"0.3rem 0.45rem",border:"1px solid #fcd34d",borderRadius:"4px",fontSize:"0.74rem",boxSizing:"border-box",background:"white"}}
+                      style={{width:"100%",padding:"0.3rem 0.45rem",border:"1px solid #fcd34d",borderRadius:"8px",fontSize:"0.74rem",boxSizing:"border-box",background:"white"}}
                       onKeyDown={e=>{
                         if(e.key==="Enter" && e.target.value.trim()){
                           e.preventDefault();
@@ -3594,22 +3598,22 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
 
           {/* ★ 処分施設所在地（複数登録可）— #7 改善 */}
           {isDisposal && isSanpai && (
-            <div style={{padding:"0.6rem 0.7rem",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:"6px",display:"flex",flexDirection:"column",gap:"0.4rem"}}>
+            <div style={{padding:"0.6rem 0.7rem",background:"#F2F7FF",border:"1px solid #bfdbfe",borderRadius:"8px",display:"flex",flexDirection:"column",gap:"0.4rem"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <div style={{fontSize:"0.7rem",color:"#1e40af",fontWeight:700}}>⚙️ 処分 施設所在地 ({(form.treatment_facilities||[]).length}件)</div>
+                <div style={{fontSize:"0.7rem",color:"#295FA6",fontWeight:700}}>⚙️ 処分 施設所在地 ({(form.treatment_facilities||[]).length}件)</div>
                 <button type="button" onClick={()=>{
                   const cur = form.treatment_facilities || [];
                   setForm({...form, treatment_facilities:[...cur, {address:""}]});
-                }} style={{padding:"0.2rem 0.55rem",fontSize:"0.7rem",fontWeight:700,background:"#2563eb",color:"white",border:"none",borderRadius:"4px",cursor:"pointer"}}>+ 施設を追加</button>
+                }} style={{padding:"0.2rem 0.55rem",fontSize:"0.7rem",fontWeight:700,background:"#0070D4",color:"white",border:"none",borderRadius:"8px",cursor:"pointer"}}>+ 施設を追加</button>
               </div>
               {(form.treatment_facilities||[]).length === 0 && (
-                <div style={{fontSize:"0.72rem",color:"#1e40af",fontStyle:"italic",padding:"0.3rem 0",textAlign:"center"}}>
+                <div style={{fontSize:"0.72rem",color:"#295FA6",fontStyle:"italic",padding:"0.3rem 0",textAlign:"center"}}>
                   「+ 施設を追加」ボタンから施設情報を登録してください
                 </div>
               )}
               {(form.treatment_facilities||[]).map((fac, idx) => (
-                <div key={idx} style={{padding:"0.4rem 0.55rem",background:"white",border:"1px solid #bfdbfe",borderRadius:"5px",display:"flex",alignItems:"center",gap:"0.5rem"}}>
-                  <span style={{fontSize:"0.66rem",fontWeight:700,color:"#1e40af",flexShrink:0}}>{idx + 1}.</span>
+                <div key={idx} style={{padding:"0.4rem 0.55rem",background:"white",border:"1px solid #bfdbfe",borderRadius:"8px",display:"flex",alignItems:"center",gap:"0.5rem"}}>
+                  <span style={{fontSize:"0.66rem",fontWeight:700,color:"#295FA6",flexShrink:0}}>{idx + 1}.</span>
                   <input type="text" value={fac.address||""}
                     onChange={e=>{
                       const newList = [...form.treatment_facilities];
@@ -3617,11 +3621,11 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
                       setForm({...form, treatment_facilities:newList});
                     }}
                     placeholder="例: 北九州市八幡西区陣原二丁目8番3"
-                    style={{flex:1,padding:"0.3rem 0.5rem",border:"1px solid #bfdbfe",borderRadius:"4px",fontSize:"0.8rem",boxSizing:"border-box",background:"white"}}/>
+                    style={{flex:1,padding:"0.3rem 0.5rem",border:"1px solid #bfdbfe",borderRadius:"8px",fontSize:"0.8rem",boxSizing:"border-box",background:"white"}}/>
                   <button type="button" onClick={()=>{
                     const newList = form.treatment_facilities.filter((_,i)=>i!==idx);
                     setForm({...form, treatment_facilities:newList});
-                  }} style={{background:"none",border:"none",color:"#dc2626",cursor:"pointer",fontSize:"0.85rem",padding:"0.1rem 0.3rem",flexShrink:0}}>🗑</button>
+                  }} style={{background:"none",border:"none",color:"#DA1313",cursor:"pointer",fontSize:"0.85rem",padding:"0.1rem 0.3rem",flexShrink:0}}>🗑</button>
                 </div>
               ))}
             </div>
@@ -3631,15 +3635,15 @@ function LicenseEditModal({ license, vendorName, onClose, onSave }) {
           <div>
             <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.3rem"}}>備考</label>
             <textarea value={form.notes||""} onChange={e=>setForm({...form,notes:e.target.value})}
-              style={{width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #d1d5db",borderRadius:"4px",fontSize:"0.85rem",height:60,boxSizing:"border-box",fontFamily:"inherit",resize:"vertical"}}/>
+              style={{width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #d1d5db",borderRadius:"8px",fontSize:"0.85rem",height:60,boxSizing:"border-box",fontFamily:"inherit",resize:"vertical"}}/>
           </div>
 
           {/* 保存ボタン */}
           <div style={{display:"flex",gap:"0.5rem",marginTop:"0.5rem"}}>
             <button onClick={onClose} disabled={saving}
-              style={{flex:1,padding:"0.6rem",fontSize:"0.85rem",fontWeight:700,background:"#f3f4f6",border:"1px solid #d1d5db",borderRadius:"4px",cursor:"pointer"}}>キャンセル</button>
+              style={{flex:1,padding:"0.6rem",fontSize:"0.85rem",fontWeight:700,background:"#f3f4f6",border:"1px solid #d1d5db",borderRadius:"8px",cursor:"pointer"}}>キャンセル</button>
             <button onClick={handleSubmit} disabled={saving || !form.waste_category}
-              style={{flex:2,padding:"0.6rem",fontSize:"0.85rem",fontWeight:700,background:saving?"#9ca3af":"#16a34a",color:"white",border:"none",borderRadius:"4px",cursor:saving?"wait":"pointer"}}>
+              style={{flex:2,padding:"0.6rem",fontSize:"0.85rem",fontWeight:700,background:saving?"#9ca3af":"#009122",color:"white",border:"none",borderRadius:"8px",cursor:saving?"wait":"pointer"}}>
               {saving ? "保存中..." : "💾 保存"}
             </button>
           </div>
@@ -3691,7 +3695,7 @@ function DustalkInfoSection({ vendorId, vendorName, bizCards = [], onAddBizCard 
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.75rem"}}>
         <h4 style={{margin:0,fontSize:"0.95rem",fontWeight:800,color:"#111827"}}>🚚 ダストーク登録情報</h4>
         <button onClick={() => setEditing(true)}
-          style={{padding:"0.35rem 0.75rem",fontSize:"0.78rem",fontWeight:700,background:"#2563eb",color:"white",border:"none",borderRadius:"6px",cursor:"pointer"}}>
+          style={{padding:"0.35rem 0.75rem",fontSize:"0.78rem",fontWeight:700,background:"#0070D4",color:"white",border:"none",borderRadius:"8px",cursor:"pointer"}}>
           ✏️ {info ? "編集" : "登録"}
         </button>
       </div>
@@ -3706,7 +3710,7 @@ function DustalkInfoSection({ vendorId, vendorName, bizCards = [], onAddBizCard 
       {info && (
         <div style={{display:"flex",flexDirection:"column",gap:"0.75rem"}}>
           {/* 基本情報 */}
-          <DustalkInfoBlock title="基本情報" color="#2563eb">
+          <DustalkInfoBlock title="基本情報" color="#0070D4">
             <DustalkInfoRow label="業者名" value={data.business_name || vendorName}/>
             <DustalkInfoRow label="ウェブサイトURL" value={data.website_url}/>
             <DustalkInfoRow label="代表電話番号" value={data.company_phone}/>
@@ -3733,7 +3737,7 @@ function DustalkInfoSection({ vendorId, vendorName, bizCards = [], onAddBizCard 
                     if (list.length === 0) return null;
                     return (
                       <div key={t.key} style={{display:"flex",alignItems:"flex-start",gap:"0.5rem"}}>
-                        <span style={{flexShrink:0,fontSize:"0.7rem",fontWeight:700,color:t.color,background:t.bg,border:`1px solid ${t.border}`,padding:"0.2rem 0.5rem",borderRadius:"6px",whiteSpace:"nowrap"}}>
+                        <span style={{flexShrink:0,fontSize:"0.7rem",fontWeight:700,color:t.color,background:t.bg,border:`1px solid ${t.border}`,padding:"0.2rem 0.5rem",borderRadius:"8px",whiteSpace:"nowrap"}}>
                           {t.icon} {t.label}
                         </span>
                         <div style={{display:"flex",flexWrap:"wrap",gap:"0.3rem"}}>
@@ -3752,7 +3756,7 @@ function DustalkInfoSection({ vendorId, vendorName, bizCards = [], onAddBizCard 
           })()}
 
           {/* 銀行口座情報 */}
-          <DustalkInfoBlock title="銀行口座情報" color="#059669">
+          <DustalkInfoBlock title="銀行口座情報" color="#009122">
             <DustalkInfoRow label="金融機関名" value={data.bank_name}/>
             <DustalkInfoRow label="支店名" value={data.bank_branch}/>
             <DustalkInfoRow label="預金種別" value={data.bank_account_type}/>
@@ -3770,7 +3774,7 @@ function DustalkInfoSection({ vendorId, vendorName, bizCards = [], onAddBizCard 
           </DustalkInfoBlock>
 
           {/* 代表者情報 */}
-          <DustalkInfoBlock title="代表者情報" color="#dc2626" subtitle="契約書や請求書発行時に記載する情報として利用します">
+          <DustalkInfoBlock title="代表者情報" color="#DA1313" subtitle="契約書や請求書発行時に記載する情報として利用します">
             <DustalkInfoRow label="代表者名" value={data.rep_name}/>
             <DustalkInfoRow label="代表者ふりがな" value={data.rep_furigana}/>
             <DustalkInfoRow label="代表者電話番号" value={data.rep_phone}/>
@@ -3806,8 +3810,8 @@ function DustalkInfoSection({ vendorId, vendorName, bizCards = [], onAddBizCard 
                 {data.additional_contacts.map((c, idx) => {
                   const m = matchContactToBizcard(c, bizCards, data.business_name || vendorName);
                   return (
-                    <div key={idx} style={{display:"flex",alignItems:"center",gap:"0.5rem",fontSize:"0.78rem",padding:"0.4rem 0.5rem",background:"#fff7ed",borderRadius:"6px",border:"1px solid #fed7aa"}}>
-                      <span style={{fontSize:"0.66rem",fontWeight:700,color:"#9a3412",background:"#fed7aa",padding:"0.1rem 0.4rem",borderRadius:"4px"}}>担当者{idx+2}</span>
+                    <div key={idx} style={{display:"flex",alignItems:"center",gap:"0.5rem",fontSize:"0.78rem",padding:"0.4rem 0.5rem",background:"#fff7ed",borderRadius:"8px",border:"1px solid #fed7aa"}}>
+                      <span style={{fontSize:"0.66rem",fontWeight:700,color:"#9a3412",background:"#fed7aa",padding:"0.1rem 0.4rem",borderRadius:"8px"}}>担当者{idx+2}</span>
                       <span style={{fontWeight:600,color:"#111827"}}>{c?.name || "（無記名）"}</span>
                       {c?.email && <span style={{color:"#6b7280",fontSize:"0.72rem"}}>{c.email}</span>}
                       <BizcardMatchBadge match={m}/>
@@ -3845,7 +3849,7 @@ function DustalkInfoBlock({ title, color, subtitle, children }) {
   return (
     <div style={{background:"white",border:"1px solid #e5e7eb",borderRadius:"8px",padding:"0.75rem 1rem"}}>
       <h5 style={{margin:"0 0 0.5rem 0",fontSize:"0.85rem",fontWeight:700,color}}>{title}</h5>
-      {subtitle && <div style={{fontSize:"0.7rem",color:"#dc2626",marginBottom:"0.5rem"}}>{subtitle}</div>}
+      {subtitle && <div style={{fontSize:"0.7rem",color:"#DA1313",marginBottom:"0.5rem"}}>{subtitle}</div>}
       <div style={{display:"flex",flexDirection:"column",gap:"0.3rem"}}>
         {children}
       </div>
@@ -4247,18 +4251,18 @@ function DustalkInfoEditModal({ data, vendorName, bizCards = [], onAddBizCard, o
       {options ? (
         <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap"}}>
           {options.map(opt => (
-            <label key={String(opt.val)} style={{display:"flex",alignItems:"center",gap:"0.3rem",cursor:"pointer",padding:"0.3rem 0.6rem",borderRadius:"4px",background:form[k]===opt.val?"#dbeafe":"white",border:`1.5px solid ${form[k]===opt.val?"#2563eb":"#e5e7eb"}`}}>
-              <input type="radio" checked={form[k]===opt.val} onChange={()=>setForm({...form,[k]:opt.val})} style={{accentColor:"#2563eb"}}/>
+            <label key={String(opt.val)} style={{display:"flex",alignItems:"center",gap:"0.3rem",cursor:"pointer",padding:"0.3rem 0.6rem",borderRadius:"8px",background:form[k]===opt.val?"#E6F0FF":"white",border:`1.5px solid ${form[k]===opt.val?"#0070D4":"#e5e7eb"}`}}>
+              <input type="radio" checked={form[k]===opt.val} onChange={()=>setForm({...form,[k]:opt.val})} style={{accentColor:"#0070D4"}}/>
               <span style={{fontSize:"0.78rem"}}>{opt.label}</span>
             </label>
           ))}
         </div>
       ) : multiline ? (
         <textarea value={form[k]||""} onChange={e=>setForm({...form,[k]:e.target.value})} placeholder={placeholder}
-          style={{width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #d1d5db",borderRadius:"4px",fontSize:"0.85rem",boxSizing:"border-box",fontFamily:"inherit",height:60,resize:"vertical"}}/>
+          style={{width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #d1d5db",borderRadius:"8px",fontSize:"0.85rem",boxSizing:"border-box",fontFamily:"inherit",height:60,resize:"vertical"}}/>
       ) : (
         <input type={type} value={form[k]==null?"":form[k]} onChange={e=>setForm({...form,[k]:type==="number"?(e.target.value===""?"":Number(e.target.value)):e.target.value})} placeholder={placeholder}
-          style={{width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #d1d5db",borderRadius:"4px",fontSize:"0.85rem",boxSizing:"border-box"}}/>
+          style={{width:"100%",padding:"0.4rem 0.6rem",border:"1px solid #d1d5db",borderRadius:"8px",fontSize:"0.85rem",boxSizing:"border-box"}}/>
       )}
     </div>
   );
@@ -4342,10 +4346,10 @@ function DustalkInfoEditModal({ data, vendorName, bizCards = [], onAddBizCard, o
   };
 
   const tabs = [
-    {id:"basic", label:"基本情報", color:"#2563eb"},
-    {id:"bank", label:"銀行口座", color:"#059669"},
+    {id:"basic", label:"基本情報", color:"#0070D4"},
+    {id:"bank", label:"銀行口座", color:"#009122"},
     {id:"other", label:"その他", color:"#7c3aed"},
-    {id:"rep", label:"代表者", color:"#dc2626"},
+    {id:"rep", label:"代表者", color:"#DA1313"},
     {id:"contact", label:"担当者", color:"#d97706"},
   ];
 
@@ -4368,7 +4372,7 @@ function DustalkInfoEditModal({ data, vendorName, bizCards = [], onAddBizCard, o
               type="button"
               onClick={()=>fileInputRef.current?.click()}
               disabled={ocrLoading}
-              style={{padding:"0.45rem 0.9rem",fontSize:"0.78rem",fontWeight:700,background:ocrLoading?"#9ca3af":"#d97706",color:"white",border:"none",borderRadius:"6px",cursor:ocrLoading?"wait":"pointer",whiteSpace:"nowrap"}}>
+              style={{padding:"0.45rem 0.9rem",fontSize:"0.78rem",fontWeight:700,background:ocrLoading?"#9ca3af":"#d97706",color:"white",border:"none",borderRadius:"8px",cursor:ocrLoading?"wait":"pointer",whiteSpace:"nowrap"}}>
               {ocrLoading ? "⏳ 解析中..." : "📂 Excel/PDF/画像を選択"}
             </button>
             <input
@@ -4384,12 +4388,12 @@ function DustalkInfoEditModal({ data, vendorName, bizCards = [], onAddBizCard, o
             💡 Excel は標準テンプレートを直接読込（OCR不要・高精度）
           </div>
           {ocrError && (
-            <div style={{marginTop:"0.4rem",fontSize:"0.7rem",color:"#b91c1c",background:"#fee2e2",padding:"0.3rem 0.5rem",borderRadius:"4px"}}>
+            <div style={{marginTop:"0.4rem",fontSize:"0.7rem",color:"#b91c1c",background:"#fee2e2",padding:"0.3rem 0.5rem",borderRadius:"8px"}}>
               {ocrError}
             </div>
           )}
           {ocrSuccess && (
-            <div style={{marginTop:"0.4rem",fontSize:"0.7rem",color:"#065f46",background:"#d1fae5",padding:"0.3rem 0.5rem",borderRadius:"4px"}}>
+            <div style={{marginTop:"0.4rem",fontSize:"0.7rem",color:"#065f46",background:"#d1fae5",padding:"0.3rem 0.5rem",borderRadius:"8px"}}>
               {ocrSuccess}
             </div>
           )}
@@ -4422,19 +4426,19 @@ function DustalkInfoEditModal({ data, vendorName, bizCards = [], onAddBizCard, o
               <F label="住所" k="address" placeholder="例: 静岡県御殿場市印野1435-6" multiline/>
 
               {/* ダストーク事業 行政区（4区分） */}
-              <div style={{marginTop:"1rem",padding:"0.75rem",background:"#f5f3ff",border:"1px solid #ddd6fe",borderRadius:"6px"}}>
+              <div style={{marginTop:"1rem",padding:"0.75rem",background:"#f5f3ff",border:"1px solid #ddd6fe",borderRadius:"8px"}}>
                 <label style={{fontSize:"0.78rem",fontWeight:700,color:"#5b21b6",display:"block",marginBottom:"0.6rem"}}>🚛 ダストーク事業を行う行政区</label>
                 <div style={{display:"flex",flexDirection:"column",gap:"0.7rem"}}>
                   {DUSTALK_AREA_TYPES.map(t => {
                     const list = (form.service_areas?.[t.key]) || [];
                     return (
-                      <div key={t.key} style={{background:"white",border:`1px solid ${t.border}`,borderRadius:"6px",padding:"0.5rem 0.6rem"}}>
+                      <div key={t.key} style={{background:"white",border:`1px solid ${t.border}`,borderRadius:"8px",padding:"0.5rem 0.6rem"}}>
                         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.4rem"}}>
                           <span style={{fontSize:"0.74rem",fontWeight:700,color:t.color,display:"inline-flex",alignItems:"center",gap:"0.25rem"}}>
                             {t.icon} {t.label}
                           </span>
                           <button type="button" onClick={()=>addAreaItem(t.key)}
-                            style={{padding:"0.18rem 0.5rem",fontSize:"0.66rem",fontWeight:700,background:t.color,color:"white",border:"none",borderRadius:"4px",cursor:"pointer"}}>
+                            style={{padding:"0.18rem 0.5rem",fontSize:"0.66rem",fontWeight:700,background:t.color,color:"white",border:"none",borderRadius:"8px",cursor:"pointer"}}>
                             + 追加
                           </button>
                         </div>
@@ -4443,7 +4447,7 @@ function DustalkInfoEditModal({ data, vendorName, bizCards = [], onAddBizCard, o
                         ) : (
                           <div style={{display:"flex",flexWrap:"wrap",gap:"0.35rem"}}>
                             {list.map((area, idx) => (
-                              <div key={idx} style={{display:"flex",alignItems:"center",gap:"0.2rem",background:t.bg,border:`1px solid ${t.border}`,borderRadius:"6px",padding:"0.15rem 0.35rem"}}>
+                              <div key={idx} style={{display:"flex",alignItems:"center",gap:"0.2rem",background:t.bg,border:`1px solid ${t.border}`,borderRadius:"8px",padding:"0.15rem 0.35rem"}}>
                                 <input
                                   value={area || ""}
                                   onChange={(e)=>updateAreaItem(t.key, idx, e.target.value)}
@@ -4471,7 +4475,7 @@ function DustalkInfoEditModal({ data, vendorName, bizCards = [], onAddBizCard, o
               <F label="口座番号" k="bank_account_number" placeholder="例: 1234567"/>
               <F label="口座名義人" k="bank_account_holder" placeholder="例: ユウ)イケダショウテン"/>
               <F label="適格請求書事業者登録番号" k="invoice_number" placeholder="例: T1234567890123"/>
-              <div style={{fontSize:"0.7rem",color:"#6b7280",lineHeight:1.5,padding:"0.5rem",background:"#f9fafb",borderRadius:"4px",marginTop:"0.4rem"}}>
+              <div style={{fontSize:"0.7rem",color:"#6b7280",lineHeight:1.5,padding:"0.5rem",background:"#f9fafb",borderRadius:"8px",marginTop:"0.4rem"}}>
                 💡 <strong>振込手数料は弊社（西原商事ホールディングス）が負担します。</strong>
               </div>
             </>
@@ -4479,7 +4483,7 @@ function DustalkInfoEditModal({ data, vendorName, bizCards = [], onAddBizCard, o
           {tab === "other" && (
             <>
               <F label="回収時の現金支払い (粗大ゴミ)" k="cash_payment" options={[{val:true,label:"許可する"},{val:false,label:"許可しない"}]}/>
-              <div style={{fontSize:"0.7rem",color:"#6b7280",lineHeight:1.5,padding:"0.5rem",background:"#f9fafb",borderRadius:"4px"}}>
+              <div style={{fontSize:"0.7rem",color:"#6b7280",lineHeight:1.5,padding:"0.5rem",background:"#f9fafb",borderRadius:"8px"}}>
                 💡 「許可する」に設定すると、依頼者が支払い方法として現金を選択できます。<br/>
                 現金支払いが選択された場合は、回収時に料金を直接お受け取りください。
               </div>
@@ -4487,7 +4491,7 @@ function DustalkInfoEditModal({ data, vendorName, bizCards = [], onAddBizCard, o
           )}
           {tab === "rep" && (
             <>
-              <div style={{fontSize:"0.72rem",color:"#dc2626",marginBottom:"0.6rem"}}>※ 契約書や請求書発行時に記載する情報として利用します</div>
+              <div style={{fontSize:"0.72rem",color:"#DA1313",marginBottom:"0.6rem"}}>※ 契約書や請求書発行時に記載する情報として利用します</div>
               <F label="代表者名" k="rep_name" placeholder="例: 池田 富雄"/>
               <F label="代表者ふりがな" k="rep_furigana" placeholder="例: イケダ トミオ"/>
               <F label="代表者電話番号" k="rep_phone" type="tel" placeholder="例: 0936037888"/>
@@ -4509,18 +4513,18 @@ function DustalkInfoEditModal({ data, vendorName, bizCards = [], onAddBizCard, o
                   />
                 )}
               </div>
-              <div style={{fontSize:"0.72rem",color:"#dc2626",marginBottom:"0.6rem"}}>※ 連絡窓口となる担当者の情報</div>
+              <div style={{fontSize:"0.72rem",color:"#DA1313",marginBottom:"0.6rem"}}>※ 連絡窓口となる担当者の情報</div>
               <F label="担当者名" k="contact_name" placeholder="例: 池田 昌隆"/>
               <F label="担当者ふりがな" k="contact_furigana" placeholder="例: イケダ マサタカ"/>
               <F label="担当者電話番号" k="contact_phone" type="tel" placeholder="例: 09036060488"/>
               <F label="メールアドレス" k="contact_email" type="email" placeholder="例: contact@example.com"/>
 
               {/* 追加担当者リスト */}
-              <div style={{marginTop:"1rem",padding:"0.75rem",background:"#fff7ed",border:"1px solid #fed7aa",borderRadius:"6px"}}>
+              <div style={{marginTop:"1rem",padding:"0.75rem",background:"#fff7ed",border:"1px solid #fed7aa",borderRadius:"8px"}}>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.5rem"}}>
                   <label style={{fontSize:"0.78rem",fontWeight:700,color:"#9a3412"}}>👥 追加担当者（複数登録可）</label>
                   <button type="button" onClick={addAdditionalContact}
-                    style={{padding:"0.25rem 0.6rem",fontSize:"0.7rem",fontWeight:700,background:"#ea580c",color:"white",border:"none",borderRadius:"4px",cursor:"pointer"}}>
+                    style={{padding:"0.25rem 0.6rem",fontSize:"0.7rem",fontWeight:700,background:"#ea580c",color:"white",border:"none",borderRadius:"8px",cursor:"pointer"}}>
                     + 担当者を追加
                   </button>
                 </div>
@@ -4530,7 +4534,7 @@ function DustalkInfoEditModal({ data, vendorName, bizCards = [], onAddBizCard, o
                 {(form.additional_contacts || []).map((c, idx) => {
                   const cMatch = matchContactToBizcard(c, bizCards, form.business_name || vendorName);
                   return (
-                    <div key={idx} style={{background:"white",border:"1px solid #fed7aa",borderRadius:"6px",padding:"0.5rem 0.75rem",marginBottom:"0.5rem"}}>
+                    <div key={idx} style={{background:"white",border:"1px solid #fed7aa",borderRadius:"8px",padding:"0.5rem 0.75rem",marginBottom:"0.5rem"}}>
                       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.4rem"}}>
                         <div style={{display:"flex",alignItems:"center",gap:"0.4rem",flexWrap:"wrap"}}>
                           <span style={{fontSize:"0.72rem",fontWeight:700,color:"#9a3412"}}>担当者{idx+2}</span>
@@ -4545,34 +4549,34 @@ function DustalkInfoEditModal({ data, vendorName, bizCards = [], onAddBizCard, o
                           )}
                         </div>
                         <button type="button" onClick={()=>removeAdditionalContact(idx)}
-                          style={{background:"none",border:"none",color:"#dc2626",cursor:"pointer",fontSize:"0.85rem"}}>削除</button>
+                          style={{background:"none",border:"none",color:"#DA1313",cursor:"pointer",fontSize:"0.85rem"}}>削除</button>
                       </div>
                       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.4rem"}}>
                         <input
                           value={c?.name || ""}
                           onChange={(e)=>updateAdditionalContact(idx, "name", e.target.value)}
                           placeholder="氏名"
-                          style={{padding:"0.35rem 0.5rem",border:"1px solid #d1d5db",borderRadius:"4px",fontSize:"0.78rem",fontFamily:"inherit"}}
+                          style={{padding:"0.35rem 0.5rem",border:"1px solid #d1d5db",borderRadius:"8px",fontSize:"0.78rem",fontFamily:"inherit"}}
                         />
                         <input
                           value={c?.furigana || ""}
                           onChange={(e)=>updateAdditionalContact(idx, "furigana", e.target.value)}
                           placeholder="ふりがな"
-                          style={{padding:"0.35rem 0.5rem",border:"1px solid #d1d5db",borderRadius:"4px",fontSize:"0.78rem",fontFamily:"inherit"}}
+                          style={{padding:"0.35rem 0.5rem",border:"1px solid #d1d5db",borderRadius:"8px",fontSize:"0.78rem",fontFamily:"inherit"}}
                         />
                         <input
                           value={c?.email || ""}
                           onChange={(e)=>updateAdditionalContact(idx, "email", e.target.value)}
                           placeholder="メールアドレス"
                           type="email"
-                          style={{padding:"0.35rem 0.5rem",border:"1px solid #d1d5db",borderRadius:"4px",fontSize:"0.78rem",fontFamily:"inherit"}}
+                          style={{padding:"0.35rem 0.5rem",border:"1px solid #d1d5db",borderRadius:"8px",fontSize:"0.78rem",fontFamily:"inherit"}}
                         />
                         <input
                           value={c?.phone || ""}
                           onChange={(e)=>updateAdditionalContact(idx, "phone", e.target.value)}
                           placeholder="電話番号"
                           type="tel"
-                          style={{padding:"0.35rem 0.5rem",border:"1px solid #d1d5db",borderRadius:"4px",fontSize:"0.78rem",fontFamily:"inherit"}}
+                          style={{padding:"0.35rem 0.5rem",border:"1px solid #d1d5db",borderRadius:"8px",fontSize:"0.78rem",fontFamily:"inherit"}}
                         />
                       </div>
                     </div>
@@ -4586,11 +4590,11 @@ function DustalkInfoEditModal({ data, vendorName, bizCards = [], onAddBizCard, o
         {/* フッター */}
         <div style={{display:"flex",gap:"0.5rem",padding:"0.875rem 1.25rem",borderTop:"1px solid #e5e7eb"}}>
           <button onClick={onClose} disabled={saving}
-            style={{flex:1,padding:"0.6rem",fontSize:"0.85rem",fontWeight:700,background:"#f3f4f6",border:"1px solid #d1d5db",borderRadius:"4px",cursor:"pointer"}}>
+            style={{flex:1,padding:"0.6rem",fontSize:"0.85rem",fontWeight:700,background:"#f3f4f6",border:"1px solid #d1d5db",borderRadius:"8px",cursor:"pointer"}}>
             キャンセル
           </button>
           <button onClick={handleSubmit} disabled={saving}
-            style={{flex:2,padding:"0.6rem",fontSize:"0.85rem",fontWeight:700,background:saving?"#9ca3af":"#2563eb",color:"white",border:"none",borderRadius:"4px",cursor:saving?"wait":"pointer"}}>
+            style={{flex:2,padding:"0.6rem",fontSize:"0.85rem",fontWeight:700,background:saving?"#9ca3af":"#0070D4",color:"white",border:"none",borderRadius:"8px",cursor:saving?"wait":"pointer"}}>
             {saving ? "保存中..." : "💾 保存"}
           </button>
         </div>
@@ -4605,8 +4609,8 @@ function VendorDetailTabsModal({ vendorId, vendorName, initialTab = "licenses", 
   const [tab, setTab] = useState(initialTab);
 
   const tabs = [
-    { id: "licenses", label: "🪪 許可証", color: "#16a34a" },
-    { id: "dustalk", label: "🚚 ダストーク登録情報", color: "#2563eb" },
+    { id: "licenses", label: "🪪 許可証", color: "#009122" },
+    { id: "dustalk", label: "🚚 ダストーク登録情報", color: "#0070D4" },
     { id: "qr", label: "📨 案内状/QR", color: "#7c3aed" },
   ];
 
@@ -4931,7 +4935,7 @@ function FileSection({ files=[], onAdd, onDelete, currentUserId, entityType, ent
       {files.length === 0 && <div style={{textAlign:"center",padding:"1.25rem",color:C.textMuted,background:C.bg,borderRadius:"8px",fontSize:"0.82rem",marginBottom:"0.75rem"}}>ファイルがありません</div>}
       <div style={{display:"flex",flexDirection:"column",gap:"0.4rem",marginBottom:"0.75rem"}}>
         {files.map(f => (
-          <div key={f.id||f.url} style={{display:"flex",alignItems:"center",gap:"0.625rem",background:"white",border:`1px solid ${C.border}`,borderRadius:"6px",padding:"0.5rem 0.75rem",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
+          <div key={f.id||f.url} style={{display:"flex",alignItems:"center",gap:"0.625rem",background:"white",border:`1px solid ${C.border}`,borderRadius:"8px",padding:"0.5rem 0.75rem",boxShadow:"0 1px 2px rgba(0,17,62,0.05)"}}>
             <span style={{fontSize:"1.2rem",flexShrink:0}}>{icon(f.type)}</span>
             <div style={{flex:1,minWidth:0}}>
               <a href={f.url||(f.path?`${S3_PUBLIC_BASE}/${f.path}`:null)||f.path||"#"}
@@ -4947,14 +4951,14 @@ function FileSection({ files=[], onAdd, onDelete, currentUserId, entityType, ent
               <div style={{fontSize:"0.65rem",color:C.textMuted}}>
                 {f.size?fmt(f.size):""}
                 {f.uploadedAt?" · "+new Date(f.uploadedAt).toLocaleDateString("ja-JP"):""}
-                {!f.url&&<span style={{color:"#dc2626",marginLeft:4}}>⚠ URL未取得</span>}
+                {!f.url&&<span style={{color:"#DA1313",marginLeft:4}}>⚠ URL未取得</span>}
                 {f._source && (
-                  <span style={{marginLeft:6,padding:"0.05rem 0.35rem",borderRadius:4,background:f._source.kind==="task"?"#dbeafe":"#ede9fe",color:f._source.kind==="task"?"#1d4ed8":"#7c3aed",fontWeight:700,fontSize:"0.6rem"}}>
+                  <span style={{marginLeft:6,padding:"0.05rem 0.35rem",borderRadius:8,background:f._source.kind==="task"?"#E6F0FF":"#ede9fe",color:f._source.kind==="task"?"#1563CA":"#7c3aed",fontWeight:700,fontSize:"0.6rem"}}>
                     {f._source.kind==="task"?"📋 タスク":"📁 プロジェクト"}: {(f._source.title||"").slice(0,20)}
                   </span>
                 )}
                 {f._propagatedFrom && !f._source && (
-                  <span style={{marginLeft:6,padding:"0.05rem 0.35rem",borderRadius:4,background:f._propagatedFrom==="task"?"#dbeafe":"#ede9fe",color:f._propagatedFrom==="task"?"#1d4ed8":"#7c3aed",fontWeight:700,fontSize:"0.6rem"}}>
+                  <span style={{marginLeft:6,padding:"0.05rem 0.35rem",borderRadius:8,background:f._propagatedFrom==="task"?"#E6F0FF":"#ede9fe",color:f._propagatedFrom==="task"?"#1563CA":"#7c3aed",fontWeight:700,fontSize:"0.6rem"}}>
                     {f._propagatedFrom==="task"?"📋 タスクから":"📁 プロジェクトから"}
                   </span>
                 )}
@@ -4967,7 +4971,7 @@ function FileSection({ files=[], onAdd, onDelete, currentUserId, entityType, ent
                 // S3 ファイル本体は残し、レコードだけ消す（論理削除）
                 onDelete(f.id||f.url);
               }}
-                style={{background:"none",border:"none",color:"#dc2626",cursor:"pointer",fontSize:"0.85rem",padding:"0.2rem",flexShrink:0}}>✕</button>
+                style={{background:"none",border:"none",color:"#DA1313",cursor:"pointer",fontSize:"0.85rem",padding:"0.2rem",flexShrink:0}}>✕</button>
             )}
             {f._source && (
               <span style={{fontSize:"0.62rem",color:C.textMuted,flexShrink:0}} title="このファイルは関連先で管理されています">🔗</span>
@@ -4975,7 +4979,7 @@ function FileSection({ files=[], onAdd, onDelete, currentUserId, entityType, ent
           </div>
         ))}
       </div>
-      {error && <div style={{color:"#dc2626",fontSize:"0.75rem",marginBottom:"0.5rem",padding:"0.5rem",background:"#fee2e2",borderRadius:"0.5rem"}}>{error}</div>}
+      {error && <div style={{color:"#DA1313",fontSize:"0.75rem",marginBottom:"0.5rem",padding:"0.5rem",background:"#fee2e2",borderRadius:"0.5rem"}}>{error}</div>}
       {!readOnly && (
         <label style={{display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem",border:`2px dashed ${uploading?C.accent:C.border}`,borderRadius:"8px",padding:"0.875rem",cursor:"pointer",background:uploading?C.accentBg:C.bg,color:uploading?C.accentDark:C.textSub,fontWeight:700,fontSize:"0.82rem"}}>
           {uploading
@@ -5061,28 +5065,28 @@ function ReviewRequestSection({ task, users=[], uid, allTasks=[], onRequestRevie
           {!isRejected && task.status !== "完了" && (
             <div style={{marginBottom:"0.75rem"}}>
               <button onClick={()=>{if(window.confirm("確認完了としてよろしいですか?\n元のタスクも「完了」に変更されます。"))onApproveReview(task.id);}}
-                style={{width:"100%",padding:"0.875rem",borderRadius:"8px",border:"none",background:"linear-gradient(135deg,#059669,#047857)",color:"white",fontWeight:800,fontSize:"1rem",cursor:"pointer",fontFamily:"inherit",marginBottom:"0.5rem",boxShadow:"0 2px 8px rgba(5,150,105,0.35)",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
+                style={{width:"100%",padding:"0.875rem",borderRadius:"8px",border:"none",background:"linear-gradient(135deg,#009122,#047857)",color:"white",fontWeight:800,fontSize:"1rem",cursor:"pointer",fontFamily:"inherit",marginBottom:"0.5rem",boxShadow:"0 2px 8px rgba(5,150,105,0.35)",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
                 <span style={{fontSize:"1.25rem"}}>✅</span> 確認完了
               </button>
               {!showRejectForm ? (
                 <button onClick={() => setShowRejectForm(true)}
-                  style={{width:"100%",padding:"0.625rem",borderRadius:"6px",border:"1.5px solid #fca5a5",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
+                  style={{width:"100%",padding:"0.625rem",borderRadius:"8px",border:"1.5px solid #fca5a5",background:"#fff1f2",color:"#DA1313",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
                   ↩️ 差し戻す
                 </button>
               ) : (
                 <div style={{background:"#fff1f2",border:"1.5px solid #fca5a5",borderRadius:"8px",padding:"0.875rem"}}>
-                  <div style={{fontWeight:700,fontSize:"0.82rem",color:"#dc2626",marginBottom:"0.625rem"}}>↩️ 差し戻し</div>
+                  <div style={{fontWeight:700,fontSize:"0.82rem",color:"#DA1313",marginBottom:"0.625rem"}}>↩️ 差し戻し</div>
                   <div style={{fontSize:"0.75rem",fontWeight:700,color:C.textSub,marginBottom:"0.35rem"}}>差し戻し理由（任意）</div>
                   <textarea value={rejectNote} onChange={e=>setRejectNote(e.target.value)}
                     placeholder="修正してほしい点を記入してください..." rows={3}
                     style={{width:"100%",padding:"0.5rem",borderRadius:"0.625rem",border:`1.5px solid #fca5a5`,fontSize:"0.82rem",fontFamily:"inherit",resize:"none",outline:"none",boxSizing:"border-box",marginBottom:"0.75rem"}}/>
                   <div style={{display:"flex",gap:"0.5rem"}}>
                     <button onClick={()=>{setShowRejectForm(false);setRejectNote("");}}
-                      style={{flex:1,padding:"0.5rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.82rem"}}>
+                      style={{flex:1,padding:"0.5rem",borderRadius:"8px",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.82rem"}}>
                       キャンセル
                     </button>
                     <button onClick={()=>{onRejectReview(task.id, rejectNote); setShowRejectForm(false); setRejectNote("");}}
-                      style={{flex:2,padding:"0.5rem",borderRadius:"6px",border:"none",background:"#dc2626",color:"white",fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.82rem"}}>
+                      style={{flex:2,padding:"0.5rem",borderRadius:"8px",border:"none",background:"#DA1313",color:"white",fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.82rem"}}>
                       差し戻しを確定する
                     </button>
                   </div>
@@ -5126,16 +5130,16 @@ function ReviewRequestSection({ task, users=[], uid, allTasks=[], onRequestRevie
           {reviewTasks.map(rt => {
             const assignee = users.find(u => (rt.assignees||[]).includes(u.id));
             const isRej = rt.reviewOf?.rejected;
-            const statusColor = isRej ? "#dc2626" : rt.status === "完了" ? "#059669" : rt.status === "進行中" ? "#2563eb" : "#6b7280";
-            const statusBg = isRej ? "#fee2e2" : rt.status === "完了" ? "#d1fae5" : rt.status === "進行中" ? "#dbeafe" : "#f3f4f6";
+            const statusColor = isRej ? "#DA1313" : rt.status === "完了" ? "#009122" : rt.status === "進行中" ? "#0070D4" : "#6b7280";
+            const statusBg = isRej ? "#fee2e2" : rt.status === "完了" ? "#d1fae5" : rt.status === "進行中" ? "#E6F0FF" : "#f3f4f6";
             const label = isRej ? "差し戻し" : rt.status;
             return (
-              <div key={rt.id} style={{background:"white",border:`1px solid ${isRej?"#fca5a5":C.border}`,borderRadius:"6px",padding:"0.5rem 0.875rem",marginBottom:"0.35rem",display:"flex",alignItems:"center",gap:"0.625rem"}}>
+              <div key={rt.id} style={{background:"white",border:`1px solid ${isRej?"#fca5a5":C.border}`,borderRadius:"8px",padding:"0.5rem 0.875rem",marginBottom:"0.35rem",display:"flex",alignItems:"center",gap:"0.625rem"}}>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:"0.82rem",fontWeight:600,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{rt.title}</div>
                   <div style={{fontSize:"0.68rem",color:C.textMuted}}>担当：{assignee?.name || "未設定"}</div>
                   {isRej && rt.reviewOf?.rejectNote && (
-                    <div style={{fontSize:"0.68rem",color:"#dc2626",marginTop:"0.15rem"}}>💬 {rt.reviewOf.rejectNote}</div>
+                    <div style={{fontSize:"0.68rem",color:"#DA1313",marginTop:"0.15rem"}}>💬 {rt.reviewOf.rejectNote}</div>
                   )}
                 </div>
                 <span style={{fontSize:"0.68rem",fontWeight:700,background:statusBg,color:statusColor,borderRadius:999,padding:"0.1rem 0.45rem",flexShrink:0,whiteSpace:"nowrap"}}>{label}</span>
@@ -5150,7 +5154,7 @@ function ReviewRequestSection({ task, users=[], uid, allTasks=[], onRequestRevie
         <div>
           {!showPicker ? (
             <button onClick={() => setShowPicker(true)}
-              style={{width:"100%",padding:"0.625rem",borderRadius:"6px",border:"1.5px solid #f59e0b",background:"#fef3c7",color:"#92400e",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
+              style={{width:"100%",padding:"0.625rem",borderRadius:"8px",border:"1.5px solid #f59e0b",background:"#fef3c7",color:"#92400e",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
               📨 確認依頼を送る
             </button>
           ) : (
@@ -5175,12 +5179,12 @@ function ReviewRequestSection({ task, users=[], uid, allTasks=[], onRequestRevie
                 style={{width:"100%",padding:"0.5rem",borderRadius:"0.625rem",border:`1.5px solid ${C.border}`,fontSize:"0.82rem",fontFamily:"inherit",resize:"none",outline:"none",boxSizing:"border-box",marginBottom:"0.75rem"}}/>
               <div style={{display:"flex",gap:"0.5rem"}}>
                 <button onClick={()=>{setShowPicker(false);setSelectedUser(null);setNote("");}}
-                  style={{flex:1,padding:"0.5rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.82rem"}}>
+                  style={{flex:1,padding:"0.5rem",borderRadius:"8px",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.82rem"}}>
                   キャンセル
                 </button>
                 <button onClick={()=>{if(!selectedUser)return; onRequestReview(selectedUser,note); setShowPicker(false);setSelectedUser(null);setNote("");}}
                   disabled={!selectedUser}
-                  style={{flex:2,padding:"0.5rem",borderRadius:"6px",border:"none",background:selectedUser?"#f59e0b":"#e5e7eb",color:selectedUser?"white":"#9ca3af",fontWeight:700,cursor:selectedUser?"pointer":"not-allowed",fontFamily:"inherit",fontSize:"0.82rem"}}>
+                  style={{flex:2,padding:"0.5rem",borderRadius:"8px",border:"none",background:selectedUser?"#f59e0b":"#e5e7eb",color:selectedUser?"white":"#9ca3af",fontWeight:700,cursor:selectedUser?"pointer":"not-allowed",fontFamily:"inherit",fontSize:"0.82rem"}}>
                   依頼を送る
                 </button>
               </div>
@@ -5429,10 +5433,10 @@ function GSheetImportWizard({ data, onSave, onClose, prefs, munis, vendors }) {
         {STEPS.map((s,i)=>(
           <div key={s} style={{flex:1,textAlign:"center"}}>
             <div style={{width:24,height:24,borderRadius:"50%",margin:"0 auto 0.2rem",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:"0.72rem",
-              background:i<=step?"#2563eb":"#e2e8f0",color:i<=step?"white":"#94a3b8"}}>
+              background:i<=step?"#0070D4":"#e2e8f0",color:i<=step?"white":"#94a3b8"}}>
               {i<step?"✓":i+1}
             </div>
-            <div style={{fontSize:"0.6rem",color:i===step?"#2563eb":"#94a3b8",fontWeight:i===step?700:400}}>{s}</div>
+            <div style={{fontSize:"0.6rem",color:i===step?"#0070D4":"#94a3b8",fontWeight:i===step?700:400}}>{s}</div>
           </div>
         ))}
       </div>
@@ -5440,7 +5444,7 @@ function GSheetImportWizard({ data, onSave, onClose, prefs, munis, vendors }) {
       {/* ── STEP 0: 入力 ── */}
       {step===0&&(
         <div>
-          <div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:"8px",padding:"0.875rem",marginBottom:"1rem",fontSize:"0.78rem",color:"#1e40af",lineHeight:1.7}}>
+          <div style={{background:"#F2F7FF",border:"1px solid #bfdbfe",borderRadius:"8px",padding:"0.875rem",marginBottom:"1rem",fontSize:"0.78rem",color:"#295FA6",lineHeight:1.7}}>
             📋 <strong>スプレッドシートの構成：</strong><br/>
             ・シート名 = 自治体名<br/>
             ・A列 = 業者名　B列 = メモ　C列 = ステータス（任意）<br/>
@@ -5467,7 +5471,7 @@ function GSheetImportWizard({ data, onSave, onClose, prefs, munis, vendors }) {
 
           <button onClick={fetchAll} disabled={!sheetId.trim()||!prefName}
             style={{width:"100%",padding:"0.875rem",borderRadius:"8px",border:"none",
-              background:sheetId.trim()&&prefName?"#2563eb":"#e2e8f0",
+              background:sheetId.trim()&&prefName?"#0070D4":"#e2e8f0",
               color:sheetId.trim()&&prefName?"white":"#94a3b8",
               fontWeight:800,fontSize:"0.9rem",cursor:sheetId.trim()&&prefName?"pointer":"not-allowed",fontFamily:"inherit"}}>
             📥 データを取得する
@@ -5499,8 +5503,8 @@ function GSheetImportWizard({ data, onSave, onClose, prefs, munis, vendors }) {
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:d.vendors.length?0:"0"}}>
                   <span style={{fontWeight:700,fontSize:"0.85rem",color:"#1e3a5f"}}>🏛 {d.muniName}</span>
                   <div style={{display:"flex",gap:"0.35rem",alignItems:"center"}}>
-                    {d.error&&<span style={{fontSize:"0.65rem",color:"#dc2626",background:"#fee2e2",borderRadius:999,padding:"0.1rem 0.4rem"}}>取得失敗</span>}
-                    <span style={{fontSize:"0.72rem",fontWeight:700,color:"#2563eb",background:"#dbeafe",borderRadius:999,padding:"0.1rem 0.5rem"}}>{d.vendors.length}業者</span>
+                    {d.error&&<span style={{fontSize:"0.65rem",color:"#DA1313",background:"#fee2e2",borderRadius:999,padding:"0.1rem 0.4rem"}}>取得失敗</span>}
+                    <span style={{fontSize:"0.72rem",fontWeight:700,color:"#0070D4",background:"#E6F0FF",borderRadius:999,padding:"0.1rem 0.5rem"}}>{d.vendors.length}業者</span>
                   </div>
                 </div>
                 {d.vendors.length>0&&(
@@ -5526,7 +5530,7 @@ function GSheetImportWizard({ data, onSave, onClose, prefs, munis, vendors }) {
               戻る
             </button>
             <button onClick={doImport}
-              style={{flex:2,padding:"0.75rem",borderRadius:"8px",border:"none",background:"#2563eb",color:"white",fontWeight:800,cursor:"pointer",fontFamily:"inherit",fontSize:"0.85rem"}}>
+              style={{flex:2,padding:"0.75rem",borderRadius:"8px",border:"none",background:"#0070D4",color:"white",fontWeight:800,cursor:"pointer",fontFamily:"inherit",fontSize:"0.85rem"}}>
               📥 {prefName}にインポート
             </button>
           </div>
@@ -5545,14 +5549,14 @@ function GSheetImportWizard({ data, onSave, onClose, prefs, munis, vendors }) {
               ["⏭ 既存自治体", importResult.skipMuni+"件スキップ"],
               ["⏭ 既存業者", importResult.skipVendor+"件（自治体紐付け）"],
             ].map(([k,v])=>(
-              <div key={k} style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:"6px",padding:"0.625rem 0.5rem",textAlign:"center"}}>
+              <div key={k} style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:"8px",padding:"0.625rem 0.5rem",textAlign:"center"}}>
                 <div style={{fontSize:"0.72rem",color:"#64748b",marginBottom:"0.15rem"}}>{k}</div>
                 <div style={{fontWeight:800,fontSize:"0.9rem",color:"#1e3a5f"}}>{v}</div>
               </div>
             ))}
           </div>
           <button onClick={onClose}
-            style={{width:"100%",padding:"0.875rem",borderRadius:"8px",border:"none",background:"#2563eb",color:"white",fontWeight:800,cursor:"pointer",fontFamily:"inherit",fontSize:"0.9rem"}}>
+            style={{width:"100%",padding:"0.875rem",borderRadius:"8px",border:"none",background:"#0070D4",color:"white",fontWeight:800,cursor:"pointer",fontFamily:"inherit",fontSize:"0.9rem"}}>
             閉じる
           </button>
         </div>
@@ -5584,7 +5588,7 @@ function DupModal({existing, incoming, onKeepBoth, onUseExisting, onCancel, dupR
           <div style={{fontSize:"0.78rem",color:C.textMuted,marginTop:"0.2rem"}}>
             {dupReason ? <span style={{color:"#d97706",fontWeight:700}}>⚠️ {dupReason}する業者が既に登録されています</span> : "登録しようとした名前"}
           </div>
-          <div style={{fontWeight:700,fontSize:"0.95rem",color:"#dc2626",background:"#fee2e2",borderRadius:"0.625rem",padding:"0.5rem 0.875rem",marginTop:"0.4rem"}}>「{incoming}」</div>
+          <div style={{fontWeight:700,fontSize:"0.95rem",color:"#DA1313",background:"#fee2e2",borderRadius:"0.625rem",padding:"0.5rem 0.875rem",marginTop:"0.4rem"}}>「{incoming}」</div>
         </div>
         <div style={{background:C.bg,borderRadius:"8px",padding:"0.875rem 1rem",marginBottom:"1.25rem"}}>
           <div style={{fontSize:"0.7rem",fontWeight:700,color:C.textMuted,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:"0.5rem"}}>📋 既に登録されているデータ</div>
@@ -5600,16 +5604,16 @@ function DupModal({existing, incoming, onKeepBoth, onUseExisting, onCancel, dupR
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
           {onUseExisting&&(
-            <button onClick={onUseExisting} style={{padding:"0.75rem",borderRadius:"6px",border:"none",background:C.accent,color:"white",fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.9rem"}}>
+            <button onClick={onUseExisting} style={{padding:"0.75rem",borderRadius:"8px",border:"none",background:C.accent,color:"white",fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.9rem"}}>
               既存のものを開く
             </button>
           )}
           {onKeepBoth&&(
-            <button onClick={onKeepBoth} style={{padding:"0.75rem",borderRadius:"6px",border:`1.5px solid ${C.accent}`,background:"white",color:C.accent,fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.9rem"}}>
+            <button onClick={onKeepBoth} style={{padding:"0.75rem",borderRadius:"8px",border:`1.5px solid ${C.accent}`,background:"white",color:C.accent,fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.9rem"}}>
               それでも新規追加する
             </button>
           )}
-          <button onClick={onCancel} style={{padding:"0.625rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:600,cursor:"pointer",fontFamily:"inherit",fontSize:"0.85rem"}}>
+          <button onClick={onCancel} style={{padding:"0.625rem",borderRadius:"8px",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:600,cursor:"pointer",fontFamily:"inherit",fontSize:"0.85rem"}}>
             キャンセル（入力に戻る）
           </button>
         </div>
@@ -5638,12 +5642,12 @@ function UserPicker({users=[],selected=[],onChange,label="担当者"}) {
 function PrivateToggle({value,onChange}) {
   return (
     <div onClick={()=>onChange(!value)}
-      style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0.75rem 1rem",background:value?"#fff1f2":"#f8fafc",borderRadius:"6px",border:`1.5px solid ${value?"#fca5a5":C.border}`,marginBottom:"1rem",cursor:"pointer"}}>
+      style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0.75rem 1rem",background:value?"#fff1f2":"#f8fafc",borderRadius:"8px",border:`1.5px solid ${value?"#fca5a5":C.border}`,marginBottom:"1rem",cursor:"pointer"}}>
       <div>
-        <div style={{fontSize:"0.85rem",fontWeight:700,color:value?"#dc2626":C.text}}>🔒 プライベート</div>
+        <div style={{fontSize:"0.85rem",fontWeight:700,color:value?"#DA1313":C.text}}>🔒 プライベート</div>
         <div style={{fontSize:"0.72rem",color:C.textMuted,marginTop:"0.1rem"}}>ONにすると自分だけに表示</div>
       </div>
-      <div style={{width:44,height:24,borderRadius:999,background:value?"#dc2626":C.border,position:"relative",transition:"background 0.2s",flexShrink:0}}>
+      <div style={{width:44,height:24,borderRadius:999,background:value?"#DA1313":C.border,position:"relative",transition:"background 0.2s",flexShrink:0}}>
         <div style={{position:"absolute",top:2,left:value?22:2,width:20,height:20,borderRadius:"50%",background:"white",boxShadow:"0 1px 4px rgba(0,0,0,0.2)",transition:"left 0.2s"}}/>
       </div>
     </div>
@@ -5741,7 +5745,7 @@ function AuthWrap({children}) {
 
 function AuthErrBox({msg}) {
   if (!msg) return null;
-  return <div style={{background:"#fff1f2",border:"1px solid #fca5a5",borderRadius:"0.625rem",padding:"0.625rem 0.875rem",fontSize:"0.82rem",color:"#dc2626",marginBottom:"1rem"}}>{msg}</div>;
+  return <div style={{background:"#fff1f2",border:"1px solid #fca5a5",borderRadius:"0.625rem",padding:"0.625rem 0.875rem",fontSize:"0.82rem",color:"#DA1313",marginBottom:"1rem"}}>{msg}</div>;
 }
 function AuthInfoBox({msg}) {
   if (!msg) return null;
@@ -5777,7 +5781,7 @@ function AuthScreen({onLogin}) {
 
   // inline error helper
   const ferr = (msg) => (
-    <div style={{fontSize:"0.72rem",color:"#dc2626",fontWeight:600,marginTop:"0.3rem"}}>{msg}</div>
+    <div style={{fontSize:"0.72rem",color:"#DA1313",fontWeight:600,marginTop:"0.3rem"}}>{msg}</div>
   );
 
   const submit = async () => {
@@ -5910,7 +5914,7 @@ function AuthScreen({onLogin}) {
   // ── LOGIN / REGISTER ──────────────────────────────────────────────────────
   return (
     <AuthWrap>
-      <div style={{display:"flex",background:C.bg,borderRadius:"6px",padding:"0.25rem",marginBottom:"1.75rem"}}>
+      <div style={{display:"flex",background:C.bg,borderRadius:"8px",padding:"0.25rem",marginBottom:"1.75rem"}}>
         {[["login","ログイン"],["register","新規登録"]].map(([id,lbl2])=>(
           <button key={id} onClick={()=>goMode(id)}
             style={{flex:1,padding:"0.55rem",borderRadius:"0.55rem",border:"none",cursor:"pointer",fontWeight:700,fontSize:"0.85rem",fontFamily:"inherit",
@@ -5982,11 +5986,11 @@ function TaskRow({task,onToggle,onStatusChange,onClick,users=[]}) {
   const near = isNearDue(task) && task.status!=="完了";
   const done = task.status==="完了";
   const assignedNames = (task.assignees||[]).map(id=>users.find(u=>u.id===id)?.name).filter(Boolean);
-  const salesBadgeColor = {"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"}[task.salesRef?.type]||C.accent;
+  const salesBadgeColor = {"企業":"#0070D4","業者":"#7c3aed","自治体":"#009122"}[task.salesRef?.type]||C.accent;
   return (
     <div onClick={onClick}
-      style={{display:"flex",alignItems:"center",gap:"0.875rem",padding:"0.875rem 1rem",borderBottom:`1px solid ${C.borderLight}`,background:near&&!done?"#eff6ff":"white",cursor:"pointer",position:"relative"}}>
-      {task.isPrivate&&<span style={{position:"absolute",top:8,right:8,fontSize:"0.65rem",color:"#dc2626"}}>🔒</span>}
+      style={{display:"flex",alignItems:"center",gap:"0.875rem",padding:"0.875rem 1rem",borderBottom:`1px solid ${C.borderLight}`,background:near&&!done?"#F2F7FF":"white",cursor:"pointer",position:"relative"}}>
+      {task.isPrivate&&<span style={{position:"absolute",top:8,right:8,fontSize:"0.65rem",color:"#DA1313"}}>🔒</span>}
       <button onClick={e=>{e.stopPropagation();onToggle();}}
         style={{width:24,height:24,borderRadius:"50%",flexShrink:0,border:`2.5px solid ${done?"#10b981":"#cbd5e1"}`,background:done?"#10b981":"transparent",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
         {done&&<span style={{color:"white",fontSize:"0.65rem",fontWeight:800}}>✓</span>}
@@ -5994,10 +5998,10 @@ function TaskRow({task,onToggle,onStatusChange,onClick,users=[]}) {
       <div style={{flex:1,minWidth:0}}>
         <div style={{fontSize:"0.9rem",fontWeight:done?400:600,color:done?C.textMuted:C.text,textDecoration:done?"line-through":"none",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{task.title}</div>
         <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginTop:"0.2rem",flexWrap:"wrap"}}>
-          {task.sourceType==="email" && <span title={task.sourceEmailSubject||""} style={{fontSize:"0.65rem",fontWeight:700,color:"#1e40af",background:"#dbeafe",borderRadius:3,padding:"0.05rem 0.35rem",flexShrink:0}}>📧 メール</span>}
-          {task.aiGenerated && <span style={{fontSize:"0.62rem",fontWeight:700,color:"white",background:"#7c3aed",borderRadius:3,padding:"0.05rem 0.35rem",flexShrink:0}}>AI</span>}
+          {task.sourceType==="email" && <span title={task.sourceEmailSubject||""} style={{fontSize:"0.65rem",fontWeight:700,color:"#295FA6",background:"#E6F0FF",borderRadius:8,padding:"0.05rem 0.35rem",flexShrink:0}}>📧 メール</span>}
+          {task.aiGenerated && <span style={{fontSize:"0.62rem",fontWeight:700,color:"white",background:"#7c3aed",borderRadius:8,padding:"0.05rem 0.35rem",flexShrink:0}}>AI</span>}
           {task.salesRef&&<span style={{fontSize:"0.65rem",fontWeight:700,color:"white",background:salesBadgeColor,borderRadius:999,padding:"0.05rem 0.4rem",flexShrink:0}}>{task.salesRef.type} · {task.salesRef.name}</span>}
-          {task.dueDate&&(()=>{const today=new Date().toISOString().slice(0,10);const isOD=!done&&task.dueDate<today;return <span style={{fontSize:"0.7rem",color:isOD?"#dc2626":near&&!done?"#2563eb":C.textMuted,fontWeight:isOD||near&&!done?700:400}}>{isOD?"⚠️":"📅"}{task.dueDate}{isOD?" 期限切れ":""}</span>;})()}
+          {task.dueDate&&(()=>{const today=new Date().toISOString().slice(0,10);const isOD=!done&&task.dueDate<today;return <span style={{fontSize:"0.7rem",color:isOD?"#DA1313":near&&!done?"#0070D4":C.textMuted,fontWeight:isOD||near&&!done?700:400}}>{isOD?"⚠️":"📅"}{task.dueDate}{isOD?" 期限切れ":""}</span>;})()}
           {assignedNames.length>0&&<span style={{fontSize:"0.68rem",color:C.textSub}}>👤{assignedNames.join("・")}</span>}
         </div>
       </div>
@@ -6012,16 +6016,16 @@ function TaskRow({task,onToggle,onStatusChange,onClick,users=[]}) {
 function ProjectRow({project,tasks,onClick}) {
   const done = tasks.filter(t=>t.status==="完了").length;
   const pct  = tasks.length>0?(done/tasks.length)*100:0;
-  const salesBadgeColor = {"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"}[project.salesRef?.type]||C.accent;
+  const salesBadgeColor = {"企業":"#0070D4","業者":"#7c3aed","自治体":"#009122"}[project.salesRef?.type]||C.accent;
   return (
     <div onClick={onClick}
       style={{display:"flex",alignItems:"center",gap:"0.875rem",padding:"0.875rem 1rem",borderBottom:`1px solid ${C.borderLight}`,background:"white",cursor:"pointer",position:"relative"}}>
-      {project.isPrivate&&<span style={{position:"absolute",top:8,right:8,fontSize:"0.65rem",color:"#dc2626"}}>🔒</span>}
+      {project.isPrivate&&<span style={{position:"absolute",top:8,right:8,fontSize:"0.65rem",color:"#DA1313"}}>🔒</span>}
       <span style={{fontSize:"1.3rem",flexShrink:0}}>🗂</span>
       <div style={{flex:1,minWidth:0}}>
         <div style={{fontSize:"0.9rem",fontWeight:700,color:C.text}}>{project.name}</div>
         {project.salesRef&&<span style={{fontSize:"0.65rem",fontWeight:700,color:"white",background:salesBadgeColor,borderRadius:999,padding:"0.05rem 0.4rem",display:"inline-block",marginTop:"0.15rem"}}>{project.salesRef.type} · {project.salesRef.name}</span>}
-        {(()=>{const ts=(project.tasks||[]);if(!ts.length)return null;const done=ts.filter(t=>t.status==="完了").length;const pct=Math.round(done/ts.length*100);return <div style={{marginTop:"0.35rem"}}><div style={{display:"flex",justifyContent:"space-between",fontSize:"0.65rem",color:C.textMuted,marginBottom:"0.15rem"}}><span>進捗</span><span>{done}/{ts.length}完了 ({pct}%)</span></div><div style={{height:4,borderRadius:999,background:C.borderLight,overflow:"hidden"}}><div style={{height:"100%",width:pct+"%",background:pct===100?"#059669":C.accent,borderRadius:999}}/></div></div>;})()}
+        {(()=>{const ts=(project.tasks||[]);if(!ts.length)return null;const done=ts.filter(t=>t.status==="完了").length;const pct=Math.round(done/ts.length*100);return <div style={{marginTop:"0.35rem"}}><div style={{display:"flex",justifyContent:"space-between",fontSize:"0.65rem",color:C.textMuted,marginBottom:"0.15rem"}}><span>進捗</span><span>{done}/{ts.length}完了 ({pct}%)</span></div><div style={{height:4,borderRadius:999,background:C.borderLight,overflow:"hidden"}}><div style={{height:"100%",width:pct+"%",background:pct===100?"#009122":C.accent,borderRadius:999}}/></div></div>;})()}
         {tasks.length>0?(
           <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginTop:"0.35rem"}}>
             <div style={{flex:1,maxWidth:120,height:4,background:C.borderLight,borderRadius:999,overflow:"hidden"}}>
@@ -6044,7 +6048,7 @@ function SalesRefPicker({value, onChange, salesData={}}) {
   const [pos,  setPos]  = useState({top:0,left:0,width:280});
   const btnRef = useRef(null);
   const TABS = [["企業","🏢","companies"],["業者","🔧","vendors"],["自治体","🏛️","municipalities"]];
-  const COLOR = {"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"};
+  const COLOR = {"企業":"#0070D4","業者":"#7c3aed","自治体":"#009122"};
   // 検索文字列の正規化（全角→半角、大文字→小文字、カナ統一）
   const normalize = (s) => {
     if (!s) return "";
@@ -6107,13 +6111,13 @@ function SalesRefPicker({value, onChange, salesData={}}) {
           {/* ヘッダー */}
           <div style={{padding:"0.75rem 1rem",borderBottom:"1px solid #e2e8f0",display:"flex",alignItems:"center",gap:"0.5rem",background:"#f8fafc"}}>
             <span style={{fontSize:"0.92rem",fontWeight:800,color:"#1e293b",flex:1}}>🔗 営業先を選択</span>
-            <button onClick={()=>setOpen(false)} style={{background:"white",border:"1px solid #e2e8f0",borderRadius:"6px",padding:"0.3rem 0.6rem",cursor:"pointer",fontSize:"0.8rem",color:"#64748b",fontWeight:600,fontFamily:"inherit"}}>✕ 閉じる</button>
+            <button onClick={()=>setOpen(false)} style={{background:"white",border:"1px solid #e2e8f0",borderRadius:"8px",padding:"0.3rem 0.6rem",cursor:"pointer",fontSize:"0.8rem",color:"#64748b",fontWeight:600,fontFamily:"inherit"}}>✕ 閉じる</button>
           </div>
           {/* タブ */}
           <div style={{display:"flex",borderBottom:"1px solid #e2e8f0"}}>
             {TABS.map(([lbl,icon])=>(
               <button key={lbl} onClick={()=>{setTab(lbl);setQ("");}}
-                style={{flex:1,padding:"0.6rem 0",border:"none",background:tab===lbl?"#eff6ff":"white",color:tab===lbl?COLOR[lbl]:"#6b7280",fontWeight:tab===lbl?800:600,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>
+                style={{flex:1,padding:"0.6rem 0",border:"none",background:tab===lbl?"#F2F7FF":"white",color:tab===lbl?COLOR[lbl]:"#6b7280",fontWeight:tab===lbl?800:600,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>
                 {icon} {lbl}
               </button>
             ))}
@@ -6158,7 +6162,7 @@ function EmailSourceCard({ task, onOpenEmail }) {
   const [expanded, setExpanded] = React.useState(false);
   const sourceDate = task.sourceEmailDate ? new Date(task.sourceEmailDate) : null;
   return (
-    <Card style={{padding:"0.65rem 0.85rem",marginBottom:"0.875rem",background:"#eff6ff",border:"1px solid #bfdbfe"}}>
+    <Card style={{padding:"0.65rem 0.85rem",marginBottom:"0.875rem",background:"#F2F7FF",border:"1px solid #bfdbfe"}}>
       {/* ヘッダー（クリックで折りたたみ） */}
       <div 
         onClick={()=>setExpanded(!expanded)}
@@ -6166,15 +6170,15 @@ function EmailSourceCard({ task, onOpenEmail }) {
       >
         <span style={{
           fontSize:"0.7rem",
-          color:"#1e40af",
+          color:"#295FA6",
           transition:"transform 0.15s",
           transform:expanded?"rotate(90deg)":"rotate(0deg)",
           display:"inline-block",
         }}>▶</span>
-        <div style={{fontWeight:800,color:"#1e40af",fontSize:"0.78rem",display:"flex",alignItems:"center",gap:"0.3rem",flex:1,minWidth:0}}>
+        <div style={{fontWeight:800,color:"#295FA6",fontSize:"0.78rem",display:"flex",alignItems:"center",gap:"0.3rem",flex:1,minWidth:0}}>
           📧 元メール情報
-          {task.aiGenerated && <span style={{fontSize:"0.6rem",padding:"0.05rem 0.4rem",borderRadius:3,background:"#dbeafe",color:"#1e40af",fontWeight:700}}>AI生成</span>}
-          <span style={{fontSize:"0.7rem",fontWeight:600,color:"#3b82f6",marginLeft:"0.4rem",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,minWidth:0}}>
+          {task.aiGenerated && <span style={{fontSize:"0.6rem",padding:"0.05rem 0.4rem",borderRadius:8,background:"#E6F0FF",color:"#295FA6",fontWeight:700}}>AI生成</span>}
+          <span style={{fontSize:"0.7rem",fontWeight:600,color:"#579AFF",marginLeft:"0.4rem",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,minWidth:0}}>
             {task.sourceEmailSubject || "(件名なし)"}
           </span>
         </div>
@@ -6182,9 +6186,9 @@ function EmailSourceCard({ task, onOpenEmail }) {
           <button onClick={(e)=>{e.stopPropagation();onOpenEmail();}}
             style={{
               padding:"0.25rem 0.65rem",
-              borderRadius:5,
+              borderRadius:8,
               border:"none",
-              background:"#2563eb",
+              background:"#0070D4",
               color:"white",
               fontSize:"0.7rem",
               fontWeight:700,
@@ -6203,12 +6207,12 @@ function EmailSourceCard({ task, onOpenEmail }) {
           <div><b>差出人:</b> {task.sourceEmailFromName ? `${task.sourceEmailFromName} <${task.sourceEmailFrom}>` : task.sourceEmailFrom}</div>
           {sourceDate && <div><b>受信:</b> {sourceDate.toLocaleString("ja-JP")}</div>}
           {task.sourceEmailSnippet && (
-            <div style={{marginTop:"0.4rem",padding:"0.55rem 0.7rem",background:"white",borderRadius:5,border:"1px solid #dbeafe",fontSize:"0.75rem",color:"#374151",whiteSpace:"pre-wrap",wordBreak:"break-word",maxHeight:200,overflowY:"auto"}}>
+            <div style={{marginTop:"0.4rem",padding:"0.55rem 0.7rem",background:"white",borderRadius:8,border:"1px solid #E6F0FF",fontSize:"0.75rem",color:"#374151",whiteSpace:"pre-wrap",wordBreak:"break-word",maxHeight:200,overflowY:"auto"}}>
               {task.sourceEmailSnippet}{task.sourceEmailSnippet.length >= 500 ? "..." : ""}
             </div>
           )}
           {task.aiReason && (
-            <div style={{marginTop:"0.4rem",fontSize:"0.72rem",color:"#1e40af",fontStyle:"italic"}}>
+            <div style={{marginTop:"0.4rem",fontSize:"0.72rem",color:"#295FA6",fontStyle:"italic"}}>
               💡 AI判断理由: {task.aiReason}
             </div>
           )}
@@ -6216,9 +6220,9 @@ function EmailSourceCard({ task, onOpenEmail }) {
             <button onClick={onOpenEmail}
               style={{
                 padding:"0.35rem 0.8rem",
-                borderRadius:5,
+                borderRadius:8,
                 border:"none",
-                background:"#2563eb",
+                background:"#0070D4",
                 color:"white",
                 fontSize:"0.74rem",
                 fontWeight:700,
@@ -6230,10 +6234,10 @@ function EmailSourceCard({ task, onOpenEmail }) {
             <button onClick={()=>setExpanded(false)}
               style={{
                 padding:"0.35rem 0.7rem",
-                borderRadius:5,
+                borderRadius:8,
                 border:"1px solid #bfdbfe",
                 background:"white",
-                color:"#1e40af",
+                color:"#295FA6",
                 fontSize:"0.72rem",
                 fontWeight:700,
                 cursor:"pointer",
@@ -6264,28 +6268,28 @@ function TaskForm({initial={},onSave,onClose,users=[],currentUserId=null,salesDa
       {/* メール由来タスクの場合、出典情報を表示 */}
       {hasSourceEmail && (
         <div style={{
-          background:"#eff6ff",
+          background:"#F2F7FF",
           border:"1px solid #bfdbfe",
-          borderRadius:6,
+          borderRadius:8,
           padding:"0.6rem 0.75rem",
           marginBottom:"0.85rem",
           fontSize:"0.75rem",
         }}>
-          <div style={{fontWeight:800,color:"#1e40af",marginBottom:4,display:"flex",alignItems:"center",gap:"0.3rem"}}>
+          <div style={{fontWeight:800,color:"#295FA6",marginBottom:4,display:"flex",alignItems:"center",gap:"0.3rem"}}>
             📧 メールから自動生成されたタスク
-            {initial.aiGenerated && <span style={{fontSize:"0.62rem",padding:"0.05rem 0.4rem",borderRadius:3,background:"#dbeafe",color:"#1e40af",fontWeight:700}}>AI</span>}
+            {initial.aiGenerated && <span style={{fontSize:"0.62rem",padding:"0.05rem 0.4rem",borderRadius:8,background:"#E6F0FF",color:"#295FA6",fontWeight:700}}>AI</span>}
           </div>
           <div style={{color:"#1e3a8a",lineHeight:1.5}}>
             <div><b>件名:</b> {initial.sourceEmailSubject || "(件名なし)"}</div>
             <div><b>差出人:</b> {initial.sourceEmailFromName ? `${initial.sourceEmailFromName} <${initial.sourceEmailFrom}>` : initial.sourceEmailFrom}</div>
             {sourceEmailDate && <div><b>受信:</b> {sourceEmailDate.toLocaleString("ja-JP")}</div>}
             {initial.sourceEmailSnippet && (
-              <div style={{marginTop:4,padding:"0.4rem 0.55rem",background:"white",borderRadius:4,border:"1px solid #dbeafe",fontSize:"0.7rem",color:"#374151",fontStyle:"italic"}}>
+              <div style={{marginTop:4,padding:"0.4rem 0.55rem",background:"white",borderRadius:8,border:"1px solid #E6F0FF",fontSize:"0.7rem",color:"#374151",fontStyle:"italic"}}>
                 "{initial.sourceEmailSnippet}{initial.sourceEmailSnippet.length >= 200 ? "..." : ""}"
               </div>
             )}
             {initial.aiReason && (
-              <div style={{marginTop:4,fontSize:"0.68rem",color:"#1e40af"}}>
+              <div style={{marginTop:4,fontSize:"0.68rem",color:"#295FA6"}}>
                 💡 AI判断理由: {initial.aiReason}
               </div>
             )}
@@ -6304,9 +6308,9 @@ function TaskForm({initial={},onSave,onClose,users=[],currentUserId=null,salesDa
               style={{
                 marginTop:6,
                 padding:"0.3rem 0.65rem",
-                borderRadius:4,
+                borderRadius:8,
                 border:"none",
-                background:"#2563eb",
+                background:"#0070D4",
                 color:"white",
                 fontSize:"0.68rem",
                 fontWeight:700,
@@ -6396,9 +6400,9 @@ function TaskCommentInput({taskId, data, setData, users=[], uid}) {
       <input value={text} onChange={e=>setText(e.target.value)}
         onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();submit();}}}
         placeholder="コメントを追加... (@名前 でメンション)"
-        style={{flex:1,padding:"0.5rem 0.75rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none"}}/>
+        style={{flex:1,padding:"0.5rem 0.75rem",borderRadius:"8px",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none"}}/>
       <button onClick={submit} disabled={!text.trim()}
-        style={{padding:"0.5rem 0.875rem",borderRadius:"6px",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",opacity:text.trim()?1:0.4}}>
+        style={{padding:"0.5rem 0.875rem",borderRadius:"8px",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",opacity:text.trim()?1:0.4}}>
         送信
       </button>
     </div>
@@ -6415,9 +6419,9 @@ function ActivityLog({ data, users=[], filterTypes=null }) {
   const PAGE = 30;
 
   const TYPE_META = {
-    "タスク":      { bg:"#e8f0fe", color:"#1d4ed8", icon:"✅" },
+    "タスク":      { bg:"#e8f0fe", color:"#1563CA", icon:"✅" },
     "プロジェクト":{ bg:"#ede9fe", color:"#7c3aed", icon:"📁" },
-    "企業":        { bg:"#d1fae5", color:"#059669", icon:"🏢" },
+    "企業":        { bg:"#d1fae5", color:"#009122", icon:"🏢" },
     "業者":        { bg:"#fef3c7", color:"#d97706", icon:"🔧" },
     "自治体":      { bg:"#fce7f3", color:"#db2777", icon:"🏛️" },
   };
@@ -6477,7 +6481,7 @@ function ActivityLog({ data, users=[], filterTypes=null }) {
           {/* フィルター＋検索 */}
           <div style={{display:"flex",flexDirection:"column",gap:"0.5rem",marginBottom:"0.75rem"}}>
             <input value={search} onChange={e=>{setSearch(e.target.value);setPage(0);}} placeholder="🔍 名前・操作で検索..."
-              style={{width:"100%",padding:"0.5rem 0.75rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,fontSize:"0.82rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
+              style={{width:"100%",padding:"0.5rem 0.75rem",borderRadius:"8px",border:`1.5px solid ${C.border}`,fontSize:"0.82rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
             <div style={{display:"flex",gap:"0.375rem",flexWrap:"wrap"}}>
               {types.map(t=>(
                 <button key={t} onClick={()=>{setFilter(t);setPage(0);}}
@@ -6485,7 +6489,7 @@ function ActivityLog({ data, users=[], filterTypes=null }) {
                     fontSize:"0.72rem",fontWeight:filter===t?800:500,
                     background:filter===t?(TYPE_META[t]?.bg||C.accent):"white",
                     color:filter===t?(TYPE_META[t]?.color||"white"):C.textSub,
-                    boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
+                    boxShadow:"0 1px 2px rgba(0,17,62,0.05)"}}>
                   {t==="all"?"すべて":(TYPE_META[t]?.icon+" "+t)}
                 </button>
               ))}
@@ -6502,7 +6506,7 @@ function ActivityLog({ data, users=[], filterTypes=null }) {
               const tm = TYPE_META[log.entityType] || {bg:"#f1f5f9",color:"#475569",icon:"📝"};
               const fi = FIELD_ICON[log.field] || "📝";
               return (
-                <div key={log.id||i} style={{background:"white",borderRadius:"6px",padding:"0.625rem 0.875rem",border:`1px solid ${C.borderLight}`,display:"flex",gap:"0.625rem",alignItems:"flex-start"}}>
+                <div key={log.id||i} style={{background:"white",borderRadius:"8px",padding:"0.625rem 0.875rem",border:`1px solid ${C.borderLight}`,display:"flex",gap:"0.625rem",alignItems:"flex-start"}}>
                   {/* 種別アイコン */}
                   <div style={{flexShrink:0,width:28,height:28,borderRadius:"50%",background:tm.bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.8rem",marginTop:"0.05rem"}}>
                     {tm.icon}
@@ -6517,8 +6521,8 @@ function ActivityLog({ data, users=[], filterTypes=null }) {
                     <div style={{display:"flex",alignItems:"center",gap:"0.3rem",flexWrap:"wrap"}}>
                       <span style={{fontSize:"0.72rem",color:C.textMuted,flexShrink:0}}>{fi}</span>
                       <span style={{fontSize:"0.72rem",color:C.textSub,fontWeight:600,flexShrink:0}}>{log.field}</span>
-                      {log.oldVal&&<><span style={{fontSize:"0.7rem",color:"#dc2626",background:"#fff1f2",borderRadius:"0.25rem",padding:"0 0.3rem",maxWidth:80,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",textDecoration:"line-through"}}>{log.oldVal}</span><span style={{fontSize:"0.68rem",color:C.textMuted}}>→</span></>}
-                      {log.newVal&&<span style={{fontSize:"0.7rem",color:"#059669",background:"#f0fdf4",borderRadius:"0.25rem",padding:"0 0.3rem",fontWeight:600,maxWidth:100,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{log.newVal}</span>}
+                      {log.oldVal&&<><span style={{fontSize:"0.7rem",color:"#DA1313",background:"#fff1f2",borderRadius:"0.5rem",padding:"0 0.3rem",maxWidth:80,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",textDecoration:"line-through"}}>{log.oldVal}</span><span style={{fontSize:"0.68rem",color:C.textMuted}}>→</span></>}
+                      {log.newVal&&<span style={{fontSize:"0.7rem",color:"#009122",background:"#f0fdf4",borderRadius:"0.5rem",padding:"0 0.3rem",fontWeight:600,maxWidth:100,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{log.newVal}</span>}
                     </div>
                     {/* 3行目: 誰が・いつ */}
                     <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginTop:"0.2rem"}}>
@@ -6534,7 +6538,7 @@ function ActivityLog({ data, users=[], filterTypes=null }) {
           {/* もっと見る */}
           {hasMore && (
             <button onClick={()=>setPage(p=>p+1)}
-              style={{width:"100%",marginTop:"0.625rem",padding:"0.625rem",borderRadius:"6px",border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.8rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+              style={{width:"100%",marginTop:"0.625rem",padding:"0.625rem",borderRadius:"8px",border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.8rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
               さらに表示（残り{filtered.length-paged.length}件）
             </button>
           )}
@@ -6752,12 +6756,12 @@ function DocumentSection({entityType, entityId, entityName, files, currentUserId
       {/* サブタブ */}
       <div style={{display:"flex",gap:"0.4rem",marginBottom:"1rem",borderBottom:"1px solid #e5e7eb",paddingBottom:"0.3rem"}}>
         <button onClick={() => switchTab("files")}
-          style={{padding:"0.45rem 0.9rem",borderRadius:"0.4rem 0.4rem 0 0",border:"none",borderBottom:subTab==="files"?"2.5px solid #2563eb":"2.5px solid transparent",background:"none",color:subTab==="files"?"#2563eb":"#6b7280",fontWeight:subTab==="files"?800:600,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
-          📎 ファイル {(files||[]).length>0 && <span style={{fontSize:"0.65rem",background:"#dbeafe",color:"#1d4ed8",padding:"0.05rem 0.35rem",borderRadius:999,marginLeft:"0.3rem",fontWeight:700}}>{files.length}</span>}
+          style={{padding:"0.45rem 0.9rem",borderRadius:"0.4rem 0.4rem 0 0",border:"none",borderBottom:subTab==="files"?"2.5px solid #0070D4":"2.5px solid transparent",background:"none",color:subTab==="files"?"#0070D4":"#6b7280",fontWeight:subTab==="files"?800:600,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
+          📎 ファイル {(files||[]).length>0 && <span style={{fontSize:"0.65rem",background:"#E6F0FF",color:"#1563CA",padding:"0.05rem 0.35rem",borderRadius:999,marginLeft:"0.3rem",fontWeight:700}}>{files.length}</span>}
         </button>
         <button onClick={() => switchTab("quotes")}
-          style={{padding:"0.45rem 0.9rem",borderRadius:"0.4rem 0.4rem 0 0",border:"none",borderBottom:subTab==="quotes"?"2.5px solid #2563eb":"2.5px solid transparent",background:"none",color:subTab==="quotes"?"#2563eb":"#6b7280",fontWeight:subTab==="quotes"?800:600,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
-          📄 見積書 {linkedQuotes.length>0 && <span style={{fontSize:"0.65rem",background:"#dbeafe",color:"#1d4ed8",padding:"0.05rem 0.35rem",borderRadius:999,marginLeft:"0.3rem",fontWeight:700}}>{linkedQuotes.length}</span>}
+          style={{padding:"0.45rem 0.9rem",borderRadius:"0.4rem 0.4rem 0 0",border:"none",borderBottom:subTab==="quotes"?"2.5px solid #0070D4":"2.5px solid transparent",background:"none",color:subTab==="quotes"?"#0070D4":"#6b7280",fontWeight:subTab==="quotes"?800:600,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
+          📄 見積書 {linkedQuotes.length>0 && <span style={{fontSize:"0.65rem",background:"#E6F0FF",color:"#1563CA",padding:"0.05rem 0.35rem",borderRadius:999,marginLeft:"0.3rem",fontWeight:700}}>{linkedQuotes.length}</span>}
         </button>
       </div>
       
@@ -6808,7 +6812,7 @@ function DocumentSection({entityType, entityId, entityName, files, currentUserId
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.85rem",flexWrap:"wrap",gap:"0.5rem"}}>
             <div style={{fontSize:"0.85rem",fontWeight:700,color:"#374151"}}>{entityName} の見積書</div>
             <button onClick={createQuoteForEntity}
-              style={{padding:"0.5rem 0.95rem",borderRadius:"0.4rem",border:"none",background:"#2563eb",color:"white",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
+              style={{padding:"0.5rem 0.95rem",borderRadius:"0.5rem",border:"none",background:"#0070D4",color:"white",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
               ＋ 新規見積書
             </button>
           </div>
@@ -6830,13 +6834,13 @@ function DocumentSection({entityType, entityId, entityName, files, currentUserId
                 return (
                   <div key={q.id} onClick={() => setActiveQuoteId(q.id)}
                     style={{background:"white",border:"1.5px solid #e5e7eb",borderRadius:"0.5rem",padding:"0.7rem 0.85rem",cursor:"pointer",transition:"all 0.15s",display:"flex",alignItems:"center",gap:"0.6rem",flexWrap:"wrap"}}
-                    onMouseEnter={e=>{e.currentTarget.style.borderColor="#2563eb";e.currentTarget.style.boxShadow="0 2px 8px rgba(37,99,235,0.1)";}}
+                    onMouseEnter={e=>{e.currentTarget.style.borderColor="#0070D4";e.currentTarget.style.boxShadow="0 2px 8px rgba(37,99,235,0.1)";}}
                     onMouseLeave={e=>{e.currentTarget.style.borderColor="#e5e7eb";e.currentTarget.style.boxShadow="none";}}>
-                    <span style={{fontSize:"0.6rem",fontWeight:700,color:"white",background:"#2563eb",padding:"0.1rem 0.4rem",borderRadius:"3px",flexShrink:0}}>{q.no}</span>
+                    <span style={{fontSize:"0.6rem",fontWeight:700,color:"white",background:"#0070D4",padding:"0.1rem 0.4rem",borderRadius:"8px",flexShrink:0}}>{q.no}</span>
                     <span style={{fontSize:"0.62rem",color:"#6b7280",flexShrink:0}}>{q.issuedDate}</span>
                     <span style={{flex:1,minWidth:120,fontSize:"0.85rem",fontWeight:700,color:"#111827",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{q.workContent || "(業務内容未入力)"}</span>
                     <span style={{fontSize:"0.65rem",color:"#6b7280",flexShrink:0}}>{company.name.replace("株式会社","㈱")}</span>
-                    <span style={{fontSize:"0.92rem",fontWeight:800,color:"#059669",flexShrink:0}}>¥{grandTotal.toLocaleString()}-</span>
+                    <span style={{fontSize:"0.92rem",fontWeight:800,color:"#009122",flexShrink:0}}>¥{grandTotal.toLocaleString()}-</span>
                     {author && <span style={{fontSize:"0.62rem",color:"#9ca3af",flexShrink:0}}>👤 {author.name}</span>}
                     <span style={{color:"#9ca3af",fontSize:"0.85rem",flexShrink:0}}>›</span>
                   </div>
@@ -6931,7 +6935,7 @@ function QuoteView({data, setData, users=[], currentUser=null, onNavigateToSales
       <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"1rem",flexWrap:"wrap"}}>
         <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder="🔍 見積書を検索..."
           style={{flex:1,minWidth:200,padding:"0.5rem 0.75rem",border:"1.5px solid #e5e7eb",borderRadius:"0.5rem",fontSize:"0.85rem",fontFamily:"inherit"}}/>
-        <button onClick={createQuote} style={{padding:"0.55rem 1rem",borderRadius:"0.5rem",border:"none",background:"#2563eb",color:"white",fontWeight:700,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>＋ 新規作成</button>
+        <button onClick={createQuote} style={{padding:"0.55rem 1rem",borderRadius:"0.5rem",border:"none",background:"#0070D4",color:"white",fontWeight:700,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>＋ 新規作成</button>
       </div>
       
       {filteredQuotes.length === 0 ? (
@@ -6956,17 +6960,17 @@ function QuoteView({data, setData, users=[], currentUser=null, onNavigateToSales
             return (
               <div key={q.id} onClick={() => setActiveQuoteId(q.id)}
                 style={{background:"white",border:"1.5px solid #e5e7eb",borderRadius:"0.625rem",padding:"0.85rem",cursor:"pointer",transition:"all 0.15s"}}
-                onMouseEnter={e=>{e.currentTarget.style.borderColor="#2563eb";e.currentTarget.style.boxShadow="0 2px 8px rgba(37,99,235,0.1)";}}
+                onMouseEnter={e=>{e.currentTarget.style.borderColor="#0070D4";e.currentTarget.style.boxShadow="0 2px 8px rgba(37,99,235,0.1)";}}
                 onMouseLeave={e=>{e.currentTarget.style.borderColor="#e5e7eb";e.currentTarget.style.boxShadow="none";}}>
                 <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginBottom:"0.4rem"}}>
-                  <span style={{fontSize:"0.62rem",fontWeight:700,color:"white",background:"#2563eb",padding:"0.1rem 0.4rem",borderRadius:"3px"}}>{q.no}</span>
+                  <span style={{fontSize:"0.62rem",fontWeight:700,color:"white",background:"#0070D4",padding:"0.1rem 0.4rem",borderRadius:"8px"}}>{q.no}</span>
                   <span style={{fontSize:"0.62rem",color:"#6b7280"}}>{q.issuedDate}</span>
                 </div>
                 <div style={{fontSize:"0.92rem",fontWeight:700,color:"#111827",marginBottom:"0.2rem",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{q.to || "(宛先未入力)"}</div>
                 <div style={{fontSize:"0.72rem",color:"#6b7280",marginBottom:"0.5rem",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{q.workContent || "(業務内容未入力)"}</div>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                   <span style={{fontSize:"0.62rem",color:"#6b7280"}}>{company.name}</span>
-                  <span style={{fontSize:"0.95rem",fontWeight:800,color:"#059669"}}>¥{grandTotal.toLocaleString()}-</span>
+                  <span style={{fontSize:"0.95rem",fontWeight:800,color:"#009122"}}>¥{grandTotal.toLocaleString()}-</span>
                 </div>
                 {author && <div style={{fontSize:"0.62rem",color:"#9ca3af",marginTop:"0.25rem"}}>作成: {author.name}</div>}
               </div>
@@ -7084,9 +7088,9 @@ function QuoteEditor({quote, users=[], currentUser, onUpdate, onDelete, onClose,
     />;
   }
   
-  const inputStyle = {width:"100%",padding:"0.45rem 0.65rem",border:"1px solid #d1d5db",borderRadius:"0.4rem",fontSize:"0.85rem",fontFamily:"inherit",boxSizing:"border-box",background:"white",outline:"none"};
+  const inputStyle = {width:"100%",padding:"0.45rem 0.65rem",border:"1px solid #d1d5db",borderRadius:"0.5rem",fontSize:"0.85rem",fontFamily:"inherit",boxSizing:"border-box",background:"white",outline:"none"};
   const labelStyle = {fontSize:"0.7rem",fontWeight:700,color:"#6b7280",marginBottom:"0.25rem",display:"block",letterSpacing:"0.02em"};
-  const sectionStyle = {background:"white",border:"1px solid #e5e7eb",borderRadius:"0.625rem",padding:"1rem 1.1rem",marginBottom:"0.85rem",boxShadow:"0 1px 2px rgba(0,0,0,0.03)"};
+  const sectionStyle = {background:"white",border:"1px solid #e5e7eb",borderRadius:"0.625rem",padding:"1rem 1.1rem",marginBottom:"0.85rem",boxShadow:"0 1px 2px rgba(0,17,62,0.04)"};
   const sectionTitleStyle = {fontSize:"0.78rem",fontWeight:800,color:"#1f2937",marginBottom:"0.7rem",display:"flex",alignItems:"center",gap:"0.4rem",paddingBottom:"0.5rem",borderBottom:"1px solid #f3f4f6"};
   
   const versionCount = (quote.versions||[]).length;
@@ -7095,23 +7099,23 @@ function QuoteEditor({quote, users=[], currentUser, onUpdate, onDelete, onClose,
   return (
     <div style={{padding:"0.75rem",maxWidth:920,margin:"0 auto"}}>
       <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginBottom:"0.5rem",flexWrap:"wrap"}}>
-        <button onClick={onClose} style={{padding:"0.4rem 0.65rem",borderRadius:"0.4rem",border:"1px solid #e5e7eb",background:"white",color:"#6b7280",fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>← 一覧へ</button>
+        <button onClick={onClose} style={{padding:"0.4rem 0.65rem",borderRadius:"0.5rem",border:"1px solid #e5e7eb",background:"white",color:"#6b7280",fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>← 一覧へ</button>
         <span style={{fontSize:"0.78rem",color:"#6b7280",fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:"30%"}}>#{quote.no}</span>
         {/* 保存ステータス表示 */}
-        {saveStatus === "saving" && <span style={{fontSize:"0.7rem",color:"#0284c7",background:"#e0f2fe",padding:"0.2rem 0.5rem",borderRadius:"0.3rem",fontWeight:700,whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:"0.3rem"}}>
+        {saveStatus === "saving" && <span style={{fontSize:"0.7rem",color:"#0284c7",background:"#e0f2fe",padding:"0.2rem 0.5rem",borderRadius:"0.5rem",fontWeight:700,whiteSpace:"nowrap",display:"inline-flex",alignItems:"center",gap:"0.3rem"}}>
           <span style={{width:10,height:10,borderRadius:"50%",border:"1.5px solid #0284c7",borderTopColor:"transparent",animation:"spin 0.8s linear infinite",display:"inline-block"}}/>
           保存中...
         </span>}
-        {saveStatus === "error" && <span style={{fontSize:"0.7rem",color:"#dc2626",background:"#fef2f2",padding:"0.2rem 0.5rem",borderRadius:"0.3rem",fontWeight:700,whiteSpace:"nowrap"}}>⚠️ 保存失敗</span>}
-        {saveStatus === null && quote.updatedAt && <span style={{fontSize:"0.7rem",color:"#059669",fontWeight:600,whiteSpace:"nowrap"}}>✓ 保存済み</span>}
+        {saveStatus === "error" && <span style={{fontSize:"0.7rem",color:"#DA1313",background:"#fef2f2",padding:"0.2rem 0.5rem",borderRadius:"0.5rem",fontWeight:700,whiteSpace:"nowrap"}}>⚠️ 保存失敗</span>}
+        {saveStatus === null && quote.updatedAt && <span style={{fontSize:"0.7rem",color:"#009122",fontWeight:600,whiteSpace:"nowrap"}}>✓ 保存済み</span>}
         <div style={{flex:"1 1 auto",minWidth:0}}/>
         <div style={{display:"flex",gap:"0.35rem",flexWrap:"wrap",justifyContent:"flex-end"}}>
           <button onClick={() => setShowHistory(true)} title="変更履歴を表示"
-            style={{padding:"0.4rem 0.65rem",borderRadius:"0.4rem",border:"1px solid #d1d5db",background:"white",color:"#374151",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>📜 履歴{versionCount>0?` (${versionCount})`:""}</button>
+            style={{padding:"0.4rem 0.65rem",borderRadius:"0.5rem",border:"1px solid #d1d5db",background:"white",color:"#374151",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>📜 履歴{versionCount>0?` (${versionCount})`:""}</button>
           <button onClick={saveVersion} title="現在の状態をバージョンとして保存"
-            style={{padding:"0.4rem 0.85rem",borderRadius:"0.4rem",border:"none",background:"#059669",color:"white",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>💾 保存</button>
-          <button onClick={() => setShowPreview(true)} style={{padding:"0.4rem 0.85rem",borderRadius:"0.4rem",border:"none",background:"#2563eb",color:"white",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>👁 プレビュー / PDF</button>
-          <button onClick={onDelete} style={{padding:"0.4rem 0.65rem",borderRadius:"0.4rem",border:"1px solid #fca5a5",background:"#fef2f2",color:"#dc2626",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>🗑 削除</button>
+            style={{padding:"0.4rem 0.85rem",borderRadius:"0.5rem",border:"none",background:"#009122",color:"white",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>💾 保存</button>
+          <button onClick={() => setShowPreview(true)} style={{padding:"0.4rem 0.85rem",borderRadius:"0.5rem",border:"none",background:"#0070D4",color:"white",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>👁 プレビュー / PDF</button>
+          <button onClick={onDelete} style={{padding:"0.4rem 0.65rem",borderRadius:"0.5rem",border:"1px solid #fca5a5",background:"#fef2f2",color:"#DA1313",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>🗑 削除</button>
         </div>
       </div>
       
@@ -7144,7 +7148,7 @@ function QuoteEditor({quote, users=[], currentUser, onUpdate, onDelete, onClose,
         <div style={sectionTitleStyle}>👤 宛先情報</div>
         <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:isMobile?"0.6rem":"0.85rem",marginBottom:isMobile?"0.6rem":"0.75rem"}}>
           <div>
-            <label style={labelStyle}>宛先（御中で表示） <span style={{color:"#dc2626"}}>*</span></label>
+            <label style={labelStyle}>宛先（御中で表示） <span style={{color:"#DA1313"}}>*</span></label>
             <input value={quote.to||""} onChange={e => onUpdate({to: e.target.value})} placeholder="例: 株式会社○○" style={inputStyle}/>
           </div>
           <div>
@@ -7183,9 +7187,9 @@ function QuoteEditor({quote, users=[], currentUser, onUpdate, onDelete, onClose,
       <div style={sectionStyle}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.7rem",paddingBottom:"0.5rem",borderBottom:"1px solid #f3f4f6"}}>
           <div style={{fontSize:"0.78rem",fontWeight:800,color:"#1f2937",display:"flex",alignItems:"center",gap:"0.4rem"}}>📝 明細 <span style={{fontSize:"0.7rem",fontWeight:600,color:"#9ca3af"}}>（{(quote.items||[]).length}件）</span>
-            {pastItems.length>0 && <span style={{fontSize:"0.65rem",fontWeight:600,color:"#0284c7",background:"#e0f2fe",padding:"0.1rem 0.4rem",borderRadius:"0.25rem",marginLeft:"0.3rem"}}>💡 過去{pastItems.length}件の明細が候補に出ます</span>}
+            {pastItems.length>0 && <span style={{fontSize:"0.65rem",fontWeight:600,color:"#0284c7",background:"#e0f2fe",padding:"0.1rem 0.4rem",borderRadius:"0.5rem",marginLeft:"0.3rem"}}>💡 過去{pastItems.length}件の明細が候補に出ます</span>}
           </div>
-          <button onClick={addItem} style={{padding:"0.4rem 0.8rem",borderRadius:"0.4rem",border:"1px solid #93c5fd",background:"#eff6ff",color:"#1d4ed8",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}}>＋ 行を追加</button>
+          <button onClick={addItem} style={{padding:"0.4rem 0.8rem",borderRadius:"0.5rem",border:"1px solid #93c5fd",background:"#F2F7FF",color:"#1563CA",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}}>＋ 行を追加</button>
         </div>
         {/* 過去明細のオートコンプリート用 datalist */}
         {pastItems.length>0 && (
@@ -7202,10 +7206,10 @@ function QuoteEditor({quote, users=[], currentUser, onUpdate, onDelete, onClose,
             {(quote.items||[]).map((it, idx) => {
               const amount = (Number(it.qty)||0)*(Number(it.price)||0);
               return (
-                <div key={idx} style={{background:"white",border:"1px solid #e5e7eb",borderRadius:"0.6rem",padding:"0.75rem",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
+                <div key={idx} style={{background:"white",border:"1px solid #e5e7eb",borderRadius:"0.6rem",padding:"0.75rem",boxShadow:"0 1px 2px rgba(0,17,62,0.05)"}}>
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.5rem"}}>
                     <span style={{fontSize:"0.7rem",fontWeight:800,color:"#9ca3af"}}>明細 #{idx+1}</span>
-                    <button onClick={() => removeItem(idx)} style={{background:"#fef2f2",border:"1px solid #fca5a5",borderRadius:"0.35rem",cursor:"pointer",color:"#dc2626",fontSize:"0.72rem",padding:"0.25rem 0.5rem",fontWeight:700,fontFamily:"inherit"}}>🗑 削除</button>
+                    <button onClick={() => removeItem(idx)} style={{background:"#fef2f2",border:"1px solid #fca5a5",borderRadius:"0.5rem",cursor:"pointer",color:"#DA1313",fontSize:"0.72rem",padding:"0.25rem 0.5rem",fontWeight:700,fontFamily:"inherit"}}>🗑 削除</button>
                   </div>
                   <div style={{marginBottom:"0.5rem"}}>
                     <label style={{...labelStyle,fontSize:"0.7rem"}}>内容</label>
@@ -7300,7 +7304,7 @@ function QuoteEditor({quote, users=[], currentUser, onUpdate, onDelete, onClose,
                       <td style={{padding:"0.3rem"}}><input value={it.unit||""} onChange={e => updateItem(idx,"unit",e.target.value)} placeholder="個" style={{...inputStyle,padding:"0.3rem 0.4rem",fontSize:"0.82rem"}}/></td>
                       <td style={{padding:"0.3rem"}}><input type="number" value={it.price||""} onChange={e => updateItem(idx,"price",e.target.value)} style={{...inputStyle,padding:"0.3rem 0.4rem",fontSize:"0.82rem",textAlign:"right"}}/></td>
                       <td style={{padding:"0.4rem",textAlign:"right",fontWeight:700,color:"#374151"}}>¥{amount.toLocaleString()}</td>
-                      <td style={{padding:"0.3rem",textAlign:"center"}}><button onClick={() => removeItem(idx)} style={{background:"none",border:"none",cursor:"pointer",color:"#dc2626",fontSize:"0.85rem",padding:"0.2rem"}}>🗑</button></td>
+                      <td style={{padding:"0.3rem",textAlign:"center"}}><button onClick={() => removeItem(idx)} style={{background:"none",border:"none",cursor:"pointer",color:"#DA1313",fontSize:"0.85rem",padding:"0.2rem"}}>🗑</button></td>
                     </tr>
                   );
                 })}
@@ -7362,9 +7366,9 @@ function QuoteEditor({quote, users=[], currentUser, onUpdate, onDelete, onClose,
           <span style={{fontWeight:700,color:"#374151"}}>¥{tax.toLocaleString()}</span>
         </div>
         
-        <div style={{display:"flex",justifyContent:"space-between",padding:"0.6rem 0.7rem",fontSize:"1rem",borderTop:"2px solid #2563eb",marginTop:"0.3rem",background:"#eff6ff",borderRadius:"0.4rem",marginLeft:"-0.2rem",marginRight:"-0.2rem"}}>
-          <span style={{color:"#1e40af",fontWeight:800}}>合計（税込）</span>
-          <span style={{fontWeight:800,color:"#1e40af"}}>¥{grandTotal.toLocaleString()}-</span>
+        <div style={{display:"flex",justifyContent:"space-between",padding:"0.6rem 0.7rem",fontSize:"1rem",borderTop:"2px solid #0070D4",marginTop:"0.3rem",background:"#F2F7FF",borderRadius:"0.5rem",marginLeft:"-0.2rem",marginRight:"-0.2rem"}}>
+          <span style={{color:"#295FA6",fontWeight:800}}>合計（税込）</span>
+          <span style={{fontWeight:800,color:"#295FA6"}}>¥{grandTotal.toLocaleString()}-</span>
         </div>
         </div>
       </div>
@@ -7391,7 +7395,7 @@ function QuoteEditor({quote, users=[], currentUser, onUpdate, onDelete, onClose,
               <span style={{fontSize:"1rem",fontWeight:800,color:"#1f2937"}}>📜 変更履歴</span>
               <span style={{fontSize:"0.75rem",color:"#9ca3af"}}>({versionCount}件)</span>
               <div style={{flex:1}}/>
-              <button onClick={()=>setShowHistory(false)} style={{padding:"0.35rem 0.7rem",borderRadius:"0.4rem",border:"1px solid #d1d5db",background:"white",color:"#6b7280",fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}}>✕ 閉じる</button>
+              <button onClick={()=>setShowHistory(false)} style={{padding:"0.35rem 0.7rem",borderRadius:"0.5rem",border:"1px solid #d1d5db",background:"white",color:"#6b7280",fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}}>✕ 閉じる</button>
             </div>
             
             {/* 保存ラベル入力 + 保存ボタン */}
@@ -7400,7 +7404,7 @@ function QuoteEditor({quote, users=[], currentUser, onUpdate, onDelete, onClose,
                 placeholder="保存時のメモ（任意）例: 値引き案、初稿、最終版..."
                 style={{...inputStyle,flex:1,fontSize:"0.8rem"}}/>
               <button onClick={()=>{saveVersion();}} 
-                style={{padding:"0.5rem 0.95rem",borderRadius:"0.4rem",border:"none",background:"#059669",color:"white",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>💾 現状を保存</button>
+                style={{padding:"0.5rem 0.95rem",borderRadius:"0.5rem",border:"none",background:"#009122",color:"white",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>💾 現状を保存</button>
             </div>
             
             {/* バージョン一覧 */}
@@ -7415,7 +7419,7 @@ function QuoteEditor({quote, users=[], currentUser, onUpdate, onDelete, onClose,
                   <div key={v.id} style={{padding:"0.75rem 1.25rem",borderBottom:"1px solid #f3f4f6",display:"flex",alignItems:"flex-start",gap:"0.75rem"}}>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{fontSize:"0.85rem",fontWeight:700,color:"#1f2937",marginBottom:"0.2rem"}}>
-                        {idx===0 && <span style={{fontSize:"0.65rem",background:"#dbeafe",color:"#1d4ed8",padding:"0.1rem 0.4rem",borderRadius:"0.25rem",fontWeight:700,marginRight:"0.4rem"}}>最新</span>}
+                        {idx===0 && <span style={{fontSize:"0.65rem",background:"#E6F0FF",color:"#1563CA",padding:"0.1rem 0.4rem",borderRadius:"0.5rem",fontWeight:700,marginRight:"0.4rem"}}>最新</span>}
                         {v.label}
                       </div>
                       <div style={{fontSize:"0.7rem",color:"#6b7280"}}>
@@ -7438,15 +7442,15 @@ function QuoteEditor({quote, users=[], currentUser, onUpdate, onDelete, onClose,
                       </div>
                       {/* 内部メモ（あれば表示） */}
                       {v.snapshot?.internalMemo && (
-                        <div style={{fontSize:"0.7rem",color:"#92400e",marginTop:"0.4rem",padding:"0.4rem 0.55rem",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:"0.3rem",whiteSpace:"pre-wrap",lineHeight:1.4,maxHeight:"4.5em",overflow:"hidden"}}>
+                        <div style={{fontSize:"0.7rem",color:"#92400e",marginTop:"0.4rem",padding:"0.4rem 0.55rem",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:"0.5rem",whiteSpace:"pre-wrap",lineHeight:1.4,maxHeight:"4.5em",overflow:"hidden"}}>
                           🗒️ {v.snapshot.internalMemo.slice(0,150)}{v.snapshot.internalMemo.length>150?"...":""}
                         </div>
                       )}
                     </div>
                     <button onClick={()=>restoreVersion(v.id)} 
-                      style={{padding:"0.35rem 0.7rem",borderRadius:"0.4rem",border:"1px solid #2563eb",background:"#eff6ff",color:"#1d4ed8",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>↩ 復元</button>
+                      style={{padding:"0.35rem 0.7rem",borderRadius:"0.5rem",border:"1px solid #0070D4",background:"#F2F7FF",color:"#1563CA",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>↩ 復元</button>
                     <button onClick={()=>deleteVersion(v.id)}
-                      style={{padding:"0.35rem 0.55rem",borderRadius:"0.4rem",border:"1px solid #fca5a5",background:"#fef2f2",color:"#dc2626",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}}>🗑</button>
+                      style={{padding:"0.35rem 0.55rem",borderRadius:"0.5rem",border:"1px solid #fca5a5",background:"#fef2f2",color:"#DA1313",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}}>🗑</button>
                   </div>
                 ))
               )}
@@ -7709,7 +7713,7 @@ function QuotePreview({quote, company, authorLastName, onClose, onSavePdfMeta}) 
       <div style={{maxWidth:"calc(210mm + 2rem)",margin:"0 auto"}}>
         {/* ヘッダー（操作ボタン） */}
         <div style={{display:"flex",alignItems:"center",gap:"0.4rem",padding:"0.5rem 0.75rem",borderRadius:"0.5rem 0.5rem 0 0",background:"#f9fafb",border:"1px solid #e5e7eb",borderBottom:"none",flexWrap:"wrap"}}>
-          <button onClick={onClose} style={{padding:"0.4rem 0.7rem",borderRadius:"0.4rem",border:"1px solid #d1d5db",background:"white",fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>← 戻る</button>
+          <button onClick={onClose} style={{padding:"0.4rem 0.7rem",borderRadius:"0.5rem",border:"1px solid #d1d5db",background:"white",fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>← 戻る</button>
           <span style={{fontSize:"0.78rem",color:"#6b7280",fontWeight:700,whiteSpace:"nowrap"}}>見積書PDF</span>
           {quote.pdfGeneratedAt && (
             <span style={{fontSize:"0.7rem",color:"#9ca3af",whiteSpace:"nowrap"}}>
@@ -7717,7 +7721,7 @@ function QuotePreview({quote, company, authorLastName, onClose, onSavePdfMeta}) 
             </span>
           )}
           {quote.pdfStale && pdfState.status === "loading" && (
-            <span style={{fontSize:"0.7rem",color:"#d97706",fontWeight:700,whiteSpace:"nowrap",background:"#fef3c7",padding:"0.15rem 0.5rem",borderRadius:"3px"}}>
+            <span style={{fontSize:"0.7rem",color:"#d97706",fontWeight:700,whiteSpace:"nowrap",background:"#fef3c7",padding:"0.15rem 0.5rem",borderRadius:"8px"}}>
               ⚠ 見積変更あり → 再生成中
             </span>
           )}
@@ -7725,7 +7729,7 @@ function QuotePreview({quote, company, authorLastName, onClose, onSavePdfMeta}) 
           <button 
             onClick={openExcelPdf} 
             disabled={pdfState.status==="loading"} 
-            style={{padding:"0.4rem 0.85rem",borderRadius:"0.4rem",border:"1px solid #059669",background:"white",color:"#059669",fontWeight:700,fontSize:"0.8rem",cursor:pdfState.status==="loading"?"wait":"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}
+            style={{padding:"0.4rem 0.85rem",borderRadius:"0.5rem",border:"1px solid #009122",background:"white",color:"#009122",fontWeight:700,fontSize:"0.8rem",cursor:pdfState.status==="loading"?"wait":"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}
           >
             {pdfState.status === "loading" ? "⏳ 生成中..." : (pdfState.status === "ready" ? "🔄 PDF再生成" : "📄 PDF生成")}
           </button>
@@ -7735,7 +7739,7 @@ function QuotePreview({quote, company, authorLastName, onClose, onSavePdfMeta}) 
               download={`${fallbackName}.pdf`}
               target="_blank"
               rel="noopener noreferrer"
-              style={{padding:"0.4rem 0.85rem",borderRadius:"0.4rem",border:"none",background:"#2563eb",color:"white",fontWeight:700,fontSize:"0.8rem",fontFamily:"inherit",whiteSpace:"nowrap",textDecoration:"none",display:"inline-block"}}
+              style={{padding:"0.4rem 0.85rem",borderRadius:"0.5rem",border:"none",background:"#0070D4",color:"white",fontWeight:700,fontSize:"0.8rem",fontFamily:"inherit",whiteSpace:"nowrap",textDecoration:"none",display:"inline-block"}}
             >
               ⬇ ダウンロード
             </a>
@@ -7743,7 +7747,7 @@ function QuotePreview({quote, company, authorLastName, onClose, onSavePdfMeta}) 
           {pdfState.status === "ready" && pdfState.url && (
             <button 
               onClick={handlePrint}
-              style={{padding:"0.4rem 0.85rem",borderRadius:"0.4rem",border:"none",background:"#374151",color:"white",fontWeight:700,fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}
+              style={{padding:"0.4rem 0.85rem",borderRadius:"0.5rem",border:"none",background:"#374151",color:"white",fontWeight:700,fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}
             >
               🖨 印刷
             </button>
@@ -7757,7 +7761,7 @@ function QuotePreview({quote, company, authorLastName, onClose, onSavePdfMeta}) 
               <div style={{fontSize:"3rem",marginBottom:"0.75rem"}}>📄</div>
               <div style={{fontSize:"0.95rem",color:"#6b7280",marginBottom:"1rem",fontWeight:600}}>まだPDFが生成されていません</div>
               <div style={{fontSize:"0.78rem",color:"#9ca3af",marginBottom:"1.25rem"}}>下のボタンからPDFを生成してください<br/>(以降はこの見積書を開いた時に自動表示されます)</div>
-              <button onClick={openExcelPdf} style={{padding:"0.7rem 1.5rem",borderRadius:"0.5rem",border:"none",background:"#059669",color:"white",fontWeight:700,fontSize:"0.95rem",cursor:"pointer",fontFamily:"inherit"}}>📄 PDFを生成する</button>
+              <button onClick={openExcelPdf} style={{padding:"0.7rem 1.5rem",borderRadius:"0.5rem",border:"none",background:"#009122",color:"white",fontWeight:700,fontSize:"0.95rem",cursor:"pointer",fontFamily:"inherit"}}>📄 PDFを生成する</button>
             </div>
           )}
           {pdfState.status === "loading" && (
@@ -7770,9 +7774,9 @@ function QuotePreview({quote, company, authorLastName, onClose, onSavePdfMeta}) 
           {pdfState.status === "error" && (
             <div style={{textAlign:"center",padding:"2rem",maxWidth:"500px"}}>
               <div style={{fontSize:"2.5rem",marginBottom:"0.75rem"}}>⚠️</div>
-              <div style={{fontSize:"0.95rem",color:"#dc2626",fontWeight:700,marginBottom:"0.75rem"}}>PDF生成に失敗しました</div>
-              <div style={{fontSize:"0.78rem",color:"#6b7280",fontFamily:"monospace",background:"#f9fafb",padding:"0.5rem",borderRadius:"0.3rem",whiteSpace:"pre-wrap",wordBreak:"break-all",marginBottom:"1rem",textAlign:"left"}}>{pdfState.error}</div>
-              <button onClick={openExcelPdf} style={{padding:"0.5rem 1rem",borderRadius:"0.4rem",border:"1px solid #2563eb",background:"white",color:"#2563eb",fontWeight:700,fontSize:"0.85rem",cursor:"pointer"}}>🔄 再試行</button>
+              <div style={{fontSize:"0.95rem",color:"#DA1313",fontWeight:700,marginBottom:"0.75rem"}}>PDF生成に失敗しました</div>
+              <div style={{fontSize:"0.78rem",color:"#6b7280",fontFamily:"monospace",background:"#f9fafb",padding:"0.5rem",borderRadius:"0.5rem",whiteSpace:"pre-wrap",wordBreak:"break-all",marginBottom:"1rem",textAlign:"left"}}>{pdfState.error}</div>
+              <button onClick={openExcelPdf} style={{padding:"0.5rem 1rem",borderRadius:"0.5rem",border:"1px solid #0070D4",background:"white",color:"#0070D4",fontWeight:700,fontSize:"0.85rem",cursor:"pointer"}}>🔄 再試行</button>
             </div>
           )}
           {pdfState.status === "ready" && pdfState.url && (
@@ -8563,7 +8567,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
 
         {/* タイムライン本体 */}
         <div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
-          {items.length===0 && <div style={{textAlign:"center",padding:"1.5rem",color:C.textMuted,background:C.bg,borderRadius:"6px",fontSize:"0.82rem"}}>履歴なし</div>}
+          {items.length===0 && <div style={{textAlign:"center",padding:"1.5rem",color:C.textMuted,background:C.bg,borderRadius:"8px",fontSize:"0.82rem"}}>履歴なし</div>}
           {items.map((it,i)=>{
             const user = users.find(u=>u.id===it.userId);
             const userName = user?.name || "不明";
@@ -8573,12 +8577,12 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
                 <div key={`mtg-${it.id||i}`} style={{background:"#f0fdf4",border:"1px solid #86efac",borderRadius:"8px",padding:"0.75rem 1rem"}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.3rem"}}>
                     <div style={{display:"flex",alignItems:"center",gap:"0.4rem"}}>
-                      <span style={{fontSize:"0.7rem",fontWeight:800,color:"#166534",background:"white",padding:"0.1rem 0.45rem",borderRadius:4}}>🎤 議事録</span>
+                      <span style={{fontSize:"0.7rem",fontWeight:800,color:"#166534",background:"white",padding:"0.1rem 0.45rem",borderRadius:8}}>🎤 議事録</span>
                       <span style={{fontSize:"0.78rem",fontWeight:700,color:"#166534"}}>{it.title||"議事録"}</span>
                     </div>
                     <div style={{display:"flex",alignItems:"center",gap:"0.3rem"}}>
                       <span style={{fontSize:"0.64rem",color:C.textMuted}}>{userName} · {fmt(it.date)}</span>
-                      {isMe && <button onClick={()=>{if(window.confirm("この議事録を削除しますか？"))deleteTMtg(entityKey,entityId,it.id);}} style={{background:"none",border:"none",cursor:"pointer",padding:"0 0.2rem",fontSize:"0.72rem",color:"#dc2626"}}>🗑</button>}
+                      {isMe && <button onClick={()=>{if(window.confirm("この議事録を削除しますか？"))deleteTMtg(entityKey,entityId,it.id);}} style={{background:"none",border:"none",cursor:"pointer",padding:"0 0.2rem",fontSize:"0.72rem",color:"#DA1313"}}>🗑</button>}
                     </div>
                   </div>
                   {it.content && <div style={{fontSize:"0.83rem",color:C.text,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{it.content}</div>}
@@ -8589,20 +8593,20 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
               // フィールド別のアイコン
               const fieldIcon = ({"ファイル添付":"📎","ファイル削除":"🗑","ステータス":"🔄","メモ":"📝","メモ追加":"📝","チャット投稿":"💬","議事録追加":"🎤","営業紐付け":"🔗","担当者":"👤","期限":"📅","タイトル":"✏️","プロジェクト名":"✏️","優先度":"⚡","登録":"✨","削除":"🗑","説明":"📄"})[it.field] || "🔄";
               const isPropagated = !!it._source;
-              const srcBg = isPropagated ? (it._source.type === "タスク" ? "#dbeafe" : "#ede9fe") : "#faf5ff";
+              const srcBg = isPropagated ? (it._source.type === "タスク" ? "#E6F0FF" : "#ede9fe") : "#faf5ff";
               const srcBorder = isPropagated ? (it._source.type === "タスク" ? "#93c5fd" : "#d8b4fe") : "#d8b4fe";
               return (
                 <div key={`ch-${it.id||i}`} style={{background:srcBg,border:`1px solid ${srcBorder}`,borderRadius:"8px",padding:"0.55rem 0.85rem",fontSize:"0.74rem"}}>
                   {isPropagated && (
-                    <div style={{fontSize:"0.62rem",color:it._source.type==="タスク"?"#1d4ed8":"#7c3aed",fontWeight:700,marginBottom:"0.3rem",display:"flex",alignItems:"center",gap:"0.25rem"}}>
+                    <div style={{fontSize:"0.62rem",color:it._source.type==="タスク"?"#1563CA":"#7c3aed",fontWeight:700,marginBottom:"0.3rem",display:"flex",alignItems:"center",gap:"0.25rem"}}>
                       {it._source.type==="タスク" ? "📋" : "🗂"} {it._source.type}「{it._source.name||""}」より
                     </div>
                   )}
                   <div style={{display:"flex",alignItems:"center",gap:"0.4rem",flexWrap:"wrap"}}>
-                    <span style={{fontWeight:700,color:isPropagated?(it._source.type==="タスク"?"#1d4ed8":"#7c3aed"):"#7c3aed"}}>{fieldIcon} {it.field}</span>
-                    {it.oldVal && <span style={{color:"#dc2626",textDecoration:"line-through",fontSize:"0.7rem"}}>{it.oldVal}</span>}
+                    <span style={{fontWeight:700,color:isPropagated?(it._source.type==="タスク"?"#1563CA":"#7c3aed"):"#7c3aed"}}>{fieldIcon} {it.field}</span>
+                    {it.oldVal && <span style={{color:"#DA1313",textDecoration:"line-through",fontSize:"0.7rem"}}>{it.oldVal}</span>}
                     {it.oldVal && <span style={{color:C.textMuted}}>→</span>}
-                    {it.newVal && <span style={{color:"#059669",fontWeight:700,fontSize:"0.72rem"}}>{it.newVal}</span>}
+                    {it.newVal && <span style={{color:"#009122",fontWeight:700,fontSize:"0.72rem"}}>{it.newVal}</span>}
                     <span style={{marginLeft:"auto",fontSize:"0.62rem",color:C.textMuted}}>{userName} · {fmt(it.date)}</span>
                   </div>
                 </div>
@@ -8616,7 +8620,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
             const isEditingMemo = !isChat && tMemoEdit?.entityId===entityId && tMemoEdit?.memoId===it.id;
             const isEditingChat = isChat && tChatEdit?.entityId===entityId && tChatEdit?.chatId===it.id;
             return (
-              <div key={`${it._kind}-${it.id||i}`} style={{background:bgCol,border:`1px solid ${borderCol}`,borderRadius:"8px",padding:"0.65rem 0.85rem",boxShadow:"0 1px 2px rgba(0,0,0,0.03)"}}>
+              <div key={`${it._kind}-${it.id||i}`} style={{background:bgCol,border:`1px solid ${borderCol}`,borderRadius:"8px",padding:"0.65rem 0.85rem",boxShadow:"0 1px 2px rgba(0,17,62,0.04)"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.3rem"}}>
                   <div style={{display:"flex",alignItems:"center",gap:"0.35rem"}}>
                     <span style={{fontSize:"0.62rem",fontWeight:700,color:labelColor}}>{labelText}</span>
@@ -8627,7 +8631,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
                     {it.editedAt && <span style={{fontSize:"0.56rem",color:C.textMuted}}>(編集済)</span>}
                     {isMe && !isEditingMemo && !isEditingChat && <>
                       <button onClick={()=>isChat?setTChatEdit({entityId,chatId:it.id,text:it.text}):setTMemoEdit({entityId,memoId:it.id,text:it.text})} style={{background:"none",border:"none",cursor:"pointer",padding:"0 0.2rem",fontSize:"0.72rem",color:C.textMuted}}>✏️</button>
-                      <button onClick={()=>{if(window.confirm(`この${isChat?"チャット":"メモ"}を削除しますか？`)) isChat?deleteTChat(entityKey,entityId,it.id):deleteTMemo(entityKey,entityId,it.id);}} style={{background:"none",border:"none",cursor:"pointer",padding:"0 0.2rem",fontSize:"0.72rem",color:"#dc2626"}}>🗑</button>
+                      <button onClick={()=>{if(window.confirm(`この${isChat?"チャット":"メモ"}を削除しますか？`)) isChat?deleteTChat(entityKey,entityId,it.id):deleteTMemo(entityKey,entityId,it.id);}} style={{background:"none",border:"none",cursor:"pointer",padding:"0 0.2rem",fontSize:"0.72rem",color:"#DA1313"}}>🗑</button>
                     </>}
                   </div>
                 </div>
@@ -8656,13 +8660,13 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
   const TMemoSection = ({entityKey,entityId,memos=[]}) => (
     <div>
       <div style={{display:"flex",flexDirection:"column",gap:"0.5rem",marginBottom:"0.625rem"}}>
-        {memos.length===0&&<div style={{textAlign:"center",padding:"1.5rem",color:C.textMuted,background:C.bg,borderRadius:"6px",fontSize:"0.82rem"}}>メモなし</div>}
+        {memos.length===0&&<div style={{textAlign:"center",padding:"1.5rem",color:C.textMuted,background:C.bg,borderRadius:"8px",fontSize:"0.82rem"}}>メモなし</div>}
         {[...memos].reverse().map(m=>{
           const mu=users.find(u=>u.id===m.userId);
           const isMe=m.userId===uid;
           const isEditing=tMemoEdit?.entityId===entityId&&tMemoEdit?.memoId===m.id;
           return (
-            <div key={m.id} style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"8px",padding:"0.75rem 1rem",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
+            <div key={m.id} style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"8px",padding:"0.75rem 1rem",boxShadow:"0 1px 2px rgba(0,17,62,0.05)"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.3rem"}}>
                 <span style={{fontSize:"0.72rem",fontWeight:700,color:C.accentDark}}>{mu?.name||"不明"}</span>
                 <div style={{display:"flex",alignItems:"center",gap:"0.25rem"}}>
@@ -8672,7 +8676,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
                     <button onClick={()=>setTMemoEdit({entityId,memoId:m.id,text:m.text})}
                       style={{background:"none",border:"none",cursor:"pointer",padding:"0 0.2rem",fontSize:"0.75rem",color:C.textMuted,lineHeight:1}}>✏️</button>
                     <button onClick={()=>{if(window.confirm("このメモを削除しますか？"))deleteTMemo(entityKey,entityId,m.id);}}
-                      style={{background:"none",border:"none",cursor:"pointer",padding:"0 0.2rem",fontSize:"0.75rem",color:"#dc2626",lineHeight:1}}>🗑</button>
+                      style={{background:"none",border:"none",cursor:"pointer",padding:"0 0.2rem",fontSize:"0.75rem",color:"#DA1313",lineHeight:1}}>🗑</button>
                   </>}
                 </div>
               </div>
@@ -8695,9 +8699,9 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
       <div style={{display:"flex",gap:"0.4rem"}}>
         <textarea value={tMemoIn[entityId]||""} onChange={e=>{setTMemoIn(p=>({...p,[entityId]:e.target.value}));e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,300)+"px";}}
           placeholder="メモを追加... (Shift+Enterで改行)"
-          style={{flex:1,padding:"0.5rem 0.75rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none",resize:"none",minHeight:60,lineHeight:1.5,overflow:"hidden"}}/>
+          style={{flex:1,padding:"0.5rem 0.75rem",borderRadius:"8px",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none",resize:"none",minHeight:60,lineHeight:1.5,overflow:"hidden"}}/>
         <button onClick={()=>addTMemo(entityKey,entityId,tMemoIn[entityId]||"")} disabled={!(tMemoIn[entityId]||"").trim()}
-          style={{padding:"0.5rem 0.875rem",borderRadius:"6px",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",alignSelf:"flex-end",opacity:(tMemoIn[entityId]||"").trim()?1:0.4}}>
+          style={{padding:"0.5rem 0.875rem",borderRadius:"8px",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",alignSelf:"flex-end",opacity:(tMemoIn[entityId]||"").trim()?1:0.4}}>
           追加
         </button>
       </div>
@@ -8717,7 +8721,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
     return (
     <div>
       <div style={{display:"flex",flexDirection:"column",gap:"0.4rem",marginBottom:"0.625rem"}}>
-        {chat.length===0&&<div style={{textAlign:"center",padding:"1.5rem",color:C.textMuted,background:C.bg,borderRadius:"6px",fontSize:"0.82rem"}}>まだコメントがありません</div>}
+        {chat.length===0&&<div style={{textAlign:"center",padding:"1.5rem",color:C.textMuted,background:C.bg,borderRadius:"8px",fontSize:"0.82rem"}}>まだコメントがありません</div>}
         {chat.map(m=>{
           const cu=users.find(u=>u.id===m.userId);
           const isMe=m.userId===uid;
@@ -8734,18 +8738,18 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
                     <textarea value={tChatEdit.text} onChange={e=>{setTChatEdit(p=>({...p,text:e.target.value}));e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,300)+"px";}}
                       style={{padding:"0.4rem 0.6rem",borderRadius:"0.5rem",border:`1.5px solid ${C.accent}`,fontSize:"0.85rem",fontFamily:"inherit",resize:"none",minHeight:40,outline:"none",lineHeight:1.5,overflow:"hidden",boxSizing:"border-box"}}/>
                     <div style={{display:"flex",gap:"0.3rem",justifyContent:isMe?"flex-end":"flex-start"}}>
-                      <button onClick={()=>setTChatEdit(null)} style={{padding:"0.2rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✕</button>
-                      <button onClick={()=>updateTChat(entityKey,entityId,m.id,tChatEdit.text)} disabled={!tChatEdit.text?.trim()} style={{padding:"0.2rem 0.6rem",borderRadius:"0.4rem",border:"none",background:C.accent,color:"white",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>保存</button>
+                      <button onClick={()=>setTChatEdit(null)} style={{padding:"0.2rem 0.6rem",borderRadius:"0.5rem",border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✕</button>
+                      <button onClick={()=>updateTChat(entityKey,entityId,m.id,tChatEdit.text)} disabled={!tChatEdit.text?.trim()} style={{padding:"0.2rem 0.6rem",borderRadius:"0.5rem",border:"none",background:C.accent,color:"white",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>保存</button>
                     </div>
                   </div>
                 ):(
                   <div style={{position:"relative"}}>
-                    <div style={{background:isMe?C.accent:"white",color:isMe?"white":C.text,borderRadius:isMe?"0.875rem 0.875rem 0.25rem 0.875rem":"0.875rem 0.875rem 0.875rem 0.25rem",padding:"0.4rem 0.7rem",fontSize:"0.85rem",lineHeight:1.5,border:isMe?"none":`1px solid ${C.border}`,boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
-                      {m.text.split(/(@\S+)/g).map((p,i)=>p.startsWith("@")?<span key={i} style={{background:"rgba(255,255,255,0.25)",borderRadius:3,padding:"0 2px",fontWeight:700}}>{p}</span>:p)}
+                    <div style={{background:isMe?C.accent:"white",color:isMe?"white":C.text,borderRadius:isMe?"0.875rem 0.875rem 0.25rem 0.875rem":"0.875rem 0.875rem 0.875rem 0.25rem",padding:"0.4rem 0.7rem",fontSize:"0.85rem",lineHeight:1.5,border:isMe?"none":`1px solid ${C.border}`,boxShadow:"0 1px 2px rgba(0,17,62,0.05)"}}>
+                      {m.text.split(/(@\S+)/g).map((p,i)=>p.startsWith("@")?<span key={i} style={{background:"rgba(255,255,255,0.25)",borderRadius:8,padding:"0 2px",fontWeight:700}}>{p}</span>:p)}
                     </div>
                     {isMe&&<div style={{display:"flex",gap:"0.2rem",justifyContent:"flex-end",marginTop:"0.15rem"}}>
                       <button onClick={()=>{setTChatEdit({entityId,chatId:m.id,text:m.text});}} style={{background:"none",border:"none",cursor:"pointer",padding:0,fontSize:"0.68rem",color:C.textMuted}}>✏️</button>
-                      <button onClick={()=>{if(window.confirm("このメッセージを削除しますか？"))deleteTChat(entityKey,entityId,m.id);}} style={{background:"none",border:"none",cursor:"pointer",padding:0,fontSize:"0.68rem",color:"#dc2626"}}>🗑</button>
+                      <button onClick={()=>{if(window.confirm("このメッセージを削除しますか？"))deleteTChat(entityKey,entityId,m.id);}} style={{background:"none",border:"none",cursor:"pointer",padding:0,fontSize:"0.68rem",color:"#DA1313"}}>🗑</button>
                     </div>}
                   </div>
                 )}
@@ -8760,7 +8764,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
       </div>
       <div style={{position:"relative"}}>
         {mentionCandidates.length>0&&(
-          <div style={{position:"absolute",bottom:"100%",left:0,right:0,background:"white",border:`1px solid ${C.border}`,borderRadius:"6px",boxShadow:"0 1px 3px rgba(0,0,0,0.06),0 0 0 1px rgba(0,0,0,0.04)",zIndex:50,overflow:"hidden",marginBottom:4}}>
+          <div style={{position:"absolute",bottom:"100%",left:0,right:0,background:"white",border:`1px solid ${C.border}`,borderRadius:"8px",boxShadow:"0 1px 3px rgba(0,0,0,0.06),0 0 0 1px rgba(0,0,0,0.04)",zIndex:50,overflow:"hidden",marginBottom:4}}>
             {mentionCandidates.map(u=>(
               <button key={u.id} onMouseDown={e=>{e.preventDefault();insertMention(u.name);}}
                 style={{display:"flex",alignItems:"center",gap:"0.5rem",width:"100%",padding:"0.5rem 0.875rem",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",borderBottom:`1px solid ${C.borderLight}`}}>
@@ -8776,9 +8780,9 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
           <textarea value={val} onChange={e=>{setTChatIn(p=>({...p,[entityId]:e.target.value}));e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,160)+"px";}}
             onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();addTChat(entityKey,entityId,val);}}}
             placeholder="コメント... (@ でメンション、Enterで送信)"
-            style={{flex:1,padding:"0.5rem 0.75rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none",resize:"none",minHeight:40,maxHeight:160,lineHeight:1.5,overflow:"auto"}}/>
+            style={{flex:1,padding:"0.5rem 0.75rem",borderRadius:"8px",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none",resize:"none",minHeight:40,maxHeight:160,lineHeight:1.5,overflow:"auto"}}/>
           <button onClick={()=>addTChat(entityKey,entityId,val)} disabled={!val.trim()}
-            style={{padding:"0.5rem 0.875rem",borderRadius:"6px",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",opacity:val.trim()?1:0.4,flexShrink:0}}>
+            style={{padding:"0.5rem 0.875rem",borderRadius:"8px",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",opacity:val.trim()?1:0.4,flexShrink:0}}>
             送信
           </button>
         </div>
@@ -8815,9 +8819,9 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
               <div style={{fontSize:"1rem",fontWeight:700,color:activeTask.status==="完了"?C.textMuted:C.text,textDecoration:activeTask.status==="完了"?"line-through":"none",marginBottom:"0.35rem"}}>{activeTask.title}</div>
               <div style={{display:"flex",alignItems:"center",gap:"0.5rem",flexWrap:"wrap"}}>
                 <StatusPill status={activeTask.status} onChange={s=>updateTask(activeTask.id,{status:s})}/>
-                {activeTask.isPrivate&&<span style={{fontSize:"0.68rem",color:"#dc2626",fontWeight:700}}>🔒</span>}
-                {activeTask.sourceType==="email" && <span style={{fontSize:"0.65rem",fontWeight:700,color:"#1e40af",background:"#dbeafe",borderRadius:3,padding:"0.1rem 0.4rem"}}>📧 メール由来</span>}
-                {activeTask.aiGenerated && <span style={{fontSize:"0.62rem",fontWeight:700,color:"white",background:"#7c3aed",borderRadius:3,padding:"0.1rem 0.4rem"}}>AI</span>}
+                {activeTask.isPrivate&&<span style={{fontSize:"0.68rem",color:"#DA1313",fontWeight:700}}>🔒</span>}
+                {activeTask.sourceType==="email" && <span style={{fontSize:"0.65rem",fontWeight:700,color:"#295FA6",background:"#E6F0FF",borderRadius:8,padding:"0.1rem 0.4rem"}}>📧 メール由来</span>}
+                {activeTask.aiGenerated && <span style={{fontSize:"0.62rem",fontWeight:700,color:"white",background:"#7c3aed",borderRadius:8,padding:"0.1rem 0.4rem"}}>AI</span>}
                 {/* ✅ v210: タスク詳細にも営業先バッジ表示（クリックで遷移） */}
                 {(() => {
                   // salesRef または companyIds/vendorIds/muniIds から営業先を取得
@@ -8837,7 +8841,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
                     linkName = (data.municipalities||[]).find(m => String(m.id) === String(linkId))?.name;
                   }
                   if (!linkType || !linkId) return null;
-                  const badgeColor = {"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"}[linkType] || C.accent;
+                  const badgeColor = {"企業":"#0070D4","業者":"#7c3aed","自治体":"#009122"}[linkType] || C.accent;
                   return (
                     <span style={{fontSize:"0.7rem",fontWeight:700,color:"white",background:badgeColor,borderRadius:999,padding:"0.15rem 0.55rem"}}>
                       🔗 {linkType}: {linkName || linkId}
@@ -8872,11 +8876,11 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
           />
         )}
         {/* Tabs */}
-        <div style={{display:"flex",background:"white",borderRadius:"6px",padding:"0.2rem",marginBottom:"1rem",border:`1px solid ${C.border}`}}>
+        <div style={{display:"flex",background:"white",borderRadius:"8px",padding:"0.2rem",marginBottom:"1rem",border:`1px solid ${C.border}`}}>
           {TASK_TABS.map(([id,icon,lbl])=>(
             <button key={id} onClick={()=>setTaskTab(id)} style={{flex:1,padding:"0.5rem",borderRadius:"0.5rem",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.78rem",position:"relative",background:taskTab===id?C.accent:"transparent",color:taskTab===id?"white":C.textSub}}>
               {icon} {lbl}
-              {id==="chat"&&taskChatUnread>0&&<span style={{position:"absolute",top:3,right:6,background:"#dc2626",color:"white",borderRadius:999,fontSize:"0.5rem",fontWeight:800,padding:"0.05rem 0.25rem",lineHeight:1.4}}>{taskChatUnread}</span>}
+              {id==="chat"&&taskChatUnread>0&&<span style={{position:"absolute",top:3,right:6,background:"#DA1313",color:"white",borderRadius:999,fontSize:"0.5rem",fontWeight:800,padding:"0.05rem 0.25rem",lineHeight:1.4}}>{taskChatUnread}</span>}
             </button>
           ))}
         </div>
@@ -8894,14 +8898,14 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
             )}
             {/* salesRef 表示 + 変更 */}
             {(()=>{
-              const col={"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"}[activeTask.salesRef?.type]||C.accent;
+              const col={"企業":"#0070D4","業者":"#7c3aed","自治体":"#009122"}[activeTask.salesRef?.type]||C.accent;
               return (
                 <div style={{marginBottom:"0.75rem"}}>
                   {activeTask.salesRef
                     ? <div style={{background:col+"15",border:`1px solid ${col}44`,borderRadius:"0.625rem",padding:"0.5rem 0.75rem",display:"flex",alignItems:"center",gap:"0.5rem"}}>
                         <span style={{fontSize:"0.7rem",fontWeight:700,color:"white",background:col,borderRadius:999,padding:"0.1rem 0.5rem"}}>{activeTask.salesRef.type}</span>
                         <span style={{fontSize:"0.82rem",fontWeight:700,color:col,flex:1}}>{activeTask.salesRef.name}</span>
-                        {onNavigateToSales && <button onClick={()=>onNavigateToSales(activeTask.salesRef)} title="営業先の詳細を開く" style={{background:col,border:"none",cursor:"pointer",color:"white",fontSize:"0.7rem",fontWeight:700,padding:"0.25rem 0.6rem",borderRadius:6,fontFamily:"inherit",whiteSpace:"nowrap"}}>詳細へ →</button>}
+                        {onNavigateToSales && <button onClick={()=>onNavigateToSales(activeTask.salesRef)} title="営業先の詳細を開く" style={{background:col,border:"none",cursor:"pointer",color:"white",fontSize:"0.7rem",fontWeight:700,padding:"0.25rem 0.6rem",borderRadius:8,fontFamily:"inherit",whiteSpace:"nowrap"}}>詳細へ →</button>}
                         <button onClick={()=>updateTask(activeTask.id,{salesRef:null})} style={{background:"none",border:"none",cursor:"pointer",color:"#94a3b8",fontSize:"0.85rem",padding:"0 0.2rem"}}>✕</button>
                       </div>
                     : <SalesRefPicker value={null} onChange={v=>updateTask(activeTask.id,{salesRef:v})} salesData={data}/>
@@ -8911,13 +8915,13 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
             })()}
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.5rem",marginBottom:"0.875rem"}}>
               {[["📅 期限",activeTask.dueDate||"未設定"],["👤 担当",assignedNames.length>0?assignedNames.join("・"):"未設定"]].map(([k,v])=>(
-                <div key={k} style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"0.625rem",padding:"0.5rem 0.75rem",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
+                <div key={k} style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"0.625rem",padding:"0.5rem 0.75rem",boxShadow:"0 1px 2px rgba(0,17,62,0.05)"}}>
                   <div style={{fontSize:"0.65rem",color:C.textMuted}}>{k}</div>
                   <div style={{fontSize:"0.82rem",fontWeight:700,color:C.text}}>{v}</div>
                 </div>
               ))}
             </div>
-            {activeTask.notes&&<div style={{fontSize:"0.85rem",color:C.textSub,lineHeight:1.6,padding:"0.75rem",background:"white",border:`1px solid ${C.border}`,borderRadius:"6px",marginBottom:"0.875rem",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>{activeTask.notes}</div>}
+            {activeTask.notes&&<div style={{fontSize:"0.85rem",color:C.textSub,lineHeight:1.6,padding:"0.75rem",background:"white",border:`1px solid ${C.border}`,borderRadius:"8px",marginBottom:"0.875rem",boxShadow:"0 1px 2px rgba(0,17,62,0.05)"}}>{activeTask.notes}</div>}
             <div style={{display:"flex",gap:"0.5rem"}}>
               <Btn variant="secondary" onClick={()=>setSheet("editTask")}>✏️ 編集</Btn>
               <Btn variant="danger" onClick={()=>{if(window.confirm("削除しますか？")){deleteTask(activeTask.id);setScreen(fromProject?"projectDetail":"list");}}}>🗑 削除</Btn>
@@ -8962,15 +8966,15 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
             <div>
               <div style={{fontSize:"1.15rem",fontWeight:800,color:C.text}}>{activePj.name}</div>
               {memberNames.length>0&&<div style={{fontSize:"0.78rem",color:C.textSub,marginTop:"0.25rem"}}>👥 {memberNames.join("・")}</div>}
-              {activePj.isPrivate&&<div style={{fontSize:"0.72rem",color:"#dc2626",fontWeight:700,marginTop:"0.2rem"}}>🔒 プライベート</div>}
+              {activePj.isPrivate&&<div style={{fontSize:"0.72rem",color:"#DA1313",fontWeight:700,marginTop:"0.2rem"}}>🔒 プライベート</div>}
               {/* salesRef インライン編集 */}
               {(()=>{
-                const col={"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"}[activePj.salesRef?.type]||"#64748b";
+                const col={"企業":"#0070D4","業者":"#7c3aed","自治体":"#009122"}[activePj.salesRef?.type]||"#64748b";
                 return activePj.salesRef
                   ? <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginTop:"0.35rem",background:col+"15",border:`1px solid ${col}44`,borderRadius:"0.625rem",padding:"0.3rem 0.6rem"}}>
                       <span style={{fontSize:"0.68rem",fontWeight:800,color:"white",background:col,borderRadius:999,padding:"0.08rem 0.4rem",flexShrink:0}}>{activePj.salesRef.type}</span>
                       <span style={{fontSize:"0.82rem",fontWeight:700,color:col,flex:1}}>{activePj.salesRef.name}</span>
-                      {onNavigateToSales && <button onClick={()=>onNavigateToSales(activePj.salesRef)} title="営業先の詳細を開く" style={{background:col,border:"none",cursor:"pointer",color:"white",fontSize:"0.66rem",fontWeight:700,padding:"0.2rem 0.55rem",borderRadius:5,fontFamily:"inherit",whiteSpace:"nowrap",flexShrink:0}}>詳細へ →</button>}
+                      {onNavigateToSales && <button onClick={()=>onNavigateToSales(activePj.salesRef)} title="営業先の詳細を開く" style={{background:col,border:"none",cursor:"pointer",color:"white",fontSize:"0.66rem",fontWeight:700,padding:"0.2rem 0.55rem",borderRadius:8,fontFamily:"inherit",whiteSpace:"nowrap",flexShrink:0}}>詳細へ →</button>}
                       <button onClick={()=>updateProject(activePj.id,{salesRef:null})} style={{background:"none",border:"none",cursor:"pointer",color:"#94a3b8",fontSize:"0.85rem",padding:"0 0.1rem",flexShrink:0}}>✕</button>
                     </div>
                   : <div style={{marginTop:"0.35rem"}}>
@@ -8988,12 +8992,12 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
             const total = linkedCompanies.length + linkedVendors.length + linkedMunis.length;
             if (total === 0) return null;
             return (
-              <div style={{marginTop:"0.6rem",padding:"0.5rem 0.7rem",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:6}}>
+              <div style={{marginTop:"0.6rem",padding:"0.5rem 0.7rem",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8}}>
                 <div style={{fontSize:"0.62rem",fontWeight:700,color:"#15803d",marginBottom:"0.35rem",letterSpacing:"0.04em"}}>🔗 紐付け営業先 ({total})</div>
                 <div style={{display:"flex",flexWrap:"wrap",gap:"0.35rem"}}>
                   {linkedCompanies.map(c=>(
                     <button key={`c${c.id}`} onClick={()=>onNavigateToSales && onNavigateToSales({type:"企業", id:c.id, name:c.name})}
-                      style={{padding:"0.2rem 0.55rem",background:"#dbeafe",border:"1px solid #93c5fd",borderRadius:999,cursor:"pointer",fontFamily:"inherit",fontSize:"0.7rem",color:"#1e40af",fontWeight:700}}>
+                      style={{padding:"0.2rem 0.55rem",background:"#E6F0FF",border:"1px solid #93c5fd",borderRadius:999,cursor:"pointer",fontFamily:"inherit",fontSize:"0.7rem",color:"#295FA6",fontWeight:700}}>
                       🏢 {c.name}
                     </button>
                   ))}
@@ -9020,7 +9024,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
               <div style={{display:"flex",alignItems:"center",gap:"0.75rem"}}>
                 <div style={{display:"flex",alignItems:"center",gap:"0.4rem",background:"#d1fae5",borderRadius:"0.625rem",padding:"0.4rem 0.875rem"}}>
                   <span style={{fontSize:"1rem"}}>✅</span>
-                  <span style={{fontSize:"0.82rem",fontWeight:800,color:"#059669"}}>完了済み</span>
+                  <span style={{fontSize:"0.82rem",fontWeight:800,color:"#009122"}}>完了済み</span>
                 </div>
                 <button onClick={()=>updateProject(activePj.id,{status:"進行中"})}
                   style={{fontSize:"0.75rem",color:C.textMuted,background:"none",border:"none",cursor:"pointer",textDecoration:"underline",fontFamily:"inherit"}}>
@@ -9038,18 +9042,18 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
                   u = globalAddChangeLog(u,{entityType:"プロジェクト",entityId:activePj.id,entityName:activePj.name,field:"ステータス",oldVal:activePj.status||"",newVal:"完了",userId:uid});
                   setData(u); scheduleSaveData(u);
                 }}
-                style={{width:"100%",padding:"0.7rem",borderRadius:"6px",border:"none",background:"#059669",color:"white",fontWeight:800,fontSize:"0.88rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
+                style={{width:"100%",padding:"0.7rem",borderRadius:"8px",border:"none",background:"#009122",color:"white",fontWeight:800,fontSize:"0.88rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
                 ✅ プロジェクトを完了にする
               </button>
             )}
           </div>
         </Card>
         {/* Tabs */}
-        <div style={{display:"flex",background:"white",borderRadius:"6px",padding:"0.2rem",marginBottom:"1rem",border:`1px solid ${C.border}`}}>
+        <div style={{display:"flex",background:"white",borderRadius:"8px",padding:"0.2rem",marginBottom:"1rem",border:`1px solid ${C.border}`}}>
           {PJ_TABS.map(([id,icon,lbl])=>(
             <button key={id} onClick={()=>setPjTab(id)} style={{flex:1,padding:"0.5rem",borderRadius:"0.5rem",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.78rem",position:"relative",background:pjTab===id?C.accent:"transparent",color:pjTab===id?"white":C.textSub}}>
               {icon} {lbl}
-              {id==="chat"&&pjChatUnread>0&&<span style={{position:"absolute",top:3,right:6,background:"#dc2626",color:"white",borderRadius:999,fontSize:"0.5rem",fontWeight:800,padding:"0.05rem 0.25rem",lineHeight:1.4}}>{pjChatUnread}</span>}
+              {id==="chat"&&pjChatUnread>0&&<span style={{position:"absolute",top:3,right:6,background:"#DA1313",color:"white",borderRadius:999,fontSize:"0.5rem",fontWeight:800,padding:"0.05rem 0.25rem",lineHeight:1.4}}>{pjChatUnread}</span>}
             </button>
           ))}
         </div>
@@ -9108,11 +9112,11 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
           <div style={{display:"flex",flexDirection:"column",gap:"0.7rem"}}>
             <input type="text" value={tMtgTitle} onChange={e=>setTMtgTitle(e.target.value)}
               placeholder="議題（例: 6/4 進捗MTG）"
-              style={{padding:"0.55rem 0.75rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.88rem",fontFamily:"inherit",outline:"none"}}/>
+              style={{padding:"0.55rem 0.75rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.88rem",fontFamily:"inherit",outline:"none"}}/>
             <textarea value={tMtgBody} onChange={e=>setTMtgBody(e.target.value)}
               placeholder="議事内容（決定事項・宿題・次回確認事項など）"
               rows={10}
-              style={{padding:"0.55rem 0.75rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.84rem",fontFamily:"inherit",outline:"none",resize:"vertical",lineHeight:1.6}}/>
+              style={{padding:"0.55rem 0.75rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.84rem",fontFamily:"inherit",outline:"none",resize:"vertical",lineHeight:1.6}}/>
             <div style={{display:"flex",gap:"0.5rem"}}>
               <Btn variant="secondary" style={{flex:1}} onClick={()=>setTMtgSheet(null)}>キャンセル</Btn>
               <Btn style={{flex:2}} size="lg" onClick={()=>addTMtg("projects",activePj.id,tMtgTitle,tMtgBody)} disabled={!tMtgTitle.trim()&&!tMtgBody.trim()}>保存</Btn>
@@ -9178,7 +9182,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
             const d=new Date(t.dueDate); d.setHours(0,0,0,0);
             const diff=Math.round((d-today)/(1000*60*60*24));
             const label=diff<0?`${-diff}日超過`:diff===0?"今日":diff===1?"明日":`${diff}日後`;
-            const col=diff<0?"#dc2626":diff===0?"#ea580c":"#d97706";
+            const col=diff<0?"#DA1313":diff===0?"#ea580c":"#d97706";
             const pj=t.projectId?allProjects.find(p=>p.id===t.projectId):null;
             const sMeta=STATUS_META[t.status]||STATUS_META["未着手"];
             return (
@@ -9211,7 +9215,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
             <span style={{marginLeft:"auto",fontSize:"0.72rem",background:"#0369a1",color:"white",borderRadius:999,padding:"0.1rem 0.45rem",fontWeight:700}}>{urgentNextActions.length}</span>
           </div>
           {urgentNextActions.map(e=>{
-            const col={"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"}[e._type]||C.accent;
+            const col={"企業":"#0070D4","業者":"#7c3aed","自治体":"#009122"}[e._type]||C.accent;
             const isToday=e.nextActionDate===todayStr;
             const isPast=e.nextActionDate<todayStr;
             const label=isPast?"期限切れ":isToday?"今日":"明日";
@@ -9220,7 +9224,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
                 <span style={{fontSize:"0.68rem",fontWeight:800,color:"white",background:col,borderRadius:999,padding:"0.1rem 0.4rem",flexShrink:0}}>{e._type}</span>
                 <span style={{fontSize:"0.85rem",fontWeight:600,color:C.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.name}</span>
                 <span style={{fontSize:"0.7rem",color:C.textSub,flexShrink:0}}>{APPROACH_ICON[e.nextActionType]||"📞"} {e.nextActionType}</span>
-                <span style={{fontSize:"0.72rem",fontWeight:800,color:isPast?"#dc2626":isToday?"#d97706":"#0369a1",background:isPast?"#fee2e2":isToday?"#fff7ed":"#dbeafe",borderRadius:999,padding:"0.15rem 0.5rem",flexShrink:0,border:`1px solid ${isPast?"#fca5a5":isToday?"#fed7aa":"#bae6fd"}`}}>{label}</span>
+                <span style={{fontSize:"0.72rem",fontWeight:800,color:isPast?"#DA1313":isToday?"#d97706":"#0369a1",background:isPast?"#fee2e2":isToday?"#fff7ed":"#E6F0FF",borderRadius:999,padding:"0.15rem 0.5rem",flexShrink:0,border:`1px solid ${isPast?"#fca5a5":isToday?"#fed7aa":"#bae6fd"}`}}>{label}</span>
               </div>
             );
           })}
@@ -9229,7 +9233,7 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
 
       <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.75rem",flexWrap:"wrap"}}>
         <button onClick={()=>setShowMineOnly(p=>!p)}
-          style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"1.5px solid "+(showMineOnly?"#2563eb":"#e2e8f0"),background:showMineOnly?"#dbeafe":"white",color:showMineOnly?"#1d4ed8":"#64748b",fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit"}}>
+          style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"1.5px solid "+(showMineOnly?"#0070D4":"#e2e8f0"),background:showMineOnly?"#E6F0FF":"white",color:showMineOnly?"#1563CA":"#64748b",fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit"}}>
           👤 自分のみ{showMineOnly?" ✓":""}
         </button>
       </div>
@@ -9292,16 +9296,16 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
                   try { return new Date(iso).getTime() < new Date(new Date().toDateString()).getTime(); } catch { return false; }
                 };
                 // ステータス色（タスク）
-                const taskDotColor = (status) => ({"進行中":"#2563eb","未着手":"#94a3b8","保留":"#f59e0b","完了":"#059669"})[status] || "#94a3b8";
+                const taskDotColor = (status) => ({"進行中":"#0070D4","未着手":"#94a3b8","保留":"#f59e0b","完了":"#009122"})[status] || "#94a3b8";
                 // ステータスバッジ色（背景・文字）
                 const taskBadgeColor = (status) => ({
-                  "進行中": {bg:"#dbeafe", color:"#1e40af"},
+                  "進行中": {bg:"#E6F0FF", color:"#295FA6"},
                   "未着手": {bg:"#f1f5f9", color:"#475569"},
                   "保留":   {bg:"#fef3c7", color:"#92400e"},
                   "完了":   {bg:"#d1fae5", color:"#065f46"},
                 })[status] || {bg:"#f1f5f9", color:"#475569"};
                 // ラベルバッジ色（企業/業者/自治体）
-                const labelBgColor = pj.salesRef ? ({"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"})[pj.salesRef.type] || "#64748b" : "#64748b";
+                const labelBgColor = pj.salesRef ? ({"企業":"#0070D4","業者":"#7c3aed","自治体":"#009122"})[pj.salesRef.type] || "#64748b" : "#64748b";
                 return (
                   <div key={pj.id}
                     onClick={()=>{saveTaskScroll("list");setActivePjId(pj.id);setScreen("projectDetail");}}
@@ -9318,15 +9322,15 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
                     )}
                     {/* 2. プロジェクト名 */}
                     <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginBottom:"0.55rem"}}>
-                      {pj.isPrivate&&<span style={{fontSize:"0.65rem",color:"#dc2626",flexShrink:0}}>🔒</span>}
+                      {pj.isPrivate&&<span style={{fontSize:"0.65rem",color:"#DA1313",flexShrink:0}}>🔒</span>}
                       <span style={{fontSize:"0.95rem",fontWeight:700,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,minWidth:0}}>{pj.name}</span>
-                      {pj.status==="完了"&&<span style={{fontSize:"0.62rem",background:"#d1fae5",color:"#059669",borderRadius:999,padding:"0.05rem 0.4rem",fontWeight:700,flexShrink:0}}>完了</span>}
+                      {pj.status==="完了"&&<span style={{fontSize:"0.62rem",background:"#d1fae5",color:"#009122",borderRadius:999,padding:"0.05rem 0.4rem",fontWeight:700,flexShrink:0}}>完了</span>}
                       <span style={{color:C.textMuted,fontSize:"0.9rem",flexShrink:0}}>›</span>
                     </div>
                     {/* 3. 進捗バー + 件数 */}
                     <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:visibleTaskList.length>0?"0.6rem":0}}>
                       <div style={{flex:1,height:4,background:C.borderLight,borderRadius:999,overflow:"hidden"}}>
-                        <div style={{height:"100%",width:`${pct}%`,background:pct===100?"#059669":C.accent,borderRadius:999,transition:"width 0.3s"}}/>
+                        <div style={{height:"100%",width:`${pct}%`,background:pct===100?"#009122":C.accent,borderRadius:999,transition:"width 0.3s"}}/>
                       </div>
                       <span style={{fontSize:"0.66rem",color:C.textMuted,flexShrink:0,fontVariantNumeric:"tabular-nums",fontWeight:600}}>{done}/{pjTasks.length}件</span>
                     </div>
@@ -9339,13 +9343,13 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
                           return (
                             <div key={t.id}
                               onClick={(e)=>{e.stopPropagation(); setActivePjId(pj.id); setActiveTaskId(t.id); setScreen("taskDetail"); setFromProject(true);}}
-                              style={{display:"flex",alignItems:"center",gap:6,padding:"0.35rem 0.55rem",background:"#fafbfc",border:`1px solid ${C.borderLight}`,borderRadius:6,cursor:"pointer",transition:"background 0.1s"}}
+                              style={{display:"flex",alignItems:"center",gap:6,padding:"0.35rem 0.55rem",background:"#fafbfc",border:`1px solid ${C.borderLight}`,borderRadius:8,cursor:"pointer",transition:"background 0.1s"}}
                               onMouseEnter={e=>e.currentTarget.style.background="#f1f5f9"}
                               onMouseLeave={e=>e.currentTarget.style.background="#fafbfc"}>
                               <span style={{width:6,height:6,borderRadius:"50%",background:taskDotColor(t.status),flexShrink:0}}/>
                               <span style={{fontSize:"0.76rem",flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:C.text}}>{t.title}</span>
-                              <span style={{fontSize:"0.6rem",fontWeight:700,background:badge.bg,color:badge.color,padding:"0.1rem 0.4rem",borderRadius:4,flexShrink:0,whiteSpace:"nowrap"}}>{t.status||"未着手"}</span>
-                              {t.dueDate && <span style={{fontSize:"0.62rem",color:overdue?"#dc2626":C.textMuted,flexShrink:0,whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums",fontWeight:overdue?700:500}}>{overdue?"⚠️ ":""}{fmtDue(t.dueDate)}</span>}
+                              <span style={{fontSize:"0.6rem",fontWeight:700,background:badge.bg,color:badge.color,padding:"0.1rem 0.4rem",borderRadius:8,flexShrink:0,whiteSpace:"nowrap"}}>{t.status||"未着手"}</span>
+                              {t.dueDate && <span style={{fontSize:"0.62rem",color:overdue?"#DA1313":C.textMuted,flexShrink:0,whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums",fontWeight:overdue?700:500}}>{overdue?"⚠️ ":""}{fmtDue(t.dueDate)}</span>}
                               {(t.assignees||[]).length>0 && <span style={{fontSize:"0.62rem",color:C.textMuted,flexShrink:0,whiteSpace:"nowrap",fontWeight:500}}>{assigneeLabel(t.assignees)}</span>}
                             </div>
                           );
@@ -9464,11 +9468,11 @@ function TaskView({data,setData,users=[],currentUser=null,taskTab,setTaskTab,pjT
         <div style={{display:"flex",flexDirection:"column",gap:"0.7rem"}}>
           <input type="text" value={tMtgTitle} onChange={e=>setTMtgTitle(e.target.value)}
             placeholder="議題（例: 6/4 進捗MTG）"
-            style={{padding:"0.55rem 0.75rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.88rem",fontFamily:"inherit",outline:"none"}}/>
+            style={{padding:"0.55rem 0.75rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.88rem",fontFamily:"inherit",outline:"none"}}/>
           <textarea value={tMtgBody} onChange={e=>setTMtgBody(e.target.value)}
             placeholder="議事内容（決定事項・宿題・次回確認事項など）"
             rows={10}
-            style={{padding:"0.55rem 0.75rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.84rem",fontFamily:"inherit",outline:"none",resize:"vertical",lineHeight:1.6}}/>
+            style={{padding:"0.55rem 0.75rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.84rem",fontFamily:"inherit",outline:"none",resize:"vertical",lineHeight:1.6}}/>
           <div style={{display:"flex",gap:"0.5rem"}}>
             <Btn variant="secondary" style={{flex:1}} onClick={()=>setTMtgSheet(null)}>キャンセル</Btn>
             <Btn style={{flex:2}} size="lg" onClick={()=>addTMtg("tasks",tMtgSheet.entityId,tMtgTitle,tMtgBody)} disabled={!tMtgTitle.trim()&&!tMtgBody.trim()}>保存</Btn>
@@ -9496,7 +9500,7 @@ function ScheduleView() {
         <div style={{fontSize:"0.85rem",color:C.textSub}}>TeamOn でスケジュールを管理しています</div>
       </div>
       <a href="https://www.teamoncloud.com/login/" target="_blank" rel="noopener noreferrer"
-        style={{display:"flex",alignItems:"center",gap:"0.875rem",padding:"1.25rem 2rem",background:`linear-gradient(135deg,${C.blue},#1d4ed8)`,borderRadius:"1rem",textDecoration:"none",boxShadow:"0 4px 20px rgba(37,99,235,0.35)"}}>
+        style={{display:"flex",alignItems:"center",gap:"0.875rem",padding:"1.25rem 2rem",background:`linear-gradient(135deg,${C.blue},#1563CA)`,borderRadius:"1rem",textDecoration:"none",boxShadow:"0 4px 20px rgba(37,99,235,0.35)"}}>
         <span style={{fontSize:"1.75rem"}}>📆</span>
         <div>
           <div style={{color:"white",fontWeight:800,fontSize:"1rem"}}>TeamOn を開く</div>
@@ -9739,20 +9743,20 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
     <div style={{background:"white",borderRadius:8,padding:"0.75rem",border:"2px solid #10b981",boxShadow:"0 2px 6px rgba(16,185,129,0.1)"}}>
       {/* ヘッダー: モード切替 */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:"0.5rem",marginBottom:"0.6rem",flexWrap:"wrap"}}>
-        <div onClick={()=>setFormOpen(o=>!o)} style={{fontSize:"0.75rem",fontWeight:800,color:"#059669",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>
+        <div onClick={()=>setFormOpen(o=>!o)} style={{fontSize:"0.75rem",fontWeight:800,color:"#009122",display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>
           <span style={{transition:"transform 0.15s",transform:formOpen?"rotate(90deg)":"rotate(0deg)",display:"inline-block",fontSize:"0.7rem"}}>▶</span>
           ✨ AI 返信
         </div>
         {/* モード切替タブ */}
-        <div style={{display:"flex",gap:0,background:"#f0fdf4",borderRadius:6,padding:2,border:"1px solid #bbf7d0"}}>
+        <div style={{display:"flex",gap:0,background:"#f0fdf4",borderRadius:8,padding:2,border:"1px solid #bbf7d0"}}>
           <button onClick={()=>setMode("reply")} 
-            style={{padding:"0.3rem 0.65rem",fontSize:"0.7rem",fontWeight:700,border:"none",borderRadius:4,cursor:"pointer",fontFamily:"inherit",
-              background:mode==="reply"?"#059669":"transparent",color:mode==="reply"?"white":"#065f46"}}>
+            style={{padding:"0.3rem 0.65rem",fontSize:"0.7rem",fontWeight:700,border:"none",borderRadius:8,cursor:"pointer",fontFamily:"inherit",
+              background:mode==="reply"?"#009122":"transparent",color:mode==="reply"?"white":"#065f46"}}>
             ↩️ 返信
           </button>
           <button onClick={()=>setMode("replyAll")} 
-            style={{padding:"0.3rem 0.65rem",fontSize:"0.7rem",fontWeight:700,border:"none",borderRadius:4,cursor:"pointer",fontFamily:"inherit",
-              background:mode==="replyAll"?"#059669":"transparent",color:mode==="replyAll"?"white":"#065f46"}}>
+            style={{padding:"0.3rem 0.65rem",fontSize:"0.7rem",fontWeight:700,border:"none",borderRadius:8,cursor:"pointer",fontFamily:"inherit",
+              background:mode==="replyAll"?"#009122":"transparent",color:mode==="replyAll"?"white":"#065f46"}}>
             👥 全員に返信
           </button>
         </div>
@@ -9766,9 +9770,9 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
           disabled={sending || !body.trim()}
           style={{
             padding:"0.55rem 1.2rem",
-            borderRadius:6,
+            borderRadius:8,
             border:"none",
-            background:sending?"#9ca3af":"#059669",
+            background:sending?"#9ca3af":"#009122",
             color:"white",
             fontSize:"0.8rem",
             fontWeight:800,
@@ -9786,7 +9790,7 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
           title="AIの下書きに戻して、指示を入れて作り直せます"
           style={{
             padding:"0.55rem 0.9rem",
-            borderRadius:6,
+            borderRadius:8,
             border:`1px solid ${showAdvanced?"#7c3aed":C.border}`,
             background:showAdvanced?"#f5f3ff":"white",
             color:showAdvanced?"#6d28d9":C.textSub,
@@ -9802,7 +9806,7 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
           onClick={() => onSwitchToFullForm(mode, body)}
           style={{
             padding:"0.55rem 0.9rem",
-            borderRadius:6,
+            borderRadius:8,
             border:`1px solid ${C.border}`,
             background:"white",
             color:C.textSub,
@@ -9823,7 +9827,7 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
           }}
           style={{
             padding:"0.55rem 0.9rem",
-            borderRadius:6,
+            borderRadius:8,
             border:`1px solid ${C.border}`,
             background:"white",
             color:C.textSub,
@@ -9846,14 +9850,14 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
           <textarea value={instruction} onChange={e=>setInstruction(e.target.value)}
             placeholder="例：今回は丁重にお断りする方向で／見積は来週提出予定と伝える／日程は7/10午後を提案 など"
             rows={2}
-            style={{width:"100%",boxSizing:"border-box",padding:"0.45rem 0.6rem",fontSize:"0.78rem",borderRadius:6,border:`1px solid ${C.border}`,fontFamily:"inherit",resize:"vertical"}} />
+            style={{width:"100%",boxSizing:"border-box",padding:"0.45rem 0.6rem",fontSize:"0.78rem",borderRadius:8,border:`1px solid ${C.border}`,fontFamily:"inherit",resize:"vertical"}} />
           <div style={{display:"flex",gap:6,marginTop:"0.4rem",alignItems:"center"}}>
             <button onClick={regenerateReply} disabled={regenBusy}
-              style={{padding:"0.4rem 0.9rem",borderRadius:6,border:"none",background:regenBusy?"#c4b5fd":"#7c3aed",color:"white",fontSize:"0.75rem",fontWeight:800,cursor:regenBusy?"default":"pointer",fontFamily:"inherit"}}>
+              style={{padding:"0.4rem 0.9rem",borderRadius:8,border:"none",background:regenBusy?"#c4b5fd":"#7c3aed",color:"white",fontSize:"0.75rem",fontWeight:800,cursor:regenBusy?"default":"pointer",fontFamily:"inherit"}}>
               {regenBusy ? "作り直し中…" : "🔁 この指示で返信を作り直す"}
             </button>
             {instruction && <button onClick={()=>setInstruction("")}
-              style={{padding:"0.4rem 0.7rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>クリア</button>}
+              style={{padding:"0.4rem 0.7rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>クリア</button>}
           </div>
         </div>
       )}
@@ -9862,7 +9866,7 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
       <div style={{marginTop:"0.6rem"}}>
         <input ref={fileInputRef} type="file" multiple style={{display:"none"}} onChange={onPickFiles} />
         <button onClick={()=>fileInputRef.current&&fileInputRef.current.click()} disabled={attachBusy}
-          style={{padding:"0.4rem 0.8rem",borderRadius:6,border:`1px dashed ${C.border}`,background:"white",color:C.textSub,fontSize:"0.75rem",fontWeight:700,cursor:attachBusy?"default":"pointer",fontFamily:"inherit"}}>
+          style={{padding:"0.4rem 0.8rem",borderRadius:8,border:`1px dashed ${C.border}`,background:"white",color:C.textSub,fontSize:"0.75rem",fontWeight:700,cursor:attachBusy?"default":"pointer",fontFamily:"inherit"}}>
           {attachBusy ? "アップロード中…" : "📎 ファイルを添付"}
         </button>
         {attachedFiles.length > 0 && (
@@ -9870,12 +9874,12 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
             {attachedFiles.map((a,i)=>{
               const sz = a.size ? (a.size>1048576 ? (a.size/1048576).toFixed(1)+"MB" : Math.max(1,Math.round(a.size/1024))+"KB") : "";
               return (
-                <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"0.35rem 0.55rem",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:6}}>
+                <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"0.35rem 0.55rem",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8}}>
                   <span style={{fontSize:"0.95rem"}}>📎</span>
                   <span style={{flex:1,wordBreak:"break-all",fontSize:"0.76rem",fontWeight:600,color:C.text}}>{a.filename}</span>
                   {sz && <span style={{fontSize:"0.66rem",color:C.textMuted}}>{sz}</span>}
                   <button onClick={()=>setAttachedFiles(prev=>prev.filter((_,j)=>j!==i))}
-                    style={{border:"none",background:"none",cursor:"pointer",color:"#dc2626",fontSize:"0.95rem",lineHeight:1,padding:0}}>×</button>
+                    style={{border:"none",background:"none",cursor:"pointer",color:"#DA1313",fontSize:"0.95rem",lineHeight:1,padding:0}}>×</button>
                 </div>
               );
             })}
@@ -9884,13 +9888,13 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
       </div>
 
       {/* 返信先プレビュー（追加・削除可能）*/}
-      <div style={{background:"#f0fdf4",borderRadius:6,padding:"0.5rem 0.65rem",marginBottom:"0.5rem",fontSize:"0.72rem",lineHeight:1.6,border:"1px solid #bbf7d0"}}>
+      <div style={{background:"#f0fdf4",borderRadius:8,padding:"0.5rem 0.65rem",marginBottom:"0.5rem",fontSize:"0.72rem",lineHeight:1.6,border:"1px solid #bbf7d0"}}>
         {/* To 行 */}
         <div style={{display:"flex",alignItems:"flex-start",gap:"0.4rem",flexWrap:"wrap"}}>
           <span style={{fontWeight:800,color:"#065f46",minWidth:24}}>To:</span>
           <div style={{flex:1,minWidth:0,display:"flex",flexWrap:"wrap",gap:"0.3rem"}}>
             {recipients.to.map((t, i) => (
-              <span key={i} style={{display:"inline-flex",alignItems:"center",gap:3,background:"white",border:"1px solid #6ee7b7",borderRadius:4,padding:"0.1rem 0.4rem",fontSize:"0.68rem",color:"#065f46"}}>
+              <span key={i} style={{display:"inline-flex",alignItems:"center",gap:3,background:"white",border:"1px solid #6ee7b7",borderRadius:8,padding:"0.1rem 0.4rem",fontSize:"0.68rem",color:"#065f46"}}>
                 {t.name ? `${t.name} <${t.email}>` : t.email}
                 <button onClick={()=>{
                   const lcEmail = (t.email||"").toLowerCase();
@@ -9898,14 +9902,14 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
                   setRemovedEmails(prev=>{ const s=new Set(prev); s.add(lcEmail); return s; });
                 }}
                   title="削除"
-                  style={{border:"none",background:"transparent",cursor:"pointer",padding:0,marginLeft:2,fontSize:"0.78rem",color:"#dc2626",fontFamily:"inherit",lineHeight:1}}>
+                  style={{border:"none",background:"transparent",cursor:"pointer",padding:0,marginLeft:2,fontSize:"0.78rem",color:"#DA1313",fontFamily:"inherit",lineHeight:1}}>
                   ×
                 </button>
               </span>
             ))}
             {recipients.to.length === 0 && <span style={{color:"#9ca3af"}}>（なし）</span>}
             <button onClick={()=>{setAddType("to");setShowAddPanel(true);setAddInput("");}}
-              style={{border:"1px dashed #10b981",background:"transparent",borderRadius:4,padding:"0.1rem 0.4rem",fontSize:"0.65rem",color:"#059669",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>
+              style={{border:"1px dashed #10b981",background:"transparent",borderRadius:8,padding:"0.1rem 0.4rem",fontSize:"0.65rem",color:"#009122",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>
               + 追加
             </button>
           </div>
@@ -9916,7 +9920,7 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
             <span style={{fontWeight:800,color:"#065f46",minWidth:24}}>Cc:</span>
             <div style={{flex:1,minWidth:0,display:"flex",flexWrap:"wrap",gap:"0.3rem"}}>
               {recipients.cc.map((t, i) => (
-                <span key={i} style={{display:"inline-flex",alignItems:"center",gap:3,background:"white",border:"1px solid #6ee7b7",borderRadius:4,padding:"0.1rem 0.4rem",fontSize:"0.68rem",color:"#065f46"}}>
+                <span key={i} style={{display:"inline-flex",alignItems:"center",gap:3,background:"white",border:"1px solid #6ee7b7",borderRadius:8,padding:"0.1rem 0.4rem",fontSize:"0.68rem",color:"#065f46"}}>
                   {t.name ? `${t.name} <${t.email}>` : t.email}
                   <button onClick={()=>{
                     const lcEmail = (t.email||"").toLowerCase();
@@ -9924,14 +9928,14 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
                     setRemovedEmails(prev=>{ const s=new Set(prev); s.add(lcEmail); return s; });
                   }}
                     title="削除"
-                    style={{border:"none",background:"transparent",cursor:"pointer",padding:0,marginLeft:2,fontSize:"0.78rem",color:"#dc2626",fontFamily:"inherit",lineHeight:1}}>
+                    style={{border:"none",background:"transparent",cursor:"pointer",padding:0,marginLeft:2,fontSize:"0.78rem",color:"#DA1313",fontFamily:"inherit",lineHeight:1}}>
                     ×
                   </button>
                 </span>
               ))}
               {recipients.cc.length === 0 && <span style={{color:"#9ca3af",fontSize:"0.65rem"}}>（なし）</span>}
               <button onClick={()=>{setAddType("cc");setShowAddPanel(true);setAddInput("");}}
-                style={{border:"1px dashed #10b981",background:"transparent",borderRadius:4,padding:"0.1rem 0.4rem",fontSize:"0.65rem",color:"#059669",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>
+                style={{border:"1px dashed #10b981",background:"transparent",borderRadius:8,padding:"0.1rem 0.4rem",fontSize:"0.65rem",color:"#009122",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>
                 + 追加
               </button>
             </div>
@@ -9943,14 +9947,14 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
             <span style={{fontWeight:800,color:"#065f46",minWidth:24}}>Bcc:</span>
             <div style={{flex:1,minWidth:0,display:"flex",flexWrap:"wrap",gap:"0.3rem"}}>
               {recipients.bcc.map((t, i) => (
-                <span key={i} style={{display:"inline-flex",alignItems:"center",gap:3,background:"white",border:"1px solid #fcd34d",borderRadius:4,padding:"0.1rem 0.4rem",fontSize:"0.68rem",color:"#92400e"}}>
+                <span key={i} style={{display:"inline-flex",alignItems:"center",gap:3,background:"white",border:"1px solid #fcd34d",borderRadius:8,padding:"0.1rem 0.4rem",fontSize:"0.68rem",color:"#92400e"}}>
                   {t.name ? `${t.name} <${t.email}>` : t.email}
                   <button onClick={()=>{
                     const lcEmail = (t.email||"").toLowerCase();
                     setExtraBcc(prev=>prev.filter(e=>(e.email||"").toLowerCase()!==lcEmail));
                   }}
                     title="削除"
-                    style={{border:"none",background:"transparent",cursor:"pointer",padding:0,marginLeft:2,fontSize:"0.78rem",color:"#dc2626",fontFamily:"inherit",lineHeight:1}}>
+                    style={{border:"none",background:"transparent",cursor:"pointer",padding:0,marginLeft:2,fontSize:"0.78rem",color:"#DA1313",fontFamily:"inherit",lineHeight:1}}>
                     ×
                   </button>
                 </span>
@@ -9962,14 +9966,14 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
         {recipients.bcc.length === 0 && (
           <div style={{marginTop:4}}>
             <button onClick={()=>{setAddType("bcc");setShowAddPanel(true);setAddInput("");}}
-              style={{border:"none",background:"transparent",cursor:"pointer",fontSize:"0.62rem",color:"#059669",textDecoration:"underline",fontFamily:"inherit"}}>
+              style={{border:"none",background:"transparent",cursor:"pointer",fontSize:"0.62rem",color:"#009122",textDecoration:"underline",fontFamily:"inherit"}}>
               + Bcc を追加
             </button>
           </div>
         )}
         {/* 追加パネル（モーダル風 + サジェスト機能）*/}
         {showAddPanel && (
-          <div style={{marginTop:"0.5rem",padding:"0.6rem",background:"white",border:"1px solid #6ee7b7",borderRadius:6,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}>
+          <div style={{marginTop:"0.5rem",padding:"0.6rem",background:"white",border:"1px solid #6ee7b7",borderRadius:8,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}>
             <div style={{display:"flex",alignItems:"center",gap:"0.4rem",flexWrap:"wrap",marginBottom:suggestions.length>0?"0.5rem":0}}>
               <span style={{fontSize:"0.72rem",fontWeight:800,color:"#065f46",minWidth:30}}>
                 {addType === "to" ? "To:" : addType === "cc" ? "Cc:" : "Bcc:"}
@@ -10015,7 +10019,7 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
                   flex:1,
                   minWidth:200,
                   padding:"0.35rem 0.55rem",
-                  borderRadius:4,
+                  borderRadius:8,
                   border:"1px solid #d1d5db",
                   fontSize:"0.78rem",
                   fontFamily:"inherit",
@@ -10023,13 +10027,13 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
                 }}
               />
               <button onClick={()=>{setShowAddPanel(false);setAddInput("");}}
-                style={{padding:"0.35rem 0.65rem",borderRadius:4,border:"1px solid #d1d5db",background:"white",color:"#6b7280",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                style={{padding:"0.35rem 0.65rem",borderRadius:8,border:"1px solid #d1d5db",background:"white",color:"#6b7280",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                 キャンセル
               </button>
             </div>
             {/* サジェストリスト */}
             {suggestions.length > 0 && (
-              <div style={{maxHeight:250,overflowY:"auto",border:"1px solid #e5e7eb",borderRadius:5,background:"#fafafa"}}>
+              <div style={{maxHeight:250,overflowY:"auto",border:"1px solid #e5e7eb",borderRadius:8,background:"#fafafa"}}>
                 {suggestions.map((s, i) => (
                   <div key={i} 
                     onClick={()=>{
@@ -10056,7 +10060,7 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
                     </div>
                     <div style={{fontSize:"0.68rem",color:"#6b7280"}}>
                       {s.company && <span style={{marginRight:8}}>🏢 {s.company}</span>}
-                      <span style={{color:"#059669"}}>✉️ {s.email}</span>
+                      <span style={{color:"#009122"}}>✉️ {s.email}</span>
                     </div>
                   </div>
                 ))}
@@ -10067,7 +10071,7 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
             )}
             {/* サジェストなしの場合のヘルプ */}
             {addInput.length > 0 && suggestions.length === 0 && (
-              <div style={{padding:"0.4rem 0.6rem",fontSize:"0.68rem",color:"#6b7280",background:"#f9fafb",borderRadius:4,marginTop:"0.3rem"}}>
+              <div style={{padding:"0.4rem 0.6rem",fontSize:"0.68rem",color:"#6b7280",background:"#f9fafb",borderRadius:8,marginTop:"0.3rem"}}>
                 該当する名刺がありません。完全なメールアドレスを入力して Enter で追加できます。
               </div>
             )}
@@ -10085,8 +10089,8 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
         style={{
           width:"100%",
           padding:"0.8rem 0.95rem",
-          borderRadius:6,
-          border:`1px solid ${editing?"#059669":"#d1fae5"}`,
+          borderRadius:8,
+          border:`1px solid ${editing?"#009122":"#d1fae5"}`,
           fontSize:"0.88rem",
           fontFamily:"inherit",
           lineHeight:1.8,
@@ -10102,7 +10106,7 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
       
       {/* 編集インジケータ */}
       {editing && (
-        <div style={{fontSize:"0.65rem",color:"#059669",marginBottom:"0.4rem",fontStyle:"italic"}}>
+        <div style={{fontSize:"0.65rem",color:"#009122",marginBottom:"0.4rem",fontStyle:"italic"}}>
           ✏️ 編集中 — 送信前に内容を確認してください
         </div>
       )}
@@ -10112,7 +10116,7 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
         <div style={{
           background:"#fee2e2",
           border:"1px solid #fca5a5",
-          borderRadius:5,
+          borderRadius:8,
           padding:"0.5rem 0.7rem",
           marginBottom:"0.5rem",
           fontSize:"0.75rem",
@@ -10137,7 +10141,7 @@ function QuickAiReplyForm({ email, aiDraft, currentUser, myEmail, businessCards,
       <div style={{
         background:"#f9fafb",
         border:`1px dashed ${C.border}`,
-        borderRadius:5,
+        borderRadius:8,
         padding:"0.4rem 0.65rem",
         marginBottom:"0.5rem",
         fontSize:"0.65rem",
@@ -10395,9 +10399,9 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onMarkSpam,
     };
     return (
       <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.35rem"}}>
-        <span style={{fontSize:"0.72rem",fontWeight:700,color:"#059669",minWidth:36}}>{label}</span>
+        <span style={{fontSize:"0.72rem",fontWeight:700,color:"#009122",minWidth:36}}>{label}</span>
         <input type="text" value={text} onChange={e=>setText(e.target.value)} onBlur={commit} placeholder={placeholder}
-          style={{flex:1,padding:"0.4rem 0.55rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"inherit",boxSizing:"border-box"}}/>
+          style={{flex:1,padding:"0.4rem 0.55rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"inherit",boxSizing:"border-box"}}/>
       </div>
     );
   };
@@ -10406,24 +10410,24 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onMarkSpam,
     <div ref={rootRef} data-email-detail-root style={{background:"white",borderRadius:"10px",padding:"0.9rem",border:`1px solid ${C.borderLight}`,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
       {/* ヘッダー（ツールバー: ✅ v202 簡素化版 - 主要3ボタン + ⋯ メニュー） */}
       <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginBottom:"0.65rem",flexWrap:"wrap",position:"relative"}}>
-        <button onClick={onClose} style={{padding:"0.3rem 0.55rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.74rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>← 戻る</button>
+        <button onClick={onClose} style={{padding:"0.3rem 0.55rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.74rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>← 戻る</button>
         {!replyMode && (
           <>
             {/* === 主要アクション（常時表示）=== */}
             {isInbound && (
               <button onClick={()=>openReplyForm("reply")}
-                style={{padding:"0.4rem 0.85rem",borderRadius:6,border:"none",background:C.accent,color:"white",fontSize:"0.78rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+                style={{padding:"0.4rem 0.85rem",borderRadius:8,border:"none",background:C.accent,color:"white",fontSize:"0.78rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
                 ↩️ 返信
               </button>
             )}
             {!isInbound && (
               <button onClick={()=>openReplyForm("forward")}
-                style={{padding:"0.4rem 0.75rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>→ 転送</button>
+                style={{padding:"0.4rem 0.75rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>→ 転送</button>
             )}
             {/* ✅ v209: AI返信ボタン削除 - 返信ボタン押下時に ai_draft_reply を自動挿入する仕様に */}
             {/* === ⋯ その他メニュー === */}
             <button onClick={()=>setShowMoreMenu(v=>!v)}
-              style={{padding:"0.4rem 0.7rem",borderRadius:6,border:`1px solid ${C.border}`,background:showMoreMenu?"#f3f4f6":"white",color:C.textSub,fontSize:"0.78rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>⋯ その他</button>
+              style={{padding:"0.4rem 0.7rem",borderRadius:8,border:`1px solid ${C.border}`,background:showMoreMenu?"#f3f4f6":"white",color:C.textSub,fontSize:"0.78rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>⋯ その他</button>
             {/* ✅ v211: 議事録 AI 生成中の表示 */}
             {minutesGenerating && (
               <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",zIndex:9999,background:"white",border:`2px solid ${C.accent}`,borderRadius:12,padding:"1.5rem 2rem",boxShadow:"0 10px 40px rgba(0,0,0,0.15)",display:"flex",flexDirection:"column",alignItems:"center",gap:"0.75rem",minWidth:240}}>
@@ -10441,14 +10445,14 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onMarkSpam,
               {/* 全員に返信 */}
               {isInbound && ((email.to||[]).length + (email.cc||[]).length) > 1 && (
                 <button onClick={()=>{openReplyForm("replyAll");setShowMoreMenu(false);}}
-                  style={{padding:"0.4rem 0.75rem",borderRadius:6,border:`1px solid ${C.accent}`,background:"white",color:C.accent,fontSize:"0.78rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+                  style={{padding:"0.4rem 0.75rem",borderRadius:8,border:`1px solid ${C.accent}`,background:"white",color:C.accent,fontSize:"0.78rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
                   ↩️ 全員に返信
                 </button>
               )}
               {/* 転送（受信のみ。送信は最上段に表示済み） */}
               {isInbound && (
                 <button onClick={()=>{openReplyForm("forward");setShowMoreMenu(false);}}
-                  style={{padding:"0.4rem 0.75rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                  style={{padding:"0.4rem 0.75rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                   → 転送
                 </button>
               )}
@@ -10458,7 +10462,7 @@ function EmailDetailPane({ email, onClose, onMarkRead, onToggleStar, onMarkSpam,
                 setLinkType(linkType ? null : "企業");
                 setShowMoreMenu(false);
               }}
-                style={{padding:"0.4rem 0.75rem",borderRadius:6,border:`1px solid ${C.border}`,background:linkType?"#fff7ed":"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🔗 連携</button>
+                style={{padding:"0.4rem 0.75rem",borderRadius:8,border:`1px solid ${C.border}`,background:linkType?"#fff7ed":"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🔗 連携</button>
             {/* ✅ v214: 「⋯ その他」のタスク化ボタンは削除。AI 採用ボタンに集約 */}
             {/* ✅ v209: メール → 議事録化（AI要約版） */}
             <button onClick={async()=>{
@@ -10597,7 +10601,7 @@ ${latestBody.slice(0, 1500)}
               if (typeof scheduleSaveData === "function") scheduleSaveData(nd);
               alert(`✅ 議事録に追加しました\n\n連携先: ${entityType} ${targetName}\n営業先の議事録タブで確認できます。`);
             }}
-              style={{padding:"0.4rem 0.75rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>📝 議事録化</button>
+              style={{padding:"0.4rem 0.75rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>📝 議事録化</button>
             <button onClick={async()=>{
               setShowMoreMenu(false); // ✅ v202
               if (!EMAIL_AI_API_URL) {
@@ -10632,7 +10636,7 @@ ${latestBody.slice(0, 1500)}
                 alert("AI 分析エラー: " + (e.message||e));
               } finally { setAiAnalyzing(false); }
             }} disabled={aiAnalyzing}
-              style={{padding:"0.4rem 0.75rem",borderRadius:6,border:`1px solid ${C.accent}`,background:aiAnalyzing?C.borderLight:"#eff6ff",color:aiAnalyzing?C.textMuted:C.accent,fontSize:"0.78rem",fontWeight:700,cursor:aiAnalyzing?"default":"pointer",fontFamily:"inherit"}}>
+              style={{padding:"0.4rem 0.75rem",borderRadius:8,border:`1px solid ${C.accent}`,background:aiAnalyzing?C.borderLight:"#F2F7FF",color:aiAnalyzing?C.textMuted:C.accent,fontSize:"0.78rem",fontWeight:700,cursor:aiAnalyzing?"default":"pointer",fontFamily:"inherit"}}>
               {aiAnalyzing?"🤖 分析中…":"✨ AI 分析"}
             </button>
             {/* 迷惑メール認定/解除 ボタン（受信メールのみ） */}
@@ -10664,7 +10668,7 @@ ${latestBody.slice(0, 1500)}
                 }
               }}
                 title={email.isSpam ? "迷惑メール解除" : "迷惑メールに移動"}
-                style={{padding:"0.4rem 0.75rem",borderRadius:6,border:`1px solid ${email.isSpam?"#dc2626":"#fca5a5"}`,background:email.isSpam?"#fee2e2":"white",color:email.isSpam?"#991b1b":"#dc2626",fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                style={{padding:"0.4rem 0.75rem",borderRadius:8,border:`1px solid ${email.isSpam?"#DA1313":"#fca5a5"}`,background:email.isSpam?"#fee2e2":"white",color:email.isSpam?"#991b1b":"#DA1313",fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                 {email.isSpam ? "✓ 迷惑解除" : "🚫 迷惑"}
               </button>
             )}
@@ -10687,23 +10691,23 @@ ${latestBody.slice(0, 1500)}
           // ✅ v248: AIが通知/メルマガ/返信不要と判定したものは要返信にしない
           const aiNoReply = email.ai_should_reply === false || email.ai_priority === "メルマガ" || email.ai_category === "通知" || email.ai_category === "メルマガ";
           if (inTo && !aiNoReply) return (
-            <span style={{fontSize:"0.7rem",fontWeight:800,padding:"0.2rem 0.6rem",borderRadius:5,background:"#fef3c7",color:"#92400e",border:"1px solid #fcd34d"}}>
+            <span style={{fontSize:"0.7rem",fontWeight:800,padding:"0.2rem 0.6rem",borderRadius:8,background:"#fef3c7",color:"#92400e",border:"1px solid #fcd34d"}}>
               ✉️ 要返信
             </span>
           );
           if (inCc) return (
-            <span style={{fontSize:"0.7rem",fontWeight:700,padding:"0.2rem 0.6rem",borderRadius:5,background:"#dbeafe",color:"#1e40af",border:"1px solid #93c5fd"}}>
+            <span style={{fontSize:"0.7rem",fontWeight:700,padding:"0.2rem 0.6rem",borderRadius:8,background:"#E6F0FF",color:"#295FA6",border:"1px solid #93c5fd"}}>
               📋 CC（参考）
             </span>
           );
           return (
-            <span style={{fontSize:"0.7rem",fontWeight:700,padding:"0.2rem 0.6rem",borderRadius:5,background:"#f1f5f9",color:"#475569",border:"1px solid #cbd5e1"}}>
+            <span style={{fontSize:"0.7rem",fontWeight:700,padding:"0.2rem 0.6rem",borderRadius:8,background:"#f1f5f9",color:"#475569",border:"1px solid #cbd5e1"}}>
               👁️ 共有
             </span>
           );
         })()}
         {email.isReplied && (
-          <span style={{fontSize:"0.7rem",fontWeight:700,padding:"0.2rem 0.6rem",borderRadius:5,background:"#d1fae5",color:"#065f46",border:"1px solid #6ee7b7"}}>
+          <span style={{fontSize:"0.7rem",fontWeight:700,padding:"0.2rem 0.6rem",borderRadius:8,background:"#d1fae5",color:"#065f46",border:"1px solid #6ee7b7"}}>
             ✓ 返信済み{email.repliedAt ? `（${fmtFull(email.repliedAt).slice(5,10)}）` : ""}
           </span>
         )}
@@ -10718,7 +10722,7 @@ ${latestBody.slice(0, 1500)}
           <div style={{
             background:"#fee2e2",
             border:"1px solid #fca5a5",
-            borderRadius:5,
+            borderRadius:8,
             padding:"0.5rem 0.7rem",
             marginTop:"0.4rem",
             color:"#991b1b",
@@ -10758,7 +10762,7 @@ ${latestBody.slice(0, 1500)}
                     else alert("ファイルを開けませんでした\n"+(j&&j.error?j.error:"URL取得に失敗しました"));
                   } catch(e){ alert("ファイルを開けませんでした\n"+(e.message||e)); }
                 }}
-                style={{display:"flex",alignItems:"center",gap:8,padding:"0.45rem 0.6rem",background:"white",border:`1px solid ${C.border}`,borderRadius:6,cursor:"pointer",fontFamily:"inherit",textAlign:"left",width:"100%"}}>
+                style={{display:"flex",alignItems:"center",gap:8,padding:"0.45rem 0.6rem",background:"white",border:`1px solid ${C.border}`,borderRadius:8,cursor:"pointer",fontFamily:"inherit",textAlign:"left",width:"100%"}}>
                   <span style={{fontSize:"1.05rem"}}>{icon}</span>
                   <span style={{flex:1,wordBreak:"break-all",fontWeight:600,fontSize:"0.78rem",color:C.text}}>{a.filename||"ファイル"}</span>
                   {sz && <span style={{fontSize:"0.68rem",color:C.textMuted}}>{sz}</span>}
@@ -10771,19 +10775,19 @@ ${latestBody.slice(0, 1500)}
       )}
       {/* ✨ AI 分析パネル */}
       {(aiData.ai_summary || aiData.ai_priority || (aiData.ai_suggestions||[]).length > 0 || aiData.ai_draft_reply) && (
-        <div style={{background:"linear-gradient(135deg, #eff6ff 0%, #f0f9ff 100%)",borderRadius:8,padding:"0.7rem 0.85rem",border:"1px solid #bfdbfe",marginBottom:"0.65rem"}}>
+        <div style={{background:"linear-gradient(135deg, #F2F7FF 0%, #f0f9ff 100%)",borderRadius:8,padding:"0.7rem 0.85rem",border:"1px solid #bfdbfe",marginBottom:"0.65rem"}}>
           <div onClick={()=>setAiAnalysisOpen(o=>!o)} style={{display:"flex",alignItems:"center",gap:6,marginBottom:"0.5rem",cursor:"pointer"}}>
-            <span style={{transition:"transform 0.15s",transform:aiAnalysisOpen?"rotate(90deg)":"rotate(0deg)",display:"inline-block",fontSize:"0.7rem",color:"#1e40af"}}>▶</span>
-            <span style={{fontSize:"0.78rem",fontWeight:800,color:"#1e40af"}}>✨ AI 分析</span>
+            <span style={{transition:"transform 0.15s",transform:aiAnalysisOpen?"rotate(90deg)":"rotate(0deg)",display:"inline-block",fontSize:"0.7rem",color:"#295FA6"}}>▶</span>
+            <span style={{fontSize:"0.78rem",fontWeight:800,color:"#295FA6"}}>✨ AI 分析</span>
             {aiData.ai_priority && (
               <span style={{fontSize:"0.65rem",fontWeight:700,padding:"0.15rem 0.55rem",borderRadius:999,
-                background:aiData.ai_priority==="至急"?"#fee2e2":aiData.ai_priority==="依頼"?"#fef3c7":aiData.ai_priority==="メルマガ"?"#f1f5f9":"#dbeafe",
-                color:aiData.ai_priority==="至急"?"#991b1b":aiData.ai_priority==="依頼"?"#92400e":aiData.ai_priority==="メルマガ"?"#475569":"#1e40af"}}>
+                background:aiData.ai_priority==="至急"?"#fee2e2":aiData.ai_priority==="依頼"?"#fef3c7":aiData.ai_priority==="メルマガ"?"#f1f5f9":"#E6F0FF",
+                color:aiData.ai_priority==="至急"?"#991b1b":aiData.ai_priority==="依頼"?"#92400e":aiData.ai_priority==="メルマガ"?"#475569":"#295FA6"}}>
                 {aiData.ai_priority}
               </span>
             )}
             {aiData.ai_category && (
-              <span style={{fontSize:"0.62rem",fontWeight:700,padding:"0.1rem 0.45rem",borderRadius:4,background:"#f1f5f9",color:"#475569"}}>
+              <span style={{fontSize:"0.62rem",fontWeight:700,padding:"0.1rem 0.45rem",borderRadius:8,background:"#f1f5f9",color:"#475569"}}>
                 {aiData.ai_category}
               </span>
             )}
@@ -10794,7 +10798,7 @@ ${latestBody.slice(0, 1500)}
             )}
           </div>
           {aiAnalysisOpen && aiData.ai_summary && (
-            <div style={{fontSize:"0.8rem",color:"#1e40af",fontWeight:600,marginBottom:"0.5rem",lineHeight:1.5,padding:"0.4rem 0.6rem",background:"white",borderRadius:5,borderLeft:"3px solid #2563eb"}}>
+            <div style={{fontSize:"0.8rem",color:"#295FA6",fontWeight:600,marginBottom:"0.5rem",lineHeight:1.5,padding:"0.4rem 0.6rem",background:"white",borderRadius:8,borderLeft:"3px solid #0070D4"}}>
               {aiData.ai_summary}
             </div>
           )}
@@ -10810,15 +10814,15 @@ ${latestBody.slice(0, 1500)}
                   (t.title||"") === (s.title||"")
                 );
                 return (
-                  <div key={i} style={{background:"white",borderRadius:5,padding:"0.45rem 0.6rem",fontSize:"0.74rem",display:"flex",alignItems:"center",gap:6,border:"1px solid #dbeafe"}}>
+                  <div key={i} style={{background:"white",borderRadius:8,padding:"0.45rem 0.6rem",fontSize:"0.74rem",display:"flex",alignItems:"center",gap:6,border:"1px solid #E6F0FF"}}>
                     <span style={{fontSize:"0.9rem"}}>{icon}</span>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{fontWeight:600,color:C.text}}>
-                        <span style={{fontSize:"0.62rem",fontWeight:700,padding:"0.05rem 0.35rem",borderRadius:3,background:"#dbeafe",color:"#1e40af",marginRight:4}}>{label}</span>
+                        <span style={{fontSize:"0.62rem",fontWeight:700,padding:"0.05rem 0.35rem",borderRadius:8,background:"#E6F0FF",color:"#295FA6",marginRight:4}}>{label}</span>
                         {s.title || s.projectName || s.companyName || "—"}
                       </div>
                       {s.reason && <div style={{fontSize:"0.65rem",color:C.textMuted,marginTop:2}}>{s.reason}</div>}
-                      {s.due && <div style={{fontSize:"0.65rem",color:"#dc2626",marginTop:2}}>期限: {s.due}</div>}
+                      {s.due && <div style={{fontSize:"0.65rem",color:"#DA1313",marginTop:2}}>期限: {s.due}</div>}
                     </div>
                     <button onClick={()=>{
                       // ✅ v214: 既に採用済みの場合、確認してから再作成
@@ -10950,7 +10954,7 @@ ${latestBody.slice(0, 1500)}
                       }
                     }}
                       title={alreadyAdopted ? "既に採用済み。誤って削除した場合はクリックで再作成できます" : ""}
-                      style={{padding:"0.25rem 0.6rem",borderRadius:4,border:"none",background:alreadyAdopted?"#d1d5db":"#2563eb",color:alreadyAdopted?"#6b7280":"white",fontSize:"0.68rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
+                      style={{padding:"0.25rem 0.6rem",borderRadius:8,border:"none",background:alreadyAdopted?"#d1d5db":"#0070D4",color:alreadyAdopted?"#6b7280":"white",fontSize:"0.68rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
                       {alreadyAdopted ? "✓ 採用済み" : "✓ 採用"}
                     </button>
                   </div>
@@ -11009,7 +11013,7 @@ ${latestBody.slice(0, 1500)}
             : <div style={{padding:"0.75rem 0.9rem",background:C.bg,borderRadius:8,border:`1px solid ${C.borderLight}`,fontSize:"0.83rem",lineHeight:1.7,color:C.text,whiteSpace:"pre-wrap",marginBottom:"0.4rem",wordBreak:"break-word"}}>{linkifyToNodes(email.body)}</div>}
           {hasHtml && (
             <button onClick={()=>setShowHtml(v=> v===null ? !(textEmpty&&hasHtml) : !v )}
-              style={{marginBottom:"0.85rem",padding:"0.25rem 0.65rem",fontSize:"0.68rem",fontWeight:700,border:`1px solid ${C.border}`,borderRadius:6,background:"white",color:C.textSub,cursor:"pointer",fontFamily:"inherit"}}>
+              style={{marginBottom:"0.85rem",padding:"0.25rem 0.65rem",fontSize:"0.68rem",fontWeight:700,border:`1px solid ${C.border}`,borderRadius:8,background:"white",color:C.textSub,cursor:"pointer",fontFamily:"inherit"}}>
               {effHtml ? "📝 テキストで表示" : "🖼 画像付き(HTML)で表示"}
             </button>
           )}
@@ -11024,7 +11028,7 @@ ${latestBody.slice(0, 1500)}
           <div data-link-ui="true" style={{background:"white",borderRadius:12,padding:"1rem",maxWidth:480,width:"100%",maxHeight:"80vh",overflow:"auto",boxShadow:"0 10px 25px rgba(0,0,0,0.25)"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.75rem"}}>
               <div style={{fontSize:"0.9rem",fontWeight:800,color:"#9a3412"}}>🔗 連携先を選択</div>
-              <button onClick={()=>setLinkType(null)} style={{padding:"0.25rem 0.55rem",borderRadius:5,border:`1px solid ${C.border}`,background:"white",color:C.textMuted,fontSize:"0.74rem",cursor:"pointer",fontFamily:"inherit"}}>✕ 閉じる</button>
+              <button onClick={()=>setLinkType(null)} style={{padding:"0.25rem 0.55rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textMuted,fontSize:"0.74rem",cursor:"pointer",fontFamily:"inherit"}}>✕ 閉じる</button>
             </div>
             {/* ✅ v207: メアドから推測した候補表示 */}
             {(() => {
@@ -11098,7 +11102,7 @@ ${latestBody.slice(0, 1500)}
                   <div style={{display:"flex",flexDirection:"column",gap:"0.3rem"}}>
                     {suggestions.map((s,i)=>(
                       <button key={`${s.type}-${s.id}-${i}`} onClick={()=>{onLink(s.type, s.id, s.name); setLinkType(null); setLinkSearch("");}}
-                        style={{padding:"0.5rem 0.65rem",borderRadius:6,border:"1px solid #f59e0b",background:"white",color:"#92400e",fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+                        style={{padding:"0.5rem 0.65rem",borderRadius:8,border:"1px solid #f59e0b",background:"white",color:"#92400e",fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
                         <div>{s.type}: {s.name}</div>
                         <div style={{fontSize:"0.65rem",color:C.textMuted,fontWeight:500,marginTop:"0.15rem"}}>{s.reason}</div>
                       </button>
@@ -11112,16 +11116,16 @@ ${latestBody.slice(0, 1500)}
             <div style={{display:"flex",gap:"0.25rem",flexWrap:"wrap",marginBottom:"0.5rem"}}>
               {["企業","業者","自治体","タスク","プロジェクト","名刺"].map(t=>(
                 <button key={t} onClick={()=>setLinkType(t)}
-                  style={{padding:"0.3rem 0.55rem",borderRadius:5,border:"none",background:linkType===t?C.accent:"#f3f4f6",color:linkType===t?"white":C.textSub,fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{t}</button>
+                  style={{padding:"0.3rem 0.55rem",borderRadius:8,border:"none",background:linkType===t?C.accent:"#f3f4f6",color:linkType===t?"white":C.textSub,fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{t}</button>
               ))}
             </div>
             <input type="text" value={linkSearch} onChange={e=>setLinkSearch(e.target.value)} placeholder={`${linkType}を検索…`} autoFocus
-              style={{width:"100%",padding:"0.5rem 0.65rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.82rem",fontFamily:"inherit",boxSizing:"border-box",marginBottom:"0.5rem"}}/>
+              style={{width:"100%",padding:"0.5rem 0.65rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.82rem",fontFamily:"inherit",boxSizing:"border-box",marginBottom:"0.5rem"}}/>
             <div style={{maxHeight:300,overflow:"auto",display:"flex",flexDirection:"column",gap:"0.25rem"}}>
               {candidates.length===0 && <div style={{fontSize:"0.74rem",color:C.textMuted,padding:"0.4rem",textAlign:"center"}}>該当なし（検索キーワードを変えてみてください）</div>}
               {candidates.map(c=>(
                 <button key={c.id} onClick={()=>{onLink(linkType, c.id, c.name); setLinkType(null); setLinkSearch("");}}
-                  style={{padding:"0.5rem 0.65rem",borderRadius:5,border:`1px solid ${C.borderLight}`,background:"white",color:C.text,fontSize:"0.8rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>{c.name}</button>
+                  style={{padding:"0.5rem 0.65rem",borderRadius:8,border:`1px solid ${C.borderLight}`,background:"white",color:C.text,fontSize:"0.8rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>{c.name}</button>
               ))}
             </div>
           </div>
@@ -11132,15 +11136,15 @@ ${latestBody.slice(0, 1500)}
       {replyMode && (
         <div ref={replyFormRef} style={{background:"#f0fdf4",borderRadius:8,padding:"0.75rem",border:"1px solid #86efac"}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.5rem"}}>
-            <div style={{fontSize:"0.78rem",fontWeight:800,color:"#059669"}}>
+            <div style={{fontSize:"0.78rem",fontWeight:800,color:"#009122"}}>
               {replyMode==="reply"?"↩️ 返信":replyMode==="replyAll"?"↩️ 全員に返信":"→ 転送"}
             </div>
             <button onClick={closeReplyForm} style={{padding:"0.2rem 0.5rem",border:"none",background:"transparent",cursor:"pointer",color:C.textMuted,fontSize:"0.72rem",fontFamily:"inherit"}}>× 閉じる</button>
           </div>
           {/* From 表示 */}
           <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.3rem"}}>
-            <span style={{fontSize:"0.72rem",fontWeight:700,color:"#059669",minWidth:36}}>From</span>
-            <div style={{flex:1,padding:"0.4rem 0.55rem",fontSize:"0.78rem",color:C.textSub,background:"white",border:`1px solid ${C.borderLight}`,borderRadius:5}}>
+            <span style={{fontSize:"0.72rem",fontWeight:700,color:"#009122",minWidth:36}}>From</span>
+            <div style={{flex:1,padding:"0.4rem 0.55rem",fontSize:"0.78rem",color:C.textSub,background:"white",border:`1px solid ${C.borderLight}`,borderRadius:8}}>
               {currentUser?.name||""} &lt;{currentUser?.email||"未設定"}&gt;
             </div>
           </div>
@@ -11149,28 +11153,28 @@ ${latestBody.slice(0, 1500)}
           {/* CC 切替 */}
           {!showCc && !showBcc && (
             <div style={{display:"flex",gap:"0.4rem",marginBottom:"0.4rem"}}>
-              <button onClick={()=>setShowCc(true)} style={{padding:"0.25rem 0.55rem",borderRadius:4,border:"none",background:"transparent",color:"#059669",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>+ CC</button>
-              <button onClick={()=>setShowBcc(true)} style={{padding:"0.25rem 0.55rem",borderRadius:4,border:"none",background:"transparent",color:"#059669",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>+ BCC</button>
+              <button onClick={()=>setShowCc(true)} style={{padding:"0.25rem 0.55rem",borderRadius:8,border:"none",background:"transparent",color:"#009122",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>+ CC</button>
+              <button onClick={()=>setShowBcc(true)} style={{padding:"0.25rem 0.55rem",borderRadius:8,border:"none",background:"transparent",color:"#009122",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>+ BCC</button>
             </div>
           )}
           {showCc && <RecipientInput label="CC" value={replyCc} onChange={setReplyCc} placeholder="CC のメールアドレス" />}
           {!showBcc && showCc && (
             <div style={{marginBottom:"0.4rem"}}>
-              <button onClick={()=>setShowBcc(true)} style={{padding:"0.2rem 0.5rem",borderRadius:4,border:"none",background:"transparent",color:"#059669",fontSize:"0.7rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>+ BCC</button>
+              <button onClick={()=>setShowBcc(true)} style={{padding:"0.2rem 0.5rem",borderRadius:8,border:"none",background:"transparent",color:"#009122",fontSize:"0.7rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>+ BCC</button>
             </div>
           )}
           {showBcc && <RecipientInput label="BCC" value={replyBcc} onChange={setReplyBcc} placeholder="BCC のメールアドレス" />}
           {/* Subject */}
           <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.4rem"}}>
-            <span style={{fontSize:"0.72rem",fontWeight:700,color:"#059669",minWidth:36}}>件名</span>
+            <span style={{fontSize:"0.72rem",fontWeight:700,color:"#009122",minWidth:36}}>件名</span>
             <input type="text" value={replySubject} onChange={e=>setReplySubject(e.target.value)} placeholder="件名"
-              style={{flex:1,padding:"0.4rem 0.55rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.8rem",fontFamily:"inherit",boxSizing:"border-box"}}/>
+              style={{flex:1,padding:"0.4rem 0.55rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.8rem",fontFamily:"inherit",boxSizing:"border-box"}}/>
           </div>
           {/* ✅ v253: 添付ファイル（本文の上に配置） */}
           <div style={{marginBottom:"0.5rem"}}>
             <input ref={replyFileInputRef} type="file" multiple style={{display:"none"}} onChange={onPickReplyFiles} />
             <button onClick={()=>replyFileInputRef.current&&replyFileInputRef.current.click()} disabled={replyAttachBusy}
-              style={{padding:"0.4rem 0.8rem",borderRadius:6,border:`1px dashed ${C.border}`,background:"white",color:C.textSub,fontSize:"0.75rem",fontWeight:700,cursor:replyAttachBusy?"default":"pointer",fontFamily:"inherit"}}>
+              style={{padding:"0.4rem 0.8rem",borderRadius:8,border:`1px dashed ${C.border}`,background:"white",color:C.textSub,fontSize:"0.75rem",fontWeight:700,cursor:replyAttachBusy?"default":"pointer",fontFamily:"inherit"}}>
               {replyAttachBusy?"アップロード中…":"📎 ファイルを添付"}
             </button>
             {replyAttachedFiles.length>0 && (
@@ -11178,12 +11182,12 @@ ${latestBody.slice(0, 1500)}
                 {replyAttachedFiles.map((a,i)=>{
                   const sz = a.size ? (a.size>1048576?(a.size/1048576).toFixed(1)+"MB":Math.max(1,Math.round(a.size/1024))+"KB") : "";
                   return (
-                    <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"0.35rem 0.55rem",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:6}}>
+                    <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"0.35rem 0.55rem",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8}}>
                       <span style={{fontSize:"0.95rem"}}>📎</span>
                       <span style={{flex:1,wordBreak:"break-all",fontSize:"0.76rem",fontWeight:600,color:C.text}}>{a.filename}</span>
                       {sz && <span style={{fontSize:"0.66rem",color:C.textMuted}}>{sz}</span>}
                       <button onClick={()=>setReplyAttachedFiles(prev=>prev.filter((_,j)=>j!==i))}
-                        style={{border:"none",background:"none",cursor:"pointer",color:"#dc2626",fontSize:"0.95rem",lineHeight:1,padding:0}}>×</button>
+                        style={{border:"none",background:"none",cursor:"pointer",color:"#DA1313",fontSize:"0.95rem",lineHeight:1,padding:0}}>×</button>
                     </div>
                   );
                 })}
@@ -11192,20 +11196,20 @@ ${latestBody.slice(0, 1500)}
           </div>
           {/* 本文 */}
           <textarea value={replyBody} onChange={e=>setReplyBody(e.target.value)} rows={12} placeholder={aiBusyLocal?"AIが生成中…":"本文を入力"}
-            style={{width:"100%",padding:"0.55rem 0.7rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.84rem",fontFamily:"inherit",lineHeight:1.6,resize:"vertical",boxSizing:"border-box",marginBottom:"0.5rem"}}/>
+            style={{width:"100%",padding:"0.55rem 0.7rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.84rem",fontFamily:"inherit",lineHeight:1.6,resize:"vertical",boxSizing:"border-box",marginBottom:"0.5rem"}}/>
           {/* アクション */}
           <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap"}}>
             {isInbound && replyMode !== "forward" && (
               <button onClick={generateAiDraft} disabled={aiBusyLocal||aiBusy}
-                style={{padding:"0.55rem 0.85rem",borderRadius:6,border:`1px solid ${C.accent}55`,background:"white",color:C.accent,fontSize:"0.8rem",fontWeight:700,cursor:(aiBusyLocal||aiBusy)?"default":"pointer",fontFamily:"inherit"}}>
+                style={{padding:"0.55rem 0.85rem",borderRadius:8,border:`1px solid ${C.accent}55`,background:"white",color:C.accent,fontSize:"0.8rem",fontWeight:700,cursor:(aiBusyLocal||aiBusy)?"default":"pointer",fontFamily:"inherit"}}>
                 {aiBusyLocal?"AI生成中…":"✨ AI下書き"}
               </button>
             )}
             <div style={{flex:1}}/>
             <button onClick={closeReplyForm}
-              style={{padding:"0.55rem 0.85rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.8rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>キャンセル</button>
+              style={{padding:"0.55rem 0.85rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.8rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>キャンセル</button>
             <button onClick={handleSend} disabled={sendBusy||!replyBody.trim()||replyTo.length===0}
-              style={{padding:"0.55rem 1.1rem",borderRadius:6,border:"none",background:(sendBusy||!replyBody.trim()||replyTo.length===0)?C.borderLight:"#059669",color:(sendBusy||!replyBody.trim()||replyTo.length===0)?C.textMuted:"white",fontSize:"0.84rem",fontWeight:800,cursor:(sendBusy||!replyBody.trim()||replyTo.length===0)?"default":"pointer",fontFamily:"inherit"}}>
+              style={{padding:"0.55rem 1.1rem",borderRadius:8,border:"none",background:(sendBusy||!replyBody.trim()||replyTo.length===0)?C.borderLight:"#009122",color:(sendBusy||!replyBody.trim()||replyTo.length===0)?C.textMuted:"white",fontSize:"0.84rem",fontWeight:800,cursor:(sendBusy||!replyBody.trim()||replyTo.length===0)?"default":"pointer",fontFamily:"inherit"}}>
               {sendBusy?"送信中…":"📤 送信"}
             </button>
           </div>
@@ -12531,9 +12535,9 @@ ${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
           {id:"compose",lbl:"✏️ AI作成",count:0},
         ].map(t=>(
           <button key={t.id} onClick={()=>{setMbView(t.id);setMbSelectedId(null);}}
-            style={{flex:1,padding:"0.55rem 0.25rem",borderRadius:6,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:mbView===t.id?800:600,fontSize:"0.74rem",background:mbView===t.id?"white":"transparent",color:mbView===t.id?C.accent:C.textSub,boxShadow:mbView===t.id?"0 1px 3px rgba(0,0,0,0.06)":"none",position:"relative"}}>
+            style={{flex:1,padding:"0.55rem 0.25rem",borderRadius:8,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:mbView===t.id?800:600,fontSize:"0.74rem",background:mbView===t.id?"white":"transparent",color:mbView===t.id?C.accent:C.textSub,boxShadow:mbView===t.id?"0 1px 3px rgba(0,0,0,0.06)":"none",position:"relative"}}>
             {t.lbl}
-            {t.count>0 && <span style={{marginLeft:4,background:"#dc2626",color:"white",fontSize:"0.6rem",padding:"0.05rem 0.35rem",borderRadius:999,fontWeight:800}}>{t.count}</span>}
+            {t.count>0 && <span style={{marginLeft:4,background:"#DA1313",color:"white",fontSize:"0.6rem",padding:"0.05rem 0.35rem",borderRadius:999,fontWeight:800}}>{t.count}</span>}
           </button>
         ))}
       </div>
@@ -12561,14 +12565,14 @@ ${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
              `📬 サーバー: ${dbEmailsTotal}通 / 表示中: ${dbEmails.length}通${localMailbox.length>0?` + ローカル ${localMailbox.length}通`:""}`}
           </span>
           {prefetchProgress.active && (
-            <span style={{fontSize:"0.7rem",color:"#1e40af",background:"#dbeafe",padding:"0.15rem 0.5rem",borderRadius:999,fontWeight:600}}>
+            <span style={{fontSize:"0.7rem",color:"#295FA6",background:"#E6F0FF",padding:"0.15rem 0.5rem",borderRadius:999,fontWeight:600}}>
               🤖 AI 事前分析中 {prefetchProgress.done}/{prefetchProgress.total}
             </span>
           )}
         </div>
         <div style={{display:"flex",gap:6}}>
           <button onClick={reloadDbEmails} disabled={dbEmailsLoading}
-            style={{padding:"0.35rem 0.7rem",fontSize:"0.72rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",cursor:dbEmailsLoading?"not-allowed":"pointer",fontFamily:"inherit",fontWeight:700,color:C.text,opacity:dbEmailsLoading?0.5:1}}>
+            style={{padding:"0.35rem 0.7rem",fontSize:"0.72rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",cursor:dbEmailsLoading?"not-allowed":"pointer",fontFamily:"inherit",fontWeight:700,color:C.text,opacity:dbEmailsLoading?0.5:1}}>
             🔄 再読込
           </button>
           <button disabled={dbSyncBusy}
@@ -12606,7 +12610,7 @@ ${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
                 setDbSyncBusy(false);
               }
             }}
-            style={{padding:"0.35rem 0.7rem",fontSize:"0.72rem",borderRadius:6,border:"none",background:dbSyncBusy?C.borderLight:C.accent,color:"white",cursor:dbSyncBusy?"not-allowed":"pointer",fontFamily:"inherit",fontWeight:800}}>
+            style={{padding:"0.35rem 0.7rem",fontSize:"0.72rem",borderRadius:8,border:"none",background:dbSyncBusy?C.borderLight:C.accent,color:"white",cursor:dbSyncBusy?"not-allowed":"pointer",fontFamily:"inherit",fontWeight:800}}>
             {dbSyncBusy?"📥 受信中…":"📥 今すぐ受信"}
           </button>
         </div>
@@ -12656,7 +12660,7 @@ ${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
             <div style={{display:"flex",gap:"0.3rem",flexWrap:"wrap",alignItems:"center"}}>
               {[["all","すべて"],["unread","未読"],["needsReply","要返信"],["starred","⭐"],["spam","🚫 迷惑"]].map(([id,lbl])=>(
                 <button key={id} onClick={()=>setMbFilter(id)}
-                  style={{padding:"0.28rem 0.65rem",borderRadius:999,border:`1px solid ${mbFilter===id?C.accent:C.borderLight}`,background:mbFilter===id?(id==="spam"?"#dc2626":C.accent):"white",color:mbFilter===id?"white":C.textSub,fontSize:"0.7rem",fontWeight:mbFilter===id?800:600,cursor:"pointer",fontFamily:"inherit"}}>{lbl}</button>
+                  style={{padding:"0.28rem 0.65rem",borderRadius:999,border:`1px solid ${mbFilter===id?C.accent:C.borderLight}`,background:mbFilter===id?(id==="spam"?"#DA1313":C.accent):"white",color:mbFilter===id?"white":C.textSub,fontSize:"0.7rem",fontWeight:mbFilter===id?800:600,cursor:"pointer",fontFamily:"inherit"}}>{lbl}</button>
               ))}
               <div style={{flex:1}}/>
               {/* 迷惑タブ表示中: 一括削除ボタン */}
@@ -12678,12 +12682,12 @@ ${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
                     }
                   } catch(e) { alert("削除エラー: " + e.message); }
                 }}
-                  style={{padding:"0.28rem 0.7rem",borderRadius:6,border:"none",background:"#dc2626",color:"white",fontSize:"0.7rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+                  style={{padding:"0.28rem 0.7rem",borderRadius:8,border:"none",background:"#DA1313",color:"white",fontSize:"0.7rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
                   🗑 すべて削除 ({list.length})
                 </button>
               )}
               {mbView==="inbox" && <button onClick={()=>setMbTestOpen(true)}
-                style={{padding:"0.28rem 0.6rem",borderRadius:6,border:`1px dashed ${C.border}`,background:"white",color:C.textMuted,fontSize:"0.68rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}} title="バックエンド未実装中の手動テスト">＋ テスト受信</button>}
+                style={{padding:"0.28rem 0.6rem",borderRadius:8,border:`1px dashed ${C.border}`,background:"white",color:C.textMuted,fontSize:"0.68rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}} title="バックエンド未実装中の手動テスト">＋ テスト受信</button>}
             </div>
 
             {/* ── Outlook風 3カラムレイアウト ── */}
@@ -12715,31 +12719,31 @@ ${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
                     const needsAction = isToMe && !e.isReplied && !e.isSpam && e.ai_should_reply !== false && e.ai_priority !== "メルマガ" && e.ai_category !== "通知" && e.ai_category !== "メルマガ";
                     return (
                       <div key={e.id} data-email-id={e.id} onClick={()=>selectEmailWithDelayedRead(e.id, isUnread)}
-                        style={{display:"flex",alignItems:"flex-start",gap:"0.5rem",padding:"0.55rem 0.7rem",background:isSelected?"#dbeafe":isUnread?"#fff7ed":"white",borderRadius:"8px",border:`1px solid ${isSelected?C.accent:needsAction?"#fbbf24":needsRep?"#fca5a5":C.borderLight}`,cursor:"pointer",boxShadow:isSelected?"0 2px 6px rgba(37,99,235,0.15)":"0 1px 2px rgba(0,0,0,0.03)",transition:"all 0.1s",borderLeftWidth:needsAction?"4px":"1px",borderLeftColor:needsAction?"#f59e0b":undefined}}>
+                        style={{display:"flex",alignItems:"flex-start",gap:"0.5rem",padding:"0.55rem 0.7rem",background:isSelected?"#E6F0FF":isUnread?"#fff7ed":"white",borderRadius:"8px",border:`1px solid ${isSelected?C.accent:needsAction?"#fbbf24":needsRep?"#fca5a5":C.borderLight}`,cursor:"pointer",boxShadow:isSelected?"0 2px 6px rgba(37,99,235,0.15)":"0 1px 2px rgba(0,0,0,0.03)",transition:"all 0.1s",borderLeftWidth:needsAction?"4px":"1px",borderLeftColor:needsAction?"#f59e0b":undefined}}>
                         <button onClick={ev=>{ev.stopPropagation();updateEmailField(e.id,{isStarred:!e.isStarred});}}
                           style={{padding:0,border:"none",background:"none",cursor:"pointer",fontSize:"0.95rem",lineHeight:1,flexShrink:0,color:e.isStarred?"#eab308":C.borderLight}}>{e.isStarred?"⭐":"☆"}</button>
                         <div style={{flex:1,minWidth:0}}>
                           <div style={{display:"flex",alignItems:"center",gap:"0.4rem"}}>
                             {isUnread && <span style={{width:6,height:6,borderRadius:"50%",background:"#ea580c",flexShrink:0}}/>}
                             <span style={{fontSize:"0.78rem",fontWeight:isUnread?800:600,color:C.text,flex:"0 1 auto",minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{peer}</span>
-                            {needsRep && <span style={{fontSize:"0.58rem",fontWeight:800,padding:"0.05rem 0.35rem",borderRadius:4,background:"#fee2e2",color:"#b91c1c",flexShrink:0,whiteSpace:"nowrap"}}>要返信 {daysSince(e.receivedAt||e.createdAt)}日</span>}
-                            {needsAction && !needsRep && !(e.isReplied||repliedToIds.has(e.id)) && <span style={{fontSize:"0.58rem",fontWeight:800,padding:"0.05rem 0.35rem",borderRadius:4,background:"#fef3c7",color:"#92400e",flexShrink:0,whiteSpace:"nowrap"}}>✉️要返信</span>}
-                            {(e.isReplied||repliedToIds.has(e.id)) && <span style={{fontSize:"0.58rem",fontWeight:800,padding:"0.05rem 0.35rem",borderRadius:4,background:"#d1fae5",color:"#065f46",flexShrink:0,whiteSpace:"nowrap"}}>✓ 返信済</span>}
-                            {e.status==="failed" && <span style={{fontSize:"0.58rem",fontWeight:800,padding:"0.05rem 0.35rem",borderRadius:4,background:"#fee2e2",color:"#b91c1c",flexShrink:0,whiteSpace:"nowrap"}}>⚠️ 送信失敗</span>}
+                            {needsRep && <span style={{fontSize:"0.58rem",fontWeight:800,padding:"0.05rem 0.35rem",borderRadius:8,background:"#fee2e2",color:"#b91c1c",flexShrink:0,whiteSpace:"nowrap"}}>要返信 {daysSince(e.receivedAt||e.createdAt)}日</span>}
+                            {needsAction && !needsRep && !(e.isReplied||repliedToIds.has(e.id)) && <span style={{fontSize:"0.58rem",fontWeight:800,padding:"0.05rem 0.35rem",borderRadius:8,background:"#fef3c7",color:"#92400e",flexShrink:0,whiteSpace:"nowrap"}}>✉️要返信</span>}
+                            {(e.isReplied||repliedToIds.has(e.id)) && <span style={{fontSize:"0.58rem",fontWeight:800,padding:"0.05rem 0.35rem",borderRadius:8,background:"#d1fae5",color:"#065f46",flexShrink:0,whiteSpace:"nowrap"}}>✓ 返信済</span>}
+                            {e.status==="failed" && <span style={{fontSize:"0.58rem",fontWeight:800,padding:"0.05rem 0.35rem",borderRadius:8,background:"#fee2e2",color:"#b91c1c",flexShrink:0,whiteSpace:"nowrap"}}>⚠️ 送信失敗</span>}
                             <span style={{flex:1}}/>
                             <span style={{fontSize:"0.62rem",color:C.textMuted,flexShrink:0,fontVariantNumeric:"tabular-nums"}}>{fmtMbDate(e.sentAt||e.receivedAt||e.createdAt)}</span>
                           </div>
                           <div style={{display:"flex",alignItems:"center",gap:6,marginTop:"0.1rem"}}>
                             {e.ai_priority && (
-                              <span style={{fontSize:"0.55rem",fontWeight:800,padding:"0.05rem 0.4rem",borderRadius:3,whiteSpace:"nowrap",flexShrink:0,
-                                background:e.ai_priority==="至急"?"#fee2e2":e.ai_priority==="依頼"?"#fef3c7":e.ai_priority==="メルマガ"?"#f1f5f9":"#dbeafe",
-                                color:e.ai_priority==="至急"?"#991b1b":e.ai_priority==="依頼"?"#92400e":e.ai_priority==="メルマガ"?"#64748b":"#1e40af"}}>
+                              <span style={{fontSize:"0.55rem",fontWeight:800,padding:"0.05rem 0.4rem",borderRadius:8,whiteSpace:"nowrap",flexShrink:0,
+                                background:e.ai_priority==="至急"?"#fee2e2":e.ai_priority==="依頼"?"#fef3c7":e.ai_priority==="メルマガ"?"#f1f5f9":"#E6F0FF",
+                                color:e.ai_priority==="至急"?"#991b1b":e.ai_priority==="依頼"?"#92400e":e.ai_priority==="メルマガ"?"#64748b":"#295FA6"}}>
                                 {e.ai_priority}
                               </span>
                             )}
                             <div style={{fontSize:"0.74rem",fontWeight:isUnread?700:500,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,minWidth:0}}>{e.subject||"(件名なし)"}</div>
                           </div>
-                          <div style={{fontSize:"0.66rem",color:e.ai_summary?"#1e40af":C.textMuted,marginTop:"0.05rem",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontWeight:e.ai_summary?500:400}}>
+                          <div style={{fontSize:"0.66rem",color:e.ai_summary?"#295FA6":C.textMuted,marginTop:"0.05rem",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontWeight:e.ai_summary?500:400}}>
                             {e.ai_summary || (e.body||"").slice(0,80)}
                           </div>
                         </div>
@@ -12754,19 +12758,19 @@ ${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
                     const canPrev = idx > 0;
                     const canNext = idx >= 0 && idx < list.length-1;
                     return (
-                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:"0.75rem",padding:"0.4rem 0.6rem",background:C.bg,border:`1px solid ${C.borderLight}`,borderRadius:6}}>
+                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:"0.75rem",padding:"0.4rem 0.6rem",background:C.bg,border:`1px solid ${C.borderLight}`,borderRadius:8}}>
                         <div style={{fontSize:"0.72rem",color:C.textSub,fontWeight:600}}>
                           {idx+1} / {list.length}
                         </div>
                         <div style={{display:"flex",gap:6}}>
                           <button onClick={()=>selectAdjacent(-1)} disabled={!canPrev}
                             title="前のメール (↑)"
-                            style={{padding:"0.3rem 0.65rem",fontSize:"0.75rem",borderRadius:5,border:`1px solid ${C.border}`,background:canPrev?"white":"#f3f4f6",color:canPrev?C.text:C.textMuted,cursor:canPrev?"pointer":"not-allowed",fontFamily:"inherit",fontWeight:700}}>
+                            style={{padding:"0.3rem 0.65rem",fontSize:"0.75rem",borderRadius:8,border:`1px solid ${C.border}`,background:canPrev?"white":"#f3f4f6",color:canPrev?C.text:C.textMuted,cursor:canPrev?"pointer":"not-allowed",fontFamily:"inherit",fontWeight:700}}>
                             ↑ 前
                           </button>
                           <button onClick={()=>selectAdjacent(1)} disabled={!canNext}
                             title="次のメール (↓)"
-                            style={{padding:"0.3rem 0.65rem",fontSize:"0.75rem",borderRadius:5,border:`1px solid ${C.border}`,background:canNext?"white":"#f3f4f6",color:canNext?C.text:C.textMuted,cursor:canNext?"pointer":"not-allowed",fontFamily:"inherit",fontWeight:700}}>
+                            style={{padding:"0.3rem 0.65rem",fontSize:"0.75rem",borderRadius:8,border:`1px solid ${C.border}`,background:canNext?"white":"#f3f4f6",color:canNext?C.text:C.textMuted,cursor:canNext?"pointer":"not-allowed",fontFamily:"inherit",fontWeight:700}}>
                             ↓ 次
                           </button>
                         </div>
@@ -12868,17 +12872,17 @@ ${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
                 const canPrev = idx > 0;
                 const canNext = idx >= 0 && idx < list.length-1;
                 return (
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:"0.5rem",padding:"0.4rem 0.6rem",background:C.bg,border:`1px solid ${C.borderLight}`,borderRadius:6}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:"0.5rem",padding:"0.4rem 0.6rem",background:C.bg,border:`1px solid ${C.borderLight}`,borderRadius:8}}>
                     <div style={{fontSize:"0.72rem",color:C.textSub,fontWeight:600}}>
                       {idx+1} / {list.length}
                     </div>
                     <div style={{display:"flex",gap:6}}>
                       <button onClick={()=>selectAdjacent(-1)} disabled={!canPrev}
-                        style={{padding:"0.3rem 0.65rem",fontSize:"0.75rem",borderRadius:5,border:`1px solid ${C.border}`,background:canPrev?"white":"#f3f4f6",color:canPrev?C.text:C.textMuted,cursor:canPrev?"pointer":"not-allowed",fontFamily:"inherit",fontWeight:700}}>
+                        style={{padding:"0.3rem 0.65rem",fontSize:"0.75rem",borderRadius:8,border:`1px solid ${C.border}`,background:canPrev?"white":"#f3f4f6",color:canPrev?C.text:C.textMuted,cursor:canPrev?"pointer":"not-allowed",fontFamily:"inherit",fontWeight:700}}>
                         ↑ 前
                       </button>
                       <button onClick={()=>selectAdjacent(1)} disabled={!canNext}
-                        style={{padding:"0.3rem 0.65rem",fontSize:"0.75rem",borderRadius:5,border:`1px solid ${C.border}`,background:canNext?"white":"#f3f4f6",color:canNext?C.text:C.textMuted,cursor:canNext?"pointer":"not-allowed",fontFamily:"inherit",fontWeight:700}}>
+                        style={{padding:"0.3rem 0.65rem",fontSize:"0.75rem",borderRadius:8,border:`1px solid ${C.border}`,background:canNext?"white":"#f3f4f6",color:canNext?C.text:C.textMuted,cursor:canNext?"pointer":"not-allowed",fontFamily:"inherit",fontWeight:700}}>
                         ↓ 次
                       </button>
                     </div>
@@ -12984,16 +12988,16 @@ ${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
                   const needsRep = needsReplySoon(e);
                   return (
                     <div key={e.id} data-email-id={e.id} onClick={()=>selectEmailWithDelayedRead(e.id, isUnread)}
-                      style={{display:"flex",alignItems:"flex-start",gap:"0.6rem",padding:"0.65rem 0.8rem",background:isUnread?"#fff7ed":"white",borderRadius:"8px",border:`1px solid ${needsRep?"#fca5a5":C.borderLight}`,cursor:"pointer",boxShadow:"0 1px 2px rgba(0,0,0,0.03)",transition:"all 0.1s"}}>
+                      style={{display:"flex",alignItems:"flex-start",gap:"0.6rem",padding:"0.65rem 0.8rem",background:isUnread?"#fff7ed":"white",borderRadius:"8px",border:`1px solid ${needsRep?"#fca5a5":C.borderLight}`,cursor:"pointer",boxShadow:"0 1px 2px rgba(0,17,62,0.04)",transition:"all 0.1s"}}>
                       <button onClick={ev=>{ev.stopPropagation();updateEmailField(e.id,{isStarred:!e.isStarred});}}
                         style={{padding:0,border:"none",background:"none",cursor:"pointer",fontSize:"1rem",lineHeight:1,flexShrink:0,color:e.isStarred?"#eab308":C.borderLight}}>{e.isStarred?"⭐":"☆"}</button>
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{display:"flex",alignItems:"center",gap:"0.4rem"}}>
                           {isUnread && <span style={{width:7,height:7,borderRadius:"50%",background:"#ea580c",flexShrink:0}}/>}
                           <span style={{fontSize:"0.82rem",fontWeight:isUnread?800:600,color:C.text,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{peer}</span>
-                          {needsRep && <span style={{fontSize:"0.62rem",fontWeight:700,padding:"0.1rem 0.4rem",borderRadius:4,background:"#fee2e2",color:"#b91c1c",flexShrink:0}}>要返信 {daysSince(e.receivedAt||e.createdAt)}日</span>}
-                          {(e.isReplied||repliedToIds.has(e.id)) && <span style={{fontSize:"0.62rem",fontWeight:700,padding:"0.1rem 0.4rem",borderRadius:4,background:"#d1fae5",color:"#065f46",flexShrink:0}}>✓ 返信済</span>}
-                          {e.status==="failed" && <span style={{fontSize:"0.62rem",fontWeight:700,padding:"0.1rem 0.4rem",borderRadius:4,background:"#fee2e2",color:"#b91c1c",flexShrink:0}}>⚠️ 送信失敗</span>}
+                          {needsRep && <span style={{fontSize:"0.62rem",fontWeight:700,padding:"0.1rem 0.4rem",borderRadius:8,background:"#fee2e2",color:"#b91c1c",flexShrink:0}}>要返信 {daysSince(e.receivedAt||e.createdAt)}日</span>}
+                          {(e.isReplied||repliedToIds.has(e.id)) && <span style={{fontSize:"0.62rem",fontWeight:700,padding:"0.1rem 0.4rem",borderRadius:8,background:"#d1fae5",color:"#065f46",flexShrink:0}}>✓ 返信済</span>}
+                          {e.status==="failed" && <span style={{fontSize:"0.62rem",fontWeight:700,padding:"0.1rem 0.4rem",borderRadius:8,background:"#fee2e2",color:"#b91c1c",flexShrink:0}}>⚠️ 送信失敗</span>}
                           <span style={{fontSize:"0.66rem",color:C.textMuted,flexShrink:0,fontVariantNumeric:"tabular-nums"}}>{fmtMbDate(e.sentAt||e.receivedAt||e.createdAt)}</span>
                         </div>
                         <div style={{fontSize:"0.78rem",fontWeight:isUnread?700:500,color:C.text,marginTop:"0.15rem",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.subject||"(件名なし)"}</div>
@@ -13001,7 +13005,7 @@ ${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
                         {(e.linkedDisplay||[]).length>0 && (
                           <div style={{display:"flex",gap:"0.25rem",marginTop:"0.3rem",flexWrap:"wrap"}}>
                             {(e.linkedDisplay||[]).slice(0,3).map((l,i)=>(
-                              <span key={i} style={{fontSize:"0.6rem",padding:"0.1rem 0.4rem",borderRadius:4,background:C.accent+"15",color:C.accent,fontWeight:700}}>{l.type}: {l.name}</span>
+                              <span key={i} style={{fontSize:"0.6rem",padding:"0.1rem 0.4rem",borderRadius:8,background:C.accent+"15",color:C.accent,fontWeight:700}}>{l.type}: {l.name}</span>
                             ))}
                             {(e.linkedDisplay||[]).length>3 && <span style={{fontSize:"0.6rem",color:C.textMuted}}>+{(e.linkedDisplay||[]).length-3}</span>}
                           </div>
@@ -13026,13 +13030,13 @@ ${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
               let tFrom,tSub,tBody;
               return <>
                 <div style={{display:"flex",flexDirection:"column",gap:"0.55rem"}}>
-                  <input ref={el=>{tFrom=el;}} placeholder="差出人メールアドレス" defaultValue="customer@example.com" style={{padding:"0.5rem 0.7rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.82rem",fontFamily:"inherit"}}/>
-                  <input ref={el=>{tSub=el;}} placeholder="件名" defaultValue="ご相談の件" style={{padding:"0.5rem 0.7rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.82rem",fontFamily:"inherit"}}/>
-                  <textarea ref={el=>{tBody=el;}} placeholder="本文" defaultValue="お世話になっております。〇〇です。\n見積もりの件でご相談がございます。\nお手数ですがお時間あるときにご連絡ください。" rows={6} style={{padding:"0.5rem 0.7rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.82rem",fontFamily:"inherit",resize:"vertical"}}/>
+                  <input ref={el=>{tFrom=el;}} placeholder="差出人メールアドレス" defaultValue="customer@example.com" style={{padding:"0.5rem 0.7rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.82rem",fontFamily:"inherit"}}/>
+                  <input ref={el=>{tSub=el;}} placeholder="件名" defaultValue="ご相談の件" style={{padding:"0.5rem 0.7rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.82rem",fontFamily:"inherit"}}/>
+                  <textarea ref={el=>{tBody=el;}} placeholder="本文" defaultValue="お世話になっております。〇〇です。\n見積もりの件でご相談がございます。\nお手数ですがお時間あるときにご連絡ください。" rows={6} style={{padding:"0.5rem 0.7rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.82rem",fontFamily:"inherit",resize:"vertical"}}/>
                 </div>
                 <div style={{display:"flex",gap:"0.5rem",marginTop:"0.9rem"}}>
-                  <button onClick={()=>setMbTestOpen(false)} style={{flex:1,padding:"0.55rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:600,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>キャンセル</button>
-                  <button onClick={()=>addTestInboundEmail(tFrom?.value||"",tSub?.value||"",tBody?.value||"")} style={{flex:2,padding:"0.55rem",borderRadius:6,border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>追加</button>
+                  <button onClick={()=>setMbTestOpen(false)} style={{flex:1,padding:"0.55rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:600,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>キャンセル</button>
+                  <button onClick={()=>addTestInboundEmail(tFrom?.value||"",tSub?.value||"",tBody?.value||"")} style={{flex:2,padding:"0.55rem",borderRadius:8,border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>追加</button>
                 </div>
               </>;
             })()}
@@ -13111,7 +13115,7 @@ ${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
                 <div style={{display:"flex",gap:"0.3rem",flexWrap:"wrap"}}>
                   {["名刺交換のみ","少し話した","会食した","仲良い"].map(r=>(
                     <button key={r} onClick={()=>setFollowRelation(r)}
-                      style={{padding:"0.3rem 0.625rem",borderRadius:999,border:`1.5px solid ${followRelation===r?"#059669":"#bbf7d0"}`,background:followRelation===r?"#dcfce7":"white",color:followRelation===r?"#166534":"#64748b",fontSize:"0.75rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                      style={{padding:"0.3rem 0.625rem",borderRadius:999,border:`1.5px solid ${followRelation===r?"#009122":"#bbf7d0"}`,background:followRelation===r?"#dcfce7":"white",color:followRelation===r?"#166534":"#64748b",fontSize:"0.75rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                       {r}
                     </button>
                   ))}
@@ -13134,7 +13138,7 @@ ${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
               setInputText(""); setInstruction(""); setToCompany(""); setToName("");
               setIsInternal(false); setFollowIndustry(""); setFollowRelation("話した"); setFollowMemo("");
               setGenerated(""); setPhase("input"); setCopyState("idle");
-            }} style={{padding:"0.35rem 0.875rem",background:"#fff1f2",border:"1.5px solid #fca5a5",borderRadius:"0.625rem",color:"#dc2626",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}}>
+            }} style={{padding:"0.35rem 0.875rem",background:"#fff1f2",border:"1.5px solid #fca5a5",borderRadius:"0.625rem",color:"#DA1313",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}}>
               🗑 全リセット
             </button>
             <button onClick={()=>setStyleSheet(true)}
@@ -13198,7 +13202,7 @@ ${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
                 placeholder={mode==="reply"?"返信したいメールの本文をここに貼り付けてください...\n\n💡 本文から会社名・担当者名をAIが自動判別します（宛先入力は不要）":"例：A社の田中部長への初回アポイント依頼。来月の新製品説明会の案内として送りたい。先方とは先月の展示会で名刺交換済み。"}
                 style={{height:160}}/>
               {inputText&&<button onClick={()=>setInputText("")}
-                style={{position:"absolute",top:"0.5rem",right:"0.5rem",background:"#f1f5f9",border:"none",borderRadius:"0.4rem",padding:"0.2rem 0.5rem",cursor:"pointer",fontSize:"0.72rem",color:"#64748b",fontWeight:700,lineHeight:1}}>✕ リセット</button>}
+                style={{position:"absolute",top:"0.5rem",right:"0.5rem",background:"#f1f5f9",border:"none",borderRadius:"0.5rem",padding:"0.2rem 0.5rem",cursor:"pointer",fontSize:"0.72rem",color:"#64748b",fontWeight:700,lineHeight:1}}>✕ リセット</button>}
             </div>
           </FieldLbl>}
 
@@ -13210,10 +13214,10 @@ ${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
                   :"例：丁寧かつ簡潔に。押しつけがましくなく、相手の都合を優先する姿勢で。"}
                 style={{height:100}}/>
               {instruction&&<button onClick={()=>setInstruction("")}
-                style={{position:"absolute",top:"0.5rem",right:"0.5rem",background:"#f1f5f9",border:"none",borderRadius:"0.4rem",padding:"0.2rem 0.5rem",cursor:"pointer",fontSize:"0.72rem",color:"#64748b",fontWeight:700,lineHeight:1}}>✕ リセット</button>}
+                style={{position:"absolute",top:"0.5rem",right:"0.5rem",background:"#f1f5f9",border:"none",borderRadius:"0.5rem",padding:"0.2rem 0.5rem",cursor:"pointer",fontSize:"0.72rem",color:"#64748b",fontWeight:700,lineHeight:1}}>✕ リセット</button>}
             </div>
             {!instruction.trim()&&inputText.trim()&&(
-              <div style={{fontSize:"0.72rem",color:"#dc2626",marginTop:"0.35rem",fontWeight:600}}>⚠️ 指示は必須です</div>
+              <div style={{fontSize:"0.72rem",color:"#DA1313",marginTop:"0.35rem",fontWeight:600}}>⚠️ 指示は必須です</div>
             )}
           </FieldLbl>}
 
@@ -13265,14 +13269,14 @@ ${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
           <div style={{position:"relative"}}>
             <Textarea value={generated} onChange={e=>setGenerated(e.target.value)} style={{height:320,marginBottom:"1rem"}}/>
             {generated&&<button onClick={()=>setGenerated("")}
-              style={{position:"absolute",top:"0.5rem",right:"0.5rem",background:"#f1f5f9",border:"none",borderRadius:"0.4rem",padding:"0.2rem 0.5rem",cursor:"pointer",fontSize:"0.72rem",color:"#64748b",fontWeight:700,lineHeight:1}}>✕ リセット</button>}
+              style={{position:"absolute",top:"0.5rem",right:"0.5rem",background:"#f1f5f9",border:"none",borderRadius:"0.5rem",padding:"0.2rem 0.5rem",cursor:"pointer",fontSize:"0.72rem",color:"#64748b",fontWeight:700,lineHeight:1}}>✕ リセット</button>}
           </div>
           <div style={{display:"flex",gap:"0.75rem"}}>
             <Btn variant="secondary" style={{flex:1}} onClick={save}>💾 保存</Btn>
             <Btn size="lg"
               onClick={()=>copyText(generated)}
               variant={copyState==="ok"?"secondary":copyState==="fail"?"danger":"primary"}
-              style={{flex:2,background:copyState==="ok"?"#10b981":copyState==="fail"?"#dc2626":C.accent,color:"white"}}>
+              style={{flex:2,background:copyState==="ok"?"#10b981":copyState==="fail"?"#DA1313":C.accent,color:"white"}}>
               {copyState==="ok"?"✓ コピー完了！":copyState==="fail"?"✗ 失敗":"📋 コピー"}
             </Btn>
           </div>
@@ -13287,17 +13291,17 @@ ${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
                 <div style={{fontSize:"0.7rem",fontWeight:700,color:"#166534",marginBottom:"0.2rem"}}>📧 宛先メールアドレス</div>
                 <input value={sendToEmail||""} onChange={e=>setSendToEmail(e.target.value)}
                   placeholder="例: tanaka@example.co.jp"
-                  style={{width:"100%",padding:"0.5rem 0.75rem",borderRadius:"6px",border:"1px solid #86efac",fontSize:"0.84rem",fontFamily:"inherit",boxSizing:"border-box",background:"white"}}/>
+                  style={{width:"100%",padding:"0.5rem 0.75rem",borderRadius:"8px",border:"1px solid #86efac",fontSize:"0.84rem",fontFamily:"inherit",boxSizing:"border-box",background:"white"}}/>
               </div>
               <div>
                 <div style={{fontSize:"0.7rem",fontWeight:700,color:"#166534",marginBottom:"0.2rem"}}>📝 件名</div>
                 <input value={sendSubject||""} onChange={e=>setSendSubject(e.target.value)}
                   placeholder="例: ご相談の件"
-                  style={{width:"100%",padding:"0.5rem 0.75rem",borderRadius:"6px",border:"1px solid #86efac",fontSize:"0.84rem",fontFamily:"inherit",boxSizing:"border-box",background:"white"}}/>
+                  style={{width:"100%",padding:"0.5rem 0.75rem",borderRadius:"8px",border:"1px solid #86efac",fontSize:"0.84rem",fontFamily:"inherit",boxSizing:"border-box",background:"white"}}/>
               </div>
             </div>
             <Btn size="lg" disabled={sendBusy||!sendToEmail?.trim()||!sendSubject?.trim()||!generated?.trim()}
-              style={{width:"100%",background:(sendBusy||!sendToEmail?.trim()||!sendSubject?.trim()||!generated?.trim())?C.borderLight:"#059669",color:"white",fontWeight:800}}
+              style={{width:"100%",background:(sendBusy||!sendToEmail?.trim()||!sendSubject?.trim()||!generated?.trim())?C.borderLight:"#009122",color:"white",fontWeight:800}}
               onClick={async()=>{
                 if(!sendToEmail?.trim()||!sendSubject?.trim()||!generated?.trim()) return;
                 if(!window.confirm(`このメールを送信しますか？\n\n宛先: ${sendToEmail}\n件名: ${sendSubject}`)) return;
@@ -13352,11 +13356,11 @@ ${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
             </Btn>
             <div style={{marginTop:"0.5rem",fontSize:"0.68rem",color:"#166534",lineHeight:1.5}}>
               💡 送信元: <b>{currentUser?.email||"（未設定）"}</b>
-              {!currentUser?.email && <span style={{color:"#dc2626"}}> → 設定でメアド登録してください</span>}
+              {!currentUser?.email && <span style={{color:"#DA1313"}}> → 設定でメアド登録してください</span>}
             </div>
           </div>
 
-          <div style={{marginTop:"0.75rem",padding:"0.75rem",background:C.bg,borderRadius:"6px",fontSize:"0.78rem",color:C.textSub}}>
+          <div style={{marginTop:"0.75rem",padding:"0.75rem",background:C.bg,borderRadius:"8px",fontSize:"0.78rem",color:C.textSub}}>
             💡 「コピー」してメールアプリに貼り付け、または「📤 送信」で直接送信できます。「保存」すると次回の文体学習に活用されます。
           </div>
         </div>
@@ -13365,7 +13369,7 @@ ${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
       {/* Style sample sheet */}
       {styleSheet&&(
         <Sheet title="文体サンプルを登録" onClose={()=>setStyleSheet(false)}>
-          <div style={{background:C.accentBg,border:`1px solid ${C.accent}30`,borderRadius:"6px",padding:"0.875rem",marginBottom:"1rem",fontSize:"0.82rem",color:C.accentDark}}>
+          <div style={{background:C.accentBg,border:`1px solid ${C.accent}30`,borderRadius:"8px",padding:"0.875rem",marginBottom:"1rem",fontSize:"0.82rem",color:C.accentDark}}>
             💡 実際に送ったメールや自分らしい文章をそのまま貼り付けてください。AIがあなたの文体・語調を学習します。
           </div>
           <FieldLbl label="サンプル文章">
@@ -13377,7 +13381,7 @@ ${linkedContext ? `【MyDesk上の関連情報】\n${linkedContext}\n` : ""}
               {myStyles.map(s=>(
                 <div key={s.id} style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:"0.625rem 0.875rem",background:C.bg,borderRadius:"0.625rem",marginBottom:"0.35rem"}}>
                   <div style={{fontSize:"0.78rem",color:C.textSub,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.text.slice(0,60)}...</div>
-                  <button onClick={()=>{const u={...data,emailStyles:allStyles.filter(x=>x.id!==s.id)};setData(u);scheduleSaveData(u);}} style={{background:"none",border:"none",color:"#dc2626",cursor:"pointer",fontSize:"0.8rem",flexShrink:0,marginLeft:"0.5rem"}}>×</button>
+                  <button onClick={()=>{const u={...data,emailStyles:allStyles.filter(x=>x.id!==s.id)};setData(u);scheduleSaveData(u);}} style={{background:"none",border:"none",color:"#DA1313",cursor:"pointer",fontSize:"0.8rem",flexShrink:0,marginLeft:"0.5rem"}}>×</button>
                 </div>
               ))}
             </div>
@@ -13470,8 +13474,8 @@ function MapTab({prefs,munis,vendors,companies,prefCoords,onSelectPref,nextActio
       const n=pm.filter(m=>m.dustalk==="展開").length;
       const pct=n/pm.length;
       if(pct===0) return {bg:"#f1f3f4",border:"#d1d5db",text:"#6b7280"};
-      if(pct<0.3) return {bg:"#e8f0fe",border:"#93c5fd",text:"#1d4ed8"};
-      if(pct<0.7) return {bg:"#bfdbfe",border:"#3b82f6",text:"#1d4ed8"};
+      if(pct<0.3) return {bg:"#e8f0fe",border:"#93c5fd",text:"#1563CA"};
+      if(pct<0.7) return {bg:"#bfdbfe",border:"#579AFF",text:"#1563CA"};
       return {bg:"#d1fae5",border:"#34d399",text:"#065f46"};
     };
     const treatyCol=(p)=>{
@@ -13510,7 +13514,7 @@ function MapTab({prefs,munis,vendors,companies,prefCoords,onSelectPref,nextActio
       if(view==="dustalk") col=dustalkCol(p);
       else if(view==="treaty") col=treatyCol(p);
       else if(view==="vendor") col=vendorCol(p);
-      else col={bg:"#e8f0fe",border:"#3b82f6",text:"#1d4ed8"};
+      else col={bg:"#e8f0fe",border:"#579AFF",text:"#1563CA"};
 
       const size = pm.length===0?28 : Math.max(28, Math.min(52, 28+pm.length/8));
 
@@ -13548,7 +13552,7 @@ function MapTab({prefs,munis,vendors,companies,prefCoords,onSelectPref,nextActio
   },[]);
 
   const VIEW_OPTS=[
-    ["dustalk","✅ ダストーク展開","展開数","#059669"],
+    ["dustalk","✅ ダストーク展開","展開数","#009122"],
     ["treaty","🤝 連携協定","協定済","#7c3aed"],
     ["vendor","🔧 加入業者数","加入済","#d97706"],
   ];
@@ -13564,7 +13568,7 @@ function MapTab({prefs,munis,vendors,companies,prefCoords,onSelectPref,nextActio
       <div style={{display:"flex",gap:"0.35rem",marginBottom:"0.75rem",flexWrap:"wrap"}}>
         {VIEW_OPTS.map(([id,lbl])=>(
           <button key={id} onClick={()=>setView(id)}
-            style={{padding:"0.4rem 0.75rem",borderRadius:999,border:`1.5px solid ${view===id?"#2563eb":C.border}`,background:view===id?"#eff6ff":"white",color:view===id?"#1d4ed8":C.textSub,fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit"}}>
+            style={{padding:"0.4rem 0.75rem",borderRadius:999,border:`1.5px solid ${view===id?"#0070D4":C.border}`,background:view===id?"#F2F7FF":"white",color:view===id?"#1563CA":C.textSub,fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit"}}>
             {lbl}
           </button>
         ))}
@@ -13572,7 +13576,7 @@ function MapTab({prefs,munis,vendors,companies,prefCoords,onSelectPref,nextActio
 
       {/* Stats bar */}
       <div style={{display:"flex",gap:"0.35rem",marginBottom:"0.625rem"}}>
-        {[["✅","展開",`${totalDeployed}/${totalMunis}`,"#059669","#d1fae5"],["🤝","協定済",`${totalTreaty}/${totalMunis}`,"#7c3aed","#ede9fe"],["🔧","業者",totalVend,"#d97706","#fef3c7"]].map(([icon,lbl,val,col,bg])=>(
+        {[["✅","展開",`${totalDeployed}/${totalMunis}`,"#009122","#d1fae5"],["🤝","協定済",`${totalTreaty}/${totalMunis}`,"#7c3aed","#ede9fe"],["🔧","業者",totalVend,"#d97706","#fef3c7"]].map(([icon,lbl,val,col,bg])=>(
           <div key={lbl} style={{flex:1,background:bg,borderRadius:"0.625rem",padding:"0.4rem 0.5rem",textAlign:"center"}}>
             <div style={{fontSize:"0.6rem",color:col,fontWeight:600}}>{icon} {lbl}</div>
             <div style={{fontSize:"0.88rem",fontWeight:800,color:col}}>{val}</div>
@@ -13594,7 +13598,7 @@ function MapTab({prefs,munis,vendors,companies,prefCoords,onSelectPref,nextActio
         <div ref={mapRef} style={{height:480,display:loaded?"block":"none"}}/>
         {/* Tooltip */}
         {tooltip&&(
-          <div style={{position:"absolute",left:Math.min(tooltip.x+12, 260),top:Math.max(tooltip.y-80,8),zIndex:500,background:"white",borderRadius:"6px",boxShadow:"0 4px 20px rgba(0,0,0,0.18)",border:`1px solid ${C.border}`,padding:"0.625rem 0.875rem",pointerEvents:"none",minWidth:150}}>
+          <div style={{position:"absolute",left:Math.min(tooltip.x+12, 260),top:Math.max(tooltip.y-80,8),zIndex:500,background:"white",borderRadius:"8px",boxShadow:"0 4px 20px rgba(0,0,0,0.18)",border:`1px solid ${C.border}`,padding:"0.625rem 0.875rem",pointerEvents:"none",minWidth:150}}>
             <div style={{fontWeight:800,fontSize:"0.88rem",color:C.text,marginBottom:"0.35rem"}}>{tooltip.name}</div>
             <div style={{display:"flex",flexDirection:"column",gap:"0.2rem"}}>
               <div style={{display:"flex",justifyContent:"space-between",gap:"1rem"}}>
@@ -13602,8 +13606,8 @@ function MapTab({prefs,munis,vendors,companies,prefCoords,onSelectPref,nextActio
                 <span style={{fontSize:"0.72rem",fontWeight:700,color:C.text}}>{tooltip.total}</span>
               </div>
               <div style={{display:"flex",justifyContent:"space-between",gap:"1rem"}}>
-                <span style={{fontSize:"0.72rem",color:"#059669"}}>✅ 展開</span>
-                <span style={{fontSize:"0.72rem",fontWeight:700,color:"#059669"}}>{tooltip.deployed} / {tooltip.total}</span>
+                <span style={{fontSize:"0.72rem",color:"#009122"}}>✅ 展開</span>
+                <span style={{fontSize:"0.72rem",fontWeight:700,color:"#009122"}}>{tooltip.deployed} / {tooltip.total}</span>
               </div>
               <div style={{display:"flex",justifyContent:"space-between",gap:"1rem"}}>
                 <span style={{fontSize:"0.72rem",color:"#7c3aed"}}>🤝 協定済</span>
@@ -13620,11 +13624,11 @@ function MapTab({prefs,munis,vendors,companies,prefCoords,onSelectPref,nextActio
       </div>
 
       {/* Legend */}
-      <div style={{marginTop:"0.625rem",padding:"0.625rem 0.875rem",background:"white",borderRadius:"6px",border:`1px solid ${C.border}`}}>
+      <div style={{marginTop:"0.625rem",padding:"0.625rem 0.875rem",background:"white",borderRadius:"8px",border:`1px solid ${C.border}`}}>
         {view==="dustalk"&&(
           <div style={{display:"flex",gap:"0.75rem",flexWrap:"wrap",alignItems:"center"}}>
             <span style={{fontSize:"0.65rem",fontWeight:700,color:C.textMuted}}>展開率</span>
-            {[["0%",{bg:"#f1f3f4",border:"#d1d5db"}],["1〜29%",{bg:"#e8f0fe",border:"#93c5fd"}],["30〜69%",{bg:"#bfdbfe",border:"#3b82f6"}],["70%〜",{bg:"#d1fae5",border:"#34d399"}]].map(([lbl,c])=>(
+            {[["0%",{bg:"#f1f3f4",border:"#d1d5db"}],["1〜29%",{bg:"#e8f0fe",border:"#93c5fd"}],["30〜69%",{bg:"#bfdbfe",border:"#579AFF"}],["70%〜",{bg:"#d1fae5",border:"#34d399"}]].map(([lbl,c])=>(
               <span key={lbl} style={{display:"flex",alignItems:"center",gap:"0.25rem"}}>
                 <span style={{width:12,height:12,borderRadius:"50%",background:c.bg,border:`2px solid ${c.border}`,display:"inline-block"}}/>
                 <span style={{fontSize:"0.65rem",color:C.textSub}}>{lbl}</span>
@@ -13685,7 +13689,7 @@ function ScoringAlertPanel({ data, users=[], currentUser, onNavigate }) {
 
         // 1. 担当者未設定
         if(!(e.assigneeIds||[]).length) {
-          alerts.push({type:"no_assignee", label:"担当者未設定", color:"#dc2626", bg:"#fce8e6"});
+          alerts.push({type:"no_assignee", label:"担当者未設定", color:"#DA1313", bg:"#fce8e6"});
           score += 30;
         }
 
@@ -13702,7 +13706,7 @@ function ScoringAlertPanel({ data, users=[], currentUser, onNavigate }) {
           alerts.push({type:"no_approach", label:"アプローチ未記録（60日超）", color:"#d97706", bg:"#fef3c7"});
           score += 25;
         } else if(daysSince !== null && daysSince > 60) {
-          alerts.push({type:"stale_60", label:`${daysSince}日間アプローチなし`, color:"#dc2626", bg:"#fce8e6"});
+          alerts.push({type:"stale_60", label:`${daysSince}日間アプローチなし`, color:"#DA1313", bg:"#fce8e6"});
           score += 20;
         } else if(daysSince !== null && daysSince > 30) {
           alerts.push({type:"stale_30", label:`${daysSince}日間アプローチなし`, color:"#d97706", bg:"#fef3c7"});
@@ -13720,7 +13724,7 @@ function ScoringAlertPanel({ data, users=[], currentUser, onNavigate }) {
         // 4. 次回アクション期限切れ
         if(e.nextActionDate && e.nextActionDate < todayStr) {
           const overdue = Math.floor((now - new Date(e.nextActionDate)) / 86400000);
-          alerts.push({type:"overdue", label:`次回アクション${overdue}日超過`, color:"#dc2626", bg:"#fce8e6"});
+          alerts.push({type:"overdue", label:`次回アクション${overdue}日超過`, color:"#DA1313", bg:"#fce8e6"});
           score += 20;
         }
 
@@ -13747,17 +13751,17 @@ function ScoringAlertPanel({ data, users=[], currentUser, onNavigate }) {
       <div onClick={()=>setExpanded(p=>!p)}
         style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.875rem 1rem",cursor:"pointer",background:"#fff1f2"}}>
         <span style={{fontSize:"1.1rem"}}>🚨</span>
-        <span style={{fontWeight:800,fontSize:"0.9rem",color:"#dc2626",flex:1}}>
+        <span style={{fontWeight:800,fontSize:"0.9rem",color:"#DA1313",flex:1}}>
           要フォロー案件 {scored.length}件
         </span>
         <div style={{display:"flex",gap:"0.3rem"}}>
           {Object.entries(counts).filter(([,n])=>n>0).map(([label,n])=>(
-            <span key={label} style={{fontSize:"0.68rem",fontWeight:800,background:"#fee2e2",color:"#dc2626",borderRadius:999,padding:"0.1rem 0.45rem"}}>
+            <span key={label} style={{fontSize:"0.68rem",fontWeight:800,background:"#fee2e2",color:"#DA1313",borderRadius:999,padding:"0.1rem 0.45rem"}}>
               {label} {n}
             </span>
           ))}
         </div>
-        <span style={{color:"#dc2626",fontSize:"0.8rem"}}>{expanded?"▲":"▼"}</span>
+        <span style={{color:"#DA1313",fontSize:"0.8rem"}}>{expanded?"▲":"▼"}</span>
       </div>
 
       {expanded&&(
@@ -13766,7 +13770,7 @@ function ScoringAlertPanel({ data, users=[], currentUser, onNavigate }) {
           <div style={{display:"flex",gap:"0.3rem",marginBottom:"0.5rem",flexWrap:"wrap"}}>
             {["all","企業","自治体","業者"].map(t=>(
               <button key={t} onClick={()=>setFilterType(t)}
-                style={{padding:"0.2rem 0.6rem",borderRadius:999,border:`1.5px solid ${filterType===t?"#dc2626":"#e5e7eb"}`,background:filterType===t?"#fee2e2":"white",color:filterType===t?"#dc2626":"#6b7280",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                style={{padding:"0.2rem 0.6rem",borderRadius:999,border:`1.5px solid ${filterType===t?"#DA1313":"#e5e7eb"}`,background:filterType===t?"#fee2e2":"white",color:filterType===t?"#DA1313":"#6b7280",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                 {t==="all"?"すべて":t}
                 {t!=="all"&&counts[t]>0&&` (${counts[t]})`}
               </button>
@@ -13776,14 +13780,14 @@ function ScoringAlertPanel({ data, users=[], currentUser, onNavigate }) {
           {/* 案件リスト */}
           {filtered.slice(0,10).map(e=>(
             <div key={e.id} onClick={()=>onNavigate&&onNavigate(e._type,e.id)}
-              style={{display:"flex",alignItems:"flex-start",gap:"0.6rem",padding:"0.6rem 0.75rem",background:"#fafafa",borderRadius:"6px",marginBottom:"0.35rem",cursor:"pointer",border:"1px solid #f3f4f6"}}
+              style={{display:"flex",alignItems:"flex-start",gap:"0.6rem",padding:"0.6rem 0.75rem",background:"#fafafa",borderRadius:"8px",marginBottom:"0.35rem",cursor:"pointer",border:"1px solid #f3f4f6"}}
               onMouseEnter={el=>el.currentTarget.style.background="#fff1f2"}
               onMouseLeave={el=>el.currentTarget.style.background="#fafafa"}>
               <div style={{minWidth:0,flex:1}}>
                 <div style={{display:"flex",alignItems:"center",gap:"0.4rem",flexWrap:"wrap",marginBottom:"0.25rem"}}>
-                  <span style={{fontSize:"0.68rem",fontWeight:800,color:"white",background:{"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"}[e._label],borderRadius:999,padding:"0.1rem 0.4rem"}}>{e._label}</span>
+                  <span style={{fontSize:"0.68rem",fontWeight:800,color:"white",background:{"企業":"#0070D4","業者":"#7c3aed","自治体":"#009122"}[e._label],borderRadius:999,padding:"0.1rem 0.4rem"}}>{e._label}</span>
                   <span style={{fontWeight:700,fontSize:"0.85rem",color:"#1e293b"}}>{e.name}</span>
-                  <span style={{fontSize:"0.68rem",color:"#dc2626",fontWeight:800,marginLeft:"auto"}}>スコア {e._score}</span>
+                  <span style={{fontSize:"0.68rem",color:"#DA1313",fontWeight:800,marginLeft:"auto"}}>スコア {e._score}</span>
                 </div>
                 <div style={{display:"flex",gap:"0.3rem",flexWrap:"wrap"}}>
                   {e._alerts.map((a,i)=>(
@@ -13844,11 +13848,11 @@ ${list}
     setLoading(false);
   };
 
-  const typeColor = {"municipalities":"#059669","vendors":"#7c3aed","companies":"#2563eb"};
+  const typeColor = {"municipalities":"#009122","vendors":"#7c3aed","companies":"#0070D4"};
   const typeLabel = {"municipalities":"自治体","vendors":"業者","companies":"企業"};
 
   return (
-    <div style={{background:"white",border:`1.5px solid #2563eb`,borderRadius:"1rem",padding:"0.875rem 1rem",marginBottom:"0.75rem"}}>
+    <div style={{background:"white",border:`1.5px solid #0070D4`,borderRadius:"1rem",padding:"0.875rem 1rem",marginBottom:"0.75rem"}}>
       <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem"}}>
         <span style={{fontSize:"1rem"}}>🗺️</span>
         <span style={{fontWeight:800,fontSize:"0.88rem",color:"#1e293b",flex:1}}>
@@ -13856,7 +13860,7 @@ ${list}
         </span>
         {!route&&(
           <button onClick={planRoute} disabled={loading}
-            style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",background:loading?"#e2e8f0":"#2563eb",color:loading?"#94a3b8":"white",fontWeight:700,fontSize:"0.75rem",cursor:loading?"not-allowed":"pointer",fontFamily:"inherit"}}>
+            style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"none",background:loading?"#e2e8f0":"#0070D4",color:loading?"#94a3b8":"white",fontWeight:700,fontSize:"0.75rem",cursor:loading?"not-allowed":"pointer",fontFamily:"inherit"}}>
             {loading?"最適化中...":"✨ ルート最適化"}
           </button>
         )}
@@ -13873,13 +13877,13 @@ ${list}
         <div style={{display:"flex",flexDirection:"column",gap:"0.3rem"}}>
           {(showAll?entities:entities.slice(0,3)).map((e,i)=>(
             <div key={e.id} style={{display:"flex",alignItems:"center",gap:"0.5rem",fontSize:"0.8rem"}}>
-              <span style={{width:20,height:20,borderRadius:"50%",background:"#dbeafe",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:"0.7rem",color:"#2563eb",flexShrink:0}}>{i+1}</span>
+              <span style={{width:20,height:20,borderRadius:"50%",background:"#E6F0FF",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:"0.7rem",color:"#0070D4",flexShrink:0}}>{i+1}</span>
               <span style={{fontSize:"0.65rem",fontWeight:800,color:"white",background:typeColor[e._type]||"#6b7280",borderRadius:999,padding:"0.05rem 0.35rem"}}>{typeLabel[e._type]}</span>
               <span style={{fontWeight:600,color:"#1e293b",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{e.name}</span>
               <span style={{fontSize:"0.68rem",color:"#94a3b8",flexShrink:0}}>{e.nextActionDate}</span>
             </div>
           ))}
-          {entities.length>3&&<button onClick={()=>setShowAll(p=>!p)} style={{fontSize:"0.72rem",color:"#2563eb",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
+          {entities.length>3&&<button onClick={()=>setShowAll(p=>!p)} style={{fontSize:"0.72rem",color:"#0070D4",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",textAlign:"left"}}>
             {showAll?"▲ 折りたたむ":`▼ 他 ${entities.length-3} 件`}
           </button>}
         </div>
@@ -13887,13 +13891,13 @@ ${list}
 
       {route&&(
         <div>
-          <div style={{background:"#eff6ff",borderRadius:"0.625rem",padding:"0.5rem 0.75rem",marginBottom:"0.5rem",fontSize:"0.8rem",color:"#1d4ed8",fontWeight:600}}>
+          <div style={{background:"#F2F7FF",borderRadius:"0.625rem",padding:"0.5rem 0.75rem",marginBottom:"0.5rem",fontSize:"0.8rem",color:"#1563CA",fontWeight:600}}>
             {route.summary}
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:"0.3rem"}}>
             {route.ordered.map((e,i)=>(
               <div key={e.id} style={{display:"flex",alignItems:"center",gap:"0.5rem"}}>
-                <span style={{width:22,height:22,borderRadius:"50%",background:"#2563eb",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:"0.75rem",color:"white",flexShrink:0}}>{i+1}</span>
+                <span style={{width:22,height:22,borderRadius:"50%",background:"#0070D4",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:"0.75rem",color:"white",flexShrink:0}}>{i+1}</span>
                 <span style={{fontSize:"0.65rem",fontWeight:800,color:"white",background:typeColor[e._type]||"#6b7280",borderRadius:999,padding:"0.05rem 0.35rem"}}>{typeLabel[e._type]}</span>
                 <span style={{fontWeight:700,color:"#1e293b",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:"0.82rem"}}>{e.name}</span>
                 {i<route.ordered.length-1&&<span style={{fontSize:"0.7rem",color:"#94a3b8"}}>→</span>}
@@ -13939,7 +13943,7 @@ function TodayTodoPanel({ data, currentUser, users=[], onNavigate }) {
           icon: {電話:"📞",訪問:"🚗",メール:"📧",オンライン:"💻"}[e.nextActionType]||"📅",
           title: `${e.name} — ${e.nextActionType||"アクション"}`,
           sub: overdue===0 ? "本日期限" : `${overdue}日超過`,
-          color: overdue > 7 ? "#dc2626" : "#d97706",
+          color: overdue > 7 ? "#DA1313" : "#d97706",
           bg: overdue > 7 ? "#fff1f2" : "#fffbeb",
           action: ()=>onNavigate&&onNavigate(e._type, e.id),
           entity: e,
@@ -13977,7 +13981,7 @@ function TodayTodoPanel({ data, currentUser, users=[], onNavigate }) {
         priority: overdue>3?"high":"medium",
         icon:"✅", title:t.title,
         sub: overdue===0?"本日期限":`${overdue}日超過`,
-        color:"#2563eb", bg:"#eff6ff",
+        color:"#0070D4", bg:"#F2F7FF",
         action: null, entity: null,
       });
     });
@@ -13993,20 +13997,20 @@ function TodayTodoPanel({ data, currentUser, users=[], onNavigate }) {
       <span style={{fontSize:"1.3rem"}}>🌟</span>
       <div>
         <div style={{fontWeight:800,fontSize:"0.85rem",color:"#166534"}}>今日やることはありません</div>
-        <div style={{fontSize:"0.72rem",color:"#16a34a",marginTop:"0.1rem"}}>担当案件はすべて対応済みです</div>
+        <div style={{fontSize:"0.72rem",color:"#009122",marginTop:"0.1rem"}}>担当案件はすべて対応済みです</div>
       </div>
     </div>
   );
 
   const high = todos.filter(t=>t.priority==="high").length;
   return (
-    <div style={{background:"white",border:`2px solid ${high>0?"#dc2626":"#f59e0b"}`,borderRadius:"1rem",marginBottom:"0.75rem",overflow:"hidden"}}>
+    <div style={{background:"white",border:`2px solid ${high>0?"#DA1313":"#f59e0b"}`,borderRadius:"1rem",marginBottom:"0.75rem",overflow:"hidden"}}>
       <div onClick={()=>setExpanded(p=>!p)}
         style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.875rem 1rem",cursor:"pointer",background:high>0?"#fff1f2":"#fffbeb"}}>
         <span style={{fontSize:"1.1rem"}}>📋</span>
-        <span style={{fontWeight:800,fontSize:"0.9rem",color:high>0?"#dc2626":"#92400e",flex:1}}>
+        <span style={{fontWeight:800,fontSize:"0.9rem",color:high>0?"#DA1313":"#92400e",flex:1}}>
           今日やること {todos.length}件
-          {high>0&&<span style={{marginLeft:"0.4rem",fontSize:"0.72rem",background:"#dc2626",color:"white",borderRadius:999,padding:"0.1rem 0.4rem"}}>緊急 {high}件</span>}
+          {high>0&&<span style={{marginLeft:"0.4rem",fontSize:"0.72rem",background:"#DA1313",color:"white",borderRadius:999,padding:"0.1rem 0.4rem"}}>緊急 {high}件</span>}
         </span>
         <span style={{color:"#94a3b8",fontSize:"0.85rem"}}>{expanded?"▲":"▼"}</span>
       </div>
@@ -14014,13 +14018,13 @@ function TodayTodoPanel({ data, currentUser, users=[], onNavigate }) {
         <div style={{padding:"0.5rem 0.75rem 0.75rem"}}>
           {todos.map((t,i)=>(
             <div key={i} onClick={t.action||undefined}
-              style={{display:"flex",alignItems:"center",gap:"0.6rem",padding:"0.6rem 0.75rem",background:t.bg,borderRadius:"6px",marginBottom:"0.35rem",cursor:t.action?"pointer":"default",border:`1px solid ${t.color}33`}}>
+              style={{display:"flex",alignItems:"center",gap:"0.6rem",padding:"0.6rem 0.75rem",background:t.bg,borderRadius:"8px",marginBottom:"0.35rem",cursor:t.action?"pointer":"default",border:`1px solid ${t.color}33`}}>
               <span style={{fontSize:"1.1rem",flexShrink:0}}>{t.icon}</span>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontWeight:700,fontSize:"0.85rem",color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div>
                 <div style={{fontSize:"0.72rem",color:t.color,fontWeight:700}}>{t.sub}</div>
               </div>
-              {t.entity&&<span style={{fontSize:"0.65rem",fontWeight:800,color:"white",background:{"companies":"#2563eb","municipalities":"#059669","vendors":"#7c3aed"}[t.entity._type],borderRadius:999,padding:"0.1rem 0.4rem",flexShrink:0}}>{t.entity._label}</span>}
+              {t.entity&&<span style={{fontSize:"0.65rem",fontWeight:800,color:"white",background:{"companies":"#0070D4","municipalities":"#009122","vendors":"#7c3aed"}[t.entity._type],borderRadius:999,padding:"0.1rem 0.4rem",flexShrink:0}}>{t.entity._label}</span>}
               {t.action&&<span style={{color:"#94a3b8",fontSize:"0.8rem",flexShrink:0}}>›</span>}
             </div>
           ))}
@@ -14071,7 +14075,7 @@ function MyCasesPanel({ data, currentUser, users=[], onNavigate }) {
     });
   }, [data, uid, filter, sortBy]);
 
-  const typeColor = {"companies":"#2563eb","municipalities":"#059669","vendors":"#7c3aed"};
+  const typeColor = {"companies":"#0070D4","municipalities":"#009122","vendors":"#7c3aed"};
   const counts = {all:0,companies:0,municipalities:0,vendors:0};
   cases.forEach(e=>{ counts.all++; counts[e._type]=(counts[e._type]||0)+1; });
 
@@ -14083,11 +14087,11 @@ function MyCasesPanel({ data, currentUser, users=[], onNavigate }) {
         <div style={{display:"flex",gap:"0.3rem",flexWrap:"wrap",marginBottom:"0.4rem"}}>
           {[["all","すべて"],["companies","企業"],["municipalities","自治体"],["vendors","業者"]].map(([k,l])=>(
             <button key={k} onClick={()=>setFilter(k)}
-              style={{padding:"0.2rem 0.55rem",borderRadius:999,border:`1.5px solid ${filter===k?"#2563eb":C.border}`,background:filter===k?"#dbeafe":"white",color:filter===k?"#1d4ed8":C.textSub,fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+              style={{padding:"0.2rem 0.55rem",borderRadius:999,border:`1.5px solid ${filter===k?"#0070D4":C.border}`,background:filter===k?"#E6F0FF":"white",color:filter===k?"#1563CA":C.textSub,fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
               {l}{k!=="all"&&counts[k]>0?` (${counts[k]})`:""}</button>
           ))}
           <select value={sortBy} onChange={e=>setSortBy(e.target.value)}
-            style={{marginLeft:"auto",padding:"0.2rem 0.5rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit",color:C.textSub,background:"white"}}>
+            style={{marginLeft:"auto",padding:"0.2rem 0.5rem",borderRadius:"0.5rem",border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit",color:C.textSub,background:"white"}}>
             <option value="nextAction">次回アクション順</option>
             <option value="lastApproach">最終AP日順</option>
             <option value="status">ステータス順</option>
@@ -14111,13 +14115,13 @@ function MyCasesPanel({ data, currentUser, users=[], onNavigate }) {
                 <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap",marginTop:"0.1rem"}}>
                   <span style={{fontSize:"0.68rem",color:C.textMuted}}>{e._status}</span>
                   {e._daysSince!==null
-                    ? <span style={{fontSize:"0.68rem",color:e._daysSince>30?"#dc2626":"#64748b"}}>AP: {e._daysSince}日前</span>
+                    ? <span style={{fontSize:"0.68rem",color:e._daysSince>30?"#DA1313":"#64748b"}}>AP: {e._daysSince}日前</span>
                     : <span style={{fontSize:"0.68rem",color:"#94a3b8"}}>AP未記録</span>}
                 </div>
               </div>
               {e.nextActionDate&&(
                 <div style={{textAlign:"right",flexShrink:0}}>
-                  <div style={{fontSize:"0.7rem",fontWeight:700,color:isOverdue?"#dc2626":isToday?"#d97706":"#2563eb"}}>
+                  <div style={{fontSize:"0.7rem",fontWeight:700,color:isOverdue?"#DA1313":isToday?"#d97706":"#0070D4"}}>
                     {isOverdue?"⚠️ 期限切れ":isToday?"📅 本日":e.nextActionDate.slice(5)}
                   </div>
                   <div style={{fontSize:"0.65rem",color:C.textMuted}}>{e.nextActionType||""}</div>
@@ -14139,8 +14143,8 @@ function PipelineKanban({ data, currentUser, onNavigate, onStatusChange }) {
   const [dragOver, setDragOver] = React.useState(null);
 
   const PIPELINE = ["未接触","電話済","資料送付","商談中","成約","失注"];
-  const PIPE_COLOR = {"未接触":"#6b7280","電話済":"#2563eb","資料送付":"#7c3aed","商談中":"#d97706","成約":"#059669","失注":"#dc2626"};
-  const PIPE_BG   = {"未接触":"#f3f4f6","電話済":"#dbeafe","資料送付":"#ede9fe","商談中":"#fef3c7","成約":"#d1fae5","失注":"#fee2e2"};
+  const PIPE_COLOR = {"未接触":"#6b7280","電話済":"#0070D4","資料送付":"#7c3aed","商談中":"#d97706","成約":"#009122","失注":"#DA1313"};
+  const PIPE_BG   = {"未接触":"#f3f4f6","電話済":"#E6F0FF","資料送付":"#ede9fe","商談中":"#fef3c7","成約":"#d1fae5","失注":"#fee2e2"};
 
   const allEntities = React.useMemo(()=>[
     ...(data.companies||[]).map(e=>({...e,_type:"companies",_label:"企業",_status:e.status||"未接触"})),
@@ -14151,7 +14155,7 @@ function PipelineKanban({ data, currentUser, onNavigate, onStatusChange }) {
   const grouped = {};
   PIPELINE.forEach(s=>{ grouped[s]=allEntities.filter(e=>e._status===s||(!PIPELINE.includes(e._status)&&s==="未接触")); });
 
-  const typeColor = {"companies":"#2563eb","municipalities":"#059669","vendors":"#7c3aed"};
+  const typeColor = {"companies":"#0070D4","municipalities":"#009122","vendors":"#7c3aed"};
 
   const handleDrop = (newStatus) => {
     if(!dragItem) return;
@@ -14249,7 +14253,7 @@ function TeamActivityBoard({ data, users=[], currentUser }) {
         </div>
       </div>
       {stats.map(({u,approaches,assigned,tasks,doneTasks,contracted},i)=>(
-        <div key={u.id} style={{marginBottom:"0.625rem",padding:"0.625rem 0.75rem",background:i===0?"#fffbeb":"#f8fafc",borderRadius:"6px",border:`1px solid ${i===0?"#fde68a":C.borderLight}`}}>
+        <div key={u.id} style={{marginBottom:"0.625rem",padding:"0.625rem 0.75rem",background:i===0?"#fffbeb":"#f8fafc",borderRadius:"8px",border:`1px solid ${i===0?"#fde68a":C.borderLight}`}}>
           <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.35rem"}}>
             {i===0&&<span style={{fontSize:"0.75rem"}}>🏆</span>}
             <span style={{fontWeight:800,fontSize:"0.85rem",color:C.text}}>{u.name}</span>
@@ -14262,7 +14266,7 @@ function TeamActivityBoard({ data, users=[], currentUser }) {
             <span style={{fontSize:"0.68rem",color:"#64748b"}}>📋 AP: <strong>{approaches}</strong></span>
             <span style={{fontSize:"0.68rem",color:"#64748b"}}>🏢 担当: <strong>{assigned}</strong></span>
             <span style={{fontSize:"0.68rem",color:"#64748b"}}>✅ タスク: <strong>{doneTasks}/{tasks}</strong></span>
-            {contracted>0&&<span style={{fontSize:"0.68rem",color:"#059669",fontWeight:700}}>🎉 成約等: {contracted}</span>}
+            {contracted>0&&<span style={{fontSize:"0.68rem",color:"#009122",fontWeight:700}}>🎉 成約等: {contracted}</span>}
           </div>
         </div>
       ))}
@@ -14288,9 +14292,9 @@ function WeeklyReportPanel({ data, users=[], currentUser }) {
 <title>${title}</title>
 <style>
   body { font-family: "Hiragino Kaku Gothic ProN","Meiryo",sans-serif; font-size:13px; line-height:1.8; color:#1e293b; padding:30px 40px; max-width:700px; margin:0 auto; }
-  h1 { font-size:20px; font-weight:800; color:#1e293b; border-bottom:3px solid #2563eb; padding-bottom:8px; margin-bottom:4px; }
+  h1 { font-size:20px; font-weight:800; color:#1e293b; border-bottom:3px solid #0070D4; padding-bottom:8px; margin-bottom:4px; }
   .meta { font-size:11px; color:#64748b; margin-bottom:24px; }
-  .logo { font-size:13px; font-weight:800; color:#2563eb; margin-bottom:4px; }
+  .logo { font-size:13px; font-weight:800; color:#0070D4; margin-bottom:4px; }
   pre { white-space:pre-wrap; font-family:inherit; font-size:13px; line-height:1.8; }
   @media print { body { padding:20px; } }
 </style>
@@ -14450,20 +14454,20 @@ ${userSummary||"（活動なし）"}
 
       {showReport&&report&&(
         <div>
-          <div style={{background:"#f8fafc",borderRadius:"6px",padding:"0.875rem",fontSize:"0.82rem",color:C.text,lineHeight:1.7,whiteSpace:"pre-wrap",maxHeight:400,overflowY:"auto",border:`1px solid ${C.borderLight}`}}>
+          <div style={{background:"#f8fafc",borderRadius:"8px",padding:"0.875rem",fontSize:"0.82rem",color:C.text,lineHeight:1.7,whiteSpace:"pre-wrap",maxHeight:400,overflowY:"auto",border:`1px solid ${C.borderLight}`}}>
             {report}
           </div>
           <div style={{display:"flex",gap:"0.5rem",marginTop:"0.75rem",flexWrap:"wrap"}}>
             <button onClick={copyReport}
-              style={{flex:1,padding:"0.55rem",borderRadius:"6px",border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",minWidth:80}}>
+              style={{flex:1,padding:"0.55rem",borderRadius:"8px",border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",minWidth:80}}>
               📋 コピー
             </button>
             <button onClick={()=>exportReportPDF(report, period)}
-              style={{flex:1,padding:"0.55rem",borderRadius:"6px",border:"1.5px solid #dc2626",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",minWidth:80}}>
+              style={{flex:1,padding:"0.55rem",borderRadius:"8px",border:"1.5px solid #DA1313",background:"#fff1f2",color:"#DA1313",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",minWidth:80}}>
               📄 PDF
             </button>
             <button onClick={()=>{setShowReport(false);setReport("");}}
-              style={{flex:1,padding:"0.55rem",borderRadius:"6px",border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",minWidth:80}}>
+              style={{flex:1,padding:"0.55rem",borderRadius:"8px",border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",minWidth:80}}>
               🔄 再生成
             </button>
           </div>
@@ -14503,7 +14507,7 @@ function linkifyToNodes(text) {
     const href = url.startsWith("http") ? url : "https://" + url;
     parts.push(
       <a key={i++} href={href} target="_blank" rel="noopener noreferrer"
-        style={{color:"#2563eb",textDecoration:"underline",wordBreak:"break-all"}}>{url}</a>
+        style={{color:"#0070D4",textDecoration:"underline",wordBreak:"break-all"}}>{url}</a>
     );
     if (tail) parts.push(tail);
     last = m.index + m[0].length;
@@ -14681,7 +14685,7 @@ function DailyTaskNotifyTest({ currentUser }) {
   };
 
   return (
-    <div style={{marginTop:"1.5rem",background:"white",borderRadius:"1rem",padding:"1.25rem",border:"1px solid #e5e7eb",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
+    <div style={{marginTop:"1.5rem",background:"white",borderRadius:"1rem",padding:"1.25rem",border:"1px solid #e5e7eb",boxShadow:"0 1px 2px rgba(0,17,62,0.05)"}}>
       <div style={{fontWeight:800,fontSize:"0.9rem",color:"#111827",marginBottom:"0.4rem"}}>
         ☀️ 朝のタスク通知 - テスト送信
       </div>
@@ -14694,42 +14698,42 @@ function DailyTaskNotifyTest({ currentUser }) {
       <div style={{display:"flex",gap:"0.5rem",marginBottom:"1rem"}}>
         <button onClick={()=>setMode("self")}
           style={{flex:1,padding:"0.5rem",fontSize:"0.78rem",fontWeight:700,
-            background:mode==="self"?"#2563eb":"white",
+            background:mode==="self"?"#0070D4":"white",
             color:mode==="self"?"white":"#374151",
-            border:`1px solid ${mode==="self"?"#2563eb":"#d1d5db"}`,
-            borderRadius:"6px",cursor:"pointer"}}>
+            border:`1px solid ${mode==="self"?"#0070D4":"#d1d5db"}`,
+            borderRadius:"8px",cursor:"pointer"}}>
           自分にだけ送信（テスト）
         </button>
         <button onClick={()=>setMode("all")}
           style={{flex:1,padding:"0.5rem",fontSize:"0.78rem",fontWeight:700,
-            background:mode==="all"?"#dc2626":"white",
+            background:mode==="all"?"#DA1313":"white",
             color:mode==="all"?"white":"#374151",
-            border:`1px solid ${mode==="all"?"#dc2626":"#d1d5db"}`,
-            borderRadius:"6px",cursor:"pointer"}}>
+            border:`1px solid ${mode==="all"?"#DA1313":"#d1d5db"}`,
+            borderRadius:"8px",cursor:"pointer"}}>
           全員に送信（本番モード）
         </button>
       </div>
 
       {/* 説明 */}
-      <div style={{fontSize:"0.72rem",color:"#6b7280",marginBottom:"0.75rem",padding:"0.5rem 0.75rem",background:"#f9fafb",borderRadius:"6px",lineHeight:1.5}}>
+      <div style={{fontSize:"0.72rem",color:"#6b7280",marginBottom:"0.75rem",padding:"0.5rem 0.75rem",background:"#f9fafb",borderRadius:"8px",lineHeight:1.5}}>
         {mode === "self"
           ? <>📧 <strong>{currentUser?.email || "ログインユーザー"}</strong> にだけ送信します</>
-          : <>⚠️ <strong style={{color:"#dc2626"}}>登録されている全ユーザー</strong>に送信します</>
+          : <>⚠️ <strong style={{color:"#DA1313"}}>登録されている全ユーザー</strong>に送信します</>
         }
       </div>
 
       {/* 送信ボタン */}
       <button onClick={handleSend} disabled={sending}
         style={{width:"100%",padding:"0.7rem",fontSize:"0.85rem",fontWeight:700,
-          background:sending?"#9ca3af":(mode==="all"?"#dc2626":"#2563eb"),
-          color:"white",border:"none",borderRadius:"6px",
+          background:sending?"#9ca3af":(mode==="all"?"#DA1313":"#0070D4"),
+          color:"white",border:"none",borderRadius:"8px",
           cursor:sending?"wait":"pointer"}}>
         {sending ? "⏳ 送信中..." : `☀️ 朝のタスク通知を送信`}
       </button>
 
       {/* 結果表示 */}
       {result && (
-        <div style={{marginTop:"0.75rem",padding:"0.75rem",borderRadius:"6px",fontSize:"0.75rem",whiteSpace:"pre-wrap",fontFamily:"monospace",
+        <div style={{marginTop:"0.75rem",padding:"0.75rem",borderRadius:"8px",fontSize:"0.75rem",whiteSpace:"pre-wrap",fontFamily:"monospace",
           background: result.ok ? "#d1fae5" : "#fee2e2",
           color: result.ok ? "#065f46" : "#b91c1c",
           border: `1px solid ${result.ok ? "#a7f3d0" : "#fecaca"}`,
@@ -15049,15 +15053,15 @@ const BizCardScanner = React.memo(function BizCardScannerInner({ onResult, curre
         <button type="button"
           onClick={()=>fileRef.current?.click()}
           disabled={scanning}
-          style={{flex:1,padding:"0.75rem",borderRadius:"8px",border:"2px dashed #2563eb",background:scanning?"#eff6ff":"white",color:scanning?"#1d4ed8":"#2563eb",fontWeight:700,fontSize:"0.88rem",cursor:scanning?"not-allowed":"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
+          style={{flex:1,padding:"0.75rem",borderRadius:"8px",border:"2px dashed #0070D4",background:scanning?"#F2F7FF":"white",color:scanning?"#1563CA":"#0070D4",fontWeight:700,fontSize:"0.88rem",cursor:scanning?"not-allowed":"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
           {scanning
-            ? <><span style={{width:18,height:18,borderRadius:"50%",border:"2.5px solid #2563eb",borderTopColor:"transparent",animation:"spin 0.8s linear infinite",display:"inline-block"}}/> {stageLabel[stage] || "処理中..."}</>
+            ? <><span style={{width:18,height:18,borderRadius:"50%",border:"2.5px solid #0070D4",borderTopColor:"transparent",animation:"spin 0.8s linear infinite",display:"inline-block"}}/> {stageLabel[stage] || "処理中..."}</>
             : <><span style={{fontSize:"1.2rem"}}>📷</span> 名刺を撮影</>}
         </button>
         <button type="button"
           onClick={()=>galleryRef.current?.click()}
           disabled={scanning}
-          style={{flex:1,padding:"0.75rem",borderRadius:"8px",border:"2px dashed #059669",background:scanning?"#ecfdf5":"white",color:scanning?"#047857":"#059669",fontWeight:700,fontSize:"0.88rem",cursor:scanning?"not-allowed":"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
+          style={{flex:1,padding:"0.75rem",borderRadius:"8px",border:"2px dashed #009122",background:scanning?"#ecfdf5":"white",color:scanning?"#047857":"#009122",fontWeight:700,fontSize:"0.88rem",cursor:scanning?"not-allowed":"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
           <span style={{fontSize:"1.2rem"}}>🖼</span> 画像を選択
         </button>
         <button type="button" onClick={testConnection} disabled={scanning} title="Lambda 接続をテスト"
@@ -15066,7 +15070,7 @@ const BizCardScanner = React.memo(function BizCardScannerInner({ onResult, curre
         </button>
       </div>
       {diagInfo && (
-        <div style={{marginTop:"0.4rem",fontSize:"0.72rem",color:"#374151",background:"#f3f4f6",padding:"0.5rem 0.6rem",borderRadius:"0.4rem",border:"1px solid #d1d5db",whiteSpace:"pre-wrap",fontFamily:"monospace",lineHeight:1.5}}>
+        <div style={{marginTop:"0.4rem",fontSize:"0.72rem",color:"#374151",background:"#f3f4f6",padding:"0.5rem 0.6rem",borderRadius:"0.5rem",border:"1px solid #d1d5db",whiteSpace:"pre-wrap",fontFamily:"monospace",lineHeight:1.5}}>
           {diagInfo}
           <button onClick={()=>setDiagInfo("")} style={{marginLeft:"0.5rem",background:"none",border:"none",color:"#374151",fontWeight:700,cursor:"pointer",textDecoration:"underline",fontSize:"0.7rem"}}>閉じる</button>
         </div>
@@ -15077,14 +15081,14 @@ const BizCardScanner = React.memo(function BizCardScannerInner({ onResult, curre
         </div>
       )}
       {lastResult && !scanning && !error && (
-        <div style={{marginTop:"0.4rem",fontSize:"0.75rem",color:"#059669",background:"#d1fae5",padding:"0.4rem 0.6rem",borderRadius:"0.4rem",fontWeight:700}}>
+        <div style={{marginTop:"0.4rem",fontSize:"0.75rem",color:"#009122",background:"#d1fae5",padding:"0.4rem 0.6rem",borderRadius:"0.5rem",fontWeight:700}}>
           ✅ 読み取り成功：{Object.keys(lastResult).filter(k=>k!=="owners"&&lastResult[k]).length}項目を入力しました
         </div>
       )}
       {error && (
-        <div style={{marginTop:"0.4rem",fontSize:"0.78rem",color:"#dc2626",background:"#fef2f2",padding:"0.5rem 0.6rem",borderRadius:"0.4rem",border:"1px solid #fca5a5"}}>
+        <div style={{marginTop:"0.4rem",fontSize:"0.78rem",color:"#DA1313",background:"#fef2f2",padding:"0.5rem 0.6rem",borderRadius:"0.5rem",border:"1px solid #fca5a5"}}>
           {error}
-          <button onClick={()=>{setError("");setPreview(null);}} style={{marginLeft:"0.5rem",background:"none",border:"none",color:"#dc2626",fontWeight:700,cursor:"pointer",textDecoration:"underline",fontSize:"0.75rem"}}>閉じる</button>
+          <button onClick={()=>{setError("");setPreview(null);}} style={{marginLeft:"0.5rem",background:"none",border:"none",color:"#DA1313",fontWeight:700,cursor:"pointer",textDecoration:"underline",fontSize:"0.75rem"}}>閉じる</button>
         </div>
       )}
       <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
@@ -15101,7 +15105,7 @@ function LinkBizcardModal({ allCards=[], entityType, entityId, entityName, users
   // ✅ v220: リストコンテナ ref - 検索変更時にトップに戻す
   const listRef = React.useRef(null);
 
-  const typeColor = {"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"}[entityType]||"#2563eb";
+  const typeColor = {"企業":"#0070D4","業者":"#7c3aed","自治体":"#009122"}[entityType]||"#0070D4";
 
   // 検索ワードを正規化（スペース除去・小文字化）
   const searchQ = search.replace(/[ 　	]/g,"").toLowerCase();
@@ -15261,7 +15265,7 @@ function LinkBizcardModal({ allCards=[], entityType, entityId, entityName, users
                 <div style={{
                   width:28,
                   height:28,
-                  borderRadius:"0.4rem",
+                  borderRadius:"0.5rem",
                   border:`3px solid ${isSel?"white":"#cbd5e1"}`,
                   background:isSel?"white":"white",
                   display:"flex",
@@ -15332,7 +15336,7 @@ function LinkedBizcardList({ cards=[], users=[], onUnlink, onNavigateToBizcard, 
         )}
         {onNavigateToBizcard&&(
           <button onClick={onNavigateToBizcard}
-            style={{padding:"0.4rem 0.875rem",borderRadius:999,border:"1.5px solid #2563eb",background:"#dbeafe",color:"#1d4ed8",fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+            style={{padding:"0.4rem 0.875rem",borderRadius:999,border:"1.5px solid #0070D4",background:"#E6F0FF",color:"#1563CA",fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
             🪪 名刺一覧へ
           </button>
         )}
@@ -15346,7 +15350,7 @@ function LinkedBizcardList({ cards=[], users=[], onUnlink, onNavigateToBizcard, 
     <div>
       {onLink&&(
         <button onClick={e=>{e.stopPropagation();onLink();}}
-          style={{width:"100%",marginBottom:"0.75rem",padding:"0.55rem",borderRadius:"6px",border:`1.5px dashed ${C.accent}`,background:"#e8f0fe",color:C.accent,fontWeight:600,borderRadius:"6px",fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
+          style={{width:"100%",marginBottom:"0.75rem",padding:"0.55rem",borderRadius:"8px",border:`1.5px dashed ${C.accent}`,background:"#e8f0fe",color:C.accent,fontWeight:600,borderRadius:"8px",fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
           ＋ 名刺を紐づける
         </button>
       )}
@@ -15355,10 +15359,10 @@ function LinkedBizcardList({ cards=[], users=[], onUnlink, onNavigateToBizcard, 
           const name = `${card.lastName||""}${card.firstName ? " "+card.firstName : ""}`.trim()||"（名前なし）";
           return (
             <div key={card.id} onClick={()=>setPopup(card)}
-              style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"8px",padding:"0.75rem 1rem",boxShadow:"0 1px 2px rgba(0,0,0,0.04)",display:"flex",alignItems:"center",gap:"0.75rem",cursor:"pointer",transition:"box-shadow 0.1s"}}
+              style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"8px",padding:"0.75rem 1rem",boxShadow:"0 1px 2px rgba(0,17,62,0.05)",display:"flex",alignItems:"center",gap:"0.75rem",cursor:"pointer",transition:"box-shadow 0.1s"}}
               onMouseEnter={e=>e.currentTarget.style.boxShadow="0 4px 16px rgba(0,0,0,0.12)"}
               onMouseLeave={e=>e.currentTarget.style.boxShadow=C.shadow}>
-              <div style={{width:38,height:38,borderRadius:"50%",background:"linear-gradient(135deg,#2563eb22,#7c3aed22)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"1rem",flexShrink:0}}>🪪</div>
+              <div style={{width:38,height:38,borderRadius:"50%",background:"linear-gradient(135deg,#0070D422,#7c3aed22)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"1rem",flexShrink:0}}>🪪</div>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontWeight:700,fontSize:"0.88rem",color:C.text}}>{name}</div>
                 {card.title&&<div style={{fontSize:"0.72rem",color:C.textSub}}>{card.title}</div>}
@@ -15394,12 +15398,12 @@ function LinkedBizcardList({ cards=[], users=[], onUnlink, onNavigateToBizcard, 
               <div style={{background:"linear-gradient(135deg,#f0f9ff,#ede9fe)",borderRadius:"8px",padding:"1rem",marginBottom:"1rem"}}>
                 <div style={{fontSize:"1.3rem",fontWeight:800,color:C.text}}>{`${popup.lastName||""}${popup.firstName ? " "+popup.firstName : ""}`.trim()||"（名前なし）"}</div>
                 {popup.title&&<div style={{fontSize:"0.82rem",color:C.textSub,marginTop:"0.15rem"}}>{popup.title}</div>}
-                <div style={{fontSize:"0.92rem",fontWeight:700,color:"#2563eb",marginTop:"0.35rem"}}>🏢 {popup.company}</div>
+                <div style={{fontSize:"0.92rem",fontWeight:700,color:"#0070D4",marginTop:"0.35rem"}}>🏢 {popup.company}</div>
                 {popup.department&&<div style={{fontSize:"0.75rem",color:C.textMuted}}>{popup.department}</div>}
                 {(popup.owners||[popup.owner]).filter(Boolean).length>0&&(
                   <div style={{display:"flex",flexWrap:"wrap",gap:"0.3rem",marginTop:"0.5rem"}}>
                     {(popup.owners||[popup.owner]).filter(Boolean).map(o=>(
-                      <span key={o} style={{fontSize:"0.75rem",fontWeight:700,color:"#7c3aed",background:"#ede9fe",borderRadius:"0.4rem",padding:"0.15rem 0.5rem"}}>👤 {o}</span>
+                      <span key={o} style={{fontSize:"0.75rem",fontWeight:700,color:"#7c3aed",background:"#ede9fe",borderRadius:"0.5rem",padding:"0.15rem 0.5rem"}}>👤 {o}</span>
                     ))}
                   </div>
                 )}
@@ -15450,7 +15454,7 @@ function LinkedBizcardList({ cards=[], users=[], onUnlink, onNavigateToBizcard, 
                           };
                           onNavigateToEmail(draft);
                           setPopup(null);
-                        }} style={{flex:1,minWidth:100,padding:"0.55rem 0.875rem",borderRadius:"0.625rem",background:"#f0fdf4",color:"#059669",fontSize:"0.82rem",fontWeight:700,textDecoration:"none",textAlign:"center",border:"1.5px solid #05966940",cursor:"pointer",fontFamily:"inherit"}}>
+                        }} style={{flex:1,minWidth:100,padding:"0.55rem 0.875rem",borderRadius:"0.625rem",background:"#f0fdf4",color:"#009122",fontSize:"0.82rem",fontWeight:700,textDecoration:"none",textAlign:"center",border:"1.5px solid #00912240",cursor:"pointer",fontFamily:"inherit"}}>
                           📧 メール
                         </button>
                       )}
@@ -15459,19 +15463,19 @@ function LinkedBizcardList({ cards=[], users=[], onUnlink, onNavigateToBizcard, 
                   {popup.email&&(
                     <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem"}}>
                       <span style={{fontSize:"0.82rem",color:C.textSub,width:20,textAlign:"center"}}>✉️</span>
-                      <a href={`mailto:${popup.email}`} style={{fontSize:"0.85rem",color:"#2563eb",textDecoration:"none",fontWeight:600}}>{popup.email}</a>
+                      <a href={`mailto:${popup.email}`} style={{fontSize:"0.85rem",color:"#0070D4",textDecoration:"none",fontWeight:600}}>{popup.email}</a>
                     </div>
                   )}
                   {(popup.mobile||popup.telDirect)&&(
                     <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem"}}>
                       <span style={{fontSize:"0.82rem",color:C.textSub,width:20,textAlign:"center"}}>📱</span>
-                      <a href={`tel:${(popup.mobile||popup.telDirect).replace(/[^0-9+]/g,"")}`} style={{fontSize:"0.85rem",color:"#2563eb",textDecoration:"none"}}>{popup.mobile||popup.telDirect}</a>
+                      <a href={`tel:${(popup.mobile||popup.telDirect).replace(/[^0-9+]/g,"")}`} style={{fontSize:"0.85rem",color:"#0070D4",textDecoration:"none"}}>{popup.mobile||popup.telDirect}</a>
                     </div>
                   )}
                   {popup.telCompany&&(
                     <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem"}}>
                       <span style={{fontSize:"0.82rem",color:C.textSub,width:20,textAlign:"center"}}>☎️</span>
-                      <a href={`tel:${popup.telCompany.replace(/[^0-9+]/g,"")}`} style={{fontSize:"0.85rem",color:"#2563eb",textDecoration:"none"}}>{popup.telCompany}</a>
+                      <a href={`tel:${popup.telCompany.replace(/[^0-9+]/g,"")}`} style={{fontSize:"0.85rem",color:"#0070D4",textDecoration:"none"}}>{popup.telCompany}</a>
                     </div>
                   )}
                   {popup.address&&(
@@ -15555,7 +15559,7 @@ function UnifiedComposer({
   const modes = [
     {id:"post", label:"💬 メモ・チャット", color:"#5b5bd6"},
     {id:"mtg", label:"🎤 議事録", color:"#166534"},
-    ...(isSales ? [{id:"approach", label:"📞 アプローチ", color:"#1d4ed8"}] : []),
+    ...(isSales ? [{id:"approach", label:"📞 アプローチ", color:"#1563CA"}] : []),
     ...(isSales ? [{id:"next", label:"📅 次回設定", color:"#065f46"}] : []),
   ];
   const cur = modes.find(m=>m.id===mode) || modes[0];
@@ -15609,18 +15613,18 @@ function UnifiedComposer({
       {mode==="mtg" && (
         <input type="text" value={mtgTitle} onChange={e=>setMtgTitle(e.target.value)}
           placeholder="議題（例: 6/4 進捗MTG）"
-          style={{width:"100%",padding:"0.45rem 0.65rem",borderRadius:6,border:`1px solid ${cur.color}44`,fontSize:"0.84rem",fontFamily:"inherit",outline:"none",marginBottom:"0.45rem",boxSizing:"border-box"}}/>
+          style={{width:"100%",padding:"0.45rem 0.65rem",borderRadius:8,border:`1px solid ${cur.color}44`,fontSize:"0.84rem",fontFamily:"inherit",outline:"none",marginBottom:"0.45rem",boxSizing:"border-box"}}/>
       )}
 
       {/* アプローチの場合: 種別 + 日付 */}
       {mode==="approach" && (
         <div style={{display:"flex",gap:"0.4rem",marginBottom:"0.45rem",flexWrap:"wrap"}}>
           <select value={appType} onChange={e=>setAppType(e.target.value)}
-            style={{padding:"0.35rem 0.55rem",borderRadius:6,border:`1px solid ${cur.color}44`,fontSize:"0.78rem",fontFamily:"inherit",cursor:"pointer",background:"white"}}>
+            style={{padding:"0.35rem 0.55rem",borderRadius:8,border:`1px solid ${cur.color}44`,fontSize:"0.78rem",fontFamily:"inherit",cursor:"pointer",background:"white"}}>
             {APPROACH_TYPES.map(t=><option key={t} value={t}>{APPROACH_ICON[t]||""} {t}</option>)}
           </select>
           <input type="date" value={appDate} onChange={e=>setAppDate(e.target.value)}
-            style={{padding:"0.35rem 0.55rem",borderRadius:6,border:`1px solid ${cur.color}44`,fontSize:"0.78rem",fontFamily:"inherit"}}/>
+            style={{padding:"0.35rem 0.55rem",borderRadius:8,border:`1px solid ${cur.color}44`,fontSize:"0.78rem",fontFamily:"inherit"}}/>
         </div>
       )}
 
@@ -15628,11 +15632,11 @@ function UnifiedComposer({
       {mode==="next" && (
         <div style={{display:"flex",gap:"0.4rem",marginBottom:"0.45rem",flexWrap:"wrap"}}>
           <select value={naType} onChange={e=>setNaType(e.target.value)}
-            style={{padding:"0.35rem 0.55rem",borderRadius:6,border:`1px solid ${cur.color}44`,fontSize:"0.78rem",fontFamily:"inherit",cursor:"pointer",background:"white"}}>
+            style={{padding:"0.35rem 0.55rem",borderRadius:8,border:`1px solid ${cur.color}44`,fontSize:"0.78rem",fontFamily:"inherit",cursor:"pointer",background:"white"}}>
             {NEXT_ACTION_TYPES.map(t=><option key={t} value={t}>{t}</option>)}
           </select>
           <input type="date" value={naDate} onChange={e=>setNaDate(e.target.value)}
-            style={{padding:"0.35rem 0.55rem",borderRadius:6,border:`1px solid ${cur.color}44`,fontSize:"0.78rem",fontFamily:"inherit"}}/>
+            style={{padding:"0.35rem 0.55rem",borderRadius:8,border:`1px solid ${cur.color}44`,fontSize:"0.78rem",fontFamily:"inherit"}}/>
         </div>
       )}
 
@@ -15645,13 +15649,13 @@ function UnifiedComposer({
         }}
         data-gramm="false" data-gramm_editor="false" data-enable-grammarly="false"
         placeholder={placeholder}
-        style={{width:"100%",padding:"0.55rem 0.7rem",borderRadius:6,border:`1px solid ${cur.color}33`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none",resize:"none",minHeight:60,maxHeight:300,lineHeight:1.55,boxSizing:"border-box"}}/>
+        style={{width:"100%",padding:"0.55rem 0.7rem",borderRadius:8,border:`1px solid ${cur.color}33`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none",resize:"none",minHeight:60,maxHeight:300,lineHeight:1.55,boxSizing:"border-box"}}/>
 
       {/* 送信ボタン */}
       <div style={{display:"flex",justifyContent:"flex-end",marginTop:"0.45rem"}}>
         <button onClick={submit}
           disabled={mode==="mtg" ? (!mtgTitle.trim()&&!text.trim()) : mode==="next" ? false : !text.trim()}
-          style={{padding:"0.4rem 1rem",borderRadius:6,border:"none",cursor:(mode==="mtg" ? (mtgTitle.trim()||text.trim()) : mode==="next" ? true : text.trim())?"pointer":"default",fontFamily:"inherit",fontSize:"0.8rem",fontWeight:700,background:(mode==="mtg" ? (mtgTitle.trim()||text.trim()) : mode==="next" ? cur.color : text.trim())?cur.color:"#e5e7eb",color:(mode==="mtg" ? (mtgTitle.trim()||text.trim()) : mode==="next" ? "white" : text.trim())?"white":"#9ca3af",minWidth:80}}>
+          style={{padding:"0.4rem 1rem",borderRadius:8,border:"none",cursor:(mode==="mtg" ? (mtgTitle.trim()||text.trim()) : mode==="next" ? true : text.trim())?"pointer":"default",fontFamily:"inherit",fontSize:"0.8rem",fontWeight:700,background:(mode==="mtg" ? (mtgTitle.trim()||text.trim()) : mode==="next" ? cur.color : text.trim())?cur.color:"#e5e7eb",color:(mode==="mtg" ? (mtgTitle.trim()||text.trim()) : mode==="next" ? "white" : text.trim())?"white":"#9ca3af",minWidth:80}}>
           {mode==="mtg"?"議事録を保存":mode==="approach"?"記録":mode==="next"?"次回を設定":"送信"}
         </button>
       </div>
@@ -15812,7 +15816,7 @@ function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach
         const _e=(data[entityKey]||[]).find(x=>x.id===entityId);
         window.dispatchEvent(new CustomEvent("md-open-mtg-record",{detail:{entityKey,entityId,entityName:_e?.name||""}}));
       }}
-        style={{width:"100%",marginBottom:"0.55rem",padding:"0.6rem 0.85rem",borderRadius:8,border:"1.5px solid #16a34a",background:"linear-gradient(135deg,#f0fdf4 0%,#dcfce7 100%)",color:"#166534",fontWeight:800,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.4rem"}}>
+        style={{width:"100%",marginBottom:"0.55rem",padding:"0.6rem 0.85rem",borderRadius:8,border:"1.5px solid #009122",background:"linear-gradient(135deg,#f0fdf4 0%,#dcfce7 100%)",color:"#166534",fontWeight:800,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.4rem"}}>
         🎤 録音して議事録を作成（自動で文字起こし）
       </button>
 
@@ -15858,40 +15862,40 @@ function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach
           const isMe = !item.userId || String(item.userId)===String(currentUserId);
           const isEditingChat = editChatId===item.id;
           const renderText = (t) => (t||"").split(/(@[^\s　]+)/g).map((p,idx)=>
-            p.startsWith("@")?<span key={idx} style={{background:"#dbeafe",color:"#1d4ed8",borderRadius:4,padding:"0 3px",fontWeight:700}}>{p}</span>:p
+            p.startsWith("@")?<span key={idx} style={{background:"#E6F0FF",color:"#1563CA",borderRadius:8,padding:"0 3px",fontWeight:700}}>{p}</span>:p
           );
           return (
             <div key={item.id||i} style={{display:"flex",gap:"0.6rem",marginBottom:"0.65rem"}}>
               <div style={{display:"flex",flexDirection:"column",alignItems:"center"}}>
-                <div style={{width:30,height:30,borderRadius:"50%",background:isMe?"#2563eb":"#94a3b8",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.7rem",fontWeight:800,color:"white",flexShrink:0}}>
+                <div style={{width:30,height:30,borderRadius:"50%",background:isMe?"#0070D4":"#94a3b8",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.7rem",fontWeight:800,color:"white",flexShrink:0}}>
                   {(u?.name||"?").charAt(0)}
                 </div>
                 {i<items.length-1&&<div style={{width:2,flex:1,background:C.borderLight,margin:"4px 0"}}/>}
               </div>
               <div style={{flex:1,paddingBottom:"0.4rem",minWidth:0}}>
                 <div style={{display:"flex",gap:"0.5rem",alignItems:"center",marginBottom:"0.2rem",flexWrap:"wrap"}}>
-                  <span style={{fontSize:"0.7rem",fontWeight:700,color:"#2563eb"}}>💬 チャット</span>
+                  <span style={{fontSize:"0.7rem",fontWeight:700,color:"#0070D4"}}>💬 チャット</span>
                   <span style={{fontSize:"0.66rem",color:C.textMuted}}>{fmtJst(item.date||item._ts)}</span>
                   {u&&<span style={{fontSize:"0.66rem",color:C.textSub,fontWeight:600}}>👤 {u.name}</span>}
                   {item.editedAt&&<span style={{fontSize:"0.6rem",color:"#9ca3af"}}>(編集済)</span>}
                   {isMe && !isEditingChat && (
                     <span style={{marginLeft:"auto",display:"flex",gap:"0.2rem"}}>
                       <button onClick={()=>{setEditChatId(item.id);setEditChatText(item.text||"");}} title="編集" style={{background:"none",border:"none",cursor:"pointer",color:C.textSub,padding:"0.1rem 0.3rem",fontSize:"0.78rem",fontFamily:"inherit"}}>✏️</button>
-                      <button onClick={()=>{if(window.confirm("このメッセージを削除しますか？"))onDeleteChat&&onDeleteChat(item.id);}} title="削除" style={{background:"none",border:"none",cursor:"pointer",color:"#dc2626",padding:"0.1rem 0.3rem",fontSize:"0.74rem",fontFamily:"inherit"}}>🗑</button>
+                      <button onClick={()=>{if(window.confirm("このメッセージを削除しますか？"))onDeleteChat&&onDeleteChat(item.id);}} title="削除" style={{background:"none",border:"none",cursor:"pointer",color:"#DA1313",padding:"0.1rem 0.3rem",fontSize:"0.74rem",fontFamily:"inherit"}}>🗑</button>
                     </span>
                   )}
                 </div>
                 {isEditingChat ? (
                   <div style={{background:"#fffbeb",border:"1.5px solid #fbbf24",borderRadius:"0.5rem",padding:"0.5rem"}}>
                     <textarea value={editChatText} onChange={e=>setEditChatText(e.target.value)}
-                      style={{width:"100%",minHeight:50,padding:"0.4rem 0.55rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.85rem",boxSizing:"border-box",resize:"vertical"}}/>
+                      style={{width:"100%",minHeight:50,padding:"0.4rem 0.55rem",borderRadius:"0.5rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.85rem",boxSizing:"border-box",resize:"vertical"}}/>
                     <div style={{display:"flex",gap:"0.4rem",marginTop:"0.4rem",justifyContent:"flex-end"}}>
-                      <button onClick={()=>{setEditChatId(null);setEditChatText("");}} style={{padding:"0.25rem 0.6rem",borderRadius:5,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.74rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>キャンセル</button>
-                      <button onClick={()=>{onUpdateChat&&onUpdateChat(item.id, editChatText);setEditChatId(null);setEditChatText("");}} disabled={!editChatText.trim()} style={{padding:"0.25rem 0.7rem",borderRadius:5,border:"none",background:"#059669",color:"white",fontSize:"0.74rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>💾 保存</button>
+                      <button onClick={()=>{setEditChatId(null);setEditChatText("");}} style={{padding:"0.25rem 0.6rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.74rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>キャンセル</button>
+                      <button onClick={()=>{onUpdateChat&&onUpdateChat(item.id, editChatText);setEditChatId(null);setEditChatText("");}} disabled={!editChatText.trim()} style={{padding:"0.25rem 0.7rem",borderRadius:8,border:"none",background:"#009122",color:"white",fontSize:"0.74rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>💾 保存</button>
                     </div>
                   </div>
                 ) : (
-                  <div style={{display:"inline-block",maxWidth:"100%",background:isMe?"#dbeafe":"white",color:C.text,borderRadius:"0.75rem",padding:"0.5rem 0.75rem",fontSize:"0.86rem",lineHeight:1.5,border:isMe?"none":`1px solid ${C.border}`,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>
+                  <div style={{display:"inline-block",maxWidth:"100%",background:isMe?"#E6F0FF":"white",color:C.text,borderRadius:"0.75rem",padding:"0.5rem 0.75rem",fontSize:"0.86rem",lineHeight:1.5,border:isMe?"none":`1px solid ${C.border}`,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>
                     {renderText(item.text)}
                   </div>
                 )}
@@ -15908,36 +15912,36 @@ function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach
           return (
             <div key={item.id||i} style={{display:"flex",gap:"0.6rem",marginBottom:"0.75rem"}}>
               <div style={{display:"flex",flexDirection:"column",alignItems:"center"}}>
-                <div style={{width:30,height:30,borderRadius:"50%",background:isLoss?"#fee2e2":"#dbeafe",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.85rem",flexShrink:0}}>{icon}</div>
+                <div style={{width:30,height:30,borderRadius:"50%",background:isLoss?"#fee2e2":"#E6F0FF",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.85rem",flexShrink:0}}>{icon}</div>
                 {i<items.length-1&&<div style={{width:2,flex:1,background:C.borderLight,margin:"4px 0"}}/>}
               </div>
               <div style={{flex:1,paddingBottom:"0.5rem",minWidth:0}}>
                 {isEditing ? (
                   <div style={{background:"#fffbeb",border:"1.5px solid #fbbf24",borderRadius:"0.5rem",padding:"0.6rem"}}>
                     <div style={{display:"flex",gap:"0.4rem",alignItems:"center",marginBottom:"0.4rem",flexWrap:"wrap"}}>
-                      <select value={editType} onChange={e=>setEditType(e.target.value)} style={{padding:"0.25rem 0.4rem",borderRadius:4,border:`1px solid ${C.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}>
+                      <select value={editType} onChange={e=>setEditType(e.target.value)} style={{padding:"0.25rem 0.4rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}>
                         {Object.keys(APPROACH_ICON).map(t=><option key={t} value={t}>{APPROACH_ICON[t]} {t}</option>)}
                       </select>
-                      <input type="date" value={editDate} onChange={e=>setEditDate(e.target.value)} style={{padding:"0.25rem 0.4rem",borderRadius:4,border:`1px solid ${C.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}/>
+                      <input type="date" value={editDate} onChange={e=>setEditDate(e.target.value)} style={{padding:"0.25rem 0.4rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}/>
                     </div>
                     <textarea value={editNote} onChange={e=>setEditNote(e.target.value)} placeholder="記録内容..."
-                      style={{width:"100%",minHeight:60,padding:"0.45rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.82rem",boxSizing:"border-box",resize:"vertical"}}/>
+                      style={{width:"100%",minHeight:60,padding:"0.45rem 0.6rem",borderRadius:"0.5rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.82rem",boxSizing:"border-box",resize:"vertical"}}/>
                     <div style={{display:"flex",gap:"0.4rem",marginTop:"0.4rem",justifyContent:"flex-end"}}>
-                      <button onClick={cancelEdit} style={{padding:"0.3rem 0.7rem",borderRadius:5,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.75rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>キャンセル</button>
-                      <button onClick={()=>saveEdit(item.id)} style={{padding:"0.3rem 0.85rem",borderRadius:5,border:"none",background:"#059669",color:"white",fontSize:"0.75rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>💾 保存</button>
+                      <button onClick={cancelEdit} style={{padding:"0.3rem 0.7rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.75rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>キャンセル</button>
+                      <button onClick={()=>saveEdit(item.id)} style={{padding:"0.3rem 0.85rem",borderRadius:8,border:"none",background:"#009122",color:"white",fontSize:"0.75rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>💾 保存</button>
                     </div>
                   </div>
                 ) : (
                   <>
                     <div style={{display:"flex",gap:"0.5rem",alignItems:"center",marginBottom:"0.2rem",flexWrap:"wrap"}}>
-                      <span style={{fontSize:"0.72rem",fontWeight:700,color:isLoss?"#dc2626":C.accent}}>{icon} {item.type}</span>
+                      <span style={{fontSize:"0.72rem",fontWeight:700,color:isLoss?"#DA1313":C.accent}}>{icon} {item.type}</span>
                       <span style={{fontSize:"0.68rem",color:C.textMuted}}>{dateStr}</span>
                       {u&&<span style={{fontSize:"0.68rem",color:C.textSub}}>👤 {u.name}</span>}
                       {item.updatedAt&&<span style={{fontSize:"0.62rem",color:"#9ca3af"}}>(編集済)</span>}
                       {canEdit && (
                         <span style={{marginLeft:"auto",display:"flex",gap:"0.2rem"}}>
                           <button onClick={()=>startEdit(item)} title="編集" style={{background:"none",border:"none",cursor:"pointer",color:C.textSub,padding:"0.1rem 0.3rem",fontSize:"0.85rem",fontFamily:"inherit"}}>✏️</button>
-                          <button onClick={()=>deleteLog(item.id)} title="削除" style={{background:"none",border:"none",cursor:"pointer",color:"#dc2626",padding:"0.1rem 0.3rem",fontSize:"0.8rem",fontFamily:"inherit"}}>🗑</button>
+                          <button onClick={()=>deleteLog(item.id)} title="削除" style={{background:"none",border:"none",cursor:"pointer",color:"#DA1313",padding:"0.1rem 0.3rem",fontSize:"0.8rem",fontFamily:"inherit"}}>🗑</button>
                         </span>
                       )}
                     </div>
@@ -15967,17 +15971,17 @@ function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach
                   {canEditMemo && !isEditingMemo && onUpdateMemo && (
                     <span style={{marginLeft:"auto",display:"flex",gap:"0.2rem"}}>
                       <button onClick={()=>{setEditMemoId(item.id);setEditMemoText(item.text||"");}} title="編集" style={{background:"none",border:"none",cursor:"pointer",color:C.textSub,padding:"0.1rem 0.3rem",fontSize:"0.85rem",fontFamily:"inherit"}}>✏️</button>
-                      <button onClick={()=>{if(window.confirm("このメモを削除しますか？"))onDeleteMemo(item.id);}} title="削除" style={{background:"none",border:"none",cursor:"pointer",color:"#dc2626",padding:"0.1rem 0.3rem",fontSize:"0.8rem",fontFamily:"inherit"}}>🗑</button>
+                      <button onClick={()=>{if(window.confirm("このメモを削除しますか？"))onDeleteMemo(item.id);}} title="削除" style={{background:"none",border:"none",cursor:"pointer",color:"#DA1313",padding:"0.1rem 0.3rem",fontSize:"0.8rem",fontFamily:"inherit"}}>🗑</button>
                     </span>
                   )}
                 </div>
                 {isEditingMemo ? (
                   <div style={{background:"#fffbeb",border:"1.5px solid #fbbf24",borderRadius:"0.5rem",padding:"0.5rem"}}>
                     <textarea value={editMemoText} onChange={e=>setEditMemoText(e.target.value)}
-                      style={{width:"100%",minHeight:60,padding:"0.45rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.82rem",boxSizing:"border-box",resize:"vertical"}}/>
+                      style={{width:"100%",minHeight:60,padding:"0.45rem 0.6rem",borderRadius:"0.5rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.82rem",boxSizing:"border-box",resize:"vertical"}}/>
                     <div style={{display:"flex",gap:"0.4rem",marginTop:"0.4rem",justifyContent:"flex-end"}}>
-                      <button onClick={()=>{setEditMemoId(null);setEditMemoText("");}} style={{padding:"0.3rem 0.7rem",borderRadius:5,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.75rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>キャンセル</button>
-                      <button onClick={()=>{onUpdateMemo(item.id, editMemoText);setEditMemoId(null);setEditMemoText("");}} disabled={!editMemoText.trim()} style={{padding:"0.3rem 0.85rem",borderRadius:5,border:"none",background:"#059669",color:"white",fontSize:"0.75rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>💾 保存</button>
+                      <button onClick={()=>{setEditMemoId(null);setEditMemoText("");}} style={{padding:"0.3rem 0.7rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.75rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>キャンセル</button>
+                      <button onClick={()=>{onUpdateMemo(item.id, editMemoText);setEditMemoId(null);setEditMemoText("");}} disabled={!editMemoText.trim()} style={{padding:"0.3rem 0.85rem",borderRadius:8,border:"none",background:"#009122",color:"white",fontSize:"0.75rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>💾 保存</button>
                     </div>
                   </div>
                 ) : (
@@ -15994,18 +15998,18 @@ function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach
           return (
             <div key={item.id||i} style={{display:"flex",gap:"0.6rem",marginBottom:"0.75rem"}}>
               <div style={{display:"flex",flexDirection:"column",alignItems:"center"}}>
-                <div style={{width:30,height:30,borderRadius:"50%",background:"#dbeafe",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.85rem",flexShrink:0}}>📎</div>
+                <div style={{width:30,height:30,borderRadius:"50%",background:"#E6F0FF",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.85rem",flexShrink:0}}>📎</div>
                 {i<items.length-1&&<div style={{width:2,flex:1,background:C.borderLight,margin:"4px 0"}}/>}
               </div>
               <div style={{flex:1,paddingBottom:"0.5rem"}}>
                 <div style={{display:"flex",gap:"0.5rem",alignItems:"center",flexWrap:"wrap",marginBottom:"0.2rem"}}>
-                  <span style={{fontSize:"0.72rem",fontWeight:700,color:"#1d4ed8"}}>📎 資料添付</span>
+                  <span style={{fontSize:"0.72rem",fontWeight:700,color:"#1563CA"}}>📎 資料添付</span>
                   {item.uploadedAt&&<span style={{fontSize:"0.68rem",color:C.textMuted}}>{fmtJst(item.uploadedAt)}</span>}
                   {userName && <span style={{fontSize:"0.68rem",color:C.textSub}}>👤 {userName}</span>}
                   <span style={{fontSize:"0.65rem",color:C.textMuted,marginLeft:"auto"}}>{dateStr}</span>
                 </div>
-                <div style={{fontSize:"0.78rem",color:C.text,background:"#eff6ff",borderRadius:"0.5rem",padding:"0.4rem 0.6rem",border:`1px solid #bfdbfe`,display:"flex",alignItems:"center",gap:"0.4rem"}}>
-                  {item.url ? <a href={item.url} target="_blank" rel="noopener noreferrer" style={{color:"#1d4ed8",textDecoration:"none",fontWeight:600,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.name||"ファイル"}</a> : <span style={{flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.name||"ファイル"}</span>}
+                <div style={{fontSize:"0.78rem",color:C.text,background:"#F2F7FF",borderRadius:"0.5rem",padding:"0.4rem 0.6rem",border:`1px solid #bfdbfe`,display:"flex",alignItems:"center",gap:"0.4rem"}}>
+                  {item.url ? <a href={item.url} target="_blank" rel="noopener noreferrer" style={{color:"#1563CA",textDecoration:"none",fontWeight:600,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.name||"ファイル"}</a> : <span style={{flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.name||"ファイル"}</span>}
                   {sz && <span style={{fontSize:"0.66rem",color:C.textMuted,flexShrink:0}}>{sz}</span>}
                 </div>
               </div>
@@ -16064,8 +16068,8 @@ function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach
           const isTask = item._kind.startsWith("task_");
           const kindSuffix = item._kind.replace(/^task_|^project_/, "");
           const userName = users.find(u=>u.id===item.userId)?.name || "";
-          const baseColor = isTask ? "#1d4ed8" : "#7c3aed";
-          const baseBg = isTask ? "#dbeafe" : "#ede9fe";
+          const baseColor = isTask ? "#1563CA" : "#7c3aed";
+          const baseBg = isTask ? "#E6F0FF" : "#ede9fe";
           const parentLbl = isTask ? "タスク" : "プロジェクト";
           const iconMap = {create:"🆕", memo:"📝", chat:"💬", mtg:"🎤", file:"📎"};
           const labelMap = {create:"作成", memo:"メモ", chat:"チャット", mtg:"議事録", file:"資料"};
@@ -16079,7 +16083,7 @@ function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach
               </div>
               <div style={{flex:1,paddingBottom:"0.5rem"}}>
                 <div style={{display:"flex",gap:"0.4rem",alignItems:"center",flexWrap:"wrap",marginBottom:"0.2rem"}}>
-                  <span style={{fontSize:"0.6rem",fontWeight:700,padding:"0.1rem 0.4rem",borderRadius:4,background:baseBg,color:baseColor,letterSpacing:"0.02em"}}>{parentLbl}</span>
+                  <span style={{fontSize:"0.6rem",fontWeight:700,padding:"0.1rem 0.4rem",borderRadius:8,background:baseBg,color:baseColor,letterSpacing:"0.02em"}}>{parentLbl}</span>
                   <span style={{fontSize:"0.74rem",fontWeight:700,color:baseColor}}>{icon} {label}</span>
                   <span style={{fontSize:"0.68rem",color:C.textMuted}}>{dateStr}</span>
                   {userName && <span style={{fontSize:"0.68rem",color:C.textSub}}>👤 {userName}</span>}
@@ -16117,8 +16121,8 @@ function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach
         // フィールド別アイコン
         const fieldIcon = ({"ファイル添付":"📎","ファイル削除":"🗑","ステータス":"🔄","メモ追加":"📝","チャット投稿":"💬","議事録追加":"🎤","営業紐付け":"🔗","担当者":"👤","期限":"📅","タイトル":"✏️","プロジェクト名":"✏️","優先度":"⚡","登録":"✨","削除":"🗑","説明":"📄","メモ":"📝"})[item.field] || "🔄";
         const changeIcon = isCardLink ? "🔗" : isCardUnlink ? "🔓" : fieldIcon;
-        const changeBg = isCardLink ? "#cffafe" : isCardUnlink ? "#fee2e2" : (isPropagated ? (item._source.type === "タスク" ? "#dbeafe" : "#ede9fe") : "#ede9fe");
-        const changeColor = isCardLink ? "#0e7490" : isCardUnlink ? "#b91c1c" : (isPropagated ? (item._source.type === "タスク" ? "#1d4ed8" : "#7c3aed") : "#7c3aed");
+        const changeBg = isCardLink ? "#cffafe" : isCardUnlink ? "#fee2e2" : (isPropagated ? (item._source.type === "タスク" ? "#E6F0FF" : "#ede9fe") : "#ede9fe");
+        const changeColor = isCardLink ? "#0e7490" : isCardUnlink ? "#b91c1c" : (isPropagated ? (item._source.type === "タスク" ? "#1563CA" : "#7c3aed") : "#7c3aed");
         const changeLabel = isCardLink ? "名刺を紐付け" : isCardUnlink ? "名刺の紐付けを解除" : item.field;
         return (
           <div key={item.id||i} style={{display:"flex",gap:"0.6rem",marginBottom:"0.75rem"}}>
@@ -16138,8 +16142,8 @@ function ApproachTimeline({ entity, entityKey, entityId, users=[], onAddApproach
                 {(isCardLink||isCardUnlink) ? (
                   <span style={{fontSize:"0.7rem",color:C.text,fontWeight:600}}>{item.newVal||item.oldVal||""}</span>
                 ) : (<>
-                  {item.oldVal&&<><span style={{fontSize:"0.68rem",color:"#dc2626",textDecoration:"line-through"}}>{item.oldVal}</span><span style={{fontSize:"0.65rem",color:C.textMuted}}>→</span></>}
-                  {item.newVal&&<span style={{fontSize:"0.68rem",color:"#059669",fontWeight:700}}>{item.newVal}</span>}
+                  {item.oldVal&&<><span style={{fontSize:"0.68rem",color:"#DA1313",textDecoration:"line-through"}}>{item.oldVal}</span><span style={{fontSize:"0.65rem",color:C.textMuted}}>→</span></>}
+                  {item.newVal&&<span style={{fontSize:"0.68rem",color:"#009122",fontWeight:700}}>{item.newVal}</span>}
                 </>)}
               </div>
             </div>
@@ -16173,9 +16177,9 @@ function SalesTaskPanel({ entityType, entityId, entityName, data, onSave, curren
   const [pf,setPf] = useState({name:entityName,notes:"",members:uid?[uid]:[]});
   const STATUS_META_MINI={
     "未着手":{color:"#6b7280",bg:"#f1f3f4"},
-    "進行中":{color:"#2563eb",bg:"#e8f0fe"},
-    "先方待ち":{color:"#1d4ed8",bg:"#fef3c7"},
-    "完了":{color:"#059669",bg:"#d1fae5"},
+    "進行中":{color:"#0070D4",bg:"#e8f0fe"},
+    "先方待ち":{color:"#1563CA",bg:"#fef3c7"},
+    "完了":{color:"#009122",bg:"#d1fae5"},
     "保留":{color:"#9333ea",bg:"#f3e8ff"},
   };
 
@@ -16220,15 +16224,15 @@ function SalesTaskPanel({ entityType, entityId, entityName, data, onSave, curren
                           || (pjTasks.length > 0 && done === pjTasks.length);
             return (
               <div key={pj.id} onClick={()=>onNavigateToProject?.(pj.id)}
-                style={{background:isPjDone?"#f9fafb":C.bg,borderRadius:"6px",padding:"0.625rem 0.875rem",marginBottom:"0.4rem",border:`1px solid ${isPjDone?"#d1d5db":C.border}`,cursor:onNavigateToProject?"pointer":"default",opacity:isPjDone?0.7:1}}>
+                style={{background:isPjDone?"#f9fafb":C.bg,borderRadius:"8px",padding:"0.625rem 0.875rem",marginBottom:"0.4rem",border:`1px solid ${isPjDone?"#d1d5db":C.border}`,cursor:onNavigateToProject?"pointer":"default",opacity:isPjDone?0.7:1}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.2rem",gap:"0.4rem"}}>
                   <div style={{fontWeight:700,fontSize:"0.85rem",color:isPjDone?C.textMuted:C.text,textDecoration:isPjDone?"line-through":"none",flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{pj.name}</div>
-                  {isPjDone && <span style={{fontSize:"0.62rem",fontWeight:700,background:"#d1fae5",color:"#059669",borderRadius:999,padding:"0.1rem 0.4rem",flexShrink:0}}>完了</span>}
+                  {isPjDone && <span style={{fontSize:"0.62rem",fontWeight:700,background:"#d1fae5",color:"#009122",borderRadius:999,padding:"0.1rem 0.4rem",flexShrink:0}}>完了</span>}
                   {onNavigateToProject&&<span style={{fontSize:"0.68rem",color:C.textMuted,flexShrink:0}}>›</span>}
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:"0.5rem"}}>
                   <div style={{flex:1,height:4,background:C.borderLight,borderRadius:999,overflow:"hidden"}}>
-                    <div style={{width:pjTasks.length?`${(done/pjTasks.length)*100}%`:"0%",height:"100%",background:"#059669",borderRadius:999,transition:"width 0.3s"}}/>
+                    <div style={{width:pjTasks.length?`${(done/pjTasks.length)*100}%`:"0%",height:"100%",background:"#009122",borderRadius:999,transition:"width 0.3s"}}/>
                   </div>
                   <span style={{fontSize:"0.68rem",color:C.textMuted}}>{done}/{pjTasks.length}</span>
                 </div>
@@ -16248,10 +16252,10 @@ function SalesTaskPanel({ entityType, entityId, entityName, data, onSave, curren
             const overdue=due&&due<today&&t.status!=="完了";
             return (
               <div key={t.id} onClick={()=>onNavigateToTask?.(t.id)}
-                style={{background:"white",borderRadius:"6px",padding:"0.625rem 0.875rem",marginBottom:"0.4rem",border:`1px solid ${overdue?"#fca5a5":C.border}`,display:"flex",alignItems:"center",gap:"0.625rem",cursor:onNavigateToTask?"pointer":"default"}}>
+                style={{background:"white",borderRadius:"8px",padding:"0.625rem 0.875rem",marginBottom:"0.4rem",border:`1px solid ${overdue?"#fca5a5":C.border}`,display:"flex",alignItems:"center",gap:"0.625rem",cursor:onNavigateToTask?"pointer":"default"}}>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontWeight:600,fontSize:"0.85rem",color:t.status==="完了"?C.textMuted:C.text,textDecoration:t.status==="完了"?"line-through":"none",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div>
-                  {t.dueDate&&<div style={{fontSize:"0.65rem",color:overdue?"#dc2626":C.textMuted,marginTop:"0.1rem"}}>{overdue?"⚠️ ":""}期限：{t.dueDate}</div>}
+                  {t.dueDate&&<div style={{fontSize:"0.65rem",color:overdue?"#DA1313":C.textMuted,marginTop:"0.1rem"}}>{overdue?"⚠️ ":""}期限：{t.dueDate}</div>}
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:"0.35rem",flexShrink:0}}>
                   <span style={{fontSize:"0.68rem",fontWeight:700,background:m.bg,color:m.color,borderRadius:999,padding:"0.1rem 0.45rem"}}>{t.status}</span>
@@ -16448,7 +16452,7 @@ function PhoneLink({number, label, size="md", onMtg=null, onCallRecord=null}) {
       <div style={{display:"inline-flex",alignItems:"center",gap:"0.375rem",flexWrap:"wrap"}}>
         {/* 電話ボタン */}
         <a href={`tel:${clean}`} onClick={handleCall}
-          style={{display:"inline-flex",alignItems:"center",gap:"0.375rem",color:C.accent,textDecoration:"none",fontSize:fs,fontWeight:500,padding:"0.35rem 0.75rem",borderRadius:"6px",background:C.accentBg,border:`1px solid rgba(91,91,214,0.15)`,whiteSpace:"nowrap",transition:"all 0.1s"}}>
+          style={{display:"inline-flex",alignItems:"center",gap:"0.375rem",color:C.accent,textDecoration:"none",fontSize:fs,fontWeight:500,padding:"0.35rem 0.75rem",borderRadius:"8px",background:C.accentBg,border:`1px solid rgba(91,91,214,0.15)`,whiteSpace:"nowrap",transition:"all 0.1s"}}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81a19.79 19.79 0 01-3.07-8.64A2 2 0 012 .18h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 14.92z"/>
           </svg>
@@ -16456,12 +16460,12 @@ function PhoneLink({number, label, size="md", onMtg=null, onCallRecord=null}) {
         </a>
         {/* 録音通話ボタン（onCallRecordがある場合） */}
         {onCallRecord&&<button onClick={handleRecordCall} title="電話＋自動録音"
-          style={{display:"inline-flex",alignItems:"center",gap:"0.25rem",fontSize:fs,fontWeight:600,padding:"0.35rem 0.625rem",borderRadius:"6px",background:"#fef3c7",color:"#92400e",border:"1px solid #fde68a",cursor:"pointer",whiteSpace:"nowrap"}}>
+          style={{display:"inline-flex",alignItems:"center",gap:"0.25rem",fontSize:fs,fontWeight:600,padding:"0.35rem 0.625rem",borderRadius:"8px",background:"#fef3c7",color:"#92400e",border:"1px solid #fde68a",cursor:"pointer",whiteSpace:"nowrap"}}>
           🎙️ 録音通話
         </button>}
         {/* 議事録ボタン（onMtgがある場合のみ） */}
         {onMtg&&<button onClick={onMtg}
-          style={{display:"inline-flex",alignItems:"center",gap:"0.25rem",fontSize:fs,fontWeight:500,padding:"0.35rem 0.625rem",borderRadius:"6px",background:"#f0fdf4",color:"#16a34a",border:"1px solid #bbf7d0",cursor:"pointer",whiteSpace:"nowrap"}}>
+          style={{display:"inline-flex",alignItems:"center",gap:"0.25rem",fontSize:fs,fontWeight:500,padding:"0.35rem 0.625rem",borderRadius:"8px",background:"#f0fdf4",color:"#009122",border:"1px solid #bbf7d0",cursor:"pointer",whiteSpace:"nowrap"}}>
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
           </svg>
@@ -16473,7 +16477,7 @@ function PhoneLink({number, label, size="md", onMtg=null, onCallRecord=null}) {
         <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:"8px",padding:"0.625rem 0.75rem",fontSize:"0.78rem",color:"#92400e",display:"flex",alignItems:"center",gap:"0.5rem",maxWidth:280}}>
           <span>📞 通話お疲れ様です！議事録を取りますか？</span>
           <button onClick={()=>{setShowMtgPrompt(false);onMtg();}}
-            style={{background:"#d97706",color:"white",border:"none",borderRadius:"5px",padding:"0.25rem 0.625rem",fontSize:"0.72rem",fontWeight:600,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>
+            style={{background:"#d97706",color:"white",border:"none",borderRadius:"8px",padding:"0.25rem 0.625rem",fontSize:"0.72rem",fontWeight:600,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>
             録音開始
           </button>
           <button onClick={()=>setShowMtgPrompt(false)}
@@ -17060,17 +17064,17 @@ function MtgRecordModal({entityKey,entityId,entityName,data,users,currentUser,on
 
           {phase==="record"&&(<>
             {/* エラー表示 */}
-            {permError&&<div style={{background:"#fee2e2",borderRadius:"6px",padding:"0.75rem",marginBottom:"0.75rem",fontSize:"0.8rem",color:"#dc2626",fontWeight:600}}>{permError}</div>}
+            {permError&&<div style={{background:"#fee2e2",borderRadius:"8px",padding:"0.75rem",marginBottom:"0.75rem",fontSize:"0.8rem",color:"#DA1313",fontWeight:600}}>{permError}</div>}
             {/* ブラウザ別ヒント */}
             {/* 電話通話モード専用ヒント */}
-            {callMode&&!permError&&<div style={{background:"#fffbeb",borderRadius:"6px",padding:"0.75rem 1rem",marginBottom:"0.75rem",fontSize:"0.78rem",color:"#92400e",lineHeight:1.6,border:"1px solid #fde68a"}}>
+            {callMode&&!permError&&<div style={{background:"#fffbeb",borderRadius:"8px",padding:"0.75rem 1rem",marginBottom:"0.75rem",fontSize:"0.78rem",color:"#92400e",lineHeight:1.6,border:"1px solid #fde68a"}}>
               📞 <strong>電話通話モード：</strong><br/>
               1. iPhoneで電話発信中 → <strong>スピーカーホン</strong>に切り替えてください<br/>
               2. iPhoneを <strong>Macの近くに置く</strong>（マイクが拾える位置）<br/>
               3. 通話終了後、下の<strong>「⏹ 録音停止＆文字起こし」</strong>ボタンを押す<br/>
               4. AI が自動で議事録・タスクを生成します
             </div>}
-            {!callMode&&!permError&&!recording&&!whisperProcessing&&<div style={{background:"#eff6ff",borderRadius:"6px",padding:"0.625rem 0.875rem",marginBottom:"0.75rem",fontSize:"0.72rem",color:"#1d4ed8",lineHeight:1.6}}>
+            {!callMode&&!permError&&!recording&&!whisperProcessing&&<div style={{background:"#F2F7FF",borderRadius:"8px",padding:"0.625rem 0.875rem",marginBottom:"0.75rem",fontSize:"0.72rem",color:"#1563CA",lineHeight:1.6}}>
               💡 <strong>使い方：</strong>「録音開始」を押して話す → 「録音停止」を押すと <strong>OpenAI Whisper</strong> が高精度で文字起こしします<br/>
               ⏱ <strong>録音時間の目安：</strong>15分以内（長すぎるとサイズ超過）<br/>
               🎯 <strong>精度：</strong>Whisperは句読点も自動で付き、専門用語（産廃・収運等）も正確に認識します<br/>
@@ -17114,14 +17118,14 @@ function MtgRecordModal({entityKey,entityId,entityName,data,users,currentUser,on
                 const builtInDev = audioDevices.find(d=>/built|内蔵|macbook/i.test(d.label||"") && !/default|既定/i.test(d.label||""));
                 if(hasIPhone || hasVirtual) {
                   return (
-                    <div style={{marginTop:"0.4rem",padding:"0.5rem 0.625rem",background:"#fee2e2",border:"1px solid #fca5a5",borderRadius:"0.4rem",fontSize:"0.68rem",color:"#7f1d1d",lineHeight:1.6}}>
+                    <div style={{marginTop:"0.4rem",padding:"0.5rem 0.625rem",background:"#fee2e2",border:"1px solid #fca5a5",borderRadius:"0.5rem",fontSize:"0.68rem",color:"#7f1d1d",lineHeight:1.6}}>
                       ⚠️ <strong>{hasIPhone?"iPhone/iPad":"仮想オーディオデバイス"}</strong>が検出されました。これらはChromeで音が拾えない原因になります。<br/>
                       {hasBuiltIn&&builtInDev&&(
                         <button onClick={()=>{
                           setSelectedDeviceId(builtInDev.deviceId);
                           localStorage.setItem("md_mtgMicDeviceId", builtInDev.deviceId);
                         }}
-                        style={{marginTop:"0.3rem",padding:"0.3rem 0.6rem",background:"#dc2626",color:"white",border:"none",borderRadius:"0.4rem",fontWeight:700,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit"}}>
+                        style={{marginTop:"0.3rem",padding:"0.3rem 0.6rem",background:"#DA1313",color:"white",border:"none",borderRadius:"0.5rem",fontWeight:700,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit"}}>
                           🎯 「{(builtInDev.label||"").slice(0,30)}」に切り替え
                         </button>
                       )}
@@ -17148,7 +17152,7 @@ function MtgRecordModal({entityKey,entityId,entityName,data,users,currentUser,on
               </div>
               <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap",alignItems:"center"}}>
                 <button onClick={startTestRecording} disabled={testRecording||recording}
-                  style={{padding:"0.7rem 1.5rem",borderRadius:"0.625rem",background:testRecording?"#dc2626":(recording?"#9ca3af":"#f59e0b"),color:"white",fontSize:"0.92rem",fontWeight:800,border:"none",cursor:(testRecording||recording)?"default":"pointer",fontFamily:"inherit",boxShadow:"0 2px 4px rgba(0,0,0,0.1)"}}>
+                  style={{padding:"0.7rem 1.5rem",borderRadius:"0.625rem",background:testRecording?"#DA1313":(recording?"#9ca3af":"#f59e0b"),color:"white",fontSize:"0.92rem",fontWeight:800,border:"none",cursor:(testRecording||recording)?"default":"pointer",fontFamily:"inherit",boxShadow:"0 2px 4px rgba(0,0,0,0.1)"}}>
                   {testRecording?"⏺ 録音中...(3秒)":"🎤 3秒テスト録音"}
                 </button>
                 {testAudioUrl&&(
@@ -17157,7 +17161,7 @@ function MtgRecordModal({entityKey,entityId,entityName,data,users,currentUser,on
               </div>
               {/* テスト結果（永続表示） */}
               {diagnostics?.testResult&&(
-                <div style={{marginTop:"0.6rem",padding:"0.625rem 0.75rem",borderRadius:"0.5rem",background:diagnostics.testResult.isSilent?"#fee2e2":"#d1fae5",border:`1.5px solid ${diagnostics.testResult.isSilent?"#dc2626":"#059669"}`}}>
+                <div style={{marginTop:"0.6rem",padding:"0.625rem 0.75rem",borderRadius:"0.5rem",background:diagnostics.testResult.isSilent?"#fee2e2":"#d1fae5",border:`1.5px solid ${diagnostics.testResult.isSilent?"#DA1313":"#009122"}`}}>
                   <div style={{fontWeight:800,fontSize:"0.82rem",color:diagnostics.testResult.isSilent?"#991b1b":"#065f46"}}>
                     {diagnostics.testResult.isSilent ? "🚨 完全に無音 - マイクから音が来ていません" : "✅ マイクは正常動作"}
                   </div>
@@ -17166,8 +17170,8 @@ function MtgRecordModal({entityKey,entityId,entityName,data,users,currentUser,on
                   </div>
                   {/* 無音だった場合の詳細手順（画面内に常設） */}
                   {diagnostics.testResult.isSilent&&(
-                    <div style={{marginTop:"0.5rem",padding:"0.625rem 0.75rem",background:"white",borderRadius:"0.4rem",border:"1px solid #fca5a5",fontSize:"0.7rem",color:"#1f2937",lineHeight:1.7}}>
-                      <div style={{fontWeight:800,color:"#dc2626",marginBottom:"0.35rem"}}>📱 iPhoneが反応している = macOS Continuityでマイクが奪われています</div>
+                    <div style={{marginTop:"0.5rem",padding:"0.625rem 0.75rem",background:"white",borderRadius:"0.5rem",border:"1px solid #fca5a5",fontSize:"0.7rem",color:"#1f2937",lineHeight:1.7}}>
+                      <div style={{fontWeight:800,color:"#DA1313",marginBottom:"0.35rem"}}>📱 iPhoneが反応している = macOS Continuityでマイクが奪われています</div>
                       <div style={{fontWeight:700,marginBottom:"0.2rem"}}>🛠️ macOSでの解決手順（順番に試す）：</div>
                       <ol style={{margin:0,paddingLeft:"1.2rem"}}>
                         <li><strong>iPhone側で「Hey Siri」をオフ</strong>：iPhoneの 設定 → Siriと検索 → 「"Hey Siri"を聞き取る」をオフ</li>
@@ -17178,16 +17182,16 @@ function MtgRecordModal({entityKey,entityId,entityName,data,users,currentUser,on
                         <li><strong>macOSのChromeマイク権限を再確認</strong>：システム設定 → プライバシーとセキュリティ → マイク → Chromeにチェック</li>
                         <li>キーボードに <strong>マイクミュートキー（F4等）</strong>がある場合はOFFに</li>
                       </ol>
-                      <div style={{marginTop:"0.4rem",padding:"0.4rem 0.5rem",background:"#fef3c7",borderRadius:"0.3rem",fontSize:"0.65rem",color:"#78350f"}}>
+                      <div style={{marginTop:"0.4rem",padding:"0.4rem 0.5rem",background:"#fef3c7",borderRadius:"0.5rem",fontSize:"0.65rem",color:"#78350f"}}>
                         💡 <strong>すぐに議事録を作りたい場合：</strong>下の「⌨️ 手入力モード」で内容を直接打ち込めば、AI議事録・タスク生成は使えます。
                       </div>
                       <div style={{marginTop:"0.4rem",display:"flex",gap:"0.3rem",flexWrap:"wrap"}}>
                         <button onClick={()=>setManualMode(true)}
-                          style={{padding:"0.3rem 0.7rem",borderRadius:"0.4rem",border:"1px solid #2563eb",background:"#dbeafe",color:"#1d4ed8",fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.7rem"}}>
+                          style={{padding:"0.3rem 0.7rem",borderRadius:"0.5rem",border:"1px solid #0070D4",background:"#E6F0FF",color:"#1563CA",fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.7rem"}}>
                           ⌨️ 手入力モードで議事録作成
                         </button>
                         <button onClick={startTestRecording} disabled={testRecording}
-                          style={{padding:"0.3rem 0.7rem",borderRadius:"0.4rem",border:"1px solid #f59e0b",background:"white",color:"#92400e",fontWeight:700,cursor:testRecording?"default":"pointer",fontFamily:"inherit",fontSize:"0.7rem"}}>
+                          style={{padding:"0.3rem 0.7rem",borderRadius:"0.5rem",border:"1px solid #f59e0b",background:"white",color:"#92400e",fontWeight:700,cursor:testRecording?"default":"pointer",fontFamily:"inherit",fontSize:"0.7rem"}}>
                           🔄 もう一度テスト
                         </button>
                       </div>
@@ -17199,12 +17203,12 @@ function MtgRecordModal({entityKey,entityId,entityName,data,users,currentUser,on
               {diagnostics&&(
                 <details style={{marginTop:"0.5rem"}}>
                   <summary style={{fontSize:"0.7rem",color:"#92400e",cursor:"pointer",fontWeight:700}}>📋 詳細診断情報を表示</summary>
-                  <div style={{fontSize:"0.62rem",color:"#451a03",marginTop:"0.3rem",background:"white",borderRadius:"0.4rem",padding:"0.4rem 0.6rem",fontFamily:"monospace",lineHeight:1.6,wordBreak:"break-all"}}>
+                  <div style={{fontSize:"0.62rem",color:"#451a03",marginTop:"0.3rem",background:"white",borderRadius:"0.5rem",padding:"0.4rem 0.6rem",fontFamily:"monospace",lineHeight:1.6,wordBreak:"break-all"}}>
                     {diagnostics.error
-                      ? <div style={{color:"#dc2626",fontWeight:700}}>❌ エラー: {diagnostics.error}</div>
+                      ? <div style={{color:"#DA1313",fontWeight:700}}>❌ エラー: {diagnostics.error}</div>
                       : <>
                           <div>📛 デバイス名: <strong>{diagnostics.label}</strong></div>
-                          <div>🎙 状態: {diagnostics.readyState} {diagnostics.muted&&<span style={{color:"#dc2626",fontWeight:700}}>⚠️ ミュート中</span>} {diagnostics.enabled===false&&<span style={{color:"#dc2626",fontWeight:700}}>⚠️ 無効化</span>}</div>
+                          <div>🎙 状態: {diagnostics.readyState} {diagnostics.muted&&<span style={{color:"#DA1313",fontWeight:700}}>⚠️ ミュート中</span>} {diagnostics.enabled===false&&<span style={{color:"#DA1313",fontWeight:700}}>⚠️ 無効化</span>}</div>
                           <div>📊 サンプルレート: {diagnostics.settings?.sampleRate||"?"}Hz / チャンネル: {diagnostics.settings?.channelCount||"?"}</div>
                           <div>🔊 自動ゲイン: {String(diagnostics.settings?.autoGainControl??"?")}, ノイズ抑制: {String(diagnostics.settings?.noiseSuppression??"?")}, エコーキャンセル: {String(diagnostics.settings?.echoCancellation??"?")}</div>
                           <div>🆔 deviceId: {(diagnostics.settings?.deviceId||"").slice(0,20)}...</div>
@@ -17220,35 +17224,35 @@ function MtgRecordModal({entityKey,entityId,entityName,data,users,currentUser,on
               {whisperProcessing ? (
                 <div>
                   <div style={{fontSize:"2rem",marginBottom:"0.5rem"}}>🤖</div>
-                  <div style={{fontSize:"0.95rem",color:"#1d4ed8",fontWeight:800,marginBottom:"0.3rem"}}>
+                  <div style={{fontSize:"0.95rem",color:"#1563CA",fontWeight:800,marginBottom:"0.3rem"}}>
                     Whisperで文字起こし中...
                   </div>
                   <div style={{fontSize:"0.72rem",color:"#64748b",lineHeight:1.6}}>
                     録音時間が長いと数十秒かかります。少々お待ちください。
                   </div>
                   {/* 簡易プログレスバー */}
-                  <div style={{marginTop:"0.625rem",height:6,background:"#dbeafe",borderRadius:999,overflow:"hidden",maxWidth:300,margin:"0.625rem auto 0"}}>
-                    <div style={{height:"100%",width:"40%",background:"linear-gradient(90deg,#3b82f6,#60a5fa)",animation:"none"}}/>
+                  <div style={{marginTop:"0.625rem",height:6,background:"#E6F0FF",borderRadius:999,overflow:"hidden",maxWidth:300,margin:"0.625rem auto 0"}}>
+                    <div style={{height:"100%",width:"40%",background:"linear-gradient(90deg,#579AFF,#60a5fa)",animation:"none"}}/>
                   </div>
                 </div>
               ) : recording ? (
                 <div>
-                  <div style={{fontSize:"0.85rem",color:"#dc2626",fontWeight:800,marginBottom:"0.25rem",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.4rem"}}>
-                    <span style={{width:10,height:10,borderRadius:"50%",background:"#dc2626",display:"inline-block"}}/>
+                  <div style={{fontSize:"0.85rem",color:"#DA1313",fontWeight:800,marginBottom:"0.25rem",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.4rem"}}>
+                    <span style={{width:10,height:10,borderRadius:"50%",background:"#DA1313",display:"inline-block"}}/>
                     録音中 {fmt(elapsed)}
                   </div>
                   <div style={{fontSize:"0.7rem",color:"#94a3b8",marginBottom:"0.625rem"}}>
                     話してください。停止後にWhisperが文字起こしします
                   </div>
                   <button onClick={stopRecording}
-                    style={{padding:"0.875rem 2.5rem",borderRadius:999,background:"#dc2626",color:"white",fontWeight:800,fontSize:"0.95rem",border:"none",cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(220,38,38,0.3)"}}>
+                    style={{padding:"0.875rem 2.5rem",borderRadius:999,background:"#DA1313",color:"white",fontWeight:800,fontSize:"0.95rem",border:"none",cursor:"pointer",fontFamily:"inherit",boxShadow:"0 2px 8px rgba(220,38,38,0.3)"}}>
                     ⏹ 録音停止＆文字起こし
                   </button>
                 </div>
               ) : (
                 <div>
                   <div style={{fontSize:"2rem",marginBottom:"0.5rem"}}>🎙️</div>
-                  <button onClick={startRecording} style={{padding:"0.875rem 2.5rem",borderRadius:999,background:"#059669",color:"white",fontWeight:800,fontSize:"0.95rem",border:"none",cursor:"pointer",fontFamily:"inherit"}}>
+                  <button onClick={startRecording} style={{padding:"0.875rem 2.5rem",borderRadius:999,background:"#009122",color:"white",fontWeight:800,fontSize:"0.95rem",border:"none",cursor:"pointer",fontFamily:"inherit"}}>
                     🎤 録音開始
                   </button>
                   <div style={{fontSize:"0.7rem",color:"#94a3b8",marginTop:"0.5rem"}}>マイクの許可が必要です</div>
@@ -17256,7 +17260,7 @@ function MtgRecordModal({entityKey,entityId,entityName,data,users,currentUser,on
               )}
               {/* Whisperエラー表示 */}
               {whisperError&&(
-                <div style={{marginTop:"0.75rem",background:"#fee2e2",border:"1px solid #fca5a5",borderRadius:"6px",padding:"0.625rem 0.75rem",fontSize:"0.75rem",color:"#991b1b",lineHeight:1.6,textAlign:"left"}}>
+                <div style={{marginTop:"0.75rem",background:"#fee2e2",border:"1px solid #fca5a5",borderRadius:"8px",padding:"0.625rem 0.75rem",fontSize:"0.75rem",color:"#991b1b",lineHeight:1.6,textAlign:"left"}}>
                   <div style={{fontWeight:700,marginBottom:"0.2rem"}}>❌ 文字起こしに失敗しました</div>
                   <div style={{fontSize:"0.7rem"}}>{whisperError}</div>
                   {recordedAudioUrl&&(
@@ -17275,7 +17279,7 @@ function MtgRecordModal({entityKey,entityId,entityName,data,users,currentUser,on
                 📝 文字起こし
                 {finalText&&<span style={{fontSize:"0.65rem",background:"#dcfce7",color:"#166534",borderRadius:999,padding:"0.05rem 0.4rem",fontWeight:600}}>{finalText.length}文字</span>}
               </div>
-              <div style={{background:"#f8fafc",borderRadius:"6px",border:"1px solid #e2e8f0",minHeight:100,maxHeight:200,overflowY:"auto",padding:"0.75rem",fontSize:"0.82rem",color:"#374151",lineHeight:1.7,position:"relative"}}>
+              <div style={{background:"#f8fafc",borderRadius:"8px",border:"1px solid #e2e8f0",minHeight:100,maxHeight:200,overflowY:"auto",padding:"0.75rem",fontSize:"0.82rem",color:"#374151",lineHeight:1.7,position:"relative"}}>
                 {finalText ? (
                   <span style={{lineHeight:1.8}}>{finalText}</span>
                 ) : recording ? (
@@ -17290,14 +17294,14 @@ function MtgRecordModal({entityKey,entityId,entityName,data,users,currentUser,on
                 ) : (
                   <span style={{color:"#94a3b8"}}>録音開始後に文字起こしが表示されます</span>
                 )}
-                {interimText&&<div style={{color:"#059669",marginTop:"0.35rem",paddingTop:"0.35rem",borderTop:"1px dashed #e2e8f0",fontSize:"0.78rem",fontWeight:600}}>{interimText}</div>}
+                {interimText&&<div style={{color:"#009122",marginTop:"0.35rem",paddingTop:"0.35rem",borderTop:"1px dashed #e2e8f0",fontSize:"0.78rem",fontWeight:600}}>{interimText}</div>}
               </div>
               {/* 音声レベルメーター（録音中常時表示） */}
               {recording && (
                 <div style={{marginTop:"0.4rem"}}>
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",fontSize:"0.65rem",color:"#64748b",marginBottom:"0.2rem"}}>
                     <span>🎚️ マイク入力レベル</span>
-                    <span style={{fontWeight:700,color:audioLevel>15?"#059669":"#dc2626"}}>{audioLevel>15?"OK":"無音"}（{audioLevel}%）</span>
+                    <span style={{fontWeight:700,color:audioLevel>15?"#009122":"#DA1313"}}>{audioLevel>15?"OK":"無音"}（{audioLevel}%）</span>
                   </div>
                   <div style={{position:"relative",height:8,background:"#e2e8f0",borderRadius:999,overflow:"hidden"}}>
                     <div style={{position:"absolute",left:0,top:0,bottom:0,width:`${audioLevel}%`,background:audioLevel>50?"#22c55e":audioLevel>15?"#84cc16":"#fbbf24",transition:"width 0.1s ease-out"}}/>
@@ -17311,7 +17315,7 @@ function MtgRecordModal({entityKey,entityId,entityName,data,users,currentUser,on
               )}
               {/* 10秒以上、文字起こしが進まない場合の警告 */}
               {recording && elapsed >= 10 && !finalText && !interimText && (
-                <div style={{marginTop:"0.5rem",background:"#fef3c7",border:"1px solid #fbbf24",borderRadius:"6px",padding:"0.5rem 0.75rem",fontSize:"0.72rem",color:"#92400e",lineHeight:1.6}}>
+                <div style={{marginTop:"0.5rem",background:"#fef3c7",border:"1px solid #fbbf24",borderRadius:"8px",padding:"0.5rem 0.75rem",fontSize:"0.72rem",color:"#92400e",lineHeight:1.6}}>
                   ⚠️ <strong>{audioLevel>15?"マイク入力はあるが文字起こしされていません":"音声が検出されていません"}</strong><br/>
                   {audioLevel>15
                     ? "音声認識サーバー（Google）への接続に問題があります。\n・Wi-Fi / 通信環境を確認\n・他のタブやアプリを閉じて再試行\n・Service Worker のキャッシュが原因の可能性も"
@@ -17321,11 +17325,11 @@ function MtgRecordModal({entityKey,entityId,entityName,data,users,currentUser,on
                   }
                   <div style={{marginTop:"0.4rem",display:"flex",gap:"0.4rem",flexWrap:"wrap"}}>
                     <button onClick={()=>{stopRecording();setTimeout(()=>startRecording(),300);}}
-                      style={{padding:"0.3rem 0.7rem",borderRadius:"0.4rem",border:"1px solid #fbbf24",background:"white",color:"#92400e",fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.7rem"}}>
+                      style={{padding:"0.3rem 0.7rem",borderRadius:"0.5rem",border:"1px solid #fbbf24",background:"white",color:"#92400e",fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.7rem"}}>
                       🔄 録音をリトライ
                     </button>
                     <button onClick={()=>{stopRecording();setManualMode(true);}}
-                      style={{padding:"0.3rem 0.7rem",borderRadius:"0.4rem",border:"1px solid #2563eb",background:"#dbeafe",color:"#1d4ed8",fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.7rem"}}>
+                      style={{padding:"0.3rem 0.7rem",borderRadius:"0.5rem",border:"1px solid #0070D4",background:"#E6F0FF",color:"#1563CA",fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.7rem"}}>
                       ⌨️ 手入力に切替
                     </button>
                   </div>
@@ -17333,8 +17337,8 @@ function MtgRecordModal({entityKey,entityId,entityName,data,users,currentUser,on
               )}
               {/* 手入力モード（音声認識が使えない時のフォールバック） */}
               {(manualMode||(!recording&&finalText===""&&!permError))&&!finalText&&(
-                <div style={{marginTop:"0.5rem",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:"6px",padding:"0.625rem 0.75rem"}}>
-                  <div style={{fontSize:"0.72rem",fontWeight:700,color:"#1d4ed8",marginBottom:"0.35rem",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <div style={{marginTop:"0.5rem",background:"#F2F7FF",border:"1px solid #bfdbfe",borderRadius:"8px",padding:"0.625rem 0.75rem"}}>
+                  <div style={{fontSize:"0.72rem",fontWeight:700,color:"#1563CA",marginBottom:"0.35rem",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                     <span>⌨️ 手入力モード（録音なしで議事録作成）</span>
                     {manualMode&&<button onClick={()=>setManualMode(false)} style={{background:"none",border:"none",color:"#64748b",fontSize:"0.65rem",cursor:"pointer",fontFamily:"inherit"}}>✕ 閉じる</button>}
                   </div>
@@ -17356,24 +17360,24 @@ function MtgRecordModal({entityKey,entityId,entityName,data,users,currentUser,on
             <div style={{marginBottom:"1rem"}}>
               <div style={{fontWeight:700,fontSize:"0.82rem",color:"#1e293b",marginBottom:"0.5rem"}}>📋 議事録</div>
               <textarea value={aiResult.summary} onChange={e=>setAiResult(r=>({...r,summary:e.target.value}))}
-                style={{width:"100%",padding:"0.75rem",borderRadius:"6px",border:"1.5px solid #e2e8f0",fontFamily:"inherit",fontSize:"0.82rem",height:120,boxSizing:"border-box",resize:"vertical",lineHeight:1.6}}/>
+                style={{width:"100%",padding:"0.75rem",borderRadius:"8px",border:"1.5px solid #e2e8f0",fontFamily:"inherit",fontSize:"0.82rem",height:120,boxSizing:"border-box",resize:"vertical",lineHeight:1.6}}/>
             </div>
             {editedTasks.length>0&&(
               <div style={{marginBottom:"1rem"}}>
                 <div style={{fontWeight:700,fontSize:"0.82rem",color:"#1e293b",marginBottom:"0.5rem"}}>✅ タスク候補</div>
                 {editedTasks.map((t,i)=>(
-                  <div key={i} style={{background:checkedIds.has(i)?"#f0fdf4":"#f8fafc",border:`1.5px solid ${checkedIds.has(i)?"#bbf7d0":"#e2e8f0"}`,borderRadius:"6px",padding:"0.75rem",marginBottom:"0.5rem"}}>
+                  <div key={i} style={{background:checkedIds.has(i)?"#f0fdf4":"#f8fafc",border:`1.5px solid ${checkedIds.has(i)?"#bbf7d0":"#e2e8f0"}`,borderRadius:"8px",padding:"0.75rem",marginBottom:"0.5rem"}}>
                     <div style={{display:"flex",alignItems:"flex-start",gap:"0.5rem"}}>
                       <input type="checkbox" checked={checkedIds.has(i)} onChange={()=>{setCheckedIds(prev=>{const n=new Set(prev);n.has(i)?n.delete(i):n.add(i);return n;});}}
-                        style={{width:16,height:16,marginTop:3,accentColor:"#059669",cursor:"pointer",flexShrink:0}}/>
+                        style={{width:16,height:16,marginTop:3,accentColor:"#009122",cursor:"pointer",flexShrink:0}}/>
                       <div style={{flex:1}}>
                         <input value={t.title} onChange={e=>setEditedTasks(ts=>ts.map((x,j)=>j===i?{...x,title:e.target.value}:x))}
                           style={{width:"100%",padding:"0.3rem 0.5rem",borderRadius:"0.5rem",border:"1px solid #e2e8f0",fontFamily:"inherit",fontSize:"0.85rem",fontWeight:600,boxSizing:"border-box",marginBottom:"0.3rem"}}/>
                         <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap"}}>
                           <input type="date" value={t.dueDate||""} onChange={e=>setEditedTasks(ts=>ts.map((x,j)=>j===i?{...x,dueDate:e.target.value}:x))}
-                            style={{padding:"0.2rem 0.4rem",borderRadius:"0.4rem",border:"1px solid #e2e8f0",fontFamily:"inherit",fontSize:"0.72rem"}}/>
+                            style={{padding:"0.2rem 0.4rem",borderRadius:"0.5rem",border:"1px solid #e2e8f0",fontFamily:"inherit",fontSize:"0.72rem"}}/>
                           <select value={t.assignees?.[0]||""} onChange={e=>setEditedTasks(ts=>ts.map((x,j)=>j===i?{...x,assignees:e.target.value?[e.target.value]:[]}:x))}
-                            style={{padding:"0.2rem 0.4rem",borderRadius:"0.4rem",border:"1px solid #e2e8f0",fontFamily:"inherit",fontSize:"0.72rem"}}>
+                            style={{padding:"0.2rem 0.4rem",borderRadius:"0.5rem",border:"1px solid #e2e8f0",fontFamily:"inherit",fontSize:"0.72rem"}}>
                             <option value="">担当者未設定</option>
                             {users.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
                           </select>
@@ -17393,12 +17397,12 @@ function MtgRecordModal({entityKey,entityId,entityName,data,users,currentUser,on
             <div style={{display:"flex",gap:"0.625rem"}}>
               <button onClick={()=>{stopRecording();onClose();}}
                 disabled={whisperProcessing}
-                style={{flex:1,padding:"0.75rem",borderRadius:"6px",border:"1.5px solid #e2e8f0",background:"white",color:"#64748b",fontWeight:700,cursor:whisperProcessing?"default":"pointer",fontFamily:"inherit",opacity:whisperProcessing?0.5:1}}>
+                style={{flex:1,padding:"0.75rem",borderRadius:"8px",border:"1.5px solid #e2e8f0",background:"white",color:"#64748b",fontWeight:700,cursor:whisperProcessing?"default":"pointer",fontFamily:"inherit",opacity:whisperProcessing?0.5:1}}>
                 閉じる
               </button>
               <button onClick={processWithAI}
                 disabled={!finalText.trim()||aiLoading||recording||whisperProcessing}
-                style={{flex:2,padding:"0.75rem",borderRadius:"6px",background:(finalText.trim()&&!recording&&!whisperProcessing)?"#7c3aed":"#e2e8f0",color:(finalText.trim()&&!recording&&!whisperProcessing)?"white":"#94a3b8",fontWeight:800,border:"none",cursor:(finalText.trim()&&!recording&&!whisperProcessing)?"pointer":"default",fontFamily:"inherit",fontSize:"0.9rem"}}>
+                style={{flex:2,padding:"0.75rem",borderRadius:"8px",background:(finalText.trim()&&!recording&&!whisperProcessing)?"#7c3aed":"#e2e8f0",color:(finalText.trim()&&!recording&&!whisperProcessing)?"white":"#94a3b8",fontWeight:800,border:"none",cursor:(finalText.trim()&&!recording&&!whisperProcessing)?"pointer":"default",fontFamily:"inherit",fontSize:"0.9rem"}}>
                 {aiLoading
                   ? <span style={{display:"inline-flex",alignItems:"center",gap:"0.5rem",justifyContent:"center"}}>
                       <span style={{width:14,height:14,borderRadius:"50%",border:"2px solid white",borderTopColor:"transparent",animation:"spin 0.8s linear infinite",display:"inline-block"}}/>
@@ -17410,9 +17414,9 @@ function MtgRecordModal({entityKey,entityId,entityName,data,users,currentUser,on
           )}
           {phase==="result"&&(
             <div style={{display:"flex",gap:"0.625rem"}}>
-              <button onClick={()=>setPhase("record")} style={{flex:1,padding:"0.75rem",borderRadius:"6px",border:"1.5px solid #e2e8f0",background:"white",color:"#64748b",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>← 戻る</button>
+              <button onClick={()=>setPhase("record")} style={{flex:1,padding:"0.75rem",borderRadius:"8px",border:"1.5px solid #e2e8f0",background:"white",color:"#64748b",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>← 戻る</button>
               <button onClick={()=>onSave(aiResult.summary, editedTasks.filter((_,i)=>checkedIds.has(i)))}
-                style={{flex:2,padding:"0.75rem",borderRadius:"6px",background:"#059669",color:"white",fontWeight:800,border:"none",cursor:"pointer",fontFamily:"inherit"}}>
+                style={{flex:2,padding:"0.75rem",borderRadius:"8px",background:"#009122",color:"white",fontWeight:800,border:"none",cursor:"pointer",fontFamily:"inherit"}}>
                 💾 保存（タスク{checkedIds.size}件）
               </button>
             </div>
@@ -17425,7 +17429,7 @@ function MtgRecordModal({entityKey,entityId,entityName,data,users,currentUser,on
 
 // ─── COMPACT STATUS PICKER (独立した関数コンポーネント) ────────────────
 function CompactStatusPicker({map, value, onChange, getLabel, colors}) {
-  const C = colors || { border:"#e5e7eb", text:"#111827", bg:"#f9fafb", accentBg:"#dbeafe" };
+  const C = colors || { border:"#e5e7eb", text:"#111827", bg:"#f9fafb", accentBg:"#E6F0FF" };
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef(null);
   React.useEffect(() => {
@@ -17470,7 +17474,7 @@ function CompactStatusPicker({map, value, onChange, getLabel, colors}) {
 }
 
 // ─── 先方担当者バッジ（クリックで詳細ポップオーバー） ─────────────────
-function ContactBadge({contact, color="#0369a1", bg="#dbeafe"}) {
+function ContactBadge({contact, color="#0369a1", bg="#E6F0FF"}) {
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef(null);
   React.useEffect(() => {
@@ -17484,29 +17488,29 @@ function ContactBadge({contact, color="#0369a1", bg="#dbeafe"}) {
   return (
     <div ref={ref} style={{position:"relative", display:"inline-block"}}>
       <button onClick={(e) => {e.stopPropagation(); setOpen(o => !o);}}
-        style={{display:"inline-flex", alignItems:"center", gap:"0.3rem", padding:"0.2rem 0.5rem", borderRadius:"0.4rem", border:`1px solid ${bg}`, background:"white", color, fontSize:"0.72rem", fontWeight:700, cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap"}}>
+        style={{display:"inline-flex", alignItems:"center", gap:"0.3rem", padding:"0.2rem 0.5rem", borderRadius:"0.5rem", border:`1px solid ${bg}`, background:"white", color, fontSize:"0.72rem", fontWeight:700, cursor:"pointer", fontFamily:"inherit", whiteSpace:"nowrap"}}>
         <span style={{width:18, height:18, borderRadius:"50%", background:bg, color, display:"inline-flex", alignItems:"center", justifyContent:"center", fontSize:"0.62rem", fontWeight:800}}>{name.charAt(0)}</span>
         <span>{name}</span>
-        {contact.role && <span style={{fontSize:"0.6rem", background:bg, color, padding:"0.05rem 0.3rem", borderRadius:"0.25rem"}}>{contact.role}</span>}
+        {contact.role && <span style={{fontSize:"0.6rem", background:bg, color, padding:"0.05rem 0.3rem", borderRadius:"0.5rem"}}>{contact.role}</span>}
       </button>
       {open && (
         <div style={{position:"absolute", top:"calc(100% + 4px)", left:0, zIndex:50, background:"white", border:`1.5px solid ${bg}`, borderRadius:"0.5rem", boxShadow:"0 6px 16px rgba(0,0,0,0.12)", padding:"0.7rem 0.85rem", minWidth:240}}>
-          <div style={{fontSize:"0.92rem", fontWeight:800, color, marginBottom:"0.35rem"}}>{name}{contact.role && <span style={{marginLeft:"0.4rem", fontSize:"0.7rem", background:bg, color, padding:"0.1rem 0.4rem", borderRadius:"0.25rem", fontWeight:600}}>{contact.role}</span>}</div>
+          <div style={{fontSize:"0.92rem", fontWeight:800, color, marginBottom:"0.35rem"}}>{name}{contact.role && <span style={{marginLeft:"0.4rem", fontSize:"0.7rem", background:bg, color, padding:"0.1rem 0.4rem", borderRadius:"0.5rem", fontWeight:600}}>{contact.role}</span>}</div>
           {contact.kana && <div style={{fontSize:"0.66rem", color:"#94a3b8", marginBottom:"0.35rem"}}>{contact.kana}</div>}
           {contact.dept && <div style={{fontSize:"0.7rem", color:"#64748b", marginBottom:"0.3rem"}}>📁 {contact.dept}</div>}
           {contact.phone && (
-            <a href={`tel:${contact.phone}`} style={{display:"flex", alignItems:"center", gap:"0.45rem", padding:"0.4rem 0.5rem", marginTop:"0.3rem", background:"#f0f9ff", borderRadius:"0.35rem", textDecoration:"none", color:"#0369a1", fontSize:"0.82rem", fontWeight:700}}>
+            <a href={`tel:${contact.phone}`} style={{display:"flex", alignItems:"center", gap:"0.45rem", padding:"0.4rem 0.5rem", marginTop:"0.3rem", background:"#f0f9ff", borderRadius:"0.5rem", textDecoration:"none", color:"#0369a1", fontSize:"0.82rem", fontWeight:700}}>
               <span style={{fontSize:"0.95rem"}}>📞</span>
               <span>{contact.phone}</span>
             </a>
           )}
           {contact.email && (
-            <a href={`mailto:${contact.email}`} style={{display:"flex", alignItems:"center", gap:"0.45rem", padding:"0.4rem 0.5rem", marginTop:"0.3rem", background:"#f0f9ff", borderRadius:"0.35rem", textDecoration:"none", color:"#0369a1", fontSize:"0.78rem", fontWeight:600}}>
+            <a href={`mailto:${contact.email}`} style={{display:"flex", alignItems:"center", gap:"0.45rem", padding:"0.4rem 0.5rem", marginTop:"0.3rem", background:"#f0f9ff", borderRadius:"0.5rem", textDecoration:"none", color:"#0369a1", fontSize:"0.78rem", fontWeight:600}}>
               <span style={{fontSize:"0.95rem"}}>✉️</span>
               <span style={{overflow:"hidden", textOverflow:"ellipsis"}}>{contact.email}</span>
             </a>
           )}
-          {contact.note && <div style={{fontSize:"0.72rem", color:"#475569", marginTop:"0.4rem", padding:"0.4rem 0.5rem", background:"#f8fafc", borderRadius:"0.35rem", whiteSpace:"pre-wrap"}}>📝 {contact.note}</div>}
+          {contact.note && <div style={{fontSize:"0.72rem", color:"#475569", marginTop:"0.4rem", padding:"0.4rem 0.5rem", background:"#f8fafc", borderRadius:"0.5rem", whiteSpace:"pre-wrap"}}>📝 {contact.note}</div>}
           {!contact.phone && !contact.email && (
             <div style={{fontSize:"0.72rem", color:"#94a3b8", padding:"0.3rem 0",}}>連絡先未登録</div>
           )}
@@ -17665,7 +17669,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   const renderMergeModal = () => {
     if(!mergePreview) return null;
     const userName = (uid)=> (users||[]).find(u=>String(u.id)===String(uid))?.name || "";
-    const TYPE_COLOR = {"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"};
+    const TYPE_COLOR = {"企業":"#0070D4","業者":"#7c3aed","自治体":"#009122"};
     const fmtDate = (s)=> s ? String(s).slice(0,10) : "";
     const groupsByType = {};
     (mergePreview.groups||[]).forEach(g=>{
@@ -17694,7 +17698,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
               <button onClick={()=>{
                 if(allSelected) setMergeSelected(new Set());
                 else setMergeSelected(new Set(mergePreview.groups.map(g=>g.groupKey)));
-              }} style={{padding:"0.25rem 0.65rem",borderRadius:"6px",border:`1.5px solid ${C.accent}`,background:"white",color:C.accent,fontWeight:700,fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit"}}>
+              }} style={{padding:"0.25rem 0.65rem",borderRadius:"8px",border:`1.5px solid ${C.accent}`,background:"white",color:C.accent,fontWeight:700,fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit"}}>
                 {allSelected ? "全解除" : "全選択"}
               </button>
               <span style={{fontSize:"0.72rem",color:C.textSub}}>{mergeSelected.size}グループ選択中 / 全{mergePreview.groups.length}グループ ({selectedDrops}/{totalDrops}件削減)</span>
@@ -17716,7 +17720,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                     <div key={grp.groupKey} style={{border:`1.5px solid ${isSelected?TYPE_COLOR[typeLabel]:C.border}`,borderRadius:"8px",marginBottom:"0.5rem",overflow:"hidden",background:isSelected?`${TYPE_COLOR[typeLabel]}08`:"#fafafa"}}>
                       <div onClick={()=>setMergeSelected(prev=>{const n=new Set(prev);n.has(grp.groupKey)?n.delete(grp.groupKey):n.add(grp.groupKey);return n;})}
                         style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.6rem 0.75rem",cursor:"pointer",borderBottom:isSelected?`1px solid ${TYPE_COLOR[typeLabel]}33`:"none"}}>
-                        <div style={{width:18,height:18,borderRadius:"4px",border:`2px solid ${isSelected?TYPE_COLOR[typeLabel]:"#cbd5e1"}`,background:isSelected?TYPE_COLOR[typeLabel]:"white",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,color:"white",fontSize:"0.7rem",fontWeight:800}}>
+                        <div style={{width:18,height:18,borderRadius:"8px",border:`2px solid ${isSelected?TYPE_COLOR[typeLabel]:"#cbd5e1"}`,background:isSelected?TYPE_COLOR[typeLabel]:"white",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,color:"white",fontSize:"0.7rem",fontWeight:800}}>
                           {isSelected&&"✓"}
                         </div>
                         <span style={{fontSize:"0.88rem",fontWeight:700,color:C.text,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{grp.displayName}</span>
@@ -17724,9 +17728,9 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                       </div>
                       {isSelected && (
                         <div style={{padding:"0.5rem 0.75rem",fontSize:"0.72rem",display:"flex",flexDirection:"column",gap:"0.4rem"}}>
-                          <div style={{background:"#ecfdf5",border:"1px solid #86efac",borderRadius:"6px",padding:"0.5rem 0.65rem"}}>
+                          <div style={{background:"#ecfdf5",border:"1px solid #86efac",borderRadius:"8px",padding:"0.5rem 0.65rem"}}>
                             <div style={{display:"flex",alignItems:"center",gap:"0.35rem",marginBottom:"0.3rem"}}>
-                              <span style={{fontSize:"0.65rem",fontWeight:800,color:"white",background:"#059669",borderRadius:999,padding:"0.05rem 0.4rem"}}>✅ 残す</span>
+                              <span style={{fontSize:"0.65rem",fontWeight:800,color:"white",background:"#009122",borderRadius:999,padding:"0.05rem 0.4rem"}}>✅ 残す</span>
                               {keep.status && <span style={{fontSize:"0.65rem",color:C.textSub}}>● {keep.status}</span>}
                               {keep.createdAt && <span style={{fontSize:"0.62rem",color:C.textMuted,marginLeft:"auto"}}>{fmtDate(keep.createdAt)}〜</span>}
                             </div>
@@ -17745,9 +17749,9 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                           {drops.map(d=>{
                             const dAssignees = (d.assigneeIds||[]).map(userName).filter(Boolean);
                             return (
-                              <div key={d.id} style={{background:"#fef2f2",border:"1px solid #fca5a5",borderRadius:"6px",padding:"0.5rem 0.65rem"}}>
+                              <div key={d.id} style={{background:"#fef2f2",border:"1px solid #fca5a5",borderRadius:"8px",padding:"0.5rem 0.65rem"}}>
                                 <div style={{display:"flex",alignItems:"center",gap:"0.35rem",marginBottom:"0.3rem"}}>
-                                  <span style={{fontSize:"0.65rem",fontWeight:800,color:"white",background:"#dc2626",borderRadius:999,padding:"0.05rem 0.4rem"}}>🔄 マージ→削除</span>
+                                  <span style={{fontSize:"0.65rem",fontWeight:800,color:"white",background:"#DA1313",borderRadius:999,padding:"0.05rem 0.4rem"}}>🔄 マージ→削除</span>
                                   {d.status && <span style={{fontSize:"0.65rem",color:C.textSub}}>● {d.status}</span>}
                                   {d.createdAt && <span style={{fontSize:"0.62rem",color:C.textMuted,marginLeft:"auto"}}>{fmtDate(d.createdAt)}〜</span>}
                                 </div>
@@ -17777,7 +17781,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           {/* フッター */}
           <div style={{padding:"0.75rem 1rem",borderTop:`1px solid ${C.borderLight}`,flexShrink:0,display:"flex",gap:"0.5rem"}}>
             <Btn variant="secondary" style={{flex:1}} onClick={()=>setMergePreview(null)}>キャンセル</Btn>
-            <Btn style={{flex:2,background:mergeSelected.size>0?"#dc2626":"#cbd5e1",border:"none"}} disabled={mergeSelected.size===0} onClick={()=>{
+            <Btn style={{flex:2,background:mergeSelected.size>0?"#DA1313":"#cbd5e1",border:"none"}} disabled={mergeSelected.size===0} onClick={()=>{
               if(typeof window.__myDeskApplySelectedMerges !== "function"){
                 window.alert("統合機能が未初期化です");
                 return;
@@ -20036,16 +20040,16 @@ ${recentLogs}
   const deleteBulkBizCard=(ids)=>{const nd={...data,businessCards:(data.businessCards||[]).filter(c=>!ids.includes(c.id))};save(nd);resetBulk();};
   const BulkBar=({statusMap,applyFn,field,extraFields,visibleIds=[],onDelete})=>(
     bulkMode?(
-      <div style={{background:"#eff6ff",border:"1.5px solid #93c5fd",borderRadius:"8px",padding:"0.75rem",marginBottom:"0.875rem"}}>
+      <div style={{background:"#F2F7FF",border:"1.5px solid #93c5fd",borderRadius:"8px",padding:"0.75rem",marginBottom:"0.875rem"}}>
         {/* 上段：選択情報 ＋ 全選択/解除 */}
         <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem",flexWrap:"wrap"}}>
-          <span style={{fontSize:"0.82rem",fontWeight:800,color:"#1d4ed8",minWidth:"5rem"}}>{bulkSelected.size}件選択中</span>
+          <span style={{fontSize:"0.82rem",fontWeight:800,color:"#1563CA",minWidth:"5rem"}}>{bulkSelected.size}件選択中</span>
           <button onClick={()=>{
             const visSet=new Set(visibleIds);
             const allSelected=visibleIds.length>0&&visibleIds.every(id=>bulkSelected.has(id));
             if(allSelected){setBulkSelected(prev=>{const n=new Set(prev);visibleIds.forEach(id=>n.delete(id));return n;});}
             else{setBulkSelected(prev=>{const n=new Set(prev);visibleIds.forEach(id=>n.add(id));return n;});}
-          }} style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"1.5px solid #3b82f6",background:visibleIds.every(id=>bulkSelected.has(id))&&visibleIds.length>0?"#3b82f6":"white",color:visibleIds.every(id=>bulkSelected.has(id))&&visibleIds.length>0?"white":"#3b82f6",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}}>
+          }} style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"1.5px solid #579AFF",background:visibleIds.every(id=>bulkSelected.has(id))&&visibleIds.length>0?"#579AFF":"white",color:visibleIds.every(id=>bulkSelected.has(id))&&visibleIds.length>0?"white":"#579AFF",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}}>
             {visibleIds.every(id=>bulkSelected.has(id))&&visibleIds.length>0?"✓ 全解除":`☑ 全選択（${visibleIds.length}件）`}
           </button>
           <button onClick={resetBulk} style={{padding:"0.3rem 0.625rem",borderRadius:999,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:600,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}}>✕ キャンセル</button>
@@ -20071,7 +20075,7 @@ ${recentLogs}
             <button onClick={()=>{
               if(bulkSelected.size===0){window.alert("削除する項目を選択してください。");return;}
               if(window.confirm(`選択した${bulkSelected.size}件を削除します。この操作は元に戻せません。`)){onDelete([...bulkSelected]);}
-            }} style={{padding:"0.4rem 0.875rem",borderRadius:"0.625rem",border:"1.5px solid #fca5a5",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0,opacity:bulkSelected.size===0?0.5:1}}>
+            }} style={{padding:"0.4rem 0.875rem",borderRadius:"0.625rem",border:"1.5px solid #fca5a5",background:"#fff1f2",color:"#DA1313",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0,opacity:bulkSelected.size===0?0.5:1}}>
               🗑 {bulkSelected.size>0?`${bulkSelected.size}件を削除`:"削除"}
             </button>
           )}
@@ -20173,10 +20177,10 @@ ${recentLogs}
             {/* 全選択バー */}
             <div style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.35rem 0"}}>
               <button onClick={toggleAll}
-                style={{padding:"0.3rem 0.75rem",borderRadius:999,border:`1.5px solid ${allSelected?"#dc2626":"#3b82f6"}`,background:allSelected?"#fee2e2":"white",color:allSelected?"#dc2626":"#3b82f6",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}}>
+                style={{padding:"0.3rem 0.75rem",borderRadius:999,border:`1.5px solid ${allSelected?"#DA1313":"#579AFF"}`,background:allSelected?"#fee2e2":"white",color:allSelected?"#DA1313":"#579AFF",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}}>
                 {allSelected?`✓ 全解除（${items.length}件）`:`☑ 全選択（${items.length}件）`}
               </button>
-              <span style={{fontSize:"0.75rem",color:dmSelected.size>0?"#dc2626":C.textMuted,fontWeight:dmSelected.size>0?700:400}}>
+              <span style={{fontSize:"0.75rem",color:dmSelected.size>0?"#DA1313":C.textMuted,fontWeight:dmSelected.size>0?700:400}}>
                 {dmSelected.size>0?`${dmSelected.size}件選択中`:"選択してください"}
               </span>
             </div>
@@ -20193,9 +20197,9 @@ ${recentLogs}
               return (
                 <div key={item.id} onClick={()=>setDmSelected(prev=>{const n=new Set(prev);n.has(item.id)?n.delete(item.id):n.add(item.id);return n;})}
                   style={{display:"flex",alignItems:"center",gap:"0.75rem",padding:"0.625rem 1.25rem",cursor:"pointer",background:sel?"#fff1f2":"white",borderBottom:`1px solid ${C.borderLight}`,transition:"background 0.1s"}}>
-                  <input type="checkbox" checked={sel} readOnly style={{width:16,height:16,accentColor:"#dc2626",flexShrink:0}}/>
+                  <input type="checkbox" checked={sel} readOnly style={{width:16,height:16,accentColor:"#DA1313",flexShrink:0}}/>
                   <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:"0.88rem",fontWeight:sel?700:500,color:sel?"#dc2626":C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{cfg.nameOf(item)}</div>
+                    <div style={{fontSize:"0.88rem",fontWeight:sel?700:500,color:sel?"#DA1313":C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{cfg.nameOf(item)}</div>
                     <div style={{fontSize:"0.7rem",color:C.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{cfg.subOf(item)}</div>
                   </div>
                 </div>
@@ -20215,7 +20219,7 @@ ${recentLogs}
               cfg.onDelete([...dmSelected]);
               setDeleteModal(null);
             }}
-              style={{flex:2,padding:"0.75rem",borderRadius:"8px",border:"none",background:dmSelected.size===0?"#f3f4f6":"#dc2626",color:dmSelected.size===0?C.textMuted:"white",fontWeight:800,fontFamily:"inherit",fontSize:"0.9rem",cursor:dmSelected.size===0?"not-allowed":"pointer",transition:"background 0.15s"}}>
+              style={{flex:2,padding:"0.75rem",borderRadius:"8px",border:"none",background:dmSelected.size===0?"#f3f4f6":"#DA1313",color:dmSelected.size===0?C.textMuted:"white",fontWeight:800,fontFamily:"inherit",fontSize:"0.9rem",cursor:dmSelected.size===0?"not-allowed":"pointer",transition:"background 0.15s"}}>
               🗑 {dmSelected.size>0?`${dmSelected.size}件を削除`:"削除する項目を選択"}
             </button>
           </div>
@@ -20225,7 +20229,7 @@ ${recentLogs}
   })();
 
   const TopTabs=()=>(
-    <div style={{display:"flex",background:"white",borderRadius:"8px",padding:"0.25rem",marginBottom:"1rem",border:`1px solid ${C.border}`,boxShadow:"0 1px 2px rgba(0,0,0,0.04)",position:"relative"}}>
+    <div style={{display:"flex",background:"white",borderRadius:"8px",padding:"0.25rem",marginBottom:"1rem",border:`1px solid ${C.border}`,boxShadow:"0 1px 2px rgba(0,17,62,0.05)",position:"relative"}}>
       {[["dash","📊","概況"],["map","🗺️","地図"],["company","🏢","企業"],["muni","🏛️","自治体"],["vendor","🔧","業者"],["bizcard","🪪","名刺"]].map(([id,icon,lbl])=>(
         <button key={id} onClick={()=>{
           setSalesTab(id);
@@ -20281,7 +20285,7 @@ ${recentLogs}
         {list.length===0 ? (
           <span style={{fontSize,color:C.textMuted}}>担当者未設定</span>
         ) : list.map(u=>(
-          <span key={u.id} style={{display:"inline-flex",alignItems:"center",gap:"0.2rem",fontSize,background:C.accentBg,color:C.accent,padding,borderRadius:"4px",fontWeight:600,whiteSpace:"nowrap"}}>
+          <span key={u.id} style={{display:"inline-flex",alignItems:"center",gap:"0.2rem",fontSize,background:C.accentBg,color:C.accent,padding,borderRadius:"8px",fontWeight:600,whiteSpace:"nowrap"}}>
             <span style={{width:14,height:14,borderRadius:"50%",background:C.accent,color:"white",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:"0.55rem",fontWeight:800,flexShrink:0}}>{(u.name||"?").charAt(0)}</span>
             <span>{u.name}</span>
             {onChange && <button type="button" onClick={(e)=>{e.stopPropagation();onChange(ids.filter(x=>x!==u.id));}} style={{background:"none",border:"none",cursor:"pointer",color:C.accent,opacity:0.5,padding:"0 0 0 0.15rem",fontSize:"0.65rem",fontFamily:"inherit",lineHeight:1}}>✕</button>}
@@ -20297,7 +20301,7 @@ ${recentLogs}
                   const sel=(ids||[]).includes(u.id);
                   return (
                     <button key={u.id} type="button" onClick={()=>onChange(sel?(ids||[]).filter(i=>i!==u.id):[...(ids||[]),u.id])}
-                      style={{width:"100%",display:"flex",alignItems:"center",gap:"0.4rem",padding:"0.35rem 0.5rem",border:"none",background:sel?C.accentBg:"white",color:sel?C.accentDark:C.text,borderRadius:"0.4rem",cursor:"pointer",fontFamily:"inherit",fontWeight:sel?700:500,fontSize:"0.78rem",textAlign:"left",marginBottom:"0.1rem"}}
+                      style={{width:"100%",display:"flex",alignItems:"center",gap:"0.4rem",padding:"0.35rem 0.5rem",border:"none",background:sel?C.accentBg:"white",color:sel?C.accentDark:C.text,borderRadius:"0.5rem",cursor:"pointer",fontFamily:"inherit",fontWeight:sel?700:500,fontSize:"0.78rem",textAlign:"left",marginBottom:"0.1rem"}}
                       onMouseEnter={e=>{if(!sel)e.currentTarget.style.background=C.bg;}}
                       onMouseLeave={e=>{if(!sel)e.currentTarget.style.background="white";}}>
                       <span style={{width:18,height:18,borderRadius:"50%",background:sel?C.accent:C.borderLight,color:sel?"white":C.textMuted,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:"0.6rem",fontWeight:800,flexShrink:0}}>{(u.name||"?").charAt(0)}</span>
@@ -20359,7 +20363,7 @@ ${recentLogs}
           const q=muniSearch.trim().toLowerCase();
           const hits=munis.filter(m=>String(m.name||"").toLowerCase().includes(q)).slice(0,40);
           return (
-            <div style={{border:`1.5px solid ${C.accent}`,borderRadius:"6px",maxHeight:220,overflowY:"auto",background:"white"}}>
+            <div style={{border:`1.5px solid ${C.accent}`,borderRadius:"8px",maxHeight:220,overflowY:"auto",background:"white"}}>
               {hits.length===0&&<div style={{padding:"0.6rem",fontSize:"0.78rem",color:C.textMuted,textAlign:"center"}}>該当する自治体がありません</div>}
               {hits.map(m=>{
                 const sel=(ids||[]).includes(m.id);
@@ -20384,7 +20388,7 @@ ${recentLogs}
         </select>
         {/* 自治体チェックボックスグリッド */}
         {muniPickerPref&&(
-          <div style={{border:`1.5px solid ${C.accent}`,borderRadius:"6px",overflow:"hidden",background:"white"}}>
+          <div style={{border:`1.5px solid ${C.accent}`,borderRadius:"8px",overflow:"hidden",background:"white"}}>
             {/* ヘッダー：全選択・全解除 */}
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"0.4rem 0.625rem",background:C.accentBg,borderBottom:`1px solid ${C.border}`}}>
               <span style={{fontSize:"0.72rem",fontWeight:700,color:C.accentDark}}>{prefs.find(p=>p.id===Number(muniPickerPref))?.name} の自治体</span>
@@ -20439,7 +20443,7 @@ ${recentLogs}
           const isMe=m.userId===currentUser?.id;
           const isEditing=memoEdit?.entityId===entityId&&memoEdit?.memoId===m.id;
           return (
-            <div key={m.id} style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"8px",padding:"0.75rem 1rem",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
+            <div key={m.id} style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"8px",padding:"0.75rem 1rem",boxShadow:"0 1px 2px rgba(0,17,62,0.05)"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.35rem"}}>
                 <span style={{fontSize:"0.72rem",fontWeight:700,color:C.accentDark}}>{uName(m.userId)}</span>
                 <div style={{display:"flex",alignItems:"center",gap:"0.25rem"}}>
@@ -20449,7 +20453,7 @@ ${recentLogs}
                     <button onClick={()=>setMemoEdit({entityId,memoId:m.id,text:m.text})}
                       style={{background:"none",border:"none",cursor:"pointer",padding:"0 0.2rem",fontSize:"0.75rem",color:C.textMuted,lineHeight:1}}>✏️</button>
                     <button onClick={()=>{if(window.confirm("このメモを削除しますか？"))deleteMemo(entityKey,entityId,m.id);}}
-                      style={{background:"none",border:"none",cursor:"pointer",padding:"0 0.2rem",fontSize:"0.75rem",color:"#dc2626",lineHeight:1}}>🗑</button>
+                      style={{background:"none",border:"none",cursor:"pointer",padding:"0 0.2rem",fontSize:"0.75rem",color:"#DA1313",lineHeight:1}}>🗑</button>
                   </>}
                 </div>
               </div>
@@ -20475,9 +20479,9 @@ ${recentLogs}
       <div style={{display:"flex",gap:"0.5rem"}}>
         <textarea data-memoid={entityId} value={memoInputs[entityId]||""} onChange={e=>{setMemoInputs(p=>({...p,[entityId]:e.target.value}));e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,300)+"px";}} onBlur={e=>{if(!e.target.value.trim())e.target.style.height="";e.target.style.height="auto";if(e.target.value)e.target.style.height=Math.min(e.target.scrollHeight,300)+"px";}}
           placeholder="メモを追加... (Shift+Enterで改行)"
-          style={{flex:1,padding:"0.625rem 0.75rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",resize:"none",minHeight:60,outline:"none",lineHeight:1.5,overflow:"hidden"}}/>
+          style={{flex:1,padding:"0.625rem 0.75rem",borderRadius:"8px",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",resize:"none",minHeight:60,outline:"none",lineHeight:1.5,overflow:"hidden"}}/>
         <button onClick={()=>addMemo(entityKey,entityId,memoInputs[entityId]||"")} disabled={!(memoInputs[entityId]||"").trim()}
-          style={{alignSelf:"flex-end",padding:"0.5rem 0.875rem",borderRadius:"6px",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",opacity:(memoInputs[entityId]||"").trim()?1:0.4}}>
+          style={{alignSelf:"flex-end",padding:"0.5rem 0.875rem",borderRadius:"8px",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",opacity:(memoInputs[entityId]||"").trim()?1:0.4}}>
           追加
         </button>
       </div>
@@ -20497,7 +20501,7 @@ ${recentLogs}
       setChatInputs(p=>({...p,[entityId]:newVal}));
     };
     const renderMsg=text=>text.split(/(@[^\s　]+)/g).map((p,i)=>
-      p.startsWith("@")?<span key={i} style={{background:C.accentBg,color:C.accentDark,borderRadius:4,padding:"0 3px",fontWeight:700}}>{p}</span>:p
+      p.startsWith("@")?<span key={i} style={{background:C.accentBg,color:C.accentDark,borderRadius:8,padding:"0 3px",fontWeight:700}}>{p}</span>:p
     );
     return (
       <div>
@@ -20518,21 +20522,21 @@ ${recentLogs}
                         onChange={e=>{setChatEdit(p=>({...p,text:e.target.value}));e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,300)+"px";}}
                         style={{padding:"0.4rem 0.6rem",borderRadius:"0.5rem",border:`1.5px solid ${C.accent}`,fontSize:"0.85rem",fontFamily:"inherit",resize:"none",minHeight:40,outline:"none",lineHeight:1.5,overflow:"hidden",boxSizing:"border-box"}}/>
                       <div style={{display:"flex",gap:"0.3rem",justifyContent:isMe?"flex-end":"flex-start"}}>
-                        <button onClick={()=>setChatEdit(null)} style={{padding:"0.2rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✕</button>
+                        <button onClick={()=>setChatEdit(null)} style={{padding:"0.2rem 0.6rem",borderRadius:"0.5rem",border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✕</button>
                         <button onClick={()=>updateChat(entityKey,entityId,m.id,chatEdit.text)} disabled={!chatEdit.text?.trim()}
-                          style={{padding:"0.2rem 0.6rem",borderRadius:"0.4rem",border:"none",background:C.accent,color:"white",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>保存</button>
+                          style={{padding:"0.2rem 0.6rem",borderRadius:"0.5rem",border:"none",background:C.accent,color:"white",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>保存</button>
                       </div>
                     </div>
                   ):(
                     <div>
-                      <div style={{background:isMe?C.accent:"white",color:isMe?"white":C.text,borderRadius:isMe?"0.875rem 0.875rem 0.25rem 0.875rem":"0.875rem 0.875rem 0.875rem 0.25rem",padding:"0.45rem 0.7rem",fontSize:"0.87rem",lineHeight:1.5,border:isMe?"none":`1px solid ${C.border}`,boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
+                      <div style={{background:isMe?C.accent:"white",color:isMe?"white":C.text,borderRadius:isMe?"0.875rem 0.875rem 0.25rem 0.875rem":"0.875rem 0.875rem 0.875rem 0.25rem",padding:"0.45rem 0.7rem",fontSize:"0.87rem",lineHeight:1.5,border:isMe?"none":`1px solid ${C.border}`,boxShadow:"0 1px 2px rgba(0,17,62,0.05)"}}>
                         {renderMsg(m.text)}
                       </div>
                       {isMe&&<div style={{display:"flex",gap:"0.2rem",justifyContent:"flex-end",marginTop:"0.15rem"}}>
                         <button onClick={()=>setChatEdit({entityId,chatId:m.id,text:m.text})}
                           style={{background:"none",border:"none",cursor:"pointer",padding:0,fontSize:"0.68rem",color:C.textMuted}}>✏️</button>
                         <button onClick={()=>{if(window.confirm("このメッセージを削除しますか？"))deleteChat(entityKey,entityId,m.id);}}
-                          style={{background:"none",border:"none",cursor:"pointer",padding:0,fontSize:"0.68rem",color:"#dc2626"}}>🗑</button>
+                          style={{background:"none",border:"none",cursor:"pointer",padding:0,fontSize:"0.68rem",color:"#DA1313"}}>🗑</button>
                       </div>}
                     </div>
                   )}
@@ -20549,7 +20553,7 @@ ${recentLogs}
         <div style={{background:C.bg,borderRadius:"8px",padding:"0.5rem"}}>
           <div style={{position:"relative"}}>
             {mentionCandidates.length>0&&(
-              <div style={{position:"absolute",bottom:"100%",left:0,right:0,background:"white",border:`1px solid ${C.border}`,borderRadius:"6px",boxShadow:"0 1px 3px rgba(0,0,0,0.06),0 0 0 1px rgba(0,0,0,0.04)",zIndex:50,overflow:"hidden",marginBottom:4}}>
+              <div style={{position:"absolute",bottom:"100%",left:0,right:0,background:"white",border:`1px solid ${C.border}`,borderRadius:"8px",boxShadow:"0 1px 3px rgba(0,0,0,0.06),0 0 0 1px rgba(0,0,0,0.04)",zIndex:50,overflow:"hidden",marginBottom:4}}>
                 {mentionCandidates.map(u=>(
                   <button key={u.id} onMouseDown={e=>{e.preventDefault();insertMention(u.name);}}
                     style={{display:"flex",alignItems:"center",gap:"0.5rem",width:"100%",padding:"0.5rem 0.875rem",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",borderBottom:`1px solid ${C.borderLight}`}}>
@@ -20566,9 +20570,9 @@ ${recentLogs}
                 onChange={e=>{setChatInputs(p=>({...p,[entityId]:e.target.value}));e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,160)+"px";}}
                 onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();addChat(entityKey,entityId,val);}}}
                 placeholder="メッセージ... (@ でメンション、Enterで送信)"
-                style={{flex:1,padding:"0.5rem 0.75rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none",resize:"none",minHeight:40,maxHeight:160,lineHeight:1.5,overflow:"auto"}}/>
+                style={{flex:1,padding:"0.5rem 0.75rem",borderRadius:"8px",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none",resize:"none",minHeight:40,maxHeight:160,lineHeight:1.5,overflow:"auto"}}/>
               <button onClick={()=>addChat(entityKey,entityId,val)} disabled={!val.trim()}
-                style={{padding:"0.5rem 0.875rem",borderRadius:"6px",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",opacity:val.trim()?1:0.4,flexShrink:0}}>
+                style={{padding:"0.5rem 0.875rem",borderRadius:"8px",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",opacity:val.trim()?1:0.4,flexShrink:0}}>
                 送信
               </button>
             </div>
@@ -20589,7 +20593,7 @@ ${recentLogs}
           <div style={{fontSize:"1.5rem",textAlign:"center",marginBottom:"0.625rem"}}>⚠️</div>
           <div style={{fontWeight:800,fontSize:"0.93rem",color:C.text,textAlign:"center",marginBottom:"0.25rem"}}>重複する名前があります</div>
           <div style={{fontSize:"0.7rem",color:C.textMuted,textAlign:"center",marginBottom:"0.75rem"}}>{dupIdx+1}/{dupQueue.length}件</div>
-          <div style={{background:C.accentBg,borderRadius:"6px",padding:"0.75rem",marginBottom:"1rem",textAlign:"center",fontWeight:700,color:C.text}}>「{item.name}」</div>
+          <div style={{background:C.accentBg,borderRadius:"8px",padding:"0.75rem",marginBottom:"1rem",textAlign:"center",fontWeight:700,color:C.text}}>「{item.name}」</div>
           <div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
             <button onClick={()=>handleDupChoice("edit")} style={{padding:"0.75rem",borderRadius:"8px",border:`1.5px solid ${C.accent}`,background:C.accentBg,color:C.accentDark,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>✏️ 既存を編集</button>
             <button onClick={()=>handleDupChoice("new")} style={{padding:"0.75rem",borderRadius:"8px",border:`1.5px solid ${C.border}`,background:"white",color:C.text,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>➕ 新規登録</button>
@@ -20785,7 +20789,7 @@ ${recentLogs}
 
     // ── UI helpers
     const KPI=({label,val,sub,color="#1e293b",bg="white",icon})=>(
-      <div style={{background:bg,border:`1px solid ${C.border}`,borderRadius:"8px",padding:"0.75rem 1rem",boxShadow:"0 1px 2px rgba(0,0,0,0.04)",flex:1,minWidth:0}}>
+      <div style={{background:bg,border:`1px solid ${C.border}`,borderRadius:"8px",padding:"0.75rem 1rem",boxShadow:"0 1px 2px rgba(0,17,62,0.05)",flex:1,minWidth:0}}>
         {icon&&<div style={{fontSize:"1.2rem",marginBottom:"0.1rem"}}>{icon}</div>}
         <div style={{fontSize:"1.6rem",fontWeight:800,color,lineHeight:1.1}}>{val??"-"}</div>
         <div style={{fontSize:"0.72rem",color:C.textSub,fontWeight:600,marginTop:"0.15rem"}}>{label}</div>
@@ -20798,14 +20802,14 @@ ${recentLogs}
         <TopTabs/>
 
         {/* ✅ v217: 期間ピッカー - カスタム期間指定 + プリセット */}
-        <div style={{background:"white",borderRadius:"8px",padding:"0.75rem",marginBottom:"1rem",border:`1px solid ${C.border}`,boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
+        <div style={{background:"white",borderRadius:"8px",padding:"0.75rem",marginBottom:"1rem",border:`1px solid ${C.border}`,boxShadow:"0 1px 2px rgba(0,17,62,0.05)"}}>
           <div style={{display:"flex",alignItems:"center",gap:"0.5rem",flexWrap:"wrap",marginBottom:"0.6rem"}}>
             <span style={{fontSize:"0.75rem",fontWeight:700,color:C.textSub,whiteSpace:"nowrap"}}>📅 期間</span>
             <input type="date" value={dashStartDate} onChange={e=>{setDashStartDate(e.target.value);setDashPeriod("custom");}} disabled={dashPeriod==="all"}
-              style={{padding:"0.4rem 0.55rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.82rem",fontFamily:"inherit",background:dashPeriod==="all"?"#f3f4f6":"white",color:dashPeriod==="all"?"#9ca3af":C.text,cursor:dashPeriod==="all"?"not-allowed":"pointer"}}/>
+              style={{padding:"0.4rem 0.55rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.82rem",fontFamily:"inherit",background:dashPeriod==="all"?"#f3f4f6":"white",color:dashPeriod==="all"?"#9ca3af":C.text,cursor:dashPeriod==="all"?"not-allowed":"pointer"}}/>
             <span style={{fontSize:"0.75rem",color:C.textMuted}}>〜</span>
             <input type="date" value={dashEndDate} onChange={e=>{setDashEndDate(e.target.value);setDashPeriod("custom");}} disabled={dashPeriod==="all"}
-              style={{padding:"0.4rem 0.55rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.82rem",fontFamily:"inherit",background:dashPeriod==="all"?"#f3f4f6":"white",color:dashPeriod==="all"?"#9ca3af":C.text,cursor:dashPeriod==="all"?"not-allowed":"pointer"}}/>
+              style={{padding:"0.4rem 0.55rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.82rem",fontFamily:"inherit",background:dashPeriod==="all"?"#f3f4f6":"white",color:dashPeriod==="all"?"#9ca3af":C.text,cursor:dashPeriod==="all"?"not-allowed":"pointer"}}/>
           </div>
           <div style={{display:"flex",gap:"0.3rem",flexWrap:"wrap"}}>
             {[
@@ -20817,7 +20821,7 @@ ${recentLogs}
               ["📊 全期間", () => setDashPeriod("all")],
             ].map(([lbl, fn], idx) => (
               <button key={idx} onClick={fn}
-                style={{padding:"0.35rem 0.7rem",borderRadius:5,border:`1px solid ${(lbl==="📊 全期間" && dashPeriod==="all") ? C.accent : C.border}`,background:(lbl==="📊 全期間" && dashPeriod==="all") ? C.accentBg : "white",color:(lbl==="📊 全期間" && dashPeriod==="all") ? C.accent : C.textSub,fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                style={{padding:"0.35rem 0.7rem",borderRadius:8,border:`1px solid ${(lbl==="📊 全期間" && dashPeriod==="all") ? C.accent : C.border}`,background:(lbl==="📊 全期間" && dashPeriod==="all") ? C.accentBg : "white",color:(lbl==="📊 全期間" && dashPeriod==="all") ? C.accent : C.textSub,fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                 {lbl}
               </button>
             ))}
@@ -20828,21 +20832,21 @@ ${recentLogs}
         {/* 期間KPI */}
         <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:"0.5rem",marginBottom:"1rem"}}>
           <KPI icon="📞" label="アプローチ" val={allApproaches.length} color={C.accent}/>
-          <KPI icon="🏢" label="企業 変更" val={allChangeLogs.filter(l=>l.entityType==="企業").length} color="#2563eb"/>
-          <KPI icon="🏛️" label="自治体 変更" val={allChangeLogs.filter(l=>l.entityType==="自治体").length} color="#059669"/>
+          <KPI icon="🏢" label="企業 変更" val={allChangeLogs.filter(l=>l.entityType==="企業").length} color="#0070D4"/>
+          <KPI icon="🏛️" label="自治体 変更" val={allChangeLogs.filter(l=>l.entityType==="自治体").length} color="#009122"/>
           <KPI icon="🔧" label="業者 変更" val={allChangeLogs.filter(l=>l.entityType==="業者").length} color="#7c3aed"/>
         </div>
 
         {/* 累計KPI */}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.5rem",marginBottom:"1rem"}}>
-          <div style={{background:"linear-gradient(135deg,#1d4ed8,#2563eb)",borderRadius:"8px",padding:"0.875rem 1rem",color:"white"}}>
+          <div style={{background:"linear-gradient(135deg,#1563CA,#0070D4)",borderRadius:"8px",padding:"0.875rem 1rem",color:"white"}}>
             <div style={{fontSize:"0.7rem",fontWeight:700,opacity:0.8,marginBottom:"0.25rem"}}>🏢 企業 成約</div>
             <div style={{display:"flex",alignItems:"baseline",gap:"0.3rem"}}>
               <span style={{fontSize:"1.8rem",fontWeight:800}}>{compClosed}</span>
               <span style={{fontSize:"0.75rem",opacity:0.7}}>/ {totalComp}</span>
             </div>
           </div>
-          <div style={{background:"linear-gradient(135deg,#065f46,#059669)",borderRadius:"8px",padding:"0.875rem 1rem",color:"white"}}>
+          <div style={{background:"linear-gradient(135deg,#065f46,#009122)",borderRadius:"8px",padding:"0.875rem 1rem",color:"white"}}>
             <div style={{fontSize:"0.7rem",fontWeight:700,opacity:0.8,marginBottom:"0.25rem"}}>🏛️ 連携協定済</div>
             <div style={{display:"flex",alignItems:"baseline",gap:"0.3rem"}}>
               <span style={{fontSize:"1.8rem",fontWeight:800}}>{treatyDone}</span>
@@ -20867,14 +20871,14 @@ ${recentLogs}
 
         {/* 担当者別スコアボード */}
         {userStats.length>0&&(
-          <div style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"8px",overflow:"hidden",marginBottom:"1rem",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
+          <div style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"8px",overflow:"hidden",marginBottom:"1rem",boxShadow:"0 1px 2px rgba(0,17,62,0.05)"}}>
             <div style={{padding:"0.75rem 1rem",borderBottom:`1px solid ${C.borderLight}`,fontWeight:800,fontSize:"0.85rem",color:C.text}}>
               👥 担当者別アクティビティ
             </div>
             {userStats.map(({u,total},idx)=>{
               const maxTotal = userStats[0]?.total||1;
               const initials = (u.name||"?").split(/\s+/).map(s=>s[0]).join("").slice(0,2);
-              const barColor = ["#2563eb","#7c3aed","#059669","#d97706","#dc2626"][idx%5];
+              const barColor = ["#0070D4","#7c3aed","#009122","#d97706","#DA1313"][idx%5];
               const us = userStats[idx];
               return (
                 <div key={u.id} style={{padding:"0.875rem 1rem",borderBottom:`1px solid ${C.borderLight}`}}>
@@ -20893,8 +20897,8 @@ ${recentLogs}
                   {/* ✅ v218: 新スペック - 4列×2行のカードグリッド */}
                   <div style={{display:"grid",gridTemplateColumns:"repeat(4, 1fr)",gap:"0.35rem"}}>
                     {[
-                      {label:"📞 アプローチ", value:us.approachTotal, color:"#1d4ed8", bg:"#dbeafe", sub:"件"},
-                      {label:"🏢 企業", value:us.uniqCompanies, color:"#1d4ed8", bg:"#dbeafe", sub:"社"},
+                      {label:"📞 アプローチ", value:us.approachTotal, color:"#1563CA", bg:"#E6F0FF", sub:"件"},
+                      {label:"🏢 企業", value:us.uniqCompanies, color:"#1563CA", bg:"#E6F0FF", sub:"社"},
                       {label:"🔧 業者", value:us.uniqVendors, color:"#5b21b6", bg:"#ede9fe", sub:"社"},
                       {label:"🏛️ 自治体", value:us.uniqMunis, color:"#065f46", bg:"#d1fae5", sub:"市町村"},
                       {label:"📋 担当タスク", value:us.tasksAssignedOpen, color:"#7c2d12", bg:"#fed7aa", sub:`/${us.tasksAssigned}`},
@@ -20902,7 +20906,7 @@ ${recentLogs}
                       {label:"📁 プロジェクト", value:us.projectsAssignedOpen, color:"#4338ca", bg:"#eef2ff", sub:`/${us.projectsAssigned}`},
                       {label:"⭐ 成果", value:us.achievement, color:"#b45309", bg:"#fef3c7", sub:"件"},
                     ].map((item, kIdx)=>(
-                      <div key={kIdx} style={{background: item.value > 0 ? item.bg : "#f9fafb", borderRadius:6, padding:"0.45rem 0.5rem", textAlign:"center", opacity: item.value>0?1:0.5}}>
+                      <div key={kIdx} style={{background: item.value > 0 ? item.bg : "#f9fafb", borderRadius:8, padding:"0.45rem 0.5rem", textAlign:"center", opacity: item.value>0?1:0.5}}>
                         <div style={{fontSize:"0.6rem",fontWeight:700,color:item.value>0?item.color:"#9ca3af",marginBottom:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{item.label}</div>
                         <div style={{display:"flex",alignItems:"baseline",justifyContent:"center",gap:2}}>
                           <span style={{fontSize:"1.15rem",fontWeight:800,color:item.value>0?item.color:"#9ca3af"}}>{item.value}</span>
@@ -20924,11 +20928,11 @@ ${recentLogs}
 
         {/* アプローチ種別内訳 */}
         {allApproaches.length>0&&(
-          <div style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"8px",padding:"0.875rem 1rem",marginBottom:"1rem",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
+          <div style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"8px",padding:"0.875rem 1rem",marginBottom:"1rem",boxShadow:"0 1px 2px rgba(0,17,62,0.05)"}}>
             <div style={{fontWeight:800,fontSize:"0.85rem",color:C.text,marginBottom:"0.75rem"}}>📊 アプローチ種別</div>
             <div style={{display:"flex",flexWrap:"wrap",gap:"0.5rem"}}>
               {Object.entries(approachByType).sort((a,b)=>b[1]-a[1]).map(([type,cnt])=>(
-                <div key={type} style={{display:"flex",alignItems:"center",gap:"0.4rem",background:C.bg,borderRadius:"6px",padding:"0.4rem 0.75rem"}}>
+                <div key={type} style={{display:"flex",alignItems:"center",gap:"0.4rem",background:C.bg,borderRadius:"8px",padding:"0.4rem 0.75rem"}}>
                   <span style={{fontSize:"0.95rem"}}>{APPROACH_ICON[type]||"📝"}</span>
                   <span style={{fontSize:"0.82rem",fontWeight:700,color:C.text}}>{type}</span>
                   <span style={{fontSize:"0.85rem",fontWeight:800,color:C.accent}}>{cnt}</span>
@@ -20940,13 +20944,13 @@ ${recentLogs}
 
         {/* 最近のアプローチ履歴 */}
         {recentApproaches.length>0&&(
-          <div style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"8px",overflow:"hidden",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
+          <div style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"8px",overflow:"hidden",boxShadow:"0 1px 2px rgba(0,17,62,0.05)"}}>
             <div style={{padding:"0.75rem 1rem",borderBottom:`1px solid ${C.borderLight}`,fontWeight:800,fontSize:"0.85rem",color:C.text}}>
               📋 アプローチ履歴
             </div>
             {recentApproaches.map((log,i)=>{
               const u=users.find(x=>x.id===log.userId);
-              const typeColor={"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"}[log.entityType]||"#64748b";
+              const typeColor={"企業":"#0070D4","業者":"#7c3aed","自治体":"#009122"}[log.entityType]||"#64748b";
               const ds=(log.createdAt||log.date||"").slice(0,10);
               return (
                 <div key={log.id||i} style={{display:"flex",alignItems:"flex-start",gap:"0.6rem",padding:"0.65rem 1rem",borderBottom:`1px solid ${C.borderLight}`}}>
@@ -21111,7 +21115,7 @@ ${orig}`})
 
 {/* ════ 名刺マッチングモーダル ════ */}
 {matchModal&&(()=>{
-  const COLOR = {"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"};
+  const COLOR = {"企業":"#0070D4","業者":"#7c3aed","自治体":"#009122"};
   if(matchModal.mode==="card_to_entity") {
     const card = matchModal.cards[0];
     return (
@@ -21122,7 +21126,7 @@ ${orig}`})
             「{card.lastName}{card.firstName}」({card.company}) を以下に紐づけますか？
           </div>
           {matchModal.entities.map(ent=>(
-            <div key={`${ent.type}_${ent.id}`} style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.6rem 0.75rem",marginBottom:"0.5rem",background:`${COLOR[ent.type]}15`,border:`1.5px solid ${COLOR[ent.type]}44`,borderRadius:"6px",minWidth:0,boxSizing:"border-box"}}>
+            <div key={`${ent.type}_${ent.id}`} style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.6rem 0.75rem",marginBottom:"0.5rem",background:`${COLOR[ent.type]}15`,border:`1.5px solid ${COLOR[ent.type]}44`,borderRadius:"8px",minWidth:0,boxSizing:"border-box"}}>
               <span style={{fontSize:"0.7rem",fontWeight:800,color:"white",background:COLOR[ent.type],borderRadius:999,padding:"0.1rem 0.5rem",flexShrink:0}}>{ent.type}</span>
               <span style={{fontSize:"0.88rem",fontWeight:700,color:COLOR[ent.type],flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ent.name}</span>
               {card.salesRef ? (
@@ -21147,7 +21151,7 @@ ${orig}`})
           <div style={{fontSize:"1rem",fontWeight:800,color:C.text,marginBottom:"0.5rem"}}>🔗 営業先との一致が見つかりました</div>
           <div style={{fontSize:"0.82rem",color:C.textSub,marginBottom:"1rem"}}>紐づける名刺を選択してください</div>
           {matchModal.groups.map(({entity, cards})=>(
-            <div key={`${entity.type}_${entity.id}`} style={{marginBottom:"1rem",background:"#f8fafc",borderRadius:"6px",padding:"0.75rem",minWidth:0}}>
+            <div key={`${entity.type}_${entity.id}`} style={{marginBottom:"1rem",background:"#f8fafc",borderRadius:"8px",padding:"0.75rem",minWidth:0}}>
               <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginBottom:"0.5rem",minWidth:0}}>
                 <span style={{fontSize:"0.7rem",fontWeight:800,color:"white",background:COLOR[entity.type],borderRadius:999,padding:"0.1rem 0.45rem",flexShrink:0}}>{entity.type}</span>
                 <span style={{fontSize:"0.88rem",fontWeight:700,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{entity.name}</span>
@@ -21243,20 +21247,20 @@ ${orig}`})
               <div style={{fontWeight:800,fontSize:"0.95rem",color:C.text}}>AIがタスクを提案しました</div>
             </div>
             <div style={{fontSize:"0.78rem",color:C.textSub,marginBottom:"1rem"}}>「{aiTaskProposal.entityName}」のアプローチから自動生成</div>
-            <div style={{background:"#eff6ff",borderRadius:"6px",padding:"0.875rem",marginBottom:"0.75rem"}}>
-              <div style={{fontSize:"0.72rem",fontWeight:700,color:"#2563eb",marginBottom:"0.3rem"}}>📋 提案タスク</div>
+            <div style={{background:"#F2F7FF",borderRadius:"8px",padding:"0.875rem",marginBottom:"0.75rem"}}>
+              <div style={{fontSize:"0.72rem",fontWeight:700,color:"#0070D4",marginBottom:"0.3rem"}}>📋 提案タスク</div>
               <div style={{fontWeight:700,fontSize:"0.9rem",color:C.text,marginBottom:"0.25rem"}}>{aiTaskProposal.task.title}</div>
               {aiTaskProposal.task.dueDate&&<div style={{fontSize:"0.75rem",color:"#64748b"}}>📅 期限：{aiTaskProposal.task.dueDate}</div>}
             </div>
             {aiTaskProposal.nextAction&&(
-              <div style={{background:"#faf5ff",borderRadius:"6px",padding:"0.75rem",marginBottom:"1rem",border:"1px solid #ede9fe"}}>
+              <div style={{background:"#faf5ff",borderRadius:"8px",padding:"0.75rem",marginBottom:"1rem",border:"1px solid #ede9fe"}}>
                 <div style={{fontSize:"0.72rem",fontWeight:700,color:"#7c3aed",marginBottom:"0.2rem"}}>💡 次のアクション提案</div>
                 <div style={{fontSize:"0.82rem",color:C.text}}>{aiTaskProposal.nextAction}</div>
               </div>
             )}
             <div style={{display:"flex",gap:"0.5rem"}}>
               <button onClick={()=>setAiTaskProposal(null)}
-                style={{flex:1,padding:"0.6rem",borderRadius:"6px",border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
+                style={{flex:1,padding:"0.6rem",borderRadius:"8px",border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
                 スキップ
               </button>
               <button onClick={()=>{
@@ -21264,7 +21268,7 @@ ${orig}`})
                 save(nd);
                 setAiTaskProposal(null);
               }}
-                style={{flex:2,padding:"0.6rem",borderRadius:"6px",border:"none",background:C.accent,color:"white",fontWeight:800,fontSize:"0.88rem",cursor:"pointer",fontFamily:"inherit"}}>
+                style={{flex:2,padding:"0.6rem",borderRadius:"8px",border:"none",background:C.accent,color:"white",fontWeight:800,fontSize:"0.88rem",cursor:"pointer",fontFamily:"inherit"}}>
                 ✅ タスクに追加する
               </button>
             </div>
@@ -21347,7 +21351,7 @@ ${orig}`})
                 </div>
               </div>
               <button onClick={()=>{setForm({...comp});setSheet("editCompany");}} title="編集"
-                style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"6px",padding:"0.3rem 0.55rem",cursor:"pointer",fontSize:"0.8rem",color:C.textSub,flexShrink:0}}>✏️</button>
+                style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"8px",padding:"0.3rem 0.55rem",cursor:"pointer",fontSize:"0.8rem",color:C.textSub,flexShrink:0}}>✏️</button>
             </div>
             {/* 担当者 + 電話 */}
             {((comp.assigneeIds||[]).length>0||comp.phone)&&(
@@ -21373,14 +21377,14 @@ ${orig}`})
                 <div style={{fontSize:"0.62rem",fontWeight:700,color:"#0369a1",marginBottom:"0.4rem",letterSpacing:"0.04em"}}>👤 先方担当者 ({comp.contacts.length}名)</div>
                 <div style={{display:"flex",flexWrap:"wrap",gap:"0.35rem"}}>
                   {comp.contacts.map(c=>(
-                    <ContactBadge key={c.id} contact={c} color="#0369a1" bg="#dbeafe"/>
+                    <ContactBadge key={c.id} contact={c} color="#0369a1" bg="#E6F0FF"/>
                   ))}
                 </div>
               </div>
             )}
             {/* 備考 */}
             {comp.notes&&(
-              <div style={{fontSize:"0.75rem",color:C.text,background:"#f8fafc",borderRadius:6,padding:"0.5rem 0.7rem",borderLeft:"3px solid #cbd5e1",whiteSpace:"pre-wrap"}}>
+              <div style={{fontSize:"0.75rem",color:C.text,background:"#f8fafc",borderRadius:8,padding:"0.5rem 0.7rem",borderLeft:"3px solid #cbd5e1",whiteSpace:"pre-wrap"}}>
                 <div style={{fontSize:"0.62rem",fontWeight:700,color:C.textSub,marginBottom:"0.2rem",letterSpacing:"0.04em"}}>📝 備考</div>
                 {comp.notes}
               </div>
@@ -21391,14 +21395,14 @@ ${orig}`})
               <span style={{fontSize:"0.72rem",color:"#0369a1",fontWeight:700}}>📅 次回: {comp.nextActionDate} {comp.nextActionType||""}</span>
             )}
             <div style={{flex:1}}/>
-            <button onClick={()=>{if(window.confirm(`${comp.name}を削除しますか？\nこの操作は元に戻せません。`))deleteCompany(comp.id);}} style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"1px solid #fca5a5",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#fef2f2",color:"#dc2626"}}>🗑 削除</button>
+            <button onClick={()=>{if(window.confirm(`${comp.name}を削除しますか？\nこの操作は元に戻せません。`))deleteCompany(comp.id);}} style={{padding:"0.3rem 0.75rem",borderRadius:999,border:"1px solid #fca5a5",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:"#fef2f2",color:"#DA1313"}}>🗑 削除</button>
           </div>
           {/* Sub-tabs: 履歴・チャット・タスク・名刺・ファイル */}
-          <div style={{display:"flex",background:"white",borderRadius:"6px",padding:"0.2rem",marginBottom:"1rem",border:`1px solid ${C.border}`}}>
+          <div style={{display:"flex",background:"white",borderRadius:"8px",padding:"0.2rem",marginBottom:"1rem",border:`1px solid ${C.border}`}}>
             {[["timeline","📋","履歴・チャット"],["tasks","✅","タスク"],["bizcard","🪪","名刺"],["files","📂","資料"]].map(([id,icon,lbl])=>(
               <button key={id} onClick={()=>setActiveDetail(id)} style={{flex:1,padding:"0.5rem",borderRadius:"0.5rem",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.72rem",position:"relative",background:activeDetail===id?C.accent:"transparent",color:activeDetail===id?"white":C.textSub}}>
                 {icon} {lbl}
-                {id==="timeline"&&compChatUnread>0&&<span style={{position:"absolute",top:3,right:6,background:"#dc2626",color:"white",borderRadius:999,fontSize:"0.5rem",fontWeight:800,padding:"0.05rem 0.25rem",lineHeight:1.4}}>{compChatUnread}</span>}
+                {id==="timeline"&&compChatUnread>0&&<span style={{position:"absolute",top:3,right:6,background:"#DA1313",color:"white",borderRadius:999,fontSize:"0.5rem",fontWeight:800,padding:"0.05rem 0.25rem",lineHeight:1.4}}>{compChatUnread}</span>}
                 {id==="tasks"&&(()=>{const n=(data.tasks||[]).filter(t=>t.salesRef?.id===comp.id&&t.status!=="完了").length;return n>0?<span style={{position:"absolute",top:3,right:6,background:C.accent,color:"white",borderRadius:999,fontSize:"0.5rem",fontWeight:800,padding:"0.05rem 0.25rem",lineHeight:1.4}}>{n}</span>:null;})()}
               </button>
             ))}
@@ -21450,7 +21454,7 @@ ${orig}`})
                 <button onClick={()=>{
                   const cur = form.contacts || [];
                   setForm({...form, contacts:[...cur, {id:Date.now()+Math.random(),name:"",role:"",phone:"",email:""}]});
-                }} style={{background:"#0369a1",color:"white",border:"none",borderRadius:"0.4rem",padding:"0.3rem 0.7rem",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>＋ 担当者を追加</button>
+                }} style={{background:"#0369a1",color:"white",border:"none",borderRadius:"0.5rem",padding:"0.3rem 0.7rem",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>＋ 担当者を追加</button>
               </div>
               {(()=>{
                 const list = form.contacts || [];
@@ -21470,21 +21474,21 @@ ${orig}`})
                       <div key={c.id} style={{background:"white",border:"1px solid #bae6fd",borderRadius:"0.5rem",padding:"0.5rem 0.625rem"}}>
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.35rem"}}>
                           <div style={{fontSize:"0.7rem",fontWeight:700,color:"#0369a1"}}>担当者 #{idx+1}</div>
-                          <button onClick={()=>removeAt(idx)} style={{background:"none",border:"none",color:"#dc2626",cursor:"pointer",fontSize:"0.7rem",fontWeight:700,padding:"0.1rem 0.3rem",fontFamily:"inherit"}}>🗑 削除</button>
+                          <button onClick={()=>removeAt(idx)} style={{background:"none",border:"none",color:"#DA1313",cursor:"pointer",fontSize:"0.7rem",fontWeight:700,padding:"0.1rem 0.3rem",fontFamily:"inherit"}}>🗑 削除</button>
                         </div>
                         <div style={{display:"flex",flexDirection:"column",gap:"0.35rem"}}>
                           <input value={c.name||""} onChange={e=>updateAt(idx,"name",e.target.value)} placeholder="名前（例：山田 太郎）"
-                            style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
+                            style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.5rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
                           <input value={c.kana||""} onChange={e=>updateAt(idx,"kana",e.target.value)} placeholder="振り仮名（例：やまだ たろう）"
-                            style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
+                            style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.5rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
                           <input value={c.role||""} onChange={e=>updateAt(idx,"role",e.target.value)} placeholder="役職・部署（例：営業部長）"
-                            style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
+                            style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.5rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
                           <input value={c.phone||""} onChange={e=>updateAt(idx,"phone",formatPhone(e.target.value))} placeholder="電話番号（半角に自動変換）" type="tel"
-                            style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
+                            style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.5rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
                           <input value={c.email||""} onChange={e=>updateAt(idx,"email",e.target.value)} placeholder="メールアドレス"
-                            style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
+                            style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.5rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
                           <textarea value={c.note||""} onChange={e=>updateAt(idx,"note",e.target.value)} placeholder="備考（名刺未取得・仮登録メモなど）" rows={2}
-                            style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box",resize:"vertical"}}/>
+                            style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.5rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box",resize:"vertical"}}/>
                         </div>
                       </div>
                     ))}
@@ -21534,14 +21538,14 @@ ${orig}`})
             return u ? u.name : id;
           });
           return (
-            <div style={{background:"#eff6ff",border:`1px solid ${C.accent}`,borderRadius:"8px",padding:"0.45rem 0.7rem",marginBottom:"0.75rem",display:"flex",alignItems:"center",gap:"0.5rem",flexWrap:"wrap"}}>
+            <div style={{background:"#F2F7FF",border:`1px solid ${C.accent}`,borderRadius:"8px",padding:"0.45rem 0.7rem",marginBottom:"0.75rem",display:"flex",alignItems:"center",gap:"0.5rem",flexWrap:"wrap"}}>
               <span style={{fontSize:"0.72rem",fontWeight:800,color:C.accent}}>👤 {assigneeNames.join(" / ")} 絞り込み中: {fCount}件</span>
               {statusCounts.map(({s,n})=>(
                 <span key={s} style={{fontSize:"0.62rem",padding:"0.1rem 0.35rem",borderRadius:999,fontWeight:700,background:COMPANY_STATUS[s]?.bg,color:COMPANY_STATUS[s]?.color}}>{s}: {n}件</span>
               ))}
               <div style={{flex:1}}/>
               <button onClick={()=>setCompFilter(p=>({...p,assignees:[]}))}
-                style={{fontSize:"0.65rem",background:"#fef2f2",color:"#dc2626",border:"1px solid #fca5a5",borderRadius:999,padding:"0.15rem 0.55rem",cursor:"pointer",fontWeight:700,fontFamily:"inherit"}}>✕ 解除</button>
+                style={{fontSize:"0.65rem",background:"#fef2f2",color:"#DA1313",border:"1px solid #fca5a5",borderRadius:999,padding:"0.15rem 0.55rem",cursor:"pointer",fontWeight:700,fontFamily:"inherit"}}>✕ 解除</button>
             </div>
           );
         })()}
@@ -21597,7 +21601,7 @@ ${orig}`})
             <div style={{background:"#fef2f2",border:"1.5px solid #fca5a5",borderRadius:"8px",padding:"0.6rem 0.85rem",marginBottom:"0.75rem",display:"flex",alignItems:"center",gap:"0.6rem",flexWrap:"wrap"}}>
               <span style={{fontSize:"1.1rem",flexShrink:0}}>⚠️</span>
               <div style={{flex:1,minWidth:0}}>
-                <div style={{fontSize:"0.78rem",fontWeight:800,color:"#dc2626"}}>重複が検出されました（{dupGroups.length}グループ・{dupCount}件削減可能）</div>
+                <div style={{fontSize:"0.78rem",fontWeight:800,color:"#DA1313"}}>重複が検出されました（{dupGroups.length}グループ・{dupCount}件削減可能）</div>
                 <div style={{fontSize:"0.7rem",color:"#991b1b",marginTop:"0.15rem"}}>
                   例: {dupGroups.slice(0,2).map(([_,arr])=>arr[0].name).join("、")}{dupGroups.length>2?"…":""}
                 </div>
@@ -21615,7 +21619,7 @@ ${orig}`})
                 setMergeSelected(new Set(groups.map(g=>g.groupKey)));
                 setMergePreview({groups, focusType:"company"});
                 console.log("[MyDesk] state updated; modal should appear");
-              }} style={{padding:"0.4rem 0.75rem",borderRadius:"6px",border:"none",background:"#dc2626",color:"white",fontWeight:800,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🔍 確認して統合</button>
+              }} style={{padding:"0.4rem 0.75rem",borderRadius:"8px",border:"none",background:"#DA1313",color:"white",fontWeight:800,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🔍 確認して統合</button>
             </div>
           );
         })()}
@@ -21623,12 +21627,12 @@ ${orig}`})
           <div style={{position:"relative",flex:1}}>
             <span style={{position:"absolute",left:"0.625rem",top:"50%",transform:"translateY(-50%)",color:C.textMuted,fontSize:"0.85rem",pointerEvents:"none"}}>🔍</span>
             <input value={compSearch} onChange={e=>setCompSearch(e.target.value)} placeholder="企業名で検索"
-              style={{width:"100%",padding:"0.5rem 0.5rem 0.5rem 2rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
+              style={{width:"100%",padding:"0.5rem 0.5rem 0.5rem 2rem",borderRadius:"8px",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
           </div>
           <button onClick={()=>setBulkMode(v=>{if(v){resetBulk();return false;}setBulkSelected(new Set());return true;})}
-            style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:`1.5px solid ${bulkMode?"#2563eb":C.border}`,background:bulkMode?"#eff6ff":"white",color:bulkMode?"#1d4ed8":C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>☑️</button>
+            style={{padding:"0.45rem 0.625rem",borderRadius:"8px",border:`1.5px solid ${bulkMode?"#0070D4":C.border}`,background:bulkMode?"#F2F7FF":"white",color:bulkMode?"#1563CA":C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>☑️</button>
           <button onClick={()=>setSheet("importCompany")}
-            style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📥 取込</button>
+            style={{padding:"0.45rem 0.625rem",borderRadius:"8px",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📥 取込</button>
           <button onClick={()=>{
             const list = bulkMode && bulkSelected.size>0
               ? companies.filter(c=>bulkSelected.has(c.id))
@@ -21639,7 +21643,7 @@ ${orig}`})
               : "全件";
             exportCompanyList(list, desc);
           }} title="エクセル出力（フィルター済み・全アプローチ含む）"
-            style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:"1.5px solid #10b981",background:"#ecfdf5",color:"#059669",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📊 出力</button>
+            style={{padding:"0.45rem 0.625rem",borderRadius:"8px",border:"1.5px solid #10b981",background:"#ecfdf5",color:"#009122",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📊 出力</button>
           <button onClick={()=>{
             const list = bulkMode && bulkSelected.size>0
               ? companies.filter(c=>bulkSelected.has(c.id))
@@ -21647,13 +21651,13 @@ ${orig}`})
             const desc = bulkMode && bulkSelected.size>0 ? `選択${bulkSelected.size}件` : compSearch ? `検索_${compSearch}` : "全件";
             exportCompanySalesSheet(list, desc);
           }} title="営業管理シート様式でExcel出力（店舗数×単価の見込み総額つき）"
-            style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:"1.5px solid #7c3aed",background:"#f5f3ff",color:"#6d28d9",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📈 営業管理</button>
+            style={{padding:"0.45rem 0.625rem",borderRadius:"8px",border:"1.5px solid #7c3aed",background:"#f5f3ff",color:"#6d28d9",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📈 営業管理</button>
           <button onClick={()=>{setImportPreview(null);setImportErr("");setSheet("importSales");}} title="営業管理シートのCSVを取込んで店舗数・単価・ステータス・メモを反映"
-            style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:"1.5px solid #7c3aed",background:"white",color:"#6d28d9",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📈 資料反映</button>
+            style={{padding:"0.45rem 0.625rem",borderRadius:"8px",border:"1.5px solid #7c3aed",background:"white",color:"#6d28d9",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📈 資料反映</button>
           <button onClick={backfillAssigneesFromApproach} title="記録者を担当者に一括補完（業者・企業・自治体すべて）"
-            style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:"1.5px solid #f59e0b",background:"#fffbeb",color:"#92400e",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🔄</button>
+            style={{padding:"0.45rem 0.625rem",borderRadius:"8px",border:"1.5px solid #f59e0b",background:"#fffbeb",color:"#92400e",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🔄</button>
           <button onClick={()=>{setDeleteModal({type:"company"});setDmSearch("");setDmFilter("");setDmSelected(new Set());}}
-            style={{padding:"0.45rem 0.75rem",borderRadius:"6px",border:"1.5px solid #fca5a5",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🗑 削除</button>
+            style={{padding:"0.45rem 0.75rem",borderRadius:"8px",border:"1.5px solid #fca5a5",background:"#fff1f2",color:"#DA1313",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🗑 削除</button>
           <Btn size="sm" onClick={()=>{console.log("[MyDesk] +追加 clicked → opening addCompany sheet");setForm({status:"未接触",assigneeIds:[]});setSheet("addCompany");}}>＋</Btn>
         </div>
         {companies.length===0&&(
@@ -21682,7 +21686,7 @@ ${orig}`})
                   const lastMemo=(c.memos||[]).slice(-1)[0];
                   return (
                     <div onClick={()=>{setSalesTab("company");saveSalesScroll("company");setActiveCompany(c.id);setActiveDetail("timeline");}}
-                      style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.625rem 0.75rem",background:"white",borderRadius:"6px",border:`1.5px solid ${C.border}`,cursor:"pointer",boxShadow:"0 1px 2px rgba(0,0,0,0.04)",margin:"0 0 0.3rem 0",height:"calc(100% - 0.3rem)",boxSizing:"border-box",overflow:"hidden"}}
+                      style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.625rem 0.75rem",background:"white",borderRadius:"8px",border:`1.5px solid ${C.border}`,cursor:"pointer",boxShadow:"0 1px 2px rgba(0,17,62,0.05)",margin:"0 0 0.3rem 0",height:"calc(100% - 0.3rem)",boxSizing:"border-box",overflow:"hidden"}}
                       onMouseEnter={e=>e.currentTarget.style.borderColor=C.accent}
                       onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}>
                       <div style={{flex:1,minWidth:0}}>
@@ -21715,7 +21719,7 @@ ${orig}`})
                   const lastMemo=(c.memos||[]).slice(-1)[0];
                   return (
                     <div onClick={()=>{setSalesTab("company");saveSalesScroll("company");setActiveCompany(c.id);setActiveDetail("timeline");}}
-                      style={{background:"white",border:`1.5px solid ${C.border}`,borderRadius:"8px",padding:"0.75rem 0.875rem",cursor:"pointer",boxShadow:"0 1px 2px rgba(0,0,0,0.04)",margin:"0 0 0.5rem 0",height:"calc(100% - 0.5rem)",boxSizing:"border-box",overflow:"hidden",display:"flex",flexDirection:"column",gap:"0.3rem"}}>
+                      style={{background:"white",border:`1.5px solid ${C.border}`,borderRadius:"8px",padding:"0.75rem 0.875rem",cursor:"pointer",boxShadow:"0 1px 2px rgba(0,17,62,0.05)",margin:"0 0 0.5rem 0",height:"calc(100% - 0.5rem)",boxSizing:"border-box",overflow:"hidden",display:"flex",flexDirection:"column",gap:"0.3rem"}}>
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:"0.4rem"}}>
                         <span style={{fontWeight:700,fontSize:"0.92rem",color:C.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</span>
                         <SChip s={c.status} map={COMPANY_STATUS}/>
@@ -21735,7 +21739,7 @@ ${orig}`})
         {!compSearch&&compFilter.assignees.length===0&&(()=>{
           const items = compFilteredBase.filter(c=>(c.status||"未接触")===compStatusTab);
           return (
-            <div style={{background:"white",borderRadius:"8px",border:`1.5px solid ${C.border}`,overflow:"hidden",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
+            <div style={{background:"white",borderRadius:"8px",border:`1.5px solid ${C.border}`,overflow:"hidden",boxShadow:"0 1px 2px rgba(0,17,62,0.05)"}}>
               {/* ステータスタブ（横スクロール可能） */}
               <div style={{display:"flex",overflowX:"auto",borderBottom:`1px solid ${C.borderLight}`,WebkitOverflowScrolling:"touch",scrollbarWidth:"thin"}}>
                 {Object.entries(COMPANY_STATUS).map(([s,meta])=>{
@@ -21772,7 +21776,7 @@ ${orig}`})
                     const approachIcon=APPROACH_ICON_MAP[lastType]||"📝";
                     return (
                       <div onClick={()=>{if(bulkMode){setBulkSelected(prev=>{const n=new Set(prev);n.has(c.id)?n.delete(c.id):n.add(c.id);return n;});return;}saveSalesScroll("company");setActiveCompany(c.id);setActiveDetail("timeline");}}
-                        style={{padding:"0.55rem 0.875rem",cursor:"pointer",borderTop:i>0?`1px solid ${C.borderLight}`:"none",background:bulkSelected.has(c.id)?"#eff6ff":"white",display:"flex",flexDirection:"column",gap:"0.3rem",transition:"background 0.1s",height:"100%",boxSizing:"border-box",overflow:"hidden",justifyContent:"center"}}
+                        style={{padding:"0.55rem 0.875rem",cursor:"pointer",borderTop:i>0?`1px solid ${C.borderLight}`:"none",background:bulkSelected.has(c.id)?"#F2F7FF":"white",display:"flex",flexDirection:"column",gap:"0.3rem",transition:"background 0.1s",height:"100%",boxSizing:"border-box",overflow:"hidden",justifyContent:"center"}}
                         onMouseEnter={e=>{if(!bulkSelected.has(c.id))e.currentTarget.style.background=C.bg;}}
                         onMouseLeave={e=>{if(!bulkSelected.has(c.id))e.currentTarget.style.background="white";}}>
                         <div style={{display:"flex",alignItems:"center",gap:"0.5rem",minWidth:0}}>
@@ -21873,18 +21877,18 @@ ${orig}`})
                 📄 CSVファイルを選択
                 <input type="file" accept=".csv,text/csv" onChange={handleFile} style={{display:"none"}}/>
               </label>
-              {err&&<div style={{marginTop:"0.75rem",fontSize:"0.78rem",color:"#dc2626",fontWeight:700}}>⚠️ {err}</div>}
+              {err&&<div style={{marginTop:"0.75rem",fontSize:"0.78rem",color:"#DA1313",fontWeight:700}}>⚠️ {err}</div>}
               {preview&&(
                 <div style={{marginTop:"1rem"}}>
                   <div style={{display:"flex",gap:"0.5rem",marginBottom:"0.75rem"}}>
-                    <div style={{flex:1,background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:"8px",padding:"0.5rem 0.7rem"}}><div style={{fontSize:"0.62rem",color:"#1d4ed8",fontWeight:700}}>更新（既存）</div><div style={{fontSize:"1.3rem",fontWeight:800,color:"#1e40af"}}>{preview.upd}</div></div>
+                    <div style={{flex:1,background:"#F2F7FF",border:"1px solid #bfdbfe",borderRadius:"8px",padding:"0.5rem 0.7rem"}}><div style={{fontSize:"0.62rem",color:"#1563CA",fontWeight:700}}>更新（既存）</div><div style={{fontSize:"1.3rem",fontWeight:800,color:"#295FA6"}}>{preview.upd}</div></div>
                     <div style={{flex:1,background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:"8px",padding:"0.5rem 0.7rem"}}><div style={{fontSize:"0.62rem",color:"#15803d",fontWeight:700}}>新規追加</div><div style={{fontSize:"1.3rem",fontWeight:800,color:"#166534"}}>{preview.neu}</div></div>
                   </div>
                   <div style={{fontSize:"0.72rem",color:C.textSub,fontWeight:700,marginBottom:"0.3rem"}}>プレビュー（先頭12件 / 全{preview.items.length}件）</div>
-                  <div style={{maxHeight:240,overflowY:"auto",border:`1px solid ${C.borderLight}`,borderRadius:"6px"}}>
+                  <div style={{maxHeight:240,overflowY:"auto",border:`1px solid ${C.borderLight}`,borderRadius:"8px"}}>
                     {preview.items.slice(0,12).map((it,i)=>(
                       <div key={i} style={{padding:"0.4rem 0.6rem",borderTop:i>0?`1px solid ${C.borderLight}`:"none",fontSize:"0.72rem",display:"flex",gap:"0.4rem",alignItems:"center",flexWrap:"wrap"}}>
-                        <span style={{fontSize:"0.6rem",fontWeight:700,padding:"0.05rem 0.35rem",borderRadius:999,background:it.mode==="更新"?"#dbeafe":"#dcfce7",color:it.mode==="更新"?"#1e40af":"#166534"}}>{it.mode}</span>
+                        <span style={{fontSize:"0.6rem",fontWeight:700,padding:"0.05rem 0.35rem",borderRadius:999,background:it.mode==="更新"?"#E6F0FF":"#dcfce7",color:it.mode==="更新"?"#295FA6":"#166534"}}>{it.mode}</span>
                         <span style={{fontWeight:700,color:C.text}}>{it.name}</span>
                         <span style={{color:C.textMuted}}>店舗{it.storeCount??"-"} / ¥{it.unitPrice!=null?it.unitPrice.toLocaleString():"-"} / {it.status||"-"}</span>
                       </div>
@@ -21946,7 +21950,7 @@ ${orig}`})
                   setImportPreview(mapped); setImportErr("");
                 };
                 return (<>
-                  <div style={{display:"flex",background:"#f1f5f9",borderRadius:"6px",padding:"0.2rem",marginBottom:"1rem"}}>
+                  <div style={{display:"flex",background:"#f1f5f9",borderRadius:"8px",padding:"0.2rem",marginBottom:"1rem"}}>
                     {[["csv","📁 CSVファイル"],["text","📝 テキスト入力"]].map(([id,lbl])=>(
                       <button key={id} onClick={()=>{setImpMode(id);setImportPreview(null);}} style={{flex:1,padding:"0.5rem",borderRadius:"0.55rem",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.8rem",background:impMode===id?"white":"transparent",color:impMode===id?C.text:C.textMuted,boxShadow:impMode===id?"0 1px 4px rgba(0,0,0,0.1)":"none"}}>{lbl}</button>
                     ))}
@@ -21955,22 +21959,22 @@ ${orig}`})
                     <div style={{marginBottom:"1rem"}}>
                       <div style={{fontWeight:700,fontSize:"0.82rem",color:C.text,marginBottom:"0.35rem"}}>企業名を入力（改行・カンマ区切り）</div>
                       <div style={{fontSize:"0.72rem",color:C.textMuted,marginBottom:"0.5rem"}}>スペースは自動削除されます。ステータスは「未接触」で一括登録されます。</div>
-                      <textarea value={textInput} onChange={e=>setTextInput(e.target.value)} placeholder={"株式会社A\n株式会社B\n○○商事"} style={{width:"100%",height:140,borderRadius:"6px",border:`1px solid ${C.border}`,padding:"0.625rem",fontSize:"0.83rem",fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
-                      <button onClick={handleTextParse} disabled={!textInput.trim()} style={{marginTop:"0.5rem",width:"100%",padding:"0.6rem",borderRadius:"6px",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.83rem",cursor:textInput.trim()?"pointer":"default",opacity:textInput.trim()?1:0.5,fontFamily:"inherit"}}>解析する</button>
+                      <textarea value={textInput} onChange={e=>setTextInput(e.target.value)} placeholder={"株式会社A\n株式会社B\n○○商事"} style={{width:"100%",height:140,borderRadius:"8px",border:`1px solid ${C.border}`,padding:"0.625rem",fontSize:"0.83rem",fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
+                      <button onClick={handleTextParse} disabled={!textInput.trim()} style={{marginTop:"0.5rem",width:"100%",padding:"0.6rem",borderRadius:"8px",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.83rem",cursor:textInput.trim()?"pointer":"default",opacity:textInput.trim()?1:0.5,fontFamily:"inherit"}}>解析する</button>
                     </div>
                   )}
                 </>);
               })()}
               {/* Download template (CSV mode only) */}
-              {true&&<div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:"8px",padding:"0.875rem",marginBottom:"1rem"}}>
-                <div style={{fontWeight:700,fontSize:"0.82rem",color:"#1d4ed8",marginBottom:"0.5rem"}}>📥 CSVテンプレートをダウンロード</div>
+              {true&&<div style={{background:"#F2F7FF",border:"1px solid #bfdbfe",borderRadius:"8px",padding:"0.875rem",marginBottom:"1rem"}}>
+                <div style={{fontWeight:700,fontSize:"0.82rem",color:"#1563CA",marginBottom:"0.5rem"}}>📥 CSVテンプレートをダウンロード</div>
                 <div style={{fontSize:"0.75rem",color:"#3730a3",marginBottom:"0.625rem"}}>テンプレートに入力してCSV形式で保存後、アップロードしてください</div>
                 <button onClick={()=>downloadCSV("企業インポートテンプレート.csv",
                   ["企業名 *","ステータス","担当者名","メモ","電話番号","メールアドレス","住所"],
                   [["株式会社サンプルA","商談中","田中太郎","来週再アポ予定","03-1234-5678","tanaka@sample.co.jp","東京都千代田区〇〇1-2-3"],
                    ["サンプル商事B","電話済","鈴木花子","","06-9876-5432","","大阪府大阪市〇〇2-3-4"],
                    ["","","","","","",""]])}
-                  style={{background:"#2563eb",border:"none",borderRadius:"0.625rem",color:"white",fontWeight:700,fontSize:"0.78rem",padding:"0.45rem 0.875rem",cursor:"pointer",fontFamily:"inherit"}}>
+                  style={{background:"#0070D4",border:"none",borderRadius:"0.625rem",color:"white",fontWeight:700,fontSize:"0.78rem",padding:"0.45rem 0.875rem",cursor:"pointer",fontFamily:"inherit"}}>
                   ⬇️ CSVテンプレートをダウンロード
                 </button>
               </div>}
@@ -21983,7 +21987,7 @@ ${orig}`})
                   <div style={{fontSize:"0.7rem",color:C.textMuted,marginTop:"0.2rem"}}>UTF-8 / Shift-JIS 両対応 (.csv)</div>
                   <input type="file" accept=".csv,.txt" onChange={handleFile} style={{display:"none"}}/>
                 </label>
-                {err&&<div style={{marginTop:"0.5rem",fontSize:"0.78rem",color:"#dc2626",background:"#fff1f2",borderRadius:"0.5rem",padding:"0.5rem 0.75rem"}}>{err}</div>}
+                {err&&<div style={{marginTop:"0.5rem",fontSize:"0.78rem",color:"#DA1313",background:"#fff1f2",borderRadius:"0.5rem",padding:"0.5rem 0.75rem"}}>{err}</div>}
               </div>
               {/* Preview */}
               {preview&&(
@@ -21993,7 +21997,7 @@ ${orig}`})
                     <span style={{background:"#d1fae5",color:"#065f46",borderRadius:999,fontSize:"0.7rem",fontWeight:700,padding:"0.1rem 0.5rem"}}>{preview.length}件</span>
                     <span style={{fontSize:"0.7rem",color:C.textMuted}}>既存と重複する場合はスキップ</span>
                   </div>
-                  <div style={{maxHeight:220,overflowY:"auto",border:`1px solid ${C.border}`,borderRadius:"6px",overflow:"hidden"}}>
+                  <div style={{maxHeight:220,overflowY:"auto",border:`1px solid ${C.border}`,borderRadius:"8px",overflow:"hidden"}}>
                     {preview.slice(0,20).map((r,i)=>{
                       const dup=companies.some(c=>c.name===r.name);
                       return (
@@ -22037,7 +22041,7 @@ ${orig}`})
               <div style={{padding:"0.75rem 1.25rem",borderBottom:"1px solid #e5e5ea",display:"flex",alignItems:"center",gap:"0.75rem",background:"white",position:"sticky",top:0,zIndex:10}}>
                 <div style={{flex:1,fontWeight:700,fontSize:"0.95rem",color:C.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",minWidth:0}}>{comp.name}</div>
                 {comp.phone&&<div style={{flexShrink:0}}><PhoneLink number={comp.phone} size="sm" onMtg={()=>setMtgModal({entityKey:"companies",entityId:comp.id,entityName:comp.name})} onCallRecord={()=>setMtgModal({entityKey:"companies",entityId:comp.id,entityName:comp.name,autoStart:true,callMode:true})}/></div>}
-                <button onClick={()=>setActiveCompany(null)} style={{background:"none",border:"1px solid #e5e5ea",borderRadius:"6px",padding:"0.3rem 0.6rem",cursor:"pointer",fontSize:"0.8rem",color:C.textSub,flexShrink:0}}>✕</button>
+                <button onClick={()=>setActiveCompany(null)} style={{background:"none",border:"1px solid #e5e5ea",borderRadius:"8px",padding:"0.3rem 0.6rem",cursor:"pointer",fontSize:"0.8rem",color:C.textSub,flexShrink:0}}>✕</button>
               </div>
               <div style={{padding:"1rem 1.5rem"}}>{renderCompanyDetail(comp)}</div>
             </div>
@@ -22083,11 +22087,11 @@ ${orig}`})
                       // （ステータス変更した業者は自動的にそのタブの一覧から消えるだけ）
                     }
                   }}/>
-                  {v.beeNet&&<span style={{fontSize:"0.62rem",background:"#eff6ff",color:"#1d4ed8",padding:"0.1rem 0.45rem",borderRadius:999,fontWeight:700,border:"1px solid #bfdbfe"}}>🔷 bee-net</span>}
+                  {v.beeNet&&<span style={{fontSize:"0.62rem",background:"#F2F7FF",color:"#1563CA",padding:"0.1rem 0.45rem",borderRadius:999,fontWeight:700,border:"1px solid #bfdbfe"}}>🔷 bee-net</span>}
                 </div>
               </div>
               <button onClick={()=>{setForm({...v});setSheet("editVendor");}} title="編集"
-                style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"6px",padding:"0.3rem 0.55rem",cursor:"pointer",fontSize:"0.8rem",color:C.textSub,flexShrink:0}}>✏️</button>
+                style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"8px",padding:"0.3rem 0.55rem",cursor:"pointer",fontSize:"0.8rem",color:C.textSub,flexShrink:0}}>✏️</button>
             </div>
             {/* 担当者 + 電話 */}
             {((v.assigneeIds||[]).length>0||v.phone)&&(
@@ -22135,7 +22139,7 @@ ${orig}`})
             {vmunis.length>0&&(
               <div style={{display:"flex",alignItems:"center",gap:"0.4rem",flexWrap:"wrap",marginBottom:"0.5rem"}}>
                 <span style={{fontSize:"0.6rem",fontWeight:700,color:C.textSub,letterSpacing:"0.04em"}}>許可エリア</span>
-                {vmunis.slice(0,8).map(m=><span key={m.id} style={{fontSize:"0.65rem",background:C.accentBg,color:C.accent,padding:"0.1rem 0.45rem",borderRadius:4,fontWeight:600}}>{m.name}</span>)}
+                {vmunis.slice(0,8).map(m=><span key={m.id} style={{fontSize:"0.65rem",background:C.accentBg,color:C.accent,padding:"0.1rem 0.45rem",borderRadius:8,fontWeight:600}}>{m.name}</span>)}
                 {vmunis.length>8&&<span style={{fontSize:"0.62rem",color:C.textMuted}}>+{vmunis.length-8}</span>}
               </div>
             )}
@@ -22149,10 +22153,10 @@ ${orig}`})
                   <div style={{display:"grid",gridTemplateColumns:isPC?`repeat(${Math.min(4,heldPermits.length)},1fr)`:`repeat(${Math.min(2,heldPermits.length)},1fr)`,gap:"0.3rem"}}>
                     {heldPermits.map(pt=>{
                       const salesStatus=(v.permitSales||{})[pt]||"未営業";
-                      const salesColors={"営業済":"#d1fae5","資料送付":"#dbeafe","商談中":"#fef3c7","加入済":"#d1fae5","未営業":"#f3f4f6"};
-                      const salesTextColors={"営業済":"#065f46","資料送付":"#1d4ed8","商談中":"#92400e","加入済":"#065f46","未営業":"#9ca3af"};
+                      const salesColors={"営業済":"#d1fae5","資料送付":"#E6F0FF","商談中":"#fef3c7","加入済":"#d1fae5","未営業":"#f3f4f6"};
+                      const salesTextColors={"営業済":"#065f46","資料送付":"#1563CA","商談中":"#92400e","加入済":"#065f46","未営業":"#9ca3af"};
                       return (
-                        <div key={pt} style={{background:salesColors[salesStatus],border:`1px solid ${salesTextColors[salesStatus]+"30"}`,borderRadius:"0.4rem",padding:"0.35rem 0.45rem"}}>
+                        <div key={pt} style={{background:salesColors[salesStatus],border:`1px solid ${salesTextColors[salesStatus]+"30"}`,borderRadius:"0.5rem",padding:"0.35rem 0.45rem"}}>
                           <div style={{fontSize:"0.62rem",fontWeight:700,color:"#374151"}}>✓ {pt}</div>
                           <select value={salesStatus} onClick={e=>e.stopPropagation()} onChange={e=>{
                             if(e.target.value==="加入済"){ window.alert("DUSTALKに加入後、加入済へ自動で変更されます"); return; }
@@ -22232,7 +22236,7 @@ ${orig}`})
             </button>
             {/* 備考 */}
             {v.notes&&(
-              <div style={{fontSize:"0.75rem",color:C.text,background:"#f8fafc",borderRadius:6,padding:"0.5rem 0.7rem",borderLeft:"3px solid #cbd5e1",whiteSpace:"pre-wrap"}}>
+              <div style={{fontSize:"0.75rem",color:C.text,background:"#f8fafc",borderRadius:8,padding:"0.5rem 0.7rem",borderLeft:"3px solid #cbd5e1",whiteSpace:"pre-wrap"}}>
                 <div style={{fontSize:"0.62rem",fontWeight:700,color:C.textSub,marginBottom:"0.2rem",letterSpacing:"0.04em"}}>📝 備考</div>
                 {v.notes}
               </div>
@@ -22250,7 +22254,7 @@ ${orig}`})
           </div>
           {/* 失注理由表示（あれば） */}
           {CLOSED_STATUSES.has(v.status)&&v.lossReason&&(
-            <div style={{marginBottom:"0.75rem",padding:"0.4rem 0.6rem",background:"#fee2e2",borderRadius:"0.5rem",fontSize:"0.75rem",color:"#dc2626"}}>
+            <div style={{marginBottom:"0.75rem",padding:"0.4rem 0.6rem",background:"#fee2e2",borderRadius:"0.5rem",fontSize:"0.75rem",color:"#DA1313"}}>
               📋 {v.lossReason}{v.lossNote&&`：${v.lossNote}`}
             </div>
           )}
@@ -22259,11 +22263,11 @@ ${orig}`})
             <Btn variant="danger" size="sm" onClick={()=>{if(window.confirm(`${v.name}を削除しますか？`))deleteVendor(v.id);}}>🗑 削除</Btn>
           </div>
           {/* Sub-tabs: 履歴・チャット・タスク・ファイル */}
-          <div style={{display:"flex",background:"white",borderRadius:"6px",padding:"0.2rem",marginBottom:"1rem",border:`1px solid ${C.border}`}}>
+          <div style={{display:"flex",background:"white",borderRadius:"8px",padding:"0.2rem",marginBottom:"1rem",border:`1px solid ${C.border}`}}>
             {[["timeline","📋","履歴・チャット"],["tasks","✅","タスク"],["bizcard","🪪","名刺"],["files","📂","資料"]].map(([id,icon,lbl])=>(
               <button key={id} onClick={()=>setActiveDetail(id)} style={{flex:1,padding:"0.5rem",borderRadius:"0.5rem",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.72rem",position:"relative",background:activeDetail===id?C.accent:"transparent",color:activeDetail===id?"white":C.textSub}}>
                 {icon} {lbl}
-                {id==="timeline"&&vendChatUnread>0&&<span style={{position:"absolute",top:3,right:6,background:"#dc2626",color:"white",borderRadius:999,fontSize:"0.5rem",fontWeight:800,padding:"0.05rem 0.25rem",lineHeight:1.4}}>{vendChatUnread}</span>}
+                {id==="timeline"&&vendChatUnread>0&&<span style={{position:"absolute",top:3,right:6,background:"#DA1313",color:"white",borderRadius:999,fontSize:"0.5rem",fontWeight:800,padding:"0.05rem 0.25rem",lineHeight:1.4}}>{vendChatUnread}</span>}
                 {id==="tasks"&&(()=>{const n=(data.tasks||[]).filter(t=>t.salesRef?.id===v.id&&t.status!=="完了").length;return n>0?<span style={{position:"absolute",top:3,right:6,background:C.accent,color:"white",borderRadius:999,fontSize:"0.5rem",fontWeight:800,padding:"0.05rem 0.25rem",lineHeight:1.4}}>{n}</span>:null;})()}
               </button>
             ))}
@@ -22314,7 +22318,7 @@ ${orig}`})
                   <button onClick={()=>{
                     const cur = form.contacts || [];
                     setForm({...form, contacts:[...cur, {id:Date.now()+Math.random(),name:"",role:"",phone:"",email:""}]});
-                  }} style={{background:"#92400e",color:"white",border:"none",borderRadius:"0.4rem",padding:"0.3rem 0.7rem",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>＋ 担当者を追加</button>
+                  }} style={{background:"#92400e",color:"white",border:"none",borderRadius:"0.5rem",padding:"0.3rem 0.7rem",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>＋ 担当者を追加</button>
                 </div>
                 {(()=>{
                   const list = form.contacts || [];
@@ -22334,21 +22338,21 @@ ${orig}`})
                         <div key={c.id} style={{background:"white",border:"1px solid #fde68a",borderRadius:"0.5rem",padding:"0.5rem 0.625rem"}}>
                           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.35rem"}}>
                             <div style={{fontSize:"0.7rem",fontWeight:700,color:"#92400e"}}>担当者 #{idx+1}</div>
-                            <button onClick={()=>removeAt(idx)} style={{background:"none",border:"none",color:"#dc2626",cursor:"pointer",fontSize:"0.7rem",fontWeight:700,padding:"0.1rem 0.3rem",fontFamily:"inherit"}}>🗑 削除</button>
+                            <button onClick={()=>removeAt(idx)} style={{background:"none",border:"none",color:"#DA1313",cursor:"pointer",fontSize:"0.7rem",fontWeight:700,padding:"0.1rem 0.3rem",fontFamily:"inherit"}}>🗑 削除</button>
                           </div>
                           <div style={{display:"flex",flexDirection:"column",gap:"0.35rem"}}>
                             <input value={c.name||""} onChange={e=>updateAt(idx,"name",e.target.value)} placeholder="名前（例：山田 太郎）"
-                              style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
+                              style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.5rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
                             <input value={c.kana||""} onChange={e=>updateAt(idx,"kana",e.target.value)} placeholder="振り仮名（例：やまだ たろう）"
-                              style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
+                              style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.5rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
                             <input value={c.role||""} onChange={e=>updateAt(idx,"role",e.target.value)} placeholder="役職・部署（例：営業部長）"
-                              style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
+                              style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.5rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
                             <input value={c.phone||""} onChange={e=>updateAt(idx,"phone",formatPhone(e.target.value))} placeholder="電話番号（半角に自動変換）" type="tel"
-                              style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
+                              style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.5rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
                             <input value={c.email||""} onChange={e=>updateAt(idx,"email",e.target.value)} placeholder="メールアドレス"
-                              style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
+                              style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.5rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
                             <textarea value={c.note||""} onChange={e=>updateAt(idx,"note",e.target.value)} placeholder="備考（名刺未取得・仮登録メモなど）" rows={2}
-                              style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box",resize:"vertical"}}/>
+                              style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.5rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box",resize:"vertical"}}/>
                           </div>
                         </div>
                       ))}
@@ -22359,7 +22363,7 @@ ${orig}`})
               <FieldLbl label="郵便番号（任意）"><Input value={form.zip||""} onChange={e=>setForm({...form,zip:e.target.value})} placeholder="例: 100-0001"/></FieldLbl>
             <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
               <FieldLbl label="許可種別（複数選択可）">
-                <div style={{display:"flex",flexWrap:"wrap",gap:"0.4rem",padding:"0.5rem",background:"#f8fafc",borderRadius:"6px",border:"1px solid #e2e8f0"}}>
+                <div style={{display:"flex",flexWrap:"wrap",gap:"0.4rem",padding:"0.5rem",background:"#f8fafc",borderRadius:"8px",border:"1px solid #e2e8f0"}}>
                   {PERMIT_TYPES.map(p=>{
                     const checked=(form.permitTypes||[]).includes(p);
                     return (
@@ -22372,9 +22376,9 @@ ${orig}`})
                 </div>
               </FieldLbl>
               <FieldLbl label="bee-net加入">
-                <label style={{display:"flex",alignItems:"center",gap:"0.625rem",cursor:"pointer",padding:"0.625rem 0.875rem",borderRadius:"6px",background:form.beeNet?"#eff6ff":"#f8fafc",border:`1.5px solid ${form.beeNet?"#2563eb":"#e2e8f0"}`,transition:"all 0.15s"}}>
-                  <input type="checkbox" checked={!!form.beeNet} onChange={e=>setForm({...form,beeNet:e.target.checked})} style={{width:18,height:18,accentColor:"#2563eb",cursor:"pointer"}}/>
-                  <span style={{fontSize:"0.85rem",fontWeight:form.beeNet?700:400,color:form.beeNet?"#1d4ed8":"#6b7280"}}>{form.beeNet?"✅ 加入済み":"未加入"}</span>
+                <label style={{display:"flex",alignItems:"center",gap:"0.625rem",cursor:"pointer",padding:"0.625rem 0.875rem",borderRadius:"8px",background:form.beeNet?"#F2F7FF":"#f8fafc",border:`1.5px solid ${form.beeNet?"#0070D4":"#e2e8f0"}`,transition:"all 0.15s"}}>
+                  <input type="checkbox" checked={!!form.beeNet} onChange={e=>setForm({...form,beeNet:e.target.checked})} style={{width:18,height:18,accentColor:"#0070D4",cursor:"pointer"}}/>
+                  <span style={{fontSize:"0.85rem",fontWeight:form.beeNet?700:400,color:form.beeNet?"#1563CA":"#6b7280"}}>{form.beeNet?"✅ 加入済み":"未加入"}</span>
                 </label>
               </FieldLbl>
               <FieldLbl label="備考"><Textarea value={form.notes||""} onChange={e=>setForm({...form,notes:e.target.value})} style={{height:70}}/></FieldLbl>
@@ -22493,7 +22497,7 @@ ${orig}`})
             <div style={{background:"#f8fafc",border:`1px solid ${hasFilter?"#7c3aed":C.border}`,borderRadius:"8px",padding:"0.625rem 0.75rem",marginBottom:"0.75rem"}}>
               <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem",flexWrap:"wrap"}}>
                 <span style={{fontSize:"0.72rem",fontWeight:800,color:C.textSub}}>🔍 絞り込み</span>
-                {hasFilter && <button onClick={clearAll} style={{fontSize:"0.65rem",background:"#fef2f2",color:"#dc2626",border:"1px solid #fca5a5",borderRadius:999,padding:"0.1rem 0.45rem",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>全解除</button>}
+                {hasFilter && <button onClick={clearAll} style={{fontSize:"0.65rem",background:"#fef2f2",color:"#DA1313",border:"1px solid #fca5a5",borderRadius:999,padding:"0.1rem 0.45rem",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>全解除</button>}
                 {hasFilter && <span style={{fontSize:"0.72rem",fontWeight:800,color:"#7c3aed",marginLeft:"auto"}}>{fvCount}件</span>}
               </div>
               {/* フィルター追加ボタン群 */}
@@ -22526,7 +22530,7 @@ ${orig}`})
               {selChips.length > 0 && (
                 <div style={{display:"flex",gap:"0.25rem",flexWrap:"wrap",paddingTop:"0.4rem",borderTop:`1px dashed ${C.border}`}}>
                   {selChips.map(chip => (
-                    <span key={chip.key} style={{display:"inline-flex",alignItems:"center",gap:"0.25rem",fontSize:"0.66rem",background:"#eff6ff",color:C.accent,padding:"0.15rem 0.5rem",borderRadius:999,fontWeight:700,border:`1px solid ${C.accent}30`}}>
+                    <span key={chip.key} style={{display:"inline-flex",alignItems:"center",gap:"0.25rem",fontSize:"0.66rem",background:"#F2F7FF",color:C.accent,padding:"0.15rem 0.5rem",borderRadius:999,fontWeight:700,border:`1px solid ${C.accent}30`}}>
                       {chip.label}
                       <button onClick={chip.remove} style={{background:"none",border:"none",color:C.accent,cursor:"pointer",padding:0,fontSize:"0.7rem",fontWeight:800,lineHeight:1}}>×</button>
                     </span>
@@ -22559,7 +22563,7 @@ ${orig}`})
             <div style={{background:"#fef2f2",border:"1.5px solid #fca5a5",borderRadius:"8px",padding:"0.6rem 0.85rem",marginBottom:"0.75rem",display:"flex",alignItems:"center",gap:"0.6rem",flexWrap:"wrap"}}>
               <span style={{fontSize:"1.1rem",flexShrink:0}}>⚠️</span>
               <div style={{flex:1,minWidth:0}}>
-                <div style={{fontSize:"0.78rem",fontWeight:800,color:"#dc2626"}}>業者の重複が検出されました（{dupGroups.length}グループ・{dupCount}件削減可能）</div>
+                <div style={{fontSize:"0.78rem",fontWeight:800,color:"#DA1313"}}>業者の重複が検出されました（{dupGroups.length}グループ・{dupCount}件削減可能）</div>
                 <div style={{fontSize:"0.7rem",color:"#991b1b",marginTop:"0.15rem"}}>
                   例: {dupGroups.slice(0,2).map(([_,arr])=>arr[0].name).join("、")}{dupGroups.length>2?"…":""}
                 </div>
@@ -22577,7 +22581,7 @@ ${orig}`})
                 setMergeSelected(new Set(groups.map(g=>g.groupKey)));
                 setMergePreview({groups, focusType:"vendor"});
                 console.log("[MyDesk] state updated; modal should appear");
-              }} style={{padding:"0.4rem 0.75rem",borderRadius:"6px",border:"none",background:"#dc2626",color:"white",fontWeight:800,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🔍 確認して統合</button>
+              }} style={{padding:"0.4rem 0.75rem",borderRadius:"8px",border:"none",background:"#DA1313",color:"white",fontWeight:800,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🔍 確認して統合</button>
             </div>
           );
         })()}
@@ -22589,15 +22593,15 @@ ${orig}`})
               style={{width:"100%",padding:"0.6rem 0.75rem 0.6rem 2.4rem",borderRadius:"8px",border:`1.5px solid ${C.border}`,fontSize:"16px",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
           </div>
           <button onClick={()=>setBulkMode(v=>{if(v){resetBulk();return false;}setBulkSelected(new Set());return true;})}
-            style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:`1.5px solid ${bulkMode?"#2563eb":C.border}`,background:bulkMode?"#eff6ff":"white",color:bulkMode?"#1d4ed8":C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>☑️</button>
+            style={{padding:"0.45rem 0.625rem",borderRadius:"8px",border:`1.5px solid ${bulkMode?"#0070D4":C.border}`,background:bulkMode?"#F2F7FF":"white",color:bulkMode?"#1563CA":C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>☑️</button>
           <button onClick={()=>setSheet("importVendor")} title="CSV取込"
-            style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📥 取込</button>
+            style={{padding:"0.45rem 0.625rem",borderRadius:"8px",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📥 取込</button>
           <button onClick={()=>{setImportPreview(null);setImportErr("");setSheet("importTsr");}} title="TSR架電結果CSVを取込（ステータス・アプローチ・失注理由を反映）"
-            style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:"1.5px solid #0891b2",background:"#ecfeff",color:"#0e7490",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📞TSR</button>
+            style={{padding:"0.45rem 0.625rem",borderRadius:"8px",border:"1.5px solid #0891b2",background:"#ecfeff",color:"#0e7490",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📞TSR</button>
           <button onClick={()=>{setImportPreview(null);setImportErr("");setSheet("importDustalk");}} title="DUSTALK(Bubble)の登録業者と突合して加入済/仮登録を更新"
-            style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:"1.5px solid #2563eb",background:"#eff6ff",color:"#1d4ed8",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🚚DUSTALK</button>
+            style={{padding:"0.45rem 0.625rem",borderRadius:"8px",border:"1.5px solid #0070D4",background:"#F2F7FF",color:"#1563CA",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🚚DUSTALK</button>
           <button onClick={()=>{setImportPreview(null);setImportErr("");setSheet("importPermitVendors");}} title="許可業者一覧CSVを取込（住所・電話・対応自治体・備考を上書き追加、ステータスは維持）"
-            style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:"1.5px solid #ef4444",background:"#fef2f2",color:"#b91c1c",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🚮 許可取込</button>
+            style={{padding:"0.45rem 0.625rem",borderRadius:"8px",border:"1.5px solid #ef4444",background:"#fef2f2",color:"#b91c1c",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🚮 許可取込</button>
           <button onClick={()=>{
             // フィルター条件に該当する業者リストを取得
             const list = bulkMode && bulkSelected.size>0
@@ -22613,11 +22617,11 @@ ${orig}`})
               : "全件";
             exportVendorList(list, desc);
           }} title="エクセル出力（フィルター済み・全アプローチ含む）"
-            style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:"1.5px solid #10b981",background:"#ecfdf5",color:"#059669",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📊 出力</button>
+            style={{padding:"0.45rem 0.625rem",borderRadius:"8px",border:"1.5px solid #10b981",background:"#ecfdf5",color:"#009122",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📊 出力</button>
           <button onClick={backfillAssigneesFromApproach} title="アプローチ実行者を担当者に一括補完（業者・企業・自治体すべて）"
-            style={{padding:"0.45rem 0.625rem",borderRadius:"6px",border:"1.5px solid #f59e0b",background:"#fffbeb",color:"#92400e",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🔄</button>
+            style={{padding:"0.45rem 0.625rem",borderRadius:"8px",border:"1.5px solid #f59e0b",background:"#fffbeb",color:"#92400e",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🔄</button>
           <button onClick={()=>{setDeleteModal({type:"vendor"});setDmSearch("");setDmFilter("");setDmSelected(new Set());}}
-            style={{padding:"0.45rem 0.75rem",borderRadius:"6px",border:"1.5px solid #fca5a5",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🗑 削除</button>
+            style={{padding:"0.45rem 0.75rem",borderRadius:"8px",border:"1.5px solid #fca5a5",background:"#fff1f2",color:"#DA1313",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🗑 削除</button>
           <Btn size="sm" onClick={()=>{setForm({status:"未接触",municipalityIds:[],assigneeIds:[]});setSheet("addVendor");}}>＋</Btn>
         </div>
         {vendors.length===0&&(
@@ -22647,7 +22651,7 @@ ${orig}`})
                   const lastMemo=(v.memos||[]).slice(-1)[0];
                   return (
                     <div onClick={()=>{saveSalesScroll("vendor");setActiveVendor(v.id);setActiveDetail("timeline");}}
-                      style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.625rem 0.75rem",background:"white",borderRadius:"6px",border:`1.5px solid ${C.border}`,cursor:"pointer",boxShadow:"0 1px 2px rgba(0,0,0,0.04)",margin:"0 0 0.3rem 0",height:"calc(100% - 0.3rem)",boxSizing:"border-box",overflow:"hidden"}}
+                      style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.625rem 0.75rem",background:"white",borderRadius:"8px",border:`1.5px solid ${C.border}`,cursor:"pointer",boxShadow:"0 1px 2px rgba(0,17,62,0.05)",margin:"0 0 0.3rem 0",height:"calc(100% - 0.3rem)",boxSizing:"border-box",overflow:"hidden"}}
                       onMouseEnter={e=>e.currentTarget.style.borderColor=C.accent}
                       onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}>
                       <div style={{flex:1,minWidth:0}}>
@@ -22684,7 +22688,7 @@ ${orig}`})
                   const lastMemo=(v.memos||[]).slice(-1)[0];
                   return (
                     <div onClick={()=>{saveSalesScroll("vendor");setActiveVendor(v.id);setActiveDetail("timeline");}}
-                      style={{background:"white",border:`1.5px solid ${C.border}`,borderRadius:"8px",padding:"0.75rem 0.875rem",cursor:"pointer",boxShadow:"0 1px 2px rgba(0,0,0,0.04)",margin:"0 0 0.5rem 0",height:"calc(100% - 0.5rem)",boxSizing:"border-box",overflow:"hidden",display:"flex",flexDirection:"column",gap:"0.3rem"}}>
+                      style={{background:"white",border:`1.5px solid ${C.border}`,borderRadius:"8px",padding:"0.75rem 0.875rem",cursor:"pointer",boxShadow:"0 1px 2px rgba(0,17,62,0.05)",margin:"0 0 0.5rem 0",height:"calc(100% - 0.5rem)",boxSizing:"border-box",overflow:"hidden",display:"flex",flexDirection:"column",gap:"0.3rem"}}>
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:"0.4rem"}}>
                         <span style={{fontWeight:700,fontSize:"0.92rem",color:C.text,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{v.name}</span>
                         <SChip s={v.status} map={VENDOR_STATUS}/>
@@ -22704,7 +22708,7 @@ ${orig}`})
         {!vendSearch&&vendFilterAssignees.length===0&&(()=>{
           const items = vendorsByStatus[vendStatusTab]||[];
           return (
-            <div style={{background:"white",borderRadius:"8px",border:`1.5px solid ${C.border}`,overflow:"hidden",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
+            <div style={{background:"white",borderRadius:"8px",border:`1.5px solid ${C.border}`,overflow:"hidden",boxShadow:"0 1px 2px rgba(0,17,62,0.05)"}}>
               {/* ステータスタブ（横スクロール可能） */}
               <div style={{display:"flex",overflowX:"auto",borderBottom:`1px solid ${C.borderLight}`,WebkitOverflowScrolling:"touch",scrollbarWidth:"thin"}}>
                 {Object.entries(VENDOR_STATUS).map(([s,meta])=>{
@@ -22743,7 +22747,7 @@ ${orig}`})
                           const approachIcon=APPROACH_ICON_MAP[lastType]||"📝";
                           return (
                             <div onClick={()=>{if(bulkMode){setBulkSelected(prev=>{const n=new Set(prev);n.has(v.id)?n.delete(v.id):n.add(v.id);return n;});return;}saveSalesScroll("vendor");setActiveVendor(v.id);setActiveDetail("timeline");}}
-                              style={{padding:"0.55rem 0.875rem",cursor:"pointer",borderTop:i>0?`1px solid ${C.borderLight}`:"none",background:bulkSelected.has(v.id)?"#eff6ff":"white",display:"flex",flexDirection:"column",gap:"0.3rem",transition:"background 0.1s",height:"100%",boxSizing:"border-box",overflow:"hidden",justifyContent:"center"}}
+                              style={{padding:"0.55rem 0.875rem",cursor:"pointer",borderTop:i>0?`1px solid ${C.borderLight}`:"none",background:bulkSelected.has(v.id)?"#F2F7FF":"white",display:"flex",flexDirection:"column",gap:"0.3rem",transition:"background 0.1s",height:"100%",boxSizing:"border-box",overflow:"hidden",justifyContent:"center"}}
                               onMouseEnter={e=>{if(!bulkSelected.has(v.id))e.currentTarget.style.background=C.bg;}}
                               onMouseLeave={e=>{if(!bulkSelected.has(v.id))e.currentTarget.style.background="white";}}>
                               {/* 1行目: 業者名 + 先方担当 + 自社担当 */}
@@ -22796,7 +22800,7 @@ ${orig}`})
             <FieldLbl label="郵便番号（任意）"><Input value={form.zip||""} onChange={e=>setForm({...form,zip:e.target.value})} placeholder="例: 100-0001"/></FieldLbl>
             <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
             <FieldLbl label="許可種別（複数選択可）">
-                <div style={{display:"flex",flexWrap:"wrap",gap:"0.4rem",padding:"0.5rem",background:"#f8fafc",borderRadius:"6px",border:"1px solid #e2e8f0"}}>
+                <div style={{display:"flex",flexWrap:"wrap",gap:"0.4rem",padding:"0.5rem",background:"#f8fafc",borderRadius:"8px",border:"1px solid #e2e8f0"}}>
                   {PERMIT_TYPES.map(p=>{
                     const checked=(form.permitTypes||[]).includes(p);
                     return (
@@ -22809,9 +22813,9 @@ ${orig}`})
                 </div>
             </FieldLbl>
             <FieldLbl label="bee-net加入">
-                <label style={{display:"flex",alignItems:"center",gap:"0.625rem",cursor:"pointer",padding:"0.625rem 0.875rem",borderRadius:"6px",background:form.beeNet?"#eff6ff":"#f8fafc",border:`1.5px solid ${form.beeNet?"#2563eb":"#e2e8f0"}`,transition:"all 0.15s"}}>
-                  <input type="checkbox" checked={!!form.beeNet} onChange={e=>setForm({...form,beeNet:e.target.checked})} style={{width:18,height:18,accentColor:"#2563eb",cursor:"pointer"}}/>
-                  <span style={{fontSize:"0.85rem",fontWeight:form.beeNet?700:400,color:form.beeNet?"#1d4ed8":"#6b7280"}}>{form.beeNet?"✅ 加入済み":"未加入"}</span>
+                <label style={{display:"flex",alignItems:"center",gap:"0.625rem",cursor:"pointer",padding:"0.625rem 0.875rem",borderRadius:"8px",background:form.beeNet?"#F2F7FF":"#f8fafc",border:`1.5px solid ${form.beeNet?"#0070D4":"#e2e8f0"}`,transition:"all 0.15s"}}>
+                  <input type="checkbox" checked={!!form.beeNet} onChange={e=>setForm({...form,beeNet:e.target.checked})} style={{width:18,height:18,accentColor:"#0070D4",cursor:"pointer"}}/>
+                  <span style={{fontSize:"0.85rem",fontWeight:form.beeNet?700:400,color:form.beeNet?"#1563CA":"#6b7280"}}>{form.beeNet?"✅ 加入済み":"未加入"}</span>
                 </label>
               </FieldLbl>
             <FieldLbl label="備考"><Textarea value={form.notes||""} onChange={e=>setForm({...form,notes:e.target.value})} style={{height:60}}/></FieldLbl>
@@ -22890,11 +22894,11 @@ ${orig}`})
                 <input type="file" accept=".csv,text/csv" onChange={handleFile} style={{display:"none"}}/>
               </label>
               {importProgress&&<div style={{marginTop:"0.75rem",fontSize:"0.78rem",color:"#0e7490",fontWeight:700}}>⏳ {importProgress}</div>}
-              {err&&<div style={{marginTop:"0.75rem",fontSize:"0.78rem",color:"#dc2626",fontWeight:700}}>⚠️ {err}</div>}
+              {err&&<div style={{marginTop:"0.75rem",fontSize:"0.78rem",color:"#DA1313",fontWeight:700}}>⚠️ {err}</div>}
               {preview&&stats&&(
                 <div style={{marginTop:"1rem"}}>
                   <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap",marginBottom:"0.75rem"}}>
-                    <div style={{flex:1,minWidth:100,background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:"8px",padding:"0.5rem 0.7rem"}}><div style={{fontSize:"0.62rem",color:"#1d4ed8",fontWeight:700}}>既存を更新</div><div style={{fontSize:"1.3rem",fontWeight:800,color:"#1e3a8a"}}>{stats.upd}</div></div>
+                    <div style={{flex:1,minWidth:100,background:"#F2F7FF",border:"1px solid #bfdbfe",borderRadius:"8px",padding:"0.5rem 0.7rem"}}><div style={{fontSize:"0.62rem",color:"#1563CA",fontWeight:700}}>既存を更新</div><div style={{fontSize:"1.3rem",fontWeight:800,color:"#1e3a8a"}}>{stats.upd}</div></div>
                     <div style={{flex:1,minWidth:100,background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:"8px",padding:"0.5rem 0.7rem"}}><div style={{fontSize:"0.62rem",color:"#15803d",fontWeight:700}}>新規作成</div><div style={{fontSize:"1.3rem",fontWeight:800,color:"#166534"}}>{stats.neo}</div></div>
                     <div style={{flex:1,minWidth:100,background:"#f8fafc",border:`1px solid ${C.border}`,borderRadius:"8px",padding:"0.5rem 0.7rem"}}><div style={{fontSize:"0.62rem",color:C.textSub,fontWeight:700}}>合計行</div><div style={{fontSize:"1.3rem",fontWeight:800,color:C.text}}>{preview.rows.length}</div></div>
                   </div>
@@ -22902,14 +22906,14 @@ ${orig}`})
                   <div style={{display:"flex",gap:"0.35rem",flexWrap:"wrap",marginBottom:"0.75rem"}}>
                     {Object.entries(stats.byS).map(([k,n])=>(<span key={k} style={{fontSize:"0.68rem",fontWeight:700,padding:"0.15rem 0.5rem",borderRadius:999,background:(VENDOR_STATUS[k]?.bg)||"#f1f5f9",color:(VENDOR_STATUS[k]?.color)||C.textSub}}>{k} {n}</span>))}
                   </div>
-                  {preview.unmapped.length>0&&(<div style={{marginBottom:"0.75rem",fontSize:"0.72rem",color:"#92400e",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:"6px",padding:"0.4rem 0.6rem"}}>⚠️ 未対応のステータス（変更なしで取込）: {preview.unmapped.join("、")}</div>)}
+                  {preview.unmapped.length>0&&(<div style={{marginBottom:"0.75rem",fontSize:"0.72rem",color:"#92400e",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:"8px",padding:"0.4rem 0.6rem"}}>⚠️ 未対応のステータス（変更なしで取込）: {preview.unmapped.join("、")}</div>)}
                   <div style={{fontSize:"0.72rem",color:C.textSub,fontWeight:700,marginBottom:"0.3rem"}}>プレビュー（先頭8件）</div>
-                  <div style={{maxHeight:220,overflowY:"auto",border:`1px solid ${C.borderLight}`,borderRadius:"6px"}}>
+                  <div style={{maxHeight:220,overflowY:"auto",border:`1px solid ${C.borderLight}`,borderRadius:"8px"}}>
                     {preview.rows.slice(0,8).map((r,i)=>(
                       <div key={i} style={{padding:"0.4rem 0.6rem",borderTop:i>0?`1px solid ${C.borderLight}`:"none",fontSize:"0.72rem"}}>
                         <div style={{display:"flex",gap:"0.4rem",alignItems:"center"}}>
                           <span style={{fontWeight:700,color:C.text}}>{r.name}</span>
-                          <span style={{fontSize:"0.6rem",fontWeight:700,padding:"0.05rem 0.35rem",borderRadius:999,background:r.matchIdx>=0?"#dbeafe":"#dcfce7",color:r.matchIdx>=0?"#1d4ed8":"#166534"}}>{r.matchIdx>=0?"更新":"新規"}</span>
+                          <span style={{fontSize:"0.6rem",fontWeight:700,padding:"0.05rem 0.35rem",borderRadius:999,background:r.matchIdx>=0?"#E6F0FF":"#dcfce7",color:r.matchIdx>=0?"#1563CA":"#166534"}}>{r.matchIdx>=0?"更新":"新規"}</span>
                           {r.status&&<span style={{fontSize:"0.6rem",fontWeight:700,padding:"0.05rem 0.35rem",borderRadius:999,background:(VENDOR_STATUS[r.status]?.bg)||"#f1f5f9",color:(VENDOR_STATUS[r.status]?.color)||C.textSub}}>{r.status}</span>}
                         </div>
                         {r.approaches.map((a,k)=>(<div key={k} style={{color:C.textMuted,whiteSpace:"pre-wrap",marginTop:"0.15rem",paddingLeft:"0.3rem",borderLeft:`2px solid ${C.borderLight}`}}>{a.note}{a.date?`  (${a.date})`:""}</div>))}
@@ -22990,19 +22994,19 @@ ${orig}`})
                 📄 CSVファイルを選択
                 <input type="file" accept=".csv,text/csv" onChange={handleFile} style={{display:"none"}}/>
               </label>
-              {err&&<div style={{marginTop:"0.75rem",fontSize:"0.78rem",color:"#dc2626",fontWeight:700}}>⚠️ {err}</div>}
+              {err&&<div style={{marginTop:"0.75rem",fontSize:"0.78rem",color:"#DA1313",fontWeight:700}}>⚠️ {err}</div>}
               {preview&&(
                 <div style={{marginTop:"1rem"}}>
                   <div style={{display:"flex",gap:"0.5rem",marginBottom:"0.75rem"}}>
-                    <div style={{flex:1,background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:"8px",padding:"0.5rem 0.7rem"}}><div style={{fontSize:"0.62rem",color:"#1d4ed8",fontWeight:700}}>更新（上書き）</div><div style={{fontSize:"1.3rem",fontWeight:800,color:"#1e40af"}}>{preview.upd}</div></div>
+                    <div style={{flex:1,background:"#F2F7FF",border:"1px solid #bfdbfe",borderRadius:"8px",padding:"0.5rem 0.7rem"}}><div style={{fontSize:"0.62rem",color:"#1563CA",fontWeight:700}}>更新（上書き）</div><div style={{fontSize:"1.3rem",fontWeight:800,color:"#295FA6"}}>{preview.upd}</div></div>
                     <div style={{flex:1,background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:"8px",padding:"0.5rem 0.7rem"}}><div style={{fontSize:"0.62rem",color:"#15803d",fontWeight:700}}>新規追加</div><div style={{fontSize:"1.3rem",fontWeight:800,color:"#166534"}}>{preview.neu}</div></div>
                   </div>
-                  {preview.unmatchedMunis.length>0&&(<div style={{marginBottom:"0.75rem",fontSize:"0.72rem",color:"#92400e",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:"6px",padding:"0.4rem 0.6rem"}}>⚠️ MyDeskに無い自治体（未設定になります）: {preview.unmatchedMunis.join("、")}</div>)}
+                  {preview.unmatchedMunis.length>0&&(<div style={{marginBottom:"0.75rem",fontSize:"0.72rem",color:"#92400e",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:"8px",padding:"0.4rem 0.6rem"}}>⚠️ MyDeskに無い自治体（未設定になります）: {preview.unmatchedMunis.join("、")}</div>)}
                   <div style={{fontSize:"0.72rem",color:C.textSub,fontWeight:700,marginBottom:"0.3rem"}}>プレビュー（先頭12件 / 全{preview.items.length}件）</div>
-                  <div style={{maxHeight:240,overflowY:"auto",border:`1px solid ${C.borderLight}`,borderRadius:"6px"}}>
+                  <div style={{maxHeight:240,overflowY:"auto",border:`1px solid ${C.borderLight}`,borderRadius:"8px"}}>
                     {preview.items.slice(0,12).map((it,i)=>(
                       <div key={i} style={{padding:"0.4rem 0.6rem",borderTop:i>0?`1px solid ${C.borderLight}`:"none",fontSize:"0.72rem",display:"flex",gap:"0.4rem",alignItems:"center",flexWrap:"wrap"}}>
-                        <span style={{fontSize:"0.6rem",fontWeight:700,padding:"0.05rem 0.35rem",borderRadius:999,background:it.mode==="更新"?"#dbeafe":"#dcfce7",color:it.mode==="更新"?"#1e40af":"#166534"}}>{it.mode}</span>
+                        <span style={{fontSize:"0.6rem",fontWeight:700,padding:"0.05rem 0.35rem",borderRadius:999,background:it.mode==="更新"?"#E6F0FF":"#dcfce7",color:it.mode==="更新"?"#295FA6":"#166534"}}>{it.mode}</span>
                         <span style={{fontWeight:700,color:C.text}}>{it.name}</span>
                         <span style={{color:C.textMuted}}>{it.phone||"-"} / 自治体{it.muniIds.length}</span>
                       </div>
@@ -23086,12 +23090,12 @@ ${orig}`})
                 Macで <code>fetch_dustalk.py</code> を実行して出力した <strong>dustalk_companies.csv</strong> を選択してください。<br/>
                 <span style={{fontSize:"0.72rem",color:C.textSub}}>DUSTALKで<strong>アクティブ</strong>→<strong>加入済</strong>／登録あるが非アクティブ→<strong>仮登録</strong>／現在「加入済」でDUSTALKに無い→<strong>仮登録</strong>に降格。断り・見送り等は変更しません。会社名（正規化）＋電話で照合。</span>
               </div>
-              <label style={{display:"inline-flex",alignItems:"center",gap:"0.4rem",padding:"0.6rem 1rem",background:"#eff6ff",border:"1.5px solid #2563eb",borderRadius:"8px",color:"#1d4ed8",fontWeight:700,fontSize:"0.82rem",cursor:"pointer"}}>
+              <label style={{display:"inline-flex",alignItems:"center",gap:"0.4rem",padding:"0.6rem 1rem",background:"#F2F7FF",border:"1.5px solid #0070D4",borderRadius:"8px",color:"#1563CA",fontWeight:700,fontSize:"0.82rem",cursor:"pointer"}}>
                 📄 CSVファイルを選択
                 <input type="file" accept=".csv,text/csv" onChange={handleFile} style={{display:"none"}}/>
               </label>
-              {importProgress&&<div style={{marginTop:"0.75rem",fontSize:"0.78rem",color:"#1d4ed8",fontWeight:700}}>⏳ {importProgress}</div>}
-              {err&&<div style={{marginTop:"0.75rem",fontSize:"0.78rem",color:"#dc2626",fontWeight:700}}>⚠️ {err}</div>}
+              {importProgress&&<div style={{marginTop:"0.75rem",fontSize:"0.78rem",color:"#1563CA",fontWeight:700}}>⏳ {importProgress}</div>}
+              {err&&<div style={{marginTop:"0.75rem",fontSize:"0.78rem",color:"#DA1313",fontWeight:700}}>⚠️ {err}</div>}
               {preview&&st&&(
                 <div style={{marginTop:"1rem"}}>
                   <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap",marginBottom:"0.75rem"}}>
@@ -23099,9 +23103,9 @@ ${orig}`})
                     <div style={{flex:1,minWidth:90,background:"#ecfeff",border:"1px solid #a5f3fc",borderRadius:"8px",padding:"0.5rem 0.7rem"}}><div style={{fontSize:"0.62rem",color:"#0e7490",fontWeight:700}}>→ 仮登録</div><div style={{fontSize:"1.3rem",fontWeight:800,color:"#155e75"}}>{st.prov}</div></div>
                     <div style={{flex:1,minWidth:90,background:"#f8fafc",border:`1px solid ${C.border}`,borderRadius:"8px",padding:"0.5rem 0.7rem"}}><div style={{fontSize:"0.62rem",color:C.textSub,fontWeight:700}}>DUSTALK(内アクティブ)</div><div style={{fontSize:"1.3rem",fontWeight:800,color:C.text}}>{preview.duTotal}<span style={{fontSize:"0.7rem",color:C.textMuted}}>({preview.duActive})</span></div></div>
                   </div>
-                  {preview.unmatchedActive.length>0&&(<div style={{marginBottom:"0.75rem",fontSize:"0.72rem",color:"#92400e",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:"6px",padding:"0.4rem 0.6rem"}}>⚠️ DUSTALKでアクティブだがMyDesk未登録: {preview.unmatchedActive.length}件<br/><span style={{color:"#a16207"}}>{preview.unmatchedActive.slice(0,20).join("、")}{preview.unmatchedActive.length>20?" …":""}</span></div>)}
+                  {preview.unmatchedActive.length>0&&(<div style={{marginBottom:"0.75rem",fontSize:"0.72rem",color:"#92400e",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:"8px",padding:"0.4rem 0.6rem"}}>⚠️ DUSTALKでアクティブだがMyDesk未登録: {preview.unmatchedActive.length}件<br/><span style={{color:"#a16207"}}>{preview.unmatchedActive.slice(0,20).join("、")}{preview.unmatchedActive.length>20?" …":""}</span></div>)}
                   <div style={{fontSize:"0.72rem",color:C.textSub,fontWeight:700,marginBottom:"0.3rem"}}>変更プレビュー（先頭10件 / 全{preview.changes.length}件）</div>
-                  <div style={{maxHeight:220,overflowY:"auto",border:`1px solid ${C.borderLight}`,borderRadius:"6px"}}>
+                  <div style={{maxHeight:220,overflowY:"auto",border:`1px solid ${C.borderLight}`,borderRadius:"8px"}}>
                     {preview.changes.slice(0,10).map((c,i)=>(
                       <div key={i} style={{padding:"0.35rem 0.6rem",borderTop:i>0?`1px solid ${C.borderLight}`:"none",fontSize:"0.72rem",display:"flex",gap:"0.4rem",alignItems:"center",flexWrap:"wrap"}}>
                         <span style={{fontWeight:700,color:C.text}}>{c.name}</span>
@@ -23282,28 +23286,28 @@ ${orig}`})
                   <div style={{fontSize:"0.8rem",fontWeight:600,color:C.textSub}}>{importProgress?"処理中…":"クリックしてCSVを選択"}</div>
                   <input type="file" accept=".csv,.txt" onChange={handleFile} disabled={!!importProgress} style={{display:"none"}}/>
                 </label>
-                {importProgress&&<div style={{marginTop:"0.5rem",fontSize:"0.78rem",color:C.accent,background:"#eff6ff",borderRadius:"0.5rem",padding:"0.5rem 0.75rem",display:"flex",alignItems:"center",gap:"0.5rem"}}><span style={{display:"inline-block",width:14,height:14,border:`2px solid ${C.accent}`,borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.7s linear infinite"}}/>{importProgress}</div>}
-                {err&&<div style={{marginTop:"0.5rem",fontSize:"0.78rem",color:"#dc2626",background:"#fff1f2",borderRadius:"0.5rem",padding:"0.5rem 0.75rem"}}>{err}</div>}
+                {importProgress&&<div style={{marginTop:"0.5rem",fontSize:"0.78rem",color:C.accent,background:"#F2F7FF",borderRadius:"0.5rem",padding:"0.5rem 0.75rem",display:"flex",alignItems:"center",gap:"0.5rem"}}><span style={{display:"inline-block",width:14,height:14,border:`2px solid ${C.accent}`,borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.7s linear infinite"}}/>{importProgress}</div>}
+                {err&&<div style={{marginTop:"0.5rem",fontSize:"0.78rem",color:"#DA1313",background:"#fff1f2",borderRadius:"0.5rem",padding:"0.5rem 0.75rem"}}>{err}</div>}
               </div>
               {preview&&(
                 <div>
                   <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem",flexWrap:"wrap"}}>
                     <span style={{fontWeight:700,fontSize:"0.82rem",color:C.text}}>プレビュー</span>
                     <span style={{background:"#d1fae5",color:"#065f46",borderRadius:999,fontSize:"0.7rem",fontWeight:700,padding:"0.1rem 0.5rem"}}>全{preview.length}件</span>
-                    <span style={{background:"#dbeafe",color:"#1e40af",borderRadius:999,fontSize:"0.7rem",fontWeight:700,padding:"0.1rem 0.5rem"}}>新規追加{addCount}件</span>
+                    <span style={{background:"#E6F0FF",color:"#295FA6",borderRadius:999,fontSize:"0.7rem",fontWeight:700,padding:"0.1rem 0.5rem"}}>新規追加{addCount}件</span>
                     {preview.length-addCount>0&&<span style={{background:"#e0e7ff",color:"#3730a3",borderRadius:999,fontSize:"0.7rem",fontWeight:700,padding:"0.1rem 0.5rem"}}>既存に書き足し{preview.length-addCount}件</span>}
                   </div>
                   {/* 重複チェックON/OFFトグル */}
                   <label style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.625rem",cursor:"pointer",fontSize:"0.76rem",color:C.textSub,background:vendorDedup?"#f8fafc":"#fef2f2",border:`1px solid ${vendorDedup?C.borderLight:"#fecaca"}`,borderRadius:"0.5rem",padding:"0.5rem 0.7rem"}}>
                     <input type="checkbox" checked={vendorDedup} onChange={e=>setVendorDedup(e.target.checked)} style={{width:16,height:16,cursor:"pointer"}}/>
                     <span>
-                      <span style={{fontWeight:700,color:vendorDedup?C.text:"#dc2626"}}>{vendorDedup?"重複チェックON":"重複チェックOFF（全件追加）"}</span>
+                      <span style={{fontWeight:700,color:vendorDedup?C.text:"#DA1313"}}>{vendorDedup?"重複チェックON":"重複チェックOFF（全件追加）"}</span>
                       <span style={{display:"block",fontSize:"0.68rem",color:C.textMuted,marginTop:"0.1rem"}}>
                         {vendorDedup?"名前・電話・住所のうち2つ以上一致する既存業者には書き足し（消さず追加）します":"既存と重複していても全て新規追加します"}
                       </span>
                     </span>
                   </label>
-                  <div style={{maxHeight:200,overflowY:"auto",border:`1px solid ${C.border}`,borderRadius:"6px",overflow:"hidden"}}>
+                  <div style={{maxHeight:200,overflowY:"auto",border:`1px solid ${C.border}`,borderRadius:"8px",overflow:"hidden"}}>
                     {preview.slice(0,20).map((r,i)=>{
                       const dup=previewIsDup(r);
                       return (
@@ -23339,7 +23343,7 @@ ${orig}`})
               <div style={{padding:"0.75rem 1.25rem",borderBottom:"1px solid #e5e5ea",display:"flex",alignItems:"center",gap:"0.75rem",background:"white",position:"sticky",top:0,zIndex:10}}>
                 <div style={{flex:1,fontWeight:700,fontSize:"0.95rem",color:C.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",minWidth:0}}>{v.name}</div>
                 {v.phone&&<div style={{flexShrink:0}}><PhoneLink number={v.phone} size="sm" onMtg={()=>setMtgModal({entityKey:"vendors",entityId:v.id,entityName:v.name})} onCallRecord={()=>setMtgModal({entityKey:"vendors",entityId:v.id,entityName:v.name,autoStart:true,callMode:true})}/></div>}
-                <button onClick={()=>setActiveVendor(null)} style={{background:"none",border:"1px solid #e5e5ea",borderRadius:"6px",padding:"0.3rem 0.6rem",cursor:"pointer",fontSize:"0.8rem",color:C.textSub,flexShrink:0}}>✕</button>
+                <button onClick={()=>setActiveVendor(null)} style={{background:"none",border:"1px solid #e5e5ea",borderRadius:"8px",padding:"0.3rem 0.6rem",cursor:"pointer",fontSize:"0.8rem",color:C.textSub,flexShrink:0}}>✕</button>
               </div>
               <div style={{padding:"1rem 1.5rem"}}>{renderVendorDetail(v)}</div>
             </div>
@@ -23391,7 +23395,7 @@ ${orig}`})
               </div>
             </div>
             <button onClick={()=>{setForm({...muni});setSheet("editMuni");}} title="編集"
-              style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"6px",padding:"0.3rem 0.55rem",cursor:"pointer",fontSize:"0.8rem",color:C.textSub,flexShrink:0}}>✏️</button>
+              style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"8px",padding:"0.3rem 0.55rem",cursor:"pointer",fontSize:"0.8rem",color:C.textSub,flexShrink:0}}>✏️</button>
           </div>
           {/* ステータスバッジ群（クリックで変更可能） */}
           <div style={{display:"flex",gap:"0.35rem",flexWrap:"wrap",alignItems:"center",marginBottom:"0.5rem"}}>
@@ -23421,8 +23425,8 @@ ${orig}`})
           </div>
           {/* 統計（4列） */}
           <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:"0.3rem",marginBottom:"0.5rem"}}>
-            {[["業者数",mvend.length,"#2563eb"],["加入済",joined,"#059669"],["断り",mvend.filter(v=>v.status==="断り").length,"#dc2626"],["商談中",mvend.filter(v=>v.status==="商談中").length,"#d97706"]].map(([l,n,c])=>(
-              <div key={l} style={{background:C.bg,borderRadius:"0.4rem",padding:"0.35rem 0.3rem",textAlign:"center"}}>
+            {[["業者数",mvend.length,"#0070D4"],["加入済",joined,"#009122"],["断り",mvend.filter(v=>v.status==="断り").length,"#DA1313"],["商談中",mvend.filter(v=>v.status==="商談中").length,"#d97706"]].map(([l,n,c])=>(
+              <div key={l} style={{background:C.bg,borderRadius:"0.5rem",padding:"0.35rem 0.3rem",textAlign:"center"}}>
                 <div style={{fontSize:"0.58rem",color:C.textMuted,marginBottom:"0.1rem"}}>{l}</div>
                 <div style={{fontSize:"0.95rem",fontWeight:800,color:c,lineHeight:1}}>{n}</div>
               </div>
@@ -23446,18 +23450,18 @@ ${orig}`})
               : (hasLegacy ? [{id:"legacy",name:muni.contactName,email:muni.contactEmail,phone:muni.contactPhone,role:""}] : []);
             if(allContacts.length===0) return null;
             return (
-              <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:6,padding:"0.5rem 0.7rem",marginBottom:muni.notes?"0.5rem":0}}>
+              <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:8,padding:"0.5rem 0.7rem",marginBottom:muni.notes?"0.5rem":0}}>
                 <div style={{fontSize:"0.62rem",fontWeight:700,color:"#0369a1",marginBottom:"0.3rem",letterSpacing:"0.04em"}}>👤 行政担当者（{allContacts.length}名）</div>
                 <div style={{display:"flex",flexDirection:"column",gap:"0.35rem"}}>
                   {allContacts.map(c=>(
                     <div key={c.id} style={{fontSize:"0.72rem",color:"#0c4a6e",display:"flex",flexWrap:"wrap",alignItems:"center",gap:"0.4rem"}}>
                       <span style={{fontWeight:700}}>{c.name||"（名前未設定）"}</span>
                       {c.kana&&<span style={{fontSize:"0.6rem",color:"#94a3b8"}}>{c.kana}</span>}
-                      {c.role&&<span style={{fontSize:"0.62rem",background:"#fef3c7",color:"#92400e",padding:"0.05rem 0.35rem",borderRadius:3,fontWeight:700}}>{c.role}</span>}
+                      {c.role&&<span style={{fontSize:"0.62rem",background:"#fef3c7",color:"#92400e",padding:"0.05rem 0.35rem",borderRadius:8,fontWeight:700}}>{c.role}</span>}
                       {c.phone&&<a href={`tel:${c.phone.replace(/[^0-9+]/g,"")}`} style={{color:"#0369a1",textDecoration:"none"}}>📞 {c.phone}</a>}
                       {c.email&&onNavigateToEmail&&(
                         <button onClick={()=>onNavigateToEmail({toName:c.name||"",toCompany:muni.name||"",isInternal:false,mode:"compose"})}
-                          style={{background:"#dbeafe",color:"#1d4ed8",border:"none",borderRadius:"0.3rem",padding:"0.1rem 0.4rem",fontSize:"0.62rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>📧 メール作成</button>
+                          style={{background:"#E6F0FF",color:"#1563CA",border:"none",borderRadius:"0.5rem",padding:"0.1rem 0.4rem",fontSize:"0.62rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>📧 メール作成</button>
                       )}
                       {c.email&&<a href={`mailto:${c.email}`} style={{color:"#0369a1",textDecoration:"none",fontSize:"0.66rem"}}>✉️ {c.email}</a>}
                       {c.note&&<span style={{fontSize:"0.66rem",color:"#475569",flexBasis:"100%",whiteSpace:"pre-wrap"}}>📝 {c.note}</span>}
@@ -23469,7 +23473,7 @@ ${orig}`})
           })()}
           {/* 備考 */}
           {muni.notes&&(
-            <div style={{fontSize:"0.75rem",color:C.text,background:"#f8fafc",borderRadius:6,padding:"0.5rem 0.7rem",borderLeft:"3px solid #cbd5e1",whiteSpace:"pre-wrap"}}>
+            <div style={{fontSize:"0.75rem",color:C.text,background:"#f8fafc",borderRadius:8,padding:"0.5rem 0.7rem",borderLeft:"3px solid #cbd5e1",whiteSpace:"pre-wrap"}}>
               <div style={{fontSize:"0.62rem",fontWeight:700,color:C.textSub,marginBottom:"0.2rem",letterSpacing:"0.04em"}}>📝 備考</div>
               {muni.notes}
             </div>
@@ -23491,7 +23495,7 @@ ${orig}`})
                   const u=users.find(x=>x.id===id);
                   const role=(muni.assigneeRoles||{})[id];
                   if(!u||!role) return null;
-                  return <span key={id} style={{fontSize:"0.62rem",background:"#fef3c7",color:"#92400e",padding:"0.1rem 0.4rem",borderRadius:"3px",fontWeight:700}}>{u.name}: {role}</span>;
+                  return <span key={id} style={{fontSize:"0.62rem",background:"#fef3c7",color:"#92400e",padding:"0.1rem 0.4rem",borderRadius:"8px",fontWeight:700}}>{u.name}: {role}</span>;
                 })}
               </div>
             )}
@@ -23506,11 +23510,11 @@ ${orig}`})
                 const isEmpty=total===0;
                 return (
                   <div key={pt} style={{background:isEmpty?"#fef2f2":joined>0?"#f0fdf4":"#fafafa",border:`1px solid ${isEmpty?"#fca5a5":joined>0?"#86efac":"#e5e7eb"}`,borderRadius:"0.5rem",padding:"0.35rem 0.5rem"}}>
-                    <div style={{fontSize:"0.62rem",fontWeight:700,color:isEmpty?"#dc2626":joined>0?"#065f46":"#374151",marginBottom:"0.1rem"}}>{pt}</div>
+                    <div style={{fontSize:"0.62rem",fontWeight:700,color:isEmpty?"#DA1313":joined>0?"#065f46":"#374151",marginBottom:"0.1rem"}}>{pt}</div>
                     <div style={{display:"flex",gap:"0.35rem",alignItems:"center"}}>
-                      <span style={{fontSize:"0.75rem",fontWeight:800,color:isEmpty?"#dc2626":"#374151"}}>{total}社</span>
-                      {total>0&&<span style={{fontSize:"0.6rem",color:"#059669",fontWeight:600}}>加入{joined}</span>}
-                      {isEmpty&&<span style={{fontSize:"0.58rem",color:"#dc2626",fontWeight:700}}>⚠️不足</span>}
+                      <span style={{fontSize:"0.75rem",fontWeight:800,color:isEmpty?"#DA1313":"#374151"}}>{total}社</span>
+                      {total>0&&<span style={{fontSize:"0.6rem",color:"#009122",fontWeight:600}}>加入{joined}</span>}
+                      {isEmpty&&<span style={{fontSize:"0.58rem",color:"#DA1313",fontWeight:700}}>⚠️不足</span>}
                     </div>
                   </div>
                 );
@@ -23518,11 +23522,11 @@ ${orig}`})
             </div>
           </div>
           {/* 許可業者調査チェック */}
-          <div style={{marginTop:"0.75rem",display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.5rem 0.75rem",background:muni.surveyDone?"#d1fae5":"#f8fafc",borderRadius:"6px",border:`1.5px solid ${muni.surveyDone?"#6ee7b7":"#e2e8f0"}`}}>
+          <div style={{marginTop:"0.75rem",display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.5rem 0.75rem",background:muni.surveyDone?"#d1fae5":"#f8fafc",borderRadius:"8px",border:`1.5px solid ${muni.surveyDone?"#6ee7b7":"#e2e8f0"}`}}>
             <input type="checkbox" checked={!!muni.surveyDone} onChange={e=>{
               const nd={...data,municipalities:munis.map(m=>String(m.id)===String(activeMuni)?{...m,surveyDone:e.target.checked,surveyDoneAt:e.target.checked?new Date().toISOString():null}:m)};
               save(nd);
-            }} style={{width:18,height:18,accentColor:"#059669",cursor:"pointer",flexShrink:0}}/>
+            }} style={{width:18,height:18,accentColor:"#009122",cursor:"pointer",flexShrink:0}}/>
             <div style={{flex:1}}>
               <div style={{fontSize:"0.82rem",fontWeight:700,color:muni.surveyDone?"#065f46":C.text}}>許可業者調査</div>
               <div style={{fontSize:"0.65rem",color:C.textMuted}}>{muni.surveyDone?`完了 ${muni.surveyDoneAt?"（"+new Date(muni.surveyDoneAt).toLocaleDateString("ja-JP")+"）":""}`:"未完了 — 調査が完了したらチェックしてください"}</div>
@@ -23538,11 +23542,11 @@ ${orig}`})
           )}
         </div>
         {/* Sub-tabs: 履歴・チャット・タスク・ファイル */}
-        <div style={{display:"flex",background:"white",borderRadius:"6px",padding:"0.2rem",marginBottom:"0.75rem",border:`1px solid ${C.border}`}}>
+        <div style={{display:"flex",background:"white",borderRadius:"8px",padding:"0.2rem",marginBottom:"0.75rem",border:`1px solid ${C.border}`}}>
           {[["timeline","📋","履歴・チャット"],["tasks","✅","タスク"],["bizcard","🪪","名刺"],["files","📂","資料"]].map(([id,icon,lbl])=>(
             <button key={id} onClick={()=>setActiveDetail(id)} style={{flex:1,padding:"0.5rem",borderRadius:"0.5rem",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.72rem",position:"relative",background:activeDetail===id?C.accent:"transparent",color:activeDetail===id?"white":C.textSub}}>
               {icon} {lbl}
-              {id==="timeline"&&muniChatUnread>0&&<span style={{position:"absolute",top:3,right:6,background:"#dc2626",color:"white",borderRadius:999,fontSize:"0.5rem",fontWeight:800,padding:"0.05rem 0.25rem",lineHeight:1.4}}>{muniChatUnread}</span>}
+              {id==="timeline"&&muniChatUnread>0&&<span style={{position:"absolute",top:3,right:6,background:"#DA1313",color:"white",borderRadius:999,fontSize:"0.5rem",fontWeight:800,padding:"0.05rem 0.25rem",lineHeight:1.4}}>{muniChatUnread}</span>}
               {id==="tasks"&&(()=>{const n=(data.tasks||[]).filter(t=>t.salesRef?.id===muni.id&&t.status!=="完了").length;return n>0?<span style={{position:"absolute",top:3,right:6,background:C.accent,color:"white",borderRadius:999,fontSize:"0.5rem",fontWeight:800,padding:"0.05rem 0.25rem",lineHeight:1.4}}>{n}</span>:null;})()}
             </button>
           ))}
@@ -23591,7 +23595,7 @@ ${orig}`})
           <div style={{display:"flex",flexDirection:"column",gap:"0.35rem"}}>
             {mvend.map(v=>(
               <div key={v.id} onClick={()=>{setPrevTab({tab:"muni",muniId:activeMuni,prefId:activePref});setSalesTab("vendor");setActiveVendor(v.id);setActiveDetail("timeline");}}
-                style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"0.625rem 0.875rem",background:"white",border:`1.5px solid ${C.border}`,borderRadius:"6px",cursor:"pointer",gap:"0.5rem"}}>
+                style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"0.625rem 0.875rem",background:"white",border:`1.5px solid ${C.border}`,borderRadius:"8px",cursor:"pointer",gap:"0.5rem"}}>
                 <span style={{fontWeight:600,fontSize:"0.88rem",color:C.text,flex:1}}>{v.name}</span>
                 <SChip s={v.status} map={VENDOR_STATUS}/>
               </div>
@@ -23641,7 +23645,7 @@ ${orig}`})
                             value={(form.assigneeRoles||{})[uid]||""}
                             onChange={e=>setForm({...form,assigneeRoles:{...(form.assigneeRoles||{}),[uid]:e.target.value}})}
                             placeholder="例：施設担当 / 総務 / 廃棄物担当"
-                            style={{flex:1,padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}
+                            style={{flex:1,padding:"0.35rem 0.6rem",borderRadius:"0.5rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}
                           />
                         </div>
                       );
@@ -23666,7 +23670,7 @@ ${orig}`})
                     cur = [{id:Date.now(),name:form.contactName||"",email:form.contactEmail||"",phone:form.contactPhone||"",role:""}];
                   }
                   setForm({...form, govContacts:[...cur, {id:Date.now()+Math.random(),name:"",email:"",phone:"",role:""}]});
-                }} style={{background:"#0369a1",color:"white",border:"none",borderRadius:"0.4rem",padding:"0.3rem 0.7rem",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>＋ 担当者を追加</button>
+                }} style={{background:"#0369a1",color:"white",border:"none",borderRadius:"0.5rem",padding:"0.3rem 0.7rem",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>＋ 担当者を追加</button>
               </div>
               {/* 旧データの後方互換：govContactsが空でcontactNameがある場合に表示 */}
               {(()=>{
@@ -23699,21 +23703,21 @@ ${orig}`})
                       <div key={c.id} style={{background:"white",border:"1px solid #bae6fd",borderRadius:"0.5rem",padding:"0.5rem 0.625rem"}}>
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.35rem"}}>
                           <div style={{fontSize:"0.7rem",fontWeight:700,color:"#0369a1"}}>担当者 #{idx+1}</div>
-                          <button onClick={()=>removeAt(idx)} style={{background:"none",border:"none",color:"#dc2626",cursor:"pointer",fontSize:"0.7rem",fontWeight:700,padding:"0.1rem 0.3rem",fontFamily:"inherit"}}>🗑 削除</button>
+                          <button onClick={()=>removeAt(idx)} style={{background:"none",border:"none",color:"#DA1313",cursor:"pointer",fontSize:"0.7rem",fontWeight:700,padding:"0.1rem 0.3rem",fontFamily:"inherit"}}>🗑 削除</button>
                         </div>
                         <div style={{display:"flex",flexDirection:"column",gap:"0.35rem"}}>
                           <input value={c.name} onChange={e=>updateAt(idx,"name",e.target.value)} placeholder="名前（例：田中 太郎）"
-                            style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
+                            style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.5rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
                           <input value={c.kana||""} onChange={e=>updateAt(idx,"kana",e.target.value)} placeholder="振り仮名（例：やまだ たろう）"
-                            style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
+                            style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.5rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
                           <input value={c.role} onChange={e=>updateAt(idx,"role",e.target.value)} placeholder="役職・ラベル（例：施設担当 / 廃棄物課長）"
-                            style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
+                            style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.5rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
                           <input value={c.email} onChange={e=>updateAt(idx,"email",e.target.value)} placeholder="メールアドレス"
-                            style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
+                            style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.5rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
                           <input value={c.phone} onChange={e=>updateAt(idx,"phone",e.target.value)} placeholder="電話番号"
-                            style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
+                            style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.5rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
                           <textarea value={c.note||""} onChange={e=>updateAt(idx,"note",e.target.value)} placeholder="備考（名刺未取得・仮登録メモなど）" rows={2}
-                            style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.4rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box",resize:"vertical"}}/>
+                            style={{width:"100%",padding:"0.35rem 0.6rem",borderRadius:"0.5rem",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box",resize:"vertical"}}/>
                         </div>
                       </div>
                     ))}
@@ -23736,9 +23740,9 @@ ${orig}`})
             <FieldLbl label="郵便番号（任意）"><Input value={form.zip||""} onChange={e=>setForm({...form,zip:e.target.value})} placeholder="例: 100-0001"/></FieldLbl>
             <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
             <FieldLbl label="bee-net加入">
-                <label style={{display:"flex",alignItems:"center",gap:"0.625rem",cursor:"pointer",padding:"0.625rem 0.875rem",borderRadius:"6px",background:form.beeNet?"#eff6ff":"#f8fafc",border:`1.5px solid ${form.beeNet?"#2563eb":"#e2e8f0"}`,transition:"all 0.15s"}}>
-                  <input type="checkbox" checked={!!form.beeNet} onChange={e=>setForm({...form,beeNet:e.target.checked})} style={{width:18,height:18,accentColor:"#2563eb",cursor:"pointer"}}/>
-                  <span style={{fontSize:"0.85rem",fontWeight:form.beeNet?700:400,color:form.beeNet?"#1d4ed8":"#6b7280"}}>{form.beeNet?"✅ 加入済み":"未加入"}</span>
+                <label style={{display:"flex",alignItems:"center",gap:"0.625rem",cursor:"pointer",padding:"0.625rem 0.875rem",borderRadius:"8px",background:form.beeNet?"#F2F7FF":"#f8fafc",border:`1.5px solid ${form.beeNet?"#0070D4":"#e2e8f0"}`,transition:"all 0.15s"}}>
+                  <input type="checkbox" checked={!!form.beeNet} onChange={e=>setForm({...form,beeNet:e.target.checked})} style={{width:18,height:18,accentColor:"#0070D4",cursor:"pointer"}}/>
+                  <span style={{fontSize:"0.85rem",fontWeight:form.beeNet?700:400,color:form.beeNet?"#1563CA":"#6b7280"}}>{form.beeNet?"✅ 加入済み":"未加入"}</span>
                 </label>
               </FieldLbl>
             <FieldLbl label="備考"><Textarea value={form.notes||""} onChange={e=>setForm({...form,notes:e.target.value})} style={{height:70}} placeholder="メモ、特記事項など"/></FieldLbl>
@@ -23769,7 +23773,7 @@ ${orig}`})
           });
           const groupLabel=(v)=>{
             if((v.municipalityIds||[]).some(id=>String(id)===String(activeMuni))) return {label:"この自治体の業者",color:"#d1fae5",tc:"#065f46"};
-            if(!(v.municipalityIds||[]).length) return {label:"自治体未設定",color:"#dbeafe",tc:"#1d4ed8"};
+            if(!(v.municipalityIds||[]).length) return {label:"自治体未設定",color:"#E6F0FF",tc:"#1563CA"};
             if((v.municipalityIds||[]).some(id=>{const m=muniOf(id);return m&&String(m.prefectureId)===muniPrefId;})) return {label:"同都道府県",color:"#ede9fe",tc:"#5b21b6"};
             return null;
           };
@@ -23798,23 +23802,23 @@ ${orig}`})
                   <span style={{fontSize:"0.68rem",fontWeight:700,color:C.textSub}}>🔍 絞り込み</span>
                   {hasLvFilter&&<span style={{fontSize:"0.7rem",fontWeight:800,color:"#7c3aed",marginLeft:"auto"}}>{lvFiltered.length}件</span>}
                   {hasLvFilter&&<button onClick={()=>{setLinkVendorFilterPref("");setLinkVendorFilterMuni("");setLinkVendorFilterPermit("");}}
-                    style={{fontSize:"0.62rem",background:"#fef2f2",color:"#dc2626",border:"1px solid #fca5a5",borderRadius:999,padding:"0.1rem 0.4rem",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>全解除</button>}
+                    style={{fontSize:"0.62rem",background:"#fef2f2",color:"#DA1313",border:"1px solid #fca5a5",borderRadius:999,padding:"0.1rem 0.4rem",cursor:"pointer",fontFamily:"inherit",fontWeight:700}}>全解除</button>}
                 </div>
                 <div style={{display:"flex",gap:"0.3rem",flexWrap:"wrap"}}>
                   <select value={linkVendorFilterPref} onChange={e=>{setLinkVendorFilterPref(e.target.value);setLinkVendorFilterMuni("");}}
-                    style={{padding:"0.25rem 0.35rem",borderRadius:"0.4rem",border:`1.5px solid ${linkVendorFilterPref?C.accent:C.border}`,fontSize:"0.7rem",background:linkVendorFilterPref?"#eff6ff":"white",color:linkVendorFilterPref?C.accent:C.text,fontFamily:"inherit"}}>
+                    style={{padding:"0.25rem 0.35rem",borderRadius:"0.5rem",border:`1.5px solid ${linkVendorFilterPref?C.accent:C.border}`,fontSize:"0.7rem",background:linkVendorFilterPref?"#F2F7FF":"white",color:linkVendorFilterPref?C.accent:C.text,fontFamily:"inherit"}}>
                     <option value="">🗾 都道府県</option>
                     {prefs.map(p=><option key={p.id} value={String(p.id)}>{p.name}</option>)}
                   </select>
                   {linkVendorFilterPref&&lvMuniOpts.length>0&&(
                     <select value={linkVendorFilterMuni} onChange={e=>setLinkVendorFilterMuni(e.target.value)}
-                      style={{padding:"0.25rem 0.35rem",borderRadius:"0.4rem",border:`1.5px solid ${linkVendorFilterMuni?C.accent:C.border}`,fontSize:"0.7rem",background:linkVendorFilterMuni?"#eff6ff":"white",color:linkVendorFilterMuni?C.accent:C.text,fontFamily:"inherit"}}>
+                      style={{padding:"0.25rem 0.35rem",borderRadius:"0.5rem",border:`1.5px solid ${linkVendorFilterMuni?C.accent:C.border}`,fontSize:"0.7rem",background:linkVendorFilterMuni?"#F2F7FF":"white",color:linkVendorFilterMuni?C.accent:C.text,fontFamily:"inherit"}}>
                       <option value="">🏛 自治体</option>
                       {lvMuniOpts.map(m=><option key={m.id} value={String(m.id)}>{m.name}</option>)}
                     </select>
                   )}
                   <select value={linkVendorFilterPermit} onChange={e=>setLinkVendorFilterPermit(e.target.value)}
-                    style={{padding:"0.25rem 0.35rem",borderRadius:"0.4rem",border:`1.5px solid ${linkVendorFilterPermit?C.accent:C.border}`,fontSize:"0.7rem",background:linkVendorFilterPermit?"#eff6ff":"white",color:linkVendorFilterPermit?C.accent:C.text,fontFamily:"inherit"}}>
+                    style={{padding:"0.25rem 0.35rem",borderRadius:"0.5rem",border:`1.5px solid ${linkVendorFilterPermit?C.accent:C.border}`,fontSize:"0.7rem",background:linkVendorFilterPermit?"#F2F7FF":"white",color:linkVendorFilterPermit?C.accent:C.text,fontFamily:"inherit"}}>
                     <option value="">📋 許可種別</option>
                     {PERMIT_TYPES.map(p=><option key={p} value={p}>{p}</option>)}
                   </select>
@@ -23825,7 +23829,7 @@ ${orig}`})
                 {lvFiltered.map(v=>{
                   const gl=groupLabel(v);
                   return (
-                    <div key={v.id} style={{display:"flex",alignItems:"center",padding:"0.625rem 0.75rem",border:`1.5px solid ${gl?gl.color:C.border}`,borderRadius:"6px",background:gl?gl.color.replace("1fae5","f0fdf4").replace("beafe","eff6ff").replace("e9fe","f5f3ff"):"white",gap:"0.5rem"}}>
+                    <div key={v.id} style={{display:"flex",alignItems:"center",padding:"0.625rem 0.75rem",border:`1.5px solid ${gl?gl.color:C.border}`,borderRadius:"8px",background:gl?gl.color.replace("1fae5","f0fdf4").replace("beafe","eff6ff").replace("e9fe","f5f3ff"):"white",gap:"0.5rem"}}>
                       <div style={{flex:1}}>
                         <div style={{display:"flex",alignItems:"center",gap:"0.4rem"}}>
                           <span style={{fontWeight:600,fontSize:"0.88rem",color:C.text}}>{v.name}</span>
@@ -23913,7 +23917,7 @@ ${orig}`})
           <div style={{background:"#fef2f2",border:"1.5px solid #fca5a5",borderRadius:"8px",padding:"0.6rem 0.85rem",marginBottom:"0.75rem",display:"flex",alignItems:"center",gap:"0.6rem",flexWrap:"wrap"}}>
             <span style={{fontSize:"1.1rem",flexShrink:0}}>⚠️</span>
             <div style={{flex:1,minWidth:0}}>
-              <div style={{fontSize:"0.78rem",fontWeight:800,color:"#dc2626"}}>自治体の重複が検出されました（{dupGroups.length}グループ・{dupCount}件削減可能）</div>
+              <div style={{fontSize:"0.78rem",fontWeight:800,color:"#DA1313"}}>自治体の重複が検出されました（{dupGroups.length}グループ・{dupCount}件削減可能）</div>
               <div style={{fontSize:"0.7rem",color:"#991b1b",marginTop:"0.15rem"}}>
                 例: {dupGroups.slice(0,2).map(([_,arr])=>arr[0].name).join("、")}{dupGroups.length>2?"…":""}
               </div>
@@ -23931,7 +23935,7 @@ ${orig}`})
               setMergeSelected(new Set(groups.map(g=>g.groupKey)));
               setMergePreview({groups, focusType:"muni"});
               console.log("[MyDesk] state updated; modal should appear");
-            }} style={{padding:"0.4rem 0.75rem",borderRadius:"6px",border:"none",background:"#dc2626",color:"white",fontWeight:800,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🔍 確認して統合</button>
+            }} style={{padding:"0.4rem 0.75rem",borderRadius:"8px",border:"none",background:"#DA1313",color:"white",fontWeight:800,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🔍 確認して統合</button>
           </div>
         );
       })()}
@@ -23940,22 +23944,22 @@ ${orig}`})
         <div style={{position:"relative",flex:1}}>
           <span style={{position:"absolute",left:"0.625rem",top:"50%",transform:"translateY(-50%)",color:C.textMuted,fontSize:"0.85rem",pointerEvents:"none"}}>🔍</span>
           <input value={muniTopSearch} onChange={e=>setMuniTopSearch(e.target.value)} placeholder="自治体名で検索"
-            style={{width:"100%",padding:"0.5rem 0.5rem 0.5rem 2rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
+            style={{width:"100%",padding:"0.5rem 0.5rem 0.5rem 2rem",borderRadius:"8px",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
         </div>
         <button onClick={()=>{setBulkMode(v=>{if(v){resetBulk();return false;}setBulkSelected(new Set());setBulkTarget("dustalk");setBulkStatus("");return true;});}}
-          style={{padding:"0.5rem 0.75rem",borderRadius:"6px",border:`1.5px solid ${bulkMode?"#2563eb":C.border}`,background:bulkMode?"#eff6ff":"white",color:bulkMode?"#1d4ed8":C.textSub,fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>
+          style={{padding:"0.5rem 0.75rem",borderRadius:"8px",border:`1.5px solid ${bulkMode?"#0070D4":C.border}`,background:bulkMode?"#F2F7FF":"white",color:bulkMode?"#1563CA":C.textSub,fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>
           ☑️ 一括
         </button>
         <button onClick={()=>{setDeleteModal({type:"muni"});setDmSearch("");setDmFilter("");setDmSelected(new Set());}}
-          style={{padding:"0.5rem 0.75rem",borderRadius:"6px",border:"1.5px solid #fca5a5",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>🗑 削除</button>
+          style={{padding:"0.5rem 0.75rem",borderRadius:"8px",border:"1.5px solid #fca5a5",background:"#fff1f2",color:"#DA1313",fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>🗑 削除</button>
         <button onClick={()=>setSheet("importMuni")}
-          style={{padding:"0.5rem 0.625rem",borderRadius:"6px",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📥 取込</button>
+          style={{padding:"0.5rem 0.625rem",borderRadius:"8px",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📥 取込</button>
         <button onClick={()=>setShowGSheetImport(true)}
-          style={{padding:"0.5rem 0.625rem",borderRadius:"6px",border:"1.5px solid #bfdbfe",background:"#eff6ff",color:"#2563eb",fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>📊 GSheet</button>
+          style={{padding:"0.5rem 0.625rem",borderRadius:"8px",border:"1.5px solid #bfdbfe",background:"#F2F7FF",color:"#0070D4",fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>📊 GSheet</button>
         <button onClick={exportMuniStatusReport}
-          style={{padding:"0.5rem 0.75rem",borderRadius:"6px",border:"1.5px solid #7c3aed",background:"#ede9fe",color:"#5b21b6",fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>📋 全国出力</button>
+          style={{padding:"0.5rem 0.75rem",borderRadius:"8px",border:"1.5px solid #7c3aed",background:"#ede9fe",color:"#5b21b6",fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>📋 全国出力</button>
         <button onClick={backfillAssigneesFromApproach} title="記録者を担当者に一括補完（業者・企業・自治体すべて）"
-          style={{padding:"0.5rem 0.625rem",borderRadius:"6px",border:"1.5px solid #f59e0b",background:"#fffbeb",color:"#92400e",fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>🔄</button>
+          style={{padding:"0.5rem 0.625rem",borderRadius:"8px",border:"1.5px solid #f59e0b",background:"#fffbeb",color:"#92400e",fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0,whiteSpace:"nowrap"}}>🔄</button>
       </div>
       {/* 担当者フィルタ（複数選択化） */}
       {(()=>{
@@ -24002,12 +24006,12 @@ ${orig}`})
               </div>
               {isActive && <span style={{fontSize:"0.8rem",fontWeight:800,color:"#7c3aed",flexShrink:0}}>{fCount}件</span>}
               {isActive && <button onClick={()=>setMuniFilterAssignees([])}
-                style={{fontSize:"0.65rem",background:"#fef2f2",color:"#dc2626",border:"1px solid #fca5a5",borderRadius:999,padding:"0.1rem 0.45rem",cursor:"pointer",fontWeight:700,fontFamily:"inherit",flexShrink:0}}>全解除</button>}
+                style={{fontSize:"0.65rem",background:"#fef2f2",color:"#DA1313",border:"1px solid #fca5a5",borderRadius:999,padding:"0.1rem 0.45rem",cursor:"pointer",fontWeight:700,fontFamily:"inherit",flexShrink:0}}>全解除</button>}
             </div>
             {selChips.length > 0 && (
               <div style={{display:"flex",gap:"0.25rem",flexWrap:"wrap",marginBottom:"0.4rem"}}>
                 {selChips.map(chip => (
-                  <span key={chip.key} style={{display:"inline-flex",alignItems:"center",gap:"0.25rem",fontSize:"0.66rem",background:"#eff6ff",color:C.accent,padding:"0.15rem 0.5rem",borderRadius:999,fontWeight:700,border:`1px solid ${C.accent}30`}}>
+                  <span key={chip.key} style={{display:"inline-flex",alignItems:"center",gap:"0.25rem",fontSize:"0.66rem",background:"#F2F7FF",color:C.accent,padding:"0.15rem 0.5rem",borderRadius:999,fontWeight:700,border:`1px solid ${C.accent}30`}}>
                     {chip.label}
                     <button onClick={chip.remove} style={{background:"none",border:"none",color:C.accent,cursor:"pointer",padding:0,fontSize:"0.7rem",fontWeight:800,lineHeight:1}}>×</button>
                   </span>
@@ -24050,8 +24054,8 @@ ${orig}`})
             ))}
             <div style={{background:"#d1fae5",borderRadius:"0.5rem",padding:"0.4rem 0.25rem",textAlign:"center"}}>
               <div style={{fontSize:"0.85rem"}}>🤝</div>
-              <div style={{fontSize:"0.95rem",fontWeight:800,color:"#059669"}}>{munis.filter(x=>x.treatyStatus==="協定済").length}</div>
-              <div style={{fontSize:"0.55rem",fontWeight:700,color:"#059669"}}>協定済</div>
+              <div style={{fontSize:"0.95rem",fontWeight:800,color:"#009122"}}>{munis.filter(x=>x.treatyStatus==="協定済").length}</div>
+              <div style={{fontSize:"0.55rem",fontWeight:700,color:"#009122"}}>協定済</div>
             </div>
           </div>
         </Card>
@@ -24074,7 +24078,7 @@ ${orig}`})
               const mv=muniVendors(m.id);
               return (
                 <div key={m.id} onClick={()=>{saveSalesScroll("muni");setSheet(null);setActivePref(String(m.prefectureId));setActiveMuni(String(m.id));setMuniScreen("muniDetail");setActiveDetail("timeline");setTimeout(()=>{document.querySelectorAll("*").forEach(el=>{if(el.scrollTop>5)el.scrollTop=0;});window.scrollTo(0,0);}, 50);setTimeout(()=>{document.querySelectorAll("*").forEach(el=>{if(el.scrollTop>5)el.scrollTop=0;});window.scrollTo(0,0);}, 200);}}
-                  style={{background:"white",border:`1.5px solid ${C.border}`,borderRadius:"8px",padding:"0.875rem 1rem",cursor:"pointer",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
+                  style={{background:"white",border:`1.5px solid ${C.border}`,borderRadius:"8px",padding:"0.875rem 1rem",cursor:"pointer",boxShadow:"0 1px 2px rgba(0,17,62,0.05)"}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.25rem"}}>
                     <div>
                       <span style={{fontWeight:700,fontSize:"0.93rem",color:C.text}}>{m.name}</span>
@@ -24117,7 +24121,7 @@ ${orig}`})
                 const mvs=muniVendors(m.id);
                 return (
                   <div key={m.id} onClick={()=>{saveSalesScroll("muni");setActivePref(String(m.prefectureId));setActiveMuni(String(m.id));setMuniScreen("muniDetail");setActiveDetail("timeline");setTimeout(()=>{document.querySelectorAll("*").forEach(el=>{if(el.scrollTop>5)el.scrollTop=0;});window.scrollTo(0,0);}, 50);setTimeout(()=>{document.querySelectorAll("*").forEach(el=>{if(el.scrollTop>5)el.scrollTop=0;});window.scrollTo(0,0);}, 200);}}
-                    style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.625rem 0.75rem",background:"white",borderRadius:"6px",border:`1.5px solid ${C.border}`,cursor:"pointer",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}
+                    style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.625rem 0.75rem",background:"white",borderRadius:"8px",border:`1.5px solid ${C.border}`,cursor:"pointer",boxShadow:"0 1px 2px rgba(0,17,62,0.05)"}}
                     onMouseEnter={e=>e.currentTarget.style.borderColor=C.accent}
                     onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}>
                     <div style={{flex:1,minWidth:0}}>
@@ -24148,7 +24152,7 @@ ${orig}`})
         return (
         <div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
           {/* 地方タブ */}
-          <div style={{display:"flex",overflowX:"auto",background:"white",border:`1.5px solid ${C.border}`,borderRadius:"0.75rem",WebkitOverflowScrolling:"touch",scrollbarWidth:"thin",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
+          <div style={{display:"flex",overflowX:"auto",background:"white",border:`1.5px solid ${C.border}`,borderRadius:"0.75rem",WebkitOverflowScrolling:"touch",scrollbarWidth:"thin",boxShadow:"0 1px 2px rgba(0,17,62,0.05)"}}>
             {JAPAN_REGIONS.map(rg=>{
               const rPrefs=prefs.filter(p=>p.region===rg.region||(!p.region&&rg.prefs.includes(p.name)));
               const rMunis=rPrefs.flatMap(p=>munis.filter(m=>String(m.prefectureId)===String(p.id)));
@@ -24170,7 +24174,7 @@ ${orig}`})
           const rPrefs = prefs.filter(p=>p.region===rg.region||(!p.region&&rg.prefs.includes(p.name)));
           const rMunis = rPrefs.flatMap(p=>munis.filter(m=>String(m.prefectureId)===String(p.id)));
           return (
-            <div key={rg.region} style={{background:"white",borderRadius:"1rem",border:`1.5px solid ${C.border}`,overflow:"hidden",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
+            <div key={rg.region} style={{background:"white",borderRadius:"1rem",border:`1.5px solid ${C.border}`,overflow:"hidden",boxShadow:"0 1px 2px rgba(0,17,62,0.05)"}}>
               {rOpen&&rPrefs.length>0&&(
                 <div style={{borderTop:`1px solid ${C.borderLight}`}}>
                   {rPrefs.map(pref=>{
@@ -24191,15 +24195,15 @@ ${orig}`})
                             <span style={{fontSize:"0.85rem",fontWeight:700,color:C.text}}>{pref.name}</span>
                             {pMunis.length>0&&(
                               <div style={{display:"flex",gap:"0.25rem"}}>
-                                <span style={{fontSize:"0.6rem",background:"#d1fae5",color:"#059669",padding:"0.05rem 0.3rem",borderRadius:999,fontWeight:700}}>展{pDeploy}</span>
-                                {pTreaty>0&&<span style={{fontSize:"0.6rem",background:"#d1fae5",color:"#059669",padding:"0.05rem 0.3rem",borderRadius:999,fontWeight:700}}>協{pTreaty}</span>}
+                                <span style={{fontSize:"0.6rem",background:"#d1fae5",color:"#009122",padding:"0.05rem 0.3rem",borderRadius:999,fontWeight:700}}>展{pDeploy}</span>
+                                {pTreaty>0&&<span style={{fontSize:"0.6rem",background:"#d1fae5",color:"#009122",padding:"0.05rem 0.3rem",borderRadius:999,fontWeight:700}}>協{pTreaty}</span>}
                                 <span style={{fontSize:"0.6rem",color:C.textMuted}}>計{pMunis.length}</span>
                               </div>
                             )}
                             <span style={{fontSize:"0.7rem",color:C.textMuted,marginLeft:"auto",transform:pOpen?"rotate(0deg)":"rotate(-90deg)",transition:"transform 0.2s",display:"inline-block"}}>▼</span>
                           </button>
                           <button onClick={e=>{e.stopPropagation();setActivePref(pref.id);setForm({prefectureId:pref.id,dustalk:"未展開",status:"未接触",assigneeIds:[],treatyStatus:'未接触',artBranch:""});setSheet(`am_${pref.id}`);}}
-                            style={{background:C.accent,border:"none",borderRadius:"0.4rem",color:"white",fontSize:"0.75rem",fontWeight:700,padding:"0.2rem 0.45rem",cursor:"pointer",flexShrink:0,fontFamily:"inherit"}}>＋</button>
+                            style={{background:C.accent,border:"none",borderRadius:"0.5rem",color:"white",fontSize:"0.75rem",fontWeight:700,padding:"0.2rem 0.45rem",cursor:"pointer",flexShrink:0,fontFamily:"inherit"}}>＋</button>
                         </div>
                         {pOpen&&(
                           <div>
@@ -24210,7 +24214,7 @@ ${orig}`})
                               return (
                                 <div key={m.id}
                                   onClick={()=>{if(bulkMode){setBulkSelected(prev=>{const n=new Set(prev);n.has(m.id)?n.delete(m.id):n.add(m.id);return n;});return;}setSheet(null);setActivePref(String(m.prefectureId));setActiveMuni(String(m.id));setMuniScreen("muniDetail");setActiveDetail("timeline"); /* muniClick */}}
-                                  style={{display:"flex",alignItems:"center",padding:"0.5rem 1rem 0.5rem 2.5rem",borderTop:`1px solid ${C.borderLight}`,cursor:"pointer",gap:"0.4rem",background:bulkSelected.has(m.id)?"#eff6ff":"transparent"}}>
+                                  style={{display:"flex",alignItems:"center",padding:"0.5rem 1rem 0.5rem 2.5rem",borderTop:`1px solid ${C.borderLight}`,cursor:"pointer",gap:"0.4rem",background:bulkSelected.has(m.id)?"#F2F7FF":"transparent"}}>
                                   {bulkMode&&<input type="checkbox" checked={bulkSelected.has(m.id)} readOnly style={{width:15,height:15,accentColor:C.accent,flexShrink:0,cursor:"pointer"}}/>}
                                   <div style={{flex:1,minWidth:0}}>
                                     <span style={{fontSize:"0.85rem",fontWeight:600,color:C.text}}>{m.name}</span>
@@ -24236,7 +24240,7 @@ ${orig}`})
                               <FieldLbl label="自治体名 *">
                                 <Input value={form.name||""} onChange={e=>setForm({...form,name:e.target.value})} autoFocus
                                   onBlur={()=>{const d=checkDup(form.name||"",pm);setForm(f=>({...f,_dup:d||null}));}}/>
-                                {form._dup&&<div style={{marginTop:"0.35rem",padding:"0.4rem 0.625rem",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:"0.5rem",fontSize:"0.75rem",color:"#1d4ed8"}}>⚠️「{form._dup.name}」はすでに登録されています</div>}
+                                {form._dup&&<div style={{marginTop:"0.35rem",padding:"0.4rem 0.625rem",background:"#F2F7FF",border:"1px solid #bfdbfe",borderRadius:"0.5rem",fontSize:"0.75rem",color:"#1563CA"}}>⚠️「{form._dup.name}」はすでに登録されています</div>}
                               </FieldLbl>
                               <FieldLbl label="ステータス"><StatusPicker map={MUNI_STATUS} value={form.status||"未接触"} onChange={s=>setForm({...form,status:s})}/></FieldLbl>
                               <FieldLbl label="担当者">{AssigneePicker({ids:form.assigneeIds||[],onChange:ids=>setForm({...form,assigneeIds:ids})})}</FieldLbl>
@@ -24260,7 +24264,7 @@ ${orig}`})
                     const pn=prefOf(activePref)?.name||"";
                     return (
                       <Sheet title={`一括登録（${pn}）`} onClose={()=>setSheet(null)}>
-                        <div style={{background:C.accentBg,border:`1px solid ${C.accent}30`,borderRadius:"6px",padding:"0.75rem",marginBottom:"0.875rem",fontSize:"0.8rem",color:C.accentDark}}>💡 自治体名を1行1件で入力してください。</div>
+                        <div style={{background:C.accentBg,border:`1px solid ${C.accent}30`,borderRadius:"8px",padding:"0.75rem",marginBottom:"0.875rem",fontSize:"0.8rem",color:C.accentDark}}>💡 自治体名を1行1件で入力してください。</div>
                         <FieldLbl label="自治体名リスト（1行1件）"><Textarea value={bulkText} onChange={e=>setBulkText(e.target.value)} style={{height:180}} placeholder={"○○市\n△△町\n□□村"} autoFocus/></FieldLbl>
                         <div style={{marginBottom:"0.875rem",fontSize:"0.78rem",color:C.textSub}}>{bulkText.split("\n").filter(l=>l.trim()).length}件 入力中</div>
                         <div style={{display:"flex",gap:"0.625rem"}}>
@@ -24336,13 +24340,13 @@ ${orig}`})
         return (
           <Sheet title="自治体をインポート" onClose={()=>{setSheet(null);setImportPreview(null);setImportErr("");}}>
             {/* Download template */}
-            <div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:"8px",padding:"0.875rem",marginBottom:"1rem"}}>
-              <div style={{fontWeight:700,fontSize:"0.82rem",color:"#1d4ed8",marginBottom:"0.35rem"}}>📥 CSVテンプレートをダウンロード</div>
+            <div style={{background:"#F2F7FF",border:"1px solid #bfdbfe",borderRadius:"8px",padding:"0.875rem",marginBottom:"1rem"}}>
+              <div style={{fontWeight:700,fontSize:"0.82rem",color:"#1563CA",marginBottom:"0.35rem"}}>📥 CSVテンプレートをダウンロード</div>
               <div style={{fontSize:"0.72rem",color:"#3730a3",marginBottom:"0.625rem",lineHeight:1.5}}>
                 テンプレートに沿って入力 → CSV(UTF-8)で保存 → アップロード
               </div>
               <div style={{background:"white",border:"1px solid #bfdbfe",borderRadius:"0.625rem",padding:"0.5rem 0.75rem",marginBottom:"0.625rem",fontSize:"0.72rem",color:"#374151",lineHeight:1.8}}>
-                <div style={{fontWeight:700,marginBottom:"0.2rem",color:"#1d4ed8"}}>📋 列の説明</div>
+                <div style={{fontWeight:700,marginBottom:"0.2rem",color:"#1563CA"}}>📋 列の説明</div>
                 <div>A列: <b>都道府県</b>（例: 福岡県）必須</div>
                 <div>B列: <b>自治体名</b>（例: 福岡市）必須</div>
                 <div>C列: <b>ダストーク展開</b>（展開 または 未展開）</div>
@@ -24359,7 +24363,7 @@ ${orig}`})
                  ["福岡県","北九州市","未展開","商談中","電話済","北九州支店","","",""],
                  ["東京都","新宿区","展開","未接触","資料送付","東京支店","山田","来週面談","東京都新宿区〇〇2-3-4"],
                  ["","","","","","","","",""]])}
-                style={{background:"#2563eb",border:"none",borderRadius:"0.625rem",color:"white",fontWeight:700,fontSize:"0.78rem",padding:"0.45rem 0.875rem",cursor:"pointer",fontFamily:"inherit",width:"100%"}}>
+                style={{background:"#0070D4",border:"none",borderRadius:"0.625rem",color:"white",fontWeight:700,fontSize:"0.78rem",padding:"0.45rem 0.875rem",cursor:"pointer",fontFamily:"inherit",width:"100%"}}>
                 ⬇️ CSVテンプレートをダウンロード
               </button>
             </div>
@@ -24372,7 +24376,7 @@ ${orig}`})
                 <div style={{fontSize:"0.7rem",color:C.textMuted,marginTop:"0.2rem"}}>UTF-8 CSV形式 (.csv)</div>
                 <input type="file" accept=".csv,.txt" onChange={handleFile} style={{display:"none"}}/>
               </label>
-              {err&&<div style={{marginTop:"0.5rem",fontSize:"0.78rem",color:"#dc2626",background:"#fff1f2",borderRadius:"0.5rem",padding:"0.5rem 0.75rem"}}>{err}</div>}
+              {err&&<div style={{marginTop:"0.5rem",fontSize:"0.78rem",color:"#DA1313",background:"#fff1f2",borderRadius:"0.5rem",padding:"0.5rem 0.75rem"}}>{err}</div>}
             </div>
             {/* Preview */}
             {preview&&(
@@ -24382,7 +24386,7 @@ ${orig}`})
                   <span style={{background:"#d1fae5",color:"#065f46",borderRadius:999,fontSize:"0.7rem",fontWeight:700,padding:"0.1rem 0.5rem"}}>{preview.length}件</span>
                   <span style={{fontSize:"0.7rem",color:C.textMuted}}>既存と名前が一致する場合はスキップ</span>
                 </div>
-                <div style={{maxHeight:240,overflowY:"auto",border:`1px solid ${C.border}`,borderRadius:"6px",overflow:"hidden"}}>
+                <div style={{maxHeight:240,overflowY:"auto",border:`1px solid ${C.border}`,borderRadius:"8px",overflow:"hidden"}}>
                   {preview.slice(0,30).map((r,i)=>{
                     const pref=prefs.find(p=>p.name===r.prefName);
                     const dup=pref&&munis.some(m=>String(m.prefectureId)===String(pref.id)&&m.name===r.name);
@@ -24394,7 +24398,7 @@ ${orig}`})
                         <span style={{flex:1,fontSize:"0.82rem",fontWeight:600,color:C.text}}>{r.name}</span>
                         <span style={{fontSize:"0.65rem",background:ds.bg,color:ds.color,borderRadius:999,padding:"0.05rem 0.35rem",fontWeight:700,flexShrink:0}}>{r.dustalk}</span>
                         {dup&&<span style={{fontSize:"0.62rem",color:"#92400e",background:"#fef3c7",borderRadius:999,padding:"0.05rem 0.3rem",flexShrink:0}}>重複</span>}
-                        {noPref&&<span style={{fontSize:"0.62rem",color:"#dc2626",background:"#fee2e2",borderRadius:999,padding:"0.05rem 0.3rem",flexShrink:0}}>都道府県不明</span>}
+                        {noPref&&<span style={{fontSize:"0.62rem",color:"#DA1313",background:"#fee2e2",borderRadius:999,padding:"0.05rem 0.3rem",flexShrink:0}}>都道府県不明</span>}
                       </div>
                     );
                   })}
@@ -24456,7 +24460,7 @@ ${orig}`})
                   <div style={{fontWeight:800,fontSize:"0.95rem",color:C.text}}>所有者を追加しました</div>
                   <div style={{fontSize:"0.82rem",color:C.textSub,marginTop:"0.35rem"}}>「{exName}」に <strong style={{color:"#7c3aed"}}>{bcDupModal.addedOwner}</strong> を追加しました</div>
                 </div>
-                <div style={{background:"#f5f3ff",borderRadius:"6px",padding:"0.75rem",marginBottom:"1rem"}}>
+                <div style={{background:"#f5f3ff",borderRadius:"8px",padding:"0.75rem",marginBottom:"1rem"}}>
                   <div style={{fontSize:"0.72rem",color:"#5b21b6",fontWeight:700,marginBottom:"0.35rem"}}>👤 所有者一覧</div>
                   <div style={{display:"flex",flexWrap:"wrap",gap:"0.3rem"}}>
                     {exOwners.map(o=><span key={o} style={{fontSize:"0.78rem",fontWeight:700,color:"#7c3aed",background:"#ede9fe",borderRadius:999,padding:"0.15rem 0.5rem"}}>{o}</span>)}
@@ -24473,7 +24477,7 @@ ${orig}`})
               <div style={{background:"white",borderRadius:"10px",padding:"1.5rem",maxWidth:380,width:"100%",boxShadow:"0 12px 50px rgba(0,0,0,0.25)"}}>
                 <div style={{fontWeight:800,fontSize:"0.95rem",color:C.text,marginBottom:"0.5rem"}}>⚠️ 同じ名刺が既に存在します</div>
                 <div style={{fontSize:"0.82rem",color:C.textSub,marginBottom:"1rem"}}>「{bcDupModal.incoming}」は既に登録されています</div>
-                <div style={{background:C.bg,borderRadius:"6px",padding:"0.75rem",marginBottom:"1rem"}}>
+                <div style={{background:C.bg,borderRadius:"8px",padding:"0.75rem",marginBottom:"1rem"}}>
                   <div style={{fontWeight:700,fontSize:"0.88rem",color:C.text}}>{exName}</div>
                   <div style={{fontSize:"0.75rem",color:C.textSub}}>{ex.title} {ex.company}</div>
                   {exOwners.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:"0.3rem",marginTop:"0.35rem"}}>
@@ -24483,9 +24487,9 @@ ${orig}`})
                 </div>
                 {bcDupQueue.length>1&&<div style={{fontSize:"0.72rem",color:C.textMuted,marginBottom:"0.75rem"}}>残り {bcDupQueue.length-1} 件の重複があります</div>}
                 <div style={{display:"flex",gap:"0.5rem",flexDirection:"column"}}>
-                  <button onClick={bcDupModal.onSkip} style={{padding:"0.55rem",borderRadius:"6px",border:`1.5px solid ${C.accent}`,background:"#e8f0fe",color:C.accent,fontWeight:600,borderRadius:"6px",fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>既存の名刺を確認する</button>
-                  {bcDupModal.onAdd&&<button onClick={bcDupModal.onAdd} style={{padding:"0.55rem",borderRadius:"6px",border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:600,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}}>別カードとして登録する</button>}
-                  <button onClick={bcDupModal.onCancel} style={{padding:"0.45rem",borderRadius:"6px",border:"none",background:"none",color:C.textMuted,fontWeight:600,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit"}}>スキップ</button>
+                  <button onClick={bcDupModal.onSkip} style={{padding:"0.55rem",borderRadius:"8px",border:`1.5px solid ${C.accent}`,background:"#e8f0fe",color:C.accent,fontWeight:600,borderRadius:"8px",fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>既存の名刺を確認する</button>
+                  {bcDupModal.onAdd&&<button onClick={bcDupModal.onAdd} style={{padding:"0.55rem",borderRadius:"8px",border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:600,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}}>別カードとして登録する</button>}
+                  <button onClick={bcDupModal.onCancel} style={{padding:"0.45rem",borderRadius:"8px",border:"none",background:"none",color:C.textMuted,fontWeight:600,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit"}}>スキップ</button>
                 </div>
               </div>
             </div>
@@ -24500,7 +24504,7 @@ ${orig}`})
               <div style={{background:"white",borderRadius:"10px",padding:"2rem 1.5rem",maxWidth:320,width:"100%",textAlign:"center",boxShadow:"0 12px 50px rgba(0,0,0,0.25)"}}>
                 <div style={{fontSize:"2.5rem",marginBottom:"0.5rem"}}>✅</div>
                 <div style={{fontWeight:800,fontSize:"1.05rem",color:C.text,marginBottom:"0.5rem"}}>取込み完了</div>
-                <div style={{fontSize:"0.88rem",color:C.textSub,marginBottom:"0.25rem"}}>追加：<b style={{color:"#059669"}}>{bcImportSummary.added}件</b></div>
+                <div style={{fontSize:"0.88rem",color:C.textSub,marginBottom:"0.25rem"}}>追加：<b style={{color:"#009122"}}>{bcImportSummary.added}件</b></div>
                 {bcImportSummary.skipped>0&&<div style={{fontSize:"0.82rem",color:C.textMuted}}>スキップ：{bcImportSummary.skipped}件（重複）</div>}
                 <Btn style={{width:"100%",marginTop:"1.25rem"}} onClick={()=>setBcImportSummary(null)}>閉じる</Btn>
               </div>
@@ -24547,15 +24551,15 @@ ${orig}`})
                           isInternal: false,
                           mode: "compose",
                         });
-                      }} style={{padding:"0.45rem 0.75rem",borderRadius:"0.625rem",background:"#f0fdf4",color:"#059669",fontSize:"0.78rem",fontWeight:700,border:"1.5px solid #05966940",cursor:"pointer",fontFamily:"inherit"}}>📧 メール作成</button>
+                      }} style={{padding:"0.45rem 0.75rem",borderRadius:"0.625rem",background:"#f0fdf4",color:"#009122",fontSize:"0.78rem",fontWeight:700,border:"1.5px solid #00912240",cursor:"pointer",fontFamily:"inherit"}}>📧 メール作成</button>
                     )}
-                    {card.email&&<a href={`mailto:${card.email}`} style={{padding:"0.45rem 0.75rem",borderRadius:"0.625rem",background:"#eff6ff",color:"#1d4ed8",fontSize:"0.78rem",fontWeight:700,textDecoration:"none"}}>✉️ メーラー</a>}
+                    {card.email&&<a href={`mailto:${card.email}`} style={{padding:"0.45rem 0.75rem",borderRadius:"0.625rem",background:"#F2F7FF",color:"#1563CA",fontSize:"0.78rem",fontWeight:700,textDecoration:"none"}}>✉️ メーラー</a>}
                   </div>
                 </div>
                 {(card.owners||[card.owner]).filter(Boolean).length>0&&(
                 <div style={{marginTop:"0.4rem",display:"flex",flexWrap:"wrap",gap:"0.3rem"}}>
                   {[...new Set((card.owners||[card.owner]).filter(Boolean))].map(o=>(
-                    <span key={o} style={{fontSize:"0.75rem",fontWeight:700,color:"#7c3aed",background:"#ede9fe",borderRadius:"0.4rem",padding:"0.2rem 0.5rem"}}>👤 {o}</span>
+                    <span key={o} style={{fontSize:"0.75rem",fontWeight:700,color:"#7c3aed",background:"#ede9fe",borderRadius:"0.5rem",padding:"0.2rem 0.5rem"}}>👤 {o}</span>
                   ))}
                 </div>
               )}
@@ -24594,8 +24598,8 @@ ${orig}`})
               <Card style={{padding:"1rem",marginBottom:"1rem"}}>
                 <div style={{fontWeight:700,fontSize:"0.82rem",color:C.text,marginBottom:"0.5rem"}}>🔗 営業先への紐づけ</div>
                 {card.salesRef ? (
-                  <div style={{display:"flex",alignItems:"center",gap:"0.5rem",background:C.bg,borderRadius:"6px",padding:"0.6rem 0.75rem"}}>
-                    <span style={{fontSize:"0.72rem",fontWeight:800,color:"white",background:{"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"}[card.salesRef.type]||C.accent,borderRadius:999,padding:"0.1rem 0.45rem"}}>{card.salesRef.type}</span>
+                  <div style={{display:"flex",alignItems:"center",gap:"0.5rem",background:C.bg,borderRadius:"8px",padding:"0.6rem 0.75rem"}}>
+                    <span style={{fontSize:"0.72rem",fontWeight:800,color:"white",background:{"企業":"#0070D4","業者":"#7c3aed","自治体":"#009122"}[card.salesRef.type]||C.accent,borderRadius:999,padding:"0.1rem 0.45rem"}}>{card.salesRef.type}</span>
                     <span style={{flex:1,fontSize:"0.88rem",fontWeight:600,color:C.text}}>{card.salesRef.name}</span>
                     <button onClick={()=>updateBizCard(card.id,{salesRef:null})}
                       style={{background:"none",border:"none",cursor:"pointer",color:"#94a3b8",fontSize:"0.78rem",padding:"0.2rem"}}>紐解除</button>
@@ -24618,7 +24622,7 @@ ${orig}`})
                   <Card style={{padding:"1rem",marginBottom:"1rem"}}>
                     <div style={{fontWeight:700,fontSize:"0.82rem",color:C.text,marginBottom:"0.75rem"}}>🏢 営業先として登録</div>
                     {alreadyLinked ? (
-                      <div style={{fontSize:"0.78rem",color:"#059669",background:"#f0fdf4",borderRadius:"6px",padding:"0.625rem 0.875rem",fontWeight:600}}>
+                      <div style={{fontSize:"0.78rem",color:"#009122",background:"#f0fdf4",borderRadius:"8px",padding:"0.625rem 0.875rem",fontWeight:600}}>
                         ✅ {ref.type}「{ref.name}」として登録済み
                       </div>
                     ) : (
@@ -24630,7 +24634,7 @@ ${orig}`})
                             setSalesTab("company");
                             requestAnimationFrame(()=>setSheet("addCompany"));
                             window.__pendingBizcardLink={cardId:card.id,type:"企業",name:company};
-                          }} style={{flex:1,padding:"0.6rem 0.5rem",borderRadius:"6px",background:"#eff6ff",color:"#2563eb",fontWeight:700,fontSize:"0.78rem",border:"1.5px solid #bfdbfe",cursor:"pointer",fontFamily:"inherit"}}>
+                          }} style={{flex:1,padding:"0.6rem 0.5rem",borderRadius:"8px",background:"#F2F7FF",color:"#0070D4",fontWeight:700,fontSize:"0.78rem",border:"1.5px solid #bfdbfe",cursor:"pointer",fontFamily:"inherit"}}>
                             🏢 企業として登録
                           </button>
                           <button onClick={()=>{
@@ -24638,7 +24642,7 @@ ${orig}`})
                             setSalesTab("vendor");
                             requestAnimationFrame(()=>setSheet("addVendor"));
                             window.__pendingBizcardLink={cardId:card.id,type:"業者",name:company};
-                          }} style={{flex:1,padding:"0.6rem 0.5rem",borderRadius:"6px",background:"#f5f3ff",color:"#7c3aed",fontWeight:700,fontSize:"0.78rem",border:"1.5px solid #ddd6fe",cursor:"pointer",fontFamily:"inherit"}}>
+                          }} style={{flex:1,padding:"0.6rem 0.5rem",borderRadius:"8px",background:"#f5f3ff",color:"#7c3aed",fontWeight:700,fontSize:"0.78rem",border:"1.5px solid #ddd6fe",cursor:"pointer",fontFamily:"inherit"}}>
                             🏭 業者として登録
                           </button>
                           <button onClick={()=>{
@@ -24646,7 +24650,7 @@ ${orig}`})
                             setSalesTab("muni");
                             requestAnimationFrame(()=>setSheet("addMuni"));
                             window.__pendingBizcardLink={cardId:card.id,type:"自治体",name:company};
-                          }} style={{flex:1,padding:"0.6rem 0.5rem",borderRadius:"6px",background:"#f0fdf4",color:"#059669",fontWeight:700,fontSize:"0.78rem",border:"1.5px solid #bbf7d0",cursor:"pointer",fontFamily:"inherit"}}>
+                          }} style={{flex:1,padding:"0.6rem 0.5rem",borderRadius:"8px",background:"#f0fdf4",color:"#009122",fontWeight:700,fontSize:"0.78rem",border:"1.5px solid #bbf7d0",cursor:"pointer",fontFamily:"inherit"}}>
                             🏛 自治体として登録
                           </button>
                         </div>
@@ -24738,9 +24742,9 @@ ${orig}`})
                   setAutoLinkMatches(matches);
                   setSheet("autoLinkConfirm");
                 }} title="未紐付け名刺を会社名で一括マッチング"
-                  style={{padding:"0.45rem 0.75rem",borderRadius:"6px",border:"1.5px solid #10b981",background:"#ecfdf5",color:"#059669",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🔗 自動紐付け</button>
+                  style={{padding:"0.45rem 0.75rem",borderRadius:"8px",border:"1.5px solid #10b981",background:"#ecfdf5",color:"#009122",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🔗 自動紐付け</button>
                 <button onClick={()=>{setDeleteModal({type:"bizcard"});setDmSearch("");setDmFilter("");setDmSelected(new Set());}}
-                  style={{padding:"0.45rem 0.75rem",borderRadius:"6px",border:"1.5px solid #fca5a5",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🗑 削除</button>
+                  style={{padding:"0.45rem 0.75rem",borderRadius:"8px",border:"1.5px solid #fca5a5",background:"#fff1f2",color:"#DA1313",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🗑 削除</button>
                 <Btn size="sm" variant="secondary" onClick={()=>setSheet("bcImport")}>📥 CSV取込</Btn>
                 <Btn size="sm" onClick={()=>{setBcAddForm({...BC_ADD_INIT,owners:currentUser?.name?[currentUser.name]:[]});setSheet("bcAdd");}}>＋ 追加</Btn>
               </div>
@@ -24770,7 +24774,7 @@ ${orig}`})
             <div style={{marginBottom:"0.75rem",position:"relative"}}>
               <span style={{position:"absolute",left:"0.75rem",top:"50%",transform:"translateY(-50%)",fontSize:"0.85rem",color:C.textMuted,pointerEvents:"none"}}>🔍</span>
               <input value={bcSearch} onChange={e=>setBcSearch(e.target.value)} placeholder="氏名・役職・メール・電話番号で検索..."
-                style={{width:"100%",padding:"0.6rem 0.75rem 0.6rem 2.2rem",borderRadius:"6px",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.85rem",boxSizing:"border-box"}}/>
+                style={{width:"100%",padding:"0.6rem 0.75rem 0.6rem 2.2rem",borderRadius:"8px",border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.85rem",boxSizing:"border-box"}}/>
             </div>
 
             {/* 一覧 */}
@@ -24798,7 +24802,7 @@ ${orig}`})
                       if(bulkMode){setBulkSelected(prev=>{const n=new Set(prev);n.has(card.id)?n.delete(card.id):n.add(card.id);return n;});return;}
                       saveSalesScroll("bizcard");setBcActiveId(card.id);setBcScreen("detail");
                     }}
-                      style={{display:"flex",alignItems:"center",gap:"0.75rem",padding:"0.75rem 1rem",borderBottom:`1px solid ${C.borderLight}`,cursor:"pointer",background:isSelected?"#eff6ff":"white"}}>
+                      style={{display:"flex",alignItems:"center",gap:"0.75rem",padding:"0.75rem 1rem",borderBottom:`1px solid ${C.borderLight}`,cursor:"pointer",background:isSelected?"#F2F7FF":"white"}}>
                       {bulkMode&&<input type="checkbox" checked={isSelected} readOnly style={{width:15,height:15,accentColor:C.accent,flexShrink:0}}/>}
                       <div style={{width:38,height:38,borderRadius:"50%",background:C.accent,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                         <span style={{fontSize:"1rem",fontWeight:800,color:"white"}}>{(card.lastName||card.company||"?")[0]}</span>
@@ -24807,7 +24811,7 @@ ${orig}`})
                         <div style={{display:"flex",alignItems:"center",gap:"0.35rem",flexWrap:"wrap"}}>
                           <span style={{fontSize:"0.88rem",fontWeight:700,color:C.text}}>{name}</span>
                           {card.salesRef
-                            ? <span style={{fontSize:"0.62rem",fontWeight:700,color:"white",background:{"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"}[card.salesRef.type]||"#64748b",borderRadius:999,padding:"0.05rem 0.35rem"}}>{card.salesRef.type}</span>
+                            ? <span style={{fontSize:"0.62rem",fontWeight:700,color:"white",background:{"企業":"#0070D4","業者":"#7c3aed","自治体":"#009122"}[card.salesRef.type]||"#64748b",borderRadius:999,padding:"0.05rem 0.35rem"}}>{card.salesRef.type}</span>
                             : <span style={{fontSize:"0.62rem",fontWeight:700,color:"#d97706",background:"#fef3c7",borderRadius:999,padding:"0.05rem 0.35rem",border:"1px solid #fde68a"}}>未登録</span>}
                         </div>
                         <div style={{fontSize:"0.72rem",color:C.accent,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>🏢 {card.company||"（会社名なし）"}</div>
@@ -24843,7 +24847,7 @@ ${orig}`})
                           if(bulkMode){setBulkSelected(prev=>{const n=new Set(prev);n.has(card.id)?n.delete(card.id):n.add(card.id);return n;});return;}
                           saveSalesScroll("bizcard");setBcActiveId(card.id);setBcScreen("detail");
                         }}
-                          style={{display:"flex",alignItems:"center",gap:"0.75rem",padding:"0.75rem 1rem",borderBottom:`1px solid ${C.borderLight}`,cursor:"pointer",background:isSelected?"#eff6ff":"white",transition:"background 0.1s"}}>
+                          style={{display:"flex",alignItems:"center",gap:"0.75rem",padding:"0.75rem 1rem",borderBottom:`1px solid ${C.borderLight}`,cursor:"pointer",background:isSelected?"#F2F7FF":"white",transition:"background 0.1s"}}>
                           {bulkMode&&<input type="checkbox" checked={isSelected} readOnly style={{width:15,height:15,accentColor:C.accent,flexShrink:0}}/>}
                           <div style={{width:38,height:38,borderRadius:"50%",background:C.accent,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                             <span style={{fontSize:"1rem",fontWeight:800,color:"white"}}>{(card.lastName||card.company||"?")[0]}</span>
@@ -24852,7 +24856,7 @@ ${orig}`})
                             <div style={{display:"flex",alignItems:"center",gap:"0.35rem",flexWrap:"wrap"}}>
                               <span style={{fontSize:"0.88rem",fontWeight:700,color:C.text}}>{name}</span>
                               {card.salesRef
-                                ? <span style={{fontSize:"0.62rem",fontWeight:700,color:"white",background:{"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"}[card.salesRef.type]||"#64748b",borderRadius:999,padding:"0.05rem 0.35rem"}}>{card.salesRef.type}</span>
+                                ? <span style={{fontSize:"0.62rem",fontWeight:700,color:"white",background:{"企業":"#0070D4","業者":"#7c3aed","自治体":"#009122"}[card.salesRef.type]||"#64748b",borderRadius:999,padding:"0.05rem 0.35rem"}}>{card.salesRef.type}</span>
                                 : <span style={{fontSize:"0.62rem",fontWeight:700,color:"#d97706",background:"#fef3c7",borderRadius:999,padding:"0.05rem 0.35rem",border:"1px solid #fde68a"}}>未登録</span>}
                             </div>
                             <div style={{fontSize:"0.72rem",color:C.textSub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{[card.title,card.department].filter(Boolean).join("　")}</div>
@@ -24890,7 +24894,7 @@ ${orig}`})
                 });
               };
               const realSelected = new Set([...effectiveSelected].filter(id=>id!==0));
-              const TYPE_COLOR = {"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"};
+              const TYPE_COLOR = {"企業":"#0070D4","業者":"#7c3aed","自治体":"#009122"};
               const groupByType = {};
               matches.forEach(m => {
                 const t = m.match.type;
@@ -24905,8 +24909,8 @@ ${orig}`})
                   </div>
                   
                   {/* 全選択/全解除 */}
-                  <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem",padding:"0.4rem 0.5rem",background:"#f8fafc",borderRadius:"0.4rem"}}>
-                    <button onClick={toggleAll} style={{padding:"0.3rem 0.7rem",borderRadius:5,border:`1.5px solid ${isAllSelected?"#10b981":C.border}`,background:isAllSelected?"#10b981":"white",color:isAllSelected?"white":C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem",padding:"0.4rem 0.5rem",background:"#f8fafc",borderRadius:"0.5rem"}}>
+                    <button onClick={toggleAll} style={{padding:"0.3rem 0.7rem",borderRadius:8,border:`1.5px solid ${isAllSelected?"#10b981":C.border}`,background:isAllSelected?"#10b981":"white",color:isAllSelected?"white":C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}}>
                       {isAllSelected?"✓ 全選択中":"☐ 全選択"}
                     </button>
                     <span style={{fontSize:"0.72rem",color:C.textSub,fontWeight:600}}>選択: {realSelected.size} / {matches.length}件</span>
@@ -24916,7 +24920,7 @@ ${orig}`})
                   <div style={{maxHeight:"50vh",overflowY:"auto",marginBottom:"0.75rem"}}>
                     {Object.entries(groupByType).map(([type, list]) => (
                       <div key={type} style={{marginBottom:"0.75rem"}}>
-                        <div style={{fontSize:"0.7rem",fontWeight:800,color:TYPE_COLOR[type],marginBottom:"0.4rem",padding:"0.2rem 0.4rem",background:`${TYPE_COLOR[type]}15`,borderRadius:4,display:"inline-block"}}>
+                        <div style={{fontSize:"0.7rem",fontWeight:800,color:TYPE_COLOR[type],marginBottom:"0.4rem",padding:"0.2rem 0.4rem",background:`${TYPE_COLOR[type]}15`,borderRadius:8,display:"inline-block"}}>
                           {type === "企業" ? "🏢" : type === "業者" ? "🔧" : "🏛️"} {type} ({list.length}件)
                         </div>
                         <div style={{display:"flex",flexDirection:"column",gap:"0.25rem"}}>
@@ -24926,7 +24930,7 @@ ${orig}`})
                             const personName = `${m.card.lastName||""} ${m.card.firstName||""}`.trim() || "（氏名なし）";
                             return (
                               <div key={m.card.id} onClick={()=>toggleOne(m.card.id)}
-                                style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.5rem 0.625rem",background:isChecked?"#ecfdf5":"white",border:`1.5px solid ${isChecked?"#86efac":C.border}`,borderRadius:"0.4rem",cursor:"pointer",transition:"all 0.1s"}}>
+                                style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.5rem 0.625rem",background:isChecked?"#ecfdf5":"white",border:`1.5px solid ${isChecked?"#86efac":C.border}`,borderRadius:"0.5rem",cursor:"pointer",transition:"all 0.1s"}}>
                                 <input type="checkbox" checked={isChecked} readOnly style={{width:16,height:16,accentColor:"#10b981",flexShrink:0}}/>
                                 <div style={{flex:1,minWidth:0}}>
                                   <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginBottom:"0.15rem"}}>
@@ -24935,7 +24939,7 @@ ${orig}`})
                                   </div>
                                   <div style={{fontSize:"0.68rem",color:C.textMuted,display:"flex",alignItems:"center",gap:"0.4rem"}}>
                                     <span style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",flex:1,minWidth:0}}>{m.card.company}</span>
-                                    <span style={{flexShrink:0,color:"#059669",fontWeight:700}}>→ {m.match.name}</span>
+                                    <span style={{flexShrink:0,color:"#009122",fontWeight:700}}>→ {m.match.name}</span>
                                   </div>
                                 </div>
                               </div>
@@ -25030,7 +25034,7 @@ ${orig}`})
                     // findMatchingEntities (fuzzy) で複数候補を取得 — 企業/業者/自治体すべて含む
                     const candidates = findMatchingEntities(bcAddForm.company);
                     if(!candidates.length) return null;
-                    const TYPE_COLOR = {"企業":"#2563eb","業者":"#7c3aed","自治体":"#059669"};
+                    const TYPE_COLOR = {"企業":"#0070D4","業者":"#7c3aed","自治体":"#009122"};
                     const TYPE_ICON  = {"企業":"🏢","業者":"🔧","自治体":"🏛️"};
                     // 重複排除（normBizName + type で一意化）
                     const seen = new Set();
@@ -25042,15 +25046,15 @@ ${orig}`})
                     }).slice(0,4); // 最大4件
                     return (
                       <div style={{background:"#ecfdf5",border:"1.5px solid #86efac",borderRadius:"0.5rem",padding:"0.6rem 0.75rem",marginBottom:"0.5rem"}}>
-                        <div style={{fontSize:"0.7rem",fontWeight:700,color:"#059669",marginBottom:"0.4rem",display:"flex",alignItems:"center",gap:"0.35rem"}}>
+                        <div style={{fontSize:"0.7rem",fontWeight:700,color:"#009122",marginBottom:"0.4rem",display:"flex",alignItems:"center",gap:"0.35rem"}}>
                           <span>✨ 同じ会社名が見つかりました（{uniq.length}件）</span>
                         </div>
                         {uniq.map(match=>(
                           <button key={`${match.type}_${match.id}`} onClick={()=>setBcAddForm(p=>({...p,_salesRef:{type:match.type,id:match.id,name:match.name}}))}
-                            style={{display:"flex",alignItems:"center",gap:"0.5rem",width:"100%",padding:"0.5rem 0.75rem",background:"white",border:`1.5px solid ${TYPE_COLOR[match.type]}`,borderRadius:"0.4rem",cursor:"pointer",fontFamily:"inherit",textAlign:"left",marginBottom:"0.35rem",minWidth:0,boxSizing:"border-box"}}>
+                            style={{display:"flex",alignItems:"center",gap:"0.5rem",width:"100%",padding:"0.5rem 0.75rem",background:"white",border:`1.5px solid ${TYPE_COLOR[match.type]}`,borderRadius:"0.5rem",cursor:"pointer",fontFamily:"inherit",textAlign:"left",marginBottom:"0.35rem",minWidth:0,boxSizing:"border-box"}}>
                             <span style={{fontSize:"0.65rem",fontWeight:800,color:"white",background:TYPE_COLOR[match.type],borderRadius:999,padding:"0.1rem 0.45rem",flexShrink:0}}>{TYPE_ICON[match.type]} {match.type}</span>
                             <span style={{fontSize:"0.85rem",fontWeight:700,color:C.text,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{match.name}</span>
-                            <span style={{fontSize:"0.7rem",color:"#059669",fontWeight:700,flexShrink:0}}>🔗 紐付け →</span>
+                            <span style={{fontSize:"0.7rem",color:"#009122",fontWeight:700,flexShrink:0}}>🔗 紐付け →</span>
                           </button>
                         ))}
                         <div style={{fontSize:"0.65rem",color:"#166534",marginTop:"0.3rem"}}>※ クリックすると自動で紐付けられます</div>
@@ -25113,7 +25117,7 @@ ${orig}`})
                 <div style={{fontSize:"0.82rem",color:C.textSub,marginBottom:"1rem",background:C.bg,padding:"0.75rem",borderRadius:"0.625rem",lineHeight:1.7}}>
                   EightアプリからエクスポートしたCSV（UTF-8）を選択してください。<br/>
                   A列（会社名）〜 N列（URL）を自動で取込みます。<br/>
-                  <span style={{color:"#059669",fontWeight:700}}>重複が見つかった場合は1件ずつ確認できます。</span>
+                  <span style={{color:"#009122",fontWeight:700}}>重複が見つかった場合は1件ずつ確認できます。</span>
                 </div>
                 {!bcImportPrev?(
                   <>
@@ -25127,7 +25131,7 @@ ${orig}`})
                       };
                       reader.readAsText(file,"UTF-8");
                     }} style={{width:"100%",marginBottom:"0.75rem"}}/>
-                    {bcImportErr&&<div style={{color:"#dc2626",fontSize:"0.82rem",background:"#fee2e2",padding:"0.5rem 0.75rem",borderRadius:"0.5rem"}}>⚠️ {bcImportErr}</div>}
+                    {bcImportErr&&<div style={{color:"#DA1313",fontSize:"0.82rem",background:"#fee2e2",padding:"0.5rem 0.75rem",borderRadius:"0.5rem"}}>⚠️ {bcImportErr}</div>}
                   </>
                 ):(
                   <>
@@ -25165,7 +25169,7 @@ ${orig}`})
           <div style={{flex:1,minWidth:0,overflowY:"auto",borderLeft:"1px solid #e5e5ea",background:"#ffffff"}}>
             <div style={{padding:"1rem 1.5rem",borderBottom:"1px solid #e5e5ea",display:"flex",alignItems:"center",background:"white",position:"sticky",top:0,zIndex:10}}>
               <div style={{flex:1,fontWeight:700,fontSize:"1rem",color:C.text}}>{muniOf(activeMuni)?.name||""}</div>
-              <button onClick={()=>{setActiveMuni(null);setMuniScreen("top");}} style={{background:"none",border:"1px solid #e5e5ea",borderRadius:"6px",padding:"0.3rem 0.75rem",cursor:"pointer",fontSize:"0.8rem",color:C.textSub}}>✕</button>
+              <button onClick={()=>{setActiveMuni(null);setMuniScreen("top");}} style={{background:"none",border:"1px solid #e5e5ea",borderRadius:"8px",padding:"0.3rem 0.75rem",cursor:"pointer",fontSize:"0.8rem",color:C.textSub}}>✕</button>
             </div>
             <div style={{padding:"1rem 1.5rem"}}>{renderMuniDetail(activeMuni)}</div>
           </div>
@@ -25227,7 +25231,7 @@ function PushTestPanel({ currentUser, users }) {
     setSending(false);
   };
 
-  const logColor = { ok:'#065f46', error:'#dc2626', warn:'#92400e', info:'#475569' };
+  const logColor = { ok:'#065f46', error:'#DA1313', warn:'#92400e', info:'#475569' };
   const logBg    = { ok:'#f0fdf4', error:'#fef2f2', warn:'#fffbeb', info:'#f8fafc' };
 
   return (
@@ -25250,7 +25254,7 @@ function PushTestPanel({ currentUser, users }) {
         ].map(([k,v]) => (
           <div key={k} style={{display:'flex', gap:'0.5rem', alignItems:'center', marginBottom:'0.3rem'}}>
             <span style={{fontSize:'0.68rem', color:'#a16207', width:80, flexShrink:0}}>{k}</span>
-            <code style={{fontSize:'0.78rem', fontWeight:700, color:'#1e293b', background:'#f8fafc', border:'1px solid #e2e8f0', borderRadius:4, padding:'1px 7px', letterSpacing:'0.02em'}}>{v}</code>
+            <code style={{fontSize:'0.78rem', fontWeight:700, color:'#1e293b', background:'#f8fafc', border:'1px solid #e2e8f0', borderRadius:8, padding:'1px 7px', letterSpacing:'0.02em'}}>{v}</code>
           </div>
         ))}
         <div style={{marginTop:'0.5rem', fontSize:'0.68rem', color:'#a16207', lineHeight:1.5}}>
@@ -25267,7 +25271,7 @@ function PushTestPanel({ currentUser, users }) {
           📡 購読状態を確認
         </button>
         <button onClick={sendTestPush} disabled={sending}
-          style={{flex:1, minWidth:120, padding:'0.5rem 0.75rem', borderRadius:8, border:'none', background: sending ? '#94a3b8' : '#2563eb', color:'white', cursor: sending ? 'default':'pointer', fontSize:'0.78rem', fontWeight:700, fontFamily:'inherit'}}>
+          style={{flex:1, minWidth:120, padding:'0.5rem 0.75rem', borderRadius:8, border:'none', background: sending ? '#94a3b8' : '#0070D4', color:'white', cursor: sending ? 'default':'pointer', fontSize:'0.78rem', fontWeight:700, fontFamily:'inherit'}}>
           {sending
             ? <span style={{display:"inline-flex",alignItems:"center",gap:"0.4rem"}}>
                 <span style={{width:12,height:12,borderRadius:"50%",border:"2px solid white",borderTopColor:"transparent",animation:"spin 0.8s linear infinite",display:"inline-block"}}/>
@@ -25281,7 +25285,7 @@ function PushTestPanel({ currentUser, users }) {
       {log.length > 0 && (
         <div style={{maxHeight:160, overflowY:'auto', display:'flex', flexDirection:'column', gap:3}}>
           {log.map((l, i) => (
-            <div key={i} style={{display:'flex', gap:'0.4rem', alignItems:'flex-start', background:logBg[l.type]||logBg.info, borderRadius:6, padding:'4px 8px'}}>
+            <div key={i} style={{display:'flex', gap:'0.4rem', alignItems:'flex-start', background:logBg[l.type]||logBg.info, borderRadius:8, padding:'4px 8px'}}>
               <span style={{fontSize:'0.65rem', color:'#94a3b8', flexShrink:0, marginTop:1}}>{l.t}</span>
               <span style={{fontSize:'0.75rem', color:logColor[l.type]||logColor.info, fontWeight:600, lineHeight:1.4}}>{l.msg}</span>
             </div>
@@ -25462,7 +25466,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
 
       {/* ── プロフィール設定 ── */}
       {section==="profile"&&(
-        <div style={{background:"white",borderRadius:"1rem",padding:"1.25rem",border:"1px solid "+C.border,boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
+        <div style={{background:"white",borderRadius:"1rem",padding:"1.25rem",border:"1px solid "+C.border,boxShadow:"0 1px 2px rgba(0,17,62,0.05)"}}>
           <div style={{fontWeight:800,fontSize:"0.9rem",color:C.text,marginBottom:"1rem"}}>👤 自分の情報</div>
           <div style={{display:"flex",alignItems:"center",gap:"1rem",marginBottom:"1.25rem"}}>
             <div style={{width:56,height:56,borderRadius:"50%",background:"linear-gradient(135deg,"+C.accent+","+C.accentDark+")",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"1.5rem",fontWeight:800,color:"white",flexShrink:0}}>
@@ -25484,17 +25488,17 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
           </div>
           {[["メールアドレス *（通知受信に必要）","email","example@mail.com","email"],["電話番号","phone","090-0000-0000","tel"]].map(([label,field,ph,type])=>(
             <div key={field} style={{marginBottom:"0.875rem"}}>
-              <div style={{fontSize:"0.78rem",fontWeight:700,color:field==="email"&&!profileForm.email?"#dc2626":C.textSub,marginBottom:"0.3rem"}}>{label}</div>
+              <div style={{fontSize:"0.78rem",fontWeight:700,color:field==="email"&&!profileForm.email?"#DA1313":C.textSub,marginBottom:"0.3rem"}}>{label}</div>
               <input type={type} value={profileForm[field]||""} onChange={e=>setProfileForm(p=>({...p,[field]:e.target.value}))} placeholder={ph}
                 style={{width:"100%",padding:"0.625rem 0.75rem",borderRadius:"0.625rem",border:`1.5px solid ${field==="email"&&!profileForm.email?"#fca5a5":C.border}`,fontSize:"0.9rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
               {field==="email"&&!profileForm.email&&(
-                <div style={{fontSize:"0.7rem",color:"#dc2626",marginTop:"0.2rem"}}>📧 メール通知を受け取るために入力してください</div>
+                <div style={{fontSize:"0.7rem",color:"#DA1313",marginTop:"0.2rem"}}>📧 メール通知を受け取るために入力してください</div>
               )}
             </div>
           ))}
-          {profileMsg&&<div style={{marginBottom:"0.75rem",fontSize:"0.82rem",color:profileMsg.startsWith("✅")?"#059669":"#dc2626"}}>{profileMsg}</div>}
+          {profileMsg&&<div style={{marginBottom:"0.75rem",fontSize:"0.82rem",color:profileMsg.startsWith("✅")?"#009122":"#DA1313"}}>{profileMsg}</div>}
           <button onClick={saveProfile} disabled={profileSaving||!profileForm.lastName.trim()}
-            style={{width:"100%",padding:"0.75rem",borderRadius:"6px",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.9rem",cursor:"pointer",fontFamily:"inherit",opacity:profileSaving?0.6:1}}>
+            style={{width:"100%",padding:"0.75rem",borderRadius:"8px",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.9rem",cursor:"pointer",fontFamily:"inherit",opacity:profileSaving?0.6:1}}>
             {profileSaving?"保存中...":"保存する"}
           </button>
 
@@ -25517,7 +25521,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
                     {id:'both',  label:'🔔 両方'},
                   ].map(opt=>(
                     <button key={opt.id} onClick={()=>saveMode(opt.id)}
-                      style={{flex:1,padding:"0.45rem 0.25rem",borderRadius:"0.625rem",border:`1.5px solid ${mode===opt.id?C.accent:C.border}`,cursor:"pointer",fontFamily:"inherit",fontWeight:mode===opt.id?700:500,fontSize:"0.72rem",background:mode===opt.id?"#eff6ff":"white",color:mode===opt.id?C.accent:C.textSub}}>
+                      style={{flex:1,padding:"0.45rem 0.25rem",borderRadius:"0.625rem",border:`1.5px solid ${mode===opt.id?C.accent:C.border}`,cursor:"pointer",fontFamily:"inherit",fontWeight:mode===opt.id?700:500,fontSize:"0.72rem",background:mode===opt.id?"#F2F7FF":"white",color:mode===opt.id?C.accent:C.textSub}}>
                       {opt.label}
                     </button>
                   ))}
@@ -25528,7 +25532,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
               <div style={{fontSize:"0.72rem",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:"0.5rem",padding:"0.4rem 0.625rem",marginBottom:"0.625rem"}}>
                 {currentUser?.email
                   ? <span style={{color:"#166534"}}>📧 送信先: <strong>{currentUser.email}</strong></span>
-                  : <span style={{color:"#dc2626"}}>⚠️ 上の「メールアドレス」を入力して保存すると通知が届きます</span>
+                  : <span style={{color:"#DA1313"}}>⚠️ 上の「メールアドレス」を入力して保存すると通知が届きます</span>
                 }
               </div>
             )}
@@ -25543,7 +25547,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
                 <button onClick={async()=>{
                   if(pushEnabled){await unsubscribePush(currentUser.id);setPushEnabled(false);}
                   else{const ok=await subscribePush(currentUser.id);if(ok)setPushEnabled(true);}
-                }} style={{padding:"0.4rem 1rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.82rem",background:pushEnabled?"#d1fae5":"#2563eb",color:pushEnabled?"#065f46":"white"}}>
+                }} style={{padding:"0.4rem 1rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.82rem",background:pushEnabled?"#d1fae5":"#0070D4",color:pushEnabled?"#065f46":"white"}}>
                   {pushEnabled?"ON ✓":"ONにする"}
                 </button>
               </div>
@@ -25555,7 +25559,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
             <div style={{fontSize:"0.87rem",fontWeight:700,color:C.text,marginBottom:"0.625rem"}}>✉️ メール統合</div>
             <div style={{fontSize:"0.72rem",color:C.textSub,marginBottom:"0.625rem",lineHeight:1.6}}>
               有効にすると、MyDesk内でメール受信箱（Outlook風）を使えます。
-              {!currentUser?.email && <span style={{color:"#dc2626"}}> ※先に上の「メールアドレス」を保存してください</span>}
+              {!currentUser?.email && <span style={{color:"#DA1313"}}> ※先に上の「メールアドレス」を保存してください</span>}
             </div>
             {(()=>{
               const ei = currentUser?.emailIntegration || {};
@@ -25614,9 +25618,9 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
             };
             return (
               <div style={{marginTop:"1.25rem",paddingTop:"1.25rem",borderTop:"1px solid "+C.borderLight}}>
-                <div style={{fontSize:"0.87rem",fontWeight:700,color:"#dc2626",marginBottom:"0.625rem"}}>🔑 管理者：パスワードリセット</div>
-                <div style={{background:"#fff1f2",border:"1px solid #fca5a5",borderRadius:"6px",padding:"0.875rem"}}>
-                  <div style={{fontSize:"0.75rem",color:"#dc2626",marginBottom:"0.75rem"}}>
+                <div style={{fontSize:"0.87rem",fontWeight:700,color:"#DA1313",marginBottom:"0.625rem"}}>🔑 管理者：パスワードリセット</div>
+                <div style={{background:"#fff1f2",border:"1px solid #fca5a5",borderRadius:"8px",padding:"0.875rem"}}>
+                  <div style={{fontSize:"0.75rem",color:"#DA1313",marginBottom:"0.75rem"}}>
                     ログインできないユーザーのパスワードをここから変更できます
                   </div>
                   <div style={{marginBottom:"0.5rem"}}>
@@ -25635,9 +25639,9 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
                       placeholder="4文字以上"
                       style={{width:"100%",padding:"0.5rem 0.75rem",borderRadius:"0.625rem",border:"1px solid #fca5a5",fontFamily:"inherit",fontSize:"0.82rem",boxSizing:"border-box"}}/>
                   </div>
-                  {resetMsg&&<div style={{fontSize:"0.78rem",marginBottom:"0.5rem",color:resetMsg.startsWith("✅")?"#059669":"#dc2626"}}>{resetMsg}</div>}
+                  {resetMsg&&<div style={{fontSize:"0.78rem",marginBottom:"0.5rem",color:resetMsg.startsWith("✅")?"#009122":"#DA1313"}}>{resetMsg}</div>}
                   <button onClick={doAdminReset}
-                    style={{width:"100%",padding:"0.55rem",borderRadius:"6px",border:"none",background:"#dc2626",color:"white",fontWeight:700,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>
+                    style={{width:"100%",padding:"0.55rem",borderRadius:"8px",border:"none",background:"#DA1313",color:"white",fontWeight:700,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>
                     パスワードをリセット
                   </button>
                 </div>
@@ -25658,14 +25662,14 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
             </div>
             <div style={{fontSize:"0.66rem",color:C.textMuted,marginBottom:"0.55rem",fontFamily:"ui-monospace, monospace"}}>現在のビルド: {(typeof MYDESK_BUILD!=="undefined"?MYDESK_BUILD:"-")}</div>
             <button onClick={()=>{ if(window.confirm("キャッシュをクリアして最新版に更新します。よろしいですか？")) forceAppUpdate(); }}
-              style={{width:"100%",padding:"0.65rem",borderRadius:"6px",border:`1.5px solid ${C.accent}`,background:"white",color:C.accent,fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
+              style={{width:"100%",padding:"0.65rem",borderRadius:"8px",border:`1.5px solid ${C.accent}`,background:"white",color:C.accent,fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
               キャッシュをクリアして最新版に更新
             </button>
           </div>
 
           {/* ログアウト */}
           <button onClick={onLogout}
-            style={{width:"100%",marginTop:"1rem",padding:"0.75rem",borderRadius:"6px",border:"1.5px solid #fee2e2",background:"white",color:"#dc2626",fontWeight:700,fontSize:"0.87rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
+            style={{width:"100%",marginTop:"1rem",padding:"0.75rem",borderRadius:"8px",border:"1.5px solid #fee2e2",background:"white",color:"#DA1313",fontWeight:700,fontSize:"0.87rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
             🚪 ログアウト
           </button>
         </div>
@@ -25673,7 +25677,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
 
       {/* ── メンバー管理（姓・名の一括編集）── */}
       {section==="members"&&(
-        <div style={{background:"white",borderRadius:"1rem",padding:"1.25rem",border:"1px solid "+C.border,boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
+        <div style={{background:"white",borderRadius:"1rem",padding:"1.25rem",border:"1px solid "+C.border,boxShadow:"0 1px 2px rgba(0,17,62,0.05)"}}>
           <div style={{fontWeight:800,fontSize:"0.9rem",color:C.text,marginBottom:"0.5rem"}}>👥 メンバーの姓・名</div>
           <div style={{fontSize:"0.74rem",color:C.textMuted,marginBottom:"1rem",lineHeight:1.6}}>
             各メンバーの姓と名を編集できます。空欄の場合は登録名から自動推定した値が入っています。保存すると表示名（姓 名）も自動で更新されます。
@@ -25704,9 +25708,9 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
               );
             })}
           </div>
-          {memberMsg&&<div style={{marginTop:"0.75rem",fontSize:"0.82rem",color:memberMsg.startsWith("✅")?"#059669":"#dc2626"}}>{memberMsg}</div>}
+          {memberMsg&&<div style={{marginTop:"0.75rem",fontSize:"0.82rem",color:memberMsg.startsWith("✅")?"#009122":"#DA1313"}}>{memberMsg}</div>}
           <button onClick={saveMembers} disabled={memberSaving||Object.keys(memberEdits).length===0}
-            style={{width:"100%",marginTop:"0.875rem",padding:"0.75rem",borderRadius:"6px",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.9rem",cursor:"pointer",fontFamily:"inherit",opacity:(memberSaving||Object.keys(memberEdits).length===0)?0.5:1}}>
+            style={{width:"100%",marginTop:"0.875rem",padding:"0.75rem",borderRadius:"8px",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.9rem",cursor:"pointer",fontFamily:"inherit",opacity:(memberSaving||Object.keys(memberEdits).length===0)?0.5:1}}>
             {memberSaving?"保存中...":Object.keys(memberEdits).length>0?`変更を保存（${Object.keys(memberEdits).length}名）`:"変更なし"}
           </button>
         </div>
@@ -25715,7 +25719,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
       {/* ── 規約・法定文書の管理 ── */}
       {section==="terms"&&(
         <div style={{display:"flex",flexDirection:"column",gap:"0.6rem"}}>
-          <div style={{background:"white",borderRadius:"1rem",padding:"1.15rem 1.25rem",border:`1px solid ${C.border}`,boxShadow:"0 1px 2px rgba(0,0,0,0.03)"}}>
+          <div style={{background:"white",borderRadius:"1rem",padding:"1.15rem 1.25rem",border:`1px solid ${C.border}`,boxShadow:"0 1px 2px rgba(0,17,62,0.04)"}}>
             <div style={{fontWeight:800,fontSize:"0.95rem",color:C.text,marginBottom:"0.4rem"}}>📜 規約・法定文書の管理</div>
             <div style={{fontSize:"0.74rem",color:C.textMuted,lineHeight:1.65}}>サービスで使用する各種規約・プライバシーポリシー・法定表示を一元管理します。バージョンごとにファイルを保管でき、関連する法律の概要も確認できます。AIアシスタントもこの情報を参照して回答します。</div>
           </div>
@@ -25727,17 +25731,17 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
             const isExpanded = termExpanded===template.id;
             const isUploading = termUploading===template.id;
             return (
-              <div key={template.id} style={{background:"white",borderRadius:"0.875rem",border:`1px solid ${C.border}`,overflow:"hidden",boxShadow:"0 1px 2px rgba(0,0,0,0.03)"}}>
+              <div key={template.id} style={{background:"white",borderRadius:"0.875rem",border:`1px solid ${C.border}`,overflow:"hidden",boxShadow:"0 1px 2px rgba(0,17,62,0.04)"}}>
                 <button onClick={()=>setTermExpanded(isExpanded?null:template.id)}
                   style={{width:"100%",textAlign:"left",border:"none",background:"transparent",padding:"1rem 1.15rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"0.75rem"}}>
                   <div style={{fontSize:"1.5rem",flexShrink:0}}>{template.icon}</div>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{display:"flex",alignItems:"center",gap:"0.4rem",flexWrap:"wrap",marginBottom:"0.2rem"}}>
                       <span style={{fontWeight:700,fontSize:"0.92rem",color:C.text,letterSpacing:"-0.005em"}}>{template.name}</span>
-                      <span style={{fontSize:"0.62rem",fontWeight:700,padding:"0.15rem 0.45rem",background:C.bg,color:C.textSub,borderRadius:4,letterSpacing:"0.03em"}}>{template.category}</span>
+                      <span style={{fontSize:"0.62rem",fontWeight:700,padding:"0.15rem 0.45rem",background:C.bg,color:C.textSub,borderRadius:8,letterSpacing:"0.03em"}}>{template.category}</span>
                       {latest
-                        ? <span style={{fontSize:"0.7rem",fontWeight:800,color:"#059669",padding:"0.1rem 0.4rem",background:"#05966915",borderRadius:4}}>v{latest.version}</span>
-                        : <span style={{fontSize:"0.66rem",fontWeight:700,color:"#a16207",padding:"0.1rem 0.4rem",background:"#fef3c7",borderRadius:4}}>未登録</span>}
+                        ? <span style={{fontSize:"0.7rem",fontWeight:800,color:"#009122",padding:"0.1rem 0.4rem",background:"#00912215",borderRadius:8}}>v{latest.version}</span>
+                        : <span style={{fontSize:"0.66rem",fontWeight:700,color:"#a16207",padding:"0.1rem 0.4rem",background:"#fef3c7",borderRadius:8}}>未登録</span>}
                     </div>
                     <div style={{fontSize:"0.68rem",color:C.textMuted,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>関連法律: {template.relatedLaws.map(lid=>LAWS_REGISTRY[lid]?.name).filter(Boolean).join(" / ")}</div>
                   </div>
@@ -25764,7 +25768,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
 
                     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.5rem"}}>
                       <div style={{fontSize:"0.62rem",fontWeight:700,color:C.textMuted,letterSpacing:"0.1em",textTransform:"uppercase"}}>バージョン履歴</div>
-                      <label style={{fontSize:"0.72rem",fontWeight:700,color:C.accent,cursor:isUploading?"default":"pointer",padding:"0.35rem 0.75rem",borderRadius:6,border:`1px solid ${C.accent}33`,background:C.accent+"08",opacity:isUploading?0.5:1}}>
+                      <label style={{fontSize:"0.72rem",fontWeight:700,color:C.accent,cursor:isUploading?"default":"pointer",padding:"0.35rem 0.75rem",borderRadius:8,border:`1px solid ${C.accent}33`,background:C.accent+"08",opacity:isUploading?0.5:1}}>
                         {isUploading?"アップロード中…":"＋ 新版アップロード"}
                         <input type="file" accept=".docx,.pdf,.doc,.txt" disabled={isUploading} style={{display:"none"}}
                           onChange={async e=>{
@@ -25805,7 +25809,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
                                 <div style={{fontSize:"0.65rem",color:C.textMuted,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{(v.uploadedAt||"").slice(0,10)}{uploader?` · ${uploader.lastName||uploader.name||""}`:""}{v.notes?` · ${v.notes}`:""}</div>
                               </div>
                               {v.fileUrl && (
-                                <a href={v.fileUrl} target="_blank" rel="noopener noreferrer" style={{fontSize:"0.7rem",fontWeight:700,color:C.accent,textDecoration:"none",padding:"0.3rem 0.65rem",borderRadius:5,background:C.accent+"0d",flexShrink:0}}>📥 表示</a>
+                                <a href={v.fileUrl} target="_blank" rel="noopener noreferrer" style={{fontSize:"0.7rem",fontWeight:700,color:C.accent,textDecoration:"none",padding:"0.3rem 0.65rem",borderRadius:8,background:C.accent+"0d",flexShrink:0}}>📥 表示</a>
                               )}
                             </div>
                           );
@@ -25846,21 +25850,21 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
               </div>
             </div>
           )}
-          <div style={{background:"white",borderRadius:"1rem",border:"1px solid "+C.border,boxShadow:"0 1px 2px rgba(0,0,0,0.04)",overflow:"hidden"}}>
-            <div style={{padding:"0.875rem 1rem",background:"linear-gradient(135deg,#1e40af,#2563eb)",color:"white"}}>
+          <div style={{background:"white",borderRadius:"1rem",border:"1px solid "+C.border,boxShadow:"0 1px 2px rgba(0,17,62,0.05)",overflow:"hidden"}}>
+            <div style={{padding:"0.875rem 1rem",background:"linear-gradient(135deg,#295FA6,#0070D4)",color:"white"}}>
               <div style={{fontWeight:800,fontSize:"0.9rem"}}>📋 Jobcan 勤怠管理</div>
               <div style={{fontSize:"0.72rem",opacity:0.85,marginTop:"0.2rem"}}>出退勤・休暇申請はこちらから</div>
             </div>
             <div style={{padding:"1rem"}}>
               <a href="https://ssl.jobcan.jp/login/mb-employee?client_id=nhd&lang_code=ja" target="_blank" rel="noopener noreferrer"
-                style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0.75rem 1rem",borderRadius:"6px",background:C.accentBg,border:"1.5px solid "+C.accent+"40",color:C.accentDark,fontWeight:700,fontSize:"0.9rem",textDecoration:"none"}}>
+                style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0.75rem 1rem",borderRadius:"8px",background:C.accentBg,border:"1.5px solid "+C.accent+"40",color:C.accentDark,fontWeight:700,fontSize:"0.9rem",textDecoration:"none"}}>
                 <span>🕐 勤怠打刻・申請を開く</span>
                 <span style={{fontSize:"0.9rem"}}>↗</span>
               </a>
             </div>
           </div>
 
-          <div style={{background:"white",borderRadius:"1rem",border:"1px solid "+C.border,boxShadow:"0 1px 2px rgba(0,0,0,0.04)",overflow:"hidden"}}>
+          <div style={{background:"white",borderRadius:"1rem",border:"1px solid "+C.border,boxShadow:"0 1px 2px rgba(0,17,62,0.05)",overflow:"hidden"}}>
             <div style={{padding:"0.875rem 1rem",background:"linear-gradient(135deg,#5b21b6,#7c3aed)",color:"white"}}>
               <div style={{fontWeight:800,fontSize:"0.9rem"}}>📝 Jobcan ワークフロー（稟議）</div>
               <div style={{fontSize:"0.72rem",opacity:0.85,marginTop:"0.2rem"}}>各種申請・承認はこちらから</div>
@@ -25871,7 +25875,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
                 <span style={{fontSize:"0.88rem",color:"#5b21b6",fontWeight:800,letterSpacing:"0.05em"}}>C15348-28852-43733</span>
               </div>
               <a href="https://id.jobcan.jp/users/sign_in?app_key=wf" target="_blank" rel="noopener noreferrer"
-                style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0.75rem 1rem",borderRadius:"6px",background:"#f5f3ff",border:"1.5px solid #ddd6fe",color:"#5b21b6",fontWeight:700,fontSize:"0.9rem",textDecoration:"none"}}>
+                style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0.75rem 1rem",borderRadius:"8px",background:"#f5f3ff",border:"1.5px solid #ddd6fe",color:"#5b21b6",fontWeight:700,fontSize:"0.9rem",textDecoration:"none"}}>
                 <span>📄 稟議・申請を開く</span>
                 <span style={{fontSize:"0.9rem"}}>↗</span>
               </a>
@@ -25884,15 +25888,15 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
       {section==="contract"&&(
         <div style={{display:"flex",flexDirection:"column",gap:"0.875rem"}}>
           {/* ヘッダー */}
-          <div style={{background:"linear-gradient(135deg,#1e3a5f,#2563eb)",borderRadius:"1rem",padding:"1.25rem 1.25rem 1rem",color:"white",position:"relative",overflow:"hidden"}}>
+          <div style={{background:"linear-gradient(135deg,#1e3a5f,#0070D4)",borderRadius:"1rem",padding:"1.25rem 1.25rem 1rem",color:"white",position:"relative",overflow:"hidden"}}>
             <div style={{position:"absolute",right:-20,top:-20,fontSize:"5rem",opacity:0.08}}>📜</div>
             <div style={{fontSize:"1.1rem",fontWeight:800,marginBottom:"0.25rem"}}>📜 契約書確認</div>
             <div style={{fontSize:"0.78rem",opacity:0.85,lineHeight:1.5}}>契約書のアップロード・生成・管理ができます</div>
           </div>
 
           {/* アクションカード：契約書をアップロード */}
-          <div style={{background:"white",borderRadius:"1rem",border:"1px solid "+C.border,boxShadow:"0 1px 2px rgba(0,0,0,0.04)",overflow:"hidden"}}>
-            <div style={{padding:"0.75rem 1rem",background:"linear-gradient(135deg,#065f46,#059669)",color:"white",display:"flex",alignItems:"center",gap:"0.5rem"}}>
+          <div style={{background:"white",borderRadius:"1rem",border:"1px solid "+C.border,boxShadow:"0 1px 2px rgba(0,17,62,0.05)",overflow:"hidden"}}>
+            <div style={{padding:"0.75rem 1rem",background:"linear-gradient(135deg,#065f46,#009122)",color:"white",display:"flex",alignItems:"center",gap:"0.5rem"}}>
               <span style={{fontSize:"1.2rem"}}>📁</span>
               <div>
                 <div style={{fontWeight:800,fontSize:"0.88rem"}}>契約書をアップロード</div>
@@ -25905,14 +25909,14 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
                 署名済み契約書の保管にも使用できます。
               </div>
               <button onClick={()=>setContractModal("upload")}
-                style={{width:"100%",padding:"0.75rem",borderRadius:"6px",border:"none",background:"#059669",color:"white",fontWeight:700,fontSize:"0.9rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
+                style={{width:"100%",padding:"0.75rem",borderRadius:"8px",border:"none",background:"#009122",color:"white",fontWeight:700,fontSize:"0.9rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
                 📤 契約書をアップロード
               </button>
             </div>
           </div>
 
           {/* アクションカード：契約書を生成 */}
-          <div style={{background:"white",borderRadius:"1rem",border:"1px solid "+C.border,boxShadow:"0 1px 2px rgba(0,0,0,0.04)",overflow:"hidden"}}>
+          <div style={{background:"white",borderRadius:"1rem",border:"1px solid "+C.border,boxShadow:"0 1px 2px rgba(0,17,62,0.05)",overflow:"hidden"}}>
             <div style={{padding:"0.75rem 1rem",background:"linear-gradient(135deg,#4c1d95,#7c3aed)",color:"white",display:"flex",alignItems:"center",gap:"0.5rem"}}>
               <span style={{fontSize:"1.2rem"}}>✨</span>
               <div>
@@ -25935,14 +25939,14 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
                 ))}
               </div>
               <button onClick={()=>setContractModal("generate")}
-                style={{width:"100%",padding:"0.75rem",borderRadius:"6px",border:"none",background:"linear-gradient(135deg,#6d28d9,#7c3aed)",color:"white",fontWeight:700,fontSize:"0.9rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
+                style={{width:"100%",padding:"0.75rem",borderRadius:"8px",border:"none",background:"linear-gradient(135deg,#6d28d9,#7c3aed)",color:"white",fontWeight:700,fontSize:"0.9rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
                 ✨ 情報を入力して契約書を生成
               </button>
             </div>
           </div>
 
           {/* アクションカード：契約書一覧 */}
-          <div style={{background:"white",borderRadius:"1rem",border:"1px solid "+C.border,boxShadow:"0 1px 2px rgba(0,0,0,0.04)",overflow:"hidden"}}>
+          <div style={{background:"white",borderRadius:"1rem",border:"1px solid "+C.border,boxShadow:"0 1px 2px rgba(0,17,62,0.05)",overflow:"hidden"}}>
             <div style={{padding:"0.75rem 1rem",background:"linear-gradient(135deg,#92400e,#d97706)",color:"white",display:"flex",alignItems:"center",gap:"0.5rem"}}>
               <span style={{fontSize:"1.2rem"}}>📋</span>
               <div>
@@ -25955,7 +25959,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
                 企業別・期間別に契約書を一覧表示。ステータス管理（締結前・締結済・期限切れ）や更新リマインダーも設定できます。
               </div>
               <button onClick={()=>setContractModal("list")}
-                style={{width:"100%",padding:"0.75rem",borderRadius:"6px",border:"1.5px solid #d97706",background:"#fffbeb",color:"#92400e",fontWeight:700,fontSize:"0.9rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
+                style={{width:"100%",padding:"0.75rem",borderRadius:"8px",border:"1.5px solid #d97706",background:"#fffbeb",color:"#92400e",fontWeight:700,fontSize:"0.9rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
                 📋 契約書一覧を見る
               </button>
             </div>
@@ -25977,7 +25981,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
               {contractModal==="list"&&"契約書一覧機能は現在開発中です。もうしばらくお待ちください。"}
             </div>
             <button onClick={()=>setContractModal(null)}
-              style={{padding:"0.75rem 2rem",borderRadius:"6px",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.9rem",cursor:"pointer",fontFamily:"inherit"}}>
+              style={{padding:"0.75rem 2rem",borderRadius:"8px",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.9rem",cursor:"pointer",fontFamily:"inherit"}}>
               閉じる
             </button>
           </div>
@@ -25986,7 +25990,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
 
       {/* ── パスワード変更 ── */}
       {section==="account"&&(
-        <div style={{background:"white",borderRadius:"1rem",padding:"1.25rem",border:"1px solid "+C.border,boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
+        <div style={{background:"white",borderRadius:"1rem",padding:"1.25rem",border:"1px solid "+C.border,boxShadow:"0 1px 2px rgba(0,17,62,0.05)"}}>
           <div style={{fontWeight:800,fontSize:"0.9rem",color:C.text,marginBottom:"1rem"}}>🔑 パスワード変更</div>
           {[["現在のパスワード","cur"],["新しいパスワード（6文字以上）","next"],["新しいパスワード（確認）","next2"]].map(([label,field])=>(
             <div key={field} style={{marginBottom:"0.875rem"}}>
@@ -25995,9 +25999,9 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
                 style={{width:"100%",padding:"0.625rem 0.75rem",borderRadius:"0.625rem",border:"1.5px solid "+C.border,fontSize:"0.9rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
             </div>
           ))}
-          {pwMsg&&<div style={{marginBottom:"0.75rem",fontSize:"0.82rem",color:pwMsg.startsWith("✅")?"#059669":"#dc2626"}}>{pwMsg}</div>}
+          {pwMsg&&<div style={{marginBottom:"0.75rem",fontSize:"0.82rem",color:pwMsg.startsWith("✅")?"#009122":"#DA1313"}}>{pwMsg}</div>}
           <button onClick={changePassword}
-            style={{width:"100%",padding:"0.75rem",borderRadius:"6px",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.9rem",cursor:"pointer",fontFamily:"inherit"}}>
+            style={{width:"100%",padding:"0.75rem",borderRadius:"8px",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.9rem",cursor:"pointer",fontFamily:"inherit"}}>
             変更する
           </button>
         </div>
@@ -26040,11 +26044,11 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
             </div>
 
             {/* 変数一覧 */}
-            <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:"6px",padding:"0.75rem",marginBottom:"1rem",fontSize:"0.75rem",color:"#166534"}}>
+            <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:"8px",padding:"0.75rem",marginBottom:"1rem",fontSize:"0.75rem",color:"#166534"}}>
               <div style={{fontWeight:700,marginBottom:"0.35rem"}}>使える変数</div>
               <div style={{display:"flex",flexWrap:"wrap",gap:"0.35rem"}}>
                 {EMAIL_TEMPLATE_VARS.map(v=>(
-                  <code key={v} style={{background:"#dcfce7",borderRadius:"0.3rem",padding:"0.1rem 0.4rem",fontSize:"0.72rem",fontFamily:"monospace"}}>{v}</code>
+                  <code key={v} style={{background:"#dcfce7",borderRadius:"0.5rem",padding:"0.1rem 0.4rem",fontSize:"0.72rem",fontFamily:"monospace"}}>{v}</code>
                 ))}
               </div>
             </div>
@@ -26078,14 +26082,14 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
               <div style={{textAlign:"center",padding:"2rem",color:C.textMuted,fontSize:"0.85rem"}}>テンプレートがありません</div>
             )}
             {templates.map(t=>{
-              const typeColor={"企業":"#2563eb","自治体":"#059669","業者":"#7c3aed","共通":"#6b7280"}[t.targetType]||"#6b7280";
+              const typeColor={"企業":"#0070D4","自治体":"#009122","業者":"#7c3aed","共通":"#6b7280"}[t.targetType]||"#6b7280";
               return (
-                <div key={t.id} style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"8px",padding:"1rem",marginBottom:"0.75rem",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
+                <div key={t.id} style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"8px",padding:"1rem",marginBottom:"0.75rem",boxShadow:"0 1px 2px rgba(0,17,62,0.05)"}}>
                   <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.4rem"}}>
                     <span style={{fontSize:"0.68rem",fontWeight:800,color:"white",background:typeColor,borderRadius:999,padding:"0.1rem 0.45rem"}}>{t.targetType||"共通"}</span>
                     <span style={{fontWeight:700,fontSize:"0.88rem",color:C.text,flex:1}}>{t.name}</span>
                     <button onClick={()=>startEdit(t)} style={{background:"none",border:"none",cursor:"pointer",fontSize:"0.8rem",color:C.textMuted}}>✏️</button>
-                    <button onClick={()=>deleteTpl(t.id)} style={{background:"none",border:"none",cursor:"pointer",fontSize:"0.8rem",color:"#dc2626"}}>🗑</button>
+                    <button onClick={()=>deleteTpl(t.id)} style={{background:"none",border:"none",cursor:"pointer",fontSize:"0.8rem",color:"#DA1313"}}>🗑</button>
                   </div>
                   <div style={{fontSize:"0.75rem",color:C.textSub,marginBottom:"0.25rem"}}>件名: {t.subject}</div>
                   <div style={{fontSize:"0.73rem",color:C.textMuted,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{t.body}</div>
@@ -26162,43 +26166,43 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
               </div>
 
               {/* 送信フォーム */}
-              <div style={{background:"white",borderRadius:"1rem",padding:"1.25rem",border:"1px solid "+C.border,boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
+              <div style={{background:"white",borderRadius:"1rem",padding:"1.25rem",border:"1px solid "+C.border,boxShadow:"0 1px 2px rgba(0,17,62,0.05)"}}>
                 <div style={{display:"flex",flexDirection:"column",gap:"0.75rem"}}>
                   <div>
-                    <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.25rem"}}>宛先 (To) <span style={{color:"#dc2626"}}>*</span></label>
+                    <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.25rem"}}>宛先 (To) <span style={{color:"#DA1313"}}>*</span></label>
                     <textarea value={to} onChange={e=>setTo(e.target.value)} placeholder="example@example.com&#10;複数の場合はカンマまたは改行で区切る"
-                      style={{width:"100%",padding:"0.5rem 0.7rem",border:"1px solid #d1d5db",borderRadius:"6px",fontSize:"0.85rem",boxSizing:"border-box",fontFamily:"inherit",height:60,resize:"vertical"}}/>
+                      style={{width:"100%",padding:"0.5rem 0.7rem",border:"1px solid #d1d5db",borderRadius:"8px",fontSize:"0.85rem",boxSizing:"border-box",fontFamily:"inherit",height:60,resize:"vertical"}}/>
                   </div>
                   <div>
                     <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.25rem"}}>CC (任意)</label>
                     <textarea value={cc} onChange={e=>setCc(e.target.value)} placeholder="複数の場合はカンマまたは改行で区切る"
-                      style={{width:"100%",padding:"0.5rem 0.7rem",border:"1px solid #d1d5db",borderRadius:"6px",fontSize:"0.85rem",boxSizing:"border-box",fontFamily:"inherit",height:50,resize:"vertical"}}/>
+                      style={{width:"100%",padding:"0.5rem 0.7rem",border:"1px solid #d1d5db",borderRadius:"8px",fontSize:"0.85rem",boxSizing:"border-box",fontFamily:"inherit",height:50,resize:"vertical"}}/>
                   </div>
                   <div>
                     <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.25rem"}}>BCC (任意)</label>
                     <textarea value={bcc} onChange={e=>setBcc(e.target.value)} placeholder="複数の場合はカンマまたは改行で区切る"
-                      style={{width:"100%",padding:"0.5rem 0.7rem",border:"1px solid #d1d5db",borderRadius:"6px",fontSize:"0.85rem",boxSizing:"border-box",fontFamily:"inherit",height:50,resize:"vertical"}}/>
+                      style={{width:"100%",padding:"0.5rem 0.7rem",border:"1px solid #d1d5db",borderRadius:"8px",fontSize:"0.85rem",boxSizing:"border-box",fontFamily:"inherit",height:50,resize:"vertical"}}/>
                   </div>
                   <div>
-                    <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.25rem"}}>件名 <span style={{color:"#dc2626"}}>*</span></label>
+                    <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.25rem"}}>件名 <span style={{color:"#DA1313"}}>*</span></label>
                     <input type="text" value={subject} onChange={e=>setSubject(e.target.value)}
-                      style={{width:"100%",padding:"0.5rem 0.7rem",border:"1px solid #d1d5db",borderRadius:"6px",fontSize:"0.85rem",boxSizing:"border-box",fontFamily:"inherit"}}/>
+                      style={{width:"100%",padding:"0.5rem 0.7rem",border:"1px solid #d1d5db",borderRadius:"8px",fontSize:"0.85rem",boxSizing:"border-box",fontFamily:"inherit"}}/>
                   </div>
                   <div>
-                    <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.25rem"}}>本文 <span style={{color:"#dc2626"}}>*</span></label>
+                    <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:"#374151",marginBottom:"0.25rem"}}>本文 <span style={{color:"#DA1313"}}>*</span></label>
                     <textarea value={body} onChange={e=>setBody(e.target.value)}
-                      style={{width:"100%",padding:"0.5rem 0.7rem",border:"1px solid #d1d5db",borderRadius:"6px",fontSize:"0.85rem",boxSizing:"border-box",fontFamily:"inherit",height:160,resize:"vertical"}}/>
+                      style={{width:"100%",padding:"0.5rem 0.7rem",border:"1px solid #d1d5db",borderRadius:"8px",fontSize:"0.85rem",boxSizing:"border-box",fontFamily:"inherit",height:160,resize:"vertical"}}/>
                   </div>
 
                   {/* 送信ボタン */}
                   <button onClick={handleSend} disabled={sending}
-                    style={{padding:"0.7rem",fontSize:"0.85rem",fontWeight:700,background:sending?"#9ca3af":"#7c3aed",color:"white",border:"none",borderRadius:"6px",cursor:sending?"wait":"pointer",marginTop:"0.5rem"}}>
+                    style={{padding:"0.7rem",fontSize:"0.85rem",fontWeight:700,background:sending?"#9ca3af":"#7c3aed",color:"white",border:"none",borderRadius:"8px",cursor:sending?"wait":"pointer",marginTop:"0.5rem"}}>
                     {sending ? "⏳ 送信中..." : "📨 送信する"}
                   </button>
 
                   {/* 結果表示 */}
                   {result && (
-                    <div style={{padding:"0.75rem",borderRadius:"6px",fontSize:"0.78rem",whiteSpace:"pre-wrap",
+                    <div style={{padding:"0.75rem",borderRadius:"8px",fontSize:"0.78rem",whiteSpace:"pre-wrap",
                       background: result.ok ? "#d1fae5" : "#fee2e2",
                       color: result.ok ? "#065f46" : "#b91c1c",
                       border: `1px solid ${result.ok ? "#a7f3d0" : "#fecaca"}`,
@@ -26212,7 +26216,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
               {/* ヒント */}
               <div style={{background:"#fefce8",border:"1px solid #fde68a",borderRadius:"8px",padding:"0.75rem 1rem",fontSize:"0.72rem",color:"#78350f",lineHeight:1.6}}>
                 <strong>💡 ヒント:</strong><br/>
-                ・送信元 <code style={{background:"#fde68a",padding:"0 4px",borderRadius:"3px"}}>info@dustalk.com</code> は Resend で認証済みです<br/>
+                ・送信元 <code style={{background:"#fde68a",padding:"0 4px",borderRadius:"8px"}}>info@dustalk.com</code> は Resend で認証済みです<br/>
                 ・自分のメールアドレスを宛先に入れて、まず自分宛で動作確認することをお勧めします<br/>
                 ・到達しない場合は迷惑メールフォルダもチェックしてください
               </div>
@@ -26239,7 +26243,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
         return (
           <div style={{display:"flex",flexDirection:"column",gap:"0.75rem"}}>
             {/* ヘッダー説明 */}
-            <div style={{background:"linear-gradient(135deg,#1d4ed8,#2563eb)",borderRadius:"1rem",padding:"1.25rem",color:"white"}}>
+            <div style={{background:"linear-gradient(135deg,#1563CA,#0070D4)",borderRadius:"1rem",padding:"1.25rem",color:"white"}}>
               <div style={{fontWeight:800,fontSize:"0.95rem",marginBottom:"0.35rem"}}>🕐 自動バックアップ</div>
               <div style={{fontSize:"0.75rem",opacity:0.9,lineHeight:1.6}}>
                 データを保存するたびに<strong>自動で記録</strong>しています（最小3分間隔）。<br/>
@@ -26248,14 +26252,14 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
             </div>
 
             {/* メッセージ */}
-            {snapMsg&&<div style={{fontSize:"0.82rem",color:snapMsg.startsWith("✅")?"#059669":snapMsg.startsWith("❌")?"#dc2626":"#1d4ed8",background:snapMsg.startsWith("✅")?"#d1fae5":snapMsg.startsWith("❌")?"#fee2e2":"#dbeafe",borderRadius:"6px",padding:"0.625rem 0.875rem"}}>{snapMsg}</div>}
+            {snapMsg&&<div style={{fontSize:"0.82rem",color:snapMsg.startsWith("✅")?"#009122":snapMsg.startsWith("❌")?"#DA1313":"#1563CA",background:snapMsg.startsWith("✅")?"#d1fae5":snapMsg.startsWith("❌")?"#fee2e2":"#E6F0FF",borderRadius:"8px",padding:"0.625rem 0.875rem"}}>{snapMsg}</div>}
 
             {/* アクションボタン */}
             <div style={{display:"flex",gap:"0.5rem"}}>
-              <button onClick={doBackup} style={{flex:2,padding:"0.7rem",borderRadius:"6px",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
+              <button onClick={doBackup} style={{flex:2,padding:"0.7rem",borderRadius:"8px",border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
                 📌 今すぐ手動保存
               </button>
-              <button onClick={loadSnaps} style={{flex:1,padding:"0.7rem",borderRadius:"6px",border:"1px solid "+C.border,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
+              <button onClick={loadSnaps} style={{flex:1,padding:"0.7rem",borderRadius:"8px",border:"1px solid "+C.border,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>
                 {snapLoading?"読込中...":"🔄 更新"}
               </button>
             </div>
@@ -26272,7 +26276,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
               <div key={day}>
                 {/* 日付ヘッダー */}
                 <div style={{fontSize:"0.72rem",fontWeight:800,color:C.textMuted,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:"0.375rem",padding:"0 0.25rem"}}>{day}</div>
-                <div style={{background:"white",borderRadius:"8px",border:"1px solid "+C.border,overflow:"hidden",boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
+                <div style={{background:"white",borderRadius:"8px",border:"1px solid "+C.border,overflow:"hidden",boxShadow:"0 1px 2px rgba(0,17,62,0.05)"}}>
                   {grouped[day].map((s,i)=>{
                     const dt = s.savedAt ? new Date(s.savedAt) : null;
                     const timeStr = dt ? dt.toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit",second:"2-digit"}) : "";
@@ -26287,7 +26291,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
                         {/* ラベル */}
                         <div style={{flex:1,minWidth:0}}>
                           {isManual
-                            ? <span style={{fontSize:"0.72rem",background:"#dbeafe",color:"#1d4ed8",borderRadius:999,padding:"0.1rem 0.5rem",fontWeight:700}}>📌 手動</span>
+                            ? <span style={{fontSize:"0.72rem",background:"#E6F0FF",color:"#1563CA",borderRadius:999,padding:"0.1rem 0.5rem",fontWeight:700}}>📌 手動</span>
                             : <span style={{fontSize:"0.72rem",background:"#f1f5f9",color:"#64748b",borderRadius:999,padding:"0.1rem 0.5rem",fontWeight:600}}>🔄 自動</span>
                           }
                           {s.label&&isManual&&<div style={{fontSize:"0.72rem",color:C.textSub,marginTop:"0.1rem",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.label}</div>}
@@ -26320,10 +26324,10 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
                     ただし<strong>復元前のデータは自動退避</strong>されるため、やり直しも可能です。
                   </div>
                   <div style={{display:"flex",gap:"0.625rem"}}>
-                    <button onClick={()=>setRestoreConfirm(null)} style={{flex:1,padding:"0.75rem",borderRadius:"6px",border:"1px solid "+C.border,background:"white",color:C.text,fontWeight:700,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>
+                    <button onClick={()=>setRestoreConfirm(null)} style={{flex:1,padding:"0.75rem",borderRadius:"8px",border:"1px solid "+C.border,background:"white",color:C.text,fontWeight:700,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>
                       キャンセル
                     </button>
-                    <button onClick={()=>doRestore(restoreConfirm)} style={{flex:2,padding:"0.75rem",borderRadius:"6px",border:"none",background:"#dc2626",color:"white",fontWeight:700,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>
+                    <button onClick={()=>doRestore(restoreConfirm)} style={{flex:2,padding:"0.75rem",borderRadius:"8px",border:"none",background:"#DA1313",color:"white",fontWeight:700,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>
                       この時刻に戻す
                     </button>
                   </div>
@@ -26479,7 +26483,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
               <div style={{display:"inline-flex",background:C.bg,borderRadius:8,padding:"0.15rem",border:`1px solid ${C.borderLight}`}}>
                 {[{id:"timeline",label:"📜 タイムライン"},{id:"calendar",label:"📅 カレンダー"}].map(v=>(
                   <button key={v.id} onClick={()=>{setLogViewMode(v.id); if(v.id==="timeline") setLogSelectedDay("");}}
-                    style={{padding:"0.35rem 0.75rem",borderRadius:6,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:"0.74rem",fontWeight:logViewMode===v.id?800:500,background:logViewMode===v.id?"white":"transparent",color:logViewMode===v.id?C.accent:C.textSub,boxShadow:logViewMode===v.id?"0 1px 2px rgba(0,0,0,0.06)":"none"}}>
+                    style={{padding:"0.35rem 0.75rem",borderRadius:8,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:"0.74rem",fontWeight:logViewMode===v.id?800:500,background:logViewMode===v.id?"white":"transparent",color:logViewMode===v.id?C.accent:C.textSub,boxShadow:logViewMode===v.id?"0 1px 2px rgba(0,0,0,0.06)":"none"}}>
                     {v.label}
                   </button>
                 ))}
@@ -26514,10 +26518,10 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
             {logDateRange==="custom" && (
               <div style={{display:"flex",alignItems:"center",gap:"0.4rem",flexWrap:"wrap",fontSize:"0.74rem",color:C.textSub}}>
                 <input type="date" value={logCustomFrom} onChange={e=>setLogCustomFrom(e.target.value)}
-                  style={{padding:"0.35rem 0.5rem",borderRadius:6,border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.74rem"}}/>
+                  style={{padding:"0.35rem 0.5rem",borderRadius:8,border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.74rem"}}/>
                 <span>〜</span>
                 <input type="date" value={logCustomTo} onChange={e=>setLogCustomTo(e.target.value)}
-                  style={{padding:"0.35rem 0.5rem",borderRadius:6,border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.74rem"}}/>
+                  style={{padding:"0.35rem 0.5rem",borderRadius:8,border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.74rem"}}/>
               </div>
             )}
 
@@ -26525,7 +26529,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
             <div style={{display:"flex",gap:"0.3rem",flexWrap:"wrap"}}>
               {cats.map(t=>(
                 <button key={t} onClick={()=>setLogFilter(t)}
-                  style={{padding:"0.3rem 0.7rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:"0.72rem",fontWeight:logFilter===t?800:500,background:logFilter===t?C.accent:"white",color:logFilter===t?"white":C.textSub,boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
+                  style={{padding:"0.3rem 0.7rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:"0.72rem",fontWeight:logFilter===t?800:500,background:logFilter===t?C.accent:"white",color:logFilter===t?"white":C.textSub,boxShadow:"0 1px 2px rgba(0,17,62,0.05)"}}>
                   {t==="all"?"すべて":t}
                 </button>
               ))}
@@ -26534,7 +26538,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
             <div style={{display:"flex",gap:"0.3rem",flexWrap:"wrap"}}>
               {actions.map(t=>(
                 <button key={t.id} onClick={()=>setLogActionFilter(t.id)}
-                  style={{padding:"0.25rem 0.6rem",borderRadius:6,border:`1px solid ${logActionFilter===t.id?C.accent:C.borderLight}`,cursor:"pointer",fontFamily:"inherit",fontSize:"0.68rem",fontWeight:logActionFilter===t.id?700:500,background:logActionFilter===t.id?C.accent+"15":"white",color:logActionFilter===t.id?C.accent:C.textSub}}>
+                  style={{padding:"0.25rem 0.6rem",borderRadius:8,border:`1px solid ${logActionFilter===t.id?C.accent:C.borderLight}`,cursor:"pointer",fontFamily:"inherit",fontSize:"0.68rem",fontWeight:logActionFilter===t.id?700:500,background:logActionFilter===t.id?C.accent+"15":"white",color:logActionFilter===t.id?C.accent:C.textSub}}>
                   {t.label}
                 </button>
               ))}
@@ -26543,12 +26547,12 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
             <div style={{display:"flex",alignItems:"center",gap:"0.4rem",flexWrap:"wrap"}}>
               <span style={{fontSize:"0.7rem",color:C.textMuted,fontWeight:600}}>メンバー:</span>
               <select value={logUserFilter} onChange={e=>setLogUserFilter(e.target.value)}
-                style={{padding:"0.25rem 0.5rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.74rem",fontFamily:"inherit",background:"white",color:C.text,cursor:"pointer"}}>
+                style={{padding:"0.25rem 0.5rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.74rem",fontFamily:"inherit",background:"white",color:C.text,cursor:"pointer"}}>
                 <option value="all">すべて</option>
                 {users.map(u=>(<option key={u.id} value={u.id}>{u.lastName||u.name||""}{u.firstName||""}</option>))}
               </select>
               <div style={{flex:1,textAlign:"right",fontSize:"0.7rem",color:C.textMuted}}>{filtered.length}件 / 全{allEvents.length}件{logSelectedDay?` / ${logSelectedDay}のみ`:""}</div>
-              {logSelectedDay && <button onClick={()=>setLogSelectedDay("")} style={{fontSize:"0.66rem",fontWeight:700,padding:"0.2rem 0.5rem",borderRadius:6,border:"none",background:C.bg,color:C.textSub,cursor:"pointer",fontFamily:"inherit"}}>日付選択を解除</button>}
+              {logSelectedDay && <button onClick={()=>setLogSelectedDay("")} style={{fontSize:"0.66rem",fontWeight:700,padding:"0.2rem 0.5rem",borderRadius:8,border:"none",background:C.bg,color:C.textSub,cursor:"pointer",fontFamily:"inherit"}}>日付選択を解除</button>}
             </div>
 
             {/* カレンダー表示 */}
@@ -26556,14 +26560,14 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
               <div style={{background:"white",borderRadius:"10px",border:`1px solid ${C.borderLight}`,padding:"0.85rem",marginTop:"0.25rem"}}>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.75rem"}}>
                   <button onClick={()=>setLogCalDate(new Date(calYear, calMonth-1, 1))}
-                    style={{padding:"0.3rem 0.7rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>‹</button>
+                    style={{padding:"0.3rem 0.7rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>‹</button>
                   <div style={{fontSize:"0.95rem",fontWeight:800,color:C.text}}>{calYear}年 {calMonth+1}月</div>
                   <button onClick={()=>setLogCalDate(new Date(calYear, calMonth+1, 1))}
-                    style={{padding:"0.3rem 0.7rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>›</button>
+                    style={{padding:"0.3rem 0.7rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.85rem",cursor:"pointer",fontFamily:"inherit"}}>›</button>
                 </div>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(7, 1fr)",gap:2,marginBottom:"0.35rem"}}>
                   {["日","月","火","水","木","金","土"].map((w,i)=>(
-                    <div key={w} style={{textAlign:"center",fontSize:"0.65rem",fontWeight:700,color:i===0?"#dc2626":i===6?"#2563eb":C.textMuted,padding:"0.2rem 0"}}>{w}</div>
+                    <div key={w} style={{textAlign:"center",fontSize:"0.65rem",fontWeight:700,color:i===0?"#DA1313":i===6?"#0070D4":C.textMuted,padding:"0.2rem 0"}}>{w}</div>
                   ))}
                 </div>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(7, 1fr)",gap:2}}>
@@ -26576,7 +26580,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
                     const cats3 = [...new Set(dayEvents.map(e=>e.color))].slice(0,3);
                     return (
                       <button key={i} onClick={()=>{ setLogSelectedDay(isSel?"":k); }}
-                        style={{aspectRatio:"1/1.1",padding:"0.3rem 0.2rem",borderRadius:6,border:`1.5px solid ${isSel?C.accent:isToday?C.accent+"55":"transparent"}`,background:isSel?C.accent+"12":isToday?C.accent+"08":inMonth?"transparent":"transparent",color:inMonth?C.text:C.borderLight,fontSize:"0.7rem",fontWeight:isToday?800:500,cursor:"pointer",fontFamily:"inherit",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-start",gap:2,opacity:inMonth?1:0.4,minHeight:42}}>
+                        style={{aspectRatio:"1/1.1",padding:"0.3rem 0.2rem",borderRadius:8,border:`1.5px solid ${isSel?C.accent:isToday?C.accent+"55":"transparent"}`,background:isSel?C.accent+"12":isToday?C.accent+"08":inMonth?"transparent":"transparent",color:inMonth?C.text:C.borderLight,fontSize:"0.7rem",fontWeight:isToday?800:500,cursor:"pointer",fontFamily:"inherit",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-start",gap:2,opacity:inMonth?1:0.4,minHeight:42}}>
                         <span>{d.getDate()}</span>
                         {dayEvents.length>0 && (
                           <div style={{display:"flex",gap:1.5,marginTop:"auto",flexWrap:"wrap",justifyContent:"center"}}>
@@ -26612,9 +26616,9 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
                       <div style={{position:"absolute",left:8,top:"0.6rem",width:22,height:22,borderRadius:"50%",background:ev.color+"22",border:`2px solid ${ev.color}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.78rem",zIndex:2}}>
                         {ev.icon}
                       </div>
-                      <div style={{background:isPinned?"#fef9c3":"white",borderRadius:"10px",padding:"0.6rem 0.85rem",border:`1px solid ${isPinned?"#eab308":C.borderLight}`,boxShadow:"0 1px 2px rgba(0,0,0,0.03)"}}>
+                      <div style={{background:isPinned?"#fef9c3":"white",borderRadius:"10px",padding:"0.6rem 0.85rem",border:`1px solid ${isPinned?"#eab308":C.borderLight}`,boxShadow:"0 1px 2px rgba(0,17,62,0.04)"}}>
                         <div style={{display:"flex",alignItems:"center",gap:"0.45rem",marginBottom:"0.25rem",flexWrap:"wrap"}}>
-                          <span style={{fontSize:"0.62rem",padding:"0.1rem 0.4rem",borderRadius:4,background:ev.color+"18",color:ev.color,fontWeight:700,letterSpacing:"0.02em",flexShrink:0}}>{ev.category}</span>
+                          <span style={{fontSize:"0.62rem",padding:"0.1rem 0.4rem",borderRadius:8,background:ev.color+"18",color:ev.color,fontWeight:700,letterSpacing:"0.02em",flexShrink:0}}>{ev.category}</span>
                           <span style={{fontSize:"0.78rem",fontWeight:700,color:C.text,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ev.title}</span>
                           <span style={{fontSize:"0.62rem",color:C.textMuted,flexShrink:0,fontVariantNumeric:"tabular-nums"}}>{fmtTime(ev.date, ev.ts)}</span>
                         </div>
@@ -26626,7 +26630,7 @@ function MyPageView({currentUser, setCurrentUser, users, setUsers, onLogout, pus
                           {userName && <span style={{fontSize:"0.64rem",color:C.textMuted}}>👤 {userName}</span>}
                           <div style={{flex:1}}/>
                           <button onClick={()=>askAiFollowUp(ev)} title="AIにフォローアップを相談"
-                            style={{fontSize:"0.65rem",fontWeight:700,padding:"0.2rem 0.5rem",borderRadius:5,border:`1px solid ${C.accent}33`,background:C.accent+"0d",color:C.accent,cursor:"pointer",fontFamily:"inherit"}}>🔔 AIに相談</button>
+                            style={{fontSize:"0.65rem",fontWeight:700,padding:"0.2rem 0.5rem",borderRadius:8,border:`1px solid ${C.accent}33`,background:C.accent+"0d",color:C.accent,cursor:"pointer",fontFamily:"inherit"}}>🔔 AIに相談</button>
                           <button onClick={()=>togglePin(ev.id)} title={isPinned?"ピン留め解除":"ピン留め"}
                             style={{fontSize:"0.95rem",lineHeight:1,padding:"0.15rem 0.35rem",border:"none",background:"transparent",cursor:"pointer",color:isPinned?"#eab308":C.textMuted,fontFamily:"inherit"}}>{isPinned?"⭐":"☆"}</button>
                         </div>
@@ -26874,7 +26878,7 @@ function QrPublicForm({ trackingId, onExit }) {
       <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#f9fafb",padding:"2rem"}}>
         <div style={{textAlign:"center",maxWidth:400,background:"white",padding:"2rem",borderRadius:12,boxShadow:"0 4px 12px rgba(0,0,0,0.05)"}}>
           <div style={{fontSize:"3rem",marginBottom:"0.5rem"}}>⚠️</div>
-          <div style={{fontSize:"1rem",fontWeight:800,color:"#dc2626",marginBottom:"0.5rem"}}>エラー</div>
+          <div style={{fontSize:"1rem",fontWeight:800,color:"#DA1313",marginBottom:"0.5rem"}}>エラー</div>
           <div style={{fontSize:"0.88rem",color:"#374151",lineHeight:1.6}}>{error}</div>
         </div>
       </div>
@@ -26902,22 +26906,22 @@ function QrPublicForm({ trackingId, onExit }) {
     <div style={{minHeight:"100vh",background:"#f9fafb",padding:"1rem"}}>
       <div style={{maxWidth:500,margin:"0 auto",background:"white",borderRadius:16,padding:"1.5rem",boxShadow:"0 4px 12px rgba(0,0,0,0.05)"}}>
         {/* ヘッダ */}
-        <div style={{textAlign:"center",marginBottom:"1.25rem",paddingBottom:"1rem",borderBottom:"2px solid #2563eb"}}>
+        <div style={{textAlign:"center",marginBottom:"1.25rem",paddingBottom:"1rem",borderBottom:"2px solid #0070D4"}}>
           <div style={{fontSize:"0.82rem",color:"#6b7280",marginBottom:"0.25rem"}}>DUSTALK</div>
-          <div style={{fontSize:"1.05rem",fontWeight:800,color:"#1e40af"}}>{info?.announcement_title || "お問い合わせフォーム"}</div>
+          <div style={{fontSize:"1.05rem",fontWeight:800,color:"#295FA6"}}>{info?.announcement_title || "お問い合わせフォーム"}</div>
           {info?.vendor_name && <div style={{fontSize:"0.78rem",color:"#6b7280",marginTop:"0.3rem"}}>発行業者: {info.vendor_name}</div>}
         </div>
         
         {/* 冒頭メッセージ */}
         {fc.custom_message && (
-          <div style={{padding:"0.7rem 0.85rem",background:"#eff6ff",borderLeft:"3px solid #2563eb",borderRadius:4,marginBottom:"1.25rem",fontSize:"0.85rem",lineHeight:1.7,color:"#1e3a8a",whiteSpace:"pre-wrap"}}>
+          <div style={{padding:"0.7rem 0.85rem",background:"#F2F7FF",borderLeft:"3px solid #0070D4",borderRadius:8,marginBottom:"1.25rem",fontSize:"0.85rem",lineHeight:1.7,color:"#1e3a8a",whiteSpace:"pre-wrap"}}>
             {fc.custom_message}
           </div>
         )}
         
         {/* エラー表示 */}
         {error && (
-          <div style={{padding:"0.6rem 0.85rem",background:"#fee2e2",border:"1px solid #fca5a5",borderRadius:6,marginBottom:"1rem",fontSize:"0.82rem",color:"#991b1b"}}>
+          <div style={{padding:"0.6rem 0.85rem",background:"#fee2e2",border:"1px solid #fca5a5",borderRadius:8,marginBottom:"1rem",fontSize:"0.82rem",color:"#991b1b"}}>
             ⚠️ {error}
           </div>
         )}
@@ -26927,7 +26931,7 @@ function QrPublicForm({ trackingId, onExit }) {
           {fc.show_company !== false && (
             <div>
               <label style={{display:"block",fontSize:"0.85rem",fontWeight:700,color:"#374151",marginBottom:"0.3rem"}}>
-                会社名 {fc.require_company && <span style={{color:"#dc2626"}}>*</span>}
+                会社名 {fc.require_company && <span style={{color:"#DA1313"}}>*</span>}
               </label>
               <input value={formData.company_name} onChange={e=>setFormData(p=>({...p, company_name:e.target.value}))}
                 placeholder="株式会社○○"
@@ -26937,7 +26941,7 @@ function QrPublicForm({ trackingId, onExit }) {
           {fc.show_contact !== false && (
             <div>
               <label style={{display:"block",fontSize:"0.85rem",fontWeight:700,color:"#374151",marginBottom:"0.3rem"}}>
-                担当者名 {fc.require_contact && <span style={{color:"#dc2626"}}>*</span>}
+                担当者名 {fc.require_contact && <span style={{color:"#DA1313"}}>*</span>}
               </label>
               <input value={formData.contact_name} onChange={e=>setFormData(p=>({...p, contact_name:e.target.value}))}
                 placeholder="山田 太郎"
@@ -26947,7 +26951,7 @@ function QrPublicForm({ trackingId, onExit }) {
           {fc.show_phone !== false && (
             <div>
               <label style={{display:"block",fontSize:"0.85rem",fontWeight:700,color:"#374151",marginBottom:"0.3rem"}}>
-                電話番号 {fc.require_phone && <span style={{color:"#dc2626"}}>*</span>}
+                電話番号 {fc.require_phone && <span style={{color:"#DA1313"}}>*</span>}
               </label>
               <input type="tel" value={formData.phone} onChange={e=>setFormData(p=>({...p, phone:e.target.value}))}
                 placeholder="090-1234-5678"
@@ -26957,7 +26961,7 @@ function QrPublicForm({ trackingId, onExit }) {
           {fc.show_email !== false && (
             <div>
               <label style={{display:"block",fontSize:"0.85rem",fontWeight:700,color:"#374151",marginBottom:"0.3rem"}}>
-                メールアドレス {fc.require_email && <span style={{color:"#dc2626"}}>*</span>}
+                メールアドレス {fc.require_email && <span style={{color:"#DA1313"}}>*</span>}
               </label>
               <input type="email" value={formData.email} onChange={e=>setFormData(p=>({...p, email:e.target.value}))}
                 placeholder="contact@example.com"
@@ -26986,7 +26990,7 @@ function QrPublicForm({ trackingId, onExit }) {
             return (
               <div key={f.key} >
                 <label style={{display:"block",fontSize:"0.85rem",fontWeight:700,color:"#374151",marginBottom:"0.3rem"}}>
-                  {f.label} {f.required && <span style={{color:"#dc2626"}}>*</span>}
+                  {f.label} {f.required && <span style={{color:"#DA1313"}}>*</span>}
                 </label>
                 {f.type === "text" && (
                   <input value={extraValues[f.key]||""} onChange={e=>setExtraValues(p=>({...p, [f.key]:e.target.value}))}
@@ -27040,7 +27044,7 @@ function QrPublicForm({ trackingId, onExit }) {
         
         {/* 送信ボタン */}
         <button onClick={handleSubmit} disabled={submitting}
-          style={{width:"100%",marginTop:"1.5rem",padding:"0.85rem",borderRadius:8,border:"none",background:submitting?"#9ca3af":"#2563eb",color:"white",fontSize:"1rem",fontWeight:800,cursor:submitting?"not-allowed":"pointer",fontFamily:"inherit"}}>
+          style={{width:"100%",marginTop:"1.5rem",padding:"0.85rem",borderRadius:8,border:"none",background:submitting?"#9ca3af":"#0070D4",color:"white",fontSize:"1rem",fontWeight:800,cursor:submitting?"not-allowed":"pointer",fontFamily:"inherit"}}>
           {submitting ? "送信中..." : (fc.submit_button_label || "送信する")}
         </button>
         
@@ -27176,7 +27180,7 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
   html, body { margin: 0; padding: 0; }
   body { font-family: 'Hiragino Sans','Yu Gothic',sans-serif; line-height: 1.5; color: #222; font-size: 0.9rem; background: #e5e7eb; padding-top: 3.4rem; }
   h1 { font-size: 1.18rem; margin: 0.5rem 0 0.3rem; line-height: 1.3; }
-  h2 { font-size: 1.02rem; margin: 0.55rem 0 0.25rem; color: #1e40af; padding: 0; }
+  h2 { font-size: 1.02rem; margin: 0.55rem 0 0.25rem; color: #295FA6; padding: 0; }
   p { margin: 0.32rem 0; }
   ul, ol { margin: 0.32rem 0; padding-left: 1.1rem; }
   li { margin: 0.14rem 0; }
@@ -27189,13 +27193,13 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
   .fit { width: 174mm; transform-origin: top left; }
   .contact-footer { margin-top: 1.8rem; text-align: right; }
   .contact-footer-inner { display: inline-block; text-align: left; font-size: 0.82rem; color: #333; line-height: 1.55; }
-  .contact-footer-inner b { color: #1e40af; }
+  .contact-footer-inner b { color: #295FA6; }
   .contact-footer-inner .qrbox { display: block; margin: 0.5rem 0 0 auto; width: 82px; height: 82px; }
   .contact-footer-inner .qrbox img, .contact-footer-inner .qrbox canvas { display: block; width: 82px !important; height: 82px !important; }
-  .print-bar { position: fixed; top: 0; left: 0; right: 0; background: #2563eb; color: white; padding: 0.5rem 1rem; display: flex; justify-content: space-between; align-items: center; z-index: 9999; gap: 0.5rem; flex-wrap: wrap; }
+  .print-bar { position: fixed; top: 0; left: 0; right: 0; background: #0070D4; color: white; padding: 0.5rem 1rem; display: flex; justify-content: space-between; align-items: center; z-index: 9999; gap: 0.5rem; flex-wrap: wrap; }
   .print-bar span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .print-bar button { padding: 0.4rem 0.9rem; background: white; color: #2563eb; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; }
-  .print-bar #pdfBtn { background: #16a34a; color: white; }
+  .print-bar button { padding: 0.4rem 0.9rem; background: white; color: #0070D4; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; }
+  .print-bar #pdfBtn { background: #009122; color: white; }
   @media print {
     .no-print { display: none !important; }
     html, body { background: #fff; padding-top: 0; }
@@ -27301,7 +27305,7 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
         <div style={{background:"white",borderRadius:8,padding:"0.85rem 1rem",border:"1px solid #e5e7eb"}}>
           <div style={{fontWeight:800,fontSize:"0.85rem",color:"#111827",marginBottom:"0.5rem"}}>📨 使用する案内状セット</div>
           <select value={selectedAnnouncementId || ""} onChange={e=>changeAnnouncement(e.target.value ? parseInt(e.target.value) : null)}
-            style={{width:"100%",padding:"0.5rem 0.7rem",borderRadius:6,border:"1px solid #d1d5db",fontSize:"0.82rem",fontFamily:"inherit",background:"white"}}>
+            style={{width:"100%",padding:"0.5rem 0.7rem",borderRadius:8,border:"1px solid #d1d5db",fontSize:"0.82rem",fontFamily:"inherit",background:"white"}}>
             <option value="">現行版を自動使用 (v{currentAnnouncement?.version}: {currentAnnouncement?.title})</option>
             {announcements.map(a => (
               <option key={a.id} value={a.id}>v{a.version}: {a.title}{a.is_current?" (現行版)":""}</option>
@@ -27321,10 +27325,10 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
         <div style={{display:"flex",gap:"1rem",alignItems:"flex-start",flexWrap:"wrap"}}>
           {qrImageUrl && (
             <div style={{flexShrink:0}}>
-              <img src={qrImageUrl} alt="QR" style={{width:200,height:200,border:"1px solid #e5e7eb",borderRadius:6,background:"white"}}/>
+              <img src={qrImageUrl} alt="QR" style={{width:200,height:200,border:"1px solid #e5e7eb",borderRadius:8,background:"white"}}/>
               <div style={{display:"flex",gap:"0.3rem",marginTop:"0.5rem",justifyContent:"center"}}>
                 <button onClick={downloadQrImage}
-                  style={{padding:"0.3rem 0.6rem",borderRadius:5,border:"1px solid #d1d5db",background:"white",fontSize:"0.7rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit",color:"#374151"}}>
+                  style={{padding:"0.3rem 0.6rem",borderRadius:8,border:"1px solid #d1d5db",background:"white",fontSize:"0.7rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit",color:"#374151"}}>
                   💾 画像保存
                 </button>
               </div>
@@ -27334,21 +27338,21 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
             <div style={{fontSize:"0.7rem",color:"#6b7280",fontWeight:600,marginBottom:"0.2rem"}}>追跡ID</div>
             <div style={{fontSize:"0.95rem",fontWeight:800,fontFamily:"monospace",color:"#7c3aed",marginBottom:"0.6rem"}}>{qrData?.tracking_id}</div>
             <div style={{fontSize:"0.7rem",color:"#6b7280",fontWeight:600,marginBottom:"0.2rem"}}>QR の URL</div>
-            <div style={{fontSize:"0.72rem",fontFamily:"monospace",color:"#374151",padding:"0.4rem 0.55rem",background:"#f3f4f6",borderRadius:4,wordBreak:"break-all",marginBottom:"0.4rem"}}>{trackingUrl}</div>
+            <div style={{fontSize:"0.72rem",fontFamily:"monospace",color:"#374151",padding:"0.4rem 0.55rem",background:"#f3f4f6",borderRadius:8,wordBreak:"break-all",marginBottom:"0.4rem"}}>{trackingUrl}</div>
             <button onClick={copyUrl}
-              style={{padding:"0.3rem 0.7rem",borderRadius:5,border:"1px solid #d1d5db",background:"white",fontSize:"0.7rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit",color:"#374151"}}>
+              style={{padding:"0.3rem 0.7rem",borderRadius:8,border:"1px solid #d1d5db",background:"white",fontSize:"0.7rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit",color:"#374151"}}>
               📋 URLをコピー
             </button>
             <div style={{display:"flex",gap:"0.5rem",marginTop:"0.8rem",flexWrap:"wrap"}}>
-              <div style={{flex:1,minWidth:120,padding:"0.5rem 0.65rem",background:"#eff6ff",borderRadius:6,textAlign:"center"}}>
-                <div style={{fontSize:"0.65rem",color:"#1e40af",fontWeight:700}}>アクセス数</div>
-                <div style={{fontSize:"1.4rem",fontWeight:800,color:"#1e40af"}}>{qrData?.access_count || 0}</div>
+              <div style={{flex:1,minWidth:120,padding:"0.5rem 0.65rem",background:"#F2F7FF",borderRadius:8,textAlign:"center"}}>
+                <div style={{fontSize:"0.65rem",color:"#295FA6",fontWeight:700}}>アクセス数</div>
+                <div style={{fontSize:"1.4rem",fontWeight:800,color:"#295FA6"}}>{qrData?.access_count || 0}</div>
               </div>
-              <div style={{flex:1,minWidth:120,padding:"0.5rem 0.65rem",background:"#ecfdf5",borderRadius:6,textAlign:"center"}}>
+              <div style={{flex:1,minWidth:120,padding:"0.5rem 0.65rem",background:"#ecfdf5",borderRadius:8,textAlign:"center"}}>
                 <div style={{fontSize:"0.65rem",color:"#065f46",fontWeight:700}}>送信数</div>
                 <div style={{fontSize:"1.4rem",fontWeight:800,color:"#065f46"}}>{qrData?.submit_count || 0}</div>
               </div>
-              <div style={{flex:1,minWidth:120,padding:"0.5rem 0.65rem",background:"#fef3c7",borderRadius:6,textAlign:"center"}}>
+              <div style={{flex:1,minWidth:120,padding:"0.5rem 0.65rem",background:"#fef3c7",borderRadius:8,textAlign:"center"}}>
                 <div style={{fontSize:"0.65rem",color:"#92400e",fontWeight:700}}>完了率</div>
                 <div style={{fontSize:"1.4rem",fontWeight:800,color:"#92400e"}}>
                   {qrData?.access_count > 0 ? Math.round((qrData.submit_count / qrData.access_count) * 100) : 0}%
@@ -27369,7 +27373,7 @@ function VendorQrSection({ vendorId, vendorName, currentUserId }) {
             </div>
           </div>
           <button onClick={generatePdf} disabled={!activeAnnouncement || generating}
-            style={{padding:"0.55rem 1.1rem",borderRadius:6,border:"none",background:(!activeAnnouncement||generating)?"#9ca3af":"#2563eb",color:"white",fontSize:"0.82rem",fontWeight:800,cursor:(!activeAnnouncement||generating)?"not-allowed":"pointer",fontFamily:"inherit"}}>
+            style={{padding:"0.55rem 1.1rem",borderRadius:8,border:"none",background:(!activeAnnouncement||generating)?"#9ca3af":"#0070D4",color:"white",fontSize:"0.82rem",fontWeight:800,cursor:(!activeAnnouncement||generating)?"not-allowed":"pointer",fontFamily:"inherit"}}>
             {generating ? "生成中..." : "🖨 PDF生成・印刷"}
           </button>
         </div>
@@ -27511,16 +27515,16 @@ function QrSubmissionItem({ submission, onUpdate, currentUserId, vendorName, ven
     setUpdating(false);
   };
   
-  const statusColor = isHandled ? "#059669" : "#dc2626";
+  const statusColor = isHandled ? "#009122" : "#DA1313";
   const statusLabel = isHandled ? "対応済" : "未対応";
   
   return (
-    <div style={{background:"#f9fafb",border:`1px solid ${expanded ? "#2563eb" : "#e5e7eb"}`,borderRadius:6,overflow:"hidden",transition:"border-color 0.15s"}}>
+    <div style={{background:"#f9fafb",border:`1px solid ${expanded ? "#0070D4" : "#e5e7eb"}`,borderRadius:8,overflow:"hidden",transition:"border-color 0.15s"}}>
       {/* サマリ行（クリックで展開） */}
       <div onClick={()=>setExpanded(e=>!e)} 
         style={{padding:"0.6rem 0.8rem",cursor:"pointer",userSelect:"none"}}>
         <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginBottom:"0.2rem"}}>
-          <span style={{fontSize:"0.62rem",fontWeight:700,color:"white",background:statusColor,borderRadius:3,padding:"0.1rem 0.4rem",flexShrink:0}}>
+          <span style={{fontSize:"0.62rem",fontWeight:700,color:"white",background:statusColor,borderRadius:8,padding:"0.1rem 0.4rem",flexShrink:0}}>
             {statusLabel}
           </span>
           <div style={{fontSize:"0.85rem",fontWeight:700,color:"#111827",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.company_name||"(企業名未入力)"}</div>
@@ -27539,7 +27543,7 @@ function QrSubmissionItem({ submission, onUpdate, currentUserId, vendorName, ven
         <div style={{padding:"0.8rem 1rem",borderTop:"1px solid #e5e7eb",background:"white"}}>
           {/* 発行業者 & 案内状名 */}
           {(vendorName || announcementTitle) && (
-            <div style={{marginBottom:"0.6rem",padding:"0.4rem 0.6rem",background:"#eff6ff",borderRadius:5,fontSize:"0.7rem",color:"#1e3a8a",display:"flex",gap:"0.7rem",flexWrap:"wrap"}}>
+            <div style={{marginBottom:"0.6rem",padding:"0.4rem 0.6rem",background:"#F2F7FF",borderRadius:8,fontSize:"0.7rem",color:"#1e3a8a",display:"flex",gap:"0.7rem",flexWrap:"wrap"}}>
               {vendorName && <span><b>発行業者:</b> {vendorName}</span>}
               {announcementTitle && <span><b>案内状:</b> {announcementTitle}</span>}
             </div>
@@ -27558,20 +27562,20 @@ function QrSubmissionItem({ submission, onUpdate, currentUserId, vendorName, ven
             <div>
               <div style={{fontSize:"0.65rem",color:"#6b7280",fontWeight:700,marginBottom:"0.15rem"}}>電話番号</div>
               <div style={{fontSize:"0.85rem",color:"#111827",fontWeight:600}}>
-                {s.phone ? <a href={`tel:${s.phone}`} style={{color:"#2563eb",textDecoration:"none"}}>{s.phone}</a> : "(未入力)"}
+                {s.phone ? <a href={`tel:${s.phone}`} style={{color:"#0070D4",textDecoration:"none"}}>{s.phone}</a> : "(未入力)"}
               </div>
             </div>
             <div>
               <div style={{fontSize:"0.65rem",color:"#6b7280",fontWeight:700,marginBottom:"0.15rem"}}>メールアドレス</div>
               <div style={{fontSize:"0.85rem",color:"#111827",fontWeight:600}}>
-                {s.email ? <a href={`mailto:${s.email}`} style={{color:"#2563eb",textDecoration:"none"}}>{s.email}</a> : "(未入力)"}
+                {s.email ? <a href={`mailto:${s.email}`} style={{color:"#0070D4",textDecoration:"none"}}>{s.email}</a> : "(未入力)"}
               </div>
             </div>
           </div>
           
           {/* 追加質問の回答 */}
           {s.form_data && typeof s.form_data === "object" && Object.keys(s.form_data).length > 0 && (
-            <div style={{marginBottom:"0.8rem",padding:"0.6rem 0.8rem",background:"#f9fafb",borderRadius:6,border:"1px solid #e5e7eb"}}>
+            <div style={{marginBottom:"0.8rem",padding:"0.6rem 0.8rem",background:"#f9fafb",borderRadius:8,border:"1px solid #e5e7eb"}}>
               <div style={{fontSize:"0.72rem",fontWeight:800,color:"#374151",marginBottom:"0.4rem"}}>📝 アンケート回答</div>
               {Object.entries(s.form_data).filter(([k,v])=>k && (v!==null && v!=='')).map(([k, v]) => (
                 <div key={k} style={{marginBottom:"0.35rem"}}>
@@ -27595,11 +27599,11 @@ function QrSubmissionItem({ submission, onUpdate, currentUserId, vendorName, ven
           <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap",alignItems:"center",marginBottom:"0.6rem"}}>
             <div style={{fontSize:"0.72rem",color:"#6b7280",fontWeight:700}}>ステータス:</div>
             <button onClick={()=>updateStatus("new")} disabled={!isHandled || updating}
-              style={{padding:"0.35rem 0.8rem",borderRadius:5,border:`1px solid ${!isHandled?"#dc2626":"#d1d5db"}`,background:!isHandled?"#dc2626":"white",color:!isHandled?"white":"#374151",fontSize:"0.75rem",fontWeight:700,cursor:!isHandled||updating?"default":"pointer",fontFamily:"inherit",opacity:updating?0.5:1}}>
+              style={{padding:"0.35rem 0.8rem",borderRadius:8,border:`1px solid ${!isHandled?"#DA1313":"#d1d5db"}`,background:!isHandled?"#DA1313":"white",color:!isHandled?"white":"#374151",fontSize:"0.75rem",fontWeight:700,cursor:!isHandled||updating?"default":"pointer",fontFamily:"inherit",opacity:updating?0.5:1}}>
               未対応{!isHandled?" ✓":""}
             </button>
             <button onClick={()=>updateStatus("handled")} disabled={isHandled || updating}
-              style={{padding:"0.35rem 0.8rem",borderRadius:5,border:`1px solid ${isHandled?"#059669":"#d1d5db"}`,background:isHandled?"#059669":"white",color:isHandled?"white":"#374151",fontSize:"0.75rem",fontWeight:700,cursor:isHandled||updating?"default":"pointer",fontFamily:"inherit",opacity:updating?0.5:1}}>
+              style={{padding:"0.35rem 0.8rem",borderRadius:8,border:`1px solid ${isHandled?"#009122":"#d1d5db"}`,background:isHandled?"#009122":"white",color:isHandled?"white":"#374151",fontSize:"0.75rem",fontWeight:700,cursor:isHandled||updating?"default":"pointer",fontFamily:"inherit",opacity:updating?0.5:1}}>
               対応済 {isHandled ? "✓" : "→ プロジェクト作成"}
             </button>
           </div>
@@ -27607,7 +27611,7 @@ function QrSubmissionItem({ submission, onUpdate, currentUserId, vendorName, ven
           {/* ✉️ 返信メール文を生成 */}
           {!showReplyMail ? (
             <button onClick={generateReplyMail} disabled={generatingMail || !s.email}
-              style={{padding:"0.5rem 1rem",borderRadius:6,border:"none",background:(!s.email||generatingMail)?"#9ca3af":"#7c3aed",color:"white",fontSize:"0.78rem",fontWeight:800,cursor:(!s.email||generatingMail)?"not-allowed":"pointer",fontFamily:"inherit"}}>
+              style={{padding:"0.5rem 1rem",borderRadius:8,border:"none",background:(!s.email||generatingMail)?"#9ca3af":"#7c3aed",color:"white",fontSize:"0.78rem",fontWeight:800,cursor:(!s.email||generatingMail)?"not-allowed":"pointer",fontFamily:"inherit"}}>
               {generatingMail ? "🤖 AI 生成中..." : "✉️ 返信メール文を生成 (AI)"}
             </button>
           ) : (
@@ -27615,39 +27619,39 @@ function QrSubmissionItem({ submission, onUpdate, currentUserId, vendorName, ven
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.5rem"}}>
                 <div style={{fontWeight:800,fontSize:"0.85rem",color:"#5b21b6"}}>✉️ AI 生成した返信メール</div>
                 <button onClick={()=>setShowReplyMail(false)}
-                  style={{padding:"0.2rem 0.5rem",borderRadius:4,border:"1px solid #c4b5fd",background:"white",color:"#5b21b6",fontSize:"0.7rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                  style={{padding:"0.2rem 0.5rem",borderRadius:8,border:"1px solid #c4b5fd",background:"white",color:"#5b21b6",fontSize:"0.7rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                   × 閉じる
                 </button>
               </div>
               <div style={{marginBottom:"0.5rem"}}>
                 <label style={{display:"block",fontSize:"0.7rem",fontWeight:700,color:"#5b21b6",marginBottom:"0.2rem"}}>件名</label>
                 <input value={replySubject} onChange={e=>setReplySubject(e.target.value)}
-                  style={{width:"100%",padding:"0.45rem 0.65rem",borderRadius:5,border:"1px solid #c4b5fd",fontSize:"0.85rem",fontFamily:"inherit",boxSizing:"border-box",background:"white"}}/>
+                  style={{width:"100%",padding:"0.45rem 0.65rem",borderRadius:8,border:"1px solid #c4b5fd",fontSize:"0.85rem",fontFamily:"inherit",boxSizing:"border-box",background:"white"}}/>
               </div>
               <div style={{marginBottom:"0.6rem"}}>
                 <label style={{display:"block",fontSize:"0.7rem",fontWeight:700,color:"#5b21b6",marginBottom:"0.2rem"}}>本文</label>
                 <textarea value={replyBody} onChange={e=>setReplyBody(e.target.value)}
                   rows={12}
-                  style={{width:"100%",padding:"0.55rem 0.75rem",borderRadius:5,border:"1px solid #c4b5fd",fontSize:"0.82rem",fontFamily:"inherit",resize:"vertical",boxSizing:"border-box",lineHeight:1.6,background:"white"}}/>
+                  style={{width:"100%",padding:"0.55rem 0.75rem",borderRadius:8,border:"1px solid #c4b5fd",fontSize:"0.82rem",fontFamily:"inherit",resize:"vertical",boxSizing:"border-box",lineHeight:1.6,background:"white"}}/>
               </div>
               <div style={{fontSize:"0.7rem",color:"#5b21b6",marginBottom:"0.55rem"}}>
                 📧 送信先: <b>{s.email}</b>
               </div>
               <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap"}}>
                 <button onClick={sendReplyMail} disabled={sendingMail || !s.email}
-                  style={{padding:"0.5rem 1rem",borderRadius:6,border:"none",background:sendingMail?"#9ca3af":"#059669",color:"white",fontSize:"0.78rem",fontWeight:800,cursor:sendingMail?"not-allowed":"pointer",fontFamily:"inherit"}}>
+                  style={{padding:"0.5rem 1rem",borderRadius:8,border:"none",background:sendingMail?"#9ca3af":"#009122",color:"white",fontSize:"0.78rem",fontWeight:800,cursor:sendingMail?"not-allowed":"pointer",fontFamily:"inherit"}}>
                   {sendingMail ? "送信中..." : "📤 この内容で送信"}
                 </button>
                 <button onClick={copyReplyMail}
-                  style={{padding:"0.5rem 0.85rem",borderRadius:6,border:"1px solid #7c3aed",background:"white",color:"#7c3aed",fontSize:"0.78rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+                  style={{padding:"0.5rem 0.85rem",borderRadius:8,border:"1px solid #7c3aed",background:"white",color:"#7c3aed",fontSize:"0.78rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
                   📋 コピー
                 </button>
                 <button onClick={openInMailer}
-                  style={{padding:"0.5rem 0.85rem",borderRadius:6,border:"1px solid #7c3aed",background:"white",color:"#7c3aed",fontSize:"0.78rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+                  style={{padding:"0.5rem 0.85rem",borderRadius:8,border:"1px solid #7c3aed",background:"white",color:"#7c3aed",fontSize:"0.78rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
                   📨 メーラーで開く
                 </button>
                 <button onClick={generateReplyMail} disabled={generatingMail}
-                  style={{padding:"0.5rem 0.85rem",borderRadius:6,border:"1px solid #d1d5db",background:"white",color:"#6b7280",fontSize:"0.75rem",fontWeight:700,cursor:generatingMail?"default":"pointer",fontFamily:"inherit"}}>
+                  style={{padding:"0.5rem 0.85rem",borderRadius:8,border:"1px solid #d1d5db",background:"white",color:"#6b7280",fontSize:"0.75rem",fontWeight:700,cursor:generatingMail?"default":"pointer",fontFamily:"inherit"}}>
                   🔄 再生成
                 </button>
               </div>
@@ -27808,7 +27812,7 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
   html, body { margin: 0; padding: 0; }
   body { font-family: 'Hiragino Sans','Yu Gothic',sans-serif; line-height: 1.5; color: #222; font-size: 0.9rem; background: #e5e7eb; padding-top: 3.4rem; }
   h1 { font-size: 1.18rem; margin: 0.5rem 0 0.3rem; line-height: 1.3; }
-  h2 { font-size: 1.02rem; margin: 0.55rem 0 0.25rem; color: #1e40af; padding: 0; }
+  h2 { font-size: 1.02rem; margin: 0.55rem 0 0.25rem; color: #295FA6; padding: 0; }
   p { margin: 0.32rem 0; }
   ul, ol { margin: 0.32rem 0; padding-left: 1.1rem; }
   li { margin: 0.14rem 0; }
@@ -27821,13 +27825,13 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
   .fit { width: 174mm; transform-origin: top left; }
   .contact-footer { margin-top: 1.8rem; text-align: right; }
   .contact-footer-inner { display: inline-block; text-align: left; font-size: 0.82rem; color: #333; line-height: 1.55; }
-  .contact-footer-inner b { color: #1e40af; }
+  .contact-footer-inner b { color: #295FA6; }
   .contact-footer-inner .qrbox { display: block; margin: 0.5rem 0 0 auto; width: 82px; height: 82px; }
   .contact-footer-inner .qrbox img, .contact-footer-inner .qrbox canvas { display: block; width: 82px !important; height: 82px !important; }
-  .print-bar { position: fixed; top: 0; left: 0; right: 0; background: #2563eb; color: white; padding: 0.5rem 1rem; display: flex; justify-content: space-between; align-items: center; z-index: 9999; gap: 0.5rem; flex-wrap: wrap; }
+  .print-bar { position: fixed; top: 0; left: 0; right: 0; background: #0070D4; color: white; padding: 0.5rem 1rem; display: flex; justify-content: space-between; align-items: center; z-index: 9999; gap: 0.5rem; flex-wrap: wrap; }
   .print-bar span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .print-bar button { padding: 0.4rem 0.9rem; background: white; color: #2563eb; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; }
-  .print-bar #pdfBtn { background: #16a34a; color: white; }
+  .print-bar button { padding: 0.4rem 0.9rem; background: white; color: #0070D4; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; }
+  .print-bar #pdfBtn { background: #009122; color: white; }
   @media print {
     .no-print { display: none !important; }
     html, body { background: #fff; padding-top: 0; }
@@ -27907,19 +27911,19 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
       
       {/* サマリ統計 */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",gap:"0.5rem",marginBottom:"0.8rem"}}>
-        <div style={{padding:"0.6rem 0.7rem",background:"#f5f3ff",borderRadius:6,textAlign:"center"}}>
+        <div style={{padding:"0.6rem 0.7rem",background:"#f5f3ff",borderRadius:8,textAlign:"center"}}>
           <div style={{fontSize:"0.65rem",color:"#6d28d9",fontWeight:700}}>配布業者数</div>
           <div style={{fontSize:"1.5rem",fontWeight:800,color:"#6d28d9"}}>{vendors.length}</div>
         </div>
-        <div style={{padding:"0.6rem 0.7rem",background:"#eff6ff",borderRadius:6,textAlign:"center"}}>
-          <div style={{fontSize:"0.65rem",color:"#1e40af",fontWeight:700}}>総アクセス数</div>
-          <div style={{fontSize:"1.5rem",fontWeight:800,color:"#1e40af"}}>{totalAccess}</div>
+        <div style={{padding:"0.6rem 0.7rem",background:"#F2F7FF",borderRadius:8,textAlign:"center"}}>
+          <div style={{fontSize:"0.65rem",color:"#295FA6",fontWeight:700}}>総アクセス数</div>
+          <div style={{fontSize:"1.5rem",fontWeight:800,color:"#295FA6"}}>{totalAccess}</div>
         </div>
-        <div style={{padding:"0.6rem 0.7rem",background:"#ecfdf5",borderRadius:6,textAlign:"center"}}>
+        <div style={{padding:"0.6rem 0.7rem",background:"#ecfdf5",borderRadius:8,textAlign:"center"}}>
           <div style={{fontSize:"0.65rem",color:"#065f46",fontWeight:700}}>総反応数</div>
           <div style={{fontSize:"1.5rem",fontWeight:800,color:"#065f46"}}>{totalSubmit}</div>
         </div>
-        <div style={{padding:"0.6rem 0.7rem",background:"#fef3c7",borderRadius:6,textAlign:"center"}}>
+        <div style={{padding:"0.6rem 0.7rem",background:"#fef3c7",borderRadius:8,textAlign:"center"}}>
           <div style={{fontSize:"0.65rem",color:"#92400e",fontWeight:700}}>反応率</div>
           <div style={{fontSize:"1.5rem",fontWeight:800,color:"#92400e"}}>
             {totalAccess > 0 ? Math.round((totalSubmit / totalAccess) * 100) : 0}%
@@ -27930,11 +27934,11 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
       {/* タブ切替 */}
       <div style={{display:"flex",gap:"0.4rem",marginBottom:"0.6rem"}}>
         <button onClick={()=>setTab("vendors")}
-          style={{padding:"0.4rem 0.85rem",borderRadius:6,border:tab==="vendors"?"2px solid #2563eb":`1px solid ${C.border}`,background:tab==="vendors"?"#dbeafe":"white",color:tab==="vendors"?"#1e40af":C.textSub,fontSize:"0.78rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+          style={{padding:"0.4rem 0.85rem",borderRadius:8,border:tab==="vendors"?"2px solid #0070D4":`1px solid ${C.border}`,background:tab==="vendors"?"#E6F0FF":"white",color:tab==="vendors"?"#295FA6":C.textSub,fontSize:"0.78rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
           📋 配布先業者 ({vendors.length})
         </button>
         <button onClick={()=>setTab("submissions")}
-          style={{padding:"0.4rem 0.85rem",borderRadius:6,border:tab==="submissions"?"2px solid #059669":`1px solid ${C.border}`,background:tab==="submissions"?"#d1fae5":"white",color:tab==="submissions"?"#065f46":C.textSub,fontSize:"0.78rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+          style={{padding:"0.4rem 0.85rem",borderRadius:8,border:tab==="submissions"?"2px solid #009122":`1px solid ${C.border}`,background:tab==="submissions"?"#d1fae5":"white",color:tab==="submissions"?"#065f46":C.textSub,fontSize:"0.78rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
           📩 反応一覧 ({submissions.length})
         </button>
       </div>
@@ -27948,18 +27952,18 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
               <>
                 <input value={searchTerm} onChange={e=>setSearchTerm(e.target.value)}
                   placeholder="🔍 業者名で検索..."
-                  style={{flex:1,minWidth:150,padding:"0.4rem 0.65rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"inherit"}}/>
+                  style={{flex:1,minWidth:150,padding:"0.4rem 0.65rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"inherit"}}/>
                 <button onClick={()=>{
                   setShowAllVendors(true);
                   setSelectedIds(new Set());
                 }}
-                  style={{padding:"0.4rem 0.8rem",borderRadius:5,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.75rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                  style={{padding:"0.4rem 0.8rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.75rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                   🔍 全業者から選ぶ
                 </button>
               </>
             ) : (
               <>
-                <div style={{fontSize:"0.8rem",fontWeight:800,color:"#1e40af",flex:1,minWidth:120}}>
+                <div style={{fontSize:"0.8rem",fontWeight:800,color:"#295FA6",flex:1,minWidth:120}}>
                   📋 全業者から選ぶ
                 </div>
                 <button onClick={()=>{
@@ -27970,7 +27974,7 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
                   setFilterMuni("");
                   setFilterPermit("");
                 }}
-                  style={{padding:"0.4rem 0.8rem",borderRadius:5,border:"1px solid #dc2626",background:"white",color:"#dc2626",fontSize:"0.75rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                  style={{padding:"0.4rem 0.8rem",borderRadius:8,border:"1px solid #DA1313",background:"white",color:"#DA1313",fontSize:"0.75rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                   ✕ 選択画面を閉じる
                 </button>
               </>
@@ -27979,30 +27983,30 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
           
           {/* 全業者モード時のフィルタバー */}
           {showAllVendors && (
-            <div style={{display:"flex",gap:"0.4rem",alignItems:"center",flexWrap:"wrap",marginBottom:"0.5rem",padding:"0.5rem 0.6rem",background:"white",borderRadius:6,border:`1px solid ${C.borderLight}`}}>
+            <div style={{display:"flex",gap:"0.4rem",alignItems:"center",flexWrap:"wrap",marginBottom:"0.5rem",padding:"0.5rem 0.6rem",background:"white",borderRadius:8,border:`1px solid ${C.borderLight}`}}>
               <input value={searchTerm} onChange={e=>setSearchTerm(e.target.value)}
                 placeholder="🔍 業者名で検索..."
-                style={{flex:1,minWidth:130,padding:"0.4rem 0.6rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}/>
+                style={{flex:1,minWidth:130,padding:"0.4rem 0.6rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}/>
               <select value={filterPref} onChange={e=>{setFilterPref(e.target.value);setFilterMuni("");}}
-                style={{padding:"0.4rem 0.6rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.75rem",fontFamily:"inherit",background:"white"}}>
+                style={{padding:"0.4rem 0.6rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.75rem",fontFamily:"inherit",background:"white"}}>
                 <option value="">📍 都道府県</option>
                 {allPrefs.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
               {filterPref && (
                 <select value={filterMuni} onChange={e=>setFilterMuni(e.target.value)}
-                  style={{padding:"0.4rem 0.6rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.75rem",fontFamily:"inherit",background:"white"}}>
+                  style={{padding:"0.4rem 0.6rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.75rem",fontFamily:"inherit",background:"white"}}>
                   <option value="">🏛 市町村</option>
                   {allMunis.filter(m=>String(m.prefectureId)===String(filterPref)).map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
                 </select>
               )}
               <select value={filterPermit} onChange={e=>setFilterPermit(e.target.value)}
-                style={{padding:"0.4rem 0.6rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.75rem",fontFamily:"inherit",background:"white"}}>
+                style={{padding:"0.4rem 0.6rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.75rem",fontFamily:"inherit",background:"white"}}>
                 <option value="">🪪 許可区分</option>
                 {PERMIT_TYPES.map(pt=><option key={pt} value={pt}>{pt}</option>)}
               </select>
               {(searchTerm || filterPref || filterMuni || filterPermit) && (
                 <button onClick={()=>{setSearchTerm("");setFilterPref("");setFilterMuni("");setFilterPermit("");}}
-                  style={{padding:"0.35rem 0.6rem",borderRadius:5,border:"1px dashed #d1d5db",background:"white",color:"#6b7280",fontSize:"0.7rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                  style={{padding:"0.35rem 0.6rem",borderRadius:8,border:"1px dashed #d1d5db",background:"white",color:"#6b7280",fontSize:"0.7rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                   ✕ クリア
                 </button>
               )}
@@ -28063,7 +28067,7 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
                 </label>
                 <div style={{flex:1}}/>
                 <button onClick={()=>handleBulkPrint(filtered)} disabled={selectedCount===0 || bulkPrinting || !announcement}
-                  style={{padding:"0.45rem 1rem",borderRadius:6,border:"none",background:(selectedCount===0||bulkPrinting||!announcement)?"#9ca3af":"#2563eb",color:"white",fontSize:"0.8rem",fontWeight:800,cursor:(selectedCount===0||bulkPrinting||!announcement)?"not-allowed":"pointer",fontFamily:"inherit"}}>
+                  style={{padding:"0.45rem 1rem",borderRadius:8,border:"none",background:(selectedCount===0||bulkPrinting||!announcement)?"#9ca3af":"#0070D4",color:"white",fontSize:"0.8rem",fontWeight:800,cursor:(selectedCount===0||bulkPrinting||!announcement)?"not-allowed":"pointer",fontFamily:"inherit"}}>
                   {bulkPrinting ? "生成中..." : `🖨 ${selectedCount}件まとめて印刷`}
                 </button>
               </div>
@@ -28126,7 +28130,7 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
               {filtered.slice(0, 500).map(v => {
                 const checked = selectedIds.has(v.vendor_id);
                 return (
-                  <label key={v.vendor_id} style={{padding:"0.5rem 0.7rem",background:checked?"#eff6ff":"#fafafa",border:`1px solid ${checked?"#93c5fd":"#e5e7eb"}`,borderRadius:6,display:"flex",alignItems:"center",gap:"0.5rem",flexWrap:"wrap",cursor:"pointer"}}>
+                  <label key={v.vendor_id} style={{padding:"0.5rem 0.7rem",background:checked?"#F2F7FF":"#fafafa",border:`1px solid ${checked?"#93c5fd":"#e5e7eb"}`,borderRadius:8,display:"flex",alignItems:"center",gap:"0.5rem",flexWrap:"wrap",cursor:"pointer"}}>
                     <input type="checkbox" checked={checked} onChange={e=>{
                       const next = new Set(selectedIds);
                       if (e.target.checked) next.add(v.vendor_id);
@@ -28137,11 +28141,11 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
                     <div style={{display:"flex",gap:"0.3rem",flexShrink:0}}>
                       {v.tracking_id ? (
                         <>
-                          <span style={{fontSize:"0.65rem",padding:"0.1rem 0.4rem",background:"#dbeafe",color:"#1e40af",borderRadius:3,fontWeight:700}}>👁 {v.access_count||0}</span>
-                          <span style={{fontSize:"0.65rem",padding:"0.1rem 0.4rem",background:"#d1fae5",color:"#065f46",borderRadius:3,fontWeight:700}}>✉️ {v.submit_count||0}</span>
+                          <span style={{fontSize:"0.65rem",padding:"0.1rem 0.4rem",background:"#E6F0FF",color:"#295FA6",borderRadius:8,fontWeight:700}}>👁 {v.access_count||0}</span>
+                          <span style={{fontSize:"0.65rem",padding:"0.1rem 0.4rem",background:"#d1fae5",color:"#065f46",borderRadius:8,fontWeight:700}}>✉️ {v.submit_count||0}</span>
                         </>
                       ) : (
-                        <span style={{fontSize:"0.65rem",padding:"0.1rem 0.4rem",background:"#fef3c7",color:"#92400e",borderRadius:3,fontWeight:700}}>QR未発行</span>
+                        <span style={{fontSize:"0.65rem",padding:"0.1rem 0.4rem",background:"#fef3c7",color:"#92400e",borderRadius:8,fontWeight:700}}>QR未発行</span>
                       )}
                     </div>
                     {v.tracking_id && <div style={{fontSize:"0.62rem",color:C.textMuted,fontFamily:"monospace",flexShrink:0}}>{v.tracking_id}</div>}
@@ -28149,7 +28153,7 @@ function AnnouncementDistribution({ announcementId, announcementTitle, announcem
                 );
               })}
               {filtered.length > 500 && (
-                <div style={{padding:"0.7rem",textAlign:"center",fontSize:"0.72rem",color:"#92400e",background:"#fef3c7",borderRadius:5}}>
+                <div style={{padding:"0.7rem",textAlign:"center",fontSize:"0.72rem",color:"#92400e",background:"#fef3c7",borderRadius:8}}>
                   ⚠️ {filtered.length}件中 500件のみ表示中。さらに絞り込んでください
                 </div>
               )}
@@ -28238,7 +28242,7 @@ function AnnouncementSettings({ currentUser, C }) {
   <li>項目3: ○○○○</li>
 </ul>
 <p>ご興味をお持ちいただけましたら、ぜひ下記のQRコードよりお問い合わせください。</p>
-<div style="margin-top:2rem;padding:1rem;border:2px solid #2563eb;border-radius:8px;text-align:right;">
+<div style="margin-top:2rem;padding:1rem;border:2px solid #0070D4;border-radius:8px;text-align:right;">
   <div style="font-weight:bold;">お問い合わせはこちら</div>
   <div style="margin-top:0.5rem;">{{QR_CODE}}</div>
   <div style="font-size:0.8rem;color:#666;margin-top:0.5rem;">スマートフォンで読み取ってください</div>
@@ -28415,7 +28419,7 @@ function AnnouncementSettings({ currentUser, C }) {
       <div style={{display:"flex",flexDirection:"column",gap:"0.75rem"}}>
         <div style={{background:"white",borderRadius:"1rem",padding:"1rem 1.25rem",border:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:"0.5rem",position:"sticky",top:0,zIndex:10,flexWrap:"wrap"}}>
           <button onClick={()=>{if(!saving && window.confirm("編集を破棄しますか？"))setEditing(null);}}
-            style={{padding:"0.4rem 0.7rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+            style={{padding:"0.4rem 0.7rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
             ← 戻る
           </button>
           <div style={{flex:1,minWidth:200,fontWeight:800,fontSize:"0.9rem",color:C.text}}>
@@ -28432,11 +28436,11 @@ function AnnouncementSettings({ currentUser, C }) {
                   setTimeout(() => saveNew(), 100);
                 }}}
                 disabled={saving}
-                style={{padding:"0.45rem 0.85rem",borderRadius:6,border:"1px solid #2563eb",background:"white",color:"#2563eb",fontSize:"0.78rem",fontWeight:800,cursor:saving?"not-allowed":"pointer",fontFamily:"inherit"}}>
+                style={{padding:"0.45rem 0.85rem",borderRadius:8,border:"1px solid #0070D4",background:"white",color:"#0070D4",fontSize:"0.78rem",fontWeight:800,cursor:saving?"not-allowed":"pointer",fontFamily:"inherit"}}>
                 🆕 新バージョンとして保存
               </button>
               <button onClick={saveOverwrite} disabled={saving}
-                style={{padding:"0.5rem 1.1rem",borderRadius:6,border:"none",background:saving?"#9ca3af":"#059669",color:"white",fontSize:"0.82rem",fontWeight:800,cursor:saving?"not-allowed":"pointer",fontFamily:"inherit"}}>
+                style={{padding:"0.5rem 1.1rem",borderRadius:8,border:"none",background:saving?"#9ca3af":"#009122",color:"white",fontSize:"0.82rem",fontWeight:800,cursor:saving?"not-allowed":"pointer",fontFamily:"inherit"}}>
                 {saving ? "保存中..." : "💾 上書き保存"}
               </button>
             </>
@@ -28449,17 +28453,17 @@ function AnnouncementSettings({ currentUser, C }) {
                   setTimeout(() => saveOverwrite(), 100);
                 }
               }} disabled={saving}
-                style={{padding:"0.45rem 0.85rem",borderRadius:6,border:"1px solid #059669",background:"white",color:"#059669",fontSize:"0.78rem",fontWeight:800,cursor:saving?"not-allowed":"pointer",fontFamily:"inherit"}}>
+                style={{padding:"0.45rem 0.85rem",borderRadius:8,border:"1px solid #009122",background:"white",color:"#009122",fontSize:"0.78rem",fontWeight:800,cursor:saving?"not-allowed":"pointer",fontFamily:"inherit"}}>
                 💾 上書きする
               </button>
               <button onClick={saveNew} disabled={saving}
-                style={{padding:"0.5rem 1.1rem",borderRadius:6,border:"none",background:saving?"#9ca3af":"#2563eb",color:"white",fontSize:"0.82rem",fontWeight:800,cursor:saving?"not-allowed":"pointer",fontFamily:"inherit"}}>
+                style={{padding:"0.5rem 1.1rem",borderRadius:8,border:"none",background:saving?"#9ca3af":"#0070D4",color:"white",fontSize:"0.82rem",fontWeight:800,cursor:saving?"not-allowed":"pointer",fontFamily:"inherit"}}>
                 {saving ? "保存中..." : "🆕 新バージョンとして保存"}
               </button>
             </>
           ) : (
             <button onClick={saveNew} disabled={saving}
-              style={{padding:"0.5rem 1.1rem",borderRadius:6,border:"none",background:saving?"#9ca3af":"#2563eb",color:"white",fontSize:"0.82rem",fontWeight:800,cursor:saving?"not-allowed":"pointer",fontFamily:"inherit"}}>
+              style={{padding:"0.5rem 1.1rem",borderRadius:8,border:"none",background:saving?"#9ca3af":"#0070D4",color:"white",fontSize:"0.82rem",fontWeight:800,cursor:saving?"not-allowed":"pointer",fontFamily:"inherit"}}>
               {saving ? "保存中..." : "💾 保存"}
             </button>
           )}
@@ -28472,7 +28476,7 @@ function AnnouncementSettings({ currentUser, C }) {
           </div>
         )}
         {editMode === "copy" && (
-          <div style={{padding:"0.6rem 1rem",background:"#dbeafe",border:"1px solid #93c5fd",borderRadius:8,fontSize:"0.78rem",color:"#1e40af"}}>
+          <div style={{padding:"0.6rem 1rem",background:"#E6F0FF",border:"1px solid #93c5fd",borderRadius:8,fontSize:"0.78rem",color:"#295FA6"}}>
             💡 <b>新バージョン作成モード</b>: 別のバージョンとして保存されます。配布済みQRは旧バージョンを表示し続けます。<br/>
             <span style={{fontSize:"0.72rem"}}>軽微な修正で配布済QRに反映したい場合は「💾 上書きする」を選んでください。</span>
           </div>
@@ -28483,13 +28487,13 @@ function AnnouncementSettings({ currentUser, C }) {
           <div style={{marginBottom:"0.6rem"}}>
             <label style={{display:"block",fontSize:"0.75rem",fontWeight:700,color:C.textSub,marginBottom:"0.25rem"}}>タイトル *</label>
             <input value={editTitle} onChange={e=>setEditTitle(e.target.value)}
-              style={{width:"100%",padding:"0.55rem 0.8rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.9rem",fontFamily:"inherit",boxSizing:"border-box"}}/>
+              style={{width:"100%",padding:"0.55rem 0.8rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.9rem",fontFamily:"inherit",boxSizing:"border-box"}}/>
           </div>
           <div style={{marginBottom:"0.6rem"}}>
             <label style={{display:"block",fontSize:"0.75rem",fontWeight:700,color:C.textSub,marginBottom:"0.25rem"}}>バージョンの説明（任意）</label>
             <input value={editDescription} onChange={e=>setEditDescription(e.target.value)}
               placeholder="例: 2026年夏キャンペーン用"
-              style={{width:"100%",padding:"0.55rem 0.8rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",boxSizing:"border-box"}}/>
+              style={{width:"100%",padding:"0.55rem 0.8rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",boxSizing:"border-box"}}/>
           </div>
           {editMode !== "overwrite" && (
             <div>
@@ -28506,12 +28510,12 @@ function AnnouncementSettings({ currentUser, C }) {
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.5rem",flexWrap:"wrap",gap:"0.4rem"}}>
             <label style={{fontSize:"0.78rem",fontWeight:700,color:C.textSub}}>📄 案内状本文 (HTML)</label>
             <button onClick={()=>setShowHtmlGuide(s=>!s)}
-              style={{padding:"0.25rem 0.6rem",borderRadius:5,border:`1px solid ${C.border}`,background:showHtmlGuide?"#dbeafe":"white",color:showHtmlGuide?"#1e40af":C.textSub,fontSize:"0.7rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+              style={{padding:"0.25rem 0.6rem",borderRadius:8,border:`1px solid ${C.border}`,background:showHtmlGuide?"#E6F0FF":"white",color:showHtmlGuide?"#295FA6":C.textSub,fontSize:"0.7rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
               📖 HTMLタグの使い方 {showHtmlGuide ? "▲" : "▼"}
             </button>
           </div>
           
-          <div style={{display:"flex",gap:"0.3rem",flexWrap:"wrap",marginBottom:"0.5rem",padding:"0.4rem 0.5rem",background:"#f9fafb",borderRadius:6,border:`1px solid ${C.borderLight}`}}>
+          <div style={{display:"flex",gap:"0.3rem",flexWrap:"wrap",marginBottom:"0.5rem",padding:"0.4rem 0.5rem",background:"#f9fafb",borderRadius:8,border:`1px solid ${C.borderLight}`}}>
             {[
               ["見出し", "<h1>○○○○</h1>"],
               ["小見出し", "<h2>○○○○</h2>"],
@@ -28522,7 +28526,7 @@ function AnnouncementSettings({ currentUser, C }) {
               ["番号付き", "<ol>\n  <li>項目1</li>\n  <li>項目2</li>\n</ol>"],
               ["中央揃え", '<div style="text-align:center;">○○○○</div>'],
               ["右揃え", '<div style="text-align:right;">○○○○</div>'],
-              ["枠付きボックス", '<div style="padding:1rem;border:2px solid #2563eb;border-radius:8px;margin:1rem 0;">○○○○</div>'],
+              ["枠付きボックス", '<div style="padding:1rem;border:2px solid #0070D4;border-radius:8px;margin:1rem 0;">○○○○</div>'],
               ["QRコード", "{{QR_CODE}}"],
               ["業者名", "{{業者名}}"],
               ["業者電話", "{{業者電話}}"],
@@ -28560,7 +28564,7 @@ function AnnouncementSettings({ currentUser, C }) {
                     }
                   }, 100);
                 }}
-                style={{padding:"0.2rem 0.55rem",borderRadius:4,border:`1px solid ${C.border}`,background:"white",color:C.text,fontSize:"0.7rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                style={{padding:"0.2rem 0.55rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.text,fontSize:"0.7rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
                 ＋{label}
               </button>
             ))}
@@ -28594,7 +28598,7 @@ function AnnouncementSettings({ currentUser, C }) {
           <textarea id="announcement-content-textarea" value={editContent} onChange={e=>setEditContent(e.target.value)}
             placeholder="HTML 形式で文書を作成してください"
             rows={20}
-            style={{width:"100%",padding:"0.7rem 0.85rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"'Menlo','Courier New',monospace",lineHeight:1.5,resize:"vertical",boxSizing:"border-box",minHeight:300}}/>
+            style={{width:"100%",padding:"0.7rem 0.85rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"'Menlo','Courier New',monospace",lineHeight:1.5,resize:"vertical",boxSizing:"border-box",minHeight:300}}/>
         </div>
         
         {/* プレビュー */}
@@ -28618,12 +28622,12 @@ function AnnouncementSettings({ currentUser, C }) {
                 {/* ✅ v220: 新しい問い合わせ情報を右下に表示（印刷時と同じ） */}
                 <div style={{marginTop:"2rem",textAlign:"right"}}>
                   <div style={{display:"inline-block",textAlign:"left",fontSize:"0.72rem",color:"#333",lineHeight:1.5}}>
-                    <b style={{color:"#1e40af"}}>【お問い合わせ先】</b><br/>
+                    <b style={{color:"#295FA6"}}>【お問い合わせ先】</b><br/>
                     株式会社ビートルマネージメント<br/>
                     DUSTALK事業局<br/>
                     TEL：0120-532-109（平日9:00〜17:00）<br/>
                     E-mail：info@dustalk.com<br/>
-                    <div style={{display:"inline-block",padding:"0.3rem",background:"#f0f0f0",border:"1px dashed #999",borderRadius:4,fontSize:"0.65rem",color:"#666",marginTop:"0.4rem"}}>[QRコード差し込み位置]</div>
+                    <div style={{display:"inline-block",padding:"0.3rem",background:"#f0f0f0",border:"1px dashed #999",borderRadius:8,fontSize:"0.65rem",color:"#666",marginTop:"0.4rem"}}>[QRコード差し込み位置]</div>
                   </div>
                 </div>
               </>;
@@ -28643,14 +28647,14 @@ function AnnouncementSettings({ currentUser, C }) {
               ["電話番号", "phone"],
               ["メールアドレス", "email"],
             ].map(([label, key]) => (
-              <div key={key} style={{padding:"0.55rem 0.7rem",border:`1px solid ${C.border}`,borderRadius:6,background:"#f9fafb"}}>
+              <div key={key} style={{padding:"0.55rem 0.7rem",border:`1px solid ${C.border}`,borderRadius:8,background:"#f9fafb"}}>
                 <div style={{fontSize:"0.78rem",fontWeight:700,color:C.text,marginBottom:"0.3rem"}}>{label}</div>
                 <label style={{display:"flex",alignItems:"center",gap:"0.3rem",fontSize:"0.72rem",color:C.textSub,cursor:"pointer",marginBottom:"0.2rem"}}>
                   <input type="checkbox" checked={!!formConfig[`show_${key}`]} 
                     onChange={e=>setFormConfig(p=>({...p, [`show_${key}`]:e.target.checked}))}/>
                   表示する
                 </label>
-                <label style={{display:"flex",alignItems:"center",gap:"0.3rem",fontSize:"0.72rem",color:"#dc2626",cursor:formConfig[`show_${key}`]?"pointer":"not-allowed",opacity:formConfig[`show_${key}`]?1:0.5}}>
+                <label style={{display:"flex",alignItems:"center",gap:"0.3rem",fontSize:"0.72rem",color:"#DA1313",cursor:formConfig[`show_${key}`]?"pointer":"not-allowed",opacity:formConfig[`show_${key}`]?1:0.5}}>
                   <input type="checkbox" checked={!!formConfig[`require_${key}`]} disabled={!formConfig[`show_${key}`]}
                     onChange={e=>setFormConfig(p=>({...p, [`require_${key}`]:e.target.checked}))}/>
                   必須にする
@@ -28664,7 +28668,7 @@ function AnnouncementSettings({ currentUser, C }) {
             <textarea value={formConfig.custom_message||""} onChange={e=>setFormConfig(p=>({...p, custom_message:e.target.value}))}
               placeholder="例: 弊社サービスにご興味をお持ちいただきありがとうございます。"
               rows={2}
-              style={{width:"100%",padding:"0.45rem 0.65rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
+              style={{width:"100%",padding:"0.45rem 0.65rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
           </div>
           
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0.5rem",marginBottom:"0.6rem"}}>
@@ -28672,13 +28676,13 @@ function AnnouncementSettings({ currentUser, C }) {
               <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:C.textSub,marginBottom:"0.2rem"}}>送信ボタンのラベル</label>
               <input value={formConfig.submit_button_label||""} onChange={e=>setFormConfig(p=>({...p, submit_button_label:e.target.value}))}
                 placeholder="送信する"
-                style={{width:"100%",padding:"0.4rem 0.6rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                style={{width:"100%",padding:"0.4rem 0.6rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"inherit",boxSizing:"border-box"}}/>
             </div>
             <div>
               <label style={{display:"block",fontSize:"0.72rem",fontWeight:700,color:C.textSub,marginBottom:"0.2rem"}}>送信完了メッセージ</label>
               <input value={formConfig.thanks_message||""} onChange={e=>setFormConfig(p=>({...p, thanks_message:e.target.value}))}
                 placeholder="お問い合わせありがとうございます"
-                style={{width:"100%",padding:"0.4rem 0.6rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                style={{width:"100%",padding:"0.4rem 0.6rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"inherit",boxSizing:"border-box"}}/>
             </div>
           </div>
           
@@ -28692,7 +28696,7 @@ function AnnouncementSettings({ currentUser, C }) {
                 </div>
               </div>
               <button onClick={()=>setFormConfig(p=>({...p, extra_fields:[...(p.extra_fields||[]), {key:`q${Date.now()}`, label:"", type:"text", required:false, options:[], _isNew:true}]}))}
-                style={{padding:"0.45rem 0.85rem",borderRadius:6,border:"none",background:"#2563eb",color:"white",fontSize:"0.78rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 1px 3px rgba(37,99,235,0.3)"}}>
+                style={{padding:"0.45rem 0.85rem",borderRadius:8,border:"none",background:"#0070D4",color:"white",fontSize:"0.78rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 1px 3px rgba(37,99,235,0.3)"}}>
                 ＋ 質問を追加
               </button>
             </div>
@@ -28714,27 +28718,27 @@ function AnnouncementSettings({ currentUser, C }) {
                     <div key={f.key||idx} style={{padding:"0.85rem 1rem",border:`2px solid ${f._isNew ? "#86efac" : "#e5e7eb"}`,borderRadius:10,background:f._isNew?"#f0fdf4":"white",boxShadow:f._isNew?"0 2px 8px rgba(34,197,94,0.15)":"0 1px 2px rgba(0,0,0,0.03)"}}>
                       {/* ヘッダ */}
                       <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginBottom:"0.6rem"}}>
-                        <div style={{fontSize:"0.75rem",fontWeight:800,color:"white",background:"#2563eb",borderRadius:"50%",width:24,height:24,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                        <div style={{fontSize:"0.75rem",fontWeight:800,color:"white",background:"#0070D4",borderRadius:"50%",width:24,height:24,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                           {idx+1}
                         </div>
-                        <div style={{flex:1,fontSize:"0.78rem",fontWeight:700,color:C.text}}>質問 {idx+1}{f._isNew && <span style={{marginLeft:"0.5rem",fontSize:"0.65rem",color:"#059669",background:"#d1fae5",padding:"0.1rem 0.4rem",borderRadius:3}}>新規追加</span>}</div>
+                        <div style={{flex:1,fontSize:"0.78rem",fontWeight:700,color:C.text}}>質問 {idx+1}{f._isNew && <span style={{marginLeft:"0.5rem",fontSize:"0.65rem",color:"#009122",background:"#d1fae5",padding:"0.1rem 0.4rem",borderRadius:8}}>新規追加</span>}</div>
                         {/* 並び替えボタン */}
                         <button disabled={idx===0} onClick={()=>{
                           const next=[...formConfig.extra_fields];
                           [next[idx-1],next[idx]]=[next[idx],next[idx-1]];
                           setFormConfig(p=>({...p, extra_fields:next}));
-                        }} style={{padding:"0.25rem 0.45rem",borderRadius:4,border:`1px solid ${C.border}`,background:"white",color:idx===0?"#d1d5db":"#374151",fontSize:"0.72rem",fontWeight:700,cursor:idx===0?"not-allowed":"pointer",fontFamily:"inherit"}}>↑</button>
+                        }} style={{padding:"0.25rem 0.45rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:idx===0?"#d1d5db":"#374151",fontSize:"0.72rem",fontWeight:700,cursor:idx===0?"not-allowed":"pointer",fontFamily:"inherit"}}>↑</button>
                         <button disabled={idx===(formConfig.extra_fields||[]).length-1} onClick={()=>{
                           const next=[...formConfig.extra_fields];
                           [next[idx],next[idx+1]]=[next[idx+1],next[idx]];
                           setFormConfig(p=>({...p, extra_fields:next}));
-                        }} style={{padding:"0.25rem 0.45rem",borderRadius:4,border:`1px solid ${C.border}`,background:"white",color:idx===(formConfig.extra_fields||[]).length-1?"#d1d5db":"#374151",fontSize:"0.72rem",fontWeight:700,cursor:idx===(formConfig.extra_fields||[]).length-1?"not-allowed":"pointer",fontFamily:"inherit"}}>↓</button>
+                        }} style={{padding:"0.25rem 0.45rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:idx===(formConfig.extra_fields||[]).length-1?"#d1d5db":"#374151",fontSize:"0.72rem",fontWeight:700,cursor:idx===(formConfig.extra_fields||[]).length-1?"not-allowed":"pointer",fontFamily:"inherit"}}>↓</button>
                         <button onClick={()=>{
                           if(!window.confirm(`質問 ${idx+1}「${f.label||"無題"}」を削除しますか？`)) return;
                           const next=[...formConfig.extra_fields];
                           next.splice(idx,1);
                           setFormConfig(p=>({...p, extra_fields:next}));
-                        }} style={{padding:"0.25rem 0.5rem",borderRadius:4,border:"1px solid #fca5a5",background:"white",color:"#dc2626",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🗑</button>
+                        }} style={{padding:"0.25rem 0.5rem",borderRadius:8,border:"1px solid #fca5a5",background:"white",color:"#DA1313",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🗑</button>
                       </div>
                       
                       {/* 質問文 */}
@@ -28745,7 +28749,7 @@ function AnnouncementSettings({ currentUser, C }) {
                           next[idx]={...next[idx], label:e.target.value, _isNew:false};
                           setFormConfig(p=>({...p, extra_fields:next}));
                         }} placeholder="例: ご興味のあるサービスを選択してください"
-                          style={{width:"100%",padding:"0.5rem 0.7rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                          style={{width:"100%",padding:"0.5rem 0.7rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",boxSizing:"border-box"}}/>
                       </div>
                       
                       {/* 種別 + 必須 */}
@@ -28757,7 +28761,7 @@ function AnnouncementSettings({ currentUser, C }) {
                             next[idx]={...next[idx], type:e.target.value, _isNew:false};
                             setFormConfig(p=>({...p, extra_fields:next}));
                           }}
-                            style={{width:"100%",padding:"0.5rem 0.7rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.82rem",fontFamily:"inherit",background:"white",boxSizing:"border-box"}}>
+                            style={{width:"100%",padding:"0.5rem 0.7rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.82rem",fontFamily:"inherit",background:"white",boxSizing:"border-box"}}>
                             <option value="text">テキスト（1行）</option>
                             <option value="textarea">テキスト（複数行）</option>
                             <option value="select">プルダウン選択</option>
@@ -28765,7 +28769,7 @@ function AnnouncementSettings({ currentUser, C }) {
                             <option value="checkbox">チェックボックス（複数選択）</option>
                           </select>
                         </div>
-                        <label style={{display:"flex",alignItems:"center",gap:"0.3rem",fontSize:"0.8rem",color:"#dc2626",cursor:"pointer",padding:"0.5rem 0.7rem",background:f.required?"#fee2e2":"#f9fafb",borderRadius:5,border:`1px solid ${f.required?"#fca5a5":C.border}`,fontWeight:700}}>
+                        <label style={{display:"flex",alignItems:"center",gap:"0.3rem",fontSize:"0.8rem",color:"#DA1313",cursor:"pointer",padding:"0.5rem 0.7rem",background:f.required?"#fee2e2":"#f9fafb",borderRadius:8,border:`1px solid ${f.required?"#fca5a5":C.border}`,fontWeight:700}}>
                           <input type="checkbox" checked={!!f.required} onChange={e=>{
                             const next=[...formConfig.extra_fields];
                             next[idx]={...next[idx], required:e.target.checked, _isNew:false};
@@ -28777,13 +28781,13 @@ function AnnouncementSettings({ currentUser, C }) {
                       
                       {/* 選択肢入力（select/radio/checkbox の時のみ） */}
                       {hasOptions && (
-                        <div style={{marginBottom:"0.5rem",padding:"0.7rem 0.85rem",background:"#f9fafb",borderRadius:6,border:`1px solid ${C.borderLight}`}}>
+                        <div style={{marginBottom:"0.5rem",padding:"0.7rem 0.85rem",background:"#f9fafb",borderRadius:8,border:`1px solid ${C.borderLight}`}}>
                           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"0.4rem"}}>
                             <label style={{fontSize:"0.75rem",fontWeight:700,color:C.textSub}}>選択肢</label>
                             <span style={{fontSize:"0.65rem",color:C.textMuted}}>{(f.options||[]).length}個</span>
                           </div>
                           {(f.options||[]).length === 0 ? (
-                            <div style={{fontSize:"0.72rem",color:"#9ca3af",padding:"0.6rem 0.7rem",background:"white",borderRadius:5,border:"1px dashed #d1d5db",textAlign:"center",marginBottom:"0.4rem"}}>
+                            <div style={{fontSize:"0.72rem",color:"#9ca3af",padding:"0.6rem 0.7rem",background:"white",borderRadius:8,border:"1px dashed #d1d5db",textAlign:"center",marginBottom:"0.4rem"}}>
                               選択肢がまだありません
                             </div>
                           ) : (
@@ -28798,7 +28802,7 @@ function AnnouncementSettings({ currentUser, C }) {
                                     next[idx]={...next[idx], options:nextOptions, _isNew:false};
                                     setFormConfig(p=>({...p, extra_fields:next}));
                                   }} placeholder={`選択肢 ${oIdx+1}`}
-                                    style={{flex:1,padding:"0.4rem 0.6rem",borderRadius:4,border:`1px solid ${C.border}`,fontSize:"0.8rem",fontFamily:"inherit",background:"white"}}/>
+                                    style={{flex:1,padding:"0.4rem 0.6rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.8rem",fontFamily:"inherit",background:"white"}}/>
                                   <button disabled={oIdx===0} onClick={()=>{
                                     const next=[...formConfig.extra_fields];
                                     const nextOptions=[...(next[idx].options||[])];
@@ -28806,7 +28810,7 @@ function AnnouncementSettings({ currentUser, C }) {
                                     next[idx]={...next[idx], options:nextOptions, _isNew:false};
                                     setFormConfig(p=>({...p, extra_fields:next}));
                                   }}
-                                    style={{padding:"0.3rem 0.45rem",borderRadius:4,border:`1px solid ${C.border}`,background:"white",color:oIdx===0?"#d1d5db":"#374151",fontSize:"0.7rem",fontWeight:700,cursor:oIdx===0?"not-allowed":"pointer",fontFamily:"inherit",flexShrink:0}}>↑</button>
+                                    style={{padding:"0.3rem 0.45rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:oIdx===0?"#d1d5db":"#374151",fontSize:"0.7rem",fontWeight:700,cursor:oIdx===0?"not-allowed":"pointer",fontFamily:"inherit",flexShrink:0}}>↑</button>
                                   <button disabled={oIdx===(f.options||[]).length-1} onClick={()=>{
                                     const next=[...formConfig.extra_fields];
                                     const nextOptions=[...(next[idx].options||[])];
@@ -28814,7 +28818,7 @@ function AnnouncementSettings({ currentUser, C }) {
                                     next[idx]={...next[idx], options:nextOptions, _isNew:false};
                                     setFormConfig(p=>({...p, extra_fields:next}));
                                   }}
-                                    style={{padding:"0.3rem 0.45rem",borderRadius:4,border:`1px solid ${C.border}`,background:"white",color:oIdx===(f.options||[]).length-1?"#d1d5db":"#374151",fontSize:"0.7rem",fontWeight:700,cursor:oIdx===(f.options||[]).length-1?"not-allowed":"pointer",fontFamily:"inherit",flexShrink:0}}>↓</button>
+                                    style={{padding:"0.3rem 0.45rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:oIdx===(f.options||[]).length-1?"#d1d5db":"#374151",fontSize:"0.7rem",fontWeight:700,cursor:oIdx===(f.options||[]).length-1?"not-allowed":"pointer",fontFamily:"inherit",flexShrink:0}}>↓</button>
                                   <button onClick={()=>{
                                     const next=[...formConfig.extra_fields];
                                     const nextOptions=[...(next[idx].options||[])];
@@ -28822,7 +28826,7 @@ function AnnouncementSettings({ currentUser, C }) {
                                     next[idx]={...next[idx], options:nextOptions, _isNew:false};
                                     setFormConfig(p=>({...p, extra_fields:next}));
                                   }}
-                                    style={{padding:"0.3rem 0.5rem",borderRadius:4,border:"1px solid #fca5a5",background:"white",color:"#dc2626",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🗑</button>
+                                    style={{padding:"0.3rem 0.5rem",borderRadius:8,border:"1px solid #fca5a5",background:"white",color:"#DA1313",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🗑</button>
                                 </div>
                               ))}
                             </div>
@@ -28832,14 +28836,14 @@ function AnnouncementSettings({ currentUser, C }) {
                             next[idx]={...next[idx], options:[...(next[idx].options||[]), ""], _isNew:false};
                             setFormConfig(p=>({...p, extra_fields:next}));
                           }}
-                            style={{padding:"0.4rem 0.85rem",borderRadius:5,border:"1px dashed #2563eb",background:"#eff6ff",color:"#2563eb",fontSize:"0.75rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                            style={{padding:"0.4rem 0.85rem",borderRadius:8,border:"1px dashed #0070D4",background:"#F2F7FF",color:"#0070D4",fontSize:"0.75rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
                             ＋ 選択肢を追加
                           </button>
                         </div>
                       )}
                       
                       {/* 条件分岐: 別の質問の回答に応じて表示 */}
-                      <div style={{marginTop:"0.6rem",padding:"0.6rem 0.8rem",background:"#fffbeb",borderRadius:6,border:"1px solid #fde68a"}}>
+                      <div style={{marginTop:"0.6rem",padding:"0.6rem 0.8rem",background:"#fffbeb",borderRadius:8,border:"1px solid #fde68a"}}>
                         <label style={{display:"flex",alignItems:"center",gap:"0.4rem",fontSize:"0.78rem",fontWeight:700,color:"#92400e",cursor:triggerCandidates.length===0?"not-allowed":"pointer",opacity:triggerCandidates.length===0?0.5:1}}>
                           <input type="checkbox" checked={!!f.show_if} disabled={triggerCandidates.length===0}
                             onChange={e=>{
@@ -28863,7 +28867,7 @@ function AnnouncementSettings({ currentUser, C }) {
                               next[idx]={...next[idx], show_if:{...next[idx].show_if, question_key:e.target.value, value:(triggerQ?.options||[])[0]||""}, _isNew:false};
                               setFormConfig(p=>({...p, extra_fields:next}));
                             }}
-                              style={{padding:"0.35rem 0.55rem",borderRadius:4,border:"1px solid #d97706",fontSize:"0.75rem",fontFamily:"inherit",background:"white",minWidth:130}}>
+                              style={{padding:"0.35rem 0.55rem",borderRadius:8,border:"1px solid #d97706",fontSize:"0.75rem",fontFamily:"inherit",background:"white",minWidth:130}}>
                               {triggerCandidates.map(q => (
                                 <option key={q.key} value={q.key}>「{q.label||"無題"}」</option>
                               ))}
@@ -28874,7 +28878,7 @@ function AnnouncementSettings({ currentUser, C }) {
                               next[idx]={...next[idx], show_if:{...next[idx].show_if, value:e.target.value}, _isNew:false};
                               setFormConfig(p=>({...p, extra_fields:next}));
                             }}
-                              style={{padding:"0.35rem 0.55rem",borderRadius:4,border:"1px solid #d97706",fontSize:"0.75rem",fontFamily:"inherit",background:"white"}}>
+                              style={{padding:"0.35rem 0.55rem",borderRadius:8,border:"1px solid #d97706",fontSize:"0.75rem",fontFamily:"inherit",background:"white"}}>
                               {(() => {
                                 const tq = triggerCandidates.find(q=>q.key===f.show_if.question_key);
                                 return (tq?.options||[]).map((o,i)=>(<option key={i} value={o}>{o}</option>));
@@ -28902,25 +28906,25 @@ function AnnouncementSettings({ currentUser, C }) {
       <div style={{display:"flex",flexDirection:"column",gap:"0.75rem"}}>
         <div style={{background:"white",borderRadius:"1rem",padding:"1rem 1.25rem",border:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:"0.5rem"}}>
           <button onClick={()=>setPreviewing(null)}
-            style={{padding:"0.4rem 0.7rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+            style={{padding:"0.4rem 0.7rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
             ← 戻る
           </button>
           <div style={{flex:1,fontWeight:800,fontSize:"0.95rem",color:C.text}}>
             v{previewing.version}: {previewing.title}
-            {previewing.is_current && <span style={{fontSize:"0.7rem",fontWeight:700,color:"white",background:"#059669",borderRadius:3,padding:"0.15rem 0.5rem",marginLeft:"0.5rem"}}>現行版</span>}
+            {previewing.is_current && <span style={{fontSize:"0.7rem",fontWeight:700,color:"white",background:"#009122",borderRadius:8,padding:"0.15rem 0.5rem",marginLeft:"0.5rem"}}>現行版</span>}
           </div>
           {!previewing.is_current && (
             <button onClick={()=>{setCurrent(previewing.id);setPreviewing(null);}}
-              style={{padding:"0.4rem 0.8rem",borderRadius:6,border:"none",background:"#059669",color:"white",fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+              style={{padding:"0.4rem 0.8rem",borderRadius:8,border:"none",background:"#009122",color:"white",fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
               現行版にする
             </button>
           )}
           <button onClick={()=>{setPreviewing(null);openEdit(previewing.id, "overwrite");}}
-            style={{padding:"0.4rem 0.8rem",borderRadius:6,border:"none",background:"#059669",color:"white",fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+            style={{padding:"0.4rem 0.8rem",borderRadius:8,border:"none",background:"#009122",color:"white",fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
             ✏️ 編集
           </button>
           <button onClick={()=>{setPreviewing(null);openEdit(previewing.id, "copy");}}
-            style={{padding:"0.4rem 0.8rem",borderRadius:6,border:"none",background:"#2563eb",color:"white",fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+            style={{padding:"0.4rem 0.8rem",borderRadius:8,border:"none",background:"#0070D4",color:"white",fontSize:"0.78rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
             🆕 複製して新バージョン
           </button>
         </div>
@@ -28942,12 +28946,12 @@ function AnnouncementSettings({ currentUser, C }) {
               {/* ✅ v220: 新しい問い合わせ情報を右下に表示（印刷時と同じ） */}
               <div style={{marginTop:"2rem",textAlign:"right"}}>
                 <div style={{display:"inline-block",textAlign:"left",fontSize:"0.75rem",color:"#333",lineHeight:1.5}}>
-                  <b style={{color:"#1e40af"}}>【お問い合わせ先】</b><br/>
+                  <b style={{color:"#295FA6"}}>【お問い合わせ先】</b><br/>
                   株式会社ビートルマネージメント<br/>
                   DUSTALK事業局<br/>
                   TEL：0120-532-109（平日9:00〜17:00）<br/>
                   E-mail：info@dustalk.com<br/>
-                  <div style={{display:"inline-block",padding:"0.3rem",background:"#f0f0f0",border:"1px dashed #999",borderRadius:4,fontSize:"0.65rem",color:"#666",marginTop:"0.4rem"}}>[QRコード差し込み位置]</div>
+                  <div style={{display:"inline-block",padding:"0.3rem",background:"#f0f0f0",border:"1px dashed #999",borderRadius:8,fontSize:"0.65rem",color:"#666",marginTop:"0.4rem"}}>[QRコード差し込み位置]</div>
                 </div>
               </div>
             </>;
@@ -28955,15 +28959,15 @@ function AnnouncementSettings({ currentUser, C }) {
         </div>
         <div style={{background:"white",borderRadius:"1rem",padding:"1.5rem",border:`1px solid ${C.border}`}}>
           <div style={{fontWeight:800,fontSize:"0.95rem",color:C.text,marginBottom:"0.6rem"}}>📝 アンケート設定（フォームのプレビュー）</div>
-          {fc.custom_message && <div style={{padding:"0.5rem 0.7rem",background:"#f0f9ff",borderLeft:"3px solid #2563eb",fontSize:"0.82rem",marginBottom:"0.6rem"}}>{fc.custom_message}</div>}
+          {fc.custom_message && <div style={{padding:"0.5rem 0.7rem",background:"#f0f9ff",borderLeft:"3px solid #0070D4",fontSize:"0.82rem",marginBottom:"0.6rem"}}>{fc.custom_message}</div>}
           <div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
-            {fc.show_company !== false && <div style={{fontSize:"0.78rem"}}>📝 会社名 {fc.require_company && <span style={{color:"#dc2626"}}>*</span>}</div>}
-            {fc.show_contact !== false && <div style={{fontSize:"0.78rem"}}>📝 担当者名 {fc.require_contact && <span style={{color:"#dc2626"}}>*</span>}</div>}
-            {fc.show_phone !== false && <div style={{fontSize:"0.78rem"}}>📝 電話番号 {fc.require_phone && <span style={{color:"#dc2626"}}>*</span>}</div>}
-            {fc.show_email !== false && <div style={{fontSize:"0.78rem"}}>📝 メールアドレス {fc.require_email && <span style={{color:"#dc2626"}}>*</span>}</div>}
+            {fc.show_company !== false && <div style={{fontSize:"0.78rem"}}>📝 会社名 {fc.require_company && <span style={{color:"#DA1313"}}>*</span>}</div>}
+            {fc.show_contact !== false && <div style={{fontSize:"0.78rem"}}>📝 担当者名 {fc.require_contact && <span style={{color:"#DA1313"}}>*</span>}</div>}
+            {fc.show_phone !== false && <div style={{fontSize:"0.78rem"}}>📝 電話番号 {fc.require_phone && <span style={{color:"#DA1313"}}>*</span>}</div>}
+            {fc.show_email !== false && <div style={{fontSize:"0.78rem"}}>📝 メールアドレス {fc.require_email && <span style={{color:"#DA1313"}}>*</span>}</div>}
             {(fc.extra_fields||[]).map((f, i) => (
               <div key={i} style={{fontSize:"0.78rem",color:C.text}}>
-                📝 {f.label} <span style={{fontSize:"0.65rem",color:C.textMuted}}>[{f.type}]</span> {f.required && <span style={{color:"#dc2626"}}>*</span>}
+                📝 {f.label} <span style={{fontSize:"0.65rem",color:C.textMuted}}>[{f.type}]</span> {f.required && <span style={{color:"#DA1313"}}>*</span>}
                 {f.options?.length > 0 && <div style={{fontSize:"0.7rem",color:C.textMuted,marginLeft:"1.2rem"}}>選択肢: {f.options.join(", ")}</div>}
               </div>
             ))}
@@ -28984,7 +28988,7 @@ function AnnouncementSettings({ currentUser, C }) {
   // 一覧表示
   return (
     <div style={{display:"flex",flexDirection:"column",gap:"0.75rem"}}>
-      <div style={{background:"white",borderRadius:"1rem",padding:"1.15rem 1.25rem",border:`1px solid ${C.border}`,boxShadow:"0 1px 2px rgba(0,0,0,0.03)"}}>
+      <div style={{background:"white",borderRadius:"1rem",padding:"1.15rem 1.25rem",border:`1px solid ${C.border}`,boxShadow:"0 1px 2px rgba(0,17,62,0.04)"}}>
         <div style={{fontWeight:800,fontSize:"0.95rem",color:C.text,marginBottom:"0.4rem"}}>📨 案内状＋アンケート の管理</div>
         <div style={{fontSize:"0.74rem",color:C.textMuted,lineHeight:1.65}}>
           DUSTALK 業者向けの<b>案内状本文 + アンケートフォーム</b>を1セットでバージョン管理します。<br/>
@@ -28997,7 +29001,7 @@ function AnnouncementSettings({ currentUser, C }) {
       
       <div style={{display:"flex",gap:"0.5rem"}}>
         <button onClick={openNew}
-          style={{padding:"0.55rem 1.1rem",borderRadius:8,border:"none",background:"#2563eb",color:"white",fontSize:"0.85rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+          style={{padding:"0.55rem 1.1rem",borderRadius:8,border:"none",background:"#0070D4",color:"white",fontSize:"0.85rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
           ＋ 新しい案内状セットを作成
         </button>
       </div>
@@ -29020,7 +29024,7 @@ function AnnouncementSettings({ currentUser, C }) {
               <div style={{flex:1,minWidth:0}}>
                 <div style={{fontSize:"0.86rem",fontWeight:700,color:C.text,display:"flex",alignItems:"center",gap:"0.4rem"}}>
                   {a.title}
-                  {a.is_current && <span style={{fontSize:"0.62rem",fontWeight:700,color:"white",background:"#059669",borderRadius:3,padding:"0.1rem 0.4rem"}}>現行版</span>}
+                  {a.is_current && <span style={{fontSize:"0.62rem",fontWeight:700,color:"white",background:"#009122",borderRadius:8,padding:"0.1rem 0.4rem"}}>現行版</span>}
                 </div>
                 <div style={{fontSize:"0.7rem",color:C.textMuted,marginTop:1}}>
                   {a.description || ""} {a.description && "  "}
@@ -29028,25 +29032,25 @@ function AnnouncementSettings({ currentUser, C }) {
                 </div>
               </div>
               <button onClick={()=>openPreview(a.id)}
-                style={{padding:"0.3rem 0.7rem",borderRadius:5,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
+                style={{padding:"0.3rem 0.7rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
                 👁 表示
               </button>
               <button onClick={()=>openEdit(a.id, "overwrite")}
-                style={{padding:"0.3rem 0.7rem",borderRadius:5,border:"1px solid #059669",background:"white",color:"#059669",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
+                style={{padding:"0.3rem 0.7rem",borderRadius:8,border:"1px solid #009122",background:"white",color:"#009122",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
                 ✏️ 編集
               </button>
               <button onClick={()=>openEdit(a.id, "copy")}
-                style={{padding:"0.3rem 0.7rem",borderRadius:5,border:"1px solid #2563eb",background:"white",color:"#2563eb",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
+                style={{padding:"0.3rem 0.7rem",borderRadius:8,border:"1px solid #0070D4",background:"white",color:"#0070D4",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
                 🆕 複製
               </button>
               {!a.is_current && (
                 <>
                   <button onClick={()=>setCurrent(a.id)}
-                    style={{padding:"0.3rem 0.7rem",borderRadius:5,border:"none",background:"#059669",color:"white",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
+                    style={{padding:"0.3rem 0.7rem",borderRadius:8,border:"none",background:"#009122",color:"white",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
                     現行版に
                   </button>
                   <button onClick={()=>deleteOne(a.id, a.version)}
-                    style={{padding:"0.3rem 0.6rem",borderRadius:5,border:"1px solid #fca5a5",background:"white",color:"#dc2626",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
+                    style={{padding:"0.3rem 0.6rem",borderRadius:8,border:"1px solid #fca5a5",background:"white",color:"#DA1313",fontSize:"0.72rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
                     🗑
                   </button>
                 </>
@@ -29155,7 +29159,7 @@ function SpamFilterSettings({ currentUser, C }) {
   return (
     <div style={{display:"flex",flexDirection:"column",gap:"0.75rem"}}>
       {/* 説明 */}
-      <div style={{background:"white",borderRadius:"1rem",padding:"1.15rem 1.25rem",border:`1px solid ${C.border}`,boxShadow:"0 1px 2px rgba(0,0,0,0.03)"}}>
+      <div style={{background:"white",borderRadius:"1rem",padding:"1.15rem 1.25rem",border:`1px solid ${C.border}`,boxShadow:"0 1px 2px rgba(0,17,62,0.04)"}}>
         <div style={{fontWeight:800,fontSize:"0.95rem",color:C.text,marginBottom:"0.4rem"}}>🚫 迷惑メールフィルタの管理</div>
         <div style={{fontSize:"0.74rem",color:C.textMuted,lineHeight:1.65}}>
           ブロックリスト・ホワイトリストを管理します。AI 自動判定に加えて、明示的なルールベースの判定が可能です。
@@ -29185,7 +29189,7 @@ function SpamFilterSettings({ currentUser, C }) {
               }
             }catch(e){ alert("追加エラー: "+e.message); }
           }}
-            style={{padding:"0.5rem 0.9rem",background:"#f59e0b",color:"white",border:"none",borderRadius:6,fontWeight:800,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}}>
+            style={{padding:"0.5rem 0.9rem",background:"#f59e0b",color:"white",border:"none",borderRadius:8,fontWeight:800,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}}>
             📥 過去の迷惑認定メールからまとめてブロック追加
           </button>
         </div>
@@ -29194,11 +29198,11 @@ function SpamFilterSettings({ currentUser, C }) {
       {/* タブ切替 */}
       <div style={{display:"flex",gap:"0.4rem"}}>
         <button onClick={()=>setTab("block")}
-          style={{padding:"0.5rem 1rem",borderRadius:8,border:tab==="block"?`2px solid #dc2626`:`1px solid ${C.border}`,background:tab==="block"?"#fee2e2":"white",color:tab==="block"?"#991b1b":C.textSub,fontSize:"0.8rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+          style={{padding:"0.5rem 1rem",borderRadius:8,border:tab==="block"?`2px solid #DA1313`:`1px solid ${C.border}`,background:tab==="block"?"#fee2e2":"white",color:tab==="block"?"#991b1b":C.textSub,fontSize:"0.8rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
           🚫 ブロックリスト ({blocklist.length})
         </button>
         <button onClick={()=>setTab("white")}
-          style={{padding:"0.5rem 1rem",borderRadius:8,border:tab==="white"?`2px solid #059669`:`1px solid ${C.border}`,background:tab==="white"?"#d1fae5":"white",color:tab==="white"?"#065f46":C.textSub,fontSize:"0.8rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+          style={{padding:"0.5rem 1rem",borderRadius:8,border:tab==="white"?`2px solid #009122`:`1px solid ${C.border}`,background:tab==="white"?"#d1fae5":"white",color:tab==="white"?"#065f46":C.textSub,fontSize:"0.8rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
           ✓ ホワイトリスト ({whitelist.length})
         </button>
       </div>
@@ -29211,19 +29215,19 @@ function SpamFilterSettings({ currentUser, C }) {
             <div style={{fontWeight:700,fontSize:"0.82rem",color:C.text,marginBottom:"0.5rem"}}>新しいブロックを追加</div>
             <div style={{display:"flex",gap:"0.4rem",alignItems:"center",flexWrap:"wrap"}}>
               <select value={newBlockType} onChange={e=>setNewBlockType(e.target.value)}
-                style={{padding:"0.4rem 0.6rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"inherit",background:"white"}}>
+                style={{padding:"0.4rem 0.6rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"inherit",background:"white"}}>
                 <option value="email">📧 メアド</option>
                 <option value="domain">🌐 ドメイン</option>
                 <option value="subject">📝 件名キーワード</option>
               </select>
               <input value={newBlockPattern} onChange={e=>setNewBlockPattern(e.target.value)}
                 placeholder={newBlockType==="email"?"spam@example.com":newBlockType==="domain"?"aliexpress.com":"[SPAM]"}
-                style={{flex:1,minWidth:200,padding:"0.4rem 0.65rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.8rem",fontFamily:"inherit"}}/>
+                style={{flex:1,minWidth:200,padding:"0.4rem 0.65rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.8rem",fontFamily:"inherit"}}/>
               <input value={newBlockReason} onChange={e=>setNewBlockReason(e.target.value)}
                 placeholder="理由（任意）"
-                style={{width:160,padding:"0.4rem 0.65rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}/>
+                style={{width:160,padding:"0.4rem 0.65rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.75rem",fontFamily:"inherit"}}/>
               <button onClick={addBlock}
-                style={{padding:"0.4rem 0.9rem",borderRadius:6,border:"none",background:"#dc2626",color:"white",fontSize:"0.78rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+                style={{padding:"0.4rem 0.9rem",borderRadius:8,border:"none",background:"#DA1313",color:"white",fontSize:"0.78rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
                 追加
               </button>
             </div>
@@ -29241,8 +29245,8 @@ function SpamFilterSettings({ currentUser, C }) {
           ) : (
             <div style={{display:"flex",flexDirection:"column",gap:"0.35rem"}}>
               {blocklist.map(b => (
-                <div key={b.id} style={{display:"flex",alignItems:"center",gap:"0.6rem",padding:"0.55rem 0.7rem",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:6}}>
-                  <span style={{fontSize:"0.7rem",fontWeight:800,color:"#991b1b",background:"white",borderRadius:3,padding:"0.1rem 0.4rem",border:"1px solid #fca5a5",flexShrink:0}}>
+                <div key={b.id} style={{display:"flex",alignItems:"center",gap:"0.6rem",padding:"0.55rem 0.7rem",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8}}>
+                  <span style={{fontSize:"0.7rem",fontWeight:800,color:"#991b1b",background:"white",borderRadius:8,padding:"0.1rem 0.4rem",border:"1px solid #fca5a5",flexShrink:0}}>
                     {b.block_type === "email" ? "📧 メアド" : b.block_type === "domain" ? "🌐 ドメイン" : "📝 件名"}
                   </span>
                   <div style={{flex:1,minWidth:0}}>
@@ -29250,7 +29254,7 @@ function SpamFilterSettings({ currentUser, C }) {
                     {b.reason && <div style={{fontSize:"0.68rem",color:"#991b1b",marginTop:1}}>{b.reason}</div>}
                   </div>
                   <button onClick={()=>deleteBlock(b.id)}
-                    style={{padding:"0.25rem 0.6rem",borderRadius:5,border:"1px solid #fca5a5",background:"white",color:"#dc2626",fontSize:"0.7rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
+                    style={{padding:"0.25rem 0.6rem",borderRadius:8,border:"1px solid #fca5a5",background:"white",color:"#DA1313",fontSize:"0.7rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
                     削除
                   </button>
                 </div>
@@ -29269,9 +29273,9 @@ function SpamFilterSettings({ currentUser, C }) {
             <div style={{display:"flex",gap:"0.4rem",alignItems:"center",flexWrap:"wrap"}}>
               <input value={newWhitelistPattern} onChange={e=>setNewWhitelistPattern(e.target.value)}
                 placeholder="trusted@example.com または example.com (ドメイン)"
-                style={{flex:1,minWidth:240,padding:"0.4rem 0.65rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.8rem",fontFamily:"inherit"}}/>
+                style={{flex:1,minWidth:240,padding:"0.4rem 0.65rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.8rem",fontFamily:"inherit"}}/>
               <button onClick={addWhitelist}
-                style={{padding:"0.4rem 0.9rem",borderRadius:6,border:"none",background:"#059669",color:"white",fontSize:"0.78rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+                style={{padding:"0.4rem 0.9rem",borderRadius:8,border:"none",background:"#009122",color:"white",fontSize:"0.78rem",fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
                 追加
               </button>
             </div>
@@ -29290,8 +29294,8 @@ function SpamFilterSettings({ currentUser, C }) {
           ) : (
             <div style={{display:"flex",flexDirection:"column",gap:"0.35rem"}}>
               {whitelist.map(w => (
-                <div key={w.id} style={{display:"flex",alignItems:"center",gap:"0.6rem",padding:"0.55rem 0.7rem",background:"#ecfdf5",border:"1px solid #a7f3d0",borderRadius:6}}>
-                  <span style={{fontSize:"0.7rem",fontWeight:800,color:"#065f46",background:"white",borderRadius:3,padding:"0.1rem 0.4rem",border:"1px solid #6ee7b7",flexShrink:0}}>
+                <div key={w.id} style={{display:"flex",alignItems:"center",gap:"0.6rem",padding:"0.55rem 0.7rem",background:"#ecfdf5",border:"1px solid #a7f3d0",borderRadius:8}}>
+                  <span style={{fontSize:"0.7rem",fontWeight:800,color:"#065f46",background:"white",borderRadius:8,padding:"0.1rem 0.4rem",border:"1px solid #6ee7b7",flexShrink:0}}>
                     {w.pattern.includes("@") ? "📧 メアド" : "🌐 ドメイン"}
                   </span>
                   <div style={{flex:1,minWidth:0}}>
@@ -29301,7 +29305,7 @@ function SpamFilterSettings({ currentUser, C }) {
                     </div>
                   </div>
                   <button onClick={()=>deleteWhitelist(w.id)}
-                    style={{padding:"0.25rem 0.6rem",borderRadius:5,border:"1px solid #a7f3d0",background:"white",color:"#059669",fontSize:"0.7rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
+                    style={{padding:"0.25rem 0.6rem",borderRadius:8,border:"1px solid #a7f3d0",background:"white",color:"#009122",fontSize:"0.7rem",fontWeight:700,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
                     削除
                   </button>
                 </div>
@@ -29472,7 +29476,7 @@ function JapanRegionMap({ data, C }) {
           return (
             <div key={r.key} onMouseEnter={()=>setHover(r.key)} onMouseLeave={()=>setHover(null)}
               style={{display:"flex",alignItems:"center",gap:5,padding:"0.22rem 0.55rem",background:hover===r.key?"#e0f2fe":C.bg,border:`1px solid ${hover===r.key?"#7dd3fc":C.borderLight}`,borderRadius:999,fontSize:"0.68rem",cursor:"pointer"}}>
-              <span style={{width:9,height:9,borderRadius:3,background:r.color,display:"inline-block"}}/>
+              <span style={{width:9,height:9,borderRadius:8,background:r.color,display:"inline-block"}}/>
               <span style={{fontWeight:700,color:C.text}}>{r.label}</span>
               <span style={{color:C.textSub}}>{v.toLocaleString()}（{pct}%）</span>
             </div>
@@ -29745,7 +29749,7 @@ function renderInlineMd(text) {
   const parts = String(text).split(/(\*\*[^*\n]+\*\*|`[^`\n]+`)/g);
   return parts.map((p, i) => {
     if (p.startsWith("**") && p.endsWith("**")) return <b key={i}>{p.slice(2,-2)}</b>;
-    if (p.startsWith("`") && p.endsWith("`") && p.length>1) return <code key={i} style={{fontFamily:"ui-monospace, 'SF Mono', Menlo, monospace",fontSize:"0.85em",background:"rgba(91,91,214,0.08)",color:"#5b5bd6",padding:"0.1em 0.35em",borderRadius:"4px"}}>{p.slice(1,-1)}</code>;
+    if (p.startsWith("`") && p.endsWith("`") && p.length>1) return <code key={i} style={{fontFamily:"ui-monospace, 'SF Mono', Menlo, monospace",fontSize:"0.85em",background:"rgba(91,91,214,0.08)",color:"#5b5bd6",padding:"0.1em 0.35em",borderRadius:"8px"}}>{p.slice(1,-1)}</code>;
     return <React.Fragment key={i}>{p}</React.Fragment>;
   });
 }
@@ -29776,7 +29780,7 @@ function renderMarkdown(text, C) {
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0.35rem 0.7rem",background:"#1a1a18",borderBottom:"1px solid #2a2a28"}}>
             <span style={{fontSize:"0.66rem",color:"#a8a29e",fontWeight:700,letterSpacing:"0.04em",fontFamily:"ui-monospace, monospace"}}>{lang||"text"}</span>
             <button onClick={(e)=>{ try{ navigator.clipboard.writeText(code); const b=e.currentTarget; const old=b.innerText; b.innerText="✓ コピー済"; setTimeout(()=>{ if(b) b.innerText=old; },1200); }catch(_){} }}
-              style={{background:"transparent",border:"1px solid #3a3a38",cursor:"pointer",color:"#d6d3d1",fontSize:"0.65rem",fontWeight:600,padding:"0.2rem 0.5rem",borderRadius:"4px",fontFamily:"inherit"}}>コピー</button>
+              style={{background:"transparent",border:"1px solid #3a3a38",cursor:"pointer",color:"#d6d3d1",fontSize:"0.65rem",fontWeight:600,padding:"0.2rem 0.5rem",borderRadius:"8px",fontFamily:"inherit"}}>コピー</button>
           </div>
           <pre style={{margin:0,padding:"0.7rem 0.85rem",color:"#e7e5e4",fontSize:"0.78rem",fontFamily:"ui-monospace, 'SF Mono', Menlo, monospace",lineHeight:1.55,overflowX:"auto",whiteSpace:"pre"}}>{code}</pre>
         </div>
@@ -30369,7 +30373,7 @@ ${q || "（添付ファイルのみ。中身を確認して、適切な提案を
                 <div style={{fontSize:"0.64rem",color:C.textMuted,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>質問・タスク作成・ファイル保管など何でも</div>
               </div>
               {history.length>0 && (
-                <button onClick={clearHistory} title="新しい会話" style={{background:"none",border:`1px solid ${C.border}`,fontSize:"0.65rem",fontWeight:600,color:C.textSub,cursor:"pointer",padding:"0.3rem 0.55rem",borderRadius:"6px",fontFamily:"inherit"}}>新しい会話</button>
+                <button onClick={clearHistory} title="新しい会話" style={{background:"none",border:`1px solid ${C.border}`,fontSize:"0.65rem",fontWeight:600,color:C.textSub,cursor:"pointer",padding:"0.3rem 0.55rem",borderRadius:"8px",fontFamily:"inherit"}}>新しい会話</button>
               )}
               <button onClick={()=>setOpen(false)} style={{background:"none",border:"none",fontSize:"1.4rem",color:C.textMuted,cursor:"pointer",padding:"0 0.3rem",lineHeight:1,flexShrink:0}}>×</button>
             </div>
@@ -30398,7 +30402,7 @@ ${q || "（添付ファイルのみ。中身を確認して、適切な提案を
                   {h.attachments && h.attachments.length>0 && (
                     <div style={{display:"flex",justifyContent:"flex-end",flexWrap:"wrap",gap:"0.3rem",marginBottom:"0.45rem"}}>
                       {h.attachments.map((a,j)=>(
-                        <span key={j} style={{display:"inline-flex",alignItems:"center",gap:"0.3rem",padding:"0.25rem 0.5rem",background:"white",borderRadius:"6px",border:`1px solid ${C.borderLight}`,fontSize:"0.68rem",color:C.textSub}}>
+                        <span key={j} style={{display:"inline-flex",alignItems:"center",gap:"0.3rem",padding:"0.25rem 0.5rem",background:"white",borderRadius:"8px",border:`1px solid ${C.borderLight}`,fontSize:"0.68rem",color:C.textSub}}>
                           <span>{a.kind==="text"?"📄":"📎"}</span>{a.name}
                         </span>
                       ))}
@@ -30445,20 +30449,20 @@ ${q || "（添付ファイルのみ。中身を確認して、適切な提案を
                           send_push: `${act.userName||""} へ通知: 「${act.title||""}」`,
                         };
                         return (
-                          <div key={j} style={{padding:"0.7rem 0.85rem",background:isDone?"#ecfdf5":"white",borderRadius:"10px",border:`1.5px solid ${isDone?"#10b98155":ACC+"33"}`,boxShadow:"0 1px 2px rgba(0,0,0,0.03)"}}>
+                          <div key={j} style={{padding:"0.7rem 0.85rem",background:isDone?"#ecfdf5":"white",borderRadius:"10px",border:`1.5px solid ${isDone?"#10b98155":ACC+"33"}`,boxShadow:"0 1px 2px rgba(0,17,62,0.04)"}}>
                             <div style={{display:"flex",alignItems:"center",gap:"0.4rem",marginBottom:"0.35rem"}}>
-                              <span style={{fontSize:"0.78rem",fontWeight:800,color:isDone?"#059669":ACC,letterSpacing:"-0.005em"}}>{labelMap[act.type]||act.type}</span>
-                              {isDone && <span style={{fontSize:"0.66rem",fontWeight:700,color:"#059669",padding:"0.1rem 0.4rem",background:"#05966915",borderRadius:4}}>{act.type==="create_file"?"✓ ダウンロード済み":"✓ 実行済み"}</span>}
+                              <span style={{fontSize:"0.78rem",fontWeight:800,color:isDone?"#009122":ACC,letterSpacing:"-0.005em"}}>{labelMap[act.type]||act.type}</span>
+                              {isDone && <span style={{fontSize:"0.66rem",fontWeight:700,color:"#009122",padding:"0.1rem 0.4rem",background:"#00912215",borderRadius:8}}>{act.type==="create_file"?"✓ ダウンロード済み":"✓ 実行済み"}</span>}
                             </div>
                             <div style={{fontSize:"0.78rem",color:C.text,lineHeight:1.55,marginBottom:isDone?0:"0.55rem"}}>{summaryMap[act.type]||JSON.stringify(act)}</div>
                             {!isDone && (
                               <div style={{display:"flex",gap:"0.4rem"}}>
                                 <button onClick={()=>executeAction(act, i, j, h)} disabled={isBusy}
-                                  style={{flex:1,padding:"0.45rem",borderRadius:6,border:"none",background:isBusy?C.borderLight:ACC,color:isBusy?C.textMuted:"white",fontSize:"0.76rem",fontWeight:700,cursor:isBusy?"default":"pointer",fontFamily:"inherit"}}>
+                                  style={{flex:1,padding:"0.45rem",borderRadius:8,border:"none",background:isBusy?C.borderLight:ACC,color:isBusy?C.textMuted:"white",fontSize:"0.76rem",fontWeight:700,cursor:isBusy?"default":"pointer",fontFamily:"inherit"}}>
                                   {isBusy?"実行中…":act.type==="create_file"?"ダウンロード":"承認して実行"}
                                 </button>
                                 <button onClick={()=>dismissAction(i,j)} disabled={isBusy}
-                                  style={{padding:"0.45rem 0.85rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.76rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                                  style={{padding:"0.45rem 0.85rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontSize:"0.76rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
                                   却下
                                 </button>
                               </div>
@@ -30491,12 +30495,12 @@ ${q || "（添付ファイルのみ。中身を確認して、適切な提案を
                     const ext = (pf.name.split(".").pop()||"").toLowerCase();
                     const icon = pf.kind==="text"?"📄":ext==="pdf"?"📕":ext==="docx"?"📘":pf.type?.startsWith("image/")?"🖼️":"📎";
                     return (
-                      <div key={pf.id} style={{display:"inline-flex",alignItems:"center",gap:"0.35rem",padding:"0.3rem 0.55rem",background:ACC+"10",borderRadius:"6px",border:`1px solid ${ACC}33`,fontSize:"0.72rem",color:C.text,fontWeight:600,maxWidth:"100%",minWidth:0}}>
+                      <div key={pf.id} style={{display:"inline-flex",alignItems:"center",gap:"0.35rem",padding:"0.3rem 0.55rem",background:ACC+"10",borderRadius:"8px",border:`1px solid ${ACC}33`,fontSize:"0.72rem",color:C.text,fontWeight:600,maxWidth:"100%",minWidth:0}}>
                         <span style={{flexShrink:0}}>{icon}</span>
                         <span style={{flex:1,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",minWidth:0}}>{pf.name}</span>
                         {pf.extracting && <span style={{fontSize:"0.62rem",color:ACC,flexShrink:0}}>抽出中…</span>}
-                        {pf.extracted && <span style={{fontSize:"0.62rem",color:"#059669",flexShrink:0}}>✓読込済</span>}
-                        {pf.extractError && <span style={{fontSize:"0.62rem",color:"#dc2626",flexShrink:0}}>読込失敗</span>}
+                        {pf.extracted && <span style={{fontSize:"0.62rem",color:"#009122",flexShrink:0}}>✓読込済</span>}
+                        {pf.extractError && <span style={{fontSize:"0.62rem",color:"#DA1313",flexShrink:0}}>読込失敗</span>}
                         <span style={{fontSize:"0.62rem",color:C.textMuted,flexShrink:0}}>{Math.round(pf.size/1024)}KB</span>
                         <button onClick={()=>removePending(pf.id)} style={{background:"none",border:"none",cursor:"pointer",color:C.textMuted,fontSize:"0.95rem",lineHeight:1,padding:0,flexShrink:0}}>×</button>
                       </div>
@@ -30579,7 +30583,7 @@ function DiffBadge({cur,prv}) {
   const diff=cur-prv, pct=prv!==0?((diff/prv)*100).toFixed(1):null, up=diff>=0;
   return (
     <span style={{fontSize:"0.65rem",fontWeight:700,marginLeft:"0.4rem",
-      color:up?"#059669":"#dc2626",background:up?"#d1fae5":"#fee2e2",
+      color:up?"#009122":"#DA1313",background:up?"#d1fae5":"#fee2e2",
       padding:"0.1rem 0.4rem",borderRadius:999}}>
       {up?"▲":"▼"}{Math.abs(diff).toLocaleString()}{pct!=null?` (${pct}%)` :""}
     </span>
@@ -31557,7 +31561,7 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
               <div key={s._id||i} style={{display:"flex",alignItems:"center",gap:"0.4rem",padding:"0.35rem 0",borderBottom:`1px solid ${C.borderLight}`}}>
                 {editing && isServiceLog ? (
                   <input value={s.name||""} onChange={e=>{const n=e.target.value;setDraft(p=>{const ps=getStores().map(x=>x._id===s._id?{...x,name:n}:x);return {...p,partnerStores:ps};});}}
-                    style={{flex:1,padding:"0.2rem 0.4rem",borderRadius:"0.4rem",border:`1.5px solid ${C.border}`,fontSize:"0.8rem",fontFamily:"inherit",outline:"none",minWidth:0}}
+                    style={{flex:1,padding:"0.2rem 0.4rem",borderRadius:"0.5rem",border:`1.5px solid ${C.border}`,fontSize:"0.8rem",fontFamily:"inherit",outline:"none",minWidth:0}}
                     placeholder="店舗名"/>
                 ) : (
                   <span style={{flex:1,fontSize:"0.82rem",color:C.text,fontWeight:600,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.name||"（名前未入力）"}</span>
@@ -31573,7 +31577,7 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
                 )}
                 {editing && isServiceLog &&(
                   <button onClick={()=>setDraft(p=>({...p,partnerStores:getStores().filter(x=>x._id!==s._id)}))}
-                    style={{background:"none",border:"none",color:"#dc2626",cursor:"pointer",fontSize:"0.85rem",padding:"0.1rem 0.3rem",lineHeight:1,flexShrink:0}}>✕</button>
+                    style={{background:"none",border:"none",color:"#DA1313",cursor:"pointer",fontSize:"0.85rem",padding:"0.1rem 0.3rem",lineHeight:1,flexShrink:0}}>✕</button>
                 )}
               </div>
             ))}
@@ -31647,18 +31651,18 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
 <title>活動ログ報告書</title>
 <style>
   body{font-family:"Hiragino Kaku Gothic ProN","Meiryo",sans-serif;font-size:12px;color:#1e293b;padding:20px 30px;}
-  h1{font-size:18px;font-weight:800;border-bottom:3px solid #2563eb;padding-bottom:6px;margin-bottom:4px;}
+  h1{font-size:18px;font-weight:800;border-bottom:3px solid #0070D4;padding-bottom:6px;margin-bottom:4px;}
   .meta{font-size:10px;color:#64748b;margin-bottom:16px;}
-  .logo{font-size:12px;font-weight:800;color:#2563eb;margin-bottom:2px;}
+  .logo{font-size:12px;font-weight:800;color:#0070D4;margin-bottom:2px;}
   table{width:100%;border-collapse:collapse;font-size:11px;}
   th{background:#f1f5f9;padding:6px 8px;text-align:left;font-weight:700;border:1px solid #e2e8f0;}
   td{padding:5px 8px;border:1px solid #e2e8f0;vertical-align:top;}
   tr:nth-child(even){background:#f8fafc;}
   .badge{display:inline-block;padding:1px 6px;border-radius:999px;font-size:10px;font-weight:700;color:white;}
-  .badge-blue{background:#2563eb;} .badge-green{background:#059669;} .badge-purple{background:#7c3aed;}
+  .badge-blue{background:#0070D4;} .badge-green{background:#009122;} .badge-purple{background:#7c3aed;}
   .summary{display:flex;gap:16px;margin-bottom:16px;}
   .summary-item{background:#f1f5f9;border-radius:8px;padding:8px 14px;text-align:center;}
-  .summary-item .num{font-size:22px;font-weight:800;color:#2563eb;}
+  .summary-item .num{font-size:22px;font-weight:800;color:#0070D4;}
   .summary-item .lbl{font-size:10px;color:#64748b;}
   @media print{body{padding:10px;}}
 </style>
@@ -31687,7 +31691,7 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
     <div>
       {/* ⑧ 活動ログPDF出力ボタン */}
       <button onClick={exportActivityPDF}
-        style={{marginBottom:"0.75rem",padding:"0.5rem 1rem",borderRadius:"6px",border:"1.5px solid #dc2626",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"0.4rem"}}>
+        style={{marginBottom:"0.75rem",padding:"0.5rem 1rem",borderRadius:"8px",border:"1.5px solid #DA1313",background:"#fff1f2",color:"#DA1313",fontWeight:700,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"0.4rem"}}>
         📄 活動ログをPDF出力（今月分）
       </button>
       {/* System tabs */}
@@ -31760,13 +31764,13 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
         return (
           <>
             {/* KPIダッシュボード（洋風・可読性重視） */}
-            <div style={{background:"white",borderRadius:"14px",padding:"1.5rem 1.25rem 1.5rem",border:`1px solid ${C.border}`,boxShadow:"0 1px 2px rgba(0,0,0,0.03)",marginBottom:"1rem"}}>
+            <div style={{background:"white",borderRadius:"14px",padding:"1.5rem 1.25rem 1.5rem",border:`1px solid ${C.border}`,boxShadow:"0 1px 2px rgba(0,17,62,0.04)",marginBottom:"1rem"}}>
               <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginBottom:"1.25rem",flexWrap:"wrap",gap:"0.5rem"}}>
                 <div>
                   <div style={{fontSize:"0.68rem",fontWeight:700,letterSpacing:"0.12em",color:C.textMuted,textTransform:"uppercase",marginBottom:"0.3rem"}}>Performance overview</div>
                   <div style={{fontSize:"1.55rem",fontWeight:700,color:C.text,letterSpacing:"-0.02em",lineHeight:1}}>{curYear}<span style={{fontSize:"0.85rem",fontWeight:500,color:C.textSub,marginLeft:"0.5rem"}}>年間実績</span></div>
                 </div>
-                <div style={{fontSize:"0.78rem",color:C.textSub,fontWeight:700,padding:"0.35rem 0.7rem",background:ACC+"0d",borderRadius:"6px"}}>当月 · {monthLabel(mk)}</div>
+                <div style={{fontSize:"0.78rem",color:C.textSub,fontWeight:700,padding:"0.35rem 0.7rem",background:ACC+"0d",borderRadius:"8px"}}>当月 · {monthLabel(mk)}</div>
               </div>
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:0,marginBottom:"1.75rem",border:`1px solid ${C.borderLight}`,borderRadius:"12px",overflow:"hidden"}}>
                 {kpiVals.map((k,idx)=>{
@@ -31782,7 +31786,7 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
                       </div>
                       <div style={{fontSize:"1.85rem",fontWeight:800,color:C.text,lineHeight:1,letterSpacing:"-0.035em",fontVariantNumeric:"tabular-nums",marginBottom:"0.5rem"}}>{fmtNum(k.curVal,k.money)}</div>
                       <div style={{display:"flex",alignItems:"center",gap:"0.45rem",fontSize:"0.78rem",fontVariantNumeric:"tabular-nums"}}>
-                        <span style={{display:"inline-flex",alignItems:"center",gap:"0.15rem",fontWeight:800,color:isPos?POS:isNeg?NEG:C.textMuted,padding:"0.15rem 0.4rem",borderRadius:"5px",background:isPos?POS+"15":isNeg?NEG+"15":C.bg,fontSize:"0.75rem"}}>
+                        <span style={{display:"inline-flex",alignItems:"center",gap:"0.15rem",fontWeight:800,color:isPos?POS:isNeg?NEG:C.textMuted,padding:"0.15rem 0.4rem",borderRadius:"8px",background:isPos?POS+"15":isNeg?NEG+"15":C.bg,fontSize:"0.75rem"}}>
                           <span style={{fontSize:"0.85rem",lineHeight:1}}>{isPos?"↑":isNeg?"↓":"−"}</span>
                           {fmtDelta(k.delta,k.money)}
                         </span>
@@ -31802,7 +31806,7 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
                   <div style={{fontSize:"1.05rem",fontWeight:700,color:C.text,letterSpacing:"-0.01em"}}>{sel.label}<span style={{fontSize:"0.78rem",fontWeight:500,color:C.textSub,marginLeft:"0.55rem"}}>月次推移 ＋ 年間累計</span></div>
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:"0.9rem",fontSize:"0.75rem",color:C.textSub,fontWeight:700}}>
-                  <span style={{display:"flex",alignItems:"center",gap:"0.35rem"}}><span style={{display:"inline-block",width:12,height:12,background:ACC,borderRadius:3}}/>月次</span>
+                  <span style={{display:"flex",alignItems:"center",gap:"0.35rem"}}><span style={{display:"inline-block",width:12,height:12,background:ACC,borderRadius:8}}/>月次</span>
                   <span style={{display:"flex",alignItems:"center",gap:"0.35rem"}}><span style={{display:"inline-block",width:16,height:3,background:ACC,borderRadius:2}}/>累計</span>
                 </div>
               </div>
@@ -31843,7 +31847,7 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
 
       {/* Data panel */}
       {(
-        <div style={{background:"white",borderRadius:"1rem",padding:"1.25rem",border:`1px solid ${C.border}`,boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
+        <div style={{background:"white",borderRadius:"1rem",padding:"1.25rem",border:`1px solid ${C.border}`,boxShadow:"0 1px 2px rgba(0,17,62,0.05)"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"1.25rem"}}>
             <span style={{fontWeight:800,fontSize:"0.88rem",color:C.textSub}}>
               {ANALYTICS_SYSTEMS.find(s=>s.id===sys)?.label} · {(sys==="bizcon"||sys==="bm")?yearLabel(yk):monthLabel(mk)}
@@ -31857,7 +31861,7 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
                       📊 PPTXレポート
                     </button>
                     <button onClick={async()=>{try{await exportMultiMonthPPTX(sys,mk,data.analytics||{});}catch(e){alert("月次レポート出力に失敗しました:\n"+e.message);}}}
-                      style={{padding:"0.3rem 0.625rem",borderRadius:"0.5rem",border:"1px solid #059669",background:"#d1fae5",color:"#065f46",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"0.25rem"}}>
+                      style={{padding:"0.3rem 0.625rem",borderRadius:"0.5rem",border:"1px solid #009122",background:"#d1fae5",color:"#065f46",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:"0.25rem"}}>
                       📅 月次比較レポート
                     </button>
                   </>
@@ -31876,7 +31880,7 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
               <div style={{marginBottom:"1.25rem"}}>
                 <div style={{display:"flex",alignItems:"center",borderBottom:`2px solid ${C.accent}`,marginBottom:"0.1rem"}}>
                   <div style={{flex:1,fontSize:"0.7rem",fontWeight:800,color:C.textSub,textTransform:"uppercase",letterSpacing:"0.05em",padding:"0.35rem 0"}}>基本指標</div>
-                  {!editing&&<button onClick={()=>setChart({section:"基本指標",metricIdx:0})} style={{background:C.accentBg,border:`1px solid ${C.accent}40`,borderRadius:"0.4rem",padding:"0.2rem 0.5rem",fontSize:"0.68rem",fontWeight:700,color:C.accentDark,cursor:"pointer",fontFamily:"inherit",marginBottom:"0.2rem"}}>📊 グラフ</button>}
+                  {!editing&&<button onClick={()=>setChart({section:"基本指標",metricIdx:0})} style={{background:C.accentBg,border:`1px solid ${C.accent}40`,borderRadius:"0.5rem",padding:"0.2rem 0.5rem",fontSize:"0.68rem",fontWeight:700,color:C.accentDark,cursor:"pointer",fontFamily:"inherit",marginBottom:"0.2rem"}}>📊 グラフ</button>}
                 </div>
                 {/* HP閲覧者数 */}
                 <div style={{...rowStyle}}>
@@ -31910,7 +31914,7 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
                   </div>
                 </div>)}
                 {!editing&&(d.serviceLogKatei||d.serviceLogJigyo)?(<div style={{display:"flex",gap:"0.5rem",marginBottom:"0.35rem",paddingLeft:"0.5rem"}}>
-                  <span style={{fontSize:"0.72rem",background:"#dbeafe",color:"#1d4ed8",padding:"0.1rem 0.4rem",borderRadius:999}}>家庭系: {+d.serviceLogKatei||0}件</span>
+                  <span style={{fontSize:"0.72rem",background:"#E6F0FF",color:"#1563CA",padding:"0.1rem 0.4rem",borderRadius:999}}>家庭系: {+d.serviceLogKatei||0}件</span>
                   <span style={{fontSize:"0.72rem",background:"#d1fae5",color:"#065f46",padding:"0.1rem 0.4rem",borderRadius:999}}>事業系: {+d.serviceLogJigyo||0}件</span>
                 </div>):null}
                 {/* 依頼数（展開式）*/}
@@ -31937,7 +31941,7 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
                 )}
                 {!editing&&(d.requestsKatei||d.requestsJigyo)?(
                   <div style={{display:"flex",gap:"0.5rem",marginBottom:"0.35rem",paddingLeft:"0.5rem"}}>
-                    <span style={{fontSize:"0.72rem",background:"#dbeafe",color:"#1d4ed8",padding:"0.1rem 0.4rem",borderRadius:999}}>家庭系: {+d.requestsKatei||0}件</span>
+                    <span style={{fontSize:"0.72rem",background:"#E6F0FF",color:"#1563CA",padding:"0.1rem 0.4rem",borderRadius:999}}>家庭系: {+d.requestsKatei||0}件</span>
                     <span style={{fontSize:"0.72rem",background:"#d1fae5",color:"#065f46",padding:"0.1rem 0.4rem",borderRadius:999}}>事業系: {+d.requestsJigyo||0}件</span>
                   </div>
                 ):null}
@@ -31965,7 +31969,7 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
                 )}
                 {!editing&&(d.contractsKatei||d.contractsJigyo)?(
                   <div style={{display:"flex",gap:"0.5rem",marginBottom:"0.35rem",paddingLeft:"0.5rem"}}>
-                    <span style={{fontSize:"0.72rem",background:"#dbeafe",color:"#1d4ed8",padding:"0.1rem 0.4rem",borderRadius:999}}>家庭系: {+d.contractsKatei||0}件</span>
+                    <span style={{fontSize:"0.72rem",background:"#E6F0FF",color:"#1563CA",padding:"0.1rem 0.4rem",borderRadius:999}}>家庭系: {+d.contractsKatei||0}件</span>
                     <span style={{fontSize:"0.72rem",background:"#d1fae5",color:"#065f46",padding:"0.1rem 0.4rem",borderRadius:999}}>事業系: {+d.contractsJigyo||0}件</span>
                   </div>
                 ):null}
@@ -31976,7 +31980,7 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
                 </div>
                 {/* 成約率 家庭/事業 */}
                 <div style={{display:"flex",gap:"0.5rem",marginBottom:"0.35rem",paddingLeft:"0.25rem"}}>
-                  <span style={{fontSize:"0.72rem",background:"#dbeafe",color:"#1d4ed8",padding:"0.15rem 0.5rem",borderRadius:999,fontWeight:700}}>家庭系: {convRateK==="－"?"－":convRateK+"%"}</span>
+                  <span style={{fontSize:"0.72rem",background:"#E6F0FF",color:"#1563CA",padding:"0.15rem 0.5rem",borderRadius:999,fontWeight:700}}>家庭系: {convRateK==="－"?"－":convRateK+"%"}</span>
                   <span style={{fontSize:"0.72rem",background:"#d1fae5",color:"#065f46",padding:"0.15rem 0.5rem",borderRadius:999,fontWeight:700}}>事業系: {convRateJ==="－"?"－":convRateJ+"%"}</span>
                 </div>
                 {/* 売上合計 */}
@@ -31994,7 +31998,7 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
                   </div>
                 </div>)}
                 {!editing&&(d.revenueKatei||d.revenueJigyo)?(<div style={{display:"flex",gap:"0.5rem",marginBottom:"0.35rem",paddingLeft:"0.5rem"}}>
-                  <span style={{fontSize:"0.72rem",background:"#dbeafe",color:"#1d4ed8",padding:"0.1rem 0.4rem",borderRadius:999}}>家庭系: ¥{(+d.revenueKatei||0).toLocaleString()}</span>
+                  <span style={{fontSize:"0.72rem",background:"#E6F0FF",color:"#1563CA",padding:"0.1rem 0.4rem",borderRadius:999}}>家庭系: ¥{(+d.revenueKatei||0).toLocaleString()}</span>
                   <span style={{fontSize:"0.72rem",background:"#d1fae5",color:"#065f46",padding:"0.1rem 0.4rem",borderRadius:999}}>事業系: ¥{(+d.revenueJigyo||0).toLocaleString()}</span>
                 </div>):null}
                 {/* 成約平均単価（計算） */}
@@ -32004,7 +32008,7 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
                 </div>
                 {/* 成約平均単価 家庭/事業 */}
                 <div style={{display:"flex",gap:"0.5rem",marginBottom:"0.35rem",paddingLeft:"0.25rem"}}>
-                  <span style={{fontSize:"0.72rem",background:"#dbeafe",color:"#1d4ed8",padding:"0.15rem 0.5rem",borderRadius:999,fontWeight:700}}>家庭系: {avgPriceK==="－"?"－":avgPriceK+"円"}</span>
+                  <span style={{fontSize:"0.72rem",background:"#E6F0FF",color:"#1563CA",padding:"0.15rem 0.5rem",borderRadius:999,fontWeight:700}}>家庭系: {avgPriceK==="－"?"－":avgPriceK+"円"}</span>
                   <span style={{fontSize:"0.72rem",background:"#d1fae5",color:"#065f46",padding:"0.15rem 0.5rem",borderRadius:999,fontWeight:700}}>事業系: {avgPriceJ==="－"?"－":avgPriceJ+"円"}</span>
                 </div>
               </div>
@@ -32013,7 +32017,7 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
               <div style={{marginBottom:"1.25rem"}}>
                 <div style={{display:"flex",alignItems:"center",borderBottom:`2px solid ${C.accent}`,marginBottom:"0.1rem"}}>
                   <div style={{flex:1,fontSize:"0.7rem",fontWeight:800,color:C.textSub,textTransform:"uppercase",letterSpacing:"0.05em",padding:"0.35rem 0"}}>支払方法内訳</div>
-                  {!editing&&<button onClick={()=>setChart({section:"支払方法内訳",metricIdx:0})} style={{background:C.accentBg,border:`1px solid ${C.accent}40`,borderRadius:"0.4rem",padding:"0.2rem 0.5rem",fontSize:"0.68rem",fontWeight:700,color:C.accentDark,cursor:"pointer",fontFamily:"inherit",marginBottom:"0.2rem"}}>📊 グラフ</button>}
+                  {!editing&&<button onClick={()=>setChart({section:"支払方法内訳",metricIdx:0})} style={{background:C.accentBg,border:`1px solid ${C.accent}40`,borderRadius:"0.5rem",padding:"0.2rem 0.5rem",fontSize:"0.68rem",fontWeight:700,color:C.accentDark,cursor:"pointer",fontFamily:"inherit",marginBottom:"0.2rem"}}>📊 グラフ</button>}
                 </div>
                 <div style={{display:"flex",padding:"0.3rem 0",borderBottom:`1px solid ${C.border}`}}>
                   <span style={{flex:1,fontSize:"0.68rem",fontWeight:700,color:C.textMuted}}>決済方法</span>
@@ -32057,12 +32061,12 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
                 <div style={{display:"flex",alignItems:"center",borderBottom:`2px solid ${C.accent}`,marginBottom:"0.1rem"}}>
                   <div style={{flex:1}}>
                   <div style={{fontSize:"0.7rem",fontWeight:800,color:C.textSub,textTransform:"uppercase",letterSpacing:"0.05em",padding:"0.35rem 0"}}>離脱率管理</div>
-                  <div style={{fontSize:"0.63rem",color:"#7c3aed",fontWeight:600,marginBottom:"0.35rem",background:"#f5f3ff",borderRadius:"0.4rem",padding:"0.3rem 0.625rem",display:"block",border:"1px solid #ddd6fe"}}>
+                  <div style={{fontSize:"0.63rem",color:"#7c3aed",fontWeight:600,marginBottom:"0.35rem",background:"#f5f3ff",borderRadius:"0.5rem",padding:"0.3rem 0.625rem",display:"block",border:"1px solid #ddd6fe"}}>
                     👤 <strong>人数ベース集計</strong> — 上記の依頼件数・成約数は「件数ベース」（同一人物の複数依頼を別件でカウント）。<br/>
                     この離脱率管理表は「人数ベース」で集計しており、1人が2件依頼した場合でも1人としてカウントしています。
                   </div>
                 </div>
-                  {!editing&&<button onClick={()=>setChart({section:"離脱率管理",metricIdx:0})} style={{background:C.accentBg,border:`1px solid ${C.accent}40`,borderRadius:"0.4rem",padding:"0.2rem 0.5rem",fontSize:"0.68rem",fontWeight:700,color:C.accentDark,cursor:"pointer",fontFamily:"inherit",marginBottom:"0.2rem"}}>📊 グラフ</button>}
+                  {!editing&&<button onClick={()=>setChart({section:"離脱率管理",metricIdx:0})} style={{background:C.accentBg,border:`1px solid ${C.accent}40`,borderRadius:"0.5rem",padding:"0.2rem 0.5rem",fontSize:"0.68rem",fontWeight:700,color:C.accentDark,cursor:"pointer",fontFamily:"inherit",marginBottom:"0.2rem"}}>📊 グラフ</button>}
                 </div>
                 <div style={{display:"flex",padding:"0.3rem 0",borderBottom:`1px solid ${C.border}`}}>
                   <span style={{flex:1,fontSize:"0.68rem",fontWeight:700,color:C.textMuted}}>ステップ</span>
@@ -32085,7 +32089,7 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
                         <>
                           <span style={{width:52,textAlign:"right",fontSize:"0.88rem",fontWeight:700,color:C.text}}>{val.toLocaleString()}</span>
                           <span style={{width:56,textAlign:"right",fontSize:"0.82rem",color:C.blue,fontWeight:600}}>{reachPct==="－"?"－":reachPct+"%"}</span>
-                          <span style={{width:56,textAlign:"right",fontSize:"0.82rem",fontWeight:700,color:isLow?"#dc2626":C.textSub}}>{exitPct}</span>
+                          <span style={{width:56,textAlign:"right",fontSize:"0.82rem",fontWeight:700,color:isLow?"#DA1313":C.textSub}}>{exitPct}</span>
                         </>
                       )}
                     </div>
@@ -32102,7 +32106,7 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
               <div style={{marginBottom:"1.25rem"}}>
                 <div style={{display:"flex",alignItems:"center",borderBottom:`2px solid ${C.accent}`,marginBottom:"0.1rem"}}>
                   <div style={{flex:1,fontSize:"0.7rem",fontWeight:800,color:C.textSub,textTransform:"uppercase",letterSpacing:"0.05em",padding:"0.35rem 0"}}>ユーザー数</div>
-                  {!editing&&<button onClick={()=>setChart({section:"ユーザー数",metricIdx:0})} style={{background:C.accentBg,border:`1px solid ${C.accent}40`,borderRadius:"0.4rem",padding:"0.2rem 0.5rem",fontSize:"0.68rem",fontWeight:700,color:C.accentDark,cursor:"pointer",fontFamily:"inherit",marginBottom:"0.2rem"}}>📊 グラフ</button>}
+                  {!editing&&<button onClick={()=>setChart({section:"ユーザー数",metricIdx:0})} style={{background:C.accentBg,border:`1px solid ${C.accent}40`,borderRadius:"0.5rem",padding:"0.2rem 0.5rem",fontSize:"0.68rem",fontWeight:700,color:C.accentDark,cursor:"pointer",fontFamily:"inherit",marginBottom:"0.2rem"}}>📊 グラフ</button>}
                 </div>
                 <div style={{...rowStyle}}>
                   <div style={{flex:1}}><span style={{fontSize:"0.87rem",color:C.text}}>累積ユーザー数</span><div style={{fontSize:"0.68rem",color:C.textMuted}}>月間の合計から自動計算</div></div>
@@ -32116,7 +32120,7 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
               <div style={{marginBottom:"1.25rem"}}>
                 <div style={{display:"flex",alignItems:"center",borderBottom:`2px solid ${C.accent}`,marginBottom:"0.1rem"}}>
                   <div style={{flex:1,fontSize:"0.7rem",fontWeight:800,color:C.textSub,textTransform:"uppercase",letterSpacing:"0.05em",padding:"0.35rem 0"}}>HP閲覧者数</div>
-                  {!editing&&<button onClick={()=>setChart({section:"HP閲覧者数",metricIdx:0})} style={{background:C.accentBg,border:`1px solid ${C.accent}40`,borderRadius:"0.4rem",padding:"0.2rem 0.5rem",fontSize:"0.68rem",fontWeight:700,color:C.accentDark,cursor:"pointer",fontFamily:"inherit",marginBottom:"0.2rem"}}>📊 グラフ</button>}
+                  {!editing&&<button onClick={()=>setChart({section:"HP閲覧者数",metricIdx:0})} style={{background:C.accentBg,border:`1px solid ${C.accent}40`,borderRadius:"0.5rem",padding:"0.2rem 0.5rem",fontSize:"0.68rem",fontWeight:700,color:C.accentDark,cursor:"pointer",fontFamily:"inherit",marginBottom:"0.2rem"}}>📊 グラフ</button>}
                 </div>
                 {/* 合算（全月キーのhp合計・自動計算） */}
                 <div style={{...rowStyle}}>
@@ -32137,7 +32141,7 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
                   }
                 </div>
               </div>
-              {editing&&<div style={{background:C.accentBg,border:`1px solid ${C.accent}30`,borderRadius:"6px",padding:"0.75rem",fontSize:"0.8rem",color:C.accentDark}}>
+              {editing&&<div style={{background:C.accentBg,border:`1px solid ${C.accent}30`,borderRadius:"8px",padding:"0.75rem",fontSize:"0.8rem",color:C.accentDark}}>
                 💡 月間ユーザー数を変更すると、差分が累積に自動加算されます。HP閲覧者数の累積は全月の合計です。
               </div>}
             </div>
@@ -32258,7 +32262,7 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
                       {BEENET_REGIONS.map(r=>(
                         <div key={r.key} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:"0.4rem",padding:"0.4rem 0.6rem",background:C.bg,border:`1px solid ${C.borderLight}`,borderRadius:8}}>
                           <span style={{display:"flex",alignItems:"center",gap:6,fontSize:"0.8rem",color:C.text,fontWeight:600}}>
-                            <span style={{width:9,height:9,borderRadius:3,background:r.color,display:"inline-block"}}/>
+                            <span style={{width:9,height:9,borderRadius:8,background:r.color,display:"inline-block"}}/>
                             {r.label}
                           </span>
                           <div style={{display:"flex",alignItems:"center",gap:"0.3rem"}}>
@@ -32276,7 +32280,7 @@ function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
                 <div style={{marginBottom:"1.25rem"}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"0.35rem 0",borderBottom:`2px solid ${C.accent}`,marginBottom:"0.1rem"}}>
                     <div style={{fontSize:"0.7rem",fontWeight:800,color:C.textSub,textTransform:"uppercase",letterSpacing:"0.05em"}}>📊 主要指標</div>
-                    {!editing&&<button onClick={()=>setChart({section:"主要指標",metricIdx:0})} style={{background:C.accentBg,border:`1px solid ${C.accent}40`,borderRadius:"0.4rem",padding:"0.2rem 0.5rem",fontSize:"0.68rem",fontWeight:700,color:C.accentDark,cursor:"pointer",fontFamily:"inherit"}}>📊 グラフ</button>}
+                    {!editing&&<button onClick={()=>setChart({section:"主要指標",metricIdx:0})} style={{background:C.accentBg,border:`1px solid ${C.accent}40`,borderRadius:"0.5rem",padding:"0.2rem 0.5rem",fontSize:"0.68rem",fontWeight:700,color:C.accentDark,cursor:"pointer",fontFamily:"inherit"}}>📊 グラフ</button>}
                   </div>
                   
                   {/* 排出事業者 */}
@@ -32436,7 +32440,7 @@ function GlobalSearchModal({ query, onQueryChange, onClose, data, onNavigate, us
     return hits.slice(0, 30);
   }, [q, data]);
 
-  const typeColor = {"企業":"#2563eb","自治体":"#059669","業者":"#7c3aed","名刺":"#0891b2","タスク":"#d97706","プロジェクト":"#6b7280"};
+  const typeColor = {"企業":"#0070D4","自治体":"#009122","業者":"#7c3aed","名刺":"#0891b2","タスク":"#d97706","プロジェクト":"#6b7280"};
 
   return (
     <div style={{position:"fixed",inset:0,zIndex:900,background:"rgba(0,0,0,0.6)",display:"flex",alignItems:"flex-start",justifyContent:"center",paddingTop:"4dvh"}}>
@@ -32462,7 +32466,7 @@ function GlobalSearchModal({ query, onQueryChange, onClose, data, onNavigate, us
           )}
           {results.map((r,i)=>(
             <div key={i} onClick={()=>onNavigate(r.tab)}
-              style={{display:"flex",alignItems:"center",gap:"0.6rem",padding:"0.6rem 0.75rem",borderRadius:"6px",cursor:"pointer",marginBottom:"0.2rem"}}
+              style={{display:"flex",alignItems:"center",gap:"0.6rem",padding:"0.6rem 0.75rem",borderRadius:"8px",cursor:"pointer",marginBottom:"0.2rem"}}
               onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
               onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
               <span style={{fontSize:"1.1rem",flexShrink:0}}>{r.icon}</span>
@@ -33452,11 +33456,11 @@ function AgentChat({ data, currentUser, users, onAction, onClose, isOpen }) {
               const ext = (pf.name.split(".").pop()||"").toLowerCase();
               const icon = pf.kind==="text"?"📄":ext==="pdf"?"📕":ext==="docx"?"📘":pf.type?.startsWith("image/")?"🖼️":"📎";
               return (
-                <div key={pf.id} style={{display:"inline-flex",alignItems:"center",gap:"0.3rem",padding:"0.25rem 0.5rem",background:"#ede9fe",borderRadius:6,border:"1px solid #c4b5fd",fontSize:"0.7rem",color:"#5b21b6",fontWeight:600,maxWidth:200}}>
+                <div key={pf.id} style={{display:"inline-flex",alignItems:"center",gap:"0.3rem",padding:"0.25rem 0.5rem",background:"#ede9fe",borderRadius:8,border:"1px solid #c4b5fd",fontSize:"0.7rem",color:"#5b21b6",fontWeight:600,maxWidth:200}}>
                   <span>{icon}</span>
                   <span style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{pf.name}</span>
                   {pf.extracting && <span style={{fontSize:"0.6rem",opacity:0.7}}>抽出中…</span>}
-                  {pf.extracted && <span style={{fontSize:"0.6rem",color:"#059669"}}>✓</span>}
+                  {pf.extracted && <span style={{fontSize:"0.6rem",color:"#009122"}}>✓</span>}
                   <button onClick={()=>removePending(pf.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#5b21b6",padding:0,fontSize:"0.85rem",lineHeight:1,marginLeft:"0.2rem"}}>×</button>
                 </div>
               );
@@ -33538,7 +33542,7 @@ function AgentFAB({ data, currentUser, users, onAction }) {
         <div style={{
           position: "fixed",
           top: 0, left: 0, right: 0,
-          background: "#dc2626",
+          background: "#DA1313",
           color: "white",
           padding: "0.6rem 1rem",
           fontSize: "0.85rem",
@@ -33549,7 +33553,7 @@ function AgentFAB({ data, currentUser, users, onAction }) {
         }}>
           ⚠️ データ保存に失敗しました（{saveError}）。再操作してください。バックアップは緊急保存済み。
           <button onClick={() => setSaveError(null)} style={{
-            marginLeft: "1rem", background: "white", color: "#dc2626",
+            marginLeft: "1rem", background: "white", color: "#DA1313",
             border: "none", padding: "0.2rem 0.6rem", borderRadius: 4,
             cursor: "pointer", fontWeight: 700, fontFamily: "inherit", fontSize: "0.75rem"
           }}>閉じる</button>
@@ -33988,7 +33992,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
             {QSTATUS.map(s=><option key={s} value={s}>{s}</option>)}
           </select>
           {(p.vendors||[]).length>0&&<span style={{fontSize:"0.72rem",color:C.textSub,fontWeight:700}}>回答 {answered}/{(p.vendors||[]).length}</span>}
-          <button onClick={()=>{ if(window.confirm("この見積案件を削除しますか？")){ persist(projects.filter(x=>x.id!==p.id)); setActiveId(null); } }} style={{marginLeft:"auto",padding:"0.35rem 0.7rem",borderRadius:8,border:"1px solid #fca5a5",background:"#fff1f2",color:"#dc2626",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}}>🗑 削除</button>
+          <button onClick={()=>{ if(window.confirm("この見積案件を削除しますか？")){ persist(projects.filter(x=>x.id!==p.id)); setActiveId(null); } }} style={{marginLeft:"auto",padding:"0.35rem 0.7rem",borderRadius:8,border:"1px solid #fca5a5",background:"#fff1f2",color:"#DA1313",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}}>🗑 削除</button>
         </div>
         <textarea value={p.memo||""} onChange={e=>upd(p.id,{memo:e.target.value})} placeholder="メモ" rows={2} style={{width:"100%",boxSizing:"border-box",marginTop:"0.5rem",padding:"0.4rem 0.6rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.8rem",fontFamily:"inherit",resize:"vertical"}}/>
       </div>
@@ -33999,7 +34003,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
           <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap",alignItems:"center",marginBottom:"0.45rem"}}>
             <span style={{fontSize:"0.8rem",fontWeight:800,color:C.accentDark,background:C.accentBg,padding:"0.35rem 0.75rem",borderRadius:8}}>📥 見積 {quoteStats.pairs}件（{quoteStats.quotedVendors}/{quoteStats.vendors}業者・{quoteStats.lines}明細）</span>
             <div style={{position:"relative"}}>
-              <button onClick={()=>setExpMenu(v=>!v)} style={{display:"inline-flex",alignItems:"center",gap:"0.4rem",padding:"0.45rem 0.9rem",borderRadius:8,border:`1.5px solid #16a34a`,background:"#f0fdf4",color:"#166534",fontWeight:800,fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit"}}>📊 見積比較Excelを出力 ▾</button>
+              <button onClick={()=>setExpMenu(v=>!v)} style={{display:"inline-flex",alignItems:"center",gap:"0.4rem",padding:"0.45rem 0.9rem",borderRadius:8,border:`1.5px solid #009122`,background:"#f0fdf4",color:"#166534",fontWeight:800,fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit"}}>📊 見積比較Excelを出力 ▾</button>
               {expMenu&&(
                 <div style={{position:"absolute",top:"100%",left:0,zIndex:40,background:"white",border:`1px solid ${C.border}`,borderRadius:8,boxShadow:C.shadowMd,marginTop:4,minWidth:250,overflow:"hidden"}}>
                   <button onClick={()=>{setExpMenu(false);exportCustomerReport(true);}} style={{display:"block",width:"100%",textAlign:"left",padding:"0.55rem 0.8rem",border:"none",background:"white",cursor:"pointer",fontFamily:"inherit",fontSize:"0.78rem",color:C.text}}>🔒 社名を伏せて出力（A社・B社…）</button>
@@ -34032,7 +34036,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
           <input type="file" ref={fileRef} accept=".xlsx,.xls" onChange={handleExcel} style={{display:"none"}}/>
         </div>
       </div>
-      {impErr&&<div style={{fontSize:"0.76rem",color:"#dc2626",fontWeight:700,marginBottom:"0.5rem"}}>⚠️ {impErr}</div>}
+      {impErr&&<div style={{fontSize:"0.76rem",color:"#DA1313",fontWeight:700,marginBottom:"0.5rem"}}>⚠️ {impErr}</div>}
       {imp&&(
         <div style={{background:"#f8fafc",border:`1.5px solid ${C.accent}`,borderRadius:10,padding:"0.8rem 0.9rem",marginBottom:"1rem"}}>
           <div style={{fontWeight:800,fontSize:"0.82rem",color:C.text,marginBottom:"0.5rem"}}>📄 {imp.fileName} の列を割り当て <span style={{fontWeight:600,color:C.textSub,fontSize:"0.72rem"}}>（自動判定済み・必要なら修正）</span></div>
@@ -34040,7 +34044,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
             {FIELD_DEFS.map(fd=>(
               <div key={fd.key} style={{display:"flex",flexDirection:"column",gap:2}}>
                 <span style={{fontSize:"0.66rem",fontWeight:700,color:C.textSub}}>{fd.label}</span>
-                <select value={imp.map[fd.key]==null?"":imp.map[fd.key]} onChange={e=>{const v=e.target.value;setImp({...imp,map:{...imp.map,[fd.key]:v===""?undefined:Number(v)}});}} style={{padding:"0.3rem 0.4rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit",background:"white"}}>
+                <select value={imp.map[fd.key]==null?"":imp.map[fd.key]} onChange={e=>{const v=e.target.value;setImp({...imp,map:{...imp.map,[fd.key]:v===""?undefined:Number(v)}});}} style={{padding:"0.3rem 0.4rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit",background:"white"}}>
                   <option value="">（なし）</option>
                   {Array.from({length:imp.ncol}).map((_,ci)=>{ const h=imp.headerRow[ci]; return <option key={ci} value={ci}>{h?h.slice(0,14):("列"+String.fromCharCode(65+ci))}</option>; })}
                 </select>
@@ -34048,7 +34052,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
             ))}
           </div>
           <div style={{fontSize:"0.72rem",color:C.textSub,fontWeight:700,marginBottom:"0.3rem"}}>プレビュー：{previewStores.length}店舗 / 品目{previewStores.reduce((s,x)=>s+x.items.length,0)}行</div>
-          <div style={{maxHeight:200,overflowY:"auto",border:`1px solid ${C.borderLight}`,borderRadius:6,background:"white"}}>
+          <div style={{maxHeight:200,overflowY:"auto",border:`1px solid ${C.borderLight}`,borderRadius:8,background:"white"}}>
             {previewStores.slice(0,15).map((st,i)=>(<div key={st.id} style={{padding:"0.35rem 0.6rem",borderTop:i>0?`1px solid ${C.borderLight}`:"none",fontSize:"0.72rem"}}><span style={{fontWeight:700,color:C.text}}>{st.name}</span><span style={{color:C.textMuted}}> ／ {st.area||"-"} ／ {st.bizType||"-"} ／ 品目{st.items.length}</span></div>))}
             {previewStores.length===0&&<div style={{padding:"0.6rem",fontSize:"0.72rem",color:C.textMuted}}>該当なし。「拠点名/店舗名」の列を割り当ててください。</div>}
           </div>
@@ -34068,7 +34072,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
       <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem",flexWrap:"wrap"}}>
         <div style={{fontWeight:800,fontSize:"0.9rem",color:C.text}}>🚚 対象業者 ＆ 見積</div>
         <span style={{fontSize:"0.7rem",color:C.textMuted}}>{(p.vendors||[]).length}社</span>
-        {(p.vendors||[]).some(v=>v.portalToken)&&<button disabled={portalBusy==="__all__"} onClick={syncAll} title="対象店舗を全リンクに反映し、回答も取得" style={{marginLeft:"auto",padding:"0.3rem 0.7rem",borderRadius:8,border:`1.5px solid ${C.accent}`,background:C.accentBg,color:C.accentDark,fontWeight:700,fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit"}}>{portalBusy==="__all__"?"最新化中…":"🔄 全リンク最新化＆回答取得"}</button>}
+        {PORTAL_ON&&(p.vendors||[]).some(v=>v.portalToken)&&<button disabled={portalBusy==="__all__"} onClick={syncAll} title="対象店舗を全リンクに反映し、回答も取得" style={{marginLeft:"auto",padding:"0.3rem 0.7rem",borderRadius:8,border:`1.5px solid ${C.accent}`,background:C.accentBg,color:C.accentDark,fontWeight:700,fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit"}}>{portalBusy==="__all__"?"最新化中…":"🔄 全リンク最新化＆回答取得"}</button>}
       </div>
 
       <div style={{background:"white",border:`1px solid ${C.border}`,borderRadius:10,padding:"0.7rem 0.8rem",marginBottom:"0.75rem"}}>
@@ -34094,7 +34098,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
                   <div style={{fontSize:"0.8rem",fontWeight:600,color:C.text}}>{v.name}</div>
                   <div style={{fontSize:"0.64rem",color:C.textMuted}}>{(v.permitTypes||[]).join("・")||"許可未設定"}{v.phone?` ／ ${v.phone}`:""}</div>
                 </div>
-                <button disabled={added} onClick={()=>addVendor(v)} style={{padding:"0.25rem 0.6rem",borderRadius:6,border:"none",background:added?"#e5e7eb":C.accent,color:added?C.textMuted:"white",fontWeight:700,fontSize:"0.7rem",cursor:added?"default":"pointer",fontFamily:"inherit"}}>{added?"追加済":"＋追加"}</button>
+                <button disabled={added} onClick={()=>addVendor(v)} style={{padding:"0.25rem 0.6rem",borderRadius:8,border:"none",background:added?"#e5e7eb":C.accent,color:added?C.textMuted:"white",fontWeight:700,fontSize:"0.7rem",cursor:added?"default":"pointer",fontFamily:"inherit"}}>{added?"追加済":"＋追加"}</button>
               </div>
             );})}
             {vHits.length===0&&<div style={{padding:"0.6rem",fontSize:"0.74rem",color:C.textMuted}}>条件に合う業者がいません。</div>}
@@ -34188,11 +34192,11 @@ function PhotoSlot({ label, url, onSet, C, storeId }){
       <span style={{fontSize:"0.66rem",color:C.textSub,fontWeight:700}}>{label}</span>
       {url ? (
         <div style={{position:"relative",width:104}}>
-          <a href={url} target="_blank" rel="noreferrer"><img src={url} alt="" style={{width:104,height:78,objectFit:"cover",borderRadius:6,border:`1px solid ${C.border}`,display:"block"}}/></a>
-          <button onClick={()=>{if(window.confirm("写真を外しますか？"))onSet("");}} style={{position:"absolute",top:-8,right:-8,width:20,height:20,borderRadius:"50%",border:"none",background:"#dc2626",color:"white",cursor:"pointer",fontSize:"0.7rem",fontFamily:"inherit",lineHeight:1}}>×</button>
+          <a href={url} target="_blank" rel="noreferrer"><img src={url} alt="" style={{width:104,height:78,objectFit:"cover",borderRadius:8,border:`1px solid ${C.border}`,display:"block"}}/></a>
+          <button onClick={()=>{if(window.confirm("写真を外しますか？"))onSet("");}} style={{position:"absolute",top:-8,right:-8,width:20,height:20,borderRadius:"50%",border:"none",background:"#DA1313",color:"white",cursor:"pointer",fontSize:"0.7rem",fontFamily:"inherit",lineHeight:1}}>×</button>
         </div>
       ) : (
-        <button onClick={()=>ref.current&&ref.current.click()} disabled={busy} style={{width:104,height:78,borderRadius:6,border:`1.5px dashed ${C.border}`,background:C.bg,color:C.textMuted,cursor:"pointer",fontSize:"0.72rem",fontFamily:"inherit"}}>{busy?"⏳ 送信中":"＋ 写真"}</button>
+        <button onClick={()=>ref.current&&ref.current.click()} disabled={busy} style={{width:104,height:78,borderRadius:8,border:`1.5px dashed ${C.border}`,background:C.bg,color:C.textMuted,cursor:"pointer",fontSize:"0.72rem",fontFamily:"inherit"}}>{busy?"⏳ 送信中":"＋ 写真"}</button>
       )}
       <input type="file" accept="image/*" ref={ref} onChange={pick} style={{display:"none"}}/>
     </div>
@@ -34311,7 +34315,7 @@ function VendorQuoteCard({ qv, rows, stores=[], totalStores=0, showAll=false, on
     else if(isSel&&e.key==="ArrowRight"){ e.preventDefault(); go(step(ri,ci,0,1)); }
   };
   const cellProps=(ri,ci)=>({ "data-nav":qv.id+"_"+ri+"_"+ci, onKeyDown:e=>onKey(e,ri,ci), onMouseDown:e=>onDown(e,ri,ci), onMouseEnter:()=>onEnter(ri,ci) });
-  const cs=(ri,ci,base)=> inSel(ri,ci)?{...base,background:"#dbeafe",outline:"1.5px solid #2563eb",outlineOffset:"-1px"}:base;
+  const cs=(ri,ci,base)=> inSel(ri,ci)?{...base,background:"#E6F0FF",outline:"1.5px solid #0070D4",outlineOffset:"-1px"}:base;
   // グループ選択
   const uniq=arr=>[...new Set(arr.filter(Boolean))];
   const bizTypes=uniq(rows.map(r=>r.bizType));
@@ -34371,7 +34375,7 @@ function VendorQuoteCard({ qv, rows, stores=[], totalStores=0, showAll=false, on
     }catch(ex){ console.error("[quote excel import]",ex); window.alert("取込に失敗しました: "+(ex&&ex.message||ex)); }
     setImpV(false);
   };
-  const NUM={width:"100%",boxSizing:"border-box",padding:"0.25rem 0.3rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit",textAlign:"right"};
+  const NUM={width:"100%",boxSizing:"border-box",padding:"0.25rem 0.3rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit",textAlign:"right"};
   const AUTO={fontSize:"0.72rem",color:C.text,textAlign:"right",fontWeight:700};
   const HcolNum={width:70,flex:"none",textAlign:"right"};
   const CcolNum={width:70,flex:"none"};
@@ -34384,10 +34388,10 @@ function VendorQuoteCard({ qv, rows, stores=[], totalStores=0, showAll=false, on
         <span style={{fontWeight:800,fontSize:"0.9rem",color:C.text}}>{qv.vendorName}</span>
         {grade&&<span style={{fontSize:"0.66rem",color:"#b45309"}}>{"★".repeat(grade)}</span>}
         <select value={qv.status||"未依頼"} onClick={e=>e.stopPropagation()} onChange={e=>onChange({status:e.target.value})} style={{padding:"0.2rem 0.5rem",borderRadius:999,border:`1px solid ${C.border}`,fontSize:"0.68rem",fontWeight:700,fontFamily:"inherit",background:"white"}}>{REQ.map(s=><option key={s} value={s}>{s}</option>)}</select>
-        {qv.respondedAt&&<span style={{fontSize:"0.62rem",color:"#16a34a",fontWeight:700}}>✅{String(qv.respondedAt).slice(5,10)}</span>}
+        {qv.respondedAt&&<span style={{fontSize:"0.62rem",color:"#009122",fontWeight:700}}>✅{String(qv.respondedAt).slice(5,10)}</span>}
         <span style={{marginLeft:"auto",fontSize:"0.7rem",color:C.textSub,fontWeight:700}} title="見積済店舗/対象店舗">🏪 {pricedStores.size}/{storeIds.length}店舗</span>
         <span style={{fontSize:"0.82rem",fontWeight:800,color:C.accentDark}}>お客様提示 {yen(total)}<span style={{fontSize:"0.58rem",fontWeight:600,color:C.textMuted,marginLeft:4}}>(税込・DUSTALK5%込)</span></span>
-        <button onClick={e=>{e.stopPropagation();onRemove();}} style={{border:"none",background:"none",color:"#dc2626",cursor:"pointer",fontSize:"0.9rem",fontFamily:"inherit"}}>×</button>
+        <button onClick={e=>{e.stopPropagation();onRemove();}} style={{border:"none",background:"none",color:"#DA1313",cursor:"pointer",fontSize:"0.9rem",fontFamily:"inherit"}}>×</button>
       </div>
 
       {open&&(
@@ -34408,32 +34412,32 @@ function VendorQuoteCard({ qv, rows, stores=[], totalStores=0, showAll=false, on
       {showInfo&&(
         <div style={{background:C.bg,borderRadius:8,padding:"0.5rem 0.6rem",marginBottom:"0.5rem"}}>
           <div style={{display:"flex",gap:"0.4rem"}}>
-            <input value={note} onChange={e=>setNote(e.target.value)} placeholder="電話内容・見積メモを記録（営業の業者側にも反映）" style={{flex:1,padding:"0.35rem 0.5rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.74rem",fontFamily:"inherit"}}/>
-            <button disabled={!note.trim()} onClick={()=>{onAddNote(note);setNote("");}} style={{padding:"0.35rem 0.7rem",borderRadius:6,border:"none",background:note.trim()?C.accent:"#cbd5e1",color:"white",fontWeight:700,fontSize:"0.72rem",cursor:note.trim()?"pointer":"default",fontFamily:"inherit"}}>追加</button>
+            <input value={note} onChange={e=>setNote(e.target.value)} placeholder="電話内容・見積メモを記録（営業の業者側にも反映）" style={{flex:1,padding:"0.35rem 0.5rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.74rem",fontFamily:"inherit"}}/>
+            <button disabled={!note.trim()} onClick={()=>{onAddNote(note);setNote("");}} style={{padding:"0.35rem 0.7rem",borderRadius:8,border:"none",background:note.trim()?C.accent:"#cbd5e1",color:"white",fontWeight:700,fontSize:"0.72rem",cursor:note.trim()?"pointer":"default",fontFamily:"inherit"}}>追加</button>
           </div>
           {(qv.callNotes||[]).length>0&&<div style={{marginTop:"0.4rem",display:"flex",flexDirection:"column",gap:"0.25rem"}}>{(qv.callNotes||[]).slice().reverse().map(n=>(<div key={n.id} style={{fontSize:"0.7rem",color:C.text}}><span style={{color:C.textMuted}}>{String(n.date||"").slice(0,10)}</span>　{n.text}</div>))}</div>}
         </div>
       )}
 
       <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap",marginBottom:"0.5rem"}}>
-        <input value={qv.assignee||""} onChange={e=>onChange({assignee:e.target.value})} placeholder="先方担当者" style={{flex:1,minWidth:120,padding:"0.35rem 0.55rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.76rem",fontFamily:"inherit"}}/>
-        <input value={qv.contact||""} onChange={e=>onChange({contact:e.target.value})} placeholder="連絡先(メール/TEL)" style={{flex:1,minWidth:120,padding:"0.35rem 0.55rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.76rem",fontFamily:"inherit"}}/>
+        <input value={qv.assignee||""} onChange={e=>onChange({assignee:e.target.value})} placeholder="先方担当者" style={{flex:1,minWidth:120,padding:"0.35rem 0.55rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.76rem",fontFamily:"inherit"}}/>
+        <input value={qv.contact||""} onChange={e=>onChange({contact:e.target.value})} placeholder="連絡先(メール/TEL)" style={{flex:1,minWidth:120,padding:"0.35rem 0.55rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.76rem",fontFamily:"inherit"}}/>
       </div>
 
       {/* 依頼ポータル */}
       <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap",alignItems:"center",marginBottom:"0.5rem",padding:"0.4rem 0.5rem",background:C.bg,borderRadius:8}}>
-        {!qv.portalToken ? (
-          <button disabled={portalBusy===qv.id} onClick={onIssue} style={{padding:"0.3rem 0.7rem",borderRadius:6,border:`1.5px solid ${C.accent}`,background:C.accentBg,color:C.accentDark,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}}>{portalBusy===qv.id?"発行中…":"🔗 依頼リンクを発行"}</button>
+        {PORTAL_ON && (!qv.portalToken ? (
+          <button disabled={portalBusy===qv.id} onClick={onIssue} style={{padding:"0.3rem 0.7rem",borderRadius:8,border:`1.5px solid ${C.accent}`,background:C.accentBg,color:C.accentDark,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}}>{portalBusy===qv.id?"発行中…":"🔗 依頼リンクを発行"}</button>
         ) : (
           <React.Fragment>
             <span style={{fontSize:"0.64rem",color:C.textMuted,maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{qv.portalUrl}</span>
-            <button onClick={onCopy} style={{padding:"0.25rem 0.55rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit"}}>📋 コピー</button>
-            <button disabled={portalBusy===qv.id} onClick={onFetch} style={{padding:"0.25rem 0.55rem",borderRadius:6,border:`1px solid ${C.accent}`,background:"white",color:C.accentDark,fontWeight:700,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit"}}>{portalBusy===qv.id?"取得中…":"🔄 回答取得"}</button>
-            <button disabled={portalBusy===qv.id} onClick={onIssue} title="対象店舗の最新内容でリンクを更新" style={{padding:"0.25rem 0.55rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textMuted,fontWeight:700,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit"}}>↻ 更新</button>
+            <button onClick={onCopy} style={{padding:"0.25rem 0.55rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit"}}>📋 コピー</button>
+            <button disabled={portalBusy===qv.id} onClick={onFetch} style={{padding:"0.25rem 0.55rem",borderRadius:8,border:`1px solid ${C.accent}`,background:"white",color:C.accentDark,fontWeight:700,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit"}}>{portalBusy===qv.id?"取得中…":"🔄 回答取得"}</button>
+            <button disabled={portalBusy===qv.id} onClick={onIssue} title="対象店舗の最新内容でリンクを更新" style={{padding:"0.25rem 0.55rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textMuted,fontWeight:700,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit"}}>↻ 更新</button>
           </React.Fragment>
-        )}
+        ))}
         <div style={{position:"relative"}}>
-          <button disabled={impV} onClick={()=>setImpMenuV(v=>!v)} style={{padding:"0.25rem 0.55rem",borderRadius:6,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit"}}>{impV?"取込中…":"📊 見積Excel ▾"}</button>
+          <button disabled={impV} onClick={()=>setImpMenuV(v=>!v)} style={{padding:"0.25rem 0.55rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit"}}>{impV?"取込中…":"📊 見積Excel ▾"}</button>
           {impMenuV&&(
             <div style={{position:"absolute",top:"100%",left:0,zIndex:40,background:"white",border:`1px solid ${C.border}`,borderRadius:8,boxShadow:C.shadowMd,marginTop:4,minWidth:250,overflow:"hidden"}}>
               <button onClick={downloadQuoteTemplate} style={{display:"block",width:"100%",textAlign:"left",padding:"0.5rem 0.7rem",border:"none",background:"white",cursor:"pointer",fontFamily:"inherit",fontSize:"0.74rem",color:C.text}}>📄 見積依頼シートをダウンロード</button>
@@ -34442,7 +34446,6 @@ function VendorQuoteCard({ qv, rows, stores=[], totalStores=0, showAll=false, on
           )}
         </div>
         <input type="file" ref={importRef} accept=".xlsx,.xls" onChange={handleQuoteExcel} style={{display:"none"}}/>
-        {!PORTAL_ON&&<span style={{fontSize:"0.62rem",color:"#b45309"}}>⚠️ ポータルURL未設定</span>}
       </div>
 
       {/* グループ選択（業態・エリアで一括チェック） */}
@@ -34458,24 +34461,24 @@ function VendorQuoteCard({ qv, rows, stores=[], totalStores=0, showAll=false, on
       {rows.length>0&&(
         <div style={{display:"flex",gap:"0.35rem",flexWrap:"wrap",alignItems:"center",marginBottom:"0.4rem",padding:"0.4rem 0.5rem",background:"#fff7ed",border:"1px solid #fed7aa",borderRadius:8}}>
           <span style={{fontSize:"0.66rem",fontWeight:700,color:"#9a3412"}}>選択に一括：</span>
-          <select value={bulk.method} onChange={e=>setBulk({...bulk,method:e.target.value})} style={{padding:"0.25rem 0.4rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.7rem",fontFamily:"inherit",background:"white"}}><option value="">方式</option>{METHODS.map(x=><option key={x.v} value={x.v}>{x.t}</option>)}</select>
-          <input value={bulk.unit} onChange={e=>setBulk({...bulk,unit:e.target.value})} placeholder="単価" style={{width:70,padding:"0.25rem 0.4rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.7rem",fontFamily:"inherit"}}/>
-          <input value={bulk.unitType} onChange={e=>setBulk({...bulk,unitType:e.target.value})} placeholder="種別(kg/㎥)" style={{width:78,padding:"0.25rem 0.4rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.7rem",fontFamily:"inherit"}}/>
-          <input value={bulk.transport} onChange={e=>setBulk({...bulk,transport:e.target.value})} placeholder="運搬費" style={{width:70,padding:"0.25rem 0.4rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.7rem",fontFamily:"inherit"}}/>
-          <input value={bulk.disposal} onChange={e=>setBulk({...bulk,disposal:e.target.value})} placeholder="処分費" style={{width:70,padding:"0.25rem 0.4rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.7rem",fontFamily:"inherit"}}/>
-          <input value={bulk.overhead} onChange={e=>setBulk({...bulk,overhead:e.target.value})} placeholder="諸経費" style={{width:70,padding:"0.25rem 0.4rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.7rem",fontFamily:"inherit"}}/>
-          <input value={bulk.flat} onChange={e=>setBulk({...bulk,flat:e.target.value})} placeholder="定額料金" style={{width:78,padding:"0.25rem 0.4rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.7rem",fontFamily:"inherit"}}/>
-          <select value={bulk.taxMode} onChange={e=>setBulk({...bulk,taxMode:e.target.value})} style={{padding:"0.25rem 0.4rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.7rem",fontFamily:"inherit",background:"white"}}><option value="">税区分</option>{TAXES.map(t=><option key={t} value={t}>{t}</option>)}</select>
-          <button onClick={applyBulk} style={{padding:"0.25rem 0.7rem",borderRadius:5,border:"none",background:"#ea580c",color:"white",fontWeight:700,fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit"}}>チェックに適用（{checkedIds.length}）</button>
+          <select value={bulk.method} onChange={e=>setBulk({...bulk,method:e.target.value})} style={{padding:"0.25rem 0.4rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.7rem",fontFamily:"inherit",background:"white"}}><option value="">方式</option>{METHODS.map(x=><option key={x.v} value={x.v}>{x.t}</option>)}</select>
+          <input value={bulk.unit} onChange={e=>setBulk({...bulk,unit:e.target.value})} placeholder="単価" style={{width:70,padding:"0.25rem 0.4rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.7rem",fontFamily:"inherit"}}/>
+          <input value={bulk.unitType} onChange={e=>setBulk({...bulk,unitType:e.target.value})} placeholder="種別(kg/㎥)" style={{width:78,padding:"0.25rem 0.4rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.7rem",fontFamily:"inherit"}}/>
+          <input value={bulk.transport} onChange={e=>setBulk({...bulk,transport:e.target.value})} placeholder="運搬費" style={{width:70,padding:"0.25rem 0.4rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.7rem",fontFamily:"inherit"}}/>
+          <input value={bulk.disposal} onChange={e=>setBulk({...bulk,disposal:e.target.value})} placeholder="処分費" style={{width:70,padding:"0.25rem 0.4rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.7rem",fontFamily:"inherit"}}/>
+          <input value={bulk.overhead} onChange={e=>setBulk({...bulk,overhead:e.target.value})} placeholder="諸経費" style={{width:70,padding:"0.25rem 0.4rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.7rem",fontFamily:"inherit"}}/>
+          <input value={bulk.flat} onChange={e=>setBulk({...bulk,flat:e.target.value})} placeholder="定額料金" style={{width:78,padding:"0.25rem 0.4rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.7rem",fontFamily:"inherit"}}/>
+          <select value={bulk.taxMode} onChange={e=>setBulk({...bulk,taxMode:e.target.value})} style={{padding:"0.25rem 0.4rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.7rem",fontFamily:"inherit",background:"white"}}><option value="">税区分</option>{TAXES.map(t=><option key={t} value={t}>{t}</option>)}</select>
+          <button onClick={applyBulk} style={{padding:"0.25rem 0.7rem",borderRadius:8,border:"none",background:"#ea580c",color:"white",fontWeight:700,fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit"}}>チェックに適用（{checkedIds.length}）</button>
         </div>
       )}
 
       {rows.length>0&&(
         <div style={{display:"flex",gap:"0.4rem",alignItems:"center",flexWrap:"wrap",marginBottom:"0.35rem",fontSize:"0.66rem",color:C.textMuted}}>
           <span>📐 セル範囲: ドラッグ/Shift＋クリックで選択</span>
-          <button onClick={copyRange} disabled={!sel} style={{padding:"0.15rem 0.5rem",borderRadius:5,border:`1px solid ${C.border}`,background:"white",color:C.textSub,cursor:sel?"pointer":"default",fontFamily:"inherit",fontSize:"0.66rem"}}>📋 コピー</button>
-          <button onClick={()=>pasteRange(0,0)} style={{padding:"0.15rem 0.5rem",borderRadius:5,border:`1px solid ${C.border}`,background:"white",color:C.textSub,cursor:"pointer",fontFamily:"inherit",fontSize:"0.66rem"}}>📥 貼付</button>
-          <button onClick={clearRange} disabled={!sel} style={{padding:"0.15rem 0.5rem",borderRadius:5,border:`1px solid #fca5a5`,background:"#fff1f2",color:"#dc2626",cursor:sel?"pointer":"default",fontFamily:"inherit",fontSize:"0.66rem"}}>🗑 クリア</button>
+          <button onClick={copyRange} disabled={!sel} style={{padding:"0.15rem 0.5rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textSub,cursor:sel?"pointer":"default",fontFamily:"inherit",fontSize:"0.66rem"}}>📋 コピー</button>
+          <button onClick={()=>pasteRange(0,0)} style={{padding:"0.15rem 0.5rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textSub,cursor:"pointer",fontFamily:"inherit",fontSize:"0.66rem"}}>📥 貼付</button>
+          <button onClick={clearRange} disabled={!sel} style={{padding:"0.15rem 0.5rem",borderRadius:8,border:`1px solid #fca5a5`,background:"#fff1f2",color:"#DA1313",cursor:sel?"pointer":"default",fontFamily:"inherit",fontSize:"0.66rem"}}>🗑 クリア</button>
           {sel&&rectSize()>1&&<span style={{color:C.accentDark,fontWeight:700}}>選択 {rectSize()}セル（⌘C/⌘V/Delete も可）</span>}
         </div>
       )}
@@ -34503,20 +34506,20 @@ function VendorQuoteCard({ qv, rows, stores=[], totalStores=0, showAll=false, on
                   <div style={{fontSize:"0.72rem",fontWeight:600,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.storeName||"（拠点）"}{r.address?<a href={mapsUrl(r.address)} target="_blank" rel="noreferrer" style={{marginLeft:4,textDecoration:"none"}} title="Googleマップ">📍</a>:null}</div>
                   <div style={{fontSize:"0.62rem",color:C.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.kind||"（品目）"}{r.freq?` / ${r.freq}`:""}{(r.qtys&&r.qtys.length)?(" ／ "+r.qtys.map(q=>q.q+q.u).join("・")):""}</div>
                 </div>
-                <select {...cellProps(ri,0)} value={m} onChange={e=>setPrice(r.itemId,{method:e.target.value})} style={cs(ri,0,{width:96,flex:"none",padding:"0.25rem 0.1rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.64rem",fontFamily:"inherit",background:"white"})}><option value=""></option>{METHODS.map(x=><option key={x.v} value={x.v}>{x.t}</option>)}</select>
+                <select {...cellProps(ri,0)} value={m} onChange={e=>setPrice(r.itemId,{method:e.target.value})} style={cs(ri,0,{width:96,flex:"none",padding:"0.25rem 0.1rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.64rem",fontFamily:"inherit",background:"white"})}><option value=""></option>{METHODS.map(x=><option key={x.v} value={x.v}>{x.t}</option>)}</select>
                 <span style={CcolNum}>{ok("unit")?<input {...cellProps(ri,1)} value={pr.unit||""} onChange={e=>setPrice(r.itemId,{unit:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="単価" style={cs(ri,1,NUM)}/>:null}</span>
-                <span style={{width:54,flex:"none"}}>{ok("unitType")?<select {...cellProps(ri,2)} value={pr.unitType||""} onChange={e=>setPrice(r.itemId,{unitType:e.target.value})} title="店舗の数量に登録した単位から選択（単価×数量）" style={cs(ri,2,{width:"100%",boxSizing:"border-box",padding:"0.22rem 0.05rem",borderRadius:5,border:`1px solid ${((r.qtys||[]).length? C.border : "#fca5a5")}`,fontSize:"0.6rem",fontFamily:"inherit",background:"white"})}><option value="">単位</option>{(r.qtys||[]).map((qq,qi)=><option key={qi} value={qq.u}>{qq.u||"(未設定)"}</option>)}</select>:null}</span>
+                <span style={{width:54,flex:"none"}}>{ok("unitType")?<select {...cellProps(ri,2)} value={pr.unitType||""} onChange={e=>setPrice(r.itemId,{unitType:e.target.value})} title="店舗の数量に登録した単位から選択（単価×数量）" style={cs(ri,2,{width:"100%",boxSizing:"border-box",padding:"0.22rem 0.05rem",borderRadius:8,border:`1px solid ${((r.qtys||[]).length? C.border : "#fca5a5")}`,fontSize:"0.6rem",fontFamily:"inherit",background:"white"})}><option value="">単位</option>{(r.qtys||[]).map((qq,qi)=><option key={qi} value={qq.u}>{qq.u||"(未設定)"}</option>)}</select>:null}</span>
                 <span style={CcolNum}>{ok("transport")?<input {...cellProps(ri,3)} value={pr.transport||""} onChange={e=>setPrice(r.itemId,{transport:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="運搬固定" style={cs(ri,3,NUM)}/>:null}</span>
                 <span style={CcolNum}>{ok("disposal")?<input {...cellProps(ri,4)} value={pr.disposal||""} onChange={e=>setPrice(r.itemId,{disposal:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="処分単価" style={cs(ri,4,NUM)}/>:null}</span>
-                <span style={{width:54,flex:"none"}}>{ok("disposalUnit")?<select {...cellProps(ri,5)} value={pr.disposalUnit||""} onChange={e=>setPrice(r.itemId,{disposalUnit:e.target.value})} title="店舗の数量に登録した単位から選択" style={cs(ri,5,{width:"100%",boxSizing:"border-box",padding:"0.22rem 0.05rem",borderRadius:5,border:`1px solid ${((r.qtys||[]).length? C.border : "#fca5a5")}`,fontSize:"0.6rem",fontFamily:"inherit",background:"white"})}><option value="">単位</option>{(r.qtys||[]).map((qq,qi)=><option key={qi} value={qq.u}>{qq.u||"(未設定)"}</option>)}</select>:null}</span>
+                <span style={{width:54,flex:"none"}}>{ok("disposalUnit")?<select {...cellProps(ri,5)} value={pr.disposalUnit||""} onChange={e=>setPrice(r.itemId,{disposalUnit:e.target.value})} title="店舗の数量に登録した単位から選択" style={cs(ri,5,{width:"100%",boxSizing:"border-box",padding:"0.22rem 0.05rem",borderRadius:8,border:`1px solid ${((r.qtys||[]).length? C.border : "#fca5a5")}`,fontSize:"0.6rem",fontFamily:"inherit",background:"white"})}><option value="">単位</option>{(r.qtys||[]).map((qq,qi)=><option key={qi} value={qq.u}>{qq.u||"(未設定)"}</option>)}</select>:null}</span>
                 <span style={{width:78,flex:"none"}}>{ok("flat")?<input {...cellProps(ri,6)} value={pr.flat||""} onChange={e=>setPrice(r.itemId,{flat:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="定額" style={cs(ri,6,NUM)}/>:null}</span>
                 <span style={CcolNum}>{isFirst?<input value={mt.overhead||""} onChange={e=>setMeta(sid,{overhead:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="諸経費" title="物件ごと（この店舗共通）" style={{...NUM,background:"#fffdf5"}}/>:null}</span>
                 <span style={CcolNum}>{isFirst?<input value={mt.minCharge||""} onChange={e=>setMeta(sid,{minCharge:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="最低料金" title="物件ごと（この店舗共通）" style={{...NUM,background:"#fffdf5"}}/>:null}</span>
-                <span style={{width:58,flex:"none"}}>{isFirst?<select value={mt.taxMode||"税抜"} onChange={e=>setMeta(sid,{taxMode:e.target.value})} title="物件ごと（この店舗共通）" style={{width:"100%",boxSizing:"border-box",padding:"0.22rem 0.05rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.62rem",fontFamily:"inherit",background:"#fffdf5"}}>{TAXES.map(t=><option key={t} value={t}>{t}</option>)}</select>:null}</span>
+                <span style={{width:58,flex:"none"}}>{isFirst?<select value={mt.taxMode||"税抜"} onChange={e=>setMeta(sid,{taxMode:e.target.value})} title="物件ごと（この店舗共通）" style={{width:"100%",boxSizing:"border-box",padding:"0.22rem 0.05rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.62rem",fontFamily:"inherit",background:"#fffdf5"}}>{TAXES.map(t=><option key={t} value={t}>{t}</option>)}</select>:null}</span>
                 <span style={{width:80,flex:"none",...AUTO}}>{isFirst&&storeBase(sid)?Math.round(storeBase(sid)).toLocaleString():""}</span>
                 <span style={{width:80,flex:"none",...AUTO,color:C.textSub}}>{isFirst&&storeBase(sid)?Math.round(storeTaxIn(sid)).toLocaleString():""}</span>
                 <span style={{width:96,flex:"none",...AUTO,color:C.accentDark,fontWeight:800}}>{isFirst&&storeBase(sid)?("¥"+Math.round(storeCust(sid)).toLocaleString()):""}</span>
-                <span style={{width:150,flex:"none"}}><input {...cellProps(ri,7)} value={pr.condition||pr.note||""} onChange={e=>setPrice(r.itemId,{condition:e.target.value})} placeholder="回収条件・備考" style={cs(ri,7,{width:"100%",boxSizing:"border-box",padding:"0.25rem 0.3rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit"})}/></span>
+                <span style={{width:150,flex:"none"}}><input {...cellProps(ri,7)} value={pr.condition||pr.note||""} onChange={e=>setPrice(r.itemId,{condition:e.target.value})} placeholder="回収条件・備考" style={cs(ri,7,{width:"100%",boxSizing:"border-box",padding:"0.25rem 0.3rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit"})}/></span>
               </div>
             );})}
           </div>
@@ -34531,13 +34534,13 @@ function VendorQuoteCard({ qv, rows, stores=[], totalStores=0, showAll=false, on
         <div style={{marginTop:"0.35rem",display:"flex",flexDirection:"column",gap:"0.25rem"}}>
           {(qv.extraLines||[]).map(l=>{ const setL=patch=>setExtra((qv.extraLines||[]).map(x=>x.id===l.id?{...x,...patch}:x)); return (
             <div key={l.id} style={{display:"flex",gap:"0.3rem",alignItems:"center"}}>
-              <input value={l.item||""} onChange={e=>setL({item:e.target.value})} placeholder="品目" style={{flex:2,minWidth:0,padding:"0.25rem 0.35rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit"}}/>
-              <input value={l.amount||""} onChange={e=>setL({amount:e.target.value.replace(/[^0-9]/g,"")})} placeholder="金額" inputMode="numeric" style={{width:84,padding:"0.25rem 0.35rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit"}}/>
-              <input value={l.note||""} onChange={e=>setL({note:e.target.value})} placeholder="備考" style={{flex:1,minWidth:0,padding:"0.25rem 0.35rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit"}}/>
-              <button onClick={()=>setExtra((qv.extraLines||[]).filter(x=>x.id!==l.id))} style={{border:"none",background:"none",color:"#dc2626",cursor:"pointer",fontFamily:"inherit"}}>×</button>
+              <input value={l.item||""} onChange={e=>setL({item:e.target.value})} placeholder="品目" style={{flex:2,minWidth:0,padding:"0.25rem 0.35rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit"}}/>
+              <input value={l.amount||""} onChange={e=>setL({amount:e.target.value.replace(/[^0-9]/g,"")})} placeholder="金額" inputMode="numeric" style={{width:84,padding:"0.25rem 0.35rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit"}}/>
+              <input value={l.note||""} onChange={e=>setL({note:e.target.value})} placeholder="備考" style={{flex:1,minWidth:0,padding:"0.25rem 0.35rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit"}}/>
+              <button onClick={()=>setExtra((qv.extraLines||[]).filter(x=>x.id!==l.id))} style={{border:"none",background:"none",color:"#DA1313",cursor:"pointer",fontFamily:"inherit"}}>×</button>
             </div>
           );})}
-          <button onClick={()=>setExtra([...(qv.extraLines||[]),{id:rid("ex"),item:"",method:"",unit:"",amount:"",note:""}])} style={{alignSelf:"flex-start",padding:"0.2rem 0.6rem",border:"none",background:C.bg,color:C.accent,fontWeight:700,fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit",borderRadius:5}}>＋ 明細行を追加</button>
+          <button onClick={()=>setExtra([...(qv.extraLines||[]),{id:rid("ex"),item:"",method:"",unit:"",amount:"",note:""}])} style={{alignSelf:"flex-start",padding:"0.2rem 0.6rem",border:"none",background:C.bg,color:C.accent,fontWeight:700,fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit",borderRadius:8}}>＋ 明細行を追加</button>
         </div>
       </details>
       </div>
@@ -34562,7 +34565,7 @@ function StoreRow({ st, C, rid, mapsUrl, onChange, onDelete, storeQuotes }){
         {(function(){ const qs=storeQuotes?storeQuotes(st):[]; return qs.length?<span title="この店舗に見積した業者数" style={{fontSize:"0.64rem",fontWeight:800,color:C.accentDark,background:C.accentBg,padding:"1px 8px",borderRadius:999}}>見積 {qs.length}社{qs[0]?(" ・ 最安¥"+Math.round(qs[0].amount).toLocaleString()):""}</span>:null; })()}
         {(st.dustPhoto||st.overallPhoto)&&<span title="写真あり" style={{fontSize:"0.72rem"}}>📷</span>}
         <span style={{fontSize:"0.66rem",color:C.textSub}}>品目{(st.items||[]).length}</span>
-        <button onClick={e=>{e.stopPropagation();if(window.confirm("この店舗を削除しますか？"))onDelete();}} style={{border:"none",background:"none",color:"#dc2626",cursor:"pointer",fontSize:"0.85rem",fontFamily:"inherit"}}>🗑</button>
+        <button onClick={e=>{e.stopPropagation();if(window.confirm("この店舗を削除しますか？"))onDelete();}} style={{border:"none",background:"none",color:"#DA1313",cursor:"pointer",fontSize:"0.85rem",fontFamily:"inherit"}}>🗑</button>
       </div>
       {open&&(
         <div style={{padding:"0.6rem 0.8rem",borderTop:`1px solid ${C.borderLight}`,background:"#fafbfc"}}>
@@ -34572,28 +34575,28 @@ function StoreRow({ st, C, rid, mapsUrl, onChange, onDelete, storeQuotes }){
               {qs.map((x,i)=>(<div key={i} style={{display:"flex",justifyContent:"space-between",gap:"0.5rem",padding:"0.28rem 0.55rem",borderTop:`1px solid ${C.borderLight}`,background:x.cheapest?"#dcfce7":"white",fontSize:"0.74rem"}}><span style={{color:x.cheapest?"#166534":C.text,fontWeight:x.cheapest?800:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{x.cheapest?"🏆 ":""}{x.name||"（業者）"}</span><span style={{fontWeight:700,color:x.cheapest?"#166534":C.text,flex:"none"}}>¥{Math.round(x.amount).toLocaleString()}</span></div>))}
             </div>); })()}
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:"0.4rem",marginBottom:"0.5rem"}}>
-            <input value={st.name||""} onChange={e=>set({name:e.target.value})} placeholder="拠点名/店舗名" style={{padding:"0.35rem 0.5rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.76rem",fontFamily:"inherit"}}/>
-            <input value={st.bizType||""} onChange={e=>set({bizType:e.target.value})} placeholder="業態" style={{padding:"0.35rem 0.5rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.76rem",fontFamily:"inherit"}}/>
-            <input value={st.area||""} onChange={e=>set({area:e.target.value})} placeholder="エリア(都道府県・市区町村)" style={{padding:"0.35rem 0.5rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.76rem",fontFamily:"inherit"}}/>
-            <input value={st.address||""} onChange={e=>set({address:e.target.value})} placeholder="住所" style={{padding:"0.35rem 0.5rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.76rem",fontFamily:"inherit"}}/>
-            <input value={st.storage||""} onChange={e=>set({storage:e.target.value})} placeholder="保管場所・鍵番号" style={{padding:"0.35rem 0.5rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.76rem",fontFamily:"inherit"}}/>
-            <input value={st.memo||""} onChange={e=>set({memo:e.target.value})} placeholder="備考(席数/従業員数等)" style={{padding:"0.35rem 0.5rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.76rem",fontFamily:"inherit"}}/>
+            <input value={st.name||""} onChange={e=>set({name:e.target.value})} placeholder="拠点名/店舗名" style={{padding:"0.35rem 0.5rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.76rem",fontFamily:"inherit"}}/>
+            <input value={st.bizType||""} onChange={e=>set({bizType:e.target.value})} placeholder="業態" style={{padding:"0.35rem 0.5rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.76rem",fontFamily:"inherit"}}/>
+            <input value={st.area||""} onChange={e=>set({area:e.target.value})} placeholder="エリア(都道府県・市区町村)" style={{padding:"0.35rem 0.5rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.76rem",fontFamily:"inherit"}}/>
+            <input value={st.address||""} onChange={e=>set({address:e.target.value})} placeholder="住所" style={{padding:"0.35rem 0.5rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.76rem",fontFamily:"inherit"}}/>
+            <input value={st.storage||""} onChange={e=>set({storage:e.target.value})} placeholder="保管場所・鍵番号" style={{padding:"0.35rem 0.5rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.76rem",fontFamily:"inherit"}}/>
+            <input value={st.memo||""} onChange={e=>set({memo:e.target.value})} placeholder="備考(席数/従業員数等)" style={{padding:"0.35rem 0.5rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.76rem",fontFamily:"inherit"}}/>
           </div>
-          <div style={{border:`1px solid ${C.borderLight}`,borderRadius:6,overflow:"hidden"}}>
+          <div style={{border:`1px solid ${C.borderLight}`,borderRadius:8,overflow:"hidden"}}>
             <div style={{display:"flex",gap:"0.3rem",padding:"0.25rem 0.4rem",background:C.bg,fontSize:"0.6rem",fontWeight:700,color:C.textSub}}>
               <span style={{flex:2}}>排出品目</span><span style={{flex:1}}>回収頻度</span><span style={{flex:3}}>数量（単位別・複数可）</span><span style={{width:18}}/>
             </div>
             {(st.items||[]).map(it=>{ const setI=patch=>setItems((st.items||[]).map(x=>x.id===it.id?{...x,...patch}:x)); return (
               <div key={it.id} style={{display:"flex",gap:"0.3rem",padding:"0.25rem 0.4rem",borderTop:`1px solid ${C.borderLight}`,alignItems:"center"}}>
-                <input value={it.kind||""} onChange={e=>setI({kind:e.target.value})} placeholder="可燃/不燃/古紙" style={{flex:2,minWidth:0,padding:"0.25rem 0.35rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit"}}/>
-                <input value={it.freq||""} onChange={e=>setI({freq:e.target.value})} placeholder="週2回" style={{flex:1,minWidth:0,padding:"0.25rem 0.35rem",borderRadius:5,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit"}}/>
+                <input value={it.kind||""} onChange={e=>setI({kind:e.target.value})} placeholder="可燃/不燃/古紙" style={{flex:2,minWidth:0,padding:"0.25rem 0.35rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit"}}/>
+                <input value={it.freq||""} onChange={e=>setI({freq:e.target.value})} placeholder="週2回" style={{flex:1,minWidth:0,padding:"0.25rem 0.35rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit"}}/>
                 <div style={{flex:3,display:"flex",flexWrap:"wrap",gap:"0.25rem",alignItems:"center"}}>
                   {(function(){ const ql=(it.qtys&&it.qtys.length)?it.qtys:parseQtyList(it.qty); const setQ=(qi,patch)=>setI({qtys:ql.map((x,j)=>j===qi?{...x,...patch}:x)}); return (<React.Fragment>
-                  {ql.map((qq,qi)=>(<span key={qi} style={{display:"inline-flex",alignItems:"center",gap:1,background:"white",border:`1px solid ${C.border}`,borderRadius:5,padding:"1px 3px"}}><input value={qq.q||""} onChange={e=>setQ(qi,{q:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="数量" style={{width:42,border:"none",outline:"none",fontSize:"0.7rem",fontFamily:"inherit",textAlign:"right"}}/><input value={qq.u||""} onChange={e=>setQ(qi,{u:e.target.value})} placeholder="kg" style={{width:38,border:"none",outline:"none",fontSize:"0.7rem",fontFamily:"inherit"}}/><button onClick={()=>setI({qtys:ql.filter((x,j)=>j!==qi)})} style={{border:"none",background:"none",color:"#dc2626",cursor:"pointer",fontFamily:"inherit",fontSize:"0.7rem",lineHeight:1}}>×</button></span>))}
-                  <button onClick={()=>setI({qtys:[...ql,{q:"",u:""}]})} style={{border:`1px dashed ${C.border}`,background:C.bg,color:C.accent,borderRadius:5,padding:"1px 6px",fontSize:"0.66rem",cursor:"pointer",fontFamily:"inherit"}}>＋数量</button>
+                  {ql.map((qq,qi)=>(<span key={qi} style={{display:"inline-flex",alignItems:"center",gap:1,background:"white",border:`1px solid ${C.border}`,borderRadius:8,padding:"1px 3px"}}><input value={qq.q||""} onChange={e=>setQ(qi,{q:e.target.value.replace(/[^0-9.]/g,"")})} placeholder="数量" style={{width:42,border:"none",outline:"none",fontSize:"0.7rem",fontFamily:"inherit",textAlign:"right"}}/><input value={qq.u||""} onChange={e=>setQ(qi,{u:e.target.value})} placeholder="kg" style={{width:38,border:"none",outline:"none",fontSize:"0.7rem",fontFamily:"inherit"}}/><button onClick={()=>setI({qtys:ql.filter((x,j)=>j!==qi)})} style={{border:"none",background:"none",color:"#DA1313",cursor:"pointer",fontFamily:"inherit",fontSize:"0.7rem",lineHeight:1}}>×</button></span>))}
+                  <button onClick={()=>setI({qtys:[...ql,{q:"",u:""}]})} style={{border:`1px dashed ${C.border}`,background:C.bg,color:C.accent,borderRadius:8,padding:"1px 6px",fontSize:"0.66rem",cursor:"pointer",fontFamily:"inherit"}}>＋数量</button>
                   </React.Fragment>); })()}
                 </div>
-                <button onClick={()=>setItems((st.items||[]).filter(x=>x.id!==it.id))} style={{width:18,border:"none",background:"none",color:"#dc2626",cursor:"pointer",fontFamily:"inherit"}}>×</button>
+                <button onClick={()=>setItems((st.items||[]).filter(x=>x.id!==it.id))} style={{width:18,border:"none",background:"none",color:"#DA1313",cursor:"pointer",fontFamily:"inherit"}}>×</button>
               </div>
             );})}
             <button onClick={()=>setItems([...(st.items||[]),{id:rid("it"),kind:"",freq:"",qty:"",weight:"",note:"",qtys:[]}])} style={{width:"100%",padding:"0.3rem",border:"none",borderTop:`1px solid ${C.borderLight}`,background:C.bg,color:C.accent,fontWeight:700,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit"}}>＋ 品目を追加</button>
@@ -34616,12 +34619,12 @@ function StoreEditor({ onSave, onCancel, rid, C }){
     <div style={{background:"white",border:`1.5px solid ${C.accent}`,borderRadius:10,padding:"0.8rem 0.9rem",marginBottom:"1rem"}}>
       <div style={{fontWeight:800,fontSize:"0.82rem",color:C.text,marginBottom:"0.5rem"}}>🏪 店舗を手動で追加</div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:"0.4rem",marginBottom:"0.5rem"}}>
-        <input value={st.name} onChange={e=>set({name:e.target.value})} placeholder="拠点名/店舗名 *" style={{padding:"0.4rem 0.5rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"inherit"}}/>
-        <input value={st.bizType} onChange={e=>set({bizType:e.target.value})} placeholder="業態" style={{padding:"0.4rem 0.5rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"inherit"}}/>
-        <input value={st.area} onChange={e=>set({area:e.target.value})} placeholder="エリア" style={{padding:"0.4rem 0.5rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"inherit"}}/>
-        <input value={st.address} onChange={e=>set({address:e.target.value})} placeholder="住所" style={{padding:"0.4rem 0.5rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"inherit"}}/>
-        <input value={st.storage} onChange={e=>set({storage:e.target.value})} placeholder="保管場所・鍵番号" style={{padding:"0.4rem 0.5rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"inherit"}}/>
-        <input value={st.memo} onChange={e=>set({memo:e.target.value})} placeholder="備考" style={{padding:"0.4rem 0.5rem",borderRadius:6,border:`1px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"inherit"}}/>
+        <input value={st.name} onChange={e=>set({name:e.target.value})} placeholder="拠点名/店舗名 *" style={{padding:"0.4rem 0.5rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"inherit"}}/>
+        <input value={st.bizType} onChange={e=>set({bizType:e.target.value})} placeholder="業態" style={{padding:"0.4rem 0.5rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"inherit"}}/>
+        <input value={st.area} onChange={e=>set({area:e.target.value})} placeholder="エリア" style={{padding:"0.4rem 0.5rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"inherit"}}/>
+        <input value={st.address} onChange={e=>set({address:e.target.value})} placeholder="住所" style={{padding:"0.4rem 0.5rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"inherit"}}/>
+        <input value={st.storage} onChange={e=>set({storage:e.target.value})} placeholder="保管場所・鍵番号" style={{padding:"0.4rem 0.5rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"inherit"}}/>
+        <input value={st.memo} onChange={e=>set({memo:e.target.value})} placeholder="備考" style={{padding:"0.4rem 0.5rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"inherit"}}/>
       </div>
       <div style={{display:"flex",gap:"0.5rem"}}>
         <button onClick={onCancel} style={{flex:1,padding:"0.45rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}}>キャンセル</button>
@@ -36116,7 +36119,7 @@ export default function App() {
   if (loadError) return (
     <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:"1.2rem",padding:"2rem"}}>
       <div style={{fontSize:"3rem"}}>📡</div>
-      <div style={{color:"#dc2626",fontSize:"1.1rem",fontWeight:700}}>データの読み込みに失敗しました</div>
+      <div style={{color:"#DA1313",fontSize:"1.1rem",fontWeight:700}}>データの読み込みに失敗しました</div>
       <div style={{color:C.textSub,fontSize:"0.85rem",textAlign:"center",maxWidth:"400px"}}>
         ネットワーク接続を確認してください。<br/>
         <small style={{opacity:0.7,fontSize:"0.75rem",display:"block",marginTop:"0.5rem"}}>
@@ -36124,7 +36127,7 @@ export default function App() {
           {loadError.message}
         </small>
       </div>
-      <div style={{color:"#b91c1c",fontSize:"0.78rem",fontWeight:600,textAlign:"center",maxWidth:"400px",padding:"0.6rem 0.8rem",background:"#fef2f2",borderRadius:6,border:"1px solid #fecaca"}}>
+      <div style={{color:"#b91c1c",fontSize:"0.78rem",fontWeight:600,textAlign:"center",maxWidth:"400px",padding:"0.6rem 0.8rem",background:"#fef2f2",borderRadius:8,border:"1px solid #fecaca"}}>
         ⚠️ この状態では絶対に編集しないでください。<br/>データが消えるリスクがあります。
       </div>
       <button onClick={()=>{setLoaded(false); setLoadError(null); setLoadRetryCount(c=>c+1);}}
@@ -36236,12 +36239,12 @@ export default function App() {
                       <button onClick={async()=>{
                         if(pushEnabled){await unsubscribePush(currentUser.id);setPushEnabled(false);}
                         else{const ok=await subscribePush(currentUser.id);if(ok)setPushEnabled(true);else alert('通知の許可が必要です。ブラウザの設定から通知を許可してください。\niPhone: ホーム画面に追加してからアプリとして起動してONにしてください。');}
-                      }} style={{padding:"0.3rem 0.875rem",borderRadius:999,border:`2px solid ${pushEnabled?"#059669":"#dc2626"}`,cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:pushEnabled?"#d1fae5":"#fff1f2",color:pushEnabled?"#065f46":"#dc2626",transition:"all 0.15s"}}>
+                      }} style={{padding:"0.3rem 0.875rem",borderRadius:999,border:`2px solid ${pushEnabled?"#009122":"#DA1313"}`,cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.75rem",background:pushEnabled?"#d1fae5":"#fff1f2",color:pushEnabled?"#065f46":"#DA1313",transition:"all 0.15s"}}>
                         {pushEnabled?"✅ ON":"❌ OFF"}
                       </button>
                     </div>
                     <button onClick={handleLogout}
-                      style={{width:"100%",padding:"0.875rem 1rem",border:"none",background:"white",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.85rem",color:"#dc2626",textAlign:"left",display:"flex",alignItems:"center",gap:"0.5rem"}}>
+                      style={{width:"100%",padding:"0.875rem 1rem",border:"none",background:"white",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.85rem",color:"#DA1313",textAlign:"left",display:"flex",alignItems:"center",gap:"0.5rem"}}>
                       🚪 ログアウト
                     </button>
                   </div>
@@ -36262,7 +36265,7 @@ export default function App() {
             <div style={{padding:"0.875rem 1rem 0.5rem",borderBottom:`1px solid ${C.borderLight}`,flexShrink:0}}>
               <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.625rem"}}>
                 <span style={{fontWeight:800,fontSize:"0.9rem",color:C.text}}>🔔 通知 / 受信箱</span>
-                {appUnread.length>0&&<span style={{background:"#dc2626",color:"white",borderRadius:999,fontSize:"0.62rem",fontWeight:800,padding:"0.15rem 0.5rem"}}>{appUnread.length}</span>}
+                {appUnread.length>0&&<span style={{background:"#DA1313",color:"white",borderRadius:999,fontSize:"0.62rem",fontWeight:800,padding:"0.15rem 0.5rem"}}>{appUnread.length}</span>}
                 <div style={{marginLeft:"auto",display:"flex",gap:"0.35rem"}}>
                   {appUnread.length>0&&<button onClick={markAllRead} style={{background:"none",border:`1px solid ${C.border}`,borderRadius:"0.5rem",color:C.accent,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",padding:"0.2rem 0.5rem"}}>全既読</button>}
                   <button onClick={()=>{const nd={...data,notifications:(data.notifications||[]).map(n=>(n.toUserId===currentUser?.id&&n.read)?{...n,dismissed:true}:n)};setData(nd);scheduleSaveData(nd);}}
@@ -36344,7 +36347,7 @@ export default function App() {
                   };
                   return (
                   <div key={n.id} onClick={handleNotifClick}
-                    style={{padding:"0.75rem 1rem",borderBottom:`1px solid ${C.borderLight}`,background:n.read?"white":"#eff6ff",display:"flex",gap:"0.625rem",alignItems:"flex-start",cursor:"pointer"}}>
+                    style={{padding:"0.75rem 1rem",borderBottom:`1px solid ${C.borderLight}`,background:n.read?"white":"#F2F7FF",display:"flex",gap:"0.625rem",alignItems:"flex-start",cursor:"pointer"}}>
                     <span style={{fontSize:"1.1rem",flexShrink:0,marginTop:"0.05rem"}}>{NOTIF_ICON[n.type]||"🔔"}</span>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{fontSize:"0.8rem",fontWeight:n.read?500:700,color:n.read?C.textSub:C.text,lineHeight:1.4,marginBottom:"0.15rem"}}>{n.title}</div>
@@ -36470,33 +36473,33 @@ export default function App() {
             <div style={{fontSize:"1.05rem",fontWeight:800,marginBottom:"0.85rem",color:"#1f2937"}}>📧 メール下書き</div>
             <div style={{marginBottom:"0.6rem"}}>
               <div style={{fontSize:"0.7rem",fontWeight:700,color:"#6b7280",marginBottom:"0.2rem"}}>宛先 (To)</div>
-              <div style={{padding:"0.45rem 0.65rem",background:"#f9fafb",borderRadius:6,fontSize:"0.85rem",fontFamily:"inherit"}}>{agentEmailDraft.to||"(空)"}</div>
+              <div style={{padding:"0.45rem 0.65rem",background:"#f9fafb",borderRadius:8,fontSize:"0.85rem",fontFamily:"inherit"}}>{agentEmailDraft.to||"(空)"}</div>
             </div>
             {agentEmailDraft.cc && (
               <div style={{marginBottom:"0.6rem"}}>
                 <div style={{fontSize:"0.7rem",fontWeight:700,color:"#6b7280",marginBottom:"0.2rem"}}>Cc</div>
-                <div style={{padding:"0.45rem 0.65rem",background:"#f9fafb",borderRadius:6,fontSize:"0.85rem"}}>{agentEmailDraft.cc}</div>
+                <div style={{padding:"0.45rem 0.65rem",background:"#f9fafb",borderRadius:8,fontSize:"0.85rem"}}>{agentEmailDraft.cc}</div>
               </div>
             )}
             <div style={{marginBottom:"0.6rem"}}>
               <div style={{fontSize:"0.7rem",fontWeight:700,color:"#6b7280",marginBottom:"0.2rem"}}>件名</div>
               <input type="text" value={agentEmailDraft.subject} onChange={e=>setAgentEmailDraft(p=>({...p, subject:e.target.value}))}
-                style={{width:"100%",padding:"0.5rem 0.65rem",borderRadius:6,border:"1px solid #d1d5db",fontSize:"0.88rem",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                style={{width:"100%",padding:"0.5rem 0.65rem",borderRadius:8,border:"1px solid #d1d5db",fontSize:"0.88rem",fontFamily:"inherit",boxSizing:"border-box"}}/>
             </div>
             <div style={{marginBottom:"1rem"}}>
               <div style={{fontSize:"0.7rem",fontWeight:700,color:"#6b7280",marginBottom:"0.2rem"}}>本文</div>
               <textarea value={agentEmailDraft.body} onChange={e=>setAgentEmailDraft(p=>({...p, body:e.target.value}))}
                 rows={10}
-                style={{width:"100%",padding:"0.55rem 0.7rem",borderRadius:6,border:"1px solid #d1d5db",fontSize:"0.85rem",fontFamily:"inherit",resize:"vertical",lineHeight:1.55,boxSizing:"border-box"}}/>
+                style={{width:"100%",padding:"0.55rem 0.7rem",borderRadius:8,border:"1px solid #d1d5db",fontSize:"0.85rem",fontFamily:"inherit",resize:"vertical",lineHeight:1.55,boxSizing:"border-box"}}/>
             </div>
             <div style={{display:"flex",gap:"0.5rem",justifyContent:"flex-end",flexWrap:"wrap"}}>
-              <button onClick={()=>setAgentEmailDraft(null)} style={{padding:"0.5rem 0.95rem",borderRadius:6,border:"1px solid #d1d5db",background:"white",color:"#6b7280",cursor:"pointer",fontFamily:"inherit",fontSize:"0.82rem",fontWeight:600}}>キャンセル</button>
+              <button onClick={()=>setAgentEmailDraft(null)} style={{padding:"0.5rem 0.95rem",borderRadius:8,border:"1px solid #d1d5db",background:"white",color:"#6b7280",cursor:"pointer",fontFamily:"inherit",fontSize:"0.82rem",fontWeight:600}}>キャンセル</button>
               <button onClick={()=>{
                 // クリップボードへコピー
                 const text = `To: ${agentEmailDraft.to}\n${agentEmailDraft.cc?`Cc: ${agentEmailDraft.cc}\n`:""}Subject: ${agentEmailDraft.subject}\n\n${agentEmailDraft.body}`;
                 navigator.clipboard?.writeText(text);
                 alert("📋 メール全文をコピーしました");
-              }} style={{padding:"0.5rem 0.95rem",borderRadius:6,border:"1px solid #d1d5db",background:"white",color:"#374151",cursor:"pointer",fontFamily:"inherit",fontSize:"0.82rem",fontWeight:700}}>📋 コピー</button>
+              }} style={{padding:"0.5rem 0.95rem",borderRadius:8,border:"1px solid #d1d5db",background:"white",color:"#374151",cursor:"pointer",fontFamily:"inherit",fontSize:"0.82rem",fontWeight:700}}>📋 コピー</button>
               <button onClick={()=>{
                 // mailto で開く
                 const to = encodeURIComponent(agentEmailDraft.to);
@@ -36504,7 +36507,7 @@ export default function App() {
                 const subject = encodeURIComponent(agentEmailDraft.subject);
                 const body = encodeURIComponent(agentEmailDraft.body);
                 window.location.href = `mailto:${to}?${cc?`cc=${cc}&`:""}subject=${subject}&body=${body}`;
-              }} style={{padding:"0.5rem 0.95rem",borderRadius:6,border:"1px solid #d1d5db",background:"white",color:"#5b5bd6",cursor:"pointer",fontFamily:"inherit",fontSize:"0.82rem",fontWeight:700}}>📧 メーラーで開く</button>
+              }} style={{padding:"0.5rem 0.95rem",borderRadius:8,border:"1px solid #d1d5db",background:"white",color:"#5b5bd6",cursor:"pointer",fontFamily:"inherit",fontSize:"0.82rem",fontWeight:700}}>📧 メーラーで開く</button>
               {/* ✅ v192: MyDesk から直接送信 */}
               <button onClick={async ()=>{
                 if (!window.confirm(`📤 MyDesk から直接送信しますか？\n\nTo: ${agentEmailDraft.to}\nSubject: ${agentEmailDraft.subject}`)) return;
@@ -36547,7 +36550,7 @@ export default function App() {
                 } catch(e) {
                   alert(`❌ 送信エラー: ${e.message}`);
                 }
-              }} style={{padding:"0.5rem 0.95rem",borderRadius:6,border:"none",background:"#059669",color:"white",cursor:"pointer",fontFamily:"inherit",fontSize:"0.82rem",fontWeight:700}}>📤 MyDesk から送信</button>
+              }} style={{padding:"0.5rem 0.95rem",borderRadius:8,border:"none",background:"#009122",color:"white",cursor:"pointer",fontFamily:"inherit",fontSize:"0.82rem",fontWeight:700}}>📤 MyDesk から送信</button>
             </div>
           </div>
         </div>
@@ -36557,7 +36560,7 @@ export default function App() {
         <div style={{position:"fixed",top:0,left:0,right:0,zIndex:1002,background:"linear-gradient(90deg, #5b5bd6, #7c7cf0)",padding:"0.6rem 1rem",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.65rem",color:"white",boxShadow:"0 2px 8px rgba(91,91,214,0.3)"}}>
           <span style={{fontSize:"0.95rem"}}>✨</span>
           <span style={{fontSize:"0.82rem",fontWeight:700,letterSpacing:"-0.005em"}}>新しいバージョンがあります</span>
-          <button onClick={forceAppUpdate} style={{background:"white",border:"none",cursor:"pointer",color:"#5b5bd6",fontWeight:800,fontSize:"0.78rem",padding:"0.3rem 0.85rem",borderRadius:"0.4rem",fontFamily:"inherit"}}>今すぐ更新</button>
+          <button onClick={forceAppUpdate} style={{background:"white",border:"none",cursor:"pointer",color:"#5b5bd6",fontWeight:800,fontSize:"0.78rem",padding:"0.3rem 0.85rem",borderRadius:"0.5rem",fontFamily:"inherit"}}>今すぐ更新</button>
           <button onClick={()=>setUpdateAvailable(false)} title="後で" style={{background:"none",border:"none",cursor:"pointer",color:"white",opacity:0.7,fontSize:"1rem",padding:"0 0.2rem",lineHeight:1}}>✕</button>
         </div>
       )}
@@ -36569,9 +36572,9 @@ export default function App() {
       )}
       {/* 保存エラーバナー */}
       {saveError&&(
-        <div style={{position:"fixed",top:0,left:0,right:0,zIndex:1001,background:"#fee2e2",borderBottom:"2px solid #dc2626",padding:"0.4rem 0.75rem",fontSize:"0.75rem",fontWeight:700,color:"#991b1b",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
+        <div style={{position:"fixed",top:0,left:0,right:0,zIndex:1001,background:"#fee2e2",borderBottom:"2px solid #DA1313",padding:"0.4rem 0.75rem",fontSize:"0.75rem",fontWeight:700,color:"#991b1b",display:"flex",alignItems:"center",justifyContent:"center",gap:"0.5rem"}}>
           ⚠️ 保存に失敗しました
-          <button onClick={()=>{setSaveError(""); window.__myDeskLastSave=0; window.location.reload();}} style={{background:"#dc2626",border:"none",cursor:"pointer",color:"white",fontWeight:700,fontSize:"0.7rem",padding:"0.2rem 0.5rem",borderRadius:"0.4rem"}}>再読み込み</button>
+          <button onClick={()=>{setSaveError(""); window.__myDeskLastSave=0; window.location.reload();}} style={{background:"#DA1313",border:"none",cursor:"pointer",color:"white",fontWeight:700,fontSize:"0.7rem",padding:"0.2rem 0.5rem",borderRadius:"0.5rem"}}>再読み込み</button>
           <button onClick={()=>setSaveError("")} style={{background:"none",border:"none",cursor:"pointer",color:"#991b1b",fontWeight:800,fontSize:"1rem",padding:"0 0.1rem",lineHeight:1}}>✕</button>
         </div>
       )}
