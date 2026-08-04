@@ -15,7 +15,7 @@ namespace BoatRace.UI
     public class GameFlow : MonoBehaviour
     {
         /// <summary>ビルド識別子。画面右上に表示され、更新が届いたか一目で分かる。</summary>
-        public const string Build = "B21-トップv2+技カード+視認性";
+        public const string Build = "B21b-コンパイル修正";
 
         RaceManager race;
         ReplayManager replay;
@@ -1104,7 +1104,8 @@ namespace BoatRace.UI
                 new Vector2(0.27f, 0.46f), new Vector2(0.97f, 0.66f), Vector2.zero, Vector2.zero, bold: true);
             UiKit.MakeText(pc.transform, $"{totalPower:N0}", 30, ink, TextAnchor.MiddleLeft,
                 new Vector2(0.27f, 0.08f), new Vector2(0.72f, 0.46f), Vector2.zero, Vector2.zero, bold: true);
-            UiKit.MakeText(pc.transform, $"／ エース艇 0{race.playerBoatIndex >= 0 ? race.playerBoatIndex + 1 : 1} {BoatDesign.Names[race.playerBoatIndex >= 0 ? race.playerBoatIndex : 0]}",
+            int aceIdx = race.playerBoatIndex >= 0 ? race.playerBoatIndex : 0;
+            UiKit.MakeText(pc.transform, $"／ エース艇 0{aceIdx + 1} {BoatDesign.Names[aceIdx]}",
                 12, sub, TextAnchor.LowerLeft,
                 new Vector2(0.70f, 0.10f), new Vector2(0.99f, 0.40f), Vector2.zero, Vector2.zero);
 
