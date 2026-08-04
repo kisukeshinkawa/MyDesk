@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-06-v332-portal-url"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-06-v333-stock-dashboard"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -197,6 +197,9 @@ const EMAIL_AI_API_URL = (typeof import.meta !== "undefined" && import.meta.env?
 const AGENT_API_URL = (typeof import.meta !== "undefined" && import.meta.env?.VITE_AGENT_API_URL) || "";
 // メール受信 Lambda URL（手動受信用）
 const FETCH_EMAILS_URL = "https://kh4ppnjygtrezwlbnc6umysci40zflac.lambda-url.ap-northeast-1.on.aws/";
+// 株式分析 Lambda（mydesk-stock-analysis）Function URL。デプロイ後にここへ直書き、
+// または「📈 株式」タブ初回画面から貼り付け（localStorage md_stock_api_url が優先される）
+const STOCK_API_URL = "";
 
 // 新川さんのメール署名（送信時に自動付加）
 const MAIL_SIGNATURES = {
@@ -31064,6 +31067,426 @@ async function exportMultiMonthPPTX(sys, currentMk, allAnalytics) {
   await pres.writeFile({fileName});
 }
 
+// ─── 📈 株式分析（プロトレーダーダッシュボード v333） ────────────────────────
+// mydesk-stock-analysis Lambda を呼び出し、地合い・テクニカル・ファンダ・
+// ニュース・AI判定(プロトレーダー脳)を1画面に統合する
+const STOCK_VERDICT_META = {
+  strong_buy:{label:"🚀 強い買い",color:"#065f46",bg:"#d1fae5"},
+  buy:       {label:"🟢 買い",    color:"#065f46",bg:"#d1fae5"},
+  hold:      {label:"🟡 様子見",  color:"#92400e",bg:"#fef3c7"},
+  avoid:     {label:"⚪ 見送り",  color:"#4b5563",bg:"#f1f3f4"},
+  sell:      {label:"🔴 売り",    color:"#991b1b",bg:"#fee2e2"},
+};
+const STOCK_QUAD_META = {
+  "本命":     {color:"#065f46",bg:"#d1fae5"},
+  "押し目待ち":{color:"#1563CA",bg:"#e8f0fe"},
+  "短期限定": {color:"#92400e",bg:"#fef3c7"},
+  "見送り":   {color:"#4b5563",bg:"#f1f3f4"},
+};
+
+function StockSparkline({spark=[],ma25=[],width=560,height=110}) {
+  if(!spark||spark.length<2) return null;
+  const all = spark.concat((ma25||[]).filter(v=>v!=null));
+  const min = Math.min(...all), max = Math.max(...all);
+  const range = (max-min)||1;
+  const px = i => (i/(spark.length-1))*width;
+  const py = v => height-6-((v-min)/range)*(height-12);
+  const line = arr => arr.map((v,i)=>v==null?null:`${px(i).toFixed(1)},${py(v).toFixed(1)}`).filter(Boolean).join(" ");
+  const up = spark[spark.length-1] >= spark[0];
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} style={{width:"100%",height:"auto",display:"block"}}>
+      <polyline points={line(spark)} fill="none" stroke={up?"#009122":"#DA1313"} strokeWidth="2"/>
+      {ma25&&ma25.some(v=>v!=null)&&<polyline points={line(ma25)} fill="none" stroke="#8A93A3" strokeWidth="1.5" strokeDasharray="4 3"/>}
+    </svg>
+  );
+}
+
+function StockScoreBar({label,score,signal}) {
+  const color = score>=70?"#009122":(score>=45?"#BE4A04":"#8A93A3");
+  return (
+    <div style={{marginBottom:"0.4rem"}}>
+      <div style={{display:"flex",justifyContent:"space-between",fontSize:"0.72rem",fontWeight:700,color:C.textSub,marginBottom:"0.15rem"}}>
+        <span>{label}</span><span style={{color}}>{score}点</span>
+      </div>
+      <div style={{height:8,borderRadius:4,background:C.borderLight,overflow:"hidden"}}>
+        <div style={{width:`${Math.min(100,score)}%`,height:"100%",background:color,borderRadius:4,transition:"width 0.4s"}}/>
+      </div>
+    </div>
+  );
+}
+
+function StockView({currentUser}) {
+  const [apiUrl, setApiUrl]       = useState(()=>localStorage.getItem("md_stock_api_url")||STOCK_API_URL);
+  const [urlInput, setUrlInput]   = useState("");
+  const [watchlist, setWatchlist] = useState(()=>{try{return JSON.parse(localStorage.getItem("md_stock_watchlist")||"[]");}catch{return [];}});
+  const [results, setResults]     = useState({});   // ticker -> analyze結果
+  const [market, setMarket]       = useState(null); // 地合い
+  const [selected, setSelected]   = useState(null); // 詳細表示中ticker
+  const [brains, setBrains]       = useState({});   // ticker -> brain結果
+  const [newsMap, setNewsMap]     = useState({});   // ticker -> news[]
+  const [busy, setBusy]           = useState({});   // {all:bool, brain:bool, news:bool, add:bool}
+  const [query, setQuery]         = useState("");
+  const [candidates, setCandidates] = useState(null);
+  const [weight, setWeight]       = useState(()=>{const v=parseInt(localStorage.getItem("md_stock_weight")||"50",10);return isNaN(v)?50:v;}); // 短期比重%
+  const [mktFilter, setMktFilter] = useState("all");
+  const [errMsg, setErrMsg]       = useState("");
+
+  const api = async (payload, timeoutMs=90000) => {
+    const url = localStorage.getItem("md_stock_api_url")||STOCK_API_URL;
+    if(!url) throw new Error("APIのURLが未設定です");
+    const ctrl = new AbortController();
+    const timer = setTimeout(()=>ctrl.abort(), timeoutMs);
+    try {
+      const r = await fetch(url, {method:"POST",headers:DB_API_HEADERS,body:JSON.stringify(payload),signal:ctrl.signal});
+      const j = await r.json();
+      if(!r.ok||j.error) throw new Error(j.error||`HTTP ${r.status}`);
+      return j;
+    } finally { clearTimeout(timer); }
+  };
+
+  const saveWatchlist = (list) => { setWatchlist(list); localStorage.setItem("md_stock_watchlist", JSON.stringify(list)); };
+
+  const refreshAll = async (list) => {
+    const wl = list||watchlist;
+    setBusy(b=>({...b,all:true})); setErrMsg("");
+    try {
+      const mkt = await api({action:"market"});
+      setMarket(mkt);
+      if(wl.length){
+        const res = await api({action:"analyze-batch",tickers:wl.map(w=>w.ticker)}, 300000);
+        const map = {};
+        (res.results||[]).forEach(a=>{map[a.ticker]=a;});
+        setResults(r=>({...r,...map}));
+        if(res.errors&&res.errors.length) setErrMsg(res.errors.map(e=>`${e.ticker}: ${e.error}`).join(" / "));
+      }
+    } catch(e) { setErrMsg("更新エラー: "+e.message); }
+    setBusy(b=>({...b,all:false}));
+  };
+
+  useEffect(()=>{ if(apiUrl) refreshAll(); /* eslint-disable-next-line */ },[]);
+
+  const searchStock = async () => {
+    if(!query.trim()) return;
+    setBusy(b=>({...b,add:true})); setCandidates(null);
+    try { const r = await api({action:"search",query:query.trim()}); setCandidates(r.candidates||[]); }
+    catch(e){ setErrMsg("検索エラー: "+e.message); }
+    setBusy(b=>({...b,add:false}));
+  };
+
+  const addStock = async (cand) => {
+    if(watchlist.some(w=>w.ticker===cand.ticker)) { setCandidates(null); setQuery(""); return; }
+    const wl = [...watchlist, {ticker:cand.ticker,name:cand.name,market:cand.market}];
+    saveWatchlist(wl); setCandidates(null); setQuery("");
+    setBusy(b=>({...b,all:true}));
+    try { const a = await api({action:"analyze",ticker:cand.ticker}); setResults(r=>({...r,[a.ticker]:a})); }
+    catch(e){ setErrMsg(`${cand.ticker} 分析エラー: `+e.message); }
+    setBusy(b=>({...b,all:false}));
+  };
+
+  const removeStock = (ticker) => {
+    saveWatchlist(watchlist.filter(w=>w.ticker!==ticker));
+    if(selected===ticker) setSelected(null);
+  };
+
+  const loadNews = async (ticker) => {
+    setBusy(b=>({...b,news:true}));
+    try { const a=results[ticker]; const r = await api({action:"news",ticker,name:a?.name||""}); setNewsMap(m=>({...m,[ticker]:r.news||[]})); }
+    catch(e){ setErrMsg("ニュース取得エラー: "+e.message); }
+    setBusy(b=>({...b,news:false}));
+  };
+
+  const runBrain = async (ticker) => {
+    setBusy(b=>({...b,brain:true})); setErrMsg("");
+    try {
+      const r = await api({action:"brain",ticker}, 180000);
+      setBrains(m=>({...m,[ticker]:r}));
+      if(r.analysis) setResults(res=>({...res,[ticker]:r.analysis}));
+      if(r.news) setNewsMap(m=>({...m,[ticker]:r.news}));
+    } catch(e){ setErrMsg("AI分析エラー: "+e.message); }
+    setBusy(b=>({...b,brain:false}));
+  };
+
+  const weighted = (a) => a ? Math.round(a.short.score*(weight/100) + a.long.score*(1-weight/100)) : 0;
+
+  const rows = watchlist
+    .filter(w=>mktFilter==="all"||w.market===mktFilter)
+    .map(w=>({...w, a:results[w.ticker]}))
+    .sort((x,y)=>weighted(y.a)-weighted(x.a));
+
+  const sel = selected ? results[selected] : null;
+  const selBrain = selected ? brains[selected] : null;
+  const selNews = selected ? newsMap[selected] : null;
+
+  const card = {background:"white",borderRadius:"1rem",padding:"1rem",border:`1px solid ${C.border}`,boxShadow:C.shadow};
+
+  // ── 初期設定画面(Lambda URL未設定) ──
+  if(!apiUrl) return (
+    <div style={{maxWidth:560}}>
+      <div style={{fontWeight:800,fontSize:"1.1rem",color:C.text,marginBottom:"1rem"}}>📈 株式分析</div>
+      <div style={card}>
+        <div style={{fontWeight:800,fontSize:"0.95rem",color:C.text,marginBottom:"0.6rem"}}>初期設定</div>
+        <div style={{fontSize:"0.82rem",color:C.textSub,lineHeight:1.7,marginBottom:"0.85rem"}}>
+          株式分析Lambda（mydesk-stock-analysis）のFunction URLを貼り付けてください。<br/>
+          デプロイ手順はリポジトリの <b>lambda/mydesk-stock-analysis/README.md</b> 参照。
+        </div>
+        <input type="text" value={urlInput} onChange={e=>setUrlInput(e.target.value)}
+          placeholder="https://xxxx.lambda-url.ap-northeast-1.on.aws/"
+          style={{width:"100%",padding:"0.625rem 0.75rem",borderRadius:"0.625rem",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box",marginBottom:"0.75rem"}}/>
+        <button onClick={()=>{const u=urlInput.trim(); if(!u.startsWith("https://")){alert("https:// から始まるURLを入力してください");return;} localStorage.setItem("md_stock_api_url",u); setApiUrl(u); refreshAll();}}
+          style={{width:"100%",padding:"0.7rem",borderRadius:8,border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.88rem",cursor:"pointer",fontFamily:"inherit"}}>
+          保存して開始
+        </button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{paddingBottom:"1.5rem"}}>
+      {/* ヘッダー */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:"0.6rem",marginBottom:"1rem"}}>
+        <div style={{fontWeight:800,fontSize:"1.1rem",color:C.text}}>📈 株式分析 <span style={{fontSize:"0.7rem",fontWeight:600,color:C.textMuted}}>プロトレーダーダッシュボード</span></div>
+        <div style={{display:"flex",alignItems:"center",gap:"0.6rem",flexWrap:"wrap"}}>
+          <div style={{display:"flex",alignItems:"center",gap:"0.35rem",fontSize:"0.7rem",fontWeight:700,color:C.textSub}}>
+            長期
+            <input type="range" min="0" max="100" step="10" value={weight}
+              onChange={e=>{const v=parseInt(e.target.value,10);setWeight(v);localStorage.setItem("md_stock_weight",String(v));}}
+              style={{width:90,accentColor:C.accent}}/>
+            短期 <span style={{color:C.accent}}>{weight}%</span>
+          </div>
+          <button onClick={()=>refreshAll()} disabled={busy.all}
+            style={{padding:"0.5rem 0.9rem",borderRadius:8,border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",opacity:busy.all?0.6:1}}>
+            {busy.all?"分析中...":"🔄 全銘柄を再分析"}
+          </button>
+        </div>
+      </div>
+
+      {errMsg&&<div style={{padding:"0.6rem 0.85rem",borderRadius:8,background:C.redBg,color:C.red,fontSize:"0.78rem",fontWeight:600,marginBottom:"0.85rem"}}>{errMsg}</div>}
+
+      {/* 地合いパネル */}
+      {market&&(
+        <div style={{...card,marginBottom:"0.85rem",padding:"0.85rem 1rem"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:"0.4rem",marginBottom:"0.6rem"}}>
+            <div style={{fontWeight:800,fontSize:"0.85rem",color:C.text}}>🌐 地合い</div>
+            <span style={S.chip(market.mood==="risk-on"?C.greenBg:(market.mood==="risk-off"?C.redBg:C.yellowBg), market.mood==="risk-on"?C.green:(market.mood==="risk-off"?C.red:C.yellow))}>{market.moodLabel}</span>
+          </div>
+          <div style={{display:"flex",gap:"0.5rem",overflowX:"auto",WebkitOverflowScrolling:"touch",paddingBottom:"0.2rem"}}>
+            {(market.indices||[]).map(r=>(
+              <div key={r.symbol} style={{flexShrink:0,minWidth:108,padding:"0.5rem 0.65rem",borderRadius:"0.625rem",background:C.bg,border:`1px solid ${C.borderLight}`}}>
+                <div style={{fontSize:"0.68rem",fontWeight:700,color:C.textMuted,marginBottom:"0.15rem"}}>{r.label}</div>
+                {r.error
+                  ? <div style={{fontSize:"0.7rem",color:C.textMuted}}>取得失敗</div>
+                  : <>
+                      <div style={{fontSize:"0.88rem",fontWeight:800,color:C.text}}>{Number(r.price).toLocaleString()}</div>
+                      <div style={{fontSize:"0.68rem",fontWeight:700,color:r.chg1d>=0?C.green:C.red}}>{r.chg1d>=0?"+":""}{r.chg1d}% <span style={{color:C.textMuted,fontWeight:500}}>/5日{r.chg5d>=0?"+":""}{r.chg5d}%</span></div>
+                    </>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 銘柄追加 + フィルタ */}
+      <div style={{...card,marginBottom:"0.85rem",padding:"0.75rem 1rem"}}>
+        <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap",alignItems:"center"}}>
+          <input type="text" value={query} onChange={e=>setQuery(e.target.value)}
+            onKeyDown={e=>{if(e.key==="Enter")searchStock();}}
+            placeholder="銘柄名 or ティッカー（例: トヨタ / 7203.T / AAPL）"
+            style={{flex:1,minWidth:200,padding:"0.55rem 0.7rem",borderRadius:"0.625rem",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
+          <button onClick={searchStock} disabled={busy.add}
+            style={{padding:"0.55rem 0.95rem",borderRadius:8,border:"none",background:C.accentBg,color:C.accentDark,fontWeight:700,fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit"}}>
+            {busy.add?"検索中...":"🔍 検索して追加"}
+          </button>
+          <div style={{display:"flex",gap:"0.25rem"}}>
+            {[["all","全部"],["JP","🇯🇵日本"],["US","🇺🇸米国"]].map(([v,l])=>(
+              <button key={v} onClick={()=>setMktFilter(v)}
+                style={{padding:"0.4rem 0.7rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:"0.72rem",fontWeight:700,background:mktFilter===v?C.accent:C.borderLight,color:mktFilter===v?"white":C.textSub}}>{l}</button>
+            ))}
+          </div>
+        </div>
+        {candidates&&(
+          <div style={{marginTop:"0.6rem",border:`1px solid ${C.borderLight}`,borderRadius:"0.625rem",overflow:"hidden"}}>
+            {candidates.length===0&&<div style={{padding:"0.6rem 0.8rem",fontSize:"0.78rem",color:C.textMuted}}>該当なし。日本株はティッカー直打ち（例: 7203.T）も試してください</div>}
+            {candidates.map(c=>(
+              <div key={c.ticker} onClick={()=>addStock(c)}
+                style={{padding:"0.55rem 0.8rem",borderBottom:`1px solid ${C.borderLight}`,cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",background:"white"}}
+                onMouseEnter={e=>e.currentTarget.style.background=C.surfaceHover}
+                onMouseLeave={e=>e.currentTarget.style.background="white"}>
+                <div>
+                  <span style={{fontWeight:700,fontSize:"0.82rem",color:C.text}}>{c.name}</span>
+                  <span style={{fontSize:"0.72rem",color:C.textMuted,marginLeft:"0.5rem"}}>{c.ticker} / {c.exchange}</span>
+                </div>
+                <span style={{fontSize:"0.75rem",color:C.accent,fontWeight:700}}>＋追加</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ウォッチリスト */}
+      <div style={{...card,marginBottom:"0.85rem",padding:0,overflow:"hidden"}}>
+        <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:"0.8rem",minWidth:640}}>
+            <thead>
+              <tr style={{background:C.bg}}>
+                {["銘柄","現在値","前日比","短期","長期","総合","判定",""].map((h,i)=>(
+                  <th key={i} style={{padding:"0.55rem 0.7rem",textAlign:i===0?"left":"right",fontSize:"0.68rem",fontWeight:700,color:C.textMuted,whiteSpace:"nowrap",borderBottom:`1px solid ${C.border}`}}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.length===0&&(
+                <tr><td colSpan={8} style={{padding:"1.5rem",textAlign:"center",color:C.textMuted,fontSize:"0.82rem"}}>
+                  ウォッチリストが空です。上の検索から銘柄を追加してください
+                </td></tr>
+              )}
+              {rows.map(({ticker,name,market:mkt,a})=>{
+                const q = a?STOCK_QUAD_META[a.quadrant]:null;
+                return (
+                  <tr key={ticker} onClick={()=>{setSelected(ticker); if(!newsMap[ticker]) loadNews(ticker);}}
+                    style={{cursor:"pointer",background:selected===ticker?C.surfaceHover:"white",borderBottom:`1px solid ${C.borderLight}`}}>
+                    <td style={{padding:"0.6rem 0.7rem"}}>
+                      <div style={{fontWeight:700,color:C.text,whiteSpace:"nowrap"}}>{mkt==="JP"?"🇯🇵":"🇺🇸"} {a?.name||name}</div>
+                      <div style={{fontSize:"0.68rem",color:C.textMuted}}>{ticker}{a?.sector?` / ${a.sector}`:""}</div>
+                    </td>
+                    <td style={{padding:"0.6rem 0.7rem",textAlign:"right",fontWeight:700,color:C.text,whiteSpace:"nowrap"}}>{a?Number(a.price).toLocaleString():"—"}</td>
+                    <td style={{padding:"0.6rem 0.7rem",textAlign:"right",fontWeight:700,whiteSpace:"nowrap",color:a?(a.chg1d>=0?C.green:C.red):C.textMuted}}>{a?`${a.chg1d>=0?"+":""}${a.chg1d}%`:"—"}</td>
+                    <td style={{padding:"0.6rem 0.7rem",textAlign:"right",fontWeight:800,color:a?(a.short.score>=70?C.green:(a.short.score>=45?C.yellow:C.textMuted)):C.textMuted}}>{a?a.short.score:"—"}</td>
+                    <td style={{padding:"0.6rem 0.7rem",textAlign:"right",fontWeight:800,color:a?(a.long.score>=70?C.green:(a.long.score>=50?C.yellow:C.textMuted)):C.textMuted}}>{a?a.long.score:"—"}</td>
+                    <td style={{padding:"0.6rem 0.7rem",textAlign:"right",fontWeight:800,color:C.accent}}>{a?weighted(a):"—"}</td>
+                    <td style={{padding:"0.6rem 0.7rem",textAlign:"right"}}>{q&&<span style={S.chip(q.bg,q.color)}>{a.quadrant}</span>}</td>
+                    <td style={{padding:"0.6rem 0.5rem",textAlign:"right"}}>
+                      <button onClick={e=>{e.stopPropagation();if(confirm(`${name} をウォッチリストから削除しますか？`))removeStock(ticker);}}
+                        style={{...S.iconBtn,color:C.textMuted,fontSize:"0.8rem"}}>✕</button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* 銘柄詳細 */}
+      {sel&&(
+        <div style={{display:"flex",gap:"0.85rem",flexWrap:"wrap",alignItems:"flex-start"}}>
+          {/* 左: スコアカード */}
+          <div style={{...card,flex:"1 1 380px",minWidth:0}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"0.5rem"}}>
+              <div>
+                <div style={{fontWeight:800,fontSize:"1rem",color:C.text}}>{sel.name} <span style={{fontSize:"0.72rem",color:C.textMuted,fontWeight:600}}>{sel.ticker}</span></div>
+                <div style={{fontSize:"0.85rem",fontWeight:800,color:C.text,marginTop:"0.2rem"}}>
+                  {Number(sel.price).toLocaleString()} {sel.currency}
+                  <span style={{marginLeft:"0.4rem",fontSize:"0.75rem",color:sel.chg1d>=0?C.green:C.red}}>{sel.chg1d>=0?"+":""}{sel.chg1d}%</span>
+                </div>
+                <div style={{fontSize:"0.68rem",color:C.textMuted,marginTop:"0.15rem"}}>52週: {Number(sel.lo52).toLocaleString()}〜{Number(sel.hi52).toLocaleString()} / RSI {sel.rsi} / ATR {sel.atr}</div>
+              </div>
+              {STOCK_QUAD_META[sel.quadrant]&&<span style={S.chip(STOCK_QUAD_META[sel.quadrant].bg,STOCK_QUAD_META[sel.quadrant].color)}>{sel.quadrant}</span>}
+            </div>
+            <div style={{margin:"0.5rem 0 0.75rem",padding:"0.5rem",background:C.bg,borderRadius:"0.625rem"}}>
+              <StockSparkline spark={sel.spark} ma25={sel.sparkMa25}/>
+              <div style={{fontSize:"0.62rem",color:C.textMuted,textAlign:"right"}}>直近60営業日 / 点線=25日移動平均</div>
+            </div>
+            <StockScoreBar label={`⚡ 短期テクニカル（${sel.short.signal==="buy"?"買い候補":sel.short.signal==="watch"?"監視":"見送り"}）`} score={sel.short.score}/>
+            <div style={{marginBottom:"0.7rem"}}>
+              {sel.short.breakdown.map((b,i)=>(
+                <div key={i} style={{fontSize:"0.72rem",color:C.textSub,lineHeight:1.55,marginTop:"0.2rem"}}>
+                  <b style={{color:C.text}}>{b.category} {b.points}/{b.max}</b>　{b.reason}
+                </div>
+              ))}
+            </div>
+            <StockScoreBar label={`🏛️ 長期ファンダ（${sel.long.signal==="buy"?"投資候補":sel.long.signal==="watch"?"条件付き":"見送り"}）`} score={sel.long.score}/>
+            <div>
+              {sel.long.breakdown.map((b,i)=>(
+                <div key={i} style={{fontSize:"0.72rem",color:C.textSub,lineHeight:1.55,marginTop:"0.2rem"}}>
+                  <b style={{color:C.text}}>{b.category} {b.points}/{b.max}</b>　{b.reason}
+                </div>
+              ))}
+              {sel.long.missing&&sel.long.missing.length>0&&(
+                <div style={{fontSize:"0.68rem",color:C.textMuted,marginTop:"0.3rem"}}>※データ取得不可: {sel.long.missing.join("、")}</div>
+              )}
+            </div>
+          </div>
+
+          {/* 右: AI判定 + ニュース */}
+          <div style={{flex:"1 1 380px",minWidth:0,display:"flex",flexDirection:"column",gap:"0.85rem"}}>
+            {/* プロトレーダー脳 */}
+            <div style={card}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.6rem"}}>
+                <div style={{fontWeight:800,fontSize:"0.9rem",color:C.text}}>🧠 プロトレーダーAI判定</div>
+                <button onClick={()=>runBrain(sel.ticker)} disabled={busy.brain}
+                  style={{padding:"0.45rem 0.85rem",borderRadius:8,border:"none",background:"linear-gradient(135deg,#7A5AD9,#0070D4)",color:"white",fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",opacity:busy.brain?0.6:1}}>
+                  {busy.brain?"分析中(〜30秒)...":selBrain?"🔄 再分析":"▶ AI分析を実行"}
+                </button>
+              </div>
+              {!selBrain&&!busy.brain&&(
+                <div style={{fontSize:"0.75rem",color:C.textMuted,lineHeight:1.6}}>
+                  テクニカル・ファンダ・最新ニュース・地合いを統合し、プロトレーダーの思考プロセスで
+                  「エントリー戦略・損切り・利確目標」までを提示します。
+                </div>
+              )}
+              {selBrain&&selBrain.brain&&(()=>{
+                const b = selBrain.brain;
+                const vm = STOCK_VERDICT_META[b.verdict]||STOCK_VERDICT_META.hold;
+                return (
+                  <div>
+                    <div style={{display:"flex",alignItems:"center",gap:"0.5rem",flexWrap:"wrap",marginBottom:"0.6rem"}}>
+                      <span style={{...S.chip(vm.bg,vm.color),fontSize:"0.82rem",padding:"0.3rem 0.75rem"}}>{vm.label}</span>
+                      <span style={{fontSize:"0.78rem",color:"#BE4A04",fontWeight:700}}>確信度 {"★".repeat(Math.max(1,Math.min(5,b.conviction||1)))}{"☆".repeat(5-Math.max(1,Math.min(5,b.conviction||1)))}</span>
+                      {b.news_sentiment&&<span style={S.chip(b.news_sentiment==="positive"?C.greenBg:(b.news_sentiment==="negative"?C.redBg:C.borderLight), b.news_sentiment==="positive"?C.green:(b.news_sentiment==="negative"?C.red:C.textSub))}>ニュース{b.news_sentiment==="positive"?"好材料":b.news_sentiment==="negative"?"悪材料":"中立"}</span>}
+                    </div>
+                    <div style={{fontSize:"0.8rem",color:C.text,lineHeight:1.7,marginBottom:"0.7rem",whiteSpace:"pre-wrap"}}>{b.summary}</div>
+                    {[["🎯 エントリー",b.entry_plan],["🛑 損切り",b.stop_loss],["💰 利確目標",b.targets],["⏳ 想定期間",b.time_horizon]].map(([l,v])=>v&&(
+                      <div key={l} style={{display:"flex",gap:"0.5rem",fontSize:"0.75rem",lineHeight:1.6,marginBottom:"0.3rem"}}>
+                        <span style={{flexShrink:0,fontWeight:700,color:C.textSub,minWidth:86}}>{l}</span>
+                        <span style={{color:C.text}}>{v}</span>
+                      </div>
+                    ))}
+                    {b.catalysts&&b.catalysts.length>0&&(
+                      <div style={{marginTop:"0.5rem",padding:"0.5rem 0.7rem",background:C.greenBg,borderRadius:8}}>
+                        <div style={{fontSize:"0.7rem",fontWeight:800,color:C.green,marginBottom:"0.2rem"}}>📈 カタリスト</div>
+                        {b.catalysts.map((x,i)=><div key={i} style={{fontSize:"0.73rem",color:C.text,lineHeight:1.55}}>・{x}</div>)}
+                      </div>
+                    )}
+                    {b.risks&&b.risks.length>0&&(
+                      <div style={{marginTop:"0.4rem",padding:"0.5rem 0.7rem",background:C.redBg,borderRadius:8}}>
+                        <div style={{fontSize:"0.7rem",fontWeight:800,color:C.red,marginBottom:"0.2rem"}}>⚠️ リスク</div>
+                        {b.risks.map((x,i)=><div key={i} style={{fontSize:"0.73rem",color:C.text,lineHeight:1.55}}>・{x}</div>)}
+                      </div>
+                    )}
+                    <div style={{fontSize:"0.62rem",color:C.textMuted,marginTop:"0.5rem",textAlign:"right"}}>分析: {selBrain.market?.moodLabel||""} / {new Date(selBrain.updatedAt).toLocaleString("ja-JP")}</div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* ニュース */}
+            <div style={card}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.5rem"}}>
+                <div style={{fontWeight:800,fontSize:"0.9rem",color:C.text}}>📰 関連ニュース</div>
+                <button onClick={()=>loadNews(sel.ticker)} disabled={busy.news} style={{...S.iconBtn,color:C.accent,fontSize:"0.75rem",fontWeight:700}}>{busy.news?"取得中...":"🔄 更新"}</button>
+              </div>
+              {(!selNews||selNews.length===0)&&<div style={{fontSize:"0.75rem",color:C.textMuted}}>{busy.news?"取得中...":"ニュースが見つかりません"}</div>}
+              {(selNews||[]).map((n,i)=>(
+                <a key={i} href={n.link} target="_blank" rel="noopener noreferrer"
+                  style={{display:"block",padding:"0.45rem 0",borderBottom:`1px solid ${C.borderLight}`,textDecoration:"none"}}>
+                  <div style={{fontSize:"0.77rem",fontWeight:600,color:C.accentDark,lineHeight:1.5}}>{n.title}</div>
+                  <div style={{fontSize:"0.64rem",color:C.textMuted,marginTop:"0.1rem"}}>{n.source}{n.published?` / ${n.published}`.slice(0,30):""}</div>
+                </a>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 免責 */}
+      <div style={{marginTop:"1rem",fontSize:"0.65rem",color:C.textMuted,textAlign:"center",lineHeight:1.6}}>
+        本画面の情報は参考情報であり、投資勧誘・投資助言ではありません。投資判断はご自身の責任で行ってください。<br/>
+        株価データはYahoo Finance（日本株は約20分遅延）、ニュースはYahoo Finance/Google Newsより取得。
+      </div>
+    </div>
+  );
+}
+
 function AnalyticsView({data,setData,currentUser,users=[],saveWithPush}) {
   if(!saveWithPush) saveWithPush=(nd)=>{
     window.__myDeskLastSave = Date.now();
@@ -36104,6 +36527,7 @@ export default function App() {
     {id:"email",    emoji:"✉️", label:"メール"},
     {id:"sales",    emoji:"💼", label:"営業"},
     {id:"quotes",   emoji:"💰", label:"見積"},
+    {id:"stocks",   emoji:"📈", label:"株式"},
     {id:"analytics",emoji:"📊", label:"分析"},
     {id:"mypage",   emoji:"⚙️", label:"設定"},
   ];
@@ -36437,6 +36861,7 @@ export default function App() {
               onNavigateToMuni={(id,prefId)=>{setNavTarget({type:"muni",id,prefId});persistTab("md_tab","sales",setTab);}}
               onNavigateToEmail={(draft)=>{ window.__myDeskEmailDraft = draft||null; persistTab("md_tab","email",setTab); }}
               salesNavTarget={salesNavTarget} clearSalesNavTarget={()=>setSalesNavTarget(null)}/>}
+            {tab==="stocks"    && <StockView currentUser={currentUser}/>}
             {tab==="analytics" && <AnalyticsView data={data} setData={setData} currentUser={currentUser} users={users} saveWithPush={saveWithPush}/>}
             {tab==="mypage"    && <MyPageView currentUser={currentUser} setCurrentUser={setCurrentUser} users={users} setUsers={setUsers} onLogout={handleLogout} pushEnabled={pushEnabled} setPushEnabled={setPushEnabled} subscribePush={subscribePush} unsubscribePush={unsubscribePush} data={data} setData={setData}/>}
           </ErrorBoundary>
