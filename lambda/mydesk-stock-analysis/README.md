@@ -88,6 +88,27 @@ curl -s -X POST $URL -H "content-type: application/json" -H "x-mydesk-secret: my
 
 定期学習の推奨: EventBridgeで週1回 `{action:"learn"}` を叩くルールを作ると放置で精度が上がっていく（Phase4）。
 
+## v336追加機能
+
+| action | 内容 |
+|---|---|
+| `watchlist-get` / `watchlist-set` | ウォッチリストのサーバー保存(3人共有・保有情報`holding:{price,qty}`含む) |
+| `screen` | 日米主力65銘柄を短期スコアで一括採点し上位15を返す(`exclude`で登録済み除外、`market`でJP/US絞り込み) |
+| `daily-report` / `report-latest` | 朝レポート生成/取得。シグナル変化・保有損益±(利確+20%/損切り-8%)・決算接近を自動アラート |
+| `brain`に`holding` | 保有中と伝えると継続/利確/損切りの判断(`position_advice`)を返す |
+
+### 毎朝の自動レポート設定（EventBridge）
+
+1. EventBridgeコンソール → ルール作成 → 名前 `mydesk-stock-morning`
+2. スケジュール: cron式 `0 22 * * ? *`（UTC 22:00 = **JST朝7:00**。市場が開く前）
+3. ターゲット: Lambda関数 `mydesk-stock-analysis`（入力は既定のままでOK。EventBridge経由の起動を自動判別して朝レポートを実行）
+4. メールでも受け取る場合はLambda環境変数を追加:
+   - `MAIL_SENDER_URL` = mydesk-mail-senderのFunction URL
+   - `REPORT_EMAIL_TO` = k-shinkawa@beetle-ems.com
+   - `REPORT_EMAIL_ACCOUNT` = k-shinkawa@beetle-ems.com
+   ※送信payloadは`{account,to,subject,body}`で組んである。mail-sender側の実フィールド名と違う場合は`run_daily_report`末尾を合わせて修正
+5. 週1回の自動学習も推奨: 同様にルール `mydesk-stock-weekly-learn`（`0 21 ? * SUN *`）→ ただしEventBridge起動は朝レポート固定のため、学習はLambdaテスト実行 or フロントのボタンで実施（自動化したい場合はイベント入力`{"source":"aws.events","learn":true}`の分岐を追加）
+
 ## 注意
 
 - yfinanceは非公式API。Yahoo側変更で壊れたら `pip install -U yfinance` でレイヤー再作成が第一手。

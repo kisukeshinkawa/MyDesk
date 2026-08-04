@@ -52,6 +52,9 @@ MARKET_TICKERS = [
 
 
 def lambda_handler(event, context):
+    # EventBridge定期実行(毎朝スキャン→朝レポート生成→メール)
+    if event.get("source") == "aws.events":
+        return _res(200, run_daily_report())
     method = (event.get("requestContext", {}).get("http", {}) or {}).get("method", "POST")
     if method == "OPTIONS":
         return _res(200, {})
@@ -82,7 +85,8 @@ def lambda_handler(event, context):
         if action == "news":
             return _res(200, {"news": get_news(body["ticker"], body.get("name", ""))})
         if action == "brain":
-            return _res(200, brain_analysis(body["ticker"], body.get("name", "")))
+            return _res(200, brain_analysis(body["ticker"], body.get("name", ""),
+                                            body.get("holding")))
         if action == "search":
             return _res(200, {"candidates": search_symbol(body.get("query", ""))})
         if action == "performance":
@@ -93,6 +97,18 @@ def lambda_handler(event, context):
             return _res(200, run_backtest(body.get("tickers"),
                                           int(body.get("years", 10)),
                                           bool(body.get("apply", False))))
+        if action == "watchlist-get":
+            return _res(200, {"items": _load_json_s3(WATCHLIST_KEY, [])})
+        if action == "watchlist-set":
+            items = (body.get("items") or [])[:50]
+            _save_json_s3(WATCHLIST_KEY, items)
+            return _res(200, {"ok": True, "count": len(items)})
+        if action == "screen":
+            return _res(200, run_screen(body.get("exclude") or [], body.get("market", "all")))
+        if action == "daily-report":
+            return _res(200, run_daily_report(send_mail=bool(body.get("sendMail", False))))
+        if action == "report-latest":
+            return _res(200, _load_json_s3(REPORT_KEY, {"body": "", "date": None}))
         return _res(400, {"error": f"unknown action: {action}"})
     except Exception as e:
         import traceback
@@ -126,8 +142,11 @@ def cache_put(key, payload):
 
 
 # ═══════════════════════ 学習ストア(予測履歴・重み・教訓) ═══════════════════════
-PRED_KEY   = "stock-learn/predictions.json"   # 予測の記録(あとで答え合わせ)
-CONFIG_KEY = "stock-learn/config.json"        # 因子重み・教訓・成績
+PRED_KEY      = "stock-learn/predictions.json"   # 予測の記録(あとで答え合わせ)
+CONFIG_KEY    = "stock-learn/config.json"        # 因子重み・教訓・成績
+WATCHLIST_KEY = "stock-learn/watchlist.json"     # ウォッチリスト(サーバー共有・保有情報含む)
+SIGNALS_KEY   = "stock-learn/last_signals.json"  # 前回シグナル(変化検知用)
+REPORT_KEY    = "stock-learn/daily_report.json"  # 最新の朝レポート
 
 
 def _load_json_s3(key, default):
@@ -538,6 +557,9 @@ def analyze_ticker(ticker):
         "atr": round(tech["atr"], 2),
         "rsi": round(tech["rsi"], 1),
         "short": short, "long": long_, "quadrant": quadrant,
+        "earningsDate": (datetime.fromtimestamp(_g(info, "earningsTimestamp", "earningsTimestampStart"),
+                                                tz=timezone.utc).strftime("%Y-%m-%d")
+                         if isinstance(_g(info, "earningsTimestamp", "earningsTimestampStart"), (int, float)) else None),
         "regime": {"benchAboveMa200": regime_on,
                    "bench": "日経平均" if is_jp else "S&P500"},
         "spark": tech["spark"], "sparkMa25": tech["spark_ma25"],
@@ -958,10 +980,11 @@ BRAIN_SYSTEM = """あなたは機関投資家出身で20年のキャリアを持
  "targets":"利確目標(第1・第2目標の価格)",
  "time_horizon":"想定保有期間",
  "risks":["リスク要因を2〜4個"],
- "catalysts":["株価材料・カタリストを1〜3個"]}"""
+ "catalysts":["株価材料・カタリストを1〜3個"],
+ "position_advice":"保有中と伝えられた場合のみ: 継続/利確/損切りの具体的助言。未保有ならnull"}"""
 
 
-def brain_analysis(ticker, name=""):
+def brain_analysis(ticker, name="", holding=None):
     analysis = analyze_ticker(ticker)
     news = get_news(ticker, name or analysis.get("name", ""))
     market = get_market_overview()
@@ -988,6 +1011,14 @@ def brain_analysis(ticker, name=""):
 
 【直近ニュース】
 {news_text}"""
+
+    if holding and holding.get("price"):
+        pnl = (analysis["price"] / float(holding["price"]) - 1) * 100
+        user_prompt += (f"\n\n【保有状況】取得単価{holding['price']} {analysis['currency']}"
+                        f"{'×'+str(holding['qty'])+'株' if holding.get('qty') else ''}"
+                        f" / 現在の損益 {pnl:+.1f}%。継続・利確・損切りの判断も必ず示すこと。")
+    if analysis.get("earningsDate"):
+        user_prompt += f"\n【決算予定日】{analysis['earningsDate']}(持ち越しリスクを考慮すること)"
 
     # ── 学習成果の注入(教訓・実績・この銘柄への過去判定) ──
     cfg = load_learn_config()
@@ -1030,6 +1061,148 @@ def brain_analysis(ticker, name=""):
     return {"ticker": ticker, "analysis": analysis, "news": news,
             "market": {"mood": market["mood"], "moodLabel": market["moodLabel"]},
             "brain": brain, "updatedAt": datetime.now(timezone.utc).isoformat()}
+
+
+# ═══════════════════════ スクリーニング(有望銘柄の発掘) ═══════════════════════
+SCREEN_UNIVERSE = [
+    # 日本株(主力・流動性上位)
+    ("7203.T", "トヨタ自動車"), ("6758.T", "ソニーG"), ("8306.T", "三菱UFJ"), ("9984.T", "ソフトバンクG"),
+    ("6501.T", "日立製作所"), ("8058.T", "三菱商事"), ("6981.T", "村田製作所"), ("9433.T", "KDDI"),
+    ("4063.T", "信越化学"), ("7974.T", "任天堂"), ("8035.T", "東京エレクトロン"), ("6098.T", "リクルート"),
+    ("8766.T", "東京海上"), ("9983.T", "ファーストリテイリング"), ("4519.T", "中外製薬"), ("6902.T", "デンソー"),
+    ("8001.T", "伊藤忠商事"), ("8031.T", "三井物産"), ("7741.T", "HOYA"), ("6367.T", "ダイキン工業"),
+    ("6594.T", "ニデック"), ("4568.T", "第一三共"), ("9432.T", "NTT"), ("8316.T", "三井住友FG"),
+    ("2914.T", "JT"), ("6273.T", "SMC"), ("6857.T", "アドバンテスト"), ("4901.T", "富士フイルム"),
+    ("6954.T", "ファナック"), ("7011.T", "三菱重工"), ("9101.T", "日本郵船"), ("5401.T", "日本製鉄"),
+    ("4503.T", "アステラス製薬"), ("8591.T", "オリックス"), ("2802.T", "味の素"),
+    # 米国株(メガ・大型)
+    ("AAPL", "Apple"), ("MSFT", "Microsoft"), ("GOOGL", "Alphabet"), ("AMZN", "Amazon"),
+    ("NVDA", "NVIDIA"), ("META", "Meta"), ("TSLA", "Tesla"), ("BRK-B", "Berkshire"),
+    ("JPM", "JPMorgan"), ("V", "Visa"), ("JNJ", "J&J"), ("WMT", "Walmart"),
+    ("UNH", "UnitedHealth"), ("XOM", "ExxonMobil"), ("PG", "P&G"), ("MA", "Mastercard"),
+    ("HD", "HomeDepot"), ("KO", "CocaCola"), ("COST", "Costco"), ("AMD", "AMD"),
+    ("CRM", "Salesforce"), ("NFLX", "Netflix"), ("DIS", "Disney"), ("MCD", "McDonald's"),
+    ("CAT", "Caterpillar"), ("GE", "GE Aerospace"), ("PFE", "Pfizer"), ("INTC", "Intel"),
+    ("BA", "Boeing"), ("GS", "GoldmanSachs"),
+]
+
+
+def run_screen(exclude=None, market="all"):
+    """スクリーニング: 日米主力ユニバースを短期スコアで一括採点し上位を返す。
+    (長期ファンダはinfo取得が重くタイムアウトするため、追加後の個別分析で確認する設計)"""
+    cache_key = f"screen/{market}.json"
+    cached = cache_get(cache_key, PRICE_TTL)
+    exclude = set(exclude or [])
+    if cached:
+        return {**cached, "results": [r for r in cached["results"] if r["ticker"] not in exclude]}
+
+    cfg = load_learn_config()
+    weights = cfg.get("factor_weights")
+    bench_ret = {}
+    for sym, key in (("^N225", "JP"), ("^GSPC", "US")):
+        try:
+            b = fetch_history(sym, "300d")["Close"]
+            bench_ret[key] = ((float(b.iloc[-1]) / float(b.iloc[-21]) - 1) * 100 if len(b) >= 21 else 0,
+                              float(b.iloc[-1]) > float(b.rolling(200).mean().iloc[-1]) if len(b) >= 200 else True)
+        except Exception:
+            bench_ret[key] = (0, True)
+
+    results, errors = [], 0
+    for ticker, name in SCREEN_UNIVERSE:
+        mkt = "JP" if ticker.endswith(".T") else "US"
+        if market != "all" and market != mkt:
+            continue
+        try:
+            df = fetch_history(ticker, "300d")
+            f = build_indicator_frame(df)
+            tech = _row_to_tech(f, len(f) - 1)
+            b_ret, b_regime = bench_ret[mkt]
+            sc = score_short(tech, b_ret, weights)
+            if not b_regime and sc["signal"] == "buy":
+                sc["signal"] = "watch"
+            results.append({"ticker": ticker, "name": name, "market": mkt,
+                            "price": round(tech["price"], 2), "chg1d": round(tech["chg1d"], 2),
+                            "score": sc["score"], "signal": sc["signal"],
+                            "top": [b["reason"] for b in sorted(sc["breakdown"],
+                                    key=lambda x: -(x["points"] / x["max"] if x["max"] else 0))[:2]]})
+        except Exception as e:
+            errors += 1
+            print("screen failed:", ticker, e)
+    results.sort(key=lambda r: -r["score"])
+    out = {"results": results[:15], "scanned": len(results), "errors": errors,
+           "updatedAt": datetime.now(timezone.utc).isoformat()}
+    cache_put(cache_key, out)
+    out = {**out, "results": [r for r in out["results"] if r["ticker"] not in exclude]}
+    return out
+
+
+# ═══════════════════════ 朝レポート(定期スキャン・シグナル変化検知) ═══════════════════════
+def run_daily_report(send_mail=True):
+    """ウォッチリスト全銘柄をスキャンし、シグナル変化・保有損益・地合いをレポート化。
+    EventBridge(毎朝)から自動実行され、S3保存+メール送信(環境変数設定時)。"""
+    wl = _load_json_s3(WATCHLIST_KEY, [])
+    market = get_market_overview()
+    prev = _load_json_s3(SIGNALS_KEY, {})
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    SIG_JA = {"buy": "買い候補", "watch": "監視", "avoid": "見送り"}
+    alerts, lines, cur = [], [], {}
+    for w in wl[:30]:
+        try:
+            a = analyze_ticker(w["ticker"])
+        except Exception as e:
+            lines.append(f"・{w.get('name', w['ticker'])}: 取得失敗({e})")
+            continue
+        sig = a["short"]["signal"]
+        cur[w["ticker"]] = sig
+        old = prev.get(w["ticker"])
+        if old and old != sig:
+            arrow = "📈" if sig == "buy" else ("📉" if sig == "avoid" else "🔔")
+            alerts.append(f"{arrow} {a['name']}: シグナル変化 {SIG_JA.get(old, old)} → {SIG_JA.get(sig, sig)}")
+        pnl_txt = ""
+        h = w.get("holding")
+        if h and h.get("price"):
+            pct = (a["price"] / float(h["price"]) - 1) * 100
+            pnl_txt = f" | 保有損益 {pct:+.1f}%"
+            if pct <= -8:
+                alerts.append(f"🛑 {a['name']}: 損失{pct:+.1f}% 損切り検討ライン")
+            elif pct >= 20:
+                alerts.append(f"💰 {a['name']}: 利益{pct:+.1f}% 利確検討ライン")
+        if a.get("earningsDate"):
+            try:
+                days = (datetime.strptime(a["earningsDate"], "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                        - datetime.now(timezone.utc)).days
+                if 0 <= days <= 7:
+                    alerts.append(f"📅 {a['name']}: 決算発表が近い({a['earningsDate']}) 持ち越し注意")
+            except Exception:
+                pass
+        lines.append(f"・{a['name']}({a['ticker']}) {a['price']:,} {a['chg1d']:+}% "
+                     f"短期{a['short']['score']}点/長期{a['long']['score']}点 [{a['quadrant']}]{pnl_txt}")
+
+    _save_json_s3(SIGNALS_KEY, cur)
+    body = (f"【MyDesk 株式 朝レポート】{today}\n\n"
+            f"■ 地合い: {market['moodLabel']}\n\n"
+            f"■ アラート\n" + ("\n".join(alerts) if alerts else "特になし") + "\n\n"
+            f"■ ウォッチリスト({len(wl)}銘柄)\n" + ("\n".join(lines) if lines else "登録なし") + "\n\n"
+            f"※参考情報であり投資助言ではありません")
+    report = {"date": today, "body": body, "alerts": alerts,
+              "updatedAt": datetime.now(timezone.utc).isoformat()}
+    _save_json_s3(REPORT_KEY, report)
+
+    mail_url = os.environ.get("MAIL_SENDER_URL", "")
+    mail_to = os.environ.get("REPORT_EMAIL_TO", "")
+    if send_mail and mail_url and mail_to:
+        try:  # mydesk-mail-sender経由で本人名義送信(payloadは実装に合わせて調整)
+            payload = {"account": os.environ.get("REPORT_EMAIL_ACCOUNT", mail_to),
+                       "to": [mail_to], "subject": f"📈 MyDesk株式 朝レポート {today}", "body": body}
+            req = urllib.request.Request(mail_url, data=json.dumps(payload).encode(),
+                                         headers={"Content-Type": "application/json"})
+            urllib.request.urlopen(req, timeout=30)
+            report["mailed"] = True
+        except Exception as e:
+            print("report mail failed:", e)
+            report["mailed"] = False
+    return report
 
 
 # ═══════════════════════ 銘柄検索 ═══════════════════════

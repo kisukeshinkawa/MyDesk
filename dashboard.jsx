@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-06-v335-stock-backtest10y"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-06-v336-stock-full"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -31133,6 +31133,11 @@ function StockView({currentUser}) {
   const [perf, setPerf]           = useState(null);  // {stats, config} 学習・成績
   const [showLearn, setShowLearn] = useState(false);
   const [btRep, setBtRep]         = useState(null);  // 10年バックテスト結果
+  const [screenRes, setScreenRes] = useState(null);  // スクリーニング結果
+  const [report, setReport]       = useState(null);  // 朝レポート
+  const [showReport, setShowReport] = useState(false);
+  const [holdEdit, setHoldEdit]   = useState(false); // 保有登録フォーム表示
+  const [holdForm, setHoldForm]   = useState({price:"",qty:""});
 
   const api = async (payload, timeoutMs=90000) => {
     const url = localStorage.getItem("md_stock_api_url")||STOCK_API_URL;
@@ -31147,7 +31152,10 @@ function StockView({currentUser}) {
     } finally { clearTimeout(timer); }
   };
 
-  const saveWatchlist = (list) => { setWatchlist(list); localStorage.setItem("md_stock_watchlist", JSON.stringify(list)); };
+  const saveWatchlist = (list, push=true) => {
+    setWatchlist(list); localStorage.setItem("md_stock_watchlist", JSON.stringify(list));
+    if(push) api({action:"watchlist-set",items:list}).catch(()=>{}); // サーバー共有(3人で同じリストを見る)
+  };
 
   const refreshAll = async (list) => {
     const wl = list||watchlist;
@@ -31166,7 +31174,18 @@ function StockView({currentUser}) {
     setBusy(b=>({...b,all:false}));
   };
 
-  useEffect(()=>{ if(apiUrl) refreshAll(); /* eslint-disable-next-line */ },[]);
+  useEffect(()=>{ if(!apiUrl) return; (async()=>{
+    // サーバーのウォッチリストを正とし、無ければローカルをアップロード
+    try {
+      const r = await api({action:"watchlist-get"});
+      if(r.items&&r.items.length){
+        setWatchlist(r.items); localStorage.setItem("md_stock_watchlist", JSON.stringify(r.items));
+        refreshAll(r.items); return;
+      }
+      if(watchlist.length) api({action:"watchlist-set",items:watchlist}).catch(()=>{});
+    } catch(e){ /* 旧Lambda(watchlist未対応)でも動くようフォールバック */ }
+    refreshAll();
+  })(); /* eslint-disable-next-line */ },[]);
 
   const searchStock = async () => {
     if(!query.trim()) return;
@@ -31227,10 +31246,29 @@ function StockView({currentUser}) {
     setBusy(b=>({...b,bt:false}));
   };
 
+  const runScreen = async () => {
+    setBusy(b=>({...b,screen:true})); setErrMsg("");
+    try {
+      const r = await api({action:"screen",exclude:watchlist.map(w=>w.ticker),market:mktFilter==="all"?"all":mktFilter}, 300000);
+      setScreenRes(r);
+    } catch(e){ setErrMsg("スキャンエラー: "+e.message); }
+    setBusy(b=>({...b,screen:false}));
+  };
+
+  const loadReport = async (generate) => {
+    setBusy(b=>({...b,report:true})); setErrMsg("");
+    try {
+      const r = await api(generate?{action:"daily-report",sendMail:false}:{action:"report-latest"}, 300000);
+      setReport(r);
+    } catch(e){ setErrMsg("レポートエラー: "+e.message); }
+    setBusy(b=>({...b,report:false}));
+  };
+
   const runBrain = async (ticker) => {
     setBusy(b=>({...b,brain:true})); setErrMsg("");
     try {
-      const r = await api({action:"brain",ticker}, 180000);
+      const holding = (watchlist.find(w=>w.ticker===ticker)||{}).holding;
+      const r = await api({action:"brain",ticker,holding:holding||undefined}, 180000);
       setBrains(m=>({...m,[ticker]:r}));
       if(r.analysis) setResults(res=>({...res,[ticker]:r.analysis}));
       if(r.news) setNewsMap(m=>({...m,[ticker]:r.news}));
@@ -31459,6 +31497,10 @@ function StockView({currentUser}) {
             style={{padding:"0.55rem 0.95rem",borderRadius:8,border:"none",background:C.accentBg,color:C.accentDark,fontWeight:700,fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit"}}>
             {busy.add?"検索中...":"🔍 検索して追加"}
           </button>
+          <button onClick={runScreen} disabled={busy.screen}
+            style={{padding:"0.55rem 0.95rem",borderRadius:8,border:"none",background:C.purpleBg,color:C.purple,fontWeight:700,fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit",opacity:busy.screen?0.6:1}}>
+            {busy.screen?"スキャン中(1〜2分)...":"🔎 有望銘柄スキャン"}
+          </button>
           <div style={{display:"flex",gap:"0.25rem"}}>
             {[["all","全部"],["JP","🇯🇵日本"],["US","🇺🇸米国"]].map(([v,l])=>(
               <button key={v} onClick={()=>setMktFilter(v)}
@@ -31466,6 +31508,29 @@ function StockView({currentUser}) {
             ))}
           </div>
         </div>
+        {screenRes&&(
+          <div style={{marginTop:"0.6rem",border:`1px solid ${C.borderLight}`,borderRadius:"0.625rem",overflow:"hidden"}}>
+            <div style={{padding:"0.5rem 0.8rem",background:C.purpleBg,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{fontSize:"0.75rem",fontWeight:800,color:C.purple}}>🔎 短期スコア上位(日米主力{screenRes.scanned}銘柄をスキャン・ウォッチリスト除く)</span>
+              <button onClick={()=>setScreenRes(null)} style={{background:"none",border:"none",color:C.purple,cursor:"pointer",fontWeight:700}}>✕</button>
+            </div>
+            {(screenRes.results||[]).map(c=>(
+              <div key={c.ticker} style={{padding:"0.55rem 0.8rem",borderBottom:`1px solid ${C.borderLight}`,display:"flex",justifyContent:"space-between",alignItems:"center",gap:"0.5rem",background:"white"}}>
+                <div style={{minWidth:0}}>
+                  <span style={{fontWeight:700,fontSize:"0.82rem",color:C.text}}>{c.market==="JP"?"🇯🇵":"🇺🇸"} {c.name}</span>
+                  <span style={{fontSize:"0.72rem",color:C.textMuted,marginLeft:"0.4rem"}}>{c.ticker} / {Number(c.price).toLocaleString()} ({c.chg1d>=0?"+":""}{c.chg1d}%)</span>
+                  <div style={{fontSize:"0.68rem",color:C.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{(c.top||[]).join(" / ")}</div>
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:"0.5rem",flexShrink:0}}>
+                  <span style={{fontWeight:800,fontSize:"0.85rem",color:c.score>=70?C.green:(c.score>=45?C.yellow:C.textMuted)}}>{c.score}点</span>
+                  <button onClick={()=>addStock({ticker:c.ticker,name:c.name,market:c.market})}
+                    style={{padding:"0.35rem 0.7rem",borderRadius:8,border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}}>＋追加</button>
+                </div>
+              </div>
+            ))}
+            {(!screenRes.results||screenRes.results.length===0)&&<div style={{padding:"0.6rem 0.8rem",fontSize:"0.75rem",color:C.textMuted}}>高スコア銘柄なし(全て登録済みか、地合いが弱い可能性)</div>}
+          </div>
+        )}
         {candidates&&(
           <div style={{marginTop:"0.6rem",border:`1px solid ${C.borderLight}`,borderRadius:"0.625rem",overflow:"hidden"}}>
             {candidates.length===0&&<div style={{padding:"0.6rem 0.8rem",fontSize:"0.78rem",color:C.textMuted}}>該当なし。日本株はティッカー直打ち（例: 7203.T）も試してください</div>}
@@ -31485,34 +31550,67 @@ function StockView({currentUser}) {
         )}
       </div>
 
+      {/* 📰 朝レポート */}
+      <div style={{...card,marginBottom:"0.85rem",padding:"0.85rem 1rem"}}>
+        <div onClick={()=>{const n=!showReport; setShowReport(n); if(n&&!report&&!busy.report) loadReport(false);}}
+          style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"}}>
+          <div style={{fontWeight:800,fontSize:"0.85rem",color:C.text}}>📰 朝レポート <span style={{fontSize:"0.68rem",fontWeight:600,color:C.textMuted}}>全銘柄スキャン・シグナル変化と保有損益のアラート(毎朝自動化可)</span></div>
+          <span style={{fontSize:"0.8rem",color:C.textMuted}}>{showReport?"▲":"▼"}</span>
+        </div>
+        {showReport&&(
+          <div style={{marginTop:"0.75rem"}}>
+            <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap",marginBottom:"0.6rem"}}>
+              <button onClick={()=>loadReport(true)} disabled={busy.report}
+                style={{padding:"0.5rem 0.95rem",borderRadius:8,border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",opacity:busy.report?0.6:1}}>
+                {busy.report?"生成中...":"▶ 今すぐ生成"}
+              </button>
+              <button onClick={()=>loadReport(false)} disabled={busy.report}
+                style={{padding:"0.5rem 0.95rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}}>
+                🔄 最新を表示
+              </button>
+            </div>
+            {report&&report.alerts&&report.alerts.length>0&&(
+              <div style={{padding:"0.5rem 0.7rem",background:C.orangeBg,borderRadius:8,marginBottom:"0.5rem"}}>
+                {report.alerts.map((a,i)=><div key={i} style={{fontSize:"0.76rem",fontWeight:700,color:C.orange,lineHeight:1.6}}>{a}</div>)}
+              </div>
+            )}
+            {report&&report.body
+              ? <pre style={{margin:0,padding:"0.6rem 0.8rem",background:C.bg,borderRadius:8,fontSize:"0.72rem",lineHeight:1.65,color:C.text,whiteSpace:"pre-wrap",fontFamily:"inherit",border:`1px solid ${C.borderLight}`}}>{report.body}</pre>
+              : <div style={{fontSize:"0.75rem",color:C.textMuted}}>{busy.report?"":"レポートがまだありません。「今すぐ生成」を押すか、EventBridgeで毎朝の自動生成を設定してください(README参照)"}</div>}
+          </div>
+        )}
+      </div>
+
       {/* ウォッチリスト */}
       <div style={{...card,marginBottom:"0.85rem",padding:0,overflow:"hidden"}}>
         <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
           <table style={{width:"100%",borderCollapse:"collapse",fontSize:"0.8rem",minWidth:640}}>
             <thead>
               <tr style={{background:C.bg}}>
-                {["銘柄","現在値","前日比","短期","長期","総合","判定",""].map((h,i)=>(
+                {["銘柄","現在値","前日比","損益","短期","長期","総合","判定",""].map((h,i)=>(
                   <th key={i} style={{padding:"0.55rem 0.7rem",textAlign:i===0?"left":"right",fontSize:"0.68rem",fontWeight:700,color:C.textMuted,whiteSpace:"nowrap",borderBottom:`1px solid ${C.border}`}}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {rows.length===0&&(
-                <tr><td colSpan={8} style={{padding:"1.5rem",textAlign:"center",color:C.textMuted,fontSize:"0.82rem"}}>
+                <tr><td colSpan={9} style={{padding:"1.5rem",textAlign:"center",color:C.textMuted,fontSize:"0.82rem"}}>
                   ウォッチリストが空です。上の検索から銘柄を追加してください
                 </td></tr>
               )}
-              {rows.map(({ticker,name,market:mkt,a})=>{
+              {rows.map(({ticker,name,market:mkt,a,holding})=>{
                 const q = a?STOCK_QUAD_META[a.quadrant]:null;
+                const pnl = (holding&&holding.price&&a)?(a.price/holding.price-1)*100:null;
                 return (
-                  <tr key={ticker} onClick={()=>{setSelected(ticker); if(!newsMap[ticker]) loadNews(ticker);}}
+                  <tr key={ticker} onClick={()=>{setSelected(ticker); setHoldEdit(false); if(!newsMap[ticker]) loadNews(ticker);}}
                     style={{cursor:"pointer",background:selected===ticker?C.surfaceHover:"white",borderBottom:`1px solid ${C.borderLight}`}}>
                     <td style={{padding:"0.6rem 0.7rem"}}>
-                      <div style={{fontWeight:700,color:C.text,whiteSpace:"nowrap"}}>{mkt==="JP"?"🇯🇵":"🇺🇸"} {a?.name||name}</div>
+                      <div style={{fontWeight:700,color:C.text,whiteSpace:"nowrap"}}>{mkt==="JP"?"🇯🇵":"🇺🇸"} {a?.name||name}{holding?" 💼":""}</div>
                       <div style={{fontSize:"0.68rem",color:C.textMuted}}>{ticker}{a?.sector?` / ${a.sector}`:""}</div>
                     </td>
                     <td style={{padding:"0.6rem 0.7rem",textAlign:"right",fontWeight:700,color:C.text,whiteSpace:"nowrap"}}>{a?Number(a.price).toLocaleString():"—"}</td>
                     <td style={{padding:"0.6rem 0.7rem",textAlign:"right",fontWeight:700,whiteSpace:"nowrap",color:a?(a.chg1d>=0?C.green:C.red):C.textMuted}}>{a?`${a.chg1d>=0?"+":""}${a.chg1d}%`:"—"}</td>
+                    <td style={{padding:"0.6rem 0.7rem",textAlign:"right",fontWeight:800,whiteSpace:"nowrap",color:pnl==null?C.textMuted:(pnl>=0?C.green:C.red)}}>{pnl==null?"—":`${pnl>=0?"+":""}${pnl.toFixed(1)}%`}</td>
                     <td style={{padding:"0.6rem 0.7rem",textAlign:"right",fontWeight:800,color:a?(a.short.score>=70?C.green:(a.short.score>=45?C.yellow:C.textMuted)):C.textMuted}}>{a?a.short.score:"—"}</td>
                     <td style={{padding:"0.6rem 0.7rem",textAlign:"right",fontWeight:800,color:a?(a.long.score>=70?C.green:(a.long.score>=50?C.yellow:C.textMuted)):C.textMuted}}>{a?a.long.score:"—"}</td>
                     <td style={{padding:"0.6rem 0.7rem",textAlign:"right",fontWeight:800,color:C.accent}}>{a?weighted(a):"—"}</td>
@@ -31542,10 +31640,47 @@ function StockView({currentUser}) {
                   <span style={{marginLeft:"0.4rem",fontSize:"0.75rem",color:sel.chg1d>=0?C.green:C.red}}>{sel.chg1d>=0?"+":""}{sel.chg1d}%</span>
                 </div>
                 <div style={{fontSize:"0.68rem",color:C.textMuted,marginTop:"0.15rem"}}>52週: {Number(sel.lo52).toLocaleString()}〜{Number(sel.hi52).toLocaleString()} / RSI {sel.rsi} / ATR {sel.atr}</div>
+                {(()=>{  // 💼 保有ポジション管理
+                  const w = watchlist.find(x=>x.ticker===sel.ticker);
+                  const h = w&&w.holding;
+                  if(holdEdit) return (
+                    <div style={{marginTop:"0.45rem",display:"flex",gap:"0.35rem",alignItems:"center",flexWrap:"wrap"}}>
+                      <input type="number" placeholder="取得単価" value={holdForm.price} onChange={e=>setHoldForm(f=>({...f,price:e.target.value}))}
+                        style={{width:100,padding:"0.35rem 0.5rem",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"inherit",outline:"none"}}/>
+                      <input type="number" placeholder="株数(任意)" value={holdForm.qty} onChange={e=>setHoldForm(f=>({...f,qty:e.target.value}))}
+                        style={{width:90,padding:"0.35rem 0.5rem",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"inherit",outline:"none"}}/>
+                      <button onClick={()=>{
+                        const p=parseFloat(holdForm.price);
+                        if(!p||p<=0){alert("取得単価を入力してください");return;}
+                        saveWatchlist(watchlist.map(x=>x.ticker===sel.ticker?{...x,holding:{price:p,qty:parseFloat(holdForm.qty)||null,date:new Date().toISOString().slice(0,10)}}:x));
+                        setHoldEdit(false);
+                      }} style={{padding:"0.35rem 0.7rem",borderRadius:8,border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}}>保存</button>
+                      <button onClick={()=>setHoldEdit(false)} style={{...S.iconBtn,color:C.textMuted,fontSize:"0.72rem",fontWeight:700}}>キャンセル</button>
+                    </div>
+                  );
+                  if(h&&h.price){
+                    const pct=(sel.price/h.price-1)*100;
+                    return (
+                      <div style={{marginTop:"0.4rem",fontSize:"0.76rem",fontWeight:700,color:C.text,display:"flex",alignItems:"center",gap:"0.5rem",flexWrap:"wrap"}}>
+                        <span>💼 保有中: 取得{Number(h.price).toLocaleString()}{h.qty?`×${h.qty}株`:""} → 損益
+                          <span style={{color:pct>=0?C.green:C.red,marginLeft:"0.25rem"}}>{pct>=0?"+":""}{pct.toFixed(1)}%{h.qty?`(${Math.round((sel.price-h.price)*h.qty).toLocaleString()}${sel.currency==="JPY"?"円":sel.currency})`:""}</span>
+                        </span>
+                        <button onClick={()=>{setHoldForm({price:String(h.price),qty:h.qty?String(h.qty):""});setHoldEdit(true);}} style={{...S.iconBtn,color:C.accent,fontSize:"0.7rem",fontWeight:700}}>編集</button>
+                        <button onClick={()=>{if(confirm("保有登録を解除しますか？"))saveWatchlist(watchlist.map(x=>{const{holding,...rest}=x;return x.ticker===sel.ticker?rest:x;}));}} style={{...S.iconBtn,color:C.textMuted,fontSize:"0.7rem",fontWeight:700}}>解除</button>
+                      </div>
+                    );
+                  }
+                  return <button onClick={()=>{setHoldForm({price:"",qty:""});setHoldEdit(true);}}
+                    style={{...S.iconBtn,color:C.accent,fontSize:"0.72rem",fontWeight:700,marginTop:"0.35rem",padding:0}}>💼 保有を登録(損益追跡＋AIが売り時も判断)</button>;
+                })()}
               </div>
               <div style={{display:"flex",flexDirection:"column",gap:"0.3rem",alignItems:"flex-end"}}>
                 {STOCK_QUAD_META[sel.quadrant]&&<span style={S.chip(STOCK_QUAD_META[sel.quadrant].bg,STOCK_QUAD_META[sel.quadrant].color)}>{sel.quadrant}</span>}
                 {sel.regime&&!sel.regime.benchAboveMa200&&<span style={S.chip(C.redBg,C.red)}>⚠️ {sel.regime.bench}200日線割れ</span>}
+                {sel.earningsDate&&(()=>{
+                  const d=Math.ceil((new Date(sel.earningsDate)-Date.now())/86400000);
+                  return d>=0&&d<=10?<span style={S.chip(C.yellowBg,C.yellow)}>📅 決算{sel.earningsDate}</span>:null;
+                })()}
               </div>
             </div>
             <div style={{margin:"0.5rem 0 0.75rem",padding:"0.5rem",background:C.bg,borderRadius:"0.625rem"}}>
@@ -31601,6 +31736,12 @@ function StockView({currentUser}) {
                       {b.news_sentiment&&<span style={S.chip(b.news_sentiment==="positive"?C.greenBg:(b.news_sentiment==="negative"?C.redBg:C.borderLight), b.news_sentiment==="positive"?C.green:(b.news_sentiment==="negative"?C.red:C.textSub))}>ニュース{b.news_sentiment==="positive"?"好材料":b.news_sentiment==="negative"?"悪材料":"中立"}</span>}
                     </div>
                     <div style={{fontSize:"0.8rem",color:C.text,lineHeight:1.7,marginBottom:"0.7rem",whiteSpace:"pre-wrap"}}>{b.summary}</div>
+                    {b.position_advice&&b.position_advice!=="null"&&(
+                      <div style={{padding:"0.5rem 0.7rem",background:C.accentBg,borderRadius:8,marginBottom:"0.5rem"}}>
+                        <div style={{fontSize:"0.7rem",fontWeight:800,color:C.accentDark,marginBottom:"0.15rem"}}>💼 保有ポジション判断</div>
+                        <div style={{fontSize:"0.78rem",color:C.text,lineHeight:1.6}}>{b.position_advice}</div>
+                      </div>
+                    )}
                     {[["🎯 エントリー",b.entry_plan],["🛑 損切り",b.stop_loss],["💰 利確目標",b.targets],["⏳ 想定期間",b.time_horizon]].map(([l,v])=>v&&(
                       <div key={l} style={{display:"flex",gap:"0.5rem",fontSize:"0.75rem",lineHeight:1.6,marginBottom:"0.3rem"}}>
                         <span style={{flexShrink:0,fontWeight:700,color:C.textSub,minWidth:86}}>{l}</span>
