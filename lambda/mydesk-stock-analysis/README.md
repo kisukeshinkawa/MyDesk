@@ -58,7 +58,23 @@ curl -s -X POST $URL -H "content-type: application/json" -H "x-mydesk-secret: my
 # プロトレーダー脳（Bedrock使用・30秒前後）
 curl -s -X POST $URL -H "content-type: application/json" -H "x-mydesk-secret: mydesk2026secret" \
   -d '{"action":"brain","ticker":"7203.T"}'
+# 学習（バックテスト＋答え合わせ＋因子重み最適化＋教訓抽出・1〜2分）
+curl -s -X POST $URL -H "content-type: application/json" -H "x-mydesk-secret: mydesk2026secret" \
+  -d '{"action":"learn","tickers":["7203.T","AAPL"]}'
+# 成績確認
+curl -s -X POST $URL -H "content-type: application/json" -H "x-mydesk-secret: mydesk2026secret" \
+  -d '{"action":"performance"}'
 ```
+
+## 学習の仕組み（v334）
+
+1. **予測の自動記録**: analyze/brainのたびに「日付・価格・スコア・判定」をS3(`stock-learn/predictions.json`)へ記録（銘柄×日×種別で1回）
+2. **答え合わせ**: 5営業日後・20営業日後の実リターンを自動で書き込み（performance/learn実行時）
+3. **因子重み最適化**: 過去2年の週次バックテスト＋実運用実績から、各テクニカル因子と将来リターンの相関(IC)を計算→重み0.5〜1.5倍を`stock-learn/config.json`に保存→以後の短期スコアに自動適用
+4. **教訓抽出**: 答え合わせ済みのAI判定をBedrockに渡し「どんな判定が外れやすいか」を教訓化→以後のbrain判定プロンプトに自動注入
+5. **自己参照**: brainは判定時に「自分の過去判定の勝率」「その銘柄への過去判定と結果」を見て確信度を調整
+
+定期学習の推奨: EventBridgeで週1回 `{action:"learn"}` を叩くルールを作ると放置で精度が上がっていく（Phase4）。
 
 ## 注意
 

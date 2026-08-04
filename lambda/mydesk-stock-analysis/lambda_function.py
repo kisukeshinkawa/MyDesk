@@ -85,6 +85,10 @@ def lambda_handler(event, context):
             return _res(200, brain_analysis(body["ticker"], body.get("name", "")))
         if action == "search":
             return _res(200, {"candidates": search_symbol(body.get("query", ""))})
+        if action == "performance":
+            return _res(200, get_performance())
+        if action == "learn":
+            return _res(200, run_learn(body.get("tickers")))
         return _res(400, {"error": f"unknown action: {action}"})
     except Exception as e:
         import traceback
@@ -115,6 +119,64 @@ def cache_put(key, payload):
                       ContentType="application/json")
     except Exception as e:
         print("cache_put failed:", e)
+
+
+# ═══════════════════════ 学習ストア(予測履歴・重み・教訓) ═══════════════════════
+PRED_KEY   = "stock-learn/predictions.json"   # 予測の記録(あとで答え合わせ)
+CONFIG_KEY = "stock-learn/config.json"        # 因子重み・教訓・成績
+
+
+def _load_json_s3(key, default):
+    try:
+        obj = s3.get_object(Bucket=S3_BUCKET, Key=key)
+        return json.loads(obj["Body"].read())
+    except Exception:
+        return default
+
+
+def _save_json_s3(key, data):
+    try:
+        s3.put_object(Bucket=S3_BUCKET, Key=key,
+                      Body=json.dumps(data, ensure_ascii=False, default=str).encode(),
+                      ContentType="application/json")
+    except Exception as e:
+        print("save_json failed:", key, e)
+
+
+def load_predictions():
+    return _load_json_s3(PRED_KEY, [])
+
+
+def save_predictions(preds):
+    _save_json_s3(PRED_KEY, preds[-2000:])  # 直近2000件のみ保持
+
+
+def load_learn_config():
+    return _load_json_s3(CONFIG_KEY, {})
+
+
+def record_prediction(rec):
+    """同一銘柄・同一日・同一種別は1回だけ記録"""
+    try:
+        preds = load_predictions()
+        if any(p.get("ticker") == rec["ticker"] and p.get("date") == rec["date"]
+               and p.get("type") == rec["type"] for p in preds):
+            return
+        preds.append(rec)
+        save_predictions(preds)
+    except Exception as e:
+        print("record_prediction failed:", e)
+
+
+def _pearson(xs, ys):
+    n = len(xs)
+    if n < 2:
+        return 0.0
+    mx, my = sum(xs) / n, sum(ys) / n
+    cov = sum((x - mx) * (y - my) for x, y in zip(xs, ys))
+    vx = sum((x - mx) ** 2 for x in xs)
+    vy = sum((y - my) ** 2 for y in ys)
+    return cov / math.sqrt(vx * vy) if vx > 0 and vy > 0 else 0.0
 
 
 # ═══════════════════════ データ取得 ═══════════════════════
@@ -237,8 +299,9 @@ def compute_technical(df):
     }
 
 
-def score_short(t, index_ret1m):
-    """短期テクニカル 100点。breakdown付き。"""
+def score_short(t, index_ret1m, weights=None):
+    """短期テクニカル 100点。breakdown付き。
+    weights: 学習で得た因子重み {カテゴリ名: 0.5〜1.5}。指定時は加重後100点換算。"""
     br = []
     # ① トレンド 25
     pts = 0
@@ -294,9 +357,15 @@ def score_short(t, index_ret1m):
     else: pts, why = 0, f"指数に大きく劣後({rel:.1f}%)"
     br.append({"category": "相対力", "points": pts, "max": 15, "reason": why})
 
-    total = sum(b["points"] for b in br)
+    w = weights or {}
+    if w:
+        num = sum(b["points"] * w.get(b["category"], 1.0) for b in br)
+        den = sum(b["max"] * w.get(b["category"], 1.0) for b in br)
+        total = round(num / den * 100) if den else 0
+    else:
+        total = sum(b["points"] for b in br)
     signal = "buy" if total >= 70 else ("watch" if total >= 45 else "avoid")
-    return {"score": total, "signal": signal, "breakdown": br}
+    return {"score": total, "signal": signal, "breakdown": br, "weighted": bool(w)}
 
 
 # ═══════════════════════ ファンダメンタルズ ═══════════════════════
@@ -426,7 +495,8 @@ def analyze_ticker(ticker):
     except Exception:
         index_ret1m = 0
 
-    short = score_short(tech, index_ret1m)
+    learn_cfg = load_learn_config()
+    short = score_short(tech, index_ret1m, learn_cfg.get("factor_weights"))
 
     info = cache_get(f"info/{ticker}.json", SLOW_TTL)
     if info is None:
@@ -455,6 +525,14 @@ def analyze_ticker(ticker):
         "spark": tech["spark"], "sparkMa25": tech["spark_ma25"],
         "updatedAt": datetime.now(timezone.utc).isoformat(),
     }
+    # 予測を記録(後日答え合わせして学習に使う)
+    record_prediction({
+        "type": "score", "ticker": ticker,
+        "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        "price": out["price"], "signal": short["signal"], "quadrant": quadrant,
+        "short_score": short["score"], "long_score": long_["score"],
+        "factors": {b["category"]: round(b["points"] / b["max"], 3) for b in short["breakdown"]},
+    })
     cache_put(key, out)
     return out
 
@@ -519,6 +597,166 @@ def get_news(ticker, name=""):
     return out
 
 
+# ═══════════════════════ 学習エンジン(答え合わせ・バックテスト・重み最適化) ═══════════════════════
+def evaluate_predictions():
+    """過去の予測に実際のリターンを書き込む(答え合わせ)。
+    5営業日後リターン(ret5)は7日経過後、20営業日後(ret20)は30日経過後に確定。"""
+    preds = load_predictions()
+    now = datetime.now(timezone.utc)
+    need = {}
+    for p in preds:
+        try:
+            age = (now - datetime.strptime(p["date"], "%Y-%m-%d").replace(tzinfo=timezone.utc)).days
+        except Exception:
+            continue
+        if (age >= 7 and p.get("ret5") is None) or (age >= 30 and p.get("ret20") is None):
+            need.setdefault(p["ticker"], []).append(p)
+
+    changed = False
+    for ticker, plist in list(need.items())[:20]:
+        try:
+            df = fetch_history(ticker, "400d")
+        except Exception as e:
+            print("evaluate fetch failed:", ticker, e)
+            continue
+        dates = [d.strftime("%Y-%m-%d") for d in df.index]
+        closes = [float(v) for v in df["Close"].tolist()]
+        for p in plist:
+            base = next((i for i, d in enumerate(dates) if d >= p["date"]), None)
+            if base is None or not p.get("price"):
+                continue
+            if p.get("ret5") is None and base + 5 < len(closes):
+                p["ret5"] = round((closes[base + 5] / p["price"] - 1) * 100, 2)
+                changed = True
+            if p.get("ret20") is None and base + 20 < len(closes):
+                p["ret20"] = round((closes[base + 20] / p["price"] - 1) * 100, 2)
+                changed = True
+    if changed:
+        save_predictions(preds)
+    return preds
+
+
+def compute_stats(preds):
+    """シグナル別・AI判定別の勝率と平均リターン。sell/avoidは下落が「勝ち」。"""
+    def bucket(items, key_fn, ret_key, invert_keys=()):
+        out = {}
+        for p in items:
+            r, k = p.get(ret_key), key_fn(p)
+            if r is None or not k:
+                continue
+            b = out.setdefault(k, {"n": 0, "win": 0, "sum": 0.0})
+            b["n"] += 1
+            b["win"] += 1 if ((r < 0) if k in invert_keys else (r > 0)) else 0
+            b["sum"] += r
+        return {k: {"n": v["n"], "winRate": round(v["win"] / v["n"] * 100),
+                    "avgRet": round(v["sum"] / v["n"], 2)} for k, v in out.items()}
+    scores = [p for p in preds if p.get("type") == "score"]
+    brains = [p for p in preds if p.get("type") == "brain"]
+    return {
+        "bySignal5d":   bucket(scores, lambda p: p.get("signal"), "ret5"),
+        "bySignal20d":  bucket(scores, lambda p: p.get("signal"), "ret20"),
+        "byVerdict5d":  bucket(brains, lambda p: p.get("verdict"), "ret5",  ("sell", "avoid")),
+        "byVerdict20d": bucket(brains, lambda p: p.get("verdict"), "ret20", ("sell", "avoid")),
+        "evaluated": sum(1 for p in preds if p.get("ret5") is not None),
+        "total": len(preds),
+    }
+
+
+def backtest_factors(tickers):
+    """過去2年を週次サンプリングし、各テクニカル因子と20日後リターンの関係を収集。
+    実運用の予測が貯まる前から因子の有効性を学習できる。"""
+    samples = []
+    for t in tickers[:8]:
+        try:
+            df = fetch_history(t, "600d")
+        except Exception as e:
+            print("backtest fetch failed:", t, e)
+            continue
+        closes = [float(v) for v in df["Close"].tolist()]
+        for i in range(90, len(df) - 21, 5):
+            try:
+                tech = compute_technical(df.iloc[:i + 1])
+                sc = score_short(tech, 0)  # 素の因子スコア(重みなし)
+                fwd = (closes[i + 20] / closes[i] - 1) * 100
+                samples.append({"factors": {b["category"]: round(b["points"] / b["max"], 3)
+                                            for b in sc["breakdown"]},
+                                "ret": round(fwd, 2)})
+            except Exception:
+                continue
+    return samples
+
+
+FACTOR_CATS = ["トレンド", "モメンタム", "出来高", "価格位置", "相対力"]
+
+
+def derive_weights(samples):
+    """因子スコアと将来リターンの相関(IC)から重みを算出。
+    IC正=予測に効く因子→重み増、IC負=逆効果→重み減。0.5〜1.5にクリップ。"""
+    weights, ics = {}, {}
+    for c in FACTOR_CATS:
+        pairs = [(s["factors"][c], s["ret"]) for s in samples
+                 if c in s.get("factors", {}) and s.get("ret") is not None]
+        ic = _pearson([p[0] for p in pairs], [p[1] for p in pairs]) if len(pairs) >= 30 else 0.0
+        ics[c] = round(ic, 3)
+        weights[c] = round(max(0.5, min(1.5, 1 + 2 * ic)), 2)
+    return weights, ics
+
+
+def generate_lessons(stats, preds):
+    """答え合わせ済みのAI判定から「教訓」をBedrockに抽出させる。失敗時は空。"""
+    done = [p for p in preds if p.get("type") == "brain" and p.get("ret5") is not None]
+    if not done and not stats.get("bySignal5d"):
+        return []
+    cases = "\n".join(
+        f"- {p['date']} {p['ticker']}: 判定{p.get('verdict','?')}(確信{p.get('conviction','?')}) "
+        f"→ 5日後{p.get('ret5','?')}% / 20日後{p.get('ret20','未確定')}%"
+        for p in done[-30:]) or "(AI判定の確定実績なし)"
+    prompt = f"""あなたは株式トレーディングの検証担当です。以下は過去の売買判定と実際の結果です。
+
+【判定別成績(5日後勝率)】{json.dumps(stats.get('byVerdict5d',{}), ensure_ascii=False)}
+【シグナル別成績(5日後勝率)】{json.dumps(stats.get('bySignal5d',{}), ensure_ascii=False)}
+【個別ケース】
+{cases}
+
+この実績から、今後の判定精度を上げるための具体的な教訓を抽出してください。
+「どういう状況の判定が当たり/外れやすいか」「確信度の付け方の癖」など実践的に。
+出力はJSONのみ: {{"lessons":["教訓1","教訓2",...]}} (最大8個、各60文字以内)"""
+    try:
+        br = boto3.client("bedrock-runtime", region_name=BEDROCK_REGION)
+        resp = br.invoke_model(modelId=BEDROCK_MODEL, body=json.dumps({
+            "anthropic_version": "bedrock-2023-05-31", "max_tokens": 800,
+            "messages": [{"role": "user", "content": prompt}]}))
+        raw = json.loads(resp["body"].read())["content"][0]["text"]
+        m = re.search(r"\{.*\}", raw, re.DOTALL)
+        return (json.loads(m.group(0)).get("lessons") or [])[:8] if m else []
+    except Exception as e:
+        print("generate_lessons failed:", e)
+        return []
+
+
+def run_learn(tickers=None):
+    """学習の全工程: 答え合わせ→バックテスト→因子重み最適化→教訓抽出→保存。"""
+    preds = evaluate_predictions()
+    if not tickers:
+        tickers = list(dict.fromkeys(p["ticker"] for p in reversed(preds)))[:8]
+    bt = backtest_factors(tickers or [])
+    live = [{"factors": p.get("factors", {}), "ret": p.get("ret5")}
+            for p in preds if p.get("type") == "score" and p.get("ret5") is not None]
+    weights, ics = derive_weights(bt + live)
+    stats = compute_stats(preds)
+    lessons = generate_lessons(stats, preds)
+    cfg = {"factor_weights": weights, "factor_ic": ics, "stats": stats,
+           "lessons": lessons, "backtestSamples": len(bt), "liveSamples": len(live),
+           "learnedTickers": tickers, "updatedAt": datetime.now(timezone.utc).isoformat()}
+    _save_json_s3(CONFIG_KEY, cfg)
+    return cfg
+
+
+def get_performance():
+    preds = evaluate_predictions()
+    return {"stats": compute_stats(preds), "config": load_learn_config()}
+
+
 # ═══════════════════════ プロトレーダー脳 (Bedrock) ═══════════════════════
 BRAIN_SYSTEM = """あなたは機関投資家出身で20年のキャリアを持つプロトレーダーです。
 テクニカル・ファンダメンタルズ・ニュースフロー・市場全体の地合いを統合して銘柄を判断します。
@@ -528,6 +766,8 @@ BRAIN_SYSTEM = """あなたは機関投資家出身で20年のキャリアを持
 3. ニュースは「株価にまだ織り込まれていない材料か」を最重視。古い既知の材料は無視
 4. エントリーには必ず損切りライン(ATRベースで直近ボラの1.5〜2倍下 or 直近安値割れ)と利確目標をセットで示す
 5. 確信度が低いときは正直に「見送り」と言う。ポジションを取らないのも戦略
+6. 「過去の教訓」「自分の過去判定の実績」が与えられた場合は最優先で参照し、
+   当たりやすいパターンでは確信度を上げ、外れやすいパターンの判定は慎重に修正する
 
 出力は必ず次のJSONのみ(コードブロック不要):
 {"verdict":"strong_buy|buy|hold|avoid|sell",
@@ -570,6 +810,22 @@ def brain_analysis(ticker, name=""):
 【直近ニュース】
 {news_text}"""
 
+    # ── 学習成果の注入(教訓・実績・この銘柄への過去判定) ──
+    cfg = load_learn_config()
+    preds = load_predictions()
+    if cfg.get("lessons"):
+        user_prompt += "\n\n【過去の失敗・成功から学んだ教訓】\n" + "\n".join(f"- {l}" for l in cfg["lessons"][:8])
+    v_stats = (cfg.get("stats") or {}).get("byVerdict5d") or {}
+    if v_stats:
+        user_prompt += "\n\n【あなたの過去判定の実績(5日後勝率)】\n" + "\n".join(
+            f"- {k}: {v['n']}件 勝率{v['winRate']}% 平均{v['avgRet']:+}%" for k, v in v_stats.items())
+    past = [p for p in preds if p.get("ticker") == ticker and p.get("type") == "brain"
+            and p.get("ret5") is not None][-5:]
+    if past:
+        user_prompt += "\n\n【この銘柄へのあなたの過去判定と結果】\n" + "\n".join(
+            f"- {p['date']} {p.get('verdict','?')}(確信{p.get('conviction','?')}) → 5日後{p['ret5']}% / 20日後{p.get('ret20','未確定')}%"
+            for p in past)
+
     br = boto3.client("bedrock-runtime", region_name=BEDROCK_REGION)
     resp = br.invoke_model(
         modelId=BEDROCK_MODEL,
@@ -583,6 +839,14 @@ def brain_analysis(ticker, name=""):
     raw = json.loads(resp["body"].read())["content"][0]["text"]
     m = re.search(r"\{.*\}", raw, re.DOTALL)
     brain = json.loads(m.group(0)) if m else {"verdict": "hold", "summary": raw}
+
+    # AI判定も記録(後日答え合わせ→教訓生成に使う)
+    record_prediction({
+        "type": "brain", "ticker": ticker,
+        "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        "price": analysis["price"], "verdict": brain.get("verdict"),
+        "conviction": brain.get("conviction"),
+    })
 
     return {"ticker": ticker, "analysis": analysis, "news": news,
             "market": {"mood": market["mood"], "moodLabel": market["moodLabel"]},

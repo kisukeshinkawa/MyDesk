@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-06-v333-stock-dashboard"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-06-v334-stock-learning"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -31130,6 +31130,8 @@ function StockView({currentUser}) {
   const [weight, setWeight]       = useState(()=>{const v=parseInt(localStorage.getItem("md_stock_weight")||"50",10);return isNaN(v)?50:v;}); // 短期比重%
   const [mktFilter, setMktFilter] = useState("all");
   const [errMsg, setErrMsg]       = useState("");
+  const [perf, setPerf]           = useState(null);  // {stats, config} 学習・成績
+  const [showLearn, setShowLearn] = useState(false);
 
   const api = async (payload, timeoutMs=90000) => {
     const url = localStorage.getItem("md_stock_api_url")||STOCK_API_URL;
@@ -31193,6 +31195,22 @@ function StockView({currentUser}) {
     try { const a=results[ticker]; const r = await api({action:"news",ticker,name:a?.name||""}); setNewsMap(m=>({...m,[ticker]:r.news||[]})); }
     catch(e){ setErrMsg("ニュース取得エラー: "+e.message); }
     setBusy(b=>({...b,news:false}));
+  };
+
+  const loadPerf = async () => {
+    setBusy(b=>({...b,perf:true}));
+    try { const r = await api({action:"performance"}, 180000); setPerf(r); }
+    catch(e){ setErrMsg("成績取得エラー: "+e.message); }
+    setBusy(b=>({...b,perf:false}));
+  };
+
+  const runLearn = async () => {
+    setBusy(b=>({...b,learn:true})); setErrMsg("");
+    try {
+      const cfg = await api({action:"learn",tickers:watchlist.map(w=>w.ticker)}, 300000);
+      setPerf({stats:cfg.stats, config:cfg});
+    } catch(e){ setErrMsg("学習エラー: "+e.message); }
+    setBusy(b=>({...b,learn:false}));
   };
 
   const runBrain = async (ticker) => {
@@ -31284,6 +31302,94 @@ function StockView({currentUser}) {
           </div>
         </div>
       )}
+
+      {/* 🎓 AI学習・成績パネル */}
+      <div style={{...card,marginBottom:"0.85rem",padding:"0.85rem 1rem"}}>
+        <div onClick={()=>{const next=!showLearn; setShowLearn(next); if(next&&!perf&&!busy.perf) loadPerf();}}
+          style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"}}>
+          <div style={{fontWeight:800,fontSize:"0.85rem",color:C.text}}>🎓 AI学習・成績 <span style={{fontSize:"0.68rem",fontWeight:600,color:C.textMuted}}>過去の判定実績とバックテストで精度を自動改善</span></div>
+          <span style={{fontSize:"0.8rem",color:C.textMuted}}>{showLearn?"▲":"▼"}</span>
+        </div>
+        {showLearn&&(
+          <div style={{marginTop:"0.75rem"}}>
+            <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap",marginBottom:"0.75rem"}}>
+              <button onClick={runLearn} disabled={busy.learn}
+                style={{padding:"0.5rem 0.95rem",borderRadius:8,border:"none",background:"linear-gradient(135deg,#7A5AD9,#0070D4)",color:"white",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",opacity:busy.learn?0.6:1}}>
+                {busy.learn?"学習中(1〜2分)...":"📚 過去実績＋バックテストで学習"}
+              </button>
+              <button onClick={loadPerf} disabled={busy.perf}
+                style={{padding:"0.5rem 0.95rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}}>
+                {busy.perf?"取得中...":"🔄 成績を更新"}
+              </button>
+            </div>
+            {!perf&&!busy.perf&&<div style={{fontSize:"0.75rem",color:C.textMuted,lineHeight:1.6}}>
+              分析するたびに予測が自動記録され、5営業日後・20営業日後に答え合わせされます。<br/>
+              「学習」を実行すると過去2年分のバックテストで因子の重みを最適化し、外れた判定から教訓を抽出してAI判定に反映します。
+            </div>}
+            {perf&&(()=>{
+              const cfg = perf.config||{};
+              const st = perf.stats||cfg.stats||{};
+              const SIG_LABEL = {buy:"🟢買い候補",watch:"🟡監視",avoid:"⚪見送り"};
+              const VD_LABEL = {strong_buy:"🚀強い買い",buy:"🟢買い",hold:"🟡様子見",avoid:"⚪見送り",sell:"🔴売り"};
+              const statTable = (title,obj,labels)=>obj&&Object.keys(obj).length>0&&(
+                <div style={{flex:"1 1 220px",minWidth:0}}>
+                  <div style={{fontSize:"0.72rem",fontWeight:800,color:C.textSub,marginBottom:"0.3rem"}}>{title}</div>
+                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:"0.72rem"}}>
+                    <tbody>
+                      {Object.entries(obj).map(([k,v])=>(
+                        <tr key={k} style={{borderBottom:`1px solid ${C.borderLight}`}}>
+                          <td style={{padding:"0.3rem 0.2rem",fontWeight:700,color:C.text}}>{labels[k]||k}</td>
+                          <td style={{padding:"0.3rem 0.2rem",textAlign:"right",color:C.textMuted}}>{v.n}件</td>
+                          <td style={{padding:"0.3rem 0.2rem",textAlign:"right",fontWeight:800,color:v.winRate>=55?C.green:(v.winRate>=45?C.yellow:C.red)}}>勝率{v.winRate}%</td>
+                          <td style={{padding:"0.3rem 0.2rem",textAlign:"right",fontWeight:700,color:v.avgRet>=0?C.green:C.red}}>{v.avgRet>=0?"+":""}{v.avgRet}%</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              );
+              return (
+                <div>
+                  {cfg.updatedAt&&(
+                    <div style={{fontSize:"0.68rem",color:C.textMuted,marginBottom:"0.5rem"}}>
+                      最終学習: {new Date(cfg.updatedAt).toLocaleString("ja-JP")} / バックテスト{cfg.backtestSamples||0}サンプル＋実運用{cfg.liveSamples||0}件 / 記録済み予測{st.total||0}件(答え合わせ済{st.evaluated||0}件)
+                    </div>
+                  )}
+                  {cfg.factor_weights&&(
+                    <div style={{marginBottom:"0.6rem"}}>
+                      <div style={{fontSize:"0.72rem",fontWeight:800,color:C.textSub,marginBottom:"0.3rem"}}>⚖️ 学習済み因子重み(短期スコアに自動適用中)</div>
+                      <div style={{display:"flex",gap:"0.35rem",flexWrap:"wrap"}}>
+                        {Object.entries(cfg.factor_weights).map(([k,v])=>(
+                          <span key={k} style={S.chip(v>1.05?C.greenBg:(v<0.95?C.redBg:C.borderLight), v>1.05?C.green:(v<0.95?C.red:C.textSub))}>
+                            {k} ×{v}{cfg.factor_ic&&cfg.factor_ic[k]!=null?` (IC ${cfg.factor_ic[k]>=0?"+":""}${cfg.factor_ic[k]})`:""}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <div style={{display:"flex",gap:"1rem",flexWrap:"wrap",marginBottom:"0.6rem"}}>
+                    {statTable("短期シグナル別成績(5日後)", st.bySignal5d, SIG_LABEL)}
+                    {statTable("AI判定別成績(5日後)", st.byVerdict5d, VD_LABEL)}
+                    {statTable("短期シグナル別成績(20日後)", st.bySignal20d, SIG_LABEL)}
+                    {statTable("AI判定別成績(20日後)", st.byVerdict20d, VD_LABEL)}
+                  </div>
+                  {(!st.evaluated||st.evaluated===0)&&(
+                    <div style={{fontSize:"0.72rem",color:C.textMuted,marginBottom:"0.5rem"}}>
+                      ※実運用の答え合わせはまだありません(予測記録から5営業日後に自動確定)。それまでは過去2年のバックテストが学習を担います。
+                    </div>
+                  )}
+                  {cfg.lessons&&cfg.lessons.length>0&&(
+                    <div style={{padding:"0.6rem 0.8rem",background:C.purpleBg,borderRadius:8}}>
+                      <div style={{fontSize:"0.72rem",fontWeight:800,color:C.purple,marginBottom:"0.25rem"}}>📖 AIが実績から学んだ教訓(次回の判定に自動反映)</div>
+                      {cfg.lessons.map((l,i)=><div key={i} style={{fontSize:"0.73rem",color:C.text,lineHeight:1.6}}>・{l}</div>)}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+        )}
+      </div>
 
       {/* 銘柄追加 + フィルタ */}
       <div style={{...card,marginBottom:"0.85rem",padding:"0.75rem 1rem"}}>
