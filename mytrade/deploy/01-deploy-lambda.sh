@@ -88,10 +88,16 @@ if ! aws lambda get-function-url-config --function-name "$FUNC" --region "$REGIO
   echo "▶ Function URLを作成..."
   aws lambda create-function-url-config --function-name "$FUNC" \
     --auth-type NONE --region "$REGION" >/dev/null
-  aws lambda add-permission --function-name "$FUNC" --statement-id FunctionURLAllowPublicAccess \
-    --action lambda:InvokeFunctionUrl --principal '*' --function-url-auth-type NONE \
-    --region "$REGION" >/dev/null
 fi
+# 公開URLからの呼び出しには InvokeFunctionUrl と InvokeFunction の両方が必要
+# (片方だけだとURL経由が Forbidden になる。既存のmydesk-apiも両方持っている)
+aws lambda add-permission --function-name "$FUNC" --statement-id FunctionURLAllowPublicAccess \
+  --action lambda:InvokeFunctionUrl --principal '*' --function-url-auth-type NONE \
+  --region "$REGION" >/dev/null 2>&1 || echo "  (InvokeFunctionUrl権限は設定済み)"
+aws lambda add-permission --function-name "$FUNC" --statement-id PublicInvokeFunction \
+  --action lambda:InvokeFunction --principal '*' \
+  --region "$REGION" >/dev/null 2>&1 || echo "  (InvokeFunction権限は設定済み)"
+echo "▶ 権限の反映待ち(10秒)..."; sleep 10
 URL=$(aws lambda get-function-url-config --function-name "$FUNC" --region "$REGION" --query FunctionUrl --output text)
 
 echo ""
