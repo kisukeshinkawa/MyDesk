@@ -15,7 +15,7 @@ namespace BoatRace.UI
     public class GameFlow : MonoBehaviour
     {
         /// <summary>ビルド識別子。画面右上に表示され、更新が届いたか一目で分かる。</summary>
-        public const string Build = "B25-艇シート対応";
+        public const string Build = "B26-本物の日本地図";
 
         RaceManager race;
         ReplayManager replay;
@@ -1743,36 +1743,50 @@ namespace BoatRace.UI
 
         // ================= ストーリーツアーマップ(日本地図で章を進む) =================
 
-        /// <summary>会場の日本地図上の位置(マップパネル内の正規化座標・デフォルメ)。</summary>
-        static Vector2 VenueMapPos(int id)
+        /// <summary>会場の実経緯度。</summary>
+        static Vector2 VenueLonLat(int id)
         {
             switch (id)
             {
-                case 1: return new Vector2(0.755f, 0.640f);  // 桐生
-                case 2: return new Vector2(0.775f, 0.560f);  // 戸田
-                case 3: return new Vector2(0.815f, 0.515f);  // 江戸川
-                case 4: return new Vector2(0.795f, 0.490f);  // 平和島
-                case 5: return new Vector2(0.762f, 0.520f);  // 多摩川
-                case 6: return new Vector2(0.660f, 0.435f);  // 浜名湖
-                case 7: return new Vector2(0.628f, 0.420f);  // 蒲郡
-                case 8: return new Vector2(0.602f, 0.395f);  // 常滑
-                case 9: return new Vector2(0.573f, 0.393f);  // 津
-                case 10: return new Vector2(0.545f, 0.610f); // 三国
-                case 11: return new Vector2(0.552f, 0.500f); // びわこ
-                case 12: return new Vector2(0.515f, 0.440f); // 住之江
-                case 13: return new Vector2(0.492f, 0.458f); // 尼崎
-                case 14: return new Vector2(0.445f, 0.372f); // 鳴門
-                case 15: return new Vector2(0.400f, 0.398f); // 丸亀
-                case 16: return new Vector2(0.422f, 0.452f); // 児島
-                case 17: return new Vector2(0.330f, 0.440f); // 宮島
-                case 18: return new Vector2(0.278f, 0.395f); // 徳山
-                case 19: return new Vector2(0.225f, 0.393f); // 下関
-                case 20: return new Vector2(0.195f, 0.358f); // 若松
-                case 21: return new Vector2(0.170f, 0.385f); // 芦屋
-                case 22: return new Vector2(0.148f, 0.338f); // 福岡
-                case 23: return new Vector2(0.108f, 0.350f); // 唐津
-                default: return new Vector2(0.085f, 0.278f); // 大村
+                case 1: return new Vector2(139.33f, 36.41f);  // 桐生
+                case 2: return new Vector2(139.68f, 35.81f);  // 戸田
+                case 3: return new Vector2(139.89f, 35.69f);  // 江戸川
+                case 4: return new Vector2(139.74f, 35.57f);  // 平和島
+                case 5: return new Vector2(139.65f, 35.62f);  // 多摩川
+                case 6: return new Vector2(137.62f, 34.70f);  // 浜名湖
+                case 7: return new Vector2(137.22f, 34.81f);  // 蒲郡
+                case 8: return new Vector2(136.83f, 34.88f);  // 常滑
+                case 9: return new Vector2(136.52f, 34.72f);  // 津
+                case 10: return new Vector2(136.15f, 36.22f); // 三国
+                case 11: return new Vector2(135.91f, 35.02f); // びわこ
+                case 12: return new Vector2(135.48f, 34.61f); // 住之江
+                case 13: return new Vector2(135.41f, 34.72f); // 尼崎
+                case 14: return new Vector2(134.60f, 34.18f); // 鳴門
+                case 15: return new Vector2(133.79f, 34.30f); // 丸亀
+                case 16: return new Vector2(133.81f, 34.47f); // 児島
+                case 17: return new Vector2(132.30f, 34.31f); // 宮島
+                case 18: return new Vector2(131.81f, 34.04f); // 徳山
+                case 19: return new Vector2(130.93f, 33.96f); // 下関
+                case 20: return new Vector2(130.81f, 33.90f); // 若松
+                case 21: return new Vector2(130.66f, 33.89f); // 芦屋
+                case 22: return new Vector2(130.37f, 33.61f); // 福岡
+                case 23: return new Vector2(129.97f, 33.45f); // 唐津
+                default: return new Vector2(129.94f, 32.92f); // 大村
             }
+        }
+
+        /// <summary>
+        /// 会場の日本地図(正立)上の位置。japan_map.png生成スクリプトと同一の投影
+        /// (経度×0.8, bbox[0.624,13.44]×[31.02,45.4], 余白8%)なので地図と正確に一致する。
+        /// 戻り値は地図テクスチャ内の正規化座標。
+        /// </summary>
+        static Vector2 VenueMapPos(int id)
+        {
+            Vector2 g = VenueLonLat(id);
+            float x = (g.x - 128.8f) * 0.80f;
+            float nx = 0.08f + (x - 0.624f) / (13.44f - 0.624f) * 0.84f;
+            float ny = 0.08f + (g.y - 31.02f) / (45.4f - 31.02f) * 0.84f;
+            return new Vector2(nx, ny);
         }
 
         /// <summary>
@@ -1798,76 +1812,113 @@ namespace BoatRace.UI
             UiKit.Place(map, s.transform, new Vector2(0.03f, 0.13f), new Vector2(0.97f, 0.84f),
                 Vector2.zero, Vector2.zero);
 
-            // デフォルメ日本列島(角丸パネルの組合せ。緑の陸+濃い縁)
-            void Land(float x0, float y0, float x1, float y1, float rot)
+            // 実海岸線ベースの正立日本地図(中央)。ノード座標は同一投影で生成済み
+            const float MapX0 = 0.315f, MapW = 0.37f; // 地図テクスチャの配置(パネル内)
+            var mapSprite = FaceArt.LoadArt("japan_map");
+            if (mapSprite != null)
             {
-                var land = UiKit.MakePanel(map.transform, new Color(0.66f, 0.80f, 0.58f), 44,
-                    new Vector2(x0, y0), new Vector2(x1, y1), Vector2.zero, Vector2.zero);
-                land.GetComponent<RectTransform>().localEulerAngles = new Vector3(0f, 0f, rot);
-                land.GetComponent<Image>().raycastTarget = false;
-                var ol = land.AddComponent<Outline>();
-                ol.effectColor = new Color(0.25f, 0.42f, 0.32f, 0.8f);
-                ol.effectDistance = new Vector2(3f, -3f);
+                var mimg = new GameObject("JapanMap");
+                UiKit.Place(mimg, map.transform, new Vector2(MapX0, 0f), new Vector2(MapX0 + MapW, 1f),
+                    Vector2.zero, Vector2.zero);
+                var mi = mimg.AddComponent<Image>();
+                mi.sprite = mapSprite;
+                mi.raycastTarget = false;
             }
-            Land(0.055f, 0.18f, 0.205f, 0.47f, 8f);   // 九州
-            Land(0.175f, 0.34f, 0.505f, 0.50f, 5f);   // 中国
-            Land(0.365f, 0.26f, 0.525f, 0.375f, 3f);  // 四国
-            Land(0.455f, 0.34f, 0.725f, 0.66f, 18f);  // 近畿〜中部
-            Land(0.665f, 0.42f, 0.875f, 0.92f, 34f);  // 関東〜東北
-            Land(0.865f, 0.84f, 0.995f, 1.0f, -8f);   // 北海道
 
             // 章ルート(点線)とノード
+            // ---- 定番「全国マップ」式: 中央の地図に点、左右のラベル列から引き出し線 ----
             var chs = CareerData.Chapters;
             Vector2 NodePos(int i)
             {
-                var p = VenueMapPos(chs[i].venueId);
-                for (int k = 0; k < i; k++)  // 同一会場の重複章は少しずらす
-                    if (chs[k].venueId == chs[i].venueId) p += new Vector2(0.020f, -0.030f);
-                return p;
+                var t = VenueMapPos(chs[i].venueId);
+                for (int k = 0; k < i; k++)  // 同一会場の重複章は点をずらす
+                    if (chs[k].venueId == chs[i].venueId) t += new Vector2(0.030f, -0.022f);
+                return new Vector2(MapX0 + t.x * MapW, t.y);
             }
+            Color StateColor(int i)
+            {
+                int chNo = i + 1;
+                if (career.allClear || chNo < career.chapter) return new Color(1f, 0.80f, 0.15f);
+                if (chNo == career.chapter) return UiKit.Red;
+                return new Color(0.60f, 0.66f, 0.74f);
+            }
+
+            // 進行ルート(章ノード間の点線。クリア済み区間は金)
             for (int i = 0; i < chs.Length - 1; i++)
             {
                 Vector2 a = NodePos(i), b = NodePos(i + 1);
-                for (int d = 1; d <= 7; d++)
+                for (int d = 1; d <= 6; d++)
                 {
-                    Vector2 q = Vector2.Lerp(a, b, d / 8f);
+                    Vector2 q = Vector2.Lerp(a, b, d / 7f);
                     var dot = UiKit.MakePanel(map.transform,
-                        i + 1 < career.chapter ? new Color(1f, 0.84f, 0.20f, 0.95f) : new Color(1f, 1f, 1f, 0.55f),
-                        8, new Vector2(q.x - 0.004f, q.y - 0.007f), new Vector2(q.x + 0.004f, q.y + 0.007f),
+                        i + 1 < career.chapter ? new Color(1f, 0.84f, 0.20f, 0.9f) : new Color(1f, 1f, 1f, 0.45f),
+                        8, new Vector2(q.x - 0.0028f, q.y - 0.005f), new Vector2(q.x + 0.0028f, q.y + 0.005f),
                         Vector2.zero, Vector2.zero);
                     dot.GetComponent<Image>().raycastTarget = false;
                 }
             }
+
+            // 左右のラベル列の割り当て(地図中心より西=左列/東=右列)、各列は北から順
+            var leftIdx = new List<int>();
+            var rightIdx = new List<int>();
             for (int i = 0; i < chs.Length; i++)
+                (VenueMapPos(chs[i].venueId).x < 0.5f ? leftIdx : rightIdx).Add(i);
+            leftIdx.Sort((a, b) => NodePos(b).y.CompareTo(NodePos(a).y));
+            rightIdx.Sort((a, b) => NodePos(b).y.CompareTo(NodePos(a).y));
+
+            void ChapterChip(int i, bool left, int row)
             {
                 int chNo = i + 1;
                 var v = CourseDatabase.Get(chs[i].venueId);
-                Vector2 p = NodePos(i);
                 bool clear = career.allClear || chNo < career.chapter;
                 bool now = !career.allClear && chNo == career.chapter;
-                float r = now ? 0.036f : 0.028f;
-                Color bg = clear ? new Color(1f, 0.80f, 0.15f) : now ? UiKit.Red : new Color(0.58f, 0.62f, 0.68f);
-                var node = UiKit.MakePanel(map.transform, bg, 60,
-                    new Vector2(p.x - r, p.y - r * 1.55f), new Vector2(p.x + r, p.y + r * 1.55f),
-                    Vector2.zero, Vector2.zero);
-                var nol = node.AddComponent<Outline>();
-                nol.effectColor = Color.white;
-                nol.effectDistance = new Vector2(3f, 3f);
-                UiKit.MakeText(node.transform, clear ? "✓" : chNo.ToString(), now ? 26 : 20,
-                    Color.white, TextAnchor.MiddleCenter, Vector2.zero, Vector2.one,
-                    Vector2.zero, Vector2.zero, bold: true, shadow: true);
-                UiKit.MakeText(map.transform, $"第{chNo}章 {v.name}\n{chs[i].grade}戦", 13,
-                    now ? Color.white : new Color(1f, 1f, 1f, 0.85f), TextAnchor.UpperCenter,
-                    new Vector2(p.x - 0.09f, p.y - r * 1.55f - 0.115f), new Vector2(p.x + 0.09f, p.y - r * 1.55f - 0.005f),
-                    Vector2.zero, Vector2.zero, bold: now, shadow: true);
-                if (now)
+                float cy = 0.90f - row * 0.132f;
+                float cx0 = left ? 0.008f : 0.735f, cx1 = left ? 0.265f : 0.992f;
+                Vector2 p = NodePos(i);
+
+                // 引き出し線(チップ→会場の点。状態色の点線)
+                Vector2 from = new Vector2(left ? cx1 + 0.003f : cx0 - 0.003f, cy);
+                Color lc = StateColor(i);
+                for (int d = 0; d <= 9; d++)
                 {
-                    UiKit.MakeTag(map.transform, "挑戦！", UiKit.Yellow, UiKit.Border, 14,
-                        new Vector2(p.x - 0.045f, p.y + r * 1.55f + 0.01f),
-                        new Vector2(p.x + 0.045f, p.y + r * 1.55f + 0.075f), skew: 8f);
-                    node.AddComponent<Button>().onClick.AddListener(StartCareerRace);
+                    Vector2 q = Vector2.Lerp(from, p, d / 9f);
+                    var dot = UiKit.MakePanel(map.transform, new Color(lc.r, lc.g, lc.b, 0.85f), 6,
+                        new Vector2(q.x - 0.0022f, q.y - 0.004f), new Vector2(q.x + 0.0022f, q.y + 0.004f),
+                        Vector2.zero, Vector2.zero);
+                    dot.GetComponent<Image>().raycastTarget = false;
                 }
+
+                // ラベルチップ(紺。現在章=赤+黄フチで強調)
+                var chip = UiKit.MakePanel(map.transform,
+                    now ? UiKit.Red : clear ? new Color(0.16f, 0.30f, 0.52f) : new Color(0.34f, 0.42f, 0.54f),
+                    24, new Vector2(cx0, cy - 0.058f), new Vector2(cx1, cy + 0.058f),
+                    Vector2.zero, Vector2.zero);
+                var col = chip.AddComponent<Outline>();
+                col.effectColor = now ? UiKit.Yellow : new Color(1f, 1f, 1f, 0.85f);
+                col.effectDistance = new Vector2(2.5f, 2.5f);
+                string mark = clear ? "✓ " : now ? "▶ " : "";
+                UiKit.MakeText(chip.transform, $"{mark}第{chNo}章 {v.name}", 15, Color.white,
+                    TextAnchor.MiddleLeft, new Vector2(0f, 0.38f), new Vector2(1f, 1f),
+                    new Vector2(12f, 0f), new Vector2(-6f, 0f), bold: true, shadow: true);
+                UiKit.MakeText(chip.transform,
+                    now ? $"{chs[i].grade}戦　タップで出走！" : $"{chs[i].grade}戦　{(clear ? "クリア" : "未開放")}",
+                    12, now ? UiKit.Yellow : new Color(1f, 1f, 1f, 0.80f),
+                    TextAnchor.MiddleLeft, new Vector2(0f, 0f), new Vector2(1f, 0.40f),
+                    new Vector2(12f, 2f), new Vector2(-6f, 0f), bold: now);
+                if (now) chip.AddComponent<Button>().onClick.AddListener(StartCareerRace);
+
+                // 会場の点(地図上)
+                float nr = now ? 0.013f : 0.009f;
+                var nodeDot = UiKit.MakePanel(map.transform, StateColor(i), 30,
+                    new Vector2(p.x - nr, p.y - nr * 1.55f), new Vector2(p.x + nr, p.y + nr * 1.55f),
+                    Vector2.zero, Vector2.zero);
+                var ndol = nodeDot.AddComponent<Outline>();
+                ndol.effectColor = Color.white;
+                ndol.effectDistance = new Vector2(2f, 2f);
+                if (now) nodeDot.AddComponent<Button>().onClick.AddListener(StartCareerRace);
             }
+            for (int r2 = 0; r2 < leftIdx.Count; r2++) ChapterChip(leftIdx[r2], true, r2);
+            for (int r2 = 0; r2 < rightIdx.Count; r2++) ChapterChip(rightIdx[r2], false, r2);
 
             // 現在章の情報カード+出走ボタン
             if (!career.allClear)

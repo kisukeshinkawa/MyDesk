@@ -66,12 +66,22 @@ namespace BoatRace.UI
             }
             if (boatSheet == null || idx < 0 || idx > 5) return null;
             if (boatCache[idx] != null) return boatCache[idx];
-            // シート構成: 3列×2段。各パネル上部の大きなヒーロー艇だけを切り出す
-            // (下半分の小さい5面図は含めない)
-            int col = idx % 3, row = idx / 3; // 上段=1-3号艇, 下段=4-6号艇
-            float u0 = col / 3f + 0.02f, u1 = col / 3f + 0.325f;
-            float v0 = row == 0 ? 0.755f : 0.255f;
-            float v1 = row == 0 ? 0.985f : 0.485f;
+            float u0, u1, v0, v1;
+            float aspect = (float)boatSheet.width / Mathf.Max(1, boatSheet.height);
+            if (aspect > 2.2f)
+            {
+                // 横長=6艇が横一列のラインナップ画
+                u0 = idx / 6f + 0.006f; u1 = (idx + 1) / 6f - 0.006f;
+                v0 = 0.04f; v1 = 0.96f;
+            }
+            else
+            {
+                // 3列×2段の5面図シート: 各パネル上部の大きなヒーロー艇だけを切り出す
+                int col = idx % 3, row = idx / 3; // 上段=1-3号艇, 下段=4-6号艇
+                u0 = col / 3f + 0.02f; u1 = col / 3f + 0.325f;
+                v0 = row == 0 ? 0.755f : 0.255f;
+                v1 = row == 0 ? 0.985f : 0.485f;
+            }
             var rect = new Rect(u0 * boatSheet.width, v0 * boatSheet.height,
                 (u1 - u0) * boatSheet.width, (v1 - v0) * boatSheet.height);
             boatCache[idx] = Sprite.Create(boatSheet, rect, new Vector2(0.5f, 0.5f), 100f);
