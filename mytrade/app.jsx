@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 // MyTrade — 投資専用スタンドアロンアプリ (MyDeskから分離)
 // バックエンド: mydesk-stock-analysis Lambda (共用・変更不要)
 // ═══════════════════════════════════════════════════════════════
-const MYTRADE_BUILD = "2026-08-06-v5-picks-ranking";
+const MYTRADE_BUILD = "2026-08-06-v6-full-universe-brief";
 if (typeof window !== "undefined") {
   window.__MYTRADE_BUILD = MYTRADE_BUILD;
   console.log(`[MyTrade] Build: ${MYTRADE_BUILD}`);
@@ -199,6 +199,8 @@ function StockView({currentUser}) {
   const [btYears, setBtYears]     = useState("10");  // 検証期間(年)
   const [screenRes, setScreenRes] = useState(null);  // スクリーニング結果
   const [ranking, setRanking]     = useState(null);  // 全銘柄ランキング
+  const [brief, setBrief]         = useState(null);  // プロトレーダーの視点(日次ブリーフ)
+  const [mktNews, setMktNews]     = useState(null);  // 市場全体ニュース
   const [report, setReport]       = useState(null);  // 朝レポート
   const [showReport, setShowReport] = useState(true);
   const [holdEdit, setHoldEdit]   = useState(false); // 保有登録フォーム表示
@@ -259,7 +261,11 @@ function StockView({currentUser}) {
 
   // タブ切替時に必要なデータを自動ロード
   useEffect(()=>{ if(!apiUrl) return;
-    if(view==="home"&&!report&&!busy.report) loadReport(false);
+    if(view==="home"){
+      if(!brief&&!busy.brief) loadBrief(false);
+      if(!mktNews) loadMktNews();
+      if(!report&&!busy.report) loadReport(false);
+    }
     if(view==="portfolio"&&!journal&&!busy.journal) loadJournal();
     if(view==="learn"&&!perf&&!busy.perf) loadPerf();
     if(view==="picks"&&!ranking&&!busy.rank) loadRanking(false);
@@ -343,6 +349,17 @@ function StockView({currentUser}) {
       setPerf(p=>({...(p||{}), config:{...((p&&p.config)||{}), factor_weights:rep.weights, factor_ic:rep.ics, backtestSamples:rep.samples, updatedAt:rep.updatedAt}}));
     } catch(e){ setErrMsg("バックテストエラー: "+e.message); }
     setBusy(b=>({...b,bt:false}));
+  };
+
+  const loadBrief = async (force) => {
+    setBusy(b=>({...b,brief:true}));
+    try { const r = await api({action:"brief",force:!!force}, 300000); if(r&&r.brief) setBrief(r); }
+    catch(e){ setErrMsg("ブリーフ取得エラー: "+e.message); }
+    setBusy(b=>({...b,brief:false}));
+  };
+
+  const loadMktNews = async () => {
+    try { const r = await api({action:"market-news"}, 60000); setMktNews(r); } catch(e){}
   };
 
   const loadRanking = async (force) => {
@@ -477,6 +494,103 @@ function StockView({currentUser}) {
       {errMsg&&<div style={{padding:"0.6rem 0.85rem",borderRadius:8,background:C.redBg,color:C.red,fontSize:"0.78rem",fontWeight:600,marginBottom:"0.85rem"}}>{errMsg}</div>}
 
       {view==="home"&&(<>
+      {/* 🧠 プロトレーダーの視点(常時表示) */}
+      <div style={{...card,marginBottom:"0.85rem",padding:"1rem 1.1rem",background:"linear-gradient(135deg,#ffffff,#F6F4FF)",border:`2px solid ${C.purple}`}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:"0.5rem",marginBottom:"0.5rem"}}>
+          <div style={{fontWeight:800,fontSize:"0.95rem",color:C.purple}}>🧠 プロトレーダーの視点
+            {brief&&brief.stance&&<span style={{...S.chip(
+              brief.stance==="aggressive"?C.greenBg:(brief.stance==="defensive"?C.redBg:C.yellowBg),
+              brief.stance==="aggressive"?C.green:(brief.stance==="defensive"?C.red:C.yellow)),marginLeft:"0.5rem"}}>
+              {brief.stance==="aggressive"?"⚔️ 攻め":brief.stance==="defensive"?"🛡️ 守り":"⚖️ 中立"}
+            </span>}
+          </div>
+          <div style={{display:"flex",gap:"0.4rem",alignItems:"center"}}>
+            {brief&&<span style={{fontSize:"0.64rem",color:C.textMuted}}>{new Date(brief.updatedAt).toLocaleString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}</span>}
+            <button onClick={()=>loadBrief(true)} disabled={busy.brief}
+              style={{padding:"0.4rem 0.8rem",borderRadius:8,border:"none",background:"linear-gradient(135deg,#7A5AD9,#0070D4)",color:"white",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",opacity:busy.brief?0.6:1}}>
+              {busy.brief?"生成中...":"🔄 今の相場で再生成"}
+            </button>
+          </div>
+        </div>
+        {!brief&&<div style={{fontSize:"0.78rem",color:C.textMuted,lineHeight:1.7}}>
+          {busy.brief?"AIが地合い・ニュース・全銘柄スキャンを読み込んで相場観を生成中...":"「🔄 今の相場で再生成」を押すと、地合い・ニュース・全銘柄スキャン・過去の的中率を統合した今日の相場観と狙い目が表示されます(毎朝7:50に自動生成)"}
+        </div>}
+        {brief&&brief.brief&&(()=>{
+          const b = brief.brief;
+          const acc = brief.accuracy||{};
+          const v5 = acc.byVerdict5d||{}; const s5 = acc.bySignal5d||{};
+          const buyStat = s5.buy;
+          return (
+            <div>
+              <div style={{fontSize:"0.84rem",color:C.text,lineHeight:1.75,whiteSpace:"pre-wrap",marginBottom:"0.6rem"}}>{b.market_view}</div>
+              {(b.focus||[]).length>0&&(
+                <div style={{marginBottom:"0.6rem"}}>
+                  <div style={{fontSize:"0.72rem",fontWeight:800,color:C.textSub,marginBottom:"0.3rem"}}>🎯 今日の狙い目</div>
+                  {b.focus.map((f,i)=>{
+                    const known = watchlist.some(w=>w.ticker===f.ticker);
+                    return (
+                      <div key={i} style={{display:"flex",gap:"0.5rem",alignItems:"center",padding:"0.4rem 0.6rem",background:"white",borderRadius:8,marginBottom:"0.3rem",border:`1px solid ${C.borderLight}`}}>
+                        <span style={{...S.chip(C.accentBg,C.accentDark),flexShrink:0,fontSize:"0.65rem"}}>{f.action}</span>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontWeight:700,fontSize:"0.8rem",color:C.text}}>{f.name||f.ticker} <span style={{fontWeight:500,color:C.textMuted,fontSize:"0.7rem"}}>{f.ticker}</span></div>
+                          <div style={{fontSize:"0.71rem",color:C.textSub,lineHeight:1.5}}>{f.reason}</div>
+                        </div>
+                        <button onClick={()=>{ if(known){setSelected(f.ticker);setView("analyze");localStorage.setItem("mt_view","analyze");if(!newsMap[f.ticker])loadNews(f.ticker);} else addStock({ticker:f.ticker,name:f.name||f.ticker,market:f.ticker.endsWith(".T")?"JP":"US"}); }}
+                          style={{flexShrink:0,padding:"0.3rem 0.6rem",borderRadius:7,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:"0.68rem",fontWeight:700,background:known?C.borderLight:C.accentBg,color:known?C.textSub:C.accentDark}}>
+                          {known?"詳細":"＋追加"}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {(b.warnings||[]).length>0&&(
+                <div style={{padding:"0.5rem 0.7rem",background:C.redBg,borderRadius:8,marginBottom:"0.5rem"}}>
+                  <div style={{fontSize:"0.7rem",fontWeight:800,color:C.red,marginBottom:"0.15rem"}}>⚠️ 警戒</div>
+                  {b.warnings.map((w,i)=><div key={i} style={{fontSize:"0.74rem",color:C.text,lineHeight:1.6}}>・{w}</div>)}
+                </div>
+              )}
+              {/* この判定の信頼度(精度の可視化) */}
+              <div onClick={()=>{setView("learn");localStorage.setItem("mt_view","learn");}}
+                style={{display:"flex",gap:"0.6rem",flexWrap:"wrap",alignItems:"center",padding:"0.45rem 0.7rem",background:"white",borderRadius:8,border:`1px dashed ${C.border}`,cursor:"pointer"}}>
+                <span style={{fontSize:"0.7rem",fontWeight:800,color:C.textSub}}>📊 この判定の信頼度</span>
+                {buyStat
+                  ? <span style={S.chip(buyStat.winRate>=55?C.greenBg:C.yellowBg, buyStat.winRate>=55?C.green:C.yellow)}>
+                      買いシグナル実績: {buyStat.n}件 勝率{buyStat.winRate}% 平均{buyStat.avgRet>=0?"+":""}{buyStat.avgRet}%
+                    </span>
+                  : <span style={{fontSize:"0.7rem",color:C.textMuted}}>実運用の答え合わせは{acc.evaluated||0}件(5営業日後から蓄積)。現在はバックテスト検証済みの重みで判定中</span>}
+                {Object.entries(v5).slice(0,3).map(([k,v])=>(
+                  <span key={k} style={S.chip(C.borderLight,C.textSub)}>AI{k}: 勝率{v.winRate}%({v.n})</span>
+                ))}
+                <span style={{fontSize:"0.66rem",color:C.accent,marginLeft:"auto"}}>詳細を見る →</span>
+              </div>
+            </div>
+          );
+        })()}
+      </div>
+
+      {/* 📡 マーケットニュース(自動収集) */}
+      {mktNews&&mktNews.news&&mktNews.news.length>0&&(
+        <div style={{...card,marginBottom:"0.85rem",padding:"0.85rem 1rem"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.4rem"}}>
+            <div style={{fontWeight:800,fontSize:"0.85rem",color:C.text}}>📡 マーケットニュース <span style={{fontSize:"0.66rem",fontWeight:600,color:C.textMuted}}>15分ごとに自動更新</span></div>
+            <button onClick={loadMktNews} style={{...S.iconBtn,color:C.accent,fontSize:"0.72rem",fontWeight:700}}>🔄</button>
+          </div>
+          <div style={{maxHeight:200,overflowY:"auto"}}>
+            {mktNews.news.map((n,i)=>(
+              <a key={i} href={n.link} target="_blank" rel="noopener noreferrer"
+                style={{display:"flex",gap:"0.4rem",alignItems:"flex-start",padding:"0.35rem 0",borderBottom:`1px solid ${C.borderLight}`,textDecoration:"none"}}>
+                <span style={{flexShrink:0,fontSize:"0.7rem"}}>{n.market==="JP"?"🇯🇵":"🇺🇸"}</span>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:"0.75rem",fontWeight:600,color:C.accentDark,lineHeight:1.5}}>{n.title}</div>
+                  <div style={{fontSize:"0.62rem",color:C.textMuted}}>{n.source}</div>
+                </div>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+
 
       {/* 地合いパネル */}
       {market&&(
@@ -728,7 +842,7 @@ function StockView({currentUser}) {
           <input type="text" value={query} onChange={e=>setQuery(e.target.value)}
             onKeyDown={e=>{if(e.key==="Enter")searchStock();}}
             placeholder="銘柄名 or ティッカー（例: トヨタ / 7203.T / AAPL）"
-            style={{flex:1,minWidth:200,padding:"0.55rem 0.7rem",borderRadius:"0.625rem",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
+            style={{flex:"1 1 100%",width:"100%",minWidth:0,padding:"0.65rem 0.8rem",borderRadius:"0.625rem",border:`1.5px solid ${C.border}`,fontSize:"0.9rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
           <button onClick={searchStock} disabled={busy.add}
             style={{padding:"0.55rem 0.95rem",borderRadius:8,border:"none",background:C.accentBg,color:C.accentDark,fontWeight:700,fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit"}}>
             {busy.add?"検索中...":"🔍 検索して追加"}

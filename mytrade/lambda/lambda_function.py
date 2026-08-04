@@ -66,6 +66,8 @@ def lambda_handler(event, context):
                 return _res(200, run_backtest(None, int(event.get("years", 10)), True))
             if job == "ranking":
                 return _res(200, run_ranking(force=True))
+            if job == "brief":
+                return _res(200, run_brief())
             return _res(200, run_daily_report())
         except Exception as e:
             import traceback
@@ -123,6 +125,12 @@ def lambda_handler(event, context):
             return _res(200, run_screen(body.get("exclude") or [], body.get("market", "all")))
         if action == "ranking":
             return _res(200, run_ranking(bool(body.get("force", False))))
+        if action == "market-news":
+            return _res(200, get_market_news())
+        if action == "brief":
+            if body.get("force"):
+                return _res(200, run_brief())
+            return _res(200, _load_json_s3("stock-learn/brief.json", {"brief": None}))
         if action == "daily-report":
             return _res(200, run_daily_report(send_mail=bool(body.get("sendMail", False))))
         if action == "report-latest":
@@ -1380,21 +1388,78 @@ def run_screen(exclude=None, market="all"):
     return out
 
 
+# ═══════════════════════ 拡張ユニバース(日経225相当 + 米国主要) ═══════════════════════
+# 銘柄名はinfo取得時に自動で埋まるためコードのみ保持(構成銘柄の入れ替えに強い)
+UNIVERSE_JP = """1332 1605 1721 1801 1802 1803 1808 1812 1925 1928 1963 2002 2269 2282 2413 2432
+2501 2502 2503 2531 2768 2801 2802 2871 2914 3086 3099 3101 3103 3105 3289 3382 3401 3402 3405 3407
+3436 3659 3861 3863 4004 4005 4021 4042 4043 4061 4063 4151 4183 4188 4208 4324 4452 4502 4503 4506
+4507 4519 4523 4528 4543 4544 4568 4578 4661 4689 4704 4751 4755 4901 4902 4911 5019 5020 5101 5108
+5201 5202 5214 5233 5301 5332 5333 5401 5406 5411 5541 5631 5706 5711 5713 5714 5801 5802 5803 5831
+6098 6103 6113 6146 6178 6273 6301 6302 6305 6326 6361 6367 6471 6472 6473 6479 6501 6503 6504 6506
+6526 6532 6594 6645 6674 6701 6702 6723 6724 6752 6753 6758 6762 6770 6841 6857 6861 6902 6920 6923
+6952 6954 6963 6971 6976 6981 6988 7003 7011 7012 7013 7186 7201 7202 7203 7205 7211 7261 7267 7269
+7270 7272 7731 7733 7735 7741 7751 7752 7762 7832 7911 7912 7951 7974 7984 8001 8002 8015 8031 8035
+8053 8058 8113 8233 8252 8253 8267 8304 8306 8308 8309 8316 8331 8354 8411 8570 8591 8601 8604 8630
+8697 8725 8750 8766 8795 8801 8802 8804 8830 9001 9005 9007 9008 9009 9020 9021 9022 9064 9101 9104
+9107 9147 9201 9202 9301 9432 9433 9434 9501 9502 9503 9531 9532 9602 9613 9735 9766 9843 9983 9984""".split()
+
+UNIVERSE_US = """AAPL MSFT GOOGL AMZN NVDA META TSLA BRK-B JPM V MA UNH XOM JNJ WMT PG HD CVX LLY
+ABBV AVGO MRK PEP KO COST ADBE CSCO TMO MCD ACN ABT CRM DHR NFLX LIN VZ TXN NKE WFC DIS PM NEE RTX
+BMY UPS ORCL QCOM HON AMD INTC T CAT LOW IBM GS BA SBUX INTU ELV DE PLD AMGN MDT GILD ADP ISRG BLK
+MDLZ SPGI TJX VRTX SYK CVS MMC CI ZTS AXP C MO SCHW PGR BDX SO DUK CB ETN EOG ITW MU APD SLB BSX AON
+NOC CSX CL PNC USB LRCX KLAC ADI PANW SNPS CDNS MRVL FTNT ORLY MCK HCA PSX MPC VLO WM EMR GD TGT F
+GM DAL UAL ABNB UBER PYPL SHOP SPOT COIN PLTR SNOW DDOG NET CRWD ZS TEAM WDAY NOW DELL HPQ STX WDC
+ON SWKS TER AMAT ASML TSM ARM SMCI ANET MSI GLW APH TEL KEYS ROK PH CMI PCAR FDX NSC UNP ODFL EXPD
+LMT LHX TDG HWM TXT LDOS PWR TT CARR JCI LII FAST GWW POOL MMM KHC GIS K SYY KR DG DLTR ROST BBY
+EBAY ETSY LULU YUM CMG DPZ MAR HLT RCL CCL LVS WYNN MGM""".split()
+
+FULL_UNIVERSE = [f"{c}.T" for c in UNIVERSE_JP] + UNIVERSE_US
+
+
+def fetch_bulk_ohlcv(tickers, days=450, chunk=80):
+    """複数銘柄の日足を一括取得(yf.download)。1銘柄ずつのループより桁違いに速く、
+    400銘柄超のユニバースでもLambdaのタイムアウト内で短期スコアを算出できる。"""
+    import yfinance as yf
+    from datetime import timedelta
+    start = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+    out = {}
+    for i in range(0, len(tickers), chunk):
+        part = tickers[i:i + chunk]
+        try:
+            data = yf.download(part, start=start, interval="1d", auto_adjust=True,
+                               group_by="ticker", threads=True, progress=False)
+        except Exception as e:
+            print("bulk download failed:", part[:3], e)
+            continue
+        for t in part:
+            try:
+                df = (data[t] if len(part) > 1 else data).dropna()
+                if len(df) >= 80:
+                    out[t] = df
+            except Exception:
+                pass
+    return out
+
+
 # ═══════════════════════ 全銘柄ランキング(短期/長期/狙い目) ═══════════════════════
-def run_ranking(force=False):
-    """日米主力ユニバース全銘柄を短期・長期の両方で採点してランキング化。
-    重い財務取得は時間予算内で処理し、超過分は短期スコアのみ(次回のキャッシュで補完)。
-    結果は6時間キャッシュ。毎朝EventBridge(job=ranking)で温めておけば体感は即時。"""
+def run_ranking(force=False, universe=None):
+    """全ユニバース(日経225相当+米国主要=約400銘柄)を採点してランキング化。
+    ① 株価は一括取得(yf.download)で全銘柄の短期スコアを高速算出
+    ② 財務は重いので「短期上位＋ウォッチリスト」に絞り、24時間キャッシュを再利用
+       (毎日走るので日を追うごとにカバー範囲が広がる)
+    結果は6時間キャッシュ。毎朝のjob=rankingで温めておけば画面表示は即時。"""
     if not force:
         cached = cache_get("ranking.json", 6 * 3600)
         if cached:
             return cached
 
     start = time.time()
-    BUDGET = 230  # 秒。Lambdaタイムアウト300秒に対する安全域
+    BUDGET = 220  # 秒。Lambdaタイムアウト300秒に対する安全域
     cfg = load_learn_config()
     weights = cfg.get("factor_weights")
+    tickers = universe or FULL_UNIVERSE
 
+    # ── 指数(地合い・相対力の基準) ──
     bench = {}
     for sym, key in (("^N225", "JP"), ("^GSPC", "US")):
         try:
@@ -1404,56 +1469,168 @@ def run_ranking(force=False):
         except Exception:
             bench[key] = (0, True)
 
-    rows, errors, deep_n = [], 0, 0
-    for ticker, name in SCREEN_UNIVERSE:
+    # ── ① 全銘柄の株価を一括取得 → 短期スコア ──
+    frames = fetch_bulk_ohlcv(tickers)
+    rows, errors = [], 0
+    for ticker, df in frames.items():
         mkt = "JP" if ticker.endswith(".T") else "US"
         try:
-            df = fetch_history(ticker, "300d")
             f = build_indicator_frame(df)
             tech = _row_to_tech(f, len(f) - 1)
             b_ret, b_regime = bench[mkt]
             sc = score_short(tech, b_ret, weights)
             if not b_regime and sc["signal"] == "buy":
                 sc["signal"] = "watch"
-            row = {"ticker": ticker, "name": name, "market": mkt,
-                   "price": round(tech["price"], 2), "chg1d": round(tech["chg1d"], 2),
-                   "short": sc["score"], "shortSignal": sc["signal"],
-                   "shortReasons": [b["reason"] for b in sorted(
-                       sc["breakdown"], key=lambda x: -(x["points"] / x["max"] if x["max"] else 0))[:2]],
-                   "regimeOn": bool(b_regime)}
-
-            # ── 長期スコア(時間予算内のみ) ──
-            if time.time() - start < BUDGET:
-                info = cache_get(f"info/{ticker}.json", SLOW_TTL)
-                if info is None:
-                    info = fetch_info(ticker)
-                    cache_put(f"info/{ticker}.json", info)
-                fin = fetch_fin_history(ticker)
-                lg = score_long(info, fin)
-                row.update({
-                    "long": lg["score"], "longSignal": lg["signal"],
-                    "longReasons": [b["reason"] for b in sorted(
-                        lg["breakdown"], key=lambda x: -(x["points"] / x["max"] if x["max"] else 0))[:2] if b["reason"] != "データ不足"],
-                    "sector": _g(info, "sector"),
-                    "per": _g(info, "trailingPE"), "pbr": _g(info, "priceToBook"),
-                    "roe": (_g(info, "returnOnEquity") or 0) * 100 if _g(info, "returnOnEquity") is not None else None,
-                    "divYield": _g(info, "dividendYield"),
-                })
-                if row["short"] >= 70 and row["long"] >= 70: row["quadrant"] = "本命"
-                elif row["long"] >= 70: row["quadrant"] = "押し目待ち"
-                elif row["short"] >= 70: row["quadrant"] = "短期限定"
-                else: row["quadrant"] = "見送り"
-                deep_n += 1
-            rows.append(row)
+            rows.append({
+                "ticker": ticker, "name": ticker, "market": mkt,
+                "price": round(tech["price"], 2), "chg1d": round(tech["chg1d"], 2),
+                "short": sc["score"], "shortSignal": sc["signal"],
+                "shortReasons": [b["reason"] for b in sorted(
+                    sc["breakdown"], key=lambda x: -(x["points"] / x["max"] if x["max"] else 0))[:2]],
+                "regimeOn": bool(b_regime)})
         except Exception as e:
             errors += 1
-            print("ranking failed:", ticker, e)
+            print("ranking short failed:", ticker, e)
 
-    out = {"rows": rows, "scanned": len(rows), "deepScanned": deep_n,
+    # ── ② 財務: ウォッチリスト + 短期上位 + キャッシュ済みを優先して長期スコア ──
+    wl = {w["ticker"] for w in _load_json_s3(WATCHLIST_KEY, [])}
+    by_ticker = {r["ticker"]: r for r in rows}
+    order = ([t for t in wl if t in by_ticker]
+             + [r["ticker"] for r in sorted(rows, key=lambda x: -x["short"]) if r["ticker"] not in wl])
+    deep_n = 0
+    for ticker in order:
+        row = by_ticker[ticker]
+        cached_info = cache_get(f"info/{ticker}.json", 24 * 3600)
+        # 時間切れ後はキャッシュ済みのものだけ処理(新規取得はしない)
+        if cached_info is None and time.time() - start > BUDGET:
+            continue
+        try:
+            info = cached_info
+            if info is None:
+                info = fetch_info(ticker)
+                cache_put(f"info/{ticker}.json", info)
+            fin = fetch_fin_history(ticker)
+            lg = score_long(info, fin)
+            row.update({
+                "name": _g(info, "longName", "shortName") or ticker,
+                "long": lg["score"], "longSignal": lg["signal"],
+                "longReasons": [b["reason"] for b in sorted(
+                    lg["breakdown"], key=lambda x: -(x["points"] / x["max"] if x["max"] else 0))[:2]
+                    if b["reason"] != "データ不足"],
+                "sector": _g(info, "sector"),
+                "per": _g(info, "trailingPE"), "pbr": _g(info, "priceToBook"),
+                "roe": (_g(info, "returnOnEquity") * 100) if _g(info, "returnOnEquity") is not None else None,
+                "divYield": _g(info, "dividendYield"),
+            })
+            if row["short"] >= 70 and row["long"] >= 70: row["quadrant"] = "本命"
+            elif row["long"] >= 70: row["quadrant"] = "押し目待ち"
+            elif row["short"] >= 70: row["quadrant"] = "短期限定"
+            else: row["quadrant"] = "見送り"
+            deep_n += 1
+        except Exception as e:
+            print("ranking long failed:", ticker, e)
+
+    out = {"rows": rows, "scanned": len(rows), "universe": len(tickers), "deepScanned": deep_n,
            "errors": errors, "elapsed": round(time.time() - start),
-           "complete": deep_n == len(rows),
+           "complete": deep_n >= len(rows),
            "updatedAt": datetime.now(timezone.utc).isoformat()}
     cache_put("ranking.json", out)
+    return out
+
+
+# ═══════════════════════ 市場ニュース(全体の材料を自動収集) ═══════════════════════
+def get_market_news():
+    """市場全体のニュースをGoogle News RSSから収集(日本語+英語)。15分キャッシュ。"""
+    cached = cache_get("market-news.json", 15 * 60)
+    if cached:
+        return cached
+    items = []
+    for q, hl, gl, ceid, tag in (
+            ("日経平均 株式市場", "ja", "JP", "JP:ja", "JP"),
+            ("stock market S&P 500 Fed", "en-US", "US", "US:en", "US")):
+        try:
+            url = (f"https://news.google.com/rss/search?q={urllib.parse.quote(q)}"
+                   f"&hl={hl}&gl={gl}&ceid={ceid}")
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=10) as r:
+                root = ET.fromstring(r.read())
+            for it in list(root.iter("item"))[:10]:
+                items.append({"title": it.findtext("title") or "", "link": it.findtext("link") or "",
+                              "source": it.findtext("source") or "Google News",
+                              "published": it.findtext("pubDate") or "", "market": tag})
+        except Exception as e:
+            print("market news failed:", tag, e)
+    seen, out = set(), []
+    for it in items:
+        k = re.sub(r"\s+", "", it["title"])[:40]
+        if k not in seen:
+            seen.add(k)
+            out.append(it)
+    res = {"news": out[:20], "updatedAt": datetime.now(timezone.utc).isoformat()}
+    cache_put("market-news.json", res)
+    return res
+
+
+# ═══════════════════════ プロトレーダーの視点(常時表示用の日次ブリーフ) ═══════════════════════
+BRIEF_SYSTEM = """あなたは機関投資家出身のプロトレーダーです。毎朝チームに向けて相場観を共有します。
+与えられた地合い・ニュース・全銘柄スキャン結果・自分の判定実績をもとに、
+「今日は何を狙うべきか」「何に警戒すべきか」を実践的に述べてください。
+実績が与えられた場合は自分の勝率を踏まえて強気/弱気を調整すること。
+出力は必ず次のJSONのみ:
+{"market_view":"相場観を3〜4行。地合いとニュースを踏まえた今日のスタンス",
+ "stance":"aggressive|neutral|defensive",
+ "focus":[{"ticker":"銘柄コード","name":"銘柄名","reason":"なぜ今狙い目か(1行)","action":"打診買い|押し目待ち|様子見|利確検討"}],
+ "warnings":["警戒すべきこと1〜3個"]}"""
+
+
+def run_brief():
+    """毎朝のプロトレーダー視点を生成してS3保存(ホーム画面に常時表示)。"""
+    market = get_market_overview()
+    news = get_market_news()
+    ranking = run_ranking(force=False)
+    cfg = load_learn_config()
+    stats = (cfg.get("stats") or {})
+
+    rows = [r for r in ranking.get("rows", []) if r.get("long") is not None]
+    top = sorted(rows, key=lambda r: -(r["long"] * 0.5 + r["short"] * 0.5
+                                       + (18 if r.get("quadrant") == "本命" else
+                                          10 if r.get("quadrant") == "押し目待ち" else 0)))[:12]
+    cand = "\n".join(f"- {r['name']}({r['ticker']}) 短期{r['short']}/長期{r['long']} [{r.get('quadrant')}] "
+                     f"{r.get('sector') or ''} {'/'.join((r.get('longReasons') or [])[:1])}" for r in top) or "(候補なし)"
+    news_txt = "\n".join(f"- [{n['market']}] {n['title']}" for n in news["news"][:12]) or "(ニュースなし)"
+    idx = "\n".join(f"- {r['label']}: {r.get('price')} (前日比{r.get('chg1d')}% / 5日{r.get('chg5d')}%)"
+                    for r in market["indices"] if "error" not in r)
+    acc = ""
+    v5 = stats.get("byVerdict5d") or {}
+    s5 = stats.get("bySignal5d") or {}
+    if v5 or s5:
+        acc = ("\n\n【自分の判定実績(5営業日後)】\n"
+               + "\n".join(f"- AI判定{k}: {v['n']}件 勝率{v['winRate']}% 平均{v['avgRet']:+}%" for k, v in v5.items())
+               + "\n" + "\n".join(f"- スコア{k}: {v['n']}件 勝率{v['winRate']}% 平均{v['avgRet']:+}%" for k, v in s5.items()))
+
+    prompt = (f"【地合い】{market['moodLabel']}\n{idx}\n\n【市場ニュース】\n{news_txt}\n\n"
+              f"【全銘柄スキャン上位({ranking.get('scanned')}銘柄中)】\n{cand}{acc}")
+
+    brief = {}
+    try:
+        br = boto3.client("bedrock-runtime", region_name=BEDROCK_REGION)
+        resp = br.invoke_model(modelId=BEDROCK_MODEL, body=json.dumps({
+            "anthropic_version": "bedrock-2023-05-31", "max_tokens": 1500,
+            "system": BRIEF_SYSTEM,
+            "messages": [{"role": "user", "content": prompt}]}))
+        raw = json.loads(resp["body"].read())["content"][0]["text"]
+        m = re.search(r"\{.*\}", raw, re.DOTALL)
+        brief = json.loads(m.group(0)) if m else {"market_view": raw}
+    except Exception as e:
+        print("brief failed:", e)
+        brief = {"market_view": f"AI生成に失敗しました({e})", "stance": "neutral", "focus": [], "warnings": []}
+
+    out = {"brief": brief, "mood": market["moodLabel"], "stance": brief.get("stance", "neutral"),
+           "topPicks": top[:6], "news": news["news"][:8],
+           "accuracy": {"byVerdict5d": v5, "bySignal5d": s5,
+                        "evaluated": stats.get("evaluated", 0), "total": stats.get("total", 0)},
+           "updatedAt": datetime.now(timezone.utc).isoformat()}
+    _save_json_s3("stock-learn/brief.json", out)
     return out
 
 
