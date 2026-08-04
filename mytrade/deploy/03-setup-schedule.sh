@@ -3,7 +3,8 @@
 # MyTrade: 全自動運用のスケジュール設定(EventBridge)
 #   ① 毎朝 7:00 JST  朝レポート(全銘柄スキャン+予測の答え合わせ)
 #   ② 毎朝 7:30 JST  自動学習(因子重み再学習+教訓更新)
-#   ③ 毎月1日 8:00   長期ウォークフォワード再検証(10年・重み自動反映)
+#   ③ 毎朝 7:45 JST  全銘柄ランキングを事前計算(おすすめタブ用)
+#   ④ 毎月1日 8:00   長期ウォークフォワード再検証(10年・重み自動反映)
 #   使い方: bash deploy/03-setup-schedule.sh
 # ─────────────────────────────────────────────────────────────
 set -euo pipefail
@@ -33,6 +34,7 @@ setup_rule () {
 
 setup_rule "mytrade-morning"  "cron(0 22 * * ? *)"  "MyTrade 朝レポート(スキャン+答え合わせ)" ""
 setup_rule "mytrade-learn"    "cron(30 22 * * ? *)" "MyTrade 毎日の自動学習(重み+教訓)" '{"job":"learn"}'
+setup_rule "mytrade-ranking"  "cron(45 22 * * ? *)" "MyTrade 全銘柄ランキングの事前計算" '{"job":"ranking"}'
 setup_rule "mytrade-backtest" "cron(0 23 1 * ? *)"  "MyTrade 月次の長期再検証(10年WF)" '{"job":"backtest","years":10}'
 
 echo ""
@@ -40,6 +42,7 @@ echo "════════════════════════�
 echo "✅ 全自動運用の設定完了"
 echo "   07:00 JST 毎日  朝レポート(スキャン+答え合わせ)"
 echo "   07:30 JST 毎日  自動学習(因子重み+教訓を更新)"
+echo "   07:45 JST 毎日  全銘柄ランキング事前計算(おすすめタブが即表示に)"
 echo "   08:00 JST 毎月1日 長期再検証(10年ウォークフォワード)"
 echo "════════════════════════════════════════════════"
 echo ""

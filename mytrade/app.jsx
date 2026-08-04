@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 // MyTrade — 投資専用スタンドアロンアプリ (MyDeskから分離)
 // バックエンド: mydesk-stock-analysis Lambda (共用・変更不要)
 // ═══════════════════════════════════════════════════════════════
-const MYTRADE_BUILD = "2026-08-06-v4-auto-daily-learn";
+const MYTRADE_BUILD = "2026-08-06-v5-picks-ranking";
 if (typeof window !== "undefined") {
   window.__MYTRADE_BUILD = MYTRADE_BUILD;
   console.log(`[MyTrade] Build: ${MYTRADE_BUILD}`);
@@ -198,6 +198,7 @@ function StockView({currentUser}) {
   const [btRep, setBtRep]         = useState(null);  // バックテスト結果
   const [btYears, setBtYears]     = useState("10");  // 検証期間(年)
   const [screenRes, setScreenRes] = useState(null);  // スクリーニング結果
+  const [ranking, setRanking]     = useState(null);  // 全銘柄ランキング
   const [report, setReport]       = useState(null);  // 朝レポート
   const [showReport, setShowReport] = useState(true);
   const [holdEdit, setHoldEdit]   = useState(false); // 保有登録フォーム表示
@@ -261,6 +262,7 @@ function StockView({currentUser}) {
     if(view==="home"&&!report&&!busy.report) loadReport(false);
     if(view==="portfolio"&&!journal&&!busy.journal) loadJournal();
     if(view==="learn"&&!perf&&!busy.perf) loadPerf();
+    if(view==="picks"&&!ranking&&!busy.rank) loadRanking(false);
   /* eslint-disable-next-line */ },[view]);
 
   const searchStock = async () => {
@@ -341,6 +343,13 @@ function StockView({currentUser}) {
       setPerf(p=>({...(p||{}), config:{...((p&&p.config)||{}), factor_weights:rep.weights, factor_ic:rep.ics, backtestSamples:rep.samples, updatedAt:rep.updatedAt}}));
     } catch(e){ setErrMsg("バックテストエラー: "+e.message); }
     setBusy(b=>({...b,bt:false}));
+  };
+
+  const loadRanking = async (force) => {
+    setBusy(b=>({...b,rank:true})); setErrMsg("");
+    try { const r = await api({action:"ranking",force:!!force}, 300000); setRanking(r); }
+    catch(e){ setErrMsg("ランキング取得エラー: "+e.message); }
+    setBusy(b=>({...b,rank:false}));
   };
 
   const runScreen = async () => {
@@ -453,7 +462,7 @@ function StockView({currentUser}) {
     <div style={{paddingBottom:"1.5rem"}}>
       {/* タブナビ */}
       <div style={{display:"flex",gap:"0.25rem",marginBottom:"1rem",background:"white",borderRadius:12,padding:"0.3rem",border:`1px solid ${C.border}`,overflowX:"auto",WebkitOverflowScrolling:"touch",position:"sticky",top:52,zIndex:40,boxShadow:C.shadow}}>
-        {[["home","🏠","ホーム"],["analyze","🔍","分析"],["portfolio","💼","ポートフォリオ"],["learn","🎓","学習・検証"],["settings","⚙️","設定"]].map(([v,ic,l])=>(
+        {[["home","🏠","ホーム"],["picks","⭐","おすすめ"],["analyze","🔍","分析"],["portfolio","💼","ポートフォリオ"],["learn","🎓","学習・検証"],["settings","⚙️","設定"]].map(([v,ic,l])=>(
           <button key={v} onClick={()=>{setView(v);localStorage.setItem("mt_view",v);}}
             style={{flexShrink:0,display:"flex",alignItems:"center",gap:"0.35rem",padding:"0.5rem 0.9rem",borderRadius:9,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:"0.8rem",fontWeight:view===v?800:600,background:view===v?C.accent:"transparent",color:view===v?"white":C.textSub,transition:"all 0.15s"}}>
             <span>{ic}</span><span style={{whiteSpace:"nowrap"}}>{l}</span>
@@ -580,6 +589,120 @@ function StockView({currentUser}) {
         </div>
       </div>
 
+      </>)}
+
+      {view==="picks"&&(<>
+      {/* ⭐ おすすめ: 全銘柄ランキング */}
+      <div style={{...card,marginBottom:"0.85rem",padding:"0.85rem 1rem"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:"0.5rem"}}>
+          <div>
+            <div style={{fontWeight:800,fontSize:"0.9rem",color:C.text}}>⭐ 全銘柄ランキング</div>
+            <div style={{fontSize:"0.68rem",color:C.textMuted}}>
+              日米主力65銘柄を短期・長期の両面で採点し、狙い目を抽出
+              {ranking&&` / ${ranking.deepScanned}銘柄を完全分析 (${new Date(ranking.updatedAt).toLocaleString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}時点)`}
+            </div>
+          </div>
+          <button onClick={()=>loadRanking(true)} disabled={busy.rank}
+            style={{padding:"0.5rem 0.95rem",borderRadius:8,border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",opacity:busy.rank?0.6:1}}>
+            {busy.rank?"分析中(2〜4分)...":"🔄 最新データで再分析"}
+          </button>
+        </div>
+        {busy.rank&&<div style={{fontSize:"0.75rem",color:C.textMuted,marginTop:"0.6rem"}}>65銘柄の株価・財務・指標を計算中です。初回は3〜4分かかります...</div>}
+        {ranking&&!ranking.complete&&(
+          <div style={{marginTop:"0.5rem",fontSize:"0.7rem",color:C.yellow,fontWeight:600}}>
+            ⚠️ 時間制限により{ranking.scanned-ranking.deepScanned}銘柄は短期スコアのみです。「再分析」でキャッシュが効いて全銘柄揃います
+          </div>
+        )}
+      </div>
+
+      {ranking&&ranking.rows&&(()=>{
+        const rows = ranking.rows.filter(r=>mktFilter==="all"||r.market===mktFilter);
+        const deep = rows.filter(r=>r.long!=null);
+        const inWl = t => watchlist.some(w=>w.ticker===t);
+        const longTop  = [...deep].sort((a,b)=>b.long-a.long).slice(0,8);
+        const shortTop = [...rows].sort((a,b)=>b.short-a.short).slice(0,8);
+        // 狙い目: 長期の質が高い(60点以上)前提で、短期の勢い・押し目の両面から総合評価
+        const sweet = [...deep].filter(r=>r.long>=60).map(r=>{
+          const q = r.quadrant;
+          const bonus = q==="本命"?18:(q==="押し目待ち"?10:0);
+          return {...r, pick: Math.round(r.long*0.5 + r.short*0.5 + bonus)};
+        }).sort((a,b)=>b.pick-a.pick).slice(0,6);
+
+        const Row = ({r,metric,label,rank}) => (
+          <div style={{display:"flex",alignItems:"center",gap:"0.6rem",padding:"0.55rem 0",borderBottom:`1px solid ${C.borderLight}`}}>
+            <span style={{flexShrink:0,width:22,textAlign:"center",fontWeight:800,fontSize:"0.8rem",color:rank<=3?C.accent:C.textMuted}}>{rank}</span>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontWeight:700,fontSize:"0.82rem",color:C.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                {r.market==="JP"?"🇯🇵":"🇺🇸"} {r.name}
+                {r.quadrant&&STOCK_QUAD_META[r.quadrant]&&<span style={{...S.chip(STOCK_QUAD_META[r.quadrant].bg,STOCK_QUAD_META[r.quadrant].color),marginLeft:"0.4rem",fontSize:"0.62rem"}}>{r.quadrant}</span>}
+              </div>
+              <div style={{fontSize:"0.66rem",color:C.textMuted,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{label}</div>
+            </div>
+            <div style={{flexShrink:0,textAlign:"right"}}>
+              <div style={{fontWeight:800,fontSize:"0.85rem",color:metric>=70?C.green:(metric>=50?C.yellow:C.textMuted)}}>{metric}</div>
+              <div style={{fontSize:"0.62rem",color:r.chg1d>=0?C.green:C.red}}>{r.chg1d>=0?"+":""}{r.chg1d}%</div>
+            </div>
+            <button onClick={()=>{ if(inWl(r.ticker)){setSelected(r.ticker);setView("analyze");localStorage.setItem("mt_view","analyze");if(!newsMap[r.ticker])loadNews(r.ticker);} else addStock({ticker:r.ticker,name:r.name,market:r.market}); }}
+              style={{flexShrink:0,padding:"0.3rem 0.6rem",borderRadius:7,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:"0.68rem",fontWeight:700,
+                background:inWl(r.ticker)?C.borderLight:C.accentBg,color:inWl(r.ticker)?C.textSub:C.accentDark}}>
+              {inWl(r.ticker)?"詳細":"＋追加"}
+            </button>
+          </div>
+        );
+
+        const Panel = ({title,desc,color,bg,items,render}) => (
+          <div style={{...card,flex:"1 1 320px",minWidth:0,padding:"0.85rem 1rem"}}>
+            <div style={{fontWeight:800,fontSize:"0.85rem",color,marginBottom:"0.15rem"}}>{title}</div>
+            <div style={{fontSize:"0.66rem",color:C.textMuted,marginBottom:"0.5rem",paddingBottom:"0.4rem",borderBottom:`2px solid ${bg}`}}>{desc}</div>
+            {items.length===0
+              ? <div style={{fontSize:"0.73rem",color:C.textMuted,padding:"0.5rem 0"}}>該当なし(条件を満たす銘柄がありません)</div>
+              : items.map((r,i)=>render(r,i+1))}
+          </div>
+        );
+
+        return (
+          <div>
+            <div style={{display:"flex",gap:"0.25rem",marginBottom:"0.85rem"}}>
+              {[["all","全部"],["JP","🇯🇵日本株"],["US","🇺🇸米国株"]].map(([v,l])=>(
+                <button key={v} onClick={()=>setMktFilter(v)}
+                  style={{padding:"0.4rem 0.8rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:"0.74rem",fontWeight:700,background:mktFilter===v?C.accent:C.borderLight,color:mktFilter===v?"white":C.textSub}}>{l}</button>
+              ))}
+            </div>
+
+            {/* 🎯 狙い目(最上段・幅いっぱい) */}
+            <div style={{...card,marginBottom:"0.85rem",padding:"0.95rem 1.1rem",border:`2px solid ${C.accent}`}}>
+              <div style={{fontWeight:800,fontSize:"0.95rem",color:C.accentDark,marginBottom:"0.15rem"}}>🎯 狙い目 — 今いちばん妙味のある銘柄</div>
+              <div style={{fontSize:"0.7rem",color:C.textMuted,marginBottom:"0.6rem"}}>
+                「長期で持てる会社(60点以上)」を前提に、短期の買い場としての魅力を加味した総合順位。◎本命=業績も株価も良い / ○押し目待ち=良い会社だが今は買い場待ち
+              </div>
+              {sweet.length===0
+                ? <div style={{fontSize:"0.75rem",color:C.textMuted}}>現在、条件を満たす狙い目銘柄はありません(地合いが弱い時期は該当なしになります)</div>
+                : sweet.map((r,i)=>(
+                  <Row key={r.ticker} r={r} rank={i+1} metric={r.pick}
+                    label={`短期${r.short} / 長期${r.long}${r.per?` / PER${Number(r.per).toFixed(1)}倍`:""}${r.roe?` / ROE${r.roe.toFixed(0)}%`:""}${r.sector?` / ${r.sector}`:""}`}/>
+                ))}
+            </div>
+
+            <div style={{display:"flex",gap:"0.85rem",flexWrap:"wrap",alignItems:"flex-start"}}>
+              <Panel title="🏛️ 長期でいい銘柄" color={C.green} bg={C.greenBg}
+                desc="業績・割安さ・財務の質で評価。数年単位で持つ前提の順位"
+                items={longTop}
+                render={(r,i)=><Row key={r.ticker} r={r} rank={i} metric={r.long}
+                  label={(r.longReasons||[]).join(" / ")||`PER${r.per?Number(r.per).toFixed(1):"?"}倍`}/>}/>
+              <Panel title="⚡ 短期でいい銘柄" color={C.orange} bg={C.orangeBg}
+                desc="トレンド・勢い・出来高で評価。数日〜数週間の値幅取り向け"
+                items={shortTop}
+                render={(r,i)=><Row key={r.ticker} r={r} rank={i} metric={r.short}
+                  label={(r.shortReasons||[]).join(" / ")}/>}/>
+            </div>
+
+            <div style={{marginTop:"0.85rem",fontSize:"0.68rem",color:C.textMuted,lineHeight:1.7}}>
+              ※スコアは学習済みの因子重みを適用済み。地合いが弱い(指数200日線割れ)時は買いシグナルが自動で保留に格下げされます。<br/>
+              ※実際に買う前に、必ず銘柄をタップして「AI分析を実行」で損切りライン・利確目標・リスクを確認してください。
+            </div>
+          </div>
+        );
+      })()}
       </>)}
 
       {view==="analyze"&&(<>

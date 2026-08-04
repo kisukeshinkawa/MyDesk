@@ -64,6 +64,8 @@ def lambda_handler(event, context):
                 return _res(200, run_learn([w["ticker"] for w in wl] or None))
             if job == "backtest":
                 return _res(200, run_backtest(None, int(event.get("years", 10)), True))
+            if job == "ranking":
+                return _res(200, run_ranking(force=True))
             return _res(200, run_daily_report())
         except Exception as e:
             import traceback
@@ -119,6 +121,8 @@ def lambda_handler(event, context):
             return _res(200, {"ok": True, "count": len(items)})
         if action == "screen":
             return _res(200, run_screen(body.get("exclude") or [], body.get("market", "all")))
+        if action == "ranking":
+            return _res(200, run_ranking(bool(body.get("force", False))))
         if action == "daily-report":
             return _res(200, run_daily_report(send_mail=bool(body.get("sendMail", False))))
         if action == "report-latest":
@@ -1373,6 +1377,83 @@ def run_screen(exclude=None, market="all"):
            "updatedAt": datetime.now(timezone.utc).isoformat()}
     cache_put(cache_key, out)
     out = {**out, "results": [r for r in out["results"] if r["ticker"] not in exclude]}
+    return out
+
+
+# ═══════════════════════ 全銘柄ランキング(短期/長期/狙い目) ═══════════════════════
+def run_ranking(force=False):
+    """日米主力ユニバース全銘柄を短期・長期の両方で採点してランキング化。
+    重い財務取得は時間予算内で処理し、超過分は短期スコアのみ(次回のキャッシュで補完)。
+    結果は6時間キャッシュ。毎朝EventBridge(job=ranking)で温めておけば体感は即時。"""
+    if not force:
+        cached = cache_get("ranking.json", 6 * 3600)
+        if cached:
+            return cached
+
+    start = time.time()
+    BUDGET = 230  # 秒。Lambdaタイムアウト300秒に対する安全域
+    cfg = load_learn_config()
+    weights = cfg.get("factor_weights")
+
+    bench = {}
+    for sym, key in (("^N225", "JP"), ("^GSPC", "US")):
+        try:
+            b = fetch_history(sym, "300d")["Close"]
+            bench[key] = ((float(b.iloc[-1]) / float(b.iloc[-21]) - 1) * 100 if len(b) >= 21 else 0,
+                          float(b.iloc[-1]) > float(b.rolling(200).mean().iloc[-1]) if len(b) >= 200 else True)
+        except Exception:
+            bench[key] = (0, True)
+
+    rows, errors, deep_n = [], 0, 0
+    for ticker, name in SCREEN_UNIVERSE:
+        mkt = "JP" if ticker.endswith(".T") else "US"
+        try:
+            df = fetch_history(ticker, "300d")
+            f = build_indicator_frame(df)
+            tech = _row_to_tech(f, len(f) - 1)
+            b_ret, b_regime = bench[mkt]
+            sc = score_short(tech, b_ret, weights)
+            if not b_regime and sc["signal"] == "buy":
+                sc["signal"] = "watch"
+            row = {"ticker": ticker, "name": name, "market": mkt,
+                   "price": round(tech["price"], 2), "chg1d": round(tech["chg1d"], 2),
+                   "short": sc["score"], "shortSignal": sc["signal"],
+                   "shortReasons": [b["reason"] for b in sorted(
+                       sc["breakdown"], key=lambda x: -(x["points"] / x["max"] if x["max"] else 0))[:2]],
+                   "regimeOn": bool(b_regime)}
+
+            # ── 長期スコア(時間予算内のみ) ──
+            if time.time() - start < BUDGET:
+                info = cache_get(f"info/{ticker}.json", SLOW_TTL)
+                if info is None:
+                    info = fetch_info(ticker)
+                    cache_put(f"info/{ticker}.json", info)
+                fin = fetch_fin_history(ticker)
+                lg = score_long(info, fin)
+                row.update({
+                    "long": lg["score"], "longSignal": lg["signal"],
+                    "longReasons": [b["reason"] for b in sorted(
+                        lg["breakdown"], key=lambda x: -(x["points"] / x["max"] if x["max"] else 0))[:2] if b["reason"] != "データ不足"],
+                    "sector": _g(info, "sector"),
+                    "per": _g(info, "trailingPE"), "pbr": _g(info, "priceToBook"),
+                    "roe": (_g(info, "returnOnEquity") or 0) * 100 if _g(info, "returnOnEquity") is not None else None,
+                    "divYield": _g(info, "dividendYield"),
+                })
+                if row["short"] >= 70 and row["long"] >= 70: row["quadrant"] = "本命"
+                elif row["long"] >= 70: row["quadrant"] = "押し目待ち"
+                elif row["short"] >= 70: row["quadrant"] = "短期限定"
+                else: row["quadrant"] = "見送り"
+                deep_n += 1
+            rows.append(row)
+        except Exception as e:
+            errors += 1
+            print("ranking failed:", ticker, e)
+
+    out = {"rows": rows, "scanned": len(rows), "deepScanned": deep_n,
+           "errors": errors, "elapsed": round(time.time() - start),
+           "complete": deep_n == len(rows),
+           "updatedAt": datetime.now(timezone.utc).isoformat()}
+    cache_put("ranking.json", out)
     return out
 
 
