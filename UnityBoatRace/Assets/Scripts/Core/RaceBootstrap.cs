@@ -480,9 +480,9 @@ namespace BoatRace.Core
                 trailGo.transform.SetParent(root.transform, false);
                 trailGo.transform.localPosition = new Vector3(0f, -0.12f, -1.65f);
                 var trail = trailGo.AddComponent<TrailRenderer>();
-                trail.time = 3.8f;      // 実映像のように長く白い航跡を残す
-                trail.startWidth = 2.6f;
-                trail.endWidth = 0.3f;
+                trail.time = 3.2f;      // 実映像のように長く白い航跡を残す
+                trail.startWidth = 2.0f;
+                trail.endWidth = 0.25f;
                 trail.material = new Material(Shader.Find("Sprites/Default"));
                 trail.startColor = new Color(1f, 1f, 1f, 0.55f);
                 trail.endColor = new Color(1f, 1f, 1f, 0f);
@@ -490,16 +490,17 @@ namespace BoatRace.Core
                 // 水しぶき(速度・ターンで増える)
                 var sprayGo = new GameObject("Spray");
                 sprayGo.transform.SetParent(root.transform, false);
-                sprayGo.transform.localPosition = new Vector3(0f, 0.05f, 1.5f);
-                sprayGo.transform.localRotation = Quaternion.Euler(-55f, 0f, 0f);
+                // 実艇のローステールは船尾から後方へ(艇体を隠さない)
+                sprayGo.transform.localPosition = new Vector3(0f, 0.10f, -1.9f);
+                sprayGo.transform.localRotation = Quaternion.Euler(-35f, 180f, 0f);
                 var ps = sprayGo.AddComponent<ParticleSystem>();
                 var main = ps.main;
-                main.startLifetime = 0.6f;
-                main.startSpeed = new ParticleSystem.MinMaxCurve(3.0f, 7.0f);
-                main.startSize = new ParticleSystem.MinMaxCurve(0.15f, 0.8f); // 実映像の白い飛沫柱
-                main.startColor = new Color(1f, 1f, 1f, 0.7f);
-                main.gravityModifier = 1.2f;
-                main.maxParticles = 450;
+                main.startLifetime = 0.55f;
+                main.startSpeed = new ParticleSystem.MinMaxCurve(3.0f, 6.5f);
+                main.startSize = new ParticleSystem.MinMaxCurve(0.12f, 0.5f); // 艇が隠れない量に調整
+                main.startColor = new Color(1f, 1f, 1f, 0.65f);
+                main.gravityModifier = 1.25f;
+                main.maxParticles = 300;
                 main.simulationSpace = ParticleSystemSimulationSpace.World;
                 var emission = ps.emission;
                 emission.rateOverTime = 0f;

@@ -259,10 +259,11 @@ namespace BoatRace.Core
             MakeBox("Leg", new Vector3(-18f, 4f, 0f), new Vector3(1.5f, 8f, 1.5f), new Color(0.4f, 0.4f, 0.45f), board.transform);
             MakeBox("Leg", new Vector3(18f, 4f, 0f), new Vector3(1.5f, 8f, 1.5f), new Color(0.4f, 0.4f, 0.45f), board.transform);
             MakeBox("Panel", new Vector3(0f, 14f, 0f), new Vector3(84f, 16f, 1.2f), new Color(0.05f, 0.06f, 0.12f), board.transform);
+            // スタンド側(-Z)の中継カメラから読める向き(identity=南から見て正字)
             MakeText3D($"BOATRACE {race.venue.name}", new Vector3(-150f, 18f, bz - 1f),
-                Quaternion.Euler(0f, 180f, 0f), 3.4f, new Color(1f, 0.85f, 0.2f));
+                Quaternion.identity, 3.4f, new Color(1f, 0.85f, 0.2f));
             MakeText3D("第 1 レース　大型映像", new Vector3(-150f, 12f, bz - 1f),
-                Quaternion.Euler(0f, 180f, 0f), 2.6f, Color.white);
+                Quaternion.identity, 2.6f, Color.white);
         }
 
         // ---- 本番ピット(水面図準拠: 岸側に6艇が横一列のスタール式) ----
@@ -298,7 +299,7 @@ namespace BoatRace.Core
             {
                 Vector3 sp = PitExitSystem.PitPosition(i, race.venueId);
                 MakeText3D((i + 1).ToString(), new Vector3(sp.x, real ? 3.2f : 5f, plateZ),
-                    real ? Quaternion.Euler(0f, 180f, 0f) : Quaternion.identity, 2.4f,
+                    Quaternion.identity, 2.4f,
                     UiKit.BoatColors[i] == Color.white ? Color.white : UiKit.BoatColors[i]);
             }
             if (!real)
