@@ -30,6 +30,8 @@ namespace BoatRace.UI
         readonly Text[] standingRows = new Text[6];
         readonly Image[] rowChips = new Image[6];
         readonly Text commentaryText;
+        readonly GameObject clockDial;          // 実中継風のアナログ大時計
+        readonly RectTransform wNeedle, yNeedle;
 
         public RaceHudUI(RaceManager race, CommentarySystem commentary, Transform canvas, RaceCamera raceCam)
         {
@@ -82,6 +84,44 @@ namespace BoatRace.UI
                 standingRows[i] = UiKit.MakeText(board.transform, "", 21, Color.white, TextAnchor.MiddleLeft,
                     new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(62f, y - 42f), new Vector2(-8f, -4f + y - 42f + 38f));
             }
+
+            // アナログ大時計(実中継の丸時計。白針=60秒針/黄針=12秒針。スタート進行中のみ)
+            clockDial = new GameObject("ClockDial");
+            UiKit.Place(clockDial, root.transform, new Vector2(1f, 1f), new Vector2(1f, 1f),
+                new Vector2(-560f, -122f), new Vector2(-464f, -26f));
+            var dialImg = clockDial.AddComponent<Image>();
+            dialImg.sprite = UiKit.Rounded(60);
+            dialImg.type = Image.Type.Sliced;
+            dialImg.color = new Color(1f, 1f, 1f, 0.94f);
+            dialImg.raycastTarget = false;
+            var dialOl = clockDial.AddComponent<Outline>();
+            dialOl.effectColor = UiKit.Navy;
+            dialOl.effectDistance = new Vector2(3f, -3f);
+            // 12時マーク(スタートライン)
+            var mark12 = new GameObject("M12");
+            UiKit.Place(mark12, clockDial.transform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
+                new Vector2(-3f, -14f), new Vector2(3f, -4f));
+            var m12i = mark12.AddComponent<Image>();
+            m12i.color = UiKit.Red;
+            m12i.raycastTarget = false;
+            RectTransform Needle(Color c, float len, float w)
+            {
+                var pivot = new GameObject("NeedlePivot");
+                var prt = UiKit.Place(pivot, clockDial.transform,
+                    new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+                var bar = new GameObject("Bar");
+                var brt = UiKit.Place(bar, pivot.transform,
+                    new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+                brt.sizeDelta = new Vector2(w, len);
+                brt.anchoredPosition = new Vector2(0f, len * 0.5f);
+                var bi = bar.AddComponent<Image>();
+                bi.color = c;
+                bi.raycastTarget = false;
+                return prt;
+            }
+            wNeedle = Needle(new Color(0.25f, 0.30f, 0.40f), 36f, 5f);
+            yNeedle = Needle(new Color(0.95f, 0.72f, 0.05f), 26f, 6f);
+            clockDial.SetActive(false);
 
             // 下部: 実況テロップ
             var ticker = UiKit.MakePanel(root.transform, new Color(0.05f, 0.12f, 0.3f, 0.85f), 16,
@@ -218,6 +258,19 @@ namespace BoatRace.UI
             clockText.text = race.state.phase == RacePhase.Racing || race.state.phase == RacePhase.Finished
                 ? $"⏱ {race.state.raceTime:F1}s"
                 : $"大時計 {race.state.clock:F1}";
+
+            // アナログ大時計: 実物と同じ動き(白針=T-75で始動する60秒針/黄針=T-12の12秒針)
+            bool showDial = (race.state.phase == RacePhase.Waiting ||
+                             race.state.phase == RacePhase.Approach ||
+                             race.state.phase == RacePhase.PitOut) && ck > -80f && ck < 1.5f;
+            if (clockDial.activeSelf != showDial) clockDial.SetActive(showDial);
+            if (showDial)
+            {
+                float wc = Mathf.Max(ck, -75f);
+                wNeedle.localEulerAngles = new Vector3(0f, 0f, -wc * 6f);
+                float yc = Mathf.Max(ck, -12f);
+                yNeedle.localEulerAngles = new Vector3(0f, 0f, -yc * 30f);
+            }
 
             for (int i = 0; i < 6; i++)
             {

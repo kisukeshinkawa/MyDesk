@@ -54,7 +54,29 @@ namespace BoatRace.Core
             bgmSrc.clip = MakeBgm();
             ambSrc.clip = crowdClip;
             ambSrc.Play();
+
+            // ---- 音源ファイル優先(Assets/Resources/Sounds/ に置くだけで差し替わる) ----
+            // se_click / se_whoosh / se_horn / se_fanfare / se_cheer / se_crowd /
+            // se_engine / bgm_menu / bgm_race (.wav .mp3 .ogg)
+            AudioClip F(string name) => Resources.Load<AudioClip>("Sounds/" + name);
+            clickClip = F("se_click") ?? clickClip;
+            whooshClip = F("se_whoosh") ?? whooshClip;
+            hornClip = F("se_horn") ?? hornClip;
+            fanfareClip = F("se_fanfare") ?? fanfareClip;
+            cheerClip = F("se_cheer") ?? cheerClip;
+            engineClip = F("se_engine") ?? engineClip;
+            var crowdFile = F("se_crowd");
+            if (crowdFile != null) { crowdClip = crowdFile; ambSrc.clip = crowdClip; ambSrc.Play(); }
+            var menuFile = F("bgm_menu");
+            if (menuFile != null) bgmSrc.clip = menuFile;
+            raceBgmClip = F("bgm_race");
+            int files = 0;
+            foreach (var n in new[] { "se_click","se_whoosh","se_horn","se_fanfare","se_cheer","se_crowd","se_engine","bgm_menu","bgm_race" })
+                if (F(n) != null) files++;
+            Debug.Log($"[音源チェック] Sounds/フォルダのファイル: {files}/9 (無い音は内蔵シンセで再生)");
         }
+
+        static AudioClip raceBgmClip;
 
         /// <summary>波形関数からAudioClipを生成(lowpass=移動平均の窓幅)。</summary>
         static AudioClip Synth(string name, float dur, System.Func<float, float> wave, int lowpass = 0)
@@ -117,10 +139,23 @@ namespace BoatRace.Core
         public static void Fanfare() { if (ready) uiSrc.PlayOneShot(fanfareClip, 0.9f); }
         public static void Cheer(float vol = 0.8f) { if (ready) uiSrc.PlayOneShot(cheerClip, vol); }
 
+        static AudioClip menuBgmCache;
+
+        /// <summary>BGM切替。on=メニュー曲 / off=レース(bgm_raceがあれば流す、無ければ無音)。</summary>
         public static void Bgm(bool on)
         {
             if (!ready) return;
-            if (on) { if (!bgmSrc.isPlaying) bgmSrc.Play(); }
+            if (menuBgmCache == null) menuBgmCache = bgmSrc.clip;
+            if (on)
+            {
+                if (bgmSrc.clip != menuBgmCache) { bgmSrc.clip = menuBgmCache; bgmSrc.Play(); }
+                else if (!bgmSrc.isPlaying) bgmSrc.Play();
+            }
+            else if (raceBgmClip != null)
+            {
+                // レース用BGMファイルがあれば控えめ音量で流す
+                if (bgmSrc.clip != raceBgmClip) { bgmSrc.clip = raceBgmClip; bgmSrc.Play(); }
+            }
             else bgmSrc.Stop();
         }
 

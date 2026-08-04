@@ -15,7 +15,7 @@ namespace BoatRace.UI
     public class GameFlow : MonoBehaviour
     {
         /// <summary>ビルド識別子。画面右上に表示され、更新が届いたか一目で分かる。</summary>
-        public const string Build = "B27-UI品質向上";
+        public const string Build = "B28-細部演出+音源対応";
 
         RaceManager race;
         ReplayManager replay;
@@ -62,6 +62,7 @@ namespace BoatRace.UI
 
         // 演出: スタートスロー(大時計0秒付近をスローモーションで見せる)
         bool startSlowActive, startSlowDone;
+        bool goalSlowActive; // ゴール瞬間のスローモーション中
         bool stTelopPending; // スタート成立後にST一覧テロップを出す予約
         GameObject broadcastStrip; // 実中継風の左端縦艇番プレート(スタート前のみ)
         RectTransform homeCtaRT;   // ホームの出走CTA(鼓動アニメ)
@@ -245,7 +246,8 @@ namespace BoatRace.UI
             {
                 if (place == 1)
                 {
-                    // 勝利カットイン(仕様書⑩): 自分が勝ったらファンファーレ+カットイン
+                    // ゴール瞬間スロー(写真判定の緊張感)+勝利演出
+                    StartCoroutine(GoalSlowMo());
                     if (idx == race.playerBoatIndex)
                     {
                         ShowMoveCutIn("WINNER！！", new Color(1f, 0.78f, 0.10f));
@@ -254,7 +256,8 @@ namespace BoatRace.UI
                     }
                     else
                     {
-                        ShowFlash($"ゴール！ {idx + 1}号艇！", UiKit.Red);
+                        string kim = string.IsNullOrEmpty(race.kimarite) ? "" : $"　{race.kimarite}！";
+                        ShowFlash($"ゴール！ {idx + 1}号艇 {race.statsList[idx].player.playerName}{kim}", UiKit.Red);
                         AudioKit.Cheer(0.6f);
                     }
                 }
@@ -301,7 +304,7 @@ namespace BoatRace.UI
             if (racingNow && !preRace) ffLabel.text = $"⏩ 倍速 x{raceSpeed:F0}";
             if (!race.armed) raceSpeed = 1f;
             if (!preRace && movePanelGo == null && !specialSeqActive && !startSlowActive &&
-                Time.timeScale != raceSpeed)
+                !goalSlowActive && Time.timeScale != raceSpeed)
             {
                 Time.timeScale = raceSpeed;
                 if (!racingNow) ffLabel.text = "⏩ 早送り";
@@ -625,6 +628,18 @@ namespace BoatRace.UI
                 frame.AddComponent<Button>().onClick.AddListener(PickNone);
             });
             moveTimeoutCo = StartCoroutine(MoveTimeout());
+        }
+
+        /// <summary>ゴール瞬間のスローモーション(1着ゴール時に0.9秒)。</summary>
+        System.Collections.IEnumerator GoalSlowMo()
+        {
+            if (goalSlowActive || replay.IsPlaying) yield break;
+            goalSlowActive = true;
+            Time.timeScale = 0.28f;
+            if (raceCam != null) raceCam.Punch(9f);
+            yield return new WaitForSecondsRealtime(0.9f);
+            goalSlowActive = false;
+            Time.timeScale = raceSpeed;
         }
 
         System.Collections.IEnumerator MoveTimeout()

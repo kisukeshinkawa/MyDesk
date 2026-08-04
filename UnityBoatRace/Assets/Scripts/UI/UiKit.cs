@@ -339,6 +339,7 @@ namespace BoatRace.UI
             var sh = outer.AddComponent<Shadow>();
             sh.effectColor = new Color(0.02f, 0.08f, 0.20f, 0.30f);
             sh.effectDistance = new Vector2(0f, -4f);
+            outer.AddComponent<PopInFx>(); // ふわっと出る出現ポップ
             var inner = MakePanel(outer.transform, new Color(1f, 1f, 1f, fillAlpha), 14,
                 Vector2.zero, Vector2.one, new Vector2(3.5f, 3.5f), new Vector2(-3.5f, -3.5f));
             inner.name = "CardInner";
@@ -508,6 +509,31 @@ namespace BoatRace.UI
     }
 
     /// <summary>矩形を平行四辺形に歪める(イナイレの斜めタグ/バナー)。</summary>
+    /// <summary>出現時にふわっと拡大するポップ演出(カード/ポップアップ共通)。</summary>
+    public class PopInFx : MonoBehaviour
+    {
+        float t;
+
+        void OnEnable()
+        {
+            t = 0f;
+            transform.localScale = new Vector3(0.90f, 0.90f, 1f);
+        }
+
+        void Update()
+        {
+            t += Time.unscaledDeltaTime;
+            float k = Mathf.Clamp01(t / 0.14f);
+            float s = 0.90f + 0.10f * (1f - (1f - k) * (1f - k)); // easeOut
+            transform.localScale = new Vector3(s, s, 1f);
+            if (k >= 1f)
+            {
+                transform.localScale = Vector3.one;
+                Destroy(this);
+            }
+        }
+    }
+
     public class SkewFx : BaseMeshEffect
     {
         public float skewX = 12f;
