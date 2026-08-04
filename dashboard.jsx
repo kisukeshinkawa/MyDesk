@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-06-v337-stock-pro-complete"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-06-v338-stock-eps-candles"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -31101,6 +31101,37 @@ function StockSparkline({spark=[],ma25=[],width=560,height=110}) {
   );
 }
 
+// ローソク足+出来高バー(60日)。上ヒゲ/下ヒゲ・陽線陰線・出来高の勢いが読める
+function StockCandleChart({candles=[],ma25=[],width=560,height=160}) {
+  if(!candles||candles.length<2) return null;
+  const volH = 30, padT = 4, padB = 4;
+  const priceH = height - volH - padT - padB;
+  const min = Math.min(...candles.map(c=>c.l)), max = Math.max(...candles.map(c=>c.h));
+  const range = (max-min)||1;
+  const maxV = Math.max(...candles.map(c=>c.v||0))||1;
+  const bw = width/candles.length;
+  const py = v => padT + (1-(v-min)/range)*priceH;
+  const maPts = (ma25||[]).slice(-candles.length).map((v,i)=>v==null?null:`${((i+0.5)*bw).toFixed(1)},${py(v).toFixed(1)}`).filter(Boolean).join(" ");
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} style={{width:"100%",height:"auto",display:"block"}}>
+      {candles.map((c,i)=>{
+        const up = c.c>=c.o, col = up?"#009122":"#DA1313";
+        const x = (i+0.5)*bw;
+        const yO=py(c.o), yC=py(c.c);
+        const vh = (c.v||0)/maxV*volH;
+        return (
+          <g key={i}>
+            <line x1={x} x2={x} y1={py(c.h)} y2={py(c.l)} stroke={col} strokeWidth="1"/>
+            <rect x={x-bw*0.32} width={bw*0.64} y={Math.min(yO,yC)} height={Math.max(1,Math.abs(yO-yC))} fill={up?col:"white"} stroke={col} strokeWidth={up?0:1}/>
+            <rect x={x-bw*0.32} width={bw*0.64} y={height-padB-vh} height={vh} fill={up?"rgba(0,145,34,0.3)":"rgba(218,19,19,0.3)"}/>
+          </g>
+        );
+      })}
+      {maPts&&<polyline points={maPts} fill="none" stroke="#0070D4" strokeWidth="1.5" strokeDasharray="4 3"/>}
+    </svg>
+  );
+}
+
 function StockScoreBar({label,score,signal}) {
   const color = score>=70?"#009122":(score>=45?"#BE4A04":"#8A93A3");
   return (
@@ -31871,8 +31902,10 @@ function StockView({currentUser}) {
               </div>
             </div>
             <div style={{margin:"0.5rem 0 0.75rem",padding:"0.5rem",background:C.bg,borderRadius:"0.625rem"}}>
-              <StockSparkline spark={sel.spark} ma25={sel.sparkMa25}/>
-              <div style={{fontSize:"0.62rem",color:C.textMuted,textAlign:"right"}}>直近60営業日 / 点線=25日移動平均</div>
+              {sel.candles&&sel.candles.length>1
+                ? <StockCandleChart candles={sel.candles} ma25={sel.sparkMa25}/>
+                : <StockSparkline spark={sel.spark} ma25={sel.sparkMa25}/>}
+              <div style={{fontSize:"0.62rem",color:C.textMuted,textAlign:"right"}}>{sel.candles&&sel.candles.length>1?"ローソク足60日+出来高":"直近60営業日"} / 青点線=25日移動平均</div>
             </div>
             <StockScoreBar label={`⚡ 短期テクニカル（${sel.short.signal==="buy"?"買い候補":sel.short.signal==="watch"?"監視":"見送り"}）`} score={sel.short.score}/>
             <div style={{marginBottom:"0.7rem"}}>
@@ -31892,6 +31925,30 @@ function StockView({currentUser}) {
               {sel.long.missing&&sel.long.missing.length>0&&(
                 <div style={{fontSize:"0.68rem",color:C.textMuted,marginTop:"0.3rem"}}>※データ取得不可: {sel.long.missing.join("、")}</div>
               )}
+              {sel.finHistory&&sel.finHistory.years&&sel.finHistory.years.length>0&&(
+                <div style={{marginTop:"0.5rem",padding:"0.5rem 0.7rem",background:C.bg,borderRadius:8,fontSize:"0.7rem",color:C.textSub,lineHeight:1.7}}>
+                  {sel.finHistory.eps.some(e=>e!=null)&&(
+                    <div>📈 <b style={{color:C.text}}>EPS推移</b>: {sel.finHistory.years.map((y,i)=>`${y}年 ${sel.finHistory.eps[i]!=null?sel.finHistory.eps[i]:"—"}`).join(" → ")}</div>
+                  )}
+                  {sel.finHistory.roe.some(r=>r!=null)&&(
+                    <div>🏦 <b style={{color:C.text}}>ROE推移</b>: {sel.finHistory.years.map((y,i)=>`${y}年 ${sel.finHistory.roe[i]!=null?sel.finHistory.roe[i]+"%":"—"}`).join(" → ")}</div>
+                  )}
+                </div>
+              )}
+              {/* 外部リサーチリンク(ワンタップで裏取り) */}
+              <div style={{marginTop:"0.6rem",display:"flex",gap:"0.4rem",flexWrap:"wrap"}}>
+                {(sel.market==="JP"
+                  ? [["Yahoo!ファイナンス",`https://finance.yahoo.co.jp/quote/${sel.ticker}`],
+                     ["株探",`https://kabutan.jp/stock/?code=${sel.ticker.replace(".T","")}`],
+                     ["みんかぶ",`https://minkabu.jp/stock/${sel.ticker.replace(".T","")}`],
+                     ["IR BANK",`https://irbank.net/${sel.ticker.replace(".T","")}`]]
+                  : [["Yahoo Finance",`https://finance.yahoo.com/quote/${sel.ticker}`],
+                     ["TradingView",`https://www.tradingview.com/symbols/${sel.ticker}/`],
+                     ["Finviz",`https://finviz.com/quote.ashx?t=${sel.ticker}`]]
+                ).map(([l,u])=>(
+                  <a key={l} href={u} target="_blank" rel="noopener noreferrer" style={{...S.chip(C.accentBg,C.accentDark),textDecoration:"none"}}>{l} ↗</a>
+                ))}
+              </div>
             </div>
           </div>
 

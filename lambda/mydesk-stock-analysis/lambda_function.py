@@ -227,6 +227,44 @@ def fetch_info(ticker):
         return {}
 
 
+def fetch_fin_history(ticker):
+    """年次のEPS・ROE推移(yfinanceの年次財務諸表・最大4年)。
+    「EPSが伸び続けているか」「ROE10%を安定維持か」の判定に使う。取れなければ空。"""
+    key = f"fin/{ticker}.json"
+    cached = cache_get(key, 24 * 3600)
+    if cached is not None:
+        return cached
+    out = {"years": [], "eps": [], "roe": []}
+    try:
+        import yfinance as yf
+        import pandas as pd
+        tk = yf.Ticker(ticker)
+        inc, bal = tk.income_stmt, tk.balance_sheet
+        if inc is not None and not getattr(inc, "empty", True):
+            eps_row = next((inc.loc[n] for n in ("Diluted EPS", "Basic EPS") if n in inc.index), None)
+            ni_row = inc.loc["Net Income"] if "Net Income" in inc.index else None
+            eq_row = None
+            if bal is not None and not getattr(bal, "empty", True):
+                eq_row = next((bal.loc[n] for n in ("Stockholders Equity", "Common Stock Equity",
+                                                    "Total Equity Gross Minority Interest") if n in bal.index), None)
+            for c in sorted(inc.columns):
+                eps = roe = None
+                if eps_row is not None and c in eps_row.index and pd.notna(eps_row[c]):
+                    eps = round(float(eps_row[c]), 2)
+                if (ni_row is not None and eq_row is not None and c in ni_row.index
+                        and c in getattr(eq_row, "index", []) and pd.notna(ni_row[c])
+                        and pd.notna(eq_row[c]) and float(eq_row[c]) != 0):
+                    roe = round(float(ni_row[c]) / float(eq_row[c]) * 100, 1)
+                if eps is not None or roe is not None:
+                    out["years"].append(str(c)[:4])
+                    out["eps"].append(eps)
+                    out["roe"].append(roe)
+    except Exception as e:
+        print("fin history failed:", ticker, e)
+    cache_put(key, out)
+    return out
+
+
 # ═══════════════════════ 地合い(market) ═══════════════════════
 def get_market_overview():
     cached = cache_get("market.json", PRICE_TTL)
@@ -407,8 +445,12 @@ def _g(info, *keys):
     return None
 
 
-def score_long(info):
+def score_long(info, fin=None):
+    """長期ファンダ100点。finに年次EPS/ROE推移があれば
+    「EPS連続増加」「ROE安定10%超」を単年指標より優先して評価する。"""
     br, missing = [], []
+    eps_hist = [e for e in (fin or {}).get("eps", []) if e is not None]
+    roe_hist = [r for r in (fin or {}).get("roe", []) if r is not None]
 
     per  = _g(info, "trailingPE", "forwardPE")
     pbr  = _g(info, "priceToBook")
@@ -441,14 +483,18 @@ def score_long(info):
         pts += 7; whys.append(f"PEG{peg:.2f}(成長対比で割安)")
     br.append({"category": "割安性", "points": min(25, pts), "max": 25, "reason": "。".join(whys) or "データ不足"})
 
-    # ② 収益性 25
+    # ② 収益性 25 (ROEは水準+複数年の安定性。「ROE10%安定維持=優良」の基準)
     pts, whys = 0, []
+    roe_stable = len(roe_hist) >= 3 and all(x >= 10 for x in roe_hist)
     if roe is not None:
         r = roe * 100
-        if r >= 15: pts += 12; whys.append(f"ROE{r:.1f}%と優秀")
+        if roe_stable: pts += 12; whys.append(f"ROE{r:.1f}%かつ{len(roe_hist)}期連続10%以上(安定した稼ぐ力)")
+        elif r >= 15: pts += 12; whys.append(f"ROE{r:.1f}%と優秀")
         elif r >= 10: pts += 8; whys.append(f"ROE{r:.1f}%と良好")
         elif r >= 8: pts += 4; whys.append(f"ROE{r:.1f}%")
         else: whys.append(f"ROE{r:.1f}%と低い")
+    elif roe_stable:
+        pts += 12; whys.append(f"ROE {len(roe_hist)}期連続10%以上(年次財務より)")
     else: missing.append("ROE")
     if opm is not None:
         m = opm * 100
@@ -468,7 +514,18 @@ def score_long(info):
         elif g >= 0: pts += 4; whys.append(f"売上成長率{g:.1f}%と低成長")
         else: whys.append(f"売上{g:.1f}%と減収")
     else: missing.append("売上成長率")
-    if epsg is not None:
+    # EPSは複数年トレンドを最優先(「EPSが伸び続けている企業=ほぼ間違いなく良い企業」)
+    if len(eps_hist) >= 3:
+        inc_years = sum(1 for i in range(1, len(eps_hist)) if eps_hist[i] > eps_hist[i - 1])
+        if inc_years == len(eps_hist) - 1:
+            pts += 13; whys.append(f"EPSが{len(eps_hist)}期連続増加(1株利益=投資家の取り分が拡大し続けている)")
+        elif eps_hist[-1] > eps_hist[0]:
+            pts += 8; whys.append(f"EPSは{len(eps_hist)}期通算で増加(うち増益{inc_years}回)")
+        elif eps_hist[-1] <= 0:
+            whys.append(f"EPSがマイナス圏(直近{eps_hist[-1]})")
+        else:
+            pts += 2; whys.append(f"EPSは{len(eps_hist)}期で伸び悩み")
+    elif epsg is not None:
         g = epsg * 100
         if g >= 10: pts += 13; whys.append(f"利益成長率{g:.1f}%")
         elif g >= 5: pts += 8; whys.append(f"利益成長率{g:.1f}%")
@@ -544,7 +601,8 @@ def analyze_ticker(ticker):
     if info is None:
         info = fetch_info(ticker)
         cache_put(f"info/{ticker}.json", info)
-    long_ = score_long(info)
+    fin = fetch_fin_history(ticker)
+    long_ = score_long(info, fin)
 
     # 4象限
     if short["score"] >= 70 and long_["score"] >= 70: quadrant = "本命"
@@ -575,6 +633,11 @@ def analyze_ticker(ticker):
         "regime": {"benchAboveMa200": regime_on,
                    "bench": "日経平均" if is_jp else "S&P500"},
         "spark": tech["spark"], "sparkMa25": tech["spark_ma25"],
+        "finHistory": fin,  # 年次EPS/ROE推移
+        "candles": [{"d": d.strftime("%m/%d"), "o": round(float(o), 2), "h": round(float(hi), 2),
+                     "l": round(float(lo), 2), "c": round(float(cl), 2), "v": float(v)}
+                    for d, o, hi, lo, cl, v in zip(df.index[-60:], df["Open"].iloc[-60:], df["High"].iloc[-60:],
+                                                   df["Low"].iloc[-60:], df["Close"].iloc[-60:], df["Volume"].iloc[-60:])],
         "updatedAt": datetime.now(timezone.utc).isoformat(),
     }
     # 予測を記録(後日答え合わせして学習に使う)
@@ -583,7 +646,8 @@ def analyze_ticker(ticker):
         "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
         "price": out["price"], "signal": short["signal"], "quadrant": quadrant,
         "short_score": short["score"], "long_score": long_["score"],
-        "factors": {b["category"]: round(b["points"] / b["max"], 3) for b in short["breakdown"]},
+        "factors": {b["category"]: round(b["points"] / b["max"], 3)
+                    for b in short["breakdown"] if b["max"]},  # 地合いフィルタ(max=0)は除外
     })
     cache_put(key, out)
     return out
@@ -983,6 +1047,8 @@ BRAIN_SYSTEM = """あなたは機関投資家出身で20年のキャリアを持
 5. 確信度が低いときは正直に「見送り」と言う。ポジションを取らないのも戦略
 6. 「過去の教訓」「自分の過去判定の実績」が与えられた場合は最優先で参照し、
    当たりやすいパターンでは確信度を上げ、外れやすいパターンの判定は慎重に修正する
+7. 長期の質は「EPSが複数年伸び続けているか」「ROE10%以上を安定維持しているか」を最重視する
+   (EPS=1株あたり利益こそ投資家の実質的な取り分。増資による希薄化・自社株買いの効果も織り込まれる)
 
 出力は必ず次のJSONのみ(コードブロック不要):
 {"verdict":"strong_buy|buy|hold|avoid|sell",
@@ -1025,6 +1091,15 @@ def brain_analysis(ticker, name="", holding=None):
 
 【直近ニュース】
 {news_text}"""
+
+    fin = analysis.get("finHistory") or {}
+    if fin.get("years"):
+        if any(e is not None for e in fin.get("eps", [])):
+            user_prompt += "\n\n【EPS推移(年次)】" + " → ".join(
+                f"{y}年:{e if e is not None else '?'}" for y, e in zip(fin["years"], fin["eps"]))
+        if any(r is not None for r in fin.get("roe", [])):
+            user_prompt += "\n【ROE推移(年次)】" + " → ".join(
+                f"{y}年:{str(r)+'%' if r is not None else '?'}" for y, r in zip(fin["years"], fin["roe"]))
 
     if holding and holding.get("price"):
         pnl = (analysis["price"] / float(holding["price"]) - 1) * 100
@@ -1159,6 +1234,20 @@ def run_daily_report(send_mail=True):
     prev = _load_json_s3(SIGNALS_KEY, {})
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
+    # 毎朝、過去予測の答え合わせを自動実行(実運用データが日々学習に蓄積される)
+    try:
+        evaluate_predictions()
+    except Exception as e:
+        print("auto evaluate failed:", e)
+    # UTC日曜(=JST月曜の朝)は週次自動学習: 重み最適化+教訓更新まで無人で回す
+    learned = False
+    if datetime.now(timezone.utc).weekday() == 6:
+        try:
+            run_learn([w["ticker"] for w in wl] or None)
+            learned = True
+        except Exception as e:
+            print("auto learn failed:", e)
+
     SIG_JA = {"buy": "買い候補", "watch": "監視", "avoid": "見送り"}
     alerts, lines, cur = [], [], {}
     for w in wl[:30]:
@@ -1198,7 +1287,8 @@ def run_daily_report(send_mail=True):
             f"■ 地合い: {market['moodLabel']}\n\n"
             f"■ アラート\n" + ("\n".join(alerts) if alerts else "特になし") + "\n\n"
             f"■ ウォッチリスト({len(wl)}銘柄)\n" + ("\n".join(lines) if lines else "登録なし") + "\n\n"
-            f"※参考情報であり投資助言ではありません")
+            + ("※週次自動学習を実行しました(因子重み・教訓を更新)\n" if learned else "")
+            + f"※参考情報であり投資助言ではありません")
     report = {"date": today, "body": body, "alerts": alerts,
               "updatedAt": datetime.now(timezone.utc).isoformat()}
     _save_json_s3(REPORT_KEY, report)
