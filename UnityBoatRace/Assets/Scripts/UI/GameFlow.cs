@@ -15,7 +15,7 @@ namespace BoatRace.UI
     public class GameFlow : MonoBehaviour
     {
         /// <summary>ビルド識別子。画面右上に表示され、更新が届いたか一目で分かる。</summary>
-        public const string Build = "B28-細部演出+音源対応";
+        public const string Build = "B29-1M自動リプレイ";
 
         RaceManager race;
         ReplayManager replay;
@@ -232,7 +232,12 @@ namespace BoatRace.UI
             ffButton = ffBtn.gameObject;
             ffButton.SetActive(false);
 
-            race.OnRaceFinished += () => { resultTimer = 3f; RecordStats(); };
+            race.OnRaceFinished += () =>
+            {
+                resultTimer = -1f;
+                RecordStats();
+                StartCoroutine(AutoHighlight()); // 絵コンテv3: ゴール後の1M攻防自動リプレイ
+            };
             race.OnFinalLap += () => ShowFlash("最終周回！", new Color(0.9f, 0.62f, 0.05f));
             // 絵コンテv3: 進入確定テロップ(助走開始時)とST一覧テロップ(スタート直後)
             race.OnPhaseChanged += p =>
@@ -628,6 +633,24 @@ namespace BoatRace.UI
                 frame.AddComponent<Button>().onClick.AddListener(PickNone);
             });
             moveTimeoutCo = StartCoroutine(MoveTimeout());
+        }
+
+        /// <summary>
+        /// ゴール後の1M攻防自動リプレイ(絵コンテv3 CUT15)。
+        /// ゴール演出を2.4秒見せてから1周目1M付近をスロー追走で再生し、結果画面へ。
+        /// </summary>
+        System.Collections.IEnumerator AutoHighlight()
+        {
+            yield return new WaitForSecondsRealtime(2.4f);
+            if (replay.IsPlaying) yield break;
+            float t1 = replay.FirstTurnTime();
+            if (t1 < 0f) { ShowResult(); yield break; }
+            Time.timeScale = 1f;
+            raceSpeed = 1f;
+            hud.SetVisible(false);
+            ShowFlash("1マーク攻防 リプレイ", new Color(0.06f, 0.16f, 0.38f));
+            replay.StartHighlight(Mathf.Max(0f, t1 - 2.0f), t1 + 3.5f, 0.55f);
+            // 再生終了はUpdateのwasReplaying検知でShowResultへ自動遷移
         }
 
         /// <summary>ゴール瞬間のスローモーション(1着ゴール時に0.9秒)。</summary>

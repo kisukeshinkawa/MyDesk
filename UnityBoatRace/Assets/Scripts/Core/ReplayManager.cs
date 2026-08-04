@@ -93,13 +93,40 @@ namespace BoatRace.Core
             frames.Add(f);
         }
 
+        float playEnd = -1f; // ハイライト再生の終了時刻(-1=最後まで)
+
         public void StartPlayback()
         {
             if (frames.Count < 2) return;
             IsPlaying = true;
             playTime = 0f;
+            playEnd = -1f;
+            playbackSpeed = 1f;
+            camMode = 0;
             race.simulationPaused = true;
             foreach (var b in race.boats) b.replayMode = true;
+        }
+
+        /// <summary>区間ハイライト再生(ゴール後の1M攻防自動リプレイ等)。終了で自動停止。</summary>
+        public void StartHighlight(float from, float to, float speed)
+        {
+            if (frames.Count < 2) return;
+            IsPlaying = true;
+            playTime = Mathf.Max(0f, from);
+            playEnd = to;
+            playbackSpeed = speed;
+            camMode = 1; // 追走カメラで攻防を大きく見せる
+            race.simulationPaused = true;
+            foreach (var b in race.boats) b.replayMode = true;
+        }
+
+        /// <summary>1周目の1マークに最初の艇が入った時刻(記録から推定)。無ければ-1。</summary>
+        public float FirstTurnTime()
+        {
+            foreach (var f in frames)
+                for (int i = 0; i < f.positions.Length; i++)
+                    if (f.positions[i].x > -6f) return f.t;
+            return -1f;
         }
 
         public void StopPlayback()
@@ -117,6 +144,12 @@ namespace BoatRace.Core
             playTime += Time.deltaTime * playbackSpeed;
             float last = frames[frames.Count - 1].t;
             if (playTime >= last) { playTime = last; }
+            // ハイライト再生は区間終端で自動停止(GameFlowが結果画面へ戻す)
+            if (playEnd > 0f && playTime >= Mathf.Min(playEnd, last))
+            {
+                StopPlayback();
+                return;
+            }
 
             // フレーム補間
             int hi = frames.FindIndex(fr => fr.t >= playTime);
