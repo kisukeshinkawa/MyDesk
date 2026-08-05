@@ -243,27 +243,31 @@ namespace BoatRace.UI
             img.type = Image.Type.Sliced;
             img.color = bg;
             var sh = go.AddComponent<Shadow>();
-            sh.effectColor = new Color(0f, 0f, 0f, 0.22f);
-            sh.effectDistance = new Vector2(0f, -3f);
+            sh.effectColor = new Color(0f, 0f, 0f, 0.28f);
+            sh.effectDistance = new Vector2(0f, -4f);
+            // 白フチ(プロスピ/ウマ娘系ボタンの定番)
+            var wol = go.AddComponent<Outline>();
+            wol.effectColor = new Color(1f, 1f, 1f, 0.55f);
+            wol.effectDistance = new Vector2(1.6f, -1.6f);
 
-            // ソフトな下部シェード(控えめなツートン)
+            // ソフトな下部シェード(グラデ質感の下半分)
             var dark = new GameObject("Shade");
-            Place(dark, go.transform, new Vector2(0f, 0f), new Vector2(1f, 0.34f),
+            Place(dark, go.transform, new Vector2(0f, 0f), new Vector2(1f, 0.42f),
                 new Vector2(3f, 3f), new Vector2(-3f, 0f));
             var darkImg = dark.AddComponent<Image>();
             darkImg.sprite = Rounded(20);
             darkImg.type = Image.Type.Sliced;
-            darkImg.color = new Color(bg.r * 0.84f, bg.g * 0.84f, bg.b * 0.84f, bg.a);
+            darkImg.color = new Color(bg.r * 0.78f, bg.g * 0.78f, bg.b * 0.78f, bg.a);
             darkImg.raycastTarget = false;
 
-            // 上部ハイライト(薄いガラス感)
+            // 上部ハイライト(ガラスのグロス)
             var shine = new GameObject("Shine");
-            Place(shine, go.transform, new Vector2(0f, 0.55f), new Vector2(1f, 1f),
+            Place(shine, go.transform, new Vector2(0f, 0.52f), new Vector2(1f, 1f),
                 new Vector2(4f, 0f), new Vector2(-4f, -3f));
             var shineImg = shine.AddComponent<Image>();
             shineImg.sprite = Rounded(20);
             shineImg.type = Image.Type.Sliced;
-            shineImg.color = new Color(1f, 1f, 1f, 0.13f);
+            shineImg.color = new Color(1f, 1f, 1f, 0.20f);
             shineImg.raycastTarget = false;
 
             var btn = go.AddComponent<Button>();
@@ -332,6 +336,23 @@ namespace BoatRace.UI
         public static readonly Color Border = new Color(0.051f, 0.169f, 0.322f);
 
         /// <summary>白カード+紺の太ボーダー+影(イナイレの基本パネル)。戻り値は内側の白パネル。</summary>
+        /// <summary>
+        /// 現代スマホゲー調の画面背景(縦グラデ+斜めの光帯レイヤー)。
+        /// プロスピ/ウマ娘系の「奥行きのある背景」を全画面で統一する。
+        /// </summary>
+        public static void ModernBackdrop(Transform parent, Color top, Color bottom, float bandAlpha = 0.06f)
+        {
+            MakeFullscreenGradient(parent, top, bottom);
+            for (int i = 0; i < 3; i++)
+            {
+                var band = MakePanel(parent, new Color(1f, 1f, 1f, bandAlpha + 0.02f * (i % 2)), 0,
+                    new Vector2(-0.25f + i * 0.38f, -0.25f), new Vector2(-0.02f + i * 0.38f, 1.25f),
+                    Vector2.zero, Vector2.zero);
+                band.AddComponent<SkewFx>().skewX = 30f;
+                band.GetComponent<Image>().raycastTarget = false;
+            }
+        }
+
         public static GameObject MakeCard(Transform parent, Vector2 anchorMin, Vector2 anchorMax,
             Vector2 offsetMin, Vector2 offsetMax, float fillAlpha = 0.97f)
         {

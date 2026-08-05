@@ -15,7 +15,7 @@ namespace BoatRace.UI
     public class GameFlow : MonoBehaviour
     {
         /// <summary>ビルド識別子。画面右上に表示され、更新が届いたか一目で分かる。</summary>
-        public const string Build = "B33-モンキーターン技体系";
+        public const string Build = "B34-UI再設計3ボタン化";
 
         RaceManager race;
         ReplayManager replay;
@@ -1136,6 +1136,49 @@ namespace BoatRace.UI
                 new Vector2(0f, 0.008f), new Vector2(1f, 0.05f), Vector2.zero, Vector2.zero);
         }
 
+        /// <summary>
+        /// 強化・準備メニュー(技強化/ガチャ/ガレージ/施設/ショップの集約シート)。
+        /// 画面上のボタンを減らし、大きなタイルで迷わず選べるようにする。
+        /// </summary>
+        void ShowPrepPopup(Transform parent)
+        {
+            var inner = UiKit.MakeCard(parent,
+                new Vector2(0.16f, 0.14f), new Vector2(0.84f, 0.86f), Vector2.zero, Vector2.zero);
+            var outer = inner.transform.parent.gameObject;
+            UiKit.MakeTag(inner.transform, "強化・準備", UiKit.Yellow, UiKit.Border, 22,
+                new Vector2(0.30f, 0.90f), new Vector2(0.70f, 0.995f));
+
+            (string icon, string label, string desc, Color c, UnityEngine.Events.UnityAction act)[] tiles =
+            {
+                ("▲", "技強化", "必殺技をLvアップ", new Color(0.62f, 0.2f, 0.75f),
+                    () => { Destroy(outer); ShowMoveUpgradePopup(parent); }),
+                ("★", "ガチャ", "ペラ/チルトを入手", new Color(0.9f, 0.35f, 0.55f),
+                    () => { Destroy(outer); ShowGachaPopup(parent, ""); }),
+                ("▤", "ガレージ", "装備の付け替え", new Color(0.35f, 0.42f, 0.55f),
+                    () => { Destroy(outer); ShowGaragePopup(parent); }),
+                ("■", "施設", "チーム設備に投資", new Color(0.15f, 0.55f, 0.60f),
+                    () => { Destroy(outer); ShowFacilityPopup(parent); }),
+                ("¥", "ショップ", "アイテムと両替", new Color(0.9f, 0.55f, 0.1f),
+                    () => { Destroy(outer); ShowShopPopup(parent); }),
+            };
+            for (int t = 0; t < tiles.Length; t++)
+            {
+                int col = t % 3, row = t / 3;
+                float x0 = 0.055f + col * 0.305f;
+                float y1 = 0.83f - row * 0.36f;
+                var b = UiKit.MakeButton(inner.transform, $"{tiles[t].icon}\n{tiles[t].label}",
+                    tiles[t].c, 22,
+                    new Vector2(x0, y1 - 0.30f), new Vector2(x0 + 0.285f, y1), Vector2.zero, Vector2.zero,
+                    tiles[t].act);
+                UiKit.MakeText(b.transform, tiles[t].desc, 12, new Color(1f, 1f, 1f, 0.85f),
+                    TextAnchor.LowerCenter, new Vector2(0f, 0.04f), new Vector2(1f, 0.24f),
+                    Vector2.zero, Vector2.zero, bold: true, shadow: true);
+            }
+            UiKit.MakeButton(inner.transform, "とじる", UiKit.Navy, 18,
+                new Vector2(0.36f, 0.035f), new Vector2(0.64f, 0.135f), Vector2.zero, Vector2.zero,
+                () => Destroy(outer));
+        }
+
         // ================= ポーズ(レース中断)と設定 =================
 
         void ShowPausePopup()
@@ -1486,9 +1529,8 @@ namespace BoatRace.UI
             var s = NewScreen("CareerScreen");
             AudioKit.Bgm(true);
             AudioKit.Crowd(0f);
-            UiKit.MakeFullscreenGradient(s.transform, new Color(0.16f, 0.08f, 0.25f, 0.55f),
-                new Color(0.05f, 0.03f, 0.12f, 0.92f));
-            UiKit.AddStripeOverlay(s, Color.white, 0.05f);
+            UiKit.ModernBackdrop(s.transform, new Color(0.08f, 0.14f, 0.32f, 0.90f),
+                new Color(0.03f, 0.05f, 0.15f, 0.97f));
             UiKit.MakeBanner(s.transform, "マイレーサー　ストーリーモード", 30,
                 new Vector2(0.22f, 0.90f), new Vector2(0.78f, 0.98f), tilt: -1.2f);
             if (career.condition != 0)
@@ -1641,27 +1683,16 @@ namespace BoatRace.UI
                     ShowCareer();
                 });
 
-            // ---- 下部メニュー: アイコン付き均等タイル+大きな出走ボタン(押しやすさ優先) ----
-            UiKit.MakeButton(s.transform, "↩\nホーム", UiKit.Cyan, 15,
-                new Vector2(0.015f, 0.10f), new Vector2(0.095f, 0.24f), Vector2.zero, Vector2.zero, ShowHome);
-            (string icon, string label, Color c, UnityEngine.Events.UnityAction act)[] tiles =
-            {
-                ("▲", "技強化", new Color(0.62f, 0.2f, 0.75f), () => ShowMoveUpgradePopup(s.transform)),
-                ("★", "ガチャ", new Color(0.9f, 0.35f, 0.55f), () => ShowGachaPopup(s.transform, "")),
-                ("▤", "ガレージ", new Color(0.35f, 0.42f, 0.55f), () => ShowGaragePopup(s.transform)),
-                ("■", "施設", new Color(0.15f, 0.55f, 0.60f), () => ShowFacilityPopup(s.transform)),
-                ("¥", "ショップ", new Color(0.9f, 0.55f, 0.1f), () => ShowShopPopup(s.transform)),
-            };
-            for (int t = 0; t < tiles.Length; t++)
-            {
-                float x0 = 0.105f + t * 0.099f;
-                UiKit.MakeButton(s.transform, $"{tiles[t].icon}\n{tiles[t].label}", tiles[t].c, 15,
-                    new Vector2(x0, 0.10f), new Vector2(x0 + 0.092f, 0.24f), Vector2.zero, Vector2.zero,
-                    tiles[t].act);
-            }
-            string raceLabel = career.allClear ? "SG覇者として出走 ▶" : $"ツアーマップへ ▶\n第{career.chapter}章「{career.Current.title}」";
-            UiKit.MakeButton(s.transform, raceLabel, UiKit.Red, career.allClear ? 24 : 19,
-                new Vector2(0.61f, 0.10f), new Vector2(0.985f, 0.24f), Vector2.zero, Vector2.zero,
+            // ---- 下部は3ボタンだけ(1画面1主action: 迷わないUI) ----
+            // 強化系5機能は「強化・準備」1つに集約し、開くと大タイルのシートで選ぶ
+            UiKit.MakeButton(s.transform, "↩ ホーム", UiKit.Cyan, 18,
+                new Vector2(0.015f, 0.10f), new Vector2(0.155f, 0.24f), Vector2.zero, Vector2.zero, ShowHome);
+            UiKit.MakeButton(s.transform, "▲ 強化・準備", new Color(0.55f, 0.28f, 0.85f), 20,
+                new Vector2(0.17f, 0.10f), new Vector2(0.42f, 0.24f), Vector2.zero, Vector2.zero,
+                () => ShowPrepPopup(s.transform));
+            string raceLabel = career.allClear ? "SG覇者として出走 ▶" : $"出走へ ▶\n第{career.chapter}章「{career.Current.title}」";
+            UiKit.MakeButton(s.transform, raceLabel, UiKit.Red, career.allClear ? 26 : 21,
+                new Vector2(0.44f, 0.10f), new Vector2(0.985f, 0.24f), Vector2.zero, Vector2.zero,
                 career.allClear ? (UnityEngine.Events.UnityAction)StartCareerRace : ShowTourMap);
 
             if (!career.debutDone)
@@ -2021,8 +2052,8 @@ namespace BoatRace.UI
         void ShowTourMap()
         {
             var s = NewScreen("TourMapScreen");
-            UiKit.MakeFullscreenGradient(s.transform,
-                new Color(0.55f, 0.78f, 0.95f), new Color(0.13f, 0.38f, 0.68f));
+            UiKit.ModernBackdrop(s.transform,
+                new Color(0.55f, 0.78f, 0.95f), new Color(0.13f, 0.38f, 0.68f), 0.07f);
             UiKit.MakeBanner(s.transform, "ストーリーツアー　日本一周", 27,
                 new Vector2(0.24f, 0.905f), new Vector2(0.76f, 0.985f), tilt: -1f);
             UiKit.MakeTag(s.transform, $"現在の級: {career.RankLabel}", UiKit.Yellow, UiKit.Border, 17,
@@ -2358,8 +2389,7 @@ namespace BoatRace.UI
         void ShowEntry()
         {
             var s = NewScreen("EntryScreen");
-            UiKit.MakeFullscreenGradient(s.transform, new Color(0.85f, 0.95f, 1f), UiKit.Sky);
-            UiKit.AddStripeOverlay(s, Color.white, 0.07f);
+            UiKit.ModernBackdrop(s.transform, new Color(0.85f, 0.95f, 1f), UiKit.Sky, 0.10f);
 
             UiKit.MakeBanner(s.transform, $"出走表　{race.venue.name}", 30,
                 new Vector2(0.25f, 0.905f), new Vector2(0.75f, 0.985f), tilt: -1.2f);
@@ -2929,7 +2959,7 @@ namespace BoatRace.UI
             AudioKit.Crowd(0.06f);
             AudioKit.Bgm(true);
             var s = NewScreen("ResultScreen");
-            UiKit.MakeFullscreenGradient(s.transform, UiKit.Navy, new Color(0.02f, 0.06f, 0.16f));
+            UiKit.ModernBackdrop(s.transform, UiKit.Navy, new Color(0.02f, 0.06f, 0.16f), 0.05f);
 
             var valid = new List<int>();
             foreach (int idx2 in race.state.standings)
