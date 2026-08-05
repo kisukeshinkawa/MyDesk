@@ -76,7 +76,11 @@ namespace BoatRace.Core
         void BuildRealVenue(RaceManager race)
         {
             if (!Data.VenueTraits.UseRealVenue(race.venueId)) return;
-            var prefab = Resources.Load<GameObject>("Models/omura_venue");
+            // 大村はユーザー提供の詳細モデルを優先、他は生成モデル(venue_N)
+            var prefab = race.venueId == 24
+                ? (Resources.Load<GameObject>("Models/omura_venue")
+                   ?? Resources.Load<GameObject>($"Models/venue_{race.venueId}"))
+                : Resources.Load<GameObject>($"Models/venue_{race.venueId}");
             if (prefab == null) return;
 
             var venue = Instantiate(prefab);
@@ -219,9 +223,10 @@ namespace BoatRace.Core
             nightLightsGo = root;
             bool real = Data.VenueTraits.UseRealVenue(race.venueId);
             float hw = Data.VenueTraits.WaterHalfWidth(race.venueId);
+            float backZ = Data.VenueTraits.RealWaterWidth(race.venueId) - 55f + 2f;
             Vector3[] pts = real
-                ? new[] { new Vector3(-396f, 31f, -64f), new Vector3(-396f, 31f, 94f),
-                          new Vector3(96f, 31f, -64f),  new Vector3(96f, 31f, 94f) }
+                ? new[] { new Vector3(-396f, 31f, -61f), new Vector3(-396f, 31f, backZ),
+                          new Vector3(96f, 31f, -61f),  new Vector3(96f, 31f, backZ) }
                 : new[] { new Vector3(-420f, 31f, -hw * 0.6f), new Vector3(-420f, 31f, hw * 0.6f),
                           new Vector3(130f, 31f, -hw * 0.6f),  new Vector3(130f, 31f, hw * 0.6f) };
             foreach (var p in pts)
@@ -254,9 +259,10 @@ namespace BoatRace.Core
             water.name = "Water";
             if (Data.VenueTraits.UseRealVenue(race.venueId))
             {
-                // 実寸3D会場モデルの水面footprint(520×140m・スタンド側が-55m)に合わせる
-                water.transform.position = new Vector3(-150f, -0.55f, 15f);
-                water.transform.localScale = new Vector3(524f, 1f, 146f);
+                // 実寸3D会場モデルの水面footprint(長さ520m×場ごとの実寸幅・スタンド側が-55m)
+                float rw = Data.VenueTraits.RealWaterWidth(race.venueId);
+                water.transform.position = new Vector3(-150f, -0.55f, rw * 0.5f - 55f);
+                water.transform.localScale = new Vector3(524f, 1f, rw + 6f);
             }
             else
             {

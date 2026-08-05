@@ -15,7 +15,8 @@ namespace BoatRace.Start
         /// <summary>ピット全体の中心x座標。場によって2マーク側/1マーク側が違う。</summary>
         public static float PitCenterX(int venueId)
         {
-            if (Data.VenueTraits.UseRealVenue(venueId)) return -335f; // 実寸モデルの横ピット前
+            if (Data.VenueTraits.UseRealVenue(venueId)) // 実寸モデルの横ピット前(2M側/1M側)
+                return Data.VenueTraits.PitNear2Mark(venueId) ? -335f : -55f;
             return Data.VenueTraits.PitNear2Mark(venueId) ? -245f : -55f;
         }
 

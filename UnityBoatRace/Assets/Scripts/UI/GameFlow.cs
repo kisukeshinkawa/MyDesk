@@ -15,7 +15,7 @@ namespace BoatRace.UI
     public class GameFlow : MonoBehaviour
     {
         /// <summary>ビルド識別子。画面右上に表示され、更新が届いたか一目で分かる。</summary>
-        public const string Build = "B34-UI再設計3ボタン化";
+        public const string Build = "B35-全24場+全部入り";
 
         RaceManager race;
         ReplayManager replay;
@@ -84,10 +84,30 @@ namespace BoatRace.UI
         };
 
         /// <summary>レジェンド選手のステータスを艇に適用(実在モデルの持ち味を反映)。</summary>
+        // ---- 実名/パロディ名スイッチ(リリース時の権利対応。設定で切替) ----
+        static bool RealNames => PlayerPrefs.GetInt("br_realnames", 1) == 1;
+        static readonly System.Collections.Generic.Dictionary<string, string> ParodyNames =
+            new System.Collections.Generic.Dictionary<string, string>
+            {
+                { "今村豊", "今森豊" },     { "植木通彦", "植村道彦" },
+                { "瓜生正義", "瓜田正芳" }, { "田中信一郎", "田村信二郎" },
+                { "野中和夫", "野田和男" }, { "松井繁", "松居茂" },
+                { "石野貴之", "石田隆之" }, { "峰竜太", "嶺竜大" },
+                { "白井英治", "城井英次" }, { "桐生順平", "霧生淳平" },
+                { "原田幸哉", "原谷幸也" }, { "丸野一樹", "丸尾一機" },
+            };
+
+        /// <summary>表示名(パロディ名モード時は似た別名に置換)。</summary>
+        static string LegendDisplayName(string real)
+        {
+            if (RealNames) return real;
+            return ParodyNames.TryGetValue(real, out string p) ? p : real;
+        }
+
         void ApplyLegend(BoatRace.Boat.BoatStats bs, LegendRacer l)
         {
             var p = bs.player;
-            p.playerName = l.name;
+            p.playerName = LegendDisplayName(l.name);
             p.rank = BoatRace.Player.RacerRank.A1;
             p.startSkill = l.start;
             p.turnSkill = l.turn;
@@ -104,7 +124,8 @@ namespace BoatRace.UI
             if (name.StartsWith("天才 ")) return FaceSpriteOf(name.Substring(3));
             if (career != null && name == career.racerName) return FaceArt.Get(13);
             for (int i = 0; i < LegendRacer.All.Length; i++)
-                if (LegendRacer.All[i].name == name) return FaceArt.Get(1 + i);
+                if (LegendRacer.All[i].name == name ||
+                    LegendDisplayName(LegendRacer.All[i].name) == name) return FaceArt.Get(1 + i);
             for (int i = 0; i < Rivals.Length; i++)
                 if (Rivals[i].name == name) return FaceArt.Get(14 + i);
             // NPC(Art/npcs.pngがあれば): 支部長/実況アナ/記者/整備士
@@ -1246,12 +1267,25 @@ namespace BoatRace.UI
             VolRow("BGM音量", 0.72f, 0.85f, () => AudioKit.BgmVol, AudioKit.SetBgmVolume);
             VolRow("効果音量", 0.55f, 0.68f, () => AudioKit.SeVol, AudioKit.SetSeVolume);
 
+            // 実在選手名スイッチ(リリース権利対応: OFFでパロディ名に)
+            UiKit.MakeText(inner.transform, "実在選手名", 18, UiKit.TextDark, TextAnchor.MiddleLeft,
+                new Vector2(0.07f, 0.40f), new Vector2(0.44f, 0.52f), Vector2.zero, Vector2.zero, bold: true);
+            var rnBtn = UiKit.MakeButton(inner.transform, RealNames ? "使用する" : "パロディ名",
+                RealNames ? UiKit.Cyan : new Color(0.55f, 0.60f, 0.68f), 15,
+                new Vector2(0.50f, 0.40f), new Vector2(0.87f, 0.52f), Vector2.zero, Vector2.zero, () => { });
+            rnBtn.onClick.AddListener(() =>
+            {
+                PlayerPrefs.SetInt("br_realnames", RealNames ? 0 : 1);
+                var t = rnBtn.GetComponentInChildren<Text>();
+                t.text = RealNames ? "使用する" : "パロディ名";
+            });
+
             UiKit.MakeText(inner.transform, $"Ver.1.0 [{Build}]", 14,
                 new Color(0.45f, 0.50f, 0.58f), TextAnchor.MiddleCenter,
-                new Vector2(0f, 0.42f), new Vector2(1f, 0.52f), Vector2.zero, Vector2.zero);
+                new Vector2(0f, 0.30f), new Vector2(1f, 0.38f), Vector2.zero, Vector2.zero);
 
             UiKit.MakeButton(inner.transform, "セーブデータを初期化", new Color(0.72f, 0.15f, 0.12f), 16,
-                new Vector2(0.14f, 0.24f), new Vector2(0.86f, 0.38f), Vector2.zero, Vector2.zero,
+                new Vector2(0.14f, 0.185f), new Vector2(0.86f, 0.285f), Vector2.zero, Vector2.zero,
                 () =>
                 {
                     // 誤タップ防止の確認ダイアログ
@@ -1281,8 +1315,27 @@ namespace BoatRace.UI
                         });
                 });
             UiKit.MakeButton(inner.transform, "とじる", UiKit.Navy, 18,
-                new Vector2(0.32f, 0.04f), new Vector2(0.68f, 0.18f), Vector2.zero, Vector2.zero,
+                new Vector2(0.32f, 0.035f), new Vector2(0.68f, 0.155f), Vector2.zero, Vector2.zero,
                 () => Destroy(outer));
+        }
+
+        /// <summary>初回だけ表示するガイドふきだし(タップで閉じる)。</summary>
+        void ShowGuideOnce(string key, string text)
+        {
+            if (PlayerPrefs.GetInt(key, 0) == 1) return;
+            PlayerPrefs.SetInt(key, 1);
+            var overlay = new GameObject("Guide");
+            UiKit.Place(overlay, canvas.transform, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+            var dim = overlay.AddComponent<Image>();
+            dim.color = new Color(0f, 0f, 0f, 0.5f);
+            overlay.AddComponent<Button>().onClick.AddListener(() => Destroy(overlay));
+            var bubble = UiKit.MakeCard(overlay.transform,
+                new Vector2(0.28f, 0.36f), new Vector2(0.72f, 0.64f), Vector2.zero, Vector2.zero);
+            UiKit.MakeText(bubble.transform, text, 20, UiKit.TextDark, TextAnchor.MiddleCenter,
+                new Vector2(0.05f, 0.20f), new Vector2(0.95f, 0.97f), Vector2.zero, Vector2.zero, bold: true);
+            UiKit.MakeText(bubble.transform, "▼ タップで閉じる", 14, new Color(0.45f, 0.50f, 0.58f),
+                TextAnchor.LowerCenter,
+                new Vector2(0f, 0.03f), new Vector2(1f, 0.18f), Vector2.zero, Vector2.zero);
         }
 
         /// <summary>白カード+紺枠の汎用ポップアップ(お知らせ/あそびかた)。</summary>
@@ -1444,6 +1497,10 @@ namespace BoatRace.UI
             cta.AddComponent<Button>().onClick.AddListener(ShowCareer);
             homeCtaRT = cta.GetComponent<RectTransform>();
 
+            // 初回ガイド
+            ShowGuideOnce("br_tut_home",
+                "ようこそ『艇道』へ！\n\n金色の「出走」ボタンから\nストーリー第1章に挑戦しよう！");
+
             // 下部5連タブ(TEIDO設計書4-2: 台形斜めカット、選択中=白地+黄上ライン)
             System.Action spectate = () =>
             {
@@ -1507,19 +1564,43 @@ namespace BoatRace.UI
             }
         }
 
+        /// <summary>戦績・実績(称号/ひらめき進捗つき)。収集要素を一覧できる。</summary>
         void ShowStatsPopup(Transform parent)
         {
             var pop = UiKit.MakePanel(parent, UiKit.PanelWhite, 22,
-                new Vector2(0.32f, 0.30f), new Vector2(0.68f, 0.72f), Vector2.zero, Vector2.zero);
-            UiKit.MakeBanner(pop.transform, "戦績", 26, new Vector2(0.2f, 0.82f), new Vector2(0.8f, 0.99f));
+                new Vector2(0.24f, 0.14f), new Vector2(0.76f, 0.86f), Vector2.zero, Vector2.zero);
+            UiKit.MakeBanner(pop.transform, "戦績・実績", 26, new Vector2(0.24f, 0.885f), new Vector2(0.76f, 0.995f));
+
             UiKit.MakeText(pop.transform,
-                $"通算レース数　{PlayerPrefs.GetInt("br_races", 0)} レース\n" +
-                $"最高払戻　¥{PlayerPrefs.GetInt("br_best", 0):N0}\n" +
-                $"フライング目撃数　{PlayerPrefs.GetInt("br_f", 0)} 回",
-                24, UiKit.TextDark, TextAnchor.MiddleCenter,
-                new Vector2(0f, 0.25f), new Vector2(1f, 0.80f), Vector2.zero, Vector2.zero, bold: true);
-            UiKit.MakeButton(pop.transform, "閉じる", UiKit.Cyan, 22,
-                new Vector2(0.32f, 0.05f), new Vector2(0.68f, 0.22f), Vector2.zero, Vector2.zero,
+                $"通算 {PlayerPrefs.GetInt("br_races", 0)}レース　" +
+                $"ストーリー {career.races}走 {career.wins}勝　級: {career.RankLabel}\n" +
+                $"最高払戻 ¥{PlayerPrefs.GetInt("br_best", 0):N0}　ファン {career.fans:N0}人",
+                18, UiKit.TextDark, TextAnchor.MiddleCenter,
+                new Vector2(0.04f, 0.70f), new Vector2(0.96f, 0.86f), Vector2.zero, Vector2.zero, bold: true);
+
+            // 獲得称号
+            string titles = career.titles.Count == 0 ? "(まだなし。シーズン優勝で獲得)"
+                : string.Join("　", career.titles);
+            UiKit.MakeText(pop.transform, "◆ 称号", 16, new Color(0.80f, 0.60f, 0.05f), TextAnchor.MiddleLeft,
+                new Vector2(0.06f, 0.60f), new Vector2(0.94f, 0.68f), Vector2.zero, Vector2.zero, bold: true);
+            UiKit.MakeText(pop.transform, titles, 15, UiKit.TextDark, TextAnchor.UpperLeft,
+                new Vector2(0.06f, 0.48f), new Vector2(0.94f, 0.60f), Vector2.zero, Vector2.zero);
+
+            // 技ひらめき進捗(次の目標が見える=収集モチベーション)
+            UiKit.MakeText(pop.transform, "★ 技ひらめき進捗", 16, new Color(0.10f, 0.45f, 0.75f),
+                TextAnchor.MiddleLeft,
+                new Vector2(0.06f, 0.38f), new Vector2(0.94f, 0.46f), Vector2.zero, Vector2.zero, bold: true);
+            string F(string id, string label, int cur, int need) =>
+                career.featMoves.Contains(id) ? $"✓ {label}　習得済み" : $"・{label}　{Mathf.Min(cur, need)}/{need}";
+            UiKit.MakeText(pop.transform,
+                F("zensoku", "全速ターン (まくり1着)", career.winsByMakuri, 2) + "\n" +
+                F("tsukemai", "ツケマイ (差し1着)", career.winsBySashi, 2) + "\n" +
+                F("wheelie", "ウィリーターン (ST.08以内)", career.sharpStarts, 3),
+                15, UiKit.TextDark, TextAnchor.UpperLeft,
+                new Vector2(0.06f, 0.18f), new Vector2(0.94f, 0.38f), Vector2.zero, Vector2.zero, bold: true);
+
+            UiKit.MakeButton(pop.transform, "閉じる", UiKit.Cyan, 20,
+                new Vector2(0.34f, 0.035f), new Vector2(0.66f, 0.145f), Vector2.zero, Vector2.zero,
                 () => Destroy(pop));
         }
 
@@ -2527,6 +2608,10 @@ namespace BoatRace.UI
                     pm.OverallScore >= 70f ? UiKit.Yellow : new Color(1f, 1f, 1f, 0.92f),
                     UiKit.Border, 13,
                     new Vector2(0.73f, 0.122f), new Vector2(0.985f, 0.19f), Vector2.zero, Vector2.zero);
+
+                // 初回ガイド
+                ShowGuideOnce("br_tut_entry",
+                    "ここは出走表。\n\n「予想」と「舟券」で展開を読み、\n「レーススタート！」で本番へ。\nターン突入時に技を選ぼう！");
             }
             else
             {

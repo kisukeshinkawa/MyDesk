@@ -494,6 +494,14 @@ namespace BoatRace.Core
             e.BoostAccelMul = move.AccelAt(moveLevel);
             e.BoostWakeImmune = move.wakeImmune;
             boats[playerBoatIndex].SetBoostColor(move.color); // 航跡が技の色に光る
+            // モンキーターン風の3D演出: 技ごとに立ち乗り/艇首上げを変える
+            float stand = move.id == "monkey" ? 1f
+                : move.id == "wheelie" ? 0.8f
+                : move.cost > 0 ? 0.5f : 0f;
+            float wheelie = move.id == "wheelie" ? 9f
+                : move.id == "zensoku" || move.id == "godspeed" ? 4f
+                : 0f;
+            boats[playerBoatIndex].SetBoostStyle(stand, wheelie);
         }
 
         /// <summary>決まり手判定: 逃げ/差し/まくり/まくり差し/抜き/恵まれ。</summary>

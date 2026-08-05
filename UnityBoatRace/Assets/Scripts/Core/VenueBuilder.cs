@@ -251,7 +251,8 @@ namespace BoatRace.Core
         // ---- 電光掲示板(バックストレッチ側) ----
         static void BuildScoreboard(RaceManager race)
         {
-            float bz = real ? 94f : hw + 8f; // 実寸モデル時は防風ネットの奥
+            float bz = real ? VenueTraits.RealWaterWidth(race.venueId) - 55f + 9f
+                            : hw + 8f; // 実寸モデル時は防風ネットの奥
             var board = new GameObject("Scoreboard");
             board.transform.SetParent(root, false);
             board.transform.position = new Vector3(-150f, 0f, bz);

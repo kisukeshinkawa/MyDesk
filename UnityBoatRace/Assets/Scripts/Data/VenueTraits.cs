@@ -45,18 +45,38 @@ namespace BoatRace.Data
             return Color.HSVToRGB((venueId * 0.618034f) % 1f, 0.62f, 0.82f);
         }
 
-        static bool? realOmuraCache;
+        static readonly System.Collections.Generic.Dictionary<int, bool> realCache =
+            new System.Collections.Generic.Dictionary<int, bool>();
 
         /// <summary>
-        /// 実寸3D会場モデル(Assets/Resources/Models/omura_venue)を使う場か。
-        /// モデルは1M=(0,0,0)/2M=(-300,0,0)に整列済み・水面520×140m実寸。
+        /// 実寸3D会場モデル(Assets/Resources/Models/venue_N または omura_venue)を使う場か。
+        /// モデルは1M=(0,0,0)/2M=(-300,0,0)に整列済み・水面520m×実寸幅。
         /// </summary>
         public static bool UseRealVenue(int venueId)
         {
-            if (venueId != 24) return false;
-            if (realOmuraCache == null)
-                realOmuraCache = Resources.Load<GameObject>("Models/omura_venue") != null;
-            return realOmuraCache.Value;
+            if (!realCache.TryGetValue(venueId, out bool has))
+            {
+                has = Resources.Load<GameObject>($"Models/venue_{venueId}") != null ||
+                      (venueId == 24 && Resources.Load<GameObject>("Models/omura_venue") != null);
+                realCache[venueId] = has;
+            }
+            return has;
+        }
+
+        /// <summary>実寸モデルの水面幅(m)。生成スクリプトvenues.pyと同じ表。</summary>
+        public static float RealWaterWidth(int venueId)
+        {
+            switch (venueId)
+            {
+                case 2: return 110f;                    // 戸田(日本一狭い)
+                case 3: case 4: return 120f;            // 江戸川・平和島
+                case 5: case 12: case 13: case 14:
+                case 21: case 22: return 130f;          // 多摩川・住之江・尼崎・鳴門・芦屋・福岡
+                case 6: return 170f;                    // 浜名湖(最大)
+                case 7: case 10: return 150f;           // 蒲郡・三国
+                case 11: return 160f;                   // びわこ
+                default: return 140f;
+            }
         }
 
         /// <summary>ナイター開催場(桐生・蒲郡・住之江・丸亀・下関・若松・大村)。</summary>

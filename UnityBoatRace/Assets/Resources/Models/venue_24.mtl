@@ -1,0 +1,55 @@
+newmtl pit
+Kd 0.55 0.58 0.62
+d 1.0
+Ns 30
+
+newmtl stand
+Kd 0.72 0.73 0.75
+d 1.0
+Ns 30
+
+newmtl glass
+Kd 0.35 0.55 0.75
+d 0.45
+Ns 30
+
+newmtl tower
+Kd 0.62 0.64 0.68
+d 1.0
+Ns 30
+
+newmtl clock
+Kd 0.95 0.76 0.31
+d 1.0
+Ns 30
+
+newmtl clock_hand
+Kd 0.12 0.12 0.14
+d 1.0
+Ns 30
+
+newmtl net_post
+Kd 0.4 0.42 0.46
+d 1.0
+Ns 30
+
+newmtl net
+Kd 0.55 0.6 0.66
+d 0.35
+Ns 30
+
+newmtl light
+Kd 0.98 0.96 0.85
+d 1.0
+Ns 30
+
+newmtl buoy_orange
+Kd 0.92 0.55 0.18
+d 1.0
+Ns 30
+
+newmtl roof
+Kd 0.818 0.312 0.820
+d 1.0
+Ns 30
+
