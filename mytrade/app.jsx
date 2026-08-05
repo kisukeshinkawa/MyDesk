@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 // MyTrade — 投資専用スタンドアロンアプリ (MyDeskから分離)
 // バックエンド: mydesk-stock-analysis Lambda (共用・変更不要)
 // ═══════════════════════════════════════════════════════════════
-const MYTRADE_BUILD = "2026-08-06-v6-full-universe-brief";
+const MYTRADE_BUILD = "2026-08-06-v7-longterm-auto";
 if (typeof window !== "undefined") {
   window.__MYTRADE_BUILD = MYTRADE_BUILD;
   console.log(`[MyTrade] Build: ${MYTRADE_BUILD}`);
@@ -1360,7 +1360,7 @@ function StockView({currentUser}) {
             })()}
             <div style={{padding:"0.55rem 0.75rem",background:C.greenBg,borderRadius:8,marginBottom:"0.6rem",fontSize:"0.72rem",color:C.text,lineHeight:1.7}}>
               <b style={{color:C.green}}>🤖 全自動運用中</b>(手動操作は不要です)<br/>
-              毎朝 7:00 全銘柄スキャン＋予測の答え合わせ　/　毎朝 7:30 因子重みと教訓を再学習　/　毎月1日 長期10年で再検証<br/>
+              毎朝7:00 スキャン＋答え合わせ　/　毎朝7:30 過去10年＋実績で再学習　/　毎朝7:45 全435銘柄ランキング　/　毎朝7:50 相場観生成　/　毎月1日 25年で再検証<br/>
               <span style={{color:C.textMuted}}>下のボタンは「今すぐ手動で回したい時」だけ使ってください</span>
             </div>
             {!perf&&!busy.perf&&<div style={{fontSize:"0.75rem",color:C.textMuted,lineHeight:1.6}}>

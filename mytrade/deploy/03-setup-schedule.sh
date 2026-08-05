@@ -5,7 +5,7 @@
 #   ② 毎朝 7:30 JST  自動学習(因子重み再学習+教訓更新)
 #   ③ 毎朝 7:45 JST  全銘柄ランキングを事前計算(おすすめタブ用)
 #   ④ 毎朝 7:50 JST  プロトレーダー視点(相場観+狙い目)を生成
-#   ⑤ 毎月1日 8:00   長期ウォークフォワード再検証(10年・重み自動反映)
+#   ⑤ 毎月1日 8:00   長期ウォークフォワード再検証(25年・重み自動反映)
 #   使い方: bash deploy/03-setup-schedule.sh
 # ─────────────────────────────────────────────────────────────
 set -euo pipefail
@@ -37,16 +37,16 @@ setup_rule "mytrade-morning"  "cron(0 22 * * ? *)"  "MyTrade 朝レポート(ス
 setup_rule "mytrade-learn"    "cron(30 22 * * ? *)" "MyTrade 毎日の自動学習(重み+教訓)" '{"job":"learn"}'
 setup_rule "mytrade-ranking"  "cron(45 22 * * ? *)" "MyTrade 全銘柄ランキングの事前計算" '{"job":"ranking"}'
 setup_rule "mytrade-brief"    "cron(50 22 * * ? *)" "MyTrade プロトレーダー視点の日次生成" '{"job":"brief"}'
-setup_rule "mytrade-backtest" "cron(0 23 1 * ? *)"  "MyTrade 月次の長期再検証(10年WF)" '{"job":"backtest","years":10}'
+setup_rule "mytrade-backtest" "cron(0 23 1 * ? *)"  "MyTrade 月次の長期再検証(25年WF)" '{"job":"backtest","years":25}'
 
 echo ""
 echo "════════════════════════════════════════════════"
 echo "✅ 全自動運用の設定完了"
 echo "   07:00 JST 毎日  朝レポート(スキャン+答え合わせ)"
-echo "   07:30 JST 毎日  自動学習(因子重み+教訓を更新)"
+echo "   07:30 JST 毎日  自動学習(過去10年+実績で因子重みと教訓を更新)"
 echo "   07:45 JST 毎日  全銘柄ランキング事前計算(約400銘柄)"
 echo "   07:50 JST 毎日  プロトレーダー視点を生成(ホームに常時表示)"
-echo "   08:00 JST 毎月1日 長期再検証(10年ウォークフォワード)"
+echo "   08:00 JST 毎月1日 長期再検証(25年ウォークフォワード)"
 echo "════════════════════════════════════════════════"
 echo ""
 echo "▶ 今すぐ学習を1回テスト実行(2〜3分)..."

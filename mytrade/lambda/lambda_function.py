@@ -1170,8 +1170,16 @@ def run_learn(tickers=None):
     preds = evaluate_predictions()
     if not tickers:
         tickers = list(dict.fromkeys(p["ticker"] for p in reversed(preds)))[:8] or DEFAULT_UNIVERSE[:8]
+    # ランキング上位も学習対象に加えて母数を確保(ウォッチリストだけだと偏るため)
+    try:
+        rk = cache_get("ranking.json", 24 * 3600) or {}
+        top = [r["ticker"] for r in sorted(rk.get("rows", []), key=lambda x: -x.get("short", 0))[:10]]
+        tickers = list(dict.fromkeys(list(tickers) + top))[:16]
+    except Exception:
+        pass
+    # 直近重視の重み(半減期5年)が効くので期間は長めに取る
     bt = [{"factors": s["factors"], "ret": s["ex20"], "date": s["date"]}
-          for s in backtest_universe(tickers, years=3)]
+          for s in backtest_universe(tickers, years=int(os.environ.get("LEARN_YEARS", "10")))]
     live = [{"factors": p.get("factors", {}), "ret": p.get("ret5")}
             for p in preds if p.get("type") == "score" and p.get("ret5") is not None]
     weights, ics = derive_weights(bt + live)
