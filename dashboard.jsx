@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-07-v337-sanpai-authority-filter"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-07-v338-sanpai-permit-pairs"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -1188,6 +1188,45 @@ const SANPAI_AUTHORITIES = [
   {name:"松山市",type:"中"},{name:"高知市",type:"中"},{name:"久留米市",type:"中"},{name:"長崎市",type:"中"},{name:"佐世保市",type:"中"},{name:"大分市",type:"中"},{name:"宮崎市",type:"中"},{name:"鹿児島市",type:"中"},{name:"那覇市",type:"中"},
 ]; // 産廃許可の権者(129) type: 都/道/府/県/政=政令指定都市/中=中核市
 const SANPAI_CITY_NAMES = new Set(SANPAI_AUTHORITIES.filter(a=>a.type==="政"||a.type==="中").map(a=>a.name)); // 産廃権者の市(政令市/中核市)名
+
+// 産廃の許可を「権者(129)×産廃種別」のペアで登録するピッカー
+function SanpaiPermitPicker({value, onChange}){
+  const [q,setQ]=React.useState("");
+  const [type,setType]=React.useState("産廃収運");
+  const list = value||[];
+  const add=(authName)=>{ if(!authName)return; if(list.some(e=>e.auth===authName&&e.type===type))return; onChange([...list,{auth:authName,type:type}]); setQ(""); };
+  const remove=(i)=>onChange(list.filter((_,idx)=>idx!==i));
+  const matches = q.trim()? SANPAI_AUTHORITIES.filter(a=>a.name.indexOf(q.trim())>=0).slice(0,12) : [];
+  return (
+    <div>
+      <div style={{display:"flex",gap:"0.4rem",marginBottom:"0.45rem",flexWrap:"wrap"}}>
+        <select value={type} onChange={e=>setType(e.target.value)} style={{padding:"0.4rem 0.5rem",borderRadius:8,border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.8rem",background:"white"}}>
+          {SANPAI_PERMITS.map(p=><option key={p} value={p}>{p}</option>)}
+        </select>
+        <div style={{position:"relative",flex:"1 1 220px",minWidth:170}}>
+          <input value={q} onChange={e=>setQ(e.target.value)} placeholder="権者を検索（都道府県/政令市/中核市）"
+            style={{width:"100%",padding:"0.4rem 0.6rem",borderRadius:8,border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.8rem",boxSizing:"border-box"}}/>
+          {matches.length>0&&(
+            <div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:60,background:"white",border:`1px solid ${C.border}`,borderRadius:8,boxShadow:C.shadowMd,marginTop:4,maxHeight:240,overflowY:"auto"}}>
+              {matches.map(a=>(
+                <button key={a.name} type="button" onClick={()=>add(a.name)} style={{display:"block",width:"100%",textAlign:"left",padding:"0.4rem 0.6rem",border:"none",borderBottom:`1px solid ${C.borderLight}`,background:"white",cursor:"pointer",fontFamily:"inherit",fontSize:"0.78rem",color:C.text}}>{a.name}<span style={{color:C.textMuted,fontSize:"0.66rem"}}> [{a.type}]</span></button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:"0.35rem"}}>
+        {list.length===0&&<span style={{fontSize:"0.72rem",color:C.textMuted}}>産廃の許可がある権者を追加（例：産廃収運 × 埼玉県／中核市も可）</span>}
+        {list.map((e,i)=>(
+          <span key={i} style={{display:"inline-flex",alignItems:"center",gap:"0.3rem",background:"#FFE8CF",color:"#9a3412",border:"1px solid #FFC07D",borderRadius:999,padding:"0.2rem 0.55rem",fontSize:"0.72rem",fontWeight:700}}>
+            🏭 {e.type} × {e.auth}
+            <button type="button" onClick={()=>remove(i)} style={{background:"none",border:"none",color:"#9a3412",cursor:"pointer",fontFamily:"inherit",fontWeight:800,padding:0,lineHeight:1}}>×</button>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 const DUSTALK_STATUS = {
   "展開":   { color:"#009122", bg:"#d1fae5", icon:"✅" },
@@ -20027,10 +20066,11 @@ ${recentLogs}
         });return;}
     }
     const today = new Date().toISOString().slice(0,10);
+    const _derivedPermits = Array.from(new Set([ ...(form.permitTypes||[]), ...((form.municipalityIds||[]).length?["一廃収運"]:[]), ...(form.sanpaiPermits||[]).map(s=>s.type) ]));
     let nd={...data};
     if(form.id){
       const old=vendors.find(v=>v.id===form.id);
-      nd={...nd,vendors:vendors.map(v=>v.id===form.id?{...v,...form,updatedAt:today}:v)};
+      nd={...nd,vendors:vendors.map(v=>v.id===form.id?{...v,...form,permitTypes:_derivedPermits,updatedAt:today}:v)};
       const fields=[["status","ステータス"]];
       fields.forEach(([f,label])=>{
         if(old&&old[f]!==form[f]) nd=addChangeLog(nd,{entityType:"業者",entityId:form.id,entityName:form.name,field:label,oldVal:old[f],newVal:form[f]});
@@ -20039,7 +20079,7 @@ ${recentLogs}
       const added=newIds.filter(id=>!prevIds.includes(id));
       if(added.length) nd=addNotif(nd,{type:"sales_assign",entityType:"vendor",entityId:form.id,title:`「${form.name}」の担当者に追加されました`,body:"業者",toUserIds:added,fromUserId:currentUser?.id});
     } else {
-      const newVend={id:Date.now(),...form,status:form.status||"未接触",municipalityIds:form.municipalityIds||[],assigneeIds:form.assigneeIds||[],memos:[],chat:[],approachLogs:[],createdAt:new Date().toISOString(),updatedAt:today};
+      const newVend={id:Date.now(),...form,permitTypes:_derivedPermits,status:form.status||"未接触",municipalityIds:form.municipalityIds||[],assigneeIds:form.assigneeIds||[],memos:[],chat:[],approachLogs:[],createdAt:new Date().toISOString(),updatedAt:today};
       nd={...nd,vendors:[...vendors,newVend]};
       nd=addChangeLog(nd,{entityType:"業者",entityId:newVend.id,entityName:newVend.name,field:"登録",oldVal:"",newVal:"新規登録"});
       save(nd); setSheet(null);
@@ -22358,9 +22398,9 @@ ${orig}`})
             <Sheet title="業者を編集" onClose={()=>setSheet(null)}>
               <FieldLbl label="業者名 *"><Input value={form.name||""} onChange={e=>setForm({...form,name:e.target.value})} autoFocus/></FieldLbl>
               <FieldLbl label="ステータス"><StatusPicker map={VENDOR_STATUS} value={form.status||"未接触"} onChange={s=>setForm({...form,status:s})}/></FieldLbl>
-              <FieldLbl label="許可種別（複数選択可）">
+              <FieldLbl label="一廃系の許可種別（自治体単位）">
                 <div style={{display:"flex",flexWrap:"wrap",gap:"0.4rem",padding:"0.5rem",background:"#f8fafc",borderRadius:"8px",border:"1px solid #e2e8f0"}}>
-                  {PERMIT_TYPES.map(p=>{
+                  {IPPAI_PERMITS.map(p=>{
                     const checked=(form.permitTypes||[]).includes(p);
                     return (
                       <label key={p} style={{display:"flex",alignItems:"center",gap:"0.3rem",cursor:"pointer",padding:"0.25rem 0.5rem",borderRadius:"0.5rem",background:checked?"#ede9fe":"white",border:`1px solid ${checked?"#7c3aed":"#e2e8f0"}`,transition:"all 0.15s"}}>
@@ -22371,9 +22411,10 @@ ${orig}`})
                   })}
                 </div>
               </FieldLbl>
-              <FieldLbl label="許可エリア（自治体）">
+              <FieldLbl label="🏛 一廃収運の許可エリア（自治体）">
                 {MuniPicker({ids:form.municipalityIds||[],onChange:ids=>setForm({...form,municipalityIds:ids})})}
               </FieldLbl>
+              <FieldLbl label="🏭 産廃の許可（権者×種別）"><SanpaiPermitPicker value={form.sanpaiPermits||[]} onChange={sp=>setForm({...form,sanpaiPermits:sp})}/></FieldLbl>
               <FieldLbl label="担当者">{AssigneePicker({ids:form.assigneeIds||[],onChange:ids=>setForm({...form,assigneeIds:ids})})}</FieldLbl>
               <FieldLbl label="代表電話番号（任意）"><Input value={form.phone||""} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="092-xxx-xxxx" type="tel"/></FieldLbl>
               {/* 先方担当者リスト */}
@@ -22859,9 +22900,9 @@ ${orig}`})
           <Sheet title="業者を追加" onClose={()=>setSheet(null)}>
             <FieldLbl label="業者名 *"><Input value={form.name||""} onChange={e=>setForm({...form,name:e.target.value})} autoFocus/></FieldLbl>
             <FieldLbl label="ステータス"><StatusPicker map={VENDOR_STATUS} value={form.status||"未接触"} onChange={s=>setForm({...form,status:s})}/></FieldLbl>
-            <FieldLbl label="許可種別（複数選択可）">
+            <FieldLbl label="一廃系の許可種別（自治体単位）">
                 <div style={{display:"flex",flexWrap:"wrap",gap:"0.4rem",padding:"0.5rem",background:"#f8fafc",borderRadius:"8px",border:"1px solid #e2e8f0"}}>
-                  {PERMIT_TYPES.map(p=>{
+                  {IPPAI_PERMITS.map(p=>{
                     const checked=(form.permitTypes||[]).includes(p);
                     return (
                       <label key={p} style={{display:"flex",alignItems:"center",gap:"0.3rem",cursor:"pointer",padding:"0.25rem 0.5rem",borderRadius:"0.5rem",background:checked?"#ede9fe":"white",border:`1px solid ${checked?"#7c3aed":"#e2e8f0"}`,transition:"all 0.15s"}}>
@@ -22872,9 +22913,10 @@ ${orig}`})
                   })}
                 </div>
             </FieldLbl>
-            <FieldLbl label="許可エリア（自治体）">
+            <FieldLbl label="🏛 一廃収運の許可エリア（自治体）">
               {MuniPicker({ids:form.municipalityIds||[],onChange:ids=>setForm({...form,municipalityIds:ids})})}
             </FieldLbl>
+            <FieldLbl label="🏭 産廃の許可（権者×種別）"><SanpaiPermitPicker value={form.sanpaiPermits||[]} onChange={sp=>setForm({...form,sanpaiPermits:sp})}/></FieldLbl>
             <FieldLbl label="担当者">{AssigneePicker({ids:form.assigneeIds||[],onChange:ids=>setForm({...form,assigneeIds:ids})})}</FieldLbl>
             <FieldLbl label="電話番号（任意）"><Input value={form.phone||""} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="092-xxx-xxxx" type="tel"/></FieldLbl>
             <FieldLbl label="郵便番号（任意）"><Input value={form.zip||""} onChange={e=>setForm({...form,zip:e.target.value})} placeholder="例: 100-0001"/></FieldLbl>
