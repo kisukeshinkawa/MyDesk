@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-07-v334-sanpai-authorities"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-07-v335-permit-first-filter"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -22530,6 +22530,10 @@ ${orig}`})
             selChips.push({label:`👤 ${nm}`, key:`assignee-${id}`, remove:()=>setVendFilterAssignees(vendFilterAssignees.filter(x=>String(x)!==String(id)))});
           });
           
+          // 産廃は権者(都道府県・政令市・中核市)単位。産廃のみ選択時は「自治体」絞り込みを弾く
+          const _sanpaiSel = vendFilterPermits.some(isSanpaiPermit);
+          const _ippaiSel = vendFilterPermits.some(p=>!isSanpaiPermit(p));
+          const _areaByMuni = !(_sanpaiSel && !_ippaiSel);
           return (
             <div style={{background:"#f8fafc",border:`1px solid ${hasFilter?"#7c3aed":C.border}`,borderRadius:"8px",padding:"0.625rem 0.75rem",marginBottom:"0.75rem"}}>
               <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem",flexWrap:"wrap"}}>
@@ -22539,20 +22543,24 @@ ${orig}`})
               </div>
               {/* フィルター追加ボタン群 */}
               <div style={{display:"flex",gap:"0.35rem",flexWrap:"wrap",marginBottom:selChips.length>0?"0.5rem":"0"}}>
+                {/* ① 許可種別を先頭に（産廃/一廃で以降の絞り込み対象が変わる） */}
+                <MultiChipFilter label="許可種別" icon="📋" C={C}
+                  values={vendFilterPermits} setValues={setVendFilterPermits}
+                  options={PERMIT_TYPES.map(p=>({value:p, label:(isSanpaiPermit(p)?"🏭 ":"🏛 ")+p}))}/>
                 <MultiChipFilter label="都道府県" icon="🗾" C={C}
                   values={vendFilterPrefs} setValues={v=>{setVendFilterPrefs(v); /* 都道府県解除で自治体もクリア（無関係になるため） */ if(v.length===0)setVendFilterMunis([]);}}
                   options={prefs.map(p=>({value:String(p.id), label:p.name}))}/>
-                {(muniOptions.length>0 || vendFilterMunis.length>0) && (
+                {/* ② 産廃のみ選択時は自治体絞り込みを弾く（産廃は権者=都道府県単位のため） */}
+                {_areaByMuni ? ((muniOptions.length>0 || vendFilterMunis.length>0) && (
                   <MultiChipFilter label="自治体" icon="🏛" C={C}
                     values={vendFilterMunis} setValues={setVendFilterMunis}
                     options={muniOptions.map(m=>({value:String(m.id), label:m.name}))}/>
+                )) : (
+                  <span style={{fontSize:"0.66rem",fontWeight:700,color:"#9a3412",background:"#FFF7E8",border:"1px solid #FFC07D",borderRadius:999,padding:"0.25rem 0.6rem",alignSelf:"center",whiteSpace:"nowrap"}}>🏭 産廃は権者(都道府県)単位 — 都道府県で絞ってください</span>
                 )}
                 <MultiChipFilter label="ステータス" icon="📌" C={C}
                   values={vendFilterStatuses} setValues={setVendFilterStatuses}
                   options={Object.keys(VENDOR_STATUS).map(s=>({value:s, label:s}))}/>
-                <MultiChipFilter label="許可種別" icon="📋" C={C}
-                  values={vendFilterPermits} setValues={setVendFilterPermits}
-                  options={PERMIT_TYPES.map(p=>({value:p, label:(isSanpaiPermit(p)?"🏭 ":"🏛 ")+p}))}/>
                 <MultiChipFilter label="稼働状況" icon="🟢" C={C}
                   values={vendFilterOperating} setValues={setVendFilterOperating}
                   options={[{value:"op_yes", label:"稼働(○)"},{value:"op_no", label:"非稼働(×)"}]}/>
