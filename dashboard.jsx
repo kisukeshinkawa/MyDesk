@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-07-v338-sanpai-permit-pairs"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-07-v340-detail-paired-permits"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -1188,6 +1188,84 @@ const SANPAI_AUTHORITIES = [
   {name:"松山市",type:"中"},{name:"高知市",type:"中"},{name:"久留米市",type:"中"},{name:"長崎市",type:"中"},{name:"佐世保市",type:"中"},{name:"大分市",type:"中"},{name:"宮崎市",type:"中"},{name:"鹿児島市",type:"中"},{name:"那覇市",type:"中"},
 ]; // 産廃許可の権者(129) type: 都/道/府/県/政=政令指定都市/中=中核市
 const SANPAI_CITY_NAMES = new Set(SANPAI_AUTHORITIES.filter(a=>a.type==="政"||a.type==="中").map(a=>a.name)); // 産廃権者の市(政令市/中核市)名
+
+// 許可を「(自治体 or 権者) × 許可種別」のペアで登録する統合ピッカー
+function PermitPairPicker({value, onChange, munis, prefs}){
+  const list = value||[];
+  const [type,setType]=React.useState("一廃収運");
+  const [pref,setPref]=React.useState("");
+  const [q,setQ]=React.useState("");
+  const [checked,setChecked]=React.useState({});
+  const sanpai = isSanpaiPermit(type);
+  const keyOf=(id,name)=> sanpai? ("A:"+name) : ("M:"+id);
+  const has=(id,name)=> list.some(p=> p.type===type && (sanpai? p.area===name : String(p.areaId)===String(id)));
+  let opts=[];
+  if(sanpai){
+    const qq=q.trim();
+    opts=(qq? SANPAI_AUTHORITIES.filter(a=>a.name.indexOf(qq)>=0) : SANPAI_AUTHORITIES).map(a=>({id:null,name:a.name,tag:a.type}));
+  } else {
+    let ms=munis||[]; const qq=q.trim();
+    if(pref) ms=ms.filter(m=>String(m.prefectureId)===String(pref));
+    if(qq) ms=ms.filter(m=>String(m.name||"").indexOf(qq)>=0);
+    if(!pref && !qq) ms=[];
+    opts=ms.slice(0,400).map(m=>({id:m.id,name:m.name,tag:""}));
+  }
+  const isChk=(id,name)=>!!checked[keyOf(id,name)];
+  const toggle=(id,name)=>setChecked(c=>({...c,[keyOf(id,name)]:!c[keyOf(id,name)]}));
+  const selCount=opts.filter(o=>isChk(o.id,o.name)&&!has(o.id,o.name)).length;
+  const register=()=>{ const adds=opts.filter(o=>isChk(o.id,o.name)&&!has(o.id,o.name)).map(o=>({type,area:o.name,areaId:sanpai?null:o.id})); if(adds.length) onChange([...list,...adds]); setChecked({}); };
+  const selectAllShown=()=>{ const c={...checked}; opts.forEach(o=>{ if(!has(o.id,o.name)) c[keyOf(o.id,o.name)]=true; }); setChecked(c); };
+  const removeAt=(i)=>onChange(list.filter((_,idx)=>idx!==i));
+  const groups={}; list.forEach((p,idx)=>{ (groups[p.type]=groups[p.type]||[]).push({...p,idx}); });
+  return (
+    <div style={{border:`1px solid ${C.border}`,borderRadius:10,padding:"0.6rem",background:"#fbfcfe"}}>
+      <div style={{display:"flex",gap:"0.4rem",alignItems:"center",flexWrap:"wrap",marginBottom:"0.45rem"}}>
+        <span style={{fontSize:"0.72rem",fontWeight:800,color:C.textSub}}>① 許可種別</span>
+        <select value={type} onChange={e=>{setType(e.target.value);setChecked({});setQ("");setPref("");}} style={{padding:"0.4rem 0.5rem",borderRadius:8,border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.8rem",background:"white",fontWeight:700}}>
+          <optgroup label="一廃系(自治体単位)">{IPPAI_PERMITS.map(p=><option key={p} value={p}>🏛 {p}</option>)}</optgroup>
+          <optgroup label="産廃系(権者単位)">{SANPAI_PERMITS.map(p=><option key={p} value={p}>🏭 {p}</option>)}</optgroup>
+        </select>
+        <span style={{fontSize:"0.66rem",color:C.textMuted}}>{sanpai?"→ ② 権者(129)を複数選択":"→ ② 自治体を複数選択"}</span>
+      </div>
+      <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap",alignItems:"center",marginBottom:"0.4rem"}}>
+        {!sanpai&&(
+          <select value={pref} onChange={e=>{setPref(e.target.value);setChecked({});}} style={{padding:"0.4rem 0.5rem",borderRadius:8,border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",background:"white"}}>
+            <option value="">都道府県を選択</option>
+            {(prefs||[]).map(p=><option key={p.id} value={String(p.id)}>{p.name}</option>)}
+          </select>
+        )}
+        <input value={q} onChange={e=>{setQ(e.target.value);setChecked({});}} placeholder={sanpai?"権者で絞り込み(空欄=全129)":"自治体名で絞り込み"} style={{flex:"1 1 150px",minWidth:120,padding:"0.4rem 0.6rem",borderRadius:8,border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
+        <button type="button" onClick={selectAllShown} disabled={!opts.length} style={{padding:"0.4rem 0.55rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.7rem",cursor:opts.length?"pointer":"not-allowed",fontFamily:"inherit",whiteSpace:"nowrap"}}>表示を全選択</button>
+        <button type="button" onClick={register} disabled={!selCount} style={{padding:"0.4rem 0.7rem",borderRadius:8,border:"none",background:selCount?C.accent:"#e2e8f0",color:selCount?"white":"#94a3b8",fontWeight:800,fontSize:"0.72rem",cursor:selCount?"pointer":"not-allowed",fontFamily:"inherit",whiteSpace:"nowrap"}}>{`選択${selCount?`(${selCount})`:""}を「${type}」で登録`}</button>
+      </div>
+      <div style={{maxHeight:190,overflowY:"auto",border:`1px solid ${C.border}`,borderRadius:8,padding:"0.25rem 0.35rem",display:"flex",flexWrap:"wrap",background:"white"}}>
+        {opts.length===0 && <span style={{fontSize:"0.72rem",color:C.textMuted,padding:"0.3rem"}}>{sanpai?"権者を絞り込むか、そのまま下の一覧から選択":"都道府県を選ぶか、自治体名で検索してください"}</span>}
+        {opts.map(o=>{ const already=has(o.id,o.name); return (
+          <label key={o.id!=null?("m"+o.id):("a"+o.name)} title={o.name} style={{display:"inline-flex",alignItems:"center",gap:"0.3rem",padding:"0.15rem 0.2rem",fontSize:"0.74rem",width:"calc(50% - 0.4rem)",boxSizing:"border-box",opacity:already?0.5:1,cursor:already?"default":"pointer"}}>
+            <input type="checkbox" checked={already||isChk(o.id,o.name)} disabled={already} onChange={()=>toggle(o.id,o.name)} style={{accentColor:C.accent,flexShrink:0}}/>
+            <span style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{o.name}{o.tag?<span style={{color:C.textMuted,fontSize:"0.58rem"}}> [{o.tag}]</span>:null}{already?<span style={{color:C.accent,fontSize:"0.58rem"}}> ✓</span>:null}</span>
+          </label>
+        ); })}
+      </div>
+      <div style={{marginTop:"0.5rem"}}>
+        {list.length===0 && <span style={{fontSize:"0.72rem",color:C.textMuted}}>まだ許可がありません。① 種別 → ② エリアを選んで「登録」してください。</span>}
+        {Object.keys(groups).map(t=>(
+          <div key={t} style={{marginBottom:"0.35rem"}}>
+            <span style={{fontSize:"0.66rem",fontWeight:800,color:isSanpaiPermit(t)?"#9a3412":C.accentDark}}>{isSanpaiPermit(t)?"🏭":"🏛"} {t}（{groups[t].length}）</span>
+            <div style={{display:"flex",flexWrap:"wrap",gap:"0.3rem",marginTop:"0.15rem"}}>
+              {groups[t].map(p=>(
+                <span key={p.idx} style={{display:"inline-flex",alignItems:"center",gap:"0.25rem",background:isSanpaiPermit(t)?"#FFE8CF":C.accentBg,color:isSanpaiPermit(t)?"#9a3412":C.accentDark,border:`1px solid ${isSanpaiPermit(t)?"#FFC07D":"#bfdbfe"}`,borderRadius:999,padding:"0.15rem 0.5rem",fontSize:"0.7rem",fontWeight:700}}>
+                  {p.area}
+                  <button type="button" onClick={()=>removeAt(p.idx)} style={{background:"none",border:"none",color:"inherit",cursor:"pointer",fontFamily:"inherit",fontWeight:800,padding:0,lineHeight:1}}>×</button>
+                </span>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 // 産廃の許可を「権者(129)×産廃種別」のペアで登録するピッカー
 function SanpaiPermitPicker({value, onChange}){
@@ -20040,6 +20118,13 @@ ${recentLogs}
     save({...data,municipalities:munis.filter(m=>m.id!==id),vendors:vendors.map(v=>({...v,municipalityIds:(v.municipalityIds||[]).filter(mid=>mid!==id)}))});
     setMuniScreen("top");setActiveMuni(null);
   };
+  const _vendorPermits = (v)=>{
+    if(Array.isArray(v.permits) && v.permits.length) return v.permits;
+    const out=[];
+    (v.municipalityIds||[]).forEach(id=>{ const m=(munis||[]).find(x=>String(x.id)===String(id)); if(m) out.push({type:"一廃収運",area:m.name,areaId:m.id}); });
+    (v.sanpaiPermits||[]).forEach(sp=>{ if(sp&&sp.auth&&sp.type) out.push({type:sp.type,area:sp.auth,areaId:null}); });
+    return out;
+  };
   const saveVendor=(skipDupCheck=false)=>{
     if(!form.name?.trim())return;
     if(!form.id && !skipDupCheck){
@@ -20066,11 +20151,14 @@ ${recentLogs}
         });return;}
     }
     const today = new Date().toISOString().slice(0,10);
-    const _derivedPermits = Array.from(new Set([ ...(form.permitTypes||[]), ...((form.municipalityIds||[]).length?["一廃収運"]:[]), ...(form.sanpaiPermits||[]).map(s=>s.type) ]));
+    const _pp = Array.isArray(form.permits)?form.permits:null;
+    const _muniIds = _pp ? Array.from(new Set(_pp.filter(p=>p.areaId!=null).map(p=>p.areaId))) : (form.municipalityIds||[]);
+    const _permTypes = _pp ? Array.from(new Set(_pp.map(p=>p.type))) : (form.permitTypes||[]);
+    const _sanpaiP = _pp ? _pp.filter(p=>isSanpaiPermit(p.type)).map(p=>({auth:p.area,type:p.type})) : (form.sanpaiPermits||[]);
     let nd={...data};
     if(form.id){
       const old=vendors.find(v=>v.id===form.id);
-      nd={...nd,vendors:vendors.map(v=>v.id===form.id?{...v,...form,permitTypes:_derivedPermits,updatedAt:today}:v)};
+      nd={...nd,vendors:vendors.map(v=>v.id===form.id?{...v,...form,municipalityIds:_muniIds,permitTypes:_permTypes,sanpaiPermits:_sanpaiP,updatedAt:today}:v)};
       const fields=[["status","ステータス"]];
       fields.forEach(([f,label])=>{
         if(old&&old[f]!==form[f]) nd=addChangeLog(nd,{entityType:"業者",entityId:form.id,entityName:form.name,field:label,oldVal:old[f],newVal:form[f]});
@@ -20079,7 +20167,7 @@ ${recentLogs}
       const added=newIds.filter(id=>!prevIds.includes(id));
       if(added.length) nd=addNotif(nd,{type:"sales_assign",entityType:"vendor",entityId:form.id,title:`「${form.name}」の担当者に追加されました`,body:"業者",toUserIds:added,fromUserId:currentUser?.id});
     } else {
-      const newVend={id:Date.now(),...form,permitTypes:_derivedPermits,status:form.status||"未接触",municipalityIds:form.municipalityIds||[],assigneeIds:form.assigneeIds||[],memos:[],chat:[],approachLogs:[],createdAt:new Date().toISOString(),updatedAt:today};
+      const newVend={id:Date.now(),...form,status:form.status||"未接触",municipalityIds:_muniIds,permitTypes:_permTypes,sanpaiPermits:_sanpaiP,assigneeIds:form.assigneeIds||[],memos:[],chat:[],approachLogs:[],createdAt:new Date().toISOString(),updatedAt:today};
       nd={...nd,vendors:[...vendors,newVend]};
       nd=addChangeLog(nd,{entityType:"業者",entityId:newVend.id,entityName:newVend.name,field:"登録",oldVal:"",newVal:"新規登録"});
       save(nd); setSheet(null);
@@ -22182,7 +22270,7 @@ ${orig}`})
                   {v.beeNet&&<span style={{fontSize:"0.62rem",background:"#F2F7FF",color:"#1563CA",padding:"0.1rem 0.45rem",borderRadius:999,fontWeight:700,border:"1px solid #bfdbfe"}}>🔷 bee-net</span>}
                 </div>
               </div>
-              <button onClick={()=>{setForm({...v});setSheet("editVendor");}} title="編集"
+              <button onClick={()=>{setForm({...v, permits:_vendorPermits(v)});setSheet("editVendor");}} title="編集"
                 style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"8px",padding:"0.3rem 0.55rem",cursor:"pointer",fontSize:"0.8rem",color:C.textSub,flexShrink:0}}>✏️</button>
             </div>
             {/* 担当者 + 電話 */}
@@ -22227,14 +22315,20 @@ ${orig}`})
               </div>
               {(v.grade||0)>0&&<span style={{fontSize:"0.66rem",fontWeight:700,color:"#b45309"}}>{VENDOR_GRADE_LABEL[v.grade]}</span>}
             </div>
-            {/* 許可エリア（タグ） */}
-            {vmunis.length>0&&(
-              <div style={{display:"flex",alignItems:"center",gap:"0.4rem",flexWrap:"wrap",marginBottom:"0.5rem"}}>
-                <span style={{fontSize:"0.6rem",fontWeight:700,color:C.textSub,letterSpacing:"0.04em"}}>許可エリア</span>
-                {vmunis.slice(0,8).map(m=><span key={m.id} style={{fontSize:"0.65rem",background:C.accentBg,color:C.accent,padding:"0.1rem 0.45rem",borderRadius:8,fontWeight:600}}>{m.name}</span>)}
-                {vmunis.length>8&&<span style={{fontSize:"0.62rem",color:C.textMuted}}>+{vmunis.length-8}</span>}
+            {/* 許可（種別 × エリア）ペア表示：種別ごとに対応エリアのチップを並べて「くっつけて」表示 */}
+            {(()=>{ const pp=_vendorPermits(v); if(!pp.length) return null; const groups={}; pp.forEach(p=>{(groups[p.type]=groups[p.type]||[]).push(p);});
+              return (
+              <div style={{marginBottom:"0.5rem"}}>
+                <div style={{fontSize:"0.6rem",fontWeight:700,color:C.textSub,letterSpacing:"0.04em",marginBottom:"0.3rem"}}>許可（種別 × エリア）</div>
+                {Object.keys(groups).map(t=>{ const sp=isSanpaiPermit(t); const arr=groups[t]; return (
+                  <div key={t} style={{display:"flex",alignItems:"center",gap:"0.35rem",flexWrap:"wrap",marginBottom:"0.25rem"}}>
+                    <span style={{fontSize:"0.62rem",fontWeight:800,color:sp?"#9a3412":C.accentDark,whiteSpace:"nowrap"}}>{sp?"🏭":"🏛"} {t}</span>
+                    {arr.slice(0,12).map((p,i)=><span key={i} style={{fontSize:"0.64rem",background:sp?"#FFE8CF":C.accentBg,color:sp?"#9a3412":C.accentDark,padding:"0.1rem 0.45rem",borderRadius:8,fontWeight:600}}>{p.area}</span>)}
+                    {arr.length>12&&<span style={{fontSize:"0.62rem",color:C.textMuted}}>+{arr.length-12}</span>}
+                  </div>
+                ); })}
               </div>
-            )}
+              ); })()}
             {/* 許可別営業状況（保有している許可のみ表示） */}
             {(()=>{
               const heldPermits = PERMIT_TYPES.filter(pt=>(v.permitTypes||[]).includes(pt));
@@ -22398,23 +22492,7 @@ ${orig}`})
             <Sheet title="業者を編集" onClose={()=>setSheet(null)}>
               <FieldLbl label="業者名 *"><Input value={form.name||""} onChange={e=>setForm({...form,name:e.target.value})} autoFocus/></FieldLbl>
               <FieldLbl label="ステータス"><StatusPicker map={VENDOR_STATUS} value={form.status||"未接触"} onChange={s=>setForm({...form,status:s})}/></FieldLbl>
-              <FieldLbl label="一廃系の許可種別（自治体単位）">
-                <div style={{display:"flex",flexWrap:"wrap",gap:"0.4rem",padding:"0.5rem",background:"#f8fafc",borderRadius:"8px",border:"1px solid #e2e8f0"}}>
-                  {IPPAI_PERMITS.map(p=>{
-                    const checked=(form.permitTypes||[]).includes(p);
-                    return (
-                      <label key={p} style={{display:"flex",alignItems:"center",gap:"0.3rem",cursor:"pointer",padding:"0.25rem 0.5rem",borderRadius:"0.5rem",background:checked?"#ede9fe":"white",border:`1px solid ${checked?"#7c3aed":"#e2e8f0"}`,transition:"all 0.15s"}}>
-                        <input type="checkbox" checked={checked} onChange={()=>{const cur=form.permitTypes||[];setForm({...form,permitTypes:checked?cur.filter(x=>x!==p):[...cur,p]});}} style={{accentColor:"#7c3aed",width:14,height:14}}/>
-                        <span style={{fontSize:"0.75rem",fontWeight:checked?700:400,color:checked?"#5b21b6":"#374151"}}>{p}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </FieldLbl>
-              <FieldLbl label="🏛 一廃収運の許可エリア（自治体）">
-                {MuniPicker({ids:form.municipalityIds||[],onChange:ids=>setForm({...form,municipalityIds:ids})})}
-              </FieldLbl>
-              <FieldLbl label="🏭 産廃の許可（権者×種別）"><SanpaiPermitPicker value={form.sanpaiPermits||[]} onChange={sp=>setForm({...form,sanpaiPermits:sp})}/></FieldLbl>
+              <FieldLbl label="許可（① 種別 → ② 自治体/権者 を複数選択して登録）"><PermitPairPicker value={form.permits||[]} onChange={p=>setForm({...form,permits:p})} munis={munis} prefs={prefs}/></FieldLbl>
               <FieldLbl label="担当者">{AssigneePicker({ids:form.assigneeIds||[],onChange:ids=>setForm({...form,assigneeIds:ids})})}</FieldLbl>
               <FieldLbl label="代表電話番号（任意）"><Input value={form.phone||""} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="092-xxx-xxxx" type="tel"/></FieldLbl>
               {/* 先方担当者リスト */}
@@ -22900,23 +22978,7 @@ ${orig}`})
           <Sheet title="業者を追加" onClose={()=>setSheet(null)}>
             <FieldLbl label="業者名 *"><Input value={form.name||""} onChange={e=>setForm({...form,name:e.target.value})} autoFocus/></FieldLbl>
             <FieldLbl label="ステータス"><StatusPicker map={VENDOR_STATUS} value={form.status||"未接触"} onChange={s=>setForm({...form,status:s})}/></FieldLbl>
-            <FieldLbl label="一廃系の許可種別（自治体単位）">
-                <div style={{display:"flex",flexWrap:"wrap",gap:"0.4rem",padding:"0.5rem",background:"#f8fafc",borderRadius:"8px",border:"1px solid #e2e8f0"}}>
-                  {IPPAI_PERMITS.map(p=>{
-                    const checked=(form.permitTypes||[]).includes(p);
-                    return (
-                      <label key={p} style={{display:"flex",alignItems:"center",gap:"0.3rem",cursor:"pointer",padding:"0.25rem 0.5rem",borderRadius:"0.5rem",background:checked?"#ede9fe":"white",border:`1px solid ${checked?"#7c3aed":"#e2e8f0"}`,transition:"all 0.15s"}}>
-                        <input type="checkbox" checked={checked} onChange={()=>{const cur=form.permitTypes||[];setForm({...form,permitTypes:checked?cur.filter(x=>x!==p):[...cur,p]});}} style={{accentColor:"#7c3aed",width:14,height:14}}/>
-                        <span style={{fontSize:"0.75rem",fontWeight:checked?700:400,color:checked?"#5b21b6":"#374151"}}>{p}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-            </FieldLbl>
-            <FieldLbl label="🏛 一廃収運の許可エリア（自治体）">
-              {MuniPicker({ids:form.municipalityIds||[],onChange:ids=>setForm({...form,municipalityIds:ids})})}
-            </FieldLbl>
-            <FieldLbl label="🏭 産廃の許可（権者×種別）"><SanpaiPermitPicker value={form.sanpaiPermits||[]} onChange={sp=>setForm({...form,sanpaiPermits:sp})}/></FieldLbl>
+            <FieldLbl label="許可（① 種別 → ② 自治体/権者 を複数選択して登録）"><PermitPairPicker value={form.permits||[]} onChange={p=>setForm({...form,permits:p})} munis={munis} prefs={prefs}/></FieldLbl>
             <FieldLbl label="担当者">{AssigneePicker({ids:form.assigneeIds||[],onChange:ids=>setForm({...form,assigneeIds:ids})})}</FieldLbl>
             <FieldLbl label="電話番号（任意）"><Input value={form.phone||""} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="092-xxx-xxxx" type="tel"/></FieldLbl>
             <FieldLbl label="郵便番号（任意）"><Input value={form.zip||""} onChange={e=>setForm({...form,zip:e.target.value})} placeholder="例: 100-0001"/></FieldLbl>
