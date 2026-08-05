@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-07-v336-form-permit-first"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-07-v337-sanpai-authority-filter"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -1187,6 +1187,7 @@ const SANPAI_AUTHORITIES = [
   {name:"明石市",type:"中"},{name:"奈良市",type:"中"},{name:"和歌山市",type:"中"},{name:"鳥取市",type:"中"},{name:"松江市",type:"中"},{name:"倉敷市",type:"中"},{name:"福山市",type:"中"},{name:"呉市",type:"中"},{name:"下関市",type:"中"},{name:"高松市",type:"中"},
   {name:"松山市",type:"中"},{name:"高知市",type:"中"},{name:"久留米市",type:"中"},{name:"長崎市",type:"中"},{name:"佐世保市",type:"中"},{name:"大分市",type:"中"},{name:"宮崎市",type:"中"},{name:"鹿児島市",type:"中"},{name:"那覇市",type:"中"},
 ]; // 産廃許可の権者(129) type: 都/道/府/県/政=政令指定都市/中=中核市
+const SANPAI_CITY_NAMES = new Set(SANPAI_AUTHORITIES.filter(a=>a.type==="政"||a.type==="中").map(a=>a.name)); // 産廃権者の市(政令市/中核市)名
 
 const DUSTALK_STATUS = {
   "展開":   { color:"#009122", bg:"#d1fae5", icon:"✅" },
@@ -17649,6 +17650,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   React.useEffect(()=>{ localStorage.setItem("md_vendFilterStatuses", JSON.stringify(vendFilterStatuses||[])); }, [vendFilterStatuses]);
   const [vendFilterPermits, setVendFilterPermits] = useState(()=>_parseMultiFilter("md_vendFilterPermits"));
   React.useEffect(()=>{ localStorage.setItem("md_vendFilterPermits", JSON.stringify(vendFilterPermits||[])); }, [vendFilterPermits]);
+  const [vendFilterSanpaiAuth, setVendFilterSanpaiAuth] = useState(()=>_parseMultiFilter("md_vendFilterSanpaiAuth"));
+  React.useEffect(()=>{ localStorage.setItem("md_vendFilterSanpaiAuth", JSON.stringify(vendFilterSanpaiAuth||[])); }, [vendFilterSanpaiAuth]);
   const [vendFilterOperating, setVendFilterOperating] = useState(()=>_parseMultiFilter("md_vendFilterOperating"));
   React.useEffect(()=>{ localStorage.setItem("md_vendFilterOperating", JSON.stringify(vendFilterOperating||[])); }, [vendFilterOperating]);
   const [vendFilterBeeNets, setVendFilterBeeNets] = useState(()=>_parseMultiFilter("md_vendFilterBeeNets"));
@@ -19676,6 +19679,8 @@ ${recentLogs}
     munis.forEach(mu => m.set(mu.id, String(mu.prefectureId)));
     return m;
   }, [munis]);
+  const prefIdToName = React.useMemo(()=>{ const m=new Map(); (prefs||[]).forEach(p=>m.set(String(p.id), p.name)); return m; }, [prefs]);
+  const muniIdToName = React.useMemo(()=>{ const m=new Map(); (munis||[]).forEach(mu=>m.set(mu.id, mu.name)); return m; }, [munis]);
 
   const filteredVendors = React.useMemo(() => {
     return vendors.filter(v=>{
@@ -19702,6 +19707,16 @@ ${recentLogs}
       if(vendFilterPermits.length > 0){
         const vp = v.permitTypes||[];
         if(!vendFilterPermits.every(fp => vp.includes(fp))) return false;
+      }
+      // 産廃権者(129): 業者の権者集合(自治体の都道府県＋政令市/中核市名)に選択いずれかが含まれるか(OR)
+      if(vendFilterSanpaiAuth.length > 0){
+        const aset = new Set();
+        const ids0 = v.municipalityIds||[];
+        for(let i=0;i<ids0.length;i++){
+          const pn = prefIdToName.get(muniIdToPrefIdMap.get(ids0[i])); if(pn) aset.add(pn);
+          const mn = muniIdToName.get(ids0[i]); if(mn && SANPAI_CITY_NAMES.has(mn)) aset.add(mn);
+        }
+        if(!vendFilterSanpaiAuth.some(a => aset.has(a))) return false;
       }
       // 稼働状況（○×）: 選択自治体×選択許可（未選択なら業者の保有分すべて）で判定。
       //   op_yes=その範囲で稼働(○)がある業者 / op_no=非稼働(×)がある業者
@@ -19740,7 +19755,7 @@ ${recentLogs}
       }
       return true;
     });
-  }, [vendors, vendFilterPrefs, vendFilterMunis, vendFilterStatuses, vendFilterPermits, vendFilterOperating, vendFilterBeeNets, vendFilterAssignees, currentUser?.id, muniIdToPrefIdMap]);
+  }, [vendors, vendFilterPrefs, vendFilterMunis, vendFilterStatuses, vendFilterPermits, vendFilterSanpaiAuth, vendFilterOperating, vendFilterBeeNets, vendFilterAssignees, currentUser?.id, muniIdToPrefIdMap, prefIdToName, muniIdToName]);
   const _normVSearch = s => (s||"").replace(/[\s\u3000]/g,"").toLowerCase();
   const searchedVendors = React.useMemo(
     () => debouncedVendSearch ? filteredVendors.filter(v=>_normVSearch(v.name).includes(_normVSearch(debouncedVendSearch))) : null,
@@ -22482,7 +22497,7 @@ ${orig}`})
         })()}
         {/* 絞り込みフィルタ（複数選択化） */}
         {(()=>{
-          const hasFilter = vendFilterPrefs.length||vendFilterMunis.length||vendFilterStatuses.length||vendFilterPermits.length||vendFilterOperating.length||vendFilterBeeNets.length||vendFilterAssignees.length;
+          const hasFilter = vendFilterPrefs.length||vendFilterMunis.length||vendFilterStatuses.length||vendFilterPermits.length||vendFilterSanpaiAuth.length||vendFilterOperating.length||vendFilterBeeNets.length||vendFilterAssignees.length;
           const fvCount = filteredVendors.length;
           const permitCounts = hasFilter ? PERMIT_TYPES.map(p=>{
             const n = filteredVendors.filter(v=>(v.permitTypes||[]).includes(p)).length;
@@ -22494,7 +22509,7 @@ ${orig}`})
             : munis;
           const clearAll = ()=>{
             setVendFilterPrefs([]); setVendFilterMunis([]); setVendFilterStatuses([]);
-            setVendFilterPermits([]); setVendFilterOperating([]); setVendFilterBeeNets([]); setVendFilterAssignees([]);
+            setVendFilterPermits([]); setVendFilterSanpaiAuth([]); setVendFilterOperating([]); setVendFilterBeeNets([]); setVendFilterAssignees([]);
           };
           
           // MultiChipFilter: 値配列、setter、選択肢、ラベル、表示変換
@@ -22515,6 +22530,9 @@ ${orig}`})
           });
           vendFilterPermits.forEach(p => {
             selChips.push({label:`📋 ${p}`, key:`permit-${p}`, remove:()=>setVendFilterPermits(vendFilterPermits.filter(x=>x!==p))});
+          });
+          vendFilterSanpaiAuth.forEach(a => {
+            selChips.push({label:`🏭 ${a}`, key:`sanpaiauth-${a}`, remove:()=>setVendFilterSanpaiAuth(vendFilterSanpaiAuth.filter(x=>x!==a))});
           });
           vendFilterOperating.forEach(o => {
             const nm = o==="op_yes" ? "稼働(○)" : "非稼働(×)";
@@ -22547,17 +22565,21 @@ ${orig}`})
                 <MultiChipFilter label="許可種別" icon="📋" C={C}
                   values={vendFilterPermits} setValues={setVendFilterPermits}
                   options={PERMIT_TYPES.map(p=>({value:p, label:(isSanpaiPermit(p)?"🏭 ":"🏛 ")+p}))}/>
-                <MultiChipFilter label="都道府県" icon="🗾" C={C}
-                  values={vendFilterPrefs} setValues={v=>{setVendFilterPrefs(v); /* 都道府県解除で自治体もクリア（無関係になるため） */ if(v.length===0)setVendFilterMunis([]);}}
-                  options={prefs.map(p=>({value:String(p.id), label:p.name}))}/>
-                {/* ② 産廃のみ選択時は自治体絞り込みを弾く（産廃は権者=都道府県単位のため） */}
-                {_areaByMuni ? ((muniOptions.length>0 || vendFilterMunis.length>0) && (
-                  <MultiChipFilter label="自治体" icon="🏛" C={C}
-                    values={vendFilterMunis} setValues={setVendFilterMunis}
-                    options={muniOptions.map(m=>({value:String(m.id), label:m.name}))}/>
-                )) : (
-                  <span style={{fontSize:"0.66rem",fontWeight:700,color:"#9a3412",background:"#FFF7E8",border:"1px solid #FFC07D",borderRadius:999,padding:"0.25rem 0.6rem",alignSelf:"center",whiteSpace:"nowrap"}}>🏭 産廃は権者(都道府県)単位 — 都道府県で絞ってください</span>
-                )}
+                {/* ② 産廃のみ選択時は「産廃権者(129: 都道府県＋政令市＋中核市)」で絞る。それ以外は都道府県＋自治体 */}
+                {(_sanpaiSel && !_ippaiSel) ? (
+                  <MultiChipFilter label="産廃権者" icon="🏭" C={C}
+                    values={vendFilterSanpaiAuth} setValues={setVendFilterSanpaiAuth}
+                    options={SANPAI_AUTHORITIES.map(a=>({value:a.name, label:a.name+"["+a.type+"]"}))}/>
+                ) : (<React.Fragment>
+                  <MultiChipFilter label="都道府県" icon="🗾" C={C}
+                    values={vendFilterPrefs} setValues={v=>{setVendFilterPrefs(v); if(v.length===0)setVendFilterMunis([]);}}
+                    options={prefs.map(p=>({value:String(p.id), label:p.name}))}/>
+                  {(muniOptions.length>0 || vendFilterMunis.length>0) && (
+                    <MultiChipFilter label="自治体" icon="🏛" C={C}
+                      values={vendFilterMunis} setValues={setVendFilterMunis}
+                      options={muniOptions.map(m=>({value:String(m.id), label:m.name}))}/>
+                  )}
+                </React.Fragment>)}
                 <MultiChipFilter label="ステータス" icon="📌" C={C}
                   values={vendFilterStatuses} setValues={setVendFilterStatuses}
                   options={Object.keys(VENDOR_STATUS).map(s=>({value:s, label:s}))}/>
