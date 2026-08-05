@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 // MyTrade — 投資専用スタンドアロンアプリ (MyDeskから分離)
 // バックエンド: mydesk-stock-analysis Lambda (共用・変更不要)
 // ═══════════════════════════════════════════════════════════════
-const MYTRADE_BUILD = "2026-08-06-v10-demo-trading";
+const MYTRADE_BUILD = "2026-08-06-v11-timeout-fix";
 if (typeof window !== "undefined") {
   window.__MYTRADE_BUILD = MYTRADE_BUILD;
   console.log(`[MyTrade] Build: ${MYTRADE_BUILD}`);
@@ -363,7 +363,7 @@ function StockView({currentUser}) {
       // ウォッチリストが5銘柄未満なら日米主力20銘柄(Lambda側デフォルト)で検証
       const payload = {action:"backtest", years:parseInt(btYears,10)||10, apply:true};
       if(watchlist.length>=5) payload.tickers = watchlist.map(w=>w.ticker);
-      const rep = await api(payload, 300000);
+      const rep = await api(payload, 900000);
       setBtRep(rep);
       setPerf(p=>({...(p||{}), config:{...((p&&p.config)||{}), factor_weights:rep.weights, factor_ic:rep.ics, backtestSamples:rep.samples, updatedAt:rep.updatedAt}}));
     } catch(e){ setErrMsg("バックテストエラー: "+e.message); }
@@ -389,7 +389,7 @@ function StockView({currentUser}) {
 
   const loadBrief = async (force) => {
     setBusy(b=>({...b,brief:true}));
-    try { const r = await api({action:"brief",force:!!force}, 300000); if(r&&r.brief) setBrief(r); }
+    try { const r = await api({action:"brief",force:!!force}, 900000); if(r&&r.brief) setBrief(r); }
     catch(e){ setErrMsg("ブリーフ取得エラー: "+e.message); }
     setBusy(b=>({...b,brief:false}));
   };
@@ -400,7 +400,7 @@ function StockView({currentUser}) {
 
   const loadRanking = async (force) => {
     setBusy(b=>({...b,rank:true})); setErrMsg("");
-    try { const r = await api({action:"ranking",force:!!force}, 300000); setRanking(r); }
+    try { const r = await api({action:"ranking",force:!!force}, 900000); setRanking(r); }
     catch(e){ setErrMsg("ランキング取得エラー: "+e.message); }
     setBusy(b=>({...b,rank:false}));
   };
@@ -425,7 +425,7 @@ function StockView({currentUser}) {
 
   const runPfBrain = async () => {
     setBusy(b=>({...b,pf:true})); setErrMsg("");
-    try { const r = await api({action:"portfolio-brain"}, 300000); setPfBrain(r); }
+    try { const r = await api({action:"portfolio-brain"}, 900000); setPfBrain(r); }
     catch(e){ setErrMsg("ポートフォリオ診断エラー: "+e.message); }
     setBusy(b=>({...b,pf:false}));
   };

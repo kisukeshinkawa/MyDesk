@@ -1583,7 +1583,7 @@ def run_ranking(force=False, universe=None):
             return cached
 
     start = time.time()
-    BUDGET = 220  # 秒。Lambdaタイムアウト300秒に対する安全域
+    BUDGET = int(os.environ.get("RANK_BUDGET", "700"))  # 秒。タイムアウト900秒に対する安全域
     cfg = load_learn_config()
     weights = cfg.get("factor_weights")
     tickers = universe or FULL_UNIVERSE
@@ -1624,8 +1624,12 @@ def run_ranking(force=False, universe=None):
     # ── ② 財務: ウォッチリスト + 短期上位 + キャッシュ済みを優先して長期スコア ──
     wl = {w["ticker"] for w in _load_json_s3(WATCHLIST_KEY, [])}
     by_ticker = {r["ticker"]: r for r in rows}
+    # 前回の続きから回すことで、日を追うごとに全銘柄の財務が揃う
+    done_before = set((_load_json_s3("stock-learn/fin_progress.json", {}) or {}).get("done", []))
+    ranked = [r["ticker"] for r in sorted(rows, key=lambda x: -x["short"])]
     order = ([t for t in wl if t in by_ticker]
-             + [r["ticker"] for r in sorted(rows, key=lambda x: -x["short"]) if r["ticker"] not in wl])
+             + [t for t in ranked if t not in wl and t not in done_before]
+             + [t for t in ranked if t not in wl and t in done_before])
     deep_n = 0
     for ticker in order:
         row = by_ticker[ticker]
@@ -1659,7 +1663,18 @@ def run_ranking(force=False, universe=None):
         except Exception as e:
             print("ranking long failed:", ticker, e)
 
+    try:
+        newly = [r["ticker"] for r in rows if r.get("long") is not None]
+        merged = list(dict.fromkeys(list(done_before) + newly))
+        if len(merged) >= len(rows) * 0.95:
+            merged = newly  # 一巡したらリセットして再取得サイクルへ
+        _save_json_s3("stock-learn/fin_progress.json", {"done": merged[-1200:],
+                      "updatedAt": datetime.now(timezone.utc).isoformat()})
+    except Exception as e:
+        print("fin progress save failed:", e)
+
     out = {"rows": rows, "scanned": len(rows), "universe": len(tickers), "deepScanned": deep_n,
+           "finCovered": len([r for r in rows if r.get("long") is not None]),
            "errors": errors, "elapsed": round(time.time() - start),
            "complete": deep_n >= len(rows),
            "updatedAt": datetime.now(timezone.utc).isoformat()}

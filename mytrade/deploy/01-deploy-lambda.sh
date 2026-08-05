@@ -74,14 +74,14 @@ if aws lambda get-function --function-name "$FUNC" --region "$REGION" >/dev/null
     --zip-file "fileb://$TMPZ/function.zip" --region "$REGION" >/dev/null
   aws lambda wait function-updated --function-name "$FUNC" --region "$REGION"
   aws lambda update-function-configuration --function-name "$FUNC" \
-    --timeout 300 --memory-size 1024 --layers "$LAYER_ARN" \
+    --timeout 900 --memory-size 2048 --layers "$LAYER_ARN" \
     --environment "$ENVVARS" --region "$REGION" >/dev/null
 else
   echo "▶ 関数を新規作成..."
   aws lambda create-function --function-name "$FUNC" \
     --runtime python3.12 --handler lambda_function.lambda_handler \
     --role "$ROLE_ARN" --zip-file "fileb://$TMPZ/function.zip" \
-    --timeout 300 --memory-size 1024 --layers "$LAYER_ARN" \
+    --timeout 900 --memory-size 2048 --layers "$LAYER_ARN" \
     --environment "$ENVVARS" --region "$REGION" >/dev/null
 fi
 aws lambda wait function-updated --function-name "$FUNC" --region "$REGION"
