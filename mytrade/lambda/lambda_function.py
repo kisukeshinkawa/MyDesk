@@ -202,6 +202,13 @@ def lambda_handler(event, context):
             return _res(200, {"available": _discover_models(),
                               "remembered": (_load_json_s3(MODEL_STATE_KEY, {}) or {}).get("modelId"),
                               "configured": BEDROCK_MODEL})
+        if action == "paper":
+            return _res(200, paper_state())
+        if action == "paper-order":
+            return _res(200, paper_order(body["ticker"], body.get("side", "buy"),
+                                         body.get("qty", 0), body.get("note", "")))
+        if action == "paper-reset":
+            return _res(200, paper_reset(body.get("initial", PAPER_INITIAL)))
         if action == "market-news":
             return _res(200, get_market_news())
         if action == "brief":
@@ -758,6 +765,26 @@ def build_pro_checklist(df, info, fin, rel3m, regime_on):
             "total": len(evaluable)}
 
 
+def _trade_levels(tech, df):
+    """チャートに引く売買ライン。AIの文章とは別に、常に同じ計算で数値を出す。
+    損切り=2ATR下と直近安値の高い方 / 利確=リスクリワード2倍・3倍 / 押し目=25日線"""
+    price, atr = tech["price"], tech["atr"]
+    low20 = float(df["Low"].iloc[-20:].min()) if len(df) >= 20 else price - 2 * atr
+    stop = max(price - 2 * atr, low20 * 0.995)
+    risk = max(price - stop, atr * 0.5)
+    return {
+        "price": round(price, 2),
+        "entry": round(min(price, tech["ma25"]) if tech["ma25"] and tech["ma25"] < price else price, 2),
+        "stop": round(stop, 2),
+        "target1": round(price + risk * 2, 2),
+        "target2": round(price + risk * 3, 2),
+        "ma25": round(tech["ma25"], 2) if tech["ma25"] else None,
+        "riskPct": round((price - stop) / price * 100, 1),
+        "rewardPct": round(risk * 2 / price * 100, 1),
+        "rr": 2.0,
+    }
+
+
 # ═══════════════════════ 銘柄分析(analyze) ═══════════════════════
 def analyze_ticker(ticker):
     key = f"analyze/{ticker}.json"
@@ -830,6 +857,7 @@ def analyze_ticker(ticker):
         "targetPrice": _g(info, "targetMeanPrice"),          # アナリスト平均目標株価
         "analystRating": _g(info, "recommendationKey"),      # strong_buy/buy/hold/underperform/sell
         "analystCount": _g(info, "numberOfAnalystOpinions"),
+        "tradeLevels": _trade_levels(tech, df),
         "regime": {"benchAboveMa200": regime_on,
                    "bench": "日経平均" if is_jp else "S&P500"},
         "spark": tech["spark"], "sparkMa25": tech["spark_ma25"],
@@ -1485,7 +1513,36 @@ ON SWKS TER AMAT ASML TSM ARM SMCI ANET MSI GLW APH TEL KEYS ROK PH CMI PCAR FDX
 LMT LHX TDG HWM TXT LDOS PWR TT CARR JCI LII FAST GWW POOL MMM KHC GIS K SYY KR DG DLTR ROST BBY
 EBAY ETSY LULU YUM CMG DPZ MAR HLT RCL CCL LVS WYNN MGM""".split()
 
-FULL_UNIVERSE = [f"{c}.T" for c in UNIVERSE_JP] + UNIVERSE_US
+# 中型株まで拡張(TOPIX Mid400相当 + 米国中大型)
+UNIVERSE_JP2 = """1333 1414 1515 1719 1720 1780 1820 1821 1860 1878 1911 1919 1934 1944 1949 1951
+1959 1961 1964 1967 1969 1972 1973 1979 2001 2003 2004 2058 2124 2127 2138 2148 2153 2181 2196 2201
+2206 2212 2229 2264 2267 2270 2281 2286 2296 2337 2371 2372 2379 2384 2393 2395 2402 2412 2427 2429
+2440 2453 2461 2462 2464 2471 2475 2483 2492 2497 2498 2531 2533 2540 2579 2587 2593 2597 2607
+2651 2670 2685 2695 2702 2715 2726 2729 2730 2735 2749 2751 2760 2782 2784 2792 2796 2797 2801 2810
+2811 2815 2830 2871 2875 2882 2884 2897 2899 2903 2908 2910 2915 2917 2929 2931 3038 3048 3050 3064
+3076 3082 3088 3091 3092 3093 3105 3132 3134 3141 3148 3150 3151 3167 3168 3179 3186 3193 3197 3222
+3231 3244 3252 3254 3258 3271 3276 3283 3291 3292 3294 3299 3300 3315 3319 3323 3328 3341 3350 3355
+3360 3374 3377 3387 3391 3395 3397 3400 3402 3416 3421 3423 3433 3441 3443 3445 3447 3457 3465 3475
+3480 3482 3489 3491 3497 3498 3543 3546 3549 3550 3563 3566 3569 3577 3591 3593 3597 3608 3612 3625
+3626 3627 3635 3639 3641 3648 3652 3656 3663 3665 3668 3669 3672 3673 3675 3676 3678 3680 3681 3684
+3687 3688 3689 3691 3694 3697 3701 3708 3712 3715 3719 3723 3724 3739 3744 3760 3765 3769 3774 3778
+3782 3787 3788 3798 3800 3814 3823 3825 3830 3836 3837 3839 3842 3844 3847 3853 3854 3856 3857 3858
+3859 3902 3903 3904 3906 3908 3909 3914 3915 3922 3923 3925 3926 3928 3932 3934 3936 3937 3939 3940
+3941 3949 3962 3966 3968 3969 3975 3976 3978 3981 3983 3985 3987 3988 3990 3991 3992 3994 3996 3997
+3998 3999 4004 4005 4008 4021 4023 4025 4028 4041 4046 4047 4088 4091 4092 4095 4098 4099 4100 4109
+4114 4118 4123 4124 4128 4151 4165 4176 4180 4185 4186 4187 4188 4189 4192 4194 4196 4197 4198 4200""".split()
+
+UNIVERSE_US2 = """ADSK APP ARES AXON BKNG BX CEG CHTR CMCSA COF COP CTAS CTSH DASH DXCM ECL EFX EL
+EW EXC FANG FCX FI FIS FITB GEHC GEV GIS HAL HES HIG HPE HSY HUM IDXX ILMN INCY IP IQV IR IRM ITT
+IVZ JBHT JKHY KDP KEY KIM KMB KMI KMX KO L LEN LH LKQ LNT LUV LVS LW MAA MAS MCHP MCO MDLZ MET MGM
+MKC MLM MNST MOH MOS MPWR MRNA MTB MTCH NDAQ NEM NI NRG NTAP NTRS NUE NVR NWS O OKE OMC OTIS OXY
+PAYX PCG PEG PFG PHM PKG PNR PPG PPL PRU PSA PTC RCL REG REGN RF RJF RMD ROL ROP RSG SBAC SJM SNA
+SO SPG SRE STE STLD STT SWK SYF SYY TAP TDY TFC TRGP TRMB TROW TRV TSCO TSN TTWO TXT TYL UDR ULTA
+URI VICI VMC VRSK VRSN VST VTR WAB WAT WBD WEC WELL WRB WST WTW WY XEL XYL YUM ZBH ZBRA ZION""".split()
+
+FULL_UNIVERSE = ([f"{c}.T" for c in UNIVERSE_JP] + [f"{c}.T" for c in UNIVERSE_JP2]
+                 + UNIVERSE_US + UNIVERSE_US2)
+FULL_UNIVERSE = list(dict.fromkeys(FULL_UNIVERSE))
 
 
 def fetch_bulk_ohlcv(tickers, days=450, chunk=80):
@@ -1751,6 +1808,10 @@ def run_daily_report(send_mail=True):
         evaluate_predictions()
     except Exception as e:
         print("auto evaluate failed:", e)
+    try:
+        paper_snapshot()   # デモ口座の資産推移を毎日記録
+    except Exception as e:
+        print("paper snapshot failed:", e)
     learned = False
 
     SIG_JA = {"buy": "買い候補", "watch": "監視", "avoid": "見送り"}
@@ -1901,6 +1962,137 @@ def portfolio_brain():
     brain = json.loads(m.group(0)) if m else {"summary": raw}
     return {"brain": brain, "holdings": len(holds), "market": market["moodLabel"],
             "updatedAt": datetime.now(timezone.utc).isoformat()}
+
+
+# ═══════════════════════ デモトレード(ペーパートレード) ═══════════════════════
+PAPER_KEY = "stock-learn/paper.json"
+PAPER_INITIAL = 1000000  # 初期資金100万円
+FEE_RATE = 0.001         # 売買手数料0.1%(国内ネット証券の実勢に近い水準)
+
+
+def _paper_load():
+    return _load_json_s3(PAPER_KEY, {
+        "initial": PAPER_INITIAL, "cash": PAPER_INITIAL,
+        "positions": [], "trades": [], "history": [],
+        "createdAt": datetime.now(timezone.utc).isoformat()})
+
+
+def _paper_price(ticker):
+    """現在値。ランキング/分析キャッシュを優先し、無ければ取得。"""
+    rk = cache_get("ranking.json", 24 * 3600) or {}
+    for r in rk.get("rows", []):
+        if r["ticker"] == ticker:
+            return float(r["price"]), r.get("name") or ticker
+    a = cache_get(f"analyze/{ticker}.json", PRICE_TTL)
+    if a:
+        return float(a["price"]), a.get("name") or ticker
+    df = fetch_history(ticker, "10d")
+    return float(df["Close"].iloc[-1]), ticker
+
+
+def paper_state():
+    """評価額・損益を現在値で再計算して返す。"""
+    st = _paper_load()
+    total_val, positions = 0.0, []
+    for p in st.get("positions", []):
+        try:
+            px, name = _paper_price(p["ticker"])
+        except Exception:
+            px, name = p["avgPrice"], p.get("name", p["ticker"])
+        val = px * p["qty"]
+        cost = p["avgPrice"] * p["qty"]
+        total_val += val
+        positions.append({**p, "name": p.get("name") or name, "price": round(px, 2),
+                          "value": round(val, 0), "pnl": round(val - cost, 0),
+                          "pnlPct": round((px / p["avgPrice"] - 1) * 100, 2)})
+    equity = st["cash"] + total_val
+    closed = [t for t in st.get("trades", []) if t["side"] == "sell"]
+    wins = [t for t in closed if t.get("pnl", 0) > 0]
+    gw = sum(t.get("pnl", 0) for t in wins)
+    gl = abs(sum(t.get("pnl", 0) for t in closed if t.get("pnl", 0) <= 0))
+    return {
+        "initial": st["initial"], "cash": round(st["cash"], 0),
+        "positionValue": round(total_val, 0), "equity": round(equity, 0),
+        "totalPnl": round(equity - st["initial"], 0),
+        "totalPnlPct": round((equity / st["initial"] - 1) * 100, 2),
+        "positions": positions, "trades": st.get("trades", [])[-30:][::-1],
+        "history": st.get("history", [])[-90:],
+        "stats": {"closed": len(closed),
+                  "winRate": round(len(wins) / len(closed) * 100, 1) if closed else None,
+                  "profitFactor": round(gw / gl, 2) if gl > 0 else None,
+                  "avgWin": round(gw / len(wins), 0) if wins else 0,
+                  "avgLoss": round(-gl / (len(closed) - len(wins)), 0) if len(closed) > len(wins) else 0},
+        "updatedAt": datetime.now(timezone.utc).isoformat()}
+
+
+def paper_order(ticker, side, qty, note=""):
+    st = _paper_load()
+    qty = int(qty)
+    if qty <= 0:
+        raise Exception("株数が不正です")
+    if ticker.endswith(".T") and qty % 100 != 0:
+        raise Exception("日本株は100株単位で注文してください")
+    px, name = _paper_price(ticker)
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    pos = next((p for p in st["positions"] if p["ticker"] == ticker), None)
+
+    if side == "buy":
+        cost = px * qty * (1 + FEE_RATE)
+        if cost > st["cash"]:
+            raise Exception(f"資金不足です(必要 {int(cost):,}円 / 残高 {int(st['cash']):,}円)")
+        st["cash"] -= cost
+        if pos:
+            tot = pos["qty"] + qty
+            pos["avgPrice"] = round((pos["avgPrice"] * pos["qty"] + px * qty) / tot, 2)
+            pos["qty"] = tot
+        else:
+            st["positions"].append({"ticker": ticker, "name": name, "qty": qty,
+                                    "avgPrice": round(px, 2), "openedAt": today})
+        st["trades"].append({"date": today, "ticker": ticker, "name": name, "side": "buy",
+                             "qty": qty, "price": round(px, 2), "fee": round(px * qty * FEE_RATE, 0),
+                             "note": note[:120]})
+    else:
+        if not pos or pos["qty"] < qty:
+            raise Exception("保有株数が足りません")
+        proceeds = px * qty * (1 - FEE_RATE)
+        pnl = proceeds - pos["avgPrice"] * qty
+        st["cash"] += proceeds
+        pos["qty"] -= qty
+        if pos["qty"] == 0:
+            st["positions"] = [p for p in st["positions"] if p["ticker"] != ticker]
+        st["trades"].append({"date": today, "ticker": ticker, "name": name, "side": "sell",
+                             "qty": qty, "price": round(px, 2), "fee": round(px * qty * FEE_RATE, 0),
+                             "pnl": round(pnl, 0),
+                             "pnlPct": round((px / pos["avgPrice"] - 1) * 100, 2), "note": note[:120]})
+        # 実現損益はトレード日誌にも自動記録(学習・成績分析に使われる)
+        try:
+            log_trade({"ticker": ticker, "name": name, "entryPrice": pos["avgPrice"],
+                       "exitPrice": px, "qty": qty, "entryDate": pos.get("openedAt"),
+                       "reason": "[デモ] " + (note or "決済")})
+        except Exception as e:
+            print("paper->journal failed:", e)
+
+    _save_json_s3(PAPER_KEY, st)
+    return paper_state()
+
+
+def paper_snapshot():
+    """毎日の資産推移を記録(グラフ用)。朝の定期実行から呼ばれる。"""
+    st = _paper_load()
+    s2 = paper_state()
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    hist = [h for h in st.get("history", []) if h["date"] != today]
+    hist.append({"date": today, "equity": s2["equity"], "cash": s2["cash"]})
+    st["history"] = hist[-400:]
+    _save_json_s3(PAPER_KEY, st)
+    return s2
+
+
+def paper_reset(initial=PAPER_INITIAL):
+    _save_json_s3(PAPER_KEY, {"initial": int(initial), "cash": int(initial),
+                              "positions": [], "trades": [], "history": [],
+                              "createdAt": datetime.now(timezone.utc).isoformat()})
+    return paper_state()
 
 
 # ═══════════════════════ 銘柄検索 ═══════════════════════
