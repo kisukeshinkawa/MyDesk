@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 // MyTrade — 投資専用スタンドアロンアプリ (MyDeskから分離)
 // バックエンド: mydesk-stock-analysis Lambda (共用・変更不要)
 // ═══════════════════════════════════════════════════════════════
-const MYTRADE_BUILD = "2026-08-06-v8-bedrock-autoselect";
+const MYTRADE_BUILD = "2026-08-06-v9-actionable-brief";
 if (typeof window !== "undefined") {
   window.__MYTRADE_BUILD = MYTRADE_BUILD;
   console.log(`[MyTrade] Build: ${MYTRADE_BUILD}`);
@@ -544,6 +544,39 @@ function StockView({currentUser}) {
                   })}
                 </div>
               )}
+              {(brief.plans||[]).length>0&&(
+                <div style={{marginBottom:"0.6rem"}}>
+                  <div style={{fontSize:"0.72rem",fontWeight:800,color:C.textSub,marginBottom:"0.3rem"}}>💰 具体的な売買プラン(上位3銘柄)</div>
+                  {brief.plans.map((p,i)=>{
+                    const vm = STOCK_VERDICT_META[p.verdict]||STOCK_VERDICT_META.hold;
+                    const known = watchlist.some(w=>w.ticker===p.ticker);
+                    return (
+                      <div key={i} style={{padding:"0.6rem 0.75rem",background:"white",borderRadius:8,marginBottom:"0.4rem",border:`1px solid ${C.border}`}}>
+                        <div style={{display:"flex",alignItems:"center",gap:"0.45rem",flexWrap:"wrap",marginBottom:"0.35rem"}}>
+                          <span style={{fontWeight:800,fontSize:"0.84rem",color:C.text}}>{p.name}</span>
+                          <span style={{fontSize:"0.72rem",color:C.textMuted}}>{Number(p.price).toLocaleString()} {p.currency}</span>
+                          <span style={S.chip(vm.bg,vm.color)}>{vm.label}</span>
+                          <span style={{fontSize:"0.7rem",color:"#BE4A04",fontWeight:700}}>{"★".repeat(Math.max(1,Math.min(5,p.conviction||1)))}</span>
+                          <span style={{fontSize:"0.66rem",color:C.textMuted}}>短期{p.short}/長期{p.long}</span>
+                          <button onClick={()=>{ if(known){setSelected(p.ticker);setView("analyze");localStorage.setItem("mt_view","analyze");if(!newsMap[p.ticker])loadNews(p.ticker);} else addStock({ticker:p.ticker,name:p.name,market:p.ticker.endsWith(".T")?"JP":"US"}); }}
+                            style={{marginLeft:"auto",padding:"0.25rem 0.55rem",borderRadius:7,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:"0.66rem",fontWeight:700,background:known?C.borderLight:C.accentBg,color:known?C.textSub:C.accentDark}}>
+                            {known?"詳細":"＋追加"}
+                          </button>
+                        </div>
+                        {[["🎯 買い",p.entry],["🛑 損切り",p.stop],["💰 利確",p.targets],["⏳ 期間",p.horizon]].map(([l,v])=>v&&(
+                          <div key={l} style={{display:"flex",gap:"0.4rem",fontSize:"0.73rem",lineHeight:1.6}}>
+                            <span style={{flexShrink:0,fontWeight:700,color:C.textSub,minWidth:62}}>{l}</span>
+                            <span style={{color:C.text}}>{v}</span>
+                          </div>
+                        ))}
+                        {(p.risks||[]).length>0&&(
+                          <div style={{fontSize:"0.68rem",color:C.red,marginTop:"0.2rem"}}>⚠️ {p.risks.join(" / ")}</div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
               {(b.warnings||[]).length>0&&(
                 <div style={{padding:"0.5rem 0.7rem",background:C.redBg,borderRadius:8,marginBottom:"0.5rem"}}>
                   <div style={{fontSize:"0.7rem",fontWeight:800,color:C.red,marginBottom:"0.15rem"}}>⚠️ 警戒</div>
@@ -556,9 +589,17 @@ function StockView({currentUser}) {
                 <span style={{fontSize:"0.7rem",fontWeight:800,color:C.textSub}}>📊 この判定の信頼度</span>
                 {buyStat
                   ? <span style={S.chip(buyStat.winRate>=55?C.greenBg:C.yellowBg, buyStat.winRate>=55?C.green:C.yellow)}>
-                      買いシグナル実績: {buyStat.n}件 勝率{buyStat.winRate}% 平均{buyStat.avgRet>=0?"+":""}{buyStat.avgRet}%
+                      🔴実運用: {buyStat.n}件 勝率{buyStat.winRate}% 平均{buyStat.avgRet>=0?"+":""}{buyStat.avgRet}%
                     </span>
-                  : <span style={{fontSize:"0.7rem",color:C.textMuted}}>実運用の答え合わせは{acc.evaluated||0}件(5営業日後から蓄積)。現在はバックテスト検証済みの重みで判定中</span>}
+                  : brief.backtestAccuracy
+                    ? <span style={S.chip(brief.backtestAccuracy.winRate>=55?C.greenBg:C.yellowBg, brief.backtestAccuracy.winRate>=55?C.green:C.yellow)}>
+                        📘検証値: 勝率{brief.backtestAccuracy.winRate}% 平均{brief.backtestAccuracy.avgRet>=0?"+":""}{brief.backtestAccuracy.avgRet}%
+                        {brief.backtestAccuracy.avgExcess!=null?` (対指数${brief.backtestAccuracy.avgExcess>=0?"+":""}${brief.backtestAccuracy.avgExcess}%)`:""} / {brief.backtestAccuracy.n}件
+                      </span>
+                    : <span style={{fontSize:"0.7rem",color:C.textMuted}}>検証データ未生成(学習・検証タブでバックテストを実行してください)</span>}
+                <span style={{fontSize:"0.66rem",color:C.textMuted}}>
+                  実運用の答え合わせ{acc.evaluated||0}件{!buyStat&&"(5営業日後から蓄積。それまでは検証値=過去データでの成績)"}
+                </span>
                 {Object.entries(v5).slice(0,3).map(([k,v])=>(
                   <span key={k} style={S.chip(C.borderLight,C.textSub)}>AI{k}: 勝率{v.winRate}%({v.n})</span>
                 ))}

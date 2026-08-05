@@ -1693,7 +1693,41 @@ def run_brief():
         print("brief failed:", e)
         brief = {"market_view": f"AI生成に失敗しました({e})", "stance": "neutral", "focus": [], "warnings": []}
 
+    # ── 狙い目の上位3銘柄は具体的な売買プラン(エントリー/損切り/利確)まで生成 ──
+    # 「打診買い」だけでは判断できないため、価格まで落として初めて実用になる
+    plans = []
+    for f in (brief.get("focus") or [])[:3]:
+        tk = f.get("ticker")
+        if not tk:
+            continue
+        try:
+            ba = brain_analysis(tk, f.get("name", ""))
+            b2 = ba.get("brain", {})
+            plans.append({
+                "ticker": tk, "name": ba["analysis"]["name"],
+                "price": ba["analysis"]["price"], "currency": ba["analysis"]["currency"],
+                "verdict": b2.get("verdict"), "conviction": b2.get("conviction"),
+                "entry": b2.get("entry_plan"), "stop": b2.get("stop_loss"),
+                "targets": b2.get("targets"), "horizon": b2.get("time_horizon"),
+                "risks": (b2.get("risks") or [])[:2],
+                "short": ba["analysis"]["short"]["score"], "long": ba["analysis"]["long"]["score"],
+                "atr": ba["analysis"]["atr"],
+            })
+        except Exception as e:
+            print("brief plan failed:", tk, e)
+
+    # ── 精度: 実運用実績が無い間はバックテスト検証値を提示(何を根拠にした精度かを明示) ──
+    bt = (cfg.get("backtest_report") or {})
+    bt_acc = None
+    reg = bt.get("testWeightedRegime") or {}
+    if reg.get("buy"):
+        bt_acc = {"source": "backtest", "winRate": reg["buy"]["winRate"], "n": reg["buy"]["n"],
+                  "avgRet": reg["buy"]["avgRet"], "avgExcess": reg["buy"].get("avgExcess"),
+                  "period": (bt.get("period") or {}).get("from"),
+                  "note": "学習に使っていない検証期間での買いシグナル20営業日後成績"}
+
     out = {"brief": brief, "mood": market["moodLabel"], "stance": brief.get("stance", "neutral"),
+           "plans": plans, "backtestAccuracy": bt_acc,
            "topPicks": top[:6], "news": news["news"][:8],
            "accuracy": {"byVerdict5d": v5, "bySignal5d": s5,
                         "evaluated": stats.get("evaluated", 0), "total": stats.get("total", 0)},
