@@ -29,10 +29,14 @@ if ! aws iam get-role --role-name "$ROLE_NAME" >/dev/null 2>&1; then
   aws iam put-role-policy --role-name "$ROLE_NAME" --policy-name mytrade-s3-bedrock \
     --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[
       {\"Effect\":\"Allow\",\"Action\":[\"s3:GetObject\",\"s3:PutObject\"],\"Resource\":\"arn:aws:s3:::$BUCKET/*\"},
-      {\"Effect\":\"Allow\",\"Action\":[\"bedrock:InvokeModel\"],\"Resource\":\"*\"}]}"
+      {\"Effect\":\"Allow\",\"Action\":[\"bedrock:InvokeModel\",\"bedrock:ListFoundationModels\",\"bedrock:ListInferenceProfiles\"],\"Resource\":\"*\"}]}"
   echo "▶ ロール反映待ち(10秒)..."; sleep 10
 else
-  echo "▶ IAMロールは既存のものを使用: $ROLE_NAME"
+  echo "▶ IAMロールは既存のものを使用: $ROLE_NAME (ポリシーを最新化)"
+  aws iam put-role-policy --role-name "$ROLE_NAME" --policy-name mytrade-s3-bedrock \
+    --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[
+      {\"Effect\":\"Allow\",\"Action\":[\"s3:GetObject\",\"s3:PutObject\"],\"Resource\":\"arn:aws:s3:::$BUCKET/*\"},
+      {\"Effect\":\"Allow\",\"Action\":[\"bedrock:InvokeModel\",\"bedrock:ListFoundationModels\",\"bedrock:ListInferenceProfiles\"],\"Resource\":\"*\"}]}"
 fi
 ROLE_ARN=$(aws iam get-role --role-name "$ROLE_NAME" --query Role.Arn --output text)
 

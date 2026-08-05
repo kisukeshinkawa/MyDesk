@@ -79,6 +79,7 @@ bash deploy/01-deploy-lambda.sh
 | `AccessDenied` / `not authorized` | IAMユーザーに Lambda・IAM・S3・Amplify・EventBridge の権限が必要。管理者権限のキーで実行するのが早い |
 | レイヤー作成でpipエラー | Mac標準のpython3が古い可能性。`python3 --version` が3.9以上か確認 |
 | `curl` の動作確認で `{"error":...}` | Bedrockのモデルアクセスが未有効。AWSコンソール → Bedrock → モデルアクセス で Claude を有効化 |
+| AI生成が `Legacy` / `Access denied` | v8で自動復旧します(使えるモデルを自動探索して切替・記憶)。使えるモデルの確認は `{"action":"models"}` |
 | curlが `Forbidden` | Function URLの権限不足。スクリプトv2で自動対応済みだが、手動なら `aws lambda add-permission --function-name mytrade-analysis --statement-id PublicInvokeFunction --action lambda:InvokeFunction --principal "*" --region ap-northeast-1` |
 | Amplifyデプロイが FAILED | `aws amplify get-job --app-id <ID> --branch-name main --job-id <JOB>` でログ確認 |
 | 株価が取得できない | yfinance側の仕様変更。`aws lambda delete-layer-version` でレイヤーを消して 01 を再実行（最新版が入る） |

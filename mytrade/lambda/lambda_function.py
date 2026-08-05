@@ -33,6 +33,79 @@ SLOW_TTL  = 60 * 60      # 財務・ニュースキャッシュ 60分
 
 s3 = boto3.client("s3")
 
+# ═══════════════════════ Bedrock呼び出し(モデル自動選択・自己修復) ═══════════════════════
+# Bedrockのモデルは提供終了(Legacy化)でIDが使えなくなることがあるため、
+# 設定IDが失敗したら利用可能なモデルを自動探索して切り替え、成功したIDをS3に記憶する。
+MODEL_STATE_KEY = "stock-learn/bedrock_model.json"
+MODEL_PREFERENCE = ("haiku-4-5", "haiku-4", "sonnet-4-5", "sonnet-4", "haiku-3-5", "sonnet-3-5", "haiku", "sonnet")
+
+
+def _discover_models():
+    """このアカウント・リージョンで実際に呼べるAnthropicモデルIDを列挙(推奨順)。"""
+    ids = []
+    try:
+        b = boto3.client("bedrock", region_name=BEDROCK_REGION)
+        try:  # 新しめのモデルは推論プロファイル経由が必須
+            for p in b.list_inference_profiles().get("inferenceProfileSummaries", []):
+                pid = p.get("inferenceProfileId", "")
+                if "anthropic" in pid and p.get("status", "ACTIVE") == "ACTIVE":
+                    ids.append(pid)
+        except Exception as e:
+            print("list_inference_profiles failed:", e)
+        try:
+            for m in b.list_foundation_models(byProvider="anthropic").get("modelSummaries", []):
+                if (m.get("modelLifecycle", {}).get("status") == "ACTIVE"
+                        and "ON_DEMAND" in (m.get("inferenceTypesSupported") or [])):
+                    ids.append(m["modelId"])
+        except Exception as e:
+            print("list_foundation_models failed:", e)
+    except Exception as e:
+        print("bedrock client failed:", e)
+
+    def rank(mid):
+        for i, key in enumerate(MODEL_PREFERENCE):
+            if key.replace("-", "") in mid.replace("-", "").replace(".", ""):
+                return i
+        return len(MODEL_PREFERENCE)
+    return sorted(dict.fromkeys(ids), key=rank)
+
+
+def bedrock_invoke(messages, system=None, max_tokens=1500):
+    """Bedrock呼び出し。失敗時は使えるモデルを自動探索してリトライし、成功IDを記憶する。"""
+    rt = boto3.client("bedrock-runtime", region_name=BEDROCK_REGION)
+    remembered = (_load_json_s3(MODEL_STATE_KEY, {}) or {}).get("modelId")
+    candidates = [m for m in (remembered, BEDROCK_MODEL) if m]
+    last_err = None
+
+    def call(mid):
+        body = {"anthropic_version": "bedrock-2023-05-31", "max_tokens": max_tokens,
+                "messages": messages}
+        if system:
+            body["system"] = system
+        resp = rt.invoke_model(modelId=mid, body=json.dumps(body))
+        return json.loads(resp["body"].read())["content"][0]["text"]
+
+    for mid in dict.fromkeys(candidates):
+        try:
+            return call(mid)
+        except Exception as e:
+            last_err = e
+            print(f"bedrock model {mid} failed: {e}")
+
+    for mid in _discover_models():
+        if mid in candidates:
+            continue
+        try:
+            out = call(mid)
+            _save_json_s3(MODEL_STATE_KEY, {"modelId": mid,
+                                            "updatedAt": datetime.now(timezone.utc).isoformat()})
+            print(f"bedrock model switched to: {mid}")
+            return out
+        except Exception as e:
+            last_err = e
+            print(f"bedrock candidate {mid} failed: {e}")
+    raise Exception(f"利用可能なBedrockモデルが見つかりません: {last_err}")
+
 CORS = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers": "Content-Type,x-mydesk-secret",
@@ -125,6 +198,10 @@ def lambda_handler(event, context):
             return _res(200, run_screen(body.get("exclude") or [], body.get("market", "all")))
         if action == "ranking":
             return _res(200, run_ranking(bool(body.get("force", False))))
+        if action == "models":
+            return _res(200, {"available": _discover_models(),
+                              "remembered": (_load_json_s3(MODEL_STATE_KEY, {}) or {}).get("modelId"),
+                              "configured": BEDROCK_MODEL})
         if action == "market-news":
             return _res(200, get_market_news())
         if action == "brief":
@@ -1153,11 +1230,7 @@ def generate_lessons(stats, preds):
 「どういう状況の判定が当たり/外れやすいか」「確信度の付け方の癖」など実践的に。
 出力はJSONのみ: {{"lessons":["教訓1","教訓2",...]}} (最大8個、各60文字以内)"""
     try:
-        br = boto3.client("bedrock-runtime", region_name=BEDROCK_REGION)
-        resp = br.invoke_model(modelId=BEDROCK_MODEL, body=json.dumps({
-            "anthropic_version": "bedrock-2023-05-31", "max_tokens": 800,
-            "messages": [{"role": "user", "content": prompt}]}))
-        raw = json.loads(resp["body"].read())["content"][0]["text"]
+        raw = bedrock_invoke([{"role": "user", "content": prompt}], max_tokens=800)
         m = re.search(r"\{.*\}", raw, re.DOTALL)
         return (json.loads(m.group(0)).get("lessons") or [])[:8] if m else []
     except Exception as e:
@@ -1296,17 +1369,8 @@ def brain_analysis(ticker, name="", holding=None):
             f"- {p['date']} {p.get('verdict','?')}(確信{p.get('conviction','?')}) → 5日後{p['ret5']}% / 20日後{p.get('ret20','未確定')}%"
             for p in past)
 
-    br = boto3.client("bedrock-runtime", region_name=BEDROCK_REGION)
-    resp = br.invoke_model(
-        modelId=BEDROCK_MODEL,
-        body=json.dumps({
-            "anthropic_version": "bedrock-2023-05-31",
-            "max_tokens": 1500,
-            "system": BRAIN_SYSTEM,
-            "messages": [{"role": "user", "content": user_prompt}],
-        }),
-    )
-    raw = json.loads(resp["body"].read())["content"][0]["text"]
+    raw = bedrock_invoke([{"role": "user", "content": user_prompt}],
+                         system=BRAIN_SYSTEM, max_tokens=1500)
     m = re.search(r"\{.*\}", raw, re.DOTALL)
     brain = json.loads(m.group(0)) if m else {"verdict": "hold", "summary": raw}
 
@@ -1621,12 +1685,8 @@ def run_brief():
 
     brief = {}
     try:
-        br = boto3.client("bedrock-runtime", region_name=BEDROCK_REGION)
-        resp = br.invoke_model(modelId=BEDROCK_MODEL, body=json.dumps({
-            "anthropic_version": "bedrock-2023-05-31", "max_tokens": 1500,
-            "system": BRIEF_SYSTEM,
-            "messages": [{"role": "user", "content": prompt}]}))
-        raw = json.loads(resp["body"].read())["content"][0]["text"]
+        raw = bedrock_invoke([{"role": "user", "content": prompt}],
+                             system=BRIEF_SYSTEM, max_tokens=1500)
         m = re.search(r"\{.*\}", raw, re.DOTALL)
         brief = json.loads(m.group(0)) if m else {"market_view": raw}
     except Exception as e:
@@ -1801,12 +1861,8 @@ def portfolio_brain():
         prompt += "\n直近の決済:\n" + "\n".join(
             f"- {t['name']}: {t['pnlPct']:+}% ({t.get('reason') or '理由未記録'})" for t in ts["trades"][:8])
 
-    br = boto3.client("bedrock-runtime", region_name=BEDROCK_REGION)
-    resp = br.invoke_model(modelId=BEDROCK_MODEL, body=json.dumps({
-        "anthropic_version": "bedrock-2023-05-31", "max_tokens": 1200,
-        "system": PORTFOLIO_SYSTEM,
-        "messages": [{"role": "user", "content": prompt}]}))
-    raw = json.loads(resp["body"].read())["content"][0]["text"]
+    raw = bedrock_invoke([{"role": "user", "content": prompt}],
+                         system=PORTFOLIO_SYSTEM, max_tokens=1200)
     m = re.search(r"\{.*\}", raw, re.DOTALL)
     brain = json.loads(m.group(0)) if m else {"summary": raw}
     return {"brain": brain, "holdings": len(holds), "market": market["moodLabel"],
