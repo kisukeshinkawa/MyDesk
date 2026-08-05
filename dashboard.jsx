@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-07-v333-import-fill-searchbox"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-07-v334-sanpai-authorities"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -1166,6 +1166,27 @@ function licenseExpiryStatus(expiryDate) {
 const PERMIT_TYPES = [
   "家庭収運","事業収運","一廃収運","産廃収運","産廃処分","産廃収運処分"
 ];
+
+// 許可の権者レベル：一廃系(家庭/事業/一廃収運)は自治体(市区町村)単位、産廃系(産廃収運/処分/収運処分)は都道府県・政令市・中核市(=権者)単位
+const IPPAI_PERMITS = ["家庭収運","事業収運","一廃収運"];
+const SANPAI_PERMITS = ["産廃収運","産廃処分","産廃収運処分"];
+const isSanpaiPermit = (t) => SANPAI_PERMITS.includes(t);
+const permitAuthorityLevel = (t) => isSanpaiPermit(t) ? "権者" : "自治体";
+const SANPAI_AUTHORITIES = [
+  {name:"北海道",type:"道"},{name:"青森県",type:"県"},{name:"岩手県",type:"県"},{name:"宮城県",type:"県"},{name:"秋田県",type:"県"},{name:"山形県",type:"県"},{name:"福島県",type:"県"},{name:"茨城県",type:"県"},{name:"栃木県",type:"県"},{name:"群馬県",type:"県"},
+  {name:"埼玉県",type:"県"},{name:"千葉県",type:"県"},{name:"東京都",type:"都"},{name:"神奈川県",type:"県"},{name:"新潟県",type:"県"},{name:"富山県",type:"県"},{name:"石川県",type:"県"},{name:"福井県",type:"県"},{name:"山梨県",type:"県"},{name:"長野県",type:"県"},
+  {name:"岐阜県",type:"県"},{name:"静岡県",type:"県"},{name:"愛知県",type:"県"},{name:"三重県",type:"県"},{name:"滋賀県",type:"県"},{name:"京都府",type:"府"},{name:"大阪府",type:"府"},{name:"兵庫県",type:"県"},{name:"奈良県",type:"県"},{name:"和歌山県",type:"県"},
+  {name:"鳥取県",type:"県"},{name:"島根県",type:"県"},{name:"岡山県",type:"県"},{name:"広島県",type:"県"},{name:"山口県",type:"県"},{name:"徳島県",type:"県"},{name:"香川県",type:"県"},{name:"愛媛県",type:"県"},{name:"高知県",type:"県"},{name:"福岡県",type:"県"},
+  {name:"佐賀県",type:"県"},{name:"長崎県",type:"県"},{name:"熊本県",type:"県"},{name:"大分県",type:"県"},{name:"宮崎県",type:"県"},{name:"鹿児島県",type:"県"},{name:"沖縄県",type:"県"},{name:"札幌市",type:"政"},{name:"仙台市",type:"政"},{name:"さいたま市",type:"政"},
+  {name:"千葉市",type:"政"},{name:"横浜市",type:"政"},{name:"川崎市",type:"政"},{name:"相模原市",type:"政"},{name:"新潟市",type:"政"},{name:"静岡市",type:"政"},{name:"浜松市",type:"政"},{name:"名古屋市",type:"政"},{name:"京都市",type:"政"},{name:"大阪市",type:"政"},
+  {name:"堺市",type:"政"},{name:"神戸市",type:"政"},{name:"岡山市",type:"政"},{name:"広島市",type:"政"},{name:"北九州市",type:"政"},{name:"福岡市",type:"政"},{name:"熊本市",type:"政"},{name:"旭川市",type:"中"},{name:"函館市",type:"中"},{name:"青森市",type:"中"},
+  {name:"八戸市",type:"中"},{name:"盛岡市",type:"中"},{name:"秋田市",type:"中"},{name:"山形市",type:"中"},{name:"郡山市",type:"中"},{name:"いわき市",type:"中"},{name:"福島市",type:"中"},{name:"水戸市",type:"中"},{name:"宇都宮市",type:"中"},{name:"前橋市",type:"中"},
+  {name:"高崎市",type:"中"},{name:"川越市",type:"中"},{name:"越谷市",type:"中"},{name:"川口市",type:"中"},{name:"船橋市",type:"中"},{name:"柏市",type:"中"},{name:"八王子市",type:"中"},{name:"横須賀市",type:"中"},{name:"富山市",type:"中"},{name:"金沢市",type:"中"},
+  {name:"福井市",type:"中"},{name:"甲府市",type:"中"},{name:"長野市",type:"中"},{name:"松本市",type:"中"},{name:"岐阜市",type:"中"},{name:"豊田市",type:"中"},{name:"豊橋市",type:"中"},{name:"岡崎市",type:"中"},{name:"一宮市",type:"中"},{name:"大津市",type:"中"},
+  {name:"高槻市",type:"中"},{name:"東大阪市",type:"中"},{name:"豊中市",type:"中"},{name:"枚方市",type:"中"},{name:"八尾市",type:"中"},{name:"寝屋川市",type:"中"},{name:"吹田市",type:"中"},{name:"姫路市",type:"中"},{name:"西宮市",type:"中"},{name:"尼崎市",type:"中"},
+  {name:"明石市",type:"中"},{name:"奈良市",type:"中"},{name:"和歌山市",type:"中"},{name:"鳥取市",type:"中"},{name:"松江市",type:"中"},{name:"倉敷市",type:"中"},{name:"福山市",type:"中"},{name:"呉市",type:"中"},{name:"下関市",type:"中"},{name:"高松市",type:"中"},
+  {name:"松山市",type:"中"},{name:"高知市",type:"中"},{name:"久留米市",type:"中"},{name:"長崎市",type:"中"},{name:"佐世保市",type:"中"},{name:"大分市",type:"中"},{name:"宮崎市",type:"中"},{name:"鹿児島市",type:"中"},{name:"那覇市",type:"中"},
+]; // 産廃許可の権者(129) type: 都/道/府/県/政=政令指定都市/中=中核市
 
 const DUSTALK_STATUS = {
   "展開":   { color:"#009122", bg:"#d1fae5", icon:"✅" },
@@ -22531,7 +22552,7 @@ ${orig}`})
                   options={Object.keys(VENDOR_STATUS).map(s=>({value:s, label:s}))}/>
                 <MultiChipFilter label="許可種別" icon="📋" C={C}
                   values={vendFilterPermits} setValues={setVendFilterPermits}
-                  options={PERMIT_TYPES.map(p=>({value:p, label:p}))}/>
+                  options={PERMIT_TYPES.map(p=>({value:p, label:(isSanpaiPermit(p)?"🏭 ":"🏛 ")+p}))}/>
                 <MultiChipFilter label="稼働状況" icon="🟢" C={C}
                   values={vendFilterOperating} setValues={setVendFilterOperating}
                   options={[{value:"op_yes", label:"稼働(○)"},{value:"op_no", label:"非稼働(×)"}]}/>
