@@ -15,7 +15,7 @@ namespace BoatRace.UI
     public class GameFlow : MonoBehaviour
     {
         /// <summary>ビルド識別子。画面右上に表示され、更新が届いたか一目で分かる。</summary>
-        public const string Build = "B32-マップ実線+微調整";
+        public const string Build = "B33-モンキーターン技体系";
 
         RaceManager race;
         ReplayManager replay;
@@ -68,6 +68,7 @@ namespace BoatRace.UI
         GameObject broadcastStrip; // 実中継風の左端縦艇番プレート(スタート前のみ)
         RectTransform homeCtaRT;   // ホームの出走CTA(鼓動アニメ)
         string pendingPromotion;   // 章クリアで級が上がった時の昇格カットイン予約
+        string pendingNewSkill;    // 実績で新技をひらめいた時のカットイン予約
 
         // 固定ライバル名鑑(シナリオ第6章: 個性を持った実在感あるライバル)
         static readonly (string name, Color hair, string line)[] Rivals =
@@ -560,16 +561,20 @@ namespace BoatRace.UI
                 new Vector2(0.745f, 0.575f), new Vector2(0.895f, 0.665f), Vector2.zero, Vector2.zero,
                 bold: true, shadow: true, outline: true);
 
-            // ---- 技カード(モック: 白縁の横型カード2×2。アイコン+技名+TP+パワー) ----
-            var moves = SkillMove.UnlockedAt(career != null ? career.chapter : 1);
+            // ---- 技カード(モック: 白縁の横型カード2列。アイコン+技名+TP+パワー) ----
+            // 実績ひらめき技(全速ターン/ツケマイ/ウィリーターン)も習得済みなら並ぶ
+            var moves = SkillMove.UnlockedFor(career);
             int slot = 0;
+            int totalRows = Mathf.Max(2, Mathf.CeilToInt((moves.Count + 1) / 2f));
+            float rowStep = Mathf.Min(0.135f, 0.40f / totalRows); // 技が増えたら行を詰める
+            float cardH = rowStep * 0.855f;
             void CardAt(int index, System.Action<GameObject> build)
             {
                 int col = index % 2, row = index / 2;
                 float x0 = 0.12f + col * 0.39f;
-                float y1 = 0.415f - row * 0.135f;
+                float y1 = 0.145f + totalRows * rowStep - row * rowStep;
                 var frame = UiKit.MakePanel(root, Color.white, 16,
-                    new Vector2(x0, y1 - 0.115f), new Vector2(x0 + 0.37f, y1), Vector2.zero, Vector2.zero);
+                    new Vector2(x0, y1 - cardH), new Vector2(x0 + 0.37f, y1), Vector2.zero, Vector2.zero);
                 var sh2 = frame.AddComponent<Shadow>();
                 sh2.effectColor = new Color(0.02f, 0.08f, 0.20f, 0.45f);
                 sh2.effectDistance = new Vector2(0f, -5f);
@@ -603,7 +608,7 @@ namespace BoatRace.UI
                 int power = Mathf.RoundToInt((mv.AccelAt(lv) + mv.TopAt(lv) - 2f) * 400f + 130f + lv * 30f);
                 CardAt(slot++, frame =>
                 {
-                    string icon = special ? "⚡" : mv.name.Contains("差") ? "↩" : "⤴";
+                    string icon = special ? "必" : mv.name.Substring(0, 1); // フォント確実な1文字アイコン
                     CardInner(frame,
                         special ? new Color(1f, 0.90f, 0.62f) : new Color(0.92f, 0.96f, 1f),
                         icon,
@@ -1778,25 +1783,33 @@ namespace BoatRace.UI
             UiKit.MakeBanner(pop.transform, $"技強化　所持金 {career.money:N0}万円", 24,
                 new Vector2(0.10f, 0.87f), new Vector2(0.90f, 0.99f));
 
-            float y = 0.62f;
+            float y = 0.73f;
             foreach (var m in SkillMove.All)
             {
                 if (m.cost == 0) continue;
                 int idx = SkillMove.All.IndexOf(m);
                 int lv = career.MoveLv(idx);
-                bool unlocked = m.unlockChapter <= career.chapter;
+                bool unlocked = m.unlockChapter <= career.chapter ||
+                    (m.unlockFeat != null && career.featMoves.Contains(m.id));
                 bool maxed = lv >= SkillMove.MaxLv;
                 int upCost = m.UpgradeCost(lv);
+                // 技色の左バー(見出し性)
+                var edge = UiKit.MakePanel(pop.transform,
+                    unlocked ? m.color : new Color(0.72f, 0.75f, 0.80f), 4,
+                    new Vector2(0.05f, y + 0.005f), new Vector2(0.062f, y + 0.10f), Vector2.zero, Vector2.zero);
+                edge.GetComponent<Image>().raycastTarget = false;
                 string info = unlocked
-                    ? $"{m.name}　Lv{lv}{(maxed ? "(MAX)" : "")}\n体力{m.CostAt(lv)}消費 / 加速x{m.AccelAt(lv):F2} 最高速x{m.TopAt(lv):F2}"
-                    : $"{m.name}　(第{m.unlockChapter}章で習得)";
-                UiKit.MakeText(pop.transform, info, 19, unlocked ? UiKit.TextDark : new Color(0.6f, 0.6f, 0.65f),
-                    TextAnchor.MiddleLeft,
-                    new Vector2(0.06f, y), new Vector2(0.64f, y + 0.19f), Vector2.zero, Vector2.zero, bold: true);
+                    ? $"{m.name}　Lv{lv}{(maxed ? " (MAX)" : "")}　体力{m.CostAt(lv)} / 加速x{m.AccelAt(lv):F2} 速度x{m.TopAt(lv):F2}"
+                    : m.unlockFeat != null
+                        ? $"{m.name}　[未習得] ひらめき条件: {m.unlockDesc}"
+                        : $"{m.name}　[未習得] 第{m.unlockChapter}章クリアで習得";
+                UiKit.MakeText(pop.transform, info, 15,
+                    unlocked ? UiKit.TextDark : new Color(0.55f, 0.58f, 0.65f), TextAnchor.MiddleLeft,
+                    new Vector2(0.08f, y), new Vector2(0.66f, y + 0.105f), Vector2.zero, Vector2.zero, bold: true);
                 if (unlocked && !maxed)
                     UiKit.MakeButton(pop.transform, $"{upCost}万で強化",
-                        career.money >= upCost ? new Color(0.62f, 0.2f, 0.75f) : new Color(0.5f, 0.5f, 0.55f), 17,
-                        new Vector2(0.66f, y + 0.03f), new Vector2(0.94f, y + 0.16f), Vector2.zero, Vector2.zero,
+                        career.money >= upCost ? new Color(0.62f, 0.2f, 0.75f) : new Color(0.5f, 0.5f, 0.55f), 15,
+                        new Vector2(0.68f, y + 0.012f), new Vector2(0.94f, y + 0.095f), Vector2.zero, Vector2.zero,
                         () =>
                         {
                             if (career.money < upCost) return;
@@ -1808,8 +1821,12 @@ namespace BoatRace.UI
                             Destroy(pop);
                             ShowMoveUpgradePopup(parent);
                         });
-                y -= 0.21f;
+                y -= 0.112f;
             }
+            UiKit.MakeText(pop.transform,
+                "[未習得]の技はレースでの走り方で「ひらめく」！ まくり勝ち・差し勝ち・鋭いSTを積み重ねろ",
+                13, new Color(0.35f, 0.42f, 0.55f), TextAnchor.MiddleCenter,
+                new Vector2(0.04f, 0.115f), new Vector2(0.96f, 0.160f), Vector2.zero, Vector2.zero, bold: true);
             UiKit.MakeButton(pop.transform, "閉じる", UiKit.Navy, 20,
                 new Vector2(0.36f, 0.02f), new Vector2(0.64f, 0.11f), Vector2.zero, Vector2.zero,
                 () => Destroy(pop));
@@ -3035,6 +3052,14 @@ namespace BoatRace.UI
                 new Vector2(0.62f, 0.015f), new Vector2(0.84f, 0.105f), Vector2.zero, Vector2.zero,
                 () => { race.SetupRace(); ShowHome(); }).GetComponentInChildren<Text>().color = UiKit.Navy;
 
+            // 新技ひらめきカットイン(モンキーターン風の覚醒演出)
+            if (pendingNewSkill != null)
+            {
+                string ns = pendingNewSkill;
+                pendingNewSkill = null;
+                ShowMoveCutIn($"新技ひらめき！ {ns}！！", new Color(0.15f, 0.9f, 1f));
+                AudioKit.Fanfare();
+            }
             // 昇格カットイン(級が上がった瞬間を派手に)
             if (pendingPromotion != null)
             {
@@ -3162,6 +3187,26 @@ namespace BoatRace.UI
                 else if (career.winStreak >= 3) career.condition = 2;
 
                 // XP獲得とレベルアップ(体力最大値が伸びる)
+                // 技のひらめき実績(モンキーターン風): 勝ち方とSTの積み重ねで新技を掴む
+                var pbs2 = race.state.Get(race.playerBoatIndex);
+                if (pbs2.startFlag == StartFlag.Normal && pbs2.st <= 0.08f) career.sharpStarts++;
+                if (lastCareerPlace == 1 && !string.IsNullOrEmpty(race.kimarite))
+                {
+                    if (race.kimarite.Contains("まくり")) career.winsByMakuri++;
+                    else if (race.kimarite.Contains("差し")) career.winsBySashi++;
+                }
+                foreach (var fm in SkillMove.All)
+                {
+                    if (fm.unlockFeat == null || career.featMoves.Contains(fm.id)) continue;
+                    bool featOk = fm.unlockFeat == "makuri2" ? career.winsByMakuri >= 2
+                                : fm.unlockFeat == "sashi2" ? career.winsBySashi >= 2
+                                : fm.unlockFeat == "st3" && career.sharpStarts >= 3;
+                    if (!featOk) continue;
+                    career.featMoves.Add(fm.id);
+                    pendingNewSkill = fm.name;
+                    AppendStory(("支部長", $"今の走り…掴んだな。新技『{fm.name}』、次のターンから使ってみろ！"));
+                }
+
                 int[] xpTable = { 60, 42, 32, 24, 18, 14 };
                 int xpGain = lastCareerPlace >= 1 ? xpTable[Mathf.Clamp(lastCareerPlace - 1, 0, 5)] : 10;
                 xpGain = Mathf.RoundToInt(xpGain * (1f + 0.15f * career.facSim)); // シミュレーター施設

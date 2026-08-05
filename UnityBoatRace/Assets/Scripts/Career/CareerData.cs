@@ -229,6 +229,12 @@ namespace BoatRace.Career
             return rng.Next(0, 3);                     // G2/SG: 1-3号艇
         }
 
+        // ---- 技のひらめき実績(モンキーターン風: 走りで新技を掴む) ----
+        public int winsByMakuri;    // まくりでの1着回数
+        public int winsBySashi;     // 差しでの1着回数
+        public int sharpStarts;     // ST .08以内の回数
+        public List<string> featMoves = new List<string>(); // 実績で習得した技id
+
         const string Key = "br_career";
 
         public void Save()
