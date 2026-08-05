@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-06-v332-portal-url"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-07-v333-import-fill-searchbox"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -5210,6 +5210,7 @@ function GSheetImportWizard({ data, onSave, onClose, prefs, munis, vendors }) {
   const [err, setErr] = React.useState("");
   const [progress, setProgress] = React.useState("");
   const [importResult, setImportResult] = React.useState(null);
+  const [fillMissing, setFillMissing] = React.useState(true); // 不足補完モード（既存業者の空欄のみ補完＋メモ追記・既存値は上書きしない）
 
   // URLからシートIDを抽出
   const extractId = (s) => {
@@ -5344,7 +5345,7 @@ function GSheetImportWizard({ data, onSave, onClose, prefs, munis, vendors }) {
   const doImport = () => {
     const id = extractId(sheetId);
     let nd = { ...data };
-    let newMuniCount = 0, newVendorCount = 0, skipMuni = 0, skipVendor = 0;
+    let newMuniCount = 0, newVendorCount = 0, skipMuni = 0, skipVendor = 0, filledVendor = 0, memoAdded = 0;
 
     // 都道府県を探す or 作成
     let pref = (nd.prefectures || []).find(p => p.name === prefName || p.name === prefName + "県" || p.name === prefName + "府" || p.name === prefName + "都" || p.name === prefName + "道");
@@ -5405,21 +5406,30 @@ function GSheetImportWizard({ data, onSave, onClose, prefs, munis, vendors }) {
           nd = { ...nd, vendors: [...(nd.vendors || []), newVendor] };
           newVendorCount++;
         } else {
-          // 既存業者に自治体IDを追加（紐付け）
-          if (!(existVendor.municipalityIds || []).includes(muni.id)) {
-            nd = { ...nd, vendors: (nd.vendors || []).map(ev =>
-              ev.id === existVendor.id
-                ? { ...ev, municipalityIds: [...(ev.municipalityIds || []), muni.id] }
-                : ev
-            )};
+          // 既存業者：自治体紐付け＋（不足補完モードなら空欄のみ補完・メモ追記）。既存の値は絶対に上書きしない
+          const patch = {};
+          if (!(existVendor.municipalityIds || []).includes(muni.id)) patch.municipalityIds = [...(existVendor.municipalityIds || []), muni.id];
+          let didFill = false;
+          if (fillMissing) {
+            if (!normStr(existVendor.phone) && v.phone) { patch.phone = v.phone; didFill = true; }
+            if (!normStr(existVendor.email) && v.email) { patch.email = v.email; didFill = true; }
+            if (!normStr(existVendor.status) && v.status) { patch.status = v.status; didFill = true; }
+            if (v.memo) {
+              const dup = (existVendor.memos || []).some(m => normStr(m.text) === normStr(v.memo));
+              if (!dup) { patch.memos = [...(existVendor.memos || []), { id: Date.now() + Math.random(), text: v.memo, userId: null, date: new Date().toISOString() }]; memoAdded++; didFill = true; }
+            }
           }
+          if (Object.keys(patch).length) {
+            nd = { ...nd, vendors: (nd.vendors || []).map(ev => ev.id === existVendor.id ? { ...ev, ...patch } : ev) };
+          }
+          if (didFill) filledVendor++;
           skipVendor++;
         }
       });
     });
 
     onSave(nd);
-    setImportResult({ newMuniCount, newVendorCount, skipMuni, skipVendor });
+    setImportResult({ newMuniCount, newVendorCount, skipMuni, skipVendor, filledVendor, memoAdded });
     setStep(3);
   };
 
@@ -5524,6 +5534,10 @@ function GSheetImportWizard({ data, onSave, onClose, prefs, munis, vendors }) {
 
           {err&&<div style={{background:"#fee2e2",borderRadius:"0.625rem",padding:"0.625rem",fontSize:"0.78rem",color:"#991b1b",marginBottom:"0.875rem"}}>{err}</div>}
 
+          <label style={{display:"flex",alignItems:"flex-start",gap:"0.5rem",background:"#F2F7FF",border:"1px solid #bfdbfe",borderRadius:8,padding:"0.6rem 0.75rem",marginBottom:"0.875rem",fontSize:"0.76rem",color:"#295FA6",lineHeight:1.6,cursor:"pointer"}}>
+            <input type="checkbox" checked={fillMissing} onChange={e=>setFillMissing(e.target.checked)} style={{marginTop:2,flexShrink:0}}/>
+            <span><b>既存業者に不足情報を補完する</b>（空欄の電話・メール・ステータスのみ埋め、メモは追記）。<b>既存の値は上書きしません</b>。OFFにすると既存業者は自治体の紐付けだけ行います。</span>
+          </label>
           <div style={{display:"flex",gap:"0.625rem"}}>
             <button onClick={()=>setStep(0)}
               style={{flex:1,padding:"0.75rem",borderRadius:"8px",border:"1.5px solid #e2e8f0",background:"white",color:"#64748b",fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.85rem"}}>
@@ -5548,6 +5562,8 @@ function GSheetImportWizard({ data, onSave, onClose, prefs, munis, vendors }) {
               ["🏢 新規業者", importResult.newVendorCount+"件追加"],
               ["⏭ 既存自治体", importResult.skipMuni+"件スキップ"],
               ["⏭ 既存業者", importResult.skipVendor+"件（自治体紐付け）"],
+              ["🩹 不足補完", (importResult.filledVendor||0)+"件（空欄のみ）"],
+              ["📝 メモ追記", (importResult.memoAdded||0)+"件"],
             ].map(([k,v])=>(
               <div key={k} style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:"8px",padding:"0.625rem 0.5rem",textAlign:"center"}}>
                 <div style={{fontSize:"0.72rem",color:"#64748b",marginBottom:"0.15rem"}}>{k}</div>
@@ -21623,8 +21639,8 @@ ${orig}`})
             </div>
           );
         })()}
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.75rem",gap:"0.5rem"}}>
-          <div style={{position:"relative",flex:1}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.75rem",gap:"0.5rem",flexWrap:"wrap"}}>
+          <div style={{position:"relative",flex:"1 1 220px",minWidth:180}}>
             <span style={{position:"absolute",left:"0.625rem",top:"50%",transform:"translateY(-50%)",color:C.textMuted,fontSize:"0.85rem",pointerEvents:"none"}}>🔍</span>
             <input value={compSearch} onChange={e=>setCompSearch(e.target.value)} placeholder="企業名で検索"
               style={{width:"100%",padding:"0.5rem 0.5rem 0.5rem 2rem",borderRadius:"8px",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
@@ -23940,8 +23956,8 @@ ${orig}`})
         );
       })()}
       {/* Search row */}
-      <div style={{display:"flex",gap:"0.5rem",marginBottom:"0.625rem",alignItems:"center"}}>
-        <div style={{position:"relative",flex:1}}>
+      <div style={{display:"flex",gap:"0.5rem",marginBottom:"0.625rem",alignItems:"center",flexWrap:"wrap"}}>
+        <div style={{position:"relative",flex:"1 1 220px",minWidth:180}}>
           <span style={{position:"absolute",left:"0.625rem",top:"50%",transform:"translateY(-50%)",color:C.textMuted,fontSize:"0.85rem",pointerEvents:"none"}}>🔍</span>
           <input value={muniTopSearch} onChange={e=>setMuniTopSearch(e.target.value)} placeholder="自治体名で検索"
             style={{width:"100%",padding:"0.5rem 0.5rem 0.5rem 2rem",borderRadius:"8px",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
