@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-07-v340-detail-paired-permits"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-08-v341-sanpai-import"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -22788,6 +22788,8 @@ ${orig}`})
             style={{padding:"0.45rem 0.625rem",borderRadius:"8px",border:"1.5px solid #0070D4",background:"#F2F7FF",color:"#1563CA",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🚚DUSTALK</button>
           <button onClick={()=>{setImportPreview(null);setImportErr("");setSheet("importPermitVendors");}} title="許可業者一覧CSVを取込（住所・電話・対応自治体・備考を上書き追加、ステータスは維持）"
             style={{padding:"0.45rem 0.625rem",borderRadius:"8px",border:"1.5px solid #ef4444",background:"#fef2f2",color:"#b91c1c",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🚮 許可取込</button>
+          <button onClick={()=>{setImportPreview(null);setImportErr("");setSheet("importSanpai");}} title="産廃業者CSVを取込（権者×種別ペアをsanpaiPermitsに追加。既存は消さず不足のみ補完）"
+            style={{padding:"0.45rem 0.625rem",borderRadius:"8px",border:"1.5px solid #FF6A00",background:"#FFF3E8",color:"#9a3412",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🏭 産廃取込</button>
           <button onClick={()=>{
             // フィルター条件に該当する業者リストを取得
             const list = bulkMode && bulkSelected.size>0
@@ -23186,6 +23188,132 @@ ${orig}`})
                   <div style={{display:"flex",gap:"0.5rem",marginTop:"0.75rem"}}>
                     <Btn variant="secondary" style={{flex:1}} onClick={()=>{setPreview(null);setErr("");}}>やり直す</Btn>
                     <Btn style={{flex:2}} onClick={doImport}>この内容で取込（更新{preview.upd}・新規{preview.neu}）</Btn>
+                  </div>
+                </div>
+              )}
+            </Sheet>
+          );
+        })()}
+        {sheet==="importSanpai"&&(()=>{
+          const preview=importPreview; const setPreview=setImportPreview;
+          const err=importErr; const setErr=setImportErr;
+          const nStr=s=>(s||"").replace(/[\s　\-ー－]/g,"").toLowerCase();
+          const nPhone=s=>(s||"").replace(/[^0-9]/g,"");
+          const derive=sp=>Array.from(new Set(sp.map(x=>x.type)));
+          const parsePairs=cell=>String(cell||"").split(/[／/;、\n]+/).map(x=>x.trim()).filter(Boolean).map(seg=>{
+            const mm=seg.split(/[：:×xＸ]+/).map(y=>y.trim()).filter(Boolean);
+            if(mm.length<2) return null;
+            const type=mm[mm.length-1]; const auth=mm.slice(0,mm.length-1).join("");
+            if(!isSanpaiPermit(type)||!auth) return null;
+            return {auth,type};
+          }).filter(Boolean);
+          const handleFile=async(e)=>{
+            const file=e.target.files?.[0]; if(e.target)e.target.value=""; if(!file)return;
+            setErr(""); setPreview(null);
+            const yield_=()=>new Promise(r=>setTimeout(r,0));
+            try{
+              setImportProgress("読み込み中…"); await yield_();
+              const txt=await readFileAsText(file); const rows=parseCSV(txt);
+              if(!rows.length){ setErr("CSVが空です。"); setImportProgress(""); return; }
+              const header=rows[0].map(h=>String(h||"").trim().toLowerCase().replace(/^﻿/,""));
+              const ci=(...ns)=>{ for(const n of ns){ const i=header.indexOf(String(n).toLowerCase()); if(i>=0)return i; } return -1; };
+              const iName=ci("業者名","会社名","name"), iTel=ci("電話番号","電話","phone"), iAddr=ci("住所","所在地","address"),
+                    iPair=ci("産廃許可（権者×種別）","産廃許可(権者×種別)","産廃許可","許可（権者×種別）","権者×種別"), iBiko=ci("備考","メモ","notes");
+              if(iName<0){ setErr("『業者名』列が見つかりません。"); setImportProgress(""); return; }
+              if(iPair<0){ setErr("『産廃許可（権者×種別）』列が見つかりません。テンプレートをご確認ください。"); setImportProgress(""); return; }
+              const nameMap=new Map(), phoneMap=new Map(), addrMap=new Map();
+              const push=(m,k,i)=>{ if(!k)return; const a=m.get(k); if(a)a.push(i); else m.set(k,[i]); };
+              for(let i=0;i<vendors.length;i+=2000){ vendors.slice(i,i+2000).forEach((v,j)=>{ const idx=i+j; push(nameMap,nStr(v.name),idx); const p=nPhone(v.phone); if(p.length>=9)push(phoneMap,p,idx); const a=nStr(v.address); if(a.length>=10)push(addrMap,a,idx); }); await yield_(); }
+              const items=[]; let neu=0,upd=0,noperm=0;
+              for(let i=1;i<rows.length;i++){
+                const r=rows[i]; const nm=(r[iName]||"").trim(); if(!nm)continue;
+                const prs=parsePairs(r[iPair]); if(!prs.length){ noperm++; }
+                const phone=iTel>=0?(r[iTel]||"").trim():""; const address=iAddr>=0?(r[iAddr]||"").trim():""; const notes=iBiko>=0?(r[iBiko]||"").trim():"";
+                const rn=nStr(nm), rp=nPhone(phone), ra=nStr(address);
+                const cand=new Set(); (nameMap.get(rn)||[]).forEach(x=>cand.add(x));
+                if(rp.length>=9)(phoneMap.get(rp)||[]).forEach(x=>cand.add(x));
+                if(ra.length>=10)(addrMap.get(ra)||[]).forEach(x=>cand.add(x));
+                let dupIdx=null;
+                for(const c of cand){ const v=vendors[c]; let h=0; if(rn&&nStr(v.name)===rn)h++; if(rp.length>=9&&nPhone(v.phone)===rp)h++; if(ra.length>=10&&nStr(v.address)===ra)h++; if(h>=2){dupIdx=c;break;} }
+                if(dupIdx==null && rp.length<9 && ra.length<10){ const arr=nameMap.get(rn)||[]; if(arr.length===1) dupIdx=arr[0]; }
+                if(dupIdx!=null){ upd++; items.push({name:nm,phone,address,notes,pairs:prs,mode:"更新",idx:dupIdx}); }
+                else { neu++; items.push({name:nm,phone,address,notes,pairs:prs,mode:"新規"}); }
+                if(i%800===0){ setImportProgress(`照合中… ${i}/${rows.length}`); await yield_(); }
+              }
+              setImportProgress(""); setPreview({items,neu,upd,noperm});
+            }catch(ex){ console.error("[importSanpai]",ex); setImportProgress(""); setErr("読み込みに失敗しました。CSV形式・文字コードをご確認ください。"); }
+          };
+          const doImport=async()=>{
+            if(!preview)return;
+            const today=new Date().toISOString().slice(0,10);
+            const vs=[...vendors];
+            preview.items.forEach((it,k)=>{
+              const mk=()=>"mn_"+Date.now()+"_"+k+"_"+Math.random().toString(36).slice(2,9);
+              if(it.mode==="更新"){
+                const v=vs[it.idx]; const sp=[...(v.sanpaiPermits||[])];
+                it.pairs.forEach(p=>{ if(!sp.some(e=>e.auth===p.auth&&e.type===p.type)) sp.push(p); });
+                const patch={...v, sanpaiPermits:sp, permitTypes:Array.from(new Set([...(v.permitTypes||[]),...derive(sp)])), updatedAt:today};
+                if(!v.phone && it.phone) patch.phone=it.phone;
+                if(!v.address && it.address) patch.address=it.address;
+                if(it.notes && !(v.memos||[]).some(m=>(m.text||"")===it.notes)) patch.memos=[...(v.memos||[]),{id:mk(),text:it.notes,userId:currentUser?.id,date:new Date().toISOString()}];
+                vs[it.idx]=patch;
+              } else {
+                vs.push({id:"v_"+Date.now()+"_"+k+"_"+Math.random().toString(36).slice(2,9),name:it.name,status:"未接触",phone:it.phone||"",address:it.address||"",municipalityIds:[],assigneeIds:[],sanpaiPermits:it.pairs.slice(),permitTypes:derive(it.pairs),beeNet:false,memos:it.notes?[{id:mk(),text:it.notes,userId:currentUser?.id,date:new Date().toISOString()}]:[],chat:[],approachLogs:[],createdAt:new Date().toISOString(),updatedAt:today});
+              }
+            });
+            const newData={...data,vendors:vs};
+            setImporting(true); setData(newData);
+            const ok=await saveData(newData); setImporting(false);
+            if(ok===false){ setData(data); setErr(`保存に失敗しました（新規${preview.neu}/更新${preview.upd}件）。件数を減らして再試行してください。`); return; }
+            window.alert(`✅ 産廃業者を取込みました\n新規追加 ${preview.neu}件\n既存に権者×種別を追加 ${preview.upd}件`);
+            setPreview(null); setSheet(null);
+          };
+          return (
+            <Sheet title="🏭 産廃業者を取込（権者×種別・不足補完）" onClose={()=>{setSheet(null);setImportPreview(null);setImportErr("");}}>
+              <div style={{background:"#FFF3E8",border:"1px solid #FFC07D",borderRadius:8,padding:"0.8rem",marginBottom:"0.9rem",fontSize:"0.76rem",color:"#9a3412",lineHeight:1.65}}>
+                列＝<strong>業者名／電話番号／住所／産廃許可（権者×種別）／備考</strong>。<br/>
+                「産廃許可（権者×種別）」は <code>青森県：産廃収運／秋田県：産廃処分</code> のように<strong>権者：種別</strong>を「／」区切りで。<br/>
+                業者名＋電話/住所で照合し、<strong>既存は権者×種別を追加・空欄のみ補完・備考はメモ追記（ステータス等は上書きしません）</strong>／無ければ新規追加。
+                <div style={{marginTop:"0.5rem"}}>
+                  <button onClick={()=>downloadCSV("産廃業者インポートテンプレート.csv",
+                    ["業者名","電話番号","住所","産廃許可（権者×種別）","備考"],
+                    [["○○産業株式会社","018-000-0000","秋田県秋田市〇〇1-2-3","秋田県：産廃収運／秋田県：産廃処分","許可No.〇〇"],
+                     ["△△運輸有限会社","","岩手県〇〇市…","岩手県：産廃収運",""]])}
+                    style={{background:"#FF6A00",border:"none",borderRadius:8,color:"white",fontWeight:700,fontSize:"0.74rem",padding:"0.4rem 0.8rem",cursor:"pointer",fontFamily:"inherit"}}>⬇️ テンプレCSVをダウンロード</button>
+                </div>
+              </div>
+              <label style={{display:"inline-flex",alignItems:"center",gap:"0.4rem",padding:"0.6rem 1rem",background:"#FFF3E8",border:"1.5px solid #FF6A00",borderRadius:8,color:"#9a3412",fontWeight:700,fontSize:"0.82rem",cursor:importProgress?"wait":"pointer"}}>
+                📄 CSVファイルを選択
+                <input type="file" accept=".csv,text/csv" onChange={handleFile} style={{display:"none"}}/>
+              </label>
+              {importProgress&&<div style={{marginTop:"0.6rem",fontSize:"0.76rem",color:C.textSub,fontWeight:700}}>{importProgress}</div>}
+              {err&&<div style={{marginTop:"0.75rem",fontSize:"0.78rem",color:"#DA1313",fontWeight:700}}>⚠️ {err}</div>}
+              {preview&&(
+                <div style={{marginTop:"1rem"}}>
+                  <div style={{display:"flex",gap:"0.5rem",marginBottom:"0.75rem"}}>
+                    <div style={{flex:1,background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"0.5rem 0.7rem"}}><div style={{fontSize:"0.62rem",color:"#15803d",fontWeight:700}}>新規追加</div><div style={{fontSize:"1.3rem",fontWeight:800,color:"#166534"}}>{preview.neu}</div></div>
+                    <div style={{flex:1,background:"#FFF3E8",border:"1px solid #FFC07D",borderRadius:8,padding:"0.5rem 0.7rem"}}><div style={{fontSize:"0.62rem",color:"#9a3412",fontWeight:700}}>既存に許可追加</div><div style={{fontSize:"1.3rem",fontWeight:800,color:"#9a3412"}}>{preview.upd}</div></div>
+                  </div>
+                  {preview.noperm>0&&<div style={{marginBottom:"0.6rem",fontSize:"0.72rem",color:"#92400e",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"0.4rem 0.6rem"}}>⚠️ 権者×種別が読み取れなかった行 {preview.noperm}件（許可なしで登録されます）</div>}
+                  <div style={{fontSize:"0.72rem",color:C.textSub,fontWeight:700,marginBottom:"0.3rem"}}>プレビュー（先頭12件 / 全{preview.items.length}件）</div>
+                  <div style={{maxHeight:260,overflowY:"auto",border:`1px solid ${C.borderLight}`,borderRadius:8}}>
+                    {preview.items.slice(0,12).map((it,i)=>(
+                      <div key={i} style={{padding:"0.4rem 0.6rem",borderTop:i>0?`1px solid ${C.borderLight}`:"none",fontSize:"0.72rem"}}>
+                        <div style={{display:"flex",gap:"0.4rem",alignItems:"center",flexWrap:"wrap"}}>
+                          <span style={{fontSize:"0.6rem",fontWeight:700,padding:"0.05rem 0.35rem",borderRadius:999,background:it.mode==="更新"?"#FFF3E8":"#dcfce7",color:it.mode==="更新"?"#9a3412":"#166534"}}>{it.mode}</span>
+                          <span style={{fontWeight:700,color:C.text}}>{it.name}</span>
+                          <span style={{color:C.textMuted}}>{it.phone||"-"}</span>
+                        </div>
+                        <div style={{marginTop:"0.15rem",display:"flex",flexWrap:"wrap",gap:"0.25rem"}}>
+                          {it.pairs.map((p,j)=><span key={j} style={{fontSize:"0.62rem",background:"#FFE8CF",color:"#9a3412",border:"1px solid #FFC07D",borderRadius:999,padding:"0.05rem 0.4rem",fontWeight:700}}>🏭 {p.type}×{p.auth}</span>)}
+                          {it.pairs.length===0&&<span style={{fontSize:"0.62rem",color:C.textMuted}}>（許可なし）</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{display:"flex",gap:"0.5rem",marginTop:"0.75rem"}}>
+                    <Btn variant="secondary" style={{flex:1}} onClick={()=>{setPreview(null);setErr("");}}>やり直す</Btn>
+                    <Btn style={{flex:2}} onClick={doImport}>この内容で取込（新規{preview.neu}・許可追加{preview.upd}）</Btn>
                   </div>
                 </div>
               )}
