@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 // MyTrade — 投資専用スタンドアロンアプリ (MyDeskから分離)
 // バックエンド: mydesk-stock-analysis Lambda (共用・変更不要)
 // ═══════════════════════════════════════════════════════════════
-const MYTRADE_BUILD = "2026-08-06-v11-timeout-fix";
+const MYTRADE_BUILD = "2026-08-06-v12-pro-chart";
 if (typeof window !== "undefined") {
   window.__MYTRADE_BUILD = MYTRADE_BUILD;
   console.log(`[MyTrade] Build: ${MYTRADE_BUILD}`);
@@ -179,6 +179,68 @@ function StockCandleChart({candles=[],ma25=[],levels=null,width=560,height=190})
   );
 }
 
+function StockProChart({data,levels,width=560}) {
+  if(!data||!data.candles||data.candles.length<2) return null;
+  const cs = data.candles;
+  const priceH=190, rsiH=52, macdH=52, gap=8;
+  const height = priceH+rsiH+macdH+gap*2;
+  const lv = levels||{};
+  const lines=[lv.stop,lv.target1,lv.target2,lv.entry].filter(v=>typeof v==="number");
+  const mas=[].concat(data.ma25||[],data.ma75||[],data.ma200||[]).filter(v=>v!=null);
+  const min=Math.min(...cs.map(c=>c.l),...lines,...mas), max=Math.max(...cs.map(c=>c.h),...lines,...mas);
+  const rg=(max-min)||1, bw=width/cs.length;
+  const maxV=Math.max(...cs.map(c=>c.v||0))||1;
+  const py=v=>4+(1-(v-min)/rg)*(priceH-34);
+  const volTop=priceH-26;
+  const rsiTop=priceH+gap, macdTop=priceH+gap+rsiH+gap;
+  const line=(arr,fn)=>arr.map((v,i)=>v==null?null:`${((i+0.5)*bw).toFixed(1)},${fn(v).toFixed(1)}`).filter(Boolean).join(" ");
+  const rsiY=v=>rsiTop+8+(1-v/100)*(rsiH-16);
+  const hs=(data.macdHist||[]).filter(v=>v!=null).map(Math.abs);
+  const hMax=Math.max(...hs,0.001);
+  const macdY=v=>macdTop+macdH/2-(v/hMax)*(macdH/2-6);
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} style={{width:"100%",height:"auto",display:"block"}}>
+      {cs.map((c,i)=>{
+        const up=c.c>=c.o, col=up?"#009122":"#DA1313", x=(i+0.5)*bw;
+        const yO=py(c.o), yC=py(c.c), vh=(c.v||0)/maxV*22;
+        const w=Math.max(0.8,bw*0.62);
+        return (
+          <g key={i}>
+            <line x1={x} x2={x} y1={py(c.h)} y2={py(c.l)} stroke={col} strokeWidth={bw>3?1:0.5}/>
+            <rect x={x-w/2} width={w} y={Math.min(yO,yC)} height={Math.max(0.8,Math.abs(yO-yC))} fill={up?col:"white"} stroke={col} strokeWidth={up?0:0.6}/>
+            <rect x={x-w/2} width={w} y={volTop+22-vh} height={vh} fill={up?"rgba(0,145,34,0.25)":"rgba(218,19,19,0.25)"}/>
+          </g>
+        );
+      })}
+      {[[data.ma25,"#0070D4"],[data.ma75,"#FF6A00"],[data.ma200,"#7A5AD9"]].map(([arr,col],i)=>
+        arr&&arr.some(v=>v!=null)?<polyline key={"ma"+i} points={line(arr,py)} fill="none" stroke={col} strokeWidth="1.3" opacity="0.9"/>:null)}
+      {[[lv.stop,"#DA1313","損切"],[lv.entry,"#0070D4","買い場"],[lv.target1,"#009122","利確1"],[lv.target2,"#009122","利確2"]].map(([v,col,lbl],i)=>{
+        if(typeof v!=="number") return null;
+        const y=py(v); if(!isFinite(y)||y<0||y>priceH) return null;
+        return (
+          <g key={"L"+i}>
+            <line x1="0" x2={width} y1={y} y2={y} stroke={col} strokeWidth="1.1" strokeDasharray="6 4" opacity="0.85"/>
+            <rect x="2" y={y-8} width={lbl.length*12+34} height="14" rx="3" fill={col} opacity="0.92"/>
+            <text x="5" y={y+2.5} fill="white" fontSize="9.5" fontWeight="700">{lbl} {Number(v).toLocaleString()}</text>
+          </g>
+        );
+      })}
+      <rect x="0" y={rsiTop} width={width} height={rsiH} fill="#F9FAFE"/>
+      {[70,30].map(v=><line key={"r"+v} x1="0" x2={width} y1={rsiY(v)} y2={rsiY(v)} stroke={v===70?"#DA1313":"#0070D4"} strokeWidth="0.8" strokeDasharray="3 3" opacity="0.6"/>)}
+      {data.rsi&&<polyline points={line(data.rsi,rsiY)} fill="none" stroke="#7A5AD9" strokeWidth="1.3"/>}
+      <text x="3" y={rsiTop+11} fontSize="9" fontWeight="700" fill="#8A93A3">RSI 買われすぎ70 / 売られすぎ30</text>
+      <rect x="0" y={macdTop} width={width} height={macdH} fill="#F9FAFE"/>
+      <line x1="0" x2={width} y1={macdTop+macdH/2} y2={macdTop+macdH/2} stroke="#DDE1EB" strokeWidth="0.8"/>
+      {(data.macdHist||[]).map((v,i)=>v==null?null:(
+        <rect key={"m"+i} x={(i+0.5)*bw-Math.max(0.6,bw*0.3)} width={Math.max(1.2,bw*0.6)}
+          y={Math.min(macdY(v),macdTop+macdH/2)} height={Math.max(0.8,Math.abs(macdY(v)-(macdTop+macdH/2)))}
+          fill={v>=0?"#009122":"#DA1313"} opacity="0.75"/>
+      ))}
+      <text x="3" y={macdTop+11} fontSize="9" fontWeight="700" fill="#8A93A3">MACD 緑=上昇の勢い / 赤=下降の勢い</text>
+    </svg>
+  );
+}
+
 function StockScoreBar({label,score,signal}) {
   const color = score>=70?"#009122":(score>=45?"#BE4A04":"#8A93A3");
   return (
@@ -219,6 +281,8 @@ function StockView({currentUser}) {
   const [orderForm, setOrderForm] = useState({ticker:"",qty:""});
   const [brief, setBrief]         = useState(null);  // プロトレーダーの視点(日次ブリーフ)
   const [mktNews, setMktNews]     = useState(null);  // 市場全体ニュース
+  const [chart, setChart]         = useState(null);  // プロチャートデータ
+  const [chartPeriod, setChartPeriod] = useState("6mo");
   const [report, setReport]       = useState(null);  // 朝レポート
   const [showReport, setShowReport] = useState(true);
   const [holdEdit, setHoldEdit]   = useState(false); // 保有登録フォーム表示
@@ -332,6 +396,13 @@ function StockView({currentUser}) {
   const removeStock = (ticker) => {
     saveWatchlist(watchlist.filter(w=>w.ticker!==ticker));
     if(selected===ticker) setSelected(null);
+  };
+
+  const loadChart = async (ticker, period) => {
+    setBusy(b=>({...b,chart:true}));
+    try { const r = await api({action:"chart",ticker,period:period||chartPeriod}, 120000); setChart(r); }
+    catch(e){ setErrMsg("チャート取得エラー: "+e.message); }
+    setBusy(b=>({...b,chart:false}));
   };
 
   const loadNews = async (ticker) => {
@@ -571,7 +642,7 @@ function StockView({currentUser}) {
                           <div style={{fontWeight:700,fontSize:"0.8rem",color:C.text}}>{f.name||f.ticker} <span style={{fontWeight:500,color:C.textMuted,fontSize:"0.7rem"}}>{f.ticker}</span></div>
                           <div style={{fontSize:"0.71rem",color:C.textSub,lineHeight:1.5}}>{f.reason}</div>
                         </div>
-                        <button onClick={()=>{ if(known){setSelected(f.ticker);setView("analyze");localStorage.setItem("mt_view","analyze");if(!newsMap[f.ticker])loadNews(f.ticker);} else addStock({ticker:f.ticker,name:f.name||f.ticker,market:f.ticker.endsWith(".T")?"JP":"US"}); }}
+                        <button onClick={()=>{ if(known){setSelected(f.ticker);setView("analyze");localStorage.setItem("mt_view","analyze");if(!newsMap[f.ticker])loadNews(f.ticker);loadChart(f.ticker);} else addStock({ticker:f.ticker,name:f.name||f.ticker,market:f.ticker.endsWith(".T")?"JP":"US"}); }}
                           style={{flexShrink:0,padding:"0.3rem 0.6rem",borderRadius:7,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:"0.68rem",fontWeight:700,background:known?C.borderLight:C.accentBg,color:known?C.textSub:C.accentDark}}>
                           {known?"詳細":"＋追加"}
                         </button>
@@ -594,7 +665,7 @@ function StockView({currentUser}) {
                           <span style={S.chip(vm.bg,vm.color)}>{vm.label}</span>
                           <span style={{fontSize:"0.7rem",color:"#BE4A04",fontWeight:700}}>{"★".repeat(Math.max(1,Math.min(5,p.conviction||1)))}</span>
                           <span style={{fontSize:"0.66rem",color:C.textMuted}}>短期{p.short}/長期{p.long}</span>
-                          <button onClick={()=>{ if(known){setSelected(p.ticker);setView("analyze");localStorage.setItem("mt_view","analyze");if(!newsMap[p.ticker])loadNews(p.ticker);} else addStock({ticker:p.ticker,name:p.name,market:p.ticker.endsWith(".T")?"JP":"US"}); }}
+                          <button onClick={()=>{ if(known){setSelected(p.ticker);setView("analyze");localStorage.setItem("mt_view","analyze");if(!newsMap[p.ticker])loadNews(p.ticker);loadChart(p.ticker);} else addStock({ticker:p.ticker,name:p.name,market:p.ticker.endsWith(".T")?"JP":"US"}); }}
                             style={{marginLeft:"auto",padding:"0.25rem 0.55rem",borderRadius:7,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:"0.66rem",fontWeight:700,background:known?C.borderLight:C.accentBg,color:known?C.textSub:C.accentDark}}>
                             {known?"詳細":"＋追加"}
                           </button>
@@ -769,7 +840,7 @@ function StockView({currentUser}) {
                 const q = a?STOCK_QUAD_META[a.quadrant]:null;
                 const pnl = (holding&&holding.price&&a)?(a.price/holding.price-1)*100:null;
                 return (
-                  <tr key={ticker} onClick={()=>{setSelected(ticker); setHoldEdit(false); if(!newsMap[ticker]) loadNews(ticker); setView("analyze"); localStorage.setItem("mt_view","analyze");}}
+                  <tr key={ticker} onClick={()=>{setSelected(ticker); setHoldEdit(false); if(!newsMap[ticker]) loadNews(ticker); loadChart(ticker); setView("analyze"); localStorage.setItem("mt_view","analyze");}}
                     style={{cursor:"pointer",background:selected===ticker?C.surfaceHover:"white",borderBottom:`1px solid ${C.borderLight}`}}>
                     <td style={{padding:"0.6rem 0.7rem"}}>
                       <div style={{fontWeight:700,color:C.text,whiteSpace:"nowrap"}}>{mkt==="JP"?"🇯🇵":"🇺🇸"} {a?.name||name}{holding?" 💼":""}</div>
@@ -847,7 +918,7 @@ function StockView({currentUser}) {
               <div style={{fontWeight:800,fontSize:"0.85rem",color:metric>=70?C.green:(metric>=50?C.yellow:C.textMuted)}}>{metric}</div>
               <div style={{fontSize:"0.62rem",color:r.chg1d>=0?C.green:C.red}}>{r.chg1d>=0?"+":""}{r.chg1d}%</div>
             </div>
-            <button onClick={()=>{ if(inWl(r.ticker)){setSelected(r.ticker);setView("analyze");localStorage.setItem("mt_view","analyze");if(!newsMap[r.ticker])loadNews(r.ticker);} else addStock({ticker:r.ticker,name:r.name,market:r.market}); }}
+            <button onClick={()=>{ if(inWl(r.ticker)){setSelected(r.ticker);setView("analyze");localStorage.setItem("mt_view","analyze");if(!newsMap[r.ticker])loadNews(r.ticker);loadChart(r.ticker);} else addStock({ticker:r.ticker,name:r.name,market:r.market}); }}
               style={{flexShrink:0,padding:"0.3rem 0.6rem",borderRadius:7,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:"0.68rem",fontWeight:700,
                 background:inWl(r.ticker)?C.borderLight:C.accentBg,color:inWl(r.ticker)?C.textSub:C.accentDark}}>
               {inWl(r.ticker)?"詳細":"＋追加"}
@@ -918,7 +989,7 @@ function StockView({currentUser}) {
           {watchlist.map(w=>{
             const a = results[w.ticker];
             return (
-              <button key={w.ticker} onClick={()=>{setSelected(w.ticker);setHoldEdit(false);if(!newsMap[w.ticker])loadNews(w.ticker);}}
+              <button key={w.ticker} onClick={()=>{setSelected(w.ticker);setHoldEdit(false);if(!newsMap[w.ticker])loadNews(w.ticker);loadChart(w.ticker);}}
                 style={{padding:"0.4rem 0.75rem",borderRadius:999,border:`1.5px solid ${selected===w.ticker?C.accent:C.border}`,cursor:"pointer",fontFamily:"inherit",fontSize:"0.75rem",fontWeight:selected===w.ticker?800:600,background:selected===w.ticker?C.accentBg:"white",color:selected===w.ticker?C.accentDark:C.textSub}}>
                 {w.market==="JP"?"🇯🇵":"🇺🇸"} {(a&&a.name)||w.name}{w.holding?" 💼":""}
               </button>
@@ -1077,10 +1148,22 @@ function StockView({currentUser}) {
               </div>
             </div>
             <div style={{margin:"0.5rem 0 0.75rem",padding:"0.5rem",background:C.bg,borderRadius:"0.625rem"}}>
-              {sel.candles&&sel.candles.length>1
-                ? <StockCandleChart candles={sel.candles} ma25={sel.sparkMa25} levels={sel.tradeLevels}/>
-                : <StockSparkline spark={sel.spark} ma25={sel.sparkMa25}/>}
-              <div style={{fontSize:"0.62rem",color:C.textMuted,textAlign:"right"}}>{sel.candles&&sel.candles.length>1?"ローソク足60日+出来高":"直近60営業日"} / 青点線=25日移動平均</div>
+              <div style={{display:"flex",gap:"0.25rem",marginBottom:"0.4rem",flexWrap:"wrap",alignItems:"center"}}>
+                {[["3mo","3ヶ月"],["6mo","6ヶ月"],["1y","1年"],["3y","3年"],["5y","5年"]].map(([v,l])=>(
+                  <button key={v} onClick={()=>{setChartPeriod(v);loadChart(sel.ticker,v);}}
+                    style={{padding:"0.25rem 0.6rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:"0.68rem",fontWeight:700,
+                      background:chartPeriod===v?C.accent:C.borderLight,color:chartPeriod===v?"white":C.textSub}}>{l}</button>
+                ))}
+                <span style={{fontSize:"0.62rem",color:C.textMuted,marginLeft:"auto"}}>
+                  <span style={{color:"#0070D4"}}>25日</span> / <span style={{color:"#FF6A00"}}>75日</span> / <span style={{color:"#7A5AD9"}}>200日</span>
+                </span>
+              </div>
+              {busy.chart&&<div style={{fontSize:"0.72rem",color:C.textMuted,padding:"1rem",textAlign:"center"}}>チャート読み込み中...</div>}
+              {!busy.chart&&(chart&&chart.ticker===sel.ticker
+                ? <StockProChart data={chart} levels={sel.tradeLevels}/>
+                : (sel.candles&&sel.candles.length>1
+                    ? <StockCandleChart candles={sel.candles} ma25={sel.sparkMa25} levels={sel.tradeLevels}/>
+                    : <StockSparkline spark={sel.spark} ma25={sel.sparkMa25}/>))}
               {sel.tradeLevels&&(
                 <div style={{marginTop:"0.4rem",padding:"0.5rem 0.65rem",background:"white",borderRadius:8,border:`1px solid ${C.borderLight}`,fontSize:"0.73rem",lineHeight:1.75,color:C.text}}>
                   <b style={{color:C.accentDark}}>📖 チャートの読み方</b><br/>
