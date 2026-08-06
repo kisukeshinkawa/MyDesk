@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-08-v343-import-pair-order"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-08-v344-import-nameonly-match"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -23520,6 +23520,11 @@ ${orig}`})
                     if(rPhone.length>=7 && normPhone2(v.phone||"")===rPhone) hits++;
                     if(rAddr.length>=10 && normStr2(v.address||"")===rAddr) hits++;
                     if(hits>=2){ dup=true; dupIdx=ci; break; }
+                  }
+                  // 電話・住所が無い行（許可だけ追加したい等）は、同名の既存が1社だけならその1社に紐付け
+                  if(!dup && rPhone.length<7 && rAddr.length<10){
+                    const arr=nameMap.get(rName)||[];
+                    if(arr.length===1){ dup=true; dupIdx=arr[0]; }
                   }
                   row._dup=dup; row._dupIdx=dupIdx;
                 }
