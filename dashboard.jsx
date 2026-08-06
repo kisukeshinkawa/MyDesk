@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-08-v347-import-addr-normalize"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-08-v348-normbiz-goshi"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -18555,7 +18555,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   // ⑦ 強化版 normBizName：表記揺れ・略称・括弧表記に対応
   const normBizName = (s) => (s||"")
     // 法人格の前後スペース除去
-    .replace(/\s*(株式会社|有限会社|合同会社|一般社団法人|一般財団法人|公益社団法人|公益財団法人|特定非営利活動法人|NPO法人|社会福祉法人|学校法人|宗教法人|医療法人)\s*/gi,"")
+    .replace(/\s*(株式会社|有限会社|合同会社|合資会社|合名会社|一般社団法人|一般財団法人|公益社団法人|公益財団法人|特定非営利活動法人|NPO法人|社会福祉法人|学校法人|宗教法人|医療法人)\s*/gi,"")
     // 括弧表記の法人格 (株)(有)(合)(社)(一社)(一財)(同)(資) など
     .replace(/[（(](株|有|合|社|同|資|名|財|一社|一財|公社|公財|医|福|学|宗|NPO)[)）]/gi,"")
     // 全角→半角変換
@@ -18897,7 +18897,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       const currentData = _myDeskDataRef.current; // ← 常に最新の data
       if(!currentData) return [];
       const norm = (s) => (s||"")
-        .replace(/\s*(株式会社|有限会社|合同会社|一般社団法人|一般財団法人|公益社団法人|公益財団法人|特定非営利活動法人|NPO法人|社会福祉法人|学校法人|宗教法人|医療法人)\s*/gi,"")
+        .replace(/\s*(株式会社|有限会社|合同会社|合資会社|合名会社|一般社団法人|一般財団法人|公益社団法人|公益財団法人|特定非営利活動法人|NPO法人|社会福祉法人|学校法人|宗教法人|医療法人)\s*/gi,"")
         .replace(/[（(]株[)）]|[（(]有[)）]|[（(]合[)）]|[（(]社[)）]/g,"")
         .replace(/[Ａ-Ｚａ-ｚ０-９]/g, ch=>String.fromCharCode(ch.charCodeAt(0)-0xFEE0))
         .replace(/[ァ-ン]/g, ch=>String.fromCharCode(ch.charCodeAt(0)-0x60))
@@ -19027,7 +19027,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     // ★ 既存の console 用（DryRun + 全件統合）— 後方互換
     window.MyDeskMergeDuplicates = (dryRun=false) => {
       const norm = (s) => (s||"")
-        .replace(/\s*(株式会社|有限会社|合同会社|一般社団法人|一般財団法人|公益社団法人|公益財団法人|特定非営利活動法人|NPO法人|社会福祉法人|学校法人|宗教法人|医療法人)\s*/gi,"")
+        .replace(/\s*(株式会社|有限会社|合同会社|合資会社|合名会社|一般社団法人|一般財団法人|公益社団法人|公益財団法人|特定非営利活動法人|NPO法人|社会福祉法人|学校法人|宗教法人|医療法人)\s*/gi,"")
         .replace(/[（(]株[)）]|[（(]有[)）]|[（(]合[)）]|[（(]社[)）]/g,"")
         .replace(/[Ａ-Ｚａ-ｚ０-９]/g, ch=>String.fromCharCode(ch.charCodeAt(0)-0xFEE0))
         .replace(/[ァ-ン]/g, ch=>String.fromCharCode(ch.charCodeAt(0)-0x60))
