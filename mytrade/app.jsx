@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 // MyTrade — 投資専用スタンドアロンアプリ (MyDeskから分離)
 // バックエンド: mydesk-stock-analysis Lambda (共用・変更不要)
 // ═══════════════════════════════════════════════════════════════
-const MYTRADE_BUILD = "2026-08-07-v14-dashboard";
+const MYTRADE_BUILD = "2026-08-07-v15-strategy-sim";
 if (typeof window !== "undefined") {
   window.__MYTRADE_BUILD = MYTRADE_BUILD;
   console.log(`[MyTrade] Build: ${MYTRADE_BUILD}`);
@@ -274,6 +274,7 @@ function StockView({currentUser}) {
   const [perf, setPerf]           = useState(null);  // {stats, config} 学習・成績
   const [showLearn, setShowLearn] = useState(true);
   const [dash, setDash]           = useState(null);   // 成績ダッシュボード
+  const [sim, setSim]             = useState(null);   // 戦略シミュレーション
   const [showManual, setShowManual] = useState(false); // 手動操作(通常は隠す)
   const [btRep, setBtRep]         = useState(null);  // バックテスト結果
   const [btYears, setBtYears]     = useState("10");  // 検証期間(年)
@@ -352,7 +353,7 @@ function StockView({currentUser}) {
       if(!report&&!busy.report) loadReport(false);
     }
     if(view==="portfolio"&&!journal&&!busy.journal) loadJournal();
-    if(view==="learn"){ if(!dash&&!busy.dash) loadDash(); if(!perf&&!busy.perf) loadPerf(); }
+    if(view==="learn"){ if(!dash&&!busy.dash) loadDash(); if(!perf&&!busy.perf) loadPerf(); if(!sim&&!busy.sim) loadSim(false); }
     if(view==="picks"&&!ranking&&!busy.rank) loadRanking(false);
     if(view==="demo"){ if(!paper&&!busy.paper) loadPaper(); if(!autoCfg) loadAuto(); }
   /* eslint-disable-next-line */ },[view]);
@@ -413,6 +414,16 @@ function StockView({currentUser}) {
     try { const a=results[ticker]; const r = await api({action:"news",ticker,name:a?.name||""}); setNewsMap(m=>({...m,[ticker]:r.news||[]})); }
     catch(e){ setErrMsg("ニュース取得エラー: "+e.message); }
     setBusy(b=>({...b,news:false}));
+  };
+
+  const loadSim = async (force) => {
+    setBusy(b=>({...b,sim:true})); setErrMsg("");
+    try {
+      const r = await api(force?{action:"simulate",years:25,force:true}:{action:"simulation-latest"}, 900000);
+      if(r&&r.result) setSim(r);
+      else if(!force) setSim({empty:true});
+    } catch(e){ setErrMsg("シミュレーションエラー: "+e.message); }
+    setBusy(b=>({...b,sim:false}));
   };
 
   const loadDash = async () => {
@@ -1775,6 +1786,95 @@ function StockView({currentUser}) {
                 </div>
               );
             })()}
+
+            {/* 🧪 戦略シミュレーション(この戦略を25年運用していたら) */}
+            <div style={{marginBottom:"0.85rem",padding:"0.8rem 0.95rem",background:"white",borderRadius:10,border:`2px solid ${C.purple}`}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:"0.5rem",marginBottom:"0.4rem"}}>
+                <div>
+                  <div style={{fontWeight:800,fontSize:"0.88rem",color:C.purple}}>🧪 この戦略を過去25年運用していたら</div>
+                  <div style={{fontSize:"0.68rem",color:C.textMuted}}>損切り・利確・2%ルール・最大5銘柄まで含めた「戦略まるごと」の検証</div>
+                </div>
+                <button onClick={()=>loadSim(true)} disabled={busy.sim}
+                  style={{padding:"0.45rem 0.9rem",borderRadius:8,border:"none",background:"linear-gradient(135deg,#7A5AD9,#0070D4)",color:"white",fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",opacity:busy.sim?0.6:1}}>
+                  {busy.sim?"計算中(5〜10分)...":sim&&sim.result?"🔄 再計算":"▶ 25年で試算する"}
+                </button>
+              </div>
+              {(!sim||sim.empty)&&!busy.sim&&(
+                <div style={{fontSize:"0.75rem",color:C.textSub,lineHeight:1.7}}>
+                  「勝率60%」だけでは、実際にお金が増えるかは分かりません。<br/>
+                  <b>100万円が25年でいくらになったか / 途中で最大どれだけ減ったか / 何連敗まで耐える必要があったか</b>を計算します。<br/>
+                  <span style={{color:C.textMuted}}>実弾を入れる前に、必ず一度実行してください(5〜10分かかります)</span>
+                </div>
+              )}
+              {sim&&sim.result&&(()=>{
+                const r=sim.result, p=sim.period;
+                const good = r.cagrPct>=5 && r.profitFactor>=1.3;
+                return (
+                  <div>
+                    <div style={{fontSize:"0.68rem",color:C.textMuted,marginBottom:"0.5rem"}}>
+                      {p.from}〜{p.to}({p.years}年) / {sim.settings.tickers}銘柄 / 1回の損失上限{sim.settings.riskPct}% / 最大{sim.settings.maxPositions}銘柄同時保有
+                    </div>
+                    <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap",marginBottom:"0.6rem"}}>
+                      <div style={{flex:"1 1 180px",padding:"0.7rem 0.85rem",background:r.totalReturnPct>=0?C.greenBg:C.redBg,borderRadius:10}}>
+                        <div style={{fontSize:"0.66rem",fontWeight:700,color:r.totalReturnPct>=0?C.green:C.red}}>100万円が…</div>
+                        <div style={{fontSize:"1.35rem",fontWeight:800,color:r.totalReturnPct>=0?C.green:C.red}}>
+                          {Number(r.finalEquity).toLocaleString()}<span style={{fontSize:"0.75rem"}}>円</span>
+                        </div>
+                        <div style={{fontSize:"0.72rem",fontWeight:700,color:r.totalReturnPct>=0?C.green:C.red}}>({r.totalReturnPct>=0?"+":""}{r.totalReturnPct}%)</div>
+                      </div>
+                      {[["年利(CAGR)",`${r.cagrPct>=0?"+":""}${r.cagrPct}%`,"1年あたり平均何%増えたか"],
+                        ["最大下落",`${r.maxDrawdownPct}%`,"途中で最大どれだけ減ったか"],
+                        ["勝率",r.winRate!=null?`${r.winRate}%`:"—","勝ったトレードの割合"],
+                        ["PF",r.profitFactor!=null?r.profitFactor:"—","総利益÷総損失。1.5以上で優秀"],
+                        ["最大連敗",`${r.maxLossStreak}回`,"何連敗まで耐える必要があったか"],
+                        ["取引回数",`${r.trades}回`,""]].map(([l,v,note],i)=>(
+                        <div key={i} style={{flex:"1 1 105px",padding:"0.6rem 0.7rem",background:C.bg,borderRadius:10,border:`1px solid ${C.borderLight}`}}>
+                          <div style={{fontSize:"0.63rem",fontWeight:700,color:C.textMuted}}>{l}</div>
+                          <div style={{fontSize:"0.98rem",fontWeight:800,color:C.text}}>{v}</div>
+                          {note&&<div style={{fontSize:"0.58rem",color:C.textMuted,lineHeight:1.35,marginTop:"0.1rem"}}>{note}</div>}
+                        </div>
+                      ))}
+                    </div>
+                    {/* 資産曲線 */}
+                    {(sim.curve||[]).length>2&&(()=>{
+                      const cv=sim.curve, vals=cv.map(x=>x.equity);
+                      const mn=Math.min(...vals,sim.settings.initial), mx=Math.max(...vals), rg=(mx-mn)||1;
+                      const W=560,H=110;
+                      const pts=cv.map((x,i)=>`${(i/(cv.length-1)*W).toFixed(1)},${(H-6-((x.equity-mn)/rg)*(H-12)).toFixed(1)}`).join(" ");
+                      const baseY=H-6-((sim.settings.initial-mn)/rg)*(H-12);
+                      return (
+                        <div style={{padding:"0.5rem",background:C.bg,borderRadius:8,marginBottom:"0.5rem"}}>
+                          <svg viewBox={`0 0 ${W} ${H}`} style={{width:"100%",height:"auto",display:"block"}}>
+                            <line x1="0" x2={W} y1={baseY} y2={baseY} stroke={C.textMuted} strokeWidth="1" strokeDasharray="4 3"/>
+                            <polyline points={pts} fill="none" stroke={C.purple} strokeWidth="1.8"/>
+                          </svg>
+                          <div style={{fontSize:"0.62rem",color:C.textMuted,textAlign:"right"}}>資産の推移(点線=初期100万円)</div>
+                        </div>
+                      );
+                    })()}
+                    {/* 年別 */}
+                    {(sim.yearly||[]).length>0&&(
+                      <div style={{marginBottom:"0.5rem"}}>
+                        <div style={{fontSize:"0.7rem",fontWeight:800,color:C.textSub,marginBottom:"0.2rem"}}>📅 年別リターン</div>
+                        <div style={{display:"flex",gap:"0.25rem",flexWrap:"wrap"}}>
+                          {sim.yearly.map((y,i)=>(
+                            <span key={i} style={S.chip(y.returnPct>=0?C.greenBg:C.redBg, y.returnPct>=0?C.green:C.red)}>
+                              {y.year} {y.returnPct>=0?"+":""}{y.returnPct}%
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <div style={{padding:"0.55rem 0.7rem",background:good?C.greenBg:C.yellowBg,borderRadius:8,fontSize:"0.74rem",lineHeight:1.7,color:C.text}}>
+                      <b style={{color:good?C.green:C.yellow}}>{good?"✅ この戦略は過去データ上は機能しています":"⚠️ 慎重に判断してください"}</b><br/>
+                      勝率{r.winRate}%でも{r.profitFactor>=1?"利益が出ている":"利益が出ていない"}のは、平均利益{r.avgWinPct>=0?"+":""}{r.avgWinPct}%に対して平均損失{r.avgLossPct}%と<b>損小利大</b>{r.profitFactor>=1?"になっている":"になっていない"}ためです。<br/>
+                      実際に運用するなら<b>最大{Math.abs(r.maxDrawdownPct)}%の含み損と{r.maxLossStreak}連敗に耐える</b>覚悟が必要です。<br/>
+                      <span style={{color:C.textMuted}}>※過去の成績が将来を保証するものではありません。上場廃止銘柄を含まないため実際より良く出ます</span>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
 
             {/* 📖 点数の見方 */}
             <details style={{marginBottom:"0.85rem",background:"white",borderRadius:10,border:`1px solid ${C.border}`,padding:"0.7rem 0.85rem"}}>
