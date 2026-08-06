@@ -2,13 +2,11 @@
 Library/
 Temp/
 Obj/
+obj/
 Logs/
 UserSettings/
-MemoryCaptures/
-Build/
 Builds/
 *.csproj
 *.sln
-*.user
 .vs/
-.idea/
+.DS_Store
