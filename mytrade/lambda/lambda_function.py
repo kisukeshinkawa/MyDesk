@@ -141,6 +141,8 @@ def lambda_handler(event, context):
                 return _res(200, run_ranking(force=True))
             if job == "brief":
                 return _res(200, run_brief())
+            if job == "autotrade":
+                return _res(200, run_autotrade())
             return _res(200, run_daily_report())
         except Exception as e:
             import traceback
@@ -202,6 +204,12 @@ def lambda_handler(event, context):
             return _res(200, {"available": _discover_models(),
                               "remembered": (_load_json_s3(MODEL_STATE_KEY, {}) or {}).get("modelId"),
                               "configured": BEDROCK_MODEL})
+        if action == "autotrade":
+            return _res(200, {"config": autotrade_config(), "state": paper_state()})
+        if action == "autotrade-config":
+            return _res(200, {"config": autotrade_config(body.get("config") or {})})
+        if action == "autotrade-run":
+            return _res(200, run_autotrade())
         if action == "chart":
             return _res(200, get_chart(body["ticker"], body.get("period", "6mo")))
         if action == "paper":
@@ -1978,6 +1986,105 @@ def portfolio_brain():
     m = re.search(r"\{.*\}", raw, re.DOTALL)
     brain = json.loads(m.group(0)) if m else {"summary": raw}
     return {"brain": brain, "holdings": len(holds), "market": market["moodLabel"],
+            "updatedAt": datetime.now(timezone.utc).isoformat()}
+
+
+# ═══════════════════════ AI自動デモ売買(実績を自動で貯める) ═══════════════════════
+AUTO_KEY = "stock-learn/autotrade.json"
+
+
+def autotrade_config(update=None):
+    cfg = _load_json_s3(AUTO_KEY, {"enabled": False, "riskPct": 2.0, "maxPositions": 5,
+                                   "minConviction": 3, "log": []})
+    if update:
+        for k in ("enabled", "riskPct", "maxPositions", "minConviction"):
+            if k in update:
+                cfg[k] = update[k]
+        _save_json_s3(AUTO_KEY, cfg)
+    return cfg
+
+
+def run_autotrade():
+    """毎朝、AIの判断に従ってデモ口座を自動売買する。
+    ① 保有中の銘柄が損切りライン/利確目標に達していれば手仕舞い
+    ② ブリーフの推奨(買い判定かつ確信度が基準以上)を、2%ルールの株数で新規建て
+    実際のお金は一切動かない。運用実績を自動で貯めて精度検証に使うのが目的。"""
+    cfg = autotrade_config()
+    if not cfg.get("enabled"):
+        return {"skipped": "自動売買は無効です", "enabled": False}
+
+    st = paper_state()
+    actions = []
+    risk_pct = float(cfg.get("riskPct", 2.0))
+    max_pos = int(cfg.get("maxPositions", 5))
+    min_conv = int(cfg.get("minConviction", 3))
+
+    # ── ① 手仕舞い判定 ──
+    for pos in list(st["positions"]):
+        try:
+            a = analyze_ticker(pos["ticker"])
+            lv = a.get("tradeLevels") or {}
+            px = a["price"]
+            reason = None
+            if lv.get("stop") and px <= lv["stop"]:
+                reason = f"損切り(損切りライン{lv['stop']:,.0f}を割った)"
+            elif lv.get("target1") and px >= lv["target1"]:
+                reason = f"利確(第1目標{lv['target1']:,.0f}に到達)"
+            elif a["short"]["signal"] == "avoid" and (px / pos["avgPrice"] - 1) * 100 < -5:
+                reason = "シグナル悪化かつ含み損5%超"
+            if reason:
+                st = paper_order(pos["ticker"], "sell", pos["qty"], "[自動] " + reason)
+                actions.append({"type": "sell", "ticker": pos["ticker"], "name": pos["name"],
+                                "qty": pos["qty"], "price": round(px, 2), "reason": reason})
+        except Exception as e:
+            print("autotrade sell check failed:", pos["ticker"], e)
+
+    # ── ② 新規建て ──
+    brief = _load_json_s3("stock-learn/brief.json", {})
+    held = {p["ticker"] for p in st["positions"]}
+    for pl in (brief.get("plans") or []):
+        if len(held) >= max_pos:
+            break
+        tk = pl.get("ticker")
+        if not tk or tk in held:
+            continue
+        if pl.get("verdict") not in ("buy", "strong_buy"):
+            continue
+        if (pl.get("conviction") or 0) < min_conv:
+            continue
+        try:
+            a = analyze_ticker(tk)
+            lv = a.get("tradeLevels") or {}
+            px, stop = a["price"], lv.get("stop")
+            if not stop or stop >= px:
+                continue
+            # 2%ルール: 1トレードの想定損失が資産のrisk_pct%以内になる株数
+            allowed = st["equity"] * risk_pct / 100
+            qty = int(allowed / (px - stop))
+            unit = 100 if tk.endswith(".T") else 1
+            qty = (qty // unit) * unit
+            # 資金の30%を1銘柄の上限とする(集中しすぎない)
+            cap = int(st["cash"] * 0.3 / px / unit) * unit
+            qty = min(qty, cap)
+            if qty < unit:
+                actions.append({"type": "skip", "ticker": tk, "name": pl.get("name"),
+                                "reason": "資金またはリスク許容内で1単元も買えない"})
+                continue
+            st = paper_order(tk, "buy", qty,
+                             f"[自動] AI推奨 確信度{pl.get('conviction')}/5")
+            held.add(tk)
+            actions.append({"type": "buy", "ticker": tk, "name": pl.get("name"), "qty": qty,
+                            "price": round(px, 2), "stop": stop, "target": lv.get("target1"),
+                            "reason": f"AI判定{pl.get('verdict')} 確信度{pl.get('conviction')}/5"})
+        except Exception as e:
+            print("autotrade buy failed:", tk, e)
+
+    log = (cfg.get("log") or [])
+    log.append({"date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                "actions": actions, "equity": st["equity"]})
+    cfg["log"] = log[-60:]
+    _save_json_s3(AUTO_KEY, cfg)
+    return {"enabled": True, "actions": actions, "state": st,
             "updatedAt": datetime.now(timezone.utc).isoformat()}
 
 

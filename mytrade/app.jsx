@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 // MyTrade — 投資専用スタンドアロンアプリ (MyDeskから分離)
 // バックエンド: mydesk-stock-analysis Lambda (共用・変更不要)
 // ═══════════════════════════════════════════════════════════════
-const MYTRADE_BUILD = "2026-08-06-v12-pro-chart";
+const MYTRADE_BUILD = "2026-08-06-v13-autotrade";
 if (typeof window !== "undefined") {
   window.__MYTRADE_BUILD = MYTRADE_BUILD;
   console.log(`[MyTrade] Build: ${MYTRADE_BUILD}`);
@@ -279,6 +279,7 @@ function StockView({currentUser}) {
   const [ranking, setRanking]     = useState(null);  // 全銘柄ランキング
   const [paper, setPaper]         = useState(null);  // デモトレード口座
   const [orderForm, setOrderForm] = useState({ticker:"",qty:""});
+  const [autoCfg, setAutoCfg]     = useState(null);  // AI自動デモ売買
   const [brief, setBrief]         = useState(null);  // プロトレーダーの視点(日次ブリーフ)
   const [mktNews, setMktNews]     = useState(null);  // 市場全体ニュース
   const [chart, setChart]         = useState(null);  // プロチャートデータ
@@ -351,7 +352,7 @@ function StockView({currentUser}) {
     if(view==="portfolio"&&!journal&&!busy.journal) loadJournal();
     if(view==="learn"&&!perf&&!busy.perf) loadPerf();
     if(view==="picks"&&!ranking&&!busy.rank) loadRanking(false);
-    if(view==="demo"&&!paper&&!busy.paper) loadPaper();
+    if(view==="demo"){ if(!paper&&!busy.paper) loadPaper(); if(!autoCfg) loadAuto(); }
   /* eslint-disable-next-line */ },[view]);
 
   const searchStock = async () => {
@@ -456,6 +457,30 @@ function StockView({currentUser}) {
       alert(`${side==="buy"?"買い":"売り"}注文が約定しました: ${ticker} ${qty}株`);
     } catch(e){ setErrMsg("注文エラー: "+e.message); alert("注文エラー: "+e.message); }
     setBusy(b=>({...b,paper:false}));
+  };
+
+  const loadAuto = async () => {
+    try { const r = await api({action:"autotrade"}, 120000); setAutoCfg(r.config); if(r.state) setPaper(r.state); }
+    catch(e){}
+  };
+  const saveAuto = async (patch) => {
+    setBusy(b=>({...b,auto:true}));
+    try { const r = await api({action:"autotrade-config",config:patch}, 120000); setAutoCfg(r.config); }
+    catch(e){ setErrMsg("設定エラー: "+e.message); }
+    setBusy(b=>({...b,auto:false}));
+  };
+  const runAuto = async () => {
+    setBusy(b=>({...b,auto:true})); setErrMsg("");
+    try {
+      const r = await api({action:"autotrade-run"}, 600000);
+      if(r.state) setPaper(r.state);
+      await loadAuto();
+      const acts = r.actions||[];
+      alert(r.enabled===false ? "自動売買が無効です。スイッチをONにしてください"
+        : acts.length ? acts.map(a=>`${a.type==="buy"?"買":a.type==="sell"?"売":"—"} ${a.name||a.ticker}${a.qty?` ${a.qty}株`:""}: ${a.reason}`).join("\n")
+        : "今日は条件を満たす売買はありませんでした(様子見)");
+    } catch(e){ setErrMsg("自動売買エラー: "+e.message); }
+    setBusy(b=>({...b,auto:false}));
   };
 
   const loadBrief = async (force) => {
@@ -1361,6 +1386,69 @@ function StockView({currentUser}) {
                 setBusy(b=>({...b,paper:false})); }}
               style={{padding:"0.45rem 0.8rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textMuted,fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit"}}>リセット</button>
           </div>
+        </div>
+
+        {/* 🤖 AI自動デモ売買 */}
+        <div style={{padding:"0.7rem 0.85rem",background:autoCfg&&autoCfg.enabled?"linear-gradient(135deg,#F0FDF4,#E6F0FF)":C.bg,borderRadius:10,marginBottom:"0.75rem",border:`1.5px solid ${autoCfg&&autoCfg.enabled?C.green:C.border}`}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:"0.5rem"}}>
+            <div>
+              <div style={{fontWeight:800,fontSize:"0.85rem",color:C.text}}>🤖 AIにおまかせ運用
+                <span style={{...S.chip(autoCfg&&autoCfg.enabled?C.greenBg:C.borderLight, autoCfg&&autoCfg.enabled?C.green:C.textSub),marginLeft:"0.4rem"}}>
+                  {autoCfg&&autoCfg.enabled?"稼働中":"停止中"}
+                </span>
+              </div>
+              <div style={{fontSize:"0.68rem",color:C.textSub,marginTop:"0.15rem",lineHeight:1.6}}>
+                毎朝8時にAIの判断で自動売買します。損切り・利確も自動。<b>実績が自動で貯まるので精度が見えるようになります</b>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap"}}>
+              <button onClick={()=>saveAuto({enabled:!(autoCfg&&autoCfg.enabled)})} disabled={busy.auto}
+                style={{padding:"0.5rem 1rem",borderRadius:8,border:"none",background:autoCfg&&autoCfg.enabled?C.textMuted:C.green,color:"white",fontWeight:800,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}}>
+                {autoCfg&&autoCfg.enabled?"停止する":"▶ 開始する"}
+              </button>
+              <button onClick={runAuto} disabled={busy.auto}
+                style={{padding:"0.5rem 0.9rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}}>
+                {busy.auto?"実行中...":"今すぐ1回実行"}
+              </button>
+            </div>
+          </div>
+          {autoCfg&&(
+            <div style={{display:"flex",gap:"0.8rem",flexWrap:"wrap",alignItems:"center",marginTop:"0.5rem",fontSize:"0.7rem",color:C.textSub}}>
+              <span>1回の損失上限
+                <select value={autoCfg.riskPct} onChange={e=>saveAuto({riskPct:parseFloat(e.target.value)})}
+                  style={{marginLeft:"0.25rem",padding:"0.15rem",borderRadius:6,border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.7rem"}}>
+                  {[1,2,3].map(v=><option key={v} value={v}>資産の{v}%</option>)}
+                </select>
+              </span>
+              <span>同時保有
+                <select value={autoCfg.maxPositions} onChange={e=>saveAuto({maxPositions:parseInt(e.target.value,10)})}
+                  style={{marginLeft:"0.25rem",padding:"0.15rem",borderRadius:6,border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.7rem"}}>
+                  {[3,5,8,10].map(v=><option key={v} value={v}>{v}銘柄まで</option>)}
+                </select>
+              </span>
+              <span>確信度
+                <select value={autoCfg.minConviction} onChange={e=>saveAuto({minConviction:parseInt(e.target.value,10)})}
+                  style={{marginLeft:"0.25rem",padding:"0.15rem",borderRadius:6,border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.7rem"}}>
+                  {[2,3,4,5].map(v=><option key={v} value={v}>★{v}以上</option>)}
+                </select>
+              </span>
+            </div>
+          )}
+          {autoCfg&&(autoCfg.log||[]).length>0&&(
+            <div style={{marginTop:"0.5rem",paddingTop:"0.45rem",borderTop:`1px solid ${C.borderLight}`}}>
+              <div style={{fontSize:"0.68rem",fontWeight:800,color:C.textSub,marginBottom:"0.2rem"}}>📋 自動売買の記録</div>
+              {(autoCfg.log||[]).slice(-5).reverse().map((l,i)=>(
+                <div key={i} style={{fontSize:"0.68rem",color:C.textSub,lineHeight:1.6}}>
+                  <b style={{color:C.text}}>{l.date}</b> 資産{Number(l.equity).toLocaleString()}円
+                  {(l.actions||[]).length===0?" / 売買なし":(l.actions||[]).map((a,j)=>(
+                    <span key={j} style={{marginLeft:"0.35rem",color:a.type==="buy"?C.blue:(a.type==="sell"?C.orange:C.textMuted)}}>
+                      {a.type==="buy"?"買":a.type==="sell"?"売":"—"}{a.name||a.ticker}
+                    </span>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {!paper&&<div style={{fontSize:"0.8rem",color:C.textMuted}}>{busy.paper?"読み込み中...":"「🔄 更新」を押してください"}</div>}

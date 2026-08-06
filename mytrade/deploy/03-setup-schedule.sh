@@ -37,6 +37,7 @@ setup_rule "mytrade-morning"  "cron(0 22 * * ? *)"  "MyTrade 朝レポート(ス
 setup_rule "mytrade-learn"    "cron(30 22 * * ? *)" "MyTrade 毎日の自動学習(重み+教訓)" '{"job":"learn"}'
 setup_rule "mytrade-ranking"  "cron(45 22 * * ? *)" "MyTrade 全銘柄ランキングの事前計算" '{"job":"ranking"}'
 setup_rule "mytrade-brief"    "cron(50 22 * * ? *)" "MyTrade プロトレーダー視点の日次生成" '{"job":"brief"}'
+setup_rule "mytrade-auto"     "cron(0 23 * * ? *)"  "MyTrade AI自動デモ売買" '{"job":"autotrade"}'
 setup_rule "mytrade-backtest" "cron(0 23 1 * ? *)"  "MyTrade 月次の長期再検証(25年WF)" '{"job":"backtest","years":25}'
 
 echo ""
@@ -46,6 +47,7 @@ echo "   07:00 JST 毎日  朝レポート(スキャン+答え合わせ)"
 echo "   07:30 JST 毎日  自動学習(過去10年+実績で因子重みと教訓を更新)"
 echo "   07:45 JST 毎日  全銘柄ランキング事前計算(約400銘柄)"
 echo "   07:50 JST 毎日  プロトレーダー視点を生成(ホームに常時表示)"
+echo "   08:00 JST 毎日  AI自動デモ売買(有効化した場合のみ)"
 echo "   08:00 JST 毎月1日 長期再検証(25年ウォークフォワード)"
 echo "════════════════════════════════════════════════"
 echo ""
