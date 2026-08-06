@@ -202,6 +202,8 @@ def lambda_handler(event, context):
             return _res(200, {"available": _discover_models(),
                               "remembered": (_load_json_s3(MODEL_STATE_KEY, {}) or {}).get("modelId"),
                               "configured": BEDROCK_MODEL})
+        if action == "chart":
+            return _res(200, get_chart(body["ticker"], body.get("period", "6mo")))
         if action == "paper":
             return _res(200, paper_state())
         if action == "paper-order":
@@ -1977,6 +1979,44 @@ def portfolio_brain():
     brain = json.loads(m.group(0)) if m else {"summary": raw}
     return {"brain": brain, "holdings": len(holds), "market": market["moodLabel"],
             "updatedAt": datetime.now(timezone.utc).isoformat()}
+
+
+# ═══════════════════════ チャートデータ(期間切替+サブ指標) ═══════════════════════
+CHART_PERIODS = {"3mo": (120, 1), "6mo": (200, 1), "1y": (400, 1), "3y": (1150, 3), "5y": (1900, 5)}
+
+
+def get_chart(ticker, period="6mo"):
+    """ローソク足+移動平均+RSI+MACD+出来高。長期は間引いて返す(描画負荷対策)。"""
+    key = f"chart/{ticker}_{period}.json"
+    cached = cache_get(key, PRICE_TTL)
+    if cached:
+        return cached
+    days, step = CHART_PERIODS.get(period, CHART_PERIODS["6mo"])
+    df = fetch_history(ticker, f"{days + 260}d")   # 指標の計算に助走期間が要る
+    f = build_indicator_frame(df)
+    ma75 = df["Close"].rolling(75).mean()
+    ma200 = df["Close"].rolling(200).mean()
+
+    n = min(len(df), days)
+    idx = list(range(len(df) - n, len(df), step))
+
+    def val(sr, i):
+        v = sr.iloc[i]
+        return None if v is None or (isinstance(v, float) and math.isnan(v)) else round(float(v), 2)
+
+    candles = [{"d": df.index[i].strftime("%y/%m/%d"),
+                "o": round(float(df["Open"].iloc[i]), 2), "h": round(float(df["High"].iloc[i]), 2),
+                "l": round(float(df["Low"].iloc[i]), 2), "c": round(float(df["Close"].iloc[i]), 2),
+                "v": float(df["Volume"].iloc[i])} for i in idx]
+    out = {"ticker": ticker, "period": period, "candles": candles,
+           "ma25": [val(f["ma25"], i) for i in idx],
+           "ma75": [val(ma75, i) for i in idx],
+           "ma200": [val(ma200, i) for i in idx],
+           "rsi": [val(f["rsi"], i) for i in idx],
+           "macdHist": [val(f["hist"], i) for i in idx],
+           "updatedAt": datetime.now(timezone.utc).isoformat()}
+    cache_put(key, out)
+    return out
 
 
 # ═══════════════════════ デモトレード(ペーパートレード) ═══════════════════════
