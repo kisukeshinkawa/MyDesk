@@ -1095,6 +1095,11 @@ def _sim_pass(prep, all_dates, initial=1000000, risk_pct=2.0, max_pos=5,
             qty_risk = int(equity * risk_pct / 100 / risk)          # 2%ルール
             qty_cap = int(equity / max_pos / px)                    # 1銘柄あたりの上限
             qty = (min(qty_risk, qty_cap) // unit) * unit
+            if qty < unit:
+                # 単元株の都合で枠に収まらない場合、リスクが許容内なら1単元だけ建てる
+                one_risk = risk * unit / equity * 100 if equity else 999
+                if one_risk <= risk_pct * 2 and px * unit * (1 + fee) <= cash * 0.5:
+                    qty = unit
             cost = px * qty * (1 + fee)
             if qty < unit or cost > cash:
                 continue
@@ -2254,10 +2259,12 @@ AUTO_KEY = "stock-learn/autotrade.json"
 
 
 def autotrade_config(update=None):
-    cfg = _load_json_s3(AUTO_KEY, {"enabled": False, "riskPct": 2.0, "maxPositions": 5,
-                                   "minConviction": 3, "log": []})
+    # 既定値は25年バックテストで効率(年利÷最大下落)が最良だった組み合わせ
+    cfg = _load_json_s3(AUTO_KEY, {"enabled": False, "riskPct": 2.0, "maxPositions": 8,
+                                   "minConviction": 3, "rr": 3.0, "log": []})
+    cfg.setdefault("rr", 3.0)
     if update:
-        for k in ("enabled", "riskPct", "maxPositions", "minConviction"):
+        for k in ("enabled", "riskPct", "maxPositions", "minConviction", "rr"):
             if k in update:
                 cfg[k] = update[k]
         _save_json_s3(AUTO_KEY, cfg)
@@ -2272,6 +2279,7 @@ def run_autotrade():
     cfg = autotrade_config()
     if not cfg.get("enabled"):
         return {"skipped": "自動売買は無効です", "enabled": False}
+    rr = float(cfg.get("rr", 3.0))   # 利確目標(損切り幅の何倍か)。25年検証で3倍が最良
 
     st = paper_state()
     actions = []
@@ -2285,11 +2293,17 @@ def run_autotrade():
             a = analyze_ticker(pos["ticker"])
             lv = a.get("tradeLevels") or {}
             px = a["price"]
+            # 建玉時に決めたラインで判定する(現在値から引き直すと永久に到達しない)
+            stop = pos.get("stop")
+            target = pos.get("target")
+            if stop is None:   # 手動保有など建玉時ラインが無い場合の保険
+                stop = lv.get("stop")
+                target = lv.get("target1")
             reason = None
-            if lv.get("stop") and px <= lv["stop"]:
-                reason = f"損切り(損切りライン{lv['stop']:,.0f}を割った)"
-            elif lv.get("target1") and px >= lv["target1"]:
-                reason = f"利確(第1目標{lv['target1']:,.0f}に到達)"
+            if stop and px <= stop:
+                reason = f"損切り(建玉時に決めた{stop:,.0f}を割った)"
+            elif target and px >= target:
+                reason = f"利確(目標{target:,.0f}に到達)"
             elif a["short"]["signal"] == "avoid" and (px / pos["avgPrice"] - 1) * 100 < -5:
                 reason = "シグナル悪化かつ含み損5%超"
             if reason:
@@ -2319,22 +2333,27 @@ def run_autotrade():
             if not stop or stop >= px:
                 continue
             # 2%ルール: 1トレードの想定損失が資産のrisk_pct%以内になる株数
-            allowed = st["equity"] * risk_pct / 100
-            qty = int(allowed / (px - stop))
             unit = 100 if tk.endswith(".T") else 1
-            qty = (qty // unit) * unit
-            # 資金の30%を1銘柄の上限とする(集中しすぎない)
-            cap = int(st["cash"] * 0.3 / px / unit) * unit
-            qty = min(qty, cap)
+            qty_risk = int(st["equity"] * risk_pct / 100 / (px - stop))   # 2%ルール
+            qty_cap = int(st["equity"] / max_pos / px)                    # 1銘柄あたりの上限
+            qty = (min(qty_risk, qty_cap) // unit) * unit
+            if qty < unit:
+                # 単元株の都合で枠に収まらない場合、リスクが許容内なら1単元だけ建てる
+                one_risk = (px - stop) * unit / st["equity"] * 100 if st["equity"] else 999
+                if one_risk <= risk_pct * 2 and px * unit * 1.001 <= st["cash"] * 0.5:
+                    qty = unit
             if qty < unit:
                 actions.append({"type": "skip", "ticker": tk, "name": pl.get("name"),
-                                "reason": "資金またはリスク許容内で1単元も買えない"})
+                                "reason": f"1単元({unit}株={int(px*unit):,}円)が資金・リスク許容を超える"})
                 continue
             st = paper_order(tk, "buy", qty,
-                             f"[自動] AI推奨 確信度{pl.get('conviction')}/5")
+                             f"[自動] AI推奨 確信度{pl.get('conviction')}/5",
+                             meta={"stop": round(stop, 2),
+                                   "target": round(px + (px - stop) * rr, 2), "rr": rr})
             held.add(tk)
             actions.append({"type": "buy", "ticker": tk, "name": pl.get("name"), "qty": qty,
-                            "price": round(px, 2), "stop": stop, "target": lv.get("target1"),
+                            "price": round(px, 2), "stop": round(stop, 2),
+                            "target": round(px + (px - stop) * rr, 2),
                             "reason": f"AI判定{pl.get('verdict')} 確信度{pl.get('conviction')}/5"})
         except Exception as e:
             print("autotrade buy failed:", tk, e)
@@ -2533,7 +2552,7 @@ def paper_state():
         "updatedAt": datetime.now(timezone.utc).isoformat()}
 
 
-def paper_order(ticker, side, qty, note=""):
+def paper_order(ticker, side, qty, note="", meta=None):
     st = _paper_load()
     qty = int(qty)
     if qty <= 0:
@@ -2554,8 +2573,11 @@ def paper_order(ticker, side, qty, note=""):
             pos["avgPrice"] = round((pos["avgPrice"] * pos["qty"] + px * qty) / tot, 2)
             pos["qty"] = tot
         else:
-            st["positions"].append({"ticker": ticker, "name": name, "qty": qty,
-                                    "avgPrice": round(px, 2), "openedAt": today})
+            pos_new = {"ticker": ticker, "name": name, "qty": qty,
+                       "avgPrice": round(px, 2), "openedAt": today}
+            if meta:
+                pos_new.update({k: v for k, v in meta.items() if v is not None})
+            st["positions"].append(pos_new)
         st["trades"].append({"date": today, "ticker": ticker, "name": name, "side": "buy",
                              "qty": qty, "price": round(px, 2), "fee": round(px * qty * FEE_RATE, 0),
                              "note": note[:120]})

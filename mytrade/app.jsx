@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 // MyTrade — 投資専用スタンドアロンアプリ (MyDeskから分離)
 // バックエンド: mydesk-stock-analysis Lambda (共用・変更不要)
 // ═══════════════════════════════════════════════════════════════
-const MYTRADE_BUILD = "2026-08-07-v17-optimizer";
+const MYTRADE_BUILD = "2026-08-07-v18-exit-fix";
 if (typeof window !== "undefined") {
   window.__MYTRADE_BUILD = MYTRADE_BUILD;
   console.log(`[MyTrade] Build: ${MYTRADE_BUILD}`);
@@ -1468,7 +1468,8 @@ function StockView({currentUser}) {
                 </span>
               </div>
               <div style={{fontSize:"0.68rem",color:C.textSub,marginTop:"0.15rem",lineHeight:1.6}}>
-                毎朝8時にAIの判断で自動売買します。損切り・利確も自動。<b>実績が自動で貯まるので精度が見えるようになります</b>
+                毎朝8時にAIの判断で自動売買します。損切り・利確も自動。<b>実績が自動で貯まるので精度が見えるようになります</b><br/>
+                <span style={{color:C.green}}>初期値は25年検証で最良だった設定(利確3倍・8銘柄分散)です</span>
               </div>
             </div>
             <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap"}}>
@@ -1493,7 +1494,13 @@ function StockView({currentUser}) {
               <span>同時保有
                 <select value={autoCfg.maxPositions} onChange={e=>saveAuto({maxPositions:parseInt(e.target.value,10)})}
                   style={{marginLeft:"0.25rem",padding:"0.15rem",borderRadius:6,border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.7rem"}}>
-                  {[3,5,8,10].map(v=><option key={v} value={v}>{v}銘柄まで</option>)}
+                  {[3,5,8,10,12].map(v=><option key={v} value={v}>{v}銘柄まで</option>)}
+                </select>
+              </span>
+              <span>利確目標
+                <select value={autoCfg.rr||3} onChange={e=>saveAuto({rr:parseFloat(e.target.value)})}
+                  style={{marginLeft:"0.25rem",padding:"0.15rem",borderRadius:6,border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.7rem"}}>
+                  {[2,3,4].map(v=><option key={v} value={v}>損切り幅の{v}倍</option>)}
                 </select>
               </span>
               <span>確信度
