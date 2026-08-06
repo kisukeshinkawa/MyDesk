@@ -230,7 +230,7 @@ def lambda_handler(event, context):
         if action == "autotrade-run":
             return _res(200, run_autotrade())
         if action == "chart":
-            return _res(200, get_chart(body["ticker"], body.get("period", "6mo")))
+            return _res(200, get_chart(body["ticker"], body.get("period", "6mo"), body.get("interval", "1d")))
         if action == "paper":
             return _res(200, paper_state())
         if action == "paper-order":
@@ -2349,35 +2349,68 @@ def performance_dashboard():
 CHART_PERIODS = {"3mo": (120, 1), "6mo": (200, 1), "1y": (400, 1), "3y": (1150, 3), "5y": (1900, 5)}
 
 
-def get_chart(ticker, period="6mo"):
-    """ローソク足+移動平均+RSI+MACD+出来高。長期は間引いて返す(描画負荷対策)。"""
-    key = f"chart/{ticker}_{period}.json"
+def get_chart(ticker, period="6mo", interval="1d"):
+    """ローソク足+各種インジケーター。interval=1d/1wk/1mo で足種を切替。
+    移動平均3本・ボリンジャーバンド・一目均衡表・RSI・MACD・出来高とその移動平均。"""
+    key = f"chart/{ticker}_{period}_{interval}.json"
     cached = cache_get(key, PRICE_TTL)
     if cached:
         return cached
     days, step = CHART_PERIODS.get(period, CHART_PERIODS["6mo"])
-    df = fetch_history(ticker, f"{days + 260}d")   # 指標の計算に助走期間が要る
+    df = fetch_history(ticker, f"{days + 300}d")
+
+    if interval in ("1wk", "1mo"):
+        rule = "W" if interval == "1wk" else "ME"
+        df = df.resample(rule).agg({"Open": "first", "High": "max", "Low": "min",
+                                    "Close": "last", "Volume": "sum"}).dropna()
+        step = 1
+        days = max(30, days // (5 if interval == "1wk" else 21))
+
     f = build_indicator_frame(df)
-    ma75 = df["Close"].rolling(75).mean()
-    ma200 = df["Close"].rolling(200).mean()
+    close, high, low = df["Close"], df["High"], df["Low"]
+    ma75 = close.rolling(75).mean()
+    ma200 = close.rolling(200).mean()
+    # ボリンジャーバンド(20,2σ)
+    mid20 = close.rolling(20).mean()
+    sd20 = close.rolling(20).std()
+    bb_u, bb_l = mid20 + 2 * sd20, mid20 - 2 * sd20
+    # 一目均衡表(9/26/52)
+    ten = (high.rolling(9).max() + low.rolling(9).min()) / 2
+    kij = (high.rolling(26).max() + low.rolling(26).min()) / 2
+    span_a = ((ten + kij) / 2).shift(26)
+    span_b = ((high.rolling(52).max() + low.rolling(52).min()) / 2).shift(26)
+    vol_ma = df["Volume"].rolling(20).mean()
 
     n = min(len(df), days)
-    idx = list(range(len(df) - n, len(df), step))
+    idx = list(range(max(0, len(df) - n), len(df), step))
 
     def val(sr, i):
-        v = sr.iloc[i]
+        try:
+            v = sr.iloc[i]
+        except Exception:
+            return None
         return None if v is None or (isinstance(v, float) and math.isnan(v)) else round(float(v), 2)
 
-    candles = [{"d": df.index[i].strftime("%y/%m/%d"),
-                "o": round(float(df["Open"].iloc[i]), 2), "h": round(float(df["High"].iloc[i]), 2),
-                "l": round(float(df["Low"].iloc[i]), 2), "c": round(float(df["Close"].iloc[i]), 2),
+    fmt = "%y/%m/%d" if interval == "1d" else "%y/%m"
+    candles = [{"d": df.index[i].strftime(fmt),
+                "o": round(float(df["Open"].iloc[i]), 2), "h": round(float(high.iloc[i]), 2),
+                "l": round(float(low.iloc[i]), 2), "c": round(float(close.iloc[i]), 2),
                 "v": float(df["Volume"].iloc[i])} for i in idx]
-    out = {"ticker": ticker, "period": period, "candles": candles,
+    out = {"ticker": ticker, "period": period, "interval": interval, "candles": candles,
            "ma25": [val(f["ma25"], i) for i in idx],
            "ma75": [val(ma75, i) for i in idx],
            "ma200": [val(ma200, i) for i in idx],
+           "bbUpper": [val(bb_u, i) for i in idx],
+           "bbLower": [val(bb_l, i) for i in idx],
+           "tenkan": [val(ten, i) for i in idx],
+           "kijun": [val(kij, i) for i in idx],
+           "spanA": [val(span_a, i) for i in idx],
+           "spanB": [val(span_b, i) for i in idx],
+           "volMa": [val(vol_ma, i) for i in idx],
            "rsi": [val(f["rsi"], i) for i in idx],
            "macdHist": [val(f["hist"], i) for i in idx],
+           "lastClose": round(float(close.iloc[-1]), 2),
+           "lastDate": df.index[-1].strftime("%Y-%m-%d"),
            "updatedAt": datetime.now(timezone.utc).isoformat()}
     cache_put(key, out)
     return out
