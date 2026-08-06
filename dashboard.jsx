@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-08-v346-import-legalname-dedup"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-08-v347-import-addr-normalize"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -23434,6 +23434,10 @@ ${orig}`})
               const rawRows=parseCSV(text);
               const normStr2 = s => (s||"").replace(/[\s　\-ー－]/g,"").toLowerCase();
               const normPhone2 = s => (s||"").replace(/[^0-9]/g,"");
+              // 住所の強正規化：全角→半角・漢数字→算用・先頭都道府県/丁目番地号を除去（表記差の取りこぼし防止）
+              const _K2N={'〇':'0','零':'0','一':'1','二':'2','三':'3','四':'4','五':'5','六':'6','七':'7','八':'8','九':'9','十':'10'};
+              const normAddrI = s => { let a=String(s||"").replace(/[０-９Ａ-Ｚａ-ｚ]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0)).split(/[,，]/)[0];
+                a=a.replace(/^(北海道|東京都|(?:京都|大阪)府|..[県])/,"").replace(/[〇零一二三四五六七八九十]/g,c=>_K2N[c]||c).replace(/(丁目|番地の|番地|番|号|大字|字|ノ|の)/g,"").replace(/[\s　\-－ー()（）]/g,""); return a.toLowerCase(); };
               // ヘッダー名で列を特定（順序非依存）。ヘッダーが無ければ旧・固定列にフォールバック
               const hdr=(rawRows[0]||[]).map(h=>String(h||"").trim().toLowerCase().replace(/^﻿/,""));
               const ci=(...ns)=>{ for(const n of ns){ const i=hdr.indexOf(String(n).toLowerCase()); if(i>=0)return i; } return -1; };
@@ -23497,7 +23501,7 @@ ${orig}`})
                   const idx=i+j;
                   pushMap(nameMap, normBizName(v.name), idx);
                   const p=normPhone2(v.phone||""); if(p.length>=7) pushMap(phoneMap,p,idx);
-                  const a=normStr2(v.address||""); if(a.length>=10) pushMap(addrMap,a,idx);
+                  const a=normAddrI(v.address||""); if(a.length>=8) pushMap(addrMap,a,idx);
                 });
                 await yield_();
               }
@@ -23507,23 +23511,23 @@ ${orig}`})
                 for(const row of slice){
                   const rName=normBizName(row.name);
                   const rPhone=normPhone2(row.phone||"");
-                  const rAddr=normStr2(row.address||"");
+                  const rAddr=normAddrI(row.address||"");
                   const cand=new Set();
                   (nameMap.get(rName)||[]).forEach(i2=>cand.add(i2));
                   if(rPhone.length>=7)(phoneMap.get(rPhone)||[]).forEach(i2=>cand.add(i2));
-                  if(rAddr.length>=10)(addrMap.get(rAddr)||[]).forEach(i2=>cand.add(i2));
+                  if(rAddr.length>=8)(addrMap.get(rAddr)||[]).forEach(i2=>cand.add(i2));
                   let dup=false, dupIdx=null;
                   for(const ci of cand){
                     const v=vendors[ci];
                     let hits=0;
                     if(rName && normBizName(v.name)===rName) hits++;
-                    if(rPhone.length>=7 && normPhone2(v.phone||"")===rPhone) hits++;
-                    if(rAddr.length>=10 && normStr2(v.address||"")===rAddr) hits++;
+                    if(rPhone.length>=7){ const pE=normPhone2(v.phone||""); if(pE===rPhone || (rPhone.length>=10 && pE.indexOf(rPhone)>=0)) hits++; }
+                    if(rAddr.length>=8){ const aE=normAddrI(v.address||""); if(aE.length>=8 && (aE===rAddr || aE.indexOf(rAddr)>=0 || rAddr.indexOf(aE)>=0)) hits++; }
                     if(hits>=2){ dup=true; dupIdx=ci; break; }
                   }
                   // 電話・住所が無い行（許可だけ追加したい等）は同名の既存に紐付け。
                   // 同名が複数なら最も情報量の多い1社（加入済・許可/自治体数・住所）に足す
-                  if(!dup && rPhone.length<7 && rAddr.length<10){
+                  if(!dup && rPhone.length<7 && rAddr.length<8){
                     const arr=nameMap.get(rName)||[];
                     if(arr.length===1){ dup=true; dupIdx=arr[0]; }
                     else if(arr.length>1){
