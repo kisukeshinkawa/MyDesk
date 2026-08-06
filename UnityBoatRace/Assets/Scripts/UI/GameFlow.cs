@@ -15,7 +15,7 @@ namespace BoatRace.UI
     public class GameFlow : MonoBehaviour
     {
         /// <summary>ビルド識別子。画面右上に表示され、更新が届いたか一目で分かる。</summary>
-        public const string Build = "B38-手動スタート";
+        public const string Build = "B39-バグ修正3件";
 
         RaceManager race;
         ReplayManager replay;
@@ -363,6 +363,7 @@ namespace BoatRace.UI
                 {
                     float mp = 1f + Mathf.Sin(Time.unscaledTime * 6f) * 0.05f;
                     manualStartBtn.transform.localScale = new Vector3(mp, mp, 1f);
+                    raceSpeed = 1f; // ST勝負中は倍速禁止(タイミングが取れなくなる)
                 }
             }
             if (racingNow && !preRace) ffLabel.text = $"⏩ 倍速 x{raceSpeed:F0}";
@@ -728,7 +729,8 @@ namespace BoatRace.UI
             if (raceCam != null) raceCam.Punch(9f);
             yield return new WaitForSecondsRealtime(0.9f);
             goalSlowActive = false;
-            Time.timeScale = raceSpeed;
+            // ポーズ中に復帰してしまうとポーズが破壊されるためガード
+            if (pausePopupGo == null) Time.timeScale = raceSpeed;
         }
 
         System.Collections.IEnumerator MoveTimeout()

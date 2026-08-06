@@ -141,7 +141,9 @@ namespace BoatRace.Core
             if (nm.Contains("glass")) return new Color(0.35f, 0.55f, 0.75f);
             if (nm.Contains("pit")) return new Color(0.55f, 0.58f, 0.62f);
             if (nm.Contains("stand")) return new Color(0.72f, 0.73f, 0.75f);
-            if (nm.Contains("roof")) return new Color(0.30f, 0.33f, 0.38f);
+            // 屋根はmtlの場ごとのアクセント色をそのまま使う(全場同色になるのを防ぐ)
+            if (nm.Contains("roof"))
+                return m.HasProperty("_Color") ? m.color : new Color(0.30f, 0.33f, 0.38f);
             if (nm.Contains("tower")) return new Color(0.62f, 0.64f, 0.68f);
             if (nm.Contains("light")) return new Color(0.98f, 0.96f, 0.85f);
             return m.HasProperty("_Color") ? m.color : new Color(0.6f, 0.62f, 0.66f);
