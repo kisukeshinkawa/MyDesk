@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-08-v342-unified-import"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-08-v343-import-pair-order"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -23454,9 +23454,11 @@ ${orig}`})
               const gv=(r,i)=> i>=0 ? (r[i]||"") : "";
               const splitList=v=>String(v||"").replace(/\n/g,",").split(/[,，]/).map(x=>x.trim()).filter(Boolean);
               const parsePairsCell=cell=>String(cell||"").split(/[／/;\n]+/).map(x=>x.trim()).filter(Boolean).map(seg=>{
-                const mm=seg.split(/[：:×xＸ]+/).map(y=>y.trim()).filter(Boolean);
+                const mm=seg.split(/[：:×]+/).map(y=>y.trim()).filter(Boolean);
                 if(mm.length<2) return null;
-                const type=mm[mm.length-1]; const area=mm.slice(0,mm.length-1).join("");
+                const KNOWN=["家庭収運","事業収運","一廃収運","産廃収運","産廃処分","産廃収運処分"];
+                let ti=mm.findIndex(x=>KNOWN.includes(x)); if(ti<0) ti=mm.length-1; // 種別・エリアどちらが先でもOK
+                const type=mm[ti]; const area=mm.filter((_,j)=>j!==ti).join("");
                 if(!area) return null; return {type,area};
               }).filter(Boolean);
               const mapped=[];
