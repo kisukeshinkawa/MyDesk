@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-08-v344-import-nameonly-match"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-08-v345-import-permit-add"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -23444,7 +23444,7 @@ ${orig}`})
                 iStatus=ci("ステータス","status"); iPref=ci("都道府県"); iMuni=ci("自治体名（複数はカンマ区切り）","自治体名","自治体","対応自治体");
                 iAssignee=ci("担当者名","担当者","担当"); iPhone=ci("電話番号","電話","phone"); iNotes=ci("備考","メモ","notes");
                 iAddr=ci("住所","所在地","address"); iPerm=ci("許可種別（複数はカンマ区切り）","許可種別");
-                iPairs=ci("許可（種別×エリア）","許可(種別×エリア)","許可（種別×自治体/権者）","許可（種別：エリア）","許可ペア");
+                iPairs=ci("許可（種別×エリア）","許可(種別×エリア)","許可（種別×自治体/権者）","許可（種別：エリア）","許可ペア","産廃許可（権者×種別）","産廃許可(権者×種別)","産廃許可","許可");
                 iBee=ci("bee-net加入（○）","bee-net加入","bee-net","beenet"); dataRows=rawRows.slice(1);
               } else {
                 iName=0;iStatus=1;iPref=2;iMuni=3;iAssignee=4;iPhone=5;iNotes=6;iAddr=7;iPerm=8;iBee=9;iPairs=-1;
@@ -23521,10 +23521,16 @@ ${orig}`})
                     if(rAddr.length>=10 && normStr2(v.address||"")===rAddr) hits++;
                     if(hits>=2){ dup=true; dupIdx=ci; break; }
                   }
-                  // 電話・住所が無い行（許可だけ追加したい等）は、同名の既存が1社だけならその1社に紐付け
+                  // 電話・住所が無い行（許可だけ追加したい等）は同名の既存に紐付け。
+                  // 同名が複数なら最も情報量の多い1社（加入済・許可/自治体数・住所）に足す
                   if(!dup && rPhone.length<7 && rAddr.length<10){
                     const arr=nameMap.get(rName)||[];
                     if(arr.length===1){ dup=true; dupIdx=arr[0]; }
+                    else if(arr.length>1){
+                      let best=arr[0], bestScore=-1;
+                      arr.forEach(ix=>{ const v=vendors[ix]; const sc=((v.status==="加入済")?1000:0)+((v.permitTypes||[]).length)+((v.municipalityIds||[]).length)+((v.sanpaiPermits||[]).length)+((v.permits||[]).length)+(v.address?1:0)+(v.phone?1:0); if(sc>bestScore){bestScore=sc;best=ix;} });
+                      dup=true; dupIdx=best;
+                    }
                   }
                   row._dup=dup; row._dupIdx=dupIdx;
                 }
