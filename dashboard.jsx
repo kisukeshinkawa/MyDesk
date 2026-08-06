@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-08-v341-sanpai-import"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-08-v342-unified-import"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -22780,16 +22780,8 @@ ${orig}`})
           </div>
           <button onClick={()=>setBulkMode(v=>{if(v){resetBulk();return false;}setBulkSelected(new Set());return true;})}
             style={{padding:"0.45rem 0.625rem",borderRadius:"8px",border:`1.5px solid ${bulkMode?"#0070D4":C.border}`,background:bulkMode?"#F2F7FF":"white",color:bulkMode?"#1563CA":C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>☑️</button>
-          <button onClick={()=>setSheet("importVendor")} title="CSV取込"
+          <button onClick={()=>setSheet("importVendor")} title="業者・許可(種別×エリア)を取込（追加・上書き・不足補完を一本化）"
             style={{padding:"0.45rem 0.625rem",borderRadius:"8px",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📥 取込</button>
-          <button onClick={()=>{setImportPreview(null);setImportErr("");setSheet("importTsr");}} title="TSR架電結果CSVを取込（ステータス・アプローチ・失注理由を反映）"
-            style={{padding:"0.45rem 0.625rem",borderRadius:"8px",border:"1.5px solid #0891b2",background:"#ecfeff",color:"#0e7490",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📞TSR</button>
-          <button onClick={()=>{setImportPreview(null);setImportErr("");setSheet("importDustalk");}} title="DUSTALK(Bubble)の登録業者と突合して加入済/仮登録を更新"
-            style={{padding:"0.45rem 0.625rem",borderRadius:"8px",border:"1.5px solid #0070D4",background:"#F2F7FF",color:"#1563CA",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🚚DUSTALK</button>
-          <button onClick={()=>{setImportPreview(null);setImportErr("");setSheet("importPermitVendors");}} title="許可業者一覧CSVを取込（住所・電話・対応自治体・備考を上書き追加、ステータスは維持）"
-            style={{padding:"0.45rem 0.625rem",borderRadius:"8px",border:"1.5px solid #ef4444",background:"#fef2f2",color:"#b91c1c",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🚮 許可取込</button>
-          <button onClick={()=>{setImportPreview(null);setImportErr("");setSheet("importSanpai");}} title="産廃業者CSVを取込（権者×種別ペアをsanpaiPermitsに追加。既存は消さず不足のみ補完）"
-            style={{padding:"0.45rem 0.625rem",borderRadius:"8px",border:"1.5px solid #FF6A00",background:"#FFF3E8",color:"#9a3412",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🏭 産廃取込</button>
           <button onClick={()=>{
             // フィルター条件に該当する業者リストを取得
             const list = bulkMode && bulkSelected.size>0
@@ -23439,29 +23431,54 @@ ${orig}`})
               await yield_();
               setImportProgress("CSVを解析中…");
               await yield_();
-              const rows=parseCSV(text);
-              const skip=["業者名","名前","name","vendor","業者名 *","business"];
-              const dataRows=rows.filter(r=>r[0]&&!skip.some(k=>r[0].toLowerCase().includes(k.toLowerCase())));
-              // 行のマッピングを500件ずつチャンク処理（UIを固めない）
+              const rawRows=parseCSV(text);
               const normStr2 = s => (s||"").replace(/[\s　\-ー－]/g,"").toLowerCase();
               const normPhone2 = s => (s||"").replace(/[^0-9]/g,"");
+              // ヘッダー名で列を特定（順序非依存）。ヘッダーが無ければ旧・固定列にフォールバック
+              const hdr=(rawRows[0]||[]).map(h=>String(h||"").trim().toLowerCase().replace(/^﻿/,""));
+              const ci=(...ns)=>{ for(const n of ns){ const i=hdr.indexOf(String(n).toLowerCase()); if(i>=0)return i; } return -1; };
+              let iName=ci("業者名 *","業者名","名前","会社名","name");
+              const headerMode=iName>=0;
+              let iStatus,iPref,iMuni,iAssignee,iPhone,iNotes,iAddr,iPerm,iPairs,iBee,dataRows;
+              if(headerMode){
+                iStatus=ci("ステータス","status"); iPref=ci("都道府県"); iMuni=ci("自治体名（複数はカンマ区切り）","自治体名","自治体","対応自治体");
+                iAssignee=ci("担当者名","担当者","担当"); iPhone=ci("電話番号","電話","phone"); iNotes=ci("備考","メモ","notes");
+                iAddr=ci("住所","所在地","address"); iPerm=ci("許可種別（複数はカンマ区切り）","許可種別");
+                iPairs=ci("許可（種別×エリア）","許可(種別×エリア)","許可（種別×自治体/権者）","許可（種別：エリア）","許可ペア");
+                iBee=ci("bee-net加入（○）","bee-net加入","bee-net","beenet"); dataRows=rawRows.slice(1);
+              } else {
+                iName=0;iStatus=1;iPref=2;iMuni=3;iAssignee=4;iPhone=5;iNotes=6;iAddr=7;iPerm=8;iBee=9;iPairs=-1;
+                const skip=["業者名","名前","name","vendor","業者名 *","business"];
+                dataRows=rawRows.filter(r=>r[0]&&!skip.some(k=>String(r[0]).toLowerCase().includes(k.toLowerCase())));
+              }
+              const gv=(r,i)=> i>=0 ? (r[i]||"") : "";
+              const splitList=v=>String(v||"").replace(/\n/g,",").split(/[,，]/).map(x=>x.trim()).filter(Boolean);
+              const parsePairsCell=cell=>String(cell||"").split(/[／/;\n]+/).map(x=>x.trim()).filter(Boolean).map(seg=>{
+                const mm=seg.split(/[：:×xＸ]+/).map(y=>y.trim()).filter(Boolean);
+                if(mm.length<2) return null;
+                const type=mm[mm.length-1]; const area=mm.slice(0,mm.length-1).join("");
+                if(!area) return null; return {type,area};
+              }).filter(Boolean);
               const mapped=[];
               for(let i=0;i<dataRows.length;i+=500){
                 const slice=dataRows.slice(i,i+500);
                 for(const r of slice){
-                  const name=normalizeImport(r[0]||"");
+                  const name=normalizeImport(gv(r,iName));
                   if(!name) continue;
+                  const st=(gv(r,iStatus)||"").trim();
                   mapped.push({
                     name,
-                    status:Object.keys(VENDOR_STATUS).includes(r[1]?.trim())?r[1].trim():"未接触",
-                    prefName:normalizeImport(r[2]||""),
-                    muniNames:(r[3]?.trim()||"").replace(/\n/g,",").split(/[,，]/).map(s=>normalizeImport(s)).filter(Boolean),
-                    assigneeName:(r[4]||"").trim(),
-                    phone:normalizeImport(r[5]||""),
-                    notes:(r[6]||"").trim(),
-                    address:normalizeImport(r[7]||""),
-                    permitTypeNames:(r[8]?.trim()||"").replace(/\n/g,",").split(/[,，]/).map(s=>s.trim()).filter(Boolean),
-                    beeNet:!!(r[9]?.trim()),
+                    status:Object.keys(VENDOR_STATUS).includes(st)?st:"未接触",
+                    statusProvided:!!st,
+                    prefName:normalizeImport(gv(r,iPref)),
+                    muniNames:splitList(gv(r,iMuni)).map(s=>normalizeImport(s)),
+                    assigneeName:(gv(r,iAssignee)||"").trim(),
+                    phone:normalizeImport(gv(r,iPhone)),
+                    notes:(gv(r,iNotes)||"").trim(),
+                    address:normalizeImport(gv(r,iAddr)),
+                    permitTypeNames:splitList(gv(r,iPerm)),
+                    pairPerms:parsePairsCell(gv(r,iPairs)),
+                    beeNet:!!(gv(r,iBee)||"").trim(),
                   });
                 }
                 setImportProgress(`データ整形中… ${Math.min(i+500,dataRows.length)}/${dataRows.length}`);
@@ -23519,33 +23536,52 @@ ${orig}`})
             if(!preview?.length)return;
             const today=new Date().toISOString().slice(0,10);
             const OKP=["家庭収運","事業収運","一廃収運","産廃収運","産廃処分","産廃収運処分"];
-            const resolveMids = r => r.muniNames.map(mn=>munis.find(m=>m.name===mn)?.id).filter(Boolean);
-            const resolvePerms = r => (r.permitTypeNames||[]).filter(pt=>OKP.includes(pt));
+            const muniByName=new Map(); munis.forEach(m=>{const n=String(m.name||"").trim(); if(n&&!muniByName.has(n))muniByName.set(n,m.id);});
+            const userByName=new Map(); (users||[]).forEach(u=>{const n=String(u.name||"").trim(); if(n&&!userByName.has(n))userByName.set(n,u.id);});
+            // 行 → 許可ペア(v340)・自治体・産廃権者・種別 を解決
+            const resolve=r=>{
+              const permits=[]; const mids=new Set(); const sps=[]; const ptypes=new Set();
+              const addPair=(type,area,areaId)=>{ if(!permits.some(p=>p.type===type&&p.area===area)) permits.push({type,area,areaId:areaId==null?null:areaId}); };
+              (r.pairPerms||[]).forEach(p=>{ if(!OKP.includes(p.type))return; ptypes.add(p.type);
+                if(isSanpaiPermit(p.type)){ if(!sps.some(s=>s.auth===p.area&&s.type===p.type)) sps.push({auth:p.area,type:p.type}); addPair(p.type,p.area,null); }
+                else { const id=muniByName.get(p.area); if(id!=null){ mids.add(id); addPair(p.type,p.area,id);} else addPair(p.type,p.area,null); } });
+              (r.permitTypeNames||[]).filter(t=>OKP.includes(t)).forEach(t=>ptypes.add(t));
+              (r.muniNames||[]).forEach(mn=>{ const id=muniByName.get(mn); if(id!=null){ mids.add(id); addPair("一廃収運",mn,id);} });
+              if(mids.size) ptypes.add("一廃収運");
+              return {permits, mids:[...mids], sps, ptypes:[...ptypes]};
+            };
             const isDupVendor = r => vendorDedup && !!r._dup && r._dupIdx!=null;
-            // 新規追加（重複でない行）
+            const mk=(k)=>"mn_"+Date.now()+"_"+k+"_"+Math.random().toString(36).slice(2,9);
+            // 新規追加
             const toAdd=preview.filter(r=>!isDupVendor(r)).map((r,idx)=>{
-              const mids=resolveMids(r);
-              const uid = "v_"+Date.now()+"_"+idx+"_"+Math.random().toString(36).slice(2,11);
-              return {
-                id:uid, name:r.name, status:r.status||"未接触", phone:r.phone||"",
-                municipalityIds:mids, assigneeIds:[], address:r.address||"",
-                permitTypes:resolvePerms(r), beeNet:!!r.beeNet,
-                memos:r.notes?[{id:"mn_"+Date.now()+"_"+idx+"_"+Math.random().toString(36).slice(2,11),text:r.notes,userId:currentUser?.id,date:new Date().toISOString()}]:[],
-                chat:[], createdAt:new Date().toISOString()
-              };
+              const rs=resolve(r); const aid=userByName.get(r.assigneeName);
+              const nv={ id:"v_"+Date.now()+"_"+idx+"_"+Math.random().toString(36).slice(2,11),
+                name:r.name, status:r.status||"未接触", phone:r.phone||"", address:r.address||"",
+                municipalityIds:rs.mids, assigneeIds:aid?[aid]:[], sanpaiPermits:rs.sps,
+                permitTypes:rs.ptypes, beeNet:!!r.beeNet,
+                memos:r.notes?[{id:mk(idx),text:r.notes,userId:currentUser?.id,date:new Date().toISOString()}]:[],
+                chat:[], createdAt:new Date().toISOString(), updatedAt:today };
+              if(rs.permits.length) nv.permits=rs.permits;
+              return nv;
             });
-            // 既存へ書き足し（重複行・消さず追加）: 自治体/許可は追加、住所/電話は空欄のみ補完、備考はメモ追記、ステータスは既存維持
+            // 既存：上書き基本＋今のデータは消さない（許可/自治体/産廃は追加・加入済は保護・空欄は維持・メモ追記）
             const updMap=new Map();
             preview.filter(r=>isDupVendor(r)).forEach((r,k)=>{
-              const base = updMap.get(r._dupIdx) || vendors[r._dupIdx];
-              const mids=resolveMids(r); const perms=resolvePerms(r);
+              const base=updMap.get(r._dupIdx)||vendors[r._dupIdx];
+              const rs=resolve(r);
               const merged={...base};
-              merged.municipalityIds=[...new Set([...(base.municipalityIds||[]),...mids])];
-              merged.permitTypes=[...new Set([...(base.permitTypes||[]),...perms])];
-              if(!base.address && r.address) merged.address=r.address;
-              if(!base.phone && r.phone) merged.phone=r.phone;
+              const basePerms = Array.isArray(base.permits)?base.permits.slice():_vendorPermits(base);
+              rs.permits.forEach(p=>{ if(!basePerms.some(b=>b.type===p.type&&b.area===p.area)) basePerms.push(p); });
+              if(basePerms.length) merged.permits=basePerms;
+              merged.municipalityIds=[...new Set([...(base.municipalityIds||[]),...rs.mids])];
+              const sp=[...(base.sanpaiPermits||[])]; rs.sps.forEach(s=>{ if(!sp.some(e=>e.auth===s.auth&&e.type===s.type)) sp.push(s); }); merged.sanpaiPermits=sp;
+              merged.permitTypes=[...new Set([...(base.permitTypes||[]),...rs.ptypes])];
+              if(r.phone) merged.phone=r.phone;
+              if(r.address) merged.address=r.address;
               if(r.beeNet) merged.beeNet=true;
-              if(r.notes && !(base.memos||[]).some(m=>(m.text||"")===r.notes)) merged.memos=[...(base.memos||[]),{id:"mn_"+Date.now()+"_"+k+"_"+Math.random().toString(36).slice(2,11),text:r.notes,userId:currentUser?.id,date:new Date().toISOString()}];
+              if(r.assigneeName){ const aid=userByName.get(r.assigneeName); if(aid) merged.assigneeIds=[...new Set([...(base.assigneeIds||[]),aid])]; }
+              if(r.statusProvided && !((base.status||"")==="加入済" && r.status!=="加入済")) merged.status=r.status;
+              if(r.notes && !(base.memos||[]).some(m=>(m.text||"")===r.notes)) merged.memos=[...(base.memos||[]),{id:mk(k),text:r.notes,userId:currentUser?.id,date:new Date().toISOString()}];
               merged.updatedAt=today;
               updMap.set(r._dupIdx, merged);
             });
@@ -23556,8 +23592,8 @@ ${orig}`})
             (async()=>{
               const ok = await saveData(newData);
               setImporting(false);
-              if(ok===false){ setData(data); setErr(`保存に失敗しました（新規${toAdd.length}/書き足し${updMap.size}件）。件数を減らして再試行してください。`); return; }
-              window.alert(`✅ 取込完了\n新規追加: ${toAdd.length}件\n既存に書き足し: ${updMap.size}件`);
+              if(ok===false){ setData(data); setErr(`保存に失敗しました（新規${toAdd.length}/更新${updMap.size}件）。件数を減らして再試行してください。`); return; }
+              window.alert(`✅ 取込完了\n新規追加: ${toAdd.length}件\n既存に上書き/追加: ${updMap.size}件`);
               setPreview(null); setSheet(null);
             })();
           };
@@ -23568,11 +23604,11 @@ ${orig}`})
             <Sheet title="業者をインポート" onClose={()=>{setSheet(null);setImportPreview(null);setImportErr("");}}>
               <div style={{background:"#f5f3ff",border:"1px solid #ddd6fe",borderRadius:"8px",padding:"0.875rem",marginBottom:"1rem"}}>
                 <div style={{fontWeight:700,fontSize:"0.82rem",color:"#5b21b6",marginBottom:"0.5rem"}}>📥 テンプレートをダウンロード</div>
-                <div style={{fontSize:"0.75rem",color:"#6d28d9",marginBottom:"0.625rem"}}>テンプレートに入力してCSV形式で保存後、アップロードしてください</div>
+                <div style={{fontSize:"0.75rem",color:"#6d28d9",marginBottom:"0.625rem",lineHeight:1.6}}>すべての取込はこの1つに統合されました。<b>「許可（種別×エリア）」</b>列に <b>一廃収運：川越市／産廃収運：北九州市</b> のように<b>種別：エリア</b>を「／」区切りで書くと、一廃は自治体・産廃は権者(129)に自動で紐付きます。<br/>取込は<b>上書き基本</b>（CSVに値があれば上書き）。ただし<b>空欄は既存維持・メモ/許可/自治体は消さず追加・加入済は保護</b>します。</div>
                 <button onClick={()=>downloadCSV("業者インポートテンプレート.csv",
-                  ["業者名 *","ステータス","都道府県","自治体名（複数はカンマ区切り）","担当者名","電話番号","備考","住所","許可種別（複数はカンマ区切り）","bee-net加入（○）"],
-                  [["株式会社クリーンA","加入済","福岡県","福岡市,北九州市","山田一郎","092-111-2222","","福岡県福岡市〇〇1-2-3","産廃収運,一廃収運","○"],
-                   ["環境サービスB","商談中","東京都","新宿区","","","来月契約予定","","家庭収運",""],
+                  ["業者名 *","ステータス","担当者名","電話番号","住所","許可（種別×エリア）","bee-net加入（○）","備考"],
+                  [["株式会社クリーンA","加入済","山田一郎","092-111-2222","福岡県福岡市〇〇1-2-3","一廃収運：福岡市／産廃収運：北九州市","○",""],
+                   ["環境サービスB","商談中","","","","家庭収運：新宿区","","来月契約予定"],
                    ["","","","","","","",""]])}
                   style={{background:"#7c3aed",border:"none",borderRadius:"0.625rem",color:"white",fontWeight:700,fontSize:"0.78rem",padding:"0.45rem 0.875rem",cursor:"pointer",fontFamily:"inherit"}}>
                   ⬇️ CSVテンプレートをダウンロード
@@ -23613,6 +23649,7 @@ ${orig}`})
                         <div key={i} style={{display:"flex",alignItems:"center",padding:"0.5rem 0.75rem",borderBottom:`1px solid ${C.borderLight}`,background:dup?"#fef9c3":"white",gap:"0.5rem"}}>
                           <span style={{flex:1,fontSize:"0.82rem",fontWeight:600}}>{r.name}</span>
                           <span style={{fontSize:"0.68rem",background:VENDOR_STATUS[r.status]?.bg||C.bg,color:VENDOR_STATUS[r.status]?.color||C.textMuted,borderRadius:999,padding:"0.1rem 0.4rem",fontWeight:700}}>{r.status}</span>
+                          {(r.pairPerms&&r.pairPerms.length>0)&&<span style={{fontSize:"0.62rem",color:"#9a3412",fontWeight:700}}>{r.pairPerms.slice(0,3).map(p=>p.type+"×"+p.area).join("・")}{r.pairPerms.length>3?"…":""}</span>}
                           {r.muniNames.length>0&&<span style={{fontSize:"0.65rem",color:C.textMuted}}>{r.muniNames.join("・")}</span>}
                           {dup&&<span style={{fontSize:"0.65rem",color:"#3730a3",background:"#e0e7ff",borderRadius:999,padding:"0.1rem 0.35rem"}}>書き足し</span>}
                         </div>
