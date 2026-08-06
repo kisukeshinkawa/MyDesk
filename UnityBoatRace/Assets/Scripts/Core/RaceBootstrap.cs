@@ -26,6 +26,8 @@ namespace BoatRace.Core
         void Awake()
         {
             Instance = this;
+            Application.targetFrameRate = 60;              // リリース衛生: フレームレート固定
+            Screen.sleepTimeout = SleepTimeout.NeverSleep; // レース観戦中の画面スリープ防止
             AudioKit.Init(gameObject); // 合成SE/BGM(音源ファイル不要)
             var race = gameObject.AddComponent<RaceManager>();
             race.venueId = venueId;

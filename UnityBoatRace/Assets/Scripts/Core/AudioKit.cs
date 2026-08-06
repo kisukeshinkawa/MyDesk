@@ -33,8 +33,17 @@ namespace BoatRace.Core
                 t => Mathf.Sin(t * 1150f * 6.28318f) * Mathf.Exp(-t * 34f) * 0.5f);
             whooshClip = Synth("whoosh", 0.38f,
                 t => Noise() * Mathf.Sin(3.1416f * t / 0.38f) * 0.8f, lowpass: 4);
-            hornClip = Synth("horn", 0.60f,
-                t => (Square(t, 440f) + Square(t, 554f) + Square(t, 659f)) / 3f * Mathf.Exp(-t * 3.2f) * 0.65f);
+            // 実艇のスタートホーン風: 415Hz基音+倍音の電子ホーンを1.1秒サステイン
+            hornClip = Synth("horn", 1.15f, t =>
+            {
+                float body = Mathf.Sin(t * 415f * 6.28318f)
+                           + 0.55f * Mathf.Sin(t * 830f * 6.28318f)
+                           + 0.25f * Mathf.Sin(t * 1245f * 6.28318f);
+                float vib = 1f + 0.05f * Mathf.Sin(t * 9f * 6.28318f);
+                float attack = Mathf.Min(1f, t / 0.03f);
+                float release = Mathf.Exp(-Mathf.Max(0f, t - 0.85f) * 9f);
+                return body * vib * attack * release * 0.33f;
+            });
             fanfareClip = Synth("fanfare", 0.92f, t =>
             {
                 float f = t < 0.22f ? 523.3f : t < 0.44f ? 659.3f : 784.0f;
@@ -136,30 +145,48 @@ namespace BoatRace.Core
             return clip;
         }
 
-        /// <summary>8秒ループの穏やかなコードBGM(C→F→Am→G)。</summary>
+        /// <summary>
+        /// 15秒ループのアップテンポなチップチューンBGM(128BPM・王道進行 C→G→Am→F。
+        /// パッド+8分ベース+16分アルペジオ+キック/ハット)。
+        /// </summary>
         static AudioClip MakeBgm()
         {
-            const float dur = 8f;
+            const float bpm = 128f;
+            float beat = 60f / bpm;
+            float dur = beat * 32f; // 8小節ちょうどでループ
             int n = (int)(SR * dur);
             var d = new float[n];
             float[][] chords =
             {
                 new[] { 261.6f, 329.6f, 392.0f },  // C
-                new[] { 220.0f, 261.6f, 349.2f },  // F(転回)
-                new[] { 220.0f, 261.6f, 329.6f },  // Am
                 new[] { 196.0f, 246.9f, 293.7f },  // G
+                new[] { 220.0f, 261.6f, 329.6f },  // Am
+                new[] { 174.6f, 220.0f, 261.6f },  // F
             };
+            float[] bassRoot = { 130.8f, 98.0f, 110.0f, 87.3f };
+            int[] arpSeq = { 0, 1, 2, 1, 0, 2, 1, 2 };
+            var drumRng = new System.Random(5);
             for (int i = 0; i < n; i++)
             {
                 float t = (float)i / SR;
-                int ci = (int)(t / 2f) % 4;
-                float lt = t % 2f;
-                float env = Mathf.Min(1f, lt / 0.15f) * Mathf.Min(1f, (2f - lt) / 0.30f);
-                float v = 0f;
-                foreach (var f in chords[ci]) v += Mathf.Sin(t * f * 6.28318f);
-                float bass = Mathf.Sin(t * chords[ci][0] * 0.5f * 6.28318f)
-                             * (lt % 0.5f < 0.28f ? 0.8f : 0.25f);
-                d[i] = (v / 3f * 0.45f + bass * 0.32f) * env * 0.45f;
+                int ci = (int)(t / (beat * 4f)) % 4;
+                // パッド(和音を柔らかく)
+                float pad = 0f;
+                foreach (var f in chords[ci]) pad += Mathf.Sin(t * f * 6.28318f);
+                pad *= 0.085f;
+                // ベース(8分の矩形。減衰で刻む)
+                float ph8 = (t / (beat * 0.5f)) % 1f;
+                float bass = Mathf.Sign(Mathf.Sin(t * bassRoot[ci] * 6.28318f))
+                             * Mathf.Exp(-ph8 * 5f) * 0.15f;
+                // アルペジオ(1オクターブ上を16分で駆ける)
+                int step = (int)(t / (beat * 0.5f)) % 8;
+                float af = chords[ci][arpSeq[step]] * 2f;
+                float arp = Mathf.Sin(t * af * 6.28318f) * Mathf.Exp(-ph8 * 6f) * 0.13f;
+                // ドラム: キック(拍頭)+ハット(8分)
+                float inBeat = (t / beat) % 1f;
+                float kick = Mathf.Sin(58f * 6.28318f * inBeat) * Mathf.Exp(-inBeat * 28f) * 0.42f;
+                float hat = ((float)drumRng.NextDouble() * 2f - 1f) * Mathf.Exp(-ph8 * 42f) * 0.07f;
+                d[i] = pad + bass + arp + kick + hat;
             }
             var clip = AudioClip.Create("bgm", n, 1, SR, false);
             clip.SetData(d, 0);

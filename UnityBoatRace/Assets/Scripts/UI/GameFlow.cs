@@ -15,7 +15,7 @@ namespace BoatRace.UI
     public class GameFlow : MonoBehaviour
     {
         /// <summary>ビルド識別子。画面右上に表示され、更新が届いたか一目で分かる。</summary>
-        public const string Build = "B35-全24場+全部入り";
+        public const string Build = "B36-BGM刷新+仕上げ";
 
         RaceManager race;
         ReplayManager replay;
@@ -2615,7 +2615,11 @@ namespace BoatRace.UI
             }
             else
             {
-                // 観戦レース: 舟券に集中できるレイアウト
+                // 観戦レース: 中継風「LIVE」演出+舟券に集中できるレイアウト
+                var live = UiKit.MakeChip(s.transform, "● LIVE",
+                    new Color(0.85f, 0.10f, 0.10f), Color.white, 16,
+                    new Vector2(0.02f, 0.905f), new Vector2(0.13f, 0.965f), Vector2.zero, Vector2.zero);
+                live.GetComponent<Image>().raycastTarget = false;
                 UiKit.MakeTag(s.transform, "舟券", UiKit.Yellow, UiKit.Border, 18,
                     new Vector2(0.02f, 0.135f), new Vector2(0.13f, 0.18f));
                 var wallet = UiKit.MakeChip(s.transform, $"BC {PlayerPrefs.GetInt("br_betcoin", 1000):N0}",
