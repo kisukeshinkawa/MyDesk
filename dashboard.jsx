@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-06-v332-portal-url"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-08-v341-sanpai-import"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -1166,6 +1166,145 @@ function licenseExpiryStatus(expiryDate) {
 const PERMIT_TYPES = [
   "家庭収運","事業収運","一廃収運","産廃収運","産廃処分","産廃収運処分"
 ];
+
+// 許可の権者レベル：一廃系(家庭/事業/一廃収運)は自治体(市区町村)単位、産廃系(産廃収運/処分/収運処分)は都道府県・政令市・中核市(=権者)単位
+const IPPAI_PERMITS = ["家庭収運","事業収運","一廃収運"];
+const SANPAI_PERMITS = ["産廃収運","産廃処分","産廃収運処分"];
+const isSanpaiPermit = (t) => SANPAI_PERMITS.includes(t);
+const permitAuthorityLevel = (t) => isSanpaiPermit(t) ? "権者" : "自治体";
+const SANPAI_AUTHORITIES = [
+  {name:"北海道",type:"道"},{name:"青森県",type:"県"},{name:"岩手県",type:"県"},{name:"宮城県",type:"県"},{name:"秋田県",type:"県"},{name:"山形県",type:"県"},{name:"福島県",type:"県"},{name:"茨城県",type:"県"},{name:"栃木県",type:"県"},{name:"群馬県",type:"県"},
+  {name:"埼玉県",type:"県"},{name:"千葉県",type:"県"},{name:"東京都",type:"都"},{name:"神奈川県",type:"県"},{name:"新潟県",type:"県"},{name:"富山県",type:"県"},{name:"石川県",type:"県"},{name:"福井県",type:"県"},{name:"山梨県",type:"県"},{name:"長野県",type:"県"},
+  {name:"岐阜県",type:"県"},{name:"静岡県",type:"県"},{name:"愛知県",type:"県"},{name:"三重県",type:"県"},{name:"滋賀県",type:"県"},{name:"京都府",type:"府"},{name:"大阪府",type:"府"},{name:"兵庫県",type:"県"},{name:"奈良県",type:"県"},{name:"和歌山県",type:"県"},
+  {name:"鳥取県",type:"県"},{name:"島根県",type:"県"},{name:"岡山県",type:"県"},{name:"広島県",type:"県"},{name:"山口県",type:"県"},{name:"徳島県",type:"県"},{name:"香川県",type:"県"},{name:"愛媛県",type:"県"},{name:"高知県",type:"県"},{name:"福岡県",type:"県"},
+  {name:"佐賀県",type:"県"},{name:"長崎県",type:"県"},{name:"熊本県",type:"県"},{name:"大分県",type:"県"},{name:"宮崎県",type:"県"},{name:"鹿児島県",type:"県"},{name:"沖縄県",type:"県"},{name:"札幌市",type:"政"},{name:"仙台市",type:"政"},{name:"さいたま市",type:"政"},
+  {name:"千葉市",type:"政"},{name:"横浜市",type:"政"},{name:"川崎市",type:"政"},{name:"相模原市",type:"政"},{name:"新潟市",type:"政"},{name:"静岡市",type:"政"},{name:"浜松市",type:"政"},{name:"名古屋市",type:"政"},{name:"京都市",type:"政"},{name:"大阪市",type:"政"},
+  {name:"堺市",type:"政"},{name:"神戸市",type:"政"},{name:"岡山市",type:"政"},{name:"広島市",type:"政"},{name:"北九州市",type:"政"},{name:"福岡市",type:"政"},{name:"熊本市",type:"政"},{name:"旭川市",type:"中"},{name:"函館市",type:"中"},{name:"青森市",type:"中"},
+  {name:"八戸市",type:"中"},{name:"盛岡市",type:"中"},{name:"秋田市",type:"中"},{name:"山形市",type:"中"},{name:"郡山市",type:"中"},{name:"いわき市",type:"中"},{name:"福島市",type:"中"},{name:"水戸市",type:"中"},{name:"宇都宮市",type:"中"},{name:"前橋市",type:"中"},
+  {name:"高崎市",type:"中"},{name:"川越市",type:"中"},{name:"越谷市",type:"中"},{name:"川口市",type:"中"},{name:"船橋市",type:"中"},{name:"柏市",type:"中"},{name:"八王子市",type:"中"},{name:"横須賀市",type:"中"},{name:"富山市",type:"中"},{name:"金沢市",type:"中"},
+  {name:"福井市",type:"中"},{name:"甲府市",type:"中"},{name:"長野市",type:"中"},{name:"松本市",type:"中"},{name:"岐阜市",type:"中"},{name:"豊田市",type:"中"},{name:"豊橋市",type:"中"},{name:"岡崎市",type:"中"},{name:"一宮市",type:"中"},{name:"大津市",type:"中"},
+  {name:"高槻市",type:"中"},{name:"東大阪市",type:"中"},{name:"豊中市",type:"中"},{name:"枚方市",type:"中"},{name:"八尾市",type:"中"},{name:"寝屋川市",type:"中"},{name:"吹田市",type:"中"},{name:"姫路市",type:"中"},{name:"西宮市",type:"中"},{name:"尼崎市",type:"中"},
+  {name:"明石市",type:"中"},{name:"奈良市",type:"中"},{name:"和歌山市",type:"中"},{name:"鳥取市",type:"中"},{name:"松江市",type:"中"},{name:"倉敷市",type:"中"},{name:"福山市",type:"中"},{name:"呉市",type:"中"},{name:"下関市",type:"中"},{name:"高松市",type:"中"},
+  {name:"松山市",type:"中"},{name:"高知市",type:"中"},{name:"久留米市",type:"中"},{name:"長崎市",type:"中"},{name:"佐世保市",type:"中"},{name:"大分市",type:"中"},{name:"宮崎市",type:"中"},{name:"鹿児島市",type:"中"},{name:"那覇市",type:"中"},
+]; // 産廃許可の権者(129) type: 都/道/府/県/政=政令指定都市/中=中核市
+const SANPAI_CITY_NAMES = new Set(SANPAI_AUTHORITIES.filter(a=>a.type==="政"||a.type==="中").map(a=>a.name)); // 産廃権者の市(政令市/中核市)名
+
+// 許可を「(自治体 or 権者) × 許可種別」のペアで登録する統合ピッカー
+function PermitPairPicker({value, onChange, munis, prefs}){
+  const list = value||[];
+  const [type,setType]=React.useState("一廃収運");
+  const [pref,setPref]=React.useState("");
+  const [q,setQ]=React.useState("");
+  const [checked,setChecked]=React.useState({});
+  const sanpai = isSanpaiPermit(type);
+  const keyOf=(id,name)=> sanpai? ("A:"+name) : ("M:"+id);
+  const has=(id,name)=> list.some(p=> p.type===type && (sanpai? p.area===name : String(p.areaId)===String(id)));
+  let opts=[];
+  if(sanpai){
+    const qq=q.trim();
+    opts=(qq? SANPAI_AUTHORITIES.filter(a=>a.name.indexOf(qq)>=0) : SANPAI_AUTHORITIES).map(a=>({id:null,name:a.name,tag:a.type}));
+  } else {
+    let ms=munis||[]; const qq=q.trim();
+    if(pref) ms=ms.filter(m=>String(m.prefectureId)===String(pref));
+    if(qq) ms=ms.filter(m=>String(m.name||"").indexOf(qq)>=0);
+    if(!pref && !qq) ms=[];
+    opts=ms.slice(0,400).map(m=>({id:m.id,name:m.name,tag:""}));
+  }
+  const isChk=(id,name)=>!!checked[keyOf(id,name)];
+  const toggle=(id,name)=>setChecked(c=>({...c,[keyOf(id,name)]:!c[keyOf(id,name)]}));
+  const selCount=opts.filter(o=>isChk(o.id,o.name)&&!has(o.id,o.name)).length;
+  const register=()=>{ const adds=opts.filter(o=>isChk(o.id,o.name)&&!has(o.id,o.name)).map(o=>({type,area:o.name,areaId:sanpai?null:o.id})); if(adds.length) onChange([...list,...adds]); setChecked({}); };
+  const selectAllShown=()=>{ const c={...checked}; opts.forEach(o=>{ if(!has(o.id,o.name)) c[keyOf(o.id,o.name)]=true; }); setChecked(c); };
+  const removeAt=(i)=>onChange(list.filter((_,idx)=>idx!==i));
+  const groups={}; list.forEach((p,idx)=>{ (groups[p.type]=groups[p.type]||[]).push({...p,idx}); });
+  return (
+    <div style={{border:`1px solid ${C.border}`,borderRadius:10,padding:"0.6rem",background:"#fbfcfe"}}>
+      <div style={{display:"flex",gap:"0.4rem",alignItems:"center",flexWrap:"wrap",marginBottom:"0.45rem"}}>
+        <span style={{fontSize:"0.72rem",fontWeight:800,color:C.textSub}}>① 許可種別</span>
+        <select value={type} onChange={e=>{setType(e.target.value);setChecked({});setQ("");setPref("");}} style={{padding:"0.4rem 0.5rem",borderRadius:8,border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.8rem",background:"white",fontWeight:700}}>
+          <optgroup label="一廃系(自治体単位)">{IPPAI_PERMITS.map(p=><option key={p} value={p}>🏛 {p}</option>)}</optgroup>
+          <optgroup label="産廃系(権者単位)">{SANPAI_PERMITS.map(p=><option key={p} value={p}>🏭 {p}</option>)}</optgroup>
+        </select>
+        <span style={{fontSize:"0.66rem",color:C.textMuted}}>{sanpai?"→ ② 権者(129)を複数選択":"→ ② 自治体を複数選択"}</span>
+      </div>
+      <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap",alignItems:"center",marginBottom:"0.4rem"}}>
+        {!sanpai&&(
+          <select value={pref} onChange={e=>{setPref(e.target.value);setChecked({});}} style={{padding:"0.4rem 0.5rem",borderRadius:8,border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",background:"white"}}>
+            <option value="">都道府県を選択</option>
+            {(prefs||[]).map(p=><option key={p.id} value={String(p.id)}>{p.name}</option>)}
+          </select>
+        )}
+        <input value={q} onChange={e=>{setQ(e.target.value);setChecked({});}} placeholder={sanpai?"権者で絞り込み(空欄=全129)":"自治体名で絞り込み"} style={{flex:"1 1 150px",minWidth:120,padding:"0.4rem 0.6rem",borderRadius:8,border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.78rem",boxSizing:"border-box"}}/>
+        <button type="button" onClick={selectAllShown} disabled={!opts.length} style={{padding:"0.4rem 0.55rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.7rem",cursor:opts.length?"pointer":"not-allowed",fontFamily:"inherit",whiteSpace:"nowrap"}}>表示を全選択</button>
+        <button type="button" onClick={register} disabled={!selCount} style={{padding:"0.4rem 0.7rem",borderRadius:8,border:"none",background:selCount?C.accent:"#e2e8f0",color:selCount?"white":"#94a3b8",fontWeight:800,fontSize:"0.72rem",cursor:selCount?"pointer":"not-allowed",fontFamily:"inherit",whiteSpace:"nowrap"}}>{`選択${selCount?`(${selCount})`:""}を「${type}」で登録`}</button>
+      </div>
+      <div style={{maxHeight:190,overflowY:"auto",border:`1px solid ${C.border}`,borderRadius:8,padding:"0.25rem 0.35rem",display:"flex",flexWrap:"wrap",background:"white"}}>
+        {opts.length===0 && <span style={{fontSize:"0.72rem",color:C.textMuted,padding:"0.3rem"}}>{sanpai?"権者を絞り込むか、そのまま下の一覧から選択":"都道府県を選ぶか、自治体名で検索してください"}</span>}
+        {opts.map(o=>{ const already=has(o.id,o.name); return (
+          <label key={o.id!=null?("m"+o.id):("a"+o.name)} title={o.name} style={{display:"inline-flex",alignItems:"center",gap:"0.3rem",padding:"0.15rem 0.2rem",fontSize:"0.74rem",width:"calc(50% - 0.4rem)",boxSizing:"border-box",opacity:already?0.5:1,cursor:already?"default":"pointer"}}>
+            <input type="checkbox" checked={already||isChk(o.id,o.name)} disabled={already} onChange={()=>toggle(o.id,o.name)} style={{accentColor:C.accent,flexShrink:0}}/>
+            <span style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{o.name}{o.tag?<span style={{color:C.textMuted,fontSize:"0.58rem"}}> [{o.tag}]</span>:null}{already?<span style={{color:C.accent,fontSize:"0.58rem"}}> ✓</span>:null}</span>
+          </label>
+        ); })}
+      </div>
+      <div style={{marginTop:"0.5rem"}}>
+        {list.length===0 && <span style={{fontSize:"0.72rem",color:C.textMuted}}>まだ許可がありません。① 種別 → ② エリアを選んで「登録」してください。</span>}
+        {Object.keys(groups).map(t=>(
+          <div key={t} style={{marginBottom:"0.35rem"}}>
+            <span style={{fontSize:"0.66rem",fontWeight:800,color:isSanpaiPermit(t)?"#9a3412":C.accentDark}}>{isSanpaiPermit(t)?"🏭":"🏛"} {t}（{groups[t].length}）</span>
+            <div style={{display:"flex",flexWrap:"wrap",gap:"0.3rem",marginTop:"0.15rem"}}>
+              {groups[t].map(p=>(
+                <span key={p.idx} style={{display:"inline-flex",alignItems:"center",gap:"0.25rem",background:isSanpaiPermit(t)?"#FFE8CF":C.accentBg,color:isSanpaiPermit(t)?"#9a3412":C.accentDark,border:`1px solid ${isSanpaiPermit(t)?"#FFC07D":"#bfdbfe"}`,borderRadius:999,padding:"0.15rem 0.5rem",fontSize:"0.7rem",fontWeight:700}}>
+                  {p.area}
+                  <button type="button" onClick={()=>removeAt(p.idx)} style={{background:"none",border:"none",color:"inherit",cursor:"pointer",fontFamily:"inherit",fontWeight:800,padding:0,lineHeight:1}}>×</button>
+                </span>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// 産廃の許可を「権者(129)×産廃種別」のペアで登録するピッカー
+function SanpaiPermitPicker({value, onChange}){
+  const [q,setQ]=React.useState("");
+  const [type,setType]=React.useState("産廃収運");
+  const list = value||[];
+  const add=(authName)=>{ if(!authName)return; if(list.some(e=>e.auth===authName&&e.type===type))return; onChange([...list,{auth:authName,type:type}]); setQ(""); };
+  const remove=(i)=>onChange(list.filter((_,idx)=>idx!==i));
+  const matches = q.trim()? SANPAI_AUTHORITIES.filter(a=>a.name.indexOf(q.trim())>=0).slice(0,12) : [];
+  return (
+    <div>
+      <div style={{display:"flex",gap:"0.4rem",marginBottom:"0.45rem",flexWrap:"wrap"}}>
+        <select value={type} onChange={e=>setType(e.target.value)} style={{padding:"0.4rem 0.5rem",borderRadius:8,border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.8rem",background:"white"}}>
+          {SANPAI_PERMITS.map(p=><option key={p} value={p}>{p}</option>)}
+        </select>
+        <div style={{position:"relative",flex:"1 1 220px",minWidth:170}}>
+          <input value={q} onChange={e=>setQ(e.target.value)} placeholder="権者を検索（都道府県/政令市/中核市）"
+            style={{width:"100%",padding:"0.4rem 0.6rem",borderRadius:8,border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.8rem",boxSizing:"border-box"}}/>
+          {matches.length>0&&(
+            <div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:60,background:"white",border:`1px solid ${C.border}`,borderRadius:8,boxShadow:C.shadowMd,marginTop:4,maxHeight:240,overflowY:"auto"}}>
+              {matches.map(a=>(
+                <button key={a.name} type="button" onClick={()=>add(a.name)} style={{display:"block",width:"100%",textAlign:"left",padding:"0.4rem 0.6rem",border:"none",borderBottom:`1px solid ${C.borderLight}`,background:"white",cursor:"pointer",fontFamily:"inherit",fontSize:"0.78rem",color:C.text}}>{a.name}<span style={{color:C.textMuted,fontSize:"0.66rem"}}> [{a.type}]</span></button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:"0.35rem"}}>
+        {list.length===0&&<span style={{fontSize:"0.72rem",color:C.textMuted}}>産廃の許可がある権者を追加（例：産廃収運 × 埼玉県／中核市も可）</span>}
+        {list.map((e,i)=>(
+          <span key={i} style={{display:"inline-flex",alignItems:"center",gap:"0.3rem",background:"#FFE8CF",color:"#9a3412",border:"1px solid #FFC07D",borderRadius:999,padding:"0.2rem 0.55rem",fontSize:"0.72rem",fontWeight:700}}>
+            🏭 {e.type} × {e.auth}
+            <button type="button" onClick={()=>remove(i)} style={{background:"none",border:"none",color:"#9a3412",cursor:"pointer",fontFamily:"inherit",fontWeight:800,padding:0,lineHeight:1}}>×</button>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 const DUSTALK_STATUS = {
   "展開":   { color:"#009122", bg:"#d1fae5", icon:"✅" },
@@ -5210,6 +5349,7 @@ function GSheetImportWizard({ data, onSave, onClose, prefs, munis, vendors }) {
   const [err, setErr] = React.useState("");
   const [progress, setProgress] = React.useState("");
   const [importResult, setImportResult] = React.useState(null);
+  const [fillMissing, setFillMissing] = React.useState(true); // 不足補完モード（既存業者の空欄のみ補完＋メモ追記・既存値は上書きしない）
 
   // URLからシートIDを抽出
   const extractId = (s) => {
@@ -5344,7 +5484,7 @@ function GSheetImportWizard({ data, onSave, onClose, prefs, munis, vendors }) {
   const doImport = () => {
     const id = extractId(sheetId);
     let nd = { ...data };
-    let newMuniCount = 0, newVendorCount = 0, skipMuni = 0, skipVendor = 0;
+    let newMuniCount = 0, newVendorCount = 0, skipMuni = 0, skipVendor = 0, filledVendor = 0, memoAdded = 0;
 
     // 都道府県を探す or 作成
     let pref = (nd.prefectures || []).find(p => p.name === prefName || p.name === prefName + "県" || p.name === prefName + "府" || p.name === prefName + "都" || p.name === prefName + "道");
@@ -5405,21 +5545,30 @@ function GSheetImportWizard({ data, onSave, onClose, prefs, munis, vendors }) {
           nd = { ...nd, vendors: [...(nd.vendors || []), newVendor] };
           newVendorCount++;
         } else {
-          // 既存業者に自治体IDを追加（紐付け）
-          if (!(existVendor.municipalityIds || []).includes(muni.id)) {
-            nd = { ...nd, vendors: (nd.vendors || []).map(ev =>
-              ev.id === existVendor.id
-                ? { ...ev, municipalityIds: [...(ev.municipalityIds || []), muni.id] }
-                : ev
-            )};
+          // 既存業者：自治体紐付け＋（不足補完モードなら空欄のみ補完・メモ追記）。既存の値は絶対に上書きしない
+          const patch = {};
+          if (!(existVendor.municipalityIds || []).includes(muni.id)) patch.municipalityIds = [...(existVendor.municipalityIds || []), muni.id];
+          let didFill = false;
+          if (fillMissing) {
+            if (!normStr(existVendor.phone) && v.phone) { patch.phone = v.phone; didFill = true; }
+            if (!normStr(existVendor.email) && v.email) { patch.email = v.email; didFill = true; }
+            if (!normStr(existVendor.status) && v.status) { patch.status = v.status; didFill = true; }
+            if (v.memo) {
+              const dup = (existVendor.memos || []).some(m => normStr(m.text) === normStr(v.memo));
+              if (!dup) { patch.memos = [...(existVendor.memos || []), { id: Date.now() + Math.random(), text: v.memo, userId: null, date: new Date().toISOString() }]; memoAdded++; didFill = true; }
+            }
           }
+          if (Object.keys(patch).length) {
+            nd = { ...nd, vendors: (nd.vendors || []).map(ev => ev.id === existVendor.id ? { ...ev, ...patch } : ev) };
+          }
+          if (didFill) filledVendor++;
           skipVendor++;
         }
       });
     });
 
     onSave(nd);
-    setImportResult({ newMuniCount, newVendorCount, skipMuni, skipVendor });
+    setImportResult({ newMuniCount, newVendorCount, skipMuni, skipVendor, filledVendor, memoAdded });
     setStep(3);
   };
 
@@ -5524,6 +5673,10 @@ function GSheetImportWizard({ data, onSave, onClose, prefs, munis, vendors }) {
 
           {err&&<div style={{background:"#fee2e2",borderRadius:"0.625rem",padding:"0.625rem",fontSize:"0.78rem",color:"#991b1b",marginBottom:"0.875rem"}}>{err}</div>}
 
+          <label style={{display:"flex",alignItems:"flex-start",gap:"0.5rem",background:"#F2F7FF",border:"1px solid #bfdbfe",borderRadius:8,padding:"0.6rem 0.75rem",marginBottom:"0.875rem",fontSize:"0.76rem",color:"#295FA6",lineHeight:1.6,cursor:"pointer"}}>
+            <input type="checkbox" checked={fillMissing} onChange={e=>setFillMissing(e.target.checked)} style={{marginTop:2,flexShrink:0}}/>
+            <span><b>既存業者に不足情報を補完する</b>（空欄の電話・メール・ステータスのみ埋め、メモは追記）。<b>既存の値は上書きしません</b>。OFFにすると既存業者は自治体の紐付けだけ行います。</span>
+          </label>
           <div style={{display:"flex",gap:"0.625rem"}}>
             <button onClick={()=>setStep(0)}
               style={{flex:1,padding:"0.75rem",borderRadius:"8px",border:"1.5px solid #e2e8f0",background:"white",color:"#64748b",fontWeight:700,cursor:"pointer",fontFamily:"inherit",fontSize:"0.85rem"}}>
@@ -5548,6 +5701,8 @@ function GSheetImportWizard({ data, onSave, onClose, prefs, munis, vendors }) {
               ["🏢 新規業者", importResult.newVendorCount+"件追加"],
               ["⏭ 既存自治体", importResult.skipMuni+"件スキップ"],
               ["⏭ 既存業者", importResult.skipVendor+"件（自治体紐付け）"],
+              ["🩹 不足補完", (importResult.filledVendor||0)+"件（空欄のみ）"],
+              ["📝 メモ追記", (importResult.memoAdded||0)+"件"],
             ].map(([k,v])=>(
               <div key={k} style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:"8px",padding:"0.625rem 0.5rem",textAlign:"center"}}>
                 <div style={{fontSize:"0.72rem",color:"#64748b",marginBottom:"0.15rem"}}>{k}</div>
@@ -17612,6 +17767,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   React.useEffect(()=>{ localStorage.setItem("md_vendFilterStatuses", JSON.stringify(vendFilterStatuses||[])); }, [vendFilterStatuses]);
   const [vendFilterPermits, setVendFilterPermits] = useState(()=>_parseMultiFilter("md_vendFilterPermits"));
   React.useEffect(()=>{ localStorage.setItem("md_vendFilterPermits", JSON.stringify(vendFilterPermits||[])); }, [vendFilterPermits]);
+  const [vendFilterSanpaiAuth, setVendFilterSanpaiAuth] = useState(()=>_parseMultiFilter("md_vendFilterSanpaiAuth"));
+  React.useEffect(()=>{ localStorage.setItem("md_vendFilterSanpaiAuth", JSON.stringify(vendFilterSanpaiAuth||[])); }, [vendFilterSanpaiAuth]);
   const [vendFilterOperating, setVendFilterOperating] = useState(()=>_parseMultiFilter("md_vendFilterOperating"));
   React.useEffect(()=>{ localStorage.setItem("md_vendFilterOperating", JSON.stringify(vendFilterOperating||[])); }, [vendFilterOperating]);
   const [vendFilterBeeNets, setVendFilterBeeNets] = useState(()=>_parseMultiFilter("md_vendFilterBeeNets"));
@@ -19639,6 +19796,8 @@ ${recentLogs}
     munis.forEach(mu => m.set(mu.id, String(mu.prefectureId)));
     return m;
   }, [munis]);
+  const prefIdToName = React.useMemo(()=>{ const m=new Map(); (prefs||[]).forEach(p=>m.set(String(p.id), p.name)); return m; }, [prefs]);
+  const muniIdToName = React.useMemo(()=>{ const m=new Map(); (munis||[]).forEach(mu=>m.set(mu.id, mu.name)); return m; }, [munis]);
 
   const filteredVendors = React.useMemo(() => {
     return vendors.filter(v=>{
@@ -19665,6 +19824,16 @@ ${recentLogs}
       if(vendFilterPermits.length > 0){
         const vp = v.permitTypes||[];
         if(!vendFilterPermits.every(fp => vp.includes(fp))) return false;
+      }
+      // 産廃権者(129): 業者の権者集合(自治体の都道府県＋政令市/中核市名)に選択いずれかが含まれるか(OR)
+      if(vendFilterSanpaiAuth.length > 0){
+        const aset = new Set();
+        const ids0 = v.municipalityIds||[];
+        for(let i=0;i<ids0.length;i++){
+          const pn = prefIdToName.get(muniIdToPrefIdMap.get(ids0[i])); if(pn) aset.add(pn);
+          const mn = muniIdToName.get(ids0[i]); if(mn && SANPAI_CITY_NAMES.has(mn)) aset.add(mn);
+        }
+        if(!vendFilterSanpaiAuth.some(a => aset.has(a))) return false;
       }
       // 稼働状況（○×）: 選択自治体×選択許可（未選択なら業者の保有分すべて）で判定。
       //   op_yes=その範囲で稼働(○)がある業者 / op_no=非稼働(×)がある業者
@@ -19703,7 +19872,7 @@ ${recentLogs}
       }
       return true;
     });
-  }, [vendors, vendFilterPrefs, vendFilterMunis, vendFilterStatuses, vendFilterPermits, vendFilterOperating, vendFilterBeeNets, vendFilterAssignees, currentUser?.id, muniIdToPrefIdMap]);
+  }, [vendors, vendFilterPrefs, vendFilterMunis, vendFilterStatuses, vendFilterPermits, vendFilterSanpaiAuth, vendFilterOperating, vendFilterBeeNets, vendFilterAssignees, currentUser?.id, muniIdToPrefIdMap, prefIdToName, muniIdToName]);
   const _normVSearch = s => (s||"").replace(/[\s\u3000]/g,"").toLowerCase();
   const searchedVendors = React.useMemo(
     () => debouncedVendSearch ? filteredVendors.filter(v=>_normVSearch(v.name).includes(_normVSearch(debouncedVendSearch))) : null,
@@ -19949,6 +20118,13 @@ ${recentLogs}
     save({...data,municipalities:munis.filter(m=>m.id!==id),vendors:vendors.map(v=>({...v,municipalityIds:(v.municipalityIds||[]).filter(mid=>mid!==id)}))});
     setMuniScreen("top");setActiveMuni(null);
   };
+  const _vendorPermits = (v)=>{
+    if(Array.isArray(v.permits) && v.permits.length) return v.permits;
+    const out=[];
+    (v.municipalityIds||[]).forEach(id=>{ const m=(munis||[]).find(x=>String(x.id)===String(id)); if(m) out.push({type:"一廃収運",area:m.name,areaId:m.id}); });
+    (v.sanpaiPermits||[]).forEach(sp=>{ if(sp&&sp.auth&&sp.type) out.push({type:sp.type,area:sp.auth,areaId:null}); });
+    return out;
+  };
   const saveVendor=(skipDupCheck=false)=>{
     if(!form.name?.trim())return;
     if(!form.id && !skipDupCheck){
@@ -19975,10 +20151,14 @@ ${recentLogs}
         });return;}
     }
     const today = new Date().toISOString().slice(0,10);
+    const _pp = Array.isArray(form.permits)?form.permits:null;
+    const _muniIds = _pp ? Array.from(new Set(_pp.filter(p=>p.areaId!=null).map(p=>p.areaId))) : (form.municipalityIds||[]);
+    const _permTypes = _pp ? Array.from(new Set(_pp.map(p=>p.type))) : (form.permitTypes||[]);
+    const _sanpaiP = _pp ? _pp.filter(p=>isSanpaiPermit(p.type)).map(p=>({auth:p.area,type:p.type})) : (form.sanpaiPermits||[]);
     let nd={...data};
     if(form.id){
       const old=vendors.find(v=>v.id===form.id);
-      nd={...nd,vendors:vendors.map(v=>v.id===form.id?{...v,...form,updatedAt:today}:v)};
+      nd={...nd,vendors:vendors.map(v=>v.id===form.id?{...v,...form,municipalityIds:_muniIds,permitTypes:_permTypes,sanpaiPermits:_sanpaiP,updatedAt:today}:v)};
       const fields=[["status","ステータス"]];
       fields.forEach(([f,label])=>{
         if(old&&old[f]!==form[f]) nd=addChangeLog(nd,{entityType:"業者",entityId:form.id,entityName:form.name,field:label,oldVal:old[f],newVal:form[f]});
@@ -19987,7 +20167,7 @@ ${recentLogs}
       const added=newIds.filter(id=>!prevIds.includes(id));
       if(added.length) nd=addNotif(nd,{type:"sales_assign",entityType:"vendor",entityId:form.id,title:`「${form.name}」の担当者に追加されました`,body:"業者",toUserIds:added,fromUserId:currentUser?.id});
     } else {
-      const newVend={id:Date.now(),...form,status:form.status||"未接触",municipalityIds:form.municipalityIds||[],assigneeIds:form.assigneeIds||[],memos:[],chat:[],approachLogs:[],createdAt:new Date().toISOString(),updatedAt:today};
+      const newVend={id:Date.now(),...form,status:form.status||"未接触",municipalityIds:_muniIds,permitTypes:_permTypes,sanpaiPermits:_sanpaiP,assigneeIds:form.assigneeIds||[],memos:[],chat:[],approachLogs:[],createdAt:new Date().toISOString(),updatedAt:today};
       nd={...nd,vendors:[...vendors,newVend]};
       nd=addChangeLog(nd,{entityType:"業者",entityId:newVend.id,entityName:newVend.name,field:"登録",oldVal:"",newVal:"新規登録"});
       save(nd); setSheet(null);
@@ -21623,8 +21803,8 @@ ${orig}`})
             </div>
           );
         })()}
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.75rem",gap:"0.5rem"}}>
-          <div style={{position:"relative",flex:1}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.75rem",gap:"0.5rem",flexWrap:"wrap"}}>
+          <div style={{position:"relative",flex:"1 1 220px",minWidth:180}}>
             <span style={{position:"absolute",left:"0.625rem",top:"50%",transform:"translateY(-50%)",color:C.textMuted,fontSize:"0.85rem",pointerEvents:"none"}}>🔍</span>
             <input value={compSearch} onChange={e=>setCompSearch(e.target.value)} placeholder="企業名で検索"
               style={{width:"100%",padding:"0.5rem 0.5rem 0.5rem 2rem",borderRadius:"8px",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
@@ -22090,7 +22270,7 @@ ${orig}`})
                   {v.beeNet&&<span style={{fontSize:"0.62rem",background:"#F2F7FF",color:"#1563CA",padding:"0.1rem 0.45rem",borderRadius:999,fontWeight:700,border:"1px solid #bfdbfe"}}>🔷 bee-net</span>}
                 </div>
               </div>
-              <button onClick={()=>{setForm({...v});setSheet("editVendor");}} title="編集"
+              <button onClick={()=>{setForm({...v, permits:_vendorPermits(v)});setSheet("editVendor");}} title="編集"
                 style={{background:"white",border:`1px solid ${C.border}`,borderRadius:"8px",padding:"0.3rem 0.55rem",cursor:"pointer",fontSize:"0.8rem",color:C.textSub,flexShrink:0}}>✏️</button>
             </div>
             {/* 担当者 + 電話 */}
@@ -22135,14 +22315,20 @@ ${orig}`})
               </div>
               {(v.grade||0)>0&&<span style={{fontSize:"0.66rem",fontWeight:700,color:"#b45309"}}>{VENDOR_GRADE_LABEL[v.grade]}</span>}
             </div>
-            {/* 許可エリア（タグ） */}
-            {vmunis.length>0&&(
-              <div style={{display:"flex",alignItems:"center",gap:"0.4rem",flexWrap:"wrap",marginBottom:"0.5rem"}}>
-                <span style={{fontSize:"0.6rem",fontWeight:700,color:C.textSub,letterSpacing:"0.04em"}}>許可エリア</span>
-                {vmunis.slice(0,8).map(m=><span key={m.id} style={{fontSize:"0.65rem",background:C.accentBg,color:C.accent,padding:"0.1rem 0.45rem",borderRadius:8,fontWeight:600}}>{m.name}</span>)}
-                {vmunis.length>8&&<span style={{fontSize:"0.62rem",color:C.textMuted}}>+{vmunis.length-8}</span>}
+            {/* 許可（種別 × エリア）ペア表示：種別ごとに対応エリアのチップを並べて「くっつけて」表示 */}
+            {(()=>{ const pp=_vendorPermits(v); if(!pp.length) return null; const groups={}; pp.forEach(p=>{(groups[p.type]=groups[p.type]||[]).push(p);});
+              return (
+              <div style={{marginBottom:"0.5rem"}}>
+                <div style={{fontSize:"0.6rem",fontWeight:700,color:C.textSub,letterSpacing:"0.04em",marginBottom:"0.3rem"}}>許可（種別 × エリア）</div>
+                {Object.keys(groups).map(t=>{ const sp=isSanpaiPermit(t); const arr=groups[t]; return (
+                  <div key={t} style={{display:"flex",alignItems:"center",gap:"0.35rem",flexWrap:"wrap",marginBottom:"0.25rem"}}>
+                    <span style={{fontSize:"0.62rem",fontWeight:800,color:sp?"#9a3412":C.accentDark,whiteSpace:"nowrap"}}>{sp?"🏭":"🏛"} {t}</span>
+                    {arr.slice(0,12).map((p,i)=><span key={i} style={{fontSize:"0.64rem",background:sp?"#FFE8CF":C.accentBg,color:sp?"#9a3412":C.accentDark,padding:"0.1rem 0.45rem",borderRadius:8,fontWeight:600}}>{p.area}</span>)}
+                    {arr.length>12&&<span style={{fontSize:"0.62rem",color:C.textMuted}}>+{arr.length-12}</span>}
+                  </div>
+                ); })}
               </div>
-            )}
+              ); })()}
             {/* 許可別営業状況（保有している許可のみ表示） */}
             {(()=>{
               const heldPermits = PERMIT_TYPES.filter(pt=>(v.permitTypes||[]).includes(pt));
@@ -22306,9 +22492,7 @@ ${orig}`})
             <Sheet title="業者を編集" onClose={()=>setSheet(null)}>
               <FieldLbl label="業者名 *"><Input value={form.name||""} onChange={e=>setForm({...form,name:e.target.value})} autoFocus/></FieldLbl>
               <FieldLbl label="ステータス"><StatusPicker map={VENDOR_STATUS} value={form.status||"未接触"} onChange={s=>setForm({...form,status:s})}/></FieldLbl>
-              <FieldLbl label="許可エリア（自治体）">
-                {MuniPicker({ids:form.municipalityIds||[],onChange:ids=>setForm({...form,municipalityIds:ids})})}
-              </FieldLbl>
+              <FieldLbl label="許可（① 種別 → ② 自治体/権者 を複数選択して登録）"><PermitPairPicker value={form.permits||[]} onChange={p=>setForm({...form,permits:p})} munis={munis} prefs={prefs}/></FieldLbl>
               <FieldLbl label="担当者">{AssigneePicker({ids:form.assigneeIds||[],onChange:ids=>setForm({...form,assigneeIds:ids})})}</FieldLbl>
               <FieldLbl label="代表電話番号（任意）"><Input value={form.phone||""} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="092-xxx-xxxx" type="tel"/></FieldLbl>
               {/* 先方担当者リスト */}
@@ -22362,19 +22546,6 @@ ${orig}`})
               </div>
               <FieldLbl label="郵便番号（任意）"><Input value={form.zip||""} onChange={e=>setForm({...form,zip:e.target.value})} placeholder="例: 100-0001"/></FieldLbl>
             <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
-              <FieldLbl label="許可種別（複数選択可）">
-                <div style={{display:"flex",flexWrap:"wrap",gap:"0.4rem",padding:"0.5rem",background:"#f8fafc",borderRadius:"8px",border:"1px solid #e2e8f0"}}>
-                  {PERMIT_TYPES.map(p=>{
-                    const checked=(form.permitTypes||[]).includes(p);
-                    return (
-                      <label key={p} style={{display:"flex",alignItems:"center",gap:"0.3rem",cursor:"pointer",padding:"0.25rem 0.5rem",borderRadius:"0.5rem",background:checked?"#ede9fe":"white",border:`1px solid ${checked?"#7c3aed":"#e2e8f0"}`,transition:"all 0.15s"}}>
-                        <input type="checkbox" checked={checked} onChange={()=>{const cur=form.permitTypes||[];setForm({...form,permitTypes:checked?cur.filter(x=>x!==p):[...cur,p]});}} style={{accentColor:"#7c3aed",width:14,height:14}}/>
-                        <span style={{fontSize:"0.75rem",fontWeight:checked?700:400,color:checked?"#5b21b6":"#374151"}}>{p}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </FieldLbl>
               <FieldLbl label="bee-net加入">
                 <label style={{display:"flex",alignItems:"center",gap:"0.625rem",cursor:"pointer",padding:"0.625rem 0.875rem",borderRadius:"8px",background:form.beeNet?"#F2F7FF":"#f8fafc",border:`1.5px solid ${form.beeNet?"#0070D4":"#e2e8f0"}`,transition:"all 0.15s"}}>
                   <input type="checkbox" checked={!!form.beeNet} onChange={e=>setForm({...form,beeNet:e.target.checked})} style={{width:18,height:18,accentColor:"#0070D4",cursor:"pointer"}}/>
@@ -22445,7 +22616,7 @@ ${orig}`})
         })()}
         {/* 絞り込みフィルタ（複数選択化） */}
         {(()=>{
-          const hasFilter = vendFilterPrefs.length||vendFilterMunis.length||vendFilterStatuses.length||vendFilterPermits.length||vendFilterOperating.length||vendFilterBeeNets.length||vendFilterAssignees.length;
+          const hasFilter = vendFilterPrefs.length||vendFilterMunis.length||vendFilterStatuses.length||vendFilterPermits.length||vendFilterSanpaiAuth.length||vendFilterOperating.length||vendFilterBeeNets.length||vendFilterAssignees.length;
           const fvCount = filteredVendors.length;
           const permitCounts = hasFilter ? PERMIT_TYPES.map(p=>{
             const n = filteredVendors.filter(v=>(v.permitTypes||[]).includes(p)).length;
@@ -22457,7 +22628,7 @@ ${orig}`})
             : munis;
           const clearAll = ()=>{
             setVendFilterPrefs([]); setVendFilterMunis([]); setVendFilterStatuses([]);
-            setVendFilterPermits([]); setVendFilterOperating([]); setVendFilterBeeNets([]); setVendFilterAssignees([]);
+            setVendFilterPermits([]); setVendFilterSanpaiAuth([]); setVendFilterOperating([]); setVendFilterBeeNets([]); setVendFilterAssignees([]);
           };
           
           // MultiChipFilter: 値配列、setter、選択肢、ラベル、表示変換
@@ -22479,6 +22650,9 @@ ${orig}`})
           vendFilterPermits.forEach(p => {
             selChips.push({label:`📋 ${p}`, key:`permit-${p}`, remove:()=>setVendFilterPermits(vendFilterPermits.filter(x=>x!==p))});
           });
+          vendFilterSanpaiAuth.forEach(a => {
+            selChips.push({label:`🏭 ${a}`, key:`sanpaiauth-${a}`, remove:()=>setVendFilterSanpaiAuth(vendFilterSanpaiAuth.filter(x=>x!==a))});
+          });
           vendFilterOperating.forEach(o => {
             const nm = o==="op_yes" ? "稼働(○)" : "非稼働(×)";
             selChips.push({label:`🟢 ${nm}`, key:`op-${o}`, remove:()=>setVendFilterOperating(vendFilterOperating.filter(x=>x!==o))});
@@ -22493,6 +22667,10 @@ ${orig}`})
             selChips.push({label:`👤 ${nm}`, key:`assignee-${id}`, remove:()=>setVendFilterAssignees(vendFilterAssignees.filter(x=>String(x)!==String(id)))});
           });
           
+          // 産廃は権者(都道府県・政令市・中核市)単位。産廃のみ選択時は「自治体」絞り込みを弾く
+          const _sanpaiSel = vendFilterPermits.some(isSanpaiPermit);
+          const _ippaiSel = vendFilterPermits.some(p=>!isSanpaiPermit(p));
+          const _areaByMuni = !(_sanpaiSel && !_ippaiSel);
           return (
             <div style={{background:"#f8fafc",border:`1px solid ${hasFilter?"#7c3aed":C.border}`,borderRadius:"8px",padding:"0.625rem 0.75rem",marginBottom:"0.75rem"}}>
               <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem",flexWrap:"wrap"}}>
@@ -22502,20 +22680,28 @@ ${orig}`})
               </div>
               {/* フィルター追加ボタン群 */}
               <div style={{display:"flex",gap:"0.35rem",flexWrap:"wrap",marginBottom:selChips.length>0?"0.5rem":"0"}}>
-                <MultiChipFilter label="都道府県" icon="🗾" C={C}
-                  values={vendFilterPrefs} setValues={v=>{setVendFilterPrefs(v); /* 都道府県解除で自治体もクリア（無関係になるため） */ if(v.length===0)setVendFilterMunis([]);}}
-                  options={prefs.map(p=>({value:String(p.id), label:p.name}))}/>
-                {(muniOptions.length>0 || vendFilterMunis.length>0) && (
-                  <MultiChipFilter label="自治体" icon="🏛" C={C}
-                    values={vendFilterMunis} setValues={setVendFilterMunis}
-                    options={muniOptions.map(m=>({value:String(m.id), label:m.name}))}/>
-                )}
+                {/* ① 許可種別を先頭に（産廃/一廃で以降の絞り込み対象が変わる） */}
+                <MultiChipFilter label="許可種別" icon="📋" C={C}
+                  values={vendFilterPermits} setValues={setVendFilterPermits}
+                  options={PERMIT_TYPES.map(p=>({value:p, label:(isSanpaiPermit(p)?"🏭 ":"🏛 ")+p}))}/>
+                {/* ② 産廃のみ選択時は「産廃権者(129: 都道府県＋政令市＋中核市)」で絞る。それ以外は都道府県＋自治体 */}
+                {(_sanpaiSel && !_ippaiSel) ? (
+                  <MultiChipFilter label="産廃権者" icon="🏭" C={C}
+                    values={vendFilterSanpaiAuth} setValues={setVendFilterSanpaiAuth}
+                    options={SANPAI_AUTHORITIES.map(a=>({value:a.name, label:a.name+"["+a.type+"]"}))}/>
+                ) : (<React.Fragment>
+                  <MultiChipFilter label="都道府県" icon="🗾" C={C}
+                    values={vendFilterPrefs} setValues={v=>{setVendFilterPrefs(v); if(v.length===0)setVendFilterMunis([]);}}
+                    options={prefs.map(p=>({value:String(p.id), label:p.name}))}/>
+                  {(muniOptions.length>0 || vendFilterMunis.length>0) && (
+                    <MultiChipFilter label="自治体" icon="🏛" C={C}
+                      values={vendFilterMunis} setValues={setVendFilterMunis}
+                      options={muniOptions.map(m=>({value:String(m.id), label:m.name}))}/>
+                  )}
+                </React.Fragment>)}
                 <MultiChipFilter label="ステータス" icon="📌" C={C}
                   values={vendFilterStatuses} setValues={setVendFilterStatuses}
                   options={Object.keys(VENDOR_STATUS).map(s=>({value:s, label:s}))}/>
-                <MultiChipFilter label="許可種別" icon="📋" C={C}
-                  values={vendFilterPermits} setValues={setVendFilterPermits}
-                  options={PERMIT_TYPES.map(p=>({value:p, label:p}))}/>
                 <MultiChipFilter label="稼働状況" icon="🟢" C={C}
                   values={vendFilterOperating} setValues={setVendFilterOperating}
                   options={[{value:"op_yes", label:"稼働(○)"},{value:"op_no", label:"非稼働(×)"}]}/>
@@ -22602,6 +22788,8 @@ ${orig}`})
             style={{padding:"0.45rem 0.625rem",borderRadius:"8px",border:"1.5px solid #0070D4",background:"#F2F7FF",color:"#1563CA",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🚚DUSTALK</button>
           <button onClick={()=>{setImportPreview(null);setImportErr("");setSheet("importPermitVendors");}} title="許可業者一覧CSVを取込（住所・電話・対応自治体・備考を上書き追加、ステータスは維持）"
             style={{padding:"0.45rem 0.625rem",borderRadius:"8px",border:"1.5px solid #ef4444",background:"#fef2f2",color:"#b91c1c",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🚮 許可取込</button>
+          <button onClick={()=>{setImportPreview(null);setImportErr("");setSheet("importSanpai");}} title="産廃業者CSVを取込（権者×種別ペアをsanpaiPermitsに追加。既存は消さず不足のみ補完）"
+            style={{padding:"0.45rem 0.625rem",borderRadius:"8px",border:"1.5px solid #FF6A00",background:"#FFF3E8",color:"#9a3412",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🏭 産廃取込</button>
           <button onClick={()=>{
             // フィルター条件に該当する業者リストを取得
             const list = bulkMode && bulkSelected.size>0
@@ -22792,26 +22980,11 @@ ${orig}`})
           <Sheet title="業者を追加" onClose={()=>setSheet(null)}>
             <FieldLbl label="業者名 *"><Input value={form.name||""} onChange={e=>setForm({...form,name:e.target.value})} autoFocus/></FieldLbl>
             <FieldLbl label="ステータス"><StatusPicker map={VENDOR_STATUS} value={form.status||"未接触"} onChange={s=>setForm({...form,status:s})}/></FieldLbl>
-            <FieldLbl label="許可エリア（自治体）">
-              {MuniPicker({ids:form.municipalityIds||[],onChange:ids=>setForm({...form,municipalityIds:ids})})}
-            </FieldLbl>
+            <FieldLbl label="許可（① 種別 → ② 自治体/権者 を複数選択して登録）"><PermitPairPicker value={form.permits||[]} onChange={p=>setForm({...form,permits:p})} munis={munis} prefs={prefs}/></FieldLbl>
             <FieldLbl label="担当者">{AssigneePicker({ids:form.assigneeIds||[],onChange:ids=>setForm({...form,assigneeIds:ids})})}</FieldLbl>
             <FieldLbl label="電話番号（任意）"><Input value={form.phone||""} onChange={e=>setForm({...form,phone:e.target.value})} placeholder="092-xxx-xxxx" type="tel"/></FieldLbl>
             <FieldLbl label="郵便番号（任意）"><Input value={form.zip||""} onChange={e=>setForm({...form,zip:e.target.value})} placeholder="例: 100-0001"/></FieldLbl>
             <FieldLbl label="住所（任意）"><Input value={form.address||""} onChange={e=>setForm({...form,address:e.target.value})} placeholder="東京都千代田区〇〇1-2-3"/></FieldLbl>
-            <FieldLbl label="許可種別（複数選択可）">
-                <div style={{display:"flex",flexWrap:"wrap",gap:"0.4rem",padding:"0.5rem",background:"#f8fafc",borderRadius:"8px",border:"1px solid #e2e8f0"}}>
-                  {PERMIT_TYPES.map(p=>{
-                    const checked=(form.permitTypes||[]).includes(p);
-                    return (
-                      <label key={p} style={{display:"flex",alignItems:"center",gap:"0.3rem",cursor:"pointer",padding:"0.25rem 0.5rem",borderRadius:"0.5rem",background:checked?"#ede9fe":"white",border:`1px solid ${checked?"#7c3aed":"#e2e8f0"}`,transition:"all 0.15s"}}>
-                        <input type="checkbox" checked={checked} onChange={()=>{const cur=form.permitTypes||[];setForm({...form,permitTypes:checked?cur.filter(x=>x!==p):[...cur,p]});}} style={{accentColor:"#7c3aed",width:14,height:14}}/>
-                        <span style={{fontSize:"0.75rem",fontWeight:checked?700:400,color:checked?"#5b21b6":"#374151"}}>{p}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-            </FieldLbl>
             <FieldLbl label="bee-net加入">
                 <label style={{display:"flex",alignItems:"center",gap:"0.625rem",cursor:"pointer",padding:"0.625rem 0.875rem",borderRadius:"8px",background:form.beeNet?"#F2F7FF":"#f8fafc",border:`1.5px solid ${form.beeNet?"#0070D4":"#e2e8f0"}`,transition:"all 0.15s"}}>
                   <input type="checkbox" checked={!!form.beeNet} onChange={e=>setForm({...form,beeNet:e.target.checked})} style={{width:18,height:18,accentColor:"#0070D4",cursor:"pointer"}}/>
@@ -23015,6 +23188,132 @@ ${orig}`})
                   <div style={{display:"flex",gap:"0.5rem",marginTop:"0.75rem"}}>
                     <Btn variant="secondary" style={{flex:1}} onClick={()=>{setPreview(null);setErr("");}}>やり直す</Btn>
                     <Btn style={{flex:2}} onClick={doImport}>この内容で取込（更新{preview.upd}・新規{preview.neu}）</Btn>
+                  </div>
+                </div>
+              )}
+            </Sheet>
+          );
+        })()}
+        {sheet==="importSanpai"&&(()=>{
+          const preview=importPreview; const setPreview=setImportPreview;
+          const err=importErr; const setErr=setImportErr;
+          const nStr=s=>(s||"").replace(/[\s　\-ー－]/g,"").toLowerCase();
+          const nPhone=s=>(s||"").replace(/[^0-9]/g,"");
+          const derive=sp=>Array.from(new Set(sp.map(x=>x.type)));
+          const parsePairs=cell=>String(cell||"").split(/[／/;、\n]+/).map(x=>x.trim()).filter(Boolean).map(seg=>{
+            const mm=seg.split(/[：:×xＸ]+/).map(y=>y.trim()).filter(Boolean);
+            if(mm.length<2) return null;
+            const type=mm[mm.length-1]; const auth=mm.slice(0,mm.length-1).join("");
+            if(!isSanpaiPermit(type)||!auth) return null;
+            return {auth,type};
+          }).filter(Boolean);
+          const handleFile=async(e)=>{
+            const file=e.target.files?.[0]; if(e.target)e.target.value=""; if(!file)return;
+            setErr(""); setPreview(null);
+            const yield_=()=>new Promise(r=>setTimeout(r,0));
+            try{
+              setImportProgress("読み込み中…"); await yield_();
+              const txt=await readFileAsText(file); const rows=parseCSV(txt);
+              if(!rows.length){ setErr("CSVが空です。"); setImportProgress(""); return; }
+              const header=rows[0].map(h=>String(h||"").trim().toLowerCase().replace(/^﻿/,""));
+              const ci=(...ns)=>{ for(const n of ns){ const i=header.indexOf(String(n).toLowerCase()); if(i>=0)return i; } return -1; };
+              const iName=ci("業者名","会社名","name"), iTel=ci("電話番号","電話","phone"), iAddr=ci("住所","所在地","address"),
+                    iPair=ci("産廃許可（権者×種別）","産廃許可(権者×種別)","産廃許可","許可（権者×種別）","権者×種別"), iBiko=ci("備考","メモ","notes");
+              if(iName<0){ setErr("『業者名』列が見つかりません。"); setImportProgress(""); return; }
+              if(iPair<0){ setErr("『産廃許可（権者×種別）』列が見つかりません。テンプレートをご確認ください。"); setImportProgress(""); return; }
+              const nameMap=new Map(), phoneMap=new Map(), addrMap=new Map();
+              const push=(m,k,i)=>{ if(!k)return; const a=m.get(k); if(a)a.push(i); else m.set(k,[i]); };
+              for(let i=0;i<vendors.length;i+=2000){ vendors.slice(i,i+2000).forEach((v,j)=>{ const idx=i+j; push(nameMap,nStr(v.name),idx); const p=nPhone(v.phone); if(p.length>=9)push(phoneMap,p,idx); const a=nStr(v.address); if(a.length>=10)push(addrMap,a,idx); }); await yield_(); }
+              const items=[]; let neu=0,upd=0,noperm=0;
+              for(let i=1;i<rows.length;i++){
+                const r=rows[i]; const nm=(r[iName]||"").trim(); if(!nm)continue;
+                const prs=parsePairs(r[iPair]); if(!prs.length){ noperm++; }
+                const phone=iTel>=0?(r[iTel]||"").trim():""; const address=iAddr>=0?(r[iAddr]||"").trim():""; const notes=iBiko>=0?(r[iBiko]||"").trim():"";
+                const rn=nStr(nm), rp=nPhone(phone), ra=nStr(address);
+                const cand=new Set(); (nameMap.get(rn)||[]).forEach(x=>cand.add(x));
+                if(rp.length>=9)(phoneMap.get(rp)||[]).forEach(x=>cand.add(x));
+                if(ra.length>=10)(addrMap.get(ra)||[]).forEach(x=>cand.add(x));
+                let dupIdx=null;
+                for(const c of cand){ const v=vendors[c]; let h=0; if(rn&&nStr(v.name)===rn)h++; if(rp.length>=9&&nPhone(v.phone)===rp)h++; if(ra.length>=10&&nStr(v.address)===ra)h++; if(h>=2){dupIdx=c;break;} }
+                if(dupIdx==null && rp.length<9 && ra.length<10){ const arr=nameMap.get(rn)||[]; if(arr.length===1) dupIdx=arr[0]; }
+                if(dupIdx!=null){ upd++; items.push({name:nm,phone,address,notes,pairs:prs,mode:"更新",idx:dupIdx}); }
+                else { neu++; items.push({name:nm,phone,address,notes,pairs:prs,mode:"新規"}); }
+                if(i%800===0){ setImportProgress(`照合中… ${i}/${rows.length}`); await yield_(); }
+              }
+              setImportProgress(""); setPreview({items,neu,upd,noperm});
+            }catch(ex){ console.error("[importSanpai]",ex); setImportProgress(""); setErr("読み込みに失敗しました。CSV形式・文字コードをご確認ください。"); }
+          };
+          const doImport=async()=>{
+            if(!preview)return;
+            const today=new Date().toISOString().slice(0,10);
+            const vs=[...vendors];
+            preview.items.forEach((it,k)=>{
+              const mk=()=>"mn_"+Date.now()+"_"+k+"_"+Math.random().toString(36).slice(2,9);
+              if(it.mode==="更新"){
+                const v=vs[it.idx]; const sp=[...(v.sanpaiPermits||[])];
+                it.pairs.forEach(p=>{ if(!sp.some(e=>e.auth===p.auth&&e.type===p.type)) sp.push(p); });
+                const patch={...v, sanpaiPermits:sp, permitTypes:Array.from(new Set([...(v.permitTypes||[]),...derive(sp)])), updatedAt:today};
+                if(!v.phone && it.phone) patch.phone=it.phone;
+                if(!v.address && it.address) patch.address=it.address;
+                if(it.notes && !(v.memos||[]).some(m=>(m.text||"")===it.notes)) patch.memos=[...(v.memos||[]),{id:mk(),text:it.notes,userId:currentUser?.id,date:new Date().toISOString()}];
+                vs[it.idx]=patch;
+              } else {
+                vs.push({id:"v_"+Date.now()+"_"+k+"_"+Math.random().toString(36).slice(2,9),name:it.name,status:"未接触",phone:it.phone||"",address:it.address||"",municipalityIds:[],assigneeIds:[],sanpaiPermits:it.pairs.slice(),permitTypes:derive(it.pairs),beeNet:false,memos:it.notes?[{id:mk(),text:it.notes,userId:currentUser?.id,date:new Date().toISOString()}]:[],chat:[],approachLogs:[],createdAt:new Date().toISOString(),updatedAt:today});
+              }
+            });
+            const newData={...data,vendors:vs};
+            setImporting(true); setData(newData);
+            const ok=await saveData(newData); setImporting(false);
+            if(ok===false){ setData(data); setErr(`保存に失敗しました（新規${preview.neu}/更新${preview.upd}件）。件数を減らして再試行してください。`); return; }
+            window.alert(`✅ 産廃業者を取込みました\n新規追加 ${preview.neu}件\n既存に権者×種別を追加 ${preview.upd}件`);
+            setPreview(null); setSheet(null);
+          };
+          return (
+            <Sheet title="🏭 産廃業者を取込（権者×種別・不足補完）" onClose={()=>{setSheet(null);setImportPreview(null);setImportErr("");}}>
+              <div style={{background:"#FFF3E8",border:"1px solid #FFC07D",borderRadius:8,padding:"0.8rem",marginBottom:"0.9rem",fontSize:"0.76rem",color:"#9a3412",lineHeight:1.65}}>
+                列＝<strong>業者名／電話番号／住所／産廃許可（権者×種別）／備考</strong>。<br/>
+                「産廃許可（権者×種別）」は <code>青森県：産廃収運／秋田県：産廃処分</code> のように<strong>権者：種別</strong>を「／」区切りで。<br/>
+                業者名＋電話/住所で照合し、<strong>既存は権者×種別を追加・空欄のみ補完・備考はメモ追記（ステータス等は上書きしません）</strong>／無ければ新規追加。
+                <div style={{marginTop:"0.5rem"}}>
+                  <button onClick={()=>downloadCSV("産廃業者インポートテンプレート.csv",
+                    ["業者名","電話番号","住所","産廃許可（権者×種別）","備考"],
+                    [["○○産業株式会社","018-000-0000","秋田県秋田市〇〇1-2-3","秋田県：産廃収運／秋田県：産廃処分","許可No.〇〇"],
+                     ["△△運輸有限会社","","岩手県〇〇市…","岩手県：産廃収運",""]])}
+                    style={{background:"#FF6A00",border:"none",borderRadius:8,color:"white",fontWeight:700,fontSize:"0.74rem",padding:"0.4rem 0.8rem",cursor:"pointer",fontFamily:"inherit"}}>⬇️ テンプレCSVをダウンロード</button>
+                </div>
+              </div>
+              <label style={{display:"inline-flex",alignItems:"center",gap:"0.4rem",padding:"0.6rem 1rem",background:"#FFF3E8",border:"1.5px solid #FF6A00",borderRadius:8,color:"#9a3412",fontWeight:700,fontSize:"0.82rem",cursor:importProgress?"wait":"pointer"}}>
+                📄 CSVファイルを選択
+                <input type="file" accept=".csv,text/csv" onChange={handleFile} style={{display:"none"}}/>
+              </label>
+              {importProgress&&<div style={{marginTop:"0.6rem",fontSize:"0.76rem",color:C.textSub,fontWeight:700}}>{importProgress}</div>}
+              {err&&<div style={{marginTop:"0.75rem",fontSize:"0.78rem",color:"#DA1313",fontWeight:700}}>⚠️ {err}</div>}
+              {preview&&(
+                <div style={{marginTop:"1rem"}}>
+                  <div style={{display:"flex",gap:"0.5rem",marginBottom:"0.75rem"}}>
+                    <div style={{flex:1,background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"0.5rem 0.7rem"}}><div style={{fontSize:"0.62rem",color:"#15803d",fontWeight:700}}>新規追加</div><div style={{fontSize:"1.3rem",fontWeight:800,color:"#166534"}}>{preview.neu}</div></div>
+                    <div style={{flex:1,background:"#FFF3E8",border:"1px solid #FFC07D",borderRadius:8,padding:"0.5rem 0.7rem"}}><div style={{fontSize:"0.62rem",color:"#9a3412",fontWeight:700}}>既存に許可追加</div><div style={{fontSize:"1.3rem",fontWeight:800,color:"#9a3412"}}>{preview.upd}</div></div>
+                  </div>
+                  {preview.noperm>0&&<div style={{marginBottom:"0.6rem",fontSize:"0.72rem",color:"#92400e",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"0.4rem 0.6rem"}}>⚠️ 権者×種別が読み取れなかった行 {preview.noperm}件（許可なしで登録されます）</div>}
+                  <div style={{fontSize:"0.72rem",color:C.textSub,fontWeight:700,marginBottom:"0.3rem"}}>プレビュー（先頭12件 / 全{preview.items.length}件）</div>
+                  <div style={{maxHeight:260,overflowY:"auto",border:`1px solid ${C.borderLight}`,borderRadius:8}}>
+                    {preview.items.slice(0,12).map((it,i)=>(
+                      <div key={i} style={{padding:"0.4rem 0.6rem",borderTop:i>0?`1px solid ${C.borderLight}`:"none",fontSize:"0.72rem"}}>
+                        <div style={{display:"flex",gap:"0.4rem",alignItems:"center",flexWrap:"wrap"}}>
+                          <span style={{fontSize:"0.6rem",fontWeight:700,padding:"0.05rem 0.35rem",borderRadius:999,background:it.mode==="更新"?"#FFF3E8":"#dcfce7",color:it.mode==="更新"?"#9a3412":"#166534"}}>{it.mode}</span>
+                          <span style={{fontWeight:700,color:C.text}}>{it.name}</span>
+                          <span style={{color:C.textMuted}}>{it.phone||"-"}</span>
+                        </div>
+                        <div style={{marginTop:"0.15rem",display:"flex",flexWrap:"wrap",gap:"0.25rem"}}>
+                          {it.pairs.map((p,j)=><span key={j} style={{fontSize:"0.62rem",background:"#FFE8CF",color:"#9a3412",border:"1px solid #FFC07D",borderRadius:999,padding:"0.05rem 0.4rem",fontWeight:700}}>🏭 {p.type}×{p.auth}</span>)}
+                          {it.pairs.length===0&&<span style={{fontSize:"0.62rem",color:C.textMuted}}>（許可なし）</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{display:"flex",gap:"0.5rem",marginTop:"0.75rem"}}>
+                    <Btn variant="secondary" style={{flex:1}} onClick={()=>{setPreview(null);setErr("");}}>やり直す</Btn>
+                    <Btn style={{flex:2}} onClick={doImport}>この内容で取込（新規{preview.neu}・許可追加{preview.upd}）</Btn>
                   </div>
                 </div>
               )}
@@ -23940,8 +24239,8 @@ ${orig}`})
         );
       })()}
       {/* Search row */}
-      <div style={{display:"flex",gap:"0.5rem",marginBottom:"0.625rem",alignItems:"center"}}>
-        <div style={{position:"relative",flex:1}}>
+      <div style={{display:"flex",gap:"0.5rem",marginBottom:"0.625rem",alignItems:"center",flexWrap:"wrap"}}>
+        <div style={{position:"relative",flex:"1 1 220px",minWidth:180}}>
           <span style={{position:"absolute",left:"0.625rem",top:"50%",transform:"translateY(-50%)",color:C.textMuted,fontSize:"0.85rem",pointerEvents:"none"}}>🔍</span>
           <input value={muniTopSearch} onChange={e=>setMuniTopSearch(e.target.value)} placeholder="自治体名で検索"
             style={{width:"100%",padding:"0.5rem 0.5rem 0.5rem 2rem",borderRadius:"8px",border:`1.5px solid ${C.border}`,fontSize:"0.85rem",fontFamily:"inherit",outline:"none",boxSizing:"border-box"}}/>
