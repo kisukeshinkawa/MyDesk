@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-08-v345-import-permit-add"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-08-v346-import-legalname-dedup"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -18556,8 +18556,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   const normBizName = (s) => (s||"")
     // 法人格の前後スペース除去
     .replace(/\s*(株式会社|有限会社|合同会社|一般社団法人|一般財団法人|公益社団法人|公益財団法人|特定非営利活動法人|NPO法人|社会福祉法人|学校法人|宗教法人|医療法人)\s*/gi,"")
-    // 括弧表記の法人格 (株)(有)(合) など
-    .replace(/[（(]株[)）]|[（(]有[)）]|[（(]合[)）]|[（(]社[)）]/g,"")
+    // 括弧表記の法人格 (株)(有)(合)(社)(一社)(一財)(同)(資) など
+    .replace(/[（(](株|有|合|社|同|資|名|財|一社|一財|公社|公財|医|福|学|宗|NPO)[)）]/gi,"")
     // 全角→半角変換
     .replace(/[Ａ-Ｚａ-ｚ０-９]/g, ch=>String.fromCharCode(ch.charCodeAt(0)-0xFEE0))
     // カタカナ→ひらがな正規化
@@ -23495,7 +23495,7 @@ ${orig}`})
                 const slice=vendors.slice(i,i+2000);
                 slice.forEach((v,j)=>{
                   const idx=i+j;
-                  pushMap(nameMap, normStr2(v.name), idx);
+                  pushMap(nameMap, normBizName(v.name), idx);
                   const p=normPhone2(v.phone||""); if(p.length>=7) pushMap(phoneMap,p,idx);
                   const a=normStr2(v.address||""); if(a.length>=10) pushMap(addrMap,a,idx);
                 });
@@ -23505,7 +23505,7 @@ ${orig}`})
               for(let i=0;i<mapped.length;i+=500){
                 const slice=mapped.slice(i,i+500);
                 for(const row of slice){
-                  const rName=normStr2(row.name);
+                  const rName=normBizName(row.name);
                   const rPhone=normPhone2(row.phone||"");
                   const rAddr=normStr2(row.address||"");
                   const cand=new Set();
@@ -23516,7 +23516,7 @@ ${orig}`})
                   for(const ci of cand){
                     const v=vendors[ci];
                     let hits=0;
-                    if(rName && normStr2(v.name)===rName) hits++;
+                    if(rName && normBizName(v.name)===rName) hits++;
                     if(rPhone.length>=7 && normPhone2(v.phone||"")===rPhone) hits++;
                     if(rAddr.length>=10 && normStr2(v.address||"")===rAddr) hits++;
                     if(hits>=2){ dup=true; dupIdx=ci; break; }
