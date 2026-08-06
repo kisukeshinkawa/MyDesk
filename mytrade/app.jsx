@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 // MyTrade — 投資専用スタンドアロンアプリ (MyDeskから分離)
 // バックエンド: mydesk-stock-analysis Lambda (共用・変更不要)
 // ═══════════════════════════════════════════════════════════════
-const MYTRADE_BUILD = "2026-08-07-v16-indicators";
+const MYTRADE_BUILD = "2026-08-07-v17-optimizer";
 if (typeof window !== "undefined") {
   window.__MYTRADE_BUILD = MYTRADE_BUILD;
   console.log(`[MyTrade] Build: ${MYTRADE_BUILD}`);
@@ -292,6 +292,7 @@ function StockView({currentUser}) {
   const [showLearn, setShowLearn] = useState(true);
   const [dash, setDash]           = useState(null);   // 成績ダッシュボード
   const [sim, setSim]             = useState(null);   // 戦略シミュレーション
+  const [opt, setOpt]             = useState(null);   // パラメータ最適化
   const [showManual, setShowManual] = useState(false); // 手動操作(通常は隠す)
   const [btRep, setBtRep]         = useState(null);  // バックテスト結果
   const [btYears, setBtYears]     = useState("10");  // 検証期間(年)
@@ -372,7 +373,7 @@ function StockView({currentUser}) {
       if(!report&&!busy.report) loadReport(false);
     }
     if(view==="portfolio"&&!journal&&!busy.journal) loadJournal();
-    if(view==="learn"){ if(!dash&&!busy.dash) loadDash(); if(!perf&&!busy.perf) loadPerf(); if(!sim&&!busy.sim) loadSim(false); }
+    if(view==="learn"){ if(!dash&&!busy.dash) loadDash(); if(!perf&&!busy.perf) loadPerf(); if(!sim&&!busy.sim) loadSim(false); if(!opt&&!busy.opt) loadOpt(false); }
     if(view==="picks"&&!ranking&&!busy.rank) loadRanking(false);
     if(view==="demo"){ if(!paper&&!busy.paper) loadPaper(); if(!autoCfg) loadAuto(); }
   /* eslint-disable-next-line */ },[view]);
@@ -433,6 +434,15 @@ function StockView({currentUser}) {
     try { const a=results[ticker]; const r = await api({action:"news",ticker,name:a?.name||""}); setNewsMap(m=>({...m,[ticker]:r.news||[]})); }
     catch(e){ setErrMsg("ニュース取得エラー: "+e.message); }
     setBusy(b=>({...b,news:false}));
+  };
+
+  const loadOpt = async (force) => {
+    setBusy(b=>({...b,opt:true})); setErrMsg("");
+    try {
+      const r = await api(force?{action:"optimize",years:25,force:true}:{action:"optimize-latest"}, 900000);
+      if(r&&r.combos) setOpt(r); else if(!force) setOpt({empty:true});
+    } catch(e){ setErrMsg("最適化エラー: "+e.message); }
+    setBusy(b=>({...b,opt:false}));
   };
 
   const loadSim = async (force) => {
@@ -1910,6 +1920,72 @@ function StockView({currentUser}) {
                       勝率{r.winRate}%でも{r.profitFactor>=1?"利益が出ている":"利益が出ていない"}のは、平均利益{r.avgWinPct>=0?"+":""}{r.avgWinPct}%に対して平均損失{r.avgLossPct}%と<b>損小利大</b>{r.profitFactor>=1?"になっている":"になっていない"}ためです。<br/>
                       実際に運用するなら<b>最大{Math.abs(r.maxDrawdownPct)}%の含み損と{r.maxLossStreak}連敗に耐える</b>覚悟が必要です。<br/>
                       <span style={{color:C.textMuted}}>※過去の成績が将来を保証するものではありません。上場廃止銘柄を含まないため実際より良く出ます</span>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* ⚙️ パラメータ最適化 */}
+            <div style={{marginBottom:"0.85rem",padding:"0.8rem 0.95rem",background:"white",borderRadius:10,border:`1px solid ${C.border}`}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:"0.5rem",marginBottom:"0.4rem"}}>
+                <div>
+                  <div style={{fontWeight:800,fontSize:"0.88rem",color:C.text}}>⚙️ もっと成績を上げられるか(条件の比較)</div>
+                  <div style={{fontSize:"0.68rem",color:C.textMuted}}>買いの基準・利確の伸ばし方・同時保有数を18通り試して最適な組み合わせを探します</div>
+                </div>
+                <button onClick={()=>loadOpt(true)} disabled={busy.opt}
+                  style={{padding:"0.45rem 0.9rem",borderRadius:8,border:"none",background:C.text,color:"white",fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",opacity:busy.opt?0.6:1}}>
+                  {busy.opt?"比較中(5〜10分)...":opt&&opt.combos?"🔄 再計算":"▶ 18通り比較する"}
+                </button>
+              </div>
+              {(!opt||opt.empty)&&!busy.opt&&(
+                <div style={{fontSize:"0.74rem",color:C.textSub,lineHeight:1.7}}>
+                  「買いの基準を厳しくしたら?」「利確をもっと伸ばしたら?」「銘柄を分散したら?」を過去25年で一括検証します。<br/>
+                  <span style={{color:C.textMuted}}>※リターンを上げると下落幅も大きくなるのが普通です。<b>効率(年利÷最大下落)</b>が高い設定が「賢い設定」です</span>
+                </div>
+              )}
+              {opt&&opt.combos&&(()=>{
+                const cur=opt.current, best=opt.bestRiskAdjusted, top=opt.combos.slice(0,6);
+                const better = cur&&best&&best.calmar>cur.calmar;
+                return (
+                  <div>
+                    {cur&&best&&(
+                      <div style={{padding:"0.6rem 0.75rem",background:better?C.greenBg:C.bg,borderRadius:8,marginBottom:"0.6rem",fontSize:"0.76rem",lineHeight:1.7,color:C.text}}>
+                        <b style={{color:better?C.green:C.textSub}}>{better?"✅ 今より良い設定が見つかりました":"現在の設定がほぼ最適です"}</b><br/>
+                        <b>今の設定</b>(70点/利確2倍/5銘柄): 年利{cur.cagrPct}% / 最大下落{cur.maxDrawdownPct}% / 効率{cur.calmar}<br/>
+                        <b style={{color:C.accent}}>おすすめ</b>({best.entryScore}点/利確{best.rr}倍/{best.maxPositions}銘柄): 年利{best.cagrPct}% / 最大下落{best.maxDrawdownPct}% / 効率{best.calmar}
+                        {better&&<><br/><span style={{color:C.green}}>→ 年利が{(best.cagrPct-cur.cagrPct).toFixed(2)}ポイント{best.cagrPct>cur.cagrPct?"改善":"変化"}、下落幅は{Math.abs(best.maxDrawdownPct)<Math.abs(cur.maxDrawdownPct)?`${(Math.abs(cur.maxDrawdownPct)-Math.abs(best.maxDrawdownPct)).toFixed(1)}ポイント縮小`:"拡大"}</span></>}
+                      </div>
+                    )}
+                    <div style={{overflowX:"auto"}}>
+                      <table style={{width:"100%",borderCollapse:"collapse",fontSize:"0.71rem",minWidth:520}}>
+                        <thead><tr style={{background:C.bg}}>
+                          {["買い基準","利確","保有数","年利","最大下落","勝率","PF","効率"].map((h,i)=>(
+                            <th key={i} style={{padding:"0.35rem 0.4rem",textAlign:i<3?"left":"right",fontSize:"0.65rem",fontWeight:700,color:C.textMuted,whiteSpace:"nowrap"}}>{h}</th>
+                          ))}
+                        </tr></thead>
+                        <tbody>
+                          {top.map((r,i)=>{
+                            const isCur = cur&&r.entryScore===cur.entryScore&&r.rr===cur.rr&&r.maxPositions===cur.maxPositions;
+                            return (
+                              <tr key={i} style={{borderBottom:`1px solid ${C.borderLight}`,background:i===0?C.accentLight:(isCur?C.yellowBg:"white")}}>
+                                <td style={{padding:"0.35rem 0.4rem",fontWeight:700}}>{r.entryScore}点{i===0&&" 🏆"}{isCur&&" (現在)"}</td>
+                                <td style={{padding:"0.35rem 0.4rem"}}>{r.rr}倍</td>
+                                <td style={{padding:"0.35rem 0.4rem"}}>{r.maxPositions}銘柄</td>
+                                <td style={{padding:"0.35rem 0.4rem",textAlign:"right",fontWeight:800,color:r.cagrPct>=0?C.green:C.red}}>{r.cagrPct>=0?"+":""}{r.cagrPct}%</td>
+                                <td style={{padding:"0.35rem 0.4rem",textAlign:"right",color:C.red}}>{r.maxDrawdownPct}%</td>
+                                <td style={{padding:"0.35rem 0.4rem",textAlign:"right",color:C.textSub}}>{r.winRate}%</td>
+                                <td style={{padding:"0.35rem 0.4rem",textAlign:"right",color:C.textSub}}>{r.profitFactor}</td>
+                                <td style={{padding:"0.35rem 0.4rem",textAlign:"right",fontWeight:800,color:C.accent}}>{r.calmar}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div style={{fontSize:"0.66rem",color:C.textMuted,marginTop:"0.4rem",lineHeight:1.6}}>
+                      効率=年利÷最大下落。同じリターンなら下落が小さいほど良い設定です。<br/>
+                      採用する場合は「💴デモ売買」タブの設定(同時保有数)を変更してください。買い基準と利確倍率の変更が必要な場合はお知らせください。
                     </div>
                   </div>
                 );

@@ -143,6 +143,10 @@ def lambda_handler(event, context):
                 return _res(200, run_brief())
             if job == "autotrade":
                 return _res(200, run_autotrade())
+            if job == "optimize":
+                r = simulate_grid(None, int(event.get("years", 25)))
+                _save_json_s3("stock-learn/optimize.json", r)
+                return _res(200, {"best": r["bestRiskAdjusted"], "current": r["current"]})
             if job == "simulate":
                 r = simulate_strategy(None, int(event.get("years", 25)))
                 _save_json_s3("stock-learn/simulation.json", r)
@@ -219,6 +223,15 @@ def lambda_handler(event, context):
                                   int(body.get("entryScore", 70)))
             _save_json_s3("stock-learn/simulation.json", r)
             return _res(200, r)
+        if action == "optimize":
+            cached = None if body.get("force") else _load_json_s3("stock-learn/optimize.json", None)
+            if cached:
+                return _res(200, cached)
+            r = simulate_grid(body.get("tickers"), int(body.get("years", 25)))
+            _save_json_s3("stock-learn/optimize.json", r)
+            return _res(200, r)
+        if action == "optimize-latest":
+            return _res(200, _load_json_s3("stock-learn/optimize.json", {}))
         if action == "simulation-latest":
             return _res(200, _load_json_s3("stock-learn/simulation.json", {}))
         if action == "dashboard":
@@ -972,18 +985,13 @@ def get_news(ticker, name=""):
 
 
 # ═══════════════════════ 戦略シミュレーション(資産曲線・年利・最大DD) ═══════════════════════
-def simulate_strategy(tickers=None, years=25, initial=1000000, risk_pct=2.0,
-                      max_pos=5, entry_score=70, fee=0.001):
-    """自動売買のルールをそのまま過去に当てはめて資産の推移を再現する。
-    ルール: 短期スコアが基準以上かつ地合いOK → 2%ルールの株数で買い
-            損切り(2ATR下/直近安値) or 利確(RR2倍) 到達で手仕舞い
-    シグナル単体の勝率ではなく「この戦略を運用したらどうなったか」を出す。"""
-    tickers = tickers or DEFAULT_UNIVERSE
+def _prepare_sim(tickers, years, min_score=65):
+    """シミュレーション用の下ごしらえ。スコアはパラメータに依存しないので一度だけ計算し、
+    買い候補(スコアが最低基準以上かつ地合いOKの日)を銘柄ごとに列挙しておく。
+    これにより複数のパラメータ条件を高速に比較できる。"""
     cfg = load_learn_config()
     weights = cfg.get("factor_weights")
-
-    # ── 全銘柄の指標を事前計算 ──
-    data, bench = {}, {}
+    bench = {}
     for sym, key in (("^N225", "JP"), ("^GSPC", "US")):
         try:
             b = fetch_history(sym, f"{years}y")["Close"]
@@ -992,6 +1000,8 @@ def simulate_strategy(tickers=None, years=25, initial=1000000, risk_pct=2.0,
                           "pos": {d.strftime("%Y-%m-%d"): i for i, d in enumerate(b.index)}}
         except Exception as e:
             print("sim bench failed:", sym, e)
+
+    prep = {}
     for t in tickers[:20]:
         try:
             df = fetch_history(t, f"{years}y")
@@ -999,151 +1009,197 @@ def simulate_strategy(tickers=None, years=25, initial=1000000, risk_pct=2.0,
                 continue
             f = build_indicator_frame(df)
             atr = (df["High"] - df["Low"]).rolling(14).mean()
-            data[t] = {"df": df, "f": f, "atr": atr,
-                       "dates": [d.strftime("%Y-%m-%d") for d in df.index],
-                       "low20": df["Low"].rolling(20).min()}
+            low20 = df["Low"].rolling(20).min()
+            dates = [d.strftime("%Y-%m-%d") for d in df.index]
+            mkt = "JP" if t.endswith(".T") else "US"
+            b = bench.get(mkt)
+            cands = {}
+            if b:
+                for i in range(200, len(df) - 1):
+                    d = dates[i]
+                    bi = b["pos"].get(d)
+                    if bi is None or bi < 200:
+                        continue
+                    if not (float(b["close"].iloc[bi]) > float(b["ma200"].iloc[bi])):
+                        continue   # 地合いフィルタ
+                    br = float(b["ret1m"].iloc[bi])
+                    if math.isnan(br):
+                        br = 0
+                    try:
+                        sc = score_short(_row_to_tech(f, i), br, weights)
+                    except Exception:
+                        continue
+                    if sc["score"] < min_score:
+                        continue
+                    a = float(atr.iloc[i])
+                    if math.isnan(a) or a <= 0:
+                        continue
+                    cands[d] = {"score": sc["score"], "entryPx": float(df["Open"].iloc[i + 1]),
+                                "atr": a, "low20": float(low20.iloc[i]), "nextDate": dates[i + 1]}
+            prep[t] = {"dates": dates, "idx": {d: i for i, d in enumerate(dates)},
+                       "high": [float(x) for x in df["High"]], "low": [float(x) for x in df["Low"]],
+                       "close": [float(x) for x in df["Close"]], "cands": cands}
         except Exception as e:
-            print("sim fetch failed:", t, e)
-    if not data:
-        raise Exception("シミュレーション用のデータが取得できません")
+            print("sim prep failed:", t, e)
+    return prep
 
-    # ── 全営業日を通しで回す ──
-    all_dates = sorted({d for v in data.values() for d in v["dates"]})
-    idx_of = {t: {d: i for i, d in enumerate(v["dates"])} for t, v in data.items()}
+
+def _sim_pass(prep, all_dates, initial=1000000, risk_pct=2.0, max_pos=5,
+              entry_score=70, rr=2.0, fee=0.001):
+    """下ごしらえ済みデータで1条件ぶんの運用を再現する。"""
     cash, positions, trades, curve = float(initial), {}, [], []
     peak, maxdd = float(initial), 0.0
-
-    for d in all_dates[200:]:
-        # 時価評価
+    risk_used = []
+    for d in all_dates:
         equity = cash
         for t, p in positions.items():
-            i = idx_of[t].get(d)
-            px = float(data[t]["df"]["Close"].iloc[i]) if i is not None else p["entry"]
-            equity += px * p["qty"]
+            i = prep[t]["idx"].get(d)
+            equity += (prep[t]["close"][i] if i is not None else p["entry"]) * p["qty"]
         peak = max(peak, equity)
         maxdd = min(maxdd, equity / peak - 1)
         curve.append({"date": d, "equity": round(equity, 0)})
 
-        # ① 手仕舞い
         for t in list(positions.keys()):
-            i = idx_of[t].get(d)
+            i = prep[t]["idx"].get(d)
             if i is None:
                 continue
             p = positions[t]
-            lo = float(data[t]["df"]["Low"].iloc[i])
-            hi = float(data[t]["df"]["High"].iloc[i])
             exit_px = reason = None
-            if lo <= p["stop"]:
+            if prep[t]["low"][i] <= p["stop"]:
                 exit_px, reason = p["stop"], "損切り"
-            elif hi >= p["target"]:
+            elif prep[t]["high"][i] >= p["target"]:
                 exit_px, reason = p["target"], "利確"
             if exit_px:
                 proceeds = exit_px * p["qty"] * (1 - fee)
-                pnl = proceeds - p["entry"] * p["qty"]
                 cash += proceeds
                 trades.append({"ticker": t, "entryDate": p["date"], "exitDate": d,
                                "entry": round(p["entry"], 2), "exit": round(exit_px, 2),
-                               "qty": p["qty"], "pnl": round(pnl, 0),
+                               "qty": p["qty"], "pnl": round(proceeds - p["entry"] * p["qty"], 0),
                                "pnlPct": round((exit_px / p["entry"] - 1) * 100, 2), "reason": reason})
                 del positions[t]
 
-        # ② 新規建て
         if len(positions) >= max_pos:
             continue
-        for t, v in data.items():
+        for t, v in prep.items():
             if t in positions or len(positions) >= max_pos:
                 continue
-            i = idx_of[t].get(d)
-            if i is None or i < 200 or i + 1 >= len(v["dates"]):
+            c = v["cands"].get(d)
+            if not c or c["score"] < entry_score:
                 continue
-            mkt = "JP" if t.endswith(".T") else "US"
-            b = bench.get(mkt)
-            if not b:
+            px = c["entryPx"]
+            stop = max(px - 2 * c["atr"], c["low20"] * 0.995)
+            if stop >= px:
                 continue
-            bi = b["pos"].get(d)
-            if bi is None or bi < 200:
+            risk = px - stop
+            unit = 100 if t.endswith(".T") else 1
+            qty_risk = int(equity * risk_pct / 100 / risk)          # 2%ルール
+            qty_cap = int(equity / max_pos / px)                    # 1銘柄あたりの上限
+            qty = (min(qty_risk, qty_cap) // unit) * unit
+            cost = px * qty * (1 + fee)
+            if qty < unit or cost > cash:
                 continue
-            # 地合いフィルタ: 指数が200日線の上でなければ新規建てしない
-            if not (float(b["close"].iloc[bi]) > float(b["ma200"].iloc[bi])):
-                continue
-            try:
-                b_ret = float(b["ret1m"].iloc[bi])
-                if math.isnan(b_ret):
-                    b_ret = 0
-                tech = _row_to_tech(v["f"], i)
-                sc = score_short(tech, b_ret, weights)
-                if sc["score"] < entry_score:
-                    continue
-                a = float(v["atr"].iloc[i])
-                if math.isnan(a) or a <= 0:
-                    continue
-                # 翌日の寄りで約定(当日終値で判断→翌日執行。先読みを避ける)
-                px = float(v["df"]["Open"].iloc[i + 1])
-                stop = max(px - 2 * a, float(v["low20"].iloc[i]) * 0.995)
-                if stop >= px:
-                    continue
-                risk = px - stop
-                qty = int(equity * risk_pct / 100 / risk)
-                unit = 100 if t.endswith(".T") else 1
-                qty = (qty // unit) * unit
-                qty = min(qty, int(cash * 0.3 / px / unit) * unit)
-                cost = px * qty * (1 + fee)
-                if qty < unit or cost > cash:
-                    continue
-                cash -= cost
-                positions[t] = {"qty": qty, "entry": px, "stop": stop,
-                                "target": px + risk * 2, "date": v["dates"][i + 1]}
-            except Exception:
-                continue
+            cash -= cost
+            risk_used.append(risk * qty / equity * 100 if equity else 0)
+            positions[t] = {"qty": qty, "entry": px, "stop": stop,
+                            "target": px + risk * rr, "date": c["nextDate"]}
 
-    # ── 集計 ──
     final = curve[-1]["equity"] if curve else initial
     yrs = max(1e-9, len(curve) / 252)
-    cagr = ((final / initial) ** (1 / yrs) - 1) * 100 if final > 0 else -100
-    wins = [t for t in trades if t["pnl"] > 0]
-    gw = sum(t["pnl"] for t in wins)
-    gl = abs(sum(t["pnl"] for t in trades if t["pnl"] <= 0))
-    rets = []
-    for i in range(1, len(curve)):
-        prev = curve[i - 1]["equity"]
-        if prev:
-            rets.append(curve[i]["equity"] / prev - 1)
+    wins = [x for x in trades if x["pnl"] > 0]
+    gw = sum(x["pnl"] for x in wins)
+    gl = abs(sum(x["pnl"] for x in trades if x["pnl"] <= 0))
+    rets = [curve[i]["equity"] / curve[i - 1]["equity"] - 1
+            for i in range(1, len(curve)) if curve[i - 1]["equity"]]
     mean_r = sum(rets) / len(rets) if rets else 0
     var = sum((r - mean_r) ** 2 for r in rets) / len(rets) if rets else 0
-    sharpe = (mean_r * 252) / math.sqrt(var * 252) if var > 0 else 0
+    return {
+        "result": {
+            "finalEquity": round(final, 0),
+            "totalReturnPct": round((final / initial - 1) * 100, 1),
+            "cagrPct": round(((final / initial) ** (1 / yrs) - 1) * 100 if final > 0 else -100, 2),
+            "maxDrawdownPct": round(maxdd * 100, 1),
+            "sharpe": round((mean_r * 252) / math.sqrt(var * 252), 2) if var > 0 else 0,
+            "trades": len(trades),
+            "winRate": round(len(wins) / len(trades) * 100, 1) if trades else None,
+            "profitFactor": round(gw / gl, 2) if gl > 0 else None,
+            "avgWinPct": round(sum(x["pnlPct"] for x in wins) / len(wins), 2) if wins else 0,
+            "avgLossPct": round(sum(x["pnlPct"] for x in trades if x["pnl"] <= 0)
+                                / max(1, len(trades) - len(wins)), 2),
+            "maxLossStreak": _max_streak(trades),
+            # 実際に1トレードあたり資産の何%をリスクに晒したか(設定値との乖離を確認する)
+            "effectiveRiskPct": round(sum(risk_used) / len(risk_used), 2) if risk_used else 0,
+        },
+        "curve": curve, "trades": trades,
+        "period": {"from": curve[0]["date"] if curve else None,
+                   "to": curve[-1]["date"] if curve else None, "years": round(yrs, 1)}}
 
-    # 年別の成績
+
+def simulate_strategy(tickers=None, years=25, initial=1000000, risk_pct=2.0,
+                      max_pos=5, entry_score=70, fee=0.001, rr=2.0):
+    """自動売買のルールをそのまま過去に当てはめて資産の推移を再現する。"""
+    tickers = tickers or DEFAULT_UNIVERSE
+    prep = _prepare_sim(tickers, years)
+    if not prep:
+        raise Exception("シミュレーション用のデータが取得できません")
+    all_dates = sorted({d for v in prep.values() for d in v["dates"]})[200:]
+    r = _sim_pass(prep, all_dates, initial, risk_pct, max_pos, entry_score, rr, fee)
+
+    curve = r["curve"]
     by_year = {}
-    for i, c in enumerate(curve):
+    for c in curve:
         y = c["date"][:4]
         by_year.setdefault(y, {"start": c["equity"], "end": c["equity"]})
         by_year[y]["end"] = c["equity"]
     yearly = [{"year": y, "returnPct": round((v["end"] / v["start"] - 1) * 100, 1)}
               for y, v in sorted(by_year.items()) if v["start"]]
-
-    # 資産曲線は間引いて返す(週次相当)
     step = max(1, len(curve) // 400)
-    return {
-        "period": {"from": curve[0]["date"] if curve else None,
-                   "to": curve[-1]["date"] if curve else None, "years": round(yrs, 1)},
-        "settings": {"initial": initial, "riskPct": risk_pct, "maxPositions": max_pos,
-                     "entryScore": entry_score, "tickers": len(data), "fee": fee},
-        "result": {
-            "finalEquity": round(final, 0),
-            "totalReturnPct": round((final / initial - 1) * 100, 1),
-            "cagrPct": round(cagr, 2),
-            "maxDrawdownPct": round(maxdd * 100, 1),
-            "sharpe": round(sharpe, 2),
-            "trades": len(trades),
-            "winRate": round(len(wins) / len(trades) * 100, 1) if trades else None,
-            "profitFactor": round(gw / gl, 2) if gl > 0 else None,
-            "avgWinPct": round(sum(t["pnlPct"] for t in wins) / len(wins), 2) if wins else 0,
-            "avgLossPct": round(sum(t["pnlPct"] for t in trades if t["pnl"] <= 0) / max(1, len(trades) - len(wins)), 2),
-            "maxLossStreak": _max_streak(trades),
-        },
-        "curve": curve[::step], "yearly": yearly,
-        "recentTrades": trades[-15:][::-1],
-        "updatedAt": datetime.now(timezone.utc).isoformat()}
+    return {"period": r["period"],
+            "settings": {"initial": initial, "riskPct": risk_pct, "maxPositions": max_pos,
+                         "entryScore": entry_score, "rr": rr, "tickers": len(prep), "fee": fee},
+            "result": r["result"], "curve": curve[::step], "yearly": yearly,
+            "recentTrades": r["trades"][-15:][::-1],
+            "updatedAt": datetime.now(timezone.utc).isoformat()}
+
+
+def simulate_grid(tickers=None, years=25, initial=1000000):
+    """複数のパラメータ条件を一括比較し、最適な設定を提示する。
+    スコアの計算は1回だけなので、条件を増やしても時間はほとんど増えない。"""
+    tickers = tickers or DEFAULT_UNIVERSE
+    prep = _prepare_sim(tickers, years)
+    if not prep:
+        raise Exception("シミュレーション用のデータが取得できません")
+    all_dates = sorted({d for v in prep.values() for d in v["dates"]})[200:]
+
+    combos = []
+    for entry in (70, 75, 80):
+        for rr in (2.0, 3.0):
+            for mp in (3, 5, 8):
+                combos.append({"entryScore": entry, "rr": rr, "maxPositions": mp, "riskPct": 2.0})
+
+    rows = []
+    for c in combos:
+        try:
+            r = _sim_pass(prep, all_dates, initial, c["riskPct"], c["maxPositions"],
+                          c["entryScore"], c["rr"])
+            res = r["result"]
+            # リターン÷リスクで評価(下落幅に対してどれだけ増やせたか)
+            calmar = (res["cagrPct"] / abs(res["maxDrawdownPct"])) if res["maxDrawdownPct"] else 0
+            rows.append({**c, **{k: res[k] for k in
+                                 ("finalEquity", "totalReturnPct", "cagrPct", "maxDrawdownPct",
+                                  "sharpe", "trades", "winRate", "profitFactor", "maxLossStreak",
+                                  "effectiveRiskPct")},
+                         "calmar": round(calmar, 2)})
+        except Exception as e:
+            print("grid combo failed:", c, e)
+
+    current = next((r for r in rows if r["entryScore"] == 70 and r["rr"] == 2.0
+                    and r["maxPositions"] == 5), None)
+    best_return = max(rows, key=lambda r: r["cagrPct"]) if rows else None
+    best_risk = max(rows, key=lambda r: r["calmar"]) if rows else None
+    return {"period": {"years": years, "tickers": len(prep)},
+            "combos": sorted(rows, key=lambda r: -r["calmar"]),
+            "current": current, "bestReturn": best_return, "bestRiskAdjusted": best_risk,
+            "updatedAt": datetime.now(timezone.utc).isoformat()}
 
 
 def _max_streak(trades):
