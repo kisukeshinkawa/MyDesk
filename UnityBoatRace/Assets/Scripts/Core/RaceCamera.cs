@@ -139,8 +139,13 @@ namespace BoatRace.Core
             if (focusBoat >= 0 && focusBoat < race.boats.Count)
                 center = Vector3.Lerp(center, race.boats[focusBoat].engine.Position, 0.55f);
 
-            // スタンド側(-Z)の高さ9mのカメラ台。x方向は艇団を少し先読みしてパン
-            Vector3 targetPos = new Vector3(center.x - 14f, 9f, Mathf.Min(center.z, 0f) - 76f);
+            // スタンド側(-Z)のカメラ台。x方向は艇団を少し先読みしてパン。
+            // スタンド建屋は z=-57 から岸側に建つため、カメラは必ず水面側(z>-54)に留める
+            // (建屋の裏に入ると壁で画面が塞がる)。岸寄りの艇団を狙うときは上段から見下ろす。
+            float wantZ = Mathf.Min(center.z, 0f) - 76f;
+            float camZ = Mathf.Max(wantZ, -54f);
+            float camY = 9f + Mathf.Min((camZ - wantZ) * 0.12f, 8f);
+            Vector3 targetPos = new Vector3(center.x - 14f, camY, camZ);
             transform.position = Vector3.SmoothDamp(transform.position, targetPos, ref velocity, 0.6f);
             var look = Quaternion.LookRotation(center + Vector3.up * 0.8f - transform.position);
             transform.rotation = Quaternion.Slerp(transform.rotation, look, Time.deltaTime * 4.5f);

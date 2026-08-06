@@ -287,7 +287,7 @@ namespace BoatRace.UI
                        : $".{Mathf.RoundToInt(Mathf.Abs(bs.st) * 100f):00}")
                     : "--";
                 string place = disq ? "欠場 " : bs.finished ? $"{bs.finalPlace}着 " : $"{i + 1}位 ";
-                string lap = bs.finished || disq ? "" : $" {bs.lap + 1}周目";
+                string lap = bs.finished || disq ? "" : bs.crossedStart ? $" {bs.lap + 1}周目" : " 進入中";
                 string you = idx == race.playerBoatIndex ? "▶" : "";
                 standingRows[i].text =
                     $"{you}{place}{race.statsList[idx].player.playerName}  ST{st} {StrategyAI.TacticName(bs.tactic)}{lap}";

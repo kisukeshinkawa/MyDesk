@@ -15,7 +15,7 @@ namespace BoatRace.UI
     public class GameFlow : MonoBehaviour
     {
         /// <summary>ビルド識別子。画面右上に表示され、更新が届いたか一目で分かる。</summary>
-        public const string Build = "B39-バグ修正3件";
+        public const string Build = "B40-カメラ・地図修正";
 
         RaceManager race;
         ReplayManager replay;
@@ -2245,7 +2245,7 @@ namespace BoatRace.UI
             // 進行ルート(章ノード間。クリア済み区間は金)
             for (int i = 0; i < chs.Length - 1; i++)
                 MapLine(NodePos(i), NodePos(i + 1),
-                    i + 1 < career.chapter ? new Color(1f, 0.84f, 0.20f, 0.85f) : new Color(1f, 1f, 1f, 0.40f),
+                    i + 1 < career.chapter ? new Color(1f, 0.84f, 0.20f, 0.85f) : new Color(0.10f, 0.22f, 0.42f, 0.45f),
                     3f);
 
             // 左右のラベル列の割り当て(地図中心より西=左列/東=右列)、各列は北から順
@@ -2296,7 +2296,7 @@ namespace BoatRace.UI
                     new Vector2(p.x - nr, p.y - nr * 1.55f), new Vector2(p.x + nr, p.y + nr * 1.55f),
                     Vector2.zero, Vector2.zero);
                 var ndol = nodeDot.AddComponent<Outline>();
-                ndol.effectColor = Color.white;
+                ndol.effectColor = new Color(0.10f, 0.22f, 0.42f);  // 白い陸の上でも見える紺フチ
                 ndol.effectDistance = new Vector2(2f, 2f);
                 if (now) nodeDot.AddComponent<Button>().onClick.AddListener(StartCareerRace);
             }

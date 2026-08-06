@@ -162,7 +162,7 @@ namespace BoatRace.Career
             new Chapter("地方巡業",       13, "B2",  3),  // 尼崎: 3着以内
             new Chapter("B1への挑戦",     12, "B1",  2),  // 住之江: 2着以内
             new Chapter("G3記念",         15, "G3",  3),  // 丸亀: 3着以内
-            new Chapter("地区選手権",     12, "G2",  2),  // 住之江: 2着以内
+            new Chapter("地区選手権",     24, "G2",  2),  // 大村(発祥の地): 2着以内
             new Chapter("クラシック",     7,  "SG",  1),  // 蒲郡: 優勝=SG制覇!
         };
 
