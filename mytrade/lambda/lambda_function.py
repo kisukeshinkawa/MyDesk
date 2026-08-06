@@ -204,6 +204,8 @@ def lambda_handler(event, context):
             return _res(200, {"available": _discover_models(),
                               "remembered": (_load_json_s3(MODEL_STATE_KEY, {}) or {}).get("modelId"),
                               "configured": BEDROCK_MODEL})
+        if action == "dashboard":
+            return _res(200, performance_dashboard())
         if action == "autotrade":
             return _res(200, {"config": autotrade_config(), "state": paper_state()})
         if action == "autotrade-config":
@@ -1210,6 +1212,7 @@ def run_backtest(tickers=None, years=10, apply_weights=False):
         cfg = load_learn_config()
         cfg.update({"factor_weights": weights, "factor_ic": ics,
                     "backtestSamples": len(samples), "backtestYears": years,
+                    "backtestUpdatedAt": datetime.now(timezone.utc).isoformat(),
                     "backtest_report": report,
                     "updatedAt": datetime.now(timezone.utc).isoformat()})
         _save_json_s3(CONFIG_KEY, cfg)
@@ -1290,7 +1293,7 @@ def run_learn(tickers=None):
         pass
     # 直近重視の重み(半減期5年)が効くので期間は長めに取る
     bt = [{"factors": s["factors"], "ret": s["ex20"], "date": s["date"]}
-          for s in backtest_universe(tickers, years=int(os.environ.get("LEARN_YEARS", "10")))]
+          for s in backtest_universe(tickers, years=int(os.environ.get("LEARN_YEARS", "25")))]
     live = [{"factors": p.get("factors", {}), "ret": p.get("ret5")}
             for p in preds if p.get("type") == "score" and p.get("ret5") is not None]
     weights, ics = derive_weights(bt + live)
@@ -2086,6 +2089,59 @@ def run_autotrade():
     _save_json_s3(AUTO_KEY, cfg)
     return {"enabled": True, "actions": actions, "state": st,
             "updatedAt": datetime.now(timezone.utc).isoformat()}
+
+
+def performance_dashboard():
+    """運用成績のまとめ: デモ口座の日次/累積、AI判定の精度、自動売買の記録。"""
+    st = paper_state()
+    cfg = load_learn_config()
+    auto = _load_json_s3(AUTO_KEY, {})
+    hist = st.get("history") or []
+
+    # 日次リターンと最大ドローダウン
+    daily, peak, maxdd = [], None, 0.0
+    prev = None
+    for h in hist:
+        eq = h["equity"]
+        if prev is not None:
+            daily.append({"date": h["date"], "equity": eq,
+                          "changePct": round((eq / prev - 1) * 100, 2),
+                          "change": round(eq - prev, 0)})
+        peak = eq if peak is None else max(peak, eq)
+        if peak:
+            maxdd = min(maxdd, (eq / peak - 1) * 100)
+        prev = eq
+
+    stats = cfg.get("stats") or {}
+    bt = (cfg.get("backtest_report") or {})
+    reg = (bt.get("testWeightedRegime") or {}).get("buy")
+
+    return {
+        "demo": {
+            "initial": st["initial"], "equity": st["equity"], "cash": st["cash"],
+            "totalPnl": st["totalPnl"], "totalPnlPct": st["totalPnlPct"],
+            "positions": st["positions"], "stats": st["stats"],
+            "maxDrawdownPct": round(maxdd, 2), "days": len(hist),
+            "daily": daily[-30:][::-1], "history": hist[-120:],
+        },
+        "auto": {"enabled": bool(auto.get("enabled")),
+                 "log": (auto.get("log") or [])[-10:][::-1],
+                 "riskPct": auto.get("riskPct"), "maxPositions": auto.get("maxPositions")},
+        "accuracy": {
+            "live": {"bySignal5d": stats.get("bySignal5d") or {},
+                     "byVerdict5d": stats.get("byVerdict5d") or {},
+                     "bySignal20d": stats.get("bySignal20d") or {},
+                     "evaluated": stats.get("evaluated", 0), "total": stats.get("total", 0)},
+            "backtest": ({"winRate": reg["winRate"], "n": reg["n"], "avgRet": reg["avgRet"],
+                          "avgExcess": reg.get("avgExcess"),
+                          "period": (bt.get("period") or {}).get("from"),
+                          "years": bt.get("years")} if reg else None),
+            "byEra": bt.get("byEra") or {},
+        },
+        "learn": {"weights": cfg.get("factor_weights"), "ic": cfg.get("factor_ic"),
+                  "samples": cfg.get("backtestSamples"), "years": cfg.get("backtestYears"),
+                  "lessons": cfg.get("lessons") or [], "updatedAt": cfg.get("updatedAt")},
+        "updatedAt": datetime.now(timezone.utc).isoformat()}
 
 
 # ═══════════════════════ チャートデータ(期間切替+サブ指標) ═══════════════════════

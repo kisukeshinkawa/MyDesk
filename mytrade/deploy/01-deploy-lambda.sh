@@ -66,7 +66,7 @@ TMPZ=$(mktemp -d)
 cp "$HERE/lambda/lambda_function.py" "$TMPZ/"
 (cd "$TMPZ" && zip -q function.zip lambda_function.py)
 
-ENVVARS="Variables={MYDESK_SECRET=$SECRET,S3_BUCKET=$BUCKET,BEDROCK_MODEL_ID=$BEDROCK_MODEL,BEDROCK_REGION=$REGION}"
+ENVVARS="Variables={MYDESK_SECRET=$SECRET,S3_BUCKET=$BUCKET,BEDROCK_MODEL_ID=$BEDROCK_MODEL,BEDROCK_REGION=$REGION,LEARN_YEARS=${LEARN_YEARS:-25}}"
 
 if aws lambda get-function --function-name "$FUNC" --region "$REGION" >/dev/null 2>&1; then
   echo "▶ 既存関数を更新..."

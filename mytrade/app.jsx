@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 // MyTrade — 投資専用スタンドアロンアプリ (MyDeskから分離)
 // バックエンド: mydesk-stock-analysis Lambda (共用・変更不要)
 // ═══════════════════════════════════════════════════════════════
-const MYTRADE_BUILD = "2026-08-06-v13-autotrade";
+const MYTRADE_BUILD = "2026-08-07-v14-dashboard";
 if (typeof window !== "undefined") {
   window.__MYTRADE_BUILD = MYTRADE_BUILD;
   console.log(`[MyTrade] Build: ${MYTRADE_BUILD}`);
@@ -273,6 +273,8 @@ function StockView({currentUser}) {
   const [errMsg, setErrMsg]       = useState("");
   const [perf, setPerf]           = useState(null);  // {stats, config} 学習・成績
   const [showLearn, setShowLearn] = useState(true);
+  const [dash, setDash]           = useState(null);   // 成績ダッシュボード
+  const [showManual, setShowManual] = useState(false); // 手動操作(通常は隠す)
   const [btRep, setBtRep]         = useState(null);  // バックテスト結果
   const [btYears, setBtYears]     = useState("10");  // 検証期間(年)
   const [screenRes, setScreenRes] = useState(null);  // スクリーニング結果
@@ -350,7 +352,7 @@ function StockView({currentUser}) {
       if(!report&&!busy.report) loadReport(false);
     }
     if(view==="portfolio"&&!journal&&!busy.journal) loadJournal();
-    if(view==="learn"&&!perf&&!busy.perf) loadPerf();
+    if(view==="learn"){ if(!dash&&!busy.dash) loadDash(); if(!perf&&!busy.perf) loadPerf(); }
     if(view==="picks"&&!ranking&&!busy.rank) loadRanking(false);
     if(view==="demo"){ if(!paper&&!busy.paper) loadPaper(); if(!autoCfg) loadAuto(); }
   /* eslint-disable-next-line */ },[view]);
@@ -411,6 +413,13 @@ function StockView({currentUser}) {
     try { const a=results[ticker]; const r = await api({action:"news",ticker,name:a?.name||""}); setNewsMap(m=>({...m,[ticker]:r.news||[]})); }
     catch(e){ setErrMsg("ニュース取得エラー: "+e.message); }
     setBusy(b=>({...b,news:false}));
+  };
+
+  const loadDash = async () => {
+    setBusy(b=>({...b,dash:true}));
+    try { const r = await api({action:"dashboard"}, 180000); setDash(r); }
+    catch(e){ setErrMsg("成績取得エラー: "+e.message); }
+    setBusy(b=>({...b,dash:false}));
   };
 
   const loadPerf = async () => {
@@ -1688,7 +1697,124 @@ function StockView({currentUser}) {
         </div>
         {showLearn&&(
           <div style={{marginTop:"0.75rem"}}>
-            <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap",marginBottom:"0.75rem"}}>
+            {/* 📊 運用成績(デイリー/累積/リアルタイム) */}
+            {dash&&(()=>{
+              const d=dash.demo, ac=dash.accuracy||{}, au=dash.auto||{};
+              const live=(ac.live&&ac.live.bySignal5d&&ac.live.bySignal5d.buy)||null;
+              const bt=ac.backtest;
+              return (
+                <div style={{marginBottom:"0.85rem"}}>
+                  <div style={{fontSize:"0.85rem",fontWeight:800,color:C.text,marginBottom:"0.4rem"}}>
+                    📊 運用成績 <span style={{fontSize:"0.66rem",fontWeight:600,color:C.textMuted}}>
+                    デモ口座{d.days>0?`(${d.days}日間)`:"(開始前)"} / 現在値で常時更新</span>
+                  </div>
+                  <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap",marginBottom:"0.6rem"}}>
+                    <div style={{flex:"1 1 150px",padding:"0.6rem 0.75rem",background:d.totalPnl>=0?C.greenBg:C.redBg,borderRadius:10}}>
+                      <div style={{fontSize:"0.66rem",fontWeight:700,color:d.totalPnl>=0?C.green:C.red}}>累計損益</div>
+                      <div style={{fontSize:"1.1rem",fontWeight:800,color:d.totalPnl>=0?C.green:C.red}}>
+                        {d.totalPnl>=0?"+":""}{Number(d.totalPnl).toLocaleString()}<span style={{fontSize:"0.7rem"}}>円</span>
+                        <span style={{fontSize:"0.78rem",marginLeft:"0.3rem"}}>({d.totalPnlPct>=0?"+":""}{d.totalPnlPct}%)</span>
+                      </div>
+                    </div>
+                    {[["総資産",Number(d.equity).toLocaleString()+"円"],
+                      ["勝率",d.stats.winRate!=null?d.stats.winRate+"%":"—"],
+                      ["PF",d.stats.profitFactor!=null?d.stats.profitFactor:"—"],
+                      ["最大下落",d.maxDrawdownPct+"%"],
+                      ["決済回数",d.stats.closed+"回"]].map(([l,v],i)=>(
+                      <div key={i} style={{flex:"1 1 92px",padding:"0.6rem 0.7rem",background:C.bg,borderRadius:10,border:`1px solid ${C.borderLight}`}}>
+                        <div style={{fontSize:"0.64rem",fontWeight:700,color:C.textMuted}}>{l}</div>
+                        <div style={{fontSize:"0.92rem",fontWeight:800,color:C.text}}>{v}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {/* 精度: 実運用 vs 検証値 */}
+                  <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap",marginBottom:"0.6rem"}}>
+                    <div style={{flex:"1 1 240px",padding:"0.6rem 0.75rem",background:"white",borderRadius:10,border:`1.5px solid ${live?C.green:C.border}`}}>
+                      <div style={{fontSize:"0.7rem",fontWeight:800,color:live?C.green:C.textMuted,marginBottom:"0.15rem"}}>🔴 実運用の精度(本番の成績)</div>
+                      {live
+                        ? <div style={{fontSize:"0.8rem",color:C.text}}>買いシグナル {live.n}件 / <b>勝率{live.winRate}%</b> / 平均{live.avgRet>=0?"+":""}{live.avgRet}%</div>
+                        : <div style={{fontSize:"0.72rem",color:C.textMuted}}>まだ0件。予測を記録してから5営業日後に自動で集計されます(現在{(ac.live&&ac.live.total)||0}件を記録中)</div>}
+                    </div>
+                    <div style={{flex:"1 1 240px",padding:"0.6rem 0.75rem",background:"white",borderRadius:10,border:`1px solid ${C.border}`}}>
+                      <div style={{fontSize:"0.7rem",fontWeight:800,color:C.textSub,marginBottom:"0.15rem"}}>📘 検証値(過去データでの成績)</div>
+                      {bt
+                        ? <div style={{fontSize:"0.8rem",color:C.text}}>{bt.years||25}年検証 {bt.n}件 / <b>勝率{bt.winRate}%</b> / 平均{bt.avgRet>=0?"+":""}{bt.avgRet}%{bt.avgExcess!=null?` (対指数${bt.avgExcess>=0?"+":""}${bt.avgExcess}%)`:""}</div>
+                        : <div style={{fontSize:"0.72rem",color:C.textMuted}}>毎月1日に自動で25年検証が走ります(次回まで未生成)</div>}
+                    </div>
+                  </div>
+                  {/* 日次成績 */}
+                  {(d.daily||[]).length>0&&(
+                    <div style={{padding:"0.6rem 0.75rem",background:C.bg,borderRadius:10,marginBottom:"0.6rem"}}>
+                      <div style={{fontSize:"0.72rem",fontWeight:800,color:C.textSub,marginBottom:"0.25rem"}}>📅 日次の成績</div>
+                      {d.daily.slice(0,10).map((x,i)=>(
+                        <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:"0.73rem",padding:"0.2rem 0",borderBottom:`1px solid ${C.borderLight}`}}>
+                          <span style={{color:C.textSub}}>{x.date}</span>
+                          <span style={{color:C.text}}>{Number(x.equity).toLocaleString()}円</span>
+                          <b style={{color:x.change>=0?C.green:C.red,minWidth:110,textAlign:"right"}}>
+                            {x.change>=0?"+":""}{Number(x.change).toLocaleString()}円 ({x.changePct>=0?"+":""}{x.changePct}%)
+                          </b>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {/* 自動売買の記録 */}
+                  <div style={{padding:"0.6rem 0.75rem",background:au.enabled?C.greenBg:C.bg,borderRadius:10}}>
+                    <div style={{fontSize:"0.72rem",fontWeight:800,color:au.enabled?C.green:C.textMuted,marginBottom:"0.2rem"}}>
+                      🤖 AI自動売買 {au.enabled?`稼働中(1回の損失上限${au.riskPct}% / 最大${au.maxPositions}銘柄)`:"停止中 — デモ売買タブで開始できます"}
+                    </div>
+                    {(au.log||[]).length===0
+                      ? <div style={{fontSize:"0.71rem",color:C.textMuted}}>売買記録はまだありません</div>
+                      : (au.log||[]).slice(0,5).map((l,i)=>(
+                        <div key={i} style={{fontSize:"0.71rem",color:C.textSub,lineHeight:1.6}}>
+                          <b style={{color:C.text}}>{l.date}</b> 資産{Number(l.equity).toLocaleString()}円
+                          {(l.actions||[]).length===0?" / 売買なし":(l.actions||[]).map((a,j)=>
+                            <span key={j} style={{marginLeft:"0.3rem",color:a.type==="buy"?C.blue:C.orange}}>{a.type==="buy"?"買":a.type==="sell"?"売":"—"}{a.name||a.ticker}</span>)}
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* 📖 点数の見方 */}
+            <details style={{marginBottom:"0.85rem",background:"white",borderRadius:10,border:`1px solid ${C.border}`,padding:"0.7rem 0.85rem"}}>
+              <summary style={{fontSize:"0.85rem",fontWeight:800,color:C.accentDark,cursor:"pointer"}}>📖 点数の見方(はじめての方はこちら)</summary>
+              <div style={{fontSize:"0.75rem",color:C.text,lineHeight:1.85,marginTop:"0.5rem"}}>
+                <b style={{color:C.orange}}>⚡ 短期(0〜100点)= 「今が買うタイミングか」</b><br/>
+                値動きの勢い・トレンド・出来高から判定。<b>70点以上=買い場</b> / 45〜69=様子見 / 45未満=見送り<br/>
+                <span style={{color:C.textMuted}}>内訳: トレンド25点(移動平均の並び) + モメンタム25点(RSI・MACD) + 出来高20点 + 価格位置15点(過熱していないか) + 相対力15点(市場平均に勝っているか)</span><br/><br/>
+
+                <b style={{color:C.green}}>🏛️ 長期(0〜100点)= 「会社として持っていて安心か」</b><br/>
+                業績・割安さ・財務から判定。<b>70点以上=質が高い</b> / 50〜69=条件付き / 50未満=おすすめしない<br/>
+                <span style={{color:C.textMuted}}>内訳: 割安性25点(PER・PBR) + 収益性25点(ROE・利益率) + 成長性25点(EPSが伸びているか) + 財務健全性15点(借金の少なさ) + 株主還元10点(配当)</span><br/><br/>
+
+                <b style={{color:C.accent}}>📊 総合 = 短期と長期を合わせた点数</b>(設定タブで比率を変えられます)<br/><br/>
+
+                <b>🏷️ 判定の意味</b><br/>
+                <span style={{...S.chip(C.greenBg,C.green)}}>本命</span> 会社も良く、今が買い場。<b>一番おいしい状態</b><br/>
+                <span style={{...S.chip(C.blueBg,C.blue)}}>押し目待ち</span> 良い会社だが今は高い。<b>下がるのを待つ</b><br/>
+                <span style={{...S.chip(C.yellowBg,C.yellow)}}>短期限定</span> 値動きは良いが会社の質は普通。<b>長期保有は避ける</b><br/>
+                <span style={{...S.chip(C.borderLight,C.textSub)}}>見送り</span> 今は手を出さない<br/><br/>
+
+                <b>⚖️ 因子重み(×1.03など)</b> = AIが過去25年を学習して決めた「どの要素を重視するか」。<br/>
+                1.0より大きい=よく当たる要素なので重視、小さい=当たりにくいので軽視。<b>毎朝自動で更新</b>されます。<br/>
+                <span style={{color:C.textMuted}}>ICは予測力の指標。プラスなら「その要素が高い銘柄はよく上がった」という意味です</span><br/><br/>
+
+                <b>🔴実運用 と 📘検証値のちがい</b><br/>
+                実運用=このアプリが実際に予測して当たった割合(本番の成績)。<br/>
+                検証値=過去25年のデータで同じロジックを試した成績。<b>実運用の数字が出るまでは検証値が目安</b>です。
+              </div>
+            </details>
+
+            {/* 手動操作(通常は不要) */}
+            <div onClick={()=>setShowManual(!showManual)} style={{fontSize:"0.72rem",color:C.textMuted,cursor:"pointer",marginBottom:"0.5rem"}}>
+              🔧 手動操作 {showManual?"▲":"▼"} <span style={{fontSize:"0.66rem"}}>(通常は不要です。全自動で回っています)</span>
+            </div>
+            <div style={{display:showManual?"flex":"none",gap:"0.5rem",flexWrap:"wrap",marginBottom:"0.75rem"}}>
+              <button onClick={loadDash} disabled={busy.dash}
+                style={{padding:"0.5rem 0.95rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}}>
+                {busy.dash?"取得中...":"🔄 成績を再取得"}
+              </button>
               <button onClick={runLearn} disabled={busy.learn}
                 style={{padding:"0.5rem 0.95rem",borderRadius:8,border:"none",background:"linear-gradient(135deg,#7A5AD9,#0070D4)",color:"white",fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",opacity:busy.learn?0.6:1}}>
                 {busy.learn?"学習中(1〜2分)...":"📚 過去実績＋バックテストで学習"}
