@@ -30,6 +30,8 @@ namespace BoatRace.Core
         [NonSerialized] public float playerSPMax = 100f;       // 最大体力(レベルで成長)
         [NonSerialized] public float playerSPInit = 100f;      // 開始時体力(アイテムで増える)
         [NonSerialized] public bool playerMotorBoost;          // 新品ペラ(次レース限り)
+        [NonSerialized] public bool playerManualStart;         // 手動スタートモード(設定で切替)
+        [NonSerialized] public bool playerStartPressed;        // 「全速！」ボタンが押されたか
         [NonSerialized] public float pAccelBonus, pTopBonus, pTurnBonus; // ガチャ装備+整備ボーナス
         [NonSerialized] public Setup.PropellerSetting playerPropOverride; // ガレージのペラ調整
         public event Action<int> OnPlayerTurnEntry;            // markNo(1/2)
@@ -140,6 +142,7 @@ namespace BoatRace.Core
             // タイムライン(ゲームテンポ版): T-62係留 → T-60ピット離れ →
             // 隊列で待機水面へ → T-12黄針始動=物理引き継ぎ → T=0スタート
             state.clock = -62f;
+            playerStartPressed = false; // 手動スタートは毎レースリセット
             armed = false;
             finishCounter = 0;
             lastLeader = -1;
@@ -334,9 +337,13 @@ namespace BoatRace.Core
                 if (bs.crossedStart) continue;
                 allCrossed = false;
 
-                // 走行は全艇オート(プレイヤーの操作はターンの技選択のみ)
+                // 走行は基本オート。手動スタートモード時のみ自艇のスロットルを
+                // プレイヤーの「全速！」ボタンで制御(押すまで起こし・押したら全開)
                 float laneZ = WaitingSystem.LaneZ(bs.course);
-                b.engine.Throttle = b.startAI.GetThrottle(state.clock, b.engine.Speed);
+                if (playerManualStart && i == playerBoatIndex)
+                    b.engine.Throttle = playerStartPressed ? 1f : 0.30f;
+                else
+                    b.engine.Throttle = b.startAI.GetThrottle(state.clock, b.engine.Speed);
                 b.engine.Steer = b.startAI.GetSteer(b.engine, laneZ);
 
                 float prevX = b.engine.Position.x - b.engine.Forward.x * b.engine.Speed * dt;

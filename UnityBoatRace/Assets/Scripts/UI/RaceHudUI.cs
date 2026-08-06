@@ -245,7 +245,9 @@ namespace BoatRace.UI
             if (race.playerBoatIndex >= 0)
             {
                 if (race.state.phase == RacePhase.Approach && ck < 0.5f)
-                    hintText.text = "スタートはオート。ターン突入で技を選べ！";
+                    hintText.text = race.playerManualStart
+                        ? "大時計に合わせて「全速！！」を押せ！ 早すぎるとF！"
+                        : "スタートはオート。ターン突入で技を選べ！";
                 else if (race.state.phase == RacePhase.Racing && race.state.raceTime < 10f)
                     hintText.text = "ターンのたびに技選択！体力と相談して撃て！";
                 else if (hintText.text.Length > 0)

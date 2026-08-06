@@ -15,7 +15,7 @@ namespace BoatRace.UI
     public class GameFlow : MonoBehaviour
     {
         /// <summary>ビルド識別子。画面右上に表示され、更新が届いたか一目で分かる。</summary>
-        public const string Build = "B37-実況増量";
+        public const string Build = "B38-手動スタート";
 
         RaceManager race;
         ReplayManager replay;
@@ -64,6 +64,7 @@ namespace BoatRace.UI
         bool startSlowActive, startSlowDone;
         bool goalSlowActive; // ゴール瞬間のスローモーション中
         GameObject pauseButton, pausePopupGo; // レース中のポーズ(≡)
+        GameObject manualStartBtn;            // 手動スタートの「全速！！」ボタン
         bool stTelopPending; // スタート成立後にST一覧テロップを出す予約
         GameObject broadcastStrip; // 実中継風の左端縦艇番プレート(スタート前のみ)
         RectTransform homeCtaRT;   // ホームの出走CTA(鼓動アニメ)
@@ -262,6 +263,19 @@ namespace BoatRace.UI
             pauseButton = pBtn.gameObject;
             pauseButton.SetActive(false);
 
+            // 手動スタート「全速！！」(設定で手動モード時、助走中だけ出る大ボタン)
+            var msBtn = UiKit.MakeButton(canvas.transform, "全速！！", new Color(1f, 0.72f, 0.05f), 40,
+                new Vector2(0.36f, 0.19f), new Vector2(0.64f, 0.33f), Vector2.zero, Vector2.zero,
+                () =>
+                {
+                    if (race.playerStartPressed) return;
+                    race.playerStartPressed = true;
+                    AudioKit.Whoosh();
+                    if (raceCam != null) raceCam.Punch(7f);
+                });
+            manualStartBtn = msBtn.gameObject;
+            manualStartBtn.SetActive(false);
+
             race.OnRaceFinished += () =>
             {
                 resultTimer = -1f;
@@ -338,6 +352,19 @@ namespace BoatRace.UI
             ffButton.SetActive(preRace || racingNow);
             if (pauseButton != null && pauseButton.activeSelf != (preRace || racingNow))
                 pauseButton.SetActive(preRace || racingNow);
+            // 手動スタート: 助走中(押すまで)だけ「全速！！」を表示・鼓動させる
+            bool showManual = race.armed && race.playerManualStart && race.playerBoatIndex >= 0 &&
+                race.state.phase == RacePhase.Approach && !race.playerStartPressed &&
+                !replay.IsPlaying && movePanelGo == null;
+            if (manualStartBtn != null)
+            {
+                if (manualStartBtn.activeSelf != showManual) manualStartBtn.SetActive(showManual);
+                if (showManual)
+                {
+                    float mp = 1f + Mathf.Sin(Time.unscaledTime * 6f) * 0.05f;
+                    manualStartBtn.transform.localScale = new Vector3(mp, mp, 1f);
+                }
+            }
             if (racingNow && !preRace) ffLabel.text = $"⏩ 倍速 x{raceSpeed:F0}";
             if (!race.armed) raceSpeed = 1f;
             if (!preRace && movePanelGo == null && !specialSeqActive && !startSlowActive &&
@@ -1269,10 +1296,10 @@ namespace BoatRace.UI
 
             // 実在選手名スイッチ(リリース権利対応: OFFでパロディ名に)
             UiKit.MakeText(inner.transform, "実在選手名", 18, UiKit.TextDark, TextAnchor.MiddleLeft,
-                new Vector2(0.07f, 0.40f), new Vector2(0.44f, 0.52f), Vector2.zero, Vector2.zero, bold: true);
+                new Vector2(0.07f, 0.435f), new Vector2(0.44f, 0.52f), Vector2.zero, Vector2.zero, bold: true);
             var rnBtn = UiKit.MakeButton(inner.transform, RealNames ? "使用する" : "パロディ名",
                 RealNames ? UiKit.Cyan : new Color(0.55f, 0.60f, 0.68f), 15,
-                new Vector2(0.50f, 0.40f), new Vector2(0.87f, 0.52f), Vector2.zero, Vector2.zero, () => { });
+                new Vector2(0.50f, 0.435f), new Vector2(0.87f, 0.52f), Vector2.zero, Vector2.zero, () => { });
             rnBtn.onClick.AddListener(() =>
             {
                 PlayerPrefs.SetInt("br_realnames", RealNames ? 0 : 1);
@@ -1280,9 +1307,25 @@ namespace BoatRace.UI
                 t.text = RealNames ? "使用する" : "パロディ名";
             });
 
-            UiKit.MakeText(inner.transform, $"Ver.1.0 [{Build}]", 14,
+            // スタート操作(オート/手動)。手動は助走で「全速！！」を自分で押すST勝負
+            bool ManualStart() => PlayerPrefs.GetInt("br_manualstart", 0) == 1;
+            UiKit.MakeText(inner.transform, "スタート操作", 18, UiKit.TextDark, TextAnchor.MiddleLeft,
+                new Vector2(0.07f, 0.335f), new Vector2(0.44f, 0.42f), Vector2.zero, Vector2.zero, bold: true);
+            var msTog = UiKit.MakeButton(inner.transform, ManualStart() ? "手動(ST勝負)" : "オート",
+                ManualStart() ? new Color(1f, 0.60f, 0.05f) : UiKit.Cyan, 15,
+                new Vector2(0.50f, 0.335f), new Vector2(0.87f, 0.42f), Vector2.zero, Vector2.zero, () => { });
+            msTog.onClick.AddListener(() =>
+            {
+                PlayerPrefs.SetInt("br_manualstart", ManualStart() ? 0 : 1);
+                var t = msTog.GetComponentInChildren<Text>();
+                t.text = ManualStart() ? "手動(ST勝負)" : "オート";
+                var img = msTog.GetComponent<Image>();
+                img.color = ManualStart() ? new Color(1f, 0.60f, 0.05f) : UiKit.Cyan;
+            });
+
+            UiKit.MakeText(inner.transform, $"Ver.1.0 [{Build}]", 13,
                 new Color(0.45f, 0.50f, 0.58f), TextAnchor.MiddleCenter,
-                new Vector2(0f, 0.30f), new Vector2(1f, 0.38f), Vector2.zero, Vector2.zero);
+                new Vector2(0f, 0.29f), new Vector2(1f, 0.325f), Vector2.zero, Vector2.zero);
 
             UiKit.MakeButton(inner.transform, "セーブデータを初期化", new Color(0.72f, 0.15f, 0.12f), 16,
                 new Vector2(0.14f, 0.185f), new Vector2(0.86f, 0.285f), Vector2.zero, Vector2.zero,
@@ -2280,6 +2323,8 @@ namespace BoatRace.UI
 
         void StartCareerRace()
         {
+            // 手動スタート設定(設定画面で切替。ONなら助走で「全速！！」を自分で押す)
+            race.playerManualStart = PlayerPrefs.GetInt("br_manualstart", 0) == 1;
             if (!career.allClear) race.venueId = career.Current.venueId; // 章の指定会場
 
             // レベルに応じた体力 + アイテム自動消費
