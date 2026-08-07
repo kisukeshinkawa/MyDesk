@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 // MyTrade — 投資専用スタンドアロンアプリ (MyDeskから分離)
 // バックエンド: mydesk-stock-analysis Lambda (共用・変更不要)
 // ═══════════════════════════════════════════════════════════════
-const MYTRADE_BUILD = "2026-08-08-v24-holding-detail";
+const MYTRADE_BUILD = "2026-08-08-v25-inline-chart";
 if (typeof window !== "undefined") {
   window.__MYTRADE_BUILD = MYTRADE_BUILD;
   console.log(`[MyTrade] Build: ${MYTRADE_BUILD}`);
@@ -259,8 +259,10 @@ function StockProChart({data,levels,show={},width=560}) {
 }
 
 // 保有1銘柄のカード: 何株・いくらで買って・今いくらで・損益いくら・値動き・損切り/利確まで
-function HoldingCard({p, color, onOpen, onSell, beginner}) {
+function HoldingCard({p, color, onOpen, onSell, onChart, chart, busyChart, beginner}) {
+  const [open, setOpen] = React.useState(false);
   const up = p.pnl>=0;
+  const myChart = chart && chart.ticker===p.ticker ? chart : null;
   const sp = p.spark||[];
   const spMin = sp.length?Math.min(...sp):0, spMax = sp.length?Math.max(...sp):1;
   const rg = (spMax-spMin)||1;
@@ -319,8 +321,23 @@ function HoldingCard({p, color, onOpen, onSell, beginner}) {
           {p.short!=null&&<span style={S.chip(C.borderLight,C.textSub)}>短期{p.short}</span>}
           {p.long!=null&&<span style={S.chip(C.borderLight,C.textSub)}>長期{p.long}</span>}
           {p.sector&&<span style={S.chip(C.borderLight,C.textMuted)}>{p.sector}</span>}
-          {onOpen&&<button onClick={onOpen} style={{...S.iconBtn,color:C.accent,fontSize:"0.68rem",fontWeight:700}}>チャートを見る →</button>}
+          {(onChart||onOpen)&&<button onClick={()=>{ const n=!open; setOpen(n); if(n&&onChart&&(!myChart)) onChart(); }}
+            style={{...S.iconBtn,color:C.accent,fontSize:"0.68rem",fontWeight:700}}>{open?"チャートを閉じる ▲":"チャートを見る ▼"}</button>}
           {onSell&&<button onClick={onSell} style={{marginLeft:"auto",padding:"0.25rem 0.6rem",borderRadius:7,border:"none",background:C.redBg,color:C.red,fontWeight:700,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit"}}>全部売る</button>}
+        </div>
+      )}
+      {open&&(
+        <div style={{marginTop:"0.5rem",padding:"0.4rem",background:C.bg,borderRadius:8}}>
+          {busyChart&&!myChart
+            ? <div style={{fontSize:"0.7rem",color:C.textMuted,textAlign:"center",padding:"1rem"}}>チャート読み込み中...</div>
+            : myChart
+              ? <>
+                  <StockProChart data={myChart} levels={{stop:p.stop,target1:p.target,entry:p.avgPrice}}/>
+                  <div style={{fontSize:"0.62rem",color:C.textMuted,textAlign:"right"}}>
+                    青=取得単価 / 赤=損切り / 緑=利確 ・ {myChart.period||"6mo"} {myChart.lastDate?`(最終 ${myChart.lastDate})`:""}
+                  </div>
+                </>
+              : <div style={{fontSize:"0.7rem",color:C.textMuted,textAlign:"center",padding:"1rem"}}>チャートを取得できませんでした</div>}
         </div>
       )}
     </div>
@@ -1828,15 +1845,29 @@ function StockView({currentUser}) {
             </div>
           </div>
 
+          {/* 🤖 AIの保有銘柄 */}
+          <div style={{marginBottom:"0.9rem",padding:"0.7rem 0.8rem",background:"#F8F5FF",borderRadius:10,border:`1px solid ${C.purple}44`}}>
+            <div style={{fontSize:"0.8rem",fontWeight:800,color:C.purple,marginBottom:"0.4rem"}}>
+              🤖 AIの保有銘柄 {paperAi?`(${paperAi.positions.length}銘柄)`:""}
+              <span style={{fontSize:"0.66rem",fontWeight:600,color:C.textMuted,marginLeft:"0.3rem"}}>自動売買・あなたは触りません</span>
+            </div>
+            {!paperAi
+              ? <div style={{fontSize:"0.73rem",color:C.textMuted}}>読み込み中...</div>
+              : paperAi.positions.length===0
+                ? <div style={{fontSize:"0.73rem",color:C.textMuted}}>保有なし{autoCfg&&autoCfg.enabled?"(条件を満たす銘柄が出れば毎時05分に自動で買います)":"(自動売買が停止中です)"}</div>
+                : paperAi.positions.map(p=>(
+                  <HoldingCard key={"ai"+p.ticker} p={p} beginner={beginner}
+                    chart={chart} busyChart={busy.chart} onChart={()=>loadChart(p.ticker)}/>
+                ))}
+          </div>
+
           {/* 保有 */}
-          <div style={{fontSize:"0.78rem",fontWeight:800,color:C.text,marginBottom:"0.3rem"}}>📦 保有銘柄</div>
+          <div style={{fontSize:"0.78rem",fontWeight:800,color:C.text,marginBottom:"0.3rem"}}>📦 あなたの保有銘柄 {paper.positions.length>0?`(${paper.positions.length}銘柄)`:""}</div>
           {paper.positions.length===0
             ? <div style={{fontSize:"0.75rem",color:C.textMuted,padding:"0.5rem 0"}}>保有なし。上のフォームか、ホームの売買プランから買ってみてください</div>
             : paper.positions.map(p=>(
               <HoldingCard key={p.ticker} p={p} beginner={beginner}
-                onOpen={()=>{ if(!watchlist.some(w=>w.ticker===p.ticker)) addStock({ticker:p.ticker,name:p.name,market:p.ticker.endsWith(".T")?"JP":"US"});
-                  setSelected(p.ticker); setView("analyze"); localStorage.setItem("mt_view","analyze");
-                  if(!newsMap[p.ticker]) loadNews(p.ticker); loadChart(p.ticker); }}
+                chart={chart} busyChart={busy.chart} onChart={()=>loadChart(p.ticker)}
                 onSell={()=>{ if(confirm(`${p.name} ${p.qty}株を全部売りますか？`)) paperOrder(p.ticker,"sell",p.qty,"全売却"); }}/>
             ))}
 
