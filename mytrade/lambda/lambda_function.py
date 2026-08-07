@@ -321,6 +321,10 @@ def lambda_handler(event, context):
             r = simulate_grid(body.get("tickers"), int(body.get("years", 25)))
             _save_json_s3("stock-learn/optimize.json", r)
             return _res(200, r)
+        if action == "recommend":
+            return _res(200, recommend_config(float(body.get("maxDrawdown", -35)),
+                                              bool(body.get("allowLeverage", False)),
+                                              int(body.get("minTrades", 30))))
         if action == "optimize-latest":
             return _res(200, _load_json_s3("stock-learn/optimize.json", {}))
         if action == "simulation-latest":
@@ -1407,6 +1411,79 @@ def simulate_grid(tickers=None, years=25, initial=1000000):
             "bestReturn": max(valid, key=lambda r: r["cagrPct"]) if valid else None,
             "bestRiskAdjusted": presets["balanced"],
             "updatedAt": datetime.now(timezone.utc).isoformat()}
+
+
+def recommend_config(max_dd=-35.0, allow_leverage=False, min_trades=30):
+    """検証結果から実運用に適した設定を選ぶ。
+    単純な年利1位は「たまたま当たった条件」の可能性が高いため、
+    近傍の条件(1項目だけ違う設定)も good かどうかで安定性を評価する。
+    さらに追証リスク(信用取引)と、耐えられる下落幅で足切りする。"""
+    grid = _load_json_s3("stock-learn/optimize.json", None)
+    if not grid or not grid.get("combos"):
+        raise Exception("先に条件の比較(optimize)を実行してください")
+    rows = grid["combos"]
+    key = lambda r: (r["entryScore"], r["rr"], r["maxPositions"], r["riskPct"],
+                     r.get("leverage", 1.0), r.get("method", "標準"))
+    by_key = {key(r): r for r in rows}
+    ENTRY = sorted({r["entryScore"] for r in rows})
+    RR = sorted({r["rr"] for r in rows})
+    MP = sorted({r["maxPositions"] for r in rows})
+    RISK = sorted({r["riskPct"] for r in rows})
+
+    def neighbors(r):
+        """1項目だけ1段階ずらした設定(周辺の安定性を見るため)"""
+        out = []
+        for lst, idx in ((ENTRY, 0), (RR, 1), (MP, 2), (RISK, 3)):
+            cur = key(r)
+            try:
+                pos = lst.index(cur[idx])
+            except ValueError:
+                continue
+            for d in (-1, 1):
+                if 0 <= pos + d < len(lst):
+                    k = list(cur)
+                    k[idx] = lst[pos + d]
+                    n = by_key.get(tuple(k))
+                    if n:
+                        out.append(n)
+        return out
+
+    cands = [r for r in rows
+             if (allow_leverage or r.get("leverage", 1.0) == 1.0)
+             and r["maxDrawdownPct"] >= max_dd
+             and r["trades"] >= min_trades
+             and r["cagrPct"] > 0]
+    scored = []
+    for r in cands:
+        nb = neighbors(r)
+        if len(nb) < 3:
+            continue
+        nb_cagr = sum(x["cagrPct"] for x in nb) / len(nb)
+        nb_dd = sum(x["maxDrawdownPct"] for x in nb) / len(nb)
+        # 周辺も良い設定を高く評価し、突出しすぎ(まぐれ)は割り引く
+        gap = r["cagrPct"] - nb_cagr
+        robust = min(r["cagrPct"], nb_cagr * 1.15)
+        stability = 1.0 if gap <= 0 else max(0.55, 1 - gap / max(1.0, r["cagrPct"]))
+        score = robust * stability / max(1.0, abs(nb_dd) / 20)
+        scored.append({**r, "neighborCagr": round(nb_cagr, 2), "neighborDd": round(nb_dd, 1),
+                       "robustCagr": round(robust, 2), "stability": round(stability, 2),
+                       "score": round(score, 3), "neighbors": len(nb)})
+    if not scored:
+        raise Exception("条件を満たす設定が見つかりません(下落許容を広げてください)")
+    scored.sort(key=lambda x: -x["score"])
+    best = scored[0]
+    peak = max(cands, key=lambda r: r["cagrPct"])
+    return {
+        "recommended": best, "runnerUps": scored[1:4],
+        "peakCagr": peak,
+        "criteria": {"maxDrawdown": max_dd, "allowLeverage": allow_leverage,
+                     "minTrades": min_trades, "candidates": len(cands)},
+        "reason": (f"年利{best['cagrPct']}%(周辺条件の平均{best['neighborCagr']}%)。"
+                   f"周辺{best['neighbors']}条件も同水準なので、たまたま当たった設定ではなく安定した領域です。"
+                   f"最大下落{best['maxDrawdownPct']}%は許容範囲({max_dd}%)内。"
+                   + ("信用取引を使わないので追証で強制決済される心配がありません。"
+                      if best.get("leverage", 1) == 1 else "")),
+        "updatedAt": datetime.now(timezone.utc).isoformat()}
 
 
 def _max_streak(trades):

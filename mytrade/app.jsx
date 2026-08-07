@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 // MyTrade — 投資専用スタンドアロンアプリ (MyDeskから分離)
 // バックエンド: mydesk-stock-analysis Lambda (共用・変更不要)
 // ═══════════════════════════════════════════════════════════════
-const MYTRADE_BUILD = "2026-08-08-v32-longhold";
+const MYTRADE_BUILD = "2026-08-08-v33-recommend";
 if (typeof window !== "undefined") {
   window.__MYTRADE_BUILD = MYTRADE_BUILD;
   console.log(`[MyTrade] Build: ${MYTRADE_BUILD}`);
@@ -394,6 +394,9 @@ function StockView({currentUser}) {
   const [dash, setDash]           = useState(null);   // 成績ダッシュボード
   const [sim, setSim]             = useState(null);   // 戦略シミュレーション
   const [opt, setOpt]             = useState(null);   // パラメータ最適化
+  const [rec, setRec]             = useState(null);   // 実運用向けの推奨設定(まぐれ除外)
+  const [recDd, setRecDd]         = useState(-35);    // 耐えられる最大下落
+  const [recLev, setRecLev]       = useState(false);  // 信用取引を許容するか
   const [showManual, setShowManual] = useState(false); // 手動操作(通常は隠す)
   const [btRep, setBtRep]         = useState(null);  // バックテスト結果
   const [btYears, setBtYears]     = useState("10");  // 検証期間(年)
@@ -506,7 +509,7 @@ function StockView({currentUser}) {
       if(!report&&!busy.report) loadReport(false);
     }
     if(view==="portfolio"&&!journal&&!busy.journal) loadJournal();
-    if(view==="learn"){ if(!dash&&!busy.dash) loadDash(); if(!perf&&!busy.perf) loadPerf(); if(!sim&&!busy.sim) loadSim(false); if(!opt&&!busy.opt) loadOpt(false); }
+    if(view==="learn"){ if(!dash&&!busy.dash) loadDash(); if(!perf&&!busy.perf) loadPerf(); if(!sim&&!busy.sim) loadSim(false); if(!opt&&!busy.opt) loadOpt(false); if(!rec&&!busy.rec) loadRec(); }
     if(view==="picks"&&!ranking&&!busy.rank) loadRanking(false);
     if(view==="demo"){ if(!paper&&!busy.paper) loadPaper(); if(!autoCfg) loadAuto(); if(!opt&&!busy.opt) loadOpt(false); }
   /* eslint-disable-next-line */ },[view]);
@@ -576,6 +579,18 @@ function StockView({currentUser}) {
       if(r&&r.combos) setOpt(r); else if(!force) setOpt({empty:true});
     } catch(e){ setErrMsg("最適化エラー: "+e.message); }
     setBusy(b=>({...b,opt:false}));
+  };
+
+  // 年利1位をそのまま使うと「たまたま当たった条件」を掴む。
+  // 周辺条件(1項目だけ違う設定)も同じくらい良い＝安定した領域を選ぶ。
+  const loadRec = async (dd, lev) => {
+    const d = dd===undefined?recDd:dd, l = lev===undefined?recLev:lev;
+    setBusy(b=>({...b,rec:true})); setErrMsg("");
+    try {
+      const r = await api({action:"recommend",maxDrawdown:d,allowLeverage:l}, 120000);
+      setRec(r);
+    } catch(e){ setRec({error:e.message}); }
+    setBusy(b=>({...b,rec:false}));
   };
 
   const loadSim = async (force) => {
@@ -1758,7 +1773,7 @@ function StockView({currentUser}) {
           )}
           {autoCfg&&!(opt&&opt.presets)&&(
             <div style={{marginTop:"0.5rem",fontSize:"0.7rem",color:C.textMuted}}>
-              運用タイプを選ぶには「🎓学習・検証」タブで<b>18通り比較</b>を一度実行してください
+              運用タイプを選ぶには「🎓学習・検証」タブで<b>条件の比較</b>を一度実行してください
             </div>
           )}
           {autoCfg&&!(opt&&opt.presets)&&(()=>{
@@ -2287,16 +2302,127 @@ function StockView({currentUser}) {
               })()}
             </div>
 
+            {/* 🎯 実運用でいちばん良い設定(まぐれ除外) */}
+            <div style={{marginBottom:"0.85rem",padding:"0.8rem 0.95rem",background:"white",borderRadius:10,border:`2px solid ${C.accent}`}}>
+              <div style={{fontWeight:800,fontSize:"0.9rem",color:C.accentDark,marginBottom:"0.15rem"}}>🎯 結局どれが最適？(実際に使うならこれ)</div>
+              <div style={{fontSize:"0.68rem",color:C.textMuted,lineHeight:1.6,marginBottom:"0.6rem"}}>
+                年利1位をそのまま採用すると「たまたま当たっただけの条件」を掴みます。
+                <b>となりの条件(1項目だけ違う設定)も同じくらい良いか</b>を見て、安定して勝てる領域を選びます。
+              </div>
+
+              <div style={{display:"flex",gap:"0.5rem",alignItems:"center",flexWrap:"wrap",marginBottom:"0.6rem",fontSize:"0.72rem"}}>
+                <span style={{color:C.textSub,fontWeight:700}}>耐えられる下落</span>
+                <select value={recDd} onChange={e=>{const v=Number(e.target.value); setRecDd(v); loadRec(v,recLev);}}
+                  style={{padding:"0.3rem 0.45rem",borderRadius:6,border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.72rem"}}>
+                  <option value={-20}>-20%まで(手堅い)</option>
+                  <option value={-30}>-30%まで</option>
+                  <option value={-35}>-35%まで(標準)</option>
+                  <option value={-45}>-45%まで(攻める)</option>
+                  <option value={-60}>-60%まで(かなり攻める)</option>
+                </select>
+                <label style={{display:"flex",alignItems:"center",gap:"0.25rem",color:C.textSub,cursor:"pointer"}}>
+                  <input type="checkbox" checked={recLev} onChange={e=>{setRecLev(e.target.checked); loadRec(recDd,e.target.checked);}} />
+                  信用取引(レバレッジ)も候補に入れる
+                </label>
+                <button onClick={()=>loadRec()} disabled={busy.rec}
+                  style={{padding:"0.35rem 0.75rem",borderRadius:8,border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",opacity:busy.rec?0.6:1}}>
+                  {busy.rec?"計算中...":"再判定"}
+                </button>
+              </div>
+
+              {rec&&rec.error&&(
+                <div style={{fontSize:"0.74rem",color:C.textSub,lineHeight:1.7}}>
+                  まだ判定できません({rec.error})<br/>
+                  <span style={{color:C.textMuted}}>下の「条件の比較」を先に実行するか、条件が厳しすぎる場合は「耐えられる下落」を広げてください。</span>
+                </div>
+              )}
+
+              {rec&&rec.recommended&&(()=>{
+                const b=rec.recommended, p=rec.peakCagr;
+                const row=(label,val,color)=>(
+                  <div style={{flex:"1 1 5.2rem",minWidth:"5.2rem"}}>
+                    <div style={{fontSize:"0.62rem",color:C.textMuted}}>{label}</div>
+                    <div style={{fontSize:"0.95rem",fontWeight:800,color:color||C.text}}>{val}</div>
+                  </div>
+                );
+                return (
+                  <div>
+                    <div style={{padding:"0.7rem 0.8rem",background:C.accentLight,borderRadius:8,marginBottom:"0.55rem"}}>
+                      <div style={{display:"flex",flexWrap:"wrap",gap:"0.6rem",marginBottom:"0.5rem"}}>
+                        {row("年利",`${b.cagrPct>=0?"+":""}${b.cagrPct}%`,b.cagrPct>=0?C.green:C.red)}
+                        {row("最大下落",`${b.maxDrawdownPct}%`,C.red)}
+                        {row("勝率",`${b.winRate}%`)}
+                        {row("損益比",`${b.profitFactor}`)}
+                        {row("売買回数",`${b.trades}回`)}
+                      </div>
+                      <div style={{fontSize:"0.73rem",color:C.text,lineHeight:1.75,borderTop:`1px solid ${C.border}`,paddingTop:"0.45rem"}}>
+                        <b>設定内容</b>: 買い基準 <b>{b.entryScore}点以上</b> / 利確 <b>{b.rr}倍</b> / 同時保有 <b>{b.maxPositions}銘柄</b> / 1回のリスク <b>{b.riskPct}%</b>
+                        {b.method&&<> / 手法 <b>{b.method}</b></>}
+                        {b.leverage&&b.leverage>1?<> / <span style={{color:C.red,fontWeight:800}}>信用{b.leverage}倍</span></>:<> / <span style={{color:C.green}}>現物のみ</span></>}
+                      </div>
+                    </div>
+
+                    <div style={{fontSize:"0.74rem",color:C.text,lineHeight:1.8,marginBottom:"0.5rem"}}>
+                      <b style={{color:C.accentDark}}>なぜこれ？</b><br/>{rec.reason}
+                    </div>
+
+                    {p&&(
+                      <div style={{padding:"0.55rem 0.7rem",background:C.yellowBg,borderRadius:8,fontSize:"0.72rem",color:C.text,lineHeight:1.7,marginBottom:"0.45rem"}}>
+                        <b style={{color:C.yellow}}>⚠️ 年利1位はあえて選んでいません</b><br/>
+                        1位は年利{p.cagrPct}%ですが最大下落{p.maxDrawdownPct}%
+                        {p.leverage&&p.leverage>1?`・信用${p.leverage}倍`:""}。
+                        {Math.abs(p.maxDrawdownPct)>=50?"資産が半分以下になる局面があり、":""}
+                        {p.leverage&&p.leverage>1?"信用取引では追証(強制決済)で退場するため現実には続けられません。":"下落に耐えきれず途中でやめる可能性が高い設定です。"}
+                      </div>
+                    )}
+
+                    {rec.runnerUps&&rec.runnerUps.length>0&&(
+                      <details>
+                        <summary style={{fontSize:"0.72rem",color:C.textSub,cursor:"pointer",fontWeight:700}}>次点の候補({rec.runnerUps.length}件)</summary>
+                        <div style={{overflowX:"auto",marginTop:"0.35rem"}}>
+                          <table style={{width:"100%",borderCollapse:"collapse",fontSize:"0.7rem",minWidth:460}}>
+                            <thead><tr style={{background:C.bg}}>
+                              {["買い基準","利確","保有数","リスク","年利","最大下落","周辺平均"].map((h,i)=>(
+                                <th key={i} style={{padding:"0.3rem 0.35rem",textAlign:i<4?"left":"right",fontSize:"0.63rem",fontWeight:700,color:C.textMuted,whiteSpace:"nowrap"}}>{h}</th>
+                              ))}
+                            </tr></thead>
+                            <tbody>
+                              {rec.runnerUps.map((r,i)=>(
+                                <tr key={i} style={{borderBottom:`1px solid ${C.borderLight}`}}>
+                                  <td style={{padding:"0.3rem 0.35rem"}}>{r.entryScore}点</td>
+                                  <td style={{padding:"0.3rem 0.35rem"}}>{r.rr}倍</td>
+                                  <td style={{padding:"0.3rem 0.35rem"}}>{r.maxPositions}銘柄</td>
+                                  <td style={{padding:"0.3rem 0.35rem"}}>{r.riskPct}%</td>
+                                  <td style={{padding:"0.3rem 0.35rem",textAlign:"right",fontWeight:800,color:r.cagrPct>=0?C.green:C.red}}>{r.cagrPct>=0?"+":""}{r.cagrPct}%</td>
+                                  <td style={{padding:"0.3rem 0.35rem",textAlign:"right",color:C.red}}>{r.maxDrawdownPct}%</td>
+                                  <td style={{padding:"0.3rem 0.35rem",textAlign:"right",color:C.textSub}}>{r.neighborCagr}%</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </details>
+                    )}
+
+                    <div style={{fontSize:"0.66rem",color:C.textMuted,marginTop:"0.45rem",lineHeight:1.6}}>
+                      「周辺平均」= 1項目だけずらした条件の平均年利。<b>推奨設定の年利とほぼ同じなら本物</b>、大きく下がるならまぐれです。<br/>
+                      採用する場合は「💴デモ売買」タブのAI自動売買の設定を上記に合わせてください。
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
             {/* ⚙️ パラメータ最適化 */}
             <div style={{marginBottom:"0.85rem",padding:"0.8rem 0.95rem",background:"white",borderRadius:10,border:`1px solid ${C.border}`}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:"0.5rem",marginBottom:"0.4rem"}}>
                 <div>
                   <div style={{fontWeight:800,fontSize:"0.88rem",color:C.text}}>⚙️ もっと成績を上げられるか(条件の比較)</div>
-                  <div style={{fontSize:"0.68rem",color:C.textMuted}}>買いの基準・利確の伸ばし方・同時保有数を18通り試して最適な組み合わせを探します</div>
+                  <div style={{fontSize:"0.68rem",color:C.textMuted}}>買いの基準・利確・同時保有数・リスク量・手法を全720通り試して比較します(結果は上の🎯で判定)</div>
                 </div>
                 <button onClick={()=>loadOpt(true)} disabled={busy.opt}
                   style={{padding:"0.45rem 0.9rem",borderRadius:8,border:"none",background:C.text,color:"white",fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit",opacity:busy.opt?0.6:1}}>
-                  {busy.opt?"比較中(5〜10分)...":opt&&opt.combos?"🔄 再計算":"▶ 18通り比較する"}
+                  {busy.opt?"比較中(5〜10分)...":opt&&opt.combos?"🔄 再計算":"▶ 全条件を比較する"}
                 </button>
               </div>
               {(!opt||opt.empty)&&!busy.opt&&(
