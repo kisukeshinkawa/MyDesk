@@ -25,6 +25,22 @@ namespace BoatRace.UI
         public static readonly Color PanelWhite = new Color(1f, 1f, 1f, 0.96f);
         public static readonly Color TextDark = new Color(0.051f, 0.169f, 0.322f);
 
+        // ---- パステル配色(ウマ娘×イナイレ系モック準拠: teido_*_uma.html) ----
+        public static readonly Color Ink = new Color(0.153f, 0.251f, 0.412f);       // #274069 本文
+        public static readonly Color SubInk = new Color(0.490f, 0.561f, 0.690f);    // #7D8FB0 補助文字
+        public static readonly Color LineBlue = new Color(0.847f, 0.894f, 0.949f);  // #D8E4F2 枠線
+        public static readonly Color ShadowBlue = new Color(0.776f, 0.839f, 0.910f);// #C6D6E8 落ち影
+        public static readonly Color Gold = new Color(1f, 0.788f, 0.235f);          // #FFC93C
+        public static readonly Color GoldInk = new Color(0.416f, 0.290f, 0f);       // #6A4A00 金地の文字
+        public static readonly Color UmaPink = new Color(1f, 0.435f, 0.647f);       // #FF6FA5
+        public static readonly Color UmaBlue = new Color(0.243f, 0.545f, 1f);       // #3E8BFF
+        public static readonly Color UmaGreen = new Color(0.208f, 0.769f, 0.388f);  // #35C463
+        public static readonly Color UmaOrange = new Color(1f, 0.639f, 0.090f);     // #FFA317
+        public static readonly Color UmaTeal = new Color(0.184f, 0.749f, 0.690f);   // #2FBFB0
+        public static readonly Color UmaPurple = new Color(0.616f, 0.420f, 1f);     // #9D6BFF
+        public static readonly Color UmaRed = new Color(0.957f, 0.314f, 0.227f);    // #F4503A
+        public static readonly Color CellBg = new Color(0.957f, 0.976f, 1f);        // #F4F9FF セル背景
+
         // 6艇カラー(艇デザインシート準拠: 蒼天/紅焰/迅雷/碧波/紫電/銀翼)
         public static readonly Color[] BoatColors =
         {
@@ -351,6 +367,40 @@ namespace BoatRace.UI
                 band.AddComponent<SkewFx>().skewX = 30f;
                 band.GetComponent<Image>().raycastTarget = false;
             }
+        }
+
+        /// <summary>
+        /// パステル背景(ウマ娘系モック準拠): 水色→白の縦グラデ+斜めの白光帯。
+        /// マイレーサー/強化などのメニュー画面で統一して使う。
+        /// </summary>
+        public static void PastelBackdrop(Transform parent)
+        {
+            MakeFullscreenGradient(parent,
+                new Color(0.749f, 0.894f, 0.980f), new Color(0.965f, 0.984f, 1f)); // #BFE4FA→#F6FBFF
+            for (int i = 0; i < 3; i++)
+            {
+                var band = MakePanel(parent, new Color(1f, 1f, 1f, 0.16f + 0.04f * (i % 2)), 0,
+                    new Vector2(-0.22f + i * 0.36f, -0.25f), new Vector2(-0.04f + i * 0.36f, 1.25f),
+                    Vector2.zero, Vector2.zero);
+                band.AddComponent<SkewFx>().skewX = 34f;
+                band.GetComponent<Image>().raycastTarget = false;
+            }
+        }
+
+        /// <summary>白カード(角丸+水色の落ち影)。モックの .card 相当。</summary>
+        public static GameObject SoftCard(Transform parent, Vector2 anchorMin, Vector2 anchorMax,
+            float alpha = 1f)
+        {
+            var go = MakePanel(parent, new Color(1f, 1f, 1f, alpha), 16,
+                anchorMin, anchorMax, Vector2.zero, Vector2.zero);
+            var sh = go.AddComponent<Shadow>();
+            sh.effectColor = ShadowBlue;
+            sh.effectDistance = new Vector2(0f, -5f);
+            var sh2 = go.AddComponent<Shadow>();
+            sh2.effectColor = new Color(0.235f, 0.392f, 0.627f, 0.18f);
+            sh2.effectDistance = new Vector2(0f, -10f);
+            go.AddComponent<PopInFx>();
+            return go;
         }
 
         public static GameObject MakeCard(Transform parent, Vector2 anchorMin, Vector2 anchorMax,

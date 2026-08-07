@@ -15,7 +15,7 @@ namespace BoatRace.UI
     public class GameFlow : MonoBehaviour
     {
         /// <summary>ビルド識別子。画面右上に表示され、更新が届いたか一目で分かる。</summary>
-        public const string Build = "B40-カメラ・地図修正";
+        public const string Build = "B41-ウマ娘風UI・チカチカ根絶";
 
         RaceManager race;
         ReplayManager replay;
@@ -1192,40 +1192,61 @@ namespace BoatRace.UI
         /// </summary>
         void ShowPrepPopup(Transform parent)
         {
-            var inner = UiKit.MakeCard(parent,
-                new Vector2(0.16f, 0.14f), new Vector2(0.84f, 0.86f), Vector2.zero, Vector2.zero);
-            var outer = inner.transform.parent.gameObject;
-            UiKit.MakeTag(inner.transform, "強化・準備", UiKit.Yellow, UiKit.Border, 22,
-                new Vector2(0.30f, 0.90f), new Vector2(0.70f, 0.995f));
+            // ウマ娘×イナイレ風モック(teido_prep_uma.html)準拠: 暗幕+白ボックス+金リボン+彩色タイル
+            var outer = new GameObject("PrepPopup");
+            UiKit.Place(outer, parent, Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero);
+            var dim = outer.AddComponent<Image>();
+            dim.color = new Color(0.118f, 0.216f, 0.373f, 0.45f);
+            var box = UiKit.SoftCard(outer.transform,
+                new Vector2(0.25f, 0.18f), new Vector2(0.75f, 0.80f));
+            var rib = UiKit.MakeTag(box.transform, "強化・準備", UiKit.Gold, UiKit.GoldInk, 20,
+                new Vector2(0.30f, 0.955f), new Vector2(0.70f, 1.055f), skew: 10f);
+            rib.GetComponent<RectTransform>().localEulerAngles = new Vector3(0f, 0f, -1.5f);
 
             (string icon, string label, string desc, Color c, UnityEngine.Events.UnityAction act)[] tiles =
             {
-                ("▲", "技強化", "必殺技をLvアップ", new Color(0.62f, 0.2f, 0.75f),
+                ("▲", "技強化", "必殺技をLvアップ", new Color(0.639f, 0.400f, 0.937f),
                     () => { Destroy(outer); ShowMoveUpgradePopup(parent); }),
-                ("★", "ガチャ", "ペラ/チルトを入手", new Color(0.9f, 0.35f, 0.55f),
+                ("★", "ガチャ", "ペラ/チルトを入手", new Color(0.973f, 0.427f, 0.573f),
                     () => { Destroy(outer); ShowGachaPopup(parent, ""); }),
-                ("▤", "ガレージ", "装備の付け替え", new Color(0.35f, 0.42f, 0.55f),
+                ("整", "ガレージ", "装備の付け替え", new Color(0.475f, 0.545f, 0.655f),
                     () => { Destroy(outer); ShowGaragePopup(parent); }),
-                ("■", "施設", "チーム設備に投資", new Color(0.15f, 0.55f, 0.60f),
+                ("施", "施設", "チーム設備に投資", UiKit.UmaTeal,
                     () => { Destroy(outer); ShowFacilityPopup(parent); }),
-                ("¥", "ショップ", "アイテムと両替", new Color(0.9f, 0.55f, 0.1f),
+                ("¥", "ショップ", "アイテムと両替", new Color(0.957f, 0.631f, 0.157f),
                     () => { Destroy(outer); ShowShopPopup(parent); }),
+                ("▤", "戦績", "これまでの成績", new Color(0.561f, 0.639f, 0.753f),
+                    () => { Destroy(outer); ShowStatsPopup(parent); }),
             };
             for (int t = 0; t < tiles.Length; t++)
             {
                 int col = t % 3, row = t / 3;
-                float x0 = 0.055f + col * 0.305f;
-                float y1 = 0.83f - row * 0.36f;
-                var b = UiKit.MakeButton(inner.transform, $"{tiles[t].icon}\n{tiles[t].label}",
-                    tiles[t].c, 22,
-                    new Vector2(x0, y1 - 0.30f), new Vector2(x0 + 0.285f, y1), Vector2.zero, Vector2.zero,
-                    tiles[t].act);
-                UiKit.MakeText(b.transform, tiles[t].desc, 12, new Color(1f, 1f, 1f, 0.85f),
-                    TextAnchor.LowerCenter, new Vector2(0f, 0.04f), new Vector2(1f, 0.24f),
-                    Vector2.zero, Vector2.zero, bold: true, shadow: true);
+                float x0 = 0.045f + col * 0.312f;
+                float y1 = 0.885f - row * 0.375f;
+                var tile = UiKit.MakePanel(box.transform, tiles[t].c, 14,
+                    new Vector2(x0, y1 - 0.345f), new Vector2(x0 + 0.298f, y1), Vector2.zero, Vector2.zero);
+                var tol = tile.AddComponent<Outline>();
+                tol.effectColor = Color.white;
+                tol.effectDistance = new Vector2(2.5f, -2.5f);
+                var tsh = tile.AddComponent<Shadow>();
+                tsh.effectColor = new Color(0.275f, 0.431f, 0.667f, 0.40f);
+                tsh.effectDistance = new Vector2(0f, -4f);
+                UiKit.MakeText(tile.transform, tiles[t].icon, 26, Color.white, TextAnchor.MiddleCenter,
+                    new Vector2(0f, 0.56f), new Vector2(1f, 0.94f), Vector2.zero, Vector2.zero,
+                    bold: true, shadow: true);
+                UiKit.MakeText(tile.transform, tiles[t].label, 17, Color.white, TextAnchor.MiddleCenter,
+                    new Vector2(0f, 0.30f), new Vector2(1f, 0.56f), Vector2.zero, Vector2.zero,
+                    bold: true, shadow: true);
+                UiKit.MakeText(tile.transform, tiles[t].desc, 11, new Color(1f, 1f, 1f, 0.92f),
+                    TextAnchor.MiddleCenter, new Vector2(0f, 0.08f), new Vector2(1f, 0.28f),
+                    Vector2.zero, Vector2.zero, bold: true);
+                var tb = tile.AddComponent<Button>();
+                tb.targetGraphic = tile.GetComponent<Image>();
+                int ti = t;
+                tb.onClick.AddListener(() => { AudioKit.Click(); tiles[ti].act(); });
             }
-            UiKit.MakeButton(inner.transform, "とじる", UiKit.Navy, 18,
-                new Vector2(0.36f, 0.035f), new Vector2(0.64f, 0.135f), Vector2.zero, Vector2.zero,
+            UiKit.MakeButton(box.transform, "とじる", new Color(0.180f, 0.259f, 0.431f), 17,
+                new Vector2(0.345f, 0.035f), new Vector2(0.655f, 0.135f), Vector2.zero, Vector2.zero,
                 () => Destroy(outer));
         }
 
@@ -1440,12 +1461,18 @@ namespace BoatRace.UI
                 new Vector2(0.155f, 0.933f), new Vector2(0.285f, 0.972f), skew: 8f);
             void WalletChip(string label, string val, float x0, float x1)
             {
-                var p = UiKit.MakePanel(s.transform, new Color(1f, 1f, 1f, 0.90f), 8,
+                var p = UiKit.MakePanel(s.transform, Color.white, 11,
                     new Vector2(x0, 0.930f), new Vector2(x1, 0.975f), Vector2.zero, Vector2.zero);
-                UiKit.MakeText(p.transform, label, 11, new Color(0.851f, 0.604f, 0.106f),
+                var wol = p.AddComponent<Outline>();
+                wol.effectColor = UiKit.LineBlue;
+                wol.effectDistance = new Vector2(2f, -2f);
+                var wsh = p.AddComponent<Shadow>();
+                wsh.effectColor = UiKit.ShadowBlue;
+                wsh.effectDistance = new Vector2(0f, -3f);
+                UiKit.MakeText(p.transform, label, 11, UiKit.SubInk,
                     TextAnchor.MiddleLeft, Vector2.zero, Vector2.one,
                     new Vector2(8f, 0f), new Vector2(-4f, 0f), bold: true);
-                UiKit.MakeText(p.transform, val, 14, new Color(0.078f, 0.188f, 0.369f),
+                UiKit.MakeText(p.transform, val, 14, UiKit.Ink,
                     TextAnchor.MiddleRight, Vector2.zero, Vector2.one,
                     new Vector2(4f, 0f), new Vector2(-8f, 0f), bold: true);
             }
@@ -1458,11 +1485,11 @@ namespace BoatRace.UI
             var gold = new Color(0.851f, 0.604f, 0.106f);
             GameObject ColCard(float y0, float y1)
             {
-                var c = UiKit.MakePanel(s.transform, new Color(1f, 1f, 1f, 0.88f), 12,
-                    new Vector2(0.02f, y0), new Vector2(0.315f, y1), Vector2.zero, Vector2.zero);
+                var c = UiKit.MakePanel(s.transform, new Color(1f, 1f, 1f, 0.95f), 14,
+                    new Vector2(0.016f, y0), new Vector2(0.306f, y1), Vector2.zero, Vector2.zero);
                 var sh = c.AddComponent<Shadow>();
-                sh.effectColor = new Color(0.08f, 0.20f, 0.39f, 0.20f);
-                sh.effectDistance = new Vector2(0f, -4f);
+                sh.effectColor = UiKit.ShadowBlue;
+                sh.effectDistance = new Vector2(0f, -5f);
                 return c;
             }
 
@@ -1470,7 +1497,7 @@ namespace BoatRace.UI
             int totalPower = Mathf.RoundToInt(
                 (career.startSkill + career.turnSkill + career.speedSkill +
                  career.mental + career.mechanicSkill) * 40000f + career.level * 800f);
-            var pc = ColCard(0.735f, 0.875f);
+            var pc = ColCard(0.753f, 0.867f);
             MakeFaceAt(pc.transform, career.racerName, new Vector2(0.045f, 0.16f), new Vector2(0.20f, 0.84f));
             UiKit.MakeText(pc.transform, $"{career.racerName}チーム", 12, sub, TextAnchor.MiddleLeft,
                 new Vector2(0.24f, 0.64f), new Vector2(0.97f, 0.90f), Vector2.zero, Vector2.zero);
@@ -1484,7 +1511,7 @@ namespace BoatRace.UI
                 new Vector2(0.60f, 0.10f), new Vector2(0.99f, 0.40f), Vector2.zero, Vector2.zero);
 
             // 2) 開催場カード
-            var vc = ColCard(0.575f, 0.72f);
+            var vc = ColCard(0.625f, 0.736f);
             UiKit.MakeText(vc.transform, "開 催 場", 10, new Color(0.106f, 0.435f, 0.847f),
                 TextAnchor.MiddleLeft, new Vector2(0.05f, 0.72f), new Vector2(0.55f, 0.94f),
                 Vector2.zero, Vector2.zero, bold: true);
@@ -1498,18 +1525,16 @@ namespace BoatRace.UI
                 venueLabel.text = $"{v.id}. {v.name}";
                 infoLabel.text = $"〈{v.Character}〉イン{v.insideAdvantage * 100f:F0}%　風 {Stars(v.windEffect)}　波 {v.waveHeight * 100f:F0}cm";
             }
-            UiKit.MakeButton(vc.transform, "◀", new Color(1f, 1f, 1f, 0.95f), 14,
+            UiKit.MakeButton(vc.transform, "◀", UiKit.UmaBlue, 14,
                 new Vector2(0.73f, 0.56f), new Vector2(0.84f, 0.94f), Vector2.zero, Vector2.zero,
-                () => { race.venueId = race.venueId <= 1 ? 24 : race.venueId - 1; RefreshVenue(); })
-                .GetComponentInChildren<Text>().color = new Color(0.106f, 0.435f, 0.847f);
-            UiKit.MakeButton(vc.transform, "▶", new Color(1f, 1f, 1f, 0.95f), 14,
+                () => { race.venueId = race.venueId <= 1 ? 24 : race.venueId - 1; RefreshVenue(); });
+            UiKit.MakeButton(vc.transform, "▶", UiKit.UmaBlue, 14,
                 new Vector2(0.86f, 0.56f), new Vector2(0.97f, 0.94f), Vector2.zero, Vector2.zero,
-                () => { race.venueId = race.venueId >= 24 ? 1 : race.venueId + 1; RefreshVenue(); })
-                .GetComponentInChildren<Text>().color = new Color(0.106f, 0.435f, 0.847f);
+                () => { race.venueId = race.venueId >= 24 ? 1 : race.venueId + 1; RefreshVenue(); });
             RefreshVenue();
 
             // 3) ストーリーカード
-            var sc = ColCard(0.475f, 0.565f);
+            var sc = ColCard(0.522f, 0.608f);
             UiKit.MakeText(sc.transform,
                 career.allClear ? "STORY 全章クリア" : $"STORY 第{career.chapter}章", 10, gold,
                 TextAnchor.MiddleLeft, new Vector2(0.05f, 0.56f), new Vector2(0.70f, 0.88f),
@@ -1527,7 +1552,7 @@ namespace BoatRace.UI
 
             // ---- 出走CTA(金の平行四辺形・鼓動)。モック比率: 幅18%・高さ11% ----
             var cta = UiKit.MakePanel(s.transform, new Color(0.953f, 0.788f, 0.361f), 8,
-                new Vector2(0.745f, 0.175f), new Vector2(0.945f, 0.29f), Vector2.zero, Vector2.zero);
+                new Vector2(0.7625f, 0.164f), new Vector2(0.966f, 0.283f), Vector2.zero, Vector2.zero);
             cta.AddComponent<SkewFx>().skewX = 12f;
             UiKit.AddStripeOverlay(cta, Color.white, 0.12f);
             var ctaSh = cta.AddComponent<Shadow>();
@@ -1655,171 +1680,267 @@ namespace BoatRace.UI
             var s = NewScreen("CareerScreen");
             AudioKit.Bgm(true);
             AudioKit.Crowd(0f);
-            UiKit.ModernBackdrop(s.transform, new Color(0.08f, 0.14f, 0.32f, 0.90f),
-                new Color(0.03f, 0.05f, 0.15f, 0.97f));
-            UiKit.MakeBanner(s.transform, "マイレーサー　ストーリーモード", 30,
-                new Vector2(0.22f, 0.90f), new Vector2(0.78f, 0.98f), tilt: -1.2f);
-            if (career.condition != 0)
-                UiKit.MakeTag(s.transform,
-                    career.condition == 1 ? "スランプ中 -10%" : "覚醒中 +20%",
-                    career.condition == 1 ? new Color(0.45f, 0.50f, 0.62f) : new Color(1f, 0.55f, 0.10f),
-                    Color.white, 17,
-                    new Vector2(0.80f, 0.925f), new Vector2(0.985f, 0.97f));
+            // ---- ウマ娘×イナイレ風モック(teido_myracer_uma.html)準拠のパステル画面 ----
+            UiKit.PastelBackdrop(s.transform);
 
-            // 現在の章(仕様書の8章構成)
+            // 上部バー: 青プレート+金の目標チップ+右に節/資金/ファンのチップ列
             var ch = career.Current;
             string goal = ch.requiredPlace >= 6 ? "完走" : ch.requiredPlace == 1 ? "優勝" : $"{ch.requiredPlace}着以内";
+            UiKit.MakeTag(s.transform, "マイレーサー", UiKit.UmaBlue, Color.white, 21,
+                new Vector2(0.012f, 0.916f), new Vector2(0.175f, 0.972f), skew: 8f);
             string chapterInfo = career.allClear
                 ? "全章クリア！ SG覇者としてフリー挑戦中"
-                : $"第{career.chapter}章「{ch.title}」　{CourseDatabase.Get(ch.venueId).name} / {ch.grade}戦　目標: {goal}";
-            UiKit.MakeChip(s.transform, chapterInfo, new Color(0f, 0f, 0f, 0.45f), UiKit.Yellow, 22,
-                new Vector2(0.12f, 0.845f), new Vector2(0.88f, 0.895f), Vector2.zero, Vector2.zero);
+                : $"第{career.chapter}章「{ch.title}」　{CourseDatabase.Get(ch.venueId).name}／{ch.grade}戦　目標：{goal}";
+            var goalChip = UiKit.MakePanel(s.transform, UiKit.Gold, 9,
+                new Vector2(0.185f, 0.918f), new Vector2(0.575f, 0.970f), Vector2.zero, Vector2.zero);
+            var goalOl = goalChip.AddComponent<Outline>();
+            goalOl.effectColor = Color.white;
+            goalOl.effectDistance = new Vector2(2f, 2f);
+            UiKit.MakeText(goalChip.transform, chapterInfo, 13, UiKit.GoldInk, TextAnchor.MiddleCenter,
+                Vector2.zero, Vector2.one, new Vector2(8f, 0f), new Vector2(-8f, 0f), bold: true);
 
-            // 左: レーサーカード(顔+やる気チップ=ウマ娘の育成カード風)
-            var card = UiKit.MakePanel(s.transform, UiKit.PanelWhite, 20,
-                new Vector2(0.05f, 0.28f), new Vector2(0.48f, 0.83f), Vector2.zero, Vector2.zero);
-            UiKit.AddStripeOverlay(card, UiKit.Sky, 0.10f);
-            UiKit.MakeText(card.transform, career.racerName, 36, UiKit.TextDark, TextAnchor.MiddleLeft,
-                new Vector2(0.06f, 0.80f), new Vector2(0.60f, 0.98f), Vector2.zero, Vector2.zero, bold: true);
-            UiKit.MakeChip(card.transform, career.RankLabel, UiKit.Red, Color.white, 24,
-                new Vector2(0.62f, 0.82f), new Vector2(0.80f, 0.97f), Vector2.zero, Vector2.zero);
+            GameObject InfoChip(string label, string val, float x0, float x1, Color? valColor = null)
+            {
+                var p = UiKit.MakePanel(s.transform, Color.white, 11,
+                    new Vector2(x0, 0.918f), new Vector2(x1, 0.970f), Vector2.zero, Vector2.zero);
+                var ol = p.AddComponent<Outline>();
+                ol.effectColor = UiKit.LineBlue;
+                ol.effectDistance = new Vector2(2f, -2f);
+                var chSh = p.AddComponent<Shadow>();
+                chSh.effectColor = UiKit.ShadowBlue;
+                chSh.effectDistance = new Vector2(0f, -3f);
+                UiKit.MakeText(p.transform, label, 11, UiKit.SubInk, TextAnchor.MiddleLeft,
+                    Vector2.zero, Vector2.one, new Vector2(9f, 0f), new Vector2(-4f, 0f), bold: true);
+                UiKit.MakeText(p.transform, val, 14, valColor ?? UiKit.Ink, TextAnchor.MiddleRight,
+                    Vector2.zero, Vector2.one, new Vector2(4f, 0f), new Vector2(-9f, 0f), bold: true);
+                return p;
+            }
+            InfoChip("節", $"第{career.seasonNo}S {career.seasonRaces}/12戦", 0.585f, 0.735f);
+            InfoChip("資金", $"{career.money:N0}万", 0.745f, 0.860f,
+                career.money < 20 ? UiKit.UmaRed : (Color?)null);
+            InfoChip("ファン", $"{career.fans:N0}人", 0.870f, 0.985f);
+
+            // ---- 左: レーサーカード(白カード+ピンクグラデヘッダー=モックの.racer) ----
+            var card = UiKit.SoftCard(s.transform,
+                new Vector2(0.014f, 0.122f), new Vector2(0.320f, 0.894f));
+            var head = UiKit.MakePanel(card.transform, UiKit.UmaPink, 14,
+                new Vector2(0f, 0.862f), new Vector2(1f, 1f), new Vector2(3f, 0f), new Vector2(-3f, -3f));
+            UiKit.AddStripeOverlay(head, Color.white, 0.14f);
+            MakeFaceAt(head.transform, career.racerName,
+                new Vector2(0.035f, 0.14f), new Vector2(0.215f, 0.92f));
+            UiKit.MakeText(head.transform, career.racerName, 21, Color.white, TextAnchor.MiddleLeft,
+                new Vector2(0.25f, 0.46f), new Vector2(0.66f, 0.95f), Vector2.zero, Vector2.zero,
+                bold: true, shadow: true);
+            var rkTag = UiKit.MakePanel(head.transform, Color.white, 8,
+                new Vector2(0.66f, 0.56f), new Vector2(0.79f, 0.90f), Vector2.zero, Vector2.zero);
+            UiKit.MakeText(rkTag.transform, career.RankLabel, 13, UiKit.UmaPink, TextAnchor.MiddleCenter,
+                Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, bold: true);
 
             // やる気(ウマ娘の絶好調〜絶不調)
             string mot; Color motC;
-            if (career.condition == 2) { mot = "絶好調↑↑"; motC = new Color(1f, 0.50f, 0.10f); }
-            else if (career.condition == 1) { mot = "絶不調↓↓"; motC = new Color(0.35f, 0.40f, 0.55f); }
+            if (career.condition == 2) { mot = "絶好調↑"; motC = new Color(1f, 0.50f, 0.10f); }
+            else if (career.condition == 1) { mot = "絶不調↓"; motC = new Color(0.35f, 0.40f, 0.55f); }
             else if (career.fatigue >= 60) { mot = "不調↓"; motC = new Color(0.35f, 0.55f, 0.80f); }
-            else if (career.fatigue <= 20) { mot = "好調↑"; motC = new Color(0.55f, 0.80f, 0.20f); }
+            else if (career.fatigue <= 20) { mot = "好調↑"; motC = new Color(0.45f, 0.75f, 0.15f); }
             else { mot = "普通→"; motC = new Color(0.60f, 0.62f, 0.68f); }
-            UiKit.MakeChip(card.transform, mot, motC, Color.white, 20,
-                new Vector2(0.82f, 0.82f), new Vector2(0.97f, 0.97f), Vector2.zero, Vector2.zero);
+            var motTag = UiKit.MakePanel(head.transform, motC, 8,
+                new Vector2(0.81f, 0.56f), new Vector2(0.975f, 0.90f), Vector2.zero, Vector2.zero);
+            UiKit.MakeText(motTag.transform, mot, 13, Color.white, TextAnchor.MiddleCenter,
+                Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, bold: true);
+            UiKit.MakeText(head.transform,
+                $"Lv.{career.level}（XP {career.xp}/{career.XpNeed}）　{career.races}走 {career.wins}勝（3着内{career.top3}）",
+                12, new Color(1f, 1f, 1f, 0.95f), TextAnchor.MiddleLeft,
+                new Vector2(0.25f, 0.10f), new Vector2(0.99f, 0.44f), Vector2.zero, Vector2.zero, bold: true);
 
-            // 自分の顔(AI生成→無ければ立ち絵)
-            MakeFaceAt(card.transform, career.racerName,
-                new Vector2(0.70f, 0.30f), new Vector2(0.955f, 0.76f));
-
-            // ステータスは「ラベル+数値」のグリッドで一目で読めるように(テキスト塊を廃止)
-            var statGray = new Color(0.48f, 0.54f, 0.63f);
-            void StatCell(string label, string val, int colI, int rowI, Color? valCol = null, int size = 18)
+            // 体力・疲労バー(モックのhpバー)
+            void HpBar(string label, float ratio, Color fillC, string valText, float y0, float y1,
+                bool warn = false)
             {
-                float cx0 = 0.06f + colI * 0.32f, cx1 = cx0 + 0.31f;
-                float cy1 = 0.76f - rowI * 0.118f, cy0 = cy1 - 0.108f;
-                UiKit.MakeText(card.transform, label, 12, statGray, TextAnchor.LowerLeft,
-                    new Vector2(cx0, cy0 + 0.052f), new Vector2(cx1, cy1), Vector2.zero, Vector2.zero, bold: true);
-                UiKit.MakeText(card.transform, val, size, valCol ?? UiKit.TextDark, TextAnchor.UpperLeft,
-                    new Vector2(cx0, cy0), new Vector2(cx1, cy0 + 0.055f), Vector2.zero, Vector2.zero, bold: true);
-            }
-            StatCell("レベル", $"Lv.{career.level} (XP {career.xp}/{career.XpNeed})", 0, 0, null, 15);
-            StatCell("体力", $"{career.MaxStamina}", 1, 0);
-            StatCell("出走 / 勝利", $"{career.races}回 / {career.wins}勝 (3着内{career.top3})", 0, 1, null, 15);
-            StatCell("ファン", $"{career.fans:N0} 人", 1, 1);
-            StatCell("資金", $"{career.money:N0} 万円", 0, 2,
-                career.money < 20 ? UiKit.Red : (Color?)null);
-            StatCell("シーズン", $"第{career.seasonNo}S {career.seasonRaces}/12戦 {career.seasonWins}勝", 1, 2, null, 14);
-            StatCell("スポンサー", $"{career.sponsorIds.Count}社 (+{career.SponsorIncome}万/R)", 0, 3, null, 15);
-            StatCell("モーター", PlayerPrefs.GetString("br_last_motor", "未抽選"), 1, 3, null, 14);
-
-            // 疲労バー(60以上で赤+要休養)
-            bool tired = career.fatigue >= 60;
-            UiKit.MakeText(card.transform, tired ? "疲労　⚠ 要休養！" : "疲労", 13,
-                tired ? UiKit.Red : statGray, TextAnchor.MiddleLeft,
-                new Vector2(0.06f, 0.205f), new Vector2(0.50f, 0.26f), Vector2.zero, Vector2.zero, bold: true);
-            var ftBg = UiKit.MakePanel(card.transform, new Color(0.88f, 0.91f, 0.95f), 8,
-                new Vector2(0.06f, 0.155f), new Vector2(0.80f, 0.205f), Vector2.zero, Vector2.zero);
-            var ftFill = UiKit.MakePanel(ftBg.transform,
-                tired ? UiKit.Red : career.fatigue >= 40 ? new Color(0.95f, 0.72f, 0.05f) : new Color(0.30f, 0.78f, 0.42f),
-                8, new Vector2(0.012f, 0.14f),
-                new Vector2(Mathf.Clamp01(career.fatigue / 100f) * 0.976f + 0.012f, 0.86f),
-                Vector2.zero, Vector2.zero);
-            ftFill.GetComponent<Image>().raycastTarget = false;
-            UiKit.MakeText(card.transform, $"{career.fatigue}/100", 14, UiKit.TextDark, TextAnchor.MiddleLeft,
-                new Vector2(0.815f, 0.15f), new Vector2(0.97f, 0.21f), Vector2.zero, Vector2.zero, bold: true);
-
-            // 装備(1行に集約)
-            UiKit.MakeText(card.transform,
-                $"装備: {(career.equipProp >= 0 && career.equipProp < career.parts.Count ? CareerData.PartName(career.parts[career.equipProp]) : "ペラなし")}" +
-                $" / {(career.equipTilt >= 0 && career.equipTilt < career.parts.Count ? CareerData.PartName(career.parts[career.equipTilt]) : "チルトなし")}",
-                13, statGray, TextAnchor.MiddleLeft,
-                new Vector2(0.06f, 0.075f), new Vector2(0.97f, 0.135f), Vector2.zero, Vector2.zero);
-
-            // 右: 能力(ウマ娘風ランクチップ+バー)と練習
-            var skill = UiKit.MakePanel(s.transform, UiKit.PanelWhite, 20,
-                new Vector2(0.52f, 0.28f), new Vector2(0.95f, 0.83f), Vector2.zero, Vector2.zero);
-            void StatRow(string label, float v, float y)
-            {
-                UiKit.MakeText(skill.transform, label, 16, UiKit.TextDark, TextAnchor.MiddleLeft,
-                    new Vector2(0.06f, y), new Vector2(0.28f, y + 0.065f), Vector2.zero, Vector2.zero, bold: true);
-                var (rk, rc) = RankOf(v);
-                UiKit.MakeChip(skill.transform, rk, rc, Color.white, 17,
-                    new Vector2(0.285f, y), new Vector2(0.365f, y + 0.065f), Vector2.zero, Vector2.zero);
-                var barBg = UiKit.MakePanel(skill.transform, new Color(0.88f, 0.91f, 0.95f), 8,
-                    new Vector2(0.385f, y + 0.008f), new Vector2(0.87f, y + 0.057f), Vector2.zero, Vector2.zero);
-                var fill = UiKit.MakePanel(barBg.transform, rc, 8,
-                    new Vector2(0.012f, 0.12f), new Vector2(Mathf.Clamp01(v) * 0.976f + 0.012f, 0.88f),
+                UiKit.MakeText(card.transform, label, 13, warn ? UiKit.UmaRed : UiKit.Ink,
+                    TextAnchor.MiddleLeft,
+                    new Vector2(0.045f, y0), new Vector2(0.185f, y1), Vector2.zero, Vector2.zero, bold: true);
+                var bg = UiKit.MakePanel(card.transform, new Color(0.894f, 0.929f, 0.969f), 9,
+                    new Vector2(0.19f, y0 + 0.008f), new Vector2(0.795f, y1 - 0.008f),
+                    Vector2.zero, Vector2.zero);
+                var fill = UiKit.MakePanel(bg.transform, fillC, 8,
+                    new Vector2(0.012f, 0.14f),
+                    new Vector2(Mathf.Clamp01(ratio) * 0.976f + 0.012f, 0.86f),
                     Vector2.zero, Vector2.zero);
                 fill.GetComponent<Image>().raycastTarget = false;
-                UiKit.MakeText(skill.transform, $"{v * 100f:F0}", 15, UiKit.TextDark, TextAnchor.MiddleRight,
-                    new Vector2(0.875f, y), new Vector2(0.94f, y + 0.065f), Vector2.zero, Vector2.zero, bold: true);
+                UiKit.MakeText(card.transform, valText, 13, UiKit.Ink, TextAnchor.MiddleRight,
+                    new Vector2(0.795f, y0), new Vector2(0.963f, y1), Vector2.zero, Vector2.zero, bold: true);
             }
-            StatRow("スタート", career.startSkill, 0.905f);
-            StatRow("ターン", career.turnSkill, 0.830f);
-            StatRow("スピード", career.speedSkill, 0.755f);
-            StatRow("メンタル", career.mental, 0.680f);
-            StatRow("整備力", career.mechanicSkill, 0.605f);
-            UiKit.MakeText(skill.transform,
-                $"整備: キャブ{career.maintCarb} 電装{career.maintElec} ギア{career.maintGear} / ペラ P{career.propPitch} D{career.propDia} B{career.propBal}",
-                13, new Color(0.45f, 0.50f, 0.58f), TextAnchor.MiddleLeft,
-                new Vector2(0.06f, 0.540f), new Vector2(0.94f, 0.595f), Vector2.zero, Vector2.zero);
-            void Train(string label, int cost, System.Action apply, float y)
+            HpBar("体力", Mathf.Clamp01(career.MaxStamina / 150f), new Color(0.30f, 0.83f, 0.45f),
+                $"{career.MaxStamina}", 0.795f, 0.848f);
+            bool tired = career.fatigue >= 60;
+            HpBar(tired ? "疲労⚠" : "疲労", career.fatigue / 100f,
+                tired ? UiKit.UmaRed : career.fatigue >= 40 ? new Color(1f, 0.69f, 0.23f) : new Color(0.30f, 0.83f, 0.45f),
+                $"{career.fatigue}/100", 0.736f, 0.789f, tired);
+
+            // 能力5種(ウマ娘式ランクバッジのセル)
+            string[] stLabels = { "スタート", "ターン", "スピード", "メンタル", "整備力" };
+            float[] stVals = { career.startSkill, career.turnSkill, career.speedSkill,
+                               career.mental, career.mechanicSkill };
+            for (int i = 0; i < 5; i++)
             {
-                UiKit.MakeButton(skill.transform, $"{label} ({cost}万)", UiKit.Cyan, 16,
-                    new Vector2(0.07f, y), new Vector2(0.93f, y + 0.082f), Vector2.zero, Vector2.zero,
-                    () =>
-                    {
-                        if (career.money < cost) return;
-                        career.money -= cost;
-                        // 練習は疲労が溜まる(トレーニング施設Lvで軽減)
+                float cx0 = 0.038f + i * 0.188f;
+                var cell = UiKit.MakePanel(card.transform, UiKit.CellBg, 11,
+                    new Vector2(cx0, 0.565f), new Vector2(cx0 + 0.176f, 0.722f), Vector2.zero, Vector2.zero);
+                var col = cell.AddComponent<Outline>();
+                col.effectColor = UiKit.LineBlue;
+                col.effectDistance = new Vector2(1.5f, -1.5f);
+                UiKit.MakeText(cell.transform, stLabels[i], 10, UiKit.SubInk, TextAnchor.MiddleCenter,
+                    new Vector2(0f, 0.74f), new Vector2(1f, 0.99f), Vector2.zero, Vector2.zero, bold: true);
+                var (rk, rc) = RankOf(stVals[i]);
+                var badge = UiKit.MakePanel(cell.transform, rc, 9,
+                    new Vector2(0.26f, 0.34f), new Vector2(0.74f, 0.72f), Vector2.zero, Vector2.zero);
+                var bol = badge.AddComponent<Outline>();
+                bol.effectColor = Color.white;
+                bol.effectDistance = new Vector2(1.5f, -1.5f);
+                UiKit.MakeText(badge.transform, rk, 15, Color.white, TextAnchor.MiddleCenter,
+                    Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, bold: true, shadow: true);
+                UiKit.MakeText(cell.transform, $"{stVals[i] * 100f:F0}", 14, UiKit.Ink,
+                    TextAnchor.MiddleCenter,
+                    new Vector2(0f, 0.02f), new Vector2(1f, 0.32f), Vector2.zero, Vector2.zero, bold: true);
+            }
+
+            // 装備・モーター情報(モックの.gearボックス)
+            var gear = UiKit.MakePanel(card.transform, UiKit.CellBg, 11,
+                new Vector2(0.038f, 0.300f), new Vector2(0.962f, 0.545f), Vector2.zero, Vector2.zero);
+            var gol = gear.AddComponent<Outline>();
+            gol.effectColor = UiKit.LineBlue;
+            gol.effectDistance = new Vector2(1.5f, -1.5f);
+            string propName = career.equipProp >= 0 && career.equipProp < career.parts.Count
+                ? CareerData.PartName(career.parts[career.equipProp]) : "ペラなし";
+            string tiltName = career.equipTilt >= 0 && career.equipTilt < career.parts.Count
+                ? CareerData.PartName(career.parts[career.equipTilt]) : "チルトなし";
+            UiKit.MakeText(gear.transform,
+                $"モーター：{PlayerPrefs.GetString("br_last_motor", "未抽選")}\n" +
+                $"装備：{propName} / {tiltName}\n" +
+                $"整備：キャブ{career.maintCarb} 電装{career.maintElec} ギア{career.maintGear}　ペラ P{career.propPitch} D{career.propDia} B{career.propBal}\n" +
+                $"スポンサー：{career.sponsorIds.Count}社（+{career.SponsorIncome}万/R）　シーズン{career.seasonWins}勝",
+                12, UiKit.SubInk, TextAnchor.MiddleLeft,
+                new Vector2(0.045f, 0.05f), new Vector2(0.97f, 0.95f), Vector2.zero, Vector2.zero, bold: true);
+
+            // 強化ショートカット(モックの.sub-btns。各機能へ1タップ直行)
+            (string label, Color c, UnityEngine.Events.UnityAction act)[] subs =
+            {
+                ("技強化", new Color(0.639f, 0.400f, 0.937f), () => ShowMoveUpgradePopup(s.transform)),
+                ("ガチャ", new Color(0.973f, 0.427f, 0.573f), () => ShowGachaPopup(s.transform, "")),
+                ("ガレージ", new Color(0.475f, 0.545f, 0.655f), () => ShowGaragePopup(s.transform)),
+                ("ショップ", new Color(0.957f, 0.631f, 0.157f), () => ShowShopPopup(s.transform)),
+            };
+            for (int i = 0; i < subs.Length; i++)
+            {
+                float bx0 = 0.038f + i * 0.234f;
+                UiKit.MakeButton(card.transform, subs[i].label, subs[i].c, 13,
+                    new Vector2(bx0, 0.185f), new Vector2(bx0 + 0.222f, 0.272f),
+                    Vector2.zero, Vector2.zero, subs[i].act);
+            }
+            UiKit.MakeButton(card.transform, "施設投資", UiKit.UmaTeal, 13,
+                new Vector2(0.038f, 0.055f), new Vector2(0.494f, 0.150f), Vector2.zero, Vector2.zero,
+                () => ShowFacilityPopup(s.transform));
+            UiKit.MakeButton(card.transform, "戦績・実績", new Color(0.561f, 0.639f, 0.753f), 13,
+                new Vector2(0.506f, 0.055f), new Vector2(0.962f, 0.150f), Vector2.zero, Vector2.zero,
+                () => ShowStatsPopup(s.transform));
+
+            // ---- 右: トレーニング(ウマ娘式カードグリッド=モックの.train) ----
+            UiKit.MakeTag(s.transform, "トレーニング", UiKit.UmaTeal, Color.white, 17,
+                new Vector2(0.334f, 0.856f), new Vector2(0.474f, 0.905f), skew: 6f);
+            var tp = UiKit.SoftCard(s.transform,
+                new Vector2(0.334f, 0.122f), new Vector2(0.986f, 0.858f), 0.82f);
+
+            void TrainCard(int idx, string label, string gain, string costLabel, Color hc, Color gc,
+                int cost, System.Action apply)
+            {
+                int colI = idx % 3, rowI = idx / 3;
+                float x0 = 0.028f + colI * 0.322f;
+                float y1 = 0.965f - rowI * 0.485f;
+                var tc = UiKit.MakePanel(tp.transform, Color.white, 13,
+                    new Vector2(x0, y1 - 0.445f), new Vector2(x0 + 0.306f, y1), Vector2.zero, Vector2.zero);
+                var tcSh = tc.AddComponent<Shadow>();
+                tcSh.effectColor = UiKit.ShadowBlue;
+                tcSh.effectDistance = new Vector2(0f, -4f);
+                var hd = UiKit.MakePanel(tc.transform, hc, 11,
+                    new Vector2(0f, 0.72f), new Vector2(1f, 1f),
+                    new Vector2(2.5f, 0f), new Vector2(-2.5f, -2.5f));
+                hd.GetComponent<Image>().raycastTarget = false;
+                UiKit.MakeText(hd.transform, label, 16, Color.white, TextAnchor.MiddleLeft,
+                    Vector2.zero, Vector2.one, new Vector2(12f, 0f), new Vector2(-8f, 0f),
+                    bold: true, shadow: true);
+                UiKit.MakeText(tc.transform, gain, 23, gc, TextAnchor.MiddleLeft,
+                    new Vector2(0.07f, 0.34f), new Vector2(0.95f, 0.66f), Vector2.zero, Vector2.zero,
+                    bold: true);
+                var costChip = UiKit.MakePanel(tc.transform, UiKit.CellBg, 8,
+                    new Vector2(0.07f, 0.09f), new Vector2(0.62f, 0.28f), Vector2.zero, Vector2.zero);
+                var ccol = costChip.AddComponent<Outline>();
+                ccol.effectColor = UiKit.LineBlue;
+                ccol.effectDistance = new Vector2(1.5f, -1.5f);
+                UiKit.MakeText(costChip.transform, costLabel, 12, UiKit.SubInk, TextAnchor.MiddleCenter,
+                    Vector2.zero, Vector2.one, Vector2.zero, Vector2.zero, bold: true);
+                var btn = tc.AddComponent<Button>();
+                btn.targetGraphic = tc.GetComponent<Image>();
+                btn.onClick.AddListener(() =>
+                {
+                    AudioKit.Click();
+                    if (cost > 0 && career.money < cost) return;
+                    career.money -= cost;
+                    // 練習は疲労が溜まる(トレーニング施設Lvで軽減)。休養(cost0)は溜まらない
+                    if (cost > 0)
                         career.fatigue = Mathf.Min(100,
                             career.fatigue + Mathf.Max(6, 15 - 3 * career.facTraining));
-                        apply();
-                        // 練習イベント(ウマ娘のトレーニングイベント風・たまに発生)
-                        bool fanEvent = new System.Random(System.Environment.TickCount ^ cost)
-                            .NextDouble() < 0.22;
-                        if (fanEvent) career.fans += 50;
-                        career.Save();
-                        ShowCareer();
-                        if (fanEvent)
-                            ShowDialog(new[]
-                            {
-                                ("マネージャー", "練習を見学に来てたファンが盛り上がってたぞ！ ファン+50人だ！"),
-                            }, null);
-                    });
-            }
-            Train("スタート練習 +3", 100, () => career.startSkill = Mathf.Min(0.95f, career.startSkill + 0.03f), 0.445f);
-            Train("旋回練習 +3", 100, () => career.turnSkill = Mathf.Min(0.95f, career.turnSkill + 0.03f), 0.358f);
-            Train("スピード練習 +3", 100, () => career.speedSkill = Mathf.Min(0.95f, career.speedSkill + 0.03f), 0.271f);
-            Train("メンタル強化 +3", 80, () => career.mental = Mathf.Min(0.95f, career.mental + 0.03f), 0.184f);
-            Train("整備研修 +3", 80, () => career.mechanicSkill = Mathf.Min(0.95f, career.mechanicSkill + 0.03f), 0.097f);
-            UiKit.MakeButton(skill.transform, "休養する (無料・疲労回復)", new Color(0.10f, 0.62f, 0.35f), 16,
-                new Vector2(0.07f, 0.01f), new Vector2(0.93f, 0.092f), Vector2.zero, Vector2.zero,
-                () =>
-                {
-                    career.fatigue = 0;
+                    apply();
+                    // 練習イベント(ウマ娘のトレーニングイベント風・たまに発生)
+                    bool fanEvent = cost > 0 &&
+                        new System.Random(System.Environment.TickCount ^ cost).NextDouble() < 0.22;
+                    if (fanEvent) career.fans += 50;
                     career.Save();
                     ShowCareer();
+                    if (fanEvent)
+                        ShowDialog(new[]
+                        {
+                            ("マネージャー", "練習を見学に来てたファンが盛り上がってたぞ！ ファン+50人だ！"),
+                        }, null);
                 });
+            }
+            TrainCard(0, "スタート練習", "+3 スタート", "費用 100万",
+                UiKit.UmaBlue, new Color(0.180f, 0.420f, 0.878f),
+                100, () => career.startSkill = Mathf.Min(0.95f, career.startSkill + 0.03f));
+            TrainCard(1, "旋回練習", "+3 ターン", "費用 100万",
+                UiKit.UmaGreen, new Color(0.133f, 0.588f, 0.290f),
+                100, () => career.turnSkill = Mathf.Min(0.95f, career.turnSkill + 0.03f));
+            TrainCard(2, "スピード練習", "+3 スピード", "費用 100万",
+                UiKit.UmaOrange, new Color(0.851f, 0.486f, 0f),
+                100, () => career.speedSkill = Mathf.Min(0.95f, career.speedSkill + 0.03f));
+            TrainCard(3, "メンタル強化", "+3 メンタル", "費用 80万",
+                UiKit.UmaPink, new Color(0.910f, 0.263f, 0.494f),
+                80, () => career.mental = Mathf.Min(0.95f, career.mental + 0.03f));
+            TrainCard(4, "整備研修", "+3 整備力", "費用 80万",
+                UiKit.UmaPurple, new Color(0.478f, 0.267f, 0.878f),
+                80, () => career.mechanicSkill = Mathf.Min(0.95f, career.mechanicSkill + 0.03f));
+            TrainCard(5, "休養する", "疲労を大回復", "無料",
+                UiKit.UmaTeal, new Color(0.118f, 0.580f, 0.533f),
+                0, () => career.fatigue = 0);
 
-            // ---- 下部は3ボタンだけ(1画面1主action: 迷わないUI) ----
-            // 強化系5機能は「強化・準備」1つに集約し、開くと大タイルのシートで選ぶ
-            UiKit.MakeButton(s.transform, "↩ ホーム", UiKit.Cyan, 18,
-                new Vector2(0.015f, 0.10f), new Vector2(0.155f, 0.24f), Vector2.zero, Vector2.zero, ShowHome);
-            UiKit.MakeButton(s.transform, "▲ 強化・準備", new Color(0.55f, 0.28f, 0.85f), 20,
-                new Vector2(0.17f, 0.10f), new Vector2(0.42f, 0.24f), Vector2.zero, Vector2.zero,
+            // ---- 下部バー(モックの.bottom: ホーム / 強化・準備 / 出走へ▶) ----
+            var foot = UiKit.MakePanel(s.transform, new Color(0.918f, 0.957f, 0.992f, 0.96f), 0,
+                new Vector2(0f, 0f), new Vector2(1f, 0.106f), new Vector2(-6f, -6f), new Vector2(6f, 0f));
+            var footLine = UiKit.MakePanel(foot.transform, Color.white, 0,
+                new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, -3f), new Vector2(0f, 0f));
+            footLine.GetComponent<Image>().raycastTarget = false;
+            UiKit.MakeButton(s.transform, "◀ ホーム", new Color(0.298f, 0.510f, 0.847f), 16,
+                new Vector2(0.012f, 0.014f), new Vector2(0.135f, 0.094f), Vector2.zero, Vector2.zero,
+                ShowHome);
+            UiKit.MakeButton(s.transform, "▲ 強化・準備", new Color(0.639f, 0.400f, 0.937f), 16,
+                new Vector2(0.150f, 0.014f), new Vector2(0.310f, 0.094f), Vector2.zero, Vector2.zero,
                 () => ShowPrepPopup(s.transform));
-            string raceLabel = career.allClear ? "SG覇者として出走 ▶" : $"出走へ ▶\n第{career.chapter}章「{career.Current.title}」";
-            UiKit.MakeButton(s.transform, raceLabel, UiKit.Red, career.allClear ? 26 : 21,
-                new Vector2(0.44f, 0.10f), new Vector2(0.985f, 0.24f), Vector2.zero, Vector2.zero,
+            string raceLabel = career.allClear ? "SG覇者として出走 ▶"
+                : $"出走へ ▶\n第{career.chapter}章「{career.Current.title}」";
+            var raceBtn = UiKit.MakeButton(s.transform, raceLabel, UiKit.UmaRed,
+                career.allClear ? 24 : 19,
+                new Vector2(0.700f, 0.010f), new Vector2(0.988f, 0.098f), Vector2.zero, Vector2.zero,
                 career.allClear ? (UnityEngine.Events.UnityAction)StartCareerRace : ShowTourMap);
+            homeCtaRT = raceBtn.GetComponent<RectTransform>(); // ホームCTAと同じ鼓動アニメを流用
 
             if (!career.debutDone)
             {
