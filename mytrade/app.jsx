@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 // MyTrade — 投資専用スタンドアロンアプリ (MyDeskから分離)
 // バックエンド: mydesk-stock-analysis Lambda (共用・変更不要)
 // ═══════════════════════════════════════════════════════════════
-const MYTRADE_BUILD = "2026-08-07-v19-ai-vs-you";
+const MYTRADE_BUILD = "2026-08-08-v21-mobile-24h";
 if (typeof window !== "undefined") {
   window.__MYTRADE_BUILD = MYTRADE_BUILD;
   console.log(`[MyTrade] Build: ${MYTRADE_BUILD}`);
@@ -301,6 +301,8 @@ function StockView({currentUser}) {
   const [paper, setPaper]         = useState(null);  // 自分のデモ口座
   const [paperAi, setPaperAi]     = useState(null);  // AIのデモ口座
   const [beginner, setBeginner]   = useState(()=>localStorage.getItem("mt_beginner")!=="0"); // 初心者モード
+  const [isMobile, setIsMobile]   = useState(typeof window!=="undefined" && window.innerWidth < 760);
+  const [tick, setTick]           = useState(null);  // 最終更新時刻・自動起動の状況
   const [orderForm, setOrderForm] = useState({ticker:"",qty:""});
   const [autoCfg, setAutoCfg]     = useState(null);  // AI自動デモ売買
   const [brief, setBrief]         = useState(null);  // プロトレーダーの視点(日次ブリーフ)
@@ -367,9 +369,29 @@ function StockView({currentUser}) {
     refreshAll();
   })(); /* eslint-disable-next-line */ },[]);
 
+  // 画面幅の監視(スマホ表示の切替)
+  useEffect(()=>{
+    const h=()=>setIsMobile(window.innerWidth<760);
+    window.addEventListener("resize",h); return ()=>window.removeEventListener("resize",h);
+  },[]);
+
+  // アプリを開くたびに自動で情報収集・学習を起動(古いものだけ裏で更新)
+  useEffect(()=>{ if(!apiUrl) return;
+    (async()=>{
+      try {
+        const r = await api({action:"tick"}, 60000);
+        setTick(r);
+        if(r.started&&r.started.length){
+          setTimeout(()=>{ loadDash(); if(view==="home") loadBrief(false); }, 45000);
+        }
+      } catch(e){}
+    })();
+  /* eslint-disable-next-line */ },[apiUrl]);
+
   // タブ切替時に必要なデータを自動ロード
   useEffect(()=>{ if(!apiUrl) return;
     if(view==="home"){
+      if(!dash&&!busy.dash) loadDash();
       if(!brief&&!busy.brief) loadBrief(false);
       if(!mktNews) loadMktNews();
       if(!report&&!busy.report) loadReport(false);
@@ -663,8 +685,23 @@ function StockView({currentUser}) {
 
   return (
     <div style={{paddingBottom:"1.5rem"}}>
-      {/* タブナビ */}
-      <div style={{display:"flex",gap:"0.25rem",marginBottom:"1rem",background:"white",borderRadius:12,padding:"0.3rem",border:`1px solid ${C.border}`,overflowX:"auto",WebkitOverflowScrolling:"touch",position:"sticky",top:52,zIndex:40,boxShadow:C.shadow}}>
+      {/* タブナビ(PCは上部・スマホは下部固定) */}
+      {isMobile&&(
+        <div style={{position:"fixed",left:0,right:0,bottom:0,zIndex:200,background:"white",
+          borderTop:`1px solid ${C.border}`,boxShadow:"0 -2px 10px rgba(0,17,62,0.08)",
+          paddingBottom:"env(safe-area-inset-bottom,0px)",display:"flex"}}>
+          {[["home","🏠","ホーム"],["picks","⭐","おすすめ"],["analyze","🔍","分析"],["demo","💴","売買"],["learn","🎓","成績"]].map(([v,ic,l])=>(
+            <button key={v} onClick={()=>{setView(v);localStorage.setItem("mt_view",v);window.scrollTo(0,0);}}
+              style={{flex:1,padding:"0.55rem 0.2rem 0.6rem",border:"none",background:"transparent",cursor:"pointer",
+                display:"flex",flexDirection:"column",alignItems:"center",gap:"0.15rem",position:"relative",fontFamily:"inherit"}}>
+              {view===v&&<div style={{position:"absolute",top:0,left:"25%",right:"25%",height:3,background:C.accent,borderRadius:"0 0 3px 3px"}}/>}
+              <span style={{fontSize:"1.25rem",lineHeight:1,opacity:view===v?1:0.55}}>{ic}</span>
+              <span style={{fontSize:"0.62rem",fontWeight:view===v?800:600,color:view===v?C.accent:C.textMuted}}>{l}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      <div style={{display:isMobile?"none":"flex",gap:"0.25rem",marginBottom:"1rem",background:"white",borderRadius:12,padding:"0.3rem",border:`1px solid ${C.border}`,overflowX:"auto",WebkitOverflowScrolling:"touch",position:"sticky",top:52,zIndex:40,boxShadow:C.shadow}}>
         {[["home","🏠","ホーム"],["picks","⭐","おすすめ"],["analyze","🔍","分析"],["demo","💴","デモ売買"],["portfolio","💼","ポートフォリオ"],["learn","🎓","学習・検証"],["settings","⚙️","設定"]].map(([v,ic,l])=>(
           <button key={v} onClick={()=>{setView(v);localStorage.setItem("mt_view",v);}}
             style={{flexShrink:0,display:"flex",alignItems:"center",gap:"0.35rem",padding:"0.5rem 0.9rem",borderRadius:9,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:"0.8rem",fontWeight:view===v?800:600,background:view===v?C.accent:"transparent",color:view===v?"white":C.textSub,transition:"all 0.15s"}}>
@@ -682,9 +719,72 @@ function StockView({currentUser}) {
           {busy.all?"更新中...":"🔄 全銘柄更新"}
         </button>
       </div>
+      {isMobile&&(
+        <div style={{display:"flex",gap:"0.3rem",alignItems:"center",marginBottom:"0.7rem",flexWrap:"wrap"}}>
+          <button onClick={()=>{const n=!beginner;setBeginner(n);localStorage.setItem("mt_beginner",n?"1":"0");}}
+            style={{padding:"0.4rem 0.7rem",borderRadius:8,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:"0.7rem",fontWeight:700,
+              background:beginner?C.greenBg:C.purpleBg,color:beginner?C.green:C.purple}}>{beginner?"🔰 初心者":"📊 プロ"}</button>
+          <button onClick={()=>refreshAll()} disabled={busy.all}
+            style={{padding:"0.4rem 0.7rem",borderRadius:8,border:"none",background:C.accentBg,color:C.accentDark,fontWeight:700,fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit"}}>
+            {busy.all?"更新中":"🔄 更新"}</button>
+          {[["portfolio","💼 資産"],["settings","⚙️ 設定"]].map(([v,l])=>(
+            <button key={v} onClick={()=>{setView(v);localStorage.setItem("mt_view",v);}}
+              style={{padding:"0.4rem 0.7rem",borderRadius:8,border:`1px solid ${C.border}`,background:view===v?C.accentBg:"white",color:view===v?C.accentDark:C.textSub,fontWeight:700,fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit"}}>{l}</button>
+          ))}
+          {tick&&tick.lastUpdated&&(
+            <span style={{fontSize:"0.6rem",color:C.textMuted,marginLeft:"auto"}}>
+              更新 {tick.lastUpdated.news?new Date(tick.lastUpdated.news).toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit"}):"—"}
+            </span>
+          )}
+        </div>
+      )}
+      {tick&&tick.started&&tick.started.length>0&&(
+        <div style={{padding:"0.5rem 0.75rem",borderRadius:8,background:C.accentBg,color:C.accentDark,fontSize:"0.72rem",fontWeight:600,marginBottom:"0.7rem"}}>
+          🔄 最新情報を取得中です({tick.started.join("・")})。1〜3分で自動的に反映されます
+        </div>
+      )}
       {errMsg&&<div style={{padding:"0.6rem 0.85rem",borderRadius:8,background:C.redBg,color:C.red,fontSize:"0.78rem",fontWeight:600,marginBottom:"0.85rem"}}>{errMsg}</div>}
 
       {view==="home"&&(<>
+      {/* 🤖 全自動稼働の状況(ボタンを押さなくても動いていることが分かるように) */}
+      {dash&&dash.jobs&&(()=>{
+        const JOBS=[["report","🌅 朝レポート","7:00"],["learn","🎓 自動学習","7:30"],
+                    ["ranking","⭐ 全銘柄ランキング","7:45"],["brief","🧠 相場観の生成","7:50"],
+                    ["autotrade","🤖 AI自動売買","8:00"]];
+        const now=Date.now();
+        const fresh=(at)=>at&&(now-new Date(at).getTime())<36*3600*1000;
+        const done=JOBS.filter(([k])=>dash.jobs[k]&&fresh(dash.jobs[k].at)).length;
+        const auto=dash.auto&&dash.auto.enabled;
+        return (
+          <div style={{...card,marginBottom:"0.85rem",padding:"0.7rem 0.9rem",background:done>=3?"#F0FDF4":C.bg,border:`1.5px solid ${done>=3?C.green:C.border}`}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:"0.4rem",marginBottom:"0.35rem"}}>
+              <div style={{fontWeight:800,fontSize:"0.83rem",color:done>=3?C.green:C.textSub}}>
+                🤖 全自動で稼働中 <span style={{fontSize:"0.66rem",fontWeight:600,color:C.textMuted}}>操作は不要です。毎朝ひとりでに動きます</span>
+              </div>
+              <span style={S.chip(auto?C.greenBg:C.yellowBg, auto?C.green:C.yellow)}>
+                AI自動売買 {auto?"ON":"OFF"}
+              </span>
+            </div>
+            <div style={{display:"flex",gap:"0.35rem",flexWrap:"wrap"}}>
+              {JOBS.map(([k,label,time])=>{
+                const j=dash.jobs[k]; const ok=j&&j.ok&&fresh(j.at);
+                return (
+                  <span key={k} style={{...S.chip(ok?C.greenBg:(j&&!j.ok?C.redBg:C.borderLight), ok?C.green:(j&&!j.ok?C.red:C.textMuted)),fontSize:"0.66rem"}}>
+                    {ok?"✅":(j&&!j.ok?"❌":"⏳")} {label} {time}
+                    {j&&<span style={{fontWeight:500,opacity:0.8}}> / {new Date(j.at).toLocaleString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}{j.detail?` ${j.detail}`:""}</span>}
+                  </span>
+                );
+              })}
+            </div>
+            {beginner&&(
+              <div style={{fontSize:"0.68rem",color:C.textMuted,marginTop:"0.35rem",lineHeight:1.6}}>
+                ⏳=まだ実行前(明日の朝に動きます) / ✅=正常に動いた / ❌=エラー。<b>あなたがボタンを押す必要はありません</b>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {/* 🧠 プロトレーダーの視点(常時表示) */}
       <div style={{...card,marginBottom:"0.85rem",padding:"1rem 1.1rem",background:"linear-gradient(135deg,#ffffff,#F6F4FF)",border:`2px solid ${C.purple}`}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:"0.5rem",marginBottom:"0.5rem"}}>
@@ -1476,7 +1576,7 @@ function StockView({currentUser}) {
             <div>
               <div style={{fontWeight:800,fontSize:"0.85rem",color:C.text}}>🤖 AIにおまかせ運用
                 <span style={{...S.chip(autoCfg&&autoCfg.enabled?C.greenBg:C.borderLight, autoCfg&&autoCfg.enabled?C.green:C.textSub),marginLeft:"0.4rem"}}>
-                  {autoCfg&&autoCfg.enabled?"稼働中":"停止中"}
+                  {autoCfg&&autoCfg.enabled?"稼働中(操作不要)":"停止中"}
                 </span>
               </div>
               <div style={{fontSize:"0.68rem",color:C.textSub,marginTop:"0.15rem",lineHeight:1.6}}>
@@ -1487,7 +1587,7 @@ function StockView({currentUser}) {
             <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap"}}>
               <button onClick={()=>saveAuto({enabled:!(autoCfg&&autoCfg.enabled)})} disabled={busy.auto}
                 style={{padding:"0.5rem 1rem",borderRadius:8,border:"none",background:autoCfg&&autoCfg.enabled?C.textMuted:C.green,color:"white",fontWeight:800,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}}>
-                {autoCfg&&autoCfg.enabled?"停止する":"▶ 開始する"}
+                {autoCfg&&autoCfg.enabled?"停止する":"▶ 再開する"}
               </button>
               <button onClick={runAuto} disabled={busy.auto}
                 style={{padding:"0.5rem 0.9rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}}>
@@ -2302,7 +2402,7 @@ export default function App() {
         <span style={{fontWeight:800,fontSize:"1.05rem",color:C.text,letterSpacing:"-0.02em"}}>MyTrade</span>
         <span style={{fontSize:"0.65rem",color:C.textMuted,fontWeight:600}}>プロトレーダーダッシュボード</span>
       </div>
-      <div style={{maxWidth:1200,margin:"0 auto",padding:"1.25rem 1rem 2rem"}}>
+      <div style={{maxWidth:1200,margin:"0 auto",padding:"1rem 0.75rem calc(5rem + env(safe-area-inset-bottom,0px))"}}>
         <ErrorBoundary>
           <StockView/>
         </ErrorBoundary>

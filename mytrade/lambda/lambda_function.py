@@ -36,6 +36,7 @@ s3 = boto3.client("s3")
 # ═══════════════════════ Bedrock呼び出し(モデル自動選択・自己修復) ═══════════════════════
 # Bedrockのモデルは提供終了(Legacy化)でIDが使えなくなることがあるため、
 # 設定IDが失敗したら利用可能なモデルを自動探索して切り替え、成功したIDをS3に記憶する。
+JOB_STATUS_KEY = "stock-learn/job_status.json"
 MODEL_STATE_KEY = "stock-learn/bedrock_model.json"
 MODEL_PREFERENCE = ("haiku-4-5", "haiku-4", "sonnet-4-5", "sonnet-4", "haiku-3-5", "sonnet-3-5", "haiku", "sonnet")
 
@@ -124,6 +125,80 @@ MARKET_TICKERS = [
 ]
 
 
+def _self_invoke(job, **kw):
+    """自分自身を非同期で呼び出して重い処理を裏で走らせる(画面は待たせない)。"""
+    try:
+        fn = os.environ.get("AWS_LAMBDA_FUNCTION_NAME")
+        if not fn:
+            return False
+        boto3.client("lambda", region_name=BEDROCK_REGION).invoke(
+            FunctionName=fn, InvocationType="Event",
+            Payload=json.dumps({"job": job, **kw}).encode())
+        return True
+    except Exception as e:
+        print("self invoke failed:", job, e)
+        return False
+
+
+def _age_hours(iso):
+    try:
+        return (datetime.now(timezone.utc)
+                - datetime.fromisoformat(str(iso).replace("Z", "+00:00"))).total_seconds() / 3600
+    except Exception:
+        return 9999
+
+
+def run_tick():
+    """アプリを開くたびに呼ばれる。ニュースはその場で更新し、
+    重い処理(ランキング・相場観・学習)は古ければ裏で自動起動する。"""
+    started = []
+    news = {}
+    try:
+        news = get_market_news()          # 15分キャッシュ。開くたびに最新化
+    except Exception as e:
+        print("tick news failed:", e)
+
+    jobs = _load_json_s3(JOB_STATUS_KEY, {})
+    ranking = cache_get("ranking.json", 30 * 24 * 3600) or {}
+    brief = _load_json_s3("stock-learn/brief.json", {})
+    cfg = load_learn_config()
+
+    # それぞれ古くなっていたら裏で更新(多重起動しないよう実行中フラグで抑制)
+    if _age_hours(ranking.get("updatedAt")) > 6 and _age_hours((jobs.get("ranking") or {}).get("at")) > 1:
+        if _self_invoke("ranking"):
+            started.append("ranking")
+    if _age_hours(brief.get("updatedAt")) > 6 and _age_hours((jobs.get("brief") or {}).get("at")) > 1:
+        if _self_invoke("brief"):
+            started.append("brief")
+    if _age_hours(cfg.get("updatedAt")) > 20 and _age_hours((jobs.get("learn") or {}).get("at")) > 6:
+        if _self_invoke("learn"):
+            started.append("learn")
+    if _age_hours((jobs.get("autotrade") or {}).get("at")) > 2:
+        if _self_invoke("autotrade"):
+            started.append("autotrade")
+
+    return {"started": started,
+            "news": news.get("news", [])[:8],
+            "lastUpdated": {
+                "news": news.get("updatedAt"),
+                "ranking": ranking.get("updatedAt"),
+                "brief": brief.get("updatedAt"),
+                "learn": cfg.get("updatedAt"),
+                "autotrade": (jobs.get("autotrade") or {}).get("at"),
+            },
+            "jobs": jobs, "now": datetime.now(timezone.utc).isoformat()}
+
+
+def _record_job(job, ok=True, detail=""):
+    """定期ジョブの実行結果を記録。画面で稼働状況を確認するために使う。"""
+    try:
+        st = _load_json_s3(JOB_STATUS_KEY, {})
+        st[job] = {"at": datetime.now(timezone.utc).isoformat(), "ok": ok, "detail": str(detail)[:200]}
+        _save_json_s3(JOB_STATUS_KEY, st)
+    except Exception as e:
+        print("job status save failed:", e)
+
+
 def lambda_handler(event, context):
     # EventBridge定期実行。定数入力 {"job":"..."} でジョブを切り替える
     #   job未指定 → 朝レポート(スキャン+答え合わせ)  … 毎朝7:00 JST
@@ -131,18 +206,30 @@ def lambda_handler(event, context):
     #   job=backtest → 長期ウォークフォワード再検証   … 毎月1日
     job = event.get("job")
     if job or event.get("source") == "aws.events":
+        jname = job or "report"
         try:
             if job == "learn":
                 wl = _load_json_s3(WATCHLIST_KEY, [])
-                return _res(200, run_learn([w["ticker"] for w in wl] or None))
+                r = run_learn([w["ticker"] for w in wl] or None)
+                _record_job(jname, True, f"{r.get('backtestSamples',0)}サンプル")
+                return _res(200, r)
             if job == "backtest":
-                return _res(200, run_backtest(None, int(event.get("years", 10)), True))
+                r = run_backtest(None, int(event.get("years", 25)), True)
+                _record_job(jname, True, f"{r.get('samples',0)}サンプル")
+                return _res(200, r)
             if job == "ranking":
-                return _res(200, run_ranking(force=True))
+                r = run_ranking(force=True)
+                _record_job(jname, True, f"{r.get('scanned',0)}銘柄 財務{r.get('finCovered',0)}")
+                return _res(200, r)
             if job == "brief":
-                return _res(200, run_brief())
+                r = run_brief()
+                _record_job(jname, True, f"狙い目{len((r.get('brief') or {}).get('focus') or [])}件")
+                return _res(200, r)
             if job == "autotrade":
-                return _res(200, run_autotrade())
+                r = run_autotrade()
+                _record_job(jname, True, ("停止中" if r.get("enabled") is False
+                                          else f"{len(r.get('actions') or [])}件の売買"))
+                return _res(200, r)
             if job == "optimize":
                 r = simulate_grid(None, int(event.get("years", 25)))
                 _save_json_s3("stock-learn/optimize.json", r)
@@ -151,11 +238,14 @@ def lambda_handler(event, context):
                 r = simulate_strategy(None, int(event.get("years", 25)))
                 _save_json_s3("stock-learn/simulation.json", r)
                 return _res(200, {"result": r["result"], "period": r["period"]})
-            return _res(200, run_daily_report())
+            r = run_daily_report()
+            _record_job(jname, True, f"アラート{len(r.get('alerts') or [])}件")
+            return _res(200, r)
         except Exception as e:
             import traceback
             traceback.print_exc()
-            return _res(500, {"error": str(e), "job": job or "report"})
+            _record_job(jname, False, str(e))
+            return _res(500, {"error": str(e), "job": jname})
     method = (event.get("requestContext", {}).get("http", {}) or {}).get("method", "POST")
     if method == "OPTIONS":
         return _res(200, {})
@@ -234,6 +324,12 @@ def lambda_handler(event, context):
             return _res(200, _load_json_s3("stock-learn/optimize.json", {}))
         if action == "simulation-latest":
             return _res(200, _load_json_s3("stock-learn/simulation.json", {}))
+        if action == "tick":
+            return _res(200, run_tick())
+        if action == "job-status":
+            return _res(200, {"jobs": _load_json_s3(JOB_STATUS_KEY, {}),
+                              "autotrade": {"enabled": bool(autotrade_config().get("enabled"))},
+                              "now": datetime.now(timezone.utc).isoformat()})
         if action == "dashboard":
             return _res(200, performance_dashboard())
         if action == "autotrade":
@@ -2266,13 +2362,18 @@ AUTO_KEY = "stock-learn/autotrade.json"
 
 def autotrade_config(update=None):
     # 既定値は25年バックテストで効率(年利÷最大下落)が最良だった組み合わせ
-    cfg = _load_json_s3(AUTO_KEY, {"enabled": False, "riskPct": 2.0, "maxPositions": 8,
-                                   "minConviction": 3, "rr": 3.0, "log": []})
+    cfg = _load_json_s3(AUTO_KEY, {"enabled": True, "riskPct": 2.0, "maxPositions": 8,
+                                   "minConviction": 3, "rr": 3.0, "log": [], "userToggled": False})
     cfg.setdefault("rr", 3.0)
+    # 手動で切り替えるまでは常にON(「ボタンを押さなくても回っている」状態にする)
+    if not cfg.get("userToggled") and not cfg.get("enabled"):
+        cfg["enabled"] = True
     if update:
         for k in ("enabled", "riskPct", "maxPositions", "minConviction", "rr"):
             if k in update:
                 cfg[k] = update[k]
+        if "enabled" in update:
+            cfg["userToggled"] = True     # 以降はユーザーの選択を尊重
         _save_json_s3(AUTO_KEY, cfg)
     return cfg
 
@@ -2365,11 +2466,19 @@ def run_autotrade():
         except Exception as e:
             print("autotrade buy failed:", tk, e)
 
+    now_iso = datetime.now(timezone.utc).isoformat()
     log = (cfg.get("log") or [])
-    log.append({"date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
-                "actions": actions, "equity": st["equity"]})
+    if actions:   # 1時間ごとに走るのでログは売買があった時だけ残す
+        log.append({"date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"),
+                    "actions": actions, "equity": st["equity"]})
     cfg["log"] = log[-60:]
+    cfg["lastRunAt"] = now_iso
+    cfg["lastEquity"] = st["equity"]
     _save_json_s3(AUTO_KEY, cfg)
+    try:
+        paper_snapshot()   # 収支を常に最新化(24時間いつでも正しい数字が出るように)
+    except Exception as e:
+        print("snapshot after autotrade failed:", e)
     return {"enabled": True, "actions": actions, "state": st,
             "updatedAt": datetime.now(timezone.utc).isoformat()}
 
@@ -2426,6 +2535,7 @@ def performance_dashboard():
                           "years": bt.get("years")} if reg else None),
             "byEra": bt.get("byEra") or {},
         },
+        "jobs": _load_json_s3(JOB_STATUS_KEY, {}),
         "learn": {"weights": cfg.get("factor_weights"), "ic": cfg.get("factor_ic"),
                   "samples": cfg.get("backtestSamples"), "years": cfg.get("backtestYears"),
                   "lessons": cfg.get("lessons") or [], "updatedAt": cfg.get("updatedAt")},
