@@ -1198,11 +1198,14 @@ def _sim_pass(prep, all_dates, initial=1000000, risk_pct=2.0, max_pos=5,
             qty_cap = int(equity / max_pos / px)                    # 1銘柄あたりの上限
             qty = (min(qty_risk, qty_cap) // unit) * unit
             if qty < unit:
-                # 単元株の救済(実運用と同じルール: 枠の2倍・リスク1.5倍まで)
+                # 実運用と同じ救済ルール
                 one_risk = risk * unit / equity * 100 if equity else 999
                 one_cost = px * unit * (1 + fee)
-                if (one_risk <= risk_pct * 1.5 and one_cost <= equity / max_pos * 2
-                        and one_cost <= cash * 0.5):
+                if odd_lot:
+                    if one_cost <= cash and one_risk <= risk_pct * 2:
+                        qty = unit
+                elif (one_risk <= risk_pct * 1.5 and one_cost <= equity / max_pos * 2
+                      and one_cost <= cash * 0.5):
                     qty = unit
             cost = px * qty * (1 + fee)
             if qty < unit or cost > cash:
@@ -2474,19 +2477,25 @@ def run_autotrade():
             qty_cap = int(st["equity"] / max_pos / px)                    # 1銘柄あたりの上限
             qty = (min(qty_risk, qty_cap) // unit) * unit
             if qty < unit:
-                # 単元株の都合で枠に収まらない場合の救済。
-                # ただし分散を壊さないよう「1枠の2倍」かつ「リスクは設定の1.5倍」までに限る
+                # 枠に収まらない場合の救済。
+                # 単元未満株ONなら「最低1株」は買えるようにする(買えない銘柄を作らない)。
+                # 単元株のみの場合は分散を壊さない範囲(1枠の2倍・リスク1.5倍)に限る。
                 one_risk = (px - stop) * unit / st["equity"] * 100 if st["equity"] else 999
                 one_cost = px * unit * 1.001
-                if (one_risk <= risk_pct * 1.5
-                        and one_cost <= st["equity"] / max_pos * 2
-                        and one_cost <= st["cash"] * 0.5):
+                if odd_lot:
+                    if one_cost <= st["cash"] and one_risk <= risk_pct * 2:
+                        qty = unit
+                elif (one_risk <= risk_pct * 1.5
+                      and one_cost <= st["equity"] / max_pos * 2
+                      and one_cost <= st["cash"] * 0.5):
                     qty = unit
             if qty < unit:
                 skipped_cost += 1
                 if skipped_cost <= 3:   # 記録は3件までに留める(候補が多いため)
                     actions.append({"type": "skip", "ticker": tk, "name": pl.get("name"),
-                                    "reason": f"1単元({unit}株={int(px*unit):,}円)が資金・リスク許容を超える"})
+                                    "reason": (f"1株{int(px):,}円が現金残高({int(st['cash']):,}円)を超える"
+                                               if odd_lot else
+                                               f"1単元({unit}株={int(px*unit):,}円)が資金・リスク許容を超える")})
                 continue
             st = paper_order(tk, "buy", qty,
                              f"[自動] AI推奨 確信度{pl.get('conviction')}/5",
