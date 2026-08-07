@@ -36,6 +36,7 @@ setup_rule () {
 setup_rule "mytrade-morning"  "cron(0 22 * * ? *)"  "MyTrade 朝レポート(スキャン+答え合わせ)" ""
 setup_rule "mytrade-learn"    "cron(30 22 * * ? *)" "MyTrade 毎日の自動学習(重み+教訓)" '{"job":"learn"}'
 setup_rule "mytrade-ranking"  "cron(45 22 * * ? *)" "MyTrade 全銘柄ランキングの事前計算" '{"job":"ranking"}'
+setup_rule "mytrade-flow"     "cron(48 22 * * ? *)" "MyTrade 資金の流れ・テーマ・連動係数の集計" '{"job":"flow"}'
 setup_rule "mytrade-brief"    "cron(50 22 * * ? *)" "MyTrade プロトレーダー視点の日次生成" '{"job":"brief"}'
 setup_rule "mytrade-auto"     "cron(5 * * * ? *)"   "MyTrade AI自動デモ売買(1時間ごと・24時間稼働)" '{"job":"autotrade"}'
 setup_rule "mytrade-sim"      "cron(30 23 1 * ? *)" "MyTrade 月次の戦略シミュレーション(25年)" '{"job":"simulate","years":25}'

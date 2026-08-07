@@ -4,7 +4,11 @@ import React, { useState, useEffect, useRef } from "react";
 // MyTrade — 投資専用スタンドアロンアプリ (MyDeskから分離)
 // バックエンド: mydesk-stock-analysis Lambda (共用・変更不要)
 // ═══════════════════════════════════════════════════════════════
-const MYTRADE_BUILD = "2026-08-08-v35-nofreeze";
+const MYTRADE_BUILD = "2026-08-08-v36-flow";
+
+// 牽引役の日本語名(連動係数βの表示に使う)
+const FLOW_DRIVER_JA = {sox:"半導体", oil:"原油", gold:"金", defense:"防衛",
+                        rate:"米金利", fx:"ドル円", n225:"日経平均", sp500:"S&P500"};
 if (typeof window !== "undefined") {
   window.__MYTRADE_BUILD = MYTRADE_BUILD;
   console.log(`[MyTrade] Build: ${MYTRADE_BUILD}`);
@@ -411,6 +415,7 @@ function StockView({currentUser}) {
   const [autoCfg, setAutoCfg]     = useState(null);  // AI自動デモ売買
   const [brief, setBrief]         = useState(null);  // プロトレーダーの視点(日次ブリーフ)
   const [mktNews, setMktNews]     = useState(null);  // 市場全体ニュース
+  const [flow, setFlow]           = useState(null);  // 資金の流れ・テーマ・連動銘柄
   const [chart, setChart]         = useState(null);  // プロチャートデータ
   const [chartPeriod, setChartPeriod] = useState("6mo");
   const [chartLive, setChartLive] = useState(null);   // 分足表示中は自動更新
@@ -506,6 +511,7 @@ function StockView({currentUser}) {
       if(!dash&&!busy.dash) loadDash();
       if(!brief&&!busy.brief) loadBrief(false);
       if(!mktNews) loadMktNews();
+      if(!flow&&!busy.flow) loadFlow();
       if(!report&&!busy.report) loadReport(false);
     }
     if(view==="portfolio"&&!journal&&!busy.journal) loadJournal();
@@ -705,6 +711,13 @@ function StockView({currentUser}) {
 
   const loadMktNews = async () => {
     try { const r = await api({action:"market-news"}, 60000); setMktNews(r); } catch(e){}
+  };
+
+  // 資金の流れ(業種別)と、今効いているテーマ。テーマに連動する銘柄はβの実測値で選ばれる
+  const loadFlow = async () => {
+    setBusy(b=>({...b,flow:true}));
+    try { const r = await api({action:"flow"}, 900000); setFlow(r); } catch(e){}
+    setBusy(b=>({...b,flow:false}));
   };
 
   const loadRanking = async (force) => {
@@ -1052,6 +1065,114 @@ function StockView({currentUser}) {
           );
         })()}
       </div>
+
+      {/* 🌊 資金の流れ・テーマ(実測βで連動銘柄を選ぶ) */}
+      {flow&&(flow.sectors||[]).length>0&&(()=>{
+        const secs=flow.sectors, up=secs.slice(0,5), dn=secs.slice(-3).reverse();
+        const mx=Math.max(...secs.map(s=>Math.abs(s.chg5d||0)),1);
+        const bar=(s,i)=>{
+          const v=s.chg5d||0, pos=v>=0;
+          return (
+            <div key={i} style={{display:"flex",alignItems:"center",gap:"0.4rem",padding:"0.2rem 0"}}>
+              <div style={{width:"5.2rem",flexShrink:0,fontSize:"0.7rem",fontWeight:700,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.label}</div>
+              <div style={{flex:1,height:14,background:C.bg,borderRadius:4,position:"relative",overflow:"hidden",minWidth:60}}>
+                <div style={{position:"absolute",left:"50%",top:0,bottom:0,width:1,background:C.border}}/>
+                <div style={{position:"absolute",top:2,bottom:2,borderRadius:3,
+                  background:pos?C.green:C.red,
+                  left:pos?"50%":`${50-Math.abs(v)/mx*48}%`,width:`${Math.abs(v)/mx*48}%`}}/>
+              </div>
+              <div style={{width:"3.4rem",flexShrink:0,textAlign:"right",fontSize:"0.7rem",fontWeight:800,color:pos?C.green:C.red}}>
+                {pos?"+":""}{v}%
+              </div>
+            </div>
+          );
+        };
+        return (
+          <div style={{...card,marginBottom:"0.85rem",padding:"0.85rem 1rem"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"0.15rem"}}>
+              <div style={{fontWeight:800,fontSize:"0.85rem",color:C.text}}>🌊 資金の流れ</div>
+              <button onClick={loadFlow} disabled={busy.flow} style={{...S.iconBtn,color:C.accent,fontSize:"0.72rem",fontWeight:700}}>{busy.flow?"…":"🔄"}</button>
+            </div>
+            <div style={{fontSize:"0.66rem",color:C.textMuted,marginBottom:"0.45rem"}}>
+              業種ごとの平均騰落(5日)。プロが最初に見る「今どこにお金が向かっているか」です
+            </div>
+            {up.map(bar)}
+            {dn.length>0&&(<>
+              <div style={{fontSize:"0.63rem",color:C.textMuted,margin:"0.35rem 0 0.1rem"}}>売られている業種</div>
+              {dn.map(bar)}
+            </>)}
+
+            {(flow.themes||[]).length>0&&(
+              <div style={{marginTop:"0.7rem",borderTop:`1px solid ${C.borderLight}`,paddingTop:"0.55rem"}}>
+                <div style={{fontWeight:800,fontSize:"0.8rem",color:C.text,marginBottom:"0.1rem"}}>📰 今効いているテーマ</div>
+                <div style={{fontSize:"0.65rem",color:C.textMuted,marginBottom:"0.45rem"}}>
+                  ニュースからテーマを拾い、<b>過去120日で実際にその動きに連動してきた銘柄</b>を数字(β)で選んでいます
+                </div>
+                {flow.themes.slice(0,3).map((th,i)=>(
+                  <details key={i} open={i===0} style={{marginBottom:"0.4rem",background:th.confirmed?C.accentLight:C.bg,borderRadius:8,padding:"0.5rem 0.6rem"}}>
+                    <summary style={{fontSize:"0.76rem",fontWeight:800,color:th.confirmed?C.accentDark:C.textSub,cursor:"pointer"}}>
+                      {th.theme} {th.confirmed?"🔥":"（見出しのみ）"}
+                    </summary>
+                    <div style={{fontSize:"0.68rem",color:C.textSub,lineHeight:1.6,marginTop:"0.3rem"}}>{th.note}</div>
+                    <div style={{fontSize:"0.64rem",color:C.textMuted,marginTop:"0.2rem"}}>
+                      拾った言葉: {(th.words||[]).join("・")}
+                    </div>
+                    {(th.driverMoves||[]).length>0&&(
+                      <div style={{display:"flex",gap:"0.35rem",flexWrap:"wrap",margin:"0.35rem 0"}}>
+                        {th.driverMoves.map((d,j)=>(
+                          <span key={j} style={S.chip((d.chg5d||0)>=0?C.greenBg:C.redBg,(d.chg5d||0)>=0?C.green:C.red)}>
+                            {d.label} 5日{(d.chg5d||0)>=0?"+":""}{d.chg5d}%
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {!th.confirmed&&(
+                      <div style={{fontSize:"0.64rem",color:C.yellow,marginBottom:"0.25rem"}}>
+                        ⚠️ 話題にはなっていますが、牽引役がまだ動いていません。飛びつかず様子見が無難です
+                      </div>
+                    )}
+                    {(th.stocks||[]).length>0&&(
+                      <div style={{overflowX:"auto"}}>
+                        <table style={{width:"100%",borderCollapse:"collapse",fontSize:"0.68rem",minWidth:340}}>
+                          <thead><tr style={{background:"rgba(0,0,0,0.03)"}}>
+                            {["銘柄","連動先","β","5日","短期"].map((h,j)=>(
+                              <th key={j} style={{padding:"0.25rem 0.3rem",textAlign:j<2?"left":"right",fontSize:"0.62rem",color:C.textMuted,fontWeight:700,whiteSpace:"nowrap"}}>{h}</th>
+                            ))}
+                          </tr></thead>
+                          <tbody>
+                            {th.stocks.slice(0,6).map((p,j)=>(
+                              <tr key={j} onClick={()=>{
+                                  if(watchlist.some(w=>w.ticker===p.ticker)){
+                                    setSelected(p.ticker); setView("analyze"); localStorage.setItem("mt_view","analyze");
+                                    if(!newsMap[p.ticker]) loadNews(p.ticker); loadChart(p.ticker);
+                                  } else addStock({ticker:p.ticker,name:p.name,market:p.market||(p.ticker.endsWith(".T")?"JP":"US")});
+                                }}
+                                style={{borderBottom:`1px solid ${C.borderLight}`,cursor:"pointer"}}>
+                                <td style={{padding:"0.25rem 0.3rem",fontWeight:700,color:C.accentDark,maxWidth:"7rem",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</td>
+                                <td style={{padding:"0.25rem 0.3rem",color:C.textMuted,fontSize:"0.62rem",whiteSpace:"nowrap"}}>{p.label}</td>
+                                <td style={{padding:"0.25rem 0.3rem",textAlign:"right",fontWeight:800,color:C.accent}}>{p.beta}</td>
+                                <td style={{padding:"0.25rem 0.3rem",textAlign:"right",color:(p.chg5d||0)>=0?C.green:C.red}}>{(p.chg5d||0)>=0?"+":""}{p.chg5d}%</td>
+                                <td style={{padding:"0.25rem 0.3rem",textAlign:"right",fontWeight:700,color:p.short>=70?C.green:C.textSub}}>{p.short}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                        <div style={{fontSize:"0.6rem",color:C.textMuted,marginTop:"0.25rem",lineHeight:1.5}}>
+                          β1.8 = 連動先が1%動くとこの銘柄は平均1.8%動く。<b>上がるときも下がるときも1.8倍</b>です。<br/>
+                          短期スコア70点以上のものだけが自動売買の対象になります。タップで詳細分析へ。
+                        </div>
+                      </div>
+                    )}
+                  </details>
+                ))}
+              </div>
+            )}
+            <div style={{fontSize:"0.6rem",color:C.textMuted,marginTop:"0.4rem"}}>
+              {flow.scanned}銘柄をスキャン / 連動係数の実測 {flow.betaCovered}銘柄 / 業種判明 {flow.sectorCovered}銘柄
+            </div>
+          </div>
+        );
+      })()}
 
       {/* 📡 マーケットニュース(自動収集) */}
       {mktNews&&mktNews.news&&mktNews.news.length>0&&(
@@ -1541,6 +1662,40 @@ function StockView({currentUser}) {
               {sel.long.missing&&sel.long.missing.length>0&&(
                 <div style={{fontSize:"0.68rem",color:C.textMuted,marginTop:"0.3rem"}}>※データ取得不可: {sel.long.missing.join("、")}</div>
               )}
+              {/* 🔗 何に連動して動く銘柄か(過去120日の実測) */}
+              {sel.drivenBy&&(()=>{
+                const d=sel.drivenBy, strong=Math.abs(d.corr)>=0.5;
+                const others=Object.entries(sel.beta||{}).filter(([k,v])=>
+                  k!==d.key&&Math.abs((sel.corr||{})[k]||0)>=0.3).slice(0,3);
+                return (
+                  <div style={{marginBottom:"0.8rem",padding:"0.7rem 0.85rem",background:"white",borderRadius:10,border:`1px solid ${C.border}`}}>
+                    <div style={{fontWeight:800,fontSize:"0.84rem",color:C.text,marginBottom:"0.2rem"}}>🔗 何につられて動く銘柄か</div>
+                    <div style={{fontSize:"0.78rem",color:C.text,lineHeight:1.75}}>
+                      <b style={{color:C.accent,fontSize:"0.92rem"}}>{d.label}</b> に連動します。
+                      <b>{d.label}が1%上がると、この株は平均{d.beta}%動く</b>傾向です(過去120日の実測)。
+                    </div>
+                    <div style={{display:"flex",gap:"0.35rem",flexWrap:"wrap",margin:"0.4rem 0"}}>
+                      <span style={S.chip(C.accentBg,C.accentDark)}>β {d.beta}</span>
+                      <span style={S.chip(strong?C.greenBg:C.yellowBg,strong?C.green:C.yellow)}>
+                        連動の強さ {Math.round(Math.abs(d.corr)*100)}%{strong?"(強い)":"(そこそこ)"}
+                      </span>
+                      {others.map(([k,v],i)=>(
+                        <span key={i} style={S.chip(C.borderLight,C.textSub)}>{FLOW_DRIVER_JA[k]||k} β{v}</span>
+                      ))}
+                    </div>
+                    <div style={{fontSize:"0.7rem",color:C.textSub,lineHeight:1.7,background:C.bg,borderRadius:7,padding:"0.45rem 0.6rem"}}>
+                      {Math.abs(d.beta)>=1.3
+                        ? <>⚠️ <b>{d.label}より値動きが激しい銘柄</b>です。上がるときも大きいですが、<b>下がるときも{d.beta}倍</b>。
+                           {d.label}が崩れたら真っ先に売られます。</>
+                        : Math.abs(d.beta)>=0.7
+                        ? <>{d.label}とほぼ同じ幅で動きます。{d.label}の動向がそのまま効いてきます。</>
+                        : <>{d.label}の影響は受けますが、値動きは穏やかです。</>}
+                      {!strong&&<><br/>※連動の強さが中程度なので、{d.label}だけで判断せず個別の材料も見てください。</>}
+                    </div>
+                  </div>
+                );
+              })()}
+
               {sel.proChecklist&&sel.proChecklist.items&&sel.proChecklist.items.length>0&&(()=>{
                 const pc = sel.proChecklist;
                 const groups = [];
