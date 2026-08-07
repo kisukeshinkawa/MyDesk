@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-08-v356-quote-autosync-vendor"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-08-v358-quote-address-lookup"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -33984,7 +33984,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
   const muniName = id => munis.find(m=>String(m.id)===String(id))?.name || "";
   const rid = pre => pre+"_"+Date.now()+"_"+Math.random().toString(36).slice(2,8);
   const compHits = q => { const s=String(q||"").trim().toLowerCase(); return s? companies.filter(c=>String(c.name||"").toLowerCase().includes(s)).slice(0,20):[]; };
-  const mapsUrl = a => "https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(a||"");
+  const mapsUrl = a => "https://i9yapprunner.com/lookup?address="+encodeURIComponent(a||""); // 住所→回収可否を検索
   const rowsOf = (stores) => {
     const out=[];
     (stores||[]).forEach(st=>{
@@ -34016,23 +34016,36 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
     });
     return {changed, nextData:{...baseData, quoteProjects:nextProjects, vendors:curVendors}};
   };
-  // 案件を開いたら、発行済み(未回答)リンクの回答を自動フェッチして反映（1案件につき1回・過負荷防止で上限800）
+  // 案件を開いたら：①未発行リンクを自動発行(少数≤60のみ)②未回答リンクの回答を自動フェッチ→反映（1案件1回・上限あり）
   const autoSyncedRef = React.useRef({});
   React.useEffect(()=>{
     if(!activeId || !QUOTE_PORTAL_URL || autoSyncedRef.current[activeId]) return;
     const proj=(data.quoteProjects||[]).find(x=>x.id===activeId);
     if(!proj) return;
     const pending=(proj.vendors||[]).filter(v=>v.portalToken && v.status!=="回答済");
+    const needLink=(proj.vendors||[]).filter(v=>!v.portalToken);
+    const autoIssue = needLink.length>0 && needLink.length<=60; // 大量は手動の一括発行ボタンに任せる
     autoSyncedRef.current[activeId]=true;
-    if(!pending.length) return;
+    if(!pending.length && !autoIssue) return;
     let cancelled=false;
     (async()=>{
       const post=async(b)=>{ const r=await fetch(QUOTE_PORTAL_URL,{method:"POST",headers:{"content-type":"text/plain;charset=UTF-8"},body:JSON.stringify({...b,secret:DB_API_SECRET})}); return r.json(); };
+      // ① 未発行リンクを自動発行（少数のみ）
+      const tokenPatch={};
+      if(autoIssue){
+        const itemsFor=(qv)=> rowsOf(proj.stores).map(r=>({ id:r.itemId, storeId:r.storeId, storeName:r.storeName, area:r.area, bizType:r.bizType, address:r.address, kind:r.kind, freq:r.freq, qty:r.qty, weight:r.weight, dustPhoto:r.dustPhoto||"", overallPhoto:r.overallPhoto||"" }));
+        for(let i=0;i<needLink.length;i+=6){ if(cancelled) return; const batch=needLink.slice(i,i+6);
+          await Promise.all(batch.map(async qv=>{ try{ const j=await post({action:"create", payload:{ projectId:proj.id, projectName:proj.name, company:proj.companyName||"", vendorId:qv.vendorId, vendorName:qv.vendorName, items:itemsFor(qv) }}); if(j&&j.ok) tokenPatch[qv.id]={portalToken:j.token,portalUrl:j.url}; }catch(e){} })); }
+      }
+      // ② 未回答の回答フェッチ
       const tokens=pending.map(v=>v.portalToken); const respByToken={};
       for(let i=0;i<tokens.length && i<800;i+=80){ if(cancelled) return; try{ const j=await post({action:"fetch", tokens:tokens.slice(i,i+80)}); ((j&&j.requests)||[]).forEach(rq=>{ if(rq&&rq.token) respByToken[rq.token]=rq; }); }catch(e){} }
       if(cancelled) return;
-      const {changed,nextData}=applyRespToState(data, activeId, respByToken);
-      if(changed && !cancelled) persistData(nextData);
+      // ③ 反映（トークン付与＋回答）
+      let base=data;
+      if(Object.keys(tokenPatch).length){ const np=(base.quoteProjects||[]).map(x=>x.id!==activeId?x:{...x, status:(x.status==="見積依頼中"?"回収中":x.status), vendors:(x.vendors||[]).map(y=>tokenPatch[y.id]?{...y,...tokenPatch[y.id],status:y.status==="回答済"?y.status:"依頼済"}:y), updatedAt:new Date().toISOString()}); base={...base, quoteProjects:np}; }
+      const {changed,nextData}=applyRespToState(base, activeId, respByToken);
+      if(!cancelled && (changed || Object.keys(tokenPatch).length)) persistData(changed?nextData:base);
     })();
     return ()=>{ cancelled=true; };
   }, [activeId]);
@@ -34316,6 +34329,26 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
     }catch(e){ window.alert("通信エラー: "+(e&&e.message||e)); }
     setPortalBusy("");
   };
+  // 未発行の対象業者に依頼リンクを一括発行（並列6・大量時は確認）
+  const issueAll = async () => {
+    if(!PORTAL_ON){ window.alert("見積ポータルURL（QUOTE_PORTAL_URL）が未設定です。"); return; }
+    const targets=(p.vendors||[]).filter(v=>!v.portalToken);
+    if(!targets.length){ window.alert("未発行の業者はありません（全て発行済み）。"); return; }
+    if(targets.length>100 && !window.confirm(`未発行の ${targets.length} 社に依頼リンクを一括発行します。よろしいですか？`)) return;
+    setPortalBusy("__all__");
+    const patch={}; let ok=0;
+    try{
+      const CONC=6;
+      for(let i=0;i<targets.length;i+=CONC){
+        const batch=targets.slice(i,i+CONC);
+        await Promise.all(batch.map(async qv=>{ try{ const j=await portalPost({action:"create", payload:{ projectId:p.id, projectName:p.name, company:p.companyName||"", vendorId:qv.vendorId, vendorName:qv.vendorName, items:buildReqItemsFor(qv) }}); if(j&&j.ok){ patch[qv.id]={portalToken:j.token,portalUrl:j.url}; ok++; } }catch(e){} }));
+      }
+      const nextProjects=projects.map(x=>x.id!==p.id?x:{...x, status:(x.status==="見積依頼中"?"回収中":x.status), vendors:(x.vendors||[]).map(y=>patch[y.id]?{...y,...patch[y.id],status:y.status==="回答済"?y.status:"依頼済"}:y), updatedAt:new Date().toISOString()});
+      persist(nextProjects);
+      window.alert(`🔗 依頼リンクを発行しました（${ok} / ${targets.length}社）`);
+    }catch(e){ window.alert("通信エラー: "+(e&&e.message||e)); }
+    setPortalBusy("");
+  };
 
   // 電話・見積メモを業者レコードにも【見積:案件名】付きで書き戻す
   const addVendorNote = (qv, text) => {
@@ -34518,7 +34551,8 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
       <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem",flexWrap:"wrap"}}>
         <div style={{fontWeight:800,fontSize:"0.9rem",color:C.text}}>🚚 対象業者 ＆ 見積</div>
         <span style={{fontSize:"0.7rem",color:C.textMuted}}>{(p.vendors||[]).length}社</span>
-        {PORTAL_ON&&(p.vendors||[]).some(v=>v.portalToken)&&<button disabled={portalBusy==="__all__"} onClick={syncAll} title="対象店舗を全リンクに反映し、回答も取得" style={{marginLeft:"auto",padding:"0.3rem 0.7rem",borderRadius:8,border:`1.5px solid ${C.accent}`,background:C.accentBg,color:C.accentDark,fontWeight:700,fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit"}}>{portalBusy==="__all__"?"最新化中…":"🔄 全リンク最新化＆回答取得"}</button>}
+        {PORTAL_ON&&(()=>{ const need=(p.vendors||[]).filter(v=>!v.portalToken).length; return need>0?<button disabled={portalBusy==="__all__"} onClick={issueAll} title="未発行の対象業者に依頼リンクを一括発行" style={{marginLeft:"auto",padding:"0.3rem 0.7rem",borderRadius:8,border:"1.5px solid #FF6A00",background:"#FFF3E8",color:"#9a3412",fontWeight:800,fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit"}}>{portalBusy==="__all__"?"発行中…":`🔗 依頼リンクを一括発行（未発行${need}社）`}</button>:null; })()}
+        {PORTAL_ON&&(p.vendors||[]).some(v=>v.portalToken)&&<button disabled={portalBusy==="__all__"} onClick={syncAll} title="対象店舗を全リンクに反映し、回答も取得" style={{marginLeft:(p.vendors||[]).some(v=>!v.portalToken)?"0":"auto",padding:"0.3rem 0.7rem",borderRadius:8,border:`1.5px solid ${C.accent}`,background:C.accentBg,color:C.accentDark,fontWeight:700,fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit"}}>{portalBusy==="__all__"?"最新化中…":"🔄 全リンク最新化＆回答取得"}</button>}
       </div>
 
       <div style={{background:"white",border:`1px solid ${C.border}`,borderRadius:10,padding:"0.7rem 0.8rem",marginBottom:"0.75rem"}}>
@@ -34886,7 +34920,7 @@ function VendorQuoteCard({ qv, rows, stores=[], totalStores=0, showAll=false, on
       {/* 業者情報（MyDeskデータ） */}
       <div style={{display:"flex",gap:"0.6rem",flexWrap:"wrap",alignItems:"center",fontSize:"0.72rem",color:C.textSub,marginBottom:"0.5rem"}}>
         {vrec&&vrec.phone&&<a href={"tel:"+vrec.phone} style={{color:C.accentDark,textDecoration:"none",fontWeight:700}}>📞 {vrec.phone}</a>}
-        {vrec&&vrec.address&&<a href={mapsUrl(vrec.address)} target="_blank" rel="noreferrer" style={{color:C.textSub,textDecoration:"none"}}>📍 {vrec.address}</a>}
+        {vrec&&vrec.address&&<a href={mapsUrl(vrec.address)} target="_blank" rel="noreferrer" title="住所から回収可否を検索" style={{color:C.textSub,textDecoration:"none"}}>🚛 {vrec.address}</a>}
         {vrec&&(vrec.permitTypes||[]).length>0&&<span>{(vrec.permitTypes||[]).join("・")}</span>}
         <button onClick={()=>setShowInfo(v=>!v)} style={{border:"none",background:"none",color:C.accent,cursor:"pointer",fontFamily:"inherit",fontSize:"0.7rem"}}>{showInfo?"▲メモを隠す":"▼通話・見積メモ"}</button>
       </div>
@@ -34993,7 +35027,7 @@ function VendorQuoteCard({ qv, rows, stores=[], totalStores=0, showAll=false, on
               <div key={r.itemId} style={{display:"flex",gap:"0.25rem",padding:"0.3rem 0.5rem",borderTop:`1px solid ${C.borderLight}`,alignItems:"center",background:ri%2?C.bg:"white"}}>
                 <span style={{width:18,flex:"none"}}><input type="checkbox" checked={!!checked[r.itemId]} onChange={e=>setChecked({...checked,[r.itemId]:e.target.checked})} style={{width:14,height:14}}/></span>
                 <div style={{width:150,flex:"none",minWidth:0}}>
-                  <div style={{fontSize:"0.72rem",fontWeight:600,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.storeName||"（拠点）"}{r.address?<a href={mapsUrl(r.address)} target="_blank" rel="noreferrer" style={{marginLeft:4,textDecoration:"none"}} title="Googleマップ">📍</a>:null}</div>
+                  <div style={{fontSize:"0.72rem",fontWeight:600,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.storeName||"（拠点）"}{r.address?<a href={mapsUrl(r.address)} target="_blank" rel="noreferrer" style={{marginLeft:4,textDecoration:"none"}} title="住所から回収可否を検索">🚛</a>:null}</div>
                   <div style={{fontSize:"0.62rem",color:C.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.kind||"（品目）"}{r.freq?` / ${r.freq}`:""}{(r.qtys&&r.qtys.length)?(" ／ "+r.qtys.map(q=>q.q+q.u).join("・")):""}</div>
                 </div>
                 <select {...cellProps(ri,0)} value={m} onChange={e=>setPrice(r.itemId,{method:e.target.value})} style={cs(ri,0,{width:96,flex:"none",padding:"0.25rem 0.1rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.64rem",fontFamily:"inherit",background:"white"})}><option value=""></option>{METHODS.map(x=><option key={x.v} value={x.v}>{x.t}</option>)}</select>
@@ -35049,7 +35083,7 @@ function StoreRow({ st, C, rid, mapsUrl, onChange, onDelete, storeQuotes }){
       <div style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.55rem 0.8rem",cursor:"pointer"}} onClick={()=>setOpen(o=>!o)}>
         <span style={{fontSize:"0.72rem",color:C.textMuted}}>{open?"▼":"▶"}</span>
         <div style={{flex:1,minWidth:0}}>
-          <div style={{fontWeight:700,fontSize:"0.82rem",color:C.text}}>{st.name||"（拠点名なし）"}{st.address?<a href={mapsUrl(st.address)} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{marginLeft:6,textDecoration:"none"}} title="Googleマップで開く">📍</a>:null}</div>
+          <div style={{fontWeight:700,fontSize:"0.82rem",color:C.text}}>{st.name||"（拠点名なし）"}{st.address?<a href={mapsUrl(st.address)} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{marginLeft:6,textDecoration:"none"}} title="住所から回収可否を検索">🚛</a>:null}</div>
           <div style={{fontSize:"0.66rem",color:C.textMuted}}>{[st.area,st.bizType,st.address].filter(Boolean).join(" ／ ")||"—"}</div>
         </div>
         {(function(){ const qs=storeQuotes?storeQuotes(st):[]; return qs.length?<span title="この店舗に見積した業者数" style={{fontSize:"0.64rem",fontWeight:800,color:C.accentDark,background:C.accentBg,padding:"1px 8px",borderRadius:999}}>見積 {qs.length}社{qs[0]?(" ・ 最安¥"+Math.round(qs[0].amount).toLocaleString()):""}</span>:null; })()}
