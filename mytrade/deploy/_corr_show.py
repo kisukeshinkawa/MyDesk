@@ -3,6 +3,7 @@
    引数: 結果JSONのファイルパス / モード(show|apply)"""
 import json
 import sys
+from datetime import datetime, timezone
 
 path = sys.argv[1]
 mode = sys.argv[2] if len(sys.argv) > 2 else "show"
@@ -30,6 +31,24 @@ if not d.get("rows"):
     print("  ・検証を開始していないなら : bash deploy/corr.sh run")
     print("  ・開始済みなら10〜15分待って: bash deploy/corr.sh")
     raise SystemExit
+
+# いつの結果かを必ず出す。検証を始めた直後に叩くと前回の結果を読んでしまい、
+# 変わっていないのか終わっていないのかが区別できないため
+age_min = None
+try:
+    t = datetime.fromisoformat(d["updatedAt"].replace("Z", "+00:00"))
+    age_min = (datetime.now(timezone.utc) - t).total_seconds() / 60
+    when = t.astimezone().strftime("%m/%d %H:%M")
+    if age_min < 60:
+        print("この結果は {} に出たものです({:.0f}分前)".format(when, age_min))
+    else:
+        print("この結果は {} に出たものです({:.1f}時間前)".format(when, age_min / 60))
+except Exception:
+    print("この結果の生成日時が不明です(古い形式)")
+if age_min is not None and age_min > 25:
+    print("  ※ 検証を開始したばかりなら、これは前回の結果です。"
+          "10〜20分待ってもう一度 bash deploy/corr.sh を実行してください")
+print()
 
 p, b = d.get("period", {}), d.get("baseSettings", {})
 print("検証期間 {}年 / {}銘柄で検証 (連動先が判明 {}銘柄 / ユニバース全体 {}銘柄)".format(
