@@ -1150,8 +1150,13 @@ def _prepare_sim(tickers, years, min_score=65):
 
 
 def _sim_pass(prep, all_dates, initial=1000000, risk_pct=2.0, max_pos=5,
-              entry_score=70, rr=2.0, fee=0.001, odd_lot=True):
-    """下ごしらえ済みデータで1条件ぶんの運用を再現する。"""
+              entry_score=70, rr=2.0, fee=0.001, odd_lot=True,
+              partial=False, partial_rr=1.5, time_stop=0, trail=0.0):
+    """1条件ぶんの運用を再現。
+    partial   : 分割利確(第1目標で半分利確し、残りは損切りを建値に上げて伸ばす)
+    time_stop : N日経っても損切り/利確に当たらなければ手仕舞い(資金効率を上げる)
+    trail     : 建値超え後、高値からこの割合下げたら手仕舞い(トレーリングストップ)
+    """
     cash, positions, trades, curve = float(initial), {}, [], []
     peak, maxdd = float(initial), 0.0
     risk_used = []
@@ -1169,11 +1174,35 @@ def _sim_pass(prep, all_dates, initial=1000000, risk_pct=2.0, max_pos=5,
             if i is None:
                 continue
             p = positions[t]
+            hi, lo, cl = prep[t]["high"][i], prep[t]["low"][i], prep[t]["close"][i]
+            p["hold"] = p.get("hold", 0) + 1
+            p["peak"] = max(p.get("peak", p["entry"]), hi)
+
+            # ① 分割利確: 第1目標で半分を利確し、損切りを建値へ上げる(以降は負けない形)
+            if partial and not p.get("half") and hi >= p["t1"]:
+                half = p["qty"] // 2
+                if half > 0:
+                    proceeds = p["t1"] * half * (1 - fee)
+                    cash += proceeds
+                    trades.append({"ticker": t, "entryDate": p["date"], "exitDate": d,
+                                   "entry": round(p["entry"], 2), "exit": round(p["t1"], 2),
+                                   "qty": half, "pnl": round(proceeds - p["entry"] * half, 0),
+                                   "pnlPct": round((p["t1"] / p["entry"] - 1) * 100, 2),
+                                   "reason": "分割利確"})
+                    p["qty"] -= half
+                p["half"] = True
+                p["stop"] = max(p["stop"], p["entry"])   # 建値ストップ
+
             exit_px = reason = None
-            if prep[t]["low"][i] <= p["stop"]:
-                exit_px, reason = p["stop"], "損切り"
-            elif prep[t]["high"][i] >= p["target"]:
+            if lo <= p["stop"]:
+                exit_px = p["stop"]
+                reason = "建値撤退" if p.get("half") and p["stop"] >= p["entry"] else "損切り"
+            elif hi >= p["target"]:
                 exit_px, reason = p["target"], "利確"
+            elif trail and p["peak"] > p["entry"] and cl <= p["peak"] * (1 - trail):
+                exit_px, reason = cl, "トレーリング"
+            elif time_stop and p["hold"] >= time_stop:
+                exit_px, reason = cl, "時間切れ"
             if exit_px:
                 proceeds = exit_px * p["qty"] * (1 - fee)
                 cash += proceeds
@@ -1216,7 +1245,9 @@ def _sim_pass(prep, all_dates, initial=1000000, risk_pct=2.0, max_pos=5,
             cash -= cost
             risk_used.append(risk * qty / equity * 100 if equity else 0)
             positions[t] = {"qty": qty, "entry": px, "stop": stop,
-                            "target": px + risk * rr, "date": c["nextDate"]}
+                            "t1": px + risk * partial_rr,
+                            "target": px + risk * rr, "date": c["nextDate"],
+                            "hold": 0, "peak": px, "half": False}
 
     final = curve[-1]["equity"] if curve else initial
     yrs = max(1e-9, len(curve) / 252)
@@ -1287,22 +1318,30 @@ def simulate_grid(tickers=None, years=25, initial=1000000):
     all_dates = sorted({d for v in prep.values() for d in v["dates"]})[200:]
 
     combos = []
-    for entry in (65, 70, 75, 80):
+    for entry in (65, 70, 75):
         for rr in (2.0, 3.0, 4.0):
-            for mp in (2, 3, 5, 8):          # 少ないほど集中=ハイリスク・ハイリターン
-                for risk in (2.0, 3.0, 5.0):  # 1トレードの許容損失
-                    combos.append({"entryScore": entry, "rr": rr,
-                                   "maxPositions": mp, "riskPct": risk})
+            for mp in (2, 3, 5, 8):
+                for risk in (2.0, 3.0):
+                    for adv in ({}, {"partial": True},
+                                {"partial": True, "time_stop": 30},
+                                {"trail": 0.08}):
+                        combos.append({"entryScore": entry, "rr": rr, "maxPositions": mp,
+                                       "riskPct": risk, **adv})
 
     rows = []
     for c in combos:
         try:
             r = _sim_pass(prep, all_dates, initial, c["riskPct"], c["maxPositions"],
-                          c["entryScore"], c["rr"])
+                          c["entryScore"], c["rr"], odd_lot=True,
+                          partial=c.get("partial", False), time_stop=c.get("time_stop", 0),
+                          trail=c.get("trail", 0.0))
             res = r["result"]
             # リターン÷リスクで評価(下落幅に対してどれだけ増やせたか)
             calmar = (res["cagrPct"] / abs(res["maxDrawdownPct"])) if res["maxDrawdownPct"] else 0
-            rows.append({**c, **{k: res[k] for k in
+            rows.append({**c, "method": ("分割利確+時間切れ" if c.get("partial") and c.get("time_stop")
+                                         else "分割利確" if c.get("partial")
+                                         else "トレーリング" if c.get("trail") else "標準"),
+                         **{k: res[k] for k in
                                  ("finalEquity", "totalReturnPct", "cagrPct", "maxDrawdownPct",
                                   "sharpe", "trades", "winRate", "profitFactor", "maxLossStreak",
                                   "effectiveRiskPct")},
@@ -2394,11 +2433,15 @@ def autotrade_config(update=None):
     cfg.setdefault("rr", 3.0)
     cfg.setdefault("oddLot", True)   # 単元未満株(S株など)を使う。100万円でも値がさ株を分散できる
     cfg.setdefault("entryScore", 70)  # 買いの最低スコア。下げるほど機会が増えるが精度は落ちる
+    cfg.setdefault("trailPct", 8)     # トレーリングストップ(%)。高値からこの割合下げたら手仕舞い
+    cfg.setdefault("partial", True)   # 分割利確(第1目標で半分利確し損切りを建値へ)
+    cfg.setdefault("timeStopDays", 0) # N日経っても動かなければ手仕舞い(0で無効)
     # 手動で切り替えるまでは常にON(「ボタンを押さなくても回っている」状態にする)
     if not cfg.get("userToggled") and not cfg.get("enabled"):
         cfg["enabled"] = True
     if update:
-        for k in ("enabled", "riskPct", "maxPositions", "minConviction", "rr", "oddLot", "entryScore"):
+        for k in ("enabled", "riskPct", "maxPositions", "minConviction", "rr", "oddLot",
+                  "entryScore", "trailPct", "partial", "timeStopDays"):
             if k in update:
                 cfg[k] = update[k]
         if "enabled" in update:
@@ -2419,11 +2462,15 @@ def run_autotrade():
 
     st = paper_state("ai")
     actions = []
+    sold_now = set()   # この実行で手仕舞いした銘柄は買い直さない(回転売買を防ぐ)
     risk_pct = float(cfg.get("riskPct", 2.0))
     max_pos = int(cfg.get("maxPositions", 5))
     min_conv = int(cfg.get("minConviction", 3))
     odd_lot = bool(cfg.get("oddLot", True))
     entry_score = int(cfg.get("entryScore", 70))
+    trail = float(cfg.get("trailPct", 8)) / 100
+    use_partial = bool(cfg.get("partial", True))
+    time_stop = int(cfg.get("timeStopDays", 0))
 
     # ── ① 手仕舞い判定 ──
     for pos in list(st["positions"]):
@@ -2437,17 +2484,49 @@ def run_autotrade():
             if stop is None:   # 手動保有など建玉時ラインが無い場合の保険
                 stop = lv.get("stop")
                 target = lv.get("target1")
+            # 高値を更新して記録(トレーリングストップの基準)
+            peak = max(float(pos.get("peak") or pos["avgPrice"]), px)
+            held_days = 0
+            try:
+                held_days = (datetime.now(timezone.utc)
+                             - datetime.strptime(pos.get("openedAt", ""), "%Y-%m-%d").replace(tzinfo=timezone.utc)).days
+            except Exception:
+                pass
+
+            # ① 分割利確: 第1目標で半分を利確し、損切りを建値へ引き上げる(以降は負けない形)
+            t1 = pos.get("t1")
+            if use_partial and not pos.get("half") and t1 and px >= t1 and pos["qty"] >= 2:
+                half = pos["qty"] // 2
+                st = paper_order(pos["ticker"], "sell", half,
+                                 f"[自動] 分割利確(第1目標{t1:,.0f}到達・残りは建値ストップで伸ばす)",
+                                 account="ai")
+                actions.append({"type": "sell", "ticker": pos["ticker"], "name": pos["name"],
+                                "qty": half, "price": round(px, 2),
+                                "reason": f"分割利確(半分を{t1:,.0f}で確定・残りは利益を伸ばす)"})
+                _paper_update_position("ai", pos["ticker"],
+                                       {"half": True, "stop": pos["avgPrice"], "peak": peak})
+                continue
+
             reason = None
             if stop and px <= stop:
-                reason = f"損切り(建玉時に決めた{stop:,.0f}を割った)"
+                reason = (f"建値撤退({stop:,.0f})" if pos.get("half") and stop >= pos["avgPrice"]
+                          else f"損切り(建玉時に決めた{stop:,.0f}を割った)")
             elif target and px >= target:
                 reason = f"利確(目標{target:,.0f}に到達)"
+            elif trail and peak > pos["avgPrice"] and px <= peak * (1 - trail):
+                reason = f"トレーリング(高値{peak:,.0f}から{trail*100:.0f}%下落)"
+            elif time_stop and held_days >= time_stop:
+                reason = f"時間切れ({time_stop}日動きなし)"
             elif a["short"]["signal"] == "avoid" and (px / pos["avgPrice"] - 1) * 100 < -5:
                 reason = "シグナル悪化かつ含み損5%超"
+
             if reason:
                 st = paper_order(pos["ticker"], "sell", pos["qty"], "[自動] " + reason, account="ai")
+                sold_now.add(pos["ticker"])
                 actions.append({"type": "sell", "ticker": pos["ticker"], "name": pos["name"],
                                 "qty": pos["qty"], "price": round(px, 2), "reason": reason})
+            elif peak > float(pos.get("peak") or 0):
+                _paper_update_position("ai", pos["ticker"], {"peak": peak})
         except Exception as e:
             print("autotrade sell check failed:", pos["ticker"], e)
 
@@ -2474,7 +2553,7 @@ def run_autotrade():
         if len(held) >= max_pos:
             break
         tk = pl.get("ticker")
-        if not tk or tk in held:
+        if not tk or tk in held or tk in sold_now:
             continue
         if pl.get("verdict") not in ("buy", "strong_buy"):
             continue
@@ -2522,7 +2601,9 @@ def run_autotrade():
             st = paper_order(tk, "buy", qty,
                              f"[自動] AI推奨 確信度{pl.get('conviction')}/5",
                              meta={"stop": round(stop, 2),
-                                   "target": round(px + (px - stop) * rr, 2), "rr": rr},
+                                   "t1": round(px + (px - stop) * 1.5, 2),
+                                   "target": round(px + (px - stop) * rr, 2),
+                                   "rr": rr, "peak": round(px, 2), "half": False},
                              account="ai")
             held.add(tk)
             actions.append({"type": "buy", "ticker": tk, "name": pl.get("name") or tk, "qty": qty,
@@ -2881,6 +2962,17 @@ def paper_order(ticker, side, qty, note="", meta=None, account="me"):
 
     _save_json_s3(_paper_key(account), st)
     return paper_state(account)
+
+
+def _paper_update_position(account, ticker, patch):
+    """保有ポジションの属性(高値・建値ストップ等)を更新する。"""
+    st = _paper_load(account)
+    for p in st.get("positions", []):
+        if p["ticker"] == ticker:
+            p.update(patch)
+            _save_json_s3(_paper_key(account), st)
+            return True
+    return False
 
 
 def paper_snapshot(account=None):

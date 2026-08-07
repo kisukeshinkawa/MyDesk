@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 // MyTrade — 投資専用スタンドアロンアプリ (MyDeskから分離)
 // バックエンド: mydesk-stock-analysis Lambda (共用・変更不要)
 // ═══════════════════════════════════════════════════════════════
-const MYTRADE_BUILD = "2026-08-08-v29-risk-presets";
+const MYTRADE_BUILD = "2026-08-08-v30-trailing-partial";
 if (typeof window !== "undefined") {
   window.__MYTRADE_BUILD = MYTRADE_BUILD;
   console.log(`[MyTrade] Build: ${MYTRADE_BUILD}`);
@@ -1692,7 +1692,9 @@ function StockView({currentUser}) {
               <div style={{fontSize:"0.68rem",color:C.textSub,marginTop:"0.15rem",lineHeight:1.6}}>
                 毎朝8時にAIの判断で自動売買します。損切り・利確も自動。<b>実績が自動で貯まるので精度が見えるようになります</b><br/>
                 <span style={{color:C.green}}>初期値は25年検証で最良だった設定(利確3倍・8銘柄分散)です</span><br/>
-                <span style={{color:C.textMuted}}>「単元未満株」ON = 1株から購入(SBIのS株・楽天のかぶミニ等)。100万円でも値がさ株を分散して買えます</span>
+                <span style={{color:C.textMuted}}>「単元未満株」ON = 1株から購入(SBIのS株・楽天のかぶミニ等)。100万円でも値がさ株を分散して買えます</span><br/>
+                <span style={{color:C.purple}}>「分割利確」= 第1目標で半分を利確し、損切りを建値へ上げて残りを伸ばす(勝率が上がります)。
+                「トレーリング」= 高値から指定%下げたら手仕舞い(利益を伸ばしつつ利益を守る)</span>
               </div>
             </div>
             <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap"}}>
@@ -1799,6 +1801,19 @@ function StockView({currentUser}) {
                     style={{accentColor:C.accent}}/>
                   単元未満株を使う
                 </label>
+              </span>
+              <span>
+                <label style={{display:"inline-flex",alignItems:"center",gap:"0.2rem",cursor:"pointer"}}>
+                  <input type="checkbox" checked={autoCfg.partial!==false} onChange={e=>saveAuto({partial:e.target.checked})}
+                    style={{accentColor:C.accent}}/>
+                  分割利確
+                </label>
+              </span>
+              <span>トレーリング
+                <select value={autoCfg.trailPct??8} onChange={e=>saveAuto({trailPct:parseFloat(e.target.value)})}
+                  style={{marginLeft:"0.25rem",padding:"0.15rem",borderRadius:6,border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.7rem"}}>
+                  {[0,5,8,10,15].map(v=><option key={v} value={v}>{v===0?"使わない":`高値から${v}%`}</option>)}
+                </select>
               </span>
               <span>確信度
                 <select value={autoCfg.minConviction} onChange={e=>saveAuto({minConviction:parseInt(e.target.value,10)})}
