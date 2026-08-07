@@ -245,12 +245,18 @@ def lambda_handler(event, context):
         if action == "chart":
             return _res(200, get_chart(body["ticker"], body.get("period", "6mo"), body.get("interval", "1d")))
         if action == "paper":
-            return _res(200, paper_state())
+            acc = body.get("account")
+            if acc:
+                return _res(200, paper_state(acc))
+            return _res(200, {"ai": paper_state("ai"), "me": paper_state("me")})
         if action == "paper-order":
             return _res(200, paper_order(body["ticker"], body.get("side", "buy"),
-                                         body.get("qty", 0), body.get("note", "")))
+                                         body.get("qty", 0), body.get("note", ""),
+                                         meta=body.get("meta"),
+                                         account=body.get("account", "me")))
         if action == "paper-reset":
-            return _res(200, paper_reset(body.get("initial", PAPER_INITIAL)))
+            return _res(200, paper_reset(body.get("initial", PAPER_INITIAL),
+                                         body.get("account", "me")))
         if action == "market-news":
             return _res(200, get_market_news())
         if action == "brief":
@@ -2281,7 +2287,7 @@ def run_autotrade():
         return {"skipped": "自動売買は無効です", "enabled": False}
     rr = float(cfg.get("rr", 3.0))   # 利確目標(損切り幅の何倍か)。25年検証で3倍が最良
 
-    st = paper_state()
+    st = paper_state("ai")
     actions = []
     risk_pct = float(cfg.get("riskPct", 2.0))
     max_pos = int(cfg.get("maxPositions", 5))
@@ -2307,7 +2313,7 @@ def run_autotrade():
             elif a["short"]["signal"] == "avoid" and (px / pos["avgPrice"] - 1) * 100 < -5:
                 reason = "シグナル悪化かつ含み損5%超"
             if reason:
-                st = paper_order(pos["ticker"], "sell", pos["qty"], "[自動] " + reason)
+                st = paper_order(pos["ticker"], "sell", pos["qty"], "[自動] " + reason, account="ai")
                 actions.append({"type": "sell", "ticker": pos["ticker"], "name": pos["name"],
                                 "qty": pos["qty"], "price": round(px, 2), "reason": reason})
         except Exception as e:
@@ -2349,7 +2355,8 @@ def run_autotrade():
             st = paper_order(tk, "buy", qty,
                              f"[自動] AI推奨 確信度{pl.get('conviction')}/5",
                              meta={"stop": round(stop, 2),
-                                   "target": round(px + (px - stop) * rr, 2), "rr": rr})
+                                   "target": round(px + (px - stop) * rr, 2), "rr": rr},
+                             account="ai")
             held.add(tk)
             actions.append({"type": "buy", "ticker": tk, "name": pl.get("name"), "qty": qty,
                             "price": round(px, 2), "stop": round(stop, 2),
@@ -2368,8 +2375,9 @@ def run_autotrade():
 
 
 def performance_dashboard():
-    """運用成績のまとめ: デモ口座の日次/累積、AI判定の精度、自動売買の記録。"""
-    st = paper_state()
+    """運用成績のまとめ: AI口座と自分の口座の対戦成績、AI判定の精度、自動売買の記録。"""
+    st = paper_state("ai")
+    me = paper_state("me")
     cfg = load_learn_config()
     auto = _load_json_s3(AUTO_KEY, {})
     hist = st.get("history") or []
@@ -2400,6 +2408,10 @@ def performance_dashboard():
             "maxDrawdownPct": round(maxdd, 2), "days": len(hist),
             "daily": daily[-30:][::-1], "history": hist[-120:],
         },
+        "me": {"initial": me["initial"], "equity": me["equity"], "cash": me["cash"],
+               "totalPnl": me["totalPnl"], "totalPnlPct": me["totalPnlPct"],
+               "positions": me["positions"], "stats": me["stats"],
+               "history": (me.get("history") or [])[-120:]},
         "auto": {"enabled": bool(auto.get("enabled")),
                  "log": (auto.get("log") or [])[-10:][::-1],
                  "riskPct": auto.get("riskPct"), "maxPositions": auto.get("maxPositions")},
@@ -2492,16 +2504,29 @@ def get_chart(ticker, period="6mo", interval="1d"):
 
 
 # ═══════════════════════ デモトレード(ペーパートレード) ═══════════════════════
-PAPER_KEY = "stock-learn/paper.json"
+PAPER_KEY = "stock-learn/paper.json"          # 旧形式(移行元)
 PAPER_INITIAL = 1000000  # 初期資金100万円
 FEE_RATE = 0.001         # 売買手数料0.1%(国内ネット証券の実勢に近い水準)
+# AIと自分で別々の口座を持ち、同じ土俵で成績を比べられるようにする
+PAPER_ACCOUNTS = {"ai": "stock-learn/paper_ai.json", "me": "stock-learn/paper_me.json"}
 
 
-def _paper_load():
-    return _load_json_s3(PAPER_KEY, {
-        "initial": PAPER_INITIAL, "cash": PAPER_INITIAL,
-        "positions": [], "trades": [], "history": [],
-        "createdAt": datetime.now(timezone.utc).isoformat()})
+def _paper_key(account="me"):
+    return PAPER_ACCOUNTS.get(account, PAPER_ACCOUNTS["me"])
+
+
+def _paper_load(account="me"):
+    st = _load_json_s3(_paper_key(account), None)
+    if st is None and account == "me":
+        legacy = _load_json_s3(PAPER_KEY, None)   # 旧単一口座からの移行
+        if legacy:
+            _save_json_s3(_paper_key("me"), legacy)
+            return legacy
+    if st is None:
+        st = {"initial": PAPER_INITIAL, "cash": PAPER_INITIAL,
+              "positions": [], "trades": [], "history": [],
+              "createdAt": datetime.now(timezone.utc).isoformat()}
+    return st
 
 
 def _paper_price(ticker):
@@ -2517,9 +2542,9 @@ def _paper_price(ticker):
     return float(df["Close"].iloc[-1]), ticker
 
 
-def paper_state():
+def paper_state(account="me"):
     """評価額・損益を現在値で再計算して返す。"""
-    st = _paper_load()
+    st = _paper_load(account)
     total_val, positions = 0.0, []
     for p in st.get("positions", []):
         try:
@@ -2538,6 +2563,7 @@ def paper_state():
     gw = sum(t.get("pnl", 0) for t in wins)
     gl = abs(sum(t.get("pnl", 0) for t in closed if t.get("pnl", 0) <= 0))
     return {
+        "account": account,
         "initial": st["initial"], "cash": round(st["cash"], 0),
         "positionValue": round(total_val, 0), "equity": round(equity, 0),
         "totalPnl": round(equity - st["initial"], 0),
@@ -2552,8 +2578,8 @@ def paper_state():
         "updatedAt": datetime.now(timezone.utc).isoformat()}
 
 
-def paper_order(ticker, side, qty, note="", meta=None):
-    st = _paper_load()
+def paper_order(ticker, side, qty, note="", meta=None, account="me"):
+    st = _paper_load(account)
     qty = int(qty)
     if qty <= 0:
         raise Exception("株数が不正です")
@@ -2598,31 +2624,34 @@ def paper_order(ticker, side, qty, note="", meta=None):
         try:
             log_trade({"ticker": ticker, "name": name, "entryPrice": pos["avgPrice"],
                        "exitPrice": px, "qty": qty, "entryDate": pos.get("openedAt"),
-                       "reason": "[デモ] " + (note or "決済")})
+                       "reason": f"[{'AI' if account == 'ai' else '自分'}] " + (note or "決済")})
         except Exception as e:
             print("paper->journal failed:", e)
 
-    _save_json_s3(PAPER_KEY, st)
-    return paper_state()
+    _save_json_s3(_paper_key(account), st)
+    return paper_state(account)
 
 
-def paper_snapshot():
+def paper_snapshot(account=None):
     """毎日の資産推移を記録(グラフ用)。朝の定期実行から呼ばれる。"""
-    st = _paper_load()
-    s2 = paper_state()
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    hist = [h for h in st.get("history", []) if h["date"] != today]
-    hist.append({"date": today, "equity": s2["equity"], "cash": s2["cash"]})
-    st["history"] = hist[-400:]
-    _save_json_s3(PAPER_KEY, st)
-    return s2
+    out = {}
+    for acc in ([account] if account else list(PAPER_ACCOUNTS)):
+        st = _paper_load(acc)
+        s2 = paper_state(acc)
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        hist = [h for h in st.get("history", []) if h["date"] != today]
+        hist.append({"date": today, "equity": s2["equity"], "cash": s2["cash"]})
+        st["history"] = hist[-400:]
+        _save_json_s3(_paper_key(acc), st)
+        out[acc] = s2
+    return out
 
 
-def paper_reset(initial=PAPER_INITIAL):
-    _save_json_s3(PAPER_KEY, {"initial": int(initial), "cash": int(initial),
-                              "positions": [], "trades": [], "history": [],
-                              "createdAt": datetime.now(timezone.utc).isoformat()})
-    return paper_state()
+def paper_reset(initial=PAPER_INITIAL, account="me"):
+    _save_json_s3(_paper_key(account), {"initial": int(initial), "cash": int(initial),
+                                        "positions": [], "trades": [], "history": [],
+                                        "createdAt": datetime.now(timezone.utc).isoformat()})
+    return paper_state(account)
 
 
 # ═══════════════════════ 銘柄検索 ═══════════════════════

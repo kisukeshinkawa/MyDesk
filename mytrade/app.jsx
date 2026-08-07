@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 // MyTrade — 投資専用スタンドアロンアプリ (MyDeskから分離)
 // バックエンド: mydesk-stock-analysis Lambda (共用・変更不要)
 // ═══════════════════════════════════════════════════════════════
-const MYTRADE_BUILD = "2026-08-07-v18-exit-fix";
+const MYTRADE_BUILD = "2026-08-07-v19-ai-vs-you";
 if (typeof window !== "undefined") {
   window.__MYTRADE_BUILD = MYTRADE_BUILD;
   console.log(`[MyTrade] Build: ${MYTRADE_BUILD}`);
@@ -298,7 +298,9 @@ function StockView({currentUser}) {
   const [btYears, setBtYears]     = useState("10");  // 検証期間(年)
   const [screenRes, setScreenRes] = useState(null);  // スクリーニング結果
   const [ranking, setRanking]     = useState(null);  // 全銘柄ランキング
-  const [paper, setPaper]         = useState(null);  // デモトレード口座
+  const [paper, setPaper]         = useState(null);  // 自分のデモ口座
+  const [paperAi, setPaperAi]     = useState(null);  // AIのデモ口座
+  const [beginner, setBeginner]   = useState(()=>localStorage.getItem("mt_beginner")!=="0"); // 初心者モード
   const [orderForm, setOrderForm] = useState({ticker:"",qty:""});
   const [autoCfg, setAutoCfg]     = useState(null);  // AI自動デモ売買
   const [brief, setBrief]         = useState(null);  // プロトレーダーの視点(日次ブリーフ)
@@ -493,7 +495,10 @@ function StockView({currentUser}) {
 
   const loadPaper = async () => {
     setBusy(b=>({...b,paper:true}));
-    try { const r = await api({action:"paper"}, 120000); setPaper(r); }
+    try {
+      const r = await api({action:"paper"}, 120000);
+      if(r&&r.me){ setPaper(r.me); setPaperAi(r.ai); } else setPaper(r);
+    }
     catch(e){ setErrMsg("デモ口座エラー: "+e.message); }
     setBusy(b=>({...b,paper:false}));
   };
@@ -501,7 +506,7 @@ function StockView({currentUser}) {
   const paperOrder = async (ticker, side, qty, note) => {
     setBusy(b=>({...b,paper:true})); setErrMsg("");
     try {
-      const r = await api({action:"paper-order",ticker,side,qty:Number(qty),note:note||""}, 120000);
+      const r = await api({action:"paper-order",ticker,side,qty:Number(qty),note:note||"",account:"me"}, 120000);
       setPaper(r);
       alert(`${side==="buy"?"買い":"売り"}注文が約定しました: ${ticker} ${qty}株`);
     } catch(e){ setErrMsg("注文エラー: "+e.message); alert("注文エラー: "+e.message); }
@@ -509,7 +514,7 @@ function StockView({currentUser}) {
   };
 
   const loadAuto = async () => {
-    try { const r = await api({action:"autotrade"}, 120000); setAutoCfg(r.config); if(r.state) setPaper(r.state); }
+    try { const r = await api({action:"autotrade"}, 120000); setAutoCfg(r.config); if(r.state) setPaperAi(r.state); }
     catch(e){}
   };
   const saveAuto = async (patch) => {
@@ -522,7 +527,7 @@ function StockView({currentUser}) {
     setBusy(b=>({...b,auto:true})); setErrMsg("");
     try {
       const r = await api({action:"autotrade-run"}, 600000);
-      if(r.state) setPaper(r.state);
+      if(r.state) setPaperAi(r.state);
       await loadAuto();
       const acts = r.actions||[];
       alert(r.enabled===false ? "自動売買が無効です。スイッチをONにしてください"
@@ -667,6 +672,11 @@ function StockView({currentUser}) {
           </button>
         ))}
         <div style={{flex:1}}/>
+        <button onClick={()=>{const n=!beginner;setBeginner(n);localStorage.setItem("mt_beginner",n?"1":"0");}}
+          style={{flexShrink:0,padding:"0.5rem 0.8rem",borderRadius:9,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:"0.75rem",fontWeight:700,
+            background:beginner?C.greenBg:C.purpleBg,color:beginner?C.green:C.purple,marginRight:"0.3rem"}}>
+          {beginner?"🔰 初心者モード":"📊 プロモード"}
+        </button>
         <button onClick={()=>refreshAll()} disabled={busy.all}
           style={{flexShrink:0,padding:"0.5rem 0.9rem",borderRadius:9,border:"none",background:C.accentBg,color:C.accentDark,fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",opacity:busy.all?0.6:1}}>
           {busy.all?"更新中...":"🔄 全銘柄更新"}
@@ -1452,7 +1462,9 @@ function StockView({currentUser}) {
             <button onClick={loadPaper} disabled={busy.paper} style={{padding:"0.45rem 0.8rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit"}}>🔄 更新</button>
             <button onClick={async()=>{ if(!confirm("デモ口座を初期資金100万円にリセットしますか？(保有と履歴が消えます)"))return;
                 setBusy(b=>({...b,paper:true}));
-                try{ const r=await api({action:"paper-reset",initial:1000000},120000); setPaper(r);}catch(e){setErrMsg(e.message);}
+                try{ await api({action:"paper-reset",initial:1000000,account:"me"},120000);
+                     await api({action:"paper-reset",initial:1000000,account:"ai"},120000);
+                     await loadPaper(); }catch(e){setErrMsg(e.message);}
                 setBusy(b=>({...b,paper:false})); }}
               style={{padding:"0.45rem 0.8rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textMuted,fontWeight:700,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit"}}>リセット</button>
           </div>
@@ -1528,11 +1540,49 @@ function StockView({currentUser}) {
           )}
         </div>
 
+        {/* 🏆 AI vs 自分 */}
+        {paper&&paperAi&&(()=>{
+          const aiP=paperAi.totalPnlPct, meP=paper.totalPnlPct;
+          const aiWin = aiP>meP;
+          const Card = ({title,icon,st,color,bg,win}) => (
+            <div style={{flex:"1 1 240px",padding:"0.8rem 0.9rem",borderRadius:12,background:bg,
+              border:`2px solid ${win?color:C.border}`,position:"relative"}}>
+              {win&&<span style={{position:"absolute",top:-10,right:10,...S.chip(color,"white"),background:color,color:"white",fontSize:"0.66rem"}}>🏆 リード中</span>}
+              <div style={{fontWeight:800,fontSize:"0.88rem",color,marginBottom:"0.3rem"}}>{icon} {title}</div>
+              <div style={{fontSize:"1.25rem",fontWeight:800,color:C.text}}>{Number(st.equity).toLocaleString()}<span style={{fontSize:"0.7rem"}}>円</span></div>
+              <div style={{fontSize:"0.85rem",fontWeight:800,color:st.totalPnl>=0?C.green:C.red}}>
+                {st.totalPnl>=0?"+":""}{Number(st.totalPnl).toLocaleString()}円 ({st.totalPnlPct>=0?"+":""}{st.totalPnlPct}%)
+              </div>
+              <div style={{fontSize:"0.68rem",color:C.textMuted,marginTop:"0.25rem"}}>
+                保有{st.positions.length}銘柄 / 現金{Number(st.cash).toLocaleString()}円
+                {st.stats&&st.stats.closed>0?` / 決済${st.stats.closed}回 勝率${st.stats.winRate}%`:" / 決済なし"}
+              </div>
+            </div>
+          );
+          return (
+            <div style={{marginBottom:"0.85rem"}}>
+              <div style={{fontSize:"0.85rem",fontWeight:800,color:C.text,marginBottom:"0.45rem"}}>
+                🏆 AI vs あなた <span style={{fontSize:"0.66rem",fontWeight:600,color:C.textMuted}}>同じ100万円スタートで勝負(どちらも仮想資金)</span>
+              </div>
+              <div style={{display:"flex",gap:"0.6rem",flexWrap:"wrap"}}>
+                <Card title="AIにおまかせ" icon="🤖" st={paperAi} color={C.purple} bg="#F8F5FF" win={aiWin&&aiP!==meP}/>
+                <Card title="あなたの判断" icon="🧑" st={paper} color={C.accent} bg="#F2F7FF" win={!aiWin&&aiP!==meP}/>
+              </div>
+              {beginner&&(
+                <div style={{marginTop:"0.4rem",padding:"0.5rem 0.7rem",background:C.bg,borderRadius:8,fontSize:"0.73rem",color:C.textSub,lineHeight:1.7}}>
+                  💡 <b>2つの口座は完全に別々</b>です。AIは毎朝勝手に売買し、あなたは下のフォームから好きに売買できます。
+                  どちらが勝つかを見ながら、AIの判断のクセを掴んでいくのがおすすめの使い方です。
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
         {!paper&&<div style={{fontSize:"0.8rem",color:C.textMuted}}>{busy.paper?"読み込み中...":"「🔄 更新」を押してください"}</div>}
         {paper&&(<>
           {/* サマリー */}
           <div style={{display:"flex",gap:"0.6rem",flexWrap:"wrap",marginBottom:"0.75rem"}}>
-            {[["総資産",paper.equity,true],["現金",paper.cash,false],["株式評価額",paper.positionValue,false]].map(([l,v,big],i)=>(
+            {[["あなたの総資産",paper.equity,true],["現金",paper.cash,false],["株式評価額",paper.positionValue,false]].map(([l,v,big],i)=>(
               <div key={i} style={{flex:"1 1 130px",padding:"0.6rem 0.75rem",background:C.bg,borderRadius:10,border:`1px solid ${C.borderLight}`}}>
                 <div style={{fontSize:"0.66rem",fontWeight:700,color:C.textMuted}}>{l}</div>
                 <div style={{fontSize:big?"1.15rem":"0.95rem",fontWeight:800,color:C.text}}>{Number(v).toLocaleString()}<span style={{fontSize:"0.7rem",fontWeight:600}}>円</span></div>
@@ -1578,7 +1628,7 @@ function StockView({currentUser}) {
 
           {/* 発注フォーム */}
           <div style={{padding:"0.7rem 0.8rem",background:C.accentBg,borderRadius:10,marginBottom:"0.75rem"}}>
-            <div style={{fontSize:"0.76rem",fontWeight:800,color:C.accentDark,marginBottom:"0.4rem"}}>📝 注文する</div>
+            <div style={{fontSize:"0.76rem",fontWeight:800,color:C.accentDark,marginBottom:"0.4rem"}}>📝 あなたの口座で注文する</div>
             <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap",alignItems:"center"}}>
               <select value={orderForm.ticker} onChange={e=>setOrderForm(f=>({...f,ticker:e.target.value}))}
                 style={{flex:"1 1 200px",padding:"0.5rem",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:"0.8rem",fontFamily:"inherit"}}>
@@ -1620,7 +1670,7 @@ function StockView({currentUser}) {
           {/* 履歴 */}
           {paper.trades.length>0&&(
             <div style={{marginTop:"0.75rem"}}>
-              <div style={{fontSize:"0.78rem",fontWeight:800,color:C.text,marginBottom:"0.3rem"}}>📜 売買履歴</div>
+              <div style={{fontSize:"0.78rem",fontWeight:800,color:C.text,marginBottom:"0.3rem"}}>📜 あなたの売買履歴</div>
               {paper.trades.map((t,i)=>(
                 <div key={i} style={{display:"flex",justifyContent:"space-between",gap:"0.5rem",fontSize:"0.73rem",padding:"0.3rem 0",borderBottom:`1px solid ${C.borderLight}`}}>
                   <span style={{color:C.textMuted,flexShrink:0}}>{t.date}</span>
@@ -2000,7 +2050,7 @@ function StockView({currentUser}) {
             </div>
 
             {/* 📖 点数の見方 */}
-            <details style={{marginBottom:"0.85rem",background:"white",borderRadius:10,border:`1px solid ${C.border}`,padding:"0.7rem 0.85rem"}}>
+            <details open={beginner} style={{marginBottom:"0.85rem",background:"white",borderRadius:10,border:`1px solid ${C.border}`,padding:"0.7rem 0.85rem"}}>
               <summary style={{fontSize:"0.85rem",fontWeight:800,color:C.accentDark,cursor:"pointer"}}>📖 点数の見方(はじめての方はこちら)</summary>
               <div style={{fontSize:"0.75rem",color:C.text,lineHeight:1.85,marginTop:"0.5rem"}}>
                 <b style={{color:C.orange}}>⚡ 短期(0〜100点)= 「今が買うタイミングか」</b><br/>
