@@ -1147,7 +1147,7 @@ def _prepare_sim(tickers, years, min_score=65):
 
 
 def _sim_pass(prep, all_dates, initial=1000000, risk_pct=2.0, max_pos=5,
-              entry_score=70, rr=2.0, fee=0.001):
+              entry_score=70, rr=2.0, fee=0.001, odd_lot=True):
     """下ごしらえ済みデータで1条件ぶんの運用を再現する。"""
     cash, positions, trades, curve = float(initial), {}, [], []
     peak, maxdd = float(initial), 0.0
@@ -1193,14 +1193,16 @@ def _sim_pass(prep, all_dates, initial=1000000, risk_pct=2.0, max_pos=5,
             if stop >= px:
                 continue
             risk = px - stop
-            unit = 100 if t.endswith(".T") else 1
+            unit = 1 if (odd_lot or not t.endswith(".T")) else 100
             qty_risk = int(equity * risk_pct / 100 / risk)          # 2%ルール
             qty_cap = int(equity / max_pos / px)                    # 1銘柄あたりの上限
             qty = (min(qty_risk, qty_cap) // unit) * unit
             if qty < unit:
-                # 単元株の都合で枠に収まらない場合、リスクが許容内なら1単元だけ建てる
+                # 単元株の救済(実運用と同じルール: 枠の2倍・リスク1.5倍まで)
                 one_risk = risk * unit / equity * 100 if equity else 999
-                if one_risk <= risk_pct * 2 and px * unit * (1 + fee) <= cash * 0.5:
+                one_cost = px * unit * (1 + fee)
+                if (one_risk <= risk_pct * 1.5 and one_cost <= equity / max_pos * 2
+                        and one_cost <= cash * 0.5):
                     qty = unit
             cost = px * qty * (1 + fee)
             if qty < unit or cost > cash:
@@ -1242,14 +1244,14 @@ def _sim_pass(prep, all_dates, initial=1000000, risk_pct=2.0, max_pos=5,
 
 
 def simulate_strategy(tickers=None, years=25, initial=1000000, risk_pct=2.0,
-                      max_pos=5, entry_score=70, fee=0.001, rr=2.0):
+                      max_pos=5, entry_score=70, fee=0.001, rr=2.0, odd_lot=True):
     """自動売買のルールをそのまま過去に当てはめて資産の推移を再現する。"""
     tickers = tickers or DEFAULT_UNIVERSE
     prep = _prepare_sim(tickers, years)
     if not prep:
         raise Exception("シミュレーション用のデータが取得できません")
     all_dates = sorted({d for v in prep.values() for d in v["dates"]})[200:]
-    r = _sim_pass(prep, all_dates, initial, risk_pct, max_pos, entry_score, rr, fee)
+    r = _sim_pass(prep, all_dates, initial, risk_pct, max_pos, entry_score, rr, fee, odd_lot)
 
     curve = r["curve"]
     by_year = {}
@@ -1262,7 +1264,8 @@ def simulate_strategy(tickers=None, years=25, initial=1000000, risk_pct=2.0,
     step = max(1, len(curve) // 400)
     return {"period": r["period"],
             "settings": {"initial": initial, "riskPct": risk_pct, "maxPositions": max_pos,
-                         "entryScore": entry_score, "rr": rr, "tickers": len(prep), "fee": fee},
+                         "entryScore": entry_score, "rr": rr, "oddLot": odd_lot,
+                         "tickers": len(prep), "fee": fee},
             "result": r["result"], "curve": curve[::step], "yearly": yearly,
             "recentTrades": r["trades"][-15:][::-1],
             "updatedAt": datetime.now(timezone.utc).isoformat()}
@@ -2363,13 +2366,15 @@ AUTO_KEY = "stock-learn/autotrade.json"
 def autotrade_config(update=None):
     # 既定値は25年バックテストで効率(年利÷最大下落)が最良だった組み合わせ
     cfg = _load_json_s3(AUTO_KEY, {"enabled": True, "riskPct": 2.0, "maxPositions": 8,
-                                   "minConviction": 3, "rr": 3.0, "log": [], "userToggled": False})
+                                   "minConviction": 3, "rr": 3.0, "oddLot": True,
+                                   "log": [], "userToggled": False})
     cfg.setdefault("rr", 3.0)
+    cfg.setdefault("oddLot", True)   # 単元未満株(S株など)を使う。100万円でも値がさ株を分散できる
     # 手動で切り替えるまでは常にON(「ボタンを押さなくても回っている」状態にする)
     if not cfg.get("userToggled") and not cfg.get("enabled"):
         cfg["enabled"] = True
     if update:
-        for k in ("enabled", "riskPct", "maxPositions", "minConviction", "rr"):
+        for k in ("enabled", "riskPct", "maxPositions", "minConviction", "rr", "oddLot"):
             if k in update:
                 cfg[k] = update[k]
         if "enabled" in update:
@@ -2393,6 +2398,7 @@ def run_autotrade():
     risk_pct = float(cfg.get("riskPct", 2.0))
     max_pos = int(cfg.get("maxPositions", 5))
     min_conv = int(cfg.get("minConviction", 3))
+    odd_lot = bool(cfg.get("oddLot", True))
 
     # ── ① 手仕舞い判定 ──
     for pos in list(st["positions"]):
@@ -2421,9 +2427,25 @@ def run_autotrade():
             print("autotrade sell check failed:", pos["ticker"], e)
 
     # ── ② 新規建て ──
+    # AI推奨(brief)を優先し、枠が余ればランキング上位(909銘柄スキャン)から補充する。
+    # 24時間動かすので候補が尽きないようにしておく。
     brief = _load_json_s3("stock-learn/brief.json", {})
     held = {p["ticker"] for p in st["positions"]}
-    for pl in (brief.get("plans") or []):
+    candidates = list(brief.get("plans") or [])
+    try:
+        rk = cache_get("ranking.json", 24 * 3600) or {}
+        extra = [r for r in sorted(rk.get("rows", []), key=lambda x: -(x.get("short", 0)))
+                 if r.get("shortSignal") == "buy" and r.get("regimeOn")
+                 and r.get("quadrant") in ("本命", "押し目待ち", "短期限定")
+                 and r["ticker"] not in {c.get("ticker") for c in candidates}]
+        candidates += [{"ticker": r["ticker"], "name": r.get("name"), "verdict": "buy",
+                        "conviction": 4 if r.get("quadrant") == "本命" else 3,
+                        "source": "ranking"} for r in extra[:25]]
+    except Exception as e:
+        print("candidate fill failed:", e)
+
+    skipped_cost = 0
+    for pl in candidates:
         if len(held) >= max_pos:
             break
         tk = pl.get("ticker")
@@ -2433,25 +2455,38 @@ def run_autotrade():
             continue
         if (pl.get("conviction") or 0) < min_conv:
             continue
+        if len(held) >= max_pos:
+            break
         try:
             a = analyze_ticker(tk)
             lv = a.get("tradeLevels") or {}
             px, stop = a["price"], lv.get("stop")
             if not stop or stop >= px:
                 continue
+            # ランキング由来の候補は最新スコアで再確認(古い情報で買わない)
+            if pl.get("source") == "ranking":
+                if a["short"]["signal"] != "buy" or a["short"]["score"] < 70:
+                    continue
             # 2%ルール: 1トレードの想定損失が資産のrisk_pct%以内になる株数
-            unit = 100 if tk.endswith(".T") else 1
+            # 単元未満株が使えるなら1株単位。使えないなら日本株は100株単位
+            unit = 1 if (odd_lot or not tk.endswith(".T")) else 100
             qty_risk = int(st["equity"] * risk_pct / 100 / (px - stop))   # 2%ルール
             qty_cap = int(st["equity"] / max_pos / px)                    # 1銘柄あたりの上限
             qty = (min(qty_risk, qty_cap) // unit) * unit
             if qty < unit:
-                # 単元株の都合で枠に収まらない場合、リスクが許容内なら1単元だけ建てる
+                # 単元株の都合で枠に収まらない場合の救済。
+                # ただし分散を壊さないよう「1枠の2倍」かつ「リスクは設定の1.5倍」までに限る
                 one_risk = (px - stop) * unit / st["equity"] * 100 if st["equity"] else 999
-                if one_risk <= risk_pct * 2 and px * unit * 1.001 <= st["cash"] * 0.5:
+                one_cost = px * unit * 1.001
+                if (one_risk <= risk_pct * 1.5
+                        and one_cost <= st["equity"] / max_pos * 2
+                        and one_cost <= st["cash"] * 0.5):
                     qty = unit
             if qty < unit:
-                actions.append({"type": "skip", "ticker": tk, "name": pl.get("name"),
-                                "reason": f"1単元({unit}株={int(px*unit):,}円)が資金・リスク許容を超える"})
+                skipped_cost += 1
+                if skipped_cost <= 3:   # 記録は3件までに留める(候補が多いため)
+                    actions.append({"type": "skip", "ticker": tk, "name": pl.get("name"),
+                                    "reason": f"1単元({unit}株={int(px*unit):,}円)が資金・リスク許容を超える"})
                 continue
             st = paper_order(tk, "buy", qty,
                              f"[自動] AI推奨 確信度{pl.get('conviction')}/5",
@@ -2459,10 +2494,12 @@ def run_autotrade():
                                    "target": round(px + (px - stop) * rr, 2), "rr": rr},
                              account="ai")
             held.add(tk)
-            actions.append({"type": "buy", "ticker": tk, "name": pl.get("name"), "qty": qty,
+            actions.append({"type": "buy", "ticker": tk, "name": pl.get("name") or tk, "qty": qty,
                             "price": round(px, 2), "stop": round(stop, 2),
                             "target": round(px + (px - stop) * rr, 2),
-                            "reason": f"AI判定{pl.get('verdict')} 確信度{pl.get('conviction')}/5"})
+                            "reason": (f"AI判定{pl.get('verdict')} 確信度{pl.get('conviction')}/5"
+                                       if pl.get("source") != "ranking"
+                                       else f"ランキング上位(短期{a['short']['score']}点/{a.get('quadrant','')})")})
         except Exception as e:
             print("autotrade buy failed:", tk, e)
 
@@ -2694,7 +2731,8 @@ def paper_order(ticker, side, qty, note="", meta=None, account="me"):
     if qty <= 0:
         raise Exception("株数が不正です")
     if ticker.endswith(".T") and qty % 100 != 0:
-        raise Exception("日本株は100株単位で注文してください")
+        if not bool((_load_json_s3(AUTO_KEY, {}) or {}).get("oddLot", True)):
+            raise Exception("日本株は100株単位で注文してください(単元未満株を使う設定にすると1株から買えます)")
     px, name = _paper_price(ticker)
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     pos = next((p for p in st["positions"] if p["ticker"] == ticker), None)
