@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-08-v348-normbiz-goshi"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-08-v349-import-fillonly-scalar"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -23593,8 +23593,8 @@ ${orig}`})
               merged.municipalityIds=[...new Set([...(base.municipalityIds||[]),...rs.mids])];
               const sp=[...(base.sanpaiPermits||[])]; rs.sps.forEach(s=>{ if(!sp.some(e=>e.auth===s.auth&&e.type===s.type)) sp.push(s); }); merged.sanpaiPermits=sp;
               merged.permitTypes=[...new Set([...(base.permitTypes||[]),...rs.ptypes])];
-              if(r.phone) merged.phone=r.phone;
-              if(r.address) merged.address=r.address;
+              if(!merged.phone && r.phone) merged.phone=r.phone;      // 既存の電話は上書きしない（空欄のみ補完）
+              if(!merged.address && r.address) merged.address=r.address; // 既存の住所は上書きしない（空欄のみ補完）
               if(r.beeNet) merged.beeNet=true;
               if(r.assigneeName){ const aid=userByName.get(r.assigneeName); if(aid) merged.assigneeIds=[...new Set([...(base.assigneeIds||[]),aid])]; }
               if(r.statusProvided && !((base.status||"")==="加入済" && r.status!=="加入済")) merged.status=r.status;
@@ -23621,7 +23621,7 @@ ${orig}`})
             <Sheet title="業者をインポート" onClose={()=>{setSheet(null);setImportPreview(null);setImportErr("");}}>
               <div style={{background:"#f5f3ff",border:"1px solid #ddd6fe",borderRadius:"8px",padding:"0.875rem",marginBottom:"1rem"}}>
                 <div style={{fontWeight:700,fontSize:"0.82rem",color:"#5b21b6",marginBottom:"0.5rem"}}>📥 テンプレートをダウンロード</div>
-                <div style={{fontSize:"0.75rem",color:"#6d28d9",marginBottom:"0.625rem",lineHeight:1.6}}>すべての取込はこの1つに統合されました。<b>「許可（種別×エリア）」</b>列に <b>一廃収運：川越市／産廃収運：北九州市</b> のように<b>種別：エリア</b>を「／」区切りで書くと、一廃は自治体・産廃は権者(129)に自動で紐付きます。<br/>取込は<b>上書き基本</b>（CSVに値があれば上書き）。ただし<b>空欄は既存維持・メモ/許可/自治体は消さず追加・加入済は保護</b>します。</div>
+                <div style={{fontSize:"0.75rem",color:"#6d28d9",marginBottom:"0.625rem",lineHeight:1.6}}>すべての取込はこの1つに統合されました。<b>「許可（種別×エリア）」</b>列に <b>一廃収運：川越市／産廃収運：北九州市</b> のように<b>種別：エリア</b>を「／」区切りで書くと、一廃は自治体・産廃は権者(129)に自動で紐付きます。<br/>既存業者は<b>許可/自治体を追加・空欄のみ補完</b>（<b>電話/住所/メモも既存は上書きしません</b>）・<b>加入済は保護</b>。名前が同じでも<b>住所や電話が違えば別業者として登録</b>します。</div>
                 <button onClick={()=>downloadCSV("業者インポートテンプレート.csv",
                   ["業者名 *","ステータス","担当者名","電話番号","住所","許可（種別×エリア）","bee-net加入（○）","備考"],
                   [["株式会社クリーンA","加入済","山田一郎","092-111-2222","福岡県福岡市〇〇1-2-3","一廃収運：福岡市／産廃収運：北九州市","○",""],
