@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 // MyTrade — 投資専用スタンドアロンアプリ (MyDeskから分離)
 // バックエンド: mydesk-stock-analysis Lambda (共用・変更不要)
 // ═══════════════════════════════════════════════════════════════
-const MYTRADE_BUILD = "2026-08-08-v30-trailing-partial";
+const MYTRADE_BUILD = "2026-08-08-v31-leverage";
 if (typeof window !== "undefined") {
   window.__MYTRADE_BUILD = MYTRADE_BUILD;
   console.log(`[MyTrade] Build: ${MYTRADE_BUILD}`);
@@ -1717,7 +1717,8 @@ function StockView({currentUser}) {
               <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap"}}>
                 {[["safe","🛡️ 安定型","下落を抑える",C.green,C.greenBg],
                   ["balanced","⚖️ バランス型","効率が最良",C.accent,C.accentBg],
-                  ["aggressive","🔥 積極型","リターン重視",C.orange,C.orangeBg]].map(([k,label,note,col,bg])=>{
+                  ["aggressive","🔥 積極型","リターン重視",C.orange,C.orangeBg],
+                  ["max","💀 最大リターン型","下落は非常に深い",C.red,C.redBg]].map(([k,label,note,col,bg])=>{
                   const r=opt.presets[k];
                   if(!r) return null;
                   const cur = autoCfg.riskPct===r.riskPct&&autoCfg.maxPositions===r.maxPositions
@@ -1733,6 +1734,8 @@ function StockView({currentUser}) {
                       </div>
                       <div style={{fontSize:"0.6rem",color:C.textMuted,marginTop:"0.15rem"}}>
                         買い{r.entryScore}点 / 利確{r.rr}倍 / {r.maxPositions}銘柄 / リスク{r.riskPct}%
+                        {r.method&&r.method!=="標準"?` / ${r.method}`:""}
+                        {r.leverage&&r.leverage>1?` / 信用${r.leverage}倍`:""}
                       </div>
                       {!cur&&(
                         <button onClick={()=>saveAuto({riskPct:r.riskPct,maxPositions:r.maxPositions,rr:r.rr,entryScore:r.entryScore})}

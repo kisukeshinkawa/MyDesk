@@ -1151,11 +1151,12 @@ def _prepare_sim(tickers, years, min_score=65):
 
 def _sim_pass(prep, all_dates, initial=1000000, risk_pct=2.0, max_pos=5,
               entry_score=70, rr=2.0, fee=0.001, odd_lot=True,
-              partial=False, partial_rr=1.5, time_stop=0, trail=0.0):
+              partial=False, partial_rr=1.5, time_stop=0, trail=0.0, leverage=1.0):
     """1条件ぶんの運用を再現。
     partial   : 分割利確(第1目標で半分利確し、残りは損切りを建値に上げて伸ばす)
     time_stop : N日経っても損切り/利確に当たらなければ手仕舞い(資金効率を上げる)
     trail     : 建値超え後、高値からこの割合下げたら手仕舞い(トレーリングストップ)
+    leverage  : 信用取引の倍率。リターンも下落も同じ倍率で拡大する(金利は考慮していない)
     """
     cash, positions, trades, curve = float(initial), {}, [], []
     peak, maxdd = float(initial), 0.0
@@ -1227,20 +1228,21 @@ def _sim_pass(prep, all_dates, initial=1000000, risk_pct=2.0, max_pos=5,
             risk = px - stop
             unit = 1 if (odd_lot or not t.endswith(".T")) else 100
             qty_risk = int(equity * risk_pct / 100 / risk)          # 2%ルール
-            qty_cap = int(equity / max_pos / px)                    # 1銘柄あたりの上限
+            qty_cap = int(equity * leverage / max_pos / px)         # 1銘柄あたりの上限
             qty = (min(qty_risk, qty_cap) // unit) * unit
             if qty < unit:
                 # 実運用と同じ救済ルール
                 one_risk = risk * unit / equity * 100 if equity else 999
                 one_cost = px * unit * (1 + fee)
                 if odd_lot:
-                    if one_cost <= cash and one_risk <= risk_pct * 2:
+                    if one_cost <= max(cash, equity * (leverage - 1)) and one_risk <= risk_pct * 2:
                         qty = unit
                 elif (one_risk <= risk_pct * 1.5 and one_cost <= equity / max_pos * 2
                       and one_cost <= cash * 0.5):
                     qty = unit
             cost = px * qty * (1 + fee)
-            if qty < unit or cost > cash:
+            invested = sum(pp["entry"] * pp["qty"] for pp in positions.values())
+            if qty < unit or invested + cost > equity * leverage:
                 continue
             cash -= cost
             risk_used.append(risk * qty / equity * 100 if equity else 0)
@@ -1319,14 +1321,14 @@ def simulate_grid(tickers=None, years=25, initial=1000000):
 
     combos = []
     for entry in (65, 70, 75):
-        for rr in (2.0, 3.0, 4.0):
+        for rr in (3.0, 4.0):
             for mp in (2, 3, 5, 8):
                 for risk in (2.0, 3.0):
-                    for adv in ({}, {"partial": True},
-                                {"partial": True, "time_stop": 30},
-                                {"trail": 0.08}):
-                        combos.append({"entryScore": entry, "rr": rr, "maxPositions": mp,
-                                       "riskPct": risk, **adv})
+                    for lev in (1.0, 2.0, 3.0):     # 信用取引の倍率
+                        for adv in ({}, {"partial": True}, {"trail": 0.08},
+                                    {"partial": True, "trail": 0.10}):
+                            combos.append({"entryScore": entry, "rr": rr, "maxPositions": mp,
+                                           "riskPct": risk, "leverage": lev, **adv})
 
     rows = []
     for c in combos:
@@ -1334,11 +1336,11 @@ def simulate_grid(tickers=None, years=25, initial=1000000):
             r = _sim_pass(prep, all_dates, initial, c["riskPct"], c["maxPositions"],
                           c["entryScore"], c["rr"], odd_lot=True,
                           partial=c.get("partial", False), time_stop=c.get("time_stop", 0),
-                          trail=c.get("trail", 0.0))
+                          trail=c.get("trail", 0.0), leverage=c.get("leverage", 1.0))
             res = r["result"]
             # リターン÷リスクで評価(下落幅に対してどれだけ増やせたか)
             calmar = (res["cagrPct"] / abs(res["maxDrawdownPct"])) if res["maxDrawdownPct"] else 0
-            rows.append({**c, "method": ("分割利確+時間切れ" if c.get("partial") and c.get("time_stop")
+            rows.append({**c, "method": ("分割+トレーリング" if c.get("partial") and c.get("trail")
                                          else "分割利確" if c.get("partial")
                                          else "トレーリング" if c.get("trail") else "標準"),
                          **{k: res[k] for k in
@@ -1361,7 +1363,10 @@ def simulate_grid(tickers=None, years=25, initial=1000000):
     presets = {
         "safe": pick(lambda r: r["maxDrawdownPct"] >= -15, lambda r: r["cagrPct"]),
         "balanced": pick(lambda r: True, lambda r: r["calmar"]),
-        "aggressive": pick(lambda r: r["maxDrawdownPct"] >= -45, lambda r: r["cagrPct"]),
+        "aggressive": pick(lambda r: r["maxDrawdownPct"] >= -45 and r.get("leverage", 1) == 1,
+                           lambda r: r["cagrPct"]),
+        # 年利最大を狙う。下落は非常に深くなる(信用取引を含む)
+        "max": pick(lambda r: True, lambda r: r["cagrPct"]),
     }
     if not presets["safe"]:
         presets["safe"] = pick(lambda r: r["maxDrawdownPct"] >= -25, lambda r: r["cagrPct"])
