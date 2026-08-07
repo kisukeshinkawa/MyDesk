@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 // MyTrade — 投資専用スタンドアロンアプリ (MyDeskから分離)
 // バックエンド: mydesk-stock-analysis Lambda (共用・変更不要)
 // ═══════════════════════════════════════════════════════════════
-const MYTRADE_BUILD = "2026-08-08-v22-oddlot";
+const MYTRADE_BUILD = "2026-08-08-v23-min1share";
 if (typeof window !== "undefined") {
   window.__MYTRADE_BUILD = MYTRADE_BUILD;
   console.log(`[MyTrade] Build: ${MYTRADE_BUILD}`);
@@ -865,9 +865,10 @@ function StockView({currentUser}) {
                         )}
                         <div style={{display:"flex",gap:"0.4rem",alignItems:"center",marginTop:"0.4rem",flexWrap:"wrap"}}>
                           <button onClick={()=>{
-                            const unit = p.ticker.endsWith(".T")?100:1;
-                            const def = Math.max(unit, Math.floor(100000/p.price/unit)*unit);
-                            const q = window.prompt(`${p.name} を何株デモ購入しますか？\n現在値 ${Number(p.price).toLocaleString()}円${unit===100?"(100株単位)":""}\n※仮想資金です`, String(def));
+                            const odd = !autoCfg || autoCfg.oddLot!==false;
+                            const unit = (odd||!p.ticker.endsWith(".T"))?1:100;
+                            const def = Math.max(unit, Math.floor(125000/p.price/unit)*unit);
+                            const q = window.prompt(`${p.name} を何株デモ購入しますか？\n現在値 ${Number(p.price).toLocaleString()}円${unit===100?"(100株単位)":"(1株から購入できます)"}\n※仮想資金です`, String(def));
                             if(q) paperOrder(p.ticker,"buy",q,`ブリーフ推奨(${p.verdict})`);
                           }} disabled={busy.paper}
                             style={{padding:"0.35rem 0.75rem",borderRadius:7,border:"none",background:C.green,color:"white",fontWeight:800,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}}>
@@ -1744,7 +1745,7 @@ function StockView({currentUser}) {
                 {watchlist.map(w=><option key={w.ticker} value={w.ticker}>{(results[w.ticker]&&results[w.ticker].name)||w.name} ({w.ticker})</option>)}
                 {(brief&&brief.plans||[]).filter(p=>!watchlist.some(w=>w.ticker===p.ticker)).map(p=><option key={p.ticker} value={p.ticker}>⭐ {p.name} ({p.ticker})</option>)}
               </select>
-              <input type="number" step="100" value={orderForm.qty} onChange={e=>setOrderForm(f=>({...f,qty:e.target.value}))} placeholder="株数"
+              <input type="number" step="1" min="1" value={orderForm.qty} onChange={e=>setOrderForm(f=>({...f,qty:e.target.value}))} placeholder="株数"
                 style={{width:100,padding:"0.5rem",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:"0.8rem",fontFamily:"inherit",outline:"none"}}/>
               <button onClick={()=>{ if(!orderForm.ticker||!orderForm.qty){alert("銘柄と株数を入力してください");return;} paperOrder(orderForm.ticker,"buy",orderForm.qty,"手動"); }}
                 disabled={busy.paper} style={{padding:"0.5rem 1rem",borderRadius:8,border:"none",background:C.green,color:"white",fontWeight:800,fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit"}}>買う</button>
