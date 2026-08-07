@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-08-v351-quote-permit-first-counts"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-08-v352-quote-counts-nohook"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -34173,9 +34173,13 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
     if(selPerms.size && !(v.permitTypes||[]).some(pt=>selPerms.has(pt))) return false;
     return true;
   }).slice(0,60);
-  // ① 選択した許可種別に合う業者を対象に、②の自治体/権者ごとの業者数を集計
-  const {muniCounts, authCounts} = React.useMemo(()=>{
+  const _aq = areaQ.trim();
+  const _sanSel = permFilter.some(pt=>["産廃収運","産廃処分","産廃収運処分"].includes(pt));
+  const _ippSel = permFilter.some(pt=>["家庭収運","事業収運","一廃収運"].includes(pt));
+  // ②の自治体/権者ごとの業者数（選択中の許可種別で集計）。フック不使用・必要な時だけ計算
+  const {muniCounts, authCounts} = (()=>{
     const mc=new Map(), ac=new Map();
+    if(!(_aq || areaFilter.length || authFilter.length)) return {muniCounts:mc, authCounts:ac};
     const permOk = v => !selPerms.size || (v.permitTypes||[]).some(pt=>selPerms.has(pt));
     for(const v of vendors){
       if(!permOk(v)) continue;
@@ -34186,10 +34190,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
       muniSet.forEach(id=>mc.set(id,(mc.get(id)||0)+1));
     }
     return {muniCounts:mc, authCounts:ac};
-  }, [vendors, permFilter]);
-  const _aq = areaQ.trim();
-  const _sanSel = permFilter.some(pt=>["産廃収運","産廃処分","産廃収運処分"].includes(pt));
-  const _ippSel = permFilter.some(pt=>["家庭収運","事業収運","一廃収運"].includes(pt));
+  })();
   const areaHits = _aq ? [
     ...((!_sanSel||_ippSel) ? munis.filter(m=>String(m.name||"").includes(_aq) && !selAreas.has(String(m.id))).map(m=>({kind:"muni",id:m.id,name:m.name,count:muniCounts.get(String(m.id))||0})).sort((a,b)=>b.count-a.count).slice(0,10) : []),
     ...((!_ippSel||_sanSel) ? (typeof SANPAI_AUTHORITIES!=="undefined"?SANPAI_AUTHORITIES:[]).filter(a=>a.name.includes(_aq) && !selAuths.has(a.name)).map(a=>({kind:"auth",name:a.name,tag:a.type,count:authCounts.get(a.name)||0})).sort((a,b)=>b.count-a.count).slice(0,10) : [])
