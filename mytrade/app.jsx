@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 // MyTrade — 投資専用スタンドアロンアプリ (MyDeskから分離)
 // バックエンド: mydesk-stock-analysis Lambda (共用・変更不要)
 // ═══════════════════════════════════════════════════════════════
-const MYTRADE_BUILD = "2026-08-08-v33-recommend";
+const MYTRADE_BUILD = "2026-08-08-v34-trademode";
 if (typeof window !== "undefined") {
   window.__MYTRADE_BUILD = MYTRADE_BUILD;
   console.log(`[MyTrade] Build: ${MYTRADE_BUILD}`);
@@ -669,6 +669,22 @@ function StockView({currentUser}) {
     catch(e){ setErrMsg("設定エラー: "+e.message); }
     setBusy(b=>({...b,auto:false}));
   };
+  // 運用タイプを丸ごと適用する(手法・利確の伸ばし方・確信度まで含めて切り替わる)。
+  // 以降は検証が回るたびに自動でその枠内の最適値へ追従する。
+  const applyMode = async (mode) => {
+    setBusy(b=>({...b,auto:true})); setErrMsg("");
+    try {
+      const r = await api({action:"trade-mode",mode,enable:true,runNow:true}, 600000);
+      if(r.config) setAutoCfg(r.config);
+      const acts = (r.run&&r.run.actions)||[];
+      await loadPaper();
+      alert(r.note + "\n\n" + (acts.length
+        ? "この設定で今すぐ売買しました:\n" + acts.map(a=>`${a.type==="buy"?"買":"売"} ${a.name||a.ticker}${a.qty?` ${a.qty}株`:""}`).join("\n")
+        : "今の相場では条件を満たす銘柄がなく、売買はありませんでした。以降は毎時、自動で判定します。"));
+    } catch(e){ setErrMsg("運用タイプの適用エラー: "+e.message); }
+    setBusy(b=>({...b,auto:false}));
+  };
+
   const runAuto = async () => {
     setBusy(b=>({...b,auto:true})); setErrMsg("");
     try {
@@ -1738,8 +1754,7 @@ function StockView({currentUser}) {
                   ["max","💀 最大リターン型","下落は非常に深い",C.red,C.redBg]].map(([k,label,note,col,bg])=>{
                   const r=opt.presets[k];
                   if(!r) return null;
-                  const cur = autoCfg.riskPct===r.riskPct&&autoCfg.maxPositions===r.maxPositions
-                              &&Number(autoCfg.rr)===r.rr&&(autoCfg.entryScore||70)===r.entryScore;
+                  const cur = autoCfg.tradeMode===k;
                   return (
                     <div key={k} style={{flex:"1 1 180px",padding:"0.55rem 0.65rem",borderRadius:9,background:cur?bg:C.bg,
                       border:`2px solid ${cur?col:C.borderLight}`}}>
@@ -1755,11 +1770,15 @@ function StockView({currentUser}) {
                         {r.leverage&&r.leverage>1?` / 信用${r.leverage}倍`:""}
                       </div>
                       {!cur&&(
-                        <button onClick={()=>saveAuto({riskPct:r.riskPct,maxPositions:r.maxPositions,rr:r.rr,entryScore:r.entryScore})}
-                          disabled={busy.auto}
-                          style={{marginTop:"0.3rem",width:"100%",padding:"0.3rem",borderRadius:7,border:"none",background:col,color:"white",fontWeight:700,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit"}}>
-                          この設定にする
+                        <button onClick={()=>applyMode(k)} disabled={busy.auto}
+                          style={{marginTop:"0.3rem",width:"100%",padding:"0.3rem",borderRadius:7,border:"none",background:col,color:"white",fontWeight:700,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit",opacity:busy.auto?0.6:1}}>
+                          {busy.auto?"適用中...":"このタイプでAIに任せる"}
                         </button>
+                      )}
+                      {cur&&(
+                        <div style={{marginTop:"0.3rem",fontSize:"0.62rem",color:col,fontWeight:700}}>
+                          運用中{autoCfg.autoTune?"・毎月自動で最適化":""}
+                        </div>
                       )}
                     </div>
                   );
@@ -1767,7 +1786,10 @@ function StockView({currentUser}) {
               </div>
               <div style={{fontSize:"0.63rem",color:C.textMuted,marginTop:"0.3rem",lineHeight:1.55}}>
                 ※積極型は銘柄を絞って1発を大きく狙う設定です。リターンが増えるぶん<b>含み損も深くなり、連敗も長くなります</b>。
-                途中でやめると損だけが残るので、決めた設定を貫ける範囲で選んでください。
+                途中でやめると損だけが残るので、決めた設定を貫ける範囲で選んでください。<br/>
+                ※<b>信用取引(レバレッジ)が前提の条件は、同じ考え方の現物版に置き換えて</b>適用します。
+                信用は追証(強制決済)で退場するため、検証上の数字どおりには回りません。<br/>
+                ※選んだあとは<b>毎月の再検証でその枠内の最適値へ自動で追従</b>します。手動での調整は不要です。
               </div>
             </div>
           )}
