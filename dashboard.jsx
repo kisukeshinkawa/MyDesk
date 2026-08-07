@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-08-v352-quote-counts-nohook"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-08-v353-quote-add-all"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -34163,7 +34163,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
   const selAuths = new Set(authFilter);
   const selPerms = new Set(permFilter);
   const filtersActive = nq || selAreas.size || selAuths.size || selPerms.size;
-  const vHits = !filtersActive ? [] : vendors.filter(v=>{
+  const vHitsAll = !filtersActive ? [] : vendors.filter(v=>{
     if(nq && !String(v.name||"").toLowerCase().includes(nq)) return false;
     if(selAreas.size || selAuths.size){
       const muniOk = selAreas.size && (v.municipalityIds||[]).some(id=>selAreas.has(String(id)));
@@ -34172,7 +34172,16 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
     }
     if(selPerms.size && !(v.permitTypes||[]).some(pt=>selPerms.has(pt))) return false;
     return true;
-  }).slice(0,60);
+  });
+  const vHits = vHitsAll.slice(0,60);
+  // 該当業者を一括追加（重複除外・大量時は確認）
+  const addAll = () => {
+    const toAdd = vHitsAll.filter(v=>!addedIds.has(String(v.id)));
+    if(!toAdd.length) return;
+    if(toAdd.length>100 && !window.confirm(`該当 ${toAdd.length} 社を一括で対象業者に追加します。よろしいですか？`)) return;
+    const news = toAdd.map(v=>({ id:rid("qv"), vendorId:v.id, vendorName:v.name, assignee:"", contact:"", status:"未依頼", prices:{}, extraLines:[], callNotes:[] }));
+    setVendors([...(p.vendors||[]), ...news]);
+  };
   const _aq = areaQ.trim();
   const _sanSel = permFilter.some(pt=>["産廃収運","産廃処分","産廃収運処分"].includes(pt));
   const _ippSel = permFilter.some(pt=>["家庭収運","事業収運","一廃収運"].includes(pt));
@@ -34474,7 +34483,10 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
         {(areaFilter.length>0||authFilter.length>0)&&(<div style={{display:"flex",gap:"0.3rem",flexWrap:"wrap",marginBottom:"0.5rem"}}>{areaFilter.map(id=>(<span key={"m"+id} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:"0.7rem",background:C.accentBg,color:C.accentDark,borderRadius:999,padding:"0.15rem 0.5rem",fontWeight:700}}>🏛 {muniName(id)} ({muniCounts.get(String(id))||0})<button onClick={()=>setAreaFilter(areaFilter.filter(x=>String(x)!==String(id)))} style={{border:"none",background:"none",color:C.accentDark,cursor:"pointer",fontFamily:"inherit",padding:0}}>×</button></span>))}{authFilter.map(a=>(<span key={"a"+a} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:"0.7rem",background:"#FFE8CF",color:"#9a3412",borderRadius:999,padding:"0.15rem 0.5rem",fontWeight:700}}>🏭 {a} ({authCounts.get(a)||0})<button onClick={()=>setAuthFilter(authFilter.filter(x=>x!==a))} style={{border:"none",background:"none",color:"#9a3412",cursor:"pointer",fontFamily:"inherit",padding:0}}>×</button></span>))}</div>)}
         {filtersActive&&(
           <div style={{marginTop:"0.5rem",maxHeight:240,overflowY:"auto",border:`1px solid ${C.borderLight}`,borderRadius:8}}>
-            <div style={{padding:"0.3rem 0.6rem",fontSize:"0.66rem",color:C.textMuted,background:C.bg}}>{vHits.length}社ヒット{vHits.length>=60?"（先頭60件）":""}</div>
+            <div style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.3rem 0.6rem",background:C.bg}}>
+              <span style={{fontSize:"0.66rem",color:C.textMuted}}>{vHitsAll.length}社ヒット{vHits.length<vHitsAll.length?`（先頭${vHits.length}件表示）`:""}</span>
+              {(()=>{ const addable=vHitsAll.filter(v=>!addedIds.has(String(v.id))).length; return addable>0?(<button onClick={addAll} style={{marginLeft:"auto",padding:"0.2rem 0.65rem",borderRadius:8,border:`1.5px solid ${C.accent}`,background:C.accentBg,color:C.accentDark,fontWeight:800,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>＋ 該当{addable}社をすべて追加</button>):null; })()}
+            </div>
             {vHits.map(v=>{ const added=addedIds.has(String(v.id)); return (
               <div key={v.id} style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.4rem 0.6rem",borderTop:`1px solid ${C.borderLight}`}}>
                 <div style={{flex:1,minWidth:0}}>
