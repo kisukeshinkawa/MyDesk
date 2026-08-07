@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-08-v358-quote-address-lookup"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-08-v359-quote-card-permit-areas"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -34618,7 +34618,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
                 <VendorQuoteCard key={qv.id} qv={qv} rows={vendorRows(qv)} stores={p.stores} totalStores={totalStoreCount} showAll={!!qv.showAllStores} onToggleAll={()=>patchVendor(qv.id,{showAllStores:!qv.showAllStores})} vrec={vendors.find(v=>String(v.id)===String(qv.vendorId))} C={C} rid={rid} mapsUrl={mapsUrl} portalBusy={portalBusy} PORTAL_ON={PORTAL_ON}
                   onChange={patch=>patchVendor(qv.id,patch)} onRemove={()=>setVendors((p.vendors||[]).filter(x=>x.id!==qv.id))}
                   onIssue={()=>issueLink(qv)} onCopy={()=>copyLink(qv)} onFetch={()=>fetchResp(qv)} onAddNote={t=>addVendorNote(qv,t)}
-                  users={users} onAssign={ids=>assignVendor(qv,ids)}/>
+                  users={users} onAssign={ids=>assignVendor(qv,ids)} munis={munis}/>
               ))}
               {qvList.length===0&&<div style={{textAlign:"center",color:C.textMuted,padding:"1.5rem",fontSize:"0.8rem"}}>上の絞り込み（エリア・許可・業者名）から対象業者を追加してください。</div>}
               {qvList.length>0&&filt.length===0&&<div style={{textAlign:"center",color:C.textMuted,padding:"1rem",fontSize:"0.8rem"}}>「{qvQ}」に一致する対象業者はいません。</div>}
@@ -34749,7 +34749,7 @@ function StoreGroups({ stores, C, rid, mapsUrl, setStores, storeQuotes }){
 // 数量文字列（例「約100kg/箇所」）を [{q,u}] に解釈（旧データ互換）
 const parseQtyList = s => { const t=String(s==null?"":s); if(!t.trim()) return []; const units=["立米","㎥","m3","kg","㎏","袋","個","台","本","箱"]; let num=""; for(let i=0;i<t.length;i++){ const ch=t[i]; if((ch>="0"&&ch<="9")||ch===".") num+=ch; else if(num) break; } if(!num) return []; let u=""; for(const uu of units){ if(t.indexOf(uu)>=0){ u=uu; break; } } u=u.replace("㎏","kg").replace("㎥","立米").replace("m3","立米"); return [{q:num,u:u}]; };
 // 対象業者カード（折りたたみ・見積表[出来高/定額]・一括・ポータル・業者情報・通話メモ）
-function VendorQuoteCard({ qv, rows, stores=[], totalStores=0, showAll=false, onToggleAll, vrec, C, rid, mapsUrl, portalBusy, PORTAL_ON, onChange, onRemove, onIssue, onCopy, onFetch, onAddNote, users=[], onAssign }){
+function VendorQuoteCard({ qv, rows, stores=[], totalStores=0, showAll=false, onToggleAll, vrec, C, rid, mapsUrl, portalBusy, PORTAL_ON, onChange, onRemove, onIssue, onCopy, onFetch, onAddNote, users=[], onAssign, munis=[] }){
   const REQ=["未依頼","依頼済","回答済","辞退"];
   const METHODS=[{v:"込",t:"出来高①(運搬・処分込)"},{v:"別",t:"出来高②(運搬固定+処分単価)"},{v:"定額",t:"定額③"}];
   const TAXES=["税抜","税込"];
@@ -34924,6 +34924,27 @@ function VendorQuoteCard({ qv, rows, stores=[], totalStores=0, showAll=false, on
         {vrec&&(vrec.permitTypes||[]).length>0&&<span>{(vrec.permitTypes||[]).join("・")}</span>}
         <button onClick={()=>setShowInfo(v=>!v)} style={{border:"none",background:"none",color:C.accent,cursor:"pointer",fontFamily:"inherit",fontSize:"0.7rem"}}>{showInfo?"▲メモを隠す":"▼通話・見積メモ"}</button>
       </div>
+      {/* 許可（種別 × エリア/権者）：この業者がどこで許可を持つか */}
+      {(()=>{
+        const pairs=[];
+        if(Array.isArray(vrec?.permits)&&vrec.permits.length){ vrec.permits.forEach(p=>{ if(p&&p.type&&p.area) pairs.push({type:p.type,area:p.area}); }); }
+        else {
+          (vrec?.sanpaiPermits||[]).forEach(sp=>{ if(sp&&sp.type&&sp.auth) pairs.push({type:sp.type,area:sp.auth}); });
+          (vrec?.municipalityIds||[]).forEach(id=>{ const m=(munis||[]).find(x=>String(x.id)===String(id)); if(m) pairs.push({type:"一廃収運",area:m.name}); });
+        }
+        if(!pairs.length) return null;
+        const groups={}; pairs.forEach(p=>{ (groups[p.type]=groups[p.type]||[]).push(p.area); });
+        return (<div style={{marginBottom:"0.5rem",background:C.bg,borderRadius:8,padding:"0.4rem 0.55rem"}}>
+          <div style={{fontSize:"0.62rem",fontWeight:800,color:C.textSub,marginBottom:"0.25rem"}}>許可（種別 × エリア/権者）</div>
+          {Object.keys(groups).map(t=>{ const san=/産廃/.test(t); const areas=[...new Set(groups[t])]; return (
+            <div key={t} style={{display:"flex",flexWrap:"wrap",gap:"0.25rem",alignItems:"center",marginBottom:"0.15rem"}}>
+              <span style={{fontSize:"0.62rem",fontWeight:800,color:san?"#9a3412":C.accentDark,whiteSpace:"nowrap"}}>{san?"🏭":"🏛"} {t}（{areas.length}）</span>
+              {areas.slice(0,15).map((a,i)=><span key={i} style={{fontSize:"0.62rem",background:san?"#FFE8CF":C.accentBg,color:san?"#9a3412":C.accentDark,padding:"0.05rem 0.4rem",borderRadius:8,fontWeight:600}}>{a}</span>)}
+              {areas.length>15&&<span style={{fontSize:"0.6rem",color:C.textMuted}}>+{areas.length-15}</span>}
+            </div>
+          );})}
+        </div>);
+      })()}
       {showInfo&&(
         <div style={{background:C.bg,borderRadius:8,padding:"0.5rem 0.6rem",marginBottom:"0.5rem"}}>
           <div style={{display:"flex",gap:"0.4rem"}}>
