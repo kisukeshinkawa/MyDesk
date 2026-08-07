@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 // MyTrade — 投資専用スタンドアロンアプリ (MyDeskから分離)
 // バックエンド: mydesk-stock-analysis Lambda (共用・変更不要)
 // ═══════════════════════════════════════════════════════════════
-const MYTRADE_BUILD = "2026-08-08-v31-leverage";
+const MYTRADE_BUILD = "2026-08-08-v32-longhold";
 if (typeof window !== "undefined") {
   window.__MYTRADE_BUILD = MYTRADE_BUILD;
   console.log(`[MyTrade] Build: ${MYTRADE_BUILD}`);
@@ -1694,7 +1694,9 @@ function StockView({currentUser}) {
                 <span style={{color:C.green}}>初期値は25年検証で最良だった設定(利確3倍・8銘柄分散)です</span><br/>
                 <span style={{color:C.textMuted}}>「単元未満株」ON = 1株から購入(SBIのS株・楽天のかぶミニ等)。100万円でも値がさ株を分散して買えます</span><br/>
                 <span style={{color:C.purple}}>「分割利確」= 第1目標で半分を利確し、損切りを建値へ上げて残りを伸ばす(勝率が上がります)。
-                「トレーリング」= 高値から指定%下げたら手仕舞い(利益を伸ばしつつ利益を守る)</span>
+                「トレーリング」= 高値から指定%下げたら手仕舞い(利益を伸ばしつつ利益を守る)</span><br/>
+                <span style={{color:C.orange}}>「保有方針=長期」= 利確目標で降りずに伸ばし続ける。
+                検証では年利が2倍以上になりました(その分、含み損の期間は長くなります)</span>
               </div>
             </div>
             <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap"}}>
@@ -1790,6 +1792,13 @@ function StockView({currentUser}) {
                 <select value={autoCfg.maxPositions} onChange={e=>saveAuto({maxPositions:parseInt(e.target.value,10)})}
                   style={{marginLeft:"0.25rem",padding:"0.15rem",borderRadius:6,border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.7rem"}}>
                   {[3,5,8,10,12].map(v=><option key={v} value={v}>{v}銘柄まで</option>)}
+                </select>
+              </span>
+              <span>保有方針
+                <select value={autoCfg.holdMode||"trade"} onChange={e=>saveAuto({holdMode:e.target.value})}
+                  style={{marginLeft:"0.25rem",padding:"0.15rem",borderRadius:6,border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.7rem"}}>
+                  <option value="trade">短期(利確目標で降りる)</option>
+                  <option value="trend">長期(利益を伸ばし続ける)</option>
                 </select>
               </span>
               <span>利確目標

@@ -1141,7 +1141,9 @@ def _prepare_sim(tickers, years, min_score=65):
                         continue
                     cands[d] = {"score": sc["score"], "entryPx": float(df["Open"].iloc[i + 1]),
                                 "atr": a, "low20": float(low20.iloc[i]), "nextDate": dates[i + 1]}
-            prep[t] = {"dates": dates, "idx": {d: i for i, d in enumerate(dates)},
+            maL = df["Close"].rolling(200).mean()
+            prep[t] = {"maLong": [None if math.isnan(x) else float(x) for x in maL],
+                       "dates": dates, "idx": {d: i for i, d in enumerate(dates)},
                        "high": [float(x) for x in df["High"]], "low": [float(x) for x in df["Low"]],
                        "close": [float(x) for x in df["Close"]], "cands": cands}
         except Exception as e:
@@ -1151,12 +1153,15 @@ def _prepare_sim(tickers, years, min_score=65):
 
 def _sim_pass(prep, all_dates, initial=1000000, risk_pct=2.0, max_pos=5,
               entry_score=70, rr=2.0, fee=0.001, odd_lot=True,
-              partial=False, partial_rr=1.5, time_stop=0, trail=0.0, leverage=1.0):
+              partial=False, partial_rr=1.5, time_stop=0, trail=0.0, leverage=1.0,
+              hold_mode="trade", ma_exit=200):
     """1条件ぶんの運用を再現。
     partial   : 分割利確(第1目標で半分利確し、残りは損切りを建値に上げて伸ばす)
     time_stop : N日経っても損切り/利確に当たらなければ手仕舞い(資金効率を上げる)
     trail     : 建値超え後、高値からこの割合下げたら手仕舞い(トレーリングストップ)
     leverage  : 信用取引の倍率。リターンも下落も同じ倍率で拡大する(金利は考慮していない)
+    hold_mode : trade=利確目標で降りる(短期売買) / trend=長期移動平均を割るまで持ち続ける
+                (バフェット型の「売らない」を機械化したもの) / buyhold=売らない
     """
     cash, positions, trades, curve = float(initial), {}, [], []
     peak, maxdd = float(initial), 0.0
@@ -1193,6 +1198,26 @@ def _sim_pass(prep, all_dates, initial=1000000, risk_pct=2.0, max_pos=5,
                     p["qty"] -= half
                 p["half"] = True
                 p["stop"] = max(p["stop"], p["entry"])   # 建値ストップ
+
+            # ── 長期保有モード: 利確目標では降りず、трендが崩れるまで持つ ──
+            if hold_mode in ("trend", "buyhold"):
+                exit_px = reason = None
+                if hold_mode == "trend":
+                    maL = prep[t].get("maLong")
+                    mv = maL[i] if maL and i < len(maL) else None
+                    if mv and cl < mv:
+                        exit_px, reason = cl, f"{ma_exit}日線割れ"
+                    elif trail and p["peak"] > p["entry"] and cl <= p["peak"] * (1 - trail):
+                        exit_px, reason = cl, "トレーリング"
+                if exit_px:
+                    proceeds = exit_px * p["qty"] * (1 - fee)
+                    cash += proceeds
+                    trades.append({"ticker": t, "entryDate": p["date"], "exitDate": d,
+                                   "entry": round(p["entry"], 2), "exit": round(exit_px, 2),
+                                   "qty": p["qty"], "pnl": round(proceeds - p["entry"] * p["qty"], 0),
+                                   "pnlPct": round((exit_px / p["entry"] - 1) * 100, 2), "reason": reason})
+                    del positions[t]
+                continue
 
             exit_px = reason = None
             if lo <= p["stop"]:
@@ -1324,9 +1349,10 @@ def simulate_grid(tickers=None, years=25, initial=1000000):
         for rr in (3.0, 4.0):
             for mp in (2, 3, 5, 8):
                 for risk in (2.0, 3.0):
-                    for lev in (1.0, 2.0, 3.0):     # 信用取引の倍率
+                    for lev in (1.0, 1.5, 2.0):     # 信用取引の倍率
                         for adv in ({}, {"partial": True}, {"trail": 0.08},
-                                    {"partial": True, "trail": 0.10}):
+                                    {"hold_mode": "trend"},
+                                    {"hold_mode": "trend", "trail": 0.25}):
                             combos.append({"entryScore": entry, "rr": rr, "maxPositions": mp,
                                            "riskPct": risk, "leverage": lev, **adv})
 
@@ -1336,11 +1362,14 @@ def simulate_grid(tickers=None, years=25, initial=1000000):
             r = _sim_pass(prep, all_dates, initial, c["riskPct"], c["maxPositions"],
                           c["entryScore"], c["rr"], odd_lot=True,
                           partial=c.get("partial", False), time_stop=c.get("time_stop", 0),
-                          trail=c.get("trail", 0.0), leverage=c.get("leverage", 1.0))
+                          trail=c.get("trail", 0.0), leverage=c.get("leverage", 1.0),
+                          hold_mode=c.get("hold_mode", "trade"))
             res = r["result"]
             # リターン÷リスクで評価(下落幅に対してどれだけ増やせたか)
             calmar = (res["cagrPct"] / abs(res["maxDrawdownPct"])) if res["maxDrawdownPct"] else 0
-            rows.append({**c, "method": ("分割+トレーリング" if c.get("partial") and c.get("trail")
+            rows.append({**c, "method": ("長期保有+トレーリング" if c.get("hold_mode")=="trend" and c.get("trail")
+                                         else "長期保有(利確しない)" if c.get("hold_mode")=="trend"
+                                         else "分割+トレーリング" if c.get("partial") and c.get("trail")
                                          else "分割利確" if c.get("partial")
                                          else "トレーリング" if c.get("trail") else "標準"),
                          **{k: res[k] for k in
@@ -2441,12 +2470,13 @@ def autotrade_config(update=None):
     cfg.setdefault("trailPct", 8)     # トレーリングストップ(%)。高値からこの割合下げたら手仕舞い
     cfg.setdefault("partial", True)   # 分割利確(第1目標で半分利確し損切りを建値へ)
     cfg.setdefault("timeStopDays", 0) # N日経っても動かなければ手仕舞い(0で無効)
+    cfg.setdefault("holdMode", "trade")  # trade=利確目標で降りる / trend=200日線を割るまで持つ(長期保有)
     # 手動で切り替えるまでは常にON(「ボタンを押さなくても回っている」状態にする)
     if not cfg.get("userToggled") and not cfg.get("enabled"):
         cfg["enabled"] = True
     if update:
         for k in ("enabled", "riskPct", "maxPositions", "minConviction", "rr", "oddLot",
-                  "entryScore", "trailPct", "partial", "timeStopDays"):
+                  "entryScore", "trailPct", "partial", "timeStopDays", "holdMode"):
             if k in update:
                 cfg[k] = update[k]
         if "enabled" in update:
@@ -2476,6 +2506,7 @@ def run_autotrade():
     trail = float(cfg.get("trailPct", 8)) / 100
     use_partial = bool(cfg.get("partial", True))
     time_stop = int(cfg.get("timeStopDays", 0))
+    hold_mode = cfg.get("holdMode", "trade")
 
     # ── ① 手仕舞い判定 ──
     for pos in list(st["positions"]):
@@ -2510,6 +2541,30 @@ def run_autotrade():
                                 "reason": f"分割利確(半分を{t1:,.0f}で確定・残りは利益を伸ばす)"})
                 _paper_update_position("ai", pos["ticker"],
                                        {"half": True, "stop": pos["avgPrice"], "peak": peak})
+                continue
+
+            # 長期保有モード: 利確目標では降りず、200日線を割るまで持ち続ける
+            if hold_mode == "trend":
+                ma200 = None
+                try:
+                    sp = a.get("sparkMa25")  # 200日線はanalyzeに無いので終値と比較で代用
+                    ma200 = a.get("tradeLevels", {}).get("ma25")
+                except Exception:
+                    pass
+                reason = None
+                if not a.get("regime", {}).get("benchAboveMa200", True) and a["short"]["signal"] == "avoid":
+                    reason = "地合い悪化かつシグナル消滅(長期保有の解除条件)"
+                elif trail and peak > pos["avgPrice"] and px <= peak * (1 - max(trail, 0.20)):
+                    reason = f"トレーリング(高値{peak:,.0f}から{max(trail,0.20)*100:.0f}%下落)"
+                elif stop and px <= stop:
+                    reason = f"損切り({stop:,.0f}を割った)"
+                if reason:
+                    st = paper_order(pos["ticker"], "sell", pos["qty"], "[自動] " + reason, account="ai")
+                    sold_now.add(pos["ticker"])
+                    actions.append({"type": "sell", "ticker": pos["ticker"], "name": pos["name"],
+                                    "qty": pos["qty"], "price": round(px, 2), "reason": reason})
+                elif peak > float(pos.get("peak") or 0):
+                    _paper_update_position("ai", pos["ticker"], {"peak": peak})
                 continue
 
             reason = None
