@@ -2701,6 +2701,8 @@ def _paper_price(ticker):
 def paper_state(account="me"):
     """評価額・損益を現在値で再計算して返す。"""
     st = _paper_load(account)
+    rk = cache_get("ranking.json", 24 * 3600) or {}
+    rk_map = {r["ticker"]: r for r in rk.get("rows", [])}
     total_val, positions = 0.0, []
     for p in st.get("positions", []):
         try:
@@ -2710,9 +2712,26 @@ def paper_state(account="me"):
         val = px * p["qty"]
         cost = p["avgPrice"] * p["qty"]
         total_val += val
-        positions.append({**p, "name": p.get("name") or name, "price": round(px, 2),
-                          "value": round(val, 0), "pnl": round(val - cost, 0),
-                          "pnlPct": round((px / p["avgPrice"] - 1) * 100, 2)})
+        # 値動きの情報はキャッシュから拾う(追加の通信をしないので高速)
+        r = rk_map.get(p["ticker"], {})
+        a = cache_get(f"analyze/{p['ticker']}.json", 24 * 3600) or {}
+        stop, target = p.get("stop"), p.get("target")
+        positions.append({**p,
+                          "name": p.get("name") or a.get("name") or name,
+                          "price": round(px, 2),
+                          "value": round(val, 0), "cost": round(cost, 0),
+                          "pnl": round(val - cost, 0),
+                          "pnlPct": round((px / p["avgPrice"] - 1) * 100, 2),
+                          "chg1d": r.get("chg1d", a.get("chg1d")),
+                          "market": r.get("market") or a.get("market"),
+                          "sector": r.get("sector") or a.get("sector"),
+                          "short": r.get("short") or (a.get("short") or {}).get("score"),
+                          "long": r.get("long") or (a.get("long") or {}).get("score"),
+                          "spark": (a.get("spark") or [])[-30:],
+                          "hi52": a.get("hi52"), "lo52": a.get("lo52"),
+                          # 損切り/利確までの距離(%)。あとどれくらいで到達するかが分かる
+                          "toStopPct": round((stop / px - 1) * 100, 1) if stop else None,
+                          "toTargetPct": round((target / px - 1) * 100, 1) if target else None})
     equity = st["cash"] + total_val
     closed = [t for t in st.get("trades", []) if t["side"] == "sell"]
     wins = [t for t in closed if t.get("pnl", 0) > 0]

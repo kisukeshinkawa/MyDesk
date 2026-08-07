@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 // MyTrade — 投資専用スタンドアロンアプリ (MyDeskから分離)
 // バックエンド: mydesk-stock-analysis Lambda (共用・変更不要)
 // ═══════════════════════════════════════════════════════════════
-const MYTRADE_BUILD = "2026-08-08-v23-min1share";
+const MYTRADE_BUILD = "2026-08-08-v24-holding-detail";
 if (typeof window !== "undefined") {
   window.__MYTRADE_BUILD = MYTRADE_BUILD;
   console.log(`[MyTrade] Build: ${MYTRADE_BUILD}`);
@@ -255,6 +255,75 @@ function StockProChart({data,levels,show={},width=560}) {
       ))}
       <text x="3" y={macdTop+11} fontSize="9" fontWeight="700" fill="#8A93A3">MACD 緑=上昇の勢い / 赤=下降の勢い</text>
     </svg>
+  );
+}
+
+// 保有1銘柄のカード: 何株・いくらで買って・今いくらで・損益いくら・値動き・損切り/利確まで
+function HoldingCard({p, color, onOpen, onSell, beginner}) {
+  const up = p.pnl>=0;
+  const sp = p.spark||[];
+  const spMin = sp.length?Math.min(...sp):0, spMax = sp.length?Math.max(...sp):1;
+  const rg = (spMax-spMin)||1;
+  const pts = sp.map((v,i)=>`${(i/(Math.max(1,sp.length-1))*100).toFixed(1)},${(26-((v-spMin)/rg)*22).toFixed(1)}`).join(" ");
+  // 損切り〜利確のどのあたりにいるか
+  const stop=p.stop, tgt=p.target;
+  const pos = (stop&&tgt&&tgt>stop) ? Math.max(0,Math.min(100,(p.price-stop)/(tgt-stop)*100)) : null;
+  return (
+    <div style={{padding:"0.7rem 0.8rem",background:"white",borderRadius:10,border:`1px solid ${C.border}`,marginBottom:"0.5rem"}}>
+      <div style={{display:"flex",alignItems:"flex-start",gap:"0.5rem",flexWrap:"wrap"}}>
+        <div style={{flex:"1 1 190px",minWidth:0}}>
+          <div style={{fontWeight:800,fontSize:"0.86rem",color:C.text,cursor:onOpen?"pointer":"default"}} onClick={onOpen}>
+            {p.market==="JP"?"🇯🇵":p.market==="US"?"🇺🇸":""} {p.name}
+            <span style={{fontSize:"0.68rem",fontWeight:600,color:C.textMuted,marginLeft:"0.3rem"}}>{p.ticker}</span>
+          </div>
+          <div style={{fontSize:"0.7rem",color:C.textSub,marginTop:"0.15rem"}}>
+            <b>{Number(p.qty).toLocaleString()}株</b> を <b>{Number(p.avgPrice).toLocaleString()}円</b>で購入
+            {p.openedAt?<span style={{color:C.textMuted}}>({p.openedAt})</span>:null}
+          </div>
+          <div style={{fontSize:"0.7rem",color:C.textSub}}>
+            現在 <b style={{color:C.text}}>{Number(p.price).toLocaleString()}円</b>
+            {p.chg1d!=null&&<span style={{color:p.chg1d>=0?C.green:C.red,marginLeft:"0.3rem"}}>前日比{p.chg1d>=0?"+":""}{p.chg1d}%</span>}
+            <span style={{color:C.textMuted}}> / 投入{Number(p.cost||p.avgPrice*p.qty).toLocaleString()}円 → 評価{Number(p.value||p.price*p.qty).toLocaleString()}円</span>
+          </div>
+        </div>
+        <div style={{textAlign:"right",flexShrink:0}}>
+          <div style={{fontWeight:800,fontSize:"1rem",color:up?C.green:C.red}}>{up?"+":""}{Number(p.pnl).toLocaleString()}<span style={{fontSize:"0.7rem"}}>円</span></div>
+          <div style={{fontSize:"0.8rem",fontWeight:700,color:up?C.green:C.red}}>{p.pnlPct>=0?"+":""}{p.pnlPct}%</div>
+          {sp.length>2&&(
+            <svg viewBox="0 0 100 28" style={{width:88,height:26,display:"block",marginTop:"0.15rem"}}>
+              <polyline points={pts} fill="none" stroke={sp[sp.length-1]>=sp[0]?"#009122":"#DA1313"} strokeWidth="1.6"/>
+            </svg>
+          )}
+        </div>
+      </div>
+      {(stop||tgt)&&(
+        <div style={{marginTop:"0.4rem"}}>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:"0.65rem",fontWeight:700}}>
+            <span style={{color:C.red}}>🛑 損切り {stop?Number(stop).toLocaleString():"—"}{p.toStopPct!=null?` (${p.toStopPct}%)`:""}</span>
+            <span style={{color:C.green}}>💰 利確 {tgt?Number(tgt).toLocaleString():"—"}{p.toTargetPct!=null?` (+${p.toTargetPct}%)`:""}</span>
+          </div>
+          {pos!=null&&(
+            <div style={{position:"relative",height:6,borderRadius:3,background:`linear-gradient(90deg,${C.redBg},${C.borderLight},${C.greenBg})`,marginTop:"0.2rem"}}>
+              <div style={{position:"absolute",left:`${pos}%`,top:-3,width:3,height:12,background:C.text,borderRadius:2,transform:"translateX(-50%)"}}/>
+            </div>
+          )}
+          {beginner&&pos!=null&&(
+            <div style={{fontSize:"0.63rem",color:C.textMuted,marginTop:"0.15rem"}}>
+              現在地は損切りと利確の間の{Math.round(pos)}%地点。{pos<25?"損切りが近いので注意":pos>75?"利確が近づいています":"想定どおりの推移です"}
+            </div>
+          )}
+        </div>
+      )}
+      {(p.short!=null||p.long!=null||p.sector)&&(
+        <div style={{display:"flex",gap:"0.3rem",flexWrap:"wrap",marginTop:"0.35rem"}}>
+          {p.short!=null&&<span style={S.chip(C.borderLight,C.textSub)}>短期{p.short}</span>}
+          {p.long!=null&&<span style={S.chip(C.borderLight,C.textSub)}>長期{p.long}</span>}
+          {p.sector&&<span style={S.chip(C.borderLight,C.textMuted)}>{p.sector}</span>}
+          {onOpen&&<button onClick={onOpen} style={{...S.iconBtn,color:C.accent,fontSize:"0.68rem",fontWeight:700}}>チャートを見る →</button>}
+          {onSell&&<button onClick={onSell} style={{marginLeft:"auto",padding:"0.25rem 0.6rem",borderRadius:7,border:"none",background:C.redBg,color:C.red,fontWeight:700,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit"}}>全部売る</button>}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1709,7 +1778,9 @@ function StockView({currentUser}) {
           {/* 資産推移グラフ */}
           {paper.history&&paper.history.length>1&&(()=>{
             const h=paper.history, vals=h.map(x=>x.equity);
-            const mn=Math.min(...vals,paper.initial), mx=Math.max(...vals,paper.initial), rg=(mx-mn)||1;
+            let mn=Math.min(...vals,paper.initial), mx=Math.max(...vals,paper.initial);
+            const pad=Math.max((mx-mn)*0.2, paper.initial*0.005); mn-=pad; mx+=pad;
+            const rg=(mx-mn)||1;
             const W=560,H=70;
             const pts=h.map((x,i)=>`${(i/(h.length-1)*W).toFixed(1)},${(H-4-((x.equity-mn)/rg)*(H-8)).toFixed(1)}`).join(" ");
             const zeroY=H-4-((paper.initial-mn)/rg)*(H-8);
@@ -1762,18 +1833,11 @@ function StockView({currentUser}) {
           {paper.positions.length===0
             ? <div style={{fontSize:"0.75rem",color:C.textMuted,padding:"0.5rem 0"}}>保有なし。上のフォームか、ホームの売買プランから買ってみてください</div>
             : paper.positions.map(p=>(
-              <div key={p.ticker} style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.5rem 0",borderBottom:`1px solid ${C.borderLight}`,flexWrap:"wrap"}}>
-                <div style={{flex:"1 1 150px",minWidth:0}}>
-                  <div style={{fontWeight:700,fontSize:"0.82rem",color:C.text}}>{p.name}</div>
-                  <div style={{fontSize:"0.68rem",color:C.textMuted}}>{p.qty}株 / 平均取得 {Number(p.avgPrice).toLocaleString()} → 現在 {Number(p.price).toLocaleString()}</div>
-                </div>
-                <div style={{textAlign:"right"}}>
-                  <div style={{fontWeight:800,fontSize:"0.85rem",color:p.pnl>=0?C.green:C.red}}>{p.pnl>=0?"+":""}{Number(p.pnl).toLocaleString()}円</div>
-                  <div style={{fontSize:"0.7rem",color:p.pnlPct>=0?C.green:C.red}}>{p.pnlPct>=0?"+":""}{p.pnlPct}%</div>
-                </div>
-                <button onClick={()=>{ if(confirm(`${p.name} ${p.qty}株を全部売りますか？`)) paperOrder(p.ticker,"sell",p.qty,"全売却"); }}
-                  style={{padding:"0.35rem 0.7rem",borderRadius:7,border:"none",background:C.redBg,color:C.red,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}}>全部売る</button>
-              </div>
+              <HoldingCard key={p.ticker} p={p} beginner={beginner}
+                onOpen={()=>{ if(!watchlist.some(w=>w.ticker===p.ticker)) addStock({ticker:p.ticker,name:p.name,market:p.ticker.endsWith(".T")?"JP":"US"});
+                  setSelected(p.ticker); setView("analyze"); localStorage.setItem("mt_view","analyze");
+                  if(!newsMap[p.ticker]) loadNews(p.ticker); loadChart(p.ticker); }}
+                onSell={()=>{ if(confirm(`${p.name} ${p.qty}株を全部売りますか？`)) paperOrder(p.ticker,"sell",p.qty,"全売却"); }}/>
             ))}
 
           {/* 履歴 */}
