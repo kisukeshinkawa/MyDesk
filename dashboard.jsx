@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-08-v349-import-fillonly-scalar"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-08-v350-quote-sanpai-auth-filter"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -33959,6 +33959,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
   const [dCompQ, setDCompQ] = React.useState("");
   const [vName, setVName] = React.useState("");
   const [areaFilter, setAreaFilter] = React.useState([]);
+  const [authFilter, setAuthFilter] = React.useState([]); // 産廃権者(都道府県/政令市/中核市)フィルター
   const [permFilter, setPermFilter] = React.useState([]);
   const [areaQ, setAreaQ] = React.useState("");
   const [storeAdd, setStoreAdd] = React.useState(false);
@@ -34159,15 +34160,24 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
   // 業者候補（名前・エリア・許可でAND、各条件内はOR）
   const nq = vName.trim().toLowerCase();
   const selAreas = new Set(areaFilter.map(String));
+  const selAuths = new Set(authFilter);
   const selPerms = new Set(permFilter);
-  const filtersActive = nq || selAreas.size || selPerms.size;
+  const filtersActive = nq || selAreas.size || selAuths.size || selPerms.size;
   const vHits = !filtersActive ? [] : vendors.filter(v=>{
     if(nq && !String(v.name||"").toLowerCase().includes(nq)) return false;
-    if(selAreas.size && !(v.municipalityIds||[]).some(id=>selAreas.has(String(id)))) return false;
+    if(selAreas.size || selAuths.size){
+      const muniOk = selAreas.size && (v.municipalityIds||[]).some(id=>selAreas.has(String(id)));
+      const authOk = selAuths.size && (v.sanpaiPermits||[]).some(sp=>selAuths.has(sp.auth));
+      if(!(muniOk||authOk)) return false;
+    }
     if(selPerms.size && !(v.permitTypes||[]).some(pt=>selPerms.has(pt))) return false;
     return true;
   }).slice(0,60);
-  const areaHits = areaQ.trim() ? munis.filter(m=>String(m.name||"").includes(areaQ.trim()) && !selAreas.has(String(m.id))).slice(0,12) : [];
+  const _aq = areaQ.trim();
+  const areaHits = _aq ? [
+    ...munis.filter(m=>String(m.name||"").includes(_aq) && !selAreas.has(String(m.id))).slice(0,8).map(m=>({kind:"muni",id:m.id,name:m.name})),
+    ...((typeof SANPAI_AUTHORITIES!=="undefined"?SANPAI_AUTHORITIES:[]).filter(a=>a.name.includes(_aq) && !selAuths.has(a.name)).slice(0,8).map(a=>({kind:"auth",name:a.name,tag:a.type})))
+  ] : [];
 
   // ===== 見積依頼ポータル =====
   const PORTAL_ON = !!(typeof QUOTE_PORTAL_URL!=="undefined" && QUOTE_PORTAL_URL);
@@ -34432,15 +34442,15 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
         <div style={{display:"flex",gap:"0.5rem",flexWrap:"wrap",alignItems:"center",marginBottom:"0.5rem"}}>
           <input value={vName} onChange={e=>setVName(e.target.value)} placeholder="🔍 業者名" style={{flex:1,minWidth:140,padding:"0.4rem 0.6rem",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:"0.8rem",fontFamily:"inherit"}}/>
           <div style={{position:"relative",flex:1,minWidth:140}}>
-            <input value={areaQ} onChange={e=>setAreaQ(e.target.value)} placeholder="🗺 エリア（自治体）を追加" style={{width:"100%",boxSizing:"border-box",padding:"0.4rem 0.6rem",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:"0.8rem",fontFamily:"inherit"}}/>
-            {areaHits.length>0&&(<div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:25,background:"white",border:`1.5px solid ${C.accent}`,borderRadius:8,maxHeight:200,overflowY:"auto",marginTop:2,boxShadow:C.shadowMd}}>{areaHits.map(m=>(<button key={m.id} onClick={()=>{setAreaFilter([...areaFilter,m.id]);setAreaQ("");}} style={{display:"block",width:"100%",textAlign:"left",padding:"0.35rem 0.6rem",border:"none",borderBottom:`1px solid ${C.borderLight}`,background:"white",cursor:"pointer",fontFamily:"inherit",fontSize:"0.78rem",color:C.text}}>{m.name}</button>))}</div>)}
+            <input value={areaQ} onChange={e=>setAreaQ(e.target.value)} placeholder="🗺 エリア（自治体/産廃権者）を追加" style={{width:"100%",boxSizing:"border-box",padding:"0.4rem 0.6rem",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:"0.8rem",fontFamily:"inherit"}}/>
+            {areaHits.length>0&&(<div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:25,background:"white",border:`1.5px solid ${C.accent}`,borderRadius:8,maxHeight:220,overflowY:"auto",marginTop:2,boxShadow:C.shadowMd}}>{areaHits.map(h=>(<button key={h.kind+(h.id||h.name)} onClick={()=>{ if(h.kind==="auth"){setAuthFilter([...authFilter,h.name]);} else {setAreaFilter([...areaFilter,h.id]);} setAreaQ(""); }} style={{display:"block",width:"100%",textAlign:"left",padding:"0.35rem 0.6rem",border:"none",borderBottom:`1px solid ${C.borderLight}`,background:"white",cursor:"pointer",fontFamily:"inherit",fontSize:"0.78rem",color:C.text}}>{h.kind==="auth"?<span>🏭 {h.name}<span style={{color:C.textMuted,fontSize:"0.62rem"}}> 産廃権者[{h.tag}]</span></span>:<span>🏛 {h.name}</span>}</button>))}</div>)}
           </div>
         </div>
-        {areaFilter.length>0&&(<div style={{display:"flex",gap:"0.3rem",flexWrap:"wrap",marginBottom:"0.5rem"}}>{areaFilter.map(id=>(<span key={id} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:"0.7rem",background:C.accentBg,color:C.accentDark,borderRadius:999,padding:"0.15rem 0.5rem",fontWeight:700}}>{muniName(id)}<button onClick={()=>setAreaFilter(areaFilter.filter(x=>String(x)!==String(id)))} style={{border:"none",background:"none",color:C.accentDark,cursor:"pointer",fontFamily:"inherit",padding:0}}>×</button></span>))}</div>)}
+        {(areaFilter.length>0||authFilter.length>0)&&(<div style={{display:"flex",gap:"0.3rem",flexWrap:"wrap",marginBottom:"0.5rem"}}>{areaFilter.map(id=>(<span key={"m"+id} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:"0.7rem",background:C.accentBg,color:C.accentDark,borderRadius:999,padding:"0.15rem 0.5rem",fontWeight:700}}>🏛 {muniName(id)}<button onClick={()=>setAreaFilter(areaFilter.filter(x=>String(x)!==String(id)))} style={{border:"none",background:"none",color:C.accentDark,cursor:"pointer",fontFamily:"inherit",padding:0}}>×</button></span>))}{authFilter.map(a=>(<span key={"a"+a} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:"0.7rem",background:"#FFE8CF",color:"#9a3412",borderRadius:999,padding:"0.15rem 0.5rem",fontWeight:700}}>🏭 {a}<button onClick={()=>setAuthFilter(authFilter.filter(x=>x!==a))} style={{border:"none",background:"none",color:"#9a3412",cursor:"pointer",fontFamily:"inherit",padding:0}}>×</button></span>))}</div>)}
         <div style={{display:"flex",gap:"0.3rem",flexWrap:"wrap",alignItems:"center"}}>
           <span style={{fontSize:"0.68rem",color:C.textSub,fontWeight:700}}>許可(いずれか):</span>
           {PT.map(pt=>{ const on=selPerms.has(pt); return (<button key={pt} onClick={()=>setPermFilter(on?permFilter.filter(x=>x!==pt):[...permFilter,pt])} style={{fontSize:"0.68rem",fontWeight:700,padding:"0.2rem 0.55rem",borderRadius:999,border:`1px solid ${on?C.accent:C.border}`,background:on?C.accent:"white",color:on?"white":C.textSub,cursor:"pointer",fontFamily:"inherit"}}>{pt}</button>);})}
-          {(areaFilter.length>0||permFilter.length>0||vName)&&<button onClick={()=>{setVName("");setAreaFilter([]);setPermFilter([]);}} style={{marginLeft:"auto",fontSize:"0.68rem",color:C.textMuted,border:"none",background:"none",cursor:"pointer",fontFamily:"inherit"}}>絞り込み解除</button>}
+          {(areaFilter.length>0||authFilter.length>0||permFilter.length>0||vName)&&<button onClick={()=>{setVName("");setAreaFilter([]);setAuthFilter([]);setPermFilter([]);}} style={{marginLeft:"auto",fontSize:"0.68rem",color:C.textMuted,border:"none",background:"none",cursor:"pointer",fontFamily:"inherit"}}>絞り込み解除</button>}
         </div>
         {filtersActive&&(
           <div style={{marginTop:"0.5rem",maxHeight:240,overflowY:"auto",border:`1px solid ${C.borderLight}`,borderRadius:8}}>
@@ -34450,6 +34460,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:"0.8rem",fontWeight:600,color:C.text}}>{v.name}</div>
                   <div style={{fontSize:"0.64rem",color:C.textMuted}}>{(v.permitTypes||[]).join("・")||"許可未設定"}{v.phone?` ／ ${v.phone}`:""}</div>
+                  {(v.sanpaiPermits||[]).length>0&&<div style={{fontSize:"0.6rem",color:"#9a3412"}}>🏭 {[...new Set((v.sanpaiPermits||[]).map(sp=>sp.auth))].slice(0,6).join("・")}</div>}
                 </div>
                 <button disabled={added} onClick={()=>addVendor(v)} style={{padding:"0.25rem 0.6rem",borderRadius:8,border:"none",background:added?"#e5e7eb":C.accent,color:added?C.textMuted:"white",fontWeight:700,fontSize:"0.7rem",cursor:added?"default":"pointer",fontFamily:"inherit"}}>{added?"追加済":"＋追加"}</button>
               </div>
