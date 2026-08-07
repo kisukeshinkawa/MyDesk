@@ -2428,6 +2428,15 @@ def market_flow(force=False):
 
     rk = run_ranking(force=False)
     rows = rk.get("rows", [])
+    # β・5日騰落を入れる前のキャッシュを掴むと中身が空になる。
+    # 項目が欠けていたらランキングを作り直す(機能追加の直後に必ず起きるため)
+    if rows and not any(r.get("chg5d") is not None and r.get("beta") for r in rows):
+        print("ranking cache is stale (no beta/chg5d)")
+        if force:
+            rk = run_ranking(force=True)
+            rows = rk.get("rows", [])
+        else:
+            _self_invoke("ranking")      # 裏で作り直して次回に間に合わせる
     news = get_market_news()
     themes = detect_themes(news.get("news", []))
 
@@ -2474,6 +2483,7 @@ def market_flow(force=False):
 
     out = {"sectors": sector_flow(rows), "themes": themes, "drivers": drivers,
            "scanned": len(rows),
+           "rankingAt": rk.get("updatedAt"),
            "betaCovered": len([r for r in rows if r.get("beta")]),
            "sectorCovered": len([r for r in rows if r.get("sector")]),
            "newsCount": len(news.get("news", [])),
