@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 // MyTrade — 投資専用スタンドアロンアプリ (MyDeskから分離)
 // バックエンド: mydesk-stock-analysis Lambda (共用・変更不要)
 // ═══════════════════════════════════════════════════════════════
-const MYTRADE_BUILD = "2026-08-08-v38-simple";
+const MYTRADE_BUILD = "2026-08-08-v39-collapse";
 
 // 牽引役の日本語名(連動係数βの表示に使う)
 const FLOW_DRIVER_JA = {sox:"半導体", oil:"原油", gold:"金", defense:"防衛",
@@ -415,6 +415,7 @@ function StockView({currentUser}) {
   const [brief, setBrief]         = useState(null);  // プロトレーダーの視点(日次ブリーフ)
   const [mktNews, setMktNews]     = useState(null);  // 市場全体ニュース
   const [flow, setFlow]           = useState(null);  // 資金の流れ・テーマ・連動銘柄
+  const [autoOpen, setAutoOpen]   = useState(()=>localStorage.getItem("mt_autoOpen")==="1"); // AI運用の設定を開くか
   const [chart, setChart]         = useState(null);  // プロチャートデータ
   const [chartPeriod, setChartPeriod] = useState("6mo");
   const [chartLive, setChartLive] = useState(null);   // 分足表示中は自動更新
@@ -1913,15 +1914,25 @@ function StockView({currentUser}) {
                   {autoCfg&&autoCfg.enabled?"稼働中(操作不要)":"停止中"}
                 </span>
               </div>
-              <div style={{fontSize:"0.68rem",color:C.textSub,marginTop:"0.15rem",lineHeight:1.6}}>
-                毎朝8時にAIの判断で自動売買します。損切り・利確も自動。<b>実績が自動で貯まるので精度が見えるようになります</b><br/>
-                <span style={{color:C.green}}>初期値は25年検証で最良だった設定(利確3倍・8銘柄分散)です</span><br/>
-                <span style={{color:C.textMuted}}>「単元未満株」ON = 1株から購入(SBIのS株・楽天のかぶミニ等)。100万円でも値がさ株を分散して買えます</span><br/>
-                <span style={{color:C.purple}}>「分割利確」= 第1目標で半分を利確し、損切りを建値へ上げて残りを伸ばす(勝率が上がります)。
-                「トレーリング」= 高値から指定%下げたら手仕舞い(利益を伸ばしつつ利益を守る)</span><br/>
-                <span style={{color:C.orange}}>「保有方針=長期」= 利確目標で降りずに伸ばし続ける。
-                検証では年利が2倍以上になりました(その分、含み損の期間は長くなります)</span>
-              </div>
+              {/* 常時見せるのは「今どの設定で動いているか」だけ。解説と設定は折りたたむ */}
+              {autoCfg&&(()=>{
+                const MODE={safe:"🛡️ 安定型",balanced:"⚖️ バランス型",aggressive:"🔥 積極型",max:"💀 最大攻撃型"};
+                const a=autoCfg.appliedFrom||{};
+                return (
+                  <div style={{fontSize:"0.72rem",color:C.textSub,marginTop:"0.2rem",lineHeight:1.7}}>
+                    <b style={{color:C.text}}>{MODE[autoCfg.tradeMode]||"設定未選択"}</b>
+                    {autoCfg.autoTune&&<span style={{color:C.green,fontSize:"0.66rem"}}>・毎月自動で最適化</span>}
+                    <br/>
+                    買い{autoCfg.entryScore}点以上 / 利確{autoCfg.rr}倍 / {autoCfg.maxPositions}銘柄まで / 1回のリスク{autoCfg.riskPct}%
+                    {autoCfg.holdMode==="trend"&&" / 長期保有"}
+                    {a.cagrPct!=null&&(
+                      <><br/><span style={{color:C.textMuted}}>この条件の25年検証: 年利
+                        <b style={{color:C.green}}>{a.cagrPct>=0?"+":""}{a.cagrPct}%</b> / 最大下落
+                        <b style={{color:C.red}}>{a.maxDrawdownPct}%</b> / 勝率{a.winRate}%</span></>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
             <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap"}}>
               <button onClick={()=>saveAuto({enabled:!(autoCfg&&autoCfg.enabled)})} disabled={busy.auto}
@@ -1932,7 +1943,20 @@ function StockView({currentUser}) {
                 style={{padding:"0.5rem 0.9rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}}>
                 {busy.auto?"実行中...":"今すぐ1回実行"}
               </button>
+              <button onClick={()=>{const v=!autoOpen;setAutoOpen(v);localStorage.setItem("mt_autoOpen",v?"1":"0");}}
+                style={{padding:"0.5rem 0.9rem",borderRadius:8,border:`1px solid ${C.border}`,background:"white",color:C.accentDark,fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}}>
+                {autoOpen?"▲ 設定を閉じる":"⚙️ 設定・運用タイプ"}
+              </button>
             </div>
+          </div>
+          <div style={{display:autoOpen?"block":"none"}}>
+          <div style={{fontSize:"0.68rem",color:C.textSub,marginTop:"0.5rem",lineHeight:1.6}}>
+            毎朝8時にAIの判断で自動売買します。損切り・利確も自動。<b>実績が自動で貯まるので精度が見えるようになります</b><br/>
+            <span style={{color:C.textMuted}}>「単元未満株」ON = 1株から購入(SBIのS株・楽天のかぶミニ等)。100万円でも値がさ株を分散して買えます</span><br/>
+            <span style={{color:C.purple}}>「分割利確」= 第1目標で半分を利確し、損切りを建値へ上げて残りを伸ばす(勝率が上がります)。
+            「トレーリング」= 高値から指定%下げたら手仕舞い(利益を伸ばしつつ利益を守る)</span><br/>
+            <span style={{color:C.orange}}>「保有方針=長期」= 利確目標で降りずに伸ばし続ける。
+            検証では年利が2倍以上になりました(その分、含み損の期間は長くなります)</span>
           </div>
           {/* 🎚️ 運用タイプの選択(検証済みの数字つき) */}
           {autoCfg&&opt&&opt.presets&&(
@@ -1968,11 +1992,25 @@ function StockView({currentUser}) {
                           {busy.auto?"適用中...":"このタイプでAIに任せる"}
                         </button>
                       )}
-                      {cur&&(
-                        <div style={{marginTop:"0.3rem",fontSize:"0.62rem",color:col,fontWeight:700}}>
-                          運用中{autoCfg.autoTune?"・毎月自動で最適化":""}
-                        </div>
-                      )}
+                      {cur&&(()=>{
+                        const ap=autoCfg.appliedFrom||{};
+                        // 信用前提の条件は現物版に置き換わるため、カードの数字と実際が食い違う。
+                        // 「運用中」と出しながら別の成績を見せると誤解を生むので、実際の条件を併記する
+                        const diff=ap.cagrPct!=null&&Math.abs(ap.cagrPct-r.cagrPct)>0.05;
+                        return (
+                          <div style={{marginTop:"0.3rem",fontSize:"0.62rem",color:col,fontWeight:700,lineHeight:1.55}}>
+                            運用中{autoCfg.autoTune?"・毎月自動で最適化":""}
+                            {diff&&(
+                              <div style={{marginTop:"0.2rem",padding:"0.3rem 0.4rem",background:C.yellowBg,borderRadius:6,color:C.yellow,fontWeight:700}}>
+                                ⚠️ 上の数字は<b>信用取引が前提</b>の条件です。デモ口座は現物のみなので、
+                                実際に動いているのは<br/>
+                                <span style={{color:C.text}}>年利<b>{ap.cagrPct>=0?"+":""}{ap.cagrPct}%</b> / 最大下落<b>{ap.maxDrawdownPct}%</b> / {ap.maxPositions}銘柄</span>
+                                の現物版です
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   );
                 })}
@@ -2065,6 +2103,7 @@ function StockView({currentUser}) {
               </span>
             </div>
           )}
+          </div>
           {autoCfg&&(autoCfg.log||[]).length>0&&(
             <div style={{marginTop:"0.5rem",paddingTop:"0.45rem",borderTop:`1px solid ${C.borderLight}`}}>
               <div style={{fontSize:"0.68rem",fontWeight:800,color:C.textSub,marginBottom:"0.2rem"}}>📋 自動売買の記録</div>
