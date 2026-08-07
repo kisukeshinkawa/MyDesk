@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 // MyTrade — 投資専用スタンドアロンアプリ (MyDeskから分離)
 // バックエンド: mydesk-stock-analysis Lambda (共用・変更不要)
 // ═══════════════════════════════════════════════════════════════
-const MYTRADE_BUILD = "2026-08-08-v21-mobile-24h";
+const MYTRADE_BUILD = "2026-08-08-v22-oddlot";
 if (typeof window !== "undefined") {
   window.__MYTRADE_BUILD = MYTRADE_BUILD;
   console.log(`[MyTrade] Build: ${MYTRADE_BUILD}`);
@@ -1581,7 +1581,8 @@ function StockView({currentUser}) {
               </div>
               <div style={{fontSize:"0.68rem",color:C.textSub,marginTop:"0.15rem",lineHeight:1.6}}>
                 毎朝8時にAIの判断で自動売買します。損切り・利確も自動。<b>実績が自動で貯まるので精度が見えるようになります</b><br/>
-                <span style={{color:C.green}}>初期値は25年検証で最良だった設定(利確3倍・8銘柄分散)です</span>
+                <span style={{color:C.green}}>初期値は25年検証で最良だった設定(利確3倍・8銘柄分散)です</span><br/>
+                <span style={{color:C.textMuted}}>「単元未満株」ON = 1株から購入(SBIのS株・楽天のかぶミニ等)。100万円でも値がさ株を分散して買えます</span>
               </div>
             </div>
             <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap"}}>
@@ -1614,6 +1615,13 @@ function StockView({currentUser}) {
                   style={{marginLeft:"0.25rem",padding:"0.15rem",borderRadius:6,border:`1px solid ${C.border}`,fontFamily:"inherit",fontSize:"0.7rem"}}>
                   {[2,3,4].map(v=><option key={v} value={v}>損切り幅の{v}倍</option>)}
                 </select>
+              </span>
+              <span>
+                <label style={{display:"inline-flex",alignItems:"center",gap:"0.2rem",cursor:"pointer"}}>
+                  <input type="checkbox" checked={autoCfg.oddLot!==false} onChange={e=>saveAuto({oddLot:e.target.checked})}
+                    style={{accentColor:C.accent}}/>
+                  単元未満株を使う
+                </label>
               </span>
               <span>確信度
                 <select value={autoCfg.minConviction} onChange={e=>saveAuto({minConviction:parseInt(e.target.value,10)})}
@@ -1744,7 +1752,7 @@ function StockView({currentUser}) {
                 disabled={busy.paper} style={{padding:"0.5rem 1rem",borderRadius:8,border:"none",background:C.red,color:"white",fontWeight:800,fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit"}}>売る</button>
             </div>
             <div style={{fontSize:"0.66rem",color:C.textSub,marginTop:"0.35rem"}}>
-              日本株は100株単位です。ホームの「💰具体的な売買プラン」からワンタップ発注もできます。
+              {autoCfg&&autoCfg.oddLot!==false?"単元未満株がONなので1株から注文できます":"日本株は100株単位です"}。ホームの「💰具体的な売買プラン」からワンタップ発注もできます。
             </div>
           </div>
 
