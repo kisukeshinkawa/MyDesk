@@ -1148,7 +1148,7 @@ def get_news(ticker, name=""):
 
 
 # ═══════════════════════ 戦略シミュレーション(資産曲線・年利・最大DD) ═══════════════════════
-def _prepare_sim(tickers, years, min_score=65):
+def _prepare_sim(tickers, years, min_score=65, limit=20):
     """シミュレーション用の下ごしらえ。スコアはパラメータに依存しないので一度だけ計算し、
     買い候補(スコアが最低基準以上かつ地合いOKの日)を銘柄ごとに列挙しておく。
     これにより複数のパラメータ条件を高速に比較できる。"""
@@ -1167,7 +1167,7 @@ def _prepare_sim(tickers, years, min_score=65):
     drivers = _sim_drivers(years)
     driver_up = {k: v["up"] for k, v in drivers.items()}
     prep = {}
-    for t in tickers[:20]:
+    for t in tickers[:limit]:
         try:
             df = fetch_history(t, f"{years}y")
             if len(df) < 250:
@@ -1551,8 +1551,9 @@ def simulate_grid(tickers=None, years=25, initial=1000000):
 def compare_correlation(tickers=None, years=25, initial=1000000, base=None):
     """連動性(相関)を売買判断に使うと本当に成績が上がるのかを、過去25年で測る。
     今の設定を基準に、仕組みを1つずつ足して比べる。効かなかったものは採用しない。"""
-    tickers = tickers or DEFAULT_UNIVERSE
-    prep = _prepare_sim(tickers, years)
+    # 候補が少ないと「弾いた枠を別の銘柄で埋める」ができず、集中回避を過小評価してしまう
+    tickers = tickers or CORR_UNIVERSE
+    prep = _prepare_sim(tickers, years, limit=int(os.environ.get("CORR_TICKERS", "60")))
     if not prep:
         raise Exception("シミュレーション用のデータが取得できません")
     all_dates = sorted({d for v in prep.values() for d in v["dates"]})[200:]
@@ -1593,6 +1594,10 @@ def compare_correlation(tickers=None, years=25, initial=1000000, base=None):
         r["cagrDiff"] = round(r["cagrPct"] - base_row["cagrPct"], 2)
         r["ddDiff"] = round(r["maxDrawdownPct"] - base_row["maxDrawdownPct"], 1)
         r["calmarDiff"] = round(r["calmar"] - base_row["calmar"], 2)
+        # 取引が激減していたら「別の銘柄に入れ替えた」のではなく「買わずに見送った」だけ。
+        # 候補が足りていないサインなので、結論を出す前に確認できるようにする
+        r["tradesDiff"] = r["trades"] - base_row["trades"]
+        r["tradeKeepPct"] = round(r["trades"] / base_row["trades"] * 100) if base_row["trades"] else 0
         # 採用の可否は「効率(年利÷最大下落)が上がったか」で決める。
         # 下落だけ浅くなってもリターンをそれ以上削っていたら、採用する理由はない
         if r["calmarDiff"] > 0.02:
@@ -1840,6 +1845,28 @@ def compute_stats(preds):
 DEFAULT_UNIVERSE = ["7203.T", "6758.T", "8306.T", "9984.T", "6501.T", "8058.T", "6981.T",
                     "9433.T", "4063.T", "7974.T",
                     "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "JPM", "JNJ", "XOM", "PG", "KO"]
+
+# 連動性(相関)の検証用。集中回避は「弾いた枠を別の銘柄で埋められるか」で価値が決まるため、
+# 候補が少ないと入れ替えではなく単なる機会損失になり、正しく評価できない。
+# 業種と連動先(半導体/資源/金融/内需/ヘルスケア等)を意図的に散らしてある。
+CORR_UNIVERSE = [
+    # 日本: 半導体・電子
+    "6501.T", "6503.T", "6594.T", "6758.T", "6857.T", "6920.T", "6981.T", "8035.T", "4063.T", "4062.T",
+    # 日本: 自動車・機械
+    "7203.T", "7267.T", "7011.T", "6301.T", "6367.T", "6273.T",
+    # 日本: 金融・不動産
+    "8306.T", "8316.T", "8411.T", "8766.T", "8801.T", "8802.T",
+    # 日本: 資源・素材・エネルギー
+    "5401.T", "5019.T", "5020.T", "8058.T", "8001.T", "4005.T",
+    # 日本: 内需・通信・小売・医薬
+    "9433.T", "9432.T", "9983.T", "3382.T", "4502.T", "4503.T", "2914.T", "4661.T", "9020.T", "7974.T",
+    # 米国: 半導体・IT
+    "NVDA", "AMD", "AVGO", "AMAT", "LRCX", "MU", "AAPL", "MSFT", "GOOGL", "ORCL",
+    # 米国: 金融・エネルギー・資源
+    "JPM", "BAC", "GS", "XOM", "CVX", "SLB", "FCX", "NEM",
+    # 米国: 生活必需品・ヘルスケア・公益・小売
+    "JNJ", "PFE", "UNH", "PG", "KO", "WMT", "COST", "SO", "DUK", "AMZN",
+]
 
 
 def build_indicator_frame(df):

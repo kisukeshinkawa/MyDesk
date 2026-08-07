@@ -48,8 +48,12 @@ for i, r in enumerate(rows):
     if i:
         print("{:<28}{:>+8.2f} {:>+10.1f} {:>8}{:>+8.2f}   ← 基準との差".format(
             "", r["cagrDiff"], r["ddDiff"], "", r["calmarDiff"]))
+        keep = r.get("tradeKeepPct")
+        if keep is not None and keep < 70:
+            print("{:<28}取引が基準の{}%まで減少 ← 入れ替えではなく見送りが増えている".format("", keep))
 print()
 print("効率 = 年利 ÷ 最大下落。同じリターンなら下落が小さいほど良い設定です")
+print("取引回数が大きく減っている条件は、代わりに買う銘柄が無くて見送っただけの可能性があります")
 print()
 print("【結論】" + d.get("verdict", ""))
 if d.get("improved"):
