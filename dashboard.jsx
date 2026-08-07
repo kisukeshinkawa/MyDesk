@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-08-v355-quote-paginate"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-08-v356-quote-autosync-vendor"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -33994,6 +33994,49 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
     return out;
   };
 
+  // 回答を「案件の見積」＋「業者詳細(メモ)」の両方へ反映する共通処理（業者詳細をマスタに）
+  const applyRespToState = (baseData, projId, respByToken) => {
+    const now=new Date().toISOString(); let changed=false; let curVendors=baseData.vendors||[];
+    const nextProjects=(baseData.quoteProjects||[]).map(x=>{
+      if(x.id!==projId) return x;
+      const nv=(x.vendors||[]).map(qv=>{
+        const rq=qv.portalToken?respByToken[qv.portalToken]:null;
+        if(rq && rq.status==="responded" && rq.response){
+          changed=true; const wasAnswered=qv.status==="回答済"; const prices={...(qv.prices||{})};
+          (rq.response.lines||[]).forEach(l=>{ if(l&&l.itemId!=null) prices[l.itemId]={method:l.method||"",unit:l.unit||"",qty:l.qty||"",unitType:l.unitType||"",transport:l.transport||"",disposal:l.disposal||"",flat:l.flat||"",overhead:l.overhead||"",condition:l.condition||l.note||"",note:l.note||"",amount:l.amount||""}; });
+          if(!wasAnswered){ // 初回回答時のみ業者詳細(メモ)へ保存
+            const memoText="【見積回答:"+x.name+"】回答済"+(rq.response.vendorNote?(" 連絡:"+rq.response.vendorNote):"");
+            curVendors=curVendors.map(vv=>String(vv.id)===String(qv.vendorId)?{...vv, memos:[...(vv.memos||[]),{id:rid("mn"),text:memoText,userId:currentUser?.id,date:now}], updatedAt:now.slice(0,10)}:vv);
+          }
+          return {...qv, prices, status:"回答済", respondedAt:rq.respondedAt, vendorNote:(rq.response.vendorNote||"")};
+        }
+        return qv;
+      });
+      return {...x, vendors:nv, updatedAt:changed?now:x.updatedAt};
+    });
+    return {changed, nextData:{...baseData, quoteProjects:nextProjects, vendors:curVendors}};
+  };
+  // 案件を開いたら、発行済み(未回答)リンクの回答を自動フェッチして反映（1案件につき1回・過負荷防止で上限800）
+  const autoSyncedRef = React.useRef({});
+  React.useEffect(()=>{
+    if(!activeId || !QUOTE_PORTAL_URL || autoSyncedRef.current[activeId]) return;
+    const proj=(data.quoteProjects||[]).find(x=>x.id===activeId);
+    if(!proj) return;
+    const pending=(proj.vendors||[]).filter(v=>v.portalToken && v.status!=="回答済");
+    autoSyncedRef.current[activeId]=true;
+    if(!pending.length) return;
+    let cancelled=false;
+    (async()=>{
+      const post=async(b)=>{ const r=await fetch(QUOTE_PORTAL_URL,{method:"POST",headers:{"content-type":"text/plain;charset=UTF-8"},body:JSON.stringify({...b,secret:DB_API_SECRET})}); return r.json(); };
+      const tokens=pending.map(v=>v.portalToken); const respByToken={};
+      for(let i=0;i<tokens.length && i<800;i+=80){ if(cancelled) return; try{ const j=await post({action:"fetch", tokens:tokens.slice(i,i+80)}); ((j&&j.requests)||[]).forEach(rq=>{ if(rq&&rq.token) respByToken[rq.token]=rq; }); }catch(e){} }
+      if(cancelled) return;
+      const {changed,nextData}=applyRespToState(data, activeId, respByToken);
+      if(changed && !cancelled) persistData(nextData);
+    })();
+    return ()=>{ cancelled=true; };
+  }, [activeId]);
+
   // ---- 一覧 ----
   if(!active){
     return (
@@ -34241,9 +34284,12 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
     setPortalBusy(qv.id);
     try{
       const j=await portalPost({action:"fetch", tokens:[qv.portalToken]});
-      const merged=mergeResp(qv, j&&j.requests&&j.requests[0]);
-      if(merged){ patchVendor(qv.id, merged); window.alert("✅ 回答を取り込みました"+(merged.vendorNote?("\\n連絡: "+merged.vendorNote):"")); }
-      else window.alert("まだ回答がありません（未回答）。");
+      const req=j&&j.requests&&j.requests[0];
+      if(req && req.status==="responded" && req.response){
+        const {changed,nextData}=applyRespToState(data, p.id, {[qv.portalToken]:req});
+        if(changed) persistData(nextData);
+        window.alert("✅ 回答を取り込みました（業者詳細にも保存）"+(req.response.vendorNote?("\\n連絡: "+req.response.vendorNote):""));
+      } else window.alert("まだ回答がありません（未回答）。");
     }catch(e){ window.alert("通信エラー: "+(e&&e.message||e)); }
     setPortalBusy("");
   };
@@ -34254,18 +34300,19 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
     if(!PORTAL_ON){ window.alert("ポータルURLが未設定です。"); return; }
     if(!withTok.length){ window.alert("発行済みリンクがありません。先に各業者でリンクを発行してください。"); return; }
     setPortalBusy("__all__");
-    let updated=0;
-    let cur=(p.vendors||[]);
+    const respByToken={};
     try{
       for(const qv of withTok){
         const items=buildReqItemsFor(qv);
         await portalPost({action:"create", token:qv.portalToken, payload:{ projectId:p.id, projectName:p.name, company:p.companyName||"", vendorId:qv.vendorId, vendorName:qv.vendorName, items }});
         const j=await portalPost({action:"fetch", tokens:[qv.portalToken]});
-        const merged=mergeResp(qv, j&&j.requests&&j.requests[0]);
-        if(merged){ cur=cur.map(x=>x.id===qv.id?merged:x); updated++; }
+        const req=j&&j.requests&&j.requests[0];
+        if(req) respByToken[qv.portalToken]=req;
       }
-      upd(p.id,{vendors:cur});
-      window.alert(`🔄 リンクを最新化しました（回答反映 ${updated}件 / 対象 ${withTok.length}件）`);
+      const {changed,nextData}=applyRespToState(data, p.id, respByToken);
+      if(changed) persistData(nextData);
+      const updated=Object.values(respByToken).filter(r=>r&&r.status==="responded").length;
+      window.alert(`🔄 リンクを最新化しました（回答反映 ${updated}件 / 対象 ${withTok.length}件・業者詳細にも保存）`);
     }catch(e){ window.alert("通信エラー: "+(e&&e.message||e)); }
     setPortalBusy("");
   };
