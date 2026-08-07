@@ -339,7 +339,10 @@ def lambda_handler(event, context):
         if action == "autotrade-run":
             return _res(200, run_autotrade())
         if action == "chart":
-            return _res(200, get_chart(body["ticker"], body.get("period", "6mo"), body.get("interval", "1d")))
+            iv = body.get("interval", "1d")
+            if iv in INTRADAY:
+                return _res(200, get_intraday(body["ticker"], iv))
+            return _res(200, get_chart(body["ticker"], body.get("period", "6mo"), iv))
         if action == "paper":
             acc = body.get("account")
             if acc:
@@ -2590,6 +2593,59 @@ def performance_dashboard():
 
 # ═══════════════════════ チャートデータ(期間切替+サブ指標) ═══════════════════════
 CHART_PERIODS = {"3mo": (120, 1), "6mo": (200, 1), "1y": (400, 1), "3y": (1150, 3), "5y": (1900, 5)}
+
+
+INTRADAY = {"1m": ("1d", 60), "5m": ("5d", 90), "15m": ("1mo", 120), "1h": ("3mo", 300)}
+
+
+def get_intraday(ticker, interval="5m"):
+    """分足・時間足(ザラ場の値動き)。株価と同じく約20分遅延だが、日中の動きが見える。"""
+    period, ttl = INTRADAY.get(interval, INTRADAY["5m"])
+    key = f"chart/{ticker}_intra_{interval}.json"
+    cached = cache_get(key, ttl)
+    if cached:
+        return cached
+    import yfinance as yf
+    df = yf.Ticker(ticker).history(period=period, interval=interval, auto_adjust=True)
+    if df is None or len(df) < 3:
+        raise Exception(f"{ticker}: {interval}足のデータが取得できません")
+    df = df.dropna()
+    close = df["Close"]
+    ma_fast = close.rolling(min(9, max(2, len(df) // 10))).mean()
+    ma_slow = close.rolling(min(25, max(3, len(df) // 4))).mean()
+    delta = close.diff()
+    gain = delta.clip(lower=0).rolling(14).mean()
+    loss = (-delta.clip(upper=0)).rolling(14).mean()
+    rsi = 100 - 100 / (1 + gain / loss.replace(0, float("nan")))
+    e12 = close.ewm(span=12, adjust=False).mean()
+    e26 = close.ewm(span=26, adjust=False).mean()
+    macd = e12 - e26
+    hist = macd - macd.ewm(span=9, adjust=False).mean()
+
+    n = min(len(df), 160)
+    idx = list(range(len(df) - n, len(df)))
+
+    def val(sr, i):
+        v = sr.iloc[i]
+        return None if v is None or (isinstance(v, float) and math.isnan(v)) else round(float(v), 2)
+
+    fmt = "%H:%M" if interval in ("1m", "5m") else "%m/%d %H:%M"
+    out = {"ticker": ticker, "period": period, "interval": interval, "intraday": True,
+           "candles": [{"d": df.index[i].strftime(fmt),
+                        "o": round(float(df["Open"].iloc[i]), 2), "h": round(float(df["High"].iloc[i]), 2),
+                        "l": round(float(df["Low"].iloc[i]), 2), "c": round(float(close.iloc[i]), 2),
+                        "v": float(df["Volume"].iloc[i])} for i in idx],
+           "ma25": [val(ma_fast, i) for i in idx],
+           "ma75": [val(ma_slow, i) for i in idx],
+           "ma200": [None] * len(idx),
+           "rsi": [val(rsi, i) for i in idx],
+           "macdHist": [val(hist, i) for i in idx],
+           "lastClose": round(float(close.iloc[-1]), 2),
+           "lastDate": df.index[-1].strftime("%Y-%m-%d %H:%M"),
+           "prevClose": round(float(close.iloc[0]), 2),
+           "updatedAt": datetime.now(timezone.utc).isoformat()}
+    cache_put(key, out)
+    return out
 
 
 def get_chart(ticker, period="6mo", interval="1d"):

@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 // MyTrade — 投資専用スタンドアロンアプリ (MyDeskから分離)
 // バックエンド: mydesk-stock-analysis Lambda (共用・変更不要)
 // ═══════════════════════════════════════════════════════════════
-const MYTRADE_BUILD = "2026-08-08-v25-inline-chart";
+const MYTRADE_BUILD = "2026-08-08-v26-intraday";
 if (typeof window !== "undefined") {
   window.__MYTRADE_BUILD = MYTRADE_BUILD;
   console.log(`[MyTrade] Build: ${MYTRADE_BUILD}`);
@@ -261,6 +261,7 @@ function StockProChart({data,levels,show={},width=560}) {
 // 保有1銘柄のカード: 何株・いくらで買って・今いくらで・損益いくら・値動き・損切り/利確まで
 function HoldingCard({p, color, onOpen, onSell, onChart, chart, busyChart, beginner}) {
   const [open, setOpen] = React.useState(false);
+  const [iv, setIv] = React.useState("5m");
   const up = p.pnl>=0;
   const myChart = chart && chart.ticker===p.ticker ? chart : null;
   const sp = p.spark||[];
@@ -321,23 +322,37 @@ function HoldingCard({p, color, onOpen, onSell, onChart, chart, busyChart, begin
           {p.short!=null&&<span style={S.chip(C.borderLight,C.textSub)}>短期{p.short}</span>}
           {p.long!=null&&<span style={S.chip(C.borderLight,C.textSub)}>長期{p.long}</span>}
           {p.sector&&<span style={S.chip(C.borderLight,C.textMuted)}>{p.sector}</span>}
-          {(onChart||onOpen)&&<button onClick={()=>{ const n=!open; setOpen(n); if(n&&onChart&&(!myChart)) onChart(); }}
+          {(onChart||onOpen)&&<button onClick={()=>{ const n=!open; setOpen(n); if(n&&onChart) onChart(iv); }}
             style={{...S.iconBtn,color:C.accent,fontSize:"0.68rem",fontWeight:700}}>{open?"チャートを閉じる ▲":"チャートを見る ▼"}</button>}
           {onSell&&<button onClick={onSell} style={{marginLeft:"auto",padding:"0.25rem 0.6rem",borderRadius:7,border:"none",background:C.redBg,color:C.red,fontWeight:700,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit"}}>全部売る</button>}
         </div>
       )}
       {open&&(
-        <div style={{marginTop:"0.5rem",padding:"0.4rem",background:C.bg,borderRadius:8}}>
+        <div style={{marginTop:"0.5rem",padding:"0.5rem",background:C.bg,borderRadius:8}}>
+          <div style={{display:"flex",gap:"0.2rem",flexWrap:"wrap",alignItems:"center",marginBottom:"0.35rem"}}>
+            {[["1m","1分"],["5m","5分"],["15m","15分"],["1h","1時間"],["1d","日足"],["1wk","週足"]].map(([v,l])=>(
+              <button key={v} onClick={()=>{setIv(v); onChart&&onChart(v);}}
+                style={{padding:"0.2rem 0.5rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",
+                  fontSize:"0.64rem",fontWeight:700,background:iv===v?C.accent:C.borderLight,color:iv===v?"white":C.textSub}}>{l}</button>
+            ))}
+            {myChart&&myChart.intraday&&(
+              <span style={{fontSize:"0.6rem",color:C.green,fontWeight:700,marginLeft:"auto"}}>
+                ● 自動更新中(30秒ごと)
+              </span>
+            )}
+          </div>
           {busyChart&&!myChart
             ? <div style={{fontSize:"0.7rem",color:C.textMuted,textAlign:"center",padding:"1rem"}}>チャート読み込み中...</div>
             : myChart
               ? <>
                   <StockProChart data={myChart} levels={{stop:p.stop,target1:p.target,entry:p.avgPrice}}/>
                   <div style={{fontSize:"0.62rem",color:C.textMuted,textAlign:"right"}}>
-                    青=取得単価 / 赤=損切り / 緑=利確 ・ {myChart.period||"6mo"} {myChart.lastDate?`(最終 ${myChart.lastDate})`:""}
+                    青=取得単価 / 赤=損切り / 緑=利確
+                    {myChart.lastDate?` ・ 最終 ${myChart.lastDate}`:""}
+                    {myChart.intraday?" (約20分遅延)":""}
                   </div>
                 </>
-              : <div style={{fontSize:"0.7rem",color:C.textMuted,textAlign:"center",padding:"1rem"}}>チャートを取得できませんでした</div>}
+              : <div style={{fontSize:"0.7rem",color:C.textMuted,textAlign:"center",padding:"1rem"}}>この時間軸のデータがありません(市場が閉じている可能性があります)</div>}
         </div>
       )}
     </div>
@@ -395,6 +410,7 @@ function StockView({currentUser}) {
   const [mktNews, setMktNews]     = useState(null);  // 市場全体ニュース
   const [chart, setChart]         = useState(null);  // プロチャートデータ
   const [chartPeriod, setChartPeriod] = useState("6mo");
+  const [chartLive, setChartLive] = useState(null);   // 分足表示中は自動更新
   const [chartIv, setChartIv]     = useState("1d");
   const [chartShow, setChartShow] = useState({bb:false,ichimoku:false,volMa:true});
   const [report, setReport]       = useState(null);  // 朝レポート
@@ -454,6 +470,13 @@ function StockView({currentUser}) {
     } catch(e){ /* 旧Lambda(watchlist未対応)でも動くようフォールバック */ }
     refreshAll();
   })(); /* eslint-disable-next-line */ },[]);
+
+  // 分足チャート表示中は30秒ごとに自動更新(本物のチャートのように動く)
+  useEffect(()=>{
+    if(!chartLive) return;
+    const t = setInterval(()=>{ loadChart(chartLive.ticker, chartLive.interval, true); }, 30000);
+    return ()=>clearInterval(t);
+  /* eslint-disable-next-line */ },[chartLive&&chartLive.ticker, chartLive&&chartLive.interval]);
 
   // 画面幅の監視(スマホ表示の切替)
   useEffect(()=>{
@@ -1420,7 +1443,7 @@ function StockView({currentUser}) {
             </div>
             <div style={{margin:"0.5rem 0 0.75rem",padding:"0.5rem",background:C.bg,borderRadius:"0.625rem"}}>
               <div style={{display:"flex",gap:"0.25rem",marginBottom:"0.4rem",flexWrap:"wrap",alignItems:"center"}}>
-                {[["3mo","3ヶ月"],["6mo","6ヶ月"],["1y","1年"],["3y","3年"],["5y","5年"]].map(([v,l])=>(
+                {[["5m","5分"],["15m","15分"],["1h","1時間"],["3mo","3ヶ月"],["6mo","6ヶ月"],["1y","1年"],["3y","3年"],["5y","5年"]].map(([v,l])=>(
                   <button key={v} onClick={()=>{setChartPeriod(v);loadChart(sel.ticker,v);}}
                     style={{padding:"0.25rem 0.6rem",borderRadius:999,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:"0.68rem",fontWeight:700,
                       background:chartPeriod===v?C.accent:C.borderLight,color:chartPeriod===v?"white":C.textSub}}>{l}</button>
