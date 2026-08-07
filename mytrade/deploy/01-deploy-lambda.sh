@@ -68,7 +68,7 @@ TMPZ=$(mktemp -d)
 cp "$HERE/lambda/lambda_function.py" "$TMPZ/"
 (cd "$TMPZ" && zip -q function.zip lambda_function.py)
 
-ENVVARS="Variables={MYDESK_SECRET=$SECRET,S3_BUCKET=$BUCKET,BEDROCK_MODEL_ID=$BEDROCK_MODEL,BEDROCK_REGION=$REGION,LEARN_YEARS=${LEARN_YEARS:-25}}"
+ENVVARS="Variables={MYDESK_SECRET=$SECRET,S3_BUCKET=$BUCKET,BEDROCK_MODEL_ID=$BEDROCK_MODEL,BEDROCK_REGION=$REGION,LEARN_YEARS=${LEARN_YEARS:-25},CORR_TICKERS=${CORR_TICKERS:-400},SIM_BUDGET=${SIM_BUDGET:-480}}"
 
 if aws lambda get-function --function-name "$FUNC" --region "$REGION" >/dev/null 2>&1; then
   echo "▶ 既存関数を更新..."
@@ -76,14 +76,14 @@ if aws lambda get-function --function-name "$FUNC" --region "$REGION" >/dev/null
     --zip-file "fileb://$TMPZ/function.zip" --region "$REGION" >/dev/null
   aws lambda wait function-updated --function-name "$FUNC" --region "$REGION"
   aws lambda update-function-configuration --function-name "$FUNC" \
-    --timeout 900 --memory-size 2048 --layers "$LAYER_ARN" \
+    --timeout 900 --memory-size ${MEMORY:-10240} --layers "$LAYER_ARN" \
     --environment "$ENVVARS" --region "$REGION" >/dev/null
 else
   echo "▶ 関数を新規作成..."
   aws lambda create-function --function-name "$FUNC" \
     --runtime python3.12 --handler lambda_function.lambda_handler \
     --role "$ROLE_ARN" --zip-file "fileb://$TMPZ/function.zip" \
-    --timeout 900 --memory-size 2048 --layers "$LAYER_ARN" \
+    --timeout 900 --memory-size ${MEMORY:-10240} --layers "$LAYER_ARN" \
     --environment "$ENVVARS" --region "$REGION" >/dev/null
 fi
 aws lambda wait function-updated --function-name "$FUNC" --region "$REGION"

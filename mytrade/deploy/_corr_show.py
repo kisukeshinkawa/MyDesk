@@ -32,8 +32,10 @@ if not d.get("rows"):
     raise SystemExit
 
 p, b = d.get("period", {}), d.get("baseSettings", {})
-print("検証期間 {}年 / {}銘柄 (うち連動先が判明 {}銘柄)".format(
-    p.get("years"), d.get("tickers"), d.get("linkedTickers")))
+print("検証期間 {}年 / {}銘柄で検証 (連動先が判明 {}銘柄 / ユニバース全体 {}銘柄)".format(
+    p.get("years"), d.get("tickers"), d.get("linkedTickers"), d.get("universe", "?")))
+if d.get("requested") and d.get("tickers", 0) < d["requested"]:
+    print("  ※ 時間内に処理できたのは{}銘柄でした(要求{}銘柄)".format(d["tickers"], d["requested"]))
 print("基準の設定: 買い{}点 / 利確{}倍 / {}銘柄 / リスク{}%".format(
     b.get("entry_score"), b.get("rr"), b.get("max_pos"), b.get("risk_pct")))
 print()
