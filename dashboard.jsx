@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-08-v357-quote-auto-issue-link"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-08-v358-quote-address-lookup"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -33984,7 +33984,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
   const muniName = id => munis.find(m=>String(m.id)===String(id))?.name || "";
   const rid = pre => pre+"_"+Date.now()+"_"+Math.random().toString(36).slice(2,8);
   const compHits = q => { const s=String(q||"").trim().toLowerCase(); return s? companies.filter(c=>String(c.name||"").toLowerCase().includes(s)).slice(0,20):[]; };
-  const mapsUrl = a => "https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(a||"");
+  const mapsUrl = a => "https://i9yapprunner.com/lookup?address="+encodeURIComponent(a||""); // 住所→回収可否を検索
   const rowsOf = (stores) => {
     const out=[];
     (stores||[]).forEach(st=>{
@@ -34920,7 +34920,7 @@ function VendorQuoteCard({ qv, rows, stores=[], totalStores=0, showAll=false, on
       {/* 業者情報（MyDeskデータ） */}
       <div style={{display:"flex",gap:"0.6rem",flexWrap:"wrap",alignItems:"center",fontSize:"0.72rem",color:C.textSub,marginBottom:"0.5rem"}}>
         {vrec&&vrec.phone&&<a href={"tel:"+vrec.phone} style={{color:C.accentDark,textDecoration:"none",fontWeight:700}}>📞 {vrec.phone}</a>}
-        {vrec&&vrec.address&&<a href={mapsUrl(vrec.address)} target="_blank" rel="noreferrer" style={{color:C.textSub,textDecoration:"none"}}>📍 {vrec.address}</a>}
+        {vrec&&vrec.address&&<a href={mapsUrl(vrec.address)} target="_blank" rel="noreferrer" title="住所から回収可否を検索" style={{color:C.textSub,textDecoration:"none"}}>🚛 {vrec.address}</a>}
         {vrec&&(vrec.permitTypes||[]).length>0&&<span>{(vrec.permitTypes||[]).join("・")}</span>}
         <button onClick={()=>setShowInfo(v=>!v)} style={{border:"none",background:"none",color:C.accent,cursor:"pointer",fontFamily:"inherit",fontSize:"0.7rem"}}>{showInfo?"▲メモを隠す":"▼通話・見積メモ"}</button>
       </div>
@@ -35027,7 +35027,7 @@ function VendorQuoteCard({ qv, rows, stores=[], totalStores=0, showAll=false, on
               <div key={r.itemId} style={{display:"flex",gap:"0.25rem",padding:"0.3rem 0.5rem",borderTop:`1px solid ${C.borderLight}`,alignItems:"center",background:ri%2?C.bg:"white"}}>
                 <span style={{width:18,flex:"none"}}><input type="checkbox" checked={!!checked[r.itemId]} onChange={e=>setChecked({...checked,[r.itemId]:e.target.checked})} style={{width:14,height:14}}/></span>
                 <div style={{width:150,flex:"none",minWidth:0}}>
-                  <div style={{fontSize:"0.72rem",fontWeight:600,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.storeName||"（拠点）"}{r.address?<a href={mapsUrl(r.address)} target="_blank" rel="noreferrer" style={{marginLeft:4,textDecoration:"none"}} title="Googleマップ">📍</a>:null}</div>
+                  <div style={{fontSize:"0.72rem",fontWeight:600,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.storeName||"（拠点）"}{r.address?<a href={mapsUrl(r.address)} target="_blank" rel="noreferrer" style={{marginLeft:4,textDecoration:"none"}} title="住所から回収可否を検索">🚛</a>:null}</div>
                   <div style={{fontSize:"0.62rem",color:C.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.kind||"（品目）"}{r.freq?` / ${r.freq}`:""}{(r.qtys&&r.qtys.length)?(" ／ "+r.qtys.map(q=>q.q+q.u).join("・")):""}</div>
                 </div>
                 <select {...cellProps(ri,0)} value={m} onChange={e=>setPrice(r.itemId,{method:e.target.value})} style={cs(ri,0,{width:96,flex:"none",padding:"0.25rem 0.1rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.64rem",fontFamily:"inherit",background:"white"})}><option value=""></option>{METHODS.map(x=><option key={x.v} value={x.v}>{x.t}</option>)}</select>
@@ -35083,7 +35083,7 @@ function StoreRow({ st, C, rid, mapsUrl, onChange, onDelete, storeQuotes }){
       <div style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.55rem 0.8rem",cursor:"pointer"}} onClick={()=>setOpen(o=>!o)}>
         <span style={{fontSize:"0.72rem",color:C.textMuted}}>{open?"▼":"▶"}</span>
         <div style={{flex:1,minWidth:0}}>
-          <div style={{fontWeight:700,fontSize:"0.82rem",color:C.text}}>{st.name||"（拠点名なし）"}{st.address?<a href={mapsUrl(st.address)} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{marginLeft:6,textDecoration:"none"}} title="Googleマップで開く">📍</a>:null}</div>
+          <div style={{fontWeight:700,fontSize:"0.82rem",color:C.text}}>{st.name||"（拠点名なし）"}{st.address?<a href={mapsUrl(st.address)} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{marginLeft:6,textDecoration:"none"}} title="住所から回収可否を検索">🚛</a>:null}</div>
           <div style={{fontSize:"0.66rem",color:C.textMuted}}>{[st.area,st.bizType,st.address].filter(Boolean).join(" ／ ")||"—"}</div>
         </div>
         {(function(){ const qs=storeQuotes?storeQuotes(st):[]; return qs.length?<span title="この店舗に見積した業者数" style={{fontSize:"0.64rem",fontWeight:800,color:C.accentDark,background:C.accentBg,padding:"1px 8px",borderRadius:999}}>見積 {qs.length}社{qs[0]?(" ・ 最安¥"+Math.round(qs[0].amount).toLocaleString()):""}</span>:null; })()}
