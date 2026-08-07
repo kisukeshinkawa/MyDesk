@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 // MyTrade — 投資専用スタンドアロンアプリ (MyDeskから分離)
 // バックエンド: mydesk-stock-analysis Lambda (共用・変更不要)
 // ═══════════════════════════════════════════════════════════════
-const MYTRADE_BUILD = "2026-08-08-v36-flow";
+const MYTRADE_BUILD = "2026-08-08-v37-modes";
 
 // 牽引役の日本語名(連動係数βの表示に使う)
 const FLOW_DRIVER_JA = {sox:"半導体", oil:"原油", gold:"金", defense:"防衛",
@@ -812,6 +812,14 @@ function StockView({currentUser}) {
 
   const card = {background:"white",borderRadius:"1rem",padding:"1rem",border:`1px solid ${C.border}`,boxShadow:C.shadow};
 
+  // 🔰やさしく表示のときだけ出す補足。専門用語を開いて「で、どうすればいいか」まで書く
+  const Note = ({children}) => beginner ? (
+    <div style={{fontSize:"0.71rem",color:C.textSub,lineHeight:1.75,background:C.bg,
+      borderRadius:7,padding:"0.45rem 0.6rem",marginTop:"0.35rem"}}>💡 {children}</div>
+  ) : null;
+  // 📊数字で表示のときだけ出す生の指標(初心者には情報過多になるもの)
+  const Pro = ({children}) => beginner ? null : <>{children}</>;
+
   // ── 初期設定画面(Lambda URL未設定) ──
   if(!apiUrl) return (
     <div style={{maxWidth:560}}>
@@ -862,7 +870,7 @@ function StockView({currentUser}) {
         <button onClick={()=>{const n=!beginner;setBeginner(n);localStorage.setItem("mt_beginner",n?"1":"0");}}
           style={{flexShrink:0,padding:"0.5rem 0.8rem",borderRadius:9,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:"0.75rem",fontWeight:700,
             background:beginner?C.greenBg:C.purpleBg,color:beginner?C.green:C.purple,marginRight:"0.3rem"}}>
-          {beginner?"🔰 初心者モード":"📊 プロモード"}
+          {beginner?"🔰 やさしく説明つき":"📊 数字だけ(プロ)"}
         </button>
         <button onClick={()=>refreshAll()} disabled={busy.all}
           style={{flexShrink:0,padding:"0.5rem 0.9rem",borderRadius:9,border:"none",background:C.accentBg,color:C.accentDark,fontWeight:700,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit",opacity:busy.all?0.6:1}}>
@@ -873,7 +881,7 @@ function StockView({currentUser}) {
         <div style={{display:"flex",gap:"0.3rem",alignItems:"center",marginBottom:"0.7rem",flexWrap:"wrap"}}>
           <button onClick={()=>{const n=!beginner;setBeginner(n);localStorage.setItem("mt_beginner",n?"1":"0");}}
             style={{padding:"0.4rem 0.7rem",borderRadius:8,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:"0.7rem",fontWeight:700,
-              background:beginner?C.greenBg:C.purpleBg,color:beginner?C.green:C.purple}}>{beginner?"🔰 初心者":"📊 プロ"}</button>
+              background:beginner?C.greenBg:C.purpleBg,color:beginner?C.green:C.purple}}>{beginner?"🔰 説明つき":"📊 数字だけ"}</button>
           <button onClick={()=>refreshAll()} disabled={busy.all}
             style={{padding:"0.4rem 0.7rem",borderRadius:8,border:"none",background:C.accentBg,color:C.accentDark,fontWeight:700,fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit"}}>
             {busy.all?"更新中":"🔄 更新"}</button>
@@ -894,6 +902,16 @@ function StockView({currentUser}) {
         </div>
       )}
       {errMsg&&<div style={{padding:"0.6rem 0.85rem",borderRadius:8,background:C.redBg,color:C.red,fontSize:"0.78rem",fontWeight:600,marginBottom:"0.85rem"}}>{errMsg}</div>}
+
+      {/* 表示モードの説明(何が切り替わるのか分からないという状態にしない) */}
+      <div style={{padding:"0.5rem 0.75rem",borderRadius:8,marginBottom:"0.7rem",lineHeight:1.7,
+        background:beginner?C.greenBg:C.purpleBg,fontSize:"0.71rem",color:beginner?C.green:C.purple}}>
+        {beginner
+          ? <><b>🔰 やさしく説明つき</b> — 数字の下に「これはどういう意味か」「だから何をすればいいか」を日本語で添えています。
+              専門用語は使いません。<b>まずはこのままで大丈夫です。</b></>
+          : <><b>📊 数字だけ(プロ)</b> — 説明文を消して、β・相関・ATR・損益比といった生の指標まで表示しています。
+              説明を戻すなら右上のボタンを押してください。</>}
+      </div>
 
       {view==="home"&&(<>
       {/* 🤖 全自動稼働の状況(ボタンを押さなくても動いていることが分かるように) */}
@@ -1097,6 +1115,11 @@ function StockView({currentUser}) {
               業種ごとの平均騰落(5日)。プロが最初に見る「今どこにお金が向かっているか」です
             </div>
             {up.map(bar)}
+            <Note>
+              棒が右(緑)に伸びている業種は、この5日で<b>お金が入ってきている</b>ところです。
+              株は「良い会社を買う」だけでなく「今お金が集まっている場所を選ぶ」ほうが上がりやすい。
+              上のほうにある業種の銘柄を狙うと、追い風の中で戦えます。逆に下の業種は、いくら良い会社でも逆風です。
+            </Note>
             {dn.length>0&&(<>
               <div style={{fontSize:"0.63rem",color:C.textMuted,margin:"0.35rem 0 0.1rem"}}>売られている業種</div>
               {dn.map(bar)}
@@ -1160,6 +1183,8 @@ function StockView({currentUser}) {
                         <div style={{fontSize:"0.6rem",color:C.textMuted,marginTop:"0.25rem",lineHeight:1.5}}>
                           β1.8 = 連動先が1%動くとこの銘柄は平均1.8%動く。<b>上がるときも下がるときも1.8倍</b>です。<br/>
                           短期スコア70点以上のものだけが自動売買の対象になります。タップで詳細分析へ。
+                          {beginner&&<><br/><b>使い方</b>: ニュースで「原油高」と聞いたら、原油にβが大きい銘柄ほど大きく動きます。
+                          ただし<b>下がるときも同じ倍率で下がる</b>ので、βが大きい＝良い銘柄ではありません。値動きが激しい銘柄、という意味です。</>}
                         </div>
                       </div>
                     )}
@@ -1629,7 +1654,7 @@ function StockView({currentUser}) {
                     ? <StockCandleChart candles={sel.candles} ma25={sel.sparkMa25} levels={sel.tradeLevels}/>
                     : <StockSparkline spark={sel.spark} ma25={sel.sparkMa25}/>))}
               {sel.tradeLevels&&(
-                <div style={{marginTop:"0.4rem",padding:"0.5rem 0.65rem",background:"white",borderRadius:8,border:`1px solid ${C.borderLight}`,fontSize:"0.73rem",lineHeight:1.75,color:C.text}}>
+                <div style={{marginTop:"0.4rem",padding:"0.5rem 0.65rem",background:"white",borderRadius:8,border:`1px solid ${C.borderLight}`,fontSize:"0.73rem",lineHeight:1.75,color:C.text,display:beginner?"block":"none"}}>
                   <b style={{color:C.accentDark}}>📖 チャートの読み方</b><br/>
                   <span style={{color:C.blue}}>青の点線 = 買い場の目安 {Number(sel.tradeLevels.entry).toLocaleString()}</span>(ここまで下がったら買い検討)<br/>
                   <span style={{color:C.red}}>赤の点線 = 損切りライン {Number(sel.tradeLevels.stop).toLocaleString()}</span>(ここを割ったら迷わず売る。想定リスク −{sel.tradeLevels.riskPct}%)<br/>
@@ -1638,12 +1663,13 @@ function StockView({currentUser}) {
                 </div>
               )}
             </div>
+            {beginner&&(
             <div style={{padding:"0.55rem 0.7rem",background:C.accentBg,borderRadius:8,marginBottom:"0.5rem",fontSize:"0.73rem",lineHeight:1.7,color:C.text}}>
               <b style={{color:C.accentDark}}>💡 かんたん解説</b><br/>
               <b>短期{sel.short.score}点</b>=「今買うタイミングとして良いか」({sel.short.score>=70?"◎ 今が買い場":sel.short.score>=45?"△ もう少し待ちたい":"× 今は見送り"})<br/>
               <b>長期{sel.long.score}点</b>=「会社として持っていて安心か」({sel.long.score>=70?"◎ 質の高い会社":sel.long.score>=50?"△ 条件付き":"× おすすめしない"})<br/>
               <b style={{color:C.purple}}>→ {sel.quadrant==="本命"?"会社も良く、今が買い場。一番おいしい状態です":sel.quadrant==="押し目待ち"?"良い会社ですが今は高い。下がるのを待ちましょう":sel.quadrant==="短期限定"?"値動きは良いが会社の質は普通。短期の売買だけに":"今は手を出さない方が良い状態です"}</b>
-            </div>
+            </div>)}
             <StockScoreBar label={`⚡ 短期テクニカル（${sel.short.signal==="buy"?"買い候補":sel.short.signal==="watch"?"監視":"見送り"}）`} score={sel.short.score}/>
             <div style={{marginBottom:"0.7rem"}}>
               {sel.short.breakdown.map((b,i)=>(
@@ -1692,6 +1718,35 @@ function StockView({currentUser}) {
                         : <>{d.label}の影響は受けますが、値動きは穏やかです。</>}
                       {!strong&&<><br/>※連動の強さが中程度なので、{d.label}だけで判断せず個別の材料も見てください。</>}
                     </div>
+                    {/* 数字だけモードでは全ドライバーのβ・相関を出す */}
+                    <Pro>
+                      <div style={{overflowX:"auto",marginTop:"0.5rem"}}>
+                        <table style={{width:"100%",borderCollapse:"collapse",fontSize:"0.7rem",minWidth:300}}>
+                          <thead><tr style={{background:C.bg}}>
+                            {["連動先","β","相関","β×相関"].map((h,i)=>(
+                              <th key={i} style={{padding:"0.25rem 0.35rem",textAlign:i?"right":"left",fontSize:"0.63rem",color:C.textMuted,fontWeight:700}}>{h}</th>
+                            ))}
+                          </tr></thead>
+                          <tbody>
+                            {Object.entries(sel.beta||{}).sort((a,b)=>
+                              Math.abs((sel.corr||{})[b[0]]||0)-Math.abs((sel.corr||{})[a[0]]||0)).map(([k,v],i)=>{
+                              const c=(sel.corr||{})[k]||0;
+                              return (
+                                <tr key={i} style={{borderBottom:`1px solid ${C.borderLight}`,opacity:Math.abs(c)>=0.3?1:0.45}}>
+                                  <td style={{padding:"0.25rem 0.35rem",fontWeight:700}}>{FLOW_DRIVER_JA[k]||k}</td>
+                                  <td style={{padding:"0.25rem 0.35rem",textAlign:"right",fontWeight:700,color:v>=0?C.text:C.red}}>{v}</td>
+                                  <td style={{padding:"0.25rem 0.35rem",textAlign:"right",color:C.textSub}}>{c}</td>
+                                  <td style={{padding:"0.25rem 0.35rem",textAlign:"right",fontWeight:800,color:C.accent}}>{(Math.abs(v*c)).toFixed(2)}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                        <div style={{fontSize:"0.6rem",color:C.textMuted,marginTop:"0.2rem"}}>
+                          過去120日の日次リターンで実測。相関0.3未満は薄字(連動とみなさない)。日経・S&P500は市場ベータ
+                        </div>
+                      </div>
+                    </Pro>
                   </div>
                 );
               })()}
@@ -2111,6 +2166,21 @@ function StockView({currentUser}) {
               <span style={S.chip(C.redBg,C.red)}>平均損失 {Number(paper.stats.avgLoss).toLocaleString()}円</span>
             </div>
           )}
+          {paper.stats&&paper.stats.closed>0&&(()=>{
+            const w=paper.stats.winRate, pf=paper.stats.profitFactor;
+            const ratio=paper.stats.avgLoss?Math.abs(paper.stats.avgWin/paper.stats.avgLoss):null;
+            return (
+              <Note>
+                <b>PF(損益比)</b>は「勝ちの合計 ÷ 負けの合計」。<b>1.0を超えていれば増えている</b>、1.5以上なら優秀です
+                （今は{pf!=null?pf:"—"}）。<br/>
+                <b>勝率{w}%は低く見えても問題ありません。</b>
+                {ratio!=null&&<>1回の勝ち({Number(paper.stats.avgWin).toLocaleString()}円)が1回の負け({Number(Math.abs(paper.stats.avgLoss)).toLocaleString()}円)の
+                約{ratio.toFixed(1)}倍あるので、{w<50?"負ける回数が多くても":"勝率も損益比も両方良い状態で"}トータルでは
+                {pf>=1?"増える計算です":"減っています。損切りを早める必要があります"}。</>}<br/>
+                見るべきは勝率ではなく<b>PFが1.0を超え続けているか</b>です。
+              </Note>
+            );
+          })()}
 
           {/* 発注フォーム */}
           <div style={{padding:"0.7rem 0.8rem",background:C.accentBg,borderRadius:10,marginBottom:"0.75rem"}}>
