@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-08-v359-quote-card-permit-areas"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-08-v360-lookup-url-fix"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -33984,7 +33984,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
   const muniName = id => munis.find(m=>String(m.id)===String(id))?.name || "";
   const rid = pre => pre+"_"+Date.now()+"_"+Math.random().toString(36).slice(2,8);
   const compHits = q => { const s=String(q||"").trim().toLowerCase(); return s? companies.filter(c=>String(c.name||"").toLowerCase().includes(s)).slice(0,20):[]; };
-  const mapsUrl = a => "https://i9yapprunner.com/lookup?address="+encodeURIComponent(a||""); // 住所→回収可否を検索
+  const mapsUrl = a => "https://i9ymvc5iez.ap-northeast-1.awsapprunner.com/lookup?address="+encodeURIComponent(a||""); // 住所→回収可否を検索
   const rowsOf = (stores) => {
     const out=[];
     (stores||[]).forEach(st=>{
