@@ -226,6 +226,11 @@ def lambda_handler(event, context):
                 r = run_ranking(force=True)
                 _record_job(jname, True, f"{r.get('scanned',0)}銘柄 財務{r.get('finCovered',0)}")
                 return _res(200, r)
+            if job == "corr":
+                r = compare_correlation(None, int(event.get("years", 25)))
+                _save_json_s3("stock-learn/corr_compare.json", r)
+                _record_job(jname, True, r.get("verdict", "")[:60])
+                return _res(200, {"winner": r["winner"], "verdict": r["verdict"]})
             if job == "flow":
                 r = market_flow(force=True)
                 _record_job(jname, True, f"業種{len(r.get('sectors') or [])} / "
@@ -366,6 +371,12 @@ def lambda_handler(event, context):
             return _res(200, {"config": autotrade_config(body.get("config") or {})})
         if action == "autotrade-run":
             return _res(200, run_autotrade())
+        if action == "corr-compare":
+            r = compare_correlation(None, int(body.get("years", 25)))
+            _save_json_s3("stock-learn/corr_compare.json", r)
+            return _res(200, r)
+        if action == "corr-latest":
+            return _res(200, _load_json_s3("stock-learn/corr_compare.json", {}))
         if action == "flow":
             return _res(200, market_flow(bool(body.get("force"))))
         if action == "trade-mode":
@@ -1153,6 +1164,8 @@ def _prepare_sim(tickers, years, min_score=65):
         except Exception as e:
             print("sim bench failed:", sym, e)
 
+    drivers = _sim_drivers(years)
+    driver_up = {k: v["up"] for k, v in drivers.items()}
     prep = {}
     for t in tickers[:20]:
         try:
@@ -1193,15 +1206,70 @@ def _prepare_sim(tickers, years, min_score=65):
                        "dates": dates, "idx": {d: i for i, d in enumerate(dates)},
                        "high": [float(x) for x in df["High"]], "low": [float(x) for x in df["Low"]],
                        "close": [float(x) for x in df["Close"]], "cands": cands}
+            prep[t].update(_rolling_links(df, drivers, mkt))
+            prep[t]["drvUp"] = driver_up      # 全銘柄で同じ辞書を参照(実体は1つ)
         except Exception as e:
             print("sim prep failed:", t, e)
     return prep
 
 
+def _sim_drivers(years):
+    """検証用に牽引役の値動きを用意する。
+    up = その日、牽引役自体が上昇トレンド(50日線の上)にあったか。"""
+    out = {}
+    for sym, label, key in DRIVER_TICKERS + MARKET_DRIVERS:
+        try:
+            c = fetch_history(sym, f"{years}y")["Close"].dropna()
+            if len(c) < 250:
+                continue
+            r = c.pct_change()
+            r.index = [d.date() for d in c.index]
+            up = (c > c.rolling(50).mean())
+            out[key] = {"label": label, "ret": r,
+                        "up": {d.strftime("%Y-%m-%d"): bool(v) for d, v in zip(c.index, up)}}
+        except Exception as e:
+            print("sim driver failed:", sym, e)
+    return out
+
+
+def _rolling_links(df, drivers, mkt, win=120, min_corr=0.30):
+    """その日までの過去120日だけを使って連動係数を計算する。
+    全期間のβで過去を判定すると「未来を知っている」ことになり、
+    検証結果が実際より良く出てしまうため、必ず後ろ向きの窓で計算する。"""
+    import pandas as pd
+    if not drivers:
+        return {"drivenBy": {}, "mktBeta": {}}
+    s = df["Close"].pct_change()
+    s.index = [d.date() for d in df.index]
+    theme_keys = [k for _, _, k in DRIVER_TICKERS if k in drivers]
+    bench_key = "n225" if mkt == "JP" else "sp500"
+
+    best, mbeta = {}, {}
+    for key in theme_keys + ([bench_key] if bench_key in drivers else []):
+        sub = pd.DataFrame({"s": s, "d": drivers[key]["ret"]}).dropna()
+        if len(sub) < win + 10:
+            continue
+        var = sub["d"].rolling(win).var()
+        beta = sub["s"].rolling(win).cov(sub["d"]) / var.where(var > 0)
+        corr = sub["s"].rolling(win).corr(sub["d"])
+        for d, b, c in zip(sub.index, beta, corr):
+            if b != b or c != c:          # NaN(窓が埋まっていない期間)
+                continue
+            ds = d.strftime("%Y-%m-%d")
+            if key == bench_key:
+                mbeta[ds] = round(float(b), 2)
+            if key in theme_keys and abs(c) >= min_corr:
+                cur = best.get(ds)
+                if not cur or abs(c) > abs(cur["corr"]):
+                    best[ds] = {"key": key, "beta": round(float(b), 2), "corr": round(float(c), 2)}
+    return {"drivenBy": best, "mktBeta": mbeta}
+
+
 def _sim_pass(prep, all_dates, initial=1000000, risk_pct=2.0, max_pos=5,
               entry_score=70, rr=2.0, fee=0.001, odd_lot=True,
               partial=False, partial_rr=1.5, time_stop=0, trail=0.0, leverage=1.0,
-              hold_mode="trade", ma_exit=200):
+              hold_mode="trade", ma_exit=200,
+              max_same_driver=0, driver_trend=False, beta_size=False):
     """1条件ぶんの運用を再現。
     partial   : 分割利確(第1目標で半分利確し、残りは損切りを建値に上げて伸ばす)
     time_stop : N日経っても損切り/利確に当たらなければ手仕舞い(資金効率を上げる)
@@ -1209,7 +1277,15 @@ def _sim_pass(prep, all_dates, initial=1000000, risk_pct=2.0, max_pos=5,
     leverage  : 信用取引の倍率。リターンも下落も同じ倍率で拡大する(金利は考慮していない)
     hold_mode : trade=利確目標で降りる(短期売買) / trend=長期移動平均を割るまで持ち続ける
                 (バフェット型の「売らない」を機械化したもの) / buyhold=売らない
+
+    ここから下は「連動性(相関)を使う仕組み」。効果があるかを検証するためのもの:
+    max_same_driver : 同じ牽引役に連動する銘柄を何個まで持つか(0=無制限)。
+                      8銘柄持っていても全部が半導体連動なら実質1銘柄なので、それを防ぐ
+    driver_trend    : その銘柄の牽引役自体が上昇トレンド(50日線の上)のときだけ買う。
+                      逆風の中で個別の点数だけ見て買うのを止める
+    beta_size       : 市場に対する感応度(β)が高い銘柄ほど枚数を減らし、実質リスクを揃える
     """
+    drv_up = next((v.get("drvUp") for v in prep.values() if v.get("drvUp")), {})
     cash, positions, trades, curve = float(initial), {}, [], []
     peak, maxdd = float(initial), 0.0
     risk_used = []
@@ -1293,6 +1369,15 @@ def _sim_pass(prep, all_dates, initial=1000000, risk_pct=2.0, max_pos=5,
             c = v["cands"].get(d)
             if not c or c["score"] < entry_score:
                 continue
+            link = (v.get("drivenBy") or {}).get(d)
+            # 牽引役が下降トレンドなら見送る(逆風の中で個別の点数だけ見て買わない)
+            if driver_trend and link and not (drv_up.get(link["key"]) or {}).get(d, True):
+                continue
+            # 同じ牽引役に連動する銘柄を持ちすぎない(分散しているつもりの集中を防ぐ)
+            if max_same_driver and link:
+                same = sum(1 for pp in positions.values() if pp.get("driver") == link["key"])
+                if same >= max_same_driver:
+                    continue
             px = c["entryPx"]
             stop = max(px - 2 * c["atr"], c["low20"] * 0.995)
             if stop >= px:
@@ -1301,7 +1386,14 @@ def _sim_pass(prep, all_dates, initial=1000000, risk_pct=2.0, max_pos=5,
             unit = 1 if (odd_lot or not t.endswith(".T")) else 100
             qty_risk = int(equity * risk_pct / 100 / risk)          # 2%ルール
             qty_cap = int(equity * leverage / max_pos / px)         # 1銘柄あたりの上限
-            qty = (min(qty_risk, qty_cap) // unit) * unit
+            qty = min(qty_risk, qty_cap)
+            if beta_size:
+                # 市場に対して1.5倍動く銘柄は、同じ枚数でも実質1.5倍のリスクを負っている。
+                # 2%ルールと上限のどちらが効いていても縮むよう、最終的な枚数に掛ける
+                mb = (v.get("mktBeta") or {}).get(d)
+                if mb and mb > 1.0:
+                    qty = int(qty / min(mb, 2.5))
+            qty = (qty // unit) * unit
             if qty < unit:
                 # 実運用と同じ救済ルール
                 one_risk = risk * unit / equity * 100 if equity else 999
@@ -1321,7 +1413,8 @@ def _sim_pass(prep, all_dates, initial=1000000, risk_pct=2.0, max_pos=5,
             positions[t] = {"qty": qty, "entry": px, "stop": stop,
                             "t1": px + risk * partial_rr,
                             "target": px + risk * rr, "date": c["nextDate"],
-                            "hold": 0, "peak": px, "half": False}
+                            "hold": 0, "peak": px, "half": False,
+                            "driver": link["key"] if link else None}
 
     final = curve[-1]["equity"] if curve else initial
     yrs = max(1e-9, len(curve) / 252)
@@ -1452,6 +1545,67 @@ def simulate_grid(tickers=None, years=25, initial=1000000):
             "presets": presets,
             "bestReturn": max(valid, key=lambda r: r["cagrPct"]) if valid else None,
             "bestRiskAdjusted": presets["balanced"],
+            "updatedAt": datetime.now(timezone.utc).isoformat()}
+
+
+def compare_correlation(tickers=None, years=25, initial=1000000, base=None):
+    """連動性(相関)を売買判断に使うと本当に成績が上がるのかを、過去25年で測る。
+    今の設定を基準に、仕組みを1つずつ足して比べる。効かなかったものは採用しない。"""
+    tickers = tickers or DEFAULT_UNIVERSE
+    prep = _prepare_sim(tickers, years)
+    if not prep:
+        raise Exception("シミュレーション用のデータが取得できません")
+    all_dates = sorted({d for v in prep.values() for d in v["dates"]})[200:]
+    linked = len([t for t, v in prep.items() if v.get("drivenBy")])
+
+    cfg = autotrade_config()
+    b = base or {"entry_score": int(cfg.get("entryScore", 70)), "rr": float(cfg.get("rr", 3.0)),
+                 "max_pos": int(cfg.get("maxPositions", 8)), "risk_pct": float(cfg.get("riskPct", 2.0)),
+                 "partial": bool(cfg.get("partial", True)),
+                 "trail": float(cfg.get("trailPct", 0) or 0) / 100,
+                 "hold_mode": cfg.get("holdMode", "trade")}
+
+    variants = [
+        ("今のまま(基準)", {}),
+        ("＋集中回避(同じ牽引役は2銘柄まで)", {"max_same_driver": 2}),
+        ("＋集中回避(同じ牽引役は1銘柄まで)", {"max_same_driver": 1}),
+        ("＋牽引役の順張り", {"driver_trend": True}),
+        ("＋β調整サイズ", {"beta_size": True}),
+        ("全部入り", {"max_same_driver": 2, "driver_trend": True, "beta_size": True}),
+    ]
+    rows = []
+    for label, extra in variants:
+        try:
+            r = _sim_pass(prep, all_dates, initial, **b, **extra)["result"]
+            calmar = (r["cagrPct"] / abs(r["maxDrawdownPct"])) if r["maxDrawdownPct"] else 0
+            rows.append({"label": label, **extra,
+                         **{k: r[k] for k in ("cagrPct", "maxDrawdownPct", "sharpe", "trades",
+                                              "winRate", "profitFactor", "maxLossStreak",
+                                              "finalEquity", "totalReturnPct")},
+                         "calmar": round(calmar, 2)})
+        except Exception as e:
+            print("compare variant failed:", label, e)
+
+    if not rows:
+        raise Exception("検証に失敗しました")
+    base_row = rows[0]
+    for r in rows:
+        r["cagrDiff"] = round(r["cagrPct"] - base_row["cagrPct"], 2)
+        r["ddDiff"] = round(r["maxDrawdownPct"] - base_row["maxDrawdownPct"], 1)
+        r["calmarDiff"] = round(r["calmar"] - base_row["calmar"], 2)
+        # 年利・下落・効率のどれかが明確に改善していれば「効いた」とみなす
+        r["helped"] = bool(r["cagrDiff"] > 0.3 or r["ddDiff"] > 1.0 or r["calmarDiff"] > 0.05)
+
+    winner = max(rows, key=lambda r: r["calmar"])
+    improved = winner["label"] != base_row["label"] and winner["calmar"] > base_row["calmar"]
+    return {"rows": rows, "base": base_row, "winner": winner, "improved": improved,
+            "baseSettings": b, "linkedTickers": linked, "tickers": len(prep),
+            "period": {"years": years, "days": len(all_dates)},
+            "verdict": (f"「{winner['label']}」が最も効率が良く、"
+                        f"年利{winner['cagrDiff']:+}ポイント・最大下落{winner['ddDiff']:+}ポイントでした。"
+                        if improved else
+                        "どの仕組みも基準を上回りませんでした。相関は表示だけに留め、"
+                        "売買条件には入れないのが正解です。"),
             "updatedAt": datetime.now(timezone.utc).isoformat()}
 
 
@@ -2481,6 +2635,7 @@ def market_flow(force=False):
         picks.sort(key=lambda p: -p["strength"])
         th["stocks"] = picks[:8]
 
+    _save_json_s3("stock-learn/flow_drivers.json", drivers)
     out = {"sectors": sector_flow(rows), "themes": themes, "drivers": drivers,
            "scanned": len(rows),
            "rankingAt": rk.get("updatedAt"),
@@ -2953,6 +3108,9 @@ def autotrade_config(update=None):
     cfg.setdefault("partial", True)   # 分割利確(第1目標で半分利確し損切りを建値へ)
     cfg.setdefault("timeStopDays", 0) # N日経っても動かなければ手仕舞い(0で無効)
     cfg.setdefault("holdMode", "trade")  # trade=利確目標で降りる / trend=200日線を割るまで持つ(長期保有)
+    cfg.setdefault("maxSameDriver", 0)   # 同じ牽引役に連動する銘柄の上限(0=無制限)
+    cfg.setdefault("driverTrend", False) # 牽引役が上昇トレンドのときだけ買う
+    cfg.setdefault("betaSize", False)    # βが高い銘柄ほど枚数を減らす
     cfg.setdefault("tradeMode", "balanced")  # safe/balanced/aggressive/max
     cfg.setdefault("autoTune", False)    # 検証が更新されるたびに最適値へ自動追従するか
     # 手動で切り替えるまでは常にON(「ボタンを押さなくても回っている」状態にする)
@@ -2961,7 +3119,7 @@ def autotrade_config(update=None):
     if update:
         for k in ("enabled", "riskPct", "maxPositions", "minConviction", "rr", "oddLot",
                   "entryScore", "trailPct", "partial", "timeStopDays", "holdMode",
-                  "tradeMode", "autoTune"):
+                  "tradeMode", "autoTune", "maxSameDriver", "driverTrend", "betaSize"):
             if k in update:
                 cfg[k] = update[k]
         if "enabled" in update:
@@ -2992,6 +3150,15 @@ def run_autotrade():
     use_partial = bool(cfg.get("partial", True))
     time_stop = int(cfg.get("timeStopDays", 0))
     hold_mode = cfg.get("holdMode", "trade")
+    max_same_driver = int(cfg.get("maxSameDriver", 0) or 0)
+    driver_trend = bool(cfg.get("driverTrend"))
+    beta_size = bool(cfg.get("betaSize"))
+    # 保有中の銘柄が「何に連動しているか」。同じ牽引役に偏らせないために数える
+    driver_count = {}
+    for pos in st["positions"]:
+        k = (pos.get("drivenBy") or {}).get("key")
+        if k:
+            driver_count[k] = driver_count.get(k, 0) + 1
 
     # ── ① 手仕舞い判定 ──
     for pos in list(st["positions"]):
@@ -3116,12 +3283,33 @@ def run_autotrade():
             if pl.get("source") == "ranking":
                 if a["short"]["signal"] != "buy" or a["short"]["score"] < entry_score:
                     continue
+            # ── 連動性(相関)による足切り ──
+            link = a.get("drivenBy")
+            if link:
+                if driver_trend:
+                    dm = next((d for d in (_load_json_s3("stock-learn/flow_drivers.json", []) or [])
+                               if d.get("key") == link["key"]), None)
+                    if dm and (dm.get("chg20d") or 0) < 0:
+                        actions.append({"type": "skip", "ticker": tk, "name": pl.get("name"),
+                                        "reason": f"{link['label']}が下降トレンドのため見送り"})
+                        continue
+                if max_same_driver and driver_count.get(link["key"], 0) >= max_same_driver:
+                    actions.append({"type": "skip", "ticker": tk, "name": pl.get("name"),
+                                    "reason": f"{link['label']}連動の銘柄をすでに"
+                                              f"{driver_count[link['key']]}銘柄保有(集中回避)"})
+                    continue
             # 2%ルール: 1トレードの想定損失が資産のrisk_pct%以内になる株数
             # 単元未満株が使えるなら1株単位。使えないなら日本株は100株単位
             unit = 1 if (odd_lot or not tk.endswith(".T")) else 100
             qty_risk = int(st["equity"] * risk_pct / 100 / (px - stop))   # 2%ルール
             qty_cap = int(st["equity"] / max_pos / px)                    # 1銘柄あたりの上限
-            qty = (min(qty_risk, qty_cap) // unit) * unit
+            qty = min(qty_risk, qty_cap)
+            if beta_size:
+                # 市場に対して大きく動く銘柄は、同じ枚数でも実質のリスクが大きい
+                mb = (a.get("beta") or {}).get("n225" if tk.endswith(".T") else "sp500")
+                if mb and mb > 1.0:
+                    qty = int(qty / min(mb, 2.5))
+            qty = (qty // unit) * unit
             if qty < unit:
                 # 枠に収まらない場合の救済。
                 # 単元未満株ONなら「最低1株」は買えるようにする(買えない銘柄を作らない)。
@@ -3148,9 +3336,12 @@ def run_autotrade():
                              meta={"stop": round(stop, 2),
                                    "t1": round(px + (px - stop) * 1.5, 2),
                                    "target": round(px + (px - stop) * rr, 2),
-                                   "rr": rr, "peak": round(px, 2), "half": False},
+                                   "rr": rr, "peak": round(px, 2), "half": False,
+                                   "drivenBy": link},
                              account="ai")
             held.add(tk)
+            if link:
+                driver_count[link["key"]] = driver_count.get(link["key"], 0) + 1
             actions.append({"type": "buy", "ticker": tk, "name": pl.get("name") or tk, "qty": qty,
                             "price": round(px, 2), "stop": round(stop, 2),
                             "target": round(px + (px - stop) * rr, 2),
