@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-08-v353-quote-add-all"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-08-v354-quote-vendor-assignee-notes"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -33962,6 +33962,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
   const [authFilter, setAuthFilter] = React.useState([]); // 産廃権者(都道府県/政令市/中核市)フィルター
   const [permFilter, setPermFilter] = React.useState([]);
   const [areaQ, setAreaQ] = React.useState("");
+  const [qvQ, setQvQ] = React.useState(""); // 追加済み対象業者の絞り込み（多数時に見やすく）
   const [storeAdd, setStoreAdd] = React.useState(false);
   const [imp, setImp] = React.useState(null);
   const [impErr, setImpErr] = React.useState("");
@@ -34277,6 +34278,13 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
     const nextVendors=vendors.map(v=>String(v.id)===String(qv.vendorId)?{...v, memos:[...(v.memos||[]), {id:rid("mn"),text:memoText,userId:currentUser?.id,date:now}]}:v);
     persistData({ ...data, quoteProjects:nextProjects, vendors:nextVendors });
   };
+  // 自社担当（複数）を見積の対象業者に設定し、業者レコードのassigneeIdsにも反映（union）
+  const assignVendor = (qv, ids) => {
+    const now=new Date().toISOString();
+    const nextProjects=projects.map(x=>x.id!==p.id?x:{...x, vendors:(x.vendors||[]).map(y=>y.id===qv.id?{...y,assigneeIds:ids}:y), updatedAt:now});
+    const nextVendors=vendors.map(v=>{ if(String(v.id)!==String(qv.vendorId)) return v; const merged=[...(v.assigneeIds||[])]; ids.forEach(id=>{ if(!merged.some(x=>String(x)===String(id))) merged.push(id); }); return {...v, assigneeIds:merged, updatedAt:now.slice(0,10)}; });
+    persistData({ ...data, quoteProjects:nextProjects, vendors:nextVendors });
+  };
 
   const storeTotal = (p.stores||[]).length;
   const itemTotal = (p.stores||[]).reduce((s,x)=>s+(x.items?.length||0),0);
@@ -34502,11 +34510,18 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
         )}
       </div>
 
+      {(p.vendors||[]).length>8&&(
+        <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem",flexWrap:"wrap"}}>
+          <input value={qvQ} onChange={e=>setQvQ(e.target.value)} placeholder={`🔍 追加済み${(p.vendors||[]).length}社を絞り込み（業者名）`} style={{flex:1,minWidth:160,padding:"0.35rem 0.6rem",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"inherit"}}/>
+          {qvQ&&<span style={{fontSize:"0.68rem",color:C.textMuted}}>{(p.vendors||[]).filter(qv=>String(qv.vendorName||"").toLowerCase().includes(qvQ.trim().toLowerCase())).length}件</span>}
+        </div>
+      )}
       <div style={{display:"flex",flexDirection:"column",gap:"0.75rem"}}>
-        {(p.vendors||[]).map(qv=>(
+        {(p.vendors||[]).filter(qv=>!qvQ.trim()||String(qv.vendorName||"").toLowerCase().includes(qvQ.trim().toLowerCase())).map(qv=>(
           <VendorQuoteCard key={qv.id} qv={qv} rows={vendorRows(qv)} stores={p.stores} totalStores={totalStoreCount} showAll={!!qv.showAllStores} onToggleAll={()=>patchVendor(qv.id,{showAllStores:!qv.showAllStores})} vrec={vendors.find(v=>String(v.id)===String(qv.vendorId))} C={C} rid={rid} mapsUrl={mapsUrl} portalBusy={portalBusy} PORTAL_ON={PORTAL_ON}
             onChange={patch=>patchVendor(qv.id,patch)} onRemove={()=>setVendors((p.vendors||[]).filter(x=>x.id!==qv.id))}
-            onIssue={()=>issueLink(qv)} onCopy={()=>copyLink(qv)} onFetch={()=>fetchResp(qv)} onAddNote={t=>addVendorNote(qv,t)}/>
+            onIssue={()=>issueLink(qv)} onCopy={()=>copyLink(qv)} onFetch={()=>fetchResp(qv)} onAddNote={t=>addVendorNote(qv,t)}
+            users={users} onAssign={ids=>assignVendor(qv,ids)}/>
         ))}
         {(p.vendors||[]).length===0&&<div style={{textAlign:"center",color:C.textMuted,padding:"1.5rem",fontSize:"0.8rem"}}>上の絞り込み（エリア・許可・業者名）から対象業者を追加してください。</div>}
       </div>
@@ -34632,7 +34647,7 @@ function StoreGroups({ stores, C, rid, mapsUrl, setStores, storeQuotes }){
 // 数量文字列（例「約100kg/箇所」）を [{q,u}] に解釈（旧データ互換）
 const parseQtyList = s => { const t=String(s==null?"":s); if(!t.trim()) return []; const units=["立米","㎥","m3","kg","㎏","袋","個","台","本","箱"]; let num=""; for(let i=0;i<t.length;i++){ const ch=t[i]; if((ch>="0"&&ch<="9")||ch===".") num+=ch; else if(num) break; } if(!num) return []; let u=""; for(const uu of units){ if(t.indexOf(uu)>=0){ u=uu; break; } } u=u.replace("㎏","kg").replace("㎥","立米").replace("m3","立米"); return [{q:num,u:u}]; };
 // 対象業者カード（折りたたみ・見積表[出来高/定額]・一括・ポータル・業者情報・通話メモ）
-function VendorQuoteCard({ qv, rows, stores=[], totalStores=0, showAll=false, onToggleAll, vrec, C, rid, mapsUrl, portalBusy, PORTAL_ON, onChange, onRemove, onIssue, onCopy, onFetch, onAddNote }){
+function VendorQuoteCard({ qv, rows, stores=[], totalStores=0, showAll=false, onToggleAll, vrec, C, rid, mapsUrl, portalBusy, PORTAL_ON, onChange, onRemove, onIssue, onCopy, onFetch, onAddNote, users=[], onAssign }){
   const REQ=["未依頼","依頼済","回答済","辞退"];
   const METHODS=[{v:"込",t:"出来高①(運搬・処分込)"},{v:"別",t:"出来高②(運搬固定+処分単価)"},{v:"定額",t:"定額③"}];
   const TAXES=["税抜","税込"];
@@ -34785,6 +34800,8 @@ function VendorQuoteCard({ qv, rows, stores=[], totalStores=0, showAll=false, on
         {grade&&<span style={{fontSize:"0.66rem",color:"#b45309"}}>{"★".repeat(grade)}</span>}
         <select value={qv.status||"未依頼"} onClick={e=>e.stopPropagation()} onChange={e=>onChange({status:e.target.value})} style={{padding:"0.2rem 0.5rem",borderRadius:999,border:`1px solid ${C.border}`,fontSize:"0.68rem",fontWeight:700,fontFamily:"inherit",background:"white"}}>{REQ.map(s=><option key={s} value={s}>{s}</option>)}</select>
         {qv.respondedAt&&<span style={{fontSize:"0.62rem",color:"#009122",fontWeight:700}}>✅{String(qv.respondedAt).slice(5,10)}</span>}
+        {(qv.assigneeIds||[]).length>0&&<span style={{fontSize:"0.64rem",color:C.accentDark,fontWeight:700}} title="自社担当">👤 {(qv.assigneeIds||[]).map(id=>(users||[]).find(u=>String(u.id)===String(id))?.name||"").filter(Boolean).join("・")}</span>}
+        {(qv.callNotes||[]).length>0&&<span style={{fontSize:"0.62rem",color:C.textMuted}} title="記録件数">📝{(qv.callNotes||[]).length}</span>}
         <span style={{marginLeft:"auto",fontSize:"0.7rem",color:C.textSub,fontWeight:700}} title="見積済店舗/対象店舗">🏪 {pricedStores.size}/{storeIds.length}店舗</span>
         <span style={{fontSize:"0.82rem",fontWeight:800,color:C.accentDark}}>お客様提示 {yen(total)}<span style={{fontSize:"0.58rem",fontWeight:600,color:C.textMuted,marginLeft:4}}>(税込・DUSTALK5%込)</span></span>
         <button onClick={e=>{e.stopPropagation();onRemove();}} style={{border:"none",background:"none",color:"#DA1313",cursor:"pointer",fontSize:"0.9rem",fontFamily:"inherit"}}>×</button>
@@ -34815,6 +34832,15 @@ function VendorQuoteCard({ qv, rows, stores=[], totalStores=0, showAll=false, on
         </div>
       )}
 
+      {/* 自社担当（複数選択・業者詳細にも反映） */}
+      {(users||[]).length>0&&(
+        <div style={{display:"flex",gap:"0.35rem",flexWrap:"wrap",alignItems:"center",marginBottom:"0.5rem"}}>
+          <span style={{fontSize:"0.66rem",color:C.textSub,fontWeight:700}}>自社担当:</span>
+          {(users||[]).map(u=>{ const on=(qv.assigneeIds||[]).some(x=>String(x)===String(u.id)); return (
+            <button key={u.id} onClick={()=>{ if(!onAssign)return; const cur=(qv.assigneeIds||[]); const next=on?cur.filter(x=>String(x)!==String(u.id)):[...cur,u.id]; onAssign(next); }} style={{fontSize:"0.66rem",fontWeight:700,padding:"0.15rem 0.55rem",borderRadius:999,border:`1px solid ${on?C.accent:C.border}`,background:on?C.accent:"white",color:on?"white":C.textSub,cursor:"pointer",fontFamily:"inherit"}}>{on?"✓ ":""}{u.name}</button>
+          );})}
+        </div>
+      )}
       <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap",marginBottom:"0.5rem"}}>
         <input value={qv.assignee||""} onChange={e=>onChange({assignee:e.target.value})} placeholder="先方担当者" style={{flex:1,minWidth:120,padding:"0.35rem 0.55rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.76rem",fontFamily:"inherit"}}/>
         <input value={qv.contact||""} onChange={e=>onChange({contact:e.target.value})} placeholder="連絡先(メール/TEL)" style={{flex:1,minWidth:120,padding:"0.35rem 0.55rem",borderRadius:8,border:`1px solid ${C.border}`,fontSize:"0.76rem",fontFamily:"inherit"}}/>
