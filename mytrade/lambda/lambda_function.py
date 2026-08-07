@@ -1632,10 +1632,15 @@ def compare_correlation(tickers=None, years=25, initial=1000000, base=None):
         r["tradeKeepPct"] = round(r["trades"] / base_row["trades"] * 100) if base_row["trades"] else 0
         # 採用の可否は「効率(年利÷最大下落)が上がったか」で決める。
         # 下落だけ浅くなってもリターンをそれ以上削っていたら、採用する理由はない
-        if r["calmarDiff"] > 0.02:
+        up_c, up_d = r["cagrDiff"] > 0.1, r["ddDiff"] > 1.0
+        if up_c and up_d:
+            r["helped"], r["grade"] = True, "★効いた(両方改善)"
+        elif r["calmarDiff"] > 0.02:
             r["helped"], r["grade"] = True, "★効いた"
-        elif r["ddDiff"] > 1.0:
+        elif up_d and r["cagrDiff"] < -0.1:
             r["helped"], r["grade"] = False, "下落は浅いがリターン減"
+        elif up_d:
+            r["helped"], r["grade"] = False, "下落だけ浅い"
         else:
             r["helped"], r["grade"] = False, "効果なし"
 
