@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 // MyTrade — 投資専用スタンドアロンアプリ (MyDeskから分離)
 // バックエンド: mydesk-stock-analysis Lambda (共用・変更不要)
 // ═══════════════════════════════════════════════════════════════
-const MYTRADE_BUILD = "2026-08-08-v26-intraday";
+const MYTRADE_BUILD = "2026-08-08-v27-tidy";
 if (typeof window !== "undefined") {
   window.__MYTRADE_BUILD = MYTRADE_BUILD;
   console.log(`[MyTrade] Build: ${MYTRADE_BUILD}`);
@@ -1798,23 +1798,6 @@ function StockView({currentUser}) {
 
         {!paper&&<div style={{fontSize:"0.8rem",color:C.textMuted}}>{busy.paper?"読み込み中...":"「🔄 更新」を押してください"}</div>}
         {paper&&(<>
-          {/* サマリー */}
-          <div style={{display:"flex",gap:"0.6rem",flexWrap:"wrap",marginBottom:"0.75rem"}}>
-            {[["あなたの総資産",paper.equity,true],["現金",paper.cash,false],["株式評価額",paper.positionValue,false]].map(([l,v,big],i)=>(
-              <div key={i} style={{flex:"1 1 130px",padding:"0.6rem 0.75rem",background:C.bg,borderRadius:10,border:`1px solid ${C.borderLight}`}}>
-                <div style={{fontSize:"0.66rem",fontWeight:700,color:C.textMuted}}>{l}</div>
-                <div style={{fontSize:big?"1.15rem":"0.95rem",fontWeight:800,color:C.text}}>{Number(v).toLocaleString()}<span style={{fontSize:"0.7rem",fontWeight:600}}>円</span></div>
-              </div>
-            ))}
-            <div style={{flex:"1 1 150px",padding:"0.6rem 0.75rem",background:paper.totalPnl>=0?C.greenBg:C.redBg,borderRadius:10}}>
-              <div style={{fontSize:"0.66rem",fontWeight:700,color:paper.totalPnl>=0?C.green:C.red}}>損益(初期100万円比)</div>
-              <div style={{fontSize:"1.15rem",fontWeight:800,color:paper.totalPnl>=0?C.green:C.red}}>
-                {paper.totalPnl>=0?"+":""}{Number(paper.totalPnl).toLocaleString()}<span style={{fontSize:"0.7rem"}}>円</span>
-                <span style={{fontSize:"0.78rem",marginLeft:"0.35rem"}}>({paper.totalPnlPct>=0?"+":""}{paper.totalPnlPct}%)</span>
-              </div>
-            </div>
-          </div>
-
           {/* 資産推移グラフ */}
           {paper.history&&paper.history.length>1&&(()=>{
             const h=paper.history, vals=h.map(x=>x.equity);
