@@ -1287,10 +1287,12 @@ def simulate_grid(tickers=None, years=25, initial=1000000):
     all_dates = sorted({d for v in prep.values() for d in v["dates"]})[200:]
 
     combos = []
-    for entry in (70, 75, 80):
-        for rr in (2.0, 3.0):
-            for mp in (3, 5, 8):
-                combos.append({"entryScore": entry, "rr": rr, "maxPositions": mp, "riskPct": 2.0})
+    for entry in (65, 70, 75, 80):
+        for rr in (2.0, 3.0, 4.0):
+            for mp in (2, 3, 5, 8):          # 少ないほど集中=ハイリスク・ハイリターン
+                for risk in (2.0, 3.0, 5.0):  # 1トレードの許容損失
+                    combos.append({"entryScore": entry, "rr": rr,
+                                   "maxPositions": mp, "riskPct": risk})
 
     rows = []
     for c in combos:
@@ -1308,13 +1310,28 @@ def simulate_grid(tickers=None, years=25, initial=1000000):
         except Exception as e:
             print("grid combo failed:", c, e)
 
-    current = next((r for r in rows if r["entryScore"] == 70 and r["rr"] == 2.0
-                    and r["maxPositions"] == 5), None)
-    best_return = max(rows, key=lambda r: r["cagrPct"]) if rows else None
-    best_risk = max(rows, key=lambda r: r["calmar"]) if rows else None
+    current = next((r for r in rows if r["entryScore"] == 70 and r["rr"] == 3.0
+                    and r["maxPositions"] == 8 and r["riskPct"] == 2.0), None)
+    valid = [r for r in rows if r["trades"] >= 20]   # 取引が少なすぎる条件は信頼できない
+
+    def pick(cond, key):
+        c = [r for r in valid if cond(r)]
+        return max(c, key=key) if c else None
+
+    # 3タイプ: 下落を抑える / バランス / リターン重視(下落は深くなる)
+    presets = {
+        "safe": pick(lambda r: r["maxDrawdownPct"] >= -15, lambda r: r["cagrPct"]),
+        "balanced": pick(lambda r: True, lambda r: r["calmar"]),
+        "aggressive": pick(lambda r: r["maxDrawdownPct"] >= -45, lambda r: r["cagrPct"]),
+    }
+    if not presets["safe"]:
+        presets["safe"] = pick(lambda r: r["maxDrawdownPct"] >= -25, lambda r: r["cagrPct"])
     return {"period": {"years": years, "tickers": len(prep)},
             "combos": sorted(rows, key=lambda r: -r["calmar"]),
-            "current": current, "bestReturn": best_return, "bestRiskAdjusted": best_risk,
+            "current": current,
+            "presets": presets,
+            "bestReturn": max(valid, key=lambda r: r["cagrPct"]) if valid else None,
+            "bestRiskAdjusted": presets["balanced"],
             "updatedAt": datetime.now(timezone.utc).isoformat()}
 
 
@@ -2376,11 +2393,12 @@ def autotrade_config(update=None):
                                    "log": [], "userToggled": False})
     cfg.setdefault("rr", 3.0)
     cfg.setdefault("oddLot", True)   # 単元未満株(S株など)を使う。100万円でも値がさ株を分散できる
+    cfg.setdefault("entryScore", 70)  # 買いの最低スコア。下げるほど機会が増えるが精度は落ちる
     # 手動で切り替えるまでは常にON(「ボタンを押さなくても回っている」状態にする)
     if not cfg.get("userToggled") and not cfg.get("enabled"):
         cfg["enabled"] = True
     if update:
-        for k in ("enabled", "riskPct", "maxPositions", "minConviction", "rr", "oddLot"):
+        for k in ("enabled", "riskPct", "maxPositions", "minConviction", "rr", "oddLot", "entryScore"):
             if k in update:
                 cfg[k] = update[k]
         if "enabled" in update:
@@ -2405,6 +2423,7 @@ def run_autotrade():
     max_pos = int(cfg.get("maxPositions", 5))
     min_conv = int(cfg.get("minConviction", 3))
     odd_lot = bool(cfg.get("oddLot", True))
+    entry_score = int(cfg.get("entryScore", 70))
 
     # ── ① 手仕舞い判定 ──
     for pos in list(st["positions"]):
@@ -2471,7 +2490,7 @@ def run_autotrade():
                 continue
             # ランキング由来の候補は最新スコアで再確認(古い情報で買わない)
             if pl.get("source") == "ranking":
-                if a["short"]["signal"] != "buy" or a["short"]["score"] < 70:
+                if a["short"]["signal"] != "buy" or a["short"]["score"] < entry_score:
                     continue
             # 2%ルール: 1トレードの想定損失が資産のrisk_pct%以内になる株数
             # 単元未満株が使えるなら1株単位。使えないなら日本株は100株単位

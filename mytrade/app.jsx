@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 // MyTrade — 投資専用スタンドアロンアプリ (MyDeskから分離)
 // バックエンド: mydesk-stock-analysis Lambda (共用・変更不要)
 // ═══════════════════════════════════════════════════════════════
-const MYTRADE_BUILD = "2026-08-08-v28-optimal-guard";
+const MYTRADE_BUILD = "2026-08-08-v29-risk-presets";
 if (typeof window !== "undefined") {
   window.__MYTRADE_BUILD = MYTRADE_BUILD;
   console.log(`[MyTrade] Build: ${MYTRADE_BUILD}`);
@@ -508,7 +508,7 @@ function StockView({currentUser}) {
     if(view==="portfolio"&&!journal&&!busy.journal) loadJournal();
     if(view==="learn"){ if(!dash&&!busy.dash) loadDash(); if(!perf&&!busy.perf) loadPerf(); if(!sim&&!busy.sim) loadSim(false); if(!opt&&!busy.opt) loadOpt(false); }
     if(view==="picks"&&!ranking&&!busy.rank) loadRanking(false);
-    if(view==="demo"){ if(!paper&&!busy.paper) loadPaper(); if(!autoCfg) loadAuto(); }
+    if(view==="demo"){ if(!paper&&!busy.paper) loadPaper(); if(!autoCfg) loadAuto(); if(!opt&&!busy.opt) loadOpt(false); }
   /* eslint-disable-next-line */ },[view]);
 
   const searchStock = async () => {
@@ -1706,7 +1706,55 @@ function StockView({currentUser}) {
               </button>
             </div>
           </div>
-          {autoCfg&&(()=>{
+          {/* 🎚️ 運用タイプの選択(検証済みの数字つき) */}
+          {autoCfg&&opt&&opt.presets&&(
+            <div style={{marginTop:"0.55rem",padding:"0.6rem 0.75rem",background:"white",borderRadius:8,border:`1px solid ${C.border}`}}>
+              <div style={{fontSize:"0.74rem",fontWeight:800,color:C.text,marginBottom:"0.35rem"}}>
+                🎚️ 運用タイプを選ぶ <span style={{fontSize:"0.64rem",fontWeight:600,color:C.textMuted}}>25年検証の実測値です</span>
+              </div>
+              <div style={{display:"flex",gap:"0.4rem",flexWrap:"wrap"}}>
+                {[["safe","🛡️ 安定型","下落を抑える",C.green,C.greenBg],
+                  ["balanced","⚖️ バランス型","効率が最良",C.accent,C.accentBg],
+                  ["aggressive","🔥 積極型","リターン重視",C.orange,C.orangeBg]].map(([k,label,note,col,bg])=>{
+                  const r=opt.presets[k];
+                  if(!r) return null;
+                  const cur = autoCfg.riskPct===r.riskPct&&autoCfg.maxPositions===r.maxPositions
+                              &&Number(autoCfg.rr)===r.rr&&(autoCfg.entryScore||70)===r.entryScore;
+                  return (
+                    <div key={k} style={{flex:"1 1 180px",padding:"0.55rem 0.65rem",borderRadius:9,background:cur?bg:C.bg,
+                      border:`2px solid ${cur?col:C.borderLight}`}}>
+                      <div style={{fontSize:"0.76rem",fontWeight:800,color:col}}>{label}{cur&&" ✓"}</div>
+                      <div style={{fontSize:"0.62rem",color:C.textMuted,marginBottom:"0.2rem"}}>{note}</div>
+                      <div style={{fontSize:"0.72rem",color:C.text,lineHeight:1.5}}>
+                        年利<b style={{color:col}}>{r.cagrPct>=0?"+":""}{r.cagrPct}%</b> / 最大下落<b style={{color:C.red}}>{r.maxDrawdownPct}%</b><br/>
+                        <span style={{fontSize:"0.64rem",color:C.textMuted}}>勝率{r.winRate}% / 最大{r.maxLossStreak}連敗</span>
+                      </div>
+                      <div style={{fontSize:"0.6rem",color:C.textMuted,marginTop:"0.15rem"}}>
+                        買い{r.entryScore}点 / 利確{r.rr}倍 / {r.maxPositions}銘柄 / リスク{r.riskPct}%
+                      </div>
+                      {!cur&&(
+                        <button onClick={()=>saveAuto({riskPct:r.riskPct,maxPositions:r.maxPositions,rr:r.rr,entryScore:r.entryScore})}
+                          disabled={busy.auto}
+                          style={{marginTop:"0.3rem",width:"100%",padding:"0.3rem",borderRadius:7,border:"none",background:col,color:"white",fontWeight:700,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit"}}>
+                          この設定にする
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{fontSize:"0.63rem",color:C.textMuted,marginTop:"0.3rem",lineHeight:1.55}}>
+                ※積極型は銘柄を絞って1発を大きく狙う設定です。リターンが増えるぶん<b>含み損も深くなり、連敗も長くなります</b>。
+                途中でやめると損だけが残るので、決めた設定を貫ける範囲で選んでください。
+              </div>
+            </div>
+          )}
+          {autoCfg&&!(opt&&opt.presets)&&(
+            <div style={{marginTop:"0.5rem",fontSize:"0.7rem",color:C.textMuted}}>
+              運用タイプを選ぶには「🎓学習・検証」タブで<b>18通り比較</b>を一度実行してください
+            </div>
+          )}
+          {autoCfg&&!(opt&&opt.presets)&&(()=>{
             const OPT={riskPct:2,maxPositions:8,rr:3};
             const off = autoCfg.riskPct!==OPT.riskPct||autoCfg.maxPositions!==OPT.maxPositions||Number(autoCfg.rr)!==OPT.rr;
             return off?(
