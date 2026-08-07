@@ -226,6 +226,11 @@ def lambda_handler(event, context):
                 r = run_ranking(force=True)
                 _record_job(jname, True, f"{r.get('scanned',0)}銘柄 財務{r.get('finCovered',0)}")
                 return _res(200, r)
+            if job == "corr-verify":
+                r = verify_correlation(None, int(event.get("years", 25)))
+                _save_json_s3("stock-learn/corr_verify.json", r)
+                _record_job(jname, True, (r.get("recommended") or {}).get("name", "採用なし"))
+                return _res(200, {"recommended": r.get("recommended"), "verdict": r["verdict"]})
             if job == "corr":
                 r = compare_correlation(None, int(event.get("years", 25)))
                 _save_json_s3("stock-learn/corr_compare.json", r)
@@ -371,6 +376,12 @@ def lambda_handler(event, context):
             return _res(200, {"config": autotrade_config(body.get("config") or {})})
         if action == "autotrade-run":
             return _res(200, run_autotrade())
+        if action == "corr-verify":
+            r = verify_correlation(None, int(body.get("years", 25)))
+            _save_json_s3("stock-learn/corr_verify.json", r)
+            return _res(200, r)
+        if action == "corr-verify-latest":
+            return _res(200, _load_json_s3("stock-learn/corr_verify.json", {}))
         if action == "corr-compare":
             r = compare_correlation(None, int(body.get("years", 25)))
             _save_json_s3("stock-learn/corr_compare.json", r)
@@ -1576,6 +1587,91 @@ def simulate_grid(tickers=None, years=25, initial=1000000):
             "presets": presets,
             "bestReturn": max(valid, key=lambda r: r["cagrPct"]) if valid else None,
             "bestRiskAdjusted": presets["balanced"],
+            "updatedAt": datetime.now(timezone.utc).isoformat()}
+
+
+def verify_correlation(tickers=None, years=25, initial=1000000):
+    """集中回避などが「たまたま1つの設定で効いただけ」でないかを確かめる。
+    本物の優位性なら、設定を変えても同じ方向に効くはず。
+    1つの設定でしか効かないものは偶然とみなし、採用しない。"""
+    tickers = tickers or FULL_UNIVERSE
+    prep = _prepare_sim(tickers, years, limit=int(os.environ.get("CORR_TICKERS", "400")))
+    if not prep:
+        raise Exception("シミュレーション用のデータが取得できません")
+    all_dates = sorted({d for v in prep.values() for d in v["dates"]})[200:]
+
+    # 性格の違う4つの設定。どれでも効くなら本物
+    BASES = [
+        ("手堅い(75点/5銘柄)",   {"entry_score": 75, "rr": 3.0, "max_pos": 5, "risk_pct": 2.0,
+                                "partial": True, "trail": 0.0, "hold_mode": "trade"}),
+        ("標準(70点/8銘柄)",     {"entry_score": 70, "rr": 3.0, "max_pos": 8, "risk_pct": 2.0,
+                                "partial": True, "trail": 0.0, "hold_mode": "trade"}),
+        ("積極(65点/3銘柄)",     {"entry_score": 65, "rr": 4.0, "max_pos": 3, "risk_pct": 3.0,
+                                "partial": False, "trail": 0.0, "hold_mode": "trade"}),
+        ("長期保有(65点/8銘柄)", {"entry_score": 65, "rr": 3.0, "max_pos": 8, "risk_pct": 2.0,
+                                "partial": False, "trail": 0.25, "hold_mode": "trend"}),
+    ]
+    MECHS = [("集中回避(1銘柄まで)", {"max_same_driver": 1}),
+             ("集中回避(2銘柄まで)", {"max_same_driver": 2}),
+             ("牽引役の順張り",      {"driver_trend": True}),
+             ("β調整サイズ",        {"beta_size": True})]
+
+    results, tally = [], {name: {"win": 0, "n": 0, "cagr": [], "calmar": []} for name, _ in MECHS}
+    for bname, b in BASES:
+        try:
+            base_r = _sim_pass(prep, all_dates, initial, **b)["result"]
+        except Exception as e:
+            print("verify base failed:", bname, e)
+            continue
+        base_calmar = (base_r["cagrPct"] / abs(base_r["maxDrawdownPct"])) if base_r["maxDrawdownPct"] else 0
+        row = {"base": bname, "baseCagr": base_r["cagrPct"], "baseDd": base_r["maxDrawdownPct"],
+               "baseCalmar": round(base_calmar, 2), "mechs": []}
+        for mname, extra in MECHS:
+            try:
+                r = _sim_pass(prep, all_dates, initial, **b, **extra)["result"]
+            except Exception as e:
+                print("verify mech failed:", bname, mname, e)
+                continue
+            cal = (r["cagrPct"] / abs(r["maxDrawdownPct"])) if r["maxDrawdownPct"] else 0
+            dc, dcal = round(r["cagrPct"] - base_r["cagrPct"], 2), round(cal - base_calmar, 3)
+            win = dcal > 0.01
+            tally[mname]["n"] += 1
+            tally[mname]["win"] += 1 if win else 0
+            tally[mname]["cagr"].append(dc)
+            tally[mname]["calmar"].append(dcal)
+            row["mechs"].append({"name": mname, "cagrPct": r["cagrPct"],
+                                 "maxDrawdownPct": r["maxDrawdownPct"], "calmar": round(cal, 2),
+                                 "cagrDiff": dc, "ddDiff": round(r["maxDrawdownPct"] - base_r["maxDrawdownPct"], 1),
+                                 "calmarDiff": dcal, "win": win})
+        results.append(row)
+
+    summary = []
+    for mname, extra in MECHS:
+        t = tally[mname]
+        if not t["n"]:
+            continue
+        avg_c = round(sum(t["cagr"]) / t["n"], 2)
+        avg_cal = round(sum(t["calmar"]) / t["n"], 3)
+        # 全部の設定で効いて初めて「本物」。半分以下なら偶然として退ける
+        verdict = ("本物(すべての設定で改善)" if t["win"] == t["n"] else
+                   "たぶん本物(大半で改善)" if t["win"] >= t["n"] - 1 and t["win"] > t["n"] / 2 else
+                   "偶然の可能性が高い" if t["win"] > 0 else "効かない")
+        summary.append({"name": mname, "wins": t["win"], "of": t["n"], "avgCagrDiff": avg_c,
+                        "avgCalmarDiff": avg_cal, "verdict": verdict,
+                        "robust": t["win"] == t["n"], "config": extra})
+    summary.sort(key=lambda x: (-x["wins"], -x["avgCalmarDiff"]))
+
+    best = next((s for s in summary if s["robust"]), None)
+    return {"bases": results, "summary": summary, "recommended": best,
+            "tickers": len(prep), "universe": len(tickers),
+            "requested": min(len(tickers), int(os.environ.get("CORR_TICKERS", "400"))),
+            "period": {"years": years, "days": len(all_dates)},
+            "verdict": (f"「{best['name']}」は{best['of']}種類すべての設定で効率が改善しました。"
+                        f"設定を変えても効くので、本物の優位性と判断できます"
+                        f"(平均で年利{best['avgCagrDiff']:+}ポイント)。"
+                        if best else
+                        "どの仕組みも「すべての設定で改善」を満たしませんでした。"
+                        "1つの設定でだけ効いたものは偶然の可能性が高いので、採用は見送るべきです。"),
             "updatedAt": datetime.now(timezone.utc).isoformat()}
 
 
