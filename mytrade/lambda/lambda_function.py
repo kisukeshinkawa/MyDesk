@@ -1166,11 +1166,27 @@ def _prepare_sim(tickers, years, min_score=65, limit=20):
 
     drivers = _sim_drivers(years)
     driver_up = {k: v["up"] for k, v in drivers.items()}
+
+    # 銘柄数が多いときは一括ダウンロードに切り替える。
+    # 1銘柄ずつだと通信の往復だけで数百秒かかり、Lambdaの時間内に終わらない
+    target = tickers[:limit]
+    bulk = {}
+    if len(target) > 40:
+        t0 = time.time()
+        bulk = fetch_bulk_ohlcv(target, days=int(years * 366))
+        print(f"sim bulk download: {len(bulk)}/{len(target)}銘柄 {time.time()-t0:.0f}秒")
+
+    budget = float(os.environ.get("SIM_BUDGET", "480"))   # 秒。準備にかけてよい上限
+    started = time.time()
     prep = {}
-    for t in tickers[:limit]:
+    skipped = 0
+    for t in target:
+        if time.time() - started > budget:
+            skipped += 1
+            continue          # 時間切れ。集めたぶんだけで検証する(件数は結果に出す)
         try:
-            df = fetch_history(t, f"{years}y")
-            if len(df) < 250:
+            df = bulk.get(t) if bulk else fetch_history(t, f"{years}y")
+            if df is None or len(df) < 250:
                 continue
             f = build_indicator_frame(df)
             atr = (df["High"] - df["Low"]).rolling(14).mean()
@@ -1210,6 +1226,20 @@ def _prepare_sim(tickers, years, min_score=65, limit=20):
             prep[t]["drvUp"] = driver_up      # 全銘柄で同じ辞書を参照(実体は1つ)
         except Exception as e:
             print("sim prep failed:", t, e)
+
+    # 日付 → その日の買い候補(スコアの高い順)。
+    # 銘柄ごとに毎日全銘柄を見に行くと、909銘柄では走査が数百万回になり終わらない
+    by_date = {}
+    for t, v in prep.items():
+        for d, c in v["cands"].items():
+            by_date.setdefault(d, []).append((t, c))
+    for d in by_date:
+        by_date[d].sort(key=lambda x: -x[1]["score"])
+    for v in prep.values():
+        v["byDate"] = by_date            # 全銘柄で同じ辞書を参照(実体は1つ)
+    if skipped:
+        print(f"sim prep: 時間切れで{skipped}銘柄をスキップ")
+    print(f"sim prep: {len(prep)}銘柄 / 候補のある日 {len(by_date)}日")
     return prep
 
 
@@ -1286,6 +1316,7 @@ def _sim_pass(prep, all_dates, initial=1000000, risk_pct=2.0, max_pos=5,
     beta_size       : 市場に対する感応度(β)が高い銘柄ほど枚数を減らし、実質リスクを揃える
     """
     drv_up = next((v.get("drvUp") for v in prep.values() if v.get("drvUp")), {})
+    by_date = next((v.get("byDate") for v in prep.values() if v.get("byDate")), {})
     cash, positions, trades, curve = float(initial), {}, [], []
     peak, maxdd = float(initial), 0.0
     risk_used = []
@@ -1363,12 +1394,12 @@ def _sim_pass(prep, all_dates, initial=1000000, risk_pct=2.0, max_pos=5,
 
         if len(positions) >= max_pos:
             continue
-        for t, v in prep.items():
-            if t in positions or len(positions) >= max_pos:
+        for t, c in (by_date.get(d) or ()):
+            if len(positions) >= max_pos:
+                break
+            if t in positions or c["score"] < entry_score:
                 continue
-            c = v["cands"].get(d)
-            if not c or c["score"] < entry_score:
-                continue
+            v = prep[t]
             link = (v.get("drivenBy") or {}).get(d)
             # 牽引役が下降トレンドなら見送る(逆風の中で個別の点数だけ見て買わない)
             if driver_trend and link and not (drv_up.get(link["key"]) or {}).get(d, True):
@@ -1552,8 +1583,9 @@ def compare_correlation(tickers=None, years=25, initial=1000000, base=None):
     """連動性(相関)を売買判断に使うと本当に成績が上がるのかを、過去25年で測る。
     今の設定を基準に、仕組みを1つずつ足して比べる。効かなかったものは採用しない。"""
     # 候補が少ないと「弾いた枠を別の銘柄で埋める」ができず、集中回避を過小評価してしまう
-    tickers = tickers or CORR_UNIVERSE
-    prep = _prepare_sim(tickers, years, limit=int(os.environ.get("CORR_TICKERS", "60")))
+    # 全ユニバースを対象にする。時間内に終わらなかったぶんは結果に件数を出す
+    tickers = tickers or FULL_UNIVERSE
+    prep = _prepare_sim(tickers, years, limit=int(os.environ.get("CORR_TICKERS", "400")))
     if not prep:
         raise Exception("シミュレーション用のデータが取得できません")
     all_dates = sorted({d for v in prep.values() for d in v["dates"]})[200:]
@@ -1611,6 +1643,8 @@ def compare_correlation(tickers=None, years=25, initial=1000000, base=None):
     improved = winner["label"] != base_row["label"] and winner["calmar"] > base_row["calmar"]
     return {"rows": rows, "base": base_row, "winner": winner, "improved": improved,
             "baseSettings": b, "linkedTickers": linked, "tickers": len(prep),
+            "requested": min(len(tickers), int(os.environ.get("CORR_TICKERS", "400"))),
+            "universe": len(tickers),
             "period": {"years": years, "days": len(all_dates)},
             "verdict": (f"「{winner['label']}」が最も効率が良く、"
                         f"年利{winner['cagrDiff']:+}ポイント・最大下落{winner['ddDiff']:+}ポイントでした。"
