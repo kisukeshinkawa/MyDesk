@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-08-v354-quote-vendor-assignee-notes"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-08-v355-quote-paginate"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -33963,6 +33963,8 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
   const [permFilter, setPermFilter] = React.useState([]);
   const [areaQ, setAreaQ] = React.useState("");
   const [qvQ, setQvQ] = React.useState(""); // 追加済み対象業者の絞り込み（多数時に見やすく）
+  const [qvPage, setQvPage] = React.useState(0); // 対象業者のページ送り
+  const [showAnon, setShowAnon] = React.useState(false); // 匿名対応表の展開
   const [storeAdd, setStoreAdd] = React.useState(false);
   const [imp, setImp] = React.useState(null);
   const [impErr, setImpErr] = React.useState("");
@@ -34410,8 +34412,8 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
             </div>
           </div>
           <div style={{display:"flex",gap:"0.4rem 0.9rem",flexWrap:"wrap",alignItems:"center",padding:"0.45rem 0.7rem",background:C.bg,border:`1px solid ${C.borderLight}`,borderRadius:8,fontSize:"0.7rem",color:C.textSub,marginBottom:"0.5rem"}}>
-            <span style={{fontWeight:800}}>🔒 匿名対応表（お客様Excelは伏せ名で出力）：</span>
-            {(p.vendors||[]).map((qv,i)=>(<span key={qv.id}><b style={{color:C.accentDark}}>{i<26?String.fromCharCode(65+i)+"社":"第"+(i+1)+"社"}</b>＝{qv.vendorName||"—"}</span>))}
+            <button onClick={()=>setShowAnon(v=>!v)} style={{border:"none",background:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:800,color:C.textSub,fontSize:"0.7rem",padding:0}}>{((p.vendors||[]).length>20&&!showAnon)?"▶":"▼"} 🔒 匿名対応表（お客様Excelは伏せ名で出力・{(p.vendors||[]).length}社）</button>
+            {((p.vendors||[]).length<=20||showAnon)&&(p.vendors||[]).map((qv,i)=>(<span key={qv.id}><b style={{color:C.accentDark}}>{i<26?String.fromCharCode(65+i)+"社":"第"+(i+1)+"社"}</b>＝{qv.vendorName||"—"}</span>))}
           </div>
         </div>
       )}
@@ -34512,19 +34514,38 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
 
       {(p.vendors||[]).length>8&&(
         <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem",flexWrap:"wrap"}}>
-          <input value={qvQ} onChange={e=>setQvQ(e.target.value)} placeholder={`🔍 追加済み${(p.vendors||[]).length}社を絞り込み（業者名）`} style={{flex:1,minWidth:160,padding:"0.35rem 0.6rem",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"inherit"}}/>
-          {qvQ&&<span style={{fontSize:"0.68rem",color:C.textMuted}}>{(p.vendors||[]).filter(qv=>String(qv.vendorName||"").toLowerCase().includes(qvQ.trim().toLowerCase())).length}件</span>}
+          <input value={qvQ} onChange={e=>{setQvQ(e.target.value);setQvPage(0);}} placeholder={`🔍 追加済み${(p.vendors||[]).length}社を絞り込み（業者名）`} style={{flex:1,minWidth:160,padding:"0.35rem 0.6rem",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"inherit"}}/>
         </div>
       )}
-      <div style={{display:"flex",flexDirection:"column",gap:"0.75rem"}}>
-        {(p.vendors||[]).filter(qv=>!qvQ.trim()||String(qv.vendorName||"").toLowerCase().includes(qvQ.trim().toLowerCase())).map(qv=>(
-          <VendorQuoteCard key={qv.id} qv={qv} rows={vendorRows(qv)} stores={p.stores} totalStores={totalStoreCount} showAll={!!qv.showAllStores} onToggleAll={()=>patchVendor(qv.id,{showAllStores:!qv.showAllStores})} vrec={vendors.find(v=>String(v.id)===String(qv.vendorId))} C={C} rid={rid} mapsUrl={mapsUrl} portalBusy={portalBusy} PORTAL_ON={PORTAL_ON}
-            onChange={patch=>patchVendor(qv.id,patch)} onRemove={()=>setVendors((p.vendors||[]).filter(x=>x.id!==qv.id))}
-            onIssue={()=>issueLink(qv)} onCopy={()=>copyLink(qv)} onFetch={()=>fetchResp(qv)} onAddNote={t=>addVendorNote(qv,t)}
-            users={users} onAssign={ids=>assignVendor(qv,ids)}/>
-        ))}
-        {(p.vendors||[]).length===0&&<div style={{textAlign:"center",color:C.textMuted,padding:"1.5rem",fontSize:"0.8rem"}}>上の絞り込み（エリア・許可・業者名）から対象業者を追加してください。</div>}
-      </div>
+      {(()=>{
+        const qvList=(p.vendors||[]);
+        const filt=qvQ.trim()?qvList.filter(qv=>String(qv.vendorName||"").toLowerCase().includes(qvQ.trim().toLowerCase())):qvList;
+        const PER=30; const pages=Math.max(1,Math.ceil(filt.length/PER)); const pg=Math.min(qvPage,pages-1);
+        const shown=filt.slice(pg*PER,pg*PER+PER);
+        const pager=(pos)=>pages>1?(
+          <div key={"pg"+pos} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:"0.6rem",margin:"0.5rem 0"}}>
+            <button disabled={pg<=0} onClick={()=>{setQvPage(pg-1);}} style={{padding:"0.25rem 0.7rem",borderRadius:8,border:`1px solid ${C.border}`,background:pg<=0?"#f1f5f9":"white",color:pg<=0?C.textMuted:C.text,fontWeight:700,fontSize:"0.72rem",cursor:pg<=0?"default":"pointer",fontFamily:"inherit"}}>◀ 前</button>
+            <span style={{fontSize:"0.72rem",color:C.textSub,fontWeight:700}}>{pg+1} / {pages}ページ（{filt.length}社）</span>
+            <button disabled={pg>=pages-1} onClick={()=>{setQvPage(pg+1);}} style={{padding:"0.25rem 0.7rem",borderRadius:8,border:`1px solid ${C.border}`,background:pg>=pages-1?"#f1f5f9":"white",color:pg>=pages-1?C.textMuted:C.text,fontWeight:700,fontSize:"0.72rem",cursor:pg>=pages-1?"default":"pointer",fontFamily:"inherit"}}>次 ▶</button>
+          </div>
+        ):null;
+        return (
+          <div>
+            {pager("top")}
+            <div style={{display:"flex",flexDirection:"column",gap:"0.5rem"}}>
+              {shown.map(qv=>(
+                <VendorQuoteCard key={qv.id} qv={qv} rows={vendorRows(qv)} stores={p.stores} totalStores={totalStoreCount} showAll={!!qv.showAllStores} onToggleAll={()=>patchVendor(qv.id,{showAllStores:!qv.showAllStores})} vrec={vendors.find(v=>String(v.id)===String(qv.vendorId))} C={C} rid={rid} mapsUrl={mapsUrl} portalBusy={portalBusy} PORTAL_ON={PORTAL_ON}
+                  onChange={patch=>patchVendor(qv.id,patch)} onRemove={()=>setVendors((p.vendors||[]).filter(x=>x.id!==qv.id))}
+                  onIssue={()=>issueLink(qv)} onCopy={()=>copyLink(qv)} onFetch={()=>fetchResp(qv)} onAddNote={t=>addVendorNote(qv,t)}
+                  users={users} onAssign={ids=>assignVendor(qv,ids)}/>
+              ))}
+              {qvList.length===0&&<div style={{textAlign:"center",color:C.textMuted,padding:"1.5rem",fontSize:"0.8rem"}}>上の絞り込み（エリア・許可・業者名）から対象業者を追加してください。</div>}
+              {qvList.length>0&&filt.length===0&&<div style={{textAlign:"center",color:C.textMuted,padding:"1rem",fontSize:"0.8rem"}}>「{qvQ}」に一致する対象業者はいません。</div>}
+            </div>
+            {pager("bottom")}
+          </div>
+        );
+      })()}
     </div>
   );
 }
