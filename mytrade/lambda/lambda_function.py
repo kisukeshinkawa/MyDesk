@@ -233,7 +233,8 @@ def lambda_handler(event, context):
             if job == "optimize":
                 r = simulate_grid(None, int(event.get("years", 25)))
                 _save_json_s3("stock-learn/optimize.json", r)
-                return _res(200, {"best": r["bestRiskAdjusted"], "current": r["current"]})
+                return _res(200, {"presets": r.get("presets"), "best": r["bestRiskAdjusted"],
+                                  "current": r["current"], "period": r.get("period")})
             if job == "simulate":
                 r = simulate_strategy(None, int(event.get("years", 25)))
                 _save_json_s3("stock-learn/simulation.json", r)
