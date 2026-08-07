@@ -358,8 +358,9 @@ def lambda_handler(event, context):
         if action == "trade-mode":
             r = apply_trade_mode(body.get("mode", "aggressive"),
                                  bool(body.get("enable", True)))
+            # 売買は裏で走らせる(同期で待つと全銘柄の分析で数分固まるため)
             if body.get("runNow"):
-                r["run"] = run_autotrade()
+                r["runQueued"] = _self_invoke("autotrade")
             return _res(200, r)
         if action == "chart":
             iv = body.get("interval", "1d")

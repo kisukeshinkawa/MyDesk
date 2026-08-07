@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 // MyTrade — 投資専用スタンドアロンアプリ (MyDeskから分離)
 // バックエンド: mydesk-stock-analysis Lambda (共用・変更不要)
 // ═══════════════════════════════════════════════════════════════
-const MYTRADE_BUILD = "2026-08-08-v34-trademode";
+const MYTRADE_BUILD = "2026-08-08-v35-nofreeze";
 if (typeof window !== "undefined") {
   window.__MYTRADE_BUILD = MYTRADE_BUILD;
   console.log(`[MyTrade] Build: ${MYTRADE_BUILD}`);
@@ -674,13 +674,10 @@ function StockView({currentUser}) {
   const applyMode = async (mode) => {
     setBusy(b=>({...b,auto:true})); setErrMsg("");
     try {
-      const r = await api({action:"trade-mode",mode,enable:true,runNow:true}, 600000);
+      // 売買まで待つと数分固まるので、設定の保存だけ待つ(売買は毎時05分の自動実行に任せる)
+      const r = await api({action:"trade-mode",mode,enable:true}, 60000);
       if(r.config) setAutoCfg(r.config);
-      const acts = (r.run&&r.run.actions)||[];
-      await loadPaper();
-      alert(r.note + "\n\n" + (acts.length
-        ? "この設定で今すぐ売買しました:\n" + acts.map(a=>`${a.type==="buy"?"買":"売"} ${a.name||a.ticker}${a.qty?` ${a.qty}株`:""}`).join("\n")
-        : "今の相場では条件を満たす銘柄がなく、売買はありませんでした。以降は毎時、自動で判定します。"));
+      alert(r.note + "\n\n次の自動実行(毎時05分)から、この設定でAIが売買します。");
     } catch(e){ setErrMsg("運用タイプの適用エラー: "+e.message); }
     setBusy(b=>({...b,auto:false}));
   };
