@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-08-v356-quote-autosync-vendor"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-08-v357-quote-auto-issue-link"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -34016,23 +34016,36 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
     });
     return {changed, nextData:{...baseData, quoteProjects:nextProjects, vendors:curVendors}};
   };
-  // 案件を開いたら、発行済み(未回答)リンクの回答を自動フェッチして反映（1案件につき1回・過負荷防止で上限800）
+  // 案件を開いたら：①未発行リンクを自動発行(少数≤60のみ)②未回答リンクの回答を自動フェッチ→反映（1案件1回・上限あり）
   const autoSyncedRef = React.useRef({});
   React.useEffect(()=>{
     if(!activeId || !QUOTE_PORTAL_URL || autoSyncedRef.current[activeId]) return;
     const proj=(data.quoteProjects||[]).find(x=>x.id===activeId);
     if(!proj) return;
     const pending=(proj.vendors||[]).filter(v=>v.portalToken && v.status!=="回答済");
+    const needLink=(proj.vendors||[]).filter(v=>!v.portalToken);
+    const autoIssue = needLink.length>0 && needLink.length<=60; // 大量は手動の一括発行ボタンに任せる
     autoSyncedRef.current[activeId]=true;
-    if(!pending.length) return;
+    if(!pending.length && !autoIssue) return;
     let cancelled=false;
     (async()=>{
       const post=async(b)=>{ const r=await fetch(QUOTE_PORTAL_URL,{method:"POST",headers:{"content-type":"text/plain;charset=UTF-8"},body:JSON.stringify({...b,secret:DB_API_SECRET})}); return r.json(); };
+      // ① 未発行リンクを自動発行（少数のみ）
+      const tokenPatch={};
+      if(autoIssue){
+        const itemsFor=(qv)=> rowsOf(proj.stores).map(r=>({ id:r.itemId, storeId:r.storeId, storeName:r.storeName, area:r.area, bizType:r.bizType, address:r.address, kind:r.kind, freq:r.freq, qty:r.qty, weight:r.weight, dustPhoto:r.dustPhoto||"", overallPhoto:r.overallPhoto||"" }));
+        for(let i=0;i<needLink.length;i+=6){ if(cancelled) return; const batch=needLink.slice(i,i+6);
+          await Promise.all(batch.map(async qv=>{ try{ const j=await post({action:"create", payload:{ projectId:proj.id, projectName:proj.name, company:proj.companyName||"", vendorId:qv.vendorId, vendorName:qv.vendorName, items:itemsFor(qv) }}); if(j&&j.ok) tokenPatch[qv.id]={portalToken:j.token,portalUrl:j.url}; }catch(e){} })); }
+      }
+      // ② 未回答の回答フェッチ
       const tokens=pending.map(v=>v.portalToken); const respByToken={};
       for(let i=0;i<tokens.length && i<800;i+=80){ if(cancelled) return; try{ const j=await post({action:"fetch", tokens:tokens.slice(i,i+80)}); ((j&&j.requests)||[]).forEach(rq=>{ if(rq&&rq.token) respByToken[rq.token]=rq; }); }catch(e){} }
       if(cancelled) return;
-      const {changed,nextData}=applyRespToState(data, activeId, respByToken);
-      if(changed && !cancelled) persistData(nextData);
+      // ③ 反映（トークン付与＋回答）
+      let base=data;
+      if(Object.keys(tokenPatch).length){ const np=(base.quoteProjects||[]).map(x=>x.id!==activeId?x:{...x, status:(x.status==="見積依頼中"?"回収中":x.status), vendors:(x.vendors||[]).map(y=>tokenPatch[y.id]?{...y,...tokenPatch[y.id],status:y.status==="回答済"?y.status:"依頼済"}:y), updatedAt:new Date().toISOString()}); base={...base, quoteProjects:np}; }
+      const {changed,nextData}=applyRespToState(base, activeId, respByToken);
+      if(!cancelled && (changed || Object.keys(tokenPatch).length)) persistData(changed?nextData:base);
     })();
     return ()=>{ cancelled=true; };
   }, [activeId]);
@@ -34316,6 +34329,26 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
     }catch(e){ window.alert("通信エラー: "+(e&&e.message||e)); }
     setPortalBusy("");
   };
+  // 未発行の対象業者に依頼リンクを一括発行（並列6・大量時は確認）
+  const issueAll = async () => {
+    if(!PORTAL_ON){ window.alert("見積ポータルURL（QUOTE_PORTAL_URL）が未設定です。"); return; }
+    const targets=(p.vendors||[]).filter(v=>!v.portalToken);
+    if(!targets.length){ window.alert("未発行の業者はありません（全て発行済み）。"); return; }
+    if(targets.length>100 && !window.confirm(`未発行の ${targets.length} 社に依頼リンクを一括発行します。よろしいですか？`)) return;
+    setPortalBusy("__all__");
+    const patch={}; let ok=0;
+    try{
+      const CONC=6;
+      for(let i=0;i<targets.length;i+=CONC){
+        const batch=targets.slice(i,i+CONC);
+        await Promise.all(batch.map(async qv=>{ try{ const j=await portalPost({action:"create", payload:{ projectId:p.id, projectName:p.name, company:p.companyName||"", vendorId:qv.vendorId, vendorName:qv.vendorName, items:buildReqItemsFor(qv) }}); if(j&&j.ok){ patch[qv.id]={portalToken:j.token,portalUrl:j.url}; ok++; } }catch(e){} }));
+      }
+      const nextProjects=projects.map(x=>x.id!==p.id?x:{...x, status:(x.status==="見積依頼中"?"回収中":x.status), vendors:(x.vendors||[]).map(y=>patch[y.id]?{...y,...patch[y.id],status:y.status==="回答済"?y.status:"依頼済"}:y), updatedAt:new Date().toISOString()});
+      persist(nextProjects);
+      window.alert(`🔗 依頼リンクを発行しました（${ok} / ${targets.length}社）`);
+    }catch(e){ window.alert("通信エラー: "+(e&&e.message||e)); }
+    setPortalBusy("");
+  };
 
   // 電話・見積メモを業者レコードにも【見積:案件名】付きで書き戻す
   const addVendorNote = (qv, text) => {
@@ -34518,7 +34551,8 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
       <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem",flexWrap:"wrap"}}>
         <div style={{fontWeight:800,fontSize:"0.9rem",color:C.text}}>🚚 対象業者 ＆ 見積</div>
         <span style={{fontSize:"0.7rem",color:C.textMuted}}>{(p.vendors||[]).length}社</span>
-        {PORTAL_ON&&(p.vendors||[]).some(v=>v.portalToken)&&<button disabled={portalBusy==="__all__"} onClick={syncAll} title="対象店舗を全リンクに反映し、回答も取得" style={{marginLeft:"auto",padding:"0.3rem 0.7rem",borderRadius:8,border:`1.5px solid ${C.accent}`,background:C.accentBg,color:C.accentDark,fontWeight:700,fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit"}}>{portalBusy==="__all__"?"最新化中…":"🔄 全リンク最新化＆回答取得"}</button>}
+        {PORTAL_ON&&(()=>{ const need=(p.vendors||[]).filter(v=>!v.portalToken).length; return need>0?<button disabled={portalBusy==="__all__"} onClick={issueAll} title="未発行の対象業者に依頼リンクを一括発行" style={{marginLeft:"auto",padding:"0.3rem 0.7rem",borderRadius:8,border:"1.5px solid #FF6A00",background:"#FFF3E8",color:"#9a3412",fontWeight:800,fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit"}}>{portalBusy==="__all__"?"発行中…":`🔗 依頼リンクを一括発行（未発行${need}社）`}</button>:null; })()}
+        {PORTAL_ON&&(p.vendors||[]).some(v=>v.portalToken)&&<button disabled={portalBusy==="__all__"} onClick={syncAll} title="対象店舗を全リンクに反映し、回答も取得" style={{marginLeft:(p.vendors||[]).some(v=>!v.portalToken)?"0":"auto",padding:"0.3rem 0.7rem",borderRadius:8,border:`1.5px solid ${C.accent}`,background:C.accentBg,color:C.accentDark,fontWeight:700,fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit"}}>{portalBusy==="__all__"?"最新化中…":"🔄 全リンク最新化＆回答取得"}</button>}
       </div>
 
       <div style={{background:"white",border:`1px solid ${C.border}`,borderRadius:10,padding:"0.7rem 0.8rem",marginBottom:"0.75rem"}}>
