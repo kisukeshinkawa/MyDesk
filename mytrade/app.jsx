@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 // MyTrade — 投資専用スタンドアロンアプリ (MyDeskから分離)
 // バックエンド: mydesk-stock-analysis Lambda (共用・変更不要)
 // ═══════════════════════════════════════════════════════════════
-const MYTRADE_BUILD = "2026-08-08-v27-tidy";
+const MYTRADE_BUILD = "2026-08-08-v28-optimal-guard";
 if (typeof window !== "undefined") {
   window.__MYTRADE_BUILD = MYTRADE_BUILD;
   console.log(`[MyTrade] Build: ${MYTRADE_BUILD}`);
@@ -1706,6 +1706,25 @@ function StockView({currentUser}) {
               </button>
             </div>
           </div>
+          {autoCfg&&(()=>{
+            const OPT={riskPct:2,maxPositions:8,rr:3};
+            const off = autoCfg.riskPct!==OPT.riskPct||autoCfg.maxPositions!==OPT.maxPositions||Number(autoCfg.rr)!==OPT.rr;
+            return off?(
+              <div style={{marginTop:"0.5rem",padding:"0.5rem 0.7rem",background:C.yellowBg,borderRadius:8,display:"flex",alignItems:"center",gap:"0.5rem",flexWrap:"wrap"}}>
+                <span style={{fontSize:"0.72rem",color:C.yellow,fontWeight:700}}>
+                  ⚠️ 検証済みの最適設定と違います(推奨: リスク2% / 8銘柄 / 利確3倍 → 年利+12.2%・最大下落-17%)
+                </span>
+                <button onClick={()=>saveAuto(OPT)} disabled={busy.auto}
+                  style={{marginLeft:"auto",padding:"0.35rem 0.8rem",borderRadius:8,border:"none",background:C.accent,color:"white",fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit"}}>
+                  最適設定に戻す
+                </button>
+              </div>
+            ):(
+              <div style={{marginTop:"0.5rem",fontSize:"0.7rem",color:C.green,fontWeight:700}}>
+                ✅ 25年検証で最良だった設定で運用中です
+              </div>
+            );
+          })()}
           {autoCfg&&(
             <div style={{display:"flex",gap:"0.8rem",flexWrap:"wrap",alignItems:"center",marginTop:"0.5rem",fontSize:"0.7rem",color:C.textSub}}>
               <span>1回の損失上限
