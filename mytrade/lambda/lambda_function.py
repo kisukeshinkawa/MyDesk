@@ -233,8 +233,20 @@ def lambda_handler(event, context):
             if job == "optimize":
                 r = simulate_grid(None, int(event.get("years", 25)))
                 _save_json_s3("stock-learn/optimize.json", r)
+                # 運用タイプを選んであれば、最新の検証結果で自動売買の設定を更新する
+                tuned = None
+                try:
+                    c = autotrade_config()
+                    if c.get("autoTune"):
+                        tuned = apply_trade_mode(c.get("tradeMode", "balanced"),
+                                                 enable=bool(c.get("enabled", True)))["note"]
+                except Exception as e:
+                    print("autoTune failed:", e)
+                _record_job(jname, True, f"{len(r.get('combos') or [])}条件"
+                                         + (f" / {tuned}" if tuned else ""))
                 return _res(200, {"presets": r.get("presets"), "best": r["bestRiskAdjusted"],
-                                  "current": r["current"], "period": r.get("period")})
+                                  "current": r["current"], "period": r.get("period"),
+                                  "autoTuned": tuned})
             if job == "simulate":
                 r = simulate_strategy(None, int(event.get("years", 25)))
                 _save_json_s3("stock-learn/simulation.json", r)
@@ -343,6 +355,12 @@ def lambda_handler(event, context):
             return _res(200, {"config": autotrade_config(body.get("config") or {})})
         if action == "autotrade-run":
             return _res(200, run_autotrade())
+        if action == "trade-mode":
+            r = apply_trade_mode(body.get("mode", "aggressive"),
+                                 bool(body.get("enable", True)))
+            if body.get("runNow"):
+                r["run"] = run_autotrade()
+            return _res(200, r)
         if action == "chart":
             iv = body.get("interval", "1d")
             if iv in INTRADAY:
@@ -1486,6 +1504,80 @@ def recommend_config(max_dd=-35.0, allow_leverage=False, min_trades=30):
         "updatedAt": datetime.now(timezone.utc).isoformat()}
 
 
+#  maxDd = そのタイプで許容する最大下落。conv = 買いに必要な確信度(低いほど機会が増える)
+TRADE_MODES = {
+    "safe":       {"label": "安定型",     "maxDd": -20, "conv": 4},
+    "balanced":   {"label": "バランス型", "maxDd": -30, "conv": 3},
+    "aggressive": {"label": "積極型",     "maxDd": -45, "conv": 2},
+    "max":        {"label": "最大攻撃型", "maxDd": -70, "conv": 2},
+}
+
+
+def _row_to_autotrade(row):
+    """検証結果の1行を、自動売買が実際に使える設定に翻訳する。
+    デモ口座は現物のみ(信用取引の建玉を持てない)ので、
+    レバレッジ付きの条件は同条件の現物版に置き換える。"""
+    trail = float(row.get("trail", 0) or 0)
+    return {"riskPct": float(row["riskPct"]), "maxPositions": int(row["maxPositions"]),
+            "entryScore": int(row["entryScore"]), "rr": float(row["rr"]),
+            "partial": bool(row.get("partial", False)),
+            "trailPct": round(trail * 100, 1),
+            "holdMode": row.get("hold_mode", "trade"), "oddLot": True}
+
+
+def apply_trade_mode(mode="aggressive", enable=True):
+    """運用タイプ(安定/バランス/積極/最大攻撃)を選ぶと、
+    25年検証でその枠内で最も年利が高かった条件を自動売買に流し込む。
+    以降は検証が回るたびに自動で最新の最適値へ追従する(autoTune)。"""
+    mode = mode if mode in TRADE_MODES else "aggressive"
+    grid = _load_json_s3("stock-learn/optimize.json", None)
+    if not grid or not grid.get("combos"):
+        raise Exception("先に条件の比較(optimize)を実行してください")
+    rows = grid["combos"]
+    limit = TRADE_MODES[mode]["maxDd"]
+    # 取引が少なすぎる条件は「たまたま」なので採用しない
+    pool = [r for r in rows if r["trades"] >= 30 and r["maxDrawdownPct"] >= limit]
+    if not pool:
+        pool = [r for r in rows if r["trades"] >= 20]
+    if not pool:
+        raise Exception("採用できる条件がありません")
+
+    swapped = None
+    best = max(pool, key=lambda r: r["cagrPct"])
+    if best.get("leverage", 1.0) > 1.0:
+        # 同じ条件の現物版(レバレッジ1倍)を探して差し替える
+        same = [r for r in rows
+                if r.get("leverage", 1.0) == 1.0 and r["entryScore"] == best["entryScore"]
+                and r["rr"] == best["rr"] and r["maxPositions"] == best["maxPositions"]
+                and r["riskPct"] == best["riskPct"] and r.get("method") == best.get("method")]
+        cash = [r for r in pool if r.get("leverage", 1.0) == 1.0]
+        alt = same[0] if same else (max(cash, key=lambda r: r["cagrPct"]) if cash else None)
+        if alt:
+            swapped = {"from": best, "to": alt}
+            best = alt
+
+    upd = _row_to_autotrade(best)
+    upd["enabled"] = bool(enable)
+    upd["minConviction"] = TRADE_MODES[mode]["conv"]
+    cfg = autotrade_config(upd)
+    cfg["tradeMode"] = mode
+    cfg["autoTune"] = True          # 検証が更新されるたびに自動で追従する
+    cfg["appliedFrom"] = {k: best.get(k) for k in
+                          ("entryScore", "rr", "maxPositions", "riskPct", "method",
+                           "cagrPct", "maxDrawdownPct", "winRate", "profitFactor", "trades")}
+    cfg["appliedAt"] = datetime.now(timezone.utc).isoformat()
+    _save_json_s3(AUTO_KEY, cfg)
+
+    note = (f"{TRADE_MODES[mode]['label']}を適用しました。"
+            f"検証では年利{best['cagrPct']}% / 最大下落{best['maxDrawdownPct']}% / "
+            f"勝率{best['winRate']}%の条件です。")
+    if swapped:
+        note += (f"(年利{swapped['from']['cagrPct']}%の条件は信用{swapped['from'].get('leverage')}倍が前提でした。"
+                 "デモ口座は現物のみなので、同じ考え方の現物版に置き換えています)")
+    return {"config": cfg, "mode": mode, "label": TRADE_MODES[mode]["label"],
+            "applied": best, "swappedFromLeverage": swapped, "note": note}
+
+
 def _max_streak(trades):
     """最大連敗数(何連敗まで耐える必要があったか)"""
     worst = cur = 0
@@ -2549,12 +2641,15 @@ def autotrade_config(update=None):
     cfg.setdefault("partial", True)   # 分割利確(第1目標で半分利確し損切りを建値へ)
     cfg.setdefault("timeStopDays", 0) # N日経っても動かなければ手仕舞い(0で無効)
     cfg.setdefault("holdMode", "trade")  # trade=利確目標で降りる / trend=200日線を割るまで持つ(長期保有)
+    cfg.setdefault("tradeMode", "balanced")  # safe/balanced/aggressive/max
+    cfg.setdefault("autoTune", False)    # 検証が更新されるたびに最適値へ自動追従するか
     # 手動で切り替えるまでは常にON(「ボタンを押さなくても回っている」状態にする)
     if not cfg.get("userToggled") and not cfg.get("enabled"):
         cfg["enabled"] = True
     if update:
         for k in ("enabled", "riskPct", "maxPositions", "minConviction", "rr", "oddLot",
-                  "entryScore", "trailPct", "partial", "timeStopDays", "holdMode"):
+                  "entryScore", "trailPct", "partial", "timeStopDays", "holdMode",
+                  "tradeMode", "autoTune"):
             if k in update:
                 cfg[k] = update[k]
         if "enabled" in update:
