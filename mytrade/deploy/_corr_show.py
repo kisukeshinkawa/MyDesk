@@ -42,7 +42,7 @@ print("-" * 78)
 
 rows = d["rows"]
 for i, r in enumerate(rows):
-    mark = "(基準)" if i == 0 else ("★効いた" if r.get("helped") else "効果なし")
+    mark = "(基準)" if i == 0 else r.get("grade", "★効いた" if r.get("helped") else "効果なし")
     print("{:<28}{:>+8.2f}%{:>10.1f}%{:>7.1f}%{:>8.2f}   {}".format(
         r["label"], r["cagrPct"], r["maxDrawdownPct"], r["winRate"], r["calmar"], mark))
     if i:

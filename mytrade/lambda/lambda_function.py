@@ -1593,8 +1593,14 @@ def compare_correlation(tickers=None, years=25, initial=1000000, base=None):
         r["cagrDiff"] = round(r["cagrPct"] - base_row["cagrPct"], 2)
         r["ddDiff"] = round(r["maxDrawdownPct"] - base_row["maxDrawdownPct"], 1)
         r["calmarDiff"] = round(r["calmar"] - base_row["calmar"], 2)
-        # 年利・下落・効率のどれかが明確に改善していれば「効いた」とみなす
-        r["helped"] = bool(r["cagrDiff"] > 0.3 or r["ddDiff"] > 1.0 or r["calmarDiff"] > 0.05)
+        # 採用の可否は「効率(年利÷最大下落)が上がったか」で決める。
+        # 下落だけ浅くなってもリターンをそれ以上削っていたら、採用する理由はない
+        if r["calmarDiff"] > 0.02:
+            r["helped"], r["grade"] = True, "★効いた"
+        elif r["ddDiff"] > 1.0:
+            r["helped"], r["grade"] = False, "下落は浅いがリターン減"
+        else:
+            r["helped"], r["grade"] = False, "効果なし"
 
     winner = max(rows, key=lambda r: r["calmar"])
     improved = winner["label"] != base_row["label"] and winner["calmar"] > base_row["calmar"]
