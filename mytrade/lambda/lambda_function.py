@@ -170,6 +170,10 @@ def run_tick():
     if _age_hours(brief.get("updatedAt")) > 6 and _age_hours((jobs.get("brief") or {}).get("at")) > 1:
         if _self_invoke("brief"):
             started.append("brief")
+    flow = cache_get("flow.json", 30 * 24 * 3600) or {}
+    if _age_hours(flow.get("updatedAt")) > 6 and _age_hours((jobs.get("flow") or {}).get("at")) > 1:
+        if _self_invoke("flow"):
+            started.append("flow")
     if _age_hours(cfg.get("updatedAt")) > 20 and _age_hours((jobs.get("learn") or {}).get("at")) > 6:
         if _self_invoke("learn"):
             started.append("learn")
@@ -183,6 +187,7 @@ def run_tick():
                 "news": news.get("updatedAt"),
                 "ranking": ranking.get("updatedAt"),
                 "brief": brief.get("updatedAt"),
+                "flow": flow.get("updatedAt"),
                 "learn": cfg.get("updatedAt"),
                 "autotrade": (jobs.get("autotrade") or {}).get("at"),
             },
@@ -221,6 +226,12 @@ def lambda_handler(event, context):
                 r = run_ranking(force=True)
                 _record_job(jname, True, f"{r.get('scanned',0)}銘柄 財務{r.get('finCovered',0)}")
                 return _res(200, r)
+            if job == "flow":
+                r = market_flow(force=True)
+                _record_job(jname, True, f"業種{len(r.get('sectors') or [])} / "
+                                         f"テーマ{len(r.get('themes') or [])} / β{r.get('betaCovered')}銘柄")
+                return _res(200, {"sectors": (r.get("sectors") or [])[:5],
+                                  "themes": [t["theme"] for t in r.get("themes") or []]})
             if job == "brief":
                 r = run_brief()
                 _record_job(jname, True, f"狙い目{len((r.get('brief') or {}).get('focus') or [])}件")
@@ -355,6 +366,8 @@ def lambda_handler(event, context):
             return _res(200, {"config": autotrade_config(body.get("config") or {})})
         if action == "autotrade-run":
             return _res(200, run_autotrade())
+        if action == "flow":
+            return _res(200, market_flow(bool(body.get("force"))))
         if action == "trade-mode":
             r = apply_trade_mode(body.get("mode", "aggressive"),
                                  bool(body.get("enable", True)))
@@ -1014,6 +1027,7 @@ def analyze_ticker(ticker):
         "market": "JP" if is_jp else "US",
         "currency": _g(info, "currency") or ("JPY" if is_jp else "USD"),
         "sector": _g(info, "sector"),
+        "sectorJa": SECTOR_JA.get(_g(info, "sector")) or _g(info, "sector"),
         "price": round(tech["price"], 2),
         "chg1d": round(tech["chg1d"], 2),
         "hi52": round(tech["hi52"], 2), "lo52": round(tech["lo52"], 2),
@@ -1040,6 +1054,15 @@ def analyze_ticker(ticker):
                                                    df["Low"].iloc[-60:], df["Close"].iloc[-60:], df["Volume"].iloc[-60:])],
         "updatedAt": datetime.now(timezone.utc).isoformat(),
     }
+    # 連動係数(この銘柄が何に引っ張られて動くか)。毎朝のランキングで実測済みのものを流用する
+    try:
+        rk = cache_get("ranking.json", 24 * 3600) or {}
+        row = next((r for r in rk.get("rows", []) if r["ticker"] == ticker), None)
+        if row and row.get("beta"):
+            out["beta"], out["corr"], out["drivenBy"] = row["beta"], row.get("corr"), row.get("drivenBy")
+    except Exception as e:
+        print("beta lookup failed:", ticker, e)
+
     # 予測を記録(後日答え合わせして学習に使う)
     record_prediction({
         "type": "score", "ticker": ticker,
@@ -1988,9 +2011,20 @@ def brain_analysis(ticker, name="", holding=None):
     idx_text = "\n".join(f"- {r['label']}: {r.get('price','?')} (前日比{r.get('chg1d','?')}% / 5日{r.get('chg5d','?')}%)"
                          for r in market["indices"] if "error" not in r)
 
+    # 何に連動して動く銘柄かを渡す(ニュースの材料がこの銘柄に効くかの判断に使う)
+    link_text = ""
+    db = analysis.get("drivenBy")
+    if db:
+        link_text = (f"\n【連動性(過去120日の実測)】{db['label']}に対してβ{db['beta']}・相関{db['corr']}。"
+                     f"{db['label']}が1%動くとこの銘柄は平均{db['beta']}%動く傾向。")
+        others = [f"{k}β{v}" for k, v in (analysis.get("beta") or {}).items()
+                  if k != db["key"] and abs((analysis.get("corr") or {}).get(k, 0)) >= 0.3]
+        if others:
+            link_text += " 他: " + " / ".join(others[:4])
+
     user_prompt = f"""以下の銘柄を分析してください。
 
-【銘柄】{analysis['name']} ({ticker}) / {analysis.get('sector') or '業種不明'} / {analysis['market']}市場
+【銘柄】{analysis['name']} ({ticker}) / {analysis.get('sectorJa') or analysis.get('sector') or '業種不明'} / {analysis['market']}市場{link_text}
 【現在値】{analysis['price']} {analysis['currency']} (前日比{analysis['chg1d']}%) / 52週レンジ {analysis['lo52']}〜{analysis['hi52']} / ATR(14) {analysis['atr']} / RSI {analysis['rsi']}
 
 【地合い】{market['moodLabel']}
@@ -2217,6 +2251,237 @@ def fetch_bulk_ohlcv(tickers, days=450, chunk=80):
     return out
 
 
+# ═══════════════════ 資金の流れ・連動係数(β)・テーマ ═══════════════════
+# 「戦争が起きたら何が上がるか」「半導体が上がるとどこが連動するか」に答えるための土台。
+#
+# 設計方針: テーマ辞書は「その出来事で何が動くか(=牽引役)」までしか人間が決めない。
+#   「ではどの銘柄が連動するか」は、各銘柄のβ(実測値)に判断させる。
+#   銘柄リストを手書きすると思い込みが混ざり、当たらなくなるため。
+DRIVER_TICKERS = [
+    ("^SOX",  "半導体(SOX指数)", "sox"),
+    ("CL=F",  "原油(WTI)",       "oil"),
+    ("GC=F",  "金",              "gold"),
+    ("ITA",   "防衛(米ETF)",     "defense"),
+    ("^TNX",  "米10年金利",      "rate"),
+    ("JPY=X", "ドル円",          "fx"),
+]
+# 市場全体の動き。ほぼ全銘柄が連動するので「特徴」にはならず、テーマ判定からは外す
+MARKET_DRIVERS = [("^N225", "日経平均", "n225"), ("^GSPC", "S&P500", "sp500")]
+
+THEMES = {
+    "有事・地政学": {
+        "keywords": ["戦争", "侵攻", "空爆", "紛争", "ミサイル", "有事", "軍事", "制裁", "停戦",
+                     "テロ", "衝突", "war", "invasion", "airstrike", "missile", "sanction",
+                     "ceasefire", "conflict", "military"],
+        "drivers": ["defense", "oil", "gold"],
+        "note": "防衛・エネルギー・金が買われ、消費や旅行など平時に強い銘柄は売られやすい",
+    },
+    "インフレ・資源高": {
+        "keywords": ["インフレ", "物価高", "原油高", "資源高", "商品市況", "利上げ", "CPI",
+                     "inflation", "crude", "commodity", "rate hike"],
+        "drivers": ["oil", "gold", "rate"],
+        "note": "資源・エネルギーが強く、借金の多い成長株は金利上昇で弱くなりやすい",
+    },
+    "半導体・AI": {
+        "keywords": ["半導体", "AI", "生成AI", "データセンター", "GPU", "エヌビディア",
+                     "semiconductor", "nvidia", "chip", "data center"],
+        "drivers": ["sox"],
+        "note": "半導体指数(SOX)に連動する銘柄が動く。装置・素材・電子部品まで波及しやすい",
+    },
+    "円安・輸出": {
+        "keywords": ["円安", "為替介入", "ドル円", "日銀", "金融緩和", "yen", "boj",
+                     "intervention"],
+        "drivers": ["fx"],
+        "note": "輸出企業の採算が改善。逆に輸入・内需はコスト増で圧迫される",
+    },
+    "金利上昇": {
+        "keywords": ["金利上昇", "長期金利", "利上げ", "国債利回り", "FRB", "利下げ",
+                     "yield", "fed", "treasury"],
+        "drivers": ["rate"],
+        "note": "銀行・保険は利ざや改善で買われ、不動産や高PER株は売られやすい",
+    },
+}
+
+SECTOR_JA = {
+    "Technology": "情報技術", "Financial Services": "金融", "Healthcare": "ヘルスケア",
+    "Consumer Cyclical": "一般消費財", "Industrials": "資本財・工業", "Energy": "エネルギー",
+    "Communication Services": "通信・メディア", "Consumer Defensive": "生活必需品",
+    "Basic Materials": "素材・化学", "Real Estate": "不動産", "Utilities": "公益",
+}
+
+
+def _ret_by_date(close, days=120):
+    """日次リターン。市場ごとに休場日が違うので、日付をキーにして突き合わせられるようにする。
+    (日本株と米国指数を比べるとき、そのままの索引では噛み合わないため)"""
+    s = close.dropna()
+    r = s.pct_change().dropna()
+    try:
+        r.index = [i.date() if hasattr(i, "date") else i for i in r.index]
+    except Exception:
+        pass
+    return r.iloc[-days:]
+
+
+def compute_driver_betas(frames, days=120, min_overlap=50):
+    """各銘柄が「何に連動して動いているか」を実データから測る。
+    β1.8 = その牽引役が1%動くと、この銘柄は平均1.8%動く傾向。
+    相関(corr)は連動の確からしさ。βが大きくても相関が低ければ「たまたま」なので採用しない。"""
+    drivers = {}
+    for sym, label, key in DRIVER_TICKERS + MARKET_DRIVERS:
+        try:
+            r = _ret_by_date(fetch_history(sym, "300d")["Close"], days)
+            if len(r) >= min_overlap:
+                drivers[key] = {"label": label, "ret": r}
+        except Exception as e:
+            print("driver fetch failed:", sym, e)
+    if not drivers:
+        return {}, {}
+
+    theme_keys = {k for _, _, k in DRIVER_TICKERS}
+    out = {}
+    for t, df in frames.items():
+        try:
+            rs = _ret_by_date(df["Close"], days)
+            if len(rs) < min_overlap:
+                continue
+            beta, corr = {}, {}
+            for key, d in drivers.items():
+                a, b = rs.align(d["ret"], join="inner")
+                if len(a) < min_overlap:
+                    continue
+                var = float(b.var())
+                if not var or var <= 0:
+                    continue
+                bv, cv = float(a.cov(b)) / var, float(a.corr(b))
+                if bv != bv or cv != cv:      # NaN(データ不足)は捨てる
+                    continue
+                beta[key] = round(bv, 2)
+                corr[key] = round(cv, 2)
+            if not beta:
+                continue
+            # 「この銘柄は何で動いているか」= 相関が最も強い牽引役(市場全体は除く)
+            cands = [(k, v) for k, v in corr.items() if k in theme_keys and abs(v) >= 0.30]
+            top = max(cands, key=lambda kv: abs(kv[1])) if cands else None
+            out[t] = {"beta": beta, "corr": corr,
+                      "drivenBy": ({"key": top[0], "label": drivers[top[0]]["label"],
+                                    "beta": beta.get(top[0]), "corr": top[1]} if top else None)}
+        except Exception:
+            pass
+    return out, {k: v["label"] for k, v in drivers.items()}
+
+
+def sector_flow(rows):
+    """業種ごとに資金がどちらへ向かっているかを集計する。
+    プロが最初に見る「今どこが買われているか」を数字にしたもの。"""
+    by = {}
+    for r in rows:
+        s = r.get("sector")
+        if not s:
+            continue
+        g = by.setdefault(s, {"sector": s, "label": SECTOR_JA.get(s, s),
+                              "n": 0, "d1": [], "d5": [], "d20": [], "buy": 0, "top": []})
+        g["n"] += 1
+        for k, src in (("d1", "chg1d"), ("d5", "chg5d"), ("d20", "chg20d")):
+            if r.get(src) is not None:
+                g[k].append(r[src])
+        if r.get("shortSignal") == "buy":
+            g["buy"] += 1
+        g["top"].append(r)
+
+    def avg(v):
+        return round(sum(v) / len(v), 2) if v else None
+
+    out = []
+    for g in by.values():
+        if g["n"] < 3:      # 銘柄数が少ない業種は平均が暴れるので除外
+            continue
+        best = sorted(g["top"], key=lambda r: -(r.get("short") or 0))[:3]
+        out.append({"sector": g["sector"], "label": g["label"], "count": g["n"],
+                    "chg1d": avg(g["d1"]), "chg5d": avg(g["d5"]), "chg20d": avg(g["d20"]),
+                    "buyRatio": round(g["buy"] / g["n"] * 100),
+                    "leaders": [{"ticker": r["ticker"], "name": r.get("name"),
+                                 "short": r.get("short"), "chg5d": r.get("chg5d")} for r in best]})
+    out.sort(key=lambda g: -(g["chg5d"] if g["chg5d"] is not None else -99))
+    return out
+
+
+def detect_themes(news_items):
+    """市場ニュースの見出しから、今どのテーマが効いているかを拾う。"""
+    text = " ".join((n.get("title") or "") for n in news_items).lower()
+    hits = []
+    for name, th in THEMES.items():
+        words = [w for w in th["keywords"] if w.lower() in text]
+        if words:
+            hits.append({"theme": name, "score": len(words), "words": words[:5],
+                         "drivers": th["drivers"], "note": th["note"]})
+    hits.sort(key=lambda h: -h["score"])
+    return hits
+
+
+def market_flow(force=False):
+    """資金の流れ(業種別) + 今効いているテーマ + テーマに連動する銘柄。
+    テーマは辞書で「何が動くか」を決め、銘柄は各社のβ(実測)で選ぶので、
+    「戦争だから防衛株」という思い込みではなく「実際にその動きに連動してきた銘柄」が出る。"""
+    cached = cache_get("flow.json", 3 * 3600)
+    if cached and not force:
+        return cached
+
+    rk = run_ranking(force=False)
+    rows = rk.get("rows", [])
+    news = get_market_news()
+    themes = detect_themes(news.get("news", []))
+
+    # 牽引役そのものの直近の値動き(テーマが本当に効いているかの裏取り)
+    drivers = []
+    for sym, label, key in DRIVER_TICKERS:
+        try:
+            c = fetch_history(sym, "120d")["Close"].dropna()
+            drivers.append({"key": key, "label": label, "price": round(float(c.iloc[-1]), 2),
+                            "chg1d": round((float(c.iloc[-1]) / float(c.iloc[-2]) - 1) * 100, 2)
+                            if len(c) >= 2 else None,
+                            "chg5d": round((float(c.iloc[-1]) / float(c.iloc[-6]) - 1) * 100, 2)
+                            if len(c) >= 6 else None,
+                            "chg20d": round((float(c.iloc[-1]) / float(c.iloc[-21]) - 1) * 100, 2)
+                            if len(c) >= 21 else None})
+        except Exception as e:
+            print("driver quote failed:", sym, e)
+    dmap = {d["key"]: d for d in drivers}
+
+    # テーマごとに「その牽引役に最も連動してきた銘柄」を実測βから選ぶ
+    for th in themes:
+        live = [dmap[k] for k in th["drivers"] if k in dmap]
+        th["driverMoves"] = live
+        # 牽引役が実際に動いているか(5日で±1.5%以上)。動いていなければ話題だけの可能性
+        th["confirmed"] = any(abs(d.get("chg5d") or 0) >= 1.5 for d in live)
+        picks = []
+        for r in rows:
+            beta, corr = (r.get("beta") or {}), (r.get("corr") or {})
+            best = None
+            for k in th["drivers"]:
+                if k in beta and abs(corr.get(k, 0)) >= 0.30:
+                    # 連動の強さ = β × 相関。βだけ大きい「たまたま」を弾く
+                    sc = abs(beta[k]) * abs(corr[k])
+                    if not best or sc > best["strength"]:
+                        best = {"key": k, "label": dmap.get(k, {}).get("label", k),
+                                "beta": beta[k], "corr": corr[k], "strength": round(sc, 2)}
+            if best:
+                picks.append({"ticker": r["ticker"], "name": r.get("name") or r["ticker"],
+                              "market": r.get("market"), "sector": SECTOR_JA.get(r.get("sector"), r.get("sector")),
+                              "short": r.get("short"), "shortSignal": r.get("shortSignal"),
+                              "chg5d": r.get("chg5d"), "quadrant": r.get("quadrant"), **best})
+        picks.sort(key=lambda p: -p["strength"])
+        th["stocks"] = picks[:8]
+
+    out = {"sectors": sector_flow(rows), "themes": themes, "drivers": drivers,
+           "scanned": len(rows),
+           "betaCovered": len([r for r in rows if r.get("beta")]),
+           "sectorCovered": len([r for r in rows if r.get("sector")]),
+           "newsCount": len(news.get("news", [])),
+           "updatedAt": datetime.now(timezone.utc).isoformat()}
+    cache_put("flow.json", out)
+    return out
+
+
 # ═══════════════════════ 全銘柄ランキング(短期/長期/狙い目) ═══════════════════════
 def run_ranking(force=False, universe=None):
     """全ユニバース(日経225相当+米国主要=約400銘柄)を採点してランキング化。
@@ -2257,9 +2522,13 @@ def run_ranking(force=False, universe=None):
             sc = score_short(tech, b_ret, weights)
             if not b_regime and sc["signal"] == "buy":
                 sc["signal"] = "watch"
+            c = df["Close"].dropna()
+            chg5 = round((float(c.iloc[-1]) / float(c.iloc[-6]) - 1) * 100, 2) if len(c) >= 6 else None
+            chg20 = round((float(c.iloc[-1]) / float(c.iloc[-21]) - 1) * 100, 2) if len(c) >= 21 else None
             rows.append({
                 "ticker": ticker, "name": ticker, "market": mkt,
                 "price": round(tech["price"], 2), "chg1d": round(tech["chg1d"], 2),
+                "chg5d": chg5, "chg20d": chg20,
                 "short": sc["score"], "shortSignal": sc["signal"],
                 "shortReasons": [b["reason"] for b in sorted(
                     sc["breakdown"], key=lambda x: -(x["points"] / x["max"] if x["max"] else 0))[:2]],
@@ -2267,6 +2536,17 @@ def run_ranking(force=False, universe=None):
         except Exception as e:
             errors += 1
             print("ranking short failed:", ticker, e)
+
+    # ── ①' 連動係数(β): 何に引っ張られて動く銘柄かを実測する ──
+    # 株価は取得済みなので追加のダウンロードは牽引役の数本だけで済む
+    try:
+        betas, driver_labels = compute_driver_betas(frames)
+        for r in rows:
+            b = betas.get(r["ticker"])
+            if b:
+                r.update({"beta": b["beta"], "corr": b["corr"], "drivenBy": b["drivenBy"]})
+    except Exception as e:
+        print("beta calc failed:", e)
 
     # ── ② 財務: ウォッチリスト + 短期上位 + キャッシュ済みを優先して長期スコア ──
     wl = {w["ticker"] for w in _load_json_s3(WATCHLIST_KEY, [])}
@@ -2399,7 +2679,28 @@ def run_brief():
                + "\n".join(f"- AI判定{k}: {v['n']}件 勝率{v['winRate']}% 平均{v['avgRet']:+}%" for k, v in v5.items())
                + "\n" + "\n".join(f"- スコア{k}: {v['n']}件 勝率{v['winRate']}% 平均{v['avgRet']:+}%" for k, v in s5.items()))
 
-    prompt = (f"【地合い】{market['moodLabel']}\n{idx}\n\n【市場ニュース】\n{news_txt}\n\n"
+    # 資金の流れとテーマ(実測βで選んだ連動銘柄つき)を渡す。
+    # 「戦争→防衛」のような筋道を、AIが見出しから推測するのではなく数字で受け取れるようにする。
+    flow_txt = ""
+    try:
+        fl = market_flow()
+        secs = [s for s in fl.get("sectors") or [] if s.get("chg5d") is not None]
+        if secs:
+            up = "\n".join(f"- {s['label']}: 5日{s['chg5d']:+}% / 20日{s['chg20d']:+}% "
+                           f"(買いシグナル{s['buyRatio']}%・{s['count']}銘柄)" for s in secs[:4])
+            dn = "\n".join(f"- {s['label']}: 5日{s['chg5d']:+}%" for s in secs[-3:])
+            flow_txt += f"\n\n【資金の流れ・買われている業種】\n{up}\n【売られている業種】\n{dn}"
+        for th in (fl.get("themes") or [])[:2]:
+            mv = " / ".join(f"{d['label']}5日{d.get('chg5d')}%" for d in th.get("driverMoves") or [])
+            st = " / ".join(f"{p['name']}({p['ticker']}) {p['label']}にβ{p['beta']}"
+                            for p in (th.get("stocks") or [])[:5])
+            flow_txt += (f"\n\n【効いているテーマ: {th['theme']}】"
+                         f"{'(牽引役が実際に動いている)' if th.get('confirmed') else '(見出しのみ・牽引役は未反応)'}\n"
+                         f"{th['note']}\n牽引役: {mv}\n過去の連動が強い銘柄: {st}")
+    except Exception as e:
+        print("brief flow failed:", e)
+
+    prompt = (f"【地合い】{market['moodLabel']}\n{idx}\n\n【市場ニュース】\n{news_txt}{flow_txt}\n\n"
               f"【全銘柄スキャン上位({ranking.get('scanned')}銘柄中)】\n{cand}{acc}")
 
     brief = {}
