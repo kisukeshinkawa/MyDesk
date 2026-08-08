@@ -2,7 +2,8 @@
 # ─────────────────────────────────────────────────────────────
 # MyTrade: 設定を決めた期間の「外」でも通用するかを検証する
 #   bash deploy/wf.sh       結果を見る
-#   bash deploy/wf.sh run   検証を開始(20分ほど・裏で走る)
+#   bash deploy/wf.sh run       検証を開始(20分ほど・裏で走る)
+#   bash deploy/wf.sh run off   地合いフィルター無しで検証
 # ─────────────────────────────────────────────────────────────
 set -euo pipefail
 
@@ -16,10 +17,12 @@ URL=$(aws lambda get-function-url-config --function-name "$FUNC" \
   --region "$REGION" --query FunctionUrl --output text)
 
 if [ "$CMD" = "run" ]; then
+  # 地合い判定を指定できる(既定は現行の ma200)。off で地合いフィルター無し
+  RG="${2:-ma200}"
   aws lambda invoke --function-name "$FUNC" --region "$REGION" \
     --invocation-type Event --cli-binary-format raw-in-base64-out \
-    --payload '{"job":"walkforward"}' /dev/null >/dev/null
-  echo "▶ ウォークフォワード検証を開始しました(20分ほど)。"
+    --payload "{\"job\":\"walkforward\",\"regime\":\"$RG\"}" /dev/null >/dev/null
+  echo "▶ ウォークフォワード検証を開始しました(地合い判定=$RG・20分ほど)。"
   echo "  終わったら: bash deploy/wf.sh"
   exit 0
 fi
