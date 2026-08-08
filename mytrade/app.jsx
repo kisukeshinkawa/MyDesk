@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 // MyTrade — 投資専用スタンドアロンアプリ (MyDeskから分離)
 // バックエンド: mydesk-stock-analysis Lambda (共用・変更不要)
 // ═══════════════════════════════════════════════════════════════
-const MYTRADE_BUILD = "2026-08-08-v39-collapse";
+const MYTRADE_BUILD = "2026-08-08-v40-heartbeat";
 
 // 牽引役の日本語名(連動係数βの表示に使う)
 const FLOW_DRIVER_JA = {sox:"半導体", oil:"原油", gold:"金", defense:"防衛",
@@ -1914,6 +1914,18 @@ function StockView({currentUser}) {
                   {autoCfg&&autoCfg.enabled?"稼働中(操作不要)":"停止中"}
                 </span>
               </div>
+              {/* 売買が無い日はログが増えないので、動いているかは実行時刻でしか分からない */}
+              {autoCfg&&autoCfg.lastRunAt&&(()=>{
+                const mins=(Date.now()-new Date(autoCfg.lastRunAt))/60000;
+                const stale=mins>150;   // 毎時05分に走るので2時間半空いたら異常
+                return (
+                  <div style={{fontSize:"0.68rem",color:stale?C.red:C.textMuted,marginTop:"0.15rem",fontWeight:stale?700:400}}>
+                    {stale?"⚠️ ":"🕐 "}最終チェック {new Date(autoCfg.lastRunAt).toLocaleString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})}
+                    （{mins<60?`${Math.round(mins)}分前`:`${(mins/60).toFixed(1)}時間前`}）
+                    {stale?" — 2時間以上動いていません":" ・毎時05分に自動チェック中"}
+                  </div>
+                );
+              })()}
               {/* 常時見せるのは「今どの設定で動いているか」だけ。解説と設定は折りたたむ */}
               {autoCfg&&(()=>{
                 const MODE={safe:"🛡️ 安定型",balanced:"⚖️ バランス型",aggressive:"🔥 積極型",max:"💀 最大攻撃型"};
@@ -1924,6 +1936,12 @@ function StockView({currentUser}) {
                     {autoCfg.autoTune&&<span style={{color:C.green,fontSize:"0.66rem"}}>・毎月自動で最適化</span>}
                     <br/>
                     買い{autoCfg.entryScore}点以上 / 利確{autoCfg.rr}倍 / {autoCfg.maxPositions}銘柄まで / 1回のリスク{autoCfg.riskPct}%
+                    {paperAi&&paperAi.positions&&paperAi.positions.length>autoCfg.maxPositions&&(
+                      <span style={{color:C.yellow,fontWeight:700}}>
+                        （現在{paperAi.positions.length}銘柄保有。上限を下げる前に買った分なので、
+                        決済されるまでは上限を超えたままです。新規は買いません）
+                      </span>
+                    )}
                     {autoCfg.holdMode==="trend"&&" / 長期保有"}
                     {a.cagrPct!=null&&(
                       <><br/><span style={{color:C.textMuted}}>この条件の25年検証: 年利

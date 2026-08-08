@@ -37,6 +37,20 @@ print("  保有方針   : %s" % 保有.get(c.get("holdMode"),c.get("holdMode")))
 a=c.get("appliedFrom") or {}
 if a: print("  検証実績   : 年利%s%% / 最大下落%s%% / 勝率%s%%"
             % (a.get("cagrPct"), a.get("maxDrawdownPct"), a.get("winRate")))
+# 売買が無い日はログが増えないので、動いているかは実行時刻で見る
+import datetime as _dt
+lr=c.get("lastRunAt")
+if lr:
+    try:
+        t=_dt.datetime.fromisoformat(lr.replace("Z","+00:00"))
+        m=(_dt.datetime.now(_dt.timezone.utc)-t).total_seconds()/60
+        mark="⚠️ 2時間以上止まっています" if m>150 else "正常(毎時05分に自動チェック)"
+        when = t.astimezone().strftime("%m/%d %H:%M")
+        ago = ("%.0f分前" % m) if m < 60 else ("%.1f時間前" % (m / 60))
+        print("  最終チェック : " + when + " (" + ago + ") " + mark)
+    except Exception: print("  最終チェック : %s" % lr)
+else:
+    print("  最終チェック : まだ一度も実行されていません")
 '
 }
 
