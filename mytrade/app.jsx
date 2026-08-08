@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 // MyTrade — 投資専用スタンドアロンアプリ (MyDeskから分離)
 // バックエンド: mydesk-stock-analysis Lambda (共用・変更不要)
 // ═══════════════════════════════════════════════════════════════
-const MYTRADE_BUILD = "2026-08-08-v40-heartbeat";
+const MYTRADE_BUILD = "2026-08-08-v41-honest";
 
 // 牽引役の日本語名(連動係数βの表示に使う)
 const FLOW_DRIVER_JA = {sox:"半導体", oil:"原油", gold:"金", defense:"防衛",
@@ -415,6 +415,7 @@ function StockView({currentUser}) {
   const [brief, setBrief]         = useState(null);  // プロトレーダーの視点(日次ブリーフ)
   const [mktNews, setMktNews]     = useState(null);  // 市場全体ニュース
   const [flow, setFlow]           = useState(null);  // 資金の流れ・テーマ・連動銘柄
+  const [reality, setReality]     = useState(null);  // 検証の実態(バックテストと期間外の差)
   const [autoOpen, setAutoOpen]   = useState(()=>localStorage.getItem("mt_autoOpen")==="1"); // AI運用の設定を開くか
   const [chart, setChart]         = useState(null);  // プロチャートデータ
   const [chartPeriod, setChartPeriod] = useState("6mo");
@@ -515,9 +516,9 @@ function StockView({currentUser}) {
       if(!report&&!busy.report) loadReport(false);
     }
     if(view==="portfolio"&&!journal&&!busy.journal) loadJournal();
-    if(view==="learn"){ if(!dash&&!busy.dash) loadDash(); if(!perf&&!busy.perf) loadPerf(); if(!sim&&!busy.sim) loadSim(false); if(!opt&&!busy.opt) loadOpt(false); if(!rec&&!busy.rec) loadRec(); }
+    if(view==="learn"){ if(!reality) loadReality(); if(!dash&&!busy.dash) loadDash(); if(!perf&&!busy.perf) loadPerf(); if(!sim&&!busy.sim) loadSim(false); if(!opt&&!busy.opt) loadOpt(false); if(!rec&&!busy.rec) loadRec(); }
     if(view==="picks"&&!ranking&&!busy.rank) loadRanking(false);
-    if(view==="demo"){ if(!paper&&!busy.paper) loadPaper(); if(!autoCfg) loadAuto(); if(!opt&&!busy.opt) loadOpt(false); }
+    if(view==="demo"){ if(!paper&&!busy.paper) loadPaper(); if(!autoCfg) loadAuto(); if(!opt&&!busy.opt) loadOpt(false); if(!reality) loadReality(); }
   /* eslint-disable-next-line */ },[view]);
 
   const searchStock = async () => {
@@ -713,6 +714,12 @@ function StockView({currentUser}) {
     try { const r = await api({action:"market-news"}, 60000); setMktNews(r); } catch(e){}
   };
 
+  // バックテストの数字をそのまま見せると、達成できない成績を信じさせることになる。
+  // 期間外で実際どうだったかを必ず併記するために取得する
+  const loadReality = async () => {
+    try { const r = await api({action:"reality"}, 60000); setReality(r); } catch(e){}
+  };
+
   // 資金の流れ(業種別)と、今効いているテーマ。テーマに連動する銘柄はβの実測値で選ばれる
   const loadFlow = async () => {
     setBusy(b=>({...b,flow:true}));
@@ -817,6 +824,73 @@ function StockView({currentUser}) {
     <div style={{fontSize:"0.71rem",color:C.textSub,lineHeight:1.75,background:C.bg,
       borderRadius:7,padding:"0.45rem 0.6rem",marginTop:"0.35rem"}}>💡 {children}</div>
   );
+  // バックテストの成績と、期間外の実測・指数との比較を並べて出す。
+  // 良く見える数字だけを見せると、達成できない期待を持たせることになる
+  const RealityBanner = () => {
+    if(!reality || !reality.headline) return null;
+    const fail = reality.level==="fail";
+    const col = fail?C.red:(reality.level==="partial"?C.yellow:C.textSub);
+    const bg  = fail?C.redBg:(reality.level==="partial"?C.yellowBg:C.bg);
+    return (
+      <div style={{padding:"0.8rem 0.95rem",borderRadius:10,background:bg,
+        border:`1.5px solid ${col}`,marginBottom:"0.85rem"}}>
+        <div style={{fontWeight:800,fontSize:"0.86rem",color:col,marginBottom:"0.25rem"}}>
+          ⚠️ {reality.headline}
+        </div>
+        {reality.outSampleCagr!=null&&reality.outSampleBench!=null&&(
+          <div style={{overflowX:"auto",marginBottom:"0.4rem"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:"0.72rem",minWidth:280}}>
+              <tbody>
+                {[["バックテスト(条件を選んだ後)",reality.backtestCagr,reality.backtestDd,C.textMuted],
+                  ["期間外の実測",reality.outSampleCagr,reality.outSampleDd,C.text],
+                  ["同じ期間に指数を買って放置",reality.outSampleBench,null,C.accent]].map(([l,c,dd,cc],i)=>(
+                  c==null?null:(
+                    <tr key={i} style={{borderBottom:`1px solid ${C.borderLight}`}}>
+                      <td style={{padding:"0.25rem 0",fontSize:"0.71rem",color:C.textSub}}>{l}</td>
+                      <td style={{padding:"0.25rem 0",textAlign:"right",fontWeight:800,color:cc}}>
+                        年利{c>=0?"+":""}{c}%
+                      </td>
+                      <td style={{padding:"0.25rem 0",textAlign:"right",color:C.textMuted,fontSize:"0.68rem"}}>
+                        {dd!=null?`下落${dd}%`:""}
+                      </td>
+                    </tr>
+                  )
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <div style={{fontSize:"0.73rem",color:C.text,lineHeight:1.8}}>{reality.detail}</div>
+        {reality.usage&&(
+          <div style={{fontSize:"0.73rem",color:C.textSub,lineHeight:1.8,marginTop:"0.35rem",
+            background:"rgba(255,255,255,0.6)",borderRadius:7,padding:"0.45rem 0.6rem"}}>
+            💡 {reality.usage}
+          </div>
+        )}
+        {(reality.costRows||[]).length>0&&(
+          <details style={{marginTop:"0.4rem"}}>
+            <summary style={{fontSize:"0.68rem",color:C.textMuted,cursor:"pointer",fontWeight:700}}>
+              ▸ 約定コスト別の結果を見る
+            </summary>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:"0.7rem",marginTop:"0.3rem"}}>
+              <tbody>
+                {reality.costRows.map((r,i)=>(
+                  <tr key={i} style={{borderBottom:`1px solid ${C.borderLight}`}}>
+                    <td style={{padding:"0.22rem 0",color:C.textSub}}>{r.label}</td>
+                    <td style={{padding:"0.22rem 0",textAlign:"right"}}>年利{r.cagrPct}%</td>
+                    <td style={{padding:"0.22rem 0",textAlign:"right",color:C.textMuted}}>指数{r.benchCagr}%</td>
+                    <td style={{padding:"0.22rem 0",textAlign:"right",fontWeight:800,
+                      color:r.edge>0?C.green:C.red}}>{r.edge>0?"+":""}{r.edge}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </details>
+        )}
+      </div>
+    );
+  };
+
   // 細かい指標は畳んでおく(必要な人だけ開く。普段は目に入らないように)
   const Pro = ({label, children}) => (
     <details style={{marginTop:"0.4rem"}}>
@@ -1905,6 +1979,8 @@ function StockView({currentUser}) {
           </div>
         </div>
 
+        <RealityBanner/>
+
         {/* 🤖 AI自動デモ売買 */}
         <div style={{padding:"0.7rem 0.85rem",background:autoCfg&&autoCfg.enabled?"linear-gradient(135deg,#F0FDF4,#E6F0FF)":C.bg,borderRadius:10,marginBottom:"0.75rem",border:`1.5px solid ${autoCfg&&autoCfg.enabled?C.green:C.border}`}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:"0.5rem"}}>
@@ -1945,8 +2021,12 @@ function StockView({currentUser}) {
                     {autoCfg.holdMode==="trend"&&" / 長期保有"}
                     {a.cagrPct!=null&&(
                       <><br/><span style={{color:C.textMuted}}>この条件の25年検証: 年利
-                        <b style={{color:C.green}}>{a.cagrPct>=0?"+":""}{a.cagrPct}%</b> / 最大下落
-                        <b style={{color:C.red}}>{a.maxDrawdownPct}%</b> / 勝率{a.winRate}%</span></>
+                        <b style={{color:C.textSub}}>{a.cagrPct>=0?"+":""}{a.cagrPct}%</b> / 最大下落
+                        <b style={{color:C.textSub}}>{a.maxDrawdownPct}%</b> / 勝率{a.winRate}%
+                        {reality&&reality.level==="fail"&&(
+                          <b style={{color:C.red}}>（※過去を見てから選んだ条件の成績です。
+                            期間外では指数に届きませんでした）</b>
+                        )}</span></>
                     )}
                   </div>
                 );
@@ -2586,6 +2666,8 @@ function StockView({currentUser}) {
                 );
               })()}
             </div>
+
+            <RealityBanner/>
 
             {/* 🎯 実運用でいちばん良い設定(まぐれ除外) */}
             <div style={{marginBottom:"0.85rem",padding:"0.8rem 0.95rem",background:"white",borderRadius:10,border:`2px solid ${C.accent}`}}>
