@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-08-v370-merge-reflect-quotes"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-08-v371-dedup-partial-select-permits"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -627,7 +627,7 @@ if (typeof window !== "undefined" && !window.__myDeskFlushListenerAdded) {
   });
 }
 
-const INIT = { tasks:[], projects:[], emails:[], emailStyles:[], prefectures:[], municipalities:[], vendors:[], companies:[], businessCards:[], notifications:[], changeLogs:[], analytics:{}, emailTemplates:[], quotes:[], quoteProjects:[], quoteLinks:[] };
+const INIT = { tasks:[], projects:[], emails:[], emailStyles:[], prefectures:[], municipalities:[], vendors:[], companies:[], businessCards:[], notifications:[], changeLogs:[], analytics:{}, emailTemplates:[], quotes:[], quoteProjects:[], quoteLinks:[], dupIgnored:[] };
 
 // ─── ユーザー氏名ヘルパー（姓・名の分割／合成）────────────────────────────────
 // 既存ユーザーは name（例「新川 希亮」または「新川希亮」）のみ持つため、
@@ -2020,6 +2020,12 @@ function _mergeServerLogsIntoLocal(local, server) {
       for (const x of lL) { if (x && x.token != null) m.set(String(x.token), { ...(m.get(String(x.token)) || {}), ...x }); }
       out.quoteLinks = Array.from(m.values());
     }
+  } catch (e) { /* no-op */ }
+  // (3) 「別物として登録」した重複グループ dupIgnored も union（削除しない）
+  try {
+    const lI = Array.isArray(local.dupIgnored) ? local.dupIgnored : [];
+    const sI = Array.isArray(server.dupIgnored) ? server.dupIgnored : [];
+    if (lI.length || sI.length) out.dupIgnored = Array.from(new Set([...sI, ...lI]));
   } catch (e) { /* no-op */ }
   return out;
 }
@@ -17874,6 +17880,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
   // 重複統合プレビューモーダル（{groups: [...], focusType?: "company"|"vendor"|"muni"}）
   const [mergePreview, setMergePreview] = useState(null);
   const [mergeSelected, setMergeSelected] = useState(new Set()); // 選択された group key
+  const [dmKeep, setDmKeep] = useState({});       // groupKey -> 残す(survivor) の id
+  const [dmDropSel, setDmDropSel] = useState({}); // groupKey -> 統合に含めるメンバーidの配列（未設定=残す以外すべて）
 
   // ★ 重複統合プレビューモーダル — 関数として定義し、各 return 内で {renderMergeModal()} で呼び出す
   //   SalesView は salesTab に応じて複数の早期 return をするため、
@@ -17882,6 +17890,16 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
     if(!mergePreview) return null;
     const userName = (uid)=> (users||[]).find(u=>String(u.id)===String(uid))?.name || "";
     const TYPE_COLOR = {"企業":"#0070D4","業者":"#7c3aed","自治体":"#009122"};
+    // 「何の・どこの許可か」を種別ごとにまとめて表示（産廃=権者/エリア、一廃=自治体数）
+    const permDetail = (rec) => {
+      const lines=[]; const byT={};
+      (rec.sanpaiPermits||[]).forEach(sp=>{ if(!sp||!sp.auth) return; (byT[sp.type||"産廃"]=byT[sp.type||"産廃"]||new Set()).add(sp.auth); });
+      (rec.permits||[]).forEach(pp=>{ if(!pp) return; const a=pp.area; if(a){ (byT[pp.type||"許可"]=byT[pp.type||"許可"]||new Set()).add(a); } });
+      Object.entries(byT).forEach(([t,set])=>{ const a=[...set]; lines.push(`${t}：${a.slice(0,12).join("・")}${a.length>12?`他${a.length-12}`:""}`); });
+      const pts=(rec.permitTypes||[]).filter(t=>!byT[t]); if(pts.length) lines.push(`種別：${pts.join("・")}`);
+      const mc=(rec.municipalityIds||[]).length; if(mc) lines.push(`一廃エリア：${mc}自治体`);
+      return lines;
+    };
     const fmtDate = (s)=> s ? String(s).slice(0,10) : "";
     const groupsByType = {};
     (mergePreview.groups||[]).forEach(g=>{
@@ -17904,7 +17922,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
               <button onClick={()=>setMergePreview(null)} style={{background:"none",border:"none",cursor:"pointer",fontSize:"1.3rem",color:C.textMuted,lineHeight:1,padding:"0.2rem 0.4rem"}}>✕</button>
             </div>
             <div style={{fontSize:"0.72rem",color:C.textMuted,marginTop:"0.2rem"}}>
-              住所・許可を見て精査 → 統合するグループにチェック。「✅残す」を残し他を統合します。許可(種別×エリア/権者)・メモ・担当・電話・住所は全て引き継ぎます。
+              住所・許可を見て精査 → まとめるグループにチェック。各社で「残す」を選び、統合したい会社に「統合」を付けます（3社中2社だけ等もOK）。許可(種別×エリア/権者)・メモ・担当は残す方へ全統合。「🚫別物」は今後表示しません。
             </div>
             <div style={{marginTop:"0.5rem",display:"flex",alignItems:"center",gap:"0.5rem",flexWrap:"wrap"}}>
               <button onClick={()=>{
@@ -17925,59 +17943,62 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                 </div>
                 {groups.map(grp=>{
                   const isSelected = mergeSelected.has(grp.groupKey);
-                  const keep = grp.keep;
-                  const drops = grp.drops;
-                  const keepAssignees = (keep.assigneeIds||[]).map(userName).filter(Boolean);
+                  const members = [grp.keep, ...grp.drops];
+                  const keepId = String(dmKeep[grp.groupKey] || grp.keep.id);
+                  const dropSel = dmDropSel.hasOwnProperty(grp.groupKey) ? new Set((dmDropSel[grp.groupKey]||[]).map(String)) : new Set(members.map(m=>String(m.id)));
+                  const willMergeCount = members.filter(m=>String(m.id)!==keepId && dropSel.has(String(m.id))).length;
+                  const setKeep = (id)=> setDmKeep(prev=>({...prev,[grp.groupKey]:String(id)}));
+                  const toggleDrop = (id)=> setDmDropSel(prev=>{ const cur=prev.hasOwnProperty(grp.groupKey)?new Set((prev[grp.groupKey]||[]).map(String)):new Set(members.map(m=>String(m.id))); const k=String(id); cur.has(k)?cur.delete(k):cur.add(k); return {...prev,[grp.groupKey]:[...cur]}; });
                   return (
                     <div key={grp.groupKey} style={{border:`1.5px solid ${isSelected?TYPE_COLOR[typeLabel]:C.border}`,borderRadius:"8px",marginBottom:"0.5rem",overflow:"hidden",background:isSelected?`${TYPE_COLOR[typeLabel]}08`:"#fafafa"}}>
                       <div onClick={()=>setMergeSelected(prev=>{const n=new Set(prev);n.has(grp.groupKey)?n.delete(grp.groupKey):n.add(grp.groupKey);return n;})}
-                        style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.6rem 0.75rem",cursor:"pointer",borderBottom:isSelected?`1px solid ${TYPE_COLOR[typeLabel]}33`:"none"}}>
+                        style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.6rem 0.75rem",cursor:"pointer",borderBottom:`1px solid ${isSelected?`${TYPE_COLOR[typeLabel]}33`:C.borderLight}`}}>
                         <div style={{width:18,height:18,borderRadius:"8px",border:`2px solid ${isSelected?TYPE_COLOR[typeLabel]:"#cbd5e1"}`,background:isSelected?TYPE_COLOR[typeLabel]:"white",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,color:"white",fontSize:"0.7rem",fontWeight:800}}>
                           {isSelected&&"✓"}
                         </div>
                         <span style={{fontSize:"0.88rem",fontWeight:700,color:C.text,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{grp.displayName}</span>
-                        <span style={{fontSize:"0.65rem",fontWeight:700,color:TYPE_COLOR[typeLabel],background:`${TYPE_COLOR[typeLabel]}22`,borderRadius:999,padding:"0.1rem 0.4rem",flexShrink:0}}>{drops.length+1}件 → 1件</span>
+                        <span style={{fontSize:"0.65rem",fontWeight:700,color:TYPE_COLOR[typeLabel],background:`${TYPE_COLOR[typeLabel]}22`,borderRadius:999,padding:"0.1rem 0.4rem",flexShrink:0}} title="このグループの全件数／統合して残る件数">{members.length}件中 {willMergeCount>0?`${willMergeCount+1}件を1件に`:"統合なし"}</span>
+                        <button onClick={e=>{ e.stopPropagation(); if(typeof window.__myDeskIgnoreDupGroups==="function" && grp.memberSig) window.__myDeskIgnoreDupGroups([grp.memberSig]); setMergePreview(prev=>prev?{...prev, groups:(prev.groups||[]).filter(g=>g.groupKey!==grp.groupKey)}:prev); setMergeSelected(prev=>{const n=new Set(prev);n.delete(grp.groupKey);return n;}); }}
+                          title="別物（重複でない）として登録。今後の重複検出に出しません" style={{flexShrink:0,padding:"0.15rem 0.45rem",borderRadius:999,border:`1px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.62rem",cursor:"pointer",fontFamily:"inherit"}}>🚫 別物</button>
                       </div>
                       {(
-                        <div style={{padding:"0.5rem 0.75rem",fontSize:"0.72rem",display:"flex",flexDirection:"column",gap:"0.4rem",borderTop:`1px solid ${C.borderLight}`}}>
-                          <div style={{background:"#ecfdf5",border:"1px solid #86efac",borderRadius:"8px",padding:"0.5rem 0.65rem"}}>
-                            <div style={{display:"flex",alignItems:"center",gap:"0.35rem",marginBottom:"0.3rem"}}>
-                              <span style={{fontSize:"0.65rem",fontWeight:800,color:"white",background:"#009122",borderRadius:999,padding:"0.05rem 0.4rem"}}>✅ 残す</span>
-                              {keep.status && <span style={{fontSize:"0.65rem",color:C.textSub}}>● {keep.status}</span>}
-                              {keep.createdAt && <span style={{fontSize:"0.62rem",color:C.textMuted,marginLeft:"auto"}}>{fmtDate(keep.createdAt)}〜</span>}
-                            </div>
-                            <div style={{color:C.text,fontWeight:600,marginBottom:"0.15rem"}}>{keep.name}</div>
-                            <div style={{color:C.textSub,fontSize:"0.7rem",lineHeight:1.5}}>
-                              {keepAssignees.length>0 && <div>👤 {keepAssignees.join("・")}</div>}
-                              {keep.phone && <div>📞 {keep.phone}</div>}
-                              {keep.address && <div style={{wordBreak:"break-all"}}>📍 {keep.address}</div>}
-                              {mergePreview.focusType==="vendor" && (()=>{ const pts=(keep.permitTypes||[]); const sps=[...new Set((keep.sanpaiPermits||[]).map(sp=>sp.auth))]; const mc=(keep.municipalityIds||[]).length; if(!pts.length&&!sps.length&&!mc) return null; return <div style={{color:"#7c3aed"}}>🏭 {pts.join("・")||"種別なし"}{sps.length?` ／ 権者:${sps.slice(0,6).join("・")}${sps.length>6?`他${sps.length-6}`:""}`:""}{mc?` ／ 一廃${mc}自治体`:""}</div>; })()}
-                              {(keep.memos||keep.chat||keep.approachLogs||keep.files)&&(
-                                <div style={{color:C.textMuted,marginTop:"0.15rem"}}>
-                                  💬 {(keep.chat||[]).length}件 / 📋 {(keep.memos||[]).length+(keep.approachLogs||[]).length}件 / 📂 {(keep.files||[]).length}件
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                          {drops.map(d=>{
-                            const dAssignees = (d.assigneeIds||[]).map(userName).filter(Boolean);
+                        <div style={{padding:"0.5rem 0.75rem",fontSize:"0.72rem",display:"flex",flexDirection:"column",gap:"0.4rem"}}>
+                          {members.map(m=>{
+                            const mid=String(m.id);
+                            const isKeep = mid===keepId;
+                            const willMerge = !isKeep && dropSel.has(mid);
+                            const asg = (m.assigneeIds||[]).map(userName).filter(Boolean);
+                            const bg = isKeep?"#ecfdf5":(willMerge?"#fef2f2":"#f1f5f9");
+                            const bd = isKeep?"#86efac":(willMerge?"#fca5a5":"#cbd5e1");
+                            const pd = permDetail(m);
                             return (
-                              <div key={d.id} style={{background:"#fef2f2",border:"1px solid #fca5a5",borderRadius:"8px",padding:"0.5rem 0.65rem"}}>
-                                <div style={{display:"flex",alignItems:"center",gap:"0.35rem",marginBottom:"0.3rem"}}>
-                                  <span style={{fontSize:"0.65rem",fontWeight:800,color:"white",background:"#DA1313",borderRadius:999,padding:"0.05rem 0.4rem"}}>🔄 マージ→削除</span>
-                                  {d.status && <span style={{fontSize:"0.65rem",color:C.textSub}}>● {d.status}</span>}
-                                  {d.createdAt && <span style={{fontSize:"0.62rem",color:C.textMuted,marginLeft:"auto"}}>{fmtDate(d.createdAt)}〜</span>}
+                              <div key={mid} style={{background:bg,border:`1px solid ${bd}`,borderRadius:"8px",padding:"0.5rem 0.65rem"}}>
+                                <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.3rem",flexWrap:"wrap"}}>
+                                  <label onClick={e=>e.stopPropagation()} style={{display:"flex",alignItems:"center",gap:"0.2rem",cursor:"pointer",fontSize:"0.66rem",fontWeight:800,color:"#009122"}}>
+                                    <input type="radio" name={"keep_"+grp.groupKey} checked={isKeep} onChange={()=>setKeep(mid)} style={{cursor:"pointer"}}/> 残す
+                                  </label>
+                                  {!isKeep && (
+                                    <label onClick={e=>e.stopPropagation()} style={{display:"flex",alignItems:"center",gap:"0.2rem",cursor:"pointer",fontSize:"0.66rem",fontWeight:700,color:willMerge?"#DA1313":C.textMuted}}>
+                                      <input type="checkbox" checked={willMerge} onChange={()=>toggleDrop(mid)} style={{cursor:"pointer"}}/> この会社を統合
+                                    </label>
+                                  )}
+                                  <span style={{fontSize:"0.6rem",fontWeight:800,color:"white",background:isKeep?"#009122":(willMerge?"#DA1313":"#94a3b8"),borderRadius:999,padding:"0.05rem 0.4rem"}}>{isKeep?"✅ 残す":(willMerge?"🔄 統合→削除":"— 別のまま")}</span>
+                                  {m.status && <span style={{fontSize:"0.63rem",color:C.textSub}}>● {m.status}</span>}
+                                  {m.createdAt && <span style={{fontSize:"0.6rem",color:C.textMuted,marginLeft:"auto"}}>{fmtDate(m.createdAt)}〜</span>}
                                 </div>
-                                <div style={{color:C.text,fontWeight:600,marginBottom:"0.15rem"}}>{d.name}</div>
+                                <div style={{color:C.text,fontWeight:600,marginBottom:"0.15rem"}}>{m.name}</div>
                                 <div style={{color:C.textSub,fontSize:"0.7rem",lineHeight:1.5}}>
-                                  {dAssignees.length>0 && <div>👤 {dAssignees.join("・")}</div>}
-                                  {!dAssignees.length && <div style={{color:C.textMuted}}>👤 担当者未設定</div>}
-                                  {d.phone && <div>📞 {d.phone}</div>}
-                                  {d.address && <div style={{wordBreak:"break-all"}}>📍 {d.address}</div>}
-                                  {mergePreview.focusType==="vendor" && (()=>{ const pts=(d.permitTypes||[]); const sps=[...new Set((d.sanpaiPermits||[]).map(sp=>sp.auth))]; const mc=(d.municipalityIds||[]).length; if(!pts.length&&!sps.length&&!mc) return null; return <div style={{color:"#7c3aed"}}>🏭 {pts.join("・")||"種別なし"}{sps.length?` ／ 権者:${sps.slice(0,6).join("・")}${sps.length>6?`他${sps.length-6}`:""}`:""}{mc?` ／ 一廃${mc}自治体`:""}</div>; })()}
-                                  {(d.memos||d.chat||d.approachLogs||d.files)&&(
+                                  {asg.length>0 && <div>👤 {asg.join("・")}</div>}
+                                  {m.phone && <div>📞 {m.phone}</div>}
+                                  {m.address && <div style={{wordBreak:"break-all"}}>📍 {m.address}</div>}
+                                  {mergePreview.focusType==="vendor" && pd.length>0 && (
+                                    <div style={{color:"#7c3aed",marginTop:"0.1rem"}}>
+                                      {pd.map((ln,i)=><div key={i}>🏭 {ln}</div>)}
+                                    </div>
+                                  )}
+                                  {(m.memos||m.chat||m.approachLogs||m.files)&&(
                                     <div style={{color:C.textMuted,marginTop:"0.15rem"}}>
-                                      💬 {(d.chat||[]).length}件 / 📋 {(d.memos||[]).length+(d.approachLogs||[]).length}件 / 📂 {(d.files||[]).length}件
+                                      💬 {(m.chat||[]).length}件 / 📋 {(m.memos||[]).length+(m.approachLogs||[]).length}件 / 📂 {(m.files||[]).length}件
                                     </div>
                                   )}
                                 </div>
@@ -17996,14 +18017,22 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           <div style={{padding:"0.75rem 1rem",borderTop:`1px solid ${C.borderLight}`,flexShrink:0,display:"flex",gap:"0.5rem"}}>
             <Btn variant="secondary" style={{flex:1}} onClick={()=>setMergePreview(null)}>キャンセル</Btn>
             <Btn style={{flex:2,background:mergeSelected.size>0?"#DA1313":"#cbd5e1",border:"none"}} disabled={mergeSelected.size===0} onClick={()=>{
-              if(typeof window.__myDeskApplySelectedMerges !== "function"){
+              if(typeof window.__myDeskApplyMergePlan !== "function"){
                 window.alert("統合機能が未初期化です");
                 return;
               }
-              const sel = [...mergeSelected];
-              const r = window.__myDeskApplySelectedMerges(sel);
+              // 選択グループごとに「残す(survivor)」と「統合する会社(drops)」からプランを構築（部分統合対応）
+              const plan = (mergePreview.groups||[]).filter(g=>mergeSelected.has(g.groupKey)).map(g=>{
+                const allMembers=[g.keep, ...g.drops];
+                const kId=String(dmKeep[g.groupKey]||g.keep.id);
+                const sel = dmDropSel.hasOwnProperty(g.groupKey) ? new Set((dmDropSel[g.groupKey]||[]).map(String)) : new Set(allMembers.map(m=>String(m.id)));
+                const dropIds = allMembers.map(m=>String(m.id)).filter(id=>id!==kId && sel.has(id));
+                return {entityKey:g.entityKey, keepId:kId, dropIds};
+              }).filter(p=>p.dropIds.length);
+              if(!plan.length){ window.alert("統合対象がありません。各グループで「残す」以外に「統合する」会社を1社以上選んでください。"); return; }
+              const r = window.__myDeskApplyMergePlan(plan);
               setMergePreview(null);
-              setMergeSelected(new Set());
+              setMergeSelected(new Set()); setDmKeep({}); setDmDropSel({});
               window.alert(`✅ ${r.groupCount||0}グループ・${r.merged||0}件を統合しました`);
             }}>{mergeSelected.size>0 ? `🔧 選択した ${mergeSelected.size}グループを統合` : "グループを選択してください"}</Btn>
           </div>
@@ -18962,6 +18991,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
         .replace(/[-－ー〜～、。・]/g,"")
         .toLowerCase();
       const result = [];
+      const ignored = new Set(Array.isArray(currentData.dupIgnored)?currentData.dupIgnored:[]);
+      const sigOf = (key, arr) => key + ":" + arr.map(e=>String(e.id)).sort().join("|");
       const sources = [
         ["companies",      "企業",   "company"],
         ["vendors",        "業者",   "vendor"],
@@ -18981,6 +19012,9 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
         });
         Object.entries(groups).forEach(([k, arr]) => {
           if(arr.length < 2) return;
+          // 「別物として登録」済み(構成メンバーが同じ)なら出さない
+          const memberSig = sigOf(key, arr);
+          if(ignored.has(memberSig)) return;
           // 最古を keep、他を drop
           const sorted = [...arr].sort((a,b)=>{
             const ta = new Date(a.createdAt||0).getTime();
@@ -18994,32 +19028,34 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
             keep: sorted[0],
             drops: sorted.slice(1),
             displayName: sorted[0].name,
+            memberSig,
           });
         });
       });
       return result;
     };
 
-    // ★ 選択された group のみを統合する（プレビューモーダルから呼ばれる）
-    window.__myDeskApplySelectedMerges = (selectedGroupKeys) => {
-      if(!selectedGroupKeys || !selectedGroupKeys.length) return {merged:0};
-      const groups = window.__myDeskComputeDupGroups();
-      const targetGroups = groups.filter(g=>selectedGroupKeys.includes(g.groupKey));
-      if(!targetGroups.length) return {merged:0};
-
+    // ★ 統合プラン(entityKey/keepId/dropIds)を適用する共通コア（部分統合・任意の「残す」指定に対応）
+    window.__myDeskApplyMergePlan = (plan) => {
+      if(!Array.isArray(plan) || !plan.length) return {merged:0, groupCount:0};
       const currentData = _myDeskDataRef.current;
       let nd = JSON.parse(JSON.stringify(currentData));
       const remap = { companies:{}, vendors:{}, municipalities:{} };
+      let mergedCount=0, groupCount=0;
 
-      targetGroups.forEach(grp => {
-        const { entityKey, keep:keepRef, drops } = grp;
+      plan.forEach(item => {
+        const entityKey = item && item.entityKey;
+        const keepId = item && item.keepId;
+        const dropList = (item && item.dropIds) || [];
+        if(!entityKey || keepId==null || !dropList.length) return;
         const list = nd[entityKey] || [];
-        let keep = list.find(e=>String(e.id)===String(keepRef.id));
+        let keep = list.find(e=>String(e.id)===String(keepId));
         if(!keep) return;
         keep = {...keep};
         const dropIds = new Set();
-        drops.forEach(d => {
-          const dup = list.find(e=>String(e.id)===String(d.id));
+        dropList.forEach(_did => {
+          if(String(_did)===String(keep.id)) return;
+          const dup = list.find(e=>String(e.id)===String(_did));
           if(!dup) return;
           // assigneeIds をマージ
           keep.assigneeIds = [...new Set([...(keep.assigneeIds||[]), ...(dup.assigneeIds||[])])];
@@ -19055,9 +19091,11 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           dropIds.add(String(dup.id));
           remap[entityKey][String(dup.id)] = String(keep.id);
         });
+        if(!dropIds.size) return;
         // リスト更新：drop を除外、keep を更新
         nd[entityKey] = list.filter(e=>!dropIds.has(String(e.id)))
                             .map(e=>String(e.id)===String(keep.id) ? keep : e);
+        mergedCount += dropIds.size; groupCount++;
       });
 
       // 名刺・タスク・プロジェクトの salesRef を新IDに張り直す
@@ -19117,8 +19155,27 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           saveData(nd).catch(e => console.warn("[merge] saveData failed:", e));
         }
       } catch(e){ console.warn("[merge] immediate save error:", e); }
-      const merged = targetGroups.reduce((sum,g)=>sum+g.drops.length, 0);
-      return {merged, groupCount: targetGroups.length};
+      return {merged: mergedCount, groupCount};
+    };
+
+    // ★ 選択された group を丸ごと統合（従来互換：残す=最古・drops=全部）
+    window.__myDeskApplySelectedMerges = (selectedGroupKeys) => {
+      if(!selectedGroupKeys || !selectedGroupKeys.length) return {merged:0};
+      const groups = window.__myDeskComputeDupGroups();
+      const target = groups.filter(g=>selectedGroupKeys.includes(g.groupKey));
+      const plan = target.map(g=>({entityKey:g.entityKey, keepId:g.keep.id, dropIds:g.drops.map(d=>String(d.id))}));
+      return window.__myDeskApplyMergePlan(plan);
+    };
+
+    // ★ 精査したが統合しなかった重複グループを「別物」として登録（今後の重複検出に出さない）
+    window.__myDeskIgnoreDupGroups = (sigs) => {
+      const arr = (Array.isArray(sigs)?sigs:[sigs]).filter(Boolean).map(String);
+      if(!arr.length) return {added:0};
+      const currentData = _myDeskDataRef.current;
+      const nd = {...currentData, dupIgnored: Array.from(new Set([...(currentData.dupIgnored||[]), ...arr]))};
+      save(nd);
+      try { if (typeof saveData === "function") saveData(nd).catch(e=>console.warn("[dupIgnore] saveData failed:", e)); } catch(e){}
+      return {added: arr.length, total: nd.dupIgnored.length};
     };
 
     // ★ 既存の console 用（DryRun + 全件統合）— 後方互換
