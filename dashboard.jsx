@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-08-v361-phone-hankaku"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-08-v362-quote-dedup-vendors"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -34244,11 +34244,24 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
   const vHits = vHitsAll.slice(0,60);
   // 該当業者を一括追加（重複除外・大量時は確認）
   const addAll = () => {
-    const toAdd = vHitsAll.filter(v=>!addedIds.has(String(v.id)));
-    if(!toAdd.length) return;
+    const seen=new Set(addedIds); const toAdd=[];
+    vHitsAll.forEach(v=>{ const k=String(v.id); if(!seen.has(k)){ seen.add(k); toAdd.push(v); } }); // 既存＋バッチ内の重複を除外
+    if(!toAdd.length){ window.alert("追加できる業者がありません（該当は全て追加済み）。"); return; }
     if(toAdd.length>100 && !window.confirm(`該当 ${toAdd.length} 社を一括で対象業者に追加します。よろしいですか？`)) return;
     const news = toAdd.map(v=>({ id:rid("qv"), vendorId:v.id, vendorName:v.name, assignee:"", contact:"", status:"未依頼", prices:{}, extraLines:[], callNotes:[] }));
     setVendors([...(p.vendors||[]), ...news]);
+  };
+  // 対象業者の重複(同一vendorId)を検出・統合（メモ/担当/価格/回答は結合）
+  const dupCount = (()=>{ const seen=new Set(); let d=0; (p.vendors||[]).forEach(x=>{ const k=String(x.vendorId); if(seen.has(k)) d++; else seen.add(k); }); return d; })();
+  const dedupVendors = () => {
+    const map=new Map();
+    (p.vendors||[]).forEach(x=>{ const k=String(x.vendorId); const ex=map.get(k);
+      if(!ex){ map.set(k,{...x}); }
+      else { ex.callNotes=[...(ex.callNotes||[]),...(x.callNotes||[])]; ex.assigneeIds=[...new Set([...(ex.assigneeIds||[]),...(x.assigneeIds||[])])]; ex.prices={...(ex.prices||{}),...(x.prices||{})}; if(x.status==="回答済"&&ex.status!=="回答済"){ ex.status="回答済"; ex.respondedAt=x.respondedAt; ex.vendorNote=x.vendorNote; } if(!ex.portalToken&&x.portalToken){ ex.portalToken=x.portalToken; ex.portalUrl=x.portalUrl; } }
+    });
+    const kept=[...map.values()]; const removed=(p.vendors||[]).length-kept.length;
+    if(!removed){ window.alert("重複はありませんでした。"); return; }
+    setVendors(kept); window.alert(`重複業者を統合しました（${removed}社を除去）`);
   };
   const _aq = areaQ.trim();
   const _sanSel = permFilter.some(pt=>["産廃収運","産廃処分","産廃収運処分"].includes(pt));
@@ -34560,6 +34573,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
       <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem",flexWrap:"wrap"}}>
         <div style={{fontWeight:800,fontSize:"0.9rem",color:C.text}}>🚚 対象業者 ＆ 見積</div>
         <span style={{fontSize:"0.7rem",color:C.textMuted}}>{(p.vendors||[]).length}社</span>
+        {dupCount>0&&<button onClick={dedupVendors} title="同じ業者が重複して登録されています。統合します" style={{padding:"0.2rem 0.6rem",borderRadius:8,border:"1.5px solid #DA1313",background:"#fff1f2",color:"#DA1313",fontWeight:800,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit"}}>⚠ 重複{dupCount}社を統合</button>}
         {PORTAL_ON&&(()=>{ const need=(p.vendors||[]).filter(v=>!v.portalToken).length; return need>0?<button disabled={portalBusy==="__all__"} onClick={issueAll} title="未発行の対象業者に依頼リンクを一括発行" style={{marginLeft:"auto",padding:"0.3rem 0.7rem",borderRadius:8,border:"1.5px solid #FF6A00",background:"#FFF3E8",color:"#9a3412",fontWeight:800,fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit"}}>{portalBusy==="__all__"?"発行中…":`🔗 依頼リンクを一括発行（未発行${need}社）`}</button>:null; })()}
         {PORTAL_ON&&(p.vendors||[]).some(v=>v.portalToken)&&<button disabled={portalBusy==="__all__"} onClick={syncAll} title="対象店舗を全リンクに反映し、回答も取得" style={{marginLeft:(p.vendors||[]).some(v=>!v.portalToken)?"0":"auto",padding:"0.3rem 0.7rem",borderRadius:8,border:`1.5px solid ${C.accent}`,background:C.accentBg,color:C.accentDark,fontWeight:700,fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit"}}>{portalBusy==="__all__"?"最新化中…":"🔄 全リンク最新化＆回答取得"}</button>}
       </div>
