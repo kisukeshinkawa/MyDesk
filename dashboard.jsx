@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-08-v369-vendor-dedup-inspect"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-08-v370-merge-reflect-quotes"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -19081,6 +19081,35 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
           return {...t, salesRef: {...t.salesRef, id: newId}};
         });
       });
+      // ★ 見積案件(quoteProjects)の対象業者も新IDへ張り替え、同一案件内で重複したらマージ（古い方は消えて新しい方=残すに統合）
+      const vremap = remap.vendors || {};
+      if(Array.isArray(nd.quoteProjects) && Object.keys(vremap).length){
+        const keepNameById = {}; (nd.vendors||[]).forEach(v=>{ keepNameById[String(v.id)]=v.name; });
+        nd.quoteProjects = nd.quoteProjects.map(pj=>{
+          if(!Array.isArray(pj.vendors) || !pj.vendors.length) return pj;
+          let touched=false;
+          const remapped = pj.vendors.map(qv=>{ const nid=vremap[String(qv.vendorId)]; if(nid){ touched=true; return {...qv, vendorId:nid, vendorName:keepNameById[String(nid)]||qv.vendorName}; } return qv; });
+          if(!touched) return pj;
+          // 同一 vendorId を1行に統合（追記型はunion・回答/リンクは保持・価格は既存優先で結合）
+          const byVid = new Map();
+          remapped.forEach(qv=>{ const k=String(qv.vendorId); const ex=byVid.get(k);
+            if(!ex){ byVid.set(k,{...qv}); }
+            else {
+              ex.callNotes=[...(ex.callNotes||[]),...(qv.callNotes||[])];
+              ex.assigneeIds=[...new Set([...(ex.assigneeIds||[]),...(qv.assigneeIds||[])])];
+              ex.extraLines=[...(ex.extraLines||[]),...(qv.extraLines||[])];
+              ex.prices={...(qv.prices||{}),...(ex.prices||{})};
+              if(qv.status==="回答済"&&ex.status!=="回答済"){ ex.status="回答済"; ex.respondedAt=qv.respondedAt; ex.vendorNote=qv.vendorNote; }
+              if(!ex.portalToken&&qv.portalToken){ ex.portalToken=qv.portalToken; ex.portalUrl=qv.portalUrl; }
+            }
+          });
+          return {...pj, vendors:[...byVid.values()], updatedAt:new Date().toISOString()};
+        });
+      }
+      // ★ 発行済みリンク台帳(quoteLinks)の vendorId も張り替え（リンクの一生保持）
+      if(Array.isArray(nd.quoteLinks) && Object.keys(vremap).length){
+        nd.quoteLinks = nd.quoteLinks.map(l=>{ const nid=l&&vremap[String(l.vendorId)]; return nid?{...l, vendorId:nid}:l; });
+      }
       save(nd);
       // ★ 統合後は即座にサーバーに保存（debounce を待たない、競合防止）
       try {
