@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-08-v371-dedup-partial-select-permits"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-08-v372-merge-save-coalesce"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -19148,13 +19148,9 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       if(Array.isArray(nd.quoteLinks) && Object.keys(vremap).length){
         nd.quoteLinks = nd.quoteLinks.map(l=>{ const nid=l&&vremap[String(l.vendorId)]; return nid?{...l, vendorId:nid}:l; });
       }
+      // debounce保存に一本化。save内でsetData＋scheduleSaveData＋__myDeskLastSave更新(ポーリング競合も防止)。
+      // 連続統合はコアレスされ、フル9.4MB保存の多重発火(保存ストーム)を防ぐ。
       save(nd);
-      // ★ 統合後は即座にサーバーに保存（debounce を待たない、競合防止）
-      try {
-        if (typeof saveData === "function") {
-          saveData(nd).catch(e => console.warn("[merge] saveData failed:", e));
-        }
-      } catch(e){ console.warn("[merge] immediate save error:", e); }
       return {merged: mergedCount, groupCount};
     };
 
@@ -19173,8 +19169,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       if(!arr.length) return {added:0};
       const currentData = _myDeskDataRef.current;
       const nd = {...currentData, dupIgnored: Array.from(new Set([...(currentData.dupIgnored||[]), ...arr]))};
-      save(nd);
-      try { if (typeof saveData === "function") saveData(nd).catch(e=>console.warn("[dupIgnore] saveData failed:", e)); } catch(e){}
+      save(nd); // debounce保存に一本化（多重フル保存を防止）
       return {added: arr.length, total: nd.dupIgnored.length};
     };
 
