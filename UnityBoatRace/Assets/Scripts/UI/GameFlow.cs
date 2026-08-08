@@ -15,7 +15,7 @@ namespace BoatRace.UI
     public class GameFlow : MonoBehaviour
     {
         /// <summary>ビルド識別子。画面右上に表示され、更新が届いたか一目で分かる。</summary>
-        public const string Build = "B41-ウマ娘風UI・チカチカ根絶";
+        public const string Build = "B42-3D陰影と配色統一";
 
         RaceManager race;
         ReplayManager replay;
@@ -1480,8 +1480,9 @@ namespace BoatRace.UI
             WalletChip("BC", $"{PlayerPrefs.GetInt("br_betcoin", 1000):N0}", 0.895f, 0.985f);
 
             // ---- 左カラム: 縦積み3カード(重なりなし) ----
-            var ink = new Color(0.078f, 0.188f, 0.369f);
-            var sub = new Color(0.357f, 0.447f, 0.627f);
+            // 配色トークンは全画面共通(マイレーサー/ツアーマップと同じ)
+            var ink = UiKit.Ink;
+            var sub = UiKit.SubInk;
             var gold = new Color(0.851f, 0.604f, 0.106f);
             GameObject ColCard(float y0, float y1)
             {
@@ -1621,7 +1622,7 @@ namespace BoatRace.UI
                     Vector2.zero, Vector2.zero);
                 tb.AddComponent<SkewFx>().skewX = 9f; // 台形斜めカット
                 if (active) UiKit.AddStripeOverlay(tb, Color.white, 0.14f);
-                Color fg = active ? new Color(0.29f, 0.165f, 0f) : new Color(0.357f, 0.447f, 0.627f);
+                Color fg = active ? UiKit.GoldInk : UiKit.SubInk;
                 UiKit.MakeText(tb.transform, tabIcons[t], 24, fg, TextAnchor.MiddleCenter,
                     new Vector2(0f, 0.42f), new Vector2(1f, 0.95f), Vector2.zero, Vector2.zero, bold: true);
                 UiKit.MakeText(tb.transform, tabLabels[t], 15, fg, TextAnchor.MiddleCenter,
@@ -2299,17 +2300,17 @@ namespace BoatRace.UI
         void ShowTourMap()
         {
             var s = NewScreen("TourMapScreen");
-            UiKit.ModernBackdrop(s.transform,
-                new Color(0.55f, 0.78f, 0.95f), new Color(0.13f, 0.38f, 0.68f), 0.07f);
-            UiKit.MakeBanner(s.transform, "ストーリーツアー　日本一周", 27,
-                new Vector2(0.24f, 0.905f), new Vector2(0.76f, 0.985f), tilt: -1f);
-            UiKit.MakeTag(s.transform, $"現在の級: {career.RankLabel}", UiKit.Yellow, UiKit.Border, 17,
-                new Vector2(0.015f, 0.905f), new Vector2(0.195f, 0.965f), skew: 8f);
+            // 配色はマイレーサー画面と統一(パステル水色の背景+紺の文字)
+            UiKit.PastelBackdrop(s.transform);
+            UiKit.MakeTag(s.transform, "ストーリーツアー　日本一周", UiKit.UmaBlue, Color.white, 22,
+                new Vector2(0.26f, 0.912f), new Vector2(0.74f, 0.976f), skew: 8f);
+            UiKit.MakeTag(s.transform, $"現在の級: {career.RankLabel}", UiKit.Gold, UiKit.GoldInk, 16,
+                new Vector2(0.015f, 0.916f), new Vector2(0.185f, 0.972f), skew: 8f);
             UiKit.MakeText(s.transform,
                 "章をクリアして日本を一周！　級が昇格していく (新人 → B2 → B1 → A2 → A1 → SG制覇)",
-                15, Color.white, TextAnchor.MiddleCenter,
-                new Vector2(0f, 0.845f), new Vector2(1f, 0.895f), Vector2.zero, Vector2.zero,
-                bold: true, shadow: true);
+                15, UiKit.SubInk, TextAnchor.MiddleCenter,
+                new Vector2(0f, 0.855f), new Vector2(1f, 0.902f), Vector2.zero, Vector2.zero,
+                bold: true);
 
             var map = new GameObject("Map");
             UiKit.Place(map, s.transform, new Vector2(0.03f, 0.13f), new Vector2(0.97f, 0.84f),
@@ -2326,6 +2327,9 @@ namespace BoatRace.UI
                 var mi = mimg.AddComponent<Image>();
                 mi.sprite = mapSprite;
                 mi.raycastTarget = false;
+                var mapSh = mimg.AddComponent<Shadow>();  // 陸を浮かせて地図らしく
+                mapSh.effectColor = new Color(0.16f, 0.32f, 0.55f, 0.35f);
+                mapSh.effectDistance = new Vector2(0f, -6f);
             }
 
             // 章ルート(点線)とノード
@@ -2341,9 +2345,9 @@ namespace BoatRace.UI
             Color StateColor(int i)
             {
                 int chNo = i + 1;
-                if (career.allClear || chNo < career.chapter) return new Color(1f, 0.80f, 0.15f);
-                if (chNo == career.chapter) return UiKit.Red;
-                return new Color(0.60f, 0.66f, 0.74f);
+                if (career.allClear || chNo < career.chapter) return new Color(0.96f, 0.70f, 0.06f);
+                if (chNo == career.chapter) return UiKit.UmaRed;
+                return new Color(0.55f, 0.62f, 0.73f);
             }
 
             // 細い実線を引くヘルパー(点の散らばりではなく参考画像と同じ引き出し線)
@@ -2366,7 +2370,7 @@ namespace BoatRace.UI
             // 進行ルート(章ノード間。クリア済み区間は金)
             for (int i = 0; i < chs.Length - 1; i++)
                 MapLine(NodePos(i), NodePos(i + 1),
-                    i + 1 < career.chapter ? new Color(1f, 0.84f, 0.20f, 0.85f) : new Color(0.10f, 0.22f, 0.42f, 0.45f),
+                    i + 1 < career.chapter ? new Color(0.96f, 0.70f, 0.06f, 0.90f) : new Color(0.42f, 0.55f, 0.72f, 0.55f),
                     3f);
 
             // 左右のラベル列の割り当て(地図中心より西=左列/東=右列)、各列は北から順
@@ -2394,19 +2398,22 @@ namespace BoatRace.UI
 
                 // ラベルチップ(紺。現在章=赤+黄フチで強調)
                 var chip = UiKit.MakePanel(map.transform,
-                    now ? UiKit.Red : clear ? new Color(0.16f, 0.30f, 0.52f) : new Color(0.34f, 0.42f, 0.54f),
-                    24, new Vector2(cx0, cy - 0.058f), new Vector2(cx1, cy + 0.058f),
+                    now ? UiKit.UmaRed : clear ? new Color(0.16f, 0.34f, 0.60f) : new Color(0.55f, 0.62f, 0.73f),
+                    14, new Vector2(cx0, cy - 0.058f), new Vector2(cx1, cy + 0.058f),
                     Vector2.zero, Vector2.zero);
                 var col = chip.AddComponent<Outline>();
-                col.effectColor = now ? UiKit.Yellow : new Color(1f, 1f, 1f, 0.85f);
-                col.effectDistance = new Vector2(2.5f, 2.5f);
+                col.effectColor = now ? UiKit.Gold : Color.white;
+                col.effectDistance = new Vector2(2.5f, -2.5f);
+                var chipSh = chip.AddComponent<Shadow>();
+                chipSh.effectColor = UiKit.ShadowBlue;
+                chipSh.effectDistance = new Vector2(0f, -4f);
                 string mark = clear ? "✓ " : now ? "▶ " : "";
                 UiKit.MakeText(chip.transform, $"{mark}第{chNo}章 {v.name}", 15, Color.white,
                     TextAnchor.MiddleLeft, new Vector2(0f, 0.38f), new Vector2(1f, 1f),
                     new Vector2(12f, 0f), new Vector2(-6f, 0f), bold: true, shadow: true);
                 UiKit.MakeText(chip.transform,
                     now ? $"{chs[i].grade}戦　タップで出走！" : $"{chs[i].grade}戦　{(clear ? "クリア" : "未開放")}",
-                    12, now ? UiKit.Yellow : new Color(1f, 1f, 1f, 0.80f),
+                    12, now ? UiKit.Gold : new Color(1f, 1f, 1f, 0.85f),
                     TextAnchor.MiddleLeft, new Vector2(0f, 0f), new Vector2(1f, 0.40f),
                     new Vector2(12f, 2f), new Vector2(-6f, 0f), bold: now);
                 if (now) chip.AddComponent<Button>().onClick.AddListener(StartCareerRace);
@@ -2417,8 +2424,11 @@ namespace BoatRace.UI
                     new Vector2(p.x - nr, p.y - nr * 1.55f), new Vector2(p.x + nr, p.y + nr * 1.55f),
                     Vector2.zero, Vector2.zero);
                 var ndol = nodeDot.AddComponent<Outline>();
-                ndol.effectColor = new Color(0.10f, 0.22f, 0.42f);  // 白い陸の上でも見える紺フチ
-                ndol.effectDistance = new Vector2(2f, 2f);
+                ndol.effectColor = Color.white;   // 白い陸の上でも見えるよう白フチ+紺の影で締める
+                ndol.effectDistance = new Vector2(2.5f, -2.5f);
+                var ndSh = nodeDot.AddComponent<Shadow>();
+                ndSh.effectColor = new Color(0.10f, 0.22f, 0.42f, 0.8f);
+                ndSh.effectDistance = new Vector2(0f, -3f);
                 if (now) nodeDot.AddComponent<Button>().onClick.AddListener(StartCareerRace);
             }
             for (int r2 = 0; r2 < leftIdx.Count; r2++) ChapterChip(leftIdx[r2], true, r2);
@@ -2429,18 +2439,18 @@ namespace BoatRace.UI
             {
                 var ch = career.Current;
                 var vv = CourseDatabase.Get(ch.venueId);
-                var card = UiKit.MakeCard(s.transform,
-                    new Vector2(0.015f, 0.015f), new Vector2(0.55f, 0.125f), Vector2.zero, Vector2.zero);
+                var card = UiKit.SoftCard(s.transform,
+                    new Vector2(0.015f, 0.018f), new Vector2(0.55f, 0.122f));
                 UiKit.MakeText(card.transform,
                     $"第{career.chapter}章「{ch.title}」　{vv.name}・{ch.grade}戦　目標: {(ch.requiredPlace >= 6 ? "完走" : ch.requiredPlace + "着以内")}",
-                    16, UiKit.Border, TextAnchor.MiddleLeft,
+                    16, UiKit.Ink, TextAnchor.MiddleLeft,
                     new Vector2(0.03f, 0f), new Vector2(0.98f, 1f), Vector2.zero, Vector2.zero, bold: true);
-                UiKit.MakeButton(s.transform, $"第{career.chapter}章に出走▶", UiKit.Red, 22,
-                    new Vector2(0.57f, 0.015f), new Vector2(0.80f, 0.125f), Vector2.zero, Vector2.zero,
+                UiKit.MakeButton(s.transform, $"第{career.chapter}章に出走▶", UiKit.UmaRed, 21,
+                    new Vector2(0.57f, 0.018f), new Vector2(0.80f, 0.122f), Vector2.zero, Vector2.zero,
                     StartCareerRace);
             }
-            UiKit.MakeButton(s.transform, "↩ もどる", UiKit.Cyan, 18,
-                new Vector2(0.825f, 0.015f), new Vector2(0.965f, 0.125f), Vector2.zero, Vector2.zero,
+            UiKit.MakeButton(s.transform, "↩ もどる", new Color(0.298f, 0.510f, 0.847f), 18,
+                new Vector2(0.825f, 0.018f), new Vector2(0.965f, 0.122f), Vector2.zero, Vector2.zero,
                 ShowCareer);
         }
 

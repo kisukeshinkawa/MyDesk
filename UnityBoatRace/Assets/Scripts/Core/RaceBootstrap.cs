@@ -136,15 +136,16 @@ namespace BoatRace.Core
             if (nm.Contains("buoy_orange")) return new Color(0.92f, 0.55f, 0.18f);
             if (nm.Contains("clock_hand")) return new Color(0.12f, 0.12f, 0.14f);
             if (nm.Contains("clock")) return new Color(0.95f, 0.76f, 0.31f);
-            if (nm.Contains("net_post")) return new Color(0.40f, 0.42f, 0.46f);
-            if (nm.Contains("net")) return new Color(0.55f, 0.60f, 0.66f);
-            if (nm.Contains("glass")) return new Color(0.35f, 0.55f, 0.75f);
-            if (nm.Contains("pit")) return new Color(0.55f, 0.58f, 0.62f);
-            if (nm.Contains("stand")) return new Color(0.72f, 0.73f, 0.75f);
+            if (nm.Contains("net_post")) return new Color(0.32f, 0.35f, 0.40f);
+            if (nm.Contains("net")) return new Color(0.44f, 0.50f, 0.58f);
+            if (nm.Contains("glass")) return new Color(0.26f, 0.46f, 0.70f);
+            // コンクリは青みのある灰にする(白すぎると空と同化して立体が読めない)
+            if (nm.Contains("pit")) return new Color(0.44f, 0.47f, 0.53f);
+            if (nm.Contains("stand")) return new Color(0.60f, 0.63f, 0.69f);
             // 屋根はmtlの場ごとのアクセント色をそのまま使う(全場同色になるのを防ぐ)
             if (nm.Contains("roof"))
                 return m.HasProperty("_Color") ? m.color : new Color(0.30f, 0.33f, 0.38f);
-            if (nm.Contains("tower")) return new Color(0.62f, 0.64f, 0.68f);
+            if (nm.Contains("tower")) return new Color(0.50f, 0.53f, 0.58f);
             if (nm.Contains("light")) return new Color(0.98f, 0.96f, 0.85f);
             return m.HasProperty("_Color") ? m.color : new Color(0.6f, 0.62f, 0.66f);
         }
@@ -158,6 +159,24 @@ namespace BoatRace.Core
             bool night = Data.VenueTraits.IsNightVenue(race.venueId);
             var sunGo = GameObject.Find("Sun");
             var sun = sunGo != null ? sunGo.GetComponent<Light>() : null;
+
+            // 落ち影を有効にして立体感を出す(平坦な白飛びの主因が影なしだった)。
+            // モバイルでも重くならない範囲: 1カスケード・描画距離300m
+            QualitySettings.shadows = ShadowQuality.All;
+            QualitySettings.shadowResolution = ShadowResolution.High;
+            QualitySettings.shadowDistance = 300f;
+            QualitySettings.shadowCascades = 2;
+            if (sun != null)
+            {
+                sun.shadows = LightShadows.Soft;
+                sun.shadowBias = 0.05f;
+                sun.shadowNormalBias = 0.4f;
+                // 斜め上から差す光にして面ごとの明暗差をつくる(真上だと陰影が出ない)
+                sunGo.transform.rotation = Quaternion.Euler(46f, night ? 200f : 138f, 0f);
+            }
+            RenderSettings.fog = true;
+            RenderSettings.fogMode = FogMode.Linear;
+            RenderSettings.fogStartDistance = 260f;
 
             var sky = RenderSettings.skybox;
             if (night)
@@ -189,22 +208,23 @@ namespace BoatRace.Core
                 QualitySettings.pixelLightCount = 4;
                 if (sun != null)
                 {
-                    sun.intensity = 1.28f;
-                    sun.color = Color.white;
-                    sun.shadowStrength = 0.6f;
+                    sun.intensity = 1.12f;
+                    sun.color = new Color(1f, 0.965f, 0.90f); // わずかに暖色の陽光
+                    sun.shadowStrength = 0.72f;
                 }
                 if (sky != null)
                 {
-                    sky.SetFloat("_Exposure", 1.25f);
-                    sky.SetFloat("_AtmosphereThickness", 0.85f);
-                    sky.SetColor("_SkyTint", new Color(0.46f, 0.66f, 0.95f));
-                    sky.SetColor("_GroundColor", new Color(0.52f, 0.60f, 0.66f));
+                    sky.SetFloat("_Exposure", 1.05f);
+                    sky.SetFloat("_AtmosphereThickness", 0.92f);
+                    sky.SetColor("_SkyTint", new Color(0.40f, 0.62f, 0.94f));
+                    sky.SetColor("_GroundColor", new Color(0.40f, 0.48f, 0.56f));
                 }
-                RenderSettings.ambientSkyColor = new Color(0.62f, 0.72f, 0.85f);
-                RenderSettings.ambientEquatorColor = new Color(0.55f, 0.60f, 0.66f);
-                RenderSettings.ambientGroundColor = new Color(0.30f, 0.34f, 0.38f);
-                RenderSettings.fogColor = new Color(0.72f, 0.87f, 0.98f);
-                RenderSettings.fogEndDistance = 1500f;
+                // 環境光は低め+空/地面のコントラストをつける(高すぎると全部白く潰れる)
+                RenderSettings.ambientSkyColor = new Color(0.42f, 0.53f, 0.68f);
+                RenderSettings.ambientEquatorColor = new Color(0.34f, 0.38f, 0.45f);
+                RenderSettings.ambientGroundColor = new Color(0.17f, 0.19f, 0.23f);
+                RenderSettings.fogColor = new Color(0.70f, 0.84f, 0.96f);
+                RenderSettings.fogEndDistance = 1200f;
             }
 
             // 水面の空映り込み色も昼夜で変える
