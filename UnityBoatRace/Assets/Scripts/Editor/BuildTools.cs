@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using UnityEditor;
@@ -45,7 +46,11 @@ namespace BoatRace.EditorTools
             PlayerSettings.allowedAutorotateToPortraitUpsideDown = false;
         }
 
-        /// <summary>アプリアイコン(Assets/Icons/appicon.png)を全サイズに割り当てる。</summary>
+        /// <summary>
+        /// アプリアイコン(Assets/Icons/appicon.png)を全種別・全サイズに割り当てる。
+        /// iOSはApplication(端末上)だけでなくStore(1024pxマーケティング)も必須で、
+        /// 埋めないとApp Store Connectへのアップロードが「Missing app icon」で弾かれる。
+        /// </summary>
         static void ApplyIcon(NamedBuildTarget target)
         {
             var tex = AssetDatabase.LoadAssetAtPath<Texture2D>(IconPath);
@@ -54,11 +59,19 @@ namespace BoatRace.EditorTools
                 Debug.LogWarning($"[艇道ビルド] アイコンが見つかりません: {IconPath}（デフォルトのUnityアイコンで進行）");
                 return;
             }
-            var sizes = PlayerSettings.GetIconSizes(target, IconKind.Application);
-            if (sizes == null || sizes.Length == 0) return;
-            var icons = new Texture2D[sizes.Length];
-            for (int i = 0; i < icons.Length; i++) icons[i] = tex;
-            PlayerSettings.SetIcons(target, icons, IconKind.Application);
+            var applied = new List<string>();
+            foreach (IconKind kind in System.Enum.GetValues(typeof(IconKind)))
+            {
+                int[] sizes;
+                try { sizes = PlayerSettings.GetIconSizes(target, kind); }
+                catch { continue; }                       // この対象で未対応の種別は飛ばす
+                if (sizes == null || sizes.Length == 0) continue;
+                var icons = new Texture2D[sizes.Length];
+                for (int i = 0; i < icons.Length; i++) icons[i] = tex;
+                PlayerSettings.SetIcons(target, icons, kind);
+                applied.Add($"{kind}×{sizes.Length}");
+            }
+            Debug.Log($"[艇道ビルド] アイコン適用: {(applied.Count == 0 ? "なし" : string.Join(" / ", applied))}");
         }
 
         static void Report(BuildReport r, string path)
