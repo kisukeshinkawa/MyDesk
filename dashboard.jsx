@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-08-v360-lookup-url-fix"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-08-v361-phone-hankaku"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -1839,7 +1839,16 @@ async function loadData() {
           for (const e of (merged.tasks||[])) fixEntity(e);
           for (const e of (merged.projects||[])) fixEntity(e);
         } catch(e) { console.warn("[MyDesk] date fix migration failed:", e); }
-        
+
+        // ✅ 電話番号を全角→半角に正規化（全体で統一・冪等）
+        try {
+          const toHanPhone = s => (s==null||s==="")?s:String(s).replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0)).replace(/[―ー－‐]/g,"-").replace(/[（）]/g,"");
+          const fixPhones = e => { if(!e) return; if(e.phone) e.phone=toHanPhone(e.phone); if(Array.isArray(e.contacts)) e.contacts.forEach(c=>{ if(c&&c.phone) c.phone=toHanPhone(c.phone); }); };
+          for (const e of (merged.vendors||[])) fixPhones(e);
+          for (const e of (merged.companies||[])) fixPhones(e);
+          for (const e of (merged.businessCards||[])) { if(e){ if(e.mobile) e.mobile=toHanPhone(e.mobile); if(e.telDirect) e.telDirect=toHanPhone(e.telDirect); if(e.telMain) e.telMain=toHanPhone(e.telMain); } }
+        } catch(e) { console.warn("[MyDesk] phone normalize failed:", e); }
+
         // ✅ v220: 全エンティティに一意な id を保証（欠損 or 重複を修正）
         try {
           const idMap = { companies:{}, vendors:{}, municipalities:{}, tasks:{}, projects:{}, businessCards:{} };
