@@ -3430,13 +3430,13 @@ def run_autotrade():
         try:
             a = analyze_ticker(pos["ticker"])
             lv = a.get("tradeLevels") or {}
-            px = a["price"]
+            px = to_jpy(a["price"], pos["ticker"])
             # 建玉時に決めたラインで判定する(現在値から引き直すと永久に到達しない)
             stop = pos.get("stop")
             target = pos.get("target")
             if stop is None:   # 手動保有など建玉時ラインが無い場合の保険
-                stop = lv.get("stop")
-                target = lv.get("target1")
+                stop = to_jpy(lv["stop"], pos["ticker"]) if lv.get("stop") else None
+                target = to_jpy(lv["target1"], pos["ticker"]) if lv.get("target1") else None
             # 高値を更新して記録(トレーリングストップの基準)
             peak = max(float(pos.get("peak") or pos["avgPrice"]), px)
             held_days = 0
@@ -3541,7 +3541,9 @@ def run_autotrade():
         try:
             a = analyze_ticker(tk)
             lv = a.get("tradeLevels") or {}
-            px, stop = a["price"], lv.get("stop")
+            # 米国株はドル建てなので円に直す。口座も株数計算も円で統一する
+            px, stop = to_jpy(a["price"], tk), lv.get("stop")
+            stop = to_jpy(stop, tk) if stop else None
             if not stop or stop >= px:
                 continue
             # ランキング由来の候補は最新スコアで再確認(古い情報で買わない)
@@ -3846,17 +3848,44 @@ def _paper_load(account="me"):
     return st
 
 
+def usdjpy(default=150.0):
+    """ドル円。デモ口座は円建てなので、米国株の価格を円に直すのに使う。
+    取得できない場合でも運用が止まらないよう既定値を返す(桁は合う)。"""
+    c = cache_get("usdjpy.json", 3600)
+    if c and c.get("rate"):
+        return float(c["rate"])
+    try:
+        px = float(fetch_history("JPY=X", "10d")["Close"].iloc[-1])
+        if 50 < px < 400:          # 明らかにおかしい値は採用しない
+            cache_put("usdjpy.json", {"rate": px,
+                                      "at": datetime.now(timezone.utc).isoformat()})
+            return px
+    except Exception as e:
+        print("usdjpy failed:", e)
+    return default
+
+
+def to_jpy(price, ticker):
+    """米国株はドル建てなので円に直す。日本株はそのまま。"""
+    return float(price) if ticker.endswith(".T") else float(price) * usdjpy()
+
+
 def _paper_price(ticker):
-    """現在値。ランキング/分析キャッシュを優先し、無ければ取得。"""
+    """現在値(円換算)。ランキング/分析キャッシュを優先し、無ければ取得。
+    口座は円建てなので、ここで必ず円に揃える。"""
+    px = None
     rk = cache_get("ranking.json", 24 * 3600) or {}
     for r in rk.get("rows", []):
         if r["ticker"] == ticker:
-            return float(r["price"]), r.get("name") or ticker
-    a = cache_get(f"analyze/{ticker}.json", PRICE_TTL)
-    if a:
-        return float(a["price"]), a.get("name") or ticker
-    df = fetch_history(ticker, "10d")
-    return float(df["Close"].iloc[-1]), ticker
+            px, name = float(r["price"]), (r.get("name") or ticker)
+            break
+    if px is None:
+        a = cache_get(f"analyze/{ticker}.json", PRICE_TTL)
+        if a:
+            px, name = float(a["price"]), (a.get("name") or ticker)
+    if px is None:
+        px, name = float(fetch_history(ticker, "10d")["Close"].iloc[-1]), ticker
+    return to_jpy(px, ticker), name
 
 
 def paper_state(account="me"):
