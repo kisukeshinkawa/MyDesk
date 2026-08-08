@@ -259,8 +259,22 @@ def lambda_handler(event, context):
                 try:
                     c = autotrade_config()
                     if c.get("autoTune"):
-                        tuned = apply_trade_mode(c.get("tradeMode", "balanced"),
-                                                 enable=bool(c.get("enabled", True)))["note"]
+                        if c.get("tradeMode") == "custom":
+                            # 個別設定は「周辺の条件も同水準か」で選び直す。
+                            # プリセットは年利1位を拾う作りで、まぐれを掴みやすいため使わない
+                            rc = recommend_config(float(c.get("ddLimit", -45)), False, 30)
+                            pick = rc["recommended"]
+                            upd = _row_to_autotrade(pick)
+                            upd["appliedFrom"] = {k: pick.get(k) for k in
+                                                  ("entryScore", "rr", "maxPositions", "riskPct",
+                                                   "method", "cagrPct", "maxDrawdownPct",
+                                                   "winRate", "neighborCagr", "stability")}
+                            autotrade_config(upd)
+                            tuned = (f"個別設定を更新: 年利{pick['cagrPct']}% / "
+                                     f"最大下落{pick['maxDrawdownPct']}%(周辺平均{pick['neighborCagr']}%)")
+                        else:
+                            tuned = apply_trade_mode(c.get("tradeMode", "balanced"),
+                                                     enable=bool(c.get("enabled", True)))["note"]
                 except Exception as e:
                     print("autoTune failed:", e)
                 _record_job(jname, True, f"{len(r.get('combos') or [])}条件"
@@ -384,9 +398,9 @@ def lambda_handler(event, context):
             upd = _row_to_autotrade(pick)
             upd["enabled"] = True
             upd["tradeMode"] = "custom"
-            # 自動追従を切る。切らないと次の再検証でプリセットに戻され、
-            # せっかく選んだ安定した設定が上書きされてしまう
-            upd["autoTune"] = False
+            # 自動追従は残す。tradeMode=custom のときは、プリセットではなく
+            # 「周辺の条件も同水準か」で選び直すので、まぐれに載せ替わらない
+            upd["autoTune"] = bool(body.get("autoTune", True))
             upd["appliedFrom"] = {k: pick.get(k) for k in
                                   ("entryScore", "rr", "maxPositions", "riskPct", "method",
                                    "cagrPct", "maxDrawdownPct", "winRate", "profitFactor",
