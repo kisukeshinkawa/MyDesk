@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-08-v368-quote-name-dedup"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-08-v369-vendor-dedup-inspect"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -17904,7 +17904,7 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
               <button onClick={()=>setMergePreview(null)} style={{background:"none",border:"none",cursor:"pointer",fontSize:"1.3rem",color:C.textMuted,lineHeight:1,padding:"0.2rem 0.4rem"}}>✕</button>
             </div>
             <div style={{fontSize:"0.72rem",color:C.textMuted,marginTop:"0.2rem"}}>
-              左の「残す」を維持し、右の項目をマージします。チェックを外せばそのグループは統合されません。
+              住所・許可を見て精査 → 統合するグループにチェック。「✅残す」を残し他を統合します。許可(種別×エリア/権者)・メモ・担当・電話・住所は全て引き継ぎます。
             </div>
             <div style={{marginTop:"0.5rem",display:"flex",alignItems:"center",gap:"0.5rem",flexWrap:"wrap"}}>
               <button onClick={()=>{
@@ -17938,8 +17938,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                         <span style={{fontSize:"0.88rem",fontWeight:700,color:C.text,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{grp.displayName}</span>
                         <span style={{fontSize:"0.65rem",fontWeight:700,color:TYPE_COLOR[typeLabel],background:`${TYPE_COLOR[typeLabel]}22`,borderRadius:999,padding:"0.1rem 0.4rem",flexShrink:0}}>{drops.length+1}件 → 1件</span>
                       </div>
-                      {isSelected && (
-                        <div style={{padding:"0.5rem 0.75rem",fontSize:"0.72rem",display:"flex",flexDirection:"column",gap:"0.4rem"}}>
+                      {(
+                        <div style={{padding:"0.5rem 0.75rem",fontSize:"0.72rem",display:"flex",flexDirection:"column",gap:"0.4rem",borderTop:`1px solid ${C.borderLight}`}}>
                           <div style={{background:"#ecfdf5",border:"1px solid #86efac",borderRadius:"8px",padding:"0.5rem 0.65rem"}}>
                             <div style={{display:"flex",alignItems:"center",gap:"0.35rem",marginBottom:"0.3rem"}}>
                               <span style={{fontSize:"0.65rem",fontWeight:800,color:"white",background:"#009122",borderRadius:999,padding:"0.05rem 0.4rem"}}>✅ 残す</span>
@@ -17950,7 +17950,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                             <div style={{color:C.textSub,fontSize:"0.7rem",lineHeight:1.5}}>
                               {keepAssignees.length>0 && <div>👤 {keepAssignees.join("・")}</div>}
                               {keep.phone && <div>📞 {keep.phone}</div>}
-                              {keep.address && <div style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>📍 {keep.address}</div>}
+                              {keep.address && <div style={{wordBreak:"break-all"}}>📍 {keep.address}</div>}
+                              {mergePreview.focusType==="vendor" && (()=>{ const pts=(keep.permitTypes||[]); const sps=[...new Set((keep.sanpaiPermits||[]).map(sp=>sp.auth))]; const mc=(keep.municipalityIds||[]).length; if(!pts.length&&!sps.length&&!mc) return null; return <div style={{color:"#7c3aed"}}>🏭 {pts.join("・")||"種別なし"}{sps.length?` ／ 権者:${sps.slice(0,6).join("・")}${sps.length>6?`他${sps.length-6}`:""}`:""}{mc?` ／ 一廃${mc}自治体`:""}</div>; })()}
                               {(keep.memos||keep.chat||keep.approachLogs||keep.files)&&(
                                 <div style={{color:C.textMuted,marginTop:"0.15rem"}}>
                                   💬 {(keep.chat||[]).length}件 / 📋 {(keep.memos||[]).length+(keep.approachLogs||[]).length}件 / 📂 {(keep.files||[]).length}件
@@ -17972,7 +17973,8 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
                                   {dAssignees.length>0 && <div>👤 {dAssignees.join("・")}</div>}
                                   {!dAssignees.length && <div style={{color:C.textMuted}}>👤 担当者未設定</div>}
                                   {d.phone && <div>📞 {d.phone}</div>}
-                                  {d.address && <div style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>📍 {d.address}</div>}
+                                  {d.address && <div style={{wordBreak:"break-all"}}>📍 {d.address}</div>}
+                                  {mergePreview.focusType==="vendor" && (()=>{ const pts=(d.permitTypes||[]); const sps=[...new Set((d.sanpaiPermits||[]).map(sp=>sp.auth))]; const mc=(d.municipalityIds||[]).length; if(!pts.length&&!sps.length&&!mc) return null; return <div style={{color:"#7c3aed"}}>🏭 {pts.join("・")||"種別なし"}{sps.length?` ／ 権者:${sps.slice(0,6).join("・")}${sps.length>6?`他${sps.length-6}`:""}`:""}{mc?` ／ 一廃${mc}自治体`:""}</div>; })()}
                                   {(d.memos||d.chat||d.approachLogs||d.files)&&(
                                     <div style={{color:C.textMuted,marginTop:"0.15rem"}}>
                                       💬 {(d.chat||[]).length}件 / 📋 {(d.memos||[]).length+(d.approachLogs||[]).length}件 / 📂 {(d.files||[]).length}件
@@ -19031,8 +19033,19 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
               keep[f] = [...(keep[f]||[]), ...dup[f]];
             }
           });
-          if(entityKey==="vendors" && Array.isArray(dup.municipalityIds)){
-            keep.municipalityIds = [...new Set([...(keep.municipalityIds||[]), ...dup.municipalityIds])];
+          if(entityKey==="vendors"){
+            // 一廃エリア(自治体)
+            if(Array.isArray(dup.municipalityIds)) keep.municipalityIds = [...new Set([...(keep.municipalityIds||[]), ...dup.municipalityIds])];
+            // 許可種別
+            keep.permitTypes = [...new Set([...(keep.permitTypes||[]), ...(dup.permitTypes||[])])];
+            // 産廃権者(権者×種別)をunion
+            { const seen=new Set((keep.sanpaiPermits||[]).map(sp=>String(sp.auth)+"::"+String(sp.type))); keep.sanpaiPermits=[...(keep.sanpaiPermits||[])]; (dup.sanpaiPermits||[]).forEach(sp=>{ const kk=String(sp.auth)+"::"+String(sp.type); if(!seen.has(kk)){ seen.add(kk); keep.sanpaiPermits.push(sp); } }); }
+            // v340 統合ペア(種別×エリア)をunion
+            { const seen=new Set((keep.permits||[]).map(pp=>String(pp.type)+"::"+String(pp.areaId||pp.area||""))); keep.permits=[...(keep.permits||[])]; (dup.permits||[]).forEach(pp=>{ const kk=String(pp.type)+"::"+String(pp.areaId||pp.area||""); if(!seen.has(kk)){ seen.add(kk); keep.permits.push(pp); } }); }
+            // 許可×エリア稼働状況（keep優先で結合）
+            if(dup.permitOperating && typeof dup.permitOperating==="object") keep.permitOperating={...(dup.permitOperating||{}),...(keep.permitOperating||{})};
+            // グレードは高い方を採用
+            if((dup.grade||0)>(keep.grade||0)) keep.grade = dup.grade;
           }
           if(!keep.phone && dup.phone) keep.phone = dup.phone;
           if(!keep.address && dup.address) keep.address = dup.address;
@@ -22837,6 +22850,14 @@ ${orig}`})
             style={{padding:"0.45rem 0.625rem",borderRadius:"8px",border:`1.5px solid ${bulkMode?"#0070D4":C.border}`,background:bulkMode?"#F2F7FF":"white",color:bulkMode?"#1563CA":C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>☑️</button>
           <button onClick={()=>setSheet("importVendor")} title="業者・許可(種別×エリア)を取込（追加・上書き・不足補完を一本化）"
             style={{padding:"0.45rem 0.625rem",borderRadius:"8px",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>📥 取込</button>
+          <button onClick={()=>{
+            if(typeof window.__myDeskComputeDupGroups !== "function"){ window.alert("重複精査機能が未初期化です。ページを再読み込みしてください。"); return; }
+            const groups = window.__myDeskComputeDupGroups("vendor");
+            if(!groups.length){ window.alert("同名の重複業者は見つかりませんでした。"); return; }
+            setMergeSelected(new Set()); // 既定は全て未選択（1グループずつ精査してチェック）
+            setMergePreview({groups, focusType:"vendor"});
+          }} title="同名(許可違い含む)の重複業者を精査して統合"
+            style={{padding:"0.45rem 0.625rem",borderRadius:"8px",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🔍 重複精査</button>
           <button onClick={()=>{
             // フィルター条件に該当する業者リストを取得
             const list = bulkMode && bulkSelected.size>0
