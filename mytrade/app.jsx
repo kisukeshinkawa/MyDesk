@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 // MyTrade — 投資専用スタンドアロンアプリ (MyDeskから分離)
 // バックエンド: mydesk-stock-analysis Lambda (共用・変更不要)
 // ═══════════════════════════════════════════════════════════════
-const MYTRADE_BUILD = "2026-08-08-v41-honest";
+const MYTRADE_BUILD = "2026-08-08-v42-rebalance-verdict";
 
 // 牽引役の日本語名(連動係数βの表示に使う)
 const FLOW_DRIVER_JA = {sox:"半導体", oil:"原油", gold:"金", defense:"防衛",
@@ -886,6 +886,15 @@ function StockView({currentUser}) {
               </tbody>
             </table>
           </details>
+        )}
+        {/* 「設定を変えれば勝てるのでは」と思わせないよう、別方式も試した事実を残す */}
+        {reality.altBest&&!reality.altBeat&&(
+          <div style={{fontSize:"0.68rem",color:C.textMuted,marginTop:"0.4rem",lineHeight:1.7}}>
+            ▸ 損切り・利確をやめた「上位銘柄の定期入れ替え」も検証済み。
+            最良の{reality.altBest.label}({reality.altBest.slipLabel})でも
+            年利{reality.altBest.cagrPct}% 対 指数{reality.altBest.benchCagr}%、
+            {reality.altBest.of}期間中{reality.altBest.beat}期間しか上回りませんでした。
+          </div>
         )}
       </div>
     );

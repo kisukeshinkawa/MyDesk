@@ -1819,6 +1819,7 @@ def reality_check():
     信じさせることになる。期間外の実測と指数との比較を必ず併記する。"""
     wf = _load_json_s3("stock-learn/walkforward.json", {}) or {}
     sl = _load_json_s3("stock-learn/slippage_test.json", {}) or {}
+    rb = _load_json_s3("stock-learn/rebalance_test.json", {}) or {}
     grid = _load_json_s3("stock-learn/optimize.json", {}) or {}
     best = (grid.get("combos") or [{}])[0]
     bench = (grid.get("benchmark") or {}).get("mix") or {}
@@ -1837,6 +1838,16 @@ def reality_check():
     out["costBeatsBench"] = len([r for r in rows if r["edge"] > 0])
     out["costTested"] = len(rows)
 
+    # 損切り・利確をやめて「上位N銘柄へ入れ替えるだけ」の別方式も試したか。
+    # 試したうえで駄目だったなら、それは「設定の問題ではない」という強い証拠になる
+    if rb.get("rows"):
+        out["altTested"] = True
+        out["altBeat"] = bool(rb.get("best"))
+        near = max(rb["rows"], key=lambda r: (r["beatCalmar"], r["edge"]))
+        out["altBest"] = {"label": near["label"], "slipLabel": near["slipLabel"],
+                          "cagrPct": near["avgCagr"], "benchCagr": near["avgBench"],
+                          "beat": near["beatCalmar"], "of": near["of"]}
+
     if rows and out["costBeatsBench"] == 0:
         out["level"] = "fail"
         out["headline"] = "この売買ロジックは指数に勝てませんでした"
@@ -1844,6 +1855,11 @@ def reality_check():
                          "届きませんでした。バックテストの数字は、過去を見てから条件を選んだ"
                          "ことで生まれた見かけ上のものです。"
                          "実際のお金を入れるなら、インデックスを買って放置するほうが合理的です。")
+        if out.get("altTested") and not out.get("altBeat"):
+            out["detail"] += ("損切り・利確をやめて上位銘柄を定期的に入れ替えるだけの"
+                              "別方式も試しましたが、結果は同じでした"
+                              "(最良でも期間の一部でしか上回らず)。"
+                              "設定や売買方法の問題ではありません。")
         out["usage"] = ("ただし銘柄のスコア・チャート・ニュース・損切り/利確の目安は、"
                         "あなたが自分で判断するための材料としてはそのまま使えます。"
                         "「機械に任せる」のではなく「自分で選ぶ道具」としてお使いください。")
