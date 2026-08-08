@@ -31,6 +31,9 @@ print("  運用タイプ : %s" % 名.get(c.get("tradeMode"),c.get("tradeMode")))
 print("  稼働状態   : %s" % ("ON(自動売買中)" if c.get("enabled") else "OFF(停止中)"))
 print("  自動追従   : %s" % ("ON(毎月かってに最適化)" if c.get("autoTune") else "OFF(手動で決めた設定を維持)"))
 print("  下落の上限 : %s%% (自動追従がこれより深い設定を選ばない歯止め)" % c.get("ddLimit", -45))
+地合={"ma200":"指数が200日線の上のときだけ買う(標準)","recovery":"200日線の上か、急落後の回復も拾う",
+      "ma50":"指数が50日線の上","off":"地合いを見ない"}
+print("  地合い判定 : %s" % 地合.get(c.get("regime","ma200"), c.get("regime")))
 print("  買いの基準 : %s点以上 / 確信度%s以上" % (c.get("entryScore"), c.get("minConviction")))
 print("  利確目標   : 損切り幅の%s倍" % c.get("rr"))
 print("  同時保有   : %s銘柄まで / 1回のリスク %s%%" % (c.get("maxPositions"), c.get("riskPct")))
