@@ -226,6 +226,11 @@ def lambda_handler(event, context):
                 r = run_ranking(force=True)
                 _record_job(jname, True, f"{r.get('scanned',0)}銘柄 財務{r.get('finCovered',0)}")
                 return _res(200, r)
+            if job == "regime":
+                r = regime_test(None, int(event.get("years", 25)))
+                _save_json_s3("stock-learn/regime_test.json", r)
+                _record_job(jname, True, r.get("verdict", "")[:60])
+                return _res(200, {"verdict": r["verdict"], "best": r.get("best")})
             if job == "walkforward":
                 r = walk_forward(None, int(event.get("years", 25)))
                 _save_json_s3("stock-learn/walkforward.json", r)
@@ -423,6 +428,12 @@ def lambda_handler(event, context):
                                        f"周辺条件の平均は年利{pick.get('neighborCagr')}%なので、"
                                        f"たまたま当たった設定ではありません。勝率は{pick.get('winRate')}%です。"
                                        + tune_txt)})
+        if action == "regime-test":
+            r = regime_test(None, int(body.get("years", 25)))
+            _save_json_s3("stock-learn/regime_test.json", r)
+            return _res(200, r)
+        if action == "regime-latest":
+            return _res(200, _load_json_s3("stock-learn/regime_test.json", {}))
         if action == "walkforward":
             r = walk_forward(None, int(body.get("years", 25)))
             _save_json_s3("stock-learn/walkforward.json", r)
@@ -1224,8 +1235,22 @@ def _prepare_sim(tickers, years, min_score=65, limit=20):
     for sym, key in (("^N225", "JP"), ("^GSPC", "US")):
         try:
             b = fetch_history(sym, f"{years}y")["Close"]
-            bench[key] = {"close": b, "ma200": b.rolling(200).mean(),
-                          "ret1m": b.pct_change(20) * 100,
+            ma200, ma50 = b.rolling(200).mean(), b.rolling(50).mean()
+            low60 = b.rolling(60).min()
+            # 地合いの判定方法をいくつか用意しておく。
+            # ma200 は V字回復の初動を必ず取り逃す(回復は200日線の下から始まるため)
+            flags = {}
+            for i, d in enumerate(b.index):
+                c0, m2, m5, l6 = (float(b.iloc[i]), float(ma200.iloc[i]),
+                                  float(ma50.iloc[i]), float(low60.iloc[i]))
+                up200 = (c0 > m2) if m2 == m2 else False
+                up50 = (c0 > m5) if m5 == m5 else False
+                # 回復モード: 200日線の上 か、50日線を回復して直近安値から10%以上戻した
+                recov = up200 or (up50 and l6 == l6 and c0 >= l6 * 1.10)
+                flags[d.strftime("%Y-%m-%d")] = {"ma200": up200, "ma50": up50,
+                                                 "recovery": recov, "off": True}
+            bench[key] = {"close": b, "ma200": ma200,
+                          "ret1m": b.pct_change(20) * 100, "flags": flags,
                           "pos": {d.strftime("%Y-%m-%d"): i for i, d in enumerate(b.index)}}
         except Exception as e:
             print("sim bench failed:", sym, e)
@@ -1267,8 +1292,8 @@ def _prepare_sim(tickers, years, min_score=65, limit=20):
                     bi = b["pos"].get(d)
                     if bi is None or bi < 200:
                         continue
-                    if not (float(b["close"].iloc[bi]) > float(b["ma200"].iloc[bi])):
-                        continue   # 地合いフィルタ
+                    # ここでは除外しない。地合いの状態は候補に持たせ、
+                    # どの判定を使うかは検証時に選べるようにする
                     br = float(b["ret1m"].iloc[bi])
                     if math.isnan(br):
                         br = 0
@@ -1282,7 +1307,9 @@ def _prepare_sim(tickers, years, min_score=65, limit=20):
                     if math.isnan(a) or a <= 0:
                         continue
                     cands[d] = {"score": sc["score"], "entryPx": float(df["Open"].iloc[i + 1]),
-                                "atr": a, "low20": float(low20.iloc[i]), "nextDate": dates[i + 1]}
+                                "atr": a, "low20": float(low20.iloc[i]), "nextDate": dates[i + 1],
+                                "regime": b["flags"].get(d, {"ma200": False, "ma50": False,
+                                                             "recovery": False, "off": True})}
             maL = df["Close"].rolling(200).mean()
             prep[t] = {"maLong": [None if math.isnan(x) else float(x) for x in maL],
                        "dates": dates, "idx": {d: i for i, d in enumerate(dates)},
@@ -1365,7 +1392,8 @@ def _sim_pass(prep, all_dates, initial=1000000, risk_pct=2.0, max_pos=5,
               entry_score=70, rr=2.0, fee=0.001, odd_lot=True,
               partial=False, partial_rr=1.5, time_stop=0, trail=0.0, leverage=1.0,
               hold_mode="trade", ma_exit=200,
-              max_same_driver=0, driver_trend=False, beta_size=False):
+              max_same_driver=0, driver_trend=False, beta_size=False,
+              regime="ma200"):
     """1条件ぶんの運用を再現。
     partial   : 分割利確(第1目標で半分利確し、残りは損切りを建値に上げて伸ばす)
     time_stop : N日経っても損切り/利確に当たらなければ手仕舞い(資金効率を上げる)
@@ -1380,6 +1408,10 @@ def _sim_pass(prep, all_dates, initial=1000000, risk_pct=2.0, max_pos=5,
     driver_trend    : その銘柄の牽引役自体が上昇トレンド(50日線の上)のときだけ買う。
                       逆風の中で個別の点数だけ見て買うのを止める
     beta_size       : 市場に対する感応度(β)が高い銘柄ほど枚数を減らし、実質リスクを揃える
+    regime          : 買ってよい地合いの判定。ma200=指数が200日線の上 /
+                      ma50=50日線の上 / recovery=200日線の上か、50日線を回復し
+                      直近安値から10%戻した / off=地合いを見ない。
+                      V字回復は必ず200日線の下から始まるため、ma200だと初動を逃す
     """
     drv_up = next((v.get("drvUp") for v in prep.values() if v.get("drvUp")), {})
     by_date = next((v.get("byDate") for v in prep.values() if v.get("byDate")), {})
@@ -1465,6 +1497,8 @@ def _sim_pass(prep, all_dates, initial=1000000, risk_pct=2.0, max_pos=5,
                 break
             if t in positions or c["score"] < entry_score:
                 continue
+            if not (c.get("regime") or {}).get(regime, True):
+                continue        # 地合いが条件を満たしていない
             v = prep[t]
             link = (v.get("drivenBy") or {}).get(d)
             # 牽引役が下降トレンドなら見送る(逆風の中で個別の点数だけ見て買わない)
@@ -1569,6 +1603,88 @@ def simulate_strategy(tickers=None, years=25, initial=1000000, risk_pct=2.0,
                          "tickers": len(prep), "fee": fee},
             "result": r["result"], "curve": curve[::step], "yearly": yearly,
             "recentTrades": r["trades"][-15:][::-1],
+            "updatedAt": datetime.now(timezone.utc).isoformat()}
+
+
+def regime_test(tickers=None, years=25, initial=1000000):
+    """地合いフィルターだけを差し替えて、指数に勝てるかを測る。
+
+    仮説: 「指数が200日線の上のときだけ買う」というルールが、
+    V字回復の初動を必ず取り逃している。回復は200日線の下から始まるため。
+    指数のリターンの大部分はその数ヶ月で作られるので、そこを逃すと指数に勝てない。
+
+    他の条件は一切変えず、地合いの判定だけを変える。
+    3つの期間すべてで指数を上回れなければ、この仮説は外れ。"""
+    tickers = tickers or FULL_UNIVERSE
+    prep = _prepare_sim(tickers, years, limit=int(os.environ.get("RG_TICKERS", "250")))
+    if not prep:
+        raise Exception("シミュレーション用のデータが取得できません")
+    all_dates = sorted({d for v in prep.values() for d in v["dates"]})[200:]
+    seg = len(all_dates) // 4
+    windows = [all_dates[seg * i:seg * (i + 1)] for i in (1, 2, 3)]
+    windows[-1] = all_dates[seg * 3:]
+
+    # 代表的な設定。1つの設定でだけ効いても偶然なので、複数で平均を見る
+    CFGS = [{"entry_score": 65, "rr": 4.0, "max_pos": 8, "risk_pct": 2.0, "partial": True},
+            {"entry_score": 70, "rr": 3.0, "max_pos": 5, "risk_pct": 2.0, "partial": True},
+            {"entry_score": 70, "rr": 4.0, "max_pos": 8, "risk_pct": 3.0}]
+    MODES = [("ma200", "200日線の上だけ(現行)"), ("recovery", "回復も拾う"),
+             ("ma50", "50日線の上"), ("off", "地合いを見ない")]
+
+    rows = []
+    for mode, label in MODES:
+        per_win = []
+        for wi, w in enumerate(windows):
+            if len(w) < 200:
+                continue
+            runs = []
+            for cfg in CFGS:
+                try:
+                    r = _sim_pass(prep, w, initial, regime=mode, **cfg)["result"]
+                    runs.append(r)
+                except Exception as e:
+                    print("regime run failed:", mode, wi, e)
+            if not runs:
+                continue
+            cg = sum(r["cagrPct"] for r in runs) / len(runs)
+            dd = sum(r["maxDrawdownPct"] for r in runs) / len(runs)
+            tr = sum(r["trades"] for r in runs) / len(runs)
+            bm = (_bench_window(w[0], w[-1], initial) or {}).get("mix") or {}
+            per_win.append({"window": wi + 1, "from": w[0], "to": w[-1],
+                            "cagrPct": round(cg, 2), "maxDrawdownPct": round(dd, 1),
+                            "trades": round(tr), "calmar": round(cg / abs(dd), 3) if dd else 0,
+                            "benchCagr": bm.get("cagrPct"), "benchDd": bm.get("maxDrawdownPct"),
+                            "benchCalmar": bm.get("calmar"),
+                            "beatCagr": bool(bm and cg > bm["cagrPct"]),
+                            "beatCalmar": bool(bm and dd and (cg / abs(dd)) > bm["calmar"])})
+        if not per_win:
+            continue
+        n = len(per_win)
+        rows.append({"mode": mode, "label": label, "windows": per_win,
+                     "avgCagr": round(sum(x["cagrPct"] for x in per_win) / n, 2),
+                     "avgDd": round(sum(x["maxDrawdownPct"] for x in per_win) / n, 1),
+                     "avgTrades": round(sum(x["trades"] for x in per_win) / n),
+                     "beatCagr": len([x for x in per_win if x["beatCagr"]]),
+                     "beatCalmar": len([x for x in per_win if x["beatCalmar"]]), "of": n})
+    if not rows:
+        raise Exception("検証を実行できませんでした")
+
+    for r in rows:
+        r["avgCalmar"] = round(r["avgCagr"] / abs(r["avgDd"]), 3) if r["avgDd"] else 0
+    cur = next((r for r in rows if r["mode"] == "ma200"), None)
+    # 全期間で指数を上回ったものだけを「勝ち」とする
+    winners = [r for r in rows if r["beatCalmar"] == r["of"] and r["beatCagr"] == r["of"]]
+    best = max(winners, key=lambda r: r["avgCalmar"]) if winners else None
+    if best:
+        verdict = (f"「{best['label']}」が{best['of']}期間すべてで指数を上回りました"
+                   f"(年利{best['avgCagr']}% / 最大下落{best['avgDd']}%)。仮説は当たりです。")
+    else:
+        near = max(rows, key=lambda r: (r["beatCalmar"], r["avgCalmar"]))
+        verdict = ("どの地合い判定でも、全期間で指数を上回ることはできませんでした。"
+                   f"最も惜しいのは「{near['label']}」で{near['of']}期間中{near['beatCalmar']}期間。"
+                   "地合いフィルターは原因ではありません。仮説は外れです。")
+    return {"rows": rows, "current": cur, "best": best, "verdict": verdict,
+            "tickers": len(prep), "configs": len(CFGS),
             "updatedAt": datetime.now(timezone.utc).isoformat()}
 
 
@@ -3598,6 +3714,7 @@ def autotrade_config(update=None):
     cfg.setdefault("maxSameDriver", 0)   # 同じ牽引役に連動する銘柄の上限(0=無制限)
     cfg.setdefault("driverTrend", False) # 牽引役が上昇トレンドのときだけ買う
     cfg.setdefault("betaSize", False)    # βが高い銘柄ほど枚数を減らす
+    cfg.setdefault("regime", "ma200")     # 買ってよい地合いの判定(ma200/recovery/ma50/off)
     cfg.setdefault("ddLimit", -45)        # 耐えられる最大下落。自動追従でもこれを超えさせない
     cfg.setdefault("tradeMode", "balanced")  # safe/balanced/aggressive/max/custom
     cfg.setdefault("autoTune", False)    # 検証が更新されるたびに最適値へ自動追従するか
@@ -3608,13 +3725,37 @@ def autotrade_config(update=None):
         for k in ("enabled", "riskPct", "maxPositions", "minConviction", "rr", "oddLot",
                   "entryScore", "trailPct", "partial", "timeStopDays", "holdMode",
                   "tradeMode", "autoTune", "maxSameDriver", "driverTrend", "betaSize",
-                  "ddLimit", "appliedFrom", "appliedNote"):
+                  "ddLimit", "regime", "appliedFrom", "appliedNote"):
             if k in update:
                 cfg[k] = update[k]
         if "enabled" in update:
             cfg["userToggled"] = True     # 以降はユーザーの選択を尊重
         _save_json_s3(AUTO_KEY, cfg)
     return cfg
+
+
+def current_regime(market="JP"):
+    """今の地合いの状態。検証と同じ判定を実運用でも使えるようにする。"""
+    c = cache_get(f"regime-{market}.json", 3600)
+    if c:
+        return c
+    sym = "^N225" if market == "JP" else "^GSPC"
+    out = {"ma200": True, "ma50": True, "recovery": True, "off": True}
+    try:
+        b = fetch_history(sym, "400d")["Close"].dropna()
+        c0 = float(b.iloc[-1])
+        m2 = float(b.rolling(200).mean().iloc[-1])
+        m5 = float(b.rolling(50).mean().iloc[-1])
+        l6 = float(b.rolling(60).min().iloc[-1])
+        up200 = c0 > m2 if m2 == m2 else True
+        up50 = c0 > m5 if m5 == m5 else True
+        out = {"ma200": up200, "ma50": up50,
+               "recovery": up200 or (up50 and c0 >= l6 * 1.10), "off": True,
+               "price": round(c0, 2), "ma200Value": round(m2, 2)}
+        cache_put(f"regime-{market}.json", out)
+    except Exception as e:
+        print("current_regime failed:", sym, e)
+    return out
 
 
 def run_autotrade():
@@ -3639,6 +3780,8 @@ def run_autotrade():
     use_partial = bool(cfg.get("partial", True))
     time_stop = int(cfg.get("timeStopDays", 0))
     hold_mode = cfg.get("holdMode", "trade")
+    regime_mode = cfg.get("regime", "ma200")
+    regime_now = {m: current_regime(m) for m in ("JP", "US")}
     max_same_driver = int(cfg.get("maxSameDriver", 0) or 0)
     driver_trend = bool(cfg.get("driverTrend"))
     beta_size = bool(cfg.get("betaSize"))
@@ -3739,8 +3882,14 @@ def run_autotrade():
     candidates = list(brief.get("plans") or [])
     try:
         rk = cache_get("ranking.json", 24 * 3600) or {}
+        def _regime_ok(r):
+            # 設定した判定で見る。ma200のままなら従来どおりの動き
+            if regime_mode == "ma200":
+                return bool(r.get("regimeOn"))
+            return bool(regime_now.get(r.get("market") or "JP", {}).get(regime_mode, True))
+
         extra = [r for r in sorted(rk.get("rows", []), key=lambda x: -(x.get("short", 0)))
-                 if r.get("shortSignal") == "buy" and r.get("regimeOn")
+                 if r.get("shortSignal") == "buy" and _regime_ok(r)
                  and r.get("quadrant") in ("本命", "押し目待ち", "短期限定")
                  and r["ticker"] not in {c.get("ticker") for c in candidates}]
         candidates += [{"ticker": r["ticker"], "name": r.get("name"), "verdict": "buy",
