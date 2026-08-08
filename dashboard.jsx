@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-08-v372-merge-save-coalesce"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-08-v373-auto-merge-by-contact"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -19043,59 +19043,48 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       const remap = { companies:{}, vendors:{}, municipalities:{} };
       let mergedCount=0, groupCount=0;
 
+      // 高速化：エンティティごとに id→オブジェクトのMapを1度だけ構築（大量統合でもフリーズしない）
+      const entMap = {}; const getMap = (ek)=>{ if(!entMap[ek]) entMap[ek]=new Map((nd[ek]||[]).map(e=>[String(e.id), e])); return entMap[ek]; };
+      const keptById = {}; const removedByEnt = {};
+      const getKept = (ek)=>{ if(!keptById[ek]) keptById[ek]=new Map(); return keptById[ek]; };
+      const getRemoved = (ek)=>{ if(!removedByEnt[ek]) removedByEnt[ek]=new Set(); return removedByEnt[ek]; };
       plan.forEach(item => {
         const entityKey = item && item.entityKey;
         const keepId = item && item.keepId;
         const dropList = (item && item.dropIds) || [];
         if(!entityKey || keepId==null || !dropList.length) return;
-        const list = nd[entityKey] || [];
-        let keep = list.find(e=>String(e.id)===String(keepId));
-        if(!keep) return;
-        keep = {...keep};
-        const dropIds = new Set();
+        const map = getMap(entityKey); const keptMap = getKept(entityKey); const removed = getRemoved(entityKey);
+        let keep = keptMap.get(String(keepId));
+        if(!keep){ const orig = map.get(String(keepId)); if(!orig) return; keep = {...orig}; keptMap.set(String(keepId), keep); }
+        let any=false;
         dropList.forEach(_did => {
-          if(String(_did)===String(keep.id)) return;
-          const dup = list.find(e=>String(e.id)===String(_did));
-          if(!dup) return;
-          // assigneeIds をマージ
+          const did=String(_did);
+          if(did===String(keep.id) || removed.has(did)) return;
+          const dup = map.get(did); if(!dup) return;
           keep.assigneeIds = [...new Set([...(keep.assigneeIds||[]), ...(dup.assigneeIds||[])])];
-          // contacts をマージ
-          if(Array.isArray(dup.contacts) && dup.contacts.length){
-            keep.contacts = [...(keep.contacts||[]), ...dup.contacts];
-          }
-          // memos / chat / approachLogs / files をマージ
-          ["memos","chat","approachLogs","files"].forEach(f=>{
-            if(Array.isArray(dup[f]) && dup[f].length){
-              keep[f] = [...(keep[f]||[]), ...dup[f]];
-            }
-          });
+          if(Array.isArray(dup.contacts) && dup.contacts.length) keep.contacts = [...(keep.contacts||[]), ...dup.contacts];
+          ["memos","chat","approachLogs","files"].forEach(f=>{ if(Array.isArray(dup[f]) && dup[f].length) keep[f] = [...(keep[f]||[]), ...dup[f]]; });
           if(entityKey==="vendors"){
-            // 一廃エリア(自治体)
             if(Array.isArray(dup.municipalityIds)) keep.municipalityIds = [...new Set([...(keep.municipalityIds||[]), ...dup.municipalityIds])];
-            // 許可種別
             keep.permitTypes = [...new Set([...(keep.permitTypes||[]), ...(dup.permitTypes||[])])];
-            // 産廃権者(権者×種別)をunion
             { const seen=new Set((keep.sanpaiPermits||[]).map(sp=>String(sp.auth)+"::"+String(sp.type))); keep.sanpaiPermits=[...(keep.sanpaiPermits||[])]; (dup.sanpaiPermits||[]).forEach(sp=>{ const kk=String(sp.auth)+"::"+String(sp.type); if(!seen.has(kk)){ seen.add(kk); keep.sanpaiPermits.push(sp); } }); }
-            // v340 統合ペア(種別×エリア)をunion
             { const seen=new Set((keep.permits||[]).map(pp=>String(pp.type)+"::"+String(pp.areaId||pp.area||""))); keep.permits=[...(keep.permits||[])]; (dup.permits||[]).forEach(pp=>{ const kk=String(pp.type)+"::"+String(pp.areaId||pp.area||""); if(!seen.has(kk)){ seen.add(kk); keep.permits.push(pp); } }); }
-            // 許可×エリア稼働状況（keep優先で結合）
             if(dup.permitOperating && typeof dup.permitOperating==="object") keep.permitOperating={...(dup.permitOperating||{}),...(keep.permitOperating||{})};
-            // グレードは高い方を採用
             if((dup.grade||0)>(keep.grade||0)) keep.grade = dup.grade;
           }
           if(!keep.phone && dup.phone) keep.phone = dup.phone;
           if(!keep.address && dup.address) keep.address = dup.address;
           if(!keep.email && dup.email) keep.email = dup.email;
           if(!keep.url && dup.url) keep.url = dup.url;
-
-          dropIds.add(String(dup.id));
-          remap[entityKey][String(dup.id)] = String(keep.id);
+          removed.add(did); remap[entityKey][did] = String(keep.id); mergedCount++; any=true;
         });
-        if(!dropIds.size) return;
-        // リスト更新：drop を除外、keep を更新
-        nd[entityKey] = list.filter(e=>!dropIds.has(String(e.id)))
-                            .map(e=>String(e.id)===String(keep.id) ? keep : e);
-        mergedCount += dropIds.size; groupCount++;
+        if(any) groupCount++;
+      });
+      // エンティティごとに1度だけ再構築（drop除外＋keep差し替え）
+      Object.keys(entMap).forEach(ek=>{
+        const removed = removedByEnt[ek]; const keptMap = keptById[ek];
+        if((!removed||!removed.size) && (!keptMap||!keptMap.size)) return;
+        nd[ek] = (nd[ek]||[]).filter(e=>!(removed&&removed.has(String(e.id)))).map(e=>{ const k=keptMap&&keptMap.get(String(e.id)); return k?k:e; });
       });
 
       // 名刺・タスク・プロジェクトの salesRef を新IDに張り直す
@@ -19171,6 +19160,56 @@ function SalesView({ data, setData, currentUser, users=[], salesTab, setSalesTab
       const nd = {...currentData, dupIgnored: Array.from(new Set([...(currentData.dupIgnored||[]), ...arr]))};
       save(nd); // debounce保存に一本化（多重フル保存を防止）
       return {added: arr.length, total: nd.dupIgnored.length};
+    };
+
+    // ★ 同名業者を「住所または電話の一致」で自動統合するプランを作る（不一致＝別物として残す）
+    //   同名グループ内を union-find でサブクラスタ化：電話一致 or 住所一致で結合→2件以上のクラスタを統合対象に
+    window.__myDeskAutoMergePlanByContact = () => {
+      const cur = _myDeskDataRef.current; const list = (cur && cur.vendors) || [];
+      const ignored = new Set(Array.isArray(cur.dupIgnored) ? cur.dupIgnored : []);
+      const norm = (s) => (s||"")
+        .replace(/\s*(株式会社|有限会社|合同会社|合資会社|合名会社|一般社団法人|一般財団法人|公益社団法人|公益財団法人|特定非営利活動法人|NPO法人|社会福祉法人|学校法人|宗教法人|医療法人)\s*/gi,"")
+        .replace(/[（(](株|有|合|社|同|資|名|財|一社|一財|公社|公財|医|福|学|宗|NPO)[)）]/gi,"")
+        .replace(/[Ａ-Ｚａ-ｚ０-９]/g, ch=>String.fromCharCode(ch.charCodeAt(0)-0xFEE0))
+        .replace(/[ァ-ン]/g, ch=>String.fromCharCode(ch.charCodeAt(0)-0x60))
+        .replace(/[\s　・　]/g,"").replace(/[-－ー〜～、。・]/g,"").toLowerCase();
+      const normPhone = (p) => String(p==null?"":p).replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xFEE0)).replace(/[^0-9]/g,"");
+      const KAN={'〇':'0','零':'0','一':'1','二':'2','三':'3','四':'4','五':'5','六':'6','七':'7','八':'8','九':'9','十':'10'};
+      const normAddr = (a) => { let t=String(a==null?"":a); try{t=t.normalize("NFKC");}catch(e){}
+        t=t.replace(/[〇零一二三四五六七八九十]/g,c=>KAN[c]||c);
+        t=t.replace(/^(北海道|東京都|(?:京都|大阪)府|.{2,3}?県)/,"");
+        t=t.replace(/(丁目|番地の|番地|番|号|大字|字|ノ|の)/g,"");
+        t=t.replace(/[\s　\-－ー()（）,、.。#＃]/g,""); return t.toLowerCase(); };
+      const rich = (v)=>((v.permitTypes||[]).length+(v.sanpaiPermits||[]).length+(v.permits||[]).length+(v.municipalityIds||[]).length+(v.memos||[]).length+(v.approachLogs||[]).length);
+      // 社名でグルーピング
+      const groups = {};
+      list.forEach(v=>{ const k=norm(v.name); if(!k) return; (groups[k]=groups[k]||[]).push(v); });
+      const plan=[]; let mergeGroups=0, mergeDrops=0, ambiguousGroups=0, ambiguousCos=0;
+      Object.values(groups).forEach(arr=>{
+        if(arr.length<2) return;
+        const sig = "vendors:" + arr.map(e=>String(e.id)).sort().join("|");
+        if(ignored.has(sig)) return; // 「別物」登録済みは触らない
+        const n=arr.length; const parent=arr.map((_,i)=>i);
+        const find=(x)=>{ while(parent[x]!==x){ parent[x]=parent[parent[x]]; x=parent[x]; } return x; };
+        const union=(a,b)=>{ const ra=find(a), rb=find(b); if(ra!==rb) parent[ra]=rb; };
+        const byP={}, byA={};
+        arr.forEach((m,i)=>{
+          const ph=normPhone(m.phone); if(ph.length>=10){ if(byP[ph]!=null) union(i,byP[ph]); else byP[ph]=i; }
+          const ad=normAddr(m.address); if(ad.length>=6){ if(byA[ad]!=null) union(i,byA[ad]); else byA[ad]=i; }
+        });
+        const cl={}; arr.forEach((m,i)=>{ const r=find(i); (cl[r]=cl[r]||[]).push(m); });
+        const clusters=Object.values(cl);
+        let ambigHere=0;
+        clusters.forEach(members=>{
+          if(members.length<2){ ambigHere++; return; }
+          const keep=members.slice().sort((a,b)=>{ const rd=rich(b)-rich(a); if(rd) return rd; return new Date(a.createdAt||0).getTime()-new Date(b.createdAt||0).getTime(); })[0];
+          const drops=members.filter(m=>m!==keep).map(m=>String(m.id));
+          plan.push({entityKey:"vendors", keepId:String(keep.id), dropIds:drops});
+          mergeGroups++; mergeDrops+=drops.length;
+        });
+        if(clusters.length>1){ ambiguousGroups++; ambiguousCos+=ambigHere; }
+      });
+      return {plan, stats:{mergeGroups, mergeDrops, ambiguousGroups, ambiguousCos}};
     };
 
     // ★ 既存の console 用（DryRun + 全件統合）— 後方互換
@@ -22939,6 +22978,15 @@ ${orig}`})
             setMergePreview({groups, focusType:"vendor"});
           }} title="同名(許可違い含む)の重複業者を精査して統合"
             style={{padding:"0.45rem 0.625rem",borderRadius:"8px",border:`1.5px solid ${C.border}`,background:"white",color:C.textSub,fontWeight:700,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>🔍 重複精査</button>
+          <button onClick={()=>{
+            if(typeof window.__myDeskAutoMergePlanByContact!=="function"){ window.alert("自動統合機能が未初期化です。ページを再読み込みしてください。"); return; }
+            const {plan,stats}=window.__myDeskAutoMergePlanByContact();
+            if(!plan.length){ window.alert("住所または電話が一致する自動統合対象は見つかりませんでした。\n（住所も電話も異なる同名は別会社として残しています）"); return; }
+            if(!window.confirm(`同名で「住所または電話が一致」する業者を自動統合します。\n\n・統合グループ: ${stats.mergeGroups}\n・統合で消える重複: ${stats.mergeDrops}社\n\n住所も電話も違う同名（別会社の可能性）は統合せず、「🔍重複精査」に残します。\n\n実行しますか？`)) return;
+            const r=window.__myDeskApplyMergePlan(plan);
+            window.alert(`✅ 自動統合 完了\n${r.groupCount}グループ・${r.merged}社を1つにまとめました。\n\n残りの同名（住所も電話も違うため要判断）は「🔍重複精査」で確認できます。`);
+          }} title="同名かつ住所or電話が一致する業者をまとめて自動統合（不一致は残す）"
+            style={{padding:"0.45rem 0.625rem",borderRadius:"8px",border:`1.5px solid #7c3aed`,background:"#ede9fe",color:"#5b21b6",fontWeight:800,fontSize:"0.72rem",cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>⚡ 自動統合</button>
           <button onClick={()=>{
             // フィルター条件に該当する業者リストを取得
             const list = bulkMode && bulkSelected.size>0
