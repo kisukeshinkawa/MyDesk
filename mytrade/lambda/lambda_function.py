@@ -371,7 +371,7 @@ def lambda_handler(event, context):
         if action == "dashboard":
             return _res(200, performance_dashboard())
         if action == "autotrade":
-            return _res(200, {"config": autotrade_config(), "state": paper_state()})
+            return _res(200, {"config": autotrade_config(), "state": paper_state("ai")})
         if action == "autotrade-config":
             return _res(200, {"config": autotrade_config(body.get("config") or {})})
         if action == "autotrade-run":
@@ -3806,7 +3806,11 @@ PAPER_ACCOUNTS = {"ai": "stock-learn/paper_ai.json", "me": "stock-learn/paper_me
 
 
 def _paper_key(account="me"):
-    return PAPER_ACCOUNTS.get(account, PAPER_ACCOUNTS["me"])
+    # 知らない口座名を黙って自分の口座に丸めると、AIの画面に自分の
+    # 数字が出るような取り違えに気づけない。必ず落とす
+    if account not in PAPER_ACCOUNTS:
+        raise Exception(f"不正な口座名: {account}")
+    return PAPER_ACCOUNTS[account]
 
 
 def _paper_load(account="me"):
