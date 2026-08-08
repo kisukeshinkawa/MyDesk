@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-08-v366-quote-collapse-section"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-08-v367-quote-link-persist-status-anon-width"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -627,7 +627,7 @@ if (typeof window !== "undefined" && !window.__myDeskFlushListenerAdded) {
   });
 }
 
-const INIT = { tasks:[], projects:[], emails:[], emailStyles:[], prefectures:[], municipalities:[], vendors:[], companies:[], businessCards:[], notifications:[], changeLogs:[], analytics:{}, emailTemplates:[], quotes:[], quoteProjects:[] };
+const INIT = { tasks:[], projects:[], emails:[], emailStyles:[], prefectures:[], municipalities:[], vendors:[], companies:[], businessCards:[], notifications:[], changeLogs:[], analytics:{}, emailTemplates:[], quotes:[], quoteProjects:[], quoteLinks:[] };
 
 // ─── ユーザー氏名ヘルパー（姓・名の分割／合成）────────────────────────────────
 // 既存ユーザーは name（例「新川 希亮」または「新川希亮」）のみ持つため、
@@ -1805,7 +1805,20 @@ async function loadData() {
           console.log(`[MyDesk] 業者チャンク結合完了: ${allV.length}件`);
         }
         const merged = {...INIT, ...raw};
-        
+
+        // ✅ v367: 見積対象業者の「依頼済」誤設定を一度だけ「未依頼」へ戻す。
+        // （リンク自動生成でステータスが依頼済になっていた問題の後始末。未回答のみ対象・回答済は保持）
+        if (!merged._quoteReqStatusFix2) {
+          try {
+            (merged.quoteProjects || []).forEach(pr => {
+              (pr && pr.vendors || []).forEach(v => {
+                if (v && v.status === "依頼済" && !v.respondedAt) v.status = "未依頼";
+              });
+            });
+          } catch (e) { /* no-op */ }
+          merged._quoteReqStatusFix2 = true;
+        }
+
         // ✅ v190: 未来日時のデータを「現在時刻」に補正（古いテストデータ対策）
         // Lambda が `2026-06-25T10:00:00Z` のような UTC で送ると JST 19:00 になり未来扱いされるバグの対処
         try {
@@ -1975,6 +1988,39 @@ function _mergeServerLogsIntoLocal(local, server) {
       return _mergeEntityPreserveLogs(l, s); // base=local(スカラー), 追記配列はunion
     });
   }
+  // ── 見積の発行済みリンクは「一生保持」：merge時に絶対に消さない ──────────────
+  // (1) 案件内の vendor に付いた portalToken/portalUrl は、stale local が server の
+  //     トークンを消すのを防ぐ（消えると auto-issue が新URLを再発行して既送リンクが死ぬ）
+  try {
+    const lP = Array.isArray(local.quoteProjects) ? local.quoteProjects : null;
+    const sP = Array.isArray(server.quoteProjects) ? server.quoteProjects : [];
+    if (lP && sP.length) {
+      const sMap = new Map(sP.map(x => [String(x.id), x]));
+      out.quoteProjects = lP.map(lp => {
+        const sp = sMap.get(String(lp.id));
+        if (!sp || !Array.isArray(sp.vendors) || !Array.isArray(lp.vendors)) return lp;
+        const svMap = new Map(sp.vendors.map(v => [String(v.id), v]));
+        let touched = false;
+        const nv = lp.vendors.map(lv => {
+          const sv = svMap.get(String(lv.id));
+          if (sv && sv.portalToken && !lv.portalToken) { touched = true; return { ...lv, portalToken: sv.portalToken, portalUrl: sv.portalUrl || lv.portalUrl }; }
+          return lv;
+        });
+        return touched ? { ...lp, vendors: nv } : lp;
+      });
+    }
+  } catch (e) { /* 保守的に：失敗してもlocalのquoteProjectsをそのまま使う */ }
+  // (2) 発行済みリンク台帳 quoteLinks は token で union（追記のみ・削除しない）
+  try {
+    const lL = Array.isArray(local.quoteLinks) ? local.quoteLinks : [];
+    const sL = Array.isArray(server.quoteLinks) ? server.quoteLinks : [];
+    if (lL.length || sL.length) {
+      const m = new Map();
+      for (const x of sL) { if (x && x.token != null) m.set(String(x.token), x); }
+      for (const x of lL) { if (x && x.token != null) m.set(String(x.token), { ...(m.get(String(x.token)) || {}), ...x }); }
+      out.quoteLinks = Array.from(m.values());
+    }
+  } catch (e) { /* no-op */ }
   return out;
 }
 
@@ -21709,7 +21755,7 @@ ${orig}`})
     return (
       <div style={{display:"flex",height:isPC?"calc(100vh - 60px)":"auto",overflow:isPC?"hidden":"visible",justifyContent:isPC&&!activeCompany?"center":"flex-start"}}>
         {/* List pane */}
-        <div style={{width:isPC?(activeCompany?440:"100%"):"100%",maxWidth:isPC&&!activeCompany?720:"none",flexShrink:isPC&&!activeCompany?1:0,overflowY:isPC?"auto":"visible",borderRight:isPC&&activeCompany?"1px solid #e5e5ea":"none",transition:"width 0.2s",minWidth:isPC&&activeCompany?440:undefined,padding:isPC?"1rem 1.25rem":"0",boxSizing:"border-box"}}>
+        <div style={{width:isPC?(activeCompany?440:"100%"):"100%",maxWidth:"none",flexShrink:isPC&&!activeCompany?1:0,overflowY:isPC?"auto":"visible",borderRight:isPC&&activeCompany?"1px solid #e5e5ea":"none",transition:"width 0.2s",minWidth:isPC&&activeCompany?440:undefined,padding:isPC?"1rem 1.25rem":"0",boxSizing:"border-box"}}>
         <TopTabs/>
         <BulkBar statusMap={COMPANY_STATUS} applyFn={applyBulkComp} visibleIds={compVisibleIds} onDelete={deleteBulkComp}/>
         {/* 担当者フィルター（複数選択） */}
@@ -22582,7 +22628,7 @@ ${orig}`})
     return (
       <div style={{display:"flex",height:isPC?"calc(100vh - 60px)":"auto",overflow:isPC?"hidden":"visible",justifyContent:isPC&&!activeVendor?"center":"flex-start"}}>
         {/* List pane */}
-        <div style={{width:isPC?(activeVendor?440:"100%"):"100%",maxWidth:isPC&&!activeVendor?720:"none",flexShrink:isPC&&!activeVendor?1:0,overflowY:isPC?"auto":"visible",borderRight:isPC&&activeVendor?"1px solid #e5e5ea":"none",transition:"width 0.2s",minWidth:isPC&&activeVendor?440:undefined,padding:isPC?"1rem 1.25rem":"0",boxSizing:"border-box"}}>
+        <div style={{width:isPC?(activeVendor?440:"100%"):"100%",maxWidth:"none",flexShrink:isPC&&!activeVendor?1:0,overflowY:isPC?"auto":"visible",borderRight:isPC&&activeVendor?"1px solid #e5e5ea":"none",transition:"width 0.2s",minWidth:isPC&&activeVendor?440:undefined,padding:isPC?"1rem 1.25rem":"0",boxSizing:"border-box"}}>
         <TopTabs/>
         <BulkBar statusMap={VENDOR_STATUS} applyFn={applyBulkVend} visibleIds={vendVisibleIds} onDelete={deleteBulkVend}/>
         {/* フォロー中業者 */}
@@ -24224,7 +24270,7 @@ ${orig}`})
   return (
     <div style={{display:"flex",height:isPC&&activeMuni&&muniScreen==="muniDetail"?"calc(100vh - 60px)":"auto",overflow:isPC&&activeMuni&&muniScreen==="muniDetail"?"hidden":"visible",justifyContent:isPC&&!(activeMuni&&muniScreen==="muniDetail")?"center":"flex-start"}}>
       {/* List/main pane */}
-      <div style={{width:isPC&&activeMuni&&muniScreen==="muniDetail"?500:"100%",maxWidth:isPC&&!(activeMuni&&muniScreen==="muniDetail")?720:"none",minWidth:isPC&&activeMuni&&muniScreen==="muniDetail"?500:undefined,flexShrink:isPC&&!(activeMuni&&muniScreen==="muniDetail")?1:0,overflowY:isPC&&activeMuni&&muniScreen==="muniDetail"?"auto":"visible",padding:isPC?"1rem 1.25rem":"0",boxSizing:"border-box"}}>
+      <div style={{width:isPC&&activeMuni&&muniScreen==="muniDetail"?500:"100%",maxWidth:"none",minWidth:isPC&&activeMuni&&muniScreen==="muniDetail"?500:undefined,flexShrink:isPC&&!(activeMuni&&muniScreen==="muniDetail")?1:0,overflowY:isPC&&activeMuni&&muniScreen==="muniDetail"?"auto":"visible",padding:isPC?"1rem 1.25rem":"0",boxSizing:"border-box"}}>
       <TopTabs/>
       {/* ── 自治体タブ（トップビュー） ── */}
       {salesTab==="muni"&&<>
@@ -33998,6 +34044,33 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
   const rid = pre => pre+"_"+Date.now()+"_"+Math.random().toString(36).slice(2,8);
   const compHits = q => { const s=String(q||"").trim().toLowerCase(); return s? companies.filter(c=>String(c.name||"").toLowerCase().includes(s)).slice(0,20):[]; };
   const mapsUrl = a => "https://i9ymvc5iez.ap-northeast-1.awsapprunner.com/lookup?address="+encodeURIComponent(a||""); // 住所→回収可否を検索
+  // ── 発行済みリンク台帳（一生保持）: 一度発行したtoken/URLは消さず・再発行しない ──
+  const quoteLinks = data.quoteLinks || [];
+  // 案件×業者で過去に発行したtokenを台帳から探す（vendor行からトークンが失われても復元できる）
+  const regTokenFor = (projId, vendorId) => {
+    const hit = quoteLinks.find(l => l && String(l.projectId)===String(projId) && String(l.vendorId)===String(vendorId) && l.token);
+    return hit ? { token: hit.token, url: hit.url||"" } : null;
+  };
+  // 発行したリンクを台帳へ追記（token でupsert・既存は消さない）。basedata を返す。
+  const recordLinksInto = (base, projId, projName, entries) => {
+    const reg = Array.isArray(base.quoteLinks) ? base.quoteLinks.slice() : [];
+    const idx = new Map(reg.map((x,i)=>[String(x.token), i]));
+    const now = new Date().toISOString();
+    let changed=false;
+    (entries||[]).forEach(e=>{
+      if(!e || !e.token) return;
+      const k=String(e.token);
+      if(idx.has(k)){
+        const i=idx.get(k); const cur=reg[i];
+        const merged={...cur, url:e.url||cur.url||"", vendorName:e.vendorName||cur.vendorName||"", projectName:projName||cur.projectName||""};
+        if(JSON.stringify(merged)!==JSON.stringify(cur)){ reg[i]=merged; changed=true; }
+      } else {
+        reg.push({ id:rid("ql"), token:e.token, url:e.url||"", projectId:projId, projectName:projName||"", vendorId:e.vendorId, vendorName:e.vendorName||"", issuedAt:now });
+        idx.set(k, reg.length-1); changed=true;
+      }
+    });
+    return changed ? { ...base, quoteLinks:reg } : base;
+  };
   const rowsOf = (stores) => {
     const out=[];
     (stores||[]).forEach(st=>{
@@ -34043,20 +34116,22 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
     let cancelled=false;
     (async()=>{
       const post=async(b)=>{ const r=await fetch(QUOTE_PORTAL_URL,{method:"POST",headers:{"content-type":"text/plain;charset=UTF-8"},body:JSON.stringify({...b,secret:DB_API_SECRET})}); return r.json(); };
-      // ① 未発行リンクを自動発行（少数のみ）
-      const tokenPatch={};
+      // ① 未発行リンクを自動発行（少数のみ）。案件名・クライアント名は業者に伏せる（空送信）
+      const tokenPatch={}; const autoEntries=[];
       if(autoIssue){
         const itemsFor=(qv)=> rowsOf(proj.stores).map(r=>({ id:r.itemId, storeId:r.storeId, storeName:r.storeName, area:r.area, bizType:r.bizType, address:r.address, kind:r.kind, freq:r.freq, qty:r.qty, weight:r.weight, dustPhoto:r.dustPhoto||"", overallPhoto:r.overallPhoto||"" }));
         for(let i=0;i<needLink.length;i+=6){ if(cancelled) return; const batch=needLink.slice(i,i+6);
-          await Promise.all(batch.map(async qv=>{ try{ const j=await post({action:"create", payload:{ projectId:proj.id, projectName:proj.name, company:proj.companyName||"", vendorId:qv.vendorId, vendorName:qv.vendorName, items:itemsFor(qv) }}); if(j&&j.ok) tokenPatch[qv.id]={portalToken:j.token,portalUrl:j.url}; }catch(e){} })); }
+          await Promise.all(batch.map(async qv=>{ try{ const reuse=((quoteLinks.find(l=>l&&String(l.projectId)===String(proj.id)&&String(l.vendorId)===String(qv.vendorId)&&l.token))||{}).token; const j=await post({action:"create", token:reuse||undefined, payload:{ projectId:proj.id, projectName:"", company:"", vendorId:qv.vendorId, vendorName:qv.vendorName, items:itemsFor(qv) }}); if(j&&j.ok){ tokenPatch[qv.id]={portalToken:j.token,portalUrl:j.url}; autoEntries.push({vendorId:qv.vendorId, vendorName:qv.vendorName, token:j.token, url:j.url}); } }catch(e){} })); }
       }
       // ② 未回答の回答フェッチ
       const tokens=pending.map(v=>v.portalToken); const respByToken={};
       for(let i=0;i<tokens.length && i<800;i+=80){ if(cancelled) return; try{ const j=await post({action:"fetch", tokens:tokens.slice(i,i+80)}); ((j&&j.requests)||[]).forEach(rq=>{ if(rq&&rq.token) respByToken[rq.token]=rq; }); }catch(e){} }
       if(cancelled) return;
-      // ③ 反映（トークン付与＋回答）
+      // ③ 反映（トークン付与＋回答＋台帳追記）
       let base=data;
-      if(Object.keys(tokenPatch).length){ const np=(base.quoteProjects||[]).map(x=>x.id!==activeId?x:{...x, status:(x.status==="見積依頼中"?"回収中":x.status), vendors:(x.vendors||[]).map(y=>tokenPatch[y.id]?{...y,...tokenPatch[y.id],status:y.status==="回答済"?y.status:"依頼済"}:y), updatedAt:new Date().toISOString()}); base={...base, quoteProjects:np}; }
+      // リンクは自動生成してすぐ使える状態にするが、ステータスは「未依頼」のまま（実際に送るまで依頼済にしない）
+      if(Object.keys(tokenPatch).length){ const np=(base.quoteProjects||[]).map(x=>x.id!==activeId?x:{...x, vendors:(x.vendors||[]).map(y=>tokenPatch[y.id]?{...y,...tokenPatch[y.id]}:y), updatedAt:new Date().toISOString()}); base={...base, quoteProjects:np}; }
+      if(autoEntries.length) base=recordLinksInto(base, activeId, proj.name, autoEntries);
       const {changed,nextData}=applyRespToState(base, activeId, respByToken);
       if(!cancelled && (changed || Object.keys(tokenPatch).length)) persistData(changed?nextData:base);
     })();
@@ -34066,7 +34141,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
   // ---- 一覧 ----
   if(!active){
     return (
-      <div style={{padding:"1rem 1.25rem",maxWidth:1100,margin:"0 auto"}}>
+      <div style={{padding:"1rem 1.25rem"}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"1rem",flexWrap:"wrap",gap:"0.5rem"}}>
           <div style={{fontSize:"1.15rem",fontWeight:800,color:C.text}}>💰 見積案件</div>
           <button onClick={()=>{setCreating(v=>!v);setForm({name:"",companyId:"",companyName:"",memo:""});setCompQ("");}} style={{padding:"0.5rem 1rem",borderRadius:8,border:"none",background:C.accent,color:"white",fontWeight:800,fontSize:"0.82rem",cursor:"pointer",fontFamily:"inherit"}}>＋ 案件を作成</button>
@@ -34315,13 +34390,15 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
     if(!PORTAL_ON){ if(!silent) window.alert("見積ポータルURL（QUOTE_PORTAL_URL）が未設定です。"); return; }
     setPortalBusy(qv.id);
     try{
-      const payload={ projectId:p.id, projectName:p.name, company:p.companyName||"", vendorId:qv.vendorId, vendorName:qv.vendorName, items:buildReqItemsFor(qv) };
-      const j=await portalPost({action:"create", token:qv.portalToken||undefined, payload});
+      const reuse=qv.portalToken || (regTokenFor(p.id,qv.vendorId)||{}).token; // 既発行があれば必ず再利用（新URLを作らない＝一生保持）
+      const payload={ projectId:p.id, projectName:"", company:"", vendorId:qv.vendorId, vendorName:qv.vendorName, items:buildReqItemsFor(qv) };
+      const j=await portalPost({action:"create", token:reuse||undefined, payload});
       if(j&&j.ok){
-        const patch={portalToken:j.token,portalUrl:j.url,status:qv.status==="回答済"?qv.status:"依頼済"};
-        // 発行したら案件を「回収中」に自動遷移
-        const nextProjects=projects.map(x=>{ if(x.id!==p.id) return x; const nv=(x.vendors||[]).map(y=>y.id===qv.id?{...y,...patch}:y); return {...x, vendors:nv, status:(x.status==="見積依頼中"?"回収中":x.status), updatedAt:new Date().toISOString()}; });
-        persist(nextProjects);
+        // リンクを生成（すぐ使える状態）。ステータスは変更しない（未依頼のまま。実送信時に手動で依頼済へ）
+        const patch={portalToken:j.token,portalUrl:j.url};
+        const nextProjects=projects.map(x=>{ if(x.id!==p.id) return x; const nv=(x.vendors||[]).map(y=>y.id===qv.id?{...y,...patch}:y); return {...x, vendors:nv, updatedAt:new Date().toISOString()}; });
+        let nd=recordLinksInto({ ...data, quoteProjects:nextProjects }, p.id, p.name, [{vendorId:qv.vendorId, vendorName:qv.vendorName, token:j.token, url:j.url}]);
+        persistData(nd);
       } else if(!silent) window.alert("リンク発行に失敗しました。");
     }catch(e){ if(!silent) window.alert("通信エラー: "+(e&&e.message||e)); }
     setPortalBusy("");
@@ -34351,13 +34428,16 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
     try{
       for(const qv of withTok){
         const items=buildReqItemsFor(qv);
-        await portalPost({action:"create", token:qv.portalToken, payload:{ projectId:p.id, projectName:p.name, company:p.companyName||"", vendorId:qv.vendorId, vendorName:qv.vendorName, items }});
+        await portalPost({action:"create", token:qv.portalToken, payload:{ projectId:p.id, projectName:"", company:"", vendorId:qv.vendorId, vendorName:qv.vendorName, items }});
         const j=await portalPost({action:"fetch", tokens:[qv.portalToken]});
         const req=j&&j.requests&&j.requests[0];
         if(req) respByToken[qv.portalToken]=req;
       }
       const {changed,nextData}=applyRespToState(data, p.id, respByToken);
-      if(changed) persistData(nextData);
+      // 既発行トークンを台帳へも確実に記録（消えないように）
+      let base2=changed?nextData:data;
+      base2=recordLinksInto(base2, p.id, p.name, withTok.map(qv=>({vendorId:qv.vendorId, vendorName:qv.vendorName, token:qv.portalToken, url:qv.portalUrl})));
+      if(changed || base2!==(changed?nextData:data)) persistData(base2);
       const updated=Object.values(respByToken).filter(r=>r&&r.status==="responded").length;
       window.alert(`🔄 リンクを最新化しました（回答反映 ${updated}件 / 対象 ${withTok.length}件・業者詳細にも保存）`);
     }catch(e){ window.alert("通信エラー: "+(e&&e.message||e)); }
@@ -34372,14 +34452,16 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
     setPortalBusy("__all__");
     const patch={}; let ok=0;
     try{
-      const CONC=6;
+      const CONC=6; const entries=[];
       for(let i=0;i<targets.length;i+=CONC){
         const batch=targets.slice(i,i+CONC);
-        await Promise.all(batch.map(async qv=>{ try{ const j=await portalPost({action:"create", payload:{ projectId:p.id, projectName:p.name, company:p.companyName||"", vendorId:qv.vendorId, vendorName:qv.vendorName, items:buildReqItemsFor(qv) }}); if(j&&j.ok){ patch[qv.id]={portalToken:j.token,portalUrl:j.url}; ok++; } }catch(e){} }));
+        await Promise.all(batch.map(async qv=>{ try{ const reuse=(regTokenFor(p.id,qv.vendorId)||{}).token; const j=await portalPost({action:"create", token:reuse||undefined, payload:{ projectId:p.id, projectName:"", company:"", vendorId:qv.vendorId, vendorName:qv.vendorName, items:buildReqItemsFor(qv) }}); if(j&&j.ok){ patch[qv.id]={portalToken:j.token,portalUrl:j.url}; entries.push({vendorId:qv.vendorId, vendorName:qv.vendorName, token:j.token, url:j.url}); ok++; } }catch(e){} }));
       }
-      const nextProjects=projects.map(x=>x.id!==p.id?x:{...x, status:(x.status==="見積依頼中"?"回収中":x.status), vendors:(x.vendors||[]).map(y=>patch[y.id]?{...y,...patch[y.id],status:y.status==="回答済"?y.status:"依頼済"}:y), updatedAt:new Date().toISOString()});
-      persist(nextProjects);
-      window.alert(`🔗 依頼リンクを発行しました（${ok} / ${targets.length}社）`);
+      // リンクを一括生成（すぐ使える）。ステータスは各社「未依頼」のまま（実送信時に手動で依頼済へ）
+      const nextProjects=projects.map(x=>x.id!==p.id?x:{...x, vendors:(x.vendors||[]).map(y=>patch[y.id]?{...y,...patch[y.id]}:y), updatedAt:new Date().toISOString()});
+      let nd=recordLinksInto({ ...data, quoteProjects:nextProjects }, p.id, p.name, entries);
+      persistData(nd);
+      window.alert(`🔗 依頼リンクを生成しました（${ok} / ${targets.length}社）\n※ステータスは「未依頼」のままです。実際に送ったら各社で「依頼済」に変更してください。`);
     }catch(e){ window.alert("通信エラー: "+(e&&e.message||e)); }
     setPortalBusy("");
   };
@@ -34487,7 +34569,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
   };
 
   return (
-    <div style={{padding:"1rem 1.25rem",maxWidth:1100,margin:"0 auto"}}>
+    <div style={{padding:"1rem 1.25rem"}}>
       <button onClick={()=>{setActiveId(null);setVName("");setAreaFilter([]);setPermFilter([]);setStoreAdd(false);setImp(null);}} style={{background:"none",border:"none",color:C.accent,fontWeight:700,fontSize:"0.8rem",cursor:"pointer",fontFamily:"inherit",marginBottom:"0.6rem"}}>‹ 見積案件一覧</button>
       <div style={{background:"white",border:`1px solid ${C.border}`,borderRadius:10,padding:"0.9rem 1rem",marginBottom:"1rem"}}>
         <input value={p.name} onChange={e=>upd(p.id,{name:e.target.value})} style={{width:"100%",boxSizing:"border-box",fontWeight:800,fontSize:"1rem",color:C.text,border:"none",outline:"none",fontFamily:"inherit",marginBottom:"0.4rem"}}/>
