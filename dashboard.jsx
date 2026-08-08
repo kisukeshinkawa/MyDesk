@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-08-v365-quote-clear-all-vendors"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-08-v366-quote-collapse-section"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -33975,6 +33975,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
   const [qvPermFilter, setQvPermFilter] = React.useState([]); // 追加済み対象業者を許可種別で絞り込み
   const [qvAreaFilter, setQvAreaFilter] = React.useState([]); // 追加済みを自治体/権者で絞り込み
   const [qvAreaInput, setQvAreaInput] = React.useState("");
+  const [qvSecOpen, setQvSecOpen] = React.useState(true); // 「対象業者＆見積」セクションの開閉
   const [qvPage, setQvPage] = React.useState(0); // 対象業者のページ送り
   const [showAnon, setShowAnon] = React.useState(false); // 匿名対応表の展開
   const [storeAdd, setStoreAdd] = React.useState(false);
@@ -34582,7 +34583,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
 
       {/* ===== 対象業者 ＆ 見積 ===== */}
       <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem",flexWrap:"wrap"}}>
-        <div style={{fontWeight:800,fontSize:"0.9rem",color:C.text}}>🚚 対象業者 ＆ 見積</div>
+        <button onClick={()=>setQvSecOpen(o=>!o)} style={{border:"none",background:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:800,fontSize:"0.9rem",color:C.text,padding:0,display:"flex",alignItems:"center",gap:"0.35rem"}} title="開閉">{qvSecOpen?"▼":"▶"} 🚚 対象業者 ＆ 見積</button>
         <span style={{fontSize:"0.7rem",color:C.textMuted}}>{(p.vendors||[]).length}社</span>
         {(p.vendors||[]).length>0&&<button onClick={()=>{ if(window.confirm(`対象業者 ${(p.vendors||[]).length}社をすべて削除します。よろしいですか？\n（この見積案件の対象業者・入力内容が消えます。業者マスタ自体は消えません）`)){ setVendors([]); setQvPage(0); setQvQ(""); setQvPermFilter([]); setQvAreaFilter([]); } }} title="この案件の対象業者を全削除" style={{padding:"0.2rem 0.6rem",borderRadius:8,border:"1.5px solid #DA1313",background:"#fff1f2",color:"#DA1313",fontWeight:800,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit"}}>🗑 全削除</button>}
         {dupCount>0&&<button onClick={dedupVendors} title="同じ業者が重複して登録されています。統合します" style={{padding:"0.2rem 0.6rem",borderRadius:8,border:"1.5px solid #DA1313",background:"#fff1f2",color:"#DA1313",fontWeight:800,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit"}}>⚠ 重複{dupCount}社を統合</button>}
@@ -34590,6 +34591,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
         {PORTAL_ON&&(p.vendors||[]).some(v=>v.portalToken)&&<button disabled={portalBusy==="__all__"} onClick={syncAll} title="対象店舗を全リンクに反映し、回答も取得" style={{marginLeft:(p.vendors||[]).some(v=>!v.portalToken)?"0":"auto",padding:"0.3rem 0.7rem",borderRadius:8,border:`1.5px solid ${C.accent}`,background:C.accentBg,color:C.accentDark,fontWeight:700,fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit"}}>{portalBusy==="__all__"?"最新化中…":"🔄 全リンク最新化＆回答取得"}</button>}
       </div>
 
+      {qvSecOpen && (<React.Fragment>
       <div style={{background:"white",border:`1px solid ${C.border}`,borderRadius:10,padding:"0.7rem 0.8rem",marginBottom:"0.75rem"}}>
         <input value={vName} onChange={e=>setVName(e.target.value)} placeholder="🔍 業者名" style={{width:"100%",boxSizing:"border-box",padding:"0.4rem 0.6rem",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:"0.8rem",fontFamily:"inherit",marginBottom:"0.5rem"}}/>
         {/* ① 許可種別（複数可） */}
@@ -34689,6 +34691,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
           </div>
         );
       })()}
+      </React.Fragment>)}
     </div>
   );
 }
