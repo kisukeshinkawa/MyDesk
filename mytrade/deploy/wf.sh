@@ -22,7 +22,7 @@ if [ "$CMD" = "run" ]; then
   aws lambda invoke --function-name "$FUNC" --region "$REGION" \
     --invocation-type Event --cli-binary-format raw-in-base64-out \
     --payload "{\"job\":\"walkforward\",\"regime\":\"$RG\"}" /dev/null >/dev/null
-  echo "▶ ウォークフォワード検証を開始しました(地合い判定=$RG・20分ほど)。"
+  echo "▶ ウォークフォワード検証を開始しました(地合い判定=${RG}・20分ほど)。"
   echo "  終わったら: bash deploy/wf.sh"
   exit 0
 fi
