@@ -417,6 +417,8 @@ def lambda_handler(event, context):
                                        f"周辺条件の平均は年利{pick.get('neighborCagr')}%なので、"
                                        f"たまたま当たった設定ではありません。勝率は{pick.get('winRate')}%です。"
                                        + tune_txt)})
+        if action == "benchmark":
+            return _res(200, benchmark_stats(int(body.get("years", 25))))
         if action == "corr-verify":
             r = verify_correlation(None, int(body.get("years", 25)))
             _save_json_s3("stock-learn/corr_verify.json", r)
@@ -1558,6 +1560,43 @@ def simulate_strategy(tickers=None, years=25, initial=1000000, risk_pct=2.0,
             "updatedAt": datetime.now(timezone.utc).isoformat()}
 
 
+def benchmark_stats(years=25, initial=1000000):
+    """指数をただ買って持っていた場合の成績。
+    これと比べて勝てていなければ、売買する意味がない。
+    「プロを超える」以前に、まずインデックスを超えているかを見るための基準。"""
+    out = {}
+    for sym, label, key in (("^N225", "日経平均", "n225"),
+                            ("^GSPC", "S&P500", "sp500")):
+        try:
+            c = fetch_history(sym, f"{years}y")["Close"].dropna()
+            if len(c) < 250:
+                continue
+            eq = c / float(c.iloc[0]) * initial
+            peak, maxdd = float(eq.iloc[0]), 0.0
+            for v in eq:
+                peak = max(peak, float(v))
+                maxdd = min(maxdd, float(v) / peak - 1)
+            yrs = max(1e-9, len(c) / 252)
+            cagr = ((float(eq.iloc[-1]) / initial) ** (1 / yrs) - 1) * 100
+            out[key] = {"label": label, "cagrPct": round(cagr, 2),
+                        "maxDrawdownPct": round(maxdd * 100, 1),
+                        "finalEquity": round(float(eq.iloc[-1])),
+                        "calmar": round(cagr / abs(maxdd * 100), 3) if maxdd else 0,
+                        "years": round(yrs, 1)}
+        except Exception as e:
+            print("benchmark failed:", sym, e)
+    # 日米を半々で持った場合(このシステムは日米を両方売買するため、比較対象として妥当)
+    if "n225" in out and "sp500" in out:
+        a, b = out["n225"], out["sp500"]
+        c = (a["cagrPct"] + b["cagrPct"]) / 2
+        d = (a["maxDrawdownPct"] + b["maxDrawdownPct"]) / 2
+        out["mix"] = {"label": "日米half&half", "cagrPct": round(c, 2),
+                      "maxDrawdownPct": round(d, 1),
+                      "calmar": round(c / abs(d), 3) if d else 0,
+                      "years": a["years"]}
+    return out
+
+
 def simulate_grid(tickers=None, years=25, initial=1000000):
     """複数のパラメータ条件を一括比較し、最適な設定を提示する。
     スコアの計算は1回だけなので、条件を増やしても時間はほとんど増えない。
@@ -1647,9 +1686,17 @@ def simulate_grid(tickers=None, years=25, initial=1000000):
                     "bestCagr": round(max(x["cagrPct"] for x in v), 2)}
                    for mp, v in sorted(by_pos.items())]
 
+    # 指数を買って持っていただけの成績。これを超えていなければ売買する意味がない
+    bench = {}
+    try:
+        bench = benchmark_stats(years, initial)
+    except Exception as e:
+        print("benchmark calc failed:", e)
+
     return {"period": {"years": years, "tickers": len(prep)},
             "combosTried": done, "combosTotal": len(combos),
             "byPositions": pos_summary,
+            "benchmark": bench,
             "combos": sorted(rows, key=lambda r: -r["calmar"]),
             "current": current,
             "presets": presets,

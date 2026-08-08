@@ -33,6 +33,36 @@ if d.get("combosTried") and d.get("combosTotal") and d["combosTried"] < d["combo
     print("  ※ 時間内に試せたのは{}/{}条件でした".format(d["combosTried"], d["combosTotal"]))
 print()
 
+# 指数を買って持っていただけの成績と比べる。
+# これに勝てていなければ、そもそも売買する意味がない
+bench = d.get("benchmark") or {}
+best_combo = (d.get("combos") or [{}])[0]
+if bench:
+    print("■ そもそも指数に勝てているか（買って持っていただけの場合）")
+    print()
+    print("{:<20}{:>10}{:>12}{:>10}".format("", "年利", "最大下落", "効率"))
+    print("-" * 52)
+    for k in ("n225", "sp500", "mix"):
+        b = bench.get(k)
+        if b:
+            print("{:<20}{:>9.2f}%{:>11.1f}%{:>10.3f}".format(
+                b["label"], b["cagrPct"], b["maxDrawdownPct"], b["calmar"]))
+    if best_combo.get("cagrPct") is not None:
+        print("{:<20}{:>9.2f}%{:>11.1f}%{:>10.2f}   ← このシステムの最良条件".format(
+            "MyTrade", best_combo["cagrPct"], best_combo["maxDrawdownPct"], best_combo["calmar"]))
+        ref = bench.get("mix") or bench.get("sp500") or bench.get("n225")
+        if ref:
+            dc = best_combo["cagrPct"] - ref["cagrPct"]
+            dk = best_combo["calmar"] - ref["calmar"]
+            print()
+            if dk > 0.02:
+                print("  → 指数より効率が良い（年利{:+.2f}ポイント / 効率{:+.3f}）。".format(dc, dk))
+                print("    売買する価値があります。")
+            else:
+                print("  → 指数を上回れていません（年利{:+.2f}ポイント / 効率{:+.3f}）。".format(dc, dk))
+                print("    この状態なら、指数を買って放置するほうが合理的です。")
+    print()
+
 pos = d.get("byPositions") or []
 if pos:
     print("■ 何銘柄に分散するのが良いか（同じ条件の平均）")
