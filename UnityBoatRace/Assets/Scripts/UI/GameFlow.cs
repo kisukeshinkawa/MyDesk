@@ -15,7 +15,7 @@ namespace BoatRace.UI
     public class GameFlow : MonoBehaviour
     {
         /// <summary>ビルド識別子。画面右上に表示され、更新が届いたか一目で分かる。</summary>
-        public const string Build = "B42-3D陰影と配色統一";
+        public const string Build = "B43-選手造形とボタン整理";
 
         RaceManager race;
         ReplayManager replay;
@@ -1807,7 +1807,7 @@ namespace BoatRace.UI
 
             // 装備・モーター情報(モックの.gearボックス)
             var gear = UiKit.MakePanel(card.transform, UiKit.CellBg, 11,
-                new Vector2(0.038f, 0.300f), new Vector2(0.962f, 0.545f), Vector2.zero, Vector2.zero);
+                new Vector2(0.038f, 0.215f), new Vector2(0.962f, 0.545f), Vector2.zero, Vector2.zero);
             var gol = gear.AddComponent<Outline>();
             gol.effectColor = UiKit.LineBlue;
             gol.effectDistance = new Vector2(1.5f, -1.5f);
@@ -1823,27 +1823,12 @@ namespace BoatRace.UI
                 12, UiKit.SubInk, TextAnchor.MiddleLeft,
                 new Vector2(0.045f, 0.05f), new Vector2(0.97f, 0.95f), Vector2.zero, Vector2.zero, bold: true);
 
-            // 強化ショートカット(モックの.sub-btns。各機能へ1タップ直行)
-            (string label, Color c, UnityEngine.Events.UnityAction act)[] subs =
-            {
-                ("技強化", new Color(0.639f, 0.400f, 0.937f), () => ShowMoveUpgradePopup(s.transform)),
-                ("ガチャ", new Color(0.973f, 0.427f, 0.573f), () => ShowGachaPopup(s.transform, "")),
-                ("ガレージ", new Color(0.475f, 0.545f, 0.655f), () => ShowGaragePopup(s.transform)),
-                ("ショップ", new Color(0.957f, 0.631f, 0.157f), () => ShowShopPopup(s.transform)),
-            };
-            for (int i = 0; i < subs.Length; i++)
-            {
-                float bx0 = 0.038f + i * 0.234f;
-                UiKit.MakeButton(card.transform, subs[i].label, subs[i].c, 13,
-                    new Vector2(bx0, 0.185f), new Vector2(bx0 + 0.222f, 0.272f),
-                    Vector2.zero, Vector2.zero, subs[i].act);
-            }
-            UiKit.MakeButton(card.transform, "施設投資", UiKit.UmaTeal, 13,
-                new Vector2(0.038f, 0.055f), new Vector2(0.494f, 0.150f), Vector2.zero, Vector2.zero,
-                () => ShowFacilityPopup(s.transform));
-            UiKit.MakeButton(card.transform, "戦績・実績", new Color(0.561f, 0.639f, 0.753f), 13,
-                new Vector2(0.506f, 0.055f), new Vector2(0.962f, 0.150f), Vector2.zero, Vector2.zero,
-                () => ShowStatsPopup(s.transform));
+            // 左カードは「情報を読む場所」に徹する(操作は下の3ボタンだけ)。
+            // 技強化/ガチャ/ガレージ/施設/ショップ/戦績はすべて「強化・準備」から開く。
+            UiKit.MakeText(card.transform,
+                "▲ 強化・準備 から 技強化・ガチャ・ガレージ・施設・ショップ・戦績を開けます",
+                11, UiKit.SubInk, TextAnchor.MiddleCenter,
+                new Vector2(0.04f, 0.075f), new Vector2(0.96f, 0.185f), Vector2.zero, Vector2.zero);
 
             // ---- 右: トレーニング(ウマ娘式カードグリッド=モックの.train) ----
             UiKit.MakeTag(s.transform, "トレーニング", UiKit.UmaTeal, Color.white, 17,

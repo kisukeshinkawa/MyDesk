@@ -382,13 +382,14 @@ namespace BoatRace.Core
                 pit.transform.localScale = new Vector3(0.66f, 0.10f, 1.25f);
                 Paint(pit, dark);
 
-                // キャノピー風防(デザインシートの黒ガラス。トゥーンスペキュラで艶が出る)
-                var canopy = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-                canopy.name = "Canopy";
-                canopy.transform.SetParent(root.transform, false);
-                canopy.transform.localPosition = new Vector3(0f, 0.30f, 0.28f);
-                canopy.transform.localScale = new Vector3(0.55f, 0.22f, 0.62f);
-                Paint(canopy, new Color(0.07f, 0.09f, 0.13f));
+                // 低い風防(実艇はキャノピーではなく、コックピット前の小さなスクリーン)
+                var screen = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                screen.name = "Canopy";
+                screen.transform.SetParent(root.transform, false);
+                screen.transform.localPosition = new Vector3(0f, 0.28f, 0.16f);
+                screen.transform.localRotation = Quaternion.Euler(-26f, 0f, 0f);
+                screen.transform.localScale = new Vector3(0.46f, 0.16f, 0.03f);
+                Paint(screen, new Color(0.16f, 0.22f, 0.30f));
 
                 // 艇首フラッグ(デザインシートの艇色旗)
                 var pole = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
@@ -465,43 +466,111 @@ namespace BoatRace.Core
                 handleBar.transform.localScale = new Vector3(0.68f, 0.07f, 0.07f);
                 Paint(handleBar, dark);
 
-                // ---- 選手(前傾の乗艇姿勢・カポックは白＋艇色) ----
+                // ---- 選手(実際の競艇の乗艇姿勢: 正座で深く前傾し、両手はハンドル) ----
+                // 実艇の選手は膝立ちで体を伏せる。頭・カポック・レーサースーツの3色で
+                // 遠目のシルエットが「人」に見えるよう作る。
+                var suit = new Color(0.16f, 0.18f, 0.24f);        // レーサースーツ(黒紺)
+                var kapok = new Color(0.97f, 0.55f, 0.09f);       // カポック(救命胴衣・オレンジ)
+                var skin = new Color(0.95f, 0.80f, 0.68f);
+
+                // 脚(正座。艇底に沿って前後に伸ばす)
+                foreach (var side in new[] { -1f, 1f })
+                {
+                    var thigh = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                    thigh.name = "RacerBody";
+                    thigh.transform.SetParent(root.transform, false);
+                    thigh.transform.localPosition = new Vector3(side * 0.16f, 0.24f, -0.66f);
+                    thigh.transform.localRotation = Quaternion.Euler(6f, 0f, 0f);
+                    thigh.transform.localScale = new Vector3(0.19f, 0.16f, 0.62f);
+                    Paint(thigh, suit);
+                }
+                // 腰
+                var hip = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                hip.name = "RacerBody";
+                hip.transform.SetParent(root.transform, false);
+                hip.transform.localPosition = new Vector3(0f, 0.32f, -0.86f);
+                hip.transform.localScale = new Vector3(0.42f, 0.22f, 0.28f);
+                Paint(hip, suit);
+
+                // 胴(深い前傾。実艇の選手はほぼ水平まで伏せる)
                 var body = GameObject.CreatePrimitive(PrimitiveType.Capsule);
                 body.name = "RacerBody";
                 body.transform.SetParent(root.transform, false);
-                body.transform.localPosition = new Vector3(0f, 0.52f, -0.45f);
-                body.transform.localRotation = Quaternion.Euler(42f, 0f, 0f);
-                body.transform.localScale = new Vector3(0.42f, 0.45f, 0.4f);
-                Paint(body, new Color(0.94f, 0.94f, 0.96f));
+                body.transform.localPosition = new Vector3(0f, 0.44f, -0.52f);
+                body.transform.localRotation = Quaternion.Euler(62f, 0f, 0f);
+                body.transform.localScale = new Vector3(0.36f, 0.42f, 0.34f);
+                Paint(body, suit);
+
+                // カポック(救命胴衣。オレンジの箱+艇色のゼッケン帯で艇番が背中に出る)
                 var chest = GameObject.CreatePrimitive(PrimitiveType.Cube);
                 chest.name = "Chest";
                 chest.transform.SetParent(root.transform, false);
-                chest.transform.localPosition = new Vector3(0f, 0.62f, -0.35f);
-                chest.transform.localRotation = Quaternion.Euler(42f, 0f, 0f);
-                chest.transform.localScale = new Vector3(0.4f, 0.3f, 0.28f);
-                Paint(chest, c);
+                chest.transform.localPosition = new Vector3(0f, 0.50f, -0.50f);
+                chest.transform.localRotation = Quaternion.Euler(28f, 0f, 0f);
+                chest.transform.localScale = new Vector3(0.44f, 0.36f, 0.30f);
+                Paint(chest, kapok);
+                var bib = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                bib.name = "Chest";
+                bib.transform.SetParent(root.transform, false);
+                bib.transform.localPosition = new Vector3(0f, 0.585f, -0.585f);
+                bib.transform.localRotation = Quaternion.Euler(28f, 0f, 0f);
+                bib.transform.localScale = new Vector3(0.30f, 0.22f, 0.03f);
+                Paint(bib, c);
+
+                // 腕(前方のハンドルへ伸ばす。肩→前腕の2節)
                 foreach (var side in new[] { -1f, 1f })
                 {
-                    var arm = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-                    arm.name = "Arm";
-                    arm.transform.SetParent(root.transform, false);
-                    arm.transform.localPosition = new Vector3(side * 0.3f, 0.62f, 0.05f);
-                    arm.transform.localRotation = Quaternion.Euler(72f, 0f, side * -10f);
-                    arm.transform.localScale = new Vector3(0.12f, 0.42f, 0.12f);
-                    Paint(arm, new Color(0.94f, 0.94f, 0.96f));
+                    var upper = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+                    upper.name = "Arm";
+                    upper.transform.SetParent(root.transform, false);
+                    upper.transform.localPosition = new Vector3(side * 0.24f, 0.52f, -0.24f);
+                    upper.transform.localRotation = Quaternion.Euler(78f, 0f, side * -8f);
+                    upper.transform.localScale = new Vector3(0.115f, 0.26f, 0.115f);
+                    Paint(upper, suit);
+                    var fore = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+                    fore.name = "Arm";
+                    fore.transform.SetParent(root.transform, false);
+                    fore.transform.localPosition = new Vector3(side * 0.29f, 0.47f, 0.16f);
+                    fore.transform.localRotation = Quaternion.Euler(84f, 0f, side * -5f);
+                    fore.transform.localScale = new Vector3(0.10f, 0.24f, 0.10f);
+                    Paint(fore, suit);
+                    var glove = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                    glove.name = "Arm";
+                    glove.transform.SetParent(root.transform, false);
+                    glove.transform.localPosition = new Vector3(side * 0.30f, 0.46f, 0.38f);
+                    glove.transform.localScale = Vector3.one * 0.13f;
+                    Paint(glove, dark);
                 }
+
+                // 首
+                var neck = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+                neck.name = "RacerBody";
+                neck.transform.SetParent(root.transform, false);
+                neck.transform.localPosition = new Vector3(0f, 0.60f, -0.20f);
+                neck.transform.localRotation = Quaternion.Euler(70f, 0f, 0f);
+                neck.transform.localScale = new Vector3(0.11f, 0.10f, 0.11f);
+                Paint(neck, skin);
+
+                // ヘルメット(艇色+白のセンターライン+スモークバイザー)
                 var helmet = GameObject.CreatePrimitive(PrimitiveType.Sphere);
                 helmet.name = "Helmet";
                 helmet.transform.SetParent(root.transform, false);
-                helmet.transform.localPosition = new Vector3(0f, 0.94f, -0.18f);
-                helmet.transform.localScale = Vector3.one * 0.5f; // アニメ調に少し大きめの頭身
+                helmet.transform.localPosition = new Vector3(0f, 0.66f, -0.06f);
+                helmet.transform.localScale = new Vector3(0.34f, 0.33f, 0.36f);
                 Paint(helmet, lightColor && i == 0 ? Color.white : c);
+                var hStripe = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                hStripe.name = "Helmet";
+                hStripe.transform.SetParent(root.transform, false);
+                hStripe.transform.localPosition = new Vector3(0f, 0.815f, -0.06f);
+                hStripe.transform.localScale = new Vector3(0.07f, 0.02f, 0.34f);
+                Paint(hStripe, Color.white);
                 var visor = GameObject.CreatePrimitive(PrimitiveType.Cube);
                 visor.name = "Visor";
                 visor.transform.SetParent(root.transform, false);
-                visor.transform.localPosition = new Vector3(0f, 0.90f, 0.02f);
-                visor.transform.localScale = new Vector3(0.34f, 0.14f, 0.1f);
-                Paint(visor, dark);
+                visor.transform.localPosition = new Vector3(0f, 0.655f, 0.085f);
+                visor.transform.localRotation = Quaternion.Euler(-14f, 0f, 0f);
+                visor.transform.localScale = new Vector3(0.26f, 0.13f, 0.06f);
+                Paint(visor, new Color(0.09f, 0.11f, 0.16f));
 
                 } // customBoat == null (手続き生成の艇はここまで)
 
