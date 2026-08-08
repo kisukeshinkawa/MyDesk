@@ -226,6 +226,12 @@ def lambda_handler(event, context):
                 r = run_ranking(force=True)
                 _record_job(jname, True, f"{r.get('scanned',0)}銘柄 財務{r.get('finCovered',0)}")
                 return _res(200, r)
+            if job == "slippage":
+                r = slippage_test(None, int(event.get("years", 25)),
+                                  regime=event.get("regime", "off"))
+                _save_json_s3("stock-learn/slippage_test.json", r)
+                _record_job(jname, True, r.get("verdict", "")[:60])
+                return _res(200, {"verdict": r["verdict"], "breakeven": r.get("breakeven")})
             if job == "regime":
                 r = regime_test(None, int(event.get("years", 25)))
                 _save_json_s3("stock-learn/regime_test.json", r)
@@ -429,6 +435,13 @@ def lambda_handler(event, context):
                                        f"周辺条件の平均は年利{pick.get('neighborCagr')}%なので、"
                                        f"たまたま当たった設定ではありません。勝率は{pick.get('winRate')}%です。"
                                        + tune_txt)})
+        if action == "slippage-test":
+            r = slippage_test(None, int(body.get("years", 25)),
+                              regime=body.get("regime", "off"))
+            _save_json_s3("stock-learn/slippage_test.json", r)
+            return _res(200, r)
+        if action == "slippage-latest":
+            return _res(200, _load_json_s3("stock-learn/slippage_test.json", {}))
         if action == "regime-test":
             r = regime_test(None, int(body.get("years", 25)))
             _save_json_s3("stock-learn/regime_test.json", r)
@@ -1395,7 +1408,7 @@ def _sim_pass(prep, all_dates, initial=1000000, risk_pct=2.0, max_pos=5,
               partial=False, partial_rr=1.5, time_stop=0, trail=0.0, leverage=1.0,
               hold_mode="trade", ma_exit=200,
               max_same_driver=0, driver_trend=False, beta_size=False,
-              regime="ma200"):
+              regime="ma200", slip=0.0):
     """1条件ぶんの運用を再現。
     partial   : 分割利確(第1目標で半分利確し、残りは損切りを建値に上げて伸ばす)
     time_stop : N日経っても損切り/利確に当たらなければ手仕舞い(資金効率を上げる)
@@ -1410,6 +1423,8 @@ def _sim_pass(prep, all_dates, initial=1000000, risk_pct=2.0, max_pos=5,
     driver_trend    : その銘柄の牽引役自体が上昇トレンド(50日線の上)のときだけ買う。
                       逆風の中で個別の点数だけ見て買うのを止める
     beta_size       : 市場に対する感応度(β)が高い銘柄ほど枚数を減らし、実質リスクを揃える
+    slip            : 約定のズレ(片道・比率)。手数料とは別に、買いは高く売りは安く約定する。
+                      実際には気配の幅と板の厚みで必ず発生し、売買が多いほど効いてくる
     regime          : 買ってよい地合いの判定。ma200=指数が200日線の上 /
                       ma50=50日線の上 / recovery=200日線の上か、50日線を回復し
                       直近安値から10%戻した / off=地合いを見ない。
@@ -1442,7 +1457,7 @@ def _sim_pass(prep, all_dates, initial=1000000, risk_pct=2.0, max_pos=5,
             if partial and not p.get("half") and hi >= p["t1"]:
                 half = p["qty"] // 2
                 if half > 0:
-                    proceeds = p["t1"] * half * (1 - fee)
+                    proceeds = p["t1"] * (1 - slip) * half * (1 - fee)
                     cash += proceeds
                     trades.append({"ticker": t, "entryDate": p["date"], "exitDate": d,
                                    "entry": round(p["entry"], 2), "exit": round(p["t1"], 2),
@@ -1464,6 +1479,7 @@ def _sim_pass(prep, all_dates, initial=1000000, risk_pct=2.0, max_pos=5,
                     elif trail and p["peak"] > p["entry"] and cl <= p["peak"] * (1 - trail):
                         exit_px, reason = cl, "トレーリング"
                 if exit_px:
+                    exit_px *= (1 - slip)      # 売りは想定より安く約定する
                     proceeds = exit_px * p["qty"] * (1 - fee)
                     cash += proceeds
                     trades.append({"ticker": t, "entryDate": p["date"], "exitDate": d,
@@ -1484,6 +1500,7 @@ def _sim_pass(prep, all_dates, initial=1000000, risk_pct=2.0, max_pos=5,
             elif time_stop and p["hold"] >= time_stop:
                 exit_px, reason = cl, "時間切れ"
             if exit_px:
+                exit_px *= (1 - slip)          # 売りは想定より安く約定する
                 proceeds = exit_px * p["qty"] * (1 - fee)
                 cash += proceeds
                 trades.append({"ticker": t, "entryDate": p["date"], "exitDate": d,
@@ -1511,7 +1528,7 @@ def _sim_pass(prep, all_dates, initial=1000000, risk_pct=2.0, max_pos=5,
                 same = sum(1 for pp in positions.values() if pp.get("driver") == link["key"])
                 if same >= max_same_driver:
                     continue
-            px = c["entryPx"]
+            px = c["entryPx"] * (1 + slip)      # 買いは想定より高く約定する
             stop = max(px - 2 * c["atr"], c["low20"] * 0.995)
             if stop >= px:
                 continue
@@ -1605,6 +1622,104 @@ def simulate_strategy(tickers=None, years=25, initial=1000000, risk_pct=2.0,
                          "tickers": len(prep), "fee": fee},
             "result": r["result"], "curve": curve[::step], "yearly": yearly,
             "recentTrades": r["trades"][-15:][::-1],
+            "updatedAt": datetime.now(timezone.utc).isoformat()}
+
+
+def slippage_test(tickers=None, years=25, initial=1000000, regime="off"):
+    """約定のズレ(スリッページ)をいくら見込むと、指数への優位が消えるかを測る。
+
+    手数料0.1%しか入れていない状態で、指数との差は年利わずか1ポイントだった。
+    実際には気配の幅と板の厚みで必ずズレが出る。売買が多いほど効くので、
+    どこまでのコストなら優位が残るのかを先に知っておく。
+
+    パラメータは各期間ごとに「それ以前だけ」を見て選び直す(期間外で測る)。"""
+    tickers = tickers or FULL_UNIVERSE
+    prep = _prepare_sim(tickers, years, limit=int(os.environ.get("SL_TICKERS", "250")))
+    if not prep:
+        raise Exception("シミュレーション用のデータが取得できません")
+    all_dates = sorted({d for v in prep.values() for d in v["dates"]})[200:]
+    seg = len(all_dates) // 4
+
+    # 候補は絞る(4段階のズレ×3期間ぶん回すため)
+    CAND = []
+    for entry in (65, 70, 75):
+        for rr in (3.0, 4.0):
+            for mp in (5, 8):
+                for adv in ({}, {"partial": True}, {"hold_mode": "trend", "trail": 0.25}):
+                    CAND.append({"entry_score": entry, "rr": rr, "max_pos": mp,
+                                 "risk_pct": 2.0, **adv})
+    # 片道のズレ。0.05%は大型株、0.20%は中小型や板の薄い銘柄の目安
+    SLIPS = [(0.0, "ズレなし(参考)"), (0.0005, "片道0.05%"),
+             (0.001, "片道0.10%"), (0.002, "片道0.20%")]
+
+    budget = float(os.environ.get("SL_BUDGET", "480"))
+    t0 = time.time()
+    rows = []
+    for slip, label in SLIPS:
+        wins = []
+        for i in range(3):
+            train = all_dates[:seg * (i + 1)]
+            test = all_dates[seg * (i + 1):seg * (i + 2)] if i < 2 else all_dates[seg * 3:]
+            if len(train) < 500 or len(test) < 200:
+                continue
+            best = None
+            for c in CAND:
+                if time.time() - t0 > budget:
+                    break
+                try:
+                    r = _sim_pass(prep, train, initial, regime=regime, slip=slip, **c)["result"]
+                except Exception:
+                    continue
+                if r["trades"] < 20 or r["cagrPct"] <= 0:
+                    continue
+                cal = (r["cagrPct"] / abs(r["maxDrawdownPct"])) if r["maxDrawdownPct"] else 0
+                if best is None or cal > best[1]:
+                    best = (c, cal)
+            if not best:
+                continue
+            try:
+                t = _sim_pass(prep, test, initial, regime=regime, slip=slip, **best[0])["result"]
+            except Exception:
+                continue
+            cal = (t["cagrPct"] / abs(t["maxDrawdownPct"])) if t["maxDrawdownPct"] else 0
+            bm = (_bench_window(test[0], test[-1], initial) or {}).get("mix") or {}
+            wins.append({"window": i + 1, "from": test[0], "to": test[-1],
+                         "cagrPct": t["cagrPct"], "maxDrawdownPct": t["maxDrawdownPct"],
+                         "trades": t["trades"], "calmar": round(cal, 3),
+                         "benchCagr": bm.get("cagrPct"), "benchCalmar": bm.get("calmar"),
+                         "beatCagr": bool(bm and t["cagrPct"] > bm["cagrPct"]),
+                         "beatCalmar": bool(bm and cal > bm["calmar"])})
+        if not wins:
+            continue
+        m = len(wins)
+        avg_c = round(sum(x["cagrPct"] for x in wins) / m, 2)
+        avg_d = round(sum(x["maxDrawdownPct"] for x in wins) / m, 1)
+        avg_b = round(sum(x["benchCagr"] for x in wins if x["benchCagr"] is not None) / m, 2)
+        rows.append({"slip": slip, "label": label, "windows": wins,
+                     "avgCagr": avg_c, "avgDd": avg_d, "avgBenchCagr": avg_b,
+                     "edge": round(avg_c - avg_b, 2),
+                     "avgTrades": round(sum(x["trades"] for x in wins) / m),
+                     "avgCalmar": round(avg_c / abs(avg_d), 3) if avg_d else 0,
+                     "beatCagr": len([x for x in wins if x["beatCagr"]]),
+                     "beatCalmar": len([x for x in wins if x["beatCalmar"]]), "of": m})
+    if not rows:
+        raise Exception("検証を実行できませんでした")
+
+    # 優位が残る最大のズレ(損益分岐点)
+    ok = [r for r in rows if r["slip"] > 0 and r["edge"] > 0]
+    breakeven = max(ok, key=lambda r: r["slip"]) if ok else None
+    if breakeven and breakeven["slip"] >= 0.001:
+        verdict = (f"片道{breakeven['slip']*100:.2f}%のズレを見込んでも、"
+                   f"指数を年利{breakeven['edge']:+}ポイント上回りました。"
+                   "現実的なコストに耐えています。")
+    elif breakeven:
+        verdict = (f"優位が残るのは片道{breakeven['slip']*100:.2f}%までで、"
+                   "それを超えると指数に負けます。ぎりぎりの水準です。")
+    else:
+        verdict = ("わずかなズレを入れただけで指数への優位が消えました。"
+                   "手数料以外のコストを賄えるだけの実力はありません。")
+    return {"rows": rows, "breakeven": breakeven, "regime": regime,
+            "tickers": len(prep), "verdict": verdict,
             "updatedAt": datetime.now(timezone.utc).isoformat()}
 
 
