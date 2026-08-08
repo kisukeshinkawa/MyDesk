@@ -226,6 +226,12 @@ def lambda_handler(event, context):
                 r = run_ranking(force=True)
                 _record_job(jname, True, f"{r.get('scanned',0)}銘柄 財務{r.get('finCovered',0)}")
                 return _res(200, r)
+            if job == "walkforward":
+                r = walk_forward(None, int(event.get("years", 25)))
+                _save_json_s3("stock-learn/walkforward.json", r)
+                _record_job(jname, True, r.get("verdict", "")[:60])
+                return _res(200, {"avgOutSampleCagr": r["avgOutSampleCagr"],
+                                  "keepPct": r["keepPct"], "verdict": r["verdict"]})
             if job == "corr-verify":
                 r = verify_correlation(None, int(event.get("years", 25)))
                 _save_json_s3("stock-learn/corr_verify.json", r)
@@ -417,6 +423,12 @@ def lambda_handler(event, context):
                                        f"周辺条件の平均は年利{pick.get('neighborCagr')}%なので、"
                                        f"たまたま当たった設定ではありません。勝率は{pick.get('winRate')}%です。"
                                        + tune_txt)})
+        if action == "walkforward":
+            r = walk_forward(None, int(body.get("years", 25)))
+            _save_json_s3("stock-learn/walkforward.json", r)
+            return _res(200, r)
+        if action == "walkforward-latest":
+            return _res(200, _load_json_s3("stock-learn/walkforward.json", {}))
         if action == "benchmark":
             return _res(200, benchmark_stats(int(body.get("years", 25))))
         if action == "corr-verify":
@@ -1558,6 +1570,106 @@ def simulate_strategy(tickers=None, years=25, initial=1000000, risk_pct=2.0,
             "result": r["result"], "curve": curve[::step], "yearly": yearly,
             "recentTrades": r["trades"][-15:][::-1],
             "updatedAt": datetime.now(timezone.utc).isoformat()}
+
+
+def walk_forward(tickers=None, years=25, initial=1000000, folds=3):
+    """設定を決めた期間の「外」でも勝てるかを確かめる。
+
+    今の設定は25年分すべてを見てから選んでいる。過去を全部知った上で
+    一番良かった条件を選べば、良く見えるのは当たり前で、それは実力ではない。
+    ここでは「前半だけを見て決めた設定を、一度も見ていない後半で走らせる」。
+    そこで成績が半減するなら、今の数字は幻ということになる。"""
+    tickers = tickers or FULL_UNIVERSE
+    prep = _prepare_sim(tickers, years, limit=int(os.environ.get("WF_TICKERS", "250")))
+    if not prep:
+        raise Exception("シミュレーション用のデータが取得できません")
+    all_dates = sorted({d for v in prep.values() for d in v["dates"]})[200:]
+    if len(all_dates) < 1500:
+        raise Exception("検証できる期間が足りません")
+
+    # 選定に使う条件。総当たりだと時間が足りないので、実運用で意味のある範囲に絞る
+    CAND = []
+    for entry in (65, 70, 75):
+        for rr in (3.0, 4.0):
+            for mp in (3, 5, 8, 12):
+                for risk in (2.0, 3.0):
+                    for adv in ({}, {"partial": True}, {"hold_mode": "trend", "trail": 0.25}):
+                        CAND.append({"entry_score": entry, "rr": rr, "max_pos": mp,
+                                     "risk_pct": risk, **adv})
+
+    budget = float(os.environ.get("WF_BUDGET", "300"))
+    seg = len(all_dates) // (folds + 1)
+    results, picks = [], []
+    for i in range(folds):
+        train = all_dates[:seg * (i + 1)]
+        test = all_dates[seg * (i + 1):seg * (i + 2)] if i < folds - 1 else all_dates[seg * (i + 1):]
+        if len(train) < 500 or len(test) < 200:
+            continue
+        # ── 学習期間だけを見て設定を決める ──
+        t0, best, tried = time.time(), None, 0
+        for c in CAND:
+            if time.time() - t0 > budget / folds:
+                break
+            tried += 1
+            try:
+                r = _sim_pass(prep, train, initial, **c)["result"]
+            except Exception:
+                continue
+            if r["trades"] < 20:
+                continue
+            cal = (r["cagrPct"] / abs(r["maxDrawdownPct"])) if r["maxDrawdownPct"] else 0
+            if r["cagrPct"] > 0 and (best is None or cal > best["calmar"]):
+                best = {"cfg": c, "calmar": round(cal, 3), **{k: r[k] for k in
+                        ("cagrPct", "maxDrawdownPct", "winRate", "trades")}}
+        if not best:
+            continue
+        # ── 一度も見ていない期間で、その設定を走らせる ──
+        try:
+            t = _sim_pass(prep, test, initial, **best["cfg"])["result"]
+        except Exception as e:
+            print("walk-forward test failed:", e)
+            continue
+        tcal = (t["cagrPct"] / abs(t["maxDrawdownPct"])) if t["maxDrawdownPct"] else 0
+        results.append({
+            "fold": i + 1, "triedCombos": tried,
+            "trainFrom": train[0], "trainTo": train[-1], "trainDays": len(train),
+            "testFrom": test[0], "testTo": test[-1], "testDays": len(test),
+            "config": best["cfg"],
+            "inSample": {k: best[k] for k in ("cagrPct", "maxDrawdownPct", "winRate", "trades", "calmar")},
+            "outSample": {"cagrPct": t["cagrPct"], "maxDrawdownPct": t["maxDrawdownPct"],
+                          "winRate": t["winRate"], "trades": t["trades"], "calmar": round(tcal, 3)},
+            "cagrDrop": round(t["cagrPct"] - best["cagrPct"], 2),
+            "calmarDrop": round(tcal - best["calmar"], 3)})
+        picks.append(best["cfg"])
+
+    if not results:
+        raise Exception("ウォークフォワードを実行できませんでした")
+
+    n = len(results)
+    avg_in = round(sum(r["inSample"]["cagrPct"] for r in results) / n, 2)
+    avg_out = round(sum(r["outSample"]["cagrPct"] for r in results) / n, 2)
+    avg_out_dd = round(sum(r["outSample"]["maxDrawdownPct"] for r in results) / n, 1)
+    keep = round(avg_out / avg_in * 100) if avg_in > 0 else 0
+    positive = len([r for r in results if r["outSample"]["cagrPct"] > 0])
+
+    if avg_out <= 0:
+        verdict = ("期間外では利益が出ていません。今の成績は、過去を見てから条件を選んだことで"
+                   "生まれた見かけ上の数字です。売買条件を作り直す必要があります。")
+    elif keep >= 70 and positive == n:
+        verdict = (f"期間外でも年利{avg_out}%（選定時の{keep}%）を維持し、"
+                   f"{n}区間すべてで利益が出ました。実力とみなせます。")
+    elif positive >= n - 1:
+        verdict = (f"期間外の年利は{avg_out}%（選定時の{keep}%）。目減りはしますが利益は残ります。"
+                   "実運用ではこの水準を想定してください。")
+    else:
+        verdict = (f"期間外で利益が出たのは{n}区間中{positive}区間だけでした。"
+                   "条件の選び方が過去に寄りすぎている可能性が高いです。")
+
+    return {"folds": results, "tickers": len(prep),
+            "avgInSampleCagr": avg_in, "avgOutSampleCagr": avg_out,
+            "avgOutSampleDd": avg_out_dd, "keepPct": keep,
+            "positiveFolds": positive, "totalFolds": n,
+            "verdict": verdict, "updatedAt": datetime.now(timezone.utc).isoformat()}
 
 
 def benchmark_stats(years=25, initial=1000000):
