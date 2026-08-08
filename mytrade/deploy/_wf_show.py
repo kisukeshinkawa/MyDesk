@@ -50,7 +50,14 @@ for f in d["folds"]:
     mark = "○" if o["cagrPct"] > 0 else "×"
     print("  {} 未知の期間の成績 : 年利{:>+7.2f}% / 最大下落{:>6.1f}% / 勝率{:>5.1f}% / 効率{:>6.3f}".format(
         mark, o["cagrPct"], o["maxDrawdownPct"], o["winRate"], o["calmar"]))
-    print("    → 年利の差 {:+.2f}ポイント / 効率の差 {:+.3f}".format(f["cagrDrop"], f["calmarDrop"]))
+    print("    → 選定時との差 年利{:+.2f}ポイント / 効率{:+.3f}".format(f["cagrDrop"], f["calmarDrop"]))
+    b = (f.get("benchmark") or {}).get("mix")
+    if b:
+        wc = "○" if o["cagrPct"] > b["cagrPct"] else "×"
+        we = "○" if o["calmar"] > b["calmar"] else "×"
+        print("    同じ期間の指数     : 年利{:>+7.2f}% / 最大下落{:>6.1f}% / 効率{:>6.3f}".format(
+            b["cagrPct"], b["maxDrawdownPct"], b["calmar"]))
+        print("    → 指数に対して 年利{} / 効率{}".format(wc, we))
     print()
 
 print("■ まとめ")
@@ -60,6 +67,23 @@ keep_txt = "（選定時の{}%を維持）".format(d["keepPct"]) if d["avgOutSam
 print("  未知の期間の平均年利       : {:+.2f}%   {}".format(d["avgOutSampleCagr"], keep_txt))
 print("  未知の期間の平均最大下落   : {:.1f}%".format(d["avgOutSampleDd"]))
 print("  利益が出た区間             : {}/{}".format(d["positiveFolds"], d["totalFolds"]))
+if d.get("avgBenchCagr") is not None:
+    print()
+    print("  同じ期間の指数の平均年利   : {:+.2f}%".format(d["avgBenchCagr"]))
+    print("  同じ期間の指数の平均下落   : {:.1f}%".format(d["avgBenchDd"]))
+    eff_s = d["avgOutSampleCagr"] / abs(d["avgOutSampleDd"]) if d["avgOutSampleDd"] else 0
+    eff_b = d["avgBenchCagr"] / abs(d["avgBenchDd"]) if d["avgBenchDd"] else 0
+    print()
+    print("  {:<22}{:>10}{:>12}{:>10}".format("", "年利", "最大下落", "効率"))
+    print("  " + "-" * 52)
+    print("  {:<22}{:>9.2f}%{:>11.1f}%{:>10.3f}".format(
+        "MyTrade(期間外)", d["avgOutSampleCagr"], d["avgOutSampleDd"], eff_s))
+    print("  {:<22}{:>9.2f}%{:>11.1f}%{:>10.3f}".format(
+        "指数(同じ期間)", d["avgBenchCagr"], d["avgBenchDd"], eff_b))
+    print()
+    print("  指数に勝った区間: 年利で{}/{} / 効率で{}/{}".format(
+        d.get("beatBenchCagr", 0), d["totalFolds"],
+        d.get("beatBenchEfficiency", 0), d["totalFolds"]))
 print()
 print("【結論】" + d.get("verdict", ""))
 print()

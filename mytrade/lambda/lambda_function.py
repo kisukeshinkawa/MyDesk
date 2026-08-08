@@ -1572,6 +1572,41 @@ def simulate_strategy(tickers=None, years=25, initial=1000000, risk_pct=2.0,
             "updatedAt": datetime.now(timezone.utc).isoformat()}
 
 
+def _bench_window(from_date, to_date, initial=1000000):
+    """指定した期間だけの指数の成績。
+    6年間の検証結果を25年通期の指数と比べるのは不公平なので、
+    必ず同じ期間で比べられるようにする。"""
+    out = {}
+    for sym, label, key in (("^N225", "日経平均", "n225"), ("^GSPC", "S&P500", "sp500")):
+        try:
+            c = fetch_history(sym, "25y")["Close"].dropna()
+            idx = [d.strftime("%Y-%m-%d") for d in c.index]
+            lo = next((i for i, d in enumerate(idx) if d >= from_date), None)
+            hi = next((i for i in range(len(idx) - 1, -1, -1) if idx[i] <= to_date), None)
+            if lo is None or hi is None or hi - lo < 100:
+                continue
+            seg = c.iloc[lo:hi + 1]
+            eq = seg / float(seg.iloc[0]) * initial
+            peak, maxdd = float(eq.iloc[0]), 0.0
+            for v in eq:
+                peak = max(peak, float(v))
+                maxdd = min(maxdd, float(v) / peak - 1)
+            yrs = max(1e-9, len(seg) / 252)
+            cagr = ((float(eq.iloc[-1]) / initial) ** (1 / yrs) - 1) * 100
+            out[key] = {"label": label, "cagrPct": round(cagr, 2),
+                        "maxDrawdownPct": round(maxdd * 100, 1),
+                        "calmar": round(cagr / abs(maxdd * 100), 3) if maxdd else 0}
+        except Exception as e:
+            print("bench window failed:", sym, e)
+    if "n225" in out and "sp500" in out:
+        a, b = out["n225"], out["sp500"]
+        c2, d2 = (a["cagrPct"] + b["cagrPct"]) / 2, (a["maxDrawdownPct"] + b["maxDrawdownPct"]) / 2
+        out["mix"] = {"label": "日米half&half", "cagrPct": round(c2, 2),
+                      "maxDrawdownPct": round(d2, 1),
+                      "calmar": round(c2 / abs(d2), 3) if d2 else 0}
+    return out
+
+
 def walk_forward(tickers=None, years=25, initial=1000000, folds=3):
     """設定を決めた期間の「外」でも勝てるかを確かめる。
 
@@ -1639,13 +1674,25 @@ def walk_forward(tickers=None, years=25, initial=1000000, folds=3):
             "outSample": {"cagrPct": t["cagrPct"], "maxDrawdownPct": t["maxDrawdownPct"],
                           "winRate": t["winRate"], "trades": t["trades"], "calmar": round(tcal, 3)},
             "cagrDrop": round(t["cagrPct"] - best["cagrPct"], 2),
-            "calmarDrop": round(tcal - best["calmar"], 3)})
+            "calmarDrop": round(tcal - best["calmar"], 3),
+            # 同じ期間の指数。これに勝てていなければ売買する意味がない
+            "benchmark": _bench_window(test[0], test[-1], initial)})
         picks.append(best["cfg"])
 
     if not results:
         raise Exception("ウォークフォワードを実行できませんでした")
 
     n = len(results)
+    # 同じ期間の指数と比べる。年利で負けていても、下落が浅ければ効率では勝てる
+    bm = [r["benchmark"].get("mix") for r in results if r.get("benchmark", {}).get("mix")]
+    avg_bench = round(sum(b["cagrPct"] for b in bm) / len(bm), 2) if bm else None
+    avg_bench_dd = round(sum(b["maxDrawdownPct"] for b in bm) / len(bm), 1) if bm else None
+    beat_cagr = len([r for r in results
+                     if r.get("benchmark", {}).get("mix")
+                     and r["outSample"]["cagrPct"] > r["benchmark"]["mix"]["cagrPct"]])
+    beat_eff = len([r for r in results
+                    if r.get("benchmark", {}).get("mix")
+                    and r["outSample"]["calmar"] > r["benchmark"]["mix"]["calmar"]])
     avg_in = round(sum(r["inSample"]["cagrPct"] for r in results) / n, 2)
     avg_out = round(sum(r["outSample"]["cagrPct"] for r in results) / n, 2)
     avg_out_dd = round(sum(r["outSample"]["maxDrawdownPct"] for r in results) / n, 1)
@@ -1665,9 +1712,27 @@ def walk_forward(tickers=None, years=25, initial=1000000, folds=3):
         verdict = (f"期間外で利益が出たのは{n}区間中{positive}区間だけでした。"
                    "条件の選び方が過去に寄りすぎている可能性が高いです。")
 
+    # 指数との比較を結論に足す。年利だけで勝ち負けを決めない
+    if avg_bench is not None:
+        eff_sys = (avg_out / abs(avg_out_dd)) if avg_out_dd else 0
+        eff_bm = (avg_bench / abs(avg_bench_dd)) if avg_bench_dd else 0
+        if beat_eff == n and avg_out > 0:
+            verdict += (f" 同じ期間の指数は年利{avg_bench}%・最大下落{avg_bench_dd}%。"
+                        f"年利では{'上回って' if avg_out > avg_bench else '及びませんが'}"
+                        f"、下落の浅さを含めた効率({eff_sys:.3f} 対 {eff_bm:.3f})では"
+                        f"{n}区間すべてで指数を上回りました。")
+        elif beat_eff == 0:
+            verdict += (f" ただし同じ期間の指数は年利{avg_bench}%・最大下落{avg_bench_dd}%で、"
+                        "効率でも指数に届いていません。指数を買って放置するほうが合理的です。")
+        else:
+            verdict += (f" 同じ期間の指数は年利{avg_bench}%・最大下落{avg_bench_dd}%。"
+                        f"効率で指数を上回ったのは{n}区間中{beat_eff}区間でした。")
+
     return {"folds": results, "tickers": len(prep),
             "avgInSampleCagr": avg_in, "avgOutSampleCagr": avg_out,
             "avgOutSampleDd": avg_out_dd, "keepPct": keep,
+            "avgBenchCagr": avg_bench, "avgBenchDd": avg_bench_dd,
+            "beatBenchCagr": beat_cagr, "beatBenchEfficiency": beat_eff,
             "positiveFolds": positive, "totalFolds": n,
             "verdict": verdict, "updatedAt": datetime.now(timezone.utc).isoformat()}
 
