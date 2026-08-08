@@ -1600,16 +1600,21 @@ def verify_correlation(tickers=None, years=25, initial=1000000):
         raise Exception("シミュレーション用のデータが取得できません")
     all_dates = sorted({d for v in prep.values() for d in v["dates"]})[200:]
 
-    # 性格の違う4つの設定。どれでも効くなら本物
+    # 前半4つは同時保有数だけを変えた設定。他をすべて同じにしてあるので、
+    # 「効く/効かない」が保有数で決まるのかどうかを切り分けられる。
+    # (牽引役は6種類しかないため、保有数が多いほど集中回避が実際の制約になる)
+    def _b(mp, **kw):
+        d = {"entry_score": 70, "rr": 3.0, "max_pos": mp, "risk_pct": 2.0,
+             "partial": True, "trail": 0.0, "hold_mode": "trade"}
+        d.update(kw)
+        return d
+
     BASES = [
-        ("手堅い(75点/5銘柄)",   {"entry_score": 75, "rr": 3.0, "max_pos": 5, "risk_pct": 2.0,
-                                "partial": True, "trail": 0.0, "hold_mode": "trade"}),
-        ("標準(70点/8銘柄)",     {"entry_score": 70, "rr": 3.0, "max_pos": 8, "risk_pct": 2.0,
-                                "partial": True, "trail": 0.0, "hold_mode": "trade"}),
-        ("積極(65点/3銘柄)",     {"entry_score": 65, "rr": 4.0, "max_pos": 3, "risk_pct": 3.0,
-                                "partial": False, "trail": 0.0, "hold_mode": "trade"}),
-        ("長期保有(65点/8銘柄)", {"entry_score": 65, "rr": 3.0, "max_pos": 8, "risk_pct": 2.0,
-                                "partial": False, "trail": 0.25, "hold_mode": "trend"}),
+        ("保有3銘柄",  _b(3)), ("保有5銘柄",  _b(5)),
+        ("保有8銘柄",  _b(8)), ("保有12銘柄", _b(12)),
+        # 性格の違う設定でも確認する
+        ("積極(65点/3銘柄/リスク3%)", _b(3, entry_score=65, rr=4.0, risk_pct=3.0, partial=False)),
+        ("長期保有(65点/8銘柄)",      _b(8, entry_score=65, trail=0.25, partial=False, hold_mode="trend")),
     ]
     MECHS = [("集中回避(1銘柄まで)", {"max_same_driver": 1}),
              ("集中回避(2銘柄まで)", {"max_same_driver": 2}),
@@ -1639,6 +1644,8 @@ def verify_correlation(tickers=None, years=25, initial=1000000):
             tally[mname]["win"] += 1 if win else 0
             tally[mname]["cagr"].append(dc)
             tally[mname]["calmar"].append(dcal)
+            tally[mname].setdefault("wonIn", []).append(bname if win else None)
+            tally[mname].setdefault("maxPos", []).append((b["max_pos"], win))
             row["mechs"].append({"name": mname, "cagrPct": r["cagrPct"],
                                  "maxDrawdownPct": r["maxDrawdownPct"], "calmar": round(cal, 2),
                                  "cagrDiff": dc, "ddDiff": round(r["maxDrawdownPct"] - base_r["maxDrawdownPct"], 1),
@@ -1656,9 +1663,19 @@ def verify_correlation(tickers=None, years=25, initial=1000000):
         verdict = ("本物(すべての設定で改善)" if t["win"] == t["n"] else
                    "たぶん本物(大半で改善)" if t["win"] >= t["n"] - 1 and t["win"] > t["n"] / 2 else
                    "偶然の可能性が高い" if t["win"] > 0 else "効かない")
+        # 保有数で効き方が分かれていないかを見る(条件つきで効く仕組みを見逃さないため)
+        won = [mp for mp, w in t.get("maxPos", []) if w]
+        lost = [mp for mp, w in t.get("maxPos", []) if not w]
+        split = bool(won and lost and min(won) > max(lost))
         summary.append({"name": mname, "wins": t["win"], "of": t["n"], "avgCagrDiff": avg_c,
                         "avgCalmarDiff": avg_cal, "verdict": verdict,
-                        "robust": t["win"] == t["n"], "config": extra})
+                        "robust": t["win"] == t["n"], "config": extra,
+                        "wonIn": [x for x in t.get("wonIn", []) if x],
+                        "wonPos": sorted(set(won)), "lostPos": sorted(set(lost)),
+                        "posSplit": split,
+                        "posNote": (f"同時保有{min(won)}銘柄以上でのみ効いています"
+                                    f"(効いた={sorted(set(won))} / 効かない={sorted(set(lost))})"
+                                    if split else "")})
     summary.sort(key=lambda x: (-x["wins"], -x["avgCalmarDiff"]))
 
     best = next((s for s in summary if s["robust"]), None)
@@ -1666,6 +1683,7 @@ def verify_correlation(tickers=None, years=25, initial=1000000):
             "tickers": len(prep), "universe": len(tickers),
             "requested": min(len(tickers), int(os.environ.get("CORR_TICKERS", "400"))),
             "period": {"years": years, "days": len(all_dates)},
+            "conditional": [s for s in summary if not s["robust"] and s["posSplit"]],
             "verdict": (f"「{best['name']}」は{best['of']}種類すべての設定で効率が改善しました。"
                         f"設定を変えても効くので、本物の優位性と判断できます"
                         f"(平均で年利{best['avgCagrDiff']:+}ポイント)。"

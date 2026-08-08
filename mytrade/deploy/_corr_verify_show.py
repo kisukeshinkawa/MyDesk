@@ -69,11 +69,24 @@ print("-" * 82)
 for s in d["summary"]:
     print("{:<24}{:>8}/{:<3}{:>13.2f}{:>14.3f}   {}".format(
         s["name"], s["wins"], s["of"], s["avgCagrDiff"], s["avgCalmarDiff"], s["verdict"]))
+    if s.get("posNote"):
+        print("{:<24}  → {}".format("", s["posNote"]))
 print()
 print("効率 = 年利 ÷ 最大下落。○ = その設定で効率が改善した")
 print("すべての設定で効いたものだけを「本物」とみなします。")
 print("1つの設定でだけ効いたものは、偶然その設定に噛み合っただけの可能性が高いためです。")
 print()
+cond = d.get("conditional") or []
+if cond:
+    print("■ 条件つきで効く可能性があるもの")
+    print()
+    for s in cond:
+        print("  {} : {}".format(s["name"], s["posNote"]))
+    print()
+    print("  すべての設定で効いたわけではないので「本物」とは呼べませんが、")
+    print("  同時保有数で効き方がきれいに分かれている場合、偶然ではなく条件つきの優位性かもしれません。")
+    print("  その保有数で運用するなら採用を検討する価値があります。")
+    print()
 print("【結論】" + d.get("verdict", ""))
 if d.get("recommended"):
     print()
