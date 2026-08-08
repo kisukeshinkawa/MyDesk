@@ -232,7 +232,8 @@ def lambda_handler(event, context):
                 _record_job(jname, True, r.get("verdict", "")[:60])
                 return _res(200, {"verdict": r["verdict"], "best": r.get("best")})
             if job == "walkforward":
-                r = walk_forward(None, int(event.get("years", 25)))
+                r = walk_forward(None, int(event.get("years", 25)),
+                                 regime=event.get("regime", "ma200"))
                 _save_json_s3("stock-learn/walkforward.json", r)
                 _record_job(jname, True, r.get("verdict", "")[:60])
                 return _res(200, {"avgOutSampleCagr": r["avgOutSampleCagr"],
@@ -435,7 +436,8 @@ def lambda_handler(event, context):
         if action == "regime-latest":
             return _res(200, _load_json_s3("stock-learn/regime_test.json", {}))
         if action == "walkforward":
-            r = walk_forward(None, int(body.get("years", 25)))
+            r = walk_forward(None, int(body.get("years", 25)),
+                             regime=body.get("regime", "ma200"))
             _save_json_s3("stock-learn/walkforward.json", r)
             return _res(200, r)
         if action == "walkforward-latest":
@@ -1723,7 +1725,7 @@ def _bench_window(from_date, to_date, initial=1000000):
     return out
 
 
-def walk_forward(tickers=None, years=25, initial=1000000, folds=3):
+def walk_forward(tickers=None, years=25, initial=1000000, folds=3, regime="ma200"):
     """設定を決めた期間の「外」でも勝てるかを確かめる。
 
     今の設定は25年分すべてを見てから選んでいる。過去を全部知った上で
@@ -1763,7 +1765,7 @@ def walk_forward(tickers=None, years=25, initial=1000000, folds=3):
                 break
             tried += 1
             try:
-                r = _sim_pass(prep, train, initial, **c)["result"]
+                r = _sim_pass(prep, train, initial, regime=regime, **c)["result"]
             except Exception:
                 continue
             if r["trades"] < 20:
@@ -1776,7 +1778,7 @@ def walk_forward(tickers=None, years=25, initial=1000000, folds=3):
             continue
         # ── 一度も見ていない期間で、その設定を走らせる ──
         try:
-            t = _sim_pass(prep, test, initial, **best["cfg"])["result"]
+            t = _sim_pass(prep, test, initial, regime=regime, **best["cfg"])["result"]
         except Exception as e:
             print("walk-forward test failed:", e)
             continue
@@ -1844,7 +1846,7 @@ def walk_forward(tickers=None, years=25, initial=1000000, folds=3):
             verdict += (f" 同じ期間の指数は年利{avg_bench}%・最大下落{avg_bench_dd}%。"
                         f"効率で指数を上回ったのは{n}区間中{beat_eff}区間でした。")
 
-    return {"folds": results, "tickers": len(prep),
+    return {"folds": results, "tickers": len(prep), "regime": regime,
             "avgInSampleCagr": avg_in, "avgOutSampleCagr": avg_out,
             "avgOutSampleDd": avg_out_dd, "keepPct": keep,
             "avgBenchCagr": avg_bench, "avgBenchDd": avg_bench_dd,

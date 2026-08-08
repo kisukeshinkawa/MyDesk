@@ -26,7 +26,10 @@ try:
         print("  ※ 開始したばかりなら、これは前回の結果です。20分ほど待ってください")
 except Exception:
     pass
-print("検証銘柄 {}".format(d.get("tickers")))
+地合={"ma200":"指数が200日線の上のときだけ買う(現行)","recovery":"回復も拾う",
+      "ma50":"50日線の上","off":"地合いフィルター無し"}
+print("検証銘柄 {} / 地合い判定: {}".format(
+    d.get("tickers"), 地合.get(d.get("regime","ma200"), d.get("regime","ma200"))))
 print()
 print("■ 設定を決めた期間の「外」で、同じ成績が出るか")
 print()
