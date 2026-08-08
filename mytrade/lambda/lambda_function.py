@@ -452,10 +452,10 @@ def lambda_handler(event, context):
             return _res(200, paper_order(body["ticker"], body.get("side", "buy"),
                                          body.get("qty", 0), body.get("note", ""),
                                          meta=body.get("meta"),
-                                         account=body.get("account", "me")))
+                                         account=(body.get("account") or "me")))
         if action == "paper-reset":
             return _res(200, paper_reset(body.get("initial", PAPER_INITIAL),
-                                         body.get("account", "me")))
+                                         body.get("account") or "me"))
         if action == "market-news":
             return _res(200, get_market_news())
         if action == "brief":
