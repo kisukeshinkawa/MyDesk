@@ -435,6 +435,8 @@ def lambda_handler(event, context):
                                        f"周辺条件の平均は年利{pick.get('neighborCagr')}%なので、"
                                        f"たまたま当たった設定ではありません。勝率は{pick.get('winRate')}%です。"
                                        + tune_txt)})
+        if action == "reality":
+            return _res(200, reality_check())
         if action == "slippage-test":
             r = slippage_test(None, int(body.get("years", 25)),
                               regime=body.get("regime", "off"))
@@ -1623,6 +1625,54 @@ def simulate_strategy(tickers=None, years=25, initial=1000000, risk_pct=2.0,
             "result": r["result"], "curve": curve[::step], "yearly": yearly,
             "recentTrades": r["trades"][-15:][::-1],
             "updatedAt": datetime.now(timezone.utc).isoformat()}
+
+
+def reality_check():
+    """バックテストの数字と、期間外で実際にどうだったかを並べて返す。
+
+    バックテストの成績をそのまま画面に出すと、達成できない数字を
+    信じさせることになる。期間外の実測と指数との比較を必ず併記する。"""
+    wf = _load_json_s3("stock-learn/walkforward.json", {}) or {}
+    sl = _load_json_s3("stock-learn/slippage_test.json", {}) or {}
+    grid = _load_json_s3("stock-learn/optimize.json", {}) or {}
+    best = (grid.get("combos") or [{}])[0]
+    bench = (grid.get("benchmark") or {}).get("mix") or {}
+
+    out = {"backtestCagr": best.get("cagrPct"), "backtestDd": best.get("maxDrawdownPct"),
+           "benchCagr": bench.get("cagrPct"), "benchDd": bench.get("maxDrawdownPct"),
+           "outSampleCagr": wf.get("avgOutSampleCagr"), "outSampleDd": wf.get("avgOutSampleDd"),
+           "outSampleBench": wf.get("avgBenchCagr"),
+           "beatBenchWindows": wf.get("beatBenchEfficiency"), "totalWindows": wf.get("totalFolds"),
+           "keepPct": wf.get("keepPct"), "regime": wf.get("regime"),
+           "checkedAt": wf.get("updatedAt")}
+
+    rows = sl.get("rows") or []
+    out["costRows"] = [{"label": r["label"], "cagrPct": r["avgCagr"],
+                        "benchCagr": r["avgBenchCagr"], "edge": r["edge"]} for r in rows]
+    out["costBeatsBench"] = len([r for r in rows if r["edge"] > 0])
+    out["costTested"] = len(rows)
+
+    if rows and out["costBeatsBench"] == 0:
+        out["level"] = "fail"
+        out["headline"] = "この売買ロジックは指数に勝てませんでした"
+        out["detail"] = ("約定コストをいくつ試しても、同じ期間に指数を買って持っていた場合に"
+                         "届きませんでした。バックテストの数字は、過去を見てから条件を選んだ"
+                         "ことで生まれた見かけ上のものです。"
+                         "実際のお金を入れるなら、インデックスを買って放置するほうが合理的です。")
+        out["usage"] = ("ただし銘柄のスコア・チャート・ニュース・損切り/利確の目安は、"
+                        "あなたが自分で判断するための材料としてはそのまま使えます。"
+                        "「機械に任せる」のではなく「自分で選ぶ道具」としてお使いください。")
+    elif rows:
+        out["level"] = "partial"
+        out["headline"] = f"約定コスト{out['costTested']}段階中{out['costBeatsBench']}段階でのみ指数を上回りました"
+        out["detail"] = "現実的なコストでの優位は確認できていません。慎重に扱ってください。"
+        out["usage"] = ""
+    else:
+        out["level"] = "unknown"
+        out["headline"] = "期間外の検証がまだ実行されていません"
+        out["detail"] = "バックテストの数字だけでは、実際に通用するかは分かりません。"
+        out["usage"] = ""
+    return out
 
 
 def slippage_test(tickers=None, years=25, initial=1000000, regime="off"):
