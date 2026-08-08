@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-08-v362-quote-dedup-vendors"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-08-v363-quote-permit-filter-counts"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -33972,6 +33972,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
   const [permFilter, setPermFilter] = React.useState([]);
   const [areaQ, setAreaQ] = React.useState("");
   const [qvQ, setQvQ] = React.useState(""); // 追加済み対象業者の絞り込み（多数時に見やすく）
+  const [qvPermFilter, setQvPermFilter] = React.useState([]); // 追加済み対象業者を許可種別で絞り込み
   const [qvPage, setQvPage] = React.useState(0); // 対象業者のページ送り
   const [showAnon, setShowAnon] = React.useState(false); // 匿名対応表の展開
   const [storeAdd, setStoreAdd] = React.useState(false);
@@ -34119,6 +34120,9 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
   const patchVendor = (qvId, patch) => setVendors((p.vendors||[]).map(x=>x.id===qvId?{...x,...patch}:x));
   const addVendor = (v) => { if((p.vendors||[]).some(x=>String(x.vendorId)===String(v.id))) return; setVendors([...(p.vendors||[]), { id:rid("qv"), vendorId:v.id, vendorName:v.name, assignee:"", contact:"", status:"未依頼", prices:{}, extraLines:[], callNotes:[] }]); };
   const addedIds = new Set((p.vendors||[]).map(x=>String(x.vendorId)));
+  const vendorById = new Map((vendors||[]).map(v=>[String(v.id),v]));
+  // 追加済み対象業者の許可種別ごとの社数
+  const qvPermCounts = (()=>{ const m={}; (p.vendors||[]).forEach(qv=>{ const vr=vendorById.get(String(qv.vendorId)); (vr&&vr.permitTypes||[]).forEach(pt=>{ m[pt]=(m[pt]||0)+1; }); }); return m; })();
   const rows = rowsOf(p.stores);
   const prefs = data.prefectures || [];
   const prefName = id => (prefs.find(x=>String(x.id)===String(id))||{}).name || "";
@@ -34617,13 +34621,28 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
       </div>
 
       {(p.vendors||[]).length>8&&(
-        <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem",flexWrap:"wrap"}}>
-          <input value={qvQ} onChange={e=>{setQvQ(e.target.value);setQvPage(0);}} placeholder={`🔍 追加済み${(p.vendors||[]).length}社を絞り込み（業者名）`} style={{flex:1,minWidth:160,padding:"0.35rem 0.6rem",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"inherit"}}/>
+        <div style={{marginBottom:"0.5rem"}}>
+          <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.4rem",flexWrap:"wrap"}}>
+            <input value={qvQ} onChange={e=>{setQvQ(e.target.value);setQvPage(0);}} placeholder={`🔍 追加済み${(p.vendors||[]).length}社を絞り込み（業者名）`} style={{flex:1,minWidth:160,padding:"0.35rem 0.6rem",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:"0.78rem",fontFamily:"inherit"}}/>
+          </div>
+          {/* 登録済みの許可種別ごとの社数＋許可フィルター */}
+          <div style={{display:"flex",gap:"0.3rem",flexWrap:"wrap",alignItems:"center"}}>
+            <span style={{fontSize:"0.66rem",color:C.textSub,fontWeight:700}}>許可で絞込:</span>
+            {PT.filter(pt=>qvPermCounts[pt]).map(pt=>{ const on=qvPermFilter.includes(pt); return (
+              <button key={pt} onClick={()=>{ setQvPermFilter(on?qvPermFilter.filter(x=>x!==pt):[...qvPermFilter,pt]); setQvPage(0); }} style={{fontSize:"0.66rem",fontWeight:700,padding:"0.15rem 0.55rem",borderRadius:999,border:`1px solid ${on?C.accent:C.border}`,background:on?C.accent:"white",color:on?"white":C.textSub,cursor:"pointer",fontFamily:"inherit"}}>{pt}（{qvPermCounts[pt]}）</button>
+            );})}
+            {qvPermFilter.length>0&&<button onClick={()=>{setQvPermFilter([]);setQvPage(0);}} style={{fontSize:"0.64rem",color:C.textMuted,border:"none",background:"none",cursor:"pointer",fontFamily:"inherit"}}>解除</button>}
+          </div>
         </div>
       )}
       {(()=>{
         const qvList=(p.vendors||[]);
-        const filt=qvQ.trim()?qvList.filter(qv=>String(qv.vendorName||"").toLowerCase().includes(qvQ.trim().toLowerCase())):qvList;
+        const permSel=new Set(qvPermFilter);
+        const filt=qvList.filter(qv=>{
+          if(qvQ.trim() && !String(qv.vendorName||"").toLowerCase().includes(qvQ.trim().toLowerCase())) return false;
+          if(permSel.size){ const vr=vendorById.get(String(qv.vendorId)); if(!((vr&&vr.permitTypes)||[]).some(pt=>permSel.has(pt))) return false; }
+          return true;
+        });
         const PER=30; const pages=Math.max(1,Math.ceil(filt.length/PER)); const pg=Math.min(qvPage,pages-1);
         const shown=filt.slice(pg*PER,pg*PER+PER);
         const pager=(pos)=>pages>1?(
@@ -34924,6 +34943,7 @@ function VendorQuoteCard({ qv, rows, stores=[], totalStores=0, showAll=false, on
         <span style={{fontWeight:800,fontSize:"0.9rem",color:C.text}}>{qv.vendorName}</span>
         {grade&&<span style={{fontSize:"0.66rem",color:"#b45309"}}>{"★".repeat(grade)}</span>}
         <select value={qv.status||"未依頼"} onClick={e=>e.stopPropagation()} onChange={e=>onChange({status:e.target.value})} style={{padding:"0.2rem 0.5rem",borderRadius:999,border:`1px solid ${C.border}`,fontSize:"0.68rem",fontWeight:700,fontFamily:"inherit",background:"white"}}>{REQ.map(s=><option key={s} value={s}>{s}</option>)}</select>
+        {vrec&&(vrec.permitTypes||[]).length>0&&<span style={{fontSize:"0.6rem",color:C.textMuted}} title="保有許可">{(vrec.permitTypes||[]).join("・")}</span>}
         {qv.respondedAt&&<span style={{fontSize:"0.62rem",color:"#009122",fontWeight:700}}>✅{String(qv.respondedAt).slice(5,10)}</span>}
         {(qv.assigneeIds||[]).length>0&&<span style={{fontSize:"0.64rem",color:C.accentDark,fontWeight:700}} title="自社担当">👤 {(qv.assigneeIds||[]).map(id=>(users||[]).find(u=>String(u.id)===String(id))?.name||"").filter(Boolean).join("・")}</span>}
         {(qv.callNotes||[]).length>0&&<span style={{fontSize:"0.62rem",color:C.textMuted}} title="記録件数">📝{(qv.callNotes||[]).length}</span>}
