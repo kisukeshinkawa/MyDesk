@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-08-v363-quote-permit-filter-counts"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-08-v364-quote-area-filter-fix-row"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -33973,6 +33973,8 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
   const [areaQ, setAreaQ] = React.useState("");
   const [qvQ, setQvQ] = React.useState(""); // 追加済み対象業者の絞り込み（多数時に見やすく）
   const [qvPermFilter, setQvPermFilter] = React.useState([]); // 追加済み対象業者を許可種別で絞り込み
+  const [qvAreaFilter, setQvAreaFilter] = React.useState([]); // 追加済みを自治体/権者で絞り込み
+  const [qvAreaInput, setQvAreaInput] = React.useState("");
   const [qvPage, setQvPage] = React.useState(0); // 対象業者のページ送り
   const [showAnon, setShowAnon] = React.useState(false); // 匿名対応表の展開
   const [storeAdd, setStoreAdd] = React.useState(false);
@@ -34121,8 +34123,13 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
   const addVendor = (v) => { if((p.vendors||[]).some(x=>String(x.vendorId)===String(v.id))) return; setVendors([...(p.vendors||[]), { id:rid("qv"), vendorId:v.id, vendorName:v.name, assignee:"", contact:"", status:"未依頼", prices:{}, extraLines:[], callNotes:[] }]); };
   const addedIds = new Set((p.vendors||[]).map(x=>String(x.vendorId)));
   const vendorById = new Map((vendors||[]).map(v=>[String(v.id),v]));
+  const muniNameById = new Map((munis||[]).map(m=>[String(m.id), m.name]));
+  // 業者のエリア集合（産廃権者＝sanpaiPermits.auth ＋ 一廃自治体名）
+  const vendorAreas = (vr) => { const s=new Set(); if(!vr) return s; (vr.sanpaiPermits||[]).forEach(sp=>{ if(sp&&sp.auth) s.add(sp.auth); }); (vr.municipalityIds||[]).forEach(id=>{ const n=muniNameById.get(String(id)); if(n) s.add(n); }); return s; };
   // 追加済み対象業者の許可種別ごとの社数
   const qvPermCounts = (()=>{ const m={}; (p.vendors||[]).forEach(qv=>{ const vr=vendorById.get(String(qv.vendorId)); (vr&&vr.permitTypes||[]).forEach(pt=>{ m[pt]=(m[pt]||0)+1; }); }); return m; })();
+  // 追加済み対象業者のエリア(自治体/権者)ごとの社数
+  const qvAreaCounts = (()=>{ const m={}; (p.vendors||[]).forEach(qv=>{ vendorAreas(vendorById.get(String(qv.vendorId))).forEach(a=>{ m[a]=(m[a]||0)+1; }); }); return m; })();
   const rows = rowsOf(p.stores);
   const prefs = data.prefectures || [];
   const prefName = id => (prefs.find(x=>String(x.id)===String(id))||{}).name || "";
@@ -34633,14 +34640,26 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
             );})}
             {qvPermFilter.length>0&&<button onClick={()=>{setQvPermFilter([]);setQvPage(0);}} style={{fontSize:"0.64rem",color:C.textMuted,border:"none",background:"none",cursor:"pointer",fontFamily:"inherit"}}>解除</button>}
           </div>
+          {/* 登録済みを自治体/権者で絞り込み */}
+          <div style={{display:"flex",gap:"0.3rem",flexWrap:"wrap",alignItems:"center",marginTop:"0.35rem"}}>
+            <span style={{fontSize:"0.66rem",color:C.textSub,fontWeight:700}}>自治体/権者で絞込:</span>
+            <div style={{position:"relative",flex:"1 1 180px",minWidth:150}}>
+              <input value={qvAreaInput} onChange={e=>setQvAreaInput(e.target.value)} placeholder="自治体/権者を検索（登録済みの中から）" style={{width:"100%",boxSizing:"border-box",padding:"0.3rem 0.55rem",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:"0.72rem",fontFamily:"inherit"}}/>
+              {qvAreaInput.trim()&&(()=>{ const q=qvAreaInput.trim(); const hits=Object.keys(qvAreaCounts).filter(a=>a.indexOf(q)>=0&&!qvAreaFilter.includes(a)).sort((a,b)=>qvAreaCounts[b]-qvAreaCounts[a]).slice(0,12); return hits.length?(<div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:30,background:"white",border:`1.5px solid ${C.accent}`,borderRadius:8,maxHeight:200,overflowY:"auto",marginTop:2,boxShadow:C.shadowMd}}>{hits.map(a=>(<button key={a} onClick={()=>{setQvAreaFilter([...qvAreaFilter,a]);setQvAreaInput("");setQvPage(0);}} style={{display:"flex",justifyContent:"space-between",width:"100%",textAlign:"left",padding:"0.3rem 0.55rem",border:"none",borderBottom:`1px solid ${C.borderLight}`,background:"white",cursor:"pointer",fontFamily:"inherit",fontSize:"0.74rem",color:C.text}}><span>{a}</span><span style={{fontWeight:800,color:C.accentDark}}>({qvAreaCounts[a]})</span></button>))}</div>):null; })()}
+            </div>
+            {qvAreaFilter.map(a=>(<span key={a} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:"0.66rem",background:C.accentBg,color:C.accentDark,borderRadius:999,padding:"0.1rem 0.5rem",fontWeight:700}}>{a}（{qvAreaCounts[a]||0}）<button onClick={()=>{setQvAreaFilter(qvAreaFilter.filter(x=>x!==a));setQvPage(0);}} style={{border:"none",background:"none",color:C.accentDark,cursor:"pointer",fontFamily:"inherit",padding:0}}>×</button></span>))}
+          </div>
         </div>
       )}
       {(()=>{
         const qvList=(p.vendors||[]);
         const permSel=new Set(qvPermFilter);
+        const areaSel=new Set(qvAreaFilter);
         const filt=qvList.filter(qv=>{
           if(qvQ.trim() && !String(qv.vendorName||"").toLowerCase().includes(qvQ.trim().toLowerCase())) return false;
-          if(permSel.size){ const vr=vendorById.get(String(qv.vendorId)); if(!((vr&&vr.permitTypes)||[]).some(pt=>permSel.has(pt))) return false; }
+          const vr=(permSel.size||areaSel.size)?vendorById.get(String(qv.vendorId)):null;
+          if(permSel.size){ if(!((vr&&vr.permitTypes)||[]).some(pt=>permSel.has(pt))) return false; }
+          if(areaSel.size){ const ar=vendorAreas(vr); if(![...areaSel].some(a=>ar.has(a))) return false; }
           return true;
         });
         const PER=30; const pages=Math.max(1,Math.ceil(filt.length/PER)); const pg=Math.min(qvPage,pages-1);
@@ -34943,7 +34962,7 @@ function VendorQuoteCard({ qv, rows, stores=[], totalStores=0, showAll=false, on
         <span style={{fontWeight:800,fontSize:"0.9rem",color:C.text}}>{qv.vendorName}</span>
         {grade&&<span style={{fontSize:"0.66rem",color:"#b45309"}}>{"★".repeat(grade)}</span>}
         <select value={qv.status||"未依頼"} onClick={e=>e.stopPropagation()} onChange={e=>onChange({status:e.target.value})} style={{padding:"0.2rem 0.5rem",borderRadius:999,border:`1px solid ${C.border}`,fontSize:"0.68rem",fontWeight:700,fontFamily:"inherit",background:"white"}}>{REQ.map(s=><option key={s} value={s}>{s}</option>)}</select>
-        {vrec&&(vrec.permitTypes||[]).length>0&&<span style={{fontSize:"0.6rem",color:C.textMuted}} title="保有許可">{(vrec.permitTypes||[]).join("・")}</span>}
+        {vrec&&(vrec.permitTypes||[]).length>0&&<span style={{fontSize:"0.6rem",color:C.textMuted,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:140,flexShrink:1}} title={(vrec.permitTypes||[]).join("・")}>{(vrec.permitTypes||[]).join("・")}</span>}
         {qv.respondedAt&&<span style={{fontSize:"0.62rem",color:"#009122",fontWeight:700}}>✅{String(qv.respondedAt).slice(5,10)}</span>}
         {(qv.assigneeIds||[]).length>0&&<span style={{fontSize:"0.64rem",color:C.accentDark,fontWeight:700}} title="自社担当">👤 {(qv.assigneeIds||[]).map(id=>(users||[]).find(u=>String(u.id)===String(id))?.name||"").filter(Boolean).join("・")}</span>}
         {(qv.callNotes||[]).length>0&&<span style={{fontSize:"0.62rem",color:C.textMuted}} title="記録件数">📝{(qv.callNotes||[]).length}</span>}
