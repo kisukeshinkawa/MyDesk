@@ -407,11 +407,16 @@ def lambda_handler(event, context):
                                    "trades", "neighborCagr", "stability")}
             upd["appliedNote"] = "周辺の条件も同水準だった安定領域から選定"
             cfg = autotrade_config(upd)
+            # 文面は実際の状態から作る。固定文にすると設定と食い違って嘘になる
+            tune_txt = ("自動追従はONのままです。月次の再検証では、プリセットではなく"
+                        "同じ「周辺条件の安定性」で選び直すので、まぐれに載せ替わりません。"
+                        if cfg.get("autoTune") else
+                        "自動追従はOFFです。この設定を維持します。")
             return _res(200, {"config": cfg, "applied": pick,
                               "note": (f"年利{pick['cagrPct']}% / 最大下落{pick['maxDrawdownPct']}% の設定を入れました。"
                                        f"周辺条件の平均は年利{pick.get('neighborCagr')}%なので、"
-                                       "たまたま当たった設定ではありません。"
-                                       "自動追従はOFFにしました(次の再検証で上書きされないように)。")})
+                                       f"たまたま当たった設定ではありません。勝率は{pick.get('winRate')}%です。"
+                                       + tune_txt)})
         if action == "corr-verify":
             r = verify_correlation(None, int(body.get("years", 25)))
             _save_json_s3("stock-learn/corr_verify.json", r)
