@@ -226,6 +226,11 @@ def lambda_handler(event, context):
                 r = run_ranking(force=True)
                 _record_job(jname, True, f"{r.get('scanned',0)}銘柄 財務{r.get('finCovered',0)}")
                 return _res(200, r)
+            if job == "rebalance":
+                r = rebalance_test(None, int(event.get("years", 25)))
+                _save_json_s3("stock-learn/rebalance_test.json", r)
+                _record_job(jname, True, r.get("verdict", "")[:60])
+                return _res(200, {"verdict": r["verdict"], "best": r.get("best")})
             if job == "slippage":
                 r = slippage_test(None, int(event.get("years", 25)),
                                   regime=event.get("regime", "off"))
@@ -435,6 +440,12 @@ def lambda_handler(event, context):
                                        f"周辺条件の平均は年利{pick.get('neighborCagr')}%なので、"
                                        f"たまたま当たった設定ではありません。勝率は{pick.get('winRate')}%です。"
                                        + tune_txt)})
+        if action == "rebalance-test":
+            r = rebalance_test(None, int(body.get("years", 25)))
+            _save_json_s3("stock-learn/rebalance_test.json", r)
+            return _res(200, r)
+        if action == "rebalance-latest":
+            return _res(200, _load_json_s3("stock-learn/rebalance_test.json", {}))
         if action == "reality":
             return _res(200, reality_check())
         if action == "slippage-test":
@@ -1624,6 +1635,180 @@ def simulate_strategy(tickers=None, years=25, initial=1000000, risk_pct=2.0,
                          "tickers": len(prep), "fee": fee},
             "result": r["result"], "curve": curve[::step], "yearly": yearly,
             "recentTrades": r["trades"][-15:][::-1],
+            "updatedAt": datetime.now(timezone.utc).isoformat()}
+
+
+def _sim_rebalance(prep, all_dates, initial=1000000, top_n=10, every=21,
+                   fee=0.001, slip=0.0, min_score=0, regime="off"):
+    """月次リバランス方式。今の「イベント駆動」とは設計が根本的に違う。
+
+    今の方式: スコアが基準を超えたら買い、損切り/利確ラインで売る
+              → 6年で600回売買。コストが重く、決めるパラメータも多い
+    この方式: N日ごとに全銘柄を順位付けし、上位top_n本だけを等金額で持つ
+              損切りも利確もしない。順位から落ちたら入れ替えるだけ
+              → 売買が1/10になり、決めるパラメータも2つ(何本・何日ごと)だけ
+
+    実際のクオンツ株式運用の主流はこちら。売買コストと、
+    パラメータを増やしすぎて過去に合わせ込む問題の両方を避けられる。"""
+    tickers = [t for t in prep if not t.startswith("__")]
+    cash, holdings, trades, curve = float(initial), {}, [], []
+    peak, maxdd = float(initial), 0.0
+
+    def price(t, d):
+        i = prep[t]["idx"].get(d)
+        return prep[t]["close"][i] if i is not None else None
+
+    for step, d in enumerate(all_dates):
+        equity = cash + sum((price(t, d) or h["entry"]) * h["qty"] for t, h in holdings.items())
+        peak = max(peak, equity)
+        maxdd = min(maxdd, equity / peak - 1)
+        curve.append({"date": d, "equity": round(equity, 0)})
+        if step % every:
+            continue
+
+        # ── その日のスコアで順位付け ──
+        ranked = []
+        for t in tickers:
+            c = (prep[t]["cands"] or {}).get(d)
+            if not c or price(t, d) is None:
+                continue
+            if c["score"] < min_score:
+                continue
+            if not (c.get("regime") or {}).get(regime, True):
+                continue
+            ranked.append((c["score"], t))
+        ranked.sort(reverse=True)
+        want = {t for _, t in ranked[:top_n]}
+
+        # ── 順位から落ちたものを売る ──
+        for t in list(holdings):
+            if t in want:
+                continue
+            px = price(t, d)
+            if px is None:
+                continue
+            h = holdings.pop(t)
+            fill = px * (1 - slip)
+            proceeds = fill * h["qty"] * (1 - fee)
+            cash += proceeds
+            trades.append({"ticker": t, "entryDate": h["date"], "exitDate": d,
+                           "entry": round(h["entry"], 2), "exit": round(fill, 2),
+                           "qty": h["qty"], "pnl": round(proceeds - h["entry"] * h["qty"], 0),
+                           "pnlPct": round((fill / h["entry"] - 1) * 100, 2),
+                           "reason": "順位から外れた"})
+
+        # ── 等金額になるよう買い足す ──
+        add = [t for t in want if t not in holdings]
+        if not add:
+            continue
+        equity = cash + sum((price(t, d) or h["entry"]) * h["qty"] for t, h in holdings.items())
+        budget = equity / max(1, top_n)
+        for t in add:
+            px = price(t, d)
+            if px is None:
+                continue
+            fill = px * (1 + slip)
+            qty = int(budget / fill)
+            cost = fill * qty * (1 + fee)
+            if qty <= 0 or cost > cash:
+                continue
+            cash -= cost
+            holdings[t] = {"qty": qty, "entry": fill, "date": d}
+
+    final = curve[-1]["equity"] if curve else initial
+    yrs = max(1e-9, len(curve) / 252)
+    wins = [x for x in trades if x["pnl"] > 0]
+    gw = sum(x["pnl"] for x in wins)
+    gl = abs(sum(x["pnl"] for x in trades if x["pnl"] <= 0))
+    return {"result": {
+        "finalEquity": round(final), "totalReturnPct": round((final / initial - 1) * 100, 2),
+        "cagrPct": round(((final / initial) ** (1 / yrs) - 1) * 100, 2),
+        "maxDrawdownPct": round(maxdd * 100, 1),
+        "trades": len(trades), "winRate": round(len(wins) / len(trades) * 100, 1) if trades else 0,
+        "profitFactor": round(gw / gl, 2) if gl > 0 else None,
+        "tradesPerYear": round(len(trades) / yrs, 1),
+        "sharpe": 0, "maxLossStreak": _max_streak(trades), "effectiveRiskPct": 0}}
+
+
+def rebalance_test(tickers=None, years=25, initial=1000000):
+    """月次リバランス方式が指数に勝てるかを、期間外＋約定コスト込みで測る。
+
+    今のイベント駆動方式は、6年で600回売買してコストに負けた。
+    こちらは決めるパラメータが「何本持つか」「何日ごとに入れ替えるか」の
+    2つしかないので、過去に合わせ込む余地も小さい。
+
+    判定は同じ基準: 3期間すべてで、同じ期間の指数を年利・効率とも上回ること。"""
+    tickers = tickers or FULL_UNIVERSE
+    prep = _prepare_sim(tickers, years, limit=int(os.environ.get("RB_TICKERS", "250")))
+    if not prep:
+        raise Exception("シミュレーション用のデータが取得できません")
+    all_dates = sorted({d for v in prep.values() for d in v["dates"]})[200:]
+    seg = len(all_dates) // 4
+    windows = [all_dates[seg * 1:seg * 2], all_dates[seg * 2:seg * 3], all_dates[seg * 3:]]
+
+    COMBOS = [(n, e) for n in (5, 10, 20, 30) for e in (21, 63)]   # 何本 × 月次/四半期
+    SLIPS = [(0.0, "ズレなし(参考)"), (0.001, "片道0.10%"), (0.002, "片道0.20%")]
+
+    budget = float(os.environ.get("RB_BUDGET", "480"))
+    t0 = time.time()
+    rows = []
+    for slip, slabel in SLIPS:
+        for top_n, every in COMBOS:
+            if time.time() - t0 > budget:
+                break
+            wins = []
+            for wi, w in enumerate(windows):
+                if len(w) < 200:
+                    continue
+                try:
+                    r = _sim_rebalance(prep, w, initial, top_n=top_n, every=every,
+                                       slip=slip)["result"]
+                except Exception as e:
+                    print("rebalance failed:", top_n, every, e)
+                    continue
+                cal = (r["cagrPct"] / abs(r["maxDrawdownPct"])) if r["maxDrawdownPct"] else 0
+                bm = (_bench_window(w[0], w[-1], initial) or {}).get("mix") or {}
+                wins.append({"window": wi + 1, "cagrPct": r["cagrPct"],
+                             "maxDrawdownPct": r["maxDrawdownPct"], "calmar": round(cal, 3),
+                             "tradesPerYear": r["tradesPerYear"],
+                             "benchCagr": bm.get("cagrPct"), "benchCalmar": bm.get("calmar"),
+                             "beatCagr": bool(bm and r["cagrPct"] > bm["cagrPct"]),
+                             "beatCalmar": bool(bm and cal > bm["calmar"])})
+            if not wins:
+                continue
+            m = len(wins)
+            rows.append({"slip": slip, "slipLabel": slabel, "topN": top_n, "every": every,
+                         "label": f"上位{top_n}本 / {'月次' if every == 21 else '四半期'}",
+                         "avgCagr": round(sum(x["cagrPct"] for x in wins) / m, 2),
+                         "avgDd": round(sum(x["maxDrawdownPct"] for x in wins) / m, 1),
+                         "avgBench": round(sum(x["benchCagr"] for x in wins
+                                               if x["benchCagr"] is not None) / m, 2),
+                         "tradesPerYear": round(sum(x["tradesPerYear"] for x in wins) / m, 1),
+                         "beatCagr": len([x for x in wins if x["beatCagr"]]),
+                         "beatCalmar": len([x for x in wins if x["beatCalmar"]]), "of": m,
+                         "windows": wins})
+    if not rows:
+        raise Exception("検証を実行できませんでした")
+    for r in rows:
+        r["edge"] = round(r["avgCagr"] - r["avgBench"], 2)
+        r["avgCalmar"] = round(r["avgCagr"] / abs(r["avgDd"]), 3) if r["avgDd"] else 0
+
+    # 現実的なコスト(片道0.10%以上)で、全期間とも指数を上回ったものだけ採用
+    real = [r for r in rows if r["slip"] >= 0.001
+            and r["beatCagr"] == r["of"] and r["beatCalmar"] == r["of"]]
+    best = max(real, key=lambda r: r["avgCalmar"]) if real else None
+    if best:
+        verdict = (f"「{best['label']}」が、{best['slipLabel']}のコストを見込んでも"
+                   f"{best['of']}期間すべてで指数を上回りました"
+                   f"(年利{best['avgCagr']}% 対 指数{best['avgBench']}% / "
+                   f"年間{best['tradesPerYear']}回の売買)。実力とみなせます。")
+    else:
+        near = max(rows, key=lambda r: (r["beatCalmar"], r["edge"]))
+        verdict = ("現実的なコストのもとで全期間とも指数を上回る組み合わせはありませんでした。"
+                   f"最も惜しいのは「{near['label']}({near['slipLabel']})」で"
+                   f"{near['of']}期間中{near['beatCalmar']}期間。"
+                   "売買方式を変えても、指数を超えるだけの銘柄選別力はありません。")
+    return {"rows": rows, "best": best, "tickers": len(prep), "verdict": verdict,
             "updatedAt": datetime.now(timezone.utc).isoformat()}
 
 
