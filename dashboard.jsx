@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-08-v364-quote-area-filter-fix-row"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-08-v365-quote-clear-all-vendors"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -34584,6 +34584,7 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
       <div style={{display:"flex",alignItems:"center",gap:"0.5rem",marginBottom:"0.5rem",flexWrap:"wrap"}}>
         <div style={{fontWeight:800,fontSize:"0.9rem",color:C.text}}>🚚 対象業者 ＆ 見積</div>
         <span style={{fontSize:"0.7rem",color:C.textMuted}}>{(p.vendors||[]).length}社</span>
+        {(p.vendors||[]).length>0&&<button onClick={()=>{ if(window.confirm(`対象業者 ${(p.vendors||[]).length}社をすべて削除します。よろしいですか？\n（この見積案件の対象業者・入力内容が消えます。業者マスタ自体は消えません）`)){ setVendors([]); setQvPage(0); setQvQ(""); setQvPermFilter([]); setQvAreaFilter([]); } }} title="この案件の対象業者を全削除" style={{padding:"0.2rem 0.6rem",borderRadius:8,border:"1.5px solid #DA1313",background:"#fff1f2",color:"#DA1313",fontWeight:800,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit"}}>🗑 全削除</button>}
         {dupCount>0&&<button onClick={dedupVendors} title="同じ業者が重複して登録されています。統合します" style={{padding:"0.2rem 0.6rem",borderRadius:8,border:"1.5px solid #DA1313",background:"#fff1f2",color:"#DA1313",fontWeight:800,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit"}}>⚠ 重複{dupCount}社を統合</button>}
         {PORTAL_ON&&(()=>{ const need=(p.vendors||[]).filter(v=>!v.portalToken).length; return need>0?<button disabled={portalBusy==="__all__"} onClick={issueAll} title="未発行の対象業者に依頼リンクを一括発行" style={{marginLeft:"auto",padding:"0.3rem 0.7rem",borderRadius:8,border:"1.5px solid #FF6A00",background:"#FFF3E8",color:"#9a3412",fontWeight:800,fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit"}}>{portalBusy==="__all__"?"発行中…":`🔗 依頼リンクを一括発行（未発行${need}社）`}</button>:null; })()}
         {PORTAL_ON&&(p.vendors||[]).some(v=>v.portalToken)&&<button disabled={portalBusy==="__all__"} onClick={syncAll} title="対象店舗を全リンクに反映し、回答も取得" style={{marginLeft:(p.vendors||[]).some(v=>!v.portalToken)?"0":"auto",padding:"0.3rem 0.7rem",borderRadius:8,border:`1.5px solid ${C.accent}`,background:C.accentBg,color:C.accentDark,fontWeight:700,fontSize:"0.7rem",cursor:"pointer",fontFamily:"inherit"}}>{portalBusy==="__all__"?"最新化中…":"🔄 全リンク最新化＆回答取得"}</button>}
