@@ -376,6 +376,28 @@ def lambda_handler(event, context):
             return _res(200, {"config": autotrade_config(body.get("config") or {})})
         if action == "autotrade-run":
             return _res(200, run_autotrade())
+        if action == "apply-recommended":
+            # 周辺の安定性で選んだ設定を、そのまま自動売買に入れる。
+            # プリセットは年利1位を拾う作りで、まぐれを掴みやすいため別経路にする
+            r = recommend_config(float(body.get("maxDrawdown", -40)), False, 30)
+            pick = ([r["recommended"]] + (r.get("runnerUps") or []))[int(body.get("index", 0))]
+            upd = _row_to_autotrade(pick)
+            upd["enabled"] = True
+            upd["tradeMode"] = "custom"
+            # 自動追従を切る。切らないと次の再検証でプリセットに戻され、
+            # せっかく選んだ安定した設定が上書きされてしまう
+            upd["autoTune"] = False
+            upd["appliedFrom"] = {k: pick.get(k) for k in
+                                  ("entryScore", "rr", "maxPositions", "riskPct", "method",
+                                   "cagrPct", "maxDrawdownPct", "winRate", "profitFactor",
+                                   "trades", "neighborCagr", "stability")}
+            upd["appliedNote"] = "周辺の条件も同水準だった安定領域から選定"
+            cfg = autotrade_config(upd)
+            return _res(200, {"config": cfg, "applied": pick,
+                              "note": (f"年利{pick['cagrPct']}% / 最大下落{pick['maxDrawdownPct']}% の設定を入れました。"
+                                       f"周辺条件の平均は年利{pick.get('neighborCagr')}%なので、"
+                                       "たまたま当たった設定ではありません。"
+                                       "自動追従はOFFにしました(次の再検証で上書きされないように)。")})
         if action == "corr-verify":
             r = verify_correlation(None, int(body.get("years", 25)))
             _save_json_s3("stock-learn/corr_verify.json", r)
@@ -1905,7 +1927,11 @@ def apply_trade_mode(mode="aggressive", enable=True):
     if not grid or not grid.get("combos"):
         raise Exception("先に条件の比較(optimize)を実行してください")
     rows = grid["combos"]
-    limit = TRADE_MODES[mode]["maxDd"]
+    # 運用タイプの許容下落と、ユーザーが耐えられる下落の厳しいほうを使う。
+    # これが無いと「最大攻撃型」を選んでいる限り、再検証のたびに
+    # 際限なく過激な設定へ自動で載せ替わってしまう
+    user_limit = float((_load_json_s3(AUTO_KEY, {}) or {}).get("ddLimit", -45))
+    limit = max(TRADE_MODES[mode]["maxDd"], user_limit)
     # 取引が少なすぎる条件は「たまたま」なので採用しない
     pool = [r for r in rows if r["trades"] >= 30 and r["maxDrawdownPct"] >= limit]
     if not pool:
@@ -1942,6 +1968,9 @@ def apply_trade_mode(mode="aggressive", enable=True):
     note = (f"{TRADE_MODES[mode]['label']}を適用しました。"
             f"検証では年利{best['cagrPct']}% / 最大下落{best['maxDrawdownPct']}% / "
             f"勝率{best['winRate']}%の条件です。")
+    if user_limit > TRADE_MODES[mode]["maxDd"]:
+        note += (f"(耐えられる下落の設定が{user_limit}%なので、"
+                 f"{TRADE_MODES[mode]['label']}本来の範囲より安全側に寄せています)")
     if swapped:
         note += (f"(年利{swapped['from']['cagrPct']}%の条件は信用{swapped['from'].get('leverage')}倍が前提でした。"
                  "デモ口座は現物のみなので、同じ考え方の現物版に置き換えています)")
@@ -3326,7 +3355,8 @@ def autotrade_config(update=None):
     cfg.setdefault("maxSameDriver", 0)   # 同じ牽引役に連動する銘柄の上限(0=無制限)
     cfg.setdefault("driverTrend", False) # 牽引役が上昇トレンドのときだけ買う
     cfg.setdefault("betaSize", False)    # βが高い銘柄ほど枚数を減らす
-    cfg.setdefault("tradeMode", "balanced")  # safe/balanced/aggressive/max
+    cfg.setdefault("ddLimit", -45)        # 耐えられる最大下落。自動追従でもこれを超えさせない
+    cfg.setdefault("tradeMode", "balanced")  # safe/balanced/aggressive/max/custom
     cfg.setdefault("autoTune", False)    # 検証が更新されるたびに最適値へ自動追従するか
     # 手動で切り替えるまでは常にON(「ボタンを押さなくても回っている」状態にする)
     if not cfg.get("userToggled") and not cfg.get("enabled"):
@@ -3334,7 +3364,8 @@ def autotrade_config(update=None):
     if update:
         for k in ("enabled", "riskPct", "maxPositions", "minConviction", "rr", "oddLot",
                   "entryScore", "trailPct", "partial", "timeStopDays", "holdMode",
-                  "tradeMode", "autoTune", "maxSameDriver", "driverTrend", "betaSize"):
+                  "tradeMode", "autoTune", "maxSameDriver", "driverTrend", "betaSize",
+                  "ddLimit", "appliedFrom", "appliedNote"):
             if k in update:
                 cfg[k] = update[k]
         if "enabled" in update:

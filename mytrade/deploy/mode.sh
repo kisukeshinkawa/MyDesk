@@ -25,10 +25,12 @@ show() {
   python3 -c '
 import json,sys
 c=(json.load(sys.stdin).get("config") or {})
-名={"safe":"安定型","balanced":"バランス型","aggressive":"積極型","max":"最大攻撃型"}
+名={"safe":"安定型","balanced":"バランス型","aggressive":"積極型","max":"最大攻撃型",
+    "custom":"個別設定(まぐれを除いて選定)"}
 print("  運用タイプ : %s" % 名.get(c.get("tradeMode"),c.get("tradeMode")))
 print("  稼働状態   : %s" % ("ON(自動売買中)" if c.get("enabled") else "OFF(停止中)"))
-print("  自動追従   : %s" % ("ON(毎月かってに最適化)" if c.get("autoTune") else "OFF"))
+print("  自動追従   : %s" % ("ON(毎月かってに最適化)" if c.get("autoTune") else "OFF(手動で決めた設定を維持)"))
+print("  下落の上限 : %s%% (自動追従がこれより深い設定を選ばない歯止め)" % c.get("ddLimit", -45))
 print("  買いの基準 : %s点以上 / 確信度%s以上" % (c.get("entryScore"), c.get("minConviction")))
 print("  利確目標   : 損切り幅の%s倍" % c.get("rr"))
 print("  同時保有   : %s銘柄まで / 1回のリスク %s%%" % (c.get("maxPositions"), c.get("riskPct")))
