@@ -63,13 +63,47 @@ namespace BoatRace.EditorTools
 
         static void Report(BuildReport r, string path)
         {
-            if (r.summary.result == BuildResult.Succeeded)
+            // エラーが1件でもあれば「成功」と言わない(不完全な書き出しを掴まされないため)
+            if (r.summary.result == BuildResult.Succeeded && r.summary.totalErrors == 0)
             {
                 EditorUtility.RevealInFinder(path);
                 Debug.Log($"[艇道ビルド] 成功: {path} ({r.summary.totalSize / (1024 * 1024)}MB)");
             }
             else
-                Debug.LogError($"[艇道ビルド] 失敗: {r.summary.result}。Consoleのエラーを確認してください。");
+                Debug.LogError($"[艇道ビルド] 失敗: {r.summary.result} / エラー{r.summary.totalErrors}件。" +
+                               "上のエラー行を確認してください。");
+        }
+
+        /// <summary>
+        /// そのプラットフォームのビルドモジュールが実際に使えるか確認する。
+        /// Unity起動中にHubでモジュールを追加した場合、再起動するまで認識されず
+        /// 「Build target not supported」で中身の無いフォルダができてしまうため。
+        /// </summary>
+        static bool ModuleReady(BuildTarget target, string moduleName)
+        {
+            string dir = null;
+            try { dir = BuildPipeline.GetPlaybackEngineDirectory(target, BuildOptions.None); }
+            catch { dir = null; }
+            if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir)) return true;
+
+            EditorUtility.DisplayDialog("艇道ビルド",
+                $"{moduleName} がこのUnityで使えません。\n\n" +
+                "① Unityを完全に終了(⌘Q)して開き直してください。\n" +
+                "　 Unity起動中にHubで追加したモジュールは、再起動するまで認識されません。\n\n" +
+                "② それでも出る場合は Unity Hub → Installs → 6000.3.11f1 の歯車 →\n" +
+                $"　 Add modules から {moduleName} を追加してください。", "OK");
+            return false;
+        }
+
+        /// <summary>前回の失敗で残った空フォルダを掃除する(不完全な書き出しの混在を防ぐ)。</summary>
+        static void CleanStale(string dir, string marker)
+        {
+            if (Directory.Exists(dir) && !Directory.Exists(Path.Combine(dir, marker))
+                && !File.Exists(Path.Combine(dir, marker)))
+            {
+                Directory.Delete(dir, true);
+                Debug.Log($"[艇道ビルド] 前回の不完全な出力を削除しました: {dir}");
+            }
         }
 
         [MenuItem("艇道ビルド/① Mac版アプリを書き出し(まず動作確認はこれ)")]
@@ -87,6 +121,7 @@ namespace BoatRace.EditorTools
         [MenuItem("艇道ビルド/② WebGL版を書き出し(URLで配って遊べる)")]
         public static void BuildWebGL()
         {
+            if (!ModuleReady(BuildTarget.WebGL, "WebGL Build Support")) return;
             var scenes = Scenes(); if (scenes == null) return;
             Common();
             PlayerSettings.SetApplicationIdentifier(NamedBuildTarget.WebGL, BundleId);
@@ -101,7 +136,9 @@ namespace BoatRace.EditorTools
         [MenuItem("艇道ビルド/③ iOS用Xcodeプロジェクトを書き出し(TestFlight配布用)")]
         public static void BuildIOS()
         {
+            if (!ModuleReady(BuildTarget.iOS, "iOS Build Support")) return;
             var scenes = Scenes(); if (scenes == null) return;
+            CleanStale("Builds/iOS", "Unity-iPhone.xcodeproj");
             Common();
             PlayerSettings.SetApplicationIdentifier(NamedBuildTarget.iOS, BundleId);
             ApplyIcon(NamedBuildTarget.iOS);
