@@ -1519,27 +1519,38 @@ def simulate_strategy(tickers=None, years=25, initial=1000000, risk_pct=2.0,
 
 def simulate_grid(tickers=None, years=25, initial=1000000):
     """複数のパラメータ条件を一括比較し、最適な設定を提示する。
-    スコアの計算は1回だけなので、条件を増やしても時間はほとんど増えない。"""
-    tickers = tickers or DEFAULT_UNIVERSE
-    prep = _prepare_sim(tickers, years)
+    スコアの計算は1回だけなので、条件を増やしても時間はほとんど増えない。
+
+    銘柄数について: 20銘柄で回すと「候補が足りないだけ」の結果を掴む。
+    実運用は909銘柄をスキャンしているので、検証も同じ土俵に近づける。"""
+    tickers = tickers or FULL_UNIVERSE
+    prep = _prepare_sim(tickers, years, limit=int(os.environ.get("GRID_TICKERS", "300")))
     if not prep:
         raise Exception("シミュレーション用のデータが取得できません")
     all_dates = sorted({d for v in prep.values() for d in v["dates"]})[200:]
 
+    # 信用取引は外した。デモ口座は現物のみで、検証上の数字どおりには回らないため。
+    # 同時保有は8までしか試していなかったが、12〜20のほうが良い可能性があるので広げる。
+    # 同時保有数を一番内側にする。時間切れになっても全ての保有数が均等に試され、
+    # 「何銘柄が良いか」の比較が欠けないようにするため
     combos = []
     for entry in (65, 70, 75):
         for rr in (3.0, 4.0):
-            for mp in (2, 3, 5, 8):
-                for risk in (2.0, 3.0):
-                    for lev in (1.0, 1.5, 2.0):     # 信用取引の倍率
-                        for adv in ({}, {"partial": True}, {"trail": 0.08},
-                                    {"hold_mode": "trend"},
-                                    {"hold_mode": "trend", "trail": 0.25}):
-                            combos.append({"entryScore": entry, "rr": rr, "maxPositions": mp,
-                                           "riskPct": risk, "leverage": lev, **adv})
+            for risk in (2.0, 3.0):
+                for adv in ({}, {"partial": True}, {"trail": 0.08},
+                            {"hold_mode": "trend"},
+                            {"hold_mode": "trend", "trail": 0.25}):
+                    for mp in (3, 5, 8, 12, 16, 20):
+                        combos.append({"entryScore": entry, "rr": rr, "maxPositions": mp,
+                                       "riskPct": risk, "leverage": 1.0, **adv})
 
-    rows = []
+    budget = float(os.environ.get("GRID_BUDGET", "600"))   # 秒。条件の試行にかけてよい上限
+    t0 = time.time()
+    rows, done = [], 0
     for c in combos:
+        if time.time() - t0 > budget:
+            break        # 時間切れ。試せたぶんだけで比較する(件数は結果に出す)
+        done += 1
         try:
             r = _sim_pass(prep, all_dates, initial, c["riskPct"], c["maxPositions"],
                           c["entryScore"], c["rr"], odd_lot=True,
@@ -1562,6 +1573,8 @@ def simulate_grid(tickers=None, years=25, initial=1000000):
         except Exception as e:
             print("grid combo failed:", c, e)
 
+    if done < len(combos):
+        print(f"grid: 時間切れ {done}/{len(combos)}条件のみ試行")
     current = next((r for r in rows if r["entryScore"] == 70 and r["rr"] == 3.0
                     and r["maxPositions"] == 8 and r["riskPct"] == 2.0), None)
     valid = [r for r in rows if r["trades"] >= 20]   # 取引が少なすぎる条件は信頼できない
@@ -1581,7 +1594,21 @@ def simulate_grid(tickers=None, years=25, initial=1000000):
     }
     if not presets["safe"]:
         presets["safe"] = pick(lambda r: r["maxDrawdownPct"] >= -25, lambda r: r["cagrPct"])
+    # 同時保有数ごとの平均。「何銘柄に分散するのが良いか」は単独で見る価値がある
+    by_pos = {}
+    for r in rows:
+        by_pos.setdefault(r["maxPositions"], []).append(r)
+    pos_summary = [{"maxPositions": mp,
+                    "n": len(v),
+                    "avgCagr": round(sum(x["cagrPct"] for x in v) / len(v), 2),
+                    "avgDd": round(sum(x["maxDrawdownPct"] for x in v) / len(v), 1),
+                    "avgCalmar": round(sum(x["calmar"] for x in v) / len(v), 3),
+                    "bestCagr": round(max(x["cagrPct"] for x in v), 2)}
+                   for mp, v in sorted(by_pos.items())]
+
     return {"period": {"years": years, "tickers": len(prep)},
+            "combosTried": done, "combosTotal": len(combos),
+            "byPositions": pos_summary,
             "combos": sorted(rows, key=lambda r: -r["calmar"]),
             "current": current,
             "presets": presets,
@@ -1666,7 +1693,9 @@ def verify_correlation(tickers=None, years=25, initial=1000000):
         # 保有数で効き方が分かれていないかを見る(条件つきで効く仕組みを見逃さないため)
         won = [mp for mp, w in t.get("maxPos", []) if w]
         lost = [mp for mp, w in t.get("maxPos", []) if not w]
-        split = bool(won and lost and min(won) > max(lost))
+        # 勝ちが1点だけだと、それが端にあるだけで「きれいに分かれている」ように見える。
+        # 規則性と呼ぶには最低2点が同じ側で勝っている必要がある
+        split = bool(len(set(won)) >= 2 and lost and min(won) > max(lost))
         summary.append({"name": mname, "wins": t["win"], "of": t["n"], "avgCagrDiff": avg_c,
                         "avgCalmarDiff": avg_cal, "verdict": verdict,
                         "robust": t["win"] == t["n"], "config": extra,
