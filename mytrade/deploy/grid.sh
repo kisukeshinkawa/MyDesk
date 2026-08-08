@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────
 # MyTrade: 条件の一括比較(optimize)を実行・確認する
-#   bash deploy/grid.sh       結果を見る(まだなら状況を表示)
-#   bash deploy/grid.sh run   比較を開始(20分ほど・裏で走る)
+#   bash deploy/grid.sh        結果を見る(まだなら状況を表示)
+#   bash deploy/grid.sh run    比較を開始(20分ほど・裏で走る)
+#   bash deploy/grid.sh best   まぐれを除いた「実運用向けの設定」を選ぶ
 # ─────────────────────────────────────────────────────────────
 set -euo pipefail
 
@@ -20,6 +21,17 @@ if [ "$CMD" = "run" ]; then
     --invocation-type Event --cli-binary-format raw-in-base64-out \
     --payload '{"job":"optimize"}' /dev/null >/dev/null
   echo "▶ 条件の比較を開始しました(20分ほど)。終わったら: bash deploy/grid.sh"
+  exit 0
+fi
+
+if [ "$CMD" = "best" ]; then
+  # 年利1位は「たまたま当たった条件」の可能性が高い。
+  # 周辺の条件(1項目だけ違う設定)も同水準かどうかで安定性を見る
+  DD="${2:--40}"
+  curl -s -X POST "$URL" -H "content-type: application/json" \
+    -H "x-mydesk-secret: $SECRET" --max-time 120 \
+    -d "{\"action\":\"recommend\",\"maxDrawdown\":$DD,\"allowLeverage\":false}" \
+    | python3 "$HERE/_best_show.py"
   exit 0
 fi
 
