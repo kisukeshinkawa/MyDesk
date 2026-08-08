@@ -103,7 +103,7 @@ const C = {
 const SESSION_KEY = "mydesk_session_v2";
 
 // ─── AWS DB / Storage API 設定 ────────────────────────────────────────────────
-const MYDESK_BUILD = "2026-08-08-v367-quote-link-persist-status-anon-width"; // ビルド識別子
+const MYDESK_BUILD = "2026-08-08-v368-quote-name-dedup"; // ビルド識別子
 if (typeof window !== "undefined") {
   window.__MYDESK_BUILD = MYDESK_BUILD;
   console.log(`[MyDesk] Build: ${MYDESK_BUILD}`);
@@ -34196,8 +34196,19 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
   const setVendors = (vs) => upd(p.id, { vendors: vs });
   const setStores = (ss) => upd(p.id, { stores: ss });
   const patchVendor = (qvId, patch) => setVendors((p.vendors||[]).map(x=>x.id===qvId?{...x,...patch}:x));
-  const addVendor = (v) => { if((p.vendors||[]).some(x=>String(x.vendorId)===String(v.id))) return; setVendors([...(p.vendors||[]), { id:rid("qv"), vendorId:v.id, vendorName:v.name, assignee:"", contact:"", status:"未依頼", prices:{}, extraLines:[], callNotes:[] }]); };
+  // 社名の正規化（法人格・記号・全半角・カナ差を吸収）＝許可違いでも同一会社を1社として重複判定
+  const normBizName = (s) => (s||"")
+    .replace(/\s*(株式会社|有限会社|合同会社|合資会社|合名会社|一般社団法人|一般財団法人|公益社団法人|公益財団法人|特定非営利活動法人|NPO法人|社会福祉法人|学校法人|宗教法人|医療法人)\s*/gi,"")
+    .replace(/[（(](株|有|合|社|同|資|名|財|一社|一財|公社|公財|医|福|学|宗|NPO)[)）]/gi,"")
+    .replace(/[Ａ-Ｚａ-ｚ０-９]/g, ch=>String.fromCharCode(ch.charCodeAt(0)-0xFEE0))
+    .replace(/[ァ-ン]/g, ch=>String.fromCharCode(ch.charCodeAt(0)-0x60))
+    .replace(/[\s　・　]/g,"")
+    .replace(/[-－ー〜～、。・]/g,"")
+    .toLowerCase();
   const addedIds = new Set((p.vendors||[]).map(x=>String(x.vendorId)));
+  const addedNameSet = new Set((p.vendors||[]).map(x=>normBizName(x.vendorName)).filter(Boolean));
+  // 同一vendorId or 同一社名(許可違いの別レコード)が既にあれば追加しない
+  const addVendor = (v) => { const nn=normBizName(v.name); if((p.vendors||[]).some(x=>String(x.vendorId)===String(v.id))) return; if(nn && addedNameSet.has(nn)) return; setVendors([...(p.vendors||[]), { id:rid("qv"), vendorId:v.id, vendorName:v.name, assignee:"", contact:"", status:"未依頼", prices:{}, extraLines:[], callNotes:[] }]); };
   const vendorById = new Map((vendors||[]).map(v=>[String(v.id),v]));
   const muniNameById = new Map((munis||[]).map(m=>[String(m.id), m.name]));
   // 業者のエリア集合（産廃権者＝sanpaiPermits.auth ＋ 一廃自治体名）
@@ -34331,20 +34342,28 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
   const vHits = vHitsAll.slice(0,60);
   // 該当業者を一括追加（重複除外・大量時は確認）
   const addAll = () => {
-    const seen=new Set(addedIds); const toAdd=[];
-    vHitsAll.forEach(v=>{ const k=String(v.id); if(!seen.has(k)){ seen.add(k); toAdd.push(v); } }); // 既存＋バッチ内の重複を除外
+    const seen=new Set(addedIds); const seenNames=new Set(addedNameSet); const toAdd=[];
+    // 既存＋バッチ内の重複を除外。許可違いの同一社名(別レコード)も1社だけ追加
+    vHitsAll.forEach(v=>{ const k=String(v.id); if(seen.has(k)) return; const nn=normBizName(v.name); if(nn && seenNames.has(nn)) return; seen.add(k); if(nn) seenNames.add(nn); toAdd.push(v); });
     if(!toAdd.length){ window.alert("追加できる業者がありません（該当は全て追加済み）。"); return; }
     if(toAdd.length>100 && !window.confirm(`該当 ${toAdd.length} 社を一括で対象業者に追加します。よろしいですか？`)) return;
     const news = toAdd.map(v=>({ id:rid("qv"), vendorId:v.id, vendorName:v.name, assignee:"", contact:"", status:"未依頼", prices:{}, extraLines:[], callNotes:[] }));
     setVendors([...(p.vendors||[]), ...news]);
   };
-  // 対象業者の重複(同一vendorId)を検出・統合（メモ/担当/価格/回答は結合）
-  const dupCount = (()=>{ const seen=new Set(); let d=0; (p.vendors||[]).forEach(x=>{ const k=String(x.vendorId); if(seen.has(k)) d++; else seen.add(k); }); return d; })();
+  // 対象業者の重複を検出・統合。許可違いでも同一社名なら1社に集約（メモ/担当/価格/回答/トークン結合）
+  const _richOf = (vid)=>{ const vv=vendors.find(v=>String(v.id)===String(vid)); return vv?((vv.permitTypes||[]).length+(vv.sanpaiPermits||[]).length+(vv.municipalityIds||[]).length):0; };
+  const dupCount = (()=>{ const seen=new Set(); let d=0; (p.vendors||[]).forEach(x=>{ const k=normBizName(x.vendorName)||("id:"+x.vendorId); if(seen.has(k)) d++; else seen.add(k); }); return d; })();
   const dedupVendors = () => {
     const map=new Map();
-    (p.vendors||[]).forEach(x=>{ const k=String(x.vendorId); const ex=map.get(k);
+    (p.vendors||[]).forEach(x=>{ const k=normBizName(x.vendorName)||("id:"+x.vendorId); const ex=map.get(k);
       if(!ex){ map.set(k,{...x}); }
-      else { ex.callNotes=[...(ex.callNotes||[]),...(x.callNotes||[])]; ex.assigneeIds=[...new Set([...(ex.assigneeIds||[]),...(x.assigneeIds||[])])]; ex.prices={...(ex.prices||{}),...(x.prices||{})}; if(x.status==="回答済"&&ex.status!=="回答済"){ ex.status="回答済"; ex.respondedAt=x.respondedAt; ex.vendorNote=x.vendorNote; } if(!ex.portalToken&&x.portalToken){ ex.portalToken=x.portalToken; ex.portalUrl=x.portalUrl; } }
+      else {
+        ex.callNotes=[...(ex.callNotes||[]),...(x.callNotes||[])]; ex.assigneeIds=[...new Set([...(ex.assigneeIds||[]),...(x.assigneeIds||[])])]; ex.prices={...(ex.prices||{}),...(x.prices||{})};
+        if(x.status==="回答済"&&ex.status!=="回答済"){ ex.status="回答済"; ex.respondedAt=x.respondedAt; ex.vendorNote=x.vendorNote; }
+        if(!ex.portalToken&&x.portalToken){ ex.portalToken=x.portalToken; ex.portalUrl=x.portalUrl; }
+        // 許可(種別・エリア)が多い方のvendorIdを採用（詳細で許可が正しく見えるように）
+        if(_richOf(x.vendorId)>_richOf(ex.vendorId)){ ex.vendorId=x.vendorId; ex.vendorName=x.vendorName; }
+      }
     });
     const kept=[...map.values()]; const removed=(p.vendors||[]).length-kept.length;
     if(!removed){ window.alert("重複はありませんでした。"); return; }
@@ -34695,9 +34714,9 @@ function QuoteProjectsView({ data, setData, currentUser, users=[] }){
           <div style={{marginTop:"0.5rem",maxHeight:240,overflowY:"auto",border:`1px solid ${C.borderLight}`,borderRadius:8}}>
             <div style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.3rem 0.6rem",background:C.bg}}>
               <span style={{fontSize:"0.66rem",color:C.textMuted}}>{vHitsAll.length}社ヒット{vHits.length<vHitsAll.length?`（先頭${vHits.length}件表示）`:""}</span>
-              {(()=>{ const addable=vHitsAll.filter(v=>!addedIds.has(String(v.id))).length; return addable>0?(<button onClick={addAll} style={{marginLeft:"auto",padding:"0.2rem 0.65rem",borderRadius:8,border:`1.5px solid ${C.accent}`,background:C.accentBg,color:C.accentDark,fontWeight:800,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>＋ 該当{addable}社をすべて追加</button>):null; })()}
+              {(()=>{ const s=new Set(addedNameSet); let addable=0; vHitsAll.forEach(v=>{ if(addedIds.has(String(v.id))) return; const nn=normBizName(v.name); if(nn && s.has(nn)) return; if(nn) s.add(nn); addable++; }); return addable>0?(<button onClick={addAll} style={{marginLeft:"auto",padding:"0.2rem 0.65rem",borderRadius:8,border:`1.5px solid ${C.accent}`,background:C.accentBg,color:C.accentDark,fontWeight:800,fontSize:"0.68rem",cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>＋ 該当{addable}社をすべて追加</button>):null; })()}
             </div>
-            {vHits.map(v=>{ const added=addedIds.has(String(v.id)); return (
+            {vHits.map(v=>{ const _nn=normBizName(v.name); const added=addedIds.has(String(v.id))||(_nn&&addedNameSet.has(_nn)); return (
               <div key={v.id} style={{display:"flex",alignItems:"center",gap:"0.5rem",padding:"0.4rem 0.6rem",borderTop:`1px solid ${C.borderLight}`}}>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:"0.8rem",fontWeight:600,color:C.text}}>{v.name}</div>
