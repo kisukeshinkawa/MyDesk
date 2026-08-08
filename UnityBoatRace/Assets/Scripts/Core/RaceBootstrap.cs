@@ -315,11 +315,34 @@ namespace BoatRace.Core
 
         void BuildStartLine()
         {
+            // 実際の競艇のスタートラインは水面に太い白帯が引かれているわけではなく、
+            // 両端の標識で示される。細い白線+両端のオレンジ標識ポールで表現する。
+            var root = new GameObject("StartLine");
+            root.transform.position = new Vector3(TrackPath.StartLineX, 0f, -22f);
+
             var line = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            line.name = "StartLine";
-            line.transform.position = new Vector3(TrackPath.StartLineX, 0.02f, -22f);
-            line.transform.localScale = new Vector3(0.5f, 0.05f, 40f);
-            Paint(line, Color.white);
+            line.name = "Line";
+            line.transform.SetParent(root.transform, false);
+            line.transform.localPosition = new Vector3(0f, 0.012f, 0f);
+            line.transform.localScale = new Vector3(0.22f, 0.02f, 40f);
+            var lm = Paint(line, new Color(0.94f, 0.95f, 0.97f));
+            if (lm.HasProperty("_OutlineWidth")) lm.SetFloat("_OutlineWidth", 0f);
+
+            foreach (var z in new[] { -20f, 20f })
+            {
+                var pole = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                pole.name = "StartMarker";
+                pole.transform.SetParent(root.transform, false);
+                pole.transform.localPosition = new Vector3(0f, 0.85f, z);
+                pole.transform.localScale = new Vector3(0.16f, 0.85f, 0.16f);
+                Paint(pole, new Color(0.95f, 0.42f, 0.10f));
+                var head = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                head.name = "StartMarkerHead";
+                head.transform.SetParent(root.transform, false);
+                head.transform.localPosition = new Vector3(0f, 1.78f, z);
+                head.transform.localScale = Vector3.one * 0.42f;
+                Paint(head, Color.white);
+            }
         }
 
         void BuildBoats(RaceManager race)
@@ -433,6 +456,10 @@ namespace BoatRace.Core
                 shaft.transform.localScale = new Vector3(0.05f, 0.28f, 0.05f);
                 Paint(shaft, new Color(0.72f, 0.74f, 0.80f));
 
+                } // customBoat == null (手続き生成の艇体はここまで)
+
+                // ここから下は外部モデルでも必ず付ける(艇番・ハンドル・選手)。
+                // 艇番が無いと6艇の見分けがつかないため。
                 // 艇番プレート(実艇と同じく艇首の両舷。白地に黒番号)
                 foreach (var side in new[] { -1f, 1f })
                 {
@@ -466,7 +493,8 @@ namespace BoatRace.Core
                 handleBar.transform.localScale = new Vector3(0.68f, 0.07f, 0.07f);
                 Paint(handleBar, dark);
 
-                // ---- 選手(実際の競艇の乗艇姿勢: 正座で深く前傾し、両手はハンドル) ----
+                // ---- 選手(外部boat.objには人が入っていないため必ずこちらで乗せる) ----
+                // ---- 実際の競艇の乗艇姿勢: 正座で深く前傾し、両手はハンドル ----
                 // 実艇の選手は膝立ちで体を伏せる。頭・カポック・レーサースーツの3色で
                 // 遠目のシルエットが「人」に見えるよう作る。
                 var suit = new Color(0.16f, 0.18f, 0.24f);        // レーサースーツ(黒紺)
@@ -571,8 +599,6 @@ namespace BoatRace.Core
                 visor.transform.localRotation = Quaternion.Euler(-14f, 0f, 0f);
                 visor.transform.localScale = new Vector3(0.26f, 0.13f, 0.06f);
                 Paint(visor, new Color(0.09f, 0.11f, 0.16f));
-
-                } // customBoat == null (手続き生成の艇はここまで)
 
                 // 引き波(航跡)ビジュアル
                 var trailGo = new GameObject("WakeTrail");
